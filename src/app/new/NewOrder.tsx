@@ -4,18 +4,23 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
+import Steps from "@/components/Steps";
 
-interface Tier {
+interface Option {
   key: string;
   label: string;
   description: string;
+}
+interface Tier extends Option {
   price_halalas: number;
 }
 
 interface Props {
-  templates: { id: string; name: string; pages: number }[];
+  templateId: string;
   tiers: Tier[];
+  styles: Option[];
   defaultQuality: string;
+  defaultStyle: string;
   freeTrial: boolean;
   trialsLeft: number | null;
   pendingOrder: { id: string; amount_halalas: number } | null;
@@ -23,11 +28,16 @@ interface Props {
 }
 
 const sar = (halalas: number) => `${halalas / 100} ريال`;
+const NAME_RE = /^[\p{L}\p{M} ]{1,30}$/u;
 
-export default function NewOrder({ templates, tiers, defaultQuality, freeTrial, trialsLeft, pendingOrder, devPayment }: Props) {
+export default function NewOrder(props: Props) {
+  const { templateId, tiers, styles, freeTrial, trialsLeft, pendingOrder, devPayment } = props;
   const router = useRouter();
-  const [template, setTemplate] = useState(templates[0]?.id ?? "");
-  const [quality, setQuality] = useState(defaultQuality);
+  const [step, setStep] = useState(0);
+  const [childName, setChildName] = useState("");
+  const [gender, setGender] = useState<"boy" | "girl" | "">("");
+  const [style, setStyle] = useState(props.defaultStyle);
+  const [quality, setQuality] = useState(props.defaultQuality);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -44,7 +54,13 @@ export default function NewOrder({ templates, tiers, defaultQuality, freeTrial, 
 
   const createOrder = () =>
     run(async () => {
-      const { next } = await postJson<{ id: string; next: string }>("/api/orders", { templateId: template, quality });
+      const { next } = await postJson<{ next: string }>("/api/orders", {
+        templateId,
+        quality,
+        style,
+        gender,
+        childName: childName.trim(),
+      });
       router.push(next);
     });
 
@@ -59,19 +75,14 @@ export default function NewOrder({ templates, tiers, defaultQuality, freeTrial, 
     return (
       <div className="card space-y-5 p-6">
         <h1 className="display text-4xl">الدفع</h1>
-        <div className="flex items-center justify-between rounded-2xl border-[3px] border-ink bg-sun p-4 text-xl font-extrabold">
+        <div className="flex items-center justify-between rounded-2xl bg-surface-2 p-4 text-xl font-extrabold">
           <span>المبلغ</span>
           <span>{sar(pendingOrder.amount_halalas)}</span>
         </div>
         {devPayment ? (
-          <>
-            <p className="rounded-2xl border-[3px] border-dashed border-ink p-3 text-sm font-bold">
-              وضع التطوير: الدفع الحقيقي (Moyasar) غير مربوط بعد. هذا الزر يعتبر الطلب مدفوع للتجربة فقط، ولا يشتغل في الموقع الحقيقي.
-            </p>
-            <button className="btn btn-primary w-full" onClick={pay} disabled={busy}>
-              {busy ? "لحظة…" : "دفع تجريبي"}
-            </button>
-          </>
+          <button className="btn btn-primary w-full" onClick={pay} disabled={busy}>
+            {busy ? "لحظة…" : "دفع تجريبي (وضع التطوير)"}
+          </button>
         ) : (
           <p className="error-box">الدفع غير متاح حاليًا. جرّب لاحقًا.</p>
         )}
@@ -81,78 +92,123 @@ export default function NewOrder({ templates, tiers, defaultQuality, freeTrial, 
   }
 
   const noTrialsLeft = freeTrial && trialsLeft === 0;
-  const selectedTier = tiers.find((t) => t.key === quality);
+  const nameOk = NAME_RE.test(childName.trim());
+  const he = gender === "girl" ? "ها" : "ه";
 
   return (
     <div className="space-y-6">
       {freeTrial && (
-        <div className="card -rotate-1 bg-lime p-4 text-center">
-          <p className="display text-2xl">النسخة التجريبية مجانية 🎉</p>
-          <p className="font-bold">
-            {noTrialsLeft ? "استخدمت كل تجاربك المجانية." : `باقي لك ${trialsLeft} ${trialsLeft === 1 ? "تجربة" : "تجارب"} مجانية.`}
-          </p>
-        </div>
+        <p className="chip w-full justify-center py-2 text-base">
+          🎁 {noTrialsLeft ? "استخدمت كل تجاربك المجانية" : `مجاني بالكامل · باقي لك ${trialsLeft} ${trialsLeft === 1 ? "تجربة" : "تجارب"}`}
+        </p>
+      )}
+      <Steps labels={["الطفل", "الستايل", "الجودة"]} current={step} />
+
+      {step === 0 && (
+        <section className="space-y-5">
+          <h1 className="display text-3xl">مين بطل الكتيب؟</h1>
+          <label className="block space-y-2">
+            <span className="font-extrabold">اسم الطفل</span>
+            <input
+              className="field"
+              value={childName}
+              onChange={(e) => setChildName(e.target.value)}
+              placeholder="مثلًا: علي، زهراء"
+              maxLength={30}
+              autoComplete="off"
+            />
+            <span className="block text-sm font-bold text-muted">يطلع على الغلاف وداخل الصفحات</span>
+          </label>
+          <div className="space-y-2">
+            <span className="font-extrabold">ولد أو بنت؟</span>
+            <div role="radiogroup" className="grid grid-cols-2 gap-3">
+              {(
+                [
+                  ["boy", "👦", "ولد"],
+                  ["girl", "👧", "بنت"],
+                ] as const
+              ).map(([key, icon, label]) => (
+                <button
+                  key={key}
+                  role="radio"
+                  aria-checked={gender === key}
+                  onClick={() => setGender(key)}
+                  className="option flex flex-col items-center gap-1 py-5"
+                >
+                  <span className="text-5xl">{icon}</span>
+                  <span className="text-xl font-extrabold">{label}</span>
+                </button>
+              ))}
+            </div>
+            {gender === "girl" && (
+              <p className="text-sm font-bold text-muted">تطلع البنت بالعباءة الزينبية الكاملة في كل الصفحات، بدون مكياج.</p>
+            )}
+          </div>
+          <button className="btn btn-primary w-full" disabled={!nameOk || !gender} onClick={() => setStep(1)}>
+            التالي
+          </button>
+        </section>
       )}
 
-      <section className="space-y-3">
-        <h1 className="display text-3xl">١. اختر الكتيب</h1>
-        {templates.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTemplate(t.id)}
-            className={`card flex w-full items-center gap-4 p-4 text-right transition ${template === t.id ? "bg-sun" : ""}`}
-          >
-            <Image src={`/templates/${t.id}/page-01.jpg`} alt="" width={80} height={113} className="rounded-xl border-[3px] border-ink" />
-            <div>
-              <h2 className="text-xl font-extrabold">{t.name}</h2>
-              <p className="font-bold text-ink/70">{t.pages} صفحات ملوّنة جاهزة للطباعة</p>
-            </div>
-          </button>
-        ))}
-      </section>
+      {step === 1 && (
+        <section className="space-y-5">
+          <h1 className="display text-3xl">بأي ستايل تبي {childName.trim() || `شخصيت${he}`}؟</h1>
+          <div role="radiogroup" className="grid grid-cols-2 gap-3">
+            {styles.map((s) => (
+              <button key={s.key} role="radio" aria-checked={style === s.key} onClick={() => setStyle(s.key)} className="option overflow-hidden p-0">
+                <Image src={`/styles/${s.key}.jpg`} alt="" width={400} height={400} className="aspect-square w-full object-cover" />
+                <span className="block p-3">
+                  <span className="block font-extrabold">{s.label}</span>
+                  <span className="block text-xs font-bold text-muted">{s.description}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-3">
+            <button className="btn btn-ghost" onClick={() => setStep(0)}>رجوع</button>
+            <button className="btn btn-primary" onClick={() => setStep(2)}>التالي</button>
+          </div>
+        </section>
+      )}
 
-      <section className="space-y-3">
-        <h2 className="display text-3xl">٢. اختر الجودة</h2>
-        <div className="space-y-3" role="radiogroup" aria-label="الجودة">
-          {tiers.map((t) => {
-            const active = quality === t.key;
-            return (
+      {step === 2 && (
+        <section className="space-y-5">
+          <h1 className="display text-3xl">اختر الجودة</h1>
+          <div role="radiogroup" className="space-y-3">
+            {tiers.map((t) => (
               <button
                 key={t.key}
                 role="radio"
-                aria-checked={active}
+                aria-checked={quality === t.key}
                 onClick={() => setQuality(t.key)}
-                className={`card flex w-full items-center justify-between gap-3 p-4 text-right transition ${active ? "bg-grape text-white" : ""}`}
+                className="option flex w-full items-center justify-between gap-3 p-4"
               >
-                <span className="flex items-center gap-3">
-                  <span className={`grid size-7 shrink-0 place-items-center rounded-full border-[3px] ${active ? "border-white" : "border-ink"}`}>
-                    {active && <span className="size-3 rounded-full bg-white" />}
-                  </span>
-                  <span>
-                    <span className="block text-lg font-extrabold">{t.label}</span>
-                    <span className={`block text-sm font-bold ${active ? "text-white/80" : "text-ink/60"}`}>{t.description}</span>
-                  </span>
+                <span>
+                  <span className="block text-lg font-extrabold">{t.label}</span>
+                  <span className="block text-sm font-bold text-muted">{t.description}</span>
                 </span>
-                <span className="shrink-0 text-left">
+                <span className="shrink-0 text-end">
                   {freeTrial ? (
                     <>
-                      <span className={`block text-sm font-bold line-through ${active ? "text-white/70" : "text-ink/50"}`}>{sar(t.price_halalas)}</span>
-                      <span className="display block text-xl">مجانًا</span>
+                      <span className="block text-sm font-bold text-muted line-through">{sar(t.price_halalas)}</span>
+                      <span className="display block text-xl text-teal">مجانًا</span>
                     </>
                   ) : (
                     <span className="display block text-xl">{sar(t.price_halalas)}</span>
                   )}
                 </span>
               </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {error && <p className="error-box">{error}</p>}
-      <button className="btn btn-sun w-full text-xl" onClick={createOrder} disabled={busy || !template || noTrialsLeft}>
-        {busy ? "لحظة…" : freeTrial ? "جرّب مجانًا" : `التالي: الدفع (${selectedTier ? sar(selectedTier.price_halalas) : ""})`}
-      </button>
+            ))}
+          </div>
+          {error && <p className="error-box">{error}</p>}
+          <div className="grid grid-cols-[auto_1fr] gap-3">
+            <button className="btn btn-ghost" onClick={() => setStep(1)} disabled={busy}>رجوع</button>
+            <button className="btn btn-primary" onClick={createOrder} disabled={busy || noTrialsLeft || !templateId}>
+              {busy ? "لحظة…" : freeTrial ? "جرّب مجانًا ✨" : "التالي: الدفع"}
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

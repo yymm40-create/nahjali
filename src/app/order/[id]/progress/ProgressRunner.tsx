@@ -71,7 +71,7 @@ export default function ProgressRunner({ orderId }: { orderId: string }) {
     return (
       <div className="card space-y-4 p-6 text-center">
         <h1 className="display text-3xl">ما قدرنا نكمل كتيبك</h1>
-        <p className="font-bold text-ink/70">
+        <p className="font-bold text-muted">
           بعض صور الشخصية ما طلعت بشكل صحيح بعد أكثر من محاولة. تواصل معنا ونحل المشكلة لك، وما راح تخسر طلبك.
         </p>
       </div>
@@ -80,25 +80,25 @@ export default function ProgressRunner({ orderId }: { orderId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="card space-y-5 bg-night p-8 text-center text-white">
+      <div className="card space-y-5 p-8 text-center">
         <Spinner />
         <h1 className="display text-3xl">
           {state?.status === "composing" ? "نركّب صفحات كتيبك…" : "نجهّز شخصيتك في كل الوضعيات…"}
         </h1>
-        <div className="h-6 overflow-hidden rounded-full border-[3px] border-ink bg-white">
-          <div className="h-full bg-lime transition-all duration-700" style={{ width: `${Math.max(pct, 4)}%` }} />
+        <div className="h-6 overflow-hidden rounded-full bg-surface-2">
+          <div className="h-full bg-gold transition-all duration-700" style={{ width: `${Math.max(pct, 4)}%` }} />
         </div>
         <p className="text-lg font-extrabold">
           {state?.status === "composing" ? "آخر خطوة!" : `${done} من ${total} وضعيات جاهزة`}
         </p>
       </div>
-      <p className="text-center font-bold text-ink/70">
+      <p className="text-center font-bold text-muted">
         العملية تاخذ كم دقيقة. خلّ الصفحة مفتوحة، ولو قفلتها ترجع تكمل من نفس المكان من صفحة &quot;كتيباتي&quot;.
       </p>
       {error && (
         <div className="space-y-3">
           <p className="error-box">{error}</p>
-          <button className="btn btn-sun w-full" onClick={() => setRound((r) => r + 1)}>
+          <button className="btn btn-secondary w-full" onClick={() => setRound((r) => r + 1)}>
             حاول مرة ثانية
           </button>
         </div>

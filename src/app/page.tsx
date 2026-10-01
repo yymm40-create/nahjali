@@ -1,68 +1,113 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FREE_TRIAL, QUALITY_TIERS } from "@config/pricing";
-
-const STEPS = [
-  { n: "١", title: "ارفع صورتك", text: "صورة واضحة للوجه والجسم", color: "bg-sun" },
-  { n: "٢", title: "اعتمد شخصيتك", text: "نحوّلك لشخصية كرتونية ثلاثية الأبعاد", color: "bg-mint" },
-  { n: "٣", title: "حمّل كتيبك", text: "PDF جاهز للطباعة فيه شخصيتك بكل صفحة", color: "bg-bubble" },
-];
-
-const PREVIEW_PAGES = ["01", "02", "03", "06"];
+import { STYLES, type StyleKey } from "@config/styles";
 
 const MIN_PRICE = Math.min(...Object.values(QUALITY_TIERS).map((t) => t.price_halalas)) / 100;
-const CTA = FREE_TRIAL ? "جرّب مجانًا" : `ابدأ كتيبك من ${MIN_PRICE} ريال`;
+const CTA = FREE_TRIAL ? "جرّب مجانًا ✨" : `ابدأ كتيب طفلك من ${MIN_PRICE} ريال`;
+
+const STEPS = [
+  { icon: "📸", title: "ارفع صورة طفلك", text: "صورة واضحة للوجه، وتنحذف فور ما تعتمد الشخصية" },
+  { icon: "🎨", title: "اختر الستايل", text: "بيكسار، كرتون، رسم كلاسيكي أو أنمي" },
+  { icon: "📖", title: "حمّل كتيبه", text: "كتيب باسمه، فيه شخصيته بكل صفحة، جاهز للطباعة" },
+];
+
+const HABITS = [
+  "🕌 الصلوات الخمس",
+  "📖 قراءة القرآن",
+  "🪥 الأسنان وترتيب السرير",
+  "🌙 النوم والاستيقاظ المبكر",
+  "🤍 السلام على صاحب الزمان",
+  "✨ صلاة الليل",
+  "📚 المذاكرة",
+];
 
 export default function Home() {
   return (
-    <div className="space-y-10">
-      <section className="card relative overflow-hidden bg-grape p-6 text-center text-white">
-        <span className="chip bg-white text-ink">كتيب عادات بشخصيتك أنت</span>
-        <h1 className="display mt-4 text-5xl [-webkit-text-stroke:2px_var(--color-ink)] [paint-order:stroke_fill] drop-shadow-[4px_4px_0_var(--color-ink)]">
-          صورتك تصير بطل كتيب عاداتك
-        </h1>
-        <p className="mt-4 text-lg font-bold">
-          ارفع صورتك، ونحوّلها لشخصية كرتونية تمارس العادات اليومية في كتيب ملوّن جاهز للطباعة.
-        </p>
-        <Link href="/new" className="btn btn-sun mt-6 w-full text-xl">
-          {CTA}
-        </Link>
+    <div className="space-y-12">
+      {/* Hero */}
+      <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-3xl">
+        <div className="relative">
+          <Image src="/brand/hero.jpg" alt="مرقد أمير المؤمنين علي عليه السلام في النجف الأشرف" width={1600} height={1067} priority className="h-[300px] w-full object-cover" />
+          <div className="absolute inset-0" style={{ background: "var(--hero-tint)" }} />
+          <h1 className="display absolute inset-x-0 bottom-2 text-center text-[2.6rem] leading-tight text-ink [text-shadow:0_0_18px_var(--page),0_0_6px_var(--page)]">
+            طفلك <span className="text-gold">بطل</span> كتيب عاداته
+          </h1>
+        </div>
+        <div className="space-y-4 px-5 pb-2 pt-3 text-center">
+          <p className="mx-auto max-w-sm text-lg font-bold text-muted">
+            نحوّل صورته لشخصية كرتونية تتعلّم الصلاة والقرآن والعادات الطيبة، في كتيب ملوّن باسمه.
+          </p>
+          <Link href="/new" className="btn btn-primary w-full text-xl">
+            {CTA}
+          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            <span className="chip">👦👧 باسم طفلك</span>
+            <span className="chip">🎨 ٤ ستايلات</span>
+            <span className="chip">🖨️ جاهز للطباعة</span>
+          </div>
+        </div>
       </section>
 
+      {/* How it works */}
       <section className="space-y-4">
         <h2 className="display text-3xl">كيف يشتغل؟</h2>
-        {STEPS.map((s) => (
-          <div key={s.n} className="card flex items-center gap-4 p-4">
-            <span className={`display grid size-12 shrink-0 place-items-center rounded-full border-[3px] border-ink text-2xl ${s.color}`}>
-              {s.n}
-            </span>
-            <div>
-              <h3 className="text-xl font-extrabold">{s.title}</h3>
-              <p className="text-ink/70">{s.text}</p>
-            </div>
-          </div>
-        ))}
+        <ol className="space-y-3">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="card flex items-center gap-4 p-4">
+              <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-surface-2 text-3xl">{s.icon}</span>
+              <div>
+                <h3 className="text-lg font-extrabold">
+                  <span className="text-gold">{i + 1}.</span> {s.title}
+                </h3>
+                <p className="font-bold text-muted">{s.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
       </section>
 
+      {/* Styles */}
       <section className="space-y-4">
-        <h2 className="display text-3xl">من صفحات الكتيب</h2>
-        <p className="font-bold text-ink/70">٧ صفحات: غلاف، القراءة، الصلاة، الأكل، الرياضة، النوم، وشهادة إنجاز. شخصيتك تظهر في الأماكن الفاضية.</p>
-        <div className="grid grid-cols-2 gap-4">
-          {PREVIEW_PAGES.map((n, i) => (
-            <Image
-              key={n}
-              src={`/templates/habits-v1/page-${n}.jpg`}
-              alt={`صفحة ${i + 1} من الكتيب`}
-              width={700}
-              height={993}
-              className={`card w-full p-0 ${i % 2 ? "rotate-2" : "-rotate-2"}`}
-            />
+        <h2 className="display text-3xl">اختر ستايل طفلك</h2>
+        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
+          {(Object.entries(STYLES) as [StyleKey, (typeof STYLES)[StyleKey]][]).map(([key, s]) => (
+            <figure key={key} className="card w-60 shrink-0 snap-start overflow-hidden">
+              <Image src={`/styles/${key}.jpg`} alt={s.label} width={400} height={400} className="aspect-square w-full object-cover" />
+              <figcaption className="p-3">
+                <p className="font-extrabold">{s.label}</p>
+                <p className="text-sm font-bold text-muted">{s.description}</p>
+              </figcaption>
+            </figure>
           ))}
         </div>
       </section>
 
+      {/* Inside the booklet */}
+      <section className="card space-y-4 p-5">
+        <h2 className="display text-3xl">وش داخل الكتيب؟</h2>
+        <p className="font-bold text-muted">صفحة لكل عادة، فيها شخصية طفلك ونجوم يلوّنها كل يوم، وفي النهاية شهادة تقدير باسمه.</p>
+        <div className="flex flex-wrap gap-2">
+          {HABITS.map((h) => (
+            <span key={h} className="chip">{h}</span>
+          ))}
+        </div>
+      </section>
+
+      {/* Privacy */}
+      <section className="card flex items-start gap-4 border-teal/40 p-5">
+        <span className="text-4xl">🔒</span>
+        <div>
+          <h2 className="text-xl font-extrabold">صورة طفلك أمانة</h2>
+          <p className="font-bold text-muted">
+            الصورة الأصلية تنحذف من خوادمنا فور اعتماد الشخصية، وما نستخدمها لأي شي ثاني.{" "}
+            <Link href="/privacy" className="text-teal underline">اقرأ سياسة الخصوصية</Link>
+          </p>
+        </div>
+      </section>
+
       <Link href="/new" className="btn btn-primary w-full text-xl">
-        {FREE_TRIAL ? "يلا جرّب مجانًا" : "يلا نبدأ"}
+        {CTA}
       </Link>
     </div>
   );

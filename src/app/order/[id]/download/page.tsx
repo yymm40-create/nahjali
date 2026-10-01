@@ -11,13 +11,13 @@ export default async function DownloadPage({ params }: PageProps<"/order/[id]/do
   const { data: booklet } = await createAdminClient().from("booklets").select("*").eq("order_id", order.id).single();
   // Short-lived links, created fresh on every visit
   const viewUrl = await signedUrl(BUCKETS.booklets, booklet!.pdf_path, 3600);
-  const downloadUrl = await signedUrl(BUCKETS.booklets, booklet!.pdf_path, 3600, "كتيب-عاداتي-الخارقة.pdf");
+  const downloadUrl = await signedUrl(BUCKETS.booklets, booklet!.pdf_path, 3600, "كتيب-نهج-علي.pdf");
 
   return (
     <div className="space-y-5">
-      <div className="card bg-lime p-6 text-center">
+      <div className="card p-6 text-center">
         <h1 className="display text-4xl">كتيبك جاهز!</h1>
-        <p className="mt-2 font-bold">حمّله واطبعه بمقاس A5، وابدأ تحدي العادات.</p>
+        <p className="mt-2 font-bold">حمّله واطبعه، وخلّ طفلك يبدأ رحلة العادات الطيبة.</p>
       </div>
 
       <a href={downloadUrl} className="btn btn-primary w-full text-xl">
@@ -30,7 +30,7 @@ export default async function DownloadPage({ params }: PageProps<"/order/[id]/do
       <a href={viewUrl} target="_blank" rel="noopener" className="block text-center font-bold underline">
         المعاينة ما تشتغل؟ افتح الكتيب في صفحة جديدة
       </a>
-      <p className="text-center text-sm font-bold text-ink/60">الكتيب محفوظ في صفحة &quot;كتيباتي&quot; وتقدر تحمّله أي وقت.</p>
+      <p className="text-center text-sm font-bold text-muted">الكتيب محفوظ في صفحة &quot;كتيباتي&quot; وتقدر تحمّله أي وقت.</p>
     </div>
   );
 }

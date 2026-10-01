@@ -1,6 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import SignOutButton from "./SignOutButton";
+import ThemeSwitcher from "./ThemeSwitcher";
 
 export default async function Header() {
   const supabase = await createClient();
@@ -9,20 +11,32 @@ export default async function Header() {
   } = await supabase.auth.getUser();
 
   return (
-    <header className="mx-auto flex w-full max-w-xl items-center justify-between px-4 py-4">
-      <Link href="/" className="display -rotate-2 rounded-2xl border-[3px] border-ink bg-sun px-3 pt-1 text-2xl shadow-[3px_3px_0_var(--color-ink)]">
-        عاداتي الخارقة
-      </Link>
-      <nav className="flex items-center gap-3 text-sm font-extrabold">
-        {user ? (
-          <>
-            <Link href="/my-booklets" className="underline">كتيباتي</Link>
-            <SignOutButton />
-          </>
-        ) : (
-          <Link href="/login" className="underline">تسجيل الدخول</Link>
-        )}
-      </nav>
+    <header className="sticky top-0 z-20 border-b border-line/60 bg-page/80 backdrop-blur-md">
+      <div className="mx-auto flex w-full max-w-xl items-center justify-between gap-3 px-4 py-2">
+        <Link href="/" className="flex items-center gap-2" aria-label="نهج علي، الرئيسية">
+          <Image src="/brand/logo.png" alt="" width={44} height={50} priority className="h-12 w-auto drop-shadow" />
+          <span className="display gold-text text-2xl">نهج علي</span>
+        </Link>
+        <div className="flex items-center gap-2">
+          <ThemeSwitcher />
+          {user ? (
+            <details className="relative">
+              <summary className="grid size-11 cursor-pointer list-none place-items-center rounded-full border border-line bg-surface text-xl">
+                ☰
+              </summary>
+              <nav className="card absolute end-0 mt-2 flex w-44 flex-col p-2 text-base font-extrabold">
+                <Link href="/my-booklets" className="rounded-xl px-3 py-2 hover:bg-surface-2">📚 كتيباتي</Link>
+                <Link href="/new" className="rounded-xl px-3 py-2 hover:bg-surface-2">✨ كتيب جديد</Link>
+                <SignOutButton />
+              </nav>
+            </details>
+          ) : (
+            <Link href="/login" className="btn btn-ghost min-h-11 px-4 text-base">
+              دخول
+            </Link>
+          )}
+        </div>
+      </div>
     </header>
   );
 }

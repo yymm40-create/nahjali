@@ -69,7 +69,7 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
 
   if (generating) {
     return (
-      <div className="card space-y-4 bg-grape p-8 text-center text-white">
+      <div className="card space-y-4 p-8 text-center">
         <Spinner />
         <h1 className="display text-3xl">نرسم شخصيتك الحين…</h1>
         <p className="font-bold">تاخذ عادة دقيقة إلى دقيقتين. خلّ الصفحة مفتوحة.</p>
@@ -98,7 +98,7 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
               <button
                 key={c.id}
                 onClick={() => setSelected(c.id)}
-                className={`overflow-hidden rounded-2xl border-[3px] border-ink ${c.id === selected ? "ring-4 ring-grape" : "opacity-70"}`}
+                className={`overflow-hidden rounded-2xl border border-line ${c.id === selected ? "ring-4 ring-gold" : "opacity-70"}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
                 <img src={c.url} alt={`محاولة ${c.attempt}`} className="h-28 w-20 bg-white object-contain" />
@@ -124,7 +124,7 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
         </Link>
       )}
       {current && (
-        <p className="text-center text-sm font-bold text-ink/60">
+        <p className="text-center text-sm font-bold text-muted">
           بعد الاعتماد نجهّز ٦ وضعيات لشخصيتك ونركّبها في الكتيب. ما تقدر تغيّر الشخصية بعدها.
         </p>
       )}

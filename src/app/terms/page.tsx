@@ -42,14 +42,14 @@ export default function TermsPage() {
     <article className="card space-y-6 p-6">
       <header className="space-y-1">
         <h1 className="display text-4xl">الشروط والأحكام</h1>
-        <p className="text-sm font-bold text-ink/60">
+        <p className="text-sm font-bold text-muted">
           {SITE_NAME} · آخر تحديث: {LEGAL_UPDATED}
         </p>
       </header>
       {SECTIONS.map((s) => (
         <section key={s.title} className="space-y-2">
           <h2 className="text-xl font-extrabold">{s.title}</h2>
-          <ul className="list-inside list-disc space-y-1 font-bold text-ink/80">
+          <ul className="list-inside list-disc space-y-1 font-bold text-muted">
             {s.body.map((b) => (
               <li key={b}>{b}</li>
             ))}

@@ -27,15 +27,15 @@ export default async function MyBookletsPage() {
         <Link key={o.id} href={stepPath(o)} className="card flex items-center justify-between gap-3 p-4">
           <div>
             <h2 className="text-lg font-extrabold">{names[o.template_id]}</h2>
-            <p className="text-sm font-bold text-ink/60">{new Date(o.created_at).toLocaleDateString("ar-SA")}</p>
+            <p className="text-sm font-bold text-muted">{new Date(o.created_at).toLocaleDateString("ar-SA")}</p>
           </div>
-          <span className={`chip ${o.status === "ready" ? "bg-lime text-ink" : o.status === "failed" ? "bg-bubble" : ""}`}>
+          <span className={`chip ${o.status === "ready" ? "bg-teal text-white" : o.status === "failed" ? "bg-red-500 text-white" : ""}`}>
             {STATUS_LABELS[o.status]}
           </span>
         </Link>
       ))}
       {orders.length > 0 && (
-        <Link href="/new" className="btn btn-sun w-full">كتيب جديد</Link>
+        <Link href="/new" className="btn btn-secondary w-full">كتيب جديد</Link>
       )}
     </div>
   );

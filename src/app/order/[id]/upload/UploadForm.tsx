@@ -59,9 +59,9 @@ export default function UploadForm({ orderId, attemptsLeft }: { orderId: string;
     <div className="space-y-5">
       <h1 className="display text-4xl">ارفع صورتك</h1>
 
-      <div className="card space-y-2 bg-sun p-4 font-bold">
+      <div className="card space-y-2 bg-surface-2 p-4 font-bold">
         <p>نصايح لأفضل نتيجة:</p>
-        <ul className="list-inside list-disc text-ink/80">
+        <ul className="list-inside list-disc text-muted">
           <li>شخص واحد فقط في الصورة</li>
           <li>الوجه واضح وإضاءة جيدة</li>
           <li>يفضّل يبان الجسم كامل أو نصّه</li>
@@ -74,20 +74,20 @@ export default function UploadForm({ orderId, attemptsLeft }: { orderId: string;
           <img src={preview} alt="صورتك" className="h-full w-full rounded-2xl object-contain" />
         ) : (
           <>
-            <span className="display grid size-20 place-items-center rounded-full border-[3px] border-ink bg-lime text-5xl">+</span>
+            <span className="display grid size-20 place-items-center rounded-full bg-gold/20 text-5xl text-gold">+</span>
             <span className="text-xl font-extrabold">اضغط لاختيار صورة</span>
-            <span className="text-sm font-bold text-ink/60">JPG أو PNG أو WEBP</span>
+            <span className="text-sm font-bold text-muted">JPG أو PNG أو WEBP</span>
           </>
         )}
         <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => pick(e.target.files?.[0])} />
       </label>
 
-      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border-[3px] border-ink bg-white p-3 text-sm font-bold">
+      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line bg-surface p-3 text-sm font-bold">
         <input
           type="checkbox"
           checked={consent}
           onChange={(e) => setConsent(e.target.checked)}
-          className="mt-1 size-5 shrink-0 accent-grape"
+          className="mt-1 size-5 shrink-0 accent-[var(--gold)]"
         />
         <span>
           أقرّ إن الصورة لي أو عندي إذن صاحبها، وإذا كانت لطفل فأنا ولي أمره. صورتك الأصلية تنحذف فور اعتماد الشخصية.{" "}
@@ -101,7 +101,7 @@ export default function UploadForm({ orderId, attemptsLeft }: { orderId: string;
       <button className="btn btn-primary w-full" onClick={submit} disabled={!file || !consent || busy}>
         {busy ? "نرفع الصورة…" : "حوّلني لشخصية كرتونية"}
       </button>
-      <p className="text-center text-sm font-bold text-ink/60">المحاولات المتبقية: {attemptsLeft}</p>
+      <p className="text-center text-sm font-bold text-muted">المحاولات المتبقية: {attemptsLeft}</p>
     </div>
   );
 }

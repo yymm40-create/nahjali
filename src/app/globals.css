@@ -1,57 +1,139 @@
 @import "tailwindcss";
 
-/* Brand palette shared with the booklet template */
-@theme {
-  --color-ink: #111111;
-  --color-paper: #fffaf0;
-  --color-grape: #7b5cff;
-  --color-sun: #ffd23f;
-  --color-mint: #2ec4b6;
-  --color-tang: #ff8a3d;
-  --color-bubble: #ff4d8d;
-  --color-lime: #c6f432;
-  --color-night: #25206b;
+/* Three site moods. The visitor picks one (ThemeSwitcher); default follows the system. */
+:root,
+[data-theme="day"] {
+  /* النهار: gold + turquoise on warm ivory */
+  --page: #fff8ea;
+  --surface: #ffffff;
+  --surface-2: #fdf0d2;
+  --ink: #142347;
+  --muted: #5b6785;
+  --line: #ecd9a8;
+  --gold: #e3a90f;
+  --gold-2: #f6cf55;
+  --teal: #12a3b4;
+  --teal-2: #6fd6df;
+  --on-gold: #1b1405;
+  --glow: rgba(227, 169, 15, 0.28);
+  --hero-tint: linear-gradient(180deg, rgba(255, 248, 234, 0) 45%, var(--page) 100%);
+  color-scheme: light;
+}
+
+[data-theme="night"] {
+  /* ليل النجف: deep navy, glowing gold */
+  --page: #0a1430;
+  --surface: #121f45;
+  --surface-2: #1a2a5a;
+  --ink: #f8eed5;
+  --muted: #aeb8d6;
+  --line: #2b3d75;
+  --gold: #f2c14e;
+  --gold-2: #ffe08a;
+  --teal: #38c6d3;
+  --teal-2: #1b7f8c;
+  --on-gold: #1b1405;
+  --glow: rgba(242, 193, 78, 0.35);
+  --hero-tint: linear-gradient(180deg, rgba(10, 20, 48, 0) 40%, var(--page) 100%);
+  color-scheme: dark;
+}
+
+[data-theme="dawn"] {
+  /* الفجر: soft peach and rose with gold */
+  --page: #fff2ec;
+  --surface: #ffffff;
+  --surface-2: #ffe3d8;
+  --ink: #3b2140;
+  --muted: #7d6177;
+  --line: #f6cdbd;
+  --gold: #e9a23b;
+  --gold-2: #ffc979;
+  --teal: #e2677d;
+  --teal-2: #f6a6b4;
+  --on-gold: #2a1606;
+  --glow: rgba(233, 162, 59, 0.3);
+  --hero-tint: linear-gradient(180deg, rgba(255, 242, 236, 0) 45%, var(--page) 100%);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-gold: var(--gold);
+  --color-gold-2: var(--gold-2);
+  --color-teal: var(--teal);
+  --color-teal-2: var(--teal-2);
+  --color-on-gold: var(--on-gold);
   --font-sans: var(--font-baloo), system-ui, sans-serif;
   --font-display: var(--font-lalezar), var(--font-baloo), sans-serif;
 }
 
 html {
-  background: var(--color-paper);
-  color: var(--color-ink);
+  background: var(--page);
+  color: var(--ink);
 }
 
 body {
-  background-image: radial-gradient(rgba(17, 17, 17, 0.07) 1.5px, transparent 1.8px);
-  background-size: 22px 22px;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, var(--glow), transparent 70%),
+    var(--page);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 @layer components {
-  /* Sticker-style card: thick outline + hard offset shadow */
   .card {
-    @apply rounded-3xl border-[3px] border-ink bg-white shadow-[5px_5px_0_var(--color-ink)];
+    @apply rounded-3xl border border-line bg-surface shadow-[0_10px_30px_-12px_rgba(20,35,71,0.25)];
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-2xl border-[3px] border-ink px-6 py-3 text-lg font-extrabold
-      shadow-[4px_4px_0_var(--color-ink)] transition active:translate-x-[3px] active:translate-y-[3px] active:shadow-none
-      disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-x-0 disabled:active:translate-y-0 disabled:active:shadow-[4px_4px_0_var(--color-ink)];
+    @apply inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-6 text-lg font-extrabold transition
+      active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100;
   }
   .btn-primary {
-    @apply bg-grape text-white;
+    @apply text-on-gold shadow-[0_8px_24px_-8px_var(--gold)];
+    background: linear-gradient(180deg, var(--gold-2), var(--gold));
   }
-  .btn-sun {
-    @apply bg-sun text-ink;
+  .btn-secondary {
+    @apply bg-teal text-white shadow-[0_8px_24px_-10px_var(--teal)];
   }
   .btn-ghost {
-    @apply bg-white text-ink;
+    @apply border border-line bg-surface text-ink;
   }
   .chip {
-    @apply inline-block rounded-full bg-ink px-4 py-1 text-sm font-bold text-white;
+    @apply inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-sm font-bold text-ink;
   }
   .display {
     font-family: var(--font-display);
-    line-height: 1.2;
+    line-height: 1.25;
+  }
+  /* Selectable option card (style, quality, gender…) */
+  .option {
+    @apply cursor-pointer rounded-3xl border border-line bg-surface p-3 text-start shadow-[0_10px_30px_-12px_rgba(20,35,71,0.25)] transition hover:border-gold;
+  }
+  .option[aria-checked="true"] {
+    @apply border-gold ring-4 ring-gold/35;
+  }
+  .field {
+    @apply w-full rounded-2xl border border-line bg-surface px-4 py-3 text-lg font-bold text-ink outline-none
+      placeholder:text-muted/60 focus:border-gold focus:ring-4 focus:ring-gold/30;
   }
   .error-box {
-    @apply rounded-2xl border-[3px] border-ink bg-bubble/15 p-3 font-bold text-ink;
+    @apply rounded-2xl border border-red-300 bg-red-50 p-3 font-bold text-red-800;
+  }
+  .gold-text {
+    background: linear-gradient(180deg, var(--gold-2), var(--gold));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
   }
 }

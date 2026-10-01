@@ -39,7 +39,7 @@ export default function EmailLogin({ next }: { next: string }) {
 
   if (state === "sent") {
     return (
-      <p className="rounded-2xl border-[3px] border-ink bg-lime p-4 font-bold">
+      <p className="rounded-2xl bg-surface-2 p-4 font-bold">
         أرسلنا رابط الدخول إلى {email}. افتح الإيميل من نفس هذا المتصفح واضغط الرابط. (شيّك على البريد المزعج إذا ما لقيته)
       </p>
     );
@@ -54,9 +54,9 @@ export default function EmailLogin({ next }: { next: string }) {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="you@example.com"
-        className="w-full rounded-2xl border-[3px] border-ink bg-white px-4 py-3 text-lg font-bold outline-none focus:ring-4 focus:ring-grape/40"
+        className="field"
       />
-      <button className="btn btn-sun w-full" disabled={state === "sending"}>
+      <button className="btn btn-secondary w-full" disabled={state === "sending"}>
         {state === "sending" ? "نرسل…" : "أرسل لي رابط الدخول"}
       </button>
       {error && <p className="error-box">{error}</p>}
