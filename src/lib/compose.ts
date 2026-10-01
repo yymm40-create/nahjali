@@ -20,7 +20,7 @@ interface ComposeInput {
 
 /**
  * Builds the booklet PDF. For each page, in order:
- * 1. the background scene for the chosen art style,
+ * 1. the background scene (one fixed set for every art style),
  * 2. the child (trimmed to its outline) standing on the floor at the bottom of each slot, with a soft shadow,
  * 3. the transparent overlay (titles, cards, trackers),
  * 4. per-order texts such as the child's name (rendered with real Arabic shaping).
@@ -44,7 +44,7 @@ export async function composeBooklet(template: Template, input: ComposeInput): P
 
     if (tplPage.scene) {
       if (!scenes.has(tplPage.scene)) {
-        const file = templateFilePath(template.id, `scenes/${input.style}/${tplPage.scene}.jpg`);
+        const file = templateFilePath(template.id, `scenes/${tplPage.scene}.jpg`);
         scenes.set(tplPage.scene, await pdf.embedJpg(await fs.readFile(file)));
       }
       page.drawImage(scenes.get(tplPage.scene)!, { x: 0, y: 0, width: pageW, height: pageH });
@@ -113,7 +113,14 @@ function loadFont(kind: TemplateText["font"]): Promise<HbFont> {
   return fontCache.get(kind)!;
 }
 
-/** Renders one line of text to a transparent PNG, with an optional outline (stroke). */
+const EFFECTS = {
+  /** Logo-style 3D lettering: turquoise face, gold rim, navy depth (matches the page titles) */
+  "3d": { stops: ["#a8f4f7", "#2cc3cf", "#0f8c9e", "#0a6878"], rim: "#f6c64a", depth: "#0b2a55" },
+  /** Gold lettering for dark plates (name tags) */
+  gold: { stops: ["#fff3b8", "#ffd34d", "#e0a10e", "#b87a06"], rim: null, depth: null },
+} as const;
+
+/** Renders one line of text to a transparent PNG, flat (color/stroke) or with a 3D effect. */
 async function renderText(t: TemplateText, value: string): Promise<Buffer> {
   const hb = await import("harfbuzzjs");
   const font = await loadFont(t.font);
@@ -133,13 +140,34 @@ async function renderText(t: TemplateText, value: string): Promise<Buffer> {
   }
 
   const { ascender, descender } = font.hExtents();
-  const stroke = t.stroke ? 90 : 0; // font units
-  const pad = stroke;
+  const fx = t.effect ? EFFECTS[t.effect] : null;
+  // Outline widths in font units (half of each stroke falls outside the glyph)
+  const outer = fx?.depth ? 150 : t.stroke ? 90 : 0;
+  const rim = fx?.rim ? 80 : 0;
+  const depth = fx?.depth ? 110 : 0;
+  const pad = outer + depth + 20;
   const w = x + pad * 2;
   const h = ascender - descender + pad * 2;
   const pxPerUnit = 700 / h; // ~700px tall bitmap, plenty for print after scaling down
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(w * pxPerUnit)}" height="${Math.ceil(h * pxPerUnit)}" viewBox="${-pad} ${-ascender - pad} ${w} ${h}">
-    <g transform="scale(1 -1)" fill="${t.color}"${t.stroke ? ` stroke="${t.stroke}" stroke-width="${stroke * 2}" stroke-linejoin="round" paint-order="stroke"` : ""}>${paths.join("")}</g>
+
+  const layer = (attrs: string) => `<use xlink:href="#t" ${attrs} stroke-linejoin="round"/>`;
+  let layers: string;
+  if (fx) {
+    const stops = fx.stops.map((c, i) => `<stop offset="${i / (fx.stops.length - 1)}" stop-color="${c}"/>`).join("");
+    layers = `<defs><linearGradient id="f" gradientUnits="userSpaceOnUse" x1="0" y1="${ascender * 0.8}" x2="0" y2="${descender * 0.3}">${stops}</linearGradient></defs>`;
+    if (fx.depth) {
+      for (let k = depth; k > 0; k -= 22) layers += layer(`transform="translate(0 ${-k})" fill="${fx.depth}" stroke="${fx.depth}" stroke-width="${outer * 2}"`);
+      layers += layer(`fill="#ffffff" stroke="#ffffff" stroke-width="${outer * 2}"`);
+    }
+    if (fx.rim) layers += layer(`fill="${fx.rim}" stroke="${fx.rim}" stroke-width="${rim * 2}"`);
+    layers += layer(`fill="url(#f)"`);
+  } else {
+    layers =
+      (t.stroke ? layer(`fill="${t.stroke}" stroke="${t.stroke}" stroke-width="${outer * 2}"`) : "") + layer(`fill="${t.color}"`);
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Math.ceil(w * pxPerUnit)}" height="${Math.ceil(h * pxPerUnit)}" viewBox="${-pad} ${-ascender - pad} ${w} ${h}">
+    <g transform="scale(1 -1)"><defs><g id="t">${paths.join("")}</g></defs>${layers}</g>
   </svg>`;
   // Trim to the ink so the text fills its box as large as possible
   return sharp(Buffer.from(svg)).trim({ threshold: 1 }).png().toBuffer();

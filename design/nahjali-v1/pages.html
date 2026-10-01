@@ -18,25 +18,39 @@
   .abs { position: absolute; }
   :root { --gold: #e3a90f; --gold2: #ffe08a; --navy: #14234a; --teal: #12a3b4; --cream: rgba(255, 251, 238, 0.95); }
 
-  .ribbon { display: flex; align-items: center; justify-content: center; text-align: center;
-    background: linear-gradient(180deg, var(--gold2), var(--gold)); border: 1.2rem solid #fff; border-radius: 10rem;
-    box-shadow: 0 1.5rem 3rem rgba(20, 35, 74, .35); font-family: 'Lalezar'; color: var(--navy); line-height: 1.1; padding-top: 1.4rem; }
-  .card { background: var(--cream); border: .8rem solid var(--gold); border-radius: 6rem; box-shadow: 0 1.5rem 3rem rgba(20, 35, 74, .3); }
-  .line { font-size: 6.8rem; font-weight: 800; line-height: 1.45; }
-  .quote { font-family: 'Amiri', serif; font-size: 4.6rem; line-height: 1.75; color: #0e5a66; text-align: center; }
-  .quote.small { font-size: 3.5rem; line-height: 1.7; text-align: justify; }
-  .quote .mark { color: var(--gold); font-size: 1.2em; }
+  /* ── 3D pieces (design/nahjali-v1/assets, generated once) stretched with 9-slice borders ── */
+  .ribbon { display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.1; padding-top: 1.6rem;
+    border-style: solid; border-image: url(assets/plaque.png) 170 330 fill / 10rem 22rem; filter: drop-shadow(0 1.6rem 1.6rem rgba(10, 25, 60, .45)); }
+  .card { border-style: solid; border-image: url(assets/panel.png) 150 fill / 11rem; filter: drop-shadow(0 1.6rem 2rem rgba(10, 25, 60, .4)); }
+  .card > .inner { position: absolute; inset: 7rem 7.5rem; }
+  .name-tag { border-style: solid; border-image: url(assets/nameplate.png) 170 280 fill / 6.5rem 12rem; filter: drop-shadow(0 1.2rem 1.2rem rgba(0, 0, 0, .35)); }
 
-  .tracker { display: grid; align-items: center; justify-items: center; row-gap: 2.2rem; }
-  .tracker .day { font-size: 2.7rem; font-weight: 800; color: #5b6785; }
-  .tracker .lbl { font-size: 3.4rem; font-weight: 800; justify-self: start; line-height: 1.15; }
-  .t-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.6rem; }
-  .t-head b { font-family: 'Lalezar'; font-size: 6rem; padding-top: 1rem; }
-  .t-head span { font-size: 3.2rem; font-weight: 800; background: var(--teal); color: #fff; border-radius: 10rem; padding: .4rem 3rem; }
-  .medal-row { display: flex; align-items: center; justify-content: center; gap: 3rem; margin-top: 2.2rem;
-    font-size: 3.6rem; font-weight: 800; }
-  .name-tag { display: flex; align-items: center; justify-content: center; background: var(--navy); color: var(--gold2);
-    border: 1rem solid #fff; border-radius: 10rem; box-shadow: 0 1rem 2rem rgba(0,0,0,.3); }
+  /* 3D lettering in the logo style: turquoise face, gold rim, white edge, navy depth and soft shadow */
+  .t3d { position: relative; display: inline-block; isolation: isolate; font-family: "Lalezar"; white-space: nowrap; }
+  .t3d::before, .t3d::after { content: attr(data-text); position: absolute; inset: 0; }
+  .t3d::before { z-index: -2; color: #0b2a55; -webkit-text-stroke: .22em #0b2a55;
+    text-shadow: 0 .025em 0 #0b2a55, 0 .05em 0 #0b2a55, 0 .075em 0 #0b2a55, 0 .1em 0 #0b2a55, 0 .18em .18em rgba(0, 0, 0, .4); }
+  .t3d::after { z-index: -1; color: #f6c64a; -webkit-text-stroke: .11em #f6c64a; }
+  .t3d .face { position: relative; z-index: 1; color: transparent;
+    background: linear-gradient(180deg, #b6f7fa 0%, #39cbd6 40%, #0f8c9e 72%, #0a6878 100%); -webkit-background-clip: text; background-clip: text; }
+  .t3d.gold .face { background: linear-gradient(180deg, #fff3b8 0%, #ffd34d 40%, #e0a10e 72%, #b87a06 100%); -webkit-background-clip: text; background-clip: text; }
+  .t3d.gold::after { color: #fff; -webkit-text-stroke: .1em #fff; }
+
+  .line { font-size: 6.8rem; font-weight: 800; line-height: 1.45; color: #0f2350; text-shadow: 0 .25rem 0 #fff; }
+  .quote { font-family: "Amiri", serif; font-size: 4.6rem; line-height: 1.75; color: #0b6a78; text-align: center; font-weight: 700; }
+  .quote.small { font-size: 3.5rem; line-height: 1.7; text-align: justify; font-weight: 400; }
+  .quote .mark { color: #d99a0b; font-size: 1.2em; }
+
+  .tracker { display: grid; align-items: center; justify-items: center; row-gap: 1.6rem; }
+  .tracker .day { font-size: 2.7rem; font-weight: 800; color: #4a5a80; }
+  .tracker .lbl { font-size: 3.5rem; font-weight: 800; justify-self: start; line-height: 1.15; color: #0f2350; }
+  .t-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.8rem; }
+  .t-head .t3d { font-size: 6.6rem; }
+  .chip3d { font-size: 3.2rem; font-weight: 800; color: #fff; border-radius: 10rem; padding: .6rem 3rem .3rem;
+    background: linear-gradient(180deg, #5fdde6, #12a3b4 55%, #0b7c8c); border: .5rem solid #f2c14e;
+    box-shadow: inset 0 .6rem .4rem rgba(255, 255, 255, .45), 0 .8rem 0 #0b4f63, 0 1.4rem 1.6rem rgba(0, 0, 0, .3); text-shadow: 0 .3rem 0 #0b4f63; }
+  .medal-row { display: flex; align-items: center; justify-content: center; gap: 3rem; margin-top: 2rem;
+    font-size: 3.6rem; font-weight: 800; color: #0f2350; }
   table.grid { border-collapse: separate; border-spacing: 0 1.1rem; width: 100%; }
   table.grid th { font-size: 2.9rem; font-weight: 800; color: #5b6785; }
   table.grid td { text-align: center; }
@@ -51,8 +65,10 @@
 const P = new URLSearchParams(location.search);
 const DAYS = ['سبت', 'أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة'];
 
-const star = (s = 7) => `<svg width="${s}rem" height="${s}rem" viewBox="0 0 24 24"><path d="m12 2.2 2.9 6.1 6.7.8-4.9 4.6 1.3 6.6L12 17l-6 3.3 1.3-6.6-4.9-4.6 6.7-.8z" fill="#fff" stroke="#14234a" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
-const medal = (s = 13) => `<svg width="${s}rem" height="${s}rem" viewBox="0 0 48 48"><path d="M15 2h7l4 12h-7zM33 2h-7l-4 12h7z" fill="#12a3b4" stroke="#14234a" stroke-width="1.5"/><circle cx="24" cy="30" r="15" fill="#fff" stroke="#e3a90f" stroke-width="3"/><circle cx="24" cy="30" r="10.5" fill="none" stroke="#14234a" stroke-width="1.5" stroke-dasharray="2 2"/></svg>`;
+const star = (s = 7) => `<img src="assets/star.png" style="width:${s}rem;height:${s}rem;object-fit:contain;filter:drop-shadow(0 .4rem .3rem rgba(0,0,0,.25))">`;
+const medal = (s = 13) => `<img src="assets/medal.png" style="height:${s}rem;filter:drop-shadow(0 .6rem .5rem rgba(0,0,0,.3))">`;
+/** 3D lettering helper (see .t3d) */
+const t3d = (text, cls = "") => `<span class="t3d ${cls}" data-text="${text}"><span class="face">${text}</span></span>`;
 const box = (x, y, w, h, cls, html, extra = '') =>
   `<div class="abs ${cls}" style="left:${x}rem;top:${y}rem;width:${w}rem;height:${h}rem;${extra}">${html}</div>`;
 
@@ -60,7 +76,7 @@ const box = (x, y, w, h, cls, html, extra = '') =>
 function tracker(title, chip, rows) {
   const head = `<div></div>` + DAYS.map((d) => `<div class="day">${d}</div>`).join('');
   const body = rows.map((r) => `<div class="lbl">${r}</div>` + DAYS.map(() => `<div>${star(7.6)}</div>`).join('')).join('');
-  return `<div class="t-head"><b>${title}</b><span>${chip}</span></div>
+  return `<div class="t-head">${t3d(title)}<span class="chip3d">${chip}</span></div>
     <div class="tracker" style="grid-template-columns:${rows.some(Boolean) ? '17rem' : '0'} repeat(7, 1fr)">${head}${body}</div>
     <div class="medal-row">${medal()} أكملتُ الأسبوع؟ لوّن الوسام!</div>`;
 }
@@ -74,15 +90,15 @@ function habitPage(o) {
   return {
     scene: o.scene,
     slots: [slot],
-    texts: [{ value: '{name}', font: 'display', color: '#ffe08a', x: 14, y: 40.5, w: 80, h: 10 }],
+    texts: [{ value: '{name}', font: 'display', color: '#ffe08a', effect: 'gold', x: 24, y: 41.2, w: 60, h: 8.6 }],
     html: `
-      ${box(14, 6, 182, 28, 'ribbon', o.title, `font-size:${o.titleSize ?? 13}rem`)}
+      ${box(10, 4, 190, 34, 'ribbon', t3d(o.title), `font-size:${o.titleSize ?? 15.5}rem`)}
       ${box(10, 39, 88, 13, 'name-tag', '')}
-      ${box(106, 40, 98, o.cardH ?? 62, 'card', `<div style="padding:4rem 5rem;display:flex;flex-direction:column;gap:2.5rem;height:100%;justify-content:center">
+      ${box(106, 40, 98, o.cardH ?? 62, 'card', `<div class="inner" style="display:flex;flex-direction:column;gap:2.5rem;justify-content:center">
           <div class="line">${o.line}</div>
           ${o.quote ? `<div class="quote ${o.quoteSmall ? 'small' : ''}">${o.quote}</div>` : ''}
         </div>`)}
-      ${box(106, 40 + (o.cardH ?? 62) + 5, 98, 210 - 40 - (o.cardH ?? 62) - 5 - 6, 'card', `<div style="padding:3.5rem 4rem">${tracker(o.trackerTitle ?? 'نجوم أسبوعي', o.chip ?? 'لوّن نجمة كل يوم', o.rows ?? [''])}</div>`)}
+      ${box(106, 40 + (o.cardH ?? 62) + 5, 98, 210 - 40 - (o.cardH ?? 62) - 5 - 6, 'card', `<div class="inner" style="inset:6rem 6.5rem">${tracker(o.trackerTitle ?? 'نجوم أسبوعي', o.chip ?? 'لوّن نجمة كل يوم', o.rows ?? [''])}</div>`)}
     `,
   };
 }
@@ -100,7 +116,7 @@ const PAGES = [
   {
     scene: 'shrine-day',
     slots: [{ pose: 'happy', x: 66, y: 98, w: 78, h: 108 }],
-    texts: [{ value: 'كتيب {name}', font: 'display', color: '#14234a', x: 10, y: 63, w: 190, h: 24, stroke: '#ffffff' }],
+    texts: [{ value: 'كتيب {name}', font: 'display', color: '#14234a', effect: '3d', x: 10, y: 62, w: 190, h: 26 }],
     html: `
       <img class="abs" src="../../public/brand/logo.png" style="left:79rem;top:4rem;width:52rem">
       ${box(45, 88, 120, 13, 'ribbon', 'رحلتي مع العادات الطيبة', 'font-size:7rem;border-width:.8rem')}
@@ -179,7 +195,7 @@ const PAGES = [
   {
     scene: 'pattern',
     slots: [{ pose: 'happy', x: 10, y: 92, w: 72, h: 108 }],
-    texts: [{ value: '{name}', font: 'display', color: '#14234a', x: 90, y: 66, w: 100, h: 24 }],
+    texts: [{ value: '{name}', font: 'display', color: '#14234a', effect: '3d', x: 90, y: 64, w: 100, h: 26 }],
     html: `
       <div class="abs" style="inset:5rem;border:2.4rem solid var(--gold);border-radius:8rem;box-shadow:inset 0 0 0 1.2rem #fff,0 0 0 1.2rem #fff"></div>
       ${box(30, 12, 150, 30, 'ribbon', 'شهادة تقدير', 'font-size:16rem')}
@@ -218,7 +234,7 @@ const TEMPLATE = {
     overlay: `overlays/page-${String(i + 1).padStart(2, '0')}.png`,
     scene: p.scene ?? null,
     slots: p.slots.map((s) => ({ pose: s.pose, x_mm: s.x, y_mm: s.y, width_mm: s.w, height_mm: s.h })),
-    texts: p.texts.map((t) => ({ value: t.value, font: t.font, color: t.color, stroke: t.stroke ?? null, x_mm: t.x, y_mm: t.y, width_mm: t.w, height_mm: t.h })),
+    texts: p.texts.map((t) => ({ value: t.value, font: t.font, color: t.color, stroke: t.stroke ?? null, effect: t.effect ?? null, x_mm: t.x, y_mm: t.y, width_mm: t.w, height_mm: t.h })),
   })),
 };
 

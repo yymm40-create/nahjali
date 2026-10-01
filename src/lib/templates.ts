@@ -15,6 +15,8 @@ export interface TemplateText {
   font: "display" | "body";
   color: string;
   stroke: string | null;
+  /** Optional lettering effect: "3d" (logo style) or "gold" */
+  effect?: "3d" | "gold" | null;
   x_mm: number;
   y_mm: number;
   width_mm: number;
@@ -22,7 +24,7 @@ export interface TemplateText {
 }
 
 export interface TemplatePage {
-  /** Background scene key: templates/<id>/scenes/<style>/<scene>.jpg */
+  /** Background scene key: templates/<id>/scenes/<scene>.jpg (same for every art style) */
   scene: string | null;
   /** Transparent text/frames layer drawn on top of the scene and the child */
   overlay: string;
@@ -39,7 +41,7 @@ export interface Template {
   pages: TemplatePage[];
 }
 
-// Templates are plain folders: /templates/<id>/template.json + overlays/ + scenes/<style>/
+// Templates are plain folders: /templates/<id>/template.json + overlays/ + scenes/
 const TEMPLATES_DIR = path.join(process.cwd(), "templates");
 const SAFE_ID = /^[a-z0-9-]+$/;
 

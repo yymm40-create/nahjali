@@ -3,7 +3,8 @@
 // Usage: npx tsx --env-file=.env.local scripts/preview-booklet.mts <orderId> <style> <name>
 //   → tmp/preview-booklet.pdf and tmp/preview-page-NN.png (via macOS sips)
 import { execFileSync } from "child_process";
-import { mkdir, writeFile } from "fs/promises";
+import { existsSync } from "fs";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import { PDFDocument } from "pdf-lib";
 import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
 import { composeBooklet } from "@/lib/compose";
@@ -31,6 +32,11 @@ for (const r of rows ?? []) {
 const template = (await getTemplate("nahjali-v1"))!;
 const poses: Record<string, Buffer> = {};
 for (const key of template.poses) {
+  // A freshly generated pose in tmp/ (scripts/try-pose.mts) wins over the order's old images
+  if (existsSync(`tmp/pose-${key}.png`)) {
+    poses[key] = await readFile(`tmp/pose-${key}.png`);
+    continue;
+  }
   const src = [key, ...(FALLBACK[key] ?? [])].find((k) => available[k]);
   if (!src) throw new Error(`no image for pose ${key}`);
   poses[key] = available[src];
