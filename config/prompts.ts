@@ -1,6 +1,6 @@
 // All AI prompts live here so the art style can be tuned without touching app code.
 
-export const STYLE = `Illumination Entertainment 3D animation style. Rounded simplified shape language, smooth clean low-noise surfaces, broad readable forms, high-saturation color, soft even lighting with gentle contrast, reduced detail density, friendly accessible rendering.`;
+export const STYLE = `Modern stylized Pixar. Deliberate anime-influenced distortion, exaggerated squash in the shapes, flatter shading ramps, punchier saturated color, graphic simplification of secondary detail, expressive posing, cinematic lighting retained.`;
 
 // Shared framing rules so every image drops cleanly into the booklet slots (2:3 portrait).
 const FRAMING = `Single character only, full body visible from head to feet, centered, facing the viewer, small empty margin around the character. No other people, no text, no logos, no props cut off by the frame.`;
