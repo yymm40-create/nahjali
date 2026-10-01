@@ -40,7 +40,7 @@ export const DEV_PAYMENT_ENABLED = true;
  * Temporary email (magic link) sign-in, for testing before Google sign-in is set up.
  * Turn off once Google works.
  */
-export const EMAIL_LOGIN_ENABLED = true;
+export const EMAIL_LOGIN_ENABLED = false;
 
 /** Generation rate limit per user. */
 export const RATE_LIMIT = { maxRequests: 30, windowMinutes: 10 };
