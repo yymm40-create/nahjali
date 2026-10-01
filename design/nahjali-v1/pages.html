@@ -28,16 +28,16 @@
   /* 3D lettering in the logo style: turquoise face, gold rim, white edge, navy depth and soft shadow */
   .t3d { position: relative; display: inline-block; isolation: isolate; font-family: "Lalezar"; white-space: nowrap; }
   .t3d::before, .t3d::after { content: attr(data-text); position: absolute; inset: 0; }
-  .t3d::before { z-index: -2; color: #0b2a55; -webkit-text-stroke: .22em #0b2a55;
-    text-shadow: 0 .025em 0 #0b2a55, 0 .05em 0 #0b2a55, 0 .075em 0 #0b2a55, 0 .1em 0 #0b2a55, 0 .18em .18em rgba(0, 0, 0, .4); }
+  .t3d::before { z-index: -2; color: #7a4a00; -webkit-text-stroke: .22em #7a4a00;
+    text-shadow: 0 .025em 0 #7a4a00, 0 .05em 0 #6a3f00, 0 .075em 0 #5a3500, 0 .1em 0 #4a2c00, 0 .18em .18em rgba(0, 0, 0, .35); }
   .t3d::after { z-index: -1; color: #f6c64a; -webkit-text-stroke: .11em #f6c64a; }
   .t3d .face { position: relative; z-index: 1; color: transparent;
-    background: linear-gradient(180deg, #b6f7fa 0%, #39cbd6 40%, #0f8c9e 72%, #0a6878 100%); -webkit-background-clip: text; background-clip: text; }
+    background: linear-gradient(180deg, #2c4a8c 0%, #18306a 45%, #0b1d45 100%); -webkit-background-clip: text; background-clip: text; }
   .t3d.gold .face { background: linear-gradient(180deg, #fff3b8 0%, #ffd34d 40%, #e0a10e 72%, #b87a06 100%); -webkit-background-clip: text; background-clip: text; }
   .t3d.gold::after { color: #fff; -webkit-text-stroke: .1em #fff; }
 
   .line { font-size: 6.8rem; font-weight: 800; line-height: 1.45; color: #0f2350; text-shadow: 0 .25rem 0 #fff; }
-  .quote { font-family: "Amiri", serif; font-size: 4.6rem; line-height: 1.75; color: #0b6a78; text-align: center; font-weight: 700; }
+  .quote { font-family: "Amiri", serif; font-size: 4.6rem; line-height: 1.75; color: #0a4f5a; text-align: center; font-weight: 700; }
   .quote.small { font-size: 3.5rem; line-height: 1.7; text-align: justify; font-weight: 400; }
   .quote .mark { color: #d99a0b; font-size: 1.2em; }
 
@@ -115,11 +115,11 @@ const PAGES = [
   // 1 — cover
   {
     scene: 'shrine-day',
-    slots: [{ pose: 'happy', x: 66, y: 98, w: 78, h: 108 }],
+    slots: [{ pose: 'happy', x: 68, y: 112, w: 74, h: 96 }],
     texts: [{ value: 'كتيب {name}', font: 'display', color: '#14234a', effect: '3d', x: 10, y: 62, w: 190, h: 26 }],
     html: `
       <img class="abs" src="../../public/brand/logo.png" style="left:79rem;top:4rem;width:52rem">
-      ${box(45, 88, 120, 13, 'ribbon', 'رحلتي مع العادات الطيبة', 'font-size:7rem;border-width:.8rem')}
+      ${box(35, 88, 140, 22, 'ribbon', t3d('رحلتي مع العادات الطيبة'), 'font-size:8.5rem')}
     `,
   },
   // 2 — prayers

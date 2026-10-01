@@ -114,8 +114,8 @@ function loadFont(kind: TemplateText["font"]): Promise<HbFont> {
 }
 
 const EFFECTS = {
-  /** Logo-style 3D lettering: turquoise face, gold rim, navy depth (matches the page titles) */
-  "3d": { stops: ["#a8f4f7", "#2cc3cf", "#0f8c9e", "#0a6878"], rim: "#f6c64a", depth: "#0b2a55" },
+  /** 3D lettering (matches the page titles): navy face, gold rim, white edge, bronze depth — high contrast */
+  "3d": { stops: ["#2c4a8c", "#18306a", "#0b1d45"], rim: "#f6c64a", depth: "#6a3f00" },
   /** Gold lettering for dark plates (name tags) */
   gold: { stops: ["#fff3b8", "#ffd34d", "#e0a10e", "#b87a06"], rim: null, depth: null },
 } as const;
