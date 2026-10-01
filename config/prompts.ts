@@ -53,7 +53,7 @@ export const POSES: Record<string, { outfit: Outfit; action: string }> = {
   praying: {
     outfit: "prayer",
     action:
-      "standing in Shia prayer (qiyam) on a small prayer rug: body upright, arms resting straight down at the sides (hands NOT folded), calm peaceful face, eyes lowered toward a small round clay prayer tablet (turbah) on the rug in front",
+      "standing in Shia prayer (qiyam), facing the viewer, on a prayer rug that lies flat on the floor under the feet and extends forward toward the viewer: body upright, arms resting straight down at the sides (hands NOT folded), calm peaceful face, eyes lowered. One small round clay prayer tablet (turbah) lies on the rug a little in front of the feet, centered, exactly where the forehead would touch in prostration. Only ONE rug and ONE turbah",
   },
   quran: { outfit: "prayer", action: "standing and lovingly reading an open Holy Quran held with both hands, gentle smile" },
   morning: { outfit: "everyday", action: "cheerfully brushing teeth with a toothbrush, fresh and awake, morning energy" },
