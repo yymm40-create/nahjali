@@ -6,6 +6,13 @@ const PROTECTED = ["/new", "/order", "/my-booklets"];
 
 /** Refreshes the Supabase session cookie on every request and guards protected pages. */
 export async function proxy(request: NextRequest) {
+  // If Supabase falls back to the Site URL after sign-in, finish the login on our callback route
+  if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/callback";
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

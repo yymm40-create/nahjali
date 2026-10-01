@@ -1,3 +1,5 @@
+import { EMAIL_LOGIN_ENABLED } from "@config/pricing";
+import EmailLogin from "./EmailLogin";
 import LoginButton from "./LoginButton";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
@@ -10,6 +12,16 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       <p className="text-lg font-bold text-ink/70">سجّل دخولك عشان نحفظ كتيباتك وترجع لها متى ما بغيت.</p>
       {error && <p className="error-box">ما قدرنا نسجّل دخولك. جرّب مرة ثانية.</p>}
       <LoginButton next={nextPath} />
+      {EMAIL_LOGIN_ENABLED && (
+        <>
+          <div className="flex items-center gap-3 font-bold text-ink/50">
+            <span className="h-[3px] flex-1 rounded bg-ink/15" />
+            أو بالإيميل
+            <span className="h-[3px] flex-1 rounded bg-ink/15" />
+          </div>
+          <EmailLogin next={nextPath} />
+        </>
+      )}
     </div>
   );
 }
