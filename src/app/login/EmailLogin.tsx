@@ -21,6 +21,13 @@ export default function EmailLogin({ next }: { next: string }) {
       options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
     });
     if (error) {
+      console.error("signInWithOtp failed", error.status, error.code, error.message);
+      if (process.env.NODE_ENV !== "production") {
+        // Dev only: show the technical reason so setup problems are easy to spot
+        setError(`ما قدرنا نرسل الرابط. (${error.status ?? ""} ${error.code ?? ""}: ${error.message})`);
+        setState("idle");
+        return;
+      }
       setError(
         error.status === 429 ? "أرسلنا رسائل كثيرة. انتظر شوي وجرّب مرة ثانية." : "ما قدرنا نرسل الرابط. تأكد من الإيميل وجرّب مرة ثانية.",
       );
