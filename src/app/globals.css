@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Brand palette shared with the booklet template */
+@theme {
+  --color-ink: #111111;
+  --color-paper: #fffaf0;
+  --color-grape: #7b5cff;
+  --color-sun: #ffd23f;
+  --color-mint: #2ec4b6;
+  --color-tang: #ff8a3d;
+  --color-bubble: #ff4d8d;
+  --color-lime: #c6f432;
+  --color-night: #25206b;
+  --font-sans: var(--font-baloo), system-ui, sans-serif;
+  --font-display: var(--font-lalezar), var(--font-baloo), sans-serif;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+body {
+  background-image: radial-gradient(rgba(17, 17, 17, 0.07) 1.5px, transparent 1.8px);
+  background-size: 22px 22px;
+}
+
+@layer components {
+  /* Sticker-style card: thick outline + hard offset shadow */
+  .card {
+    @apply rounded-3xl border-[3px] border-ink bg-white shadow-[5px_5px_0_var(--color-ink)];
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border-[3px] border-ink px-6 py-3 text-lg font-extrabold
+      shadow-[4px_4px_0_var(--color-ink)] transition active:translate-x-[3px] active:translate-y-[3px] active:shadow-none
+      disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-x-0 disabled:active:translate-y-0 disabled:active:shadow-[4px_4px_0_var(--color-ink)];
+  }
+  .btn-primary {
+    @apply bg-grape text-white;
+  }
+  .btn-sun {
+    @apply bg-sun text-ink;
+  }
+  .btn-ghost {
+    @apply bg-white text-ink;
+  }
+  .chip {
+    @apply inline-block rounded-full bg-ink px-4 py-1 text-sm font-bold text-white;
+  }
+  .display {
+    font-family: var(--font-display);
+    line-height: 1.2;
+  }
+  .error-box {
+    @apply rounded-2xl border-[3px] border-ink bg-bubble/15 p-3 font-bold text-ink;
+  }
+}
