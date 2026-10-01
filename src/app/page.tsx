@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { PRICE_HALALAS } from "@config/pricing";
+import { FREE_TRIAL, QUALITY_TIERS } from "@config/pricing";
 
 const STEPS = [
   { n: "١", title: "ارفع صورتك", text: "صورة واضحة للوجه والجسم", color: "bg-sun" },
@@ -9,6 +9,9 @@ const STEPS = [
 ];
 
 const PREVIEW_PAGES = ["01", "02", "03", "06"];
+
+const MIN_PRICE = Math.min(...Object.values(QUALITY_TIERS).map((t) => t.price_halalas)) / 100;
+const CTA = FREE_TRIAL ? "جرّب مجانًا" : `ابدأ كتيبك من ${MIN_PRICE} ريال`;
 
 export default function Home() {
   return (
@@ -22,7 +25,7 @@ export default function Home() {
           ارفع صورتك، ونحوّلها لشخصية كرتونية تمارس العادات اليومية في كتيب ملوّن جاهز للطباعة.
         </p>
         <Link href="/new" className="btn btn-sun mt-6 w-full text-xl">
-          ابدأ كتيبك ← {PRICE_HALALAS / 100} ريال
+          {CTA}
         </Link>
       </section>
 
@@ -59,7 +62,7 @@ export default function Home() {
       </section>
 
       <Link href="/new" className="btn btn-primary w-full text-xl">
-        يلا نبدأ
+        {FREE_TRIAL ? "يلا جرّب مجانًا" : "يلا نبدأ"}
       </Link>
     </div>
   );

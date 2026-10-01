@@ -1,6 +1,7 @@
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
 import { GENERATION_SETTINGS } from "@config/prompts";
+import type { QualityKey } from "@config/pricing";
 
 let client: OpenAI | null = null;
 function openai() {
@@ -14,13 +15,18 @@ function openai() {
  * gpt-image-2 always reads reference images at high fidelity, so `input_fidelity` is not sent.
  * With `cutout`, the result always comes back with a transparent background (see ensureTransparent).
  */
-export async function generateFromReference(reference: Buffer, prompt: string, cutout: boolean): Promise<Buffer> {
+export async function generateFromReference(
+  reference: Buffer,
+  prompt: string,
+  quality: QualityKey,
+  cutout: boolean,
+): Promise<Buffer> {
   const res = await openai().images.edit({
     model: GENERATION_SETTINGS.model,
     image: await toFile(reference, "reference.png", { type: "image/png" }),
     prompt,
     size: GENERATION_SETTINGS.size,
-    quality: GENERATION_SETTINGS.quality,
+    quality,
     background: cutout && GENERATION_SETTINGS.transparentBackground ? "transparent" : "opaque",
     output_format: "png",
   });

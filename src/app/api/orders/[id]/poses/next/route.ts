@@ -4,7 +4,7 @@ import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
 import { getApprovedCharacter, setOrderStatus, staleBefore } from "@/lib/orders";
 import { checkRateLimit, logGeneration } from "@/lib/generation";
 import { generateFromReference } from "@/lib/openai";
-import type { Pose } from "@/lib/types";
+import type { Order, Pose } from "@/lib/types";
 import { POSE_PROMPTS } from "@config/prompts";
 import { POSE_MAX_RETRIES } from "@config/pricing";
 
@@ -57,7 +57,7 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
   return NextResponse.json({ total: poses.length, done, failed, remaining });
 });
 
-async function generatePose(order: { id: string; user_id: string }, characterPath: string, pose: Pose) {
+async function generatePose(order: Order, characterPath: string, pose: Pose) {
   const db = createAdminClient();
   const prompt = POSE_PROMPTS[pose.pose_key];
   try {
@@ -66,8 +66,8 @@ async function generatePose(order: { id: string; user_id: string }, characterPat
     if (ref.error) throw ref.error;
 
     // The APPROVED character is the reference, so every page shows the same character
-    const image = await generateFromReference(Buffer.from(await ref.data.arrayBuffer()), prompt, true);
-    await logGeneration(order.id, "pose", true);
+    const image = await generateFromReference(Buffer.from(await ref.data.arrayBuffer()), prompt, order.quality, true);
+    await logGeneration(order.id, "pose", order.quality, true);
 
     const path = `${order.user_id}/${order.id}/pose-${pose.pose_key}.png`;
     const up = await db.storage.from(BUCKETS.generated).upload(path, image, { contentType: "image/png", upsert: true });
@@ -75,7 +75,7 @@ async function generatePose(order: { id: string; user_id: string }, characterPat
     await db.from("poses").update({ status: "done", image_path: path, started_at: null }).eq("id", pose.id);
   } catch (err) {
     console.error(`pose ${pose.pose_key} failed (attempt ${pose.attempts})`, err);
-    await logGeneration(order.id, "pose", false, err);
+    await logGeneration(order.id, "pose", order.quality, false, err);
     // First try + POSE_MAX_RETRIES retries, then give up
     const giveUp = pose.attempts >= 1 + POSE_MAX_RETRIES;
     await db

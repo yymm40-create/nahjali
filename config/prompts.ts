@@ -22,7 +22,7 @@ export const POSE_PROMPTS: Record<string, string> = {
 export const GENERATION_SETTINGS = {
   model: "gpt-image-2",
   size: "1024x1536",
-  quality: "high",
+  // Image quality comes from the tier the customer picks (config/pricing.ts → QUALITY_TIERS)
   /**
    * Ask OpenAI for a real transparent background on poses. Off: this account gets
    * "Transparent background is not supported for this model" on the edit endpoint,

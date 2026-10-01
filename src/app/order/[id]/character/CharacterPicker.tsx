@@ -81,7 +81,6 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
 
   return (
     <div className="space-y-5">
-      <span className="chip">الخطوة ٤ من ٤</span>
       <h1 className="display text-4xl">{characters.length ? "هذي شخصيتك!" : "شخصيتك"}</h1>
 
       {current ? (

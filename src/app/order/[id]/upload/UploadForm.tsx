@@ -55,7 +55,6 @@ export default function UploadForm({ orderId, attemptsLeft }: { orderId: string;
 
   return (
     <div className="space-y-5">
-      <span className="chip">الخطوة ٣ من ٤</span>
       <h1 className="display text-4xl">ارفع صورتك</h1>
 
       <div className="card space-y-2 bg-sun p-4 font-bold">

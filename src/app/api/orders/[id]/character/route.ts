@@ -36,11 +36,11 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
 
   let image: Buffer;
   try {
-    image = await generateFromReference(Buffer.from(await source.data.arrayBuffer()), CHARACTER_PROMPT, false);
-    await logGeneration(order.id, "character", true);
+    image = await generateFromReference(Buffer.from(await source.data.arrayBuffer()), CHARACTER_PROMPT, order.quality, false);
+    await logGeneration(order.id, "character", order.quality, true);
   } catch (err) {
     console.error("character generation failed", err);
-    await logGeneration(order.id, "character", false, err);
+    await logGeneration(order.id, "character", order.quality, false, err);
     await restoreStatus(order.id); // a failed generation does not use up an attempt
     throw new UserError(MESSAGES.generationFailed, 502);
   }

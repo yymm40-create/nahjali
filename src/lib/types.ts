@@ -1,3 +1,5 @@
+import type { QualityKey } from "@config/pricing";
+
 export type OrderStatus =
   | "pending_payment"
   | "paid"
@@ -17,6 +19,8 @@ export interface Order {
   moyasar_payment_id: string | null;
   attempts_allowed: number;
   attempts_used: number;
+  quality: QualityKey;
+  is_trial: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -52,7 +56,7 @@ export const PAID_STATUSES: OrderStatus[] = [
 
 export const STATUS_LABELS: Record<OrderStatus, string> = {
   pending_payment: "بانتظار الدفع",
-  paid: "مدفوع، بانتظار الصورة",
+  paid: "بانتظار صورتك",
   generating_character: "نصمم شخصيتك",
   awaiting_approval: "بانتظار اعتمادك للشخصية",
   generating_poses: "نجهّز الوضعيات",
