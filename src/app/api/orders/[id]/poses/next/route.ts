@@ -5,7 +5,8 @@ import { getApprovedCharacter, setOrderStatus, staleBefore } from "@/lib/orders"
 import { checkRateLimit, logGeneration } from "@/lib/generation";
 import { generateFromReference } from "@/lib/openai";
 import type { Order, Pose } from "@/lib/types";
-import { POSE_PROMPTS, STYLE_REFERENCE } from "@config/prompts";
+import { POSES, posePrompt } from "@config/prompts";
+import { STYLES } from "@config/styles";
 import { POSE_MAX_RETRIES } from "@config/pricing";
 
 export const maxDuration = 300;
@@ -59,16 +60,16 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
 
 async function generatePose(order: Order, characterPath: string, pose: Pose) {
   const db = createAdminClient();
-  const prompt = POSE_PROMPTS[pose.pose_key];
   try {
-    if (!prompt) throw new Error(`No prompt for pose "${pose.pose_key}" in config/prompts.ts`);
+    if (!POSES[pose.pose_key]) throw new Error(`No pose "${pose.pose_key}" in config/prompts.ts`);
+    const prompt = posePrompt(pose.pose_key, order.style, order.child_gender ?? "boy");
     const ref = await db.storage.from(BUCKETS.generated).download(characterPath);
     if (ref.error) throw ref.error;
 
     // The APPROVED character is the reference, so every page shows the same character
     const image = await generateFromReference(Buffer.from(await ref.data.arrayBuffer()), prompt, order.quality, {
       cutout: true,
-      withStyleRef: STYLE_REFERENCE.useForPoses,
+      styleReference: STYLES[order.style].referenceImage,
     });
     await logGeneration(order.id, "pose", order.quality, true);
 

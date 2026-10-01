@@ -1,4 +1,6 @@
 import type { QualityKey } from "@config/pricing";
+import type { Gender } from "@config/prompts";
+import type { StyleKey } from "@config/styles";
 
 export type OrderStatus =
   | "pending_payment"
@@ -21,6 +23,9 @@ export interface Order {
   attempts_used: number;
   quality: QualityKey;
   is_trial: boolean;
+  child_name: string | null;
+  child_gender: Gender | null;
+  style: StyleKey;
   created_at: string;
   updated_at: string;
 }

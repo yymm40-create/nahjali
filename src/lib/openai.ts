@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
-import { GENERATION_SETTINGS, STYLE_REFERENCE } from "@config/prompts";
+import { GENERATION_SETTINGS } from "@config/prompts";
 import type { QualityKey } from "@config/pricing";
 
 let client: OpenAI | null = null;
@@ -12,27 +12,27 @@ function openai() {
   return client;
 }
 
-let styleRef: Promise<Buffer> | null = null;
-/** The art-style example image (config/style-reference.png), read once. */
-function styleReference() {
-  styleRef ??= fs.readFile(path.join(process.cwd(), STYLE_REFERENCE.file));
-  return styleRef;
+const styleRefs = new Map<string, Promise<Buffer>>();
+/** A style example image from config/styles.ts, read once per file. */
+function readStyleReference(file: string) {
+  if (!styleRefs.has(file)) styleRefs.set(file, fs.readFile(path.join(process.cwd(), file)));
+  return styleRefs.get(file)!;
 }
 
 /**
  * Generates an image from a reference image + prompt using the image edit endpoint.
  * gpt-image-2 always reads reference images at high fidelity, so `input_fidelity` is not sent.
- * With `withStyleRef`, the style example image is sent as the LAST reference (the prompt says it is style-only).
+ * With `styleReference` (a file path), that style example is sent as the LAST reference (the prompt says it is style-only).
  * With `cutout`, the result always comes back with a transparent background (see ensureTransparent).
  */
 export async function generateFromReference(
   reference: Buffer,
   prompt: string,
   quality: QualityKey,
-  { cutout, withStyleRef }: { cutout: boolean; withStyleRef: boolean },
+  { cutout, styleReference }: { cutout: boolean; styleReference?: string },
 ): Promise<Buffer> {
   const images = [await toFile(reference, "reference.png", { type: "image/png" })];
-  if (withStyleRef) images.push(await toFile(await styleReference(), "style-reference.png", { type: "image/png" }));
+  if (styleReference) images.push(await toFile(await readStyleReference(styleReference), "style-reference.png", { type: "image/png" }));
 
   const res = await openai().images.edit({
     model: GENERATION_SETTINGS.model,

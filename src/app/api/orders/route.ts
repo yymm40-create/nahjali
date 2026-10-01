@@ -3,6 +3,7 @@ import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTemplate } from "@/lib/templates";
 import { deleteExpiredSourcePhotos } from "@/lib/orders";
+import { isStyle } from "@config/styles";
 import {
   ATTEMPTS_ALLOWED,
   FREE_TRIAL,
@@ -19,10 +20,22 @@ import {
  */
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
-  const { templateId, quality } = (await req.json().catch(() => ({}))) as { templateId?: string; quality?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    templateId?: string;
+    quality?: string;
+    style?: string;
+    childName?: string;
+    gender?: string;
+  };
+  const { templateId, quality, style, gender } = body;
+  // Printed in the booklet: letters (Arabic/Latin) and single spaces only
+  const childName = (body.childName ?? "").replace(/\s+/g, " ").trim();
   const template = templateId ? await getTemplate(templateId) : null;
   if (!template) throw new UserError("القالب غير موجود.", 400);
   if (!isQuality(quality)) throw new UserError("اختر الجودة.", 400);
+  if (!isStyle(style)) throw new UserError("اختر الستايل.", 400);
+  if (gender !== "boy" && gender !== "girl") throw new UserError("اختر ولد أو بنت.", 400);
+  if (!/^[\p{L}\p{M} ]{1,30}$/u.test(childName)) throw new UserError("اكتب اسم الطفل بالحروف فقط (٣٠ حرف كحد أقصى).", 400);
 
   const db = createAdminClient();
   if (FREE_TRIAL) {
@@ -55,6 +68,9 @@ export const POST = handle(async (req: Request) => {
       user_id: user.id,
       template_id: template.id,
       quality,
+      style,
+      child_name: childName,
+      child_gender: gender,
       amount_halalas: QUALITY_TIERS[quality].price_halalas,
       attempts_allowed: ATTEMPTS_ALLOWED,
       is_trial: FREE_TRIAL,
