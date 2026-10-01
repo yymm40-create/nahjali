@@ -224,6 +224,23 @@ const PAGES = [
   },
 ];
 
+// ── Finished page artwork (pages/<name>.jpg, made by the owner): only the child and the name are added on top ──
+const nameOnPlate = (x, y, w, h) => ({ value: "{name}", font: "display", color: "#ffe08a", effect: "gold", x, y, w, h });
+const FULL_PAGES = {
+  0: { background: "cover", slots: [{ pose: "happy", x: 70, y: 120, w: 70, h: 88 }], texts: [{ value: "كتيب {name}", font: "display", color: "#14234a", effect: "3d", x: 64, y: 62, w: 91, h: 22 }] },
+  1: { background: "prayers", slots: [{ pose: "praying", x: 8, y: 65, w: 84, h: 128 }], texts: [nameOnPlate(40, 52, 43, 9)] },
+  2: { background: "quran", slots: [{ pose: "quran", x: 4, y: 76, w: 72, h: 124 }], texts: [nameOnPlate(27, 61, 58, 11)] },
+  3: { background: "morning", slots: [{ pose: "morning", x: 4, y: 68, w: 88, h: 130 }], texts: [nameOnPlate(20, 55, 55, 9)] },
+  4: { background: "sleep", slots: [{ pose: "sleeping", x: 8, y: 72, w: 88, h: 128 }], texts: [nameOnPlate(33, 57, 52, 11)] },
+  5: { background: "mahdi", slots: [{ pose: "salam", x: 4, y: 65, w: 92, h: 134 }], texts: [nameOnPlate(17, 50, 52, 11)] },
+  7: { background: "study", slots: [{ pose: "studying", x: 6, y: 72, w: 96, h: 128 }], texts: [nameOnPlate(22, 57, 47, 11)] },
+  8: { background: "daily", slots: [{ pose: "happy", x: 6, y: 2, w: 34, h: 48 }], texts: [] },
+  9: { background: "weekly", slots: [{ pose: "quran", x: 2, y: 92, w: 62, h: 114 }], texts: [] },
+  10: { background: "certificate", slots: [{ pose: "happy", x: 10, y: 66, w: 82, h: 126 }], texts: [{ value: "{name}", font: "display", color: "#14234a", effect: "3d", x: 108, y: 84, w: 70, h: 11 }] },
+  11: { background: "back", slots: [], texts: [] },
+};
+for (const [i, p] of Object.entries(FULL_PAGES)) PAGES[i] = { ...p, scene: null, html: "" };
+
 const TEMPLATE = {
   id: 'nahjali-v1',
   name: 'كتيب نهج علي',
@@ -233,6 +250,7 @@ const TEMPLATE = {
   pages: PAGES.map((p, i) => ({
     overlay: `overlays/page-${String(i + 1).padStart(2, '0')}.png`,
     scene: p.scene ?? null,
+    background: p.background ? `pages/${p.background}.jpg` : null,
     slots: p.slots.map((s) => ({ pose: s.pose, x_mm: s.x, y_mm: s.y, width_mm: s.w, height_mm: s.h })),
     texts: p.texts.map((t) => ({ value: t.value, font: t.font, color: t.color, stroke: t.stroke ?? null, effect: t.effect ?? null, x_mm: t.x, y_mm: t.y, width_mm: t.w, height_mm: t.h })),
   })),
@@ -243,7 +261,8 @@ function renderPage(p, preview) {
     ? p.slots.map((s) => box(s.x, s.y, s.w, s.h, 'slot-guide', `الطفل<br>${s.pose}`)).join('') +
       p.texts.map((t) => box(t.x, t.y, t.w, t.h, 'text-guide', t.value)).join('')
     : '';
-  return `<div class="page ${preview ? 'preview' : ''}">${p.html}${guides}</div>`;
+  const bg = preview && p.background ? `<img class="abs" src="../../templates/nahjali-v1/pages/${p.background}.jpg" style="inset:0;width:210rem;height:210rem">` : "";
+  return `<div class="page ${preview ? 'preview' : ''}">${bg}${p.html}${guides}</div>`;
 }
 
 if (P.has('json')) {

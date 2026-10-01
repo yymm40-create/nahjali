@@ -26,6 +26,8 @@ export interface TemplateText {
 export interface TemplatePage {
   /** Background scene key: templates/<id>/scenes/<scene>.jpg (same for every art style) */
   scene: string | null;
+  /** Finished full-page artwork (replaces scene + overlay), e.g. "pages/cover.jpg" */
+  background?: string | null;
   /** Transparent text/frames layer drawn on top of the scene and the child */
   overlay: string;
   slots: TemplateSlot[];

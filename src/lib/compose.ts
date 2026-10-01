@@ -42,7 +42,10 @@ export async function composeBooklet(template: Template, input: ComposeInput): P
   for (const tplPage of template.pages) {
     const page = pdf.addPage([pageW, pageH]);
 
-    if (tplPage.scene) {
+    if (tplPage.background) {
+      const bg = await pdf.embedJpg(await fs.readFile(templateFilePath(template.id, tplPage.background)));
+      page.drawImage(bg, { x: 0, y: 0, width: pageW, height: pageH });
+    } else if (tplPage.scene) {
       if (!scenes.has(tplPage.scene)) {
         const file = templateFilePath(template.id, `scenes/${tplPage.scene}.jpg`);
         scenes.set(tplPage.scene, await pdf.embedJpg(await fs.readFile(file)));
@@ -65,8 +68,11 @@ export async function composeBooklet(template: Template, input: ComposeInput): P
       page.drawImage(img, { x, y: bottom, width: w, height: h });
     }
 
-    const overlay = await pdf.embedPng(await fs.readFile(templateFilePath(template.id, tplPage.overlay)));
-    page.drawImage(overlay, { x: 0, y: 0, width: pageW, height: pageH });
+    // Finished artwork already contains the text and frames; only designed pages need the overlay
+    if (!tplPage.background) {
+      const overlay = await pdf.embedPng(await fs.readFile(templateFilePath(template.id, tplPage.overlay)));
+      page.drawImage(overlay, { x: 0, y: 0, width: pageW, height: pageH });
+    }
 
     for (const t of tplPage.texts) {
       const png = await renderText(t, t.value.replaceAll("{name}", input.childName));
