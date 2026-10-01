@@ -1,0 +1,4 @@
+tmp
+design/*/preview
+.env*
+!.env.example
