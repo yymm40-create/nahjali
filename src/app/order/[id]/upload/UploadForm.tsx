@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/fetch";
@@ -21,6 +22,7 @@ export default function UploadForm({ orderId, attemptsLeft }: { orderId: string;
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -80,8 +82,23 @@ export default function UploadForm({ orderId, attemptsLeft }: { orderId: string;
         <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => pick(e.target.files?.[0])} />
       </label>
 
+      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border-[3px] border-ink bg-white p-3 text-sm font-bold">
+        <input
+          type="checkbox"
+          checked={consent}
+          onChange={(e) => setConsent(e.target.checked)}
+          className="mt-1 size-5 shrink-0 accent-grape"
+        />
+        <span>
+          أقرّ إن الصورة لي أو عندي إذن صاحبها، وإذا كانت لطفل فأنا ولي أمره. صورتك الأصلية تنحذف فور اعتماد الشخصية.{" "}
+          <Link href="/privacy" target="_blank" className="underline">
+            سياسة الخصوصية
+          </Link>
+        </span>
+      </label>
+
       {error && <p className="error-box">{error}</p>}
-      <button className="btn btn-primary w-full" onClick={submit} disabled={!file || busy}>
+      <button className="btn btn-primary w-full" onClick={submit} disabled={!file || !consent || busy}>
         {busy ? "نرفع الصورة…" : "حوّلني لشخصية كرتونية"}
       </button>
       <p className="text-center text-sm font-bold text-ink/60">المحاولات المتبقية: {attemptsLeft}</p>

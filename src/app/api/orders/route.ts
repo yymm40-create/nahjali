@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTemplate } from "@/lib/templates";
+import { deleteExpiredSourcePhotos } from "@/lib/orders";
 import {
   ATTEMPTS_ALLOWED,
   FREE_TRIAL,
@@ -62,6 +63,9 @@ export const POST = handle(async (req: Request) => {
     .select("id")
     .single();
   if (error) throw error;
+
+  // Also run the photo clean-up opportunistically (the daily cron is the backstop)
+  await deleteExpiredSourcePhotos();
 
   return NextResponse.json({
     id: data.id,

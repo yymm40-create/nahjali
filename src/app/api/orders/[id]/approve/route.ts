@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOwnedOrder, handle, MESSAGES, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { claimOrder, setOrderStatus } from "@/lib/orders";
+import { claimOrder, deleteSourcePhoto, setOrderStatus } from "@/lib/orders";
 import { getTemplate } from "@/lib/templates";
 
 /** Approves one generated character and queues all template poses for generation. */
@@ -42,6 +42,9 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     await setOrderStatus(order.id, "awaiting_approval");
     throw err;
   }
+
+  // Privacy promise: the original photo is deleted as soon as the character is approved
+  await deleteSourcePhoto(order);
 
   return NextResponse.json({ ok: true });
 });
