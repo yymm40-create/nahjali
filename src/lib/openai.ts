@@ -1,6 +1,8 @@
+import { promises as fs } from "fs";
+import path from "path";
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
-import { GENERATION_SETTINGS } from "@config/prompts";
+import { GENERATION_SETTINGS, STYLE_REFERENCE } from "@config/prompts";
 import type { QualityKey } from "@config/pricing";
 
 let client: OpenAI | null = null;
@@ -10,20 +12,31 @@ function openai() {
   return client;
 }
 
+let styleRef: Promise<Buffer> | null = null;
+/** The art-style example image (config/style-reference.png), read once. */
+function styleReference() {
+  styleRef ??= fs.readFile(path.join(process.cwd(), STYLE_REFERENCE.file));
+  return styleRef;
+}
+
 /**
  * Generates an image from a reference image + prompt using the image edit endpoint.
  * gpt-image-2 always reads reference images at high fidelity, so `input_fidelity` is not sent.
+ * With `withStyleRef`, the style example image is sent as the LAST reference (the prompt says it is style-only).
  * With `cutout`, the result always comes back with a transparent background (see ensureTransparent).
  */
 export async function generateFromReference(
   reference: Buffer,
   prompt: string,
   quality: QualityKey,
-  cutout: boolean,
+  { cutout, withStyleRef }: { cutout: boolean; withStyleRef: boolean },
 ): Promise<Buffer> {
+  const images = [await toFile(reference, "reference.png", { type: "image/png" })];
+  if (withStyleRef) images.push(await toFile(await styleReference(), "style-reference.png", { type: "image/png" }));
+
   const res = await openai().images.edit({
     model: GENERATION_SETTINGS.model,
-    image: await toFile(reference, "reference.png", { type: "image/png" }),
+    image: images,
     prompt,
     size: GENERATION_SETTINGS.size,
     quality,

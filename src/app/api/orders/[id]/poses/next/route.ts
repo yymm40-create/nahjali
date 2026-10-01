@@ -5,7 +5,7 @@ import { getApprovedCharacter, setOrderStatus, staleBefore } from "@/lib/orders"
 import { checkRateLimit, logGeneration } from "@/lib/generation";
 import { generateFromReference } from "@/lib/openai";
 import type { Order, Pose } from "@/lib/types";
-import { POSE_PROMPTS } from "@config/prompts";
+import { POSE_PROMPTS, STYLE_REFERENCE } from "@config/prompts";
 import { POSE_MAX_RETRIES } from "@config/pricing";
 
 export const maxDuration = 300;
@@ -66,7 +66,10 @@ async function generatePose(order: Order, characterPath: string, pose: Pose) {
     if (ref.error) throw ref.error;
 
     // The APPROVED character is the reference, so every page shows the same character
-    const image = await generateFromReference(Buffer.from(await ref.data.arrayBuffer()), prompt, order.quality, true);
+    const image = await generateFromReference(Buffer.from(await ref.data.arrayBuffer()), prompt, order.quality, {
+      cutout: true,
+      withStyleRef: STYLE_REFERENCE.useForPoses,
+    });
     await logGeneration(order.id, "pose", order.quality, true);
 
     const path = `${order.user_id}/${order.id}/pose-${pose.pose_key}.png`;

@@ -4,7 +4,7 @@ import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
 import { claimOrder, getCharacters, setOrderStatus, sourcePath } from "@/lib/orders";
 import { checkRateLimit, logGeneration } from "@/lib/generation";
 import { generateFromReference } from "@/lib/openai";
-import { CHARACTER_PROMPT } from "@config/prompts";
+import { CHARACTER_PROMPT, STYLE_REFERENCE } from "@config/prompts";
 
 // Image generation can take a couple of minutes
 export const maxDuration = 300;
@@ -36,7 +36,10 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
 
   let image: Buffer;
   try {
-    image = await generateFromReference(Buffer.from(await source.data.arrayBuffer()), CHARACTER_PROMPT, order.quality, false);
+    image = await generateFromReference(Buffer.from(await source.data.arrayBuffer()), CHARACTER_PROMPT, order.quality, {
+      cutout: false,
+      withStyleRef: STYLE_REFERENCE.useForCharacter,
+    });
     await logGeneration(order.id, "character", order.quality, true);
   } catch (err) {
     console.error("character generation failed", err);

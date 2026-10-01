@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Template folders are read from disk at runtime, so ship them with the server functions on Vercel
   outputFileTracingIncludes: {
-    "/api/**/*": ["./templates/**/*"],
+    "/api/**/*": ["./templates/**/*", "./config/style-reference.png"],
     "/new": ["./templates/**/*"],
   },
   // sharp is a native module; keep it out of the bundle
