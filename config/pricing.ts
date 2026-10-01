@@ -20,6 +20,8 @@ export const DEFAULT_QUALITY: QualityKey = "medium";
  */
 export const FREE_TRIAL = true;
 export const FREE_TRIAL_MAX_ORDERS = 2;
+/** Site-wide cap on free orders per day (Riyadh time), to protect the OpenAI budget. */
+export const FREE_TRIAL_DAILY_LIMIT = 20;
 
 /** How many times a customer may generate their base character. */
 export const ATTEMPTS_ALLOWED = 3;
