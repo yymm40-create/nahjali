@@ -41,7 +41,7 @@ const checks: Record<string, [number, number]> = {
 console.log("background removal [got, want]:", JSON.stringify(checks));
 if (Object.values(checks).some(([got, want]) => got !== want)) throw new Error("background removal failed");
 
-const pdf = await composeBooklet(template, images);
+const pdf = await composeBooklet(template, { style: "pixar", childName: "علي", poses: images });
 await mkdir("tmp", { recursive: true });
 await writeFile("tmp/test-booklet.pdf", pdf);
 console.log(`PDF ok: ${template.pages.length} pages, ${(pdf.length / 1024 / 1024).toFixed(1)} MB → tmp/test-booklet.pdf`);

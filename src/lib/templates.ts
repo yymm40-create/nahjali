@@ -9,15 +9,37 @@ export interface TemplateSlot {
   height_mm: number;
 }
 
+/** Text written per order, e.g. the child's name. `{name}` is replaced at compose time. */
+export interface TemplateText {
+  value: string;
+  font: "display" | "body";
+  color: string;
+  stroke: string | null;
+  x_mm: number;
+  y_mm: number;
+  width_mm: number;
+  height_mm: number;
+}
+
+export interface TemplatePage {
+  /** Background scene key: templates/<id>/scenes/<style>/<scene>.jpg */
+  scene: string | null;
+  /** Transparent text/frames layer drawn on top of the scene and the child */
+  overlay: string;
+  slots: TemplateSlot[];
+  texts: TemplateText[];
+}
+
 export interface Template {
   id: string;
   name: string;
   page_size_mm: { width: number; height: number };
   poses: string[];
-  pages: { file: string; slots: TemplateSlot[] }[];
+  scenes: string[];
+  pages: TemplatePage[];
 }
 
-// Templates are plain folders: /templates/<id>/template.json + pages/*.png
+// Templates are plain folders: /templates/<id>/template.json + overlays/ + scenes/<style>/
 const TEMPLATES_DIR = path.join(process.cwd(), "templates");
 const SAFE_ID = /^[a-z0-9-]+$/;
 
