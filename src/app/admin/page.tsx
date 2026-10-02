@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { loadAdminStats, riyadhDay } from "@/lib/admin-stats";
@@ -6,6 +7,7 @@ import { STYLES, type StyleKey } from "@config/styles";
 import { QUALITY_TIERS, type QualityKey } from "@config/pricing";
 import { isAdmin } from "@config/site";
 import AdminTools from "./AdminTools";
+import TrialLimit from "./TrialLimit";
 
 export const metadata = { title: "لوحة التحكم | نهج علي" };
 // Always fresh numbers
@@ -42,6 +44,7 @@ export default async function AdminPage() {
       <header className="space-y-1">
         <h1 className="display text-4xl">لوحة التحكم</h1>
         <p className="font-bold text-muted">أرقام الموقع الحية، تتحدث كل ما تفتح الصفحة.</p>
+        <Link href="/admin/film" className="btn btn-secondary mt-2 w-full">🎬 فرع الفيلم: المدعوين والحدود والصرف</Link>
       </header>
 
       {/* KPI tiles */}
@@ -54,6 +57,28 @@ export default async function AdminPage() {
           </div>
         ))}
       </section>
+
+      <section className="card space-y-3 p-4">
+        <h2 className="text-xl font-extrabold">كم شخص دخل الموقع</h2>
+        <div className="grid grid-cols-4 gap-2 text-center">
+          {(
+            [
+              ["اليوم", s.logins.today],
+              ["أمس", s.logins.yesterday],
+              ["٧ أيام", s.logins.week],
+              ["٣٠ يوم", s.logins.month],
+            ] as const
+          ).map(([label, v]) => (
+            <div key={label} className="rounded-xl bg-surface-2 p-2">
+              <p className="display text-2xl">{v}</p>
+              <p className="text-xs font-bold text-muted">{label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs font-bold text-muted">يُحسب حسب آخر تسجيل دخول لكل شخص (بتوقيت الرياض).</p>
+      </section>
+
+      <TrialLimit users={s.users.filter((u) => u.dailyTrials).map((u) => ({ email: u.email, daily: u.dailyTrials as number }))} />
 
       <AdminTools emails={s.users.map((u) => u.email).filter(Boolean)} />
 

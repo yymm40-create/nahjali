@@ -1,0 +1,25 @@
+import { NextResponse } from "next/server";
+import { handle } from "@/lib/api";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
+import { projectFields } from "@/lib/film/validate";
+
+/** Autosave of the project's title, story, fixed facts and duration. */
+export const PATCH = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
+  const user = await requireFilmApiUser();
+  const { id } = await params;
+  await getOwnedProject(id, user.id);
+
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const fields = projectFields(body, { requireTitle: false });
+  if (Object.keys(fields).length === 0) return NextResponse.json({ ok: true });
+
+  const { data, error } = await createAdminClient()
+    .from("film_projects")
+    .update(fields)
+    .eq("id", id)
+    .select("updated_at")
+    .single();
+  if (error) throw error;
+  return NextResponse.json({ ok: true, savedAt: data.updated_at });
+});
