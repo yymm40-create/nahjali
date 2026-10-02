@@ -149,14 +149,24 @@ export async function succeedJob(jobId: string, actual: { costUsd: number; units
     .eq("state", "reserved");
 }
 
-/** Failure: nothing is charged against any cap. */
-export async function failJob(jobId: string, error: unknown) {
+/**
+ * Failure: nothing is charged against any cap. If the provider still billed something (e.g. a reply
+ * cut off half-way), that real amount is kept in actual_cost_usd for the owner's records only.
+ */
+export async function failJob(jobId: string, error: unknown, providerCostUsd?: number) {
   const db = createAdminClient();
   const now = new Date().toISOString();
   const message = String(error instanceof Error ? error.message : error).slice(0, 1000);
   await db.from("film_jobs").update({ status: "failed", finished_at: now, error: message }).eq("id", jobId);
-  await db.from("film_usage").update({ state: "released", settled_at: now }).eq("job_id", jobId).eq("state", "reserved");
+  await db
+    .from("film_usage")
+    .update({ state: "released", settled_at: now, ...(providerCostUsd ? { actual_cost_usd: providerCostUsd } : {}) })
+    .eq("job_id", jobId)
+    .eq("state", "reserved");
 }
+
+/** A job still "running" after this long died with its server request; it is failed and released. */
+export const JOB_STALE_MS = 7 * 60_000;
 
 /** Total real + reserved cost of one project (shown on the project page). */
 export async function projectCost(projectId: string) {

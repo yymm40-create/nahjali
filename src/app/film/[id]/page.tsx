@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
 import { projectCost } from "@/lib/film/usage";
@@ -31,6 +32,8 @@ export default async function FilmProjectPage({ params }: PageProps<"/film/[id]"
   const references = uploads.map((u, i) => ({ id: u.id, name: u.file_name ?? "", url: urls[i]?.signedUrl ?? "" }));
 
   const cost = await projectCost(project.id);
+  const { count: messageCount } = await db.from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", project.id);
+  const scriptStarted = (messageCount ?? 0) > 0;
   const current = FILM_STAGES.findIndex((s) => s.key === project.stage);
 
   return (
@@ -50,18 +53,19 @@ export default async function FilmProjectPage({ params }: PageProps<"/film/[id]"
         </ol>
       </header>
 
-      <section className="card space-y-2 p-4">
+      <section className="card space-y-3 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-extrabold">المرحلة الحالية: {FILM_STAGES[current]?.label}</h2>
-          <span className="chip">{STATUS_LABELS.draft}</span>
+          <span className="chip">{scriptStarted ? STATUS_LABELS.awaiting_approval : STATUS_LABELS.draft}</span>
         </div>
-        <p className="text-sm font-bold text-muted">
-          راجع قصتك تحت (تنحفظ تلقائيًا). المساعد السيناريست ينضاف في المرحلة الجاية من التطوير، ويبدأ من هذا النص.
-        </p>
+        <Link href={`/film/${project.id}/script`} className="btn btn-primary w-full">
+          ✍️ {scriptStarted ? "افتح السيناريست" : "ابدأ مع السيناريست"}
+        </Link>
       </section>
 
       <ProjectEditor
         projectId={project.id}
+        locked={scriptStarted}
         initial={{
           title: project.title,
           story: project.story,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { handle } from "@/lib/api";
+import { handle, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { projectFields } from "@/lib/film/validate";
@@ -14,7 +14,12 @@ export const PATCH = handle(async (req: Request, { params }: { params: Promise<{
   const fields = projectFields(body, { requireTitle: false });
   if (Object.keys(fields).length === 0) return NextResponse.json({ ok: true });
 
-  const { data, error } = await createAdminClient()
+  const db = createAdminClient();
+  // Once the screenwriter has the story, changes go through the screenwriter (so nothing changes silently)
+  const { count } = await db.from("film_messages").select("id", { count: "exact", head: true }).eq("project_id", id);
+  if ((count ?? 0) > 0) throw new UserError("القصة صارت عند السيناريست. اطلب أي تعديل من صفحة السيناريست.", 409);
+
+  const { data, error } = await db
     .from("film_projects")
     .update(fields)
     .eq("id", id)
