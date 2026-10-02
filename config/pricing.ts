@@ -6,10 +6,10 @@ export type QualityKey = "low" | "medium" | "high";
  * Quality tiers the customer chooses from. `price_halalas` is the booklet price (29 SAR = 2900);
  * the key is passed to OpenAI as the image quality.
  */
-export const QUALITY_TIERS: Record<QualityKey, { label: string; description: string; price_halalas: number }> = {
-  low: { label: "جودة أساسية", description: "سريعة ومناسبة للمعاينة والطباعة الصغيرة", price_halalas: 1900 },
-  medium: { label: "جودة متوسطة", description: "تفاصيل أوضح وألوان أجمل", price_halalas: 2900 },
-  high: { label: "جودة عالية", description: "أعلى دقة وتفاصيل، الأفضل للطباعة", price_halalas: 3900 },
+export const QUALITY_TIERS: Record<QualityKey, { label: string; description: string; price_halalas: number; available: boolean }> = {
+  low: { label: "جودة أساسية", description: "سريعة ومناسبة للمعاينة والطباعة الصغيرة", price_halalas: 1900, available: false },
+  medium: { label: "جودة متوسطة", description: "تفاصيل أوضح وألوان أجمل", price_halalas: 2900, available: true },
+  high: { label: "جودة عالية", description: "أعلى دقة وتفاصيل، الأفضل للطباعة", price_halalas: 3900, available: false },
 };
 
 export const DEFAULT_QUALITY: QualityKey = "medium";

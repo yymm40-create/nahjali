@@ -28,6 +28,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-full flex-col font-sans">
+        <div role="status" className="bg-gold px-4 py-2 text-center text-sm font-extrabold text-on-gold">
+          🚧 الموقع تحت التجربة، وسيتم تطويره قريبًا إن شاء الله
+        </div>
         <Header />
         <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-16 pt-4">{children}</main>
         <footer className="mx-auto flex w-full max-w-xl flex-col items-center gap-2 px-4 py-8 text-sm font-bold text-muted">

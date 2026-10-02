@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getTemplate } from "@/lib/templates";
 import { STATUS_LABELS, stepPath, type Order } from "@/lib/types";
+import FeedbackForm from "@/components/FeedbackForm";
 
 export default async function MyBookletsPage() {
   await requireUser("/my-booklets");
@@ -37,6 +38,7 @@ export default async function MyBookletsPage() {
       {orders.length > 0 && (
         <Link href="/new" className="btn btn-secondary w-full">كتيب جديد</Link>
       )}
+      <FeedbackForm />
     </div>
   );
 }

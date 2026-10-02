@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireOrder } from "@/lib/auth";
 import { BUCKETS, createAdminClient, signedUrl } from "@/lib/supabase/admin";
 import { stepPath } from "@/lib/types";
+import FeedbackForm from "@/components/FeedbackForm";
 
 export default async function DownloadPage({ params }: PageProps<"/order/[id]/download">) {
   const { id } = await params;
@@ -31,6 +32,7 @@ export default async function DownloadPage({ params }: PageProps<"/order/[id]/do
         المعاينة ما تشتغل؟ افتح الكتيب في صفحة جديدة
       </a>
       <p className="text-center text-sm font-bold text-muted">الكتيب محفوظ في صفحة &quot;كتيباتي&quot; وتقدر تحمّله أي وقت.</p>
+      <FeedbackForm orderId={order.id} />
     </div>
   );
 }

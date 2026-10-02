@@ -11,16 +11,10 @@ const STYLIZE = `A fully stylized cartoon CHILD character (about 5–8 years old
 /** Girls: always a full Zainabiya abaya, face and hands only, no makeup. */
 const GIRL_DRESS = `She wears a modest black Iraqi Zainabiya abaya: one loose black cloak draped from the top of the head down to the ankles, worn over a snug underscarf that tightly frames the face; ALL hair, ears and neck fully covered; long loose sleeves to the wrists; only the face and the hands are visible. Absolutely no makeup, no lipstick, no jewelry — a natural child's face.`;
 
-/** What the boy wears in each scene ("everyday" is the base character). */
-const BOY_OUTFITS = {
-  everyday: "a neat colorful casual outfit (t-shirt and trousers) with sneakers",
-  prayer: "a clean white dishdasha (long robe) with a small white cap, barefoot or white socks",
-  pajamas: "cozy soft pajamas",
-  school: "a school uniform (white shirt, dark trousers) with a small backpack",
-} as const;
-type Outfit = keyof typeof BOY_OUTFITS;
+/** Boys keep the SAME clothes as in the uploaded photo on every page (owner's request) and never wear a cap. */
+const BOY_DRESS = `He wears exactly the same clothes as the child in the FIRST reference image (same garments, colours and patterns), simplified in the cartoon style. Do not change his outfit. Nothing on his head: no cap, no hat, no kufi.`;
 
-const dress = (gender: Gender, outfit: Outfit) => (gender === "girl" ? GIRL_DRESS : `He wears ${BOY_OUTFITS[outfit]}.`);
+const dress = (gender: Gender) => (gender === "girl" ? GIRL_DRESS : BOY_DRESS);
 
 const FRAMING = `Single character only, full body visible from head to feet, standing on the ground, centered, small empty margin around the character. No other people or creatures, no text, no logos, no props cut off by the frame.`;
 
@@ -36,7 +30,7 @@ export function characterPrompt(style: StyleKey, gender: Gender) {
     `Turn the child in the FIRST reference photo into a stylized animated movie character (a complete cartoon re-design, not a filtered photo).`,
     `Keep them clearly recognizable: same face shape, skin tone, eye colour and features${gender === "boy" ? ", hair colour and hairstyle" : ""}.`,
     STYLIZE,
-    dress(gender, "everyday"),
+    dress(gender),
     `Pose: standing relaxed with a warm happy smile, facing the viewer.`,
     FRAMING,
     `Plain flat light grey background.`,
@@ -48,21 +42,19 @@ export function characterPrompt(style: StyleKey, gender: Gender) {
 }
 
 /** Poses used by the booklet pages (several pages may reuse one pose). */
-export const POSES: Record<string, { outfit: Outfit; action: string }> = {
-  happy: { outfit: "everyday", action: "jumping with joy, both arms raised in celebration, big proud smile" },
+export const POSES: Record<string, { action: string }> = {
+  happy: { action: "jumping with joy, both arms raised in celebration, big proud smile" },
   praying: {
-    outfit: "prayer",
     action:
       "standing in Shia prayer (qiyam), facing the viewer, on a prayer rug that lies flat on the floor under the feet and extends forward toward the viewer: body upright, arms resting straight down at the sides (hands NOT folded), calm peaceful face, eyes lowered. One small round clay prayer tablet (turbah) lies on the rug a little in front of the feet, centered, exactly where the forehead would touch in prostration. Only ONE rug and ONE turbah",
   },
-  quran: { outfit: "prayer", action: "standing and lovingly reading an open Holy Quran held with both hands, gentle smile" },
-  morning: { outfit: "everyday", action: "cheerfully brushing teeth with a toothbrush, fresh and awake, morning energy" },
-  sleeping: { outfit: "pajamas", action: "standing sleepily hugging a soft pillow, eyes half closed, yawning" },
+  quran: { action: "standing and lovingly reading an open Holy Quran held with both hands, gentle smile" },
+  morning: { action: "cheerfully brushing teeth with a toothbrush, fresh and awake, morning energy" },
+  sleeping: { action: "standing sleepily hugging a soft pillow, eyes half closed, yawning" },
   salam: {
-    outfit: "prayer",
     action: "standing respectfully with the right hand placed on the chest in greeting, a slight respectful bow of the head, gentle smile",
   },
-  studying: { outfit: "school", action: "holding an open notebook and a pencil, thinking happily, ready to study" },
+  studying: { action: "holding an open notebook and a pencil, thinking happily, ready to study" },
 };
 
 /** One pose, made from the APPROVED character image (first reference). */
@@ -72,7 +64,7 @@ export function posePrompt(poseKey: string, style: StyleKey, gender: Gender) {
   return [
     `Use the exact same child character as the FIRST reference image: identical face, skin tone, proportions and the same stylized cartoon rendering. Do not make the character more realistic.`,
     STYLIZE,
-    dress(gender, pose.outfit),
+    dress(gender),
     `Pose: ${pose.action}.`,
     FRAMING,
     GREEN_SCREEN,

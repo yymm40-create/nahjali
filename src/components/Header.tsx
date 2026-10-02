@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import SignOutButton from "./SignOutButton";
 import ThemeSwitcher from "./ThemeSwitcher";
+import { isAdmin } from "@config/site";
 
 export default async function Header() {
   const supabase = await createClient();
@@ -27,6 +28,9 @@ export default async function Header() {
               <nav className="card absolute end-0 mt-2 flex w-44 flex-col p-2 text-base font-extrabold">
                 <Link href="/my-booklets" className="rounded-xl px-3 py-2 hover:bg-surface-2">📚 كتيباتي</Link>
                 <Link href="/new" className="rounded-xl px-3 py-2 hover:bg-surface-2">✨ كتيب جديد</Link>
+                {isAdmin(user.email) && (
+                  <Link href="/admin" className="rounded-xl px-3 py-2 hover:bg-surface-2">📊 لوحة التحكم</Link>
+                )}
                 <SignOutButton />
               </nav>
             </details>

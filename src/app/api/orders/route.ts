@@ -37,6 +37,7 @@ export const POST = handle(async (req: Request) => {
   const template = templateId ? await getTemplate(templateId) : null;
   if (!template) throw new UserError("القالب غير موجود.", 400);
   if (!isQuality(quality)) throw new UserError("اختر الجودة.", 400);
+  if (!QUALITY_TIERS[quality].available) throw new UserError("هذي الجودة غير متوفرة حاليًا.", 400);
   if (!isStyle(style)) throw new UserError("اختر الستايل.", 400);
   if (gender !== "boy" && gender !== "girl") throw new UserError("اختر ولد أو بنت.", 400);
   if (!/^[\p{L}\p{M} ]{1,30}$/u.test(childName)) throw new UserError("اكتب اسم الطفل بالحروف فقط (٣٠ حرف كحد أقصى).", 400);

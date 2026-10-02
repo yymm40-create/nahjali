@@ -13,6 +13,7 @@ interface Option {
 }
 interface Tier extends Option {
   price_halalas: number;
+  available: boolean;
 }
 
 interface Props {
@@ -202,11 +203,16 @@ export default function NewOrder(props: Props) {
                 key={t.key}
                 role="radio"
                 aria-checked={quality === t.key}
+                aria-disabled={!t.available}
+                disabled={!t.available}
                 onClick={() => setQuality(t.key)}
-                className="option flex w-full items-center justify-between gap-3 p-4"
+                className="option flex w-full items-center justify-between gap-3 p-4 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span>
-                  <span className="block text-lg font-extrabold">{t.label}</span>
+                  <span className="flex items-center gap-2 text-lg font-extrabold">
+                    {t.label}
+                    {!t.available && <span className="chip py-0 text-xs">قريبًا</span>}
+                  </span>
                   <span className="block text-sm font-bold text-muted">{t.description}</span>
                 </span>
                 <span className="shrink-0 text-end">
