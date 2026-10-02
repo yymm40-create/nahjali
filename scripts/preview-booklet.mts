@@ -43,7 +43,7 @@ for (const key of template.poses) {
 }
 
 const t = Date.now();
-const pdf = await composeBooklet(template, { style, childName: name, poses });
+const pdf = await composeBooklet(template, { style, childName: name, parentMessage: process.env.MESSAGE ?? "نحبك يا بطلنا، وفخورين فيك بكل خطوة تخطيها 💛", poses });
 await mkdir("tmp", { recursive: true });
 await writeFile("tmp/preview-booklet.pdf", pdf);
 console.log(`PDF: ${template.pages.length} pages, ${(pdf.length / 1e6).toFixed(1)} MB, ${((Date.now() - t) / 1000).toFixed(1)}s`);

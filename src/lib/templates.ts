@@ -7,16 +7,20 @@ export interface TemplateSlot {
   y_mm: number;
   width_mm: number;
   height_mm: number;
+  /** Draw on top of the overlay (e.g. inside a picture frame or sticker ring), without a floor shadow */
+  front?: boolean;
 }
 
 /** Text written per order, e.g. the child's name. `{name}` is replaced at compose time. */
 export interface TemplateText {
   value: string;
-  font: "display" | "body";
+  font: "display" | "body" | "title" | "hand";
   color: string;
   stroke: string | null;
-  /** Optional lettering effect: "3d" (logo style) or "gold" */
-  effect?: "3d" | "gold" | null;
+  /** Optional lettering effect: "epic" (3D gold titles), "3d" (navy) or "gold" */
+  effect?: "epic" | "3d" | "gold" | null;
+  /** Wrap onto several centered lines that fill the box (speech bubbles, messages) */
+  wrap?: boolean;
   x_mm: number;
   y_mm: number;
   width_mm: number;

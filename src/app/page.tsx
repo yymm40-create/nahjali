@@ -13,6 +13,8 @@ const STEPS = [
 ];
 
 const HABITS = [
+  "🗺️ خريطة رحلة ٢٨ يوم",
+  "💬 شخصيته تكلمه باسمه",
   "🕌 الصلوات الخمس",
   "📖 قراءة القرآن",
   "🪥 الأسنان وترتيب السرير",
@@ -20,6 +22,9 @@ const HABITS = [
   "🤍 السلام على صاحب الزمان",
   "✨ صلاة الليل",
   "📚 المذاكرة",
+  "✂️ ملصقات بشخصيته",
+  "💛 رسالة منكم له",
+  "👨‍👩‍👧 ركن الأهل",
 ];
 
 export default function Home() {
@@ -86,7 +91,7 @@ export default function Home() {
       {/* Inside the booklet */}
       <section className="card space-y-4 p-5">
         <h2 className="display text-3xl">وش داخل الكتيب؟</h2>
-        <p className="font-bold text-muted">صفحة لكل عادة، فيها شخصية طفلك ونجوم يلوّنها كل يوم، وفي النهاية شهادة تقدير باسمه.</p>
+        <p className="font-bold text-muted">١٦ صفحة: شخصية طفلك تعيش كل عادة وتكلّمه باسمه، وهدف أسبوعي «٥ من ٧» بدل الكمال، فإذا فاته يوم ما يخسر، وفي النهاية شهادة تقدير باسمه.</p>
         <div className="flex flex-wrap gap-2">
           {HABITS.map((h) => (
             <span key={h} className="chip">{h}</span>

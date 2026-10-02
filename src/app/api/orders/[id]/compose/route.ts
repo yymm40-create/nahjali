@@ -38,7 +38,12 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
       images[p.pose_key] = Buffer.from(await file.data.arrayBuffer());
     }
 
-    const pdf = await composeBooklet(template, { style: order.style, childName: order.child_name ?? "", poses: images });
+    const pdf = await composeBooklet(template, {
+      style: order.style,
+      childName: order.child_name ?? "",
+      parentMessage: order.parent_message ?? "",
+      poses: images,
+    });
     const path = `${order.user_id}/${order.id}/booklet.pdf`;
     const up = await db.storage.from(BUCKETS.booklets).upload(path, pdf, { contentType: "application/pdf", upsert: true });
     if (up.error) throw up.error;

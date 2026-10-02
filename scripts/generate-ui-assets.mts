@@ -33,6 +33,22 @@ const ASSETS: Record<string, { prompt: string; size: "1536x1024" | "1024x1024" |
     prompt: `A 3D round medal: glossy gold rim and ribbon loop on top with a turquoise ribbon, the inner circle is plain WHITE enamel (empty, for a child to color).`,
     size: "1024x1024",
   },
+  bubble: {
+    prompt: `A big rounded cloud-like speech bubble, glossy WHITE enamel with a thick shiny gold beveled rim, and a short rounded tail at the bottom-left corner pointing down. The inside is completely EMPTY and flat for text. Wide aspect, about 3 to 1.`,
+    size: "1536x1024",
+  },
+  stone: {
+    prompt: `One round glossy stepping-stone button seen slightly from above: thick shiny gold rim, small turquoise mosaic ring, and a flat plain WHITE center (empty, for a child to color).`,
+    size: "1024x1024",
+  },
+  ring: {
+    prompt: `A round sticker frame: thick ornate shiny gold ring with small turquoise mosaic gems and tiny gold stars around it, the inside is completely EMPTY and plain white.`,
+    size: "1024x1024",
+  },
+  arch: {
+    prompt: `A tall ornate picture frame shaped like an Islamic pointed arch (mihrab shape): thick glossy gold frame with turquoise and navy mosaic inlay and a small star on top. The inside of the arch is completely EMPTY and plain soft warm-ivory. Tall aspect, about 2 to 3.`,
+    size: "1024x1536",
+  },
   nameplate: {
     prompt: `A wide horizontal name plate: deep navy blue glossy enamel pill shape with a shiny gold beveled rim and small gold star ornaments at each end. The center is EMPTY. Wide aspect, about 5 to 1.`,
     size: "1536x1024",

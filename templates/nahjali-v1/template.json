@@ -15,286 +15,421 @@
     "studying"
   ],
   "scenes": [
-    "prayer-room-night"
+    "shrine-day",
+    "this-is-me",
+    "journey-map",
+    "prayer-room",
+    "quran-nook",
+    "bedroom-morning",
+    "bedroom-night",
+    "shrine-dawn",
+    "prayer-room-night",
+    "study-desk",
+    "pattern",
+    "shrine-night"
   ],
   "pages": [
     {
       "overlay": "overlays/page-01.png",
-      "scene": null,
-      "background": "pages/cover.jpg",
+      "scene": "shrine-day",
       "slots": [
         {
           "pose": "happy",
-          "x_mm": 70,
-          "y_mm": 120,
-          "width_mm": 70,
-          "height_mm": 88
+          "x_mm": 50,
+          "y_mm": 98,
+          "width_mm": 110,
+          "height_mm": 112,
+          "front": false
         }
       ],
       "texts": [
         {
           "value": "كتيب {name}",
-          "font": "display",
-          "color": "#14234a",
+          "font": "title",
+          "color": "#0d1d4f",
           "stroke": null,
-          "effect": "3d",
-          "x_mm": 64,
-          "y_mm": 62,
-          "width_mm": 91,
-          "height_mm": 22
+          "effect": "epic",
+          "wrap": false,
+          "x_mm": 8,
+          "y_mm": 50,
+          "width_mm": 194,
+          "height_mm": 32
         }
       ]
     },
     {
       "overlay": "overlays/page-02.png",
-      "scene": null,
-      "background": "pages/prayers.jpg",
+      "scene": "this-is-me",
       "slots": [
         {
-          "pose": "praying",
-          "x_mm": 8,
-          "y_mm": 65,
-          "width_mm": 84,
-          "height_mm": 128
+          "pose": "happy",
+          "x_mm": 14,
+          "y_mm": 62,
+          "width_mm": 76,
+          "height_mm": 108,
+          "front": true
         }
       ],
       "texts": [
         {
           "value": "{name}",
-          "font": "display",
-          "color": "#ffe08a",
+          "font": "title",
+          "color": "#ffd34d",
           "stroke": null,
           "effect": "gold",
-          "x_mm": 40,
-          "y_mm": 52,
-          "width_mm": 43,
-          "height_mm": 9
+          "wrap": false,
+          "x_mm": 20,
+          "y_mm": 181,
+          "width_mm": 66,
+          "height_mm": 11
+        },
+        {
+          "value": "{message}",
+          "font": "hand",
+          "color": "#0d1d4f",
+          "stroke": null,
+          "effect": null,
+          "wrap": true,
+          "x_mm": 112,
+          "y_mm": 140,
+          "width_mm": 84,
+          "height_mm": 54
         }
       ]
     },
     {
       "overlay": "overlays/page-03.png",
-      "scene": null,
-      "background": "pages/quran.jpg",
+      "scene": "journey-map",
       "slots": [
         {
-          "pose": "quran",
-          "x_mm": 4,
-          "y_mm": 76,
-          "width_mm": 72,
-          "height_mm": 124
+          "pose": "happy",
+          "x_mm": 164,
+          "y_mm": 150,
+          "width_mm": 32,
+          "height_mm": 46,
+          "front": false
         }
       ],
-      "texts": [
-        {
-          "value": "{name}",
-          "font": "display",
-          "color": "#ffe08a",
-          "stroke": null,
-          "effect": "gold",
-          "x_mm": 27,
-          "y_mm": 61,
-          "width_mm": 58,
-          "height_mm": 11
-        }
-      ]
+      "texts": []
     },
     {
       "overlay": "overlays/page-04.png",
-      "scene": null,
-      "background": "pages/morning.jpg",
+      "scene": "prayer-room",
       "slots": [
         {
-          "pose": "morning",
-          "x_mm": 4,
-          "y_mm": 68,
-          "width_mm": 88,
-          "height_mm": 130
+          "pose": "praying",
+          "x_mm": 0,
+          "y_mm": 66,
+          "width_mm": 104,
+          "height_mm": 142,
+          "front": false
         }
       ],
       "texts": [
         {
-          "value": "{name}",
-          "font": "display",
-          "color": "#ffe08a",
+          "value": "يا {name}، حان وقت الصلاة!",
+          "font": "hand",
+          "color": "#0d1d4f",
           "stroke": null,
-          "effect": "gold",
-          "x_mm": 20,
-          "y_mm": 55,
-          "width_mm": 55,
-          "height_mm": 9
+          "effect": null,
+          "wrap": true,
+          "x_mm": 15,
+          "y_mm": 42,
+          "width_mm": 76,
+          "height_mm": 18
         }
       ]
     },
     {
       "overlay": "overlays/page-05.png",
-      "scene": null,
-      "background": "pages/sleep.jpg",
+      "scene": "quran-nook",
       "slots": [
         {
-          "pose": "sleeping",
-          "x_mm": 8,
-          "y_mm": 72,
-          "width_mm": 88,
-          "height_mm": 128
+          "pose": "quran",
+          "x_mm": 0,
+          "y_mm": 66,
+          "width_mm": 104,
+          "height_mm": 142,
+          "front": false
         }
       ],
       "texts": [
         {
-          "value": "{name}",
-          "font": "display",
-          "color": "#ffe08a",
+          "value": "يا {name}، يلا نقرأ آية!",
+          "font": "hand",
+          "color": "#0d1d4f",
           "stroke": null,
-          "effect": "gold",
-          "x_mm": 33,
-          "y_mm": 57,
-          "width_mm": 52,
-          "height_mm": 11
+          "effect": null,
+          "wrap": true,
+          "x_mm": 15,
+          "y_mm": 42,
+          "width_mm": 76,
+          "height_mm": 18
         }
       ]
     },
     {
       "overlay": "overlays/page-06.png",
-      "scene": null,
-      "background": "pages/mahdi.jpg",
+      "scene": "bedroom-morning",
       "slots": [
         {
-          "pose": "salam",
-          "x_mm": 4,
-          "y_mm": 65,
-          "width_mm": 92,
-          "height_mm": 134
+          "pose": "morning",
+          "x_mm": 0,
+          "y_mm": 66,
+          "width_mm": 104,
+          "height_mm": 142,
+          "front": false
         }
       ],
       "texts": [
         {
-          "value": "{name}",
-          "font": "display",
-          "color": "#ffe08a",
+          "value": "صباح الخير يا {name}!",
+          "font": "hand",
+          "color": "#0d1d4f",
           "stroke": null,
-          "effect": "gold",
-          "x_mm": 17,
-          "y_mm": 50,
-          "width_mm": 52,
-          "height_mm": 11
+          "effect": null,
+          "wrap": true,
+          "x_mm": 15,
+          "y_mm": 42,
+          "width_mm": 76,
+          "height_mm": 18
         }
       ]
     },
     {
       "overlay": "overlays/page-07.png",
-      "scene": "prayer-room-night",
-      "background": null,
+      "scene": "bedroom-night",
       "slots": [
         {
-          "pose": "praying",
-          "x_mm": 4,
-          "y_mm": 52,
-          "width_mm": 100,
-          "height_mm": 150
+          "pose": "sleeping",
+          "x_mm": 0,
+          "y_mm": 66,
+          "width_mm": 104,
+          "height_mm": 142,
+          "front": false
         }
       ],
       "texts": [
         {
-          "value": "{name}",
-          "font": "display",
-          "color": "#ffe08a",
+          "value": "نومًا هنيئًا يا {name}!",
+          "font": "hand",
+          "color": "#0d1d4f",
           "stroke": null,
-          "effect": "gold",
-          "x_mm": 24,
-          "y_mm": 41.2,
-          "width_mm": 60,
-          "height_mm": 8.6
+          "effect": null,
+          "wrap": true,
+          "x_mm": 15,
+          "y_mm": 42,
+          "width_mm": 76,
+          "height_mm": 18
         }
       ]
     },
     {
       "overlay": "overlays/page-08.png",
-      "scene": null,
-      "background": "pages/study.jpg",
+      "scene": "shrine-dawn",
       "slots": [
         {
-          "pose": "studying",
-          "x_mm": 6,
-          "y_mm": 72,
-          "width_mm": 96,
-          "height_mm": 128
+          "pose": "salam",
+          "x_mm": 0,
+          "y_mm": 66,
+          "width_mm": 104,
+          "height_mm": 142,
+          "front": false
         }
       ],
       "texts": [
         {
-          "value": "{name}",
-          "font": "display",
-          "color": "#ffe08a",
+          "value": "يا {name}، لنُسلّم على إمامنا",
+          "font": "hand",
+          "color": "#0d1d4f",
           "stroke": null,
-          "effect": "gold",
-          "x_mm": 22,
-          "y_mm": 57,
-          "width_mm": 47,
-          "height_mm": 11
+          "effect": null,
+          "wrap": true,
+          "x_mm": 15,
+          "y_mm": 42,
+          "width_mm": 76,
+          "height_mm": 18
         }
       ]
     },
     {
       "overlay": "overlays/page-09.png",
-      "scene": null,
-      "background": "pages/daily.jpg",
+      "scene": "prayer-room-night",
+      "slots": [
+        {
+          "pose": "praying",
+          "x_mm": 0,
+          "y_mm": 66,
+          "width_mm": 104,
+          "height_mm": 142,
+          "front": false
+        }
+      ],
+      "texts": [
+        {
+          "value": "يا {name}، ركعة في الليل نور!",
+          "font": "hand",
+          "color": "#0d1d4f",
+          "stroke": null,
+          "effect": null,
+          "wrap": true,
+          "x_mm": 15,
+          "y_mm": 42,
+          "width_mm": 76,
+          "height_mm": 18
+        }
+      ]
+    },
+    {
+      "overlay": "overlays/page-10.png",
+      "scene": "study-desk",
+      "slots": [
+        {
+          "pose": "studying",
+          "x_mm": 0,
+          "y_mm": 66,
+          "width_mm": 104,
+          "height_mm": 142,
+          "front": false
+        }
+      ],
+      "texts": [
+        {
+          "value": "يا {name}، يلا نذاكر!",
+          "font": "hand",
+          "color": "#0d1d4f",
+          "stroke": null,
+          "effect": null,
+          "wrap": true,
+          "x_mm": 15,
+          "y_mm": 42,
+          "width_mm": 76,
+          "height_mm": 18
+        }
+      ]
+    },
+    {
+      "overlay": "overlays/page-11.png",
+      "scene": "pattern",
       "slots": [
         {
           "pose": "happy",
           "x_mm": 6,
-          "y_mm": 2,
-          "width_mm": 34,
-          "height_mm": 48
+          "y_mm": 0,
+          "width_mm": 38,
+          "height_mm": 44,
+          "front": false
         }
       ],
       "texts": []
     },
     {
-      "overlay": "overlays/page-10.png",
-      "scene": null,
-      "background": "pages/weekly.jpg",
+      "overlay": "overlays/page-12.png",
+      "scene": "pattern",
       "slots": [
         {
           "pose": "quran",
           "x_mm": 2,
           "y_mm": 92,
-          "width_mm": 62,
-          "height_mm": 114
+          "width_mm": 72,
+          "height_mm": 116,
+          "front": false
         }
       ],
       "texts": []
     },
     {
-      "overlay": "overlays/page-11.png",
-      "scene": null,
-      "background": "pages/certificate.jpg",
+      "overlay": "overlays/page-13.png",
+      "scene": "pattern",
       "slots": [
         {
           "pose": "happy",
-          "x_mm": 10,
-          "y_mm": 66,
+          "x_mm": 28,
+          "y_mm": 52,
+          "width_mm": 26,
+          "height_mm": 38,
+          "front": true
+        },
+        {
+          "pose": "praying",
+          "x_mm": 92,
+          "y_mm": 52,
+          "width_mm": 26,
+          "height_mm": 38,
+          "front": true
+        },
+        {
+          "pose": "quran",
+          "x_mm": 156,
+          "y_mm": 52,
+          "width_mm": 26,
+          "height_mm": 38,
+          "front": true
+        },
+        {
+          "pose": "morning",
+          "x_mm": 28,
+          "y_mm": 116,
+          "width_mm": 26,
+          "height_mm": 38,
+          "front": true
+        },
+        {
+          "pose": "sleeping",
+          "x_mm": 92,
+          "y_mm": 116,
+          "width_mm": 26,
+          "height_mm": 38,
+          "front": true
+        },
+        {
+          "pose": "studying",
+          "x_mm": 156,
+          "y_mm": 116,
+          "width_mm": 26,
+          "height_mm": 38,
+          "front": true
+        }
+      ],
+      "texts": []
+    },
+    {
+      "overlay": "overlays/page-14.png",
+      "scene": "pattern",
+      "slots": [],
+      "texts": []
+    },
+    {
+      "overlay": "overlays/page-15.png",
+      "scene": "pattern",
+      "slots": [
+        {
+          "pose": "happy",
+          "x_mm": 8,
+          "y_mm": 84,
           "width_mm": 82,
-          "height_mm": 126
+          "height_mm": 120,
+          "front": false
         }
       ],
       "texts": [
         {
           "value": "{name}",
-          "font": "display",
-          "color": "#14234a",
+          "font": "title",
+          "color": "#0d1d4f",
           "stroke": null,
-          "effect": "3d",
-          "x_mm": 108,
-          "y_mm": 84,
-          "width_mm": 70,
-          "height_mm": 11
+          "effect": "epic",
+          "wrap": false,
+          "x_mm": 100,
+          "y_mm": 66,
+          "width_mm": 96,
+          "height_mm": 24
         }
       ]
     },
     {
-      "overlay": "overlays/page-12.png",
-      "scene": null,
-      "background": "pages/back.jpg",
+      "overlay": "overlays/page-16.png",
+      "scene": "shrine-night",
       "slots": [],
       "texts": []
     }

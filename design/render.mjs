@@ -9,6 +9,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import puppeteer from "puppeteer-core";
+import sharp from "sharp";
 
 const id = process.argv[2] ?? "nahjali-v1";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,7 +46,9 @@ try {
     const n = String(i).padStart(2, "0");
     // Transparent overlay at 300 DPI (scale 2 on 1240px = 2480px for 210mm)
     const full = await open(`page=${i}`, width, height, 2);
-    await writeFile(path.join(out, "overlays", `page-${n}.png`), await full.screenshot({ type: "png", omitBackground: true }));
+    // Palette PNG keeps transparency and makes the booklet PDF much smaller with no visible change
+    const overlay = await full.screenshot({ type: "png", omitBackground: true });
+    await sharp(overlay).png({ palette: true, quality: 95, effort: 10 }).toFile(path.join(out, "overlays", `page-${n}.png`));
     await full.close();
 
     const guides = await open(`page=${i}&preview=1`, width, height, 1);

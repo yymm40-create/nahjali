@@ -2,61 +2,79 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<title>nahjali-v1 pages</title>
+<title>nahjali booklet pages</title>
 <!-- Fonts are bundled locally (design/fonts) so rendering works offline -->
 <link href="../fonts/fonts.css" rel="stylesheet">
 <link href="../fonts/amiri.css" rel="stylesheet">
+<link href="../fonts/v2.css" rel="stylesheet">
 <style>
   /* 1rem = 1mm on a 210mm square page rendered at 1240 CSS px (x2 = 2480px = 300 DPI) */
   html { font-size: 5.904762px; }
   *, *::before, *::after { box-sizing: border-box; }
   body { margin: 0; background: transparent; }
-  body.all { background: #888; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+  body.all { background: #555; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
   .page { position: relative; width: 210rem; height: 210rem; overflow: hidden; direction: rtl;
-    font-family: 'Baloo Bhaijaan 2', sans-serif; color: #14234a; }
-  .page.preview { background: linear-gradient(160deg, #9ad7e0, #f6e3b0 60%, #d9b47a); }
+    font-family: 'Baloo Bhaijaan 2', sans-serif; color: #0d1d4f; }
+  .page.preview { background: #9ad7e0; }
   .abs { position: absolute; }
-  :root { --gold: #e3a90f; --gold2: #ffe08a; --navy: #14234a; --teal: #12a3b4; --cream: rgba(255, 251, 238, 0.95); }
 
-  /* ── 3D pieces (design/nahjali-v1/assets, generated once) stretched with 9-slice borders ── */
-  .ribbon { display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.1; padding-top: 1.6rem;
-    border-style: solid; border-image: url(assets/plaque.png) 170 330 fill / 10rem 22rem; filter: drop-shadow(0 1.6rem 1.6rem rgba(10, 25, 60, .45)); }
-  .card { border-style: solid; border-image: url(assets/panel.png) 150 fill / 11rem; filter: drop-shadow(0 1.6rem 2rem rgba(10, 25, 60, .4)); }
+  /* ── Palette: lapis navy, turquoise, 3-tone gold, warm ivory, coral accent ── */
+  :root { --navy: #0d1d4f; --navy2: #1c3486; --teal: #12a9b8; --gold: #f5b50d; --ivory: #fff8e8; --coral: #ff7a59; }
+
+  /* ── 3D pieces (design/nahjali-v1/assets) stretched with 9-slice borders ── */
+  .plaque { display: flex; align-items: center; justify-content: center; text-align: center; padding-top: 1rem;
+    border-style: solid; border-image: url(assets/plaque.png) 170 330 fill / 11rem 23rem; filter: drop-shadow(0 1.6rem 1.6rem rgba(9, 20, 60, .45)); }
+  .card { border-style: solid; border-image: url(assets/panel.png) 150 fill / 11rem; filter: drop-shadow(0 1.6rem 2rem rgba(9, 20, 60, .4)); }
   .card > .inner { position: absolute; inset: 7rem 7.5rem; }
-  .name-tag { border-style: solid; border-image: url(assets/nameplate.png) 170 280 fill / 6.5rem 12rem; filter: drop-shadow(0 1.2rem 1.2rem rgba(0, 0, 0, .35)); }
+  .plate { display: flex; align-items: center; justify-content: center; border-style: solid;
+    border-image: url(assets/nameplate.png) 170 280 fill / 6.5rem 12rem; filter: drop-shadow(0 1.2rem 1.2rem rgba(0, 0, 0, .35)); }
+  .img { position: absolute; object-fit: contain; filter: drop-shadow(0 1.2rem 1.2rem rgba(9, 20, 60, .35)); }
 
-  /* 3D lettering in the logo style: turquoise face, gold rim, white edge, navy depth and soft shadow */
-  .t3d { position: relative; display: inline-block; isolation: isolate; font-family: "Lalezar"; white-space: nowrap; }
-  .t3d::before, .t3d::after { content: attr(data-text); position: absolute; inset: 0; }
-  .t3d::before { z-index: -2; color: #7a4a00; -webkit-text-stroke: .22em #7a4a00;
-    text-shadow: 0 .025em 0 #7a4a00, 0 .05em 0 #6a3f00, 0 .075em 0 #5a3500, 0 .1em 0 #4a2c00, 0 .18em .18em rgba(0, 0, 0, .35); }
-  .t3d::after { z-index: -1; color: #f6c64a; -webkit-text-stroke: .11em #f6c64a; }
-  .t3d .face { position: relative; z-index: 1; color: transparent;
-    background: linear-gradient(180deg, #2c4a8c 0%, #18306a 45%, #0b1d45 100%); -webkit-background-clip: text; background-clip: text; }
-  .t3d.gold .face { background: linear-gradient(180deg, #fff3b8 0%, #ffd34d 40%, #e0a10e 72%, #b87a06 100%); -webkit-background-clip: text; background-clip: text; }
-  .t3d.gold::after { color: #fff; -webkit-text-stroke: .1em #fff; }
+  /* ── Epic 3D lettering (Lemonada): 3-tone gold face + gloss, white outline, navy extrusion, soft shadow ── */
+  .t3 { position: relative; display: inline-block; isolation: isolate; font-family: 'Lemonada'; font-weight: 700; line-height: 1.3; white-space: nowrap; }
+  .t3::before, .t3::after { content: attr(data-text); position: absolute; inset: 0; }
+  .t3::before { z-index: -2; color: var(--navy); -webkit-text-stroke: .2em var(--navy);
+    text-shadow: 0 .02em 0 #0d1d4f, 0 .04em 0 #0d1d4f, 0 .06em 0 #0c1b49, 0 .08em 0 #0b1842, 0 .1em 0 #0a163b, 0 .2em .25em rgba(9, 20, 60, .45); }
+  .t3::after { z-index: -1; color: #fff; -webkit-text-stroke: .12em #fff; }
+  .t3 .face { position: relative; z-index: 1; color: transparent;
+    background: linear-gradient(180deg, #fff7cf 0%, #ffe066 22%, #f5b50d 52%, #c97c00 72%, #ffd65c 88%, #fff3b0 100%);
+    -webkit-background-clip: text; background-clip: text; }
+  .t3 .gloss { position: absolute; inset: 0; z-index: 2; color: transparent;
+    background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 38%, rgba(255,255,255,0) 44%);
+    -webkit-background-clip: text; background-clip: text; }
+  .t3.teal .face { background: linear-gradient(180deg, #d9fbff 0%, #5fe6f0 25%, #13b4c4 55%, #087c8c 78%, #4fdbe6 100%); -webkit-background-clip: text; background-clip: text; }
+  .t3.navy .face { background: linear-gradient(180deg, #4a6fd8 0%, #20409e 45%, #0d1d4f 100%); -webkit-background-clip: text; background-clip: text; }
+  .t3.navy::after { color: #ffd34d; -webkit-text-stroke: .12em #ffd34d; }
 
-  .line { font-size: 6.8rem; font-weight: 800; line-height: 1.45; color: #0f2350; text-shadow: 0 .25rem 0 #fff; }
-  .quote { font-family: "Amiri", serif; font-size: 4.6rem; line-height: 1.75; color: #0a4f5a; text-align: center; font-weight: 700; }
-  .quote.small { font-size: 3.5rem; line-height: 1.7; text-align: justify; font-weight: 400; }
+  .line { font-size: 6.6rem; font-weight: 800; line-height: 1.45; color: var(--navy); }
+  .quote { font-family: 'Amiri', serif; font-size: 4.5rem; line-height: 1.75; color: #0a4f5a; text-align: center; font-weight: 700; }
+  .quote.small { font-size: 3.45rem; line-height: 1.7; text-align: justify; font-weight: 400; color: #173058; }
   .quote .mark { color: #d99a0b; font-size: 1.2em; }
 
-  .tracker { display: grid; align-items: center; justify-items: center; row-gap: 1.6rem; }
+  /* 3D chips: turquoise for "even a little", gold for "when?" */
+  .chips { display: flex; flex-wrap: wrap; gap: 2rem; }
+  .chip { font-size: 3.7rem; font-weight: 800; border-radius: 10rem; padding: .9rem 3.2rem .5rem; white-space: nowrap;
+    box-shadow: inset 0 .6rem .4rem rgba(255, 255, 255, .45), 0 .8rem 0 rgba(0, 0, 0, .25), 0 1.4rem 1.6rem rgba(0, 0, 0, .25); }
+  .chip.teal { color: #fff; background: linear-gradient(180deg, #5fdde6, #12a3b4 55%, #0b7c8c); border: .5rem solid #f2c14e; text-shadow: 0 .3rem 0 #0b4f63; }
+  .chip.gold { color: var(--navy); background: linear-gradient(180deg, #fff1a8, #ffd34d 55%, #e9a50c); border: .5rem solid #fff; }
+
+  /* Tracker: weekly goal (5 of 7) — missing a day is fine */
+  .t-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.6rem; }
+  .goal { font-family: 'Lemonada'; font-weight: 700; font-size: 5rem; color: var(--navy); }
+  .goal b { color: #e08e00; }
+  .tracker { display: grid; align-items: center; justify-items: center; row-gap: 1.8rem; }
   .tracker .day { font-size: 2.7rem; font-weight: 800; color: #4a5a80; }
-  .tracker .lbl { font-size: 3.5rem; font-weight: 800; justify-self: start; line-height: 1.15; color: #0f2350; }
-  .t-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.8rem; }
-  .t-head .t3d { font-size: 6.6rem; }
-  .chip3d { font-size: 3.2rem; font-weight: 800; color: #fff; border-radius: 10rem; padding: .6rem 3rem .3rem;
-    background: linear-gradient(180deg, #5fdde6, #12a3b4 55%, #0b7c8c); border: .5rem solid #f2c14e;
-    box-shadow: inset 0 .6rem .4rem rgba(255, 255, 255, .45), 0 .8rem 0 #0b4f63, 0 1.4rem 1.6rem rgba(0, 0, 0, .3); text-shadow: 0 .3rem 0 #0b4f63; }
-  .medal-row { display: flex; align-items: center; justify-content: center; gap: 3rem; margin-top: 2rem;
-    font-size: 3.6rem; font-weight: 800; color: #0f2350; }
-  table.grid { border-collapse: separate; border-spacing: 0 1.1rem; width: 100%; }
-  table.grid th { font-size: 2.9rem; font-weight: 800; color: #5b6785; }
+  .tracker .lbl { font-size: 3.5rem; font-weight: 800; justify-self: start; line-height: 1.15; }
+  .medal-row { display: flex; align-items: center; justify-content: center; gap: 3rem; margin-top: 3.5rem; font-size: 4.2rem; font-weight: 800; }
+  table.grid { border-collapse: separate; border-spacing: 0 1rem; width: 100%; }
+  table.grid th { font-size: 2.9rem; font-weight: 800; color: #4a5a80; }
   table.grid td { text-align: center; }
   table.grid td.lbl { text-align: start; font-size: 3.5rem; font-weight: 800; white-space: nowrap; }
-  .slot-guide { border: .6rem dashed #e11; background: rgba(255,0,0,.06); display: grid; place-items: center; color: #e11; font-size: 5rem; font-weight: 800; text-align: center; }
-  .text-guide { border: .5rem dashed #06c; background: rgba(0,100,255,.08); display: grid; place-items: center; color: #06c; font-size: 4rem; font-weight: 800; }
+  .write-line { border-bottom: .5rem dotted #c79a3a; height: 9rem; }
+  .cut { position: absolute; border: .5rem dashed #8a6a2a; border-radius: 50%; }
+
+  .slot-guide { border: .6rem dashed #e11; background: rgba(255,0,0,.06); display: grid; place-items: center; color: #e11; font-size: 4.5rem; font-weight: 800; text-align: center; }
+  .text-guide { border: .5rem dashed #06c; background: rgba(0,100,255,.1); display: grid; place-items: center; color: #06c; font-size: 3.6rem; font-weight: 800; text-align: center; }
   pre { direction: ltr; background: #fff; padding: 12px; font-size: 12px; }
 </style>
 </head>
@@ -64,182 +82,277 @@
 <script>
 const P = new URLSearchParams(location.search);
 const DAYS = ['سبت', 'أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة'];
+const AR = (n) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]);
 
-const star = (s = 7) => `<img src="assets/star.png" style="width:${s}rem;height:${s}rem;object-fit:contain;filter:drop-shadow(0 .4rem .3rem rgba(0,0,0,.25))">`;
-const medal = (s = 13) => `<img src="assets/medal.png" style="height:${s}rem;filter:drop-shadow(0 .6rem .5rem rgba(0,0,0,.3))">`;
-/** 3D lettering helper (see .t3d) */
-const t3d = (text, cls = "") => `<span class="t3d ${cls}" data-text="${text}"><span class="face">${text}</span></span>`;
 const box = (x, y, w, h, cls, html, extra = '') =>
   `<div class="abs ${cls}" style="left:${x}rem;top:${y}rem;width:${w}rem;height:${h}rem;${extra}">${html}</div>`;
+const img = (name, x, y, w, h, extra = '') => `<img class="img" src="assets/${name}.png" style="left:${x}rem;top:${y}rem;width:${w}rem;height:${h}rem;${extra}">`;
+const star = (s) => `<img src="assets/star.png" style="width:${s}rem;height:${s}rem;object-fit:contain;filter:drop-shadow(0 .4rem .3rem rgba(0,0,0,.25))">`;
+const medal = (s) => `<img src="assets/medal.png" style="height:${s}rem;filter:drop-shadow(0 .6rem .5rem rgba(0,0,0,.3))">`;
+/** Epic 3D lettering (see .t3) */
+const t3 = (text, cls = '') => `<span class="t3 ${cls}" data-text="${text}"><span class="face">${text}</span><span class="gloss" aria-hidden="true">${text}</span></span>`;
+const plaque = (x, y, w, h, text, size, cls = '') => box(x, y, w, h, 'plaque', t3(text, cls), `font-size:${size}rem`);
 
-/** Weekly star tracker: rows × 7 days, with a medal to colour at the end of the week. */
-function tracker(title, chip, rows) {
+/** Weekly tracker with a 5-of-7 goal (research: weekly goals beat unbroken streaks). */
+function tracker(rows, starSize = rows.length === 1 ? 11 : rows.length === 2 ? 9.6 : 8) {
   const head = `<div></div>` + DAYS.map((d) => `<div class="day">${d}</div>`).join('');
-  const body = rows.map((r) => `<div class="lbl">${r}</div>` + DAYS.map(() => `<div>${star(7.6)}</div>`).join('')).join('');
-  return `<div class="t-head">${t3d(title)}<span class="chip3d">${chip}</span></div>
+  const body = rows.map((r) => `<div class="lbl">${r}</div>` + DAYS.map(() => `<div>${star(starSize)}</div>`).join('')).join('');
+  return `<div class="t-head"><span class="goal">هدفي: <b>٥ من ٧</b> ⭐</span>${medal(9)}</div>
     <div class="tracker" style="grid-template-columns:${rows.some(Boolean) ? '17rem' : '0'} repeat(7, 1fr)">${head}${body}</div>
-    <div class="medal-row">${medal()} أكملتُ الأسبوع؟ لوّن الوسام!</div>`;
+    <div class="medal-row">${medal(14)} حققت الهدف؟ لوّن الوسام!</div>`;
 }
 
 /**
- * Standard habit page: title ribbon, intro card (right), tracker card (right),
- * the child standing in the scene on the left with a name tag above.
+ * Habit page: big title, speech bubble with the child's name (written per order),
+ * the child big on the left standing in the scene, info card + weekly tracker on the right.
  */
 function habitPage(o) {
-  const slot = { pose: o.pose, x: 4, y: 52, w: 100, h: 150 };
+  const cardH = o.cardH ?? 64;
   return {
     scene: o.scene,
-    slots: [slot],
-    texts: [{ value: '{name}', font: 'display', color: '#ffe08a', effect: 'gold', x: 24, y: 41.2, w: 60, h: 8.6 }],
+    slots: [{ pose: o.pose, x: 0, y: 66, w: 104, h: 142 }],
+    texts: [{ value: o.bubble, font: 'hand', color: '#0d1d4f', x: 15, y: 42, w: 76, h: 18, wrap: true }],
     html: `
-      ${box(10, 4, 190, 34, 'ribbon', t3d(o.title), `font-size:${o.titleSize ?? 15.5}rem`)}
-      ${box(10, 39, 88, 13, 'name-tag', '')}
-      ${box(106, 40, 98, o.cardH ?? 62, 'card', `<div class="inner" style="display:flex;flex-direction:column;gap:2.5rem;justify-content:center">
+      ${plaque(4, 2, 202, 34, o.title, o.titleSize ?? 13)}
+      ${img('bubble', 3, 37, 98, 34, 'object-fit:fill')}
+      ${box(106, 38, 100, cardH, 'card', `<div class="inner" style="display:flex;flex-direction:column;gap:2.6rem;justify-content:center">
           <div class="line">${o.line}</div>
+          <div class="chips">${(o.chips ?? []).map(([cls, t]) => `<span class="chip ${cls}">${t}</span>`).join('')}</div>
           ${o.quote ? `<div class="quote ${o.quoteSmall ? 'small' : ''}">${o.quote}</div>` : ''}
         </div>`)}
-      ${box(106, 40 + (o.cardH ?? 62) + 5, 98, 210 - 40 - (o.cardH ?? 62) - 5 - 6, 'card', `<div class="inner" style="inset:6rem 6.5rem">${tracker(o.trackerTitle ?? 'نجوم أسبوعي', o.chip ?? 'لوّن نجمة كل يوم', o.rows ?? [''])}</div>`)}
+      ${box(106, 38 + cardH + 3, 100, 210 - 38 - cardH - 3 - 4, 'card', `<div class="inner" style="inset:6.5rem 6.5rem;display:flex;flex-direction:column;justify-content:center">${tracker(o.rows ?? [''])}</div>`)}
     `,
   };
 }
 
+const quran = (t) => `<span class="mark">﴿</span>${t}<span class="mark">﴾</span>`;
 const QUOTE_PRAYER = 'إِنَّ الصَّلَاةَ كَانَتْ عَلَى الْمُؤْمِنِينَ كِتَابًا مَّوْقُوتًا';
 const QUOTE_NIGHT = 'إِنَّ نَاشِئَةَ اللَّيْلِ هِيَ أَشَدُّ وَطْئًا وَأَقْوَمُ قِيلًا';
 const HADITH_MAHDI = 'رُوي عن الحسين بن علي بن أبي طالب (عليه السلام): «منّا اثنا عشر مهديًّا، أوّلهم أمير المؤمنين علي بن أبي طالب، وآخرهم التاسع من ولدي، وهو الإمام القائم بالحق، يُحيي الله به الأرض بعد موتها، ويُظهر به دين الحق على الدين كلّه ولو كره المشركون، له غيبة يرتدّ فيها أقوام ويثبت فيها على الدين آخرون».';
-const quran = (t) => `<span class="mark">﴿</span>${t}<span class="mark">﴾</span>`;
-
 const HABITS_DAILY = ['صلاة الفجر', 'صلاة الظهرين', 'صلاة العشاءين', 'قراءة القرآن', 'تفريش الأسنان', 'ترتيب السرير', 'النوم المبكر', 'الاستيقاظ المبكر', 'السلام على الإمام', 'صلاة الليل', 'المذاكرة'];
 const WEEKLY = ['دعاء كميل ليلة الجمعة', 'زيارة الأقارب', 'مساعدة أهلي في البيت', 'صدقة ولو بشيء بسيط', 'زيارة عاشوراء'];
+const TIPS = [
+  'احتفلوا بالجهد، مو بالكمال.',
+  'فات يوم؟ عادي! هدفنا ٥ من ٧، والمهم نكمل بكرة.',
+  'ابدأوا بالقليل: ولو آية، ولو ركعة.',
+  'اربطوا كل عادة بوقت ثابت في اليوم.',
+  'المدح أقوى من الهدايا: قولوا لطفلكم وش عجبكم بالضبط.',
+  'خلّوا طفلكم يلوّن ويلصق بنفسه.',
+];
+
+// ── Journey map: 28 steps along a winding road from home to the holy shrine ──
+const ROUTE = [[150, 186], [112, 190], [74, 186], [42, 174], [24, 152], [32, 130], [60, 118], [92, 118], [116, 104], [112, 86], [88, 80], [70, 70], [92, 58], [120, 52], [138, 42]];
+function catmull(pts, n) {
+  // Sample n points at equal distances along a smooth curve through pts
+  const dense = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    for (let t = 0; t < 1; t += 0.02) {
+      const t2 = t * t, t3_ = t2 * t;
+      dense.push([0, 1].map((k) => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3_)));
+    }
+  }
+  dense.push(pts[pts.length - 1]);
+  const len = [0];
+  for (let i = 1; i < dense.length; i++) len.push(len[i - 1] + Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]));
+  const out = [];
+  for (let s = 0; s < n; s++) {
+    const target = (len[len.length - 1] * s) / (n - 1);
+    const j = len.findIndex((l) => l >= target);
+    out.push(dense[Math.max(0, j)]);
+  }
+  return { points: out, dense };
+}
+function journeyMap() {
+  const { points, dense } = catmull(ROUTE, 28);
+  const d = `M${dense.map((p) => p.map((v) => v.toFixed(1)).join(' ')).join(' L')}`;
+  const road = `<svg class="abs" style="left:0;top:0;width:210rem;height:210rem" viewBox="0 0 210 210">
+    <path d="${d}" fill="none" stroke="rgba(60,40,10,.25)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 1.2)"/>
+    <path d="${d}" fill="none" stroke="#f6e6bb" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${d}" fill="none" stroke="#d1aa5c" stroke-width="0.9" stroke-dasharray="2 2.6"/></svg>`;
+  const stones = points.map(([x, y], i) => {
+    const n = i + 1;
+    if (n % 7 === 0) {
+      const s = n === 28 ? 24 : 16;
+      return img('medal', x - s / 2, y - s * 0.75, s, s * 1.2);
+    }
+    const s = 11.5;
+    return `${img('stone', x - s / 2, y - s / 2, s, s)}<div class="abs" style="left:${x - s / 2}rem;top:${y - s / 2 + 0.7}rem;width:${s}rem;height:${s}rem;display:grid;place-items:center;font-family:Lemonada;font-weight:700;font-size:4rem;color:#b47a00">${AR(n)}</div>`;
+  }).join('');
+  return road + stones;
+}
 
 const PAGES = [
   // 1 — cover
   {
     scene: 'shrine-day',
-    slots: [{ pose: 'happy', x: 68, y: 112, w: 74, h: 96 }],
-    texts: [{ value: 'كتيب {name}', font: 'display', color: '#14234a', effect: '3d', x: 10, y: 62, w: 190, h: 26 }],
+    slots: [{ pose: 'happy', x: 50, y: 98, w: 110, h: 112 }],
+    texts: [{ value: 'كتيب {name}', font: 'title', color: '#0d1d4f', effect: 'epic', x: 8, y: 50, w: 194, h: 32 }],
     html: `
-      <img class="abs" src="../../public/brand/logo.png" style="left:79rem;top:4rem;width:52rem">
-      ${box(38, 90, 134, 17, 'name-tag', t3d('رحلتي مع العادات الطيبة', 'gold'), 'font-size:8rem;display:flex;align-items:center;justify-content:center;padding-top:1.2rem')}
+      <img class="img" src="../../public/brand/logo.png" style="left:84rem;top:3rem;width:42rem">
+      ${box(38, 82, 134, 16, 'plate', t3('رحلتي مع العادات الطيبة', 'gold'), 'font-size:6.6rem;padding-top:1rem')}
     `,
   },
-  // 2 — prayers
-  habitPage({
-    scene: 'prayer-room', pose: 'praying', title: 'صلاتي نوري',
-    line: 'أُصلّي صلاتي في وقتها، وأتوجّه بقلبي إلى الله.',
-    quote: quran(QUOTE_PRAYER), cardH: 58,
-    trackerTitle: 'صلواتي', chip: 'نجمة لكل صلاة', rows: ['الفجر', 'الظهرين', 'العشاءين'],
-  }),
-  // 3 — Quran
-  habitPage({
-    scene: 'quran-nook', pose: 'quran', title: 'أقرأ القرآن كل يوم',
-    line: 'أقرأ من القرآن كل يوم، ولو آياتٍ قليلة، فكلام الله نورٌ لقلبي.', cardH: 54,
-  }),
-  // 4 — teeth & bed
-  habitPage({
-    scene: 'bedroom-morning', pose: 'morning', title: 'صباحي مرتّب',
-    line: 'أبدأ يومي بتفريش أسناني، وأرتّب سريري بنفسي.', cardH: 44,
-    rows: ['أسناني', 'سريري'],
-  }),
-  // 5 — sleep & wake early
-  habitPage({
-    scene: 'bedroom-night', pose: 'sleeping', title: 'أنام مبكرًا وأصحو نشيطًا',
-    titleSize: 11, line: 'أنام مبكرًا لأصحو للفجر نشيطًا وسعيدًا.', cardH: 44,
-    rows: ['نمتُ مبكرًا', 'صحوتُ مبكرًا'],
-  }),
-  // 6 — greeting Imam al-Mahdi
-  habitPage({
-    scene: 'shrine-dawn', pose: 'salam', title: 'السلامُ عليكَ يا صاحبَ الزمان',
-    titleSize: 9.5, line: 'أُسلّم على إمام زماني كل يوم، وأدعو بتعجيل فرجه.',
-    quote: HADITH_MAHDI, quoteSmall: true, cardH: 108,
-  }),
-  // 7 — night prayer
-  habitPage({
-    scene: 'prayer-room-night', pose: 'praying', title: 'صلاة الليل',
-    line: 'أصلّي صلاة الليل ولو ركعةً واحدة، في هدوء الليل مع الله.',
-    quote: quran(QUOTE_NIGHT), cardH: 62,
-  }),
-  // 8 — studying
-  habitPage({
-    scene: 'study-desk', pose: 'studying', title: 'أذاكر دروسي',
-    line: 'أذاكر دروسي كل يوم، فالعلم نورٌ يكبر معي.', cardH: 44,
-  }),
-  // 9 — daily tasks
+  // 2 — this is me
   {
-    scene: 'pattern',
-    slots: [{ pose: 'happy', x: 12, y: 1, w: 28, h: 42 }],
+    scene: 'this-is-me',
+    slots: [{ pose: 'happy', x: 14, y: 62, w: 76, h: 108, front: true }],
+    texts: [
+      { value: '{name}', font: 'title', color: '#ffd34d', effect: 'gold', x: 20, y: 181, w: 66, h: 11 },
+      { value: '{message}', font: 'hand', color: '#0d1d4f', x: 112, y: 140, w: 84, h: 54, wrap: true },
+    ],
+    html: `
+      ${plaque(4, 2, 202, 34, 'هذا أنا', 15)}
+      ${img('arch', 6, 38, 90, 138, 'object-fit:fill')}
+      ${box(8, 178, 86, 17, 'plate', '')}
+      ${box(100, 38, 106, 86, 'card', `<div class="inner" style="display:flex;flex-direction:column;gap:3.5rem;justify-content:center">
+          ${['عمري:', 'عادتي المفضلة:', 'أحب أن أكون:'].map((l) => `<div style="display:flex;align-items:flex-end;gap:2.5rem"><span class="line" style="white-space:nowrap">${l}</span><span class="write-line" style="flex:1"></span></div>`).join('')}
+        </div>`)}
+      ${box(100, 127, 106, 79, 'card', `<div class="inner" style="inset:6.5rem 7rem">
+          <div style="font-family:Lemonada;font-weight:700;font-size:5.4rem;color:#c0392b;text-align:center">رسالة من ماما وبابا 💛</div>
+          ${[0, 1, 2, 3].map(() => `<div class="write-line" style="height:11.5rem;opacity:.55"></div>`).join('')}
+        </div>`)}
+    `,
+  },
+  // 3 — journey map
+  {
+    scene: 'journey-map',
+    slots: [{ pose: 'happy', x: 164, y: 150, w: 32, h: 46 }],
     texts: [],
     html: `
-      ${box(46, 8, 158, 26, 'ribbon', 'مهامي اليومية', 'font-size:13rem')}
-      ${box(6, 44, 198, 160, 'card', `<div style="padding:3rem 4.5rem">
+      ${journeyMap()}
+      ${plaque(3, 3, 104, 28, 'رحلتي ٢٨ يوم', 9.5)}
+      ${box(6, 32, 98, 12, 'plate', `<span style="font-size:3.6rem;font-weight:800;color:#ffe08a">كل يوم أنجزت فيه عاداتي ألوّن خطوة</span>`)}
+    `,
+  },
+  // 4 — prayers
+  habitPage({
+    scene: 'prayer-room', pose: 'praying', title: 'صلاتي نوري', bubble: 'يا {name}، حان وقت الصلاة!',
+    line: 'أُصلّي صلاتي في وقتها', chips: [['gold', 'متى؟ أول ما يُؤذّن']],
+    quote: quran(QUOTE_PRAYER), cardH: 66, rows: ['الفجر', 'الظهرين', 'العشاءين'],
+  }),
+  // 5 — Quran
+  habitPage({
+    scene: 'quran-nook', pose: 'quran', title: 'أقرأ القرآن كل يوم', titleSize: 11.5, bubble: 'يا {name}، يلا نقرأ آية!',
+    line: 'كلام الله نورٌ لقلبي', chips: [['teal', 'ولو آيةً واحدة'], ['gold', 'متى؟ بعد صلاة الفجر']], cardH: 60,
+  }),
+  // 6 — morning
+  habitPage({
+    scene: 'bedroom-morning', pose: 'morning', title: 'صباحي مرتّب', bubble: 'صباح الخير يا {name}!',
+    line: 'أفرّش أسناني وأرتّب سريري بنفسي', chips: [['gold', 'متى؟ أول ما أصحى']], cardH: 60, rows: ['أسناني', 'سريري'],
+  }),
+  // 7 — sleep early
+  habitPage({
+    scene: 'bedroom-night', pose: 'sleeping', title: 'أنام مبكرًا وأصحو نشيطًا', titleSize: 9.5, bubble: 'نومًا هنيئًا يا {name}!',
+    line: 'أنام مبكرًا لأصحو للفجر نشيطًا', chips: [['gold', 'متى؟ بعد صلاة العشاء']], cardH: 60, rows: ['نمتُ مبكرًا', 'صحوتُ مبكرًا'],
+  }),
+  // 8 — greeting Imam al-Mahdi
+  habitPage({
+    scene: 'shrine-dawn', pose: 'salam', title: 'السلامُ عليكَ يا صاحبَ الزمان', titleSize: 8.4, bubble: 'يا {name}، لنُسلّم على إمامنا',
+    line: 'أُسلّم على إمام زماني كل يوم، وأدعو بتعجيل فرجه', chips: [['gold', 'متى؟ كل صباح']],
+    quote: HADITH_MAHDI, quoteSmall: true, cardH: 112,
+  }),
+  // 9 — night prayer
+  habitPage({
+    scene: 'prayer-room-night', pose: 'praying', title: 'صلاة الليل', bubble: 'يا {name}، ركعة في الليل نور!',
+    line: 'في هدوء الليل أصلّي لله', chips: [['teal', 'ولو ركعةً واحدة'], ['gold', 'متى؟ قبل الفجر']],
+    quote: quran(QUOTE_NIGHT), cardH: 76,
+  }),
+  // 10 — studying
+  habitPage({
+    scene: 'study-desk', pose: 'studying', title: 'أذاكر دروسي', bubble: 'يا {name}، يلا نذاكر!',
+    line: 'العلم نورٌ يكبر معي', chips: [['teal', 'ولو ١٠ دقائق'], ['gold', 'متى؟ بعد الغداء']], cardH: 60,
+  }),
+  // 11 — daily tasks
+  {
+    scene: 'pattern',
+    slots: [{ pose: 'happy', x: 6, y: 0, w: 38, h: 44 }],
+    texts: [],
+    html: `
+      ${plaque(46, 2, 160, 34, 'مهامي اليومية', 13)}
+      ${box(4, 40, 202, 166, 'card', `<div class="inner" style="inset:6rem 7rem">
+        <div style="text-align:center;margin-bottom:.5rem"><span class="goal">هدفي: <b>٥ من ٧</b> لكل عادة ⭐</span></div>
         <table class="grid"><thead><tr><th></th>${DAYS.map((d) => `<th>${d}</th>`).join('')}</tr></thead>
-        <tbody>${HABITS_DAILY.map((h) => `<tr><td class="lbl">${h}</td>${DAYS.map(() => `<td>${star(6.4)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+        <tbody>${HABITS_DAILY.map((h) => `<tr><td class="lbl">${h}</td>${DAYS.map(() => `<td>${star(7)}</td>`).join('')}</tr>`).join('')}</tbody></table>
       </div>`)}
     `,
   },
-  // 10 — weekly tasks
+  // 12 — weekly tasks
   {
     scene: 'pattern',
-    slots: [{ pose: 'quran', x: 2, y: 96, w: 72, h: 108 }],
+    slots: [{ pose: 'quran', x: 2, y: 92, w: 72, h: 116 }],
     texts: [],
     html: `
-      ${box(14, 8, 182, 26, 'ribbon', 'مهامي الأسبوعية', 'font-size:13rem')}
-      ${box(78, 44, 126, 160, 'card', `<div style="padding:4rem 4.5rem">
+      ${plaque(4, 2, 202, 34, 'مهامي الأسبوعية', 13)}
+      ${box(76, 40, 130, 166, 'card', `<div class="inner" style="inset:7rem 7rem">
         <table class="grid"><thead><tr><th></th>${['الأسبوع ١', 'الأسبوع ٢', 'الأسبوع ٣', 'الأسبوع ٤'].map((d) => `<th>${d}</th>`).join('')}</tr></thead>
-        <tbody>${WEEKLY.map((h) => `<tr style="height:19rem"><td class="lbl" style="white-space:normal;max-width:40rem;line-height:1.25">${h}</td>${[1, 2, 3, 4].map(() => `<td>${star(8)}</td>`).join('')}</tr>`).join('')}
-        <tr style="height:19rem"><td class="lbl" style="border-bottom:.5rem dashed #b9a46a;height:9rem"></td>${[1, 2, 3, 4].map(() => `<td>${star(8)}</td>`).join('')}</tr>
+        <tbody>${WEEKLY.map((h) => `<tr style="height:19rem"><td class="lbl" style="white-space:normal;max-width:38rem;line-height:1.25">${h}</td>${[1, 2, 3, 4].map(() => `<td>${star(9)}</td>`).join('')}</tr>`).join('')}
+        <tr style="height:19rem"><td class="lbl"><div class="write-line" style="height:7rem"></div></td>${[1, 2, 3, 4].map(() => `<td>${star(9)}</td>`).join('')}</tr>
         </tbody></table>
       </div>`)}
     `,
   },
-  // 11 — certificate
+  // 13 — stickers
+  (() => {
+    const poses = ['happy', 'praying', 'quran', 'morning', 'sleeping', 'studying'];
+    const rings = poses.map((_, i) => ({ x: 14 + (i % 3) * 64, y: 44 + Math.floor(i / 3) * 64 }));
+    const small = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ x: 12 + i * 24, y: 174, kind: i % 2 ? 'medal' : 'star' }));
+    return {
+      scene: 'pattern',
+      slots: rings.map((r, i) => ({ pose: poses[i], x: r.x + 14, y: r.y + 8, w: 26, h: 38, front: true })),
+      texts: [],
+      html: `
+        ${plaque(4, 2, 202, 34, 'ملصقاتي', 15)}
+        ${rings.map((r) => `<div class="cut" style="left:${r.x - 3}rem;top:${r.y - 3}rem;width:60rem;height:60rem"></div>${img('ring', r.x, r.y, 54, 54)}`).join('')}
+        ${small.map((s) => `<div class="cut" style="left:${s.x - 2}rem;top:${s.y - 2}rem;width:22rem;height:22rem"></div>${img(s.kind, s.x + 1, s.y + 1, 16, 16)}`).join('')}
+        ${box(28, 197, 154, 11, 'plate', `<span style="font-size:3.6rem;font-weight:800;color:#ffe08a">قصّ الملصق والصقه على خريطة رحلتي ✂️</span>`)}
+      `,
+    };
+  })(),
+  // 14 — parents' corner
   {
     scene: 'pattern',
-    slots: [{ pose: 'happy', x: 10, y: 92, w: 72, h: 108 }],
-    texts: [{ value: '{name}', font: 'display', color: '#14234a', effect: '3d', x: 90, y: 64, w: 100, h: 26 }],
+    slots: [],
+    texts: [],
     html: `
-      <div class="abs" style="inset:5rem;border:2.4rem solid var(--gold);border-radius:8rem;box-shadow:inset 0 0 0 1.2rem #fff,0 0 0 1.2rem #fff"></div>
-      ${box(30, 12, 150, 30, 'ribbon', 'شهادة تقدير', 'font-size:16rem')}
-      ${box(84, 50, 112, 140, 'card', `<div style="padding:5rem;display:flex;flex-direction:column;align-items:center;gap:3rem;text-align:center;height:100%">
-          <div class="line" style="font-size:6.4rem">تُمنح هذه الشهادة إلى</div>
-          <div style="height:26rem;width:100%;border-bottom:.6rem dashed #b9a46a"></div>
-          <div class="line" style="font-size:5.6rem">لإتمام رحلة العادات الطيبة<br>مع <span style="color:var(--gold)">نهج علي</span></div>
-          <div style="display:flex;gap:3rem">${medal(15)}${medal(15)}${medal(15)}</div>
+      ${plaque(4, 2, 202, 34, 'ركن الأهل', 15)}
+      ${box(8, 40, 194, 164, 'card', `<div class="inner" style="inset:9rem 10rem;display:flex;flex-direction:column;justify-content:space-around">
+        ${TIPS.map((t) => `<div style="display:flex;align-items:center;gap:4rem">${star(10)}<span class="line" style="font-size:6.2rem">${t}</span></div>`).join('')}
+      </div>`)}
+    `,
+  },
+  // 15 — certificate
+  {
+    scene: 'pattern',
+    slots: [{ pose: 'happy', x: 8, y: 84, w: 82, h: 120 }],
+    texts: [{ value: '{name}', font: 'title', color: '#0d1d4f', effect: 'epic', x: 100, y: 66, w: 96, h: 24 }],
+    html: `
+      <div class="abs" style="inset:4rem;border:2.6rem solid #e9a50c;border-radius:8rem;box-shadow:inset 0 0 0 1.2rem #fff,0 0 0 1.2rem #fff,inset 0 0 0 2.2rem #12a9b8"></div>
+      ${plaque(20, 9, 170, 36, 'شهادة تقدير', 16)}
+      ${box(92, 46, 112, 154, 'card', `<div class="inner" style="display:flex;flex-direction:column;align-items:center;gap:3rem;text-align:center">
+          <div class="line" style="font-size:6.2rem">تُمنح هذه الشهادة إلى</div>
+          <div style="height:26rem;width:100%;border-bottom:.6rem dashed #c79a3a"></div>
+          <div class="line" style="font-size:5.8rem">لإتمام رحلة العادات الطيبة<br>مع <span style="color:#e08e00">نهج علي</span></div>
+          <div style="display:flex;gap:3rem">${medal(16)}${medal(16)}${medal(16)}</div>
           <div class="line" style="font-size:4.6rem;display:flex;gap:4rem;width:100%;margin-top:auto">
-            <span style="flex:1;border-top:.5rem solid #14234a;padding-top:1rem">التاريخ</span>
-            <span style="flex:1;border-top:.5rem solid #14234a;padding-top:1rem">ولي الأمر</span>
+            <span style="flex:1;border-top:.5rem solid #0d1d4f;padding-top:1rem">التاريخ</span>
+            <span style="flex:1;border-top:.5rem solid #0d1d4f;padding-top:1rem">ولي الأمر</span>
           </div>
         </div>`)}
     `,
   },
-  // 12 — back cover
+  // 16 — back cover
   {
     scene: 'shrine-night',
     slots: [],
     texts: [],
     html: `
-      <img class="abs" src="../../public/brand/logo.png" style="left:70rem;top:52rem;width:70rem">
-      ${box(40, 140, 130, 14, 'ribbon', 'كتيب العادات الطيبة', 'font-size:7.5rem;border-width:.8rem')}
-      <div class="abs" style="left:20rem;top:162rem;width:170rem;text-align:center;font-size:5rem;font-weight:800;color:#fff;text-shadow:0 .6rem 2rem rgba(0,0,0,.6)">صُنع بحبّ لأطفالنا · على نهج أمير المؤمنين عليه السلام</div>
+      <img class="img" src="../../public/brand/logo.png" style="left:72rem;top:44rem;width:66rem">
+      ${plaque(30, 128, 150, 30, 'كتيب العادات الطيبة', 9)}
+      <div class="abs" style="left:20rem;top:162rem;width:170rem;text-align:center;font-size:5rem;font-weight:800;color:#fff;text-shadow:0 .6rem 2rem rgba(0,0,0,.7)">صُنع بحبّ لأطفالنا · على نهج أمير المؤمنين عليه السلام</div>
     `,
   },
 ];
-
-// ── Finished page artwork (pages/<name>.jpg, made by the owner): only the child and the name are added on top ──
-const nameOnPlate = (x, y, w, h) => ({ value: "{name}", font: "display", color: "#ffe08a", effect: "gold", x, y, w, h });
-const FULL_PAGES = {
-  0: { background: "cover", slots: [{ pose: "happy", x: 70, y: 120, w: 70, h: 88 }], texts: [{ value: "كتيب {name}", font: "display", color: "#14234a", effect: "3d", x: 64, y: 62, w: 91, h: 22 }] },
-  1: { background: "prayers", slots: [{ pose: "praying", x: 8, y: 65, w: 84, h: 128 }], texts: [nameOnPlate(40, 52, 43, 9)] },
-  2: { background: "quran", slots: [{ pose: "quran", x: 4, y: 76, w: 72, h: 124 }], texts: [nameOnPlate(27, 61, 58, 11)] },
-  3: { background: "morning", slots: [{ pose: "morning", x: 4, y: 68, w: 88, h: 130 }], texts: [nameOnPlate(20, 55, 55, 9)] },
-  4: { background: "sleep", slots: [{ pose: "sleeping", x: 8, y: 72, w: 88, h: 128 }], texts: [nameOnPlate(33, 57, 52, 11)] },
-  5: { background: "mahdi", slots: [{ pose: "salam", x: 4, y: 65, w: 92, h: 134 }], texts: [nameOnPlate(17, 50, 52, 11)] },
-  7: { background: "study", slots: [{ pose: "studying", x: 6, y: 72, w: 96, h: 128 }], texts: [nameOnPlate(22, 57, 47, 11)] },
-  8: { background: "daily", slots: [{ pose: "happy", x: 6, y: 2, w: 34, h: 48 }], texts: [] },
-  9: { background: "weekly", slots: [{ pose: "quran", x: 2, y: 92, w: 62, h: 114 }], texts: [] },
-  10: { background: "certificate", slots: [{ pose: "happy", x: 10, y: 66, w: 82, h: 126 }], texts: [{ value: "{name}", font: "display", color: "#14234a", effect: "3d", x: 108, y: 84, w: 70, h: 11 }] },
-  11: { background: "back", slots: [], texts: [] },
-};
-for (const [i, p] of Object.entries(FULL_PAGES)) PAGES[i] = { ...p, scene: null, html: "" };
 
 const TEMPLATE = {
   id: 'nahjali-v1',
@@ -250,19 +363,18 @@ const TEMPLATE = {
   pages: PAGES.map((p, i) => ({
     overlay: `overlays/page-${String(i + 1).padStart(2, '0')}.png`,
     scene: p.scene ?? null,
-    background: p.background ? `pages/${p.background}.jpg` : null,
-    slots: p.slots.map((s) => ({ pose: s.pose, x_mm: s.x, y_mm: s.y, width_mm: s.w, height_mm: s.h })),
-    texts: p.texts.map((t) => ({ value: t.value, font: t.font, color: t.color, stroke: t.stroke ?? null, effect: t.effect ?? null, x_mm: t.x, y_mm: t.y, width_mm: t.w, height_mm: t.h })),
+    slots: p.slots.map((s) => ({ pose: s.pose, x_mm: s.x, y_mm: s.y, width_mm: s.w, height_mm: s.h, front: s.front ?? false })),
+    texts: p.texts.map((t) => ({ value: t.value, font: t.font, color: t.color, stroke: t.stroke ?? null, effect: t.effect ?? null, wrap: t.wrap ?? false, x_mm: t.x, y_mm: t.y, width_mm: t.w, height_mm: t.h })),
   })),
 };
 
 function renderPage(p, preview) {
+  const scene = preview && p.scene ? `<img class="abs" src="../../templates/nahjali-v1/scenes/${p.scene}.jpg" style="left:0;top:0;width:210rem;height:210rem">` : '';
   const guides = preview
     ? p.slots.map((s) => box(s.x, s.y, s.w, s.h, 'slot-guide', `الطفل<br>${s.pose}`)).join('') +
       p.texts.map((t) => box(t.x, t.y, t.w, t.h, 'text-guide', t.value)).join('')
     : '';
-  const bg = preview && p.background ? `<img class="abs" src="../../templates/nahjali-v1/pages/${p.background}.jpg" style="inset:0;width:210rem;height:210rem">` : "";
-  return `<div class="page ${preview ? 'preview' : ''}">${bg}${p.html}${guides}</div>`;
+  return `<div class="page ${preview ? 'preview' : ''}">${scene}${p.html}${guides}</div>`;
 }
 
 if (P.has('json')) {
