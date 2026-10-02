@@ -51,6 +51,14 @@ try {
     await sharp(overlay).png({ palette: true, quality: 95, effort: 10 }).toFile(path.join(out, "overlays", `page-${n}.png`));
     await full.close();
 
+    // Coloured background layer (drawn behind the child), saved as a scene image
+    const scene = template.pages[i - 1].scene;
+    if (scene?.startsWith("bg-")) {
+      const bg = await open(`page=${i}&layer=bg`, width, height, 2);
+      await sharp(await bg.screenshot({ type: "png" })).jpeg({ quality: 90, mozjpeg: true }).toFile(path.join(out, "scenes", `${scene}.jpg`));
+      await bg.close();
+    }
+
     const guides = await open(`page=${i}&preview=1`, width, height, 1);
     await writeFile(path.join(preview, `page-${n}-guides.png`), await guides.screenshot({ type: "png" }));
     await guides.close();

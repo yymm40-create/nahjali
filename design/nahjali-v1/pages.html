@@ -15,7 +15,7 @@
   body.all { background: #555; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
   .page { position: relative; width: 210rem; height: 210rem; overflow: hidden; direction: rtl;
     font-family: 'Baloo Bhaijaan 2', sans-serif; color: #0d1d4f; }
-  .page.preview { background: #9ad7e0; }
+  .page.preview:not(.colored) { background: #9ad7e0; }
   .abs { position: absolute; }
 
   /* ── Palette: lapis navy, turquoise, 3-tone gold, warm ivory, coral accent ── */
@@ -73,6 +73,14 @@
   .write-line { border-bottom: .5rem dotted #c79a3a; height: 9rem; }
   .cut { position: absolute; border: .5rem dashed #8a6a2a; border-radius: 50%; }
 
+  /* ── Colourful page backgrounds (design A) with a soft dot pattern ── */
+  .page.colored { background-color: var(--bg); background-image: radial-gradient(var(--dot) .55rem, transparent .65rem); background-size: 7rem 7rem; }
+  /* Small framed picture (shrine, rooms…): gold frame, turquoise inner line, slight tilt */
+  .pic { position: absolute; border-radius: 6rem; padding: 2rem; background: linear-gradient(145deg, #fff3b8, #f5b50d 40%, #c97c00 70%, #ffe27a);
+    box-shadow: 0 1.6rem 2.4rem rgba(9, 20, 60, .45), inset 0 .5rem .4rem rgba(255, 255, 255, .6); }
+  .pic > img { width: 100%; height: 100%; object-fit: cover; border-radius: 4.4rem; border: .9rem solid #12a9b8; display: block; }
+  .sparkle { position: absolute; }
+
   .slot-guide { border: .6rem dashed #e11; background: rgba(255,0,0,.06); display: grid; place-items: center; color: #e11; font-size: 4.5rem; font-weight: 800; text-align: center; }
   .text-guide { border: .5rem dashed #06c; background: rgba(0,100,255,.1); display: grid; place-items: center; color: #06c; font-size: 3.6rem; font-weight: 800; text-align: center; }
   pre { direction: ltr; background: #fff; padding: 12px; font-size: 12px; }
@@ -93,6 +101,12 @@ const medal = (s) => `<img src="assets/medal.png" style="height:${s}rem;filter:d
 const t3 = (text, cls = '') => `<span class="t3 ${cls}" data-text="${text}"><span class="face">${text}</span><span class="gloss" aria-hidden="true">${text}</span></span>`;
 const plaque = (x, y, w, h, text, size, cls = '') => box(x, y, w, h, 'plaque', t3(text, cls), `font-size:${size}rem`);
 
+/** Framed picture of a scene (scenes are small framed pictures, not full backgrounds). */
+const pic = (scene, x, y, w, h, rot = 0) =>
+  `<div class="pic" style="left:${x}rem;top:${y}rem;width:${w}rem;height:${h}rem;transform:rotate(${rot}deg)"><img src="../../templates/nahjali-v1/scenes/${scene}.jpg"></div>`;
+const sparkle = (x, y, s, fill, rot = 0) =>
+  `<svg class="sparkle" style="left:${x}rem;top:${y}rem;width:${s}rem;height:${s}rem;transform:rotate(${rot}deg)" viewBox="0 0 24 24"><path d="M12 1c1 6 5 10 11 11-6 1-10 5-11 11-1-6-5-10-11-11C7 11 11 7 12 1z" fill="${fill}" stroke="#0d1d4f" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+
 /** Weekly tracker with a 5-of-7 goal (research: weekly goals beat unbroken streaks). */
 function tracker(rows, starSize = rows.length === 1 ? 11 : rows.length === 2 ? 9.6 : 8) {
   const head = `<div></div>` + DAYS.map((d) => `<div class="day">${d}</div>`).join('');
@@ -107,20 +121,25 @@ function tracker(rows, starSize = rows.length === 1 ? 11 : rows.length === 2 ? 9
  * the child big on the left standing in the scene, info card + weekly tracker on the right.
  */
 function habitPage(o) {
-  const cardH = o.cardH ?? 64;
+  const cardH = o.cardH ?? 46;
+  const picH = o.picH ?? 40;
+  const cardY = 39 + (picH ? picH + 4 : 0);
   return {
-    scene: o.scene,
+    bg: o.bg,
+    dot: o.dot,
     slots: [{ pose: o.pose, x: 0, y: 66, w: 104, h: 142 }],
     texts: [{ value: o.bubble, font: 'hand', color: '#0d1d4f', x: 15, y: 42, w: 76, h: 18, wrap: true }],
     html: `
+      ${sparkle(2, 182, 9, '#fff', 12)}${sparkle(94, 194, 7, '#ffd34d', -8)}
       ${plaque(4, 2, 202, 34, o.title, o.titleSize ?? 13)}
       ${img('bubble', 3, 37, 98, 34, 'object-fit:fill')}
-      ${box(106, 38, 100, cardH, 'card', `<div class="inner" style="display:flex;flex-direction:column;gap:2.6rem;justify-content:center">
+      ${picH ? pic(o.scene, 110, 39, 92, picH, 1.5) : ''}
+      ${box(106, cardY, 100, cardH, 'card', `<div class="inner" style="inset:6.5rem 7rem;display:flex;flex-direction:column;gap:2.2rem;justify-content:center">
           <div class="line">${o.line}</div>
           <div class="chips">${(o.chips ?? []).map(([cls, t]) => `<span class="chip ${cls}">${t}</span>`).join('')}</div>
           ${o.quote ? `<div class="quote ${o.quoteSmall ? 'small' : ''}">${o.quote}</div>` : ''}
         </div>`)}
-      ${box(106, 38 + cardH + 3, 100, 210 - 38 - cardH - 3 - 4, 'card', `<div class="inner" style="inset:6.5rem 6.5rem;display:flex;flex-direction:column;justify-content:center">${tracker(o.rows ?? [''])}</div>`)}
+      ${box(106, cardY + cardH + 3, 100, 210 - cardY - cardH - 3 - 4, 'card', `<div class="inner" style="inset:6.5rem 6.5rem;display:flex;flex-direction:column;justify-content:center">${tracker(o.rows ?? [''])}</div>`)}
     `,
   };
 }
@@ -182,26 +201,37 @@ function journeyMap() {
   return road + stones;
 }
 
+// Page colours (design A): one bold colour per page, soft dots
+const C = {
+  purple: ['#7B5CFF', 'rgba(255,255,255,.14)'], yellow: ['#FFD23F', 'rgba(0,0,0,.08)'], teal: ['#2EC4B6', 'rgba(0,0,0,.08)'],
+  orange: ['#FF8A3D', 'rgba(0,0,0,.08)'], pink: ['#FF4D8D', 'rgba(0,0,0,.08)'], navy: ['#25206B', 'rgba(255,255,255,.12)'],
+  lime: ['#C6F432', 'rgba(0,0,0,.08)'], sky: ['#5AB8F0', 'rgba(255,255,255,.18)'],
+};
+const colors = (k) => ({ bg: C[k][0], dot: C[k][1] });
+
 const PAGES = [
   // 1 — cover
   {
-    scene: 'shrine-day',
-    slots: [{ pose: 'happy', x: 50, y: 98, w: 110, h: 112 }],
+    ...colors('purple'),
+    slots: [{ pose: 'happy', x: 56, y: 104, w: 98, h: 104 }],
     texts: [{ value: 'كتيب {name}', font: 'title', color: '#0d1d4f', effect: 'epic', x: 8, y: 50, w: 194, h: 32 }],
     html: `
+      ${sparkle(6, 10, 14, '#fff', 10)}${sparkle(184, 14, 12, '#FF4D8D', -8)}${sparkle(190, 186, 10, '#fff')}${sparkle(8, 192, 9, '#C6F432')}
+      ${pic('shrine-day', 4, 112, 52, 52, -7)}${pic('shrine-night', 154, 116, 52, 52, 7)}
       <img class="img" src="../../public/brand/logo.png" style="left:84rem;top:3rem;width:42rem">
       ${box(38, 82, 134, 16, 'plate', t3('رحلتي مع العادات الطيبة', 'gold'), 'font-size:6.6rem;padding-top:1rem')}
     `,
   },
   // 2 — this is me
   {
-    scene: 'this-is-me',
+    ...colors('orange'),
     slots: [{ pose: 'happy', x: 14, y: 62, w: 76, h: 108, front: true }],
     texts: [
       { value: '{name}', font: 'title', color: '#ffd34d', effect: 'gold', x: 20, y: 181, w: 66, h: 11 },
       { value: '{message}', font: 'hand', color: '#0d1d4f', x: 112, y: 140, w: 84, h: 54, wrap: true },
     ],
     html: `
+      ${sparkle(96, 40, 8, '#fff', 15)}${sparkle(2, 196, 9, '#FFD23F')}
       ${plaque(4, 2, 202, 34, 'هذا أنا', 15)}
       ${img('arch', 6, 38, 90, 138, 'object-fit:fill')}
       ${box(8, 178, 86, 17, 'plate', '')}
@@ -214,7 +244,7 @@ const PAGES = [
         </div>`)}
     `,
   },
-  // 3 — journey map
+  // 3 — journey map (the map illustration stays full-page: it is the content)
   {
     scene: 'journey-map',
     slots: [{ pose: 'happy', x: 164, y: 150, w: 32, h: 46 }],
@@ -227,45 +257,45 @@ const PAGES = [
   },
   // 4 — prayers
   habitPage({
-    scene: 'prayer-room', pose: 'praying', title: 'صلاتي نوري', bubble: 'يا {name}، حان وقت الصلاة!',
+    ...colors('teal'), scene: 'prayer-room', pose: 'praying', title: 'صلاتي نوري', bubble: 'يا {name}، حان وقت الصلاة!',
     line: 'أُصلّي صلاتي في وقتها', chips: [['gold', 'متى؟ أول ما يُؤذّن']],
-    quote: quran(QUOTE_PRAYER), cardH: 66, rows: ['الفجر', 'الظهرين', 'العشاءين'],
+    quote: quran(QUOTE_PRAYER), picH: 34, cardH: 54, rows: ['الفجر', 'الظهرين', 'العشاءين'],
   }),
   // 5 — Quran
   habitPage({
-    scene: 'quran-nook', pose: 'quran', title: 'أقرأ القرآن كل يوم', titleSize: 11.5, bubble: 'يا {name}، يلا نقرأ آية!',
-    line: 'كلام الله نورٌ لقلبي', chips: [['teal', 'ولو آيةً واحدة'], ['gold', 'متى؟ بعد صلاة الفجر']], cardH: 60,
+    ...colors('yellow'), scene: 'quran-nook', pose: 'quran', title: 'أقرأ القرآن كل يوم', titleSize: 11.5, bubble: 'يا {name}، يلا نقرأ آية!',
+    line: 'كلام الله نورٌ لقلبي', chips: [['teal', 'ولو آيةً واحدة'], ['gold', 'متى؟ بعد صلاة الفجر']], picH: 46, cardH: 44,
   }),
   // 6 — morning
   habitPage({
-    scene: 'bedroom-morning', pose: 'morning', title: 'صباحي مرتّب', bubble: 'صباح الخير يا {name}!',
-    line: 'أفرّش أسناني وأرتّب سريري بنفسي', chips: [['gold', 'متى؟ أول ما أصحى']], cardH: 60, rows: ['أسناني', 'سريري'],
+    ...colors('orange'), scene: 'bedroom-morning', pose: 'morning', title: 'صباحي مرتّب', bubble: 'صباح الخير يا {name}!',
+    line: 'أفرّش أسناني وأرتّب سريري بنفسي', chips: [['gold', 'متى؟ أول ما أصحى']], picH: 40, cardH: 44, rows: ['أسناني', 'سريري'],
   }),
   // 7 — sleep early
   habitPage({
-    scene: 'bedroom-night', pose: 'sleeping', title: 'أنام مبكرًا وأصحو نشيطًا', titleSize: 9.5, bubble: 'نومًا هنيئًا يا {name}!',
-    line: 'أنام مبكرًا لأصحو للفجر نشيطًا', chips: [['gold', 'متى؟ بعد صلاة العشاء']], cardH: 60, rows: ['نمتُ مبكرًا', 'صحوتُ مبكرًا'],
+    ...colors('navy'), scene: 'bedroom-night', pose: 'sleeping', title: 'أنام مبكرًا وأصحو نشيطًا', titleSize: 9.5, bubble: 'نومًا هنيئًا يا {name}!',
+    line: 'أنام مبكرًا لأصحو للفجر نشيطًا', chips: [['gold', 'متى؟ بعد صلاة العشاء']], picH: 40, cardH: 44, rows: ['نمتُ مبكرًا', 'صحوتُ مبكرًا'],
   }),
-  // 8 — greeting Imam al-Mahdi
+  // 8 — greeting Imam al-Mahdi (long hadith: no picture, more room for the text)
   habitPage({
-    scene: 'shrine-dawn', pose: 'salam', title: 'السلامُ عليكَ يا صاحبَ الزمان', titleSize: 8.4, bubble: 'يا {name}، لنُسلّم على إمامنا',
+    ...colors('purple'), scene: 'shrine-dawn', pose: 'salam', title: 'السلامُ عليكَ يا صاحبَ الزمان', titleSize: 8.4, bubble: 'يا {name}، لنُسلّم على إمامنا',
     line: 'أُسلّم على إمام زماني كل يوم، وأدعو بتعجيل فرجه', chips: [['gold', 'متى؟ كل صباح']],
-    quote: HADITH_MAHDI, quoteSmall: true, cardH: 112,
+    quote: HADITH_MAHDI, quoteSmall: true, picH: 0, cardH: 112,
   }),
   // 9 — night prayer
   habitPage({
-    scene: 'prayer-room-night', pose: 'praying', title: 'صلاة الليل', bubble: 'يا {name}، ركعة في الليل نور!',
+    ...colors('navy'), scene: 'prayer-room-night', pose: 'praying', title: 'صلاة الليل', bubble: 'يا {name}، ركعة في الليل نور!',
     line: 'في هدوء الليل أصلّي لله', chips: [['teal', 'ولو ركعةً واحدة'], ['gold', 'متى؟ قبل الفجر']],
-    quote: quran(QUOTE_NIGHT), cardH: 76,
+    quote: quran(QUOTE_NIGHT), picH: 34, cardH: 62,
   }),
   // 10 — studying
   habitPage({
-    scene: 'study-desk', pose: 'studying', title: 'أذاكر دروسي', bubble: 'يا {name}، يلا نذاكر!',
-    line: 'العلم نورٌ يكبر معي', chips: [['teal', 'ولو ١٠ دقائق'], ['gold', 'متى؟ بعد الغداء']], cardH: 60,
+    ...colors('pink'), scene: 'study-desk', pose: 'studying', title: 'أذاكر دروسي', bubble: 'يا {name}، يلا نذاكر!',
+    line: 'العلم نورٌ يكبر معي', chips: [['teal', 'ولو ١٠ دقائق'], ['gold', 'متى؟ بعد الغداء']], picH: 46, cardH: 44,
   }),
   // 11 — daily tasks
   {
-    scene: 'pattern',
+    ...colors('lime'),
     slots: [{ pose: 'happy', x: 6, y: 0, w: 38, h: 44 }],
     texts: [],
     html: `
@@ -279,10 +309,12 @@ const PAGES = [
   },
   // 12 — weekly tasks
   {
-    scene: 'pattern',
+    ...colors('sky'),
     slots: [{ pose: 'quran', x: 2, y: 92, w: 72, h: 116 }],
     texts: [],
     html: `
+      ${sparkle(10, 50, 10, '#fff', 12)}${sparkle(50, 70, 7, '#FFD23F')}
+      ${pic('shrine-dawn', 8, 42, 62, 46, -4)}
       ${plaque(4, 2, 202, 34, 'مهامي الأسبوعية', 13)}
       ${box(76, 40, 130, 166, 'card', `<div class="inner" style="inset:7rem 7rem">
         <table class="grid"><thead><tr><th></th>${['الأسبوع ١', 'الأسبوع ٢', 'الأسبوع ٣', 'الأسبوع ٤'].map((d) => `<th>${d}</th>`).join('')}</tr></thead>
@@ -298,23 +330,24 @@ const PAGES = [
     const rings = poses.map((_, i) => ({ x: 14 + (i % 3) * 64, y: 44 + Math.floor(i / 3) * 64 }));
     const small = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ x: 12 + i * 24, y: 174, kind: i % 2 ? 'medal' : 'star' }));
     return {
-      scene: 'pattern',
+      ...colors('teal'),
       slots: rings.map((r, i) => ({ pose: poses[i], x: r.x + 14, y: r.y + 8, w: 26, h: 38, front: true })),
       texts: [],
       html: `
         ${plaque(4, 2, 202, 34, 'ملصقاتي', 15)}
-        ${rings.map((r) => `<div class="cut" style="left:${r.x - 3}rem;top:${r.y - 3}rem;width:60rem;height:60rem"></div>${img('ring', r.x, r.y, 54, 54)}`).join('')}
-        ${small.map((s) => `<div class="cut" style="left:${s.x - 2}rem;top:${s.y - 2}rem;width:22rem;height:22rem"></div>${img(s.kind, s.x + 1, s.y + 1, 16, 16)}`).join('')}
+        ${rings.map((r) => `<div class="cut" style="left:${r.x - 3}rem;top:${r.y - 3}rem;width:60rem;height:60rem;border-color:#0d1d4f"></div>${img('ring', r.x, r.y, 54, 54)}`).join('')}
+        ${small.map((s) => `<div class="cut" style="left:${s.x - 2}rem;top:${s.y - 2}rem;width:22rem;height:22rem;border-color:#0d1d4f"></div>${img(s.kind, s.x + 1, s.y + 1, 16, 16)}`).join('')}
         ${box(28, 197, 154, 11, 'plate', `<span style="font-size:3.6rem;font-weight:800;color:#ffe08a">قصّ الملصق والصقه على خريطة رحلتي ✂️</span>`)}
       `,
     };
   })(),
   // 14 — parents' corner
   {
-    scene: 'pattern',
+    ...colors('pink'),
     slots: [],
     texts: [],
     html: `
+      ${sparkle(4, 38, 9, '#fff', 10)}${sparkle(196, 196, 9, '#FFD23F')}
       ${plaque(4, 2, 202, 34, 'ركن الأهل', 15)}
       ${box(8, 40, 194, 164, 'card', `<div class="inner" style="inset:9rem 10rem;display:flex;flex-direction:column;justify-content:space-around">
         ${TIPS.map((t) => `<div style="display:flex;align-items:center;gap:4rem">${star(10)}<span class="line" style="font-size:6.2rem">${t}</span></div>`).join('')}
@@ -323,11 +356,12 @@ const PAGES = [
   },
   // 15 — certificate
   {
-    scene: 'pattern',
+    ...colors('lime'),
     slots: [{ pose: 'happy', x: 8, y: 84, w: 82, h: 120 }],
     texts: [{ value: '{name}', font: 'title', color: '#0d1d4f', effect: 'epic', x: 100, y: 66, w: 96, h: 24 }],
     html: `
       <div class="abs" style="inset:4rem;border:2.6rem solid #e9a50c;border-radius:8rem;box-shadow:inset 0 0 0 1.2rem #fff,0 0 0 1.2rem #fff,inset 0 0 0 2.2rem #12a9b8"></div>
+      ${sparkle(10, 52, 10, '#fff', 10)}${sparkle(70, 60, 8, '#FF4D8D')}
       ${plaque(20, 9, 170, 36, 'شهادة تقدير', 16)}
       ${box(92, 46, 112, 154, 'card', `<div class="inner" style="display:flex;flex-direction:column;align-items:center;gap:3rem;text-align:center">
           <div class="line" style="font-size:6.2rem">تُمنح هذه الشهادة إلى</div>
@@ -343,13 +377,15 @@ const PAGES = [
   },
   // 16 — back cover
   {
-    scene: 'shrine-night',
+    ...colors('navy'),
     slots: [],
     texts: [],
     html: `
-      <img class="img" src="../../public/brand/logo.png" style="left:72rem;top:44rem;width:66rem">
-      ${plaque(30, 128, 150, 30, 'كتيب العادات الطيبة', 9)}
-      <div class="abs" style="left:20rem;top:162rem;width:170rem;text-align:center;font-size:5rem;font-weight:800;color:#fff;text-shadow:0 .6rem 2rem rgba(0,0,0,.7)">صُنع بحبّ لأطفالنا · على نهج أمير المؤمنين عليه السلام</div>
+      ${sparkle(10, 12, 12, '#FFD23F', 10)}${sparkle(186, 20, 10, '#fff')}${sparkle(20, 186, 9, '#fff')}${sparkle(182, 180, 12, '#FFD23F', -10)}
+      ${pic('shrine-night', 30, 16, 150, 100, -2)}
+      <img class="img" src="../../public/brand/logo.png" style="left:84rem;top:112rem;width:42rem">
+      ${plaque(30, 160, 150, 26, 'كتيب العادات الطيبة', 8.5)}
+      <div class="abs" style="left:20rem;top:190rem;width:170rem;text-align:center;font-size:4.4rem;font-weight:800;color:#fff">صُنع بحبّ لأطفالنا · على نهج أمير المؤمنين عليه السلام</div>
     `,
   },
 ];
@@ -360,30 +396,39 @@ const TEMPLATE = {
   page_size_mm: { width: 210, height: 210 },
   poses: [...new Set(PAGES.flatMap((p) => p.slots.map((s) => s.pose)))],
   scenes: [...new Set(PAGES.map((p) => p.scene).filter(Boolean))],
-  pages: PAGES.map((p, i) => ({
-    overlay: `overlays/page-${String(i + 1).padStart(2, '0')}.png`,
-    scene: p.scene ?? null,
-    slots: p.slots.map((s) => ({ pose: s.pose, x_mm: s.x, y_mm: s.y, width_mm: s.w, height_mm: s.h, front: s.front ?? false })),
-    texts: p.texts.map((t) => ({ value: t.value, font: t.font, color: t.color, stroke: t.stroke ?? null, effect: t.effect ?? null, wrap: t.wrap ?? false, x_mm: t.x, y_mm: t.y, width_mm: t.w, height_mm: t.h })),
-  })),
+  pages: PAGES.map((p, i) => {
+    const n = String(i + 1).padStart(2, '0');
+    return {
+      overlay: `overlays/page-${n}.png`,
+      // Coloured pages get a rendered background image (behind the child); the map keeps its full illustration
+      scene: p.bg ? `bg-${n}` : p.scene ?? null,
+      slots: p.slots.map((s) => ({ pose: s.pose, x_mm: s.x, y_mm: s.y, width_mm: s.w, height_mm: s.h, front: s.front ?? false })),
+      texts: p.texts.map((t) => ({ value: t.value, font: t.font, color: t.color, stroke: t.stroke ?? null, effect: t.effect ?? null, wrap: t.wrap ?? false, x_mm: t.x, y_mm: t.y, width_mm: t.w, height_mm: t.h })),
+    };
+  }),
 };
 
-function renderPage(p, preview) {
-  const scene = preview && p.scene ? `<img class="abs" src="../../templates/nahjali-v1/scenes/${p.scene}.jpg" style="left:0;top:0;width:210rem;height:210rem">` : '';
-  const guides = preview
+/** mode: "overlay" (transparent content), "bg" (only the coloured background), "preview" (everything + guides). */
+function renderPage(p, mode) {
+  const colored = p.bg && mode !== 'overlay' ? 'colored' : '';
+  const style = p.bg ? `--bg:${p.bg};--dot:${p.dot}` : '';
+  if (mode === 'bg') return `<div class="page ${colored}" style="${style}"></div>`;
+  const scene = mode === 'preview' && p.scene && !p.bg ? `<img class="abs" src="../../templates/nahjali-v1/scenes/${p.scene}.jpg" style="left:0;top:0;width:210rem;height:210rem">` : '';
+  const guides = mode === 'preview'
     ? p.slots.map((s) => box(s.x, s.y, s.w, s.h, 'slot-guide', `الطفل<br>${s.pose}`)).join('') +
       p.texts.map((t) => box(t.x, t.y, t.w, t.h, 'text-guide', t.value)).join('')
     : '';
-  return `<div class="page ${preview ? 'preview' : ''}">${scene}${p.html}${guides}</div>`;
+  return `<div class="page ${colored} ${mode === 'preview' ? 'preview' : ''}" style="${style}">${scene}${p.html}${guides}</div>`;
 }
 
 if (P.has('json')) {
   document.body.innerHTML = `<pre id="json">${JSON.stringify(TEMPLATE, null, 2)}</pre>`;
 } else if (P.has('page')) {
-  document.body.innerHTML = renderPage(PAGES[Number(P.get('page')) - 1], P.has('preview'));
+  const mode = P.get('layer') === 'bg' ? 'bg' : P.has('preview') ? 'preview' : 'overlay';
+  document.body.innerHTML = renderPage(PAGES[Number(P.get('page')) - 1], mode);
 } else {
   document.body.className = 'all';
-  document.body.innerHTML = PAGES.map((p) => renderPage(p, true)).join('');
+  document.body.innerHTML = PAGES.map((p) => renderPage(p, 'preview')).join('');
 }
 </script>
 </body>

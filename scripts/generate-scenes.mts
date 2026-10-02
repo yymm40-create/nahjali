@@ -19,7 +19,7 @@ const style = flag("style", "pixar");
 if (!isStyle(style)) throw new Error(`Unknown style ${style}`);
 
 const template = JSON.parse(await readFile(`templates/${templateId}/template.json`, "utf8")) as { scenes: string[] };
-const sceneKeys = sceneArgs.length ? sceneArgs : template.scenes;
+const sceneKeys = (sceneArgs.length ? sceneArgs : template.scenes).filter((k) => k in SCENES);
 const openai = new OpenAI();
 
 {

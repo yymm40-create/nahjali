@@ -15,30 +15,19 @@
     "studying"
   ],
   "scenes": [
-    "shrine-day",
-    "this-is-me",
-    "journey-map",
-    "prayer-room",
-    "quran-nook",
-    "bedroom-morning",
-    "bedroom-night",
-    "shrine-dawn",
-    "prayer-room-night",
-    "study-desk",
-    "pattern",
-    "shrine-night"
+    "journey-map"
   ],
   "pages": [
     {
       "overlay": "overlays/page-01.png",
-      "scene": "shrine-day",
+      "scene": "bg-01",
       "slots": [
         {
           "pose": "happy",
-          "x_mm": 50,
-          "y_mm": 98,
-          "width_mm": 110,
-          "height_mm": 112,
+          "x_mm": 56,
+          "y_mm": 104,
+          "width_mm": 98,
+          "height_mm": 104,
           "front": false
         }
       ],
@@ -59,7 +48,7 @@
     },
     {
       "overlay": "overlays/page-02.png",
-      "scene": "this-is-me",
+      "scene": "bg-02",
       "slots": [
         {
           "pose": "happy",
@@ -114,7 +103,7 @@
     },
     {
       "overlay": "overlays/page-04.png",
-      "scene": "prayer-room",
+      "scene": "bg-04",
       "slots": [
         {
           "pose": "praying",
@@ -142,7 +131,7 @@
     },
     {
       "overlay": "overlays/page-05.png",
-      "scene": "quran-nook",
+      "scene": "bg-05",
       "slots": [
         {
           "pose": "quran",
@@ -170,7 +159,7 @@
     },
     {
       "overlay": "overlays/page-06.png",
-      "scene": "bedroom-morning",
+      "scene": "bg-06",
       "slots": [
         {
           "pose": "morning",
@@ -198,7 +187,7 @@
     },
     {
       "overlay": "overlays/page-07.png",
-      "scene": "bedroom-night",
+      "scene": "bg-07",
       "slots": [
         {
           "pose": "sleeping",
@@ -226,7 +215,7 @@
     },
     {
       "overlay": "overlays/page-08.png",
-      "scene": "shrine-dawn",
+      "scene": "bg-08",
       "slots": [
         {
           "pose": "salam",
@@ -254,7 +243,7 @@
     },
     {
       "overlay": "overlays/page-09.png",
-      "scene": "prayer-room-night",
+      "scene": "bg-09",
       "slots": [
         {
           "pose": "praying",
@@ -282,7 +271,7 @@
     },
     {
       "overlay": "overlays/page-10.png",
-      "scene": "study-desk",
+      "scene": "bg-10",
       "slots": [
         {
           "pose": "studying",
@@ -310,7 +299,7 @@
     },
     {
       "overlay": "overlays/page-11.png",
-      "scene": "pattern",
+      "scene": "bg-11",
       "slots": [
         {
           "pose": "happy",
@@ -325,7 +314,7 @@
     },
     {
       "overlay": "overlays/page-12.png",
-      "scene": "pattern",
+      "scene": "bg-12",
       "slots": [
         {
           "pose": "quran",
@@ -340,7 +329,7 @@
     },
     {
       "overlay": "overlays/page-13.png",
-      "scene": "pattern",
+      "scene": "bg-13",
       "slots": [
         {
           "pose": "happy",
@@ -395,13 +384,13 @@
     },
     {
       "overlay": "overlays/page-14.png",
-      "scene": "pattern",
+      "scene": "bg-14",
       "slots": [],
       "texts": []
     },
     {
       "overlay": "overlays/page-15.png",
-      "scene": "pattern",
+      "scene": "bg-15",
       "slots": [
         {
           "pose": "happy",
@@ -429,7 +418,7 @@
     },
     {
       "overlay": "overlays/page-16.png",
-      "scene": "shrine-night",
+      "scene": "bg-16",
       "slots": [],
       "texts": []
     }
