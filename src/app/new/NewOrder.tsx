@@ -36,6 +36,7 @@ export default function NewOrder(props: Props) {
   const [step, setStep] = useState(0);
   const [childName, setChildName] = useState("");
   const [gender, setGender] = useState<"boy" | "girl" | "">("");
+  const [parentMessage, setParentMessage] = useState("");
   const [style, setStyle] = useState(props.defaultStyle);
   const [quality, setQuality] = useState(props.defaultQuality);
   const [busy, setBusy] = useState(false);
@@ -60,6 +61,7 @@ export default function NewOrder(props: Props) {
         style,
         gender,
         childName: childName.trim(),
+        parentMessage: parentMessage.trim(),
       });
       router.push(next);
     });
@@ -144,6 +146,21 @@ export default function NewOrder(props: Props) {
               <p className="text-sm font-bold text-muted">تطلع البنت بالعباءة الزينبية الكاملة في كل الصفحات، بدون مكياج.</p>
             )}
           </div>
+          <label className="block space-y-2">
+            <span className="font-extrabold">
+              رسالة منكم لطفلكم <span className="text-sm text-muted">(اختياري)</span>
+            </span>
+            <textarea
+              className="field min-h-24 resize-none"
+              value={parentMessage}
+              onChange={(e) => setParentMessage(e.target.value.slice(0, 140))}
+              placeholder={`مثلًا: نحبك يا ${childName.trim() || "بطلنا"}، وفخورين فيك بكل خطوة 💛`}
+              maxLength={140}
+            />
+            <span className="block text-sm font-bold text-muted">
+              تنطبع في صفحة &quot;هذا أنا&quot;. إذا تركتوها فاضية، تبقى أسطر تكتبون فيها بخط يدكم. ({parentMessage.length}/١٤٠)
+            </span>
+          </label>
           <button className="btn btn-primary w-full" disabled={!nameOk || !gender} onClick={() => setStep(1)}>
             التالي
           </button>

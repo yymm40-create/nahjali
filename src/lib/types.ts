@@ -26,6 +26,7 @@ export interface Order {
   child_name: string | null;
   child_gender: Gender | null;
   style: StyleKey;
+  parent_message: string | null;
   created_at: string;
   updated_at: string;
 }

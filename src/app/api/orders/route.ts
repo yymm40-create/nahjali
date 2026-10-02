@@ -26,16 +26,20 @@ export const POST = handle(async (req: Request) => {
     style?: string;
     childName?: string;
     gender?: string;
+    parentMessage?: string;
   };
   const { templateId, quality, style, gender } = body;
   // Printed in the booklet: letters (Arabic/Latin) and single spaces only
   const childName = (body.childName ?? "").replace(/\s+/g, " ").trim();
+  // Optional, printed in the booklet: no control characters, max 140
+  const parentMessage = (body.parentMessage ?? "").replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim();
   const template = templateId ? await getTemplate(templateId) : null;
   if (!template) throw new UserError("القالب غير موجود.", 400);
   if (!isQuality(quality)) throw new UserError("اختر الجودة.", 400);
   if (!isStyle(style)) throw new UserError("اختر الستايل.", 400);
   if (gender !== "boy" && gender !== "girl") throw new UserError("اختر ولد أو بنت.", 400);
   if (!/^[\p{L}\p{M} ]{1,30}$/u.test(childName)) throw new UserError("اكتب اسم الطفل بالحروف فقط (٣٠ حرف كحد أقصى).", 400);
+  if (parentMessage.length > 140) throw new UserError("رسالة الأهل طويلة (١٤٠ حرف كحد أقصى).", 400);
 
   const db = createAdminClient();
   if (FREE_TRIAL) {
@@ -71,6 +75,7 @@ export const POST = handle(async (req: Request) => {
       style,
       child_name: childName,
       child_gender: gender,
+      parent_message: parentMessage || null,
       amount_halalas: QUALITY_TIERS[quality].price_halalas,
       attempts_allowed: ATTEMPTS_ALLOWED,
       is_trial: FREE_TRIAL,
