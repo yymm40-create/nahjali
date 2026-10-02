@@ -248,8 +248,12 @@ export async function runScriptJob(projectId: string, jobId: string) {
 
     const versions = await scriptVersions(projectId);
     const same = versions.filter((v) => v.kind === kind);
-    const pending = same.filter((v) => v.status === "awaiting_approval" || v.status === "draft").map((v) => v.id);
+    const pending = same
+      .filter((v) => v.status === "awaiting_approval" || v.status === "draft" || (kind === "handoff" && v.status === "approved"))
+      .map((v) => v.id);
     if (pending.length) await client.from("film_versions").update({ status: "superseded" }).in("id", pending);
+    // The handoff works in the background: it is kept (approved) for the next stage, never shown as a step
+    const isHandoff = kind === "handoff";
     const { error } = await client.from("film_versions").insert({
       project_id: projectId,
       stage: STAGE,
@@ -257,10 +261,12 @@ export async function runScriptJob(projectId: string, jobId: string) {
       version: (same.at(-1)?.version ?? 0) + 1,
       body: reply.content,
       data: { notes: reply.notes, questions: kind === "questions" ? reply.questions : undefined },
-      status: "awaiting_approval",
+      status: isHandoff ? "approved" : "awaiting_approval",
+      approved_at: isHandoff ? new Date().toISOString() : null,
       created_by: "assistant",
     });
     if (error) throw error;
+    if (isHandoff) await client.from("film_projects").update({ stage: "sheets" }).eq("id", projectId);
 
     await succeedJob(jobId, { costUsd: claudeCost(usage), units: totalTokens(usage) });
   } catch (err) {

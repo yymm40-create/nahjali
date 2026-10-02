@@ -23,7 +23,7 @@ export default async function ScriptPage({ params }: PageProps<"/film/[id]/scrip
         <Link href={`/film/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">✍️ السيناريست</h1>
         <p className="text-sm font-bold text-muted">
-          يمشي على برومبت «السيناريست الذكي» من الدورة: الفهم ← الأسئلة ← القصة المطوّرة ← السيناريو ← رسالة التسليم.
+          يمشي على برومبت «السيناريست الذكي» من الدورة: الفهم ← الأسئلة ← القصة المطوّرة ← السيناريو، وبعدها ينتقل تلقائيًا لصانع الشيت.
           تكلفة النصوص إلى الآن: <span dir="ltr">${scriptCost.toFixed(2)}</span>
         </p>
       </header>

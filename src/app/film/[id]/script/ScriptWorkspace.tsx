@@ -65,7 +65,8 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   }
 
   const latest = (kind: ScriptKind) => versions.filter((v) => v.kind === kind).at(-1);
-  const shown = KIND_ORDER.map(latest).filter(Boolean) as ScriptVersion[];
+  // The handoff is built in the background and passed on to the next stage; it is not a step the user sees
+  const shown = KIND_ORDER.filter((k) => k !== "handoff").map(latest).filter(Boolean) as ScriptVersion[];
   const current = [...versions].sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
   const failed = job?.status === "failed" && !running;
 
@@ -111,9 +112,9 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
             {v.kind === "questions" && isCurrent ? (
               <QuestionsForm version={v} busy={busy || running} onSubmit={(answers) => send({ action: "answers", versionId: v.id, answers })} />
             ) : (
-              <details open={isCurrent || v.kind === "handoff"} className="group">
+              <details open={isCurrent} className="group">
                 <summary className="cursor-pointer text-sm font-extrabold text-muted group-open:hidden">اعرض النص</summary>
-                <Markdown text={v.body} />
+                <Markdown text={v.body} highlightRequests={isCurrent} />
                 {v.kind === "questions" && v.data.answers && (
                   <div className="mt-3 rounded-2xl bg-surface-2 p-3 text-sm font-bold">
                     <p className="mb-1">إجاباتك:</p>
@@ -149,13 +150,12 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
               <div className="space-y-2">
                 <div className="flex gap-2">
                   <button className="btn btn-primary flex-1" disabled={busy} onClick={() => send({ action: "approve", versionId: v.id })}>
-                    {v.kind === "handoff" ? "اعتمد رسالة التسليم ✅" : "اعتمد ✅"}
+                    اعتمد ✅
                   </button>
                   <button className="btn btn-ghost flex-1" disabled={busy} onClick={() => setReviseFor(reviseFor === v.id ? null : v.id)}>
                     اطلب تعديل ✏️
                   </button>
                 </div>
-                {v.kind === "handoff" && <CopyButton text={v.body} />}
               </div>
             )}
             {!isCurrent && v.status === "approved" && !running && v.kind !== "questions" && (
@@ -193,7 +193,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
         <div className="card flex items-center gap-3 p-5" role="status">
           <Spinner />
           <div>
-            <p className="font-extrabold">السيناريست يكتب…</p>
+            <p className="font-extrabold">{latest("screenplay")?.status === "approved" ? "ننقل السيناريو لصانع الشيت…" : "السيناريست يكتب…"}</p>
             <p className="text-sm font-bold text-muted">ممكن ياخذ من دقيقة إلى ٣ دقائق. تقدر تسكّر الصفحة وترجع، الرد ينحفظ.</p>
           </div>
         </div>
@@ -210,8 +210,8 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
 
       {stage !== "screenwriter" && (
         <div className="card space-y-2 p-5 text-center">
-          <p className="text-lg font-extrabold">✅ رسالة التسليم ١ معتمدة</p>
-          <p className="text-sm font-bold text-muted">الخطوة الجاية صانع الشيت، وينضاف في المرحلة الجاية من التطوير.</p>
+          <p className="text-lg font-extrabold">✅ السيناريو معتمد وانتقل لصانع الشيت</p>
+          <p className="text-sm font-bold text-muted">صانع الشيت ينضاف في المرحلة الجاية من التطوير.</p>
         </div>
       )}
 
@@ -252,22 +252,3 @@ function QuestionsForm({ version, busy, onSubmit }: { version: ScriptVersion; bu
   );
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      className="btn btn-ghost w-full"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-          setDone(true);
-          setTimeout(() => setDone(false), 2000);
-        } catch {
-          setDone(false);
-        }
-      }}
-    >
-      {done ? "✅ انتسخت" : "📋 انسخ رسالة التسليم"}
-    </button>
-  );
-}
