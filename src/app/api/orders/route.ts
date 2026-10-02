@@ -9,6 +9,7 @@ import {
   FREE_TRIAL,
   FREE_TRIAL_DAILY_LIMIT,
   FREE_TRIAL_MAX_ORDERS,
+  hasUnlimitedTrials,
   isQuality,
   QUALITY_TIERS,
 } from "@config/pricing";
@@ -42,7 +43,7 @@ export const POST = handle(async (req: Request) => {
   if (parentMessage.length > 140) throw new UserError("رسالة الأهل طويلة (١٤٠ حرف كحد أقصى).", 400);
 
   const db = createAdminClient();
-  if (FREE_TRIAL) {
+  if (FREE_TRIAL && !hasUnlimitedTrials(user.email)) {
     const { count } = await db
       .from("orders")
       .select("id", { count: "exact", head: true })

@@ -101,7 +101,12 @@ export default function NewOrder(props: Props) {
     <div className="space-y-6">
       {freeTrial && (
         <p className="chip w-full justify-center py-2 text-base">
-          🎁 {noTrialsLeft ? "استخدمت كل تجاربك المجانية" : `مجاني بالكامل · باقي لك ${trialsLeft} ${trialsLeft === 1 ? "تجربة" : "تجارب"}`}
+          🎁{" "}
+          {noTrialsLeft
+            ? "استخدمت كل تجاربك المجانية"
+            : trialsLeft === null
+              ? "مجاني بالكامل · تجارب غير محدودة لحسابك"
+              : `مجاني بالكامل · باقي لك ${trialsLeft} ${trialsLeft === 1 ? "تجربة" : "تجارب"}`}
         </p>
       )}
       <Steps labels={["الطفل", "الستايل", "الجودة"]} current={step} />

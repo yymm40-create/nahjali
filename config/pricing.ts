@@ -20,6 +20,10 @@ export const DEFAULT_QUALITY: QualityKey = "medium";
  */
 export const FREE_TRIAL = true;
 export const FREE_TRIAL_MAX_ORDERS = 2;
+/** Owner/test accounts: no free-trial limits (they need to test freely). */
+export const UNLIMITED_TRIAL_EMAILS = ["yymm40@gmail.com"];
+export const hasUnlimitedTrials = (email: string | undefined | null) =>
+  Boolean(email && UNLIMITED_TRIAL_EMAILS.includes(email.toLowerCase()));
 /** Site-wide cap on free orders per day (Riyadh time), to protect the OpenAI budget. */
 export const FREE_TRIAL_DAILY_LIMIT = 20;
 

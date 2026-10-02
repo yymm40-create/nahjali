@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   // Template folders are read from disk at runtime, so ship them with the server functions on Vercel
   outputFileTracingIncludes: {
     "/api/**/*": ["./templates/**/*", "./config/style-reference.png", "./assets/fonts/**/*", "./node_modules/harfbuzzjs/dist/*.wasm"],
+    // The order page reads the template list
+    "/new": ["./templates/*/template.json"],
   },
   // sharp is a native module; keep it out of the bundle
   serverExternalPackages: ["sharp", "harfbuzzjs"],
