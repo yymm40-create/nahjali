@@ -1,4 +1,7 @@
 tmp
+.next
+node_modules
 design/*/preview
 .env*
 !.env.example
+*.pdf
