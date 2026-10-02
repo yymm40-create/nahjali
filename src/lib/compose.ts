@@ -158,12 +158,14 @@ async function shapeLine(font: HbFont, text: string) {
  * Sizes are fractions of the font size (em), like the CSS titles in the booklet design.
  */
 const EFFECTS = {
+  /** Design A sticker lettering: white face, thick black outline, hard diagonal shadow */
+  sticker: { stops: ["#ffffff", "#ffffff"], depth: "#111111", outer: "#111111", outerEm: 0.07, rim: null, rimEm: 0, depthEm: 0.1, diagonal: true },
   /** Epic 3D title (matches .t3): 3-tone gold face, white rim, navy outline and extrusion */
-  epic: { stops: ["#fff7cf", "#ffe066", "#f5b50d", "#c97c00", "#ffd65c"], depth: "#0d1d4f", outer: "#0d1d4f", outerEm: 0.1, rim: "#ffffff", rimEm: 0.06, depthEm: 0.1 },
+  epic: { stops: ["#fff7cf", "#ffe066", "#f5b50d", "#c97c00", "#ffd65c"], depth: "#0d1d4f", outer: "#0d1d4f", outerEm: 0.1, rim: "#ffffff", rimEm: 0.06, depthEm: 0.1, diagonal: false },
   /** Navy face, gold rim, white edge, bronze depth */
-  "3d": { stops: ["#2c4a8c", "#18306a", "#0b1d45"], depth: "#6a3f00", outer: "#ffffff", outerEm: 0.15, rim: "#f6c64a", rimEm: 0.08, depthEm: 0.11 },
+  "3d": { stops: ["#2c4a8c", "#18306a", "#0b1d45"], depth: "#6a3f00", outer: "#ffffff", outerEm: 0.15, rim: "#f6c64a", rimEm: 0.08, depthEm: 0.11, diagonal: false },
   /** Gold lettering for dark plates (name tags) */
-  gold: { stops: ["#fff3b8", "#ffd34d", "#e0a10e", "#b87a06"], depth: null, outer: null, outerEm: 0, rim: null, rimEm: 0, depthEm: 0 },
+  gold: { stops: ["#fff3b8", "#ffd34d", "#e0a10e", "#b87a06"], depth: null, outer: null, outerEm: 0, rim: null, rimEm: 0, depthEm: 0, diagonal: false },
 } as const;
 
 function layers(t: TemplateText, upem: number, ascender: number, descender: number) {
@@ -181,7 +183,7 @@ function layers(t: TemplateText, upem: number, ascender: number, descender: numb
   const stops = fx.stops.map((c, i) => `<stop offset="${i / (fx.stops.length - 1)}" stop-color="${c}"/>`).join("");
   let svg = `<defs><linearGradient id="f" gradientUnits="userSpaceOnUse" x1="0" y1="${ascender * 0.8}" x2="0" y2="${descender * 0.3}">${stops}</linearGradient></defs>`;
   if (fx.depth) {
-    for (let k = depth; k > 0; k -= depth / 5) svg += layer(`transform="translate(0 ${-k})" fill="${fx.depth}" stroke="${fx.depth}" stroke-width="${outer * 2}"`);
+    for (let k = depth; k > 0; k -= depth / 5) svg += layer(`transform="translate(${fx.diagonal ? k : 0} ${-k})" fill="${fx.depth}" stroke="${fx.depth}" stroke-width="${outer * 2}"`);
   }
   if (fx.outer) svg += layer(`fill="${fx.outer}" stroke="${fx.outer}" stroke-width="${outer * 2}"`);
   if (fx.rim) svg += layer(`fill="${fx.rim}" stroke="${fx.rim}" stroke-width="${fx.rimEm * upem * 2}"`);

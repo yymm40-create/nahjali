@@ -18,7 +18,7 @@ export interface TemplateText {
   color: string;
   stroke: string | null;
   /** Optional lettering effect: "epic" (3D gold titles), "3d" (navy) or "gold" */
-  effect?: "epic" | "3d" | "gold" | null;
+  effect?: "epic" | "3d" | "gold" | "sticker" | null;
   /** Wrap onto several centered lines that fill the box (speech bubbles, messages) */
   wrap?: boolean;
   x_mm: number;

@@ -14,71 +14,57 @@
   body { margin: 0; background: transparent; }
   body.all { background: #555; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
   .page { position: relative; width: 210rem; height: 210rem; overflow: hidden; direction: rtl;
-    font-family: 'Baloo Bhaijaan 2', sans-serif; color: #0d1d4f; }
+    font-family: 'Baloo Bhaijaan 2', sans-serif; color: #14234a; }
   .page.preview:not(.colored) { background: #9ad7e0; }
   .abs { position: absolute; }
+  :root { --ink: #111; --navy: #14234a; --gold: #e3a90f; --gold2: #ffe08a; --teal: #12a3b4; }
 
-  /* ── Palette: lapis navy, turquoise, 3-tone gold, warm ivory, coral accent ── */
-  :root { --navy: #0d1d4f; --navy2: #1c3486; --teal: #12a9b8; --gold: #f5b50d; --ivory: #fff8e8; --coral: #ff7a59; }
-
-  /* ── 3D pieces (design/nahjali-v1/assets) stretched with 9-slice borders ── */
-  .plaque { display: flex; align-items: center; justify-content: center; text-align: center; padding-top: 1rem;
-    border-style: solid; border-image: url(assets/plaque.png) 170 330 fill / 11rem 23rem; filter: drop-shadow(0 1.6rem 1.6rem rgba(9, 20, 60, .45)); }
-  .card { border-style: solid; border-image: url(assets/panel.png) 150 fill / 11rem; filter: drop-shadow(0 1.6rem 2rem rgba(9, 20, 60, .4)); }
-  .card > .inner { position: absolute; inset: 7rem 7.5rem; }
-  .plate { display: flex; align-items: center; justify-content: center; border-style: solid;
-    border-image: url(assets/nameplate.png) 170 280 fill / 6.5rem 12rem; filter: drop-shadow(0 1.2rem 1.2rem rgba(0, 0, 0, .35)); }
-  .img { position: absolute; object-fit: contain; filter: drop-shadow(0 1.2rem 1.2rem rgba(9, 20, 60, .35)); }
-
-  /* ── Epic 3D lettering (Lemonada): 3-tone gold face + gloss, white outline, navy extrusion, soft shadow ── */
-  .t3 { position: relative; display: inline-block; isolation: isolate; font-family: 'Lemonada'; font-weight: 700; line-height: 1.3; white-space: nowrap; }
-  .t3::before, .t3::after { content: attr(data-text); position: absolute; inset: 0; }
-  .t3::before { z-index: -2; color: var(--navy); -webkit-text-stroke: .2em var(--navy);
-    text-shadow: 0 .02em 0 #0d1d4f, 0 .04em 0 #0d1d4f, 0 .06em 0 #0c1b49, 0 .08em 0 #0b1842, 0 .1em 0 #0a163b, 0 .2em .25em rgba(9, 20, 60, .45); }
-  .t3::after { z-index: -1; color: #fff; -webkit-text-stroke: .12em #fff; }
-  .t3 .face { position: relative; z-index: 1; color: transparent;
-    background: linear-gradient(180deg, #fff7cf 0%, #ffe066 22%, #f5b50d 52%, #c97c00 72%, #ffd65c 88%, #fff3b0 100%);
-    -webkit-background-clip: text; background-clip: text; }
-  .t3 .gloss { position: absolute; inset: 0; z-index: 2; color: transparent;
-    background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 38%, rgba(255,255,255,0) 44%);
-    -webkit-background-clip: text; background-clip: text; }
-  .t3.teal .face { background: linear-gradient(180deg, #d9fbff 0%, #5fe6f0 25%, #13b4c4 55%, #087c8c 78%, #4fdbe6 100%); -webkit-background-clip: text; background-clip: text; }
-  .t3.navy .face { background: linear-gradient(180deg, #4a6fd8 0%, #20409e 45%, #0d1d4f 100%); -webkit-background-clip: text; background-clip: text; }
-  .t3.navy::after { color: #ffd34d; -webkit-text-stroke: .12em #ffd34d; }
+  /* ── Design A: white cards with thick black outlines and hard offset shadows ── */
+  .plaque { display: flex; align-items: center; justify-content: center; text-align: center;
+    background: #fff; border: .8rem solid var(--ink); border-radius: 5rem; box-shadow: 1.6rem 1.6rem 0 var(--ink);
+    transform: rotate(-1.5deg); padding-top: 1.4rem; }
+  .card { background: #fff; border: .8rem solid var(--ink); border-radius: 6rem; box-shadow: 1.6rem 1.6rem 0 var(--ink); }
+  .card > .inner { position: absolute; inset: 4.5rem 5rem; }
+  .plate { display: flex; align-items: center; justify-content: center; background: var(--navy); border: 1rem solid #fff;
+    border-radius: 10rem; box-shadow: 0 1rem 2rem rgba(0, 0, 0, .3); }
+  .ttl { font-family: 'Lalezar'; line-height: 1.2; color: var(--navy); white-space: nowrap; }
+  .ttl.gold { color: var(--gold2); }
+  .bubble { position: absolute; background: #fff; border: .8rem solid var(--ink); border-radius: 12rem; box-shadow: 1.4rem 1.4rem 0 var(--ink); }
+  .bubble::after { content: ''; position: absolute; left: 14rem; bottom: -7.4rem; width: 9rem; height: 9rem; background: #fff;
+    border-right: .8rem solid var(--ink); border-bottom: .8rem solid var(--ink); transform: skewX(-25deg) rotate(30deg); border-bottom-right-radius: 2rem; }
+  .frame-arch { position: absolute; background: #fff; border: .8rem solid var(--ink); border-radius: 45rem 45rem 6rem 6rem; box-shadow: 1.6rem 1.6rem 0 var(--ink); }
+  .ring { position: absolute; background: #fff; border: .8rem solid var(--ink); border-radius: 50%; box-shadow: 1.2rem 1.2rem 0 var(--ink); }
+  .stone { position: absolute; display: grid; place-items: center; background: #fff; border: .6rem solid var(--ink); border-radius: 50%;
+    box-shadow: .8rem .8rem 0 var(--ink); font-family: 'Lalezar'; font-size: 4.6rem; color: #888; padding-top: .8rem; }
 
   .line { font-size: 6.6rem; font-weight: 800; line-height: 1.45; color: var(--navy); }
-  .quote { font-family: 'Amiri', serif; font-size: 4.5rem; line-height: 1.75; color: #0a4f5a; text-align: center; font-weight: 700; }
+  .quote { font-family: 'Amiri', serif; font-size: 4.5rem; line-height: 1.75; color: #0e5a66; text-align: center; font-weight: 700; }
   .quote.small { font-size: 3.45rem; line-height: 1.7; text-align: justify; font-weight: 400; color: #173058; }
-  .quote .mark { color: #d99a0b; font-size: 1.2em; }
-
-  /* 3D chips: turquoise for "even a little", gold for "when?" */
+  .quote .mark { color: var(--gold); font-size: 1.2em; }
   .chips { display: flex; flex-wrap: wrap; gap: 2rem; }
-  .chip { font-size: 3.7rem; font-weight: 800; border-radius: 10rem; padding: .9rem 3.2rem .5rem; white-space: nowrap;
-    box-shadow: inset 0 .6rem .4rem rgba(255, 255, 255, .45), 0 .8rem 0 rgba(0, 0, 0, .25), 0 1.4rem 1.6rem rgba(0, 0, 0, .25); }
-  .chip.teal { color: #fff; background: linear-gradient(180deg, #5fdde6, #12a3b4 55%, #0b7c8c); border: .5rem solid #f2c14e; text-shadow: 0 .3rem 0 #0b4f63; }
-  .chip.gold { color: var(--navy); background: linear-gradient(180deg, #fff1a8, #ffd34d 55%, #e9a50c); border: .5rem solid #fff; }
+  .chip { font-size: 3.6rem; font-weight: 800; border-radius: 10rem; padding: .6rem 3rem .3rem; white-space: nowrap; border: .5rem solid var(--ink); }
+  .chip.teal { background: var(--teal); color: #fff; }
+  .chip.gold { background: #111; color: #fff; }
 
-  /* Tracker: weekly goal (5 of 7) — missing a day is fine */
-  .t-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.6rem; }
-  .goal { font-family: 'Lemonada'; font-weight: 700; font-size: 5rem; color: var(--navy); }
-  .goal b { color: #e08e00; }
-  .tracker { display: grid; align-items: center; justify-items: center; row-gap: 1.8rem; }
-  .tracker .day { font-size: 2.7rem; font-weight: 800; color: #4a5a80; }
+  .t-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.8rem; }
+  .goal { font-family: 'Lalezar'; font-size: 6.2rem; color: var(--navy); padding-top: 1rem; }
+  .goal b { color: var(--gold); font-weight: 400; }
+  .tracker { display: grid; align-items: center; justify-items: center; row-gap: 2rem; }
+  .tracker .day { font-size: 2.7rem; font-weight: 800; color: #5b6785; }
   .tracker .lbl { font-size: 3.5rem; font-weight: 800; justify-self: start; line-height: 1.15; }
-  .medal-row { display: flex; align-items: center; justify-content: center; gap: 3rem; margin-top: 3.5rem; font-size: 4.2rem; font-weight: 800; }
+  .medal-row { display: flex; align-items: center; justify-content: center; gap: 3rem; margin-top: 3rem; font-size: 4rem; font-weight: 800; }
   table.grid { border-collapse: separate; border-spacing: 0 1rem; width: 100%; }
-  table.grid th { font-size: 2.9rem; font-weight: 800; color: #4a5a80; }
+  table.grid th { font-size: 2.9rem; font-weight: 800; color: #5b6785; }
   table.grid td { text-align: center; }
   table.grid td.lbl { text-align: start; font-size: 3.5rem; font-weight: 800; white-space: nowrap; }
-  .write-line { border-bottom: .5rem dotted #c79a3a; height: 9rem; }
-  .cut { position: absolute; border: .5rem dashed #8a6a2a; border-radius: 50%; }
+  .write-line { border-bottom: .5rem dashed #111; height: 9rem; }
+  .cut { position: absolute; border: .5rem dashed #111; border-radius: 50%; }
 
   /* ── Colourful page backgrounds (design A) with a soft dot pattern ── */
   .page.colored { background-color: var(--bg); background-image: radial-gradient(var(--dot) .55rem, transparent .65rem); background-size: 7rem 7rem; }
-  /* Small framed picture (shrine, rooms…): gold frame, turquoise inner line, slight tilt */
-  .pic { position: absolute; border-radius: 6rem; padding: 2rem; background: linear-gradient(145deg, #fff3b8, #f5b50d 40%, #c97c00 70%, #ffe27a);
-    box-shadow: 0 1.6rem 2.4rem rgba(9, 20, 60, .45), inset 0 .5rem .4rem rgba(255, 255, 255, .6); }
-  .pic > img { width: 100%; height: 100%; object-fit: cover; border-radius: 4.4rem; border: .9rem solid #12a9b8; display: block; }
+  /* Small framed picture: white border, black outline, hard shadow, slight tilt */
+  .pic { position: absolute; background: #fff; padding: 2rem; border: .8rem solid var(--ink); border-radius: 5rem; box-shadow: 1.6rem 1.6rem 0 var(--ink); }
+  .pic > img { width: 100%; height: 100%; object-fit: cover; border-radius: 3rem; display: block; }
   .sparkle { position: absolute; }
 
   .slot-guide { border: .6rem dashed #e11; background: rgba(255,0,0,.06); display: grid; place-items: center; color: #e11; font-size: 4.5rem; font-weight: 800; text-align: center; }
@@ -94,18 +80,17 @@ const AR = (n) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]);
 
 const box = (x, y, w, h, cls, html, extra = '') =>
   `<div class="abs ${cls}" style="left:${x}rem;top:${y}rem;width:${w}rem;height:${h}rem;${extra}">${html}</div>`;
-const img = (name, x, y, w, h, extra = '') => `<img class="img" src="assets/${name}.png" style="left:${x}rem;top:${y}rem;width:${w}rem;height:${h}rem;${extra}">`;
-const star = (s) => `<img src="assets/star.png" style="width:${s}rem;height:${s}rem;object-fit:contain;filter:drop-shadow(0 .4rem .3rem rgba(0,0,0,.25))">`;
-const medal = (s) => `<img src="assets/medal.png" style="height:${s}rem;filter:drop-shadow(0 .6rem .5rem rgba(0,0,0,.3))">`;
-/** Epic 3D lettering (see .t3) */
-const t3 = (text, cls = '') => `<span class="t3 ${cls}" data-text="${text}"><span class="face">${text}</span><span class="gloss" aria-hidden="true">${text}</span></span>`;
-const plaque = (x, y, w, h, text, size, cls = '') => box(x, y, w, h, 'plaque', t3(text, cls), `font-size:${size}rem`);
-
+const img = (name, x, y, w, h, extra = '') => ''; // 3D image pieces are not used in design A
+const star = (s) => `<svg width="${s}rem" height="${s}rem" viewBox="0 0 24 24"><path d="m12 2.2 2.9 6.1 6.7.8-4.9 4.6 1.3 6.6L12 17l-6 3.3 1.3-6.6-4.9-4.6 6.7-.8z" fill="#fff" stroke="#14234a" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+const medal = (s) => `<svg width="${s}rem" height="${s}rem" viewBox="0 0 48 48"><path d="M15 2h7l4 12h-7zM33 2h-7l-4 12h7z" fill="#12a3b4" stroke="#14234a" stroke-width="1.5"/><circle cx="24" cy="30" r="15" fill="#fff" stroke="#e3a90f" stroke-width="3"/><circle cx="24" cy="30" r="10.5" fill="none" stroke="#14234a" stroke-width="1.5" stroke-dasharray="2 2"/></svg>`;
+/** Title text (design A: Lalezar, no 3D effect) */
+const t3 = (text, cls = '') => `<span class="ttl ${cls}">${text}</span>`;
+const plaque = (x, y, w, h, text, size) => box(x, y, w, h, 'plaque', t3(text), `font-size:${size}rem`);
 /** Framed picture of a scene (scenes are small framed pictures, not full backgrounds). */
 const pic = (scene, x, y, w, h, rot = 0) =>
   `<div class="pic" style="left:${x}rem;top:${y}rem;width:${w}rem;height:${h}rem;transform:rotate(${rot}deg)"><img src="../../templates/nahjali-v1/scenes/${scene}.jpg"></div>`;
 const sparkle = (x, y, s, fill, rot = 0) =>
-  `<svg class="sparkle" style="left:${x}rem;top:${y}rem;width:${s}rem;height:${s}rem;transform:rotate(${rot}deg)" viewBox="0 0 24 24"><path d="M12 1c1 6 5 10 11 11-6 1-10 5-11 11-1-6-5-10-11-11C7 11 11 7 12 1z" fill="${fill}" stroke="#0d1d4f" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+  `<svg class="sparkle" style="left:${x}rem;top:${y}rem;width:${s}rem;height:${s}rem;transform:rotate(${rot}deg)" viewBox="0 0 24 24"><path d="M12 1c1 6 5 10 11 11-6 1-10 5-11 11-1-6-5-10-11-11C7 11 11 7 12 1z" fill="${fill}" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
 
 /** Weekly tracker with a 5-of-7 goal (research: weekly goals beat unbroken streaks). */
 function tracker(rows, starSize = rows.length === 1 ? 11 : rows.length === 2 ? 9.6 : 8) {
@@ -128,11 +113,11 @@ function habitPage(o) {
     bg: o.bg,
     dot: o.dot,
     slots: [{ pose: o.pose, x: 0, y: 66, w: 104, h: 142 }],
-    texts: [{ value: o.bubble, font: 'hand', color: '#0d1d4f', x: 15, y: 42, w: 76, h: 18, wrap: true }],
+    texts: [{ value: o.bubble, font: 'display', color: '#14234a', x: 13, y: 42, w: 78, h: 20, wrap: true }],
     html: `
       ${sparkle(2, 182, 9, '#fff', 12)}${sparkle(94, 194, 7, '#ffd34d', -8)}
-      ${plaque(4, 2, 202, 34, o.title, o.titleSize ?? 13)}
-      ${img('bubble', 3, 37, 98, 34, 'object-fit:fill')}
+      ${plaque(4, 2, 202, 34, o.title, o.titleSize ?? 18)}
+      <div class="bubble" style="left:5rem;top:38rem;width:94rem;height:28rem"></div>
       ${picH ? pic(o.scene, 110, 39, 92, picH, 1.5) : ''}
       ${box(106, cardY, 100, cardH, 'card', `<div class="inner" style="inset:6.5rem 7rem;display:flex;flex-direction:column;gap:2.2rem;justify-content:center">
           <div class="line">${o.line}</div>
@@ -193,10 +178,10 @@ function journeyMap() {
     const n = i + 1;
     if (n % 7 === 0) {
       const s = n === 28 ? 24 : 16;
-      return img('medal', x - s / 2, y - s * 0.75, s, s * 1.2);
+      return `<div class="abs" style="left:${x - s / 2}rem;top:${y - s * 0.6}rem">${medal(s)}</div>`;
     }
     const s = 11.5;
-    return `${img('stone', x - s / 2, y - s / 2, s, s)}<div class="abs" style="left:${x - s / 2}rem;top:${y - s / 2 + 0.7}rem;width:${s}rem;height:${s}rem;display:grid;place-items:center;font-family:Lemonada;font-weight:700;font-size:4rem;color:#b47a00">${AR(n)}</div>`;
+    return `<div class="stone" style="left:${x - s / 2}rem;top:${y - s / 2}rem;width:${s}rem;height:${s}rem">${AR(n)}</div>`;
   }).join('');
   return road + stones;
 }
@@ -214,11 +199,11 @@ const PAGES = [
   {
     ...colors('purple'),
     slots: [{ pose: 'happy', x: 56, y: 104, w: 98, h: 104 }],
-    texts: [{ value: 'كتيب {name}', font: 'title', color: '#0d1d4f', effect: 'epic', x: 8, y: 50, w: 194, h: 32 }],
+    texts: [{ value: 'كتيب {name}', font: 'display', color: '#ffffff', effect: 'sticker', x: 8, y: 50, w: 194, h: 32 }],
     html: `
       ${sparkle(6, 10, 14, '#fff', 10)}${sparkle(184, 14, 12, '#FF4D8D', -8)}${sparkle(190, 186, 10, '#fff')}${sparkle(8, 192, 9, '#C6F432')}
       ${pic('shrine-day', 4, 112, 52, 52, -7)}${pic('shrine-night', 154, 116, 52, 52, 7)}
-      <img class="img" src="../../public/brand/logo.png" style="left:84rem;top:3rem;width:42rem">
+      <img class="abs" src="../../public/brand/logo.png" style="left:84rem;top:3rem;width:42rem">
       ${box(38, 82, 134, 16, 'plate', t3('رحلتي مع العادات الطيبة', 'gold'), 'font-size:6.6rem;padding-top:1rem')}
     `,
   },
@@ -227,19 +212,19 @@ const PAGES = [
     ...colors('orange'),
     slots: [{ pose: 'happy', x: 14, y: 62, w: 76, h: 108, front: true }],
     texts: [
-      { value: '{name}', font: 'title', color: '#ffd34d', effect: 'gold', x: 20, y: 181, w: 66, h: 11 },
-      { value: '{message}', font: 'hand', color: '#0d1d4f', x: 112, y: 140, w: 84, h: 54, wrap: true },
+      { value: '{name}', font: 'display', color: '#ffe08a', x: 20, y: 181, w: 66, h: 11 },
+      { value: '{message}', font: 'body', color: '#14234a', x: 112, y: 140, w: 84, h: 54, wrap: true },
     ],
     html: `
       ${sparkle(96, 40, 8, '#fff', 15)}${sparkle(2, 196, 9, '#FFD23F')}
-      ${plaque(4, 2, 202, 34, 'هذا أنا', 15)}
-      ${img('arch', 6, 38, 90, 138, 'object-fit:fill')}
+      ${plaque(4, 2, 202, 34, 'هذا أنا', 19)}
+      <div class="frame-arch" style="left:8rem;top:40rem;width:86rem;height:134rem"></div>
       ${box(8, 178, 86, 17, 'plate', '')}
       ${box(100, 38, 106, 86, 'card', `<div class="inner" style="display:flex;flex-direction:column;gap:3.5rem;justify-content:center">
           ${['عمري:', 'عادتي المفضلة:', 'أحب أن أكون:'].map((l) => `<div style="display:flex;align-items:flex-end;gap:2.5rem"><span class="line" style="white-space:nowrap">${l}</span><span class="write-line" style="flex:1"></span></div>`).join('')}
         </div>`)}
       ${box(100, 127, 106, 79, 'card', `<div class="inner" style="inset:6.5rem 7rem">
-          <div style="font-family:Lemonada;font-weight:700;font-size:5.4rem;color:#c0392b;text-align:center">رسالة من ماما وبابا 💛</div>
+          <div style="font-family:Lalezar;font-size:6.4rem;color:#c0392b;text-align:center">رسالة من ماما وبابا 💛</div>
           ${[0, 1, 2, 3].map(() => `<div class="write-line" style="height:11.5rem;opacity:.55"></div>`).join('')}
         </div>`)}
     `,
@@ -251,7 +236,7 @@ const PAGES = [
     texts: [],
     html: `
       ${journeyMap()}
-      ${plaque(3, 3, 104, 28, 'رحلتي ٢٨ يوم', 9.5)}
+      ${plaque(3, 3, 104, 28, 'رحلتي ٢٨ يوم', 12.5)}
       ${box(6, 32, 98, 12, 'plate', `<span style="font-size:3.6rem;font-weight:800;color:#ffe08a">كل يوم أنجزت فيه عاداتي ألوّن خطوة</span>`)}
     `,
   },
@@ -263,7 +248,7 @@ const PAGES = [
   }),
   // 5 — Quran
   habitPage({
-    ...colors('yellow'), scene: 'quran-nook', pose: 'quran', title: 'أقرأ القرآن كل يوم', titleSize: 11.5, bubble: 'يا {name}، يلا نقرأ آية!',
+    ...colors('yellow'), scene: 'quran-nook', pose: 'quran', title: 'أقرأ القرآن كل يوم', titleSize: 15, bubble: 'يا {name}، يلا نقرأ آية!',
     line: 'كلام الله نورٌ لقلبي', chips: [['teal', 'ولو آيةً واحدة'], ['gold', 'متى؟ بعد صلاة الفجر']], picH: 46, cardH: 44,
   }),
   // 6 — morning
@@ -273,12 +258,12 @@ const PAGES = [
   }),
   // 7 — sleep early
   habitPage({
-    ...colors('navy'), scene: 'bedroom-night', pose: 'sleeping', title: 'أنام مبكرًا وأصحو نشيطًا', titleSize: 9.5, bubble: 'نومًا هنيئًا يا {name}!',
+    ...colors('navy'), scene: 'bedroom-night', pose: 'sleeping', title: 'أنام مبكرًا وأصحو نشيطًا', titleSize: 13, bubble: 'نومًا هنيئًا يا {name}!',
     line: 'أنام مبكرًا لأصحو للفجر نشيطًا', chips: [['gold', 'متى؟ بعد صلاة العشاء']], picH: 40, cardH: 44, rows: ['نمتُ مبكرًا', 'صحوتُ مبكرًا'],
   }),
   // 8 — greeting Imam al-Mahdi (long hadith: no picture, more room for the text)
   habitPage({
-    ...colors('purple'), scene: 'shrine-dawn', pose: 'salam', title: 'السلامُ عليكَ يا صاحبَ الزمان', titleSize: 8.4, bubble: 'يا {name}، لنُسلّم على إمامنا',
+    ...colors('purple'), scene: 'shrine-dawn', pose: 'salam', title: 'السلامُ عليكَ يا صاحبَ الزمان', titleSize: 11.5, bubble: 'يا {name}، لنُسلّم على إمامنا',
     line: 'أُسلّم على إمام زماني كل يوم، وأدعو بتعجيل فرجه', chips: [['gold', 'متى؟ كل صباح']],
     quote: HADITH_MAHDI, quoteSmall: true, picH: 0, cardH: 112,
   }),
@@ -299,7 +284,7 @@ const PAGES = [
     slots: [{ pose: 'happy', x: 6, y: 0, w: 38, h: 44 }],
     texts: [],
     html: `
-      ${plaque(46, 2, 160, 34, 'مهامي اليومية', 13)}
+      ${plaque(46, 2, 160, 34, 'مهامي اليومية', 17)}
       ${box(4, 40, 202, 166, 'card', `<div class="inner" style="inset:6rem 7rem">
         <div style="text-align:center;margin-bottom:.5rem"><span class="goal">هدفي: <b>٥ من ٧</b> لكل عادة ⭐</span></div>
         <table class="grid"><thead><tr><th></th>${DAYS.map((d) => `<th>${d}</th>`).join('')}</tr></thead>
@@ -315,7 +300,7 @@ const PAGES = [
     html: `
       ${sparkle(10, 50, 10, '#fff', 12)}${sparkle(50, 70, 7, '#FFD23F')}
       ${pic('shrine-dawn', 8, 42, 62, 46, -4)}
-      ${plaque(4, 2, 202, 34, 'مهامي الأسبوعية', 13)}
+      ${plaque(4, 2, 202, 34, 'مهامي الأسبوعية', 17)}
       ${box(76, 40, 130, 166, 'card', `<div class="inner" style="inset:7rem 7rem">
         <table class="grid"><thead><tr><th></th>${['الأسبوع ١', 'الأسبوع ٢', 'الأسبوع ٣', 'الأسبوع ٤'].map((d) => `<th>${d}</th>`).join('')}</tr></thead>
         <tbody>${WEEKLY.map((h) => `<tr style="height:19rem"><td class="lbl" style="white-space:normal;max-width:38rem;line-height:1.25">${h}</td>${[1, 2, 3, 4].map(() => `<td>${star(9)}</td>`).join('')}</tr>`).join('')}
@@ -334,9 +319,9 @@ const PAGES = [
       slots: rings.map((r, i) => ({ pose: poses[i], x: r.x + 14, y: r.y + 8, w: 26, h: 38, front: true })),
       texts: [],
       html: `
-        ${plaque(4, 2, 202, 34, 'ملصقاتي', 15)}
-        ${rings.map((r) => `<div class="cut" style="left:${r.x - 3}rem;top:${r.y - 3}rem;width:60rem;height:60rem;border-color:#0d1d4f"></div>${img('ring', r.x, r.y, 54, 54)}`).join('')}
-        ${small.map((s) => `<div class="cut" style="left:${s.x - 2}rem;top:${s.y - 2}rem;width:22rem;height:22rem;border-color:#0d1d4f"></div>${img(s.kind, s.x + 1, s.y + 1, 16, 16)}`).join('')}
+        ${plaque(4, 2, 202, 34, 'ملصقاتي', 19)}
+        ${rings.map((r) => `<div class="cut" style="left:${r.x - 3}rem;top:${r.y - 3}rem;width:60rem;height:60rem;border-color:#0d1d4f"></div><div class="ring" style="left:${r.x}rem;top:${r.y}rem;width:54rem;height:54rem"></div>`).join('')}
+        ${small.map((s) => `<div class="cut" style="left:${s.x - 2}rem;top:${s.y - 2}rem;width:22rem;height:22rem;border-color:#0d1d4f"></div><div class="abs" style="left:${s.x + 1}rem;top:${s.y + 1}rem">${s.kind === 'medal' ? medal(16) : star(16)}</div>`).join('')}
         ${box(28, 197, 154, 11, 'plate', `<span style="font-size:3.6rem;font-weight:800;color:#ffe08a">قصّ الملصق والصقه على خريطة رحلتي ✂️</span>`)}
       `,
     };
@@ -348,7 +333,7 @@ const PAGES = [
     texts: [],
     html: `
       ${sparkle(4, 38, 9, '#fff', 10)}${sparkle(196, 196, 9, '#FFD23F')}
-      ${plaque(4, 2, 202, 34, 'ركن الأهل', 15)}
+      ${plaque(4, 2, 202, 34, 'ركن الأهل', 19)}
       ${box(8, 40, 194, 164, 'card', `<div class="inner" style="inset:9rem 10rem;display:flex;flex-direction:column;justify-content:space-around">
         ${TIPS.map((t) => `<div style="display:flex;align-items:center;gap:4rem">${star(10)}<span class="line" style="font-size:6.2rem">${t}</span></div>`).join('')}
       </div>`)}
@@ -358,11 +343,11 @@ const PAGES = [
   {
     ...colors('lime'),
     slots: [{ pose: 'happy', x: 8, y: 84, w: 82, h: 120 }],
-    texts: [{ value: '{name}', font: 'title', color: '#0d1d4f', effect: 'epic', x: 100, y: 66, w: 96, h: 24 }],
+    texts: [{ value: '{name}', font: 'display', color: '#14234a', x: 100, y: 66, w: 96, h: 24 }],
     html: `
       <div class="abs" style="inset:4rem;border:2.6rem solid #e9a50c;border-radius:8rem;box-shadow:inset 0 0 0 1.2rem #fff,0 0 0 1.2rem #fff,inset 0 0 0 2.2rem #12a9b8"></div>
       ${sparkle(10, 52, 10, '#fff', 10)}${sparkle(70, 60, 8, '#FF4D8D')}
-      ${plaque(20, 9, 170, 36, 'شهادة تقدير', 16)}
+      ${plaque(20, 9, 170, 36, 'شهادة تقدير', 19)}
       ${box(92, 46, 112, 154, 'card', `<div class="inner" style="display:flex;flex-direction:column;align-items:center;gap:3rem;text-align:center">
           <div class="line" style="font-size:6.2rem">تُمنح هذه الشهادة إلى</div>
           <div style="height:26rem;width:100%;border-bottom:.6rem dashed #c79a3a"></div>
@@ -383,8 +368,8 @@ const PAGES = [
     html: `
       ${sparkle(10, 12, 12, '#FFD23F', 10)}${sparkle(186, 20, 10, '#fff')}${sparkle(20, 186, 9, '#fff')}${sparkle(182, 180, 12, '#FFD23F', -10)}
       ${pic('shrine-night', 30, 16, 150, 100, -2)}
-      <img class="img" src="../../public/brand/logo.png" style="left:84rem;top:112rem;width:42rem">
-      ${plaque(30, 160, 150, 26, 'كتيب العادات الطيبة', 8.5)}
+      <img class="abs" src="../../public/brand/logo.png" style="left:84rem;top:112rem;width:42rem">
+      ${plaque(30, 160, 150, 26, 'كتيب العادات الطيبة', 11)}
       <div class="abs" style="left:20rem;top:190rem;width:170rem;text-align:center;font-size:4.4rem;font-weight:800;color:#fff">صُنع بحبّ لأطفالنا · على نهج أمير المؤمنين عليه السلام</div>
     `,
   },

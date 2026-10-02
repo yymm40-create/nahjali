@@ -34,10 +34,10 @@
       "texts": [
         {
           "value": "كتيب {name}",
-          "font": "title",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#ffffff",
           "stroke": null,
-          "effect": "epic",
+          "effect": "sticker",
           "wrap": false,
           "x_mm": 8,
           "y_mm": 50,
@@ -62,10 +62,10 @@
       "texts": [
         {
           "value": "{name}",
-          "font": "title",
-          "color": "#ffd34d",
+          "font": "display",
+          "color": "#ffe08a",
           "stroke": null,
-          "effect": "gold",
+          "effect": null,
           "wrap": false,
           "x_mm": 20,
           "y_mm": 181,
@@ -74,8 +74,8 @@
         },
         {
           "value": "{message}",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "body",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
@@ -117,15 +117,15 @@
       "texts": [
         {
           "value": "يا {name}، حان وقت الصلاة!",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
-          "x_mm": 15,
+          "x_mm": 13,
           "y_mm": 42,
-          "width_mm": 76,
-          "height_mm": 18
+          "width_mm": 78,
+          "height_mm": 20
         }
       ]
     },
@@ -145,15 +145,15 @@
       "texts": [
         {
           "value": "يا {name}، يلا نقرأ آية!",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
-          "x_mm": 15,
+          "x_mm": 13,
           "y_mm": 42,
-          "width_mm": 76,
-          "height_mm": 18
+          "width_mm": 78,
+          "height_mm": 20
         }
       ]
     },
@@ -173,15 +173,15 @@
       "texts": [
         {
           "value": "صباح الخير يا {name}!",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
-          "x_mm": 15,
+          "x_mm": 13,
           "y_mm": 42,
-          "width_mm": 76,
-          "height_mm": 18
+          "width_mm": 78,
+          "height_mm": 20
         }
       ]
     },
@@ -201,15 +201,15 @@
       "texts": [
         {
           "value": "نومًا هنيئًا يا {name}!",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
-          "x_mm": 15,
+          "x_mm": 13,
           "y_mm": 42,
-          "width_mm": 76,
-          "height_mm": 18
+          "width_mm": 78,
+          "height_mm": 20
         }
       ]
     },
@@ -229,15 +229,15 @@
       "texts": [
         {
           "value": "يا {name}، لنُسلّم على إمامنا",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
-          "x_mm": 15,
+          "x_mm": 13,
           "y_mm": 42,
-          "width_mm": 76,
-          "height_mm": 18
+          "width_mm": 78,
+          "height_mm": 20
         }
       ]
     },
@@ -257,15 +257,15 @@
       "texts": [
         {
           "value": "يا {name}، ركعة في الليل نور!",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
-          "x_mm": 15,
+          "x_mm": 13,
           "y_mm": 42,
-          "width_mm": 76,
-          "height_mm": 18
+          "width_mm": 78,
+          "height_mm": 20
         }
       ]
     },
@@ -285,15 +285,15 @@
       "texts": [
         {
           "value": "يا {name}، يلا نذاكر!",
-          "font": "hand",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
           "effect": null,
           "wrap": true,
-          "x_mm": 15,
+          "x_mm": 13,
           "y_mm": 42,
-          "width_mm": 76,
-          "height_mm": 18
+          "width_mm": 78,
+          "height_mm": 20
         }
       ]
     },
@@ -404,10 +404,10 @@
       "texts": [
         {
           "value": "{name}",
-          "font": "title",
-          "color": "#0d1d4f",
+          "font": "display",
+          "color": "#14234a",
           "stroke": null,
-          "effect": "epic",
+          "effect": null,
           "wrap": false,
           "x_mm": 100,
           "y_mm": 66,
