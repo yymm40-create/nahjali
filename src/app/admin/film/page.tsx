@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCaps, riyadhDayStart, riyadhMonthStart, rowCost } from "@/lib/film/usage";
 import { isAdmin } from "@config/site";
+import { FILM_STAGES } from "@config/film";
 import FilmAdminTools from "./FilmAdminTools";
 
 export const metadata = { title: "فرع الفيلم | لوحة التحكم" };
@@ -30,6 +31,25 @@ export default async function FilmAdminPage() {
     db.from("film_jobs").select("status"),
     db.from("film_assets").select("bytes"),
   ]);
+
+  // Every film project with its maker, stage, pictures, videos and cost
+  const [{ data: plist }, { data: alist }, { data: ulist }, people] = await Promise.all([
+    db.from("film_projects").select("id,user_id,title,stage,created_at,updated_at").order("updated_at", { ascending: false }),
+    db.from("film_assets").select("project_id,kind"),
+    db.from("film_usage").select("project_id,state,estimated_cost_usd,actual_cost_usd"),
+    db.auth.admin.listUsers({ perPage: 1000 }),
+  ]);
+  const emailOf = new Map((people.data?.users ?? []).map((u) => [u.id, u.email ?? ""]));
+  const projectRows = (plist ?? []).map((p) => {
+    const files = (alist ?? []).filter((a) => a.project_id === p.id);
+    return {
+      ...p,
+      email: emailOf.get(p.user_id) ?? p.user_id,
+      images: files.filter((a) => a.kind === "image" || a.kind === "upload").length,
+      videos: files.filter((a) => a.kind === "video").length,
+      cost: (ulist ?? []).filter((u) => u.project_id === p.id).reduce((s, u) => s + rowCost(u), 0),
+    };
+  });
 
   const rows = usage.data ?? [];
   const today = riyadhDayStart().toISOString();
@@ -75,6 +95,27 @@ export default async function FilmAdminPage() {
             <span dir="ltr">{usd(v)}</span>
           </div>
         ))}
+      </section>
+
+      <section className="card space-y-2 p-4">
+        <h2 className="text-xl font-extrabold">مشاريع الأفلام ({projectRows.length})</h2>
+        <p className="text-sm font-bold text-muted">اضغط أي مشروع تشوف كل نص وصورة وفيديو انصنع فيه.</p>
+        {projectRows.length === 0 && <p className="font-bold text-muted">ما فيه مشاريع للحين.</p>}
+        <ul className="space-y-2">
+          {projectRows.map((p) => (
+            <li key={p.id}>
+              <Link href={`/admin/film/${p.id}`} className="block rounded-2xl border border-line p-3 hover:bg-surface-2">
+                <span className="flex justify-between gap-2 font-extrabold">
+                  <span>{p.title}</span>
+                  <span dir="ltr">{usd(p.cost)}</span>
+                </span>
+                <span className="block text-xs font-bold text-muted">
+                  {p.email} · {FILM_STAGES.find((s) => s.key === p.stage)?.label ?? p.stage} · 🖼️ {p.images} · 🎬 {p.videos}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <FilmAdminTools
