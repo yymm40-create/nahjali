@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { ISODate, Instance, Version } from "@/lib/mahdi/engine";
 import { fmtNum, fmtRelativeDay, t } from "@/lib/mahdi/i18n";
-import { describeGoal, parseNumberInput, quantity } from "@/lib/mahdi/client/derive";
+import { describeGoal, itemHref, parseNumberInput, quantity } from "@/lib/mahdi/client/derive";
 import type { Habit } from "@/lib/mahdi/types";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
@@ -134,7 +134,7 @@ export default function LogSheet({
           {inst.partial && <p className="m-muted">{inst.kind === "week" ? t.habit.partialWeek : t.habit.partialMonth}</p>}
         </div>
 
-        <Link href={`/mahdi/habits/${habit.id}`} className="m-btn m-btn-quiet w-full" onClick={onClose}>
+        <Link href={itemHref(habit.id)} className="m-btn m-btn-quiet w-full" onClick={onClose}>
           {t.habit.actions.open} <Icon name="chevronLeft" size={18} />
         </Link>
       </div>

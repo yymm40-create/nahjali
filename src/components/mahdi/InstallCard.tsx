@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import Icon from "./Icon";
 
@@ -8,15 +8,20 @@ interface InstallEvent extends Event {
   prompt: () => Promise<void>;
 }
 
+const noop = () => () => {};
+
 /** "Add to home screen": the browser's install prompt where available, instructions on iPhone. */
 export default function InstallCard() {
   const [evt, setEvt] = useState<InstallEvent | null>(null);
-  const [standalone, setStandalone] = useState(true);
-  const [ios, setIos] = useState(false);
+  // Read from the browser; on the server (no browser) the card stays hidden
+  const standalone = useSyncExternalStore(
+    noop,
+    () => window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true,
+    () => true,
+  );
+  const ios = useSyncExternalStore(noop, () => /iPad|iPhone|iPod/.test(navigator.userAgent), () => false);
 
   useEffect(() => {
-    setStandalone(window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true);
-    setIos(/iPad|iPhone|iPod/.test(navigator.userAgent));
     const on = (e: Event) => {
       e.preventDefault();
       setEvt(e as InstallEvent);

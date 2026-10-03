@@ -259,6 +259,7 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
 }
 .m-option:hover { border-color: color-mix(in srgb, var(--m-gold) 60%, var(--m-line)); }
 .m-option[aria-checked="true"],
+.m-option[aria-selected="true"],
 .m-option[aria-pressed="true"] {
   border-color: var(--m-gold);
   box-shadow: 0 0 0 2px var(--m-gold) inset;
@@ -383,6 +384,25 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
 .m-side-item:hover { background: var(--m-surface-2); color: var(--m-ink); }
 .m-side-item[aria-current="page"] { color: var(--m-ink); background: color-mix(in srgb, var(--m-gold) 14%, var(--m-surface-2)); }
 .m-side-item[aria-current="page"] svg { color: var(--m-gold-text); }
+
+/* Phones: slim header with the brand and the account avatar */
+.m-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: color-mix(in srgb, var(--m-surface-solid) 82%, transparent);
+  border-bottom: 1px solid var(--m-line);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+.m-topbar [aria-current="page"] { outline: 2px solid var(--m-gold); outline-offset: -2px; border-radius: 999px; }
 
 .m-content-pad { padding-bottom: calc(var(--m-nav-h) + var(--m-safe-b) + 28px); }
 @media (min-width: 1024px) {

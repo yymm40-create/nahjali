@@ -20,7 +20,8 @@ export const PATCH = mahdiRoute(async (req: Request) => {
     next.show_avatar = false;
   }
   check(await supabase.from("mahdi_privacy").upsert({ user_id: user.id, ...next }));
-  if (!next.leaderboard) await supabase.from("mahdi_challenge_members").update({ on_leaderboard: false }).eq("user_id", user.id);
+  // Leaving the community also leaves every challenge ranking (the general ranking switch alone does not)
+  if (!next.community) await supabase.from("mahdi_challenge_members").update({ on_leaderboard: false }).eq("user_id", user.id);
   await syncPublicProfile(user.id);
   return NextResponse.json({ privacy: { community: next.community, leaderboard: next.leaderboard, showAvatar: next.show_avatar } });
 });

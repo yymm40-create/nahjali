@@ -7,3 +7,4 @@ export * from "./score";
 export * from "./streaks";
 export * from "./compare";
 export * from "./milestones";
+export * from "./reminders";
