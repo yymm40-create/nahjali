@@ -5,9 +5,8 @@ import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
-import { filmTrialState, filmTrialUsers, filmTrialVideos } from "./access";
+import { filmTrialApplies, filmTrialState, filmTrialUsers, filmTrialVideos } from "./access";
 import { assertCanEdit, getLimit } from "./limits";
-import { isAdmin } from "@config/site";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, FILM_PUBLIC_TRIAL, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
@@ -427,7 +426,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);
   // Public trial: one free video per trial user; their trial ends once it is made (the owner has no limit)
-  const trial = FILM_PUBLIC_TRIAL.open && !isAdmin(user.email);
+  const trial = await filmTrialApplies(user);
   // (only in a project started during the trial, by one of its users)
   const trialProject = new Date(project.created_at) >= new Date(FILM_PUBLIC_TRIAL.since) && (await filmTrialUsers()).includes(user.id);
   if (trial && (!trialProject || (await filmTrialState(user)) !== "open" || (await filmTrialVideos(user.id)).taken >= (await getLimit("videos", user.email)))) {

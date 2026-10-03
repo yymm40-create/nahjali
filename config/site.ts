@@ -13,9 +13,8 @@ export const ADMIN_EMAILS = ["yymm40@gmail.com"];
 export const isAdmin = (email: string | undefined | null) => Boolean(email && ADMIN_EMAILS.includes(email.toLowerCase()));
 
 /**
- * «كتيب نهج علي» is closed for now: still listed, marked «تحت التطوير», and nobody but the owner can open it.
- * Set to false to open it again. The paths below are blocked in src/proxy.ts (pages and API).
+ * «كتيب نهج علي»'s pages and API. Who may open them (closed / given emails / everyone; closed by default, the
+ * owner always) is set on /admin/limits — see bookletOpenFor in src/lib/film/limits.ts, used by src/proxy.ts.
+ * While it isn't open for everyone, it stays listed and marked «تحت التطوير».
  */
-export const BOOKLET_LOCKED = true;
 export const BOOKLET_PATHS = ["/booklet", "/new", "/order", "/my-booklets", "/api/orders", "/api/feedback"];
-export const bookletClosedFor = (email: string | undefined | null) => BOOKLET_LOCKED && !isAdmin(email);

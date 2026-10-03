@@ -5,7 +5,7 @@ import { requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
 import { FILM_PUBLIC_TRIAL } from "@config/film";
-import { getLimit } from "./limits";
+import { accessMode, emailAccess, getLimit } from "./limits";
 import type { FilmProject } from "./types";
 
 export const FILM_MESSAGES = {
@@ -82,13 +82,25 @@ export async function filmTrialState(user: Who): Promise<"open" | "done" | "full
 export async function canUseFilm(user: Who) {
   if (!user.email) return false;
   if (isAdmin(user.email)) return true;
-  if (FILM_PUBLIC_TRIAL.open) return (await filmTrialState(user)) === "open";
+  // The owner's choices on /admin/limits: a decision for this email first, then the mode for everyone
+  const own = await emailAccess("film", user.email);
+  if (own !== undefined) return own;
+  const mode = await accessMode("film");
+  if (mode === "closed") return false;
+  if (mode === "open") return true;
+  if (mode === "trial") return (await filmTrialState(user)) === "open";
   const { data } = await createAdminClient()
     .from("film_allowed_emails")
     .select("email")
     .eq("email", user.email.toLowerCase())
     .maybeSingle();
   return Boolean(data);
+}
+
+/** Whether the free trial's rules (places, free videos) apply to this user: trial mode, not the owner, not let in by email. */
+export async function filmTrialApplies(user: Who) {
+  if (isAdmin(user.email) || (await emailAccess("film", user.email)) === true) return false;
+  return (await accessMode("film")) === "trial";
 }
 
 /** For server pages: signed-in user with film access, or null if signed in without access. */

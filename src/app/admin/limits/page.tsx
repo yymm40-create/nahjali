@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { LIMITS, type LimitRow } from "@/lib/film/limits";
+import { ACCESS_MODES, accessMode, LIMITS, SECTIONS_ACCESS, type AccessSection, type LimitRow } from "@/lib/film/limits";
 import { isAdmin } from "@config/site";
 import LimitsAdmin from "./LimitsAdmin";
 
@@ -22,7 +22,7 @@ export default async function LimitsPage() {
         <Link href="/admin" className="text-sm font-bold text-muted">→ لوحة التحكم</Link>
         <h1 className="display text-4xl">التحكم بالموارد والمحاولات</h1>
         <p className="text-sm font-bold text-muted">
-          حدود صناعة الأفلام. لكل شخص: حدّه بإيميله إن وُجد، وإلا حد الجميع، وإلا الافتراضي. أنت ما عليك أي حد.
+          مين يقدر يدخل كل قسم، وحدود صناعة الأفلام. لكل شخص: إعداده بإيميله إن وُجد، وإلا إعداد الجميع، وإلا الافتراضي. أنت ما عليك أي حد.
         </p>
       </header>
       {error && (
@@ -31,6 +31,14 @@ export default async function LimitsPage() {
         </p>
       )}
       <LimitsAdmin
+        sections={await Promise.all(
+          (Object.keys(SECTIONS_ACCESS) as AccessSection[]).map(async (key) => ({
+            key,
+            label: SECTIONS_ACCESS[key].label,
+            modes: SECTIONS_ACCESS[key].modes.map((m) => ({ code: ACCESS_MODES[m].code, label: ACCESS_MODES[m].label })),
+            current: ACCESS_MODES[await accessMode(key, rows)].code,
+          })),
+        )}
         limits={Object.entries(LIMITS).map(([key, l]) => ({ key, label: l.label, hint: l.hint, def: l.default, perUser: l.perUser }))}
         rows={rows}
       />

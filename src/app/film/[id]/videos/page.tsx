@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { filmTrialVideos, requireFilmUser, requireProject } from "@/lib/film/access";
+import { filmTrialApplies, filmTrialVideos, requireFilmUser, requireProject } from "@/lib/film/access";
 import { editsLeft, getLimit } from "@/lib/film/limits";
-import { isAdmin } from "@config/site";
-import { FILM_PUBLIC_TRIAL } from "@config/film";
 import { checkVideos, directorVersions, directorVideos, purgeOldVideos } from "@/lib/film/director";
 import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
@@ -86,7 +84,7 @@ export default async function VideosPage({ params }: PageProps<"/film/[id]/video
         }))}
         videosRunning={videosRunning}
         job={job ? { status: job.status, error: job.error } : null}
-        trialVideosLeft={FILM_PUBLIC_TRIAL.open && !isAdmin(user.email) ? Math.max(0, (await getLimit("videos", user.email)) - (await filmTrialVideos(user.id)).taken) : null}
+        trialVideosLeft={(await filmTrialApplies(user)) ? Math.max(0, (await getLimit("videos", user.email)) - (await filmTrialVideos(user.id)).taken) : null}
         editsLeft={await editsLeft(id, "director", user.email)}
       />
     </div>

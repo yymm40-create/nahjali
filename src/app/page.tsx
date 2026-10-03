@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { canUseFilm } from "@/lib/film/access";
 import { SECTIONS } from "@config/sections";
-import { BOOKLET_LOCKED, bookletClosedFor } from "@config/site";
+import { accessMode, bookletOpenFor } from "@/lib/film/limits";
 
 /** Home: the site's sections (config/sections.ts). */
 export default async function Home() {
@@ -12,6 +12,8 @@ export default async function Home() {
     data: { user },
   } = await supabase.auth.getUser();
   const filmAllowed = user ? await canUseFilm(user) : false;
+  // «كتيب نهج علي»: who may open it is set on /admin/limits
+  const [bookletMode, bookletOpen] = await Promise.all([accessMode("booklet"), bookletOpenFor(user?.email)]);
 
   return (
     <div className="space-y-8">
@@ -30,8 +32,8 @@ export default async function Home() {
             // Signed-out visitors can still open the film card (they are asked to sign in first)
             const locked = s.requiresFilmAccess && user && !filmAllowed;
             // «تحت التطوير»: shown, but only the owner can open it
-            const dev = s.underDevelopment && BOOKLET_LOCKED;
-            const closed = locked || (dev && bookletClosedFor(user?.email));
+            const dev = s.underDevelopment && bookletMode !== "open";
+            const closed = locked || (s.underDevelopment && !bookletOpen);
             const body = (
               <>
                 <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-surface-2 text-4xl">{s.icon}</span>

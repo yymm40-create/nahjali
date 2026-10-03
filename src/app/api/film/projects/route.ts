@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { filmTrialUsers, requireFilmApiUser } from "@/lib/film/access";
+import { filmTrialApplies, filmTrialUsers, requireFilmApiUser } from "@/lib/film/access";
 import { projectFields } from "@/lib/film/validate";
-import { FILM_LIMITS, FILM_PUBLIC_TRIAL } from "@config/film";
-import { isAdmin } from "@config/site";
+import { FILM_LIMITS } from "@config/film";
 
 /** Creates a new film project from the user's title and story. */
 export const POST = handle(async (req: Request) => {
@@ -25,7 +24,7 @@ export const POST = handle(async (req: Request) => {
     .single();
   if (error) throw error;
   // Public trial: two people starting at the same moment can't both take the last place
-  if (FILM_PUBLIC_TRIAL.open && !isAdmin(user.email) && !(await filmTrialUsers()).includes(user.id)) {
+  if ((await filmTrialApplies(user)) && !(await filmTrialUsers()).includes(user.id)) {
     await db.from("film_projects").delete().eq("id", data.id);
     throw new UserError("اكتمل عدد المجرّبين في الفترة المجانية.", 403);
   }
