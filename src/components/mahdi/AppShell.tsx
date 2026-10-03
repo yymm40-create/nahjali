@@ -17,7 +17,7 @@ import RewardReveal from "./RewardReveal";
 const NAV: { href: string; label: string; side?: string; icon: IconName; match: (p: string) => boolean }[] = [
   { href: "/mahdi", label: t.nav.home, icon: "home", match: (p) => p === "/mahdi" || p.startsWith("/mahdi/day") },
   { href: "/mahdi/projects", label: t.nav.projects, side: t.nav.side.projects, icon: "projects", match: (p) => p.startsWith("/mahdi/projects") || p.startsWith("/mahdi/habits") },
-  { href: "/mahdi/progress", label: t.nav.progress, icon: "progress", match: (p) => p.startsWith("/mahdi/progress") },
+  { href: "/mahdi/progress", label: t.nav.progress, side: t.nav.side.progress, icon: "progress", match: (p) => p.startsWith("/mahdi/progress") },
   { href: "/mahdi/community", label: t.nav.community, side: t.nav.side.community, icon: "globe", match: (p) => p.startsWith("/mahdi/community") || p.startsWith("/mahdi/challenges") || p.startsWith("/mahdi/share") },
 ];
 

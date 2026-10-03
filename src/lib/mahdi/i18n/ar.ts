@@ -22,7 +22,8 @@ export const ar = {
     add: "إضافة",
     account: "حسابي وإعداداتي",
     // Longer names in the side menu (computer); the phone's bottom bar keeps the short ones
-    side: { projects: "العادات العلوية", community: "المجتمع الولائي", reading: "القارئ العلوي" },
+    // The owner's own choice of wording for the progress item
+    side: { projects: "العادات العلوية", progress: "حاسبوا أنفسكم قبل أن تحاسبوا", community: "المجتمع الولائي", reading: "القارئ العلوي" },
     main: "التنقل الرئيسي",
   },
 
