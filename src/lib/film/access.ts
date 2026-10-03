@@ -5,6 +5,7 @@ import { requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
 import { FILM_PUBLIC_TRIAL } from "@config/film";
+import { getLimit } from "./limits";
 import type { FilmProject } from "./types";
 
 export const FILM_MESSAGES = {
@@ -45,9 +46,8 @@ export async function filmTrialUsers() {
   const ids: string[] = [];
   for (const r of (data ?? []) as { user_id: string }[]) {
     if (!owners.has(r.user_id) && !ids.includes(r.user_id)) ids.push(r.user_id);
-    if (ids.length === FILM_PUBLIC_TRIAL.users) break;
   }
-  return ids;
+  return ids.slice(0, await getLimit("trial_users"));
 }
 
 /**
@@ -71,8 +71,8 @@ export async function filmTrialVideos(userId: string) {
 export async function filmTrialState(user: Who): Promise<"open" | "done" | "full"> {
   if (isAdmin(user.email)) return "open";
   const users = await filmTrialUsers();
-  if (users.includes(user.id)) return (await filmTrialVideos(user.id)).made > 0 ? "done" : "open";
-  return users.length < FILM_PUBLIC_TRIAL.users ? "open" : "full";
+  if (users.includes(user.id)) return (await filmTrialVideos(user.id)).made >= (await getLimit("videos", user.email)) ? "done" : "open";
+  return users.length < (await getLimit("trial_users")) ? "open" : "full";
 }
 
 /**

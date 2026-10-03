@@ -7,7 +7,7 @@ import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
-import ActionBar from "../../ActionBar";
+import ActionBar, { EditsLeftContext } from "../../ActionBar";
 import { statusChip } from "../../StepCard";
 import {
   clampVideoSeconds,
@@ -54,7 +54,7 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 const daysLeft = (createdAt: string) => Math.max(0, Math.ceil(VIDEO_KEEP_DAYS - (Date.now() - new Date(createdAt).getTime()) / 86_400_000));
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideoUsed, job,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job,
 }: {
   projectId: string;
   stage: string;
@@ -62,7 +62,10 @@ export default function VideosWorkspace({
   videos: Video[];
   videosRunning: number;
   /** Public trial: whether this user's one free video is made or being made (null: no trial limit). */
-  trialVideoUsed: boolean | null;
+  /** Public trial: free videos this user has left (null: no trial limit). */
+  trialVideosLeft: number | null;
+  /** Edits left with the director, video notes included (null: no limit). */
+  editsLeft: number | null;
   job: { status: string; error: string | null } | null;
 }) {
   const router = useRouter();
@@ -126,10 +129,11 @@ export default function VideosWorkspace({
   const kept = videos.filter((v) => v.url && v.status !== "rejected");
 
   return (
+    <EditsLeftContext value={editsLeft}>
     <div className="space-y-4">
-      {trialVideoUsed !== null && (
+      {trialVideosLeft !== null && (
         <p className="card p-4 text-center font-extrabold">
-          🎁 {trialVideoUsed ? "انصنع فيديوك المجاني، وبعده تنتهي تجربتك. حمّله وشكرًا لك!" : "تجربتك المجانية تشمل فيديو واحد؛ أول ما ينصنع تنتهي التجربة. اختر جودته ومدته على راحتك."}
+          🎁 {trialVideosLeft === 0 ? "خلصت فيديوهات تجربتك المجانية. حمّلها وشكرًا لك!" : `باقي لك ${trialVideosLeft} فيديو مجاني في التجربة؛ بعد آخر واحد تنتهي التجربة. اختر جودته ومدته على راحتك.`}
         </p>
       )}
       <section className="space-y-1 rounded-2xl border-2 border-red-500 bg-red-500/10 p-4">
@@ -243,8 +247,10 @@ export default function VideosWorkspace({
                       {v.status === "generated" && !v.removed && (
                         <>
                           <button className="btn btn-primary min-h-10 px-4 text-sm" onClick={() => send({ action: "approve_video", assetId: v.id })}>اعتمد ✅</button>
-                          {!writing && (
-                            <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => setFeedbackFor(feedbackFor === v.id ? null : v.id)}>✏️ اطلب تعديل</button>
+                          {!writing && editsLeft !== 0 && (
+                            <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => setFeedbackFor(feedbackFor === v.id ? null : v.id)}>
+                              ✏️ اطلب تعديل{editsLeft !== null ? ` (باقي ${editsLeft})` : ""}
+                            </button>
                           )}
                           <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => send({ action: "reject_video", assetId: v.id })}>ارفضه</button>
                         </>
@@ -368,5 +374,6 @@ export default function VideosWorkspace({
       ) : null}
       {error && <p className="error-box">{error}</p>}
     </div>
+    </EditsLeftContext>
   );
 }

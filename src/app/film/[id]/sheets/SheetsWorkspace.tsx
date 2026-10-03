@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
-import ActionBar, { type SendMode } from "../../ActionBar";
+import ActionBar, { EditsLeftContext, type SendMode } from "../../ActionBar";
 import StepCard, { statusChip as chip } from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 
@@ -42,12 +42,14 @@ interface Props {
   job: { status: string; error: string | null } | null;
   imagesRunning: number;
   styles: StyleCard[];
+  /** Edits left in this stage (the owner's limits); null = no limit. */
+  editsLeft: number | null;
 }
 
 const MASTER = "STY-00";
 const TEST = "STYLE-TEST";
 
-export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles }: Props) {
+export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft }: Props) {
   const router = useRouter();
   const [writing, setWriting] = useState(job?.status === "running");
   const [painting, setPainting] = useState(imagesRunning > 0);
@@ -120,6 +122,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   };
 
   return (
+    <EditsLeftContext value={editsLeft}>
     <div className="space-y-4">
       {library.length > 0 && (
         <section className="card space-y-3 p-4">
@@ -263,6 +266,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
       ) : null}
       {error && <p className="error-box">{error}</p>}
     </div>
+    </EditsLeftContext>
   );
 }
 

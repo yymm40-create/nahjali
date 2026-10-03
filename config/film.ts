@@ -56,7 +56,8 @@ export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution,
  * the invite list.
  */
 // `since`: only projects started from this moment count (UTC), so older test projects take no place
-export const FILM_PUBLIC_TRIAL = { open: true, users: 6, since: "2026-10-03T13:38:00Z" } as const;
+// The number of users and each user's free videos are set from /admin/limits (src/lib/film/limits.ts)
+export const FILM_PUBLIC_TRIAL = { open: true, since: "2026-10-03T13:38:00Z" } as const;
 
 /** Video length the client can choose on the generation page (seconds). */
 export const VIDEO_DURATION = { min: 4, max: 15 } as const;

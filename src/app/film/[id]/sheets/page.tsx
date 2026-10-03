@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
+import { editsLeft } from "@/lib/film/limits";
 import { latestJob, runningImageJobs, sheetAssets, sheetVersions } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
@@ -42,6 +43,7 @@ export default async function SheetsPage({ params }: PageProps<"/film/[id]/sheet
         </p>
       </header>
       <SheetsWorkspace
+        editsLeft={await editsLeft(id, "sheets", user.email)}
         projectId={id}
         stage={project.stage}
         versions={versions}
