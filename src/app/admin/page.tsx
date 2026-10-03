@@ -46,6 +46,7 @@ export default async function AdminPage() {
         <p className="font-bold text-muted">أرقام الموقع الحية، تتحدث كل ما تفتح الصفحة.</p>
         <Link href="/admin/film" className="btn btn-secondary mt-2 w-full">🎬 فرع الفيلم: المدعوين والحدود والصرف</Link>
         <Link href="/admin/limits" className="btn btn-secondary mt-2 w-full">🎚️ التحكم بالموارد والمحاولات</Link>
+        <Link href="/admin/pricing" className="btn btn-secondary mt-2 w-full">🧮 حاسبة الأسعار والأرباح</Link>
         <Link href="/admin/mahdi" className="btn btn-secondary mt-2 w-full">🌙 لأجل المهدي: التحديات والنصوص والبلاغات</Link>
       </header>
 
