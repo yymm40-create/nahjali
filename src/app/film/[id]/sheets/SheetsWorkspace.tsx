@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, postJson } from "@/lib/fetch";
@@ -8,6 +9,7 @@ import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import ActionBar, { type SendMode } from "../../ActionBar";
+import StepCard, { statusChip as chip } from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
@@ -44,7 +46,6 @@ interface Props {
 
 const MASTER = "STY-00";
 const TEST = "STYLE-TEST";
-const chip = (s: string) => (s === "approved" ? "bg-teal text-white" : s === "awaiting_approval" || s === "generated" ? "bg-gold text-on-gold" : s === "failed" ? "bg-red-500 text-white" : "");
 
 export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles }: Props) {
   const router = useRouter();
@@ -137,7 +138,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
 
       {/* 1. Understanding + sheet map with the user's choice per item */}
       {understanding && (
-        <Card title="الفهم وخريطة الشيتات" v={understanding} current={current?.id === understanding.id} busy={busy || writing} onSend={revise(understanding)} noActions>
+        <StepCard title="الفهم وخريطة الشيتات" v={understanding} current={current?.id === understanding.id} busy={busy || writing} onSend={revise(understanding)} noActions>
           <MapChoices
             projectId={projectId}
             map={map}
@@ -151,12 +152,12 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             onSend={revise(understanding)}
             warning={understanding.status === "approved" ? `الخريطة معتمدة. تعديلها ممكن يضيف أو يحذف شيتات؛ اللي اعتمدته يظل محفوظ، وصانع الشيت يوضح وش يتأثر.${backToSheets}` : undefined}
           />
-        </Card>
+        </StepCard>
       )}
 
       {/* 2. Design questions */}
       {questions && (
-        <Card
+        <StepCard
           title="أسئلة التصميم"
           v={questions}
           current={false}
@@ -170,7 +171,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           ) : (
             <p className="text-sm font-bold text-muted">تمت الإجابة.</p>
           )}
-        </Card>
+        </StepCard>
       )}
 
       {/* 3. Style test on a real frame from the story */}
@@ -199,7 +200,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         const item = map.find((m) => m.id === sid);
         const imgs = assets.filter((a) => a.kind === "image" && a.ref_key === sid);
         return (
-          <Card
+          <StepCard
             key={sid}
             title={`${sid} · ${sid === MASTER ? "الماستر" : (item?.name ?? "")}`}
             v={v}
@@ -222,7 +223,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
                 unapproveWarning={`تبي تتراجع عن اعتماد هذي الصورة؟ بعدها تقدر تولّد صورة ثانية أو ترسل تعديل.${affects(sid)}${backToSheets}`}
               />
             )}
-          </Card>
+          </StepCard>
         );
       })}
 
@@ -251,74 +252,11 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
       {stage === "director" || stage === "voices" || stage === "done" ? (
         <div className="card space-y-1 p-5 text-center">
           <p className="text-lg font-extrabold">✅ الشيتات كلها معتمدة وانتقلت للمخرج السينمائي</p>
-          <p className="text-sm font-bold text-muted">المخرج ينضاف في المرحلة الجاية من التطوير.</p>
+          <Link href={`/film/${projectId}/director`} className="btn btn-primary w-full">🎥 افتح المخرج</Link>
         </div>
       ) : null}
       {error && <p className="error-box">{error}</p>}
     </div>
-  );
-}
-
-function Card({
-  title,
-  v,
-  current,
-  busy,
-  hideBody,
-  onApprove,
-  approveLabel,
-  onSend,
-  warning,
-  noActions,
-  children,
-}: {
-  title: string;
-  v: SheetVersion;
-  current: boolean;
-  busy: boolean;
-  hideBody?: boolean;
-  onApprove?: () => void;
-  approveLabel?: string;
-  onSend?: (mode: SendMode, text: string) => void;
-  warning?: string;
-  /** The card's actions live inside its children (the map: approval needs the per-item choices). */
-  noActions?: boolean;
-  children?: ReactNode;
-}) {
-  const pending = v.status === "awaiting_approval";
-  return (
-    <article className={`card space-y-3 p-5 ${pending ? "border-2 border-gold" : ""}`}>
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-extrabold">{title} <span className="text-sm text-muted">· النسخة {v.version}</span></h2>
-        <span className={`chip ${chip(v.status)}`}>{STATUS_LABELS[v.status]}</span>
-      </header>
-      {!hideBody && (
-        <details open={pending || current}>
-          <summary className="cursor-pointer text-sm font-extrabold text-muted">اعرض النص</summary>
-          <Markdown text={v.body} highlightRequests={pending} hideCode />
-          {v.data.notes && (
-            <div className="mt-2 rounded-2xl bg-surface-2 p-3 text-sm">
-              <p className="font-extrabold">ملاحظات</p>
-              <Markdown text={v.data.notes} />
-            </div>
-          )}
-        </details>
-      )}
-      {pending && v.data.suggestion && (
-        <div className="space-y-2 rounded-2xl border-2 border-gold bg-gold/10 p-4">
-          <p className="font-extrabold">💡 اقتراح تعديل</p>
-          <p className="font-bold leading-8">{v.data.suggestion}</p>
-          {!busy && onSend && (
-            <button className="btn btn-secondary w-full" onClick={() => onSend("edit", `نفّذ التعديل المقترح: ${v.data.suggestion}`)}>نفّذ التعديل المقترح</button>
-          )}
-          <p className="text-sm font-bold text-muted">أو اعتمد وكمّل بدون تعديل.</p>
-        </div>
-      )}
-      {children}
-      {!noActions && (
-        <ActionBar busy={busy} onApprove={onApprove} approveLabel={approveLabel} onSend={onSend} warning={warning} />
-      )}
-    </article>
   );
 }
 

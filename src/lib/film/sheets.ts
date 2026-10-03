@@ -1,7 +1,8 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, totalTokens, type ClaudePart, type ClaudeTurn } from "./anthropic";
+import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { addMessage, buildTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
@@ -65,7 +66,6 @@ export interface SheetVersion {
 }
 
 const db = () => createAdminClient();
-const IMAGE_MARK = /\[\[image:([0-9a-f-]{36})\]\]/g;
 
 /** "@الأخ_الكبير" from a sheet's Arabic name. */
 export const atName = (name: string) => "@" + name.trim().replace(/[\s@]+/g, "_").replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 40);
@@ -130,11 +130,7 @@ export async function runningImageJobs(projectId: string) {
   return live;
 }
 
-async function addUserMessage(projectId: string, content: string) {
-  const { data, error } = await db().from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "user", content }).select("id").single();
-  if (error) throw error;
-  return data.id as string;
-}
+const addUserMessage = (projectId: string, content: string) => addMessage(projectId, STAGE, content);
 
 /** Queues the sheet maker's next reply in the background. */
 async function queueReply(project: FilmProject, user: { id: string; email?: string | null }, messageId: string) {
@@ -494,53 +490,11 @@ async function runImage(project: FilmProject, jobId: string, assetId: string, o:
   }
 }
 
-/** Builds Claude turns; [[image:id]] markers become real images (short-lived links). */
-async function buildTurns(projectId: string): Promise<ClaudeTurn[]> {
-  const client = db();
-  const { data } = await client
-    .from("film_messages")
-    .select("role,content")
-    .eq("project_id", projectId)
-    .eq("stage", STAGE)
-    .order("created_at", { ascending: true });
-  const msgs = (data ?? []) as { role: "user" | "assistant"; content: string }[];
-  const ids = [...new Set(msgs.flatMap((m) => [...m.content.matchAll(IMAGE_MARK)].map((x) => x[1])))];
-  const urls: Record<string, string> = {};
-  if (ids.length) {
-    const { data: rows } = await client.from("film_assets").select("id,storage_path").in("id", ids);
-    for (const r of rows ?? []) {
-      if (!r.storage_path) continue;
-      const s = await client.storage.from(FILM_BUCKET).createSignedUrl(r.storage_path, 3600);
-      if (s.data) urls[r.id] = s.data.signedUrl;
-    }
-  }
-  const toParts = (text: string): ClaudePart[] => {
-    const parts: ClaudePart[] = [];
-    let last = 0;
-    for (const m of text.matchAll(IMAGE_MARK)) {
-      if (m.index! > last) parts.push({ type: "text", text: text.slice(last, m.index) });
-      if (urls[m[1]]) parts.push({ type: "image", url: urls[m[1]] });
-      else parts.push({ type: "text", text: "(الصورة غير متاحة)" });
-      last = m.index! + m[0].length;
-    }
-    if (last < text.length) parts.push({ type: "text", text: text.slice(last) });
-    return parts.length ? parts : [{ type: "text", text }];
-  };
-  const turns: ClaudeTurn[] = [];
-  for (const m of msgs) {
-    const parts = m.role === "user" ? toParts(m.content) : [{ type: "text" as const, text: m.content }];
-    const prev = turns.at(-1);
-    if (prev && prev.role === m.role) (prev.content as ClaudePart[]).push({ type: "text", text: "\n\n" }, ...parts);
-    else turns.push({ role: m.role, content: parts });
-  }
-  return turns;
-}
-
 const KIND_BY_STAGE: Record<number, SheetKind> = { 2: "sheet_understanding", 3: "sheet_questions", 4: "style_test", 5: "sheet_prompt", 6: "sheet_prompt", 7: "sheet_handoff" };
 
 export async function runSheetReply(projectId: string, jobId: string) {
   try {
-    const turns = await buildTurns(projectId);
+    const turns = await buildTurns(projectId, STAGE);
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
     const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
     const r = result.data;

@@ -1,0 +1,345 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { api, postJson } from "@/lib/fetch";
+import Markdown from "@/components/Markdown";
+import Spinner from "@/components/Spinner";
+import QuestionsForm from "../../QuestionsForm";
+import StepCard, { statusChip } from "../../StepCard";
+import type { SendMode } from "../../ActionBar";
+import type { DirectorVersion } from "@/lib/film/director";
+import { STATUS_LABELS, VIDEO_MODELS, VIDEO_PRICING, type VideoModel } from "@config/film";
+
+interface Video {
+  id: string;
+  ref_key: string;
+  status: string;
+  error: string | null;
+  meta: Record<string, unknown>;
+  url: string;
+}
+interface Props {
+  projectId: string;
+  stage: string;
+  versions: DirectorVersion[];
+  superDirector: boolean;
+  videos: Video[];
+  library: { name: string; sheetId: string; url: string }[];
+  job: { status: string; error: string | null } | null;
+  videosRunning: number;
+}
+
+const SUPER_HINT = "قواعد إخراج وكاميرا أعمق من الدورة، ويكتب البرومبت بصيغتها (إنجليزي + صيني). كل رد من المخرج يكلّف أكثر لأن المهارة طويلة.";
+
+/** Rough cost of one generation's video, shown on its approval button. */
+const videoCost = (v: DirectorVersion) => {
+  const model: VideoModel = v.data.video_model ?? "seedance-2.5";
+  const sec = Math.min(Math.max(v.data.duration_sec || 10, 4), VIDEO_MODELS[model].maxSeconds);
+  return sec * VIDEO_PRICING[model].usdPerSecondEstimate;
+};
+
+export default function DirectorWorkspace({ projectId, stage, versions, superDirector, videos, library, job, videosRunning }: Props) {
+  const router = useRouter();
+  const [writing, setWriting] = useState(job?.status === "running");
+  const [rendering, setRendering] = useState(videosRunning > 0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [useSuper, setUseSuper] = useState(true);
+
+  // Poll while the director writes or videos are generated (the poll also saves finished videos)
+  useEffect(() => {
+    if (!writing && !rendering) return;
+    const timer = setInterval(async () => {
+      try {
+        const s = await api<{ status: string | null; videosRunning: number }>(`/api/film/projects/${projectId}/director`);
+        const w = s.status === "running";
+        const r = s.videosRunning > 0;
+        if (w !== writing || r !== rendering) router.refresh();
+        setWriting(w);
+        setRendering(r);
+      } catch {
+        // keep polling
+      }
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [writing, rendering, projectId, router]);
+
+  async function send(body: Record<string, unknown>) {
+    setBusy(true);
+    setError("");
+    try {
+      const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/director`, body);
+      if (jobId) setWriting(true);
+      if (body.action === "generate_video" || body.action === "approve") setRendering(true);
+      router.refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const latestOf = (kind: string, ref = "") => versions.filter((v) => v.kind === kind && v.ref_key === ref).at(-1);
+  const understanding = latestOf("dir_understanding");
+  const questions = versions.filter((v) => v.kind === "dir_questions");
+  const mapV = latestOf("dir_map");
+  const approvedMap = versions.filter((v) => v.kind === "dir_map" && v.status === "approved").at(-1) ?? mapV;
+  const map = approvedMap?.data.generation_map ?? [];
+  const genIds = [...new Set(versions.filter((v) => v.kind === "dir_generation").map((v) => v.ref_key))];
+  const ordered = [...map.map((g) => g.id).filter((id) => genIds.includes(id)), ...genIds.filter((id) => !map.some((g) => g.id === id))];
+  const note = latestOf("dir_note");
+  const current = [...versions].filter((v) => v.kind !== "dir_setup").sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
+  const failed = job?.status === "failed" && !writing;
+  const started = versions.some((v) => v.kind !== "dir_setup") || writing || failed;
+  const revise = (v: DirectorVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
+  const nameOf = (id: string) => map.find((g) => g.id === id)?.name ?? "";
+  const laterThan = (id: string) => ordered.slice(ordered.indexOf(id) + 1).filter((g) => versions.some((v) => v.kind === "dir_generation" && v.ref_key === g && v.status === "approved"));
+  const affects = (id: string) => {
+    const later = laterThan(id);
+    return later.length ? ` التوليدات المعتمدة بعده (${later.join("، ")}) ممكن تتأثر بالاستمرارية، والمخرج يوضح وش يحتاج تحديث.` : "";
+  };
+
+  return (
+    <div className="space-y-4">
+      {library.length > 0 && (
+        <section className="card space-y-2 p-4">
+          <h2 className="text-lg font-extrabold">المراجع المعتمدة ({library.length})</h2>
+          <p className="text-xs font-bold text-muted">المخرج يختار منها لكل توليد، والموقع يرفق صورها تلقائيًا مع طلب الفيديو.</p>
+          <div className="grid grid-cols-4 gap-2">
+            {library.map((r) => (
+              <div key={r.name} className="space-y-1">
+                {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
+                <img src={r.url} alt={r.name} className="aspect-square w-full rounded-xl object-cover" />
+                <p className="truncate text-xs font-extrabold" title={r.name}>{r.name}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!started ? (
+        <div className="card space-y-4 p-6">
+          <p className="text-center text-5xl">🎥</p>
+          <p className="text-center font-bold">المخرج يستلم السيناريو والشيتات والصور المعتمدة، ويعرض فهمه أول.</p>
+          <label className="flex items-start gap-3 rounded-2xl border border-line p-4">
+            <input type="checkbox" className="mt-1 size-5" checked={useSuper} onChange={(e) => setUseSuper(e.target.checked)} />
+            <span className="space-y-1">
+              <span className="block font-extrabold">فعّل «المخرج الخارق» (يكلّف أكثر)</span>
+              <span className="block text-sm font-bold text-muted">{SUPER_HINT}</span>
+            </span>
+          </label>
+          <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start", superDirector: useSuper })}>
+            {busy ? "نرسل…" : "ابدأ مع المخرج"}
+          </button>
+          <p className="text-center text-xs font-bold text-muted">كل رد تقريبًا من $0.05 إلى $1</p>
+        </div>
+      ) : (
+        <section className="card flex flex-wrap items-center justify-between gap-2 p-4">
+          <p className="font-extrabold">«المخرج الخارق»: {superDirector ? "مفعّل ✅" : "غير مفعّل"}</p>
+          {!busy && !writing && (
+            <button
+              className="btn btn-ghost min-h-10 px-4 text-sm"
+              onClick={() =>
+                window.confirm(
+                  superDirector
+                    ? "تبي توقف «المخرج الخارق»؟ يطبّق من الرد الجاي، والبرومبتات القادمة تنكتب بصيغة إنجليزية عادية. اللي اعتمدته قبل يظل مثل ما هو."
+                    : `تبي تفعّل «المخرج الخارق»؟ ${SUPER_HINT} يطبّق من الرد الجاي، واللي اعتمدته قبل يظل مثل ما هو.`,
+                ) && send({ action: "set_super", superDirector: !superDirector })
+              }
+            >
+              {superDirector ? "أوقفه" : "فعّله"}
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* 1. Understanding */}
+      {understanding && (
+        <StepCard
+          title="فهم المخرج"
+          v={understanding}
+          current={current?.id === understanding.id}
+          busy={busy || writing}
+          onApprove={understanding.status === "awaiting_approval" ? () => send({ action: "approve", versionId: understanding.id }) : undefined}
+          onSend={revise(understanding)}
+          warning={understanding.status === "approved" ? "الفهم معتمد. تعديله ممكن يغيّر الأسئلة والخريطة والتوليدات بعده، والمخرج يوضح وش يتأثر." : undefined}
+        />
+      )}
+
+      {/* 2. Directing questions and conflict choices */}
+      {questions.map((q) => (
+        <StepCard
+          key={q.id}
+          title="أسئلة الإخراج"
+          v={q}
+          current={false}
+          busy={busy || writing}
+          hideBody={q.status === "awaiting_approval"}
+          onSend={q.status === "approved" ? revise(q) : undefined}
+          warning="غيّرت إجابة؟ اكتبها هنا. الخريطة والتوليدات بعدها ما تتغيّر تلقائيًا، والمخرج يوضح وش يتأثر."
+        >
+          {q.status === "awaiting_approval" ? (
+            <>
+              <details className="text-sm">
+                <summary className="cursor-pointer font-extrabold text-muted">اعرض رسالة المخرج كاملة</summary>
+                <Markdown text={q.body} hideCode />
+              </details>
+              <QuestionsForm questions={q.data.questions ?? []} busy={busy || writing} onSubmit={(answers) => send({ action: "answers", versionId: q.id, answers })} />
+            </>
+          ) : q.status === "approved" ? (
+            <p className="text-sm font-bold text-muted">تمت الإجابة.</p>
+          ) : null}
+        </StepCard>
+      )).filter((_, i, all) => i === all.length - 1 || questions[i].status === "approved")}
+
+      {/* 3. Generation map */}
+      {mapV && (
+        <StepCard
+          title="خريطة التوليدات"
+          v={mapV}
+          current={current?.id === mapV.id}
+          busy={busy || writing}
+          onApprove={mapV.status === "awaiting_approval" ? () => send({ action: "approve", versionId: mapV.id }) : undefined}
+          onSend={revise(mapV)}
+          warning={mapV.status === "approved" ? "الخريطة معتمدة. تعديلها ممكن يضيف أو يحذف توليدات أو يغيّر مددها؛ اللي اعتمدته يظل محفوظ، والمخرج يوضح وش يتأثر." : undefined}
+        >
+          {(mapV.data.generation_map ?? []).length > 0 && (
+            <ul className="space-y-1 text-sm font-bold">
+              {(mapV.data.generation_map ?? []).map((g) => (
+                <li key={g.id} className="flex justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2">
+                  <span>{g.id} · {g.name}</span>
+                  <span dir="ltr">{g.duration_sec}s</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </StepCard>
+      )}
+
+      {/* 4. One card per generation: analysis (the prompt stays hidden), then its videos */}
+      {ordered.map((gid) => {
+        const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === gid).at(-1)!;
+        const vids = videos.filter((x) => x.ref_key === gid);
+        const cost = videoCost(v);
+        return (
+          <StepCard
+            key={gid}
+            title={`${gid}${nameOf(gid) ? ` · ${nameOf(gid)}` : ""}`}
+            v={v}
+            current={current?.id === v.id}
+            busy={busy || writing}
+            onApprove={v.status === "awaiting_approval" ? () => send({ action: "approve", versionId: v.id }) : undefined}
+            approveLabel={`اعتمد وولّد الفيديو ✅ · تقريبًا $${cost.toFixed(2)}`}
+            onSend={revise(v)}
+            warning={v.status === "approved" ? `هذا التوليد معتمد. بعد التعديل يوصلك تحليل وبرومبت جديد، ولما تعتمده يتولد فيديو جديد (تقريبًا $${cost.toFixed(2)}).${affects(gid)}` : undefined}
+          >
+            <div className="flex flex-wrap gap-1 text-xs font-bold">
+              <span className="chip">{VIDEO_MODELS[v.data.video_model ?? "seedance-2.5"].label}</span>
+              <span className="chip" dir="ltr">{v.data.duration_sec}s · {v.data.ratio}</span>
+              <span className="chip">{v.data.generate_audio ? "🔊 بصوت" : "🔇 بدون صوت"}</span>
+              {(v.data.references ?? []).map((r) => <span key={r.name} className="chip" title={r.role}>{r.name}</span>)}
+            </div>
+            {(v.data.dialogue_ar ?? []).length > 0 && (
+              <details className="rounded-2xl bg-surface-2 p-3 text-sm">
+                <summary className="cursor-pointer font-extrabold">الحوار (للأصوات)</summary>
+                <div className="mt-2 space-y-1 font-bold leading-8">
+                  {(v.data.dialogue_ar ?? []).map((d, i) => <p key={i}><span className="text-muted">{d.speaker}:</span> {d.line}</p>)}
+                </div>
+              </details>
+            )}
+            {v.status === "approved" && (
+              <Videos
+                genId={gid}
+                videos={vids}
+                busy={busy}
+                cost={cost}
+                onGenerate={() => send({ action: "generate_video", genId: gid })}
+                onApprove={(id) => send({ action: "approve_video", assetId: id })}
+                onReject={(id) => send({ action: "reject_video", assetId: id })}
+                onUnapprove={(id) => send({ action: "unapprove_video", assetId: id })}
+                unapproveWarning={`تبي تتراجع عن اعتماد هذا الفيديو؟ بعدها تقدر تولّد فيديو ثاني أو ترسل تعديل.${affects(gid)}`}
+              />
+            )}
+          </StepCard>
+        );
+      })}
+
+      {note && note.created_at === current?.created_at && (
+        <StepCard title="من المخرج" v={note} current busy={busy || writing} onSend={revise(note)} />
+      )}
+
+      {writing && (
+        <div className="card flex items-center gap-3 p-5" role="status">
+          <Spinner />
+          <div>
+            <p className="font-extrabold">المخرج يكتب…</p>
+            <p className="text-sm font-bold text-muted">من دقيقة إلى ٣ دقائق. تقدر تسكّر الصفحة وترجع.</p>
+          </div>
+        </div>
+      )}
+      {failed && (
+        <div className="card space-y-3 p-5">
+          <p className="error-box">ما كمل الرد: {job?.error}. ما انحسبت عليك تكلفة.</p>
+          <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "retry" })}>أعد المحاولة</button>
+        </div>
+      )}
+      {stage === "voices" || stage === "done" ? (
+        <div className="card space-y-1 p-5 text-center">
+          <p className="text-lg font-extrabold">✅ كل الفيديوهات معتمدة وانتقل المشروع للأصوات</p>
+          <p className="text-sm font-bold text-muted">الأصوات تنضاف في المرحلة الجاية من التطوير.</p>
+        </div>
+      ) : null}
+      {error && <p className="error-box">{error}</p>}
+    </div>
+  );
+}
+
+function Videos({
+  genId, videos, busy, cost, onGenerate, onApprove, onReject, onUnapprove, unapproveWarning,
+}: {
+  genId: string;
+  videos: Video[];
+  busy: boolean;
+  cost: number;
+  onGenerate: () => void;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+  onUnapprove: (id: string) => void;
+  unapproveWarning: string;
+}) {
+  const shown = videos.filter((v) => v.status !== "rejected");
+  const generating = videos.some((v) => v.status === "generating");
+  return (
+    <div className="space-y-3">
+      {shown.map((v) => (
+        <figure key={v.id} className={`space-y-2 rounded-2xl border p-2 ${v.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
+          {v.status === "generating" ? (
+            <div className="grid aspect-video place-items-center rounded-xl bg-surface-2"><Spinner /><p className="text-sm font-bold">نولّد الفيديو… (من دقيقتين إلى ١٠ دقائق، تقدر تسكّر الصفحة)</p></div>
+          ) : v.status === "failed" ? (
+            <p className="error-box">فشل التوليد: {v.error}. ما انحسبت تكلفة.</p>
+          ) : (
+            <video src={v.url} controls playsInline className="w-full rounded-xl" aria-label={genId} />
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className={`chip ${statusChip(v.status)}`}>{STATUS_LABELS[v.status] ?? v.status}</span>
+            {v.status === "generated" && !busy && (
+              <div className="flex gap-2">
+                <button className="btn btn-primary min-h-10 px-4 text-sm" onClick={() => onApprove(v.id)}>اعتمد الفيديو ✅</button>
+                <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => onReject(v.id)}>ارفضه</button>
+              </div>
+            )}
+            {v.status === "approved" && !busy && (
+              <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => window.confirm(unapproveWarning) && onUnapprove(v.id)}>↩️ تراجع عن الاعتماد</button>
+            )}
+          </div>
+        </figure>
+      ))}
+      {!generating && !busy && (
+        <button className="btn btn-secondary w-full" onClick={onGenerate}>
+          {shown.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · تقريبًا ${cost.toFixed(2)}
+        </button>
+      )}
+    </div>
+  );
+}

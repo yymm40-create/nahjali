@@ -63,9 +63,10 @@ export default async function FilmProjectPage({ params }: PageProps<"/film/[id]"
             ✍️ {scriptStarted ? "افتح السيناريست" : "ابدأ مع السيناريست"}
           </Link>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className={`grid gap-2 ${project.stage === "sheets" ? "grid-cols-2" : "grid-cols-3"}`}>
             <Link href={`/film/${project.id}/script`} className="btn btn-ghost">✍️ السيناريو</Link>
-            <Link href={`/film/${project.id}/sheets`} className="btn btn-primary">🎨 صانع الشيت</Link>
+            <Link href={`/film/${project.id}/sheets`} className={`btn ${project.stage === "sheets" ? "btn-primary" : "btn-ghost"}`}>🎨 الشيتات</Link>
+            {project.stage !== "sheets" && <Link href={`/film/${project.id}/director`} className="btn btn-primary">🎥 المخرج</Link>}
           </div>
         )}
       </section>
