@@ -45,6 +45,18 @@ ids.sub = (await admin.from("mahdi_push_subscriptions").insert({ user_id: other.
 ids.post = (await admin.from("mahdi_posts").insert({ user_id: other.id, kind: "week", payload: { title: "t", value: "1%" } }).select("id").single()).data!.id;
 ids.hiddenPost = (await admin.from("mahdi_posts").insert({ user_id: other.id, kind: "week", payload: { title: "t", value: "2%" }, hidden_at: new Date().toISOString() }).select("id").single()).data!.id;
 
+// Reading and groups (migration 0010) of the other user
+const r: { book?: string; hiddenBook?: string; group?: string; hadUsername?: boolean } = {};
+r.hadUsername = Boolean((await admin.from("site_usernames").select("user_id").eq("user_id", other.id).maybeSingle()).data);
+const otherName = r.hadUsername ? null : `zz_test_${Date.now().toString(36)}`;
+if (otherName) await admin.from("site_usernames").insert({ user_id: other.id, username: otherName });
+r.book = (await admin.from("mahdi_books").insert({ title: "TEST book", title_norm: "test book", pages: 100, added_by: other.id }).select("id").single()).data!.id;
+r.hiddenBook = (await admin.from("mahdi_books").insert({ title: "TEST hidden", title_norm: "test hidden", pages: 10, added_by: other.id, hidden_at: new Date().toISOString() }).select("id").single()).data!.id;
+await admin.from("mahdi_user_books").insert({ user_id: other.id, book_id: r.book });
+await admin.from("mahdi_reading_sessions").insert({ user_id: other.id, book_id: r.book, log_date: today, seconds: 600, ranges: [[1, 5]], pages_count: 5 });
+r.group = (await admin.from("mahdi_groups").insert({ name: "TEST group", leader_id: other.id }).select("id").single()).data!.id;
+await admin.from("mahdi_group_members").insert({ group_id: r.group, user_id: other.id, status: "active" });
+
 let myProjectId: string | null = null;
 try {
   const link = await admin.auth.admin.generateLink({ type: "magiclink", email: OWNER });
@@ -101,7 +113,23 @@ try {
   check(await none(me.from("mahdi_posts").select("id").eq("id", ids.hiddenPost!)), "a hidden post is not visible to others");
   check((await me.from("mahdi_post_reports").select("post_id")).error !== null, "users cannot read reports");
   check((await me.from("mahdi_religious_texts").select("id").eq("verification_status", "pending")).data?.length === 0, "unverified religious texts are never visible");
+
+  // ── reading, usernames and groups ──
+  check(await none(me.from("mahdi_user_books").select("book_id").eq("user_id", other.id)), "owner cannot see another user's library");
+  check(await none(me.from("mahdi_reading_sessions").select("id").eq("user_id", other.id)), "owner cannot see another user's reading sessions");
+  check(Boolean((await me.from("mahdi_reading_sessions").insert({ user_id: other.id, book_id: r.book!, log_date: today, seconds: 60 })).error), "owner cannot add a session to another user's library");
+  check(Boolean((await me.from("mahdi_books").insert({ title: "x", title_norm: "x", pages: 1 })).error), "users cannot write the shared catalogue directly");
+  check(((await me.from("mahdi_books").select("id").eq("id", r.book!)).data ?? []).length === 1, "a visible book of the catalogue is readable");
+  check(await none(me.from("mahdi_books").select("id").eq("id", r.hiddenBook!)), "a hidden book is not visible to others");
+  check(await none(me.from("site_usernames").select("user_id").eq("user_id", other.id)), "owner cannot read another user's username row");
+  if (otherName) check(Boolean((await me.from("site_usernames").upsert({ user_id: owner.id, username: otherName })).error), "a username already taken cannot be taken again");
+  check(await none(me.from("mahdi_groups").select("id").eq("id", r.group!)), "groups are not readable directly (only through the server)");
+  check(await none(me.from("mahdi_group_members").select("user_id").eq("group_id", r.group!)), "owner cannot see the members of a group they are not in");
+  check(Boolean((await me.from("mahdi_group_members").insert({ group_id: r.group!, user_id: owner.id, status: "active" })).error), "owner cannot add themselves to someone else's group");
 } finally {
+  if (r.group) await admin.from("mahdi_groups").delete().eq("id", r.group);
+  for (const id of [r.book, r.hiddenBook]) if (id) await admin.from("mahdi_books").delete().eq("id", id); // library and sessions go with it
+  if (otherName) await admin.from("site_usernames").delete().eq("user_id", other.id);
   for (const id of [ids.post, ids.hiddenPost]) if (id) await admin.from("mahdi_posts").delete().eq("id", id);
   if (ids.sub) await admin.from("mahdi_push_subscriptions").delete().eq("id", ids.sub);
   for (const id of [ids.challenge, ids.draft]) if (id) await admin.from("mahdi_challenges").delete().eq("id", id); // members and logs go with it

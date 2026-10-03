@@ -14,11 +14,11 @@ import Toasts from "./Toasts";
 import Avatar from "./Avatar";
 import RewardReveal from "./RewardReveal";
 
-const NAV: { href: string; label: string; icon: IconName; match: (p: string) => boolean }[] = [
+const NAV: { href: string; label: string; side?: string; icon: IconName; match: (p: string) => boolean }[] = [
   { href: "/mahdi", label: t.nav.home, icon: "home", match: (p) => p === "/mahdi" || p.startsWith("/mahdi/day") },
-  { href: "/mahdi/projects", label: t.nav.projects, icon: "projects", match: (p) => p.startsWith("/mahdi/projects") || p.startsWith("/mahdi/habits") },
-  { href: "/mahdi/progress", label: t.nav.progress, icon: "progress", match: (p) => p.startsWith("/mahdi/progress") },
-  { href: "/mahdi/community", label: t.nav.community, icon: "globe", match: (p) => p.startsWith("/mahdi/community") || p.startsWith("/mahdi/challenges") || p.startsWith("/mahdi/share") },
+  { href: "/mahdi/projects", label: t.nav.projects, side: t.nav.side.projects, icon: "projects", match: (p) => p.startsWith("/mahdi/projects") || p.startsWith("/mahdi/habits") },
+  { href: "/mahdi/progress", label: t.nav.progress, side: t.nav.side.progress, icon: "progress", match: (p) => p.startsWith("/mahdi/progress") },
+  { href: "/mahdi/community", label: t.nav.community, side: t.nav.side.community, icon: "globe", match: (p) => p.startsWith("/mahdi/community") || p.startsWith("/mahdi/challenges") || p.startsWith("/mahdi/share") },
 ];
 
 /** The context of the "+" button: inside a project it means "a habit in this project". */
@@ -60,9 +60,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <nav aria-label={t.nav.main} className="flex flex-col gap-1">
           {NAV.map((n) => (
             <Link key={n.href} href={n.href} className="m-side-item" aria-current={n.match(pathname) ? "page" : undefined}>
-              <Icon name={n.icon} /> {n.label}
+              <Icon name={n.icon} /> {n.side ?? n.label}
             </Link>
           ))}
+          <Link href="/mahdi/reading" className="m-side-item" aria-current={pathname.startsWith("/mahdi/reading") ? "page" : undefined}>
+            <Icon name="book" /> {t.nav.side.reading}
+          </Link>
         </nav>
         <button type="button" className="m-btn m-btn-primary" onClick={onAdd}>
           <Icon name="plus" /> {inProject ? t.add.habitIn(inProject.name) : t.nav.add}

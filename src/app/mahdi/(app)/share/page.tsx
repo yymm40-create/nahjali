@@ -22,9 +22,11 @@ export default function SharePage() {
   const [projectId, setProjectId] = useState(snap.projects[0]?.id ?? "");
   const [habitId, setHabitId] = useState(snap.habits[0]?.id ?? "");
   const [milestoneId, setMilestoneId] = useState(snap.rewards[0]?.milestoneId ?? "");
+  const finishedBooks = snap.reading.library.filter((e) => e.state === "finished");
+  const [bookId, setBookId] = useState(finishedBooks[0]?.book.id ?? "");
   const [closing, setClosing] = useState("");
   const [busy, setBusy] = useState(false);
-  const payload = buildShare(timeline, snap, { kind, showDelta, projectId, habitId, milestoneId });
+  const payload = buildShare(timeline, snap, { kind, showDelta, projectId, habitId, milestoneId, bookId });
   const name = showName ? snap.profile.displayName : undefined;
   const image = shrine?.imageUrl ?? null;
 
@@ -48,7 +50,7 @@ export default function SharePage() {
   async function post() {
     setBusy(true);
     try {
-      await mahdiFetch("/api/mahdi/community/posts", { method: "POST", json: { kind, showDelta, projectId, habitId, milestoneId, closing } });
+      await mahdiFetch("/api/mahdi/community/posts", { method: "POST", json: { kind, showDelta, projectId, habitId, milestoneId, bookId, closing } });
       toast(t.share.posted);
     } catch (e) {
       toast((e as Error).message);
@@ -56,7 +58,9 @@ export default function SharePage() {
     setBusy(false);
   }
 
-  const kinds = SHARE_KINDS.filter((k) => (k === "milestone" ? snap.rewards.length > 0 : k === "project" ? snap.projects.length > 0 : k === "habit" ? snap.habits.length > 0 : true));
+  const kinds = SHARE_KINDS.filter((k) =>
+    k === "milestone" ? snap.rewards.length > 0 : k === "project" ? snap.projects.length > 0 : k === "habit" ? snap.habits.length > 0 : k === "reading" ? snap.reading.sessions.length > 0 : k === "book" ? finishedBooks.length > 0 : true,
+  );
 
   return (
     <div className="space-y-6">
@@ -94,6 +98,14 @@ export default function SharePage() {
               <span className="m-label">{t.share.pickMilestone}</span>
               <select className="m-field" value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
                 {snap.rewards.map((r) => <option key={r.milestoneId} value={r.milestoneId}>{MILESTONES.find((m) => m.id === r.milestoneId)?.title}</option>)}
+              </select>
+            </label>
+          )}
+          {kind === "book" && (
+            <label className="block">
+              <span className="m-label">{t.share.pickBook}</span>
+              <select className="m-field" value={bookId} onChange={(e) => setBookId(e.target.value)}>
+                {finishedBooks.map((e) => <option key={e.book.id} value={e.book.id}>{e.book.title}</option>)}
               </select>
             </label>
           )}

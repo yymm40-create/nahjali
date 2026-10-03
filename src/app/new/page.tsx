@@ -20,15 +20,11 @@ export default async function NewPage({ searchParams }: PageProps<"/new">) {
 
   let trialsLeft: number | null = null;
   if (FREE_TRIAL && !hasUnlimitedTrials(user.email)) {
-    // Daily limit: count from midnight in Riyadh (UTC+3)
-    const riyadh = new Date(new Date().getTime() + 3 * 3600_000);
-    const dayStart = new Date(Date.UTC(riyadh.getUTCFullYear(), riyadh.getUTCMonth(), riyadh.getUTCDate()) - 3 * 3600_000);
     const { count } = await createAdminClient()
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
-      .eq("is_trial", true)
-      .gte("created_at", dayStart.toISOString());
+      .eq("is_trial", true);
     trialsLeft = Math.max(0, dailyTrialLimit(user) - (count ?? 0));
   }
 

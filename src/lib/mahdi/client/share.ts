@@ -2,11 +2,11 @@
 // so numbers in the community always come from real logs.
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { MILESTONES } from "@config/mahdi-rewards";
-import { compare, dayScore, dayStreak, itemStreak, periodOf, previousPeriod, scoreBy, weekGoals, startOfWeek, type Timeline } from "../engine";
+import { compare, dayScore, dayStreak, itemStreak, periodOf, previousPeriod, readingSummary, scoreBy, weekGoals, startOfWeek, type Timeline } from "../engine";
 import { fmtPct, fmtPoints, t } from "../i18n";
 import type { Snapshot } from "../types";
 
-export const SHARE_KINDS = ["week", "month", "day", "streak", "compare", "project", "habit", "milestone"] as const;
+export const SHARE_KINDS = ["week", "month", "day", "streak", "compare", "project", "habit", "milestone", "reading", "book"] as const;
 export type ShareKind = (typeof SHARE_KINDS)[number];
 
 export interface ShareOptions {
@@ -15,6 +15,7 @@ export interface ShareOptions {
   projectId?: string;
   habitId?: string;
   milestoneId?: string;
+  bookId?: string;
 }
 
 export interface SharePayload {
@@ -30,7 +31,7 @@ export interface SharePayload {
 }
 
 /** Null when there is nothing honest to show (e.g. no data yet). */
-export function buildShare(tl: Timeline, snap: Pick<Snapshot, "projects" | "habits" | "rewards">, o: ShareOptions): SharePayload | null {
+export function buildShare(tl: Timeline, snap: Pick<Snapshot, "projects" | "habits" | "rewards" | "reading">, o: ShareOptions): SharePayload | null {
   const ws = tl.ctx.weekStart;
   const week = periodOf("week", tl.ctx.asOf, ws);
   const cw = compare(tl, previousPeriod(week, ws), week);
@@ -66,6 +67,17 @@ export function buildShare(tl: Timeline, snap: Pick<Snapshot, "projects" | "habi
       const s = scoreBy(weekGoals(tl, startOfWeek(tl.ctx.asOf, ws)), (i) => i.itemId).get(h.id)?.score ?? null;
       const st = itemStreak(tl, h.id);
       return s === null ? null : { ...base, title: t.share.cardWeek, value: fmtPct(s), label: h.name, sub: st.current > 1 ? `${t.habit.streak}: ${st.current}` : "" };
+    }
+    case "reading": {
+      const w = readingSummary(snap.reading.sessions, tl.ctx.asOf, ws).week;
+      if (w.seconds < 60 && w.pages === 0 && w.narrations === 0) return null;
+      const m = Math.floor(w.seconds / 60);
+      const sub = [w.pages ? t.reading.pages(w.pages) : "", w.narrations ? t.reading.narrations(w.narrations) : ""].filter(Boolean).join(" · ");
+      return { ...base, title: t.share.cardReading, value: t.reading.hours(Math.floor(m / 60), m % 60), sub };
+    }
+    case "book": {
+      const e = snap.reading.library.find((x) => x.book.id === o.bookId && x.state === "finished");
+      return e ? { ...base, title: t.share.cardBook, value: e.book.title, label: e.book.author, sub: t.reading.u[e.book.unit].count(e.book.pages) } : null;
     }
     case "milestone": {
       const m = MILESTONES.find((x) => x.id === o.milestoneId);

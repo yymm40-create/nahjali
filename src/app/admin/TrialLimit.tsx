@@ -13,7 +13,7 @@ export default function TrialLimit({ users }: { users: { email: string; daily: n
 
   async function save(e: string, d: number) {
     if (!e.trim()) return setMsg("⚠️ اكتب الإيميل أول.");
-    if (!(d >= 0)) return setMsg("⚠️ اكتب العدد (كم تجربة في اليوم).");
+    if (!(d >= 0)) return setMsg("⚠️ اكتب العدد (كم تجربة إجمالًا).");
     setBusy(true);
     setMsg("");
     try {
@@ -24,7 +24,7 @@ export default function TrialLimit({ users }: { users: { email: string; daily: n
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error ?? "تعذّر الحفظ.");
-      setMsg(d > 0 ? `✅ صار حد ${e} ${d} في اليوم` : `✅ رجع ${e} للحد العادي`);
+      setMsg(d > 0 ? `✅ صار حد ${e} ${d} تجارب` : `✅ رجع ${e} للحد العادي`);
       setEmail("");
       setDaily("");
       router.refresh();
@@ -40,7 +40,7 @@ export default function TrialLimit({ users }: { users: { email: string; daily: n
       <h2 className="text-xl font-extrabold">رفع عدد المحاولات لإيميل</h2>
       <label className="block text-sm font-bold text-muted">الإيميل</label>
       <input className="field w-full" dir="ltr" type="email" placeholder="email@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-      <label className="block text-sm font-bold text-muted">عدد التجارب المسموحة في اليوم</label>
+      <label className="block text-sm font-bold text-muted">عدد التجارب المسموحة لهذا الإيميل</label>
       <div className="flex gap-2">
         <input className="field w-28" inputMode="numeric" placeholder="مثلاً 10" value={daily} onChange={(e) => setDaily(e.target.value.replace(/[^0-9٠-٩]/g, "").replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 1632)))} />
         <button className="btn btn-primary flex-1" disabled={busy} onClick={() => save(email, daily === "" ? NaN : Number(daily))}>
