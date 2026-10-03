@@ -1,6 +1,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { UserError } from "@/lib/api";
 import { isAdmin } from "@config/site";
+import { refundCoins, reserveCoins, settleCoins } from "@/lib/coins";
+
+/** What a coin movement says in the user's history. */
+const COIN_LABELS: Record<string, string> = {
+  screenwriter: "رد السيناريست",
+  sheets: "رد صانع الشيت",
+  sheet_image: "صورة شيت",
+  director: "رد المخرج",
+  director_video: "فيديو",
+};
 import type { FilmJob, FilmService } from "./types";
 
 const RIYADH_MS = 3 * 3600_000;
@@ -131,11 +141,19 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
     await db.from("film_jobs").update({ status: "failed", error: "usage reservation failed", finished_at: new Date().toISOString() }).eq("id", job.id);
     throw e2;
   }
+  // «النقود الذكية»: hold the operation's coins (when coins are required); a short balance cancels the job
+  try {
+    await reserveCoins(input.user, job.id, input.estimateUsd, COIN_LABELS[input.operation] ?? input.operation);
+  } catch (e) {
+    await failJob(job.id, e);
+    throw e;
+  }
   return { job, created: true };
 }
 
 /** Success: the job is done and its real cost replaces the estimate. */
 export async function succeedJob(jobId: string, actual: { costUsd: number; units?: number; providerTaskId?: string | null }) {
+  await settleCoins(jobId, actual.costUsd).catch((e) => console.error("coin settle failed", e));
   const db = createAdminClient();
   const now = new Date().toISOString();
   await db
@@ -154,6 +172,7 @@ export async function succeedJob(jobId: string, actual: { costUsd: number; units
  * cut off half-way), that real amount is kept in actual_cost_usd for the owner's records only.
  */
 export async function failJob(jobId: string, error: unknown, providerCostUsd?: number) {
+  await refundCoins(jobId).catch((e) => console.error("coin refund failed", e));
   const db = createAdminClient();
   const now = new Date().toISOString();
   const message = String(
