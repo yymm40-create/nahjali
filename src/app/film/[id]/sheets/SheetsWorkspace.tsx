@@ -72,6 +72,12 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     return () => clearInterval(timer);
   }, [writing, painting, projectId, router]);
 
+  // Once this section's last step is done, go straight to the next one (only when it happens here, not on later visits)
+  const openedAt = useRef(stage);
+  useEffect(() => {
+    if (openedAt.current === "sheets" && stage === "director") router.push(`/film/${projectId}/director`);
+  }, [stage, projectId, router]);
+
   async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError("");

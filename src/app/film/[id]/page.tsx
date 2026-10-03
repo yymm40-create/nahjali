@@ -8,6 +8,9 @@ import { FILM_STAGES, STATUS_LABELS } from "@config/film";
 import ProjectEditor from "./ProjectEditor";
 import References from "./References";
 
+/** Where each project stage continues (the voices have no page yet). */
+const NEXT_PATH: Record<string, string> = { screenwriter: "/script", sheets: "/sheets", director: "/director" };
+
 export const metadata = { title: "مشروع فيلم | نهج علي" };
 export const dynamic = "force-dynamic";
 
@@ -40,17 +43,6 @@ export default async function FilmProjectPage({ params }: PageProps<"/film/[id]"
     <div className="space-y-6">
       <header className="space-y-3">
         <h1 className="display text-4xl">{project.title}</h1>
-        {/* Stage tracker */}
-        <ol className="grid grid-cols-5 gap-1 text-center" aria-label="مراحل المشروع">
-          {FILM_STAGES.map((s, i) => (
-            <li key={s.key} aria-current={i === current ? "step" : undefined} className="space-y-1">
-              <span className={`grid h-11 place-items-center rounded-2xl text-xl ${i < current ? "bg-teal text-white" : i === current ? "bg-gold text-on-gold" : "bg-surface-2 opacity-60"}`}>
-                {s.icon}
-              </span>
-              <span className={`block text-[11px] font-extrabold ${i === current ? "text-ink" : "text-muted"}`}>{s.label}</span>
-            </li>
-          ))}
-        </ol>
       </header>
 
       <section className="card space-y-3 p-4">
@@ -58,17 +50,10 @@ export default async function FilmProjectPage({ params }: PageProps<"/film/[id]"
           <h2 className="text-lg font-extrabold">المرحلة الحالية: {FILM_STAGES[current]?.label}</h2>
           <span className="chip">{scriptStarted ? STATUS_LABELS.awaiting_approval : STATUS_LABELS.draft}</span>
         </div>
-        {project.stage === "screenwriter" ? (
-          <Link href={`/film/${project.id}/script`} className="btn btn-primary w-full">
-            ✍️ {scriptStarted ? "افتح السيناريست" : "ابدأ مع السيناريست"}
-          </Link>
-        ) : (
-          <div className={`grid gap-2 ${project.stage === "sheets" ? "grid-cols-2" : "grid-cols-3"}`}>
-            <Link href={`/film/${project.id}/script`} className="btn btn-ghost">✍️ السيناريو</Link>
-            <Link href={`/film/${project.id}/sheets`} className={`btn ${project.stage === "sheets" ? "btn-primary" : "btn-ghost"}`}>🎨 الشيتات</Link>
-            {project.stage !== "sheets" && <Link href={`/film/${project.id}/director`} className="btn btn-primary">🎥 المخرج</Link>}
-          </div>
-        )}
+        {/* One button to the current section; the sections bar above opens the others */}
+        <Link href={`/film/${project.id}${NEXT_PATH[project.stage] ?? "/director"}`} className="btn btn-primary w-full">
+          {project.stage === "screenwriter" ? `✍️ ${scriptStarted ? "كمّل مع السيناريست" : "ابدأ مع السيناريست"}` : `${FILM_STAGES[current]?.icon} كمّل: ${FILM_STAGES[current]?.label}`}
+        </Link>
       </section>
 
       <ProjectEditor
