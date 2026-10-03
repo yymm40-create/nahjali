@@ -8,7 +8,7 @@ import { habitsFromRows, projectFromRow, shrineFromRow, type HabitRow, type LogR
 const PAGE = 1000; // Supabase returns at most 1000 rows per request
 
 /** Reads every page of a query. */
-async function selectAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+export async function selectAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await page(from, from + PAGE - 1);

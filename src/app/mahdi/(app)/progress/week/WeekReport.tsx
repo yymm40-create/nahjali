@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { addDays, bestAndWeakest, compare, dayScore, isISODate, periodOf, previousPeriod, scoreBy, startOfWeek, weekGoals, weekStreak } from "@/lib/mahdi/engine";
 import { fmtDate, fmtNum, fmtPct, t, weekdayName } from "@/lib/mahdi/i18n";
-import { bySort, pickPhrase } from "@/lib/mahdi/client/derive";
+import { bySort, itemHref, pickPhrase } from "@/lib/mahdi/client/derive";
 import { weekInsights } from "@/lib/mahdi/client/insights";
 import Icon from "@/components/mahdi/Icon";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
@@ -126,7 +126,7 @@ export default function WeekReport({ start }: { start?: string }) {
                 {[...byHabit]
                   .sort((a, b) => (b[1].score ?? 0) - (a[1].score ?? 0))
                   .map(([id, sc]) => (
-                    <BarRow key={id} color={habitColor(id)} label={name(id)} score={sc.score} href={`/mahdi/habits/${id}`} extra={`${sc.achieved}/${sc.required}`} />
+                    <BarRow key={id} color={habitColor(id)} label={name(id)} score={sc.score} href={itemHref(id)} extra={`${sc.achieved}/${sc.required}`} />
                   ))}
               </ul>
             </section>

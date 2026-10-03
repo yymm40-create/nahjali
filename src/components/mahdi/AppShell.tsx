@@ -18,7 +18,7 @@ const NAV: { href: string; label: string; icon: IconName; match: (p: string) => 
   { href: "/mahdi", label: t.nav.home, icon: "home", match: (p) => p === "/mahdi" || p.startsWith("/mahdi/day") },
   { href: "/mahdi/projects", label: t.nav.projects, icon: "projects", match: (p) => p.startsWith("/mahdi/projects") || p.startsWith("/mahdi/habits") },
   { href: "/mahdi/progress", label: t.nav.progress, icon: "progress", match: (p) => p.startsWith("/mahdi/progress") },
-  { href: "/mahdi/more", label: t.nav.more, icon: "more", match: (p) => p.startsWith("/mahdi/more") },
+  { href: "/mahdi/community", label: t.nav.community, icon: "globe", match: (p) => p.startsWith("/mahdi/community") || p.startsWith("/mahdi/challenges") || p.startsWith("/mahdi/share") },
 ];
 
 /** The context of the "+" button: inside a project it means "a habit in this project". */
@@ -40,6 +40,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
   const inProject = projects.find((p) => p.id === contextProject);
   const { profile } = state.snap;
+  // The home screen and the daily screens already show the avatar in their own header
+  const homeLike = pathname === "/mahdi" || pathname.startsWith("/mahdi/day");
 
   const onAdd = () => {
     if (projects.length === 0) setNewProject(true);
@@ -66,7 +68,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Icon name="plus" /> {inProject ? t.add.habitIn(inProject.name) : t.nav.add}
         </button>
         <div className="mt-auto space-y-3">
-          <Link href="/mahdi/more" className="m-soft flex items-center gap-3 p-3">
+          <Link href="/mahdi/more" className="m-soft flex items-center gap-3 p-3" aria-label={t.nav.account}>
             <Avatar profile={profile} size={40} />
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">{t.mawla(profile.displayName)}</span>
@@ -79,6 +81,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="min-w-0">
+        {!homeLike && (
+          // Phones: the avatar in the header opens «المزيد» (account and settings), since the bottom bar has «المجتمع» instead
+          <header className="m-topbar lg:hidden">
+            <Link href="/mahdi" className="m-display m-gold text-xl">{t.brand}</Link>
+            <Link href="/mahdi/more" className="m-icon-btn size-12" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
+              <Avatar profile={profile} size={36} />
+            </Link>
+          </header>
+        )}
         <SyncBanner />
         <main id="m-main" className="m-content-pad mx-auto w-full max-w-[1120px] px-4 pt-4 sm:px-6 lg:px-10 lg:pt-8">
           {children}
