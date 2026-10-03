@@ -7,6 +7,7 @@ import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
+import ActionBar from "../../ActionBar";
 import type { ScriptVersion } from "@/lib/film/script";
 import { KIND_LABELS, KIND_ORDER, type ScriptKind } from "@config/film-prompts/screenwriter";
 import { STATUS_LABELS } from "@config/film";
@@ -29,8 +30,6 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   const [running, setRunning] = useState(job?.status === "running");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [reviseFor, setReviseFor] = useState<string | null>(null);
-  const [reviseText, setReviseText] = useState("");
 
   // While the screenwriter writes, poll until the job finishes, then reload the page data
   useEffect(() => {
@@ -54,8 +53,6 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
     setError("");
     try {
       const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/script`, body);
-      setReviseFor(null);
-      setReviseText("");
       if (jobId) setRunning(true);
       router.refresh();
     } catch (e) {
@@ -146,45 +143,18 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
               </details>
             )}
 
-            {/* Actions */}
-            {isCurrent && v.kind !== "questions" && !running && (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <button className="btn btn-primary flex-1" disabled={busy} onClick={() => send({ action: "approve", versionId: v.id })}>
-                    اعتمد ✅
-                  </button>
-                  <button className="btn btn-ghost flex-1" disabled={busy} onClick={() => setReviseFor(reviseFor === v.id ? null : v.id)}>
-                    اطلب تعديل ✏️
-                  </button>
-                </div>
-              </div>
-            )}
-            {!isCurrent && v.status === "approved" && !running && v.kind !== "questions" && (
-              <button className="text-sm font-bold text-muted underline" onClick={() => setReviseFor(reviseFor === v.id ? null : v.id)}>
-                أبي أعدّل شي في {KIND_LABELS[v.kind]}
-              </button>
-            )}
-            {reviseFor === v.id && (
-              <div className="space-y-2">
-                {!isCurrent && (
-                  <p className="text-sm font-bold text-muted">
-                    هذا جزء معتمد. بعد التعديل، الأجزاء اللي بعده تنعلّم «قد تكون قديمة»، والسيناريست يوضح وش يتأثر ويحدّثه بموافقتك.
-                  </p>
-                )}
-                <textarea
-                  className="field min-h-28"
-                  value={reviseText}
-                  onChange={(e) => setReviseText(e.target.value.slice(0, 4000))}
-                  placeholder="اكتب وش تبي يتغيّر، بكلامك"
-                />
-                <button
-                  className="btn btn-secondary w-full"
-                  disabled={busy || !reviseText.trim()}
-                  onClick={() => send({ action: "revise", text: reviseText, versionId: v.id })}
-                >
-                  أرسل التعديل
-                </button>
-              </div>
+            {/* Actions: approve on one side, edit / new direction on the other; edits stay possible after approval */}
+            {v.kind !== "questions" && !running && (isCurrent || v.status === "approved") && (
+              <ActionBar
+                busy={busy}
+                onApprove={isCurrent ? () => send({ action: "approve", versionId: v.id }) : undefined}
+                onSend={(mode, text) => send({ action: "revise", text, versionId: v.id, mode })}
+                warning={
+                  v.status === "approved"
+                    ? `${KIND_LABELS[v.kind]} معتمد. بعد التعديل، الأجزاء اللي بعده تنعلّم «قد تكون قديمة»، والسيناريست يوضح وش يتأثر ويحدّثه بموافقتك.${stage !== "screenwriter" ? " والسيناريو انتقل لصانع الشيت: الشيتات اللي انبنت عليه ما تتحدّث تلقائيًا." : ""}`
+                    : undefined
+                }
+              />
             )}
           </article>
         );

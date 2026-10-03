@@ -98,7 +98,7 @@ export type ScriptAction =
   | { action: "start" }
   | { action: "approve"; versionId: string }
   | { action: "answers"; versionId: string; answers: string[] }
-  | { action: "revise"; text: string; versionId?: string }
+  | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" };
 
 /**
@@ -158,7 +158,8 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
       // Changing an already-approved deliverable: everything approved after it may now be out of date
       const target = input.versionId ? versions.find((x) => x.id === input.versionId) : undefined;
       if (target?.status === "approved") await markLaterStale(project.id, target.kind, versions);
-      userText = text;
+      // A new direction is sent as such; an edit is the user's words as they are
+      userText = input.mode === "direct" ? `توجيه / أمر جديد:\n${text}` : text;
       break;
     }
     case "retry": {

@@ -5,7 +5,7 @@ import { callClaudeJson, claudeCost, totalTokens, type ClaudePart, type ClaudeTu
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
-import { GENERATOR_FACTS, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
+import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
 import { findStyle } from "@config/film-styles";
 
 const STAGE = "sheets";
@@ -18,7 +18,10 @@ export const MAX_REFERENCE_UPLOADS = 4;
 
 // Prefixed so version numbers never collide with the screenwriter's deliverables of the same name
 export type SheetKind = "sheet_understanding" | "sheet_questions" | "style_test" | "style" | "sheet_prompt" | "sheet_handoff";
-export type MapChoice = "make" | "as_is" | "reference";
+// make: generated · as_is: the user's picture is final · reference: one picture to design the sheet from
+// convert: 1–4 photos of a real person turned into a cartoon character sheet in the project's style
+export type MapChoice = "make" | "as_is" | "reference" | "convert";
+const multiUpload = (c: MapChoice) => c === "convert";
 
 export interface MapItem {
   id: string;
@@ -154,12 +157,13 @@ export type SheetAction =
   | { action: "start" }
   | { action: "approve"; versionId: string; choices?: Record<string, MapChoice> }
   | { action: "answers"; versionId: string; answers: string[] }
-  | { action: "revise"; text: string; versionId?: string }
+  | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
   | { action: "test_styles"; styleIds: string[] }
   | { action: "choose_style"; styleId: string }
   | { action: "generate_image"; sheetId: string }
   | { action: "approve_image"; assetId: string }
+  | { action: "unapprove_image"; assetId: string }
   | { action: "reject_image"; assetId: string }
   | { action: "rename"; assetId: string; name: string }
   | { action: "remove_upload"; assetId: string };
@@ -202,10 +206,16 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (v.kind === "sheet_understanding") return { jobId: await approveMap(project, user, v, input.choices ?? {}, assets) };
       if (v.kind !== "sheet_prompt") throw new UserError("هذا العنصر ما يحتاج اعتماد.", 409);
       await setApproved(v, versions);
+      // Approving a prompt starts its picture right away.
       // The master needs its picture first; the course moves on only after the master image is accepted
-      if (v.ref_key === MASTER_ID) return { jobId: null };
+      if (v.ref_key === MASTER_ID) {
+        await generateSheet(project, user, v, assets);
+        return { jobId: null };
+      }
       const id = await addUserMessage(project.id, "اعتمد");
-      return { jobId: await queueReply(project, user, id) };
+      const jobId = await queueReply(project, user, id);
+      await generateSheet(project, user, v, assets);
+      return { jobId };
     }
 
     case "answers": {
@@ -225,7 +235,8 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       const text = String(input.text ?? "").trim();
       if (!text || text.length > 4000) throw new UserError("اكتب التعديل (٤٠٠٠ حرف كحد أقصى).", 400);
       const target = input.versionId ? versions.find((x) => x.id === input.versionId) : undefined;
-      const prefix = target?.kind === "sheet_prompt" ? `تعديل على ${target.ref_key}:\n` : "";
+      const prefix =
+        input.mode === "direct" ? "توجيه / أمر جديد:\n" : target?.kind === "sheet_prompt" ? `تعديل على ${target.ref_key}:\n` : "";
       const id = await addUserMessage(project.id, prefix + text);
       return { jobId: await queueReply(project, user, id) };
     }
@@ -274,16 +285,7 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
     case "generate_image": {
       const prompt = versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === input.sheetId && v.status === "approved").at(-1);
       if (!prompt?.data.prompt) throw new UserError("اعتمد برومبت هذا الشيت أول.", 409);
-      const images = approvedImages(assets);
-      if (input.sheetId !== MASTER_ID && !images[MASTER_ID]) throw new UserError("اعتمد صورة الماستر أول؛ هي مرجع الستايل لكل الشيتات.", 409);
-      const refIds = new Set((prompt.data.references ?? []).map((r) => r.sheet_id));
-      if (input.sheetId !== MASTER_ID) refIds.add(MASTER_ID);
-      refIds.delete(input.sheetId);
-      const refs = [...refIds].map((id) => images[id]).filter(Boolean);
-      // The user's own picture given "as a reference" for this sheet
-      const own = assets.filter((a) => a.kind === "upload" && a.ref_key === input.sheetId && a.meta?.mode === "reference" && a.status === "uploaded");
-      refs.push(...own);
-      await startImage(project, user, { sheetId: input.sheetId, prompt: prompt.data.prompt, refs, kind: "sheet", versionId: prompt.id, meta: {} });
+      await generateSheet(project, user, prompt, assets);
       return { jobId: null };
     }
 
@@ -296,11 +298,23 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       const older = assets.filter((x) => x.ref_key === a.ref_key && x.id !== a.id && x.status === "approved").map((x) => x.id);
       if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
       await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: atName(item?.name ?? a.ref_key) } }).eq("id", a.id);
-      if (a.ref_key === MASTER_ID) {
+      const laterSheets = versions.some((x) => x.kind === "sheet_prompt" && x.ref_key !== MASTER_ID);
+      if (a.ref_key === MASTER_ID && !laterSheets) {
         const id = await addUserMessage(project.id, `اعتمد\nصورة الماستر ${MASTER_ID} المولّدة مرفقة هنا:\n[[image:${a.id}]]`);
         return { jobId: await queueReply(project, user, id) };
       }
       return { jobId: await maybeFinish(project, user) };
+    }
+
+    case "unapprove_image": {
+      // The user can always take an approval back, then generate another picture or send another edit
+      const a = assets.find((x) => x.id === input.assetId);
+      if (!a || a.kind !== "image" || a.status !== "approved") throw new UserError("هذي الصورة مو معتمدة.", 409);
+      const { error } = await db().from("film_assets").update({ status: "generated" }).eq("id", a.id);
+      if (error) throw error;
+      // Not every sheet is approved any more: the project is back with the sheet maker
+      if (project.stage === "director") await db().from("film_projects").update({ stage: "sheets" }).eq("id", project.id);
+      return { jobId: null };
     }
 
     case "reject_image": {
@@ -347,8 +361,8 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
     clean[item.id] = choice;
     if (choice === "make") continue;
     const active = assets.filter((a) => a.kind === "upload" && a.ref_key === item.id && a.status !== "rejected");
-    // "As is" is one final picture (the latest); "reference" can carry up to 4 pictures of the same subject
-    const ups = choice === "as_is" ? active.slice(-1) : active.slice(-MAX_REFERENCE_UPLOADS);
+    // One picture (the latest) for "as is" and "reference"; up to 4 photos of the same person for "convert"
+    const ups = multiUpload(choice) ? active.slice(-MAX_REFERENCE_UPLOADS) : active.slice(-1);
     if (!ups.length) throw new UserError(`ارفع صورة «${item.name}» أول، أو اختر «اصنعه لي».`, 400);
     const extra = active.filter((a) => !ups.includes(a)).map((a) => a.id);
     if (extra.length) {
@@ -366,7 +380,9 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
     lines.push(
       choice === "as_is"
         ? `- ${item.id} (${item.name}): عندي صورته الجاهزة، معتمدة كما هي ولا تحتاج برومبت: ${marks}`
-        : `- ${item.id} (${item.name}): هذي ${ups.length > 1 ? `${ups.length} صور مرجعية` : "صورة مرجعية"} من عندي (قد تكون لشخص حقيقي)، حوّلها إلى شيت متكامل بستايل المشروع مع الحفاظ على الملامح: ${marks}`,
+        : choice === "reference"
+          ? `- ${item.id} (${item.name}): هذي صورة مرجعية من عندي، اصنع الشيت منها بستايل المشروع: ${marks}`
+          : `- ${item.id} (${item.name}): ${ups.length > 1 ? `هذي ${ups.length} صور لشخص حقيقي` : "هذي صورة لشخص حقيقي"}، حوّله إلى شخصية كرتونية بستايل المشروع واصنع منها شيت متكامل مع الحفاظ على ملامحه: ${marks}`,
     );
   }
   // Must really flip the version: a silent no-op here left the map "awaiting approval" with no job started
@@ -396,6 +412,27 @@ async function maybeFinish(project: FilmProject, user: { id: string; email?: str
   const list = map.map((m) => `- ${m.id} (${m.name}) ${images[m.id].meta?.at_name ?? ""}: [[image:${images[m.id].id}]]`).join("\n");
   const id = await addUserMessage(project.id, `كل صور الشيتات صارت معتمدة ومرفقة هنا:\n${list}\n\nجهّز رسالة التسليم النهائية بحالاتها الصحيحة.`);
   return queueReply(project, user, id);
+}
+
+/** Generates the picture of an approved sheet prompt, with its references (the master for style only). */
+async function generateSheet(project: FilmProject, user: { id: string; email?: string | null }, prompt: SheetVersion, assets: FilmAsset[]) {
+  const sheetId = prompt.ref_key;
+  if (!prompt.data.prompt) throw new UserError("برومبت هذا الشيت فاضي.", 409);
+  const images = approvedImages(assets);
+  if (sheetId !== MASTER_ID && !images[MASTER_ID]) throw new UserError("اعتمد صورة الماستر أول؛ هي مرجع الستايل لكل الشيتات.", 409);
+  const refIds = new Set((prompt.data.references ?? []).map((r) => r.sheet_id));
+  refIds.delete(MASTER_ID);
+  refIds.delete(sheetId);
+  // The subject's own references come first; the master comes last and is used for style only
+  const refs = [...refIds].map((id) => images[id]).filter(Boolean);
+  const own = assets.filter((a) => a.kind === "upload" && a.ref_key === sheetId && (a.meta?.mode === "reference" || a.meta?.mode === "convert") && a.status === "uploaded");
+  refs.push(...own);
+  let text = prompt.data.prompt;
+  if (sheetId !== MASTER_ID) {
+    refs.push(images[MASTER_ID]);
+    text += `\n\n${MASTER_STYLE_ONLY}`;
+  }
+  await startImage(project, user, { sheetId, prompt: text, refs, kind: "sheet", versionId: prompt.id, meta: {} });
 }
 
 /** Creates the asset + paid job for one picture and generates it in the background. */
@@ -573,7 +610,7 @@ export async function confirmSheetUpload(project: FilmProject, sheetId: string, 
   const file = list?.find((f) => f.name === name);
   const size = Number(file?.metadata?.size ?? 0);
   if (!file || size <= 0 || size > 20 * 1024 * 1024) throw new UserError("ما وصل الملف أو حجمه أكبر من ٢٠ ميجا.", 400);
-  if (mode === "reference") {
+  if (multiUpload(mode)) {
     const { count } = await db().from("film_assets").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", sheetId).neq("status", "rejected");
     if ((count ?? 0) >= MAX_REFERENCE_UPLOADS) throw new UserError(`الحد الأقصى ${MAX_REFERENCE_UPLOADS} صور لكل عنصر.`, 400);
   } else {
