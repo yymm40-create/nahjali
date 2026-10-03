@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { canUseFilm } from "@/lib/film/access";
 import { SECTIONS } from "@config/sections";
+import { isAdmin } from "@config/site";
 
 /** Home: the site's sections (config/sections.ts). */
 export default async function Home() {
@@ -25,8 +26,8 @@ export default async function Home() {
       <section className="space-y-3">
         <h2 className="display text-3xl">وش تبي تسوي اليوم؟</h2>
         <ul className="space-y-3">
-          {SECTIONS.map((s) => {
-            // Signed-out visitors can still open the film card (they are asked to sign in first)
+          {SECTIONS.filter((s) => !s.requiresFilmAccess || isAdmin(user?.email)).map((s) => {
+            // The film section is shown to the owner only (for now)
             const locked = s.requiresFilmAccess && user && !filmAllowed;
             const body = (
               <>
