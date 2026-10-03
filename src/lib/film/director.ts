@@ -7,7 +7,7 @@ import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
-import { DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_PRICING, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
   DIRECTOR_PROMPT,
@@ -460,8 +460,8 @@ async function finishVideo(
     const up = await client.storage.from(FILM_BUCKET).upload(path, file, { contentType: "video/mp4", upsert: true });
     if (up.error) throw up.error;
     await client.from("film_assets").update({ status: "generated", storage_path: path, mime: "video/mp4", bytes: file.length, error: null }).eq("id", assetId);
-    const perM = VIDEO_PRICING[model].usdPerMillionTokens;
-    const cost = perM && task.tokens ? (task.tokens * perM) / 1_000_000 : videoEstimateUsd(model, resolution, durationSec);
+    // The real token count when the provider reports it, otherwise the estimate
+    const cost = task.tokens ? videoUsd(model, resolution, task.tokens) : videoEstimateUsd(model, resolution, durationSec);
     await succeedJob(jobId, { costUsd: cost, units: task.tokens ?? durationSec });
   } catch (err) {
     console.error("film video finish failed", err);

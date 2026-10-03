@@ -150,7 +150,7 @@ export default function VideosWorkspace({
           ))}
         </div>
         <p className="text-xs font-bold text-muted">
-          الأسعار تقريبية (Seedance 2.5، ونسخة 2.0 أرخص). كل التوليدات بهذي الجودة تقريبًا <span dir="ltr">{usd(total)}</span>. الفيديو اللي يفشل ما ينحسب.
+          الأسعار تقريبية حسب أسعار BytePlus، والتكلفة الحقيقية تنحسب بعد التوليد. كل التوليدات بهذي الجودة تقريبًا <span dir="ltr">{usd(total)}</span>. الفيديو اللي يفشل ما ينحسب.
         </p>
       </section>
 

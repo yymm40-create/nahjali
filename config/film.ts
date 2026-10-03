@@ -29,23 +29,25 @@ export type VideoResolution = keyof typeof VIDEO_RESOLUTIONS;
 export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = "720p";
 
 /**
- * Video cost. BytePlus bills Seedance by tokens (≈ width × height × 24 fps × seconds ÷ 1024). The real price
- * per 1M tokens (from the ModelArk pricing page of the owner's account) goes in `usdPerMillionTokens`; until it
- * is filled in, the 720p per-second estimate is scaled by the picture size.
+ * Video cost. BytePlus bills Seedance by output tokens ≈ width × height × 24 fps × seconds ÷ 1024, at a price
+ * per 1M tokens that depends on the model and the quality (owner's ModelArk console, "without video input").
  */
-export const VIDEO_PRICING: Record<VideoModel, { usdPerSecond720pEstimate: number; usdPerMillionTokens: number | null }> = {
-  "seedance-2.5": { usdPerSecond720pEstimate: 0.15, usdPerMillionTokens: null },
-  "seedance-2.0": { usdPerSecond720pEstimate: 0.1, usdPerMillionTokens: null },
+export const VIDEO_PRICE_PER_MILLION_TOKENS: Record<VideoModel, Record<VideoResolution, number>> = {
+  "seedance-2.0": { "480p": 7, "720p": 7, "1080p": 7.7 },
+  "seedance-2.5": { "480p": 10.7, "720p": 10.7, "1080p": 11.7 },
 };
 
-const pixels = (r: VideoResolution) => VIDEO_RESOLUTIONS[r].width * VIDEO_RESOLUTIONS[r].height;
+/** Approximate tokens of one video (the provider reports the real count once it is done). */
+export const videoTokens = (resolution: VideoResolution, seconds: number) =>
+  (VIDEO_RESOLUTIONS[resolution].width * VIDEO_RESOLUTIONS[resolution].height * 24 * seconds) / 1024;
+
+/** USD for a token count. */
+export const videoUsd = (model: VideoModel, resolution: VideoResolution, tokens: number) =>
+  (tokens * VIDEO_PRICE_PER_MILLION_TOKENS[model][resolution]) / 1_000_000;
 
 /** Estimated USD for one video (used for the reservation and shown before generating). */
-export function videoEstimateUsd(model: VideoModel, resolution: VideoResolution, seconds: number) {
-  const p = VIDEO_PRICING[model];
-  if (p.usdPerMillionTokens) return ((pixels(resolution) * 24 * seconds) / 1024) * (p.usdPerMillionTokens / 1_000_000);
-  return seconds * p.usdPerSecond720pEstimate * (pixels(resolution) / pixels("720p"));
-}
+export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution, seconds: number) =>
+  videoUsd(model, resolution, videoTokens(resolution, seconds));
 
 /** Generated videos are kept on the site this many days; the client is asked to download them. */
 export const VIDEO_KEEP_DAYS = 7;
