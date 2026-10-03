@@ -155,7 +155,7 @@ export type DirectorAction =
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
-  | { action: "generate_video"; genId: string; resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number }
+  | { action: "generate_video"; genId: string; resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel }
   | { action: "approve_video"; assetId: string }
   | { action: "unapprove_video"; assetId: string }
   | { action: "reject_video"; assetId: string };
@@ -299,7 +299,9 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const ratio = input.ratio === "9:16" || input.ratio === "16:9" ? input.ratio : undefined;
       // …and so does the length they set (4–15 seconds)
       const seconds = input.durationSec ? clampVideoSeconds(Number(input.durationSec)) : undefined;
-      await startVideo(project, user, v, await referenceLibrary(project.id), resolution, ratio, seconds);
+      // …and so does the Seedance version they pick
+      const model = input.model && input.model in VIDEO_MODELS ? input.model : undefined;
+      await startVideo(project, user, v, await referenceLibrary(project.id), resolution, ratio, seconds, model);
       return { jobId: null };
     }
 
@@ -380,9 +382,9 @@ function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>) {
 }
 
 /** Creates the video asset + paid job, and sends the generation to Seedance in the background. */
-async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number) {
+async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel) {
   const { prompt, refs } = readyForVideo(v, lib);
-  const model: VideoModel = v.data.video_model || project.video_model || "seedance-2.5";
+  const model: VideoModel = chosenModel || v.data.video_model || project.video_model || "seedance-2.5";
   const durationSec = Math.min(seconds ?? clampVideoSeconds(v.data.duration_sec ?? 10), VIDEO_MODELS[model].maxSeconds);
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);

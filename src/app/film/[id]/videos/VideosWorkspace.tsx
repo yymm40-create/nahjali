@@ -64,6 +64,10 @@ export default function VideosWorkspace({
   // Length of each video (4–15 s), starting from the director's plan; the price follows it
   const [seconds, setSeconds] = useState<Record<string, number>>(() => Object.fromEntries(generations.map((g) => [g.id, clampVideoSeconds(g.durationSec)])));
   const secOf = (g: Generation) => seconds[g.id] ?? clampVideoSeconds(g.durationSec);
+  // Seedance version for every video: the director's choice by default (the most common one)
+  const [model, setModel] = useState<VideoModel>(() =>
+    generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
+  );
   const [rendering, setRendering] = useState(videosRunning > 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -99,7 +103,6 @@ export default function VideosWorkspace({
     }
   }
 
-  const total = generations.reduce((s, g) => s + videoEstimateUsd(g.model, resolution, secOf(g)), 0);
   const kept = videos.filter((v) => v.url && v.status !== "rejected");
 
   return (
@@ -137,6 +140,26 @@ export default function VideosWorkspace({
 
 
       <section className="card space-y-3 p-4">
+        <h2 className="text-lg font-extrabold">نسخة Seedance</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {([["seedance-2.5", "الأحدث، والمخرج يفضّلها"], ["seedance-2.0", "أرخص"]] as const).map(([m, hint]) => (
+            <button
+              key={m}
+              className={`rounded-2xl border-2 p-3 text-start ${model === m ? "border-gold bg-gold/10" : "border-line"}`}
+              onClick={() => setModel(m)}
+              aria-pressed={model === m}
+            >
+              <span className="block font-extrabold" dir="ltr">{VIDEO_MODELS[m].label}</span>
+              <span className="block text-xs font-bold text-muted">{hint}</span>
+            </button>
+          ))}
+        </div>
+        {generations.some((g) => g.model !== model) && (
+          <p className="text-xs font-bold text-muted">⚠️ المخرج كتب بعض البرومبتات لنسخة ثانية؛ تقدر تكمل، بس النتيجة ممكن تختلف شوي.</p>
+        )}
+      </section>
+
+      <section className="card space-y-3 p-4">
         <h2 className="text-lg font-extrabold">جودة الفيديو</h2>
         <div className="grid grid-cols-3 gap-2">
           {RESOLUTIONS.map((r) => (
@@ -148,28 +171,22 @@ export default function VideosWorkspace({
             >
               <span className="block font-extrabold" dir="ltr">{VIDEO_RESOLUTIONS[r].label}</span>
               <span className="block text-xs font-bold text-muted">{VIDEO_RESOLUTIONS[r].hint}</span>
-              <span className="mt-1 block text-sm font-extrabold" dir="ltr">
-                ≈ {usd(videoEstimateUsd("seedance-2.5", r, 10))} / 10s
-              </span>
             </button>
           ))}
         </div>
-        <p className="text-xs font-bold text-muted">
-          الأسعار تقريبية حسب أسعار BytePlus، والتكلفة الحقيقية تنحسب بعد التوليد. كل التوليدات بهذي الجودة تقريبًا <span dir="ltr">{usd(total)}</span>. الفيديو اللي يفشل ما ينحسب.
-        </p>
+        <p className="text-xs font-bold text-muted">السعر التقريبي يطلع عند شريط المدة تحت كل توليد، والتكلفة الحقيقية تنحسب بعد التوليد. الفيديو اللي يفشل ما ينحسب.</p>
       </section>
 
       {generations.map((g) => {
         const mine = videos.filter((v) => v.ref_key === g.id && v.status !== "rejected");
         const generating = mine.some((v) => v.status === "generating");
         const sec = secOf(g);
-        const cost = videoEstimateUsd(g.model, resolution, sec);
+        const cost = videoEstimateUsd(model, resolution, sec);
         return (
           <article key={g.id} className="card space-y-3 p-5">
             <header className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-extrabold">{g.id}{g.name ? ` · ${g.name}` : ""}</h2>
               <div className="flex flex-wrap gap-1 text-xs font-bold">
-                <span className="chip">{VIDEO_MODELS[g.model].label}</span>
                 <span className="chip" dir="ltr">{ratio}</span>
                 <span className="chip">{g.audio ? "🔊 بصوت" : "🔇 بدون صوت"}</span>
               </div>
@@ -248,9 +265,9 @@ export default function VideosWorkspace({
             {!generating && !busy && (
               <button
                 className={`btn w-full ${mine.length ? "btn-ghost" : "btn-primary"}`}
-                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec })}
+                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model })}
               >
-                {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · {ratio === "9:16" ? "طولي" : "عرضي"} · {VIDEO_RESOLUTIONS[resolution].label} · تقريبًا <span dir="ltr">{usd(cost)}</span>
+                {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · {ratio === "9:16" ? "طولي" : "عرضي"} · {VIDEO_MODELS[model].label} · {VIDEO_RESOLUTIONS[resolution].label}
               </button>
             )}
           </article>

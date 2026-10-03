@@ -8,7 +8,7 @@ const BASE_URL = (process.env.ARK_BASE_URL || "https://ark.ap-southeast.byteplus
 
 function headers() {
   const key = process.env.ARK_API_KEY;
-  if (!key) throw new Error("ARK_API_KEY is not set");
+  if (!key) throw new Error("مفتاح BytePlus (ARK_API_KEY) مو موجود في إعدادات Vercel لهذا المشروع، أو انضاف بعد آخر نشر. أضفه لبيئة Production وانشر من جديد.");
   return { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 }
 
