@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const SITE = "https://habits-booklet.vercel.app";
+const SITE = "https://nahjali.vercel.app";
 const SHARE_TEXT = "جرّبوا «نهج علي» 🌟 كتيب عادات طيبة بشخصية طفلكم الكرتونية واسمه، مجانًا خلال فترة التجربة:";
 
 /** Quick marketing actions for the owner. */
