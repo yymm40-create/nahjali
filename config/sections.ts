@@ -8,6 +8,8 @@ export interface SiteSection {
   href: string;
   /** The film section: listed for the site owner only (isAdmin in config/site.ts); hidden from everyone else. */
   requiresFilmAccess?: boolean;
+  /** Listed but closed («تحت التطوير») while BOOKLET_LOCKED is on in config/site.ts; the owner can still open it. */
+  underDevelopment?: boolean;
 }
 
 export const SECTIONS: SiteSection[] = [
@@ -17,6 +19,7 @@ export const SECTIONS: SiteSection[] = [
     description: "صورة طفلك تصير شخصية كرتونية تتعلّم الصلاة والقرآن والعادات الطيبة، في كتيب ملوّن باسمه.",
     icon: "📖",
     href: "/booklet",
+    underDevelopment: true,
   },
   {
     key: "film",
