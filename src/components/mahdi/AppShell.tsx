@@ -55,7 +55,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-e px-4 py-6 lg:flex" style={{ borderColor: "var(--m-line)", background: "color-mix(in srgb, var(--m-surface-solid) 70%, transparent)" }}>
         <Link href="/mahdi" className="px-2">
           <span className="m-display m-gold block text-3xl">{t.brand}</span>
-          <span className="m-chip mt-2">{t.testing}</span>
         </Link>
         <nav aria-label={t.nav.main} className="flex flex-col gap-1">
           {NAV.map((n) => (

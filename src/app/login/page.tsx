@@ -4,7 +4,7 @@ import LoginButton from "./LoginButton";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next, error } = await searchParams;
-  const nextPath = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/new";
+  const nextPath = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/";
 
   return (
     <div className="card mt-6 space-y-6 p-6 text-center">

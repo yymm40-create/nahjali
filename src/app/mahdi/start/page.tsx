@@ -27,7 +27,6 @@ export default async function MahdiStart() {
         <Link href="/mahdi/login" className="m-btn m-btn-ghost text-lg">{t.auth.login}</Link>
         <Link href="/" className="m-btn m-btn-quiet m-shadow-text">{t.backToSite}</Link>
       </div>
-      <p className="m-chip mx-auto">{t.testing}</p>
     </main>
   );
 }

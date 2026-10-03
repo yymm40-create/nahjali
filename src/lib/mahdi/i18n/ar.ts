@@ -10,7 +10,6 @@ export const ar = {
   brand: "لأجل المهدي",
   greeting: "السلام عليك يامن توالي علي عليه السلام",
   mawla: (name: string) => `الموالي: ${name}`,
-  testing: "نسخة تجريبية",
   backToSite: "العودة إلى نهج علي",
 
   nav: {
