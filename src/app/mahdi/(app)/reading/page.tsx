@@ -7,6 +7,7 @@ import { fmtNum, fmtPct, t } from "@/lib/mahdi/i18n";
 import { duration, flushPending, loadTimer, pendingCount, type TimerState } from "@/lib/mahdi/client/reading";
 import BookCover from "@/components/mahdi/BookCover";
 import Icon from "@/components/mahdi/Icon";
+import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
 
@@ -161,6 +162,7 @@ export default function ReadingPage() {
           <Icon name="target" className="m-gold" /> <span className="flex-1">{t.reading.goalsLink}</span> <Icon name="chevronLeft" size={18} />
         </Link>
       </nav>
+      <FeedbackCard place="reading" />
     </div>
   );
 }

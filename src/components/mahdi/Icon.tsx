@@ -46,6 +46,7 @@ const PATHS = {
   camera: "M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
   flag: "M5 21V4M5 4h11l-2 4 2 4H5",
+  chat: "M4 5h16v11H10l-6 4zM8 9h8M8 12h5",
 } as const;
 
 export type IconName = keyof typeof PATHS;

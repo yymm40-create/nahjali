@@ -13,7 +13,8 @@ export interface Txt { id: string; kind: string; text: string; attribution: stri
 export interface Phr { id: string; text: string; contexts: string[]; active: boolean; sort_order: number }
 export interface Rep { id: string; author: string; kind: string; title: string; value: string; createdAt: string; hidden: boolean; hiddenReason: string; reasons: string[]; count: number }
 export interface Bk { id: string; title: string; author: string; pages: number; unit: "page" | "narration"; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number }
-export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[] }
+export interface Fb { id: string; name: string; username: string; rating: number | null; kind: string; message: string; place: string; createdAt: string }
+export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[]; feedback: Fb[] }
 
 type Tab = keyof typeof A.tabs;
 const TABS = Object.keys(A.tabs) as Tab[];
@@ -76,7 +77,7 @@ export default function MahdiAdminTools({ data }: { data: AdminData }) {
 
   return (
     <div className="space-y-5">
-      <div role="tablist" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div role="tablist" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {TABS.map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`btn min-h-12 text-sm ${tab === k ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab(k)}>
             {A.tabs[k]}
@@ -94,6 +95,7 @@ export default function MahdiAdminTools({ data }: { data: AdminData }) {
       {tab === "phrases" && <PhrasesTab data={data} send={send} ask={ask} busy={busy} />}
       {tab === "reports" && <ReportsTab data={data} send={send} ask={ask} busy={busy} />}
       {tab === "books" && <BooksTab data={data} send={send} ask={ask} busy={busy} />}
+      {tab === "feedback" && <FeedbackTab data={data} />}
     </div>
   );
 }
@@ -456,6 +458,51 @@ function BooksTab({ data, send, busy }: TabProps) {
                 {b.reasons.length > 0 && <button className="text-muted underline" disabled={busy} onClick={() => send({ action: "book.dismiss", id: b.id }, A.common.done)}>{B.dismiss}</button>}
               </div>
             </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ───────── feedback («شاركنا رأيك») ───────── */
+function FeedbackTab({ data }: { data: AdminData }) {
+  const FB = A.feedback;
+  const K = t.feedback.kinds as Record<string, string>;
+  const [kind, setKind] = useState("");
+  const rated = data.feedback.filter((f) => f.rating !== null);
+  const avg = rated.length ? (rated.reduce((n, f) => n + (f.rating ?? 0), 0) / rated.length).toFixed(1) : "";
+  const list = data.feedback.filter((f) => !kind || f.kind === kind);
+  return (
+    <section className="card space-y-3 p-4">
+      <h2 className="text-xl font-extrabold">{A.tabs.feedback}</h2>
+      <p className="text-sm font-bold text-muted">{FB.intro}</p>
+      <p className="font-extrabold">
+        {FB.total(data.feedback.length)}
+        {avg && ` · ${FB.average(avg, rated.length)}`}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {["", ...Object.keys(K)].map((k) => (
+          <button key={k || "all"} type="button" className={`chip ${kind === k ? "ring-2 ring-gold" : ""}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
+            {k ? K[k] : FB.all} ({k ? data.feedback.filter((f) => f.kind === k).length : data.feedback.length})
+          </button>
+        ))}
+      </div>
+      <ul className="space-y-3">
+        {list.length === 0 && <li className="font-bold text-muted">{FB.empty}</li>}
+        {list.map((f) => (
+          <li key={f.id} className="space-y-1 rounded-2xl bg-surface-2 px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
+              <span>
+                <bdi dir="auto">{f.name || "—"}</bdi>
+                {f.username && <span className="ms-2 text-sm text-muted"><bdi dir="auto">@{f.username}</bdi></span>}
+              </span>
+              {f.rating !== null && <span aria-label={`${f.rating}/5`}>{"⭐".repeat(f.rating)}</span>}
+            </div>
+            <p className="whitespace-pre-line" dir="auto">{f.message || FB.noMessage}</p>
+            <p className="text-xs font-bold text-muted">
+              {K[f.kind] ?? f.kind} · {FB.places[f.place] ?? f.place} · {new Date(f.createdAt).toLocaleString("ar-SA", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" })}
+            </p>
           </li>
         ))}
       </ul>

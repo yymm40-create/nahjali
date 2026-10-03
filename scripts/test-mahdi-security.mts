@@ -102,6 +102,15 @@ try {
   check(await none(me.from("mahdi_challenge_members").update({ left_on: today }).eq("user_id", other.id).select()), "owner cannot remove another user from a challenge");
   check(Boolean((await me.from("mahdi_challenge_members").insert({ challenge_id: ids.challenge!, user_id: other.id, joined_on: today })).error), "owner cannot join a challenge in another user's name");
   check(Boolean((await me.from("mahdi_push_subscriptions").insert({ user_id: other.id, endpoint: "https://test.invalid/x", p256dh: "p", auth: "a" })).error), "owner cannot register a device for another user");
+  // Feedback (migration 0013): private to its sender; skipped if the table is not there yet
+  const fb = await admin.from("mahdi_feedback").insert({ user_id: other.id, rating: 4, message: "TEST feedback" }).select("id").single();
+  if (fb.data) {
+    check(await none(me.from("mahdi_feedback").select("id").eq("id", fb.data.id)), "owner cannot read another user's feedback through the app");
+    check(Boolean((await me.from("mahdi_feedback").insert({ user_id: other.id, rating: 5 })).error), "owner cannot send feedback in another user's name");
+    check(Boolean((await me.from("mahdi_feedback").insert({ rating: null, message: "  " })).error), "empty feedback is refused");
+    check(await none(me.from("mahdi_feedback").delete().eq("id", fb.data.id).select()), "owner cannot delete feedback");
+    await admin.from("mahdi_feedback").delete().eq("id", fb.data.id);
+  } else console.log("  (mahdi_feedback missing: run migration 0013 to test it)");
   check(Boolean((await me.from("mahdi_post_reactions").insert({ post_id: ids.post!, user_id: other.id, kind: "dua" })).error), "owner cannot react in another user's name");
   check(Boolean((await me.rpc("mahdi_set_challenge_log", { p_challenge: ids.challenge!, p_date: today, p_value: 1, p_client_ts: new Date().toISOString() })).error), "owner cannot log in a challenge they have not joined");
   check(((await me.from("mahdi_challenges").select("id").eq("id", ids.challenge!)).data ?? []).length === 1, "a published challenge is visible to signed-in users");
