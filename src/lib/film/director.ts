@@ -7,7 +7,7 @@ import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
-import { VIDEO_MODELS, VIDEO_PRICING, type VideoModel } from "@config/film";
+import { DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_PRICING, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
   DIRECTOR_PROMPT,
@@ -155,7 +155,7 @@ export type DirectorAction =
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
-  | { action: "generate_video"; genId: string }
+  | { action: "generate_video"; genId: string; resolution: VideoResolution }
   | { action: "approve_video"; assetId: string }
   | { action: "unapprove_video"; assetId: string }
   | { action: "reject_video"; assetId: string };
@@ -247,15 +247,11 @@ export async function directorAction(project: FilmProject, user: User, input: Di
         return { jobId: await queueReply(project, user, id) };
       }
       if (v.kind !== "dir_generation") throw new UserError("هذا العنصر ما يحتاج اعتماد.", 409);
-      // Checked before approving, so a bad prompt or missing reference never leaves an approved generation without its video
-      const lib = await referenceLibrary(project.id);
-      readyForVideo(v, lib);
+      // Checked before approving, so an approved generation can always be sent from the generation page
+      readyForVideo(v, await referenceLibrary(project.id));
       await setApproved(v, versions);
       const id = await addUserMessage(project.id, "اعتمد");
-      const jobId = await queueReply(project, user, id);
-      // Approving a generation starts its video right away
-      await startVideo(project, user, v, lib);
-      return { jobId };
+      return { jobId: await queueReply(project, user, id) };
     }
 
     case "answers": {
@@ -298,7 +294,8 @@ export async function directorAction(project: FilmProject, user: User, input: Di
     case "generate_video": {
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
-      await startVideo(project, user, v, await referenceLibrary(project.id));
+      const resolution = input.resolution in VIDEO_RESOLUTIONS ? input.resolution : DEFAULT_VIDEO_RESOLUTION;
+      await startVideo(project, user, v, await referenceLibrary(project.id), resolution);
       return { jobId: null };
     }
 
@@ -379,14 +376,14 @@ function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>) {
 }
 
 /** Creates the video asset + paid job, and sends the generation to Seedance in the background. */
-async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>) {
+async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution) {
   const { prompt, refs } = readyForVideo(v, lib);
   const model: VideoModel = v.data.video_model || project.video_model || "seedance-2.5";
   const durationSec = Math.min(Math.max(Math.round(v.data.duration_sec || 10), 4), VIDEO_MODELS[model].maxSeconds);
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);
 
-  const meta = { model, durationSec, ratio: v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true };
+  const meta = { model, durationSec, resolution, ratio: v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true };
   const { data: asset, error } = await db()
     .from("film_assets")
     .insert({ project_id: project.id, kind: "video", ref_key: v.ref_key, version_id: v.id, status: "generating", meta })
@@ -399,7 +396,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     service: "seedance",
     operation: VIDEO_OP,
     idempotencyKey: `video:${asset.id}`,
-    estimateUsd: durationSec * VIDEO_PRICING[model].usdPerSecondEstimate,
+    estimateUsd: videoEstimateUsd(model, resolution, durationSec),
     units: durationSec,
     unit: "seconds",
     assetId: asset.id,
@@ -414,14 +411,14 @@ async function submitVideo(
   project: FilmProject,
   jobId: string,
   assetId: string,
-  o: { prompt: string; refs: FilmAsset[]; model: VideoModel; durationSec: number; ratio: string; generateAudio: boolean },
+  o: { prompt: string; refs: FilmAsset[]; model: VideoModel; durationSec: number; resolution: VideoResolution; ratio: string; generateAudio: boolean },
 ) {
   const client = db();
   try {
     const paths = o.refs.map((r) => r.storage_path!).filter(Boolean);
     const signed = paths.length ? (await client.storage.from(FILM_BUCKET).createSignedUrls(paths, 7200)).data ?? [] : [];
     const imageUrls = signed.map((s) => s.signedUrl).filter(Boolean) as string[];
-    const taskId = await createVideoTask({ model: o.model, prompt: o.prompt, imageUrls, durationSec: o.durationSec, ratio: o.ratio, generateAudio: o.generateAudio });
+    const taskId = await createVideoTask({ model: o.model, prompt: o.prompt, imageUrls, durationSec: o.durationSec, resolution: o.resolution, ratio: o.ratio, generateAudio: o.generateAudio });
     await client.from("film_jobs").update({ provider_task_id: taskId }).eq("id", jobId);
     // Keep watching for a while; the page's polling (checkVideos) finishes the rest
     const until = Date.now() + WATCH_MS;
@@ -429,7 +426,7 @@ async function submitVideo(
       await new Promise((r) => setTimeout(r, 10_000));
       const task = await getVideoTask(taskId);
       if (["succeeded", "failed", "cancelled", "expired"].includes(task.status)) {
-        await finishVideo(project, jobId, assetId, o.model, o.durationSec, task);
+        await finishVideo(project, jobId, assetId, o, task);
         return;
       }
     }
@@ -441,7 +438,13 @@ async function submitVideo(
 }
 
 /** Copies a finished video to our storage at once (the provider's link lasts 24 hours) and settles its cost. */
-async function finishVideo(project: FilmProject, jobId: string, assetId: string, model: VideoModel, durationSec: number, task: VideoTask) {
+async function finishVideo(
+  project: FilmProject,
+  jobId: string,
+  assetId: string,
+  { model, durationSec, resolution }: { model: VideoModel; durationSec: number; resolution: VideoResolution },
+  task: VideoTask,
+) {
   const client = db();
   // Only one request finishes a job: the first one to mark it
   const { data: claimed } = await client.from("film_jobs").update({ error: "saving" }).eq("id", jobId).eq("status", "running").is("error", null).select("id");
@@ -456,12 +459,34 @@ async function finishVideo(project: FilmProject, jobId: string, assetId: string,
     if (up.error) throw up.error;
     await client.from("film_assets").update({ status: "generated", storage_path: path, mime: "video/mp4", bytes: file.length, error: null }).eq("id", assetId);
     const perM = VIDEO_PRICING[model].usdPerMillionTokens;
-    const cost = perM && task.tokens ? (task.tokens * perM) / 1_000_000 : durationSec * VIDEO_PRICING[model].usdPerSecondEstimate;
+    const cost = perM && task.tokens ? (task.tokens * perM) / 1_000_000 : videoEstimateUsd(model, resolution, durationSec);
     await succeedJob(jobId, { costUsd: cost, units: task.tokens ?? durationSec });
   } catch (err) {
     console.error("film video finish failed", err);
     await client.from("film_assets").update({ status: "failed", error: String(err instanceof Error ? err.message : err).slice(0, 300) }).eq("id", assetId);
     await failJob(jobId, err);
+  }
+}
+
+/**
+ * Generated videos are kept VIDEO_KEEP_DAYS days (free storage is small); older files are removed and the
+ * client is told so. The record stays, so the page can say which videos were removed.
+ */
+export async function purgeOldVideos(project: FilmProject) {
+  const cutoff = new Date(Date.now() - VIDEO_KEEP_DAYS * 86_400_000).toISOString();
+  const { data } = await db()
+    .from("film_assets")
+    .select("id,storage_path,meta")
+    .eq("project_id", project.id)
+    .eq("kind", "video")
+    .not("storage_path", "is", null)
+    .lt("created_at", cutoff);
+  const old = (data ?? []) as Pick<FilmAsset, "id" | "storage_path" | "meta">[];
+  if (!old.length) return;
+  const { error } = await db().storage.from(FILM_BUCKET).remove(old.map((a) => a.storage_path!));
+  if (error) return console.error("video purge failed", error);
+  for (const a of old) {
+    await db().from("film_assets").update({ storage_path: null, meta: { ...a.meta, removed_at: new Date().toISOString() } }).eq("id", a.id);
   }
 }
 
@@ -480,8 +505,8 @@ export async function checkVideos(project: FilmProject) {
       const task = await getVideoTask(j.provider_task_id).catch(() => null);
       if (task && ["succeeded", "failed", "cancelled", "expired"].includes(task.status)) {
         const { data: a } = await db().from("film_assets").select("meta").eq("id", j.asset_id).single();
-        const meta = (a?.meta ?? {}) as { model?: VideoModel; durationSec?: number };
-        await finishVideo(project, j.id, j.asset_id, meta.model ?? "seedance-2.5", meta.durationSec ?? 10, task);
+        const meta = (a?.meta ?? {}) as { model?: VideoModel; durationSec?: number; resolution?: VideoResolution };
+        await finishVideo(project, j.id, j.asset_id, { model: meta.model ?? "seedance-2.5", durationSec: meta.durationSec ?? 10, resolution: meta.resolution ?? DEFAULT_VIDEO_RESOLUTION }, task);
         continue;
       }
     }

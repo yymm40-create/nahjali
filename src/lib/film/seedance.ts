@@ -2,7 +2,7 @@
 // never reaches the browser. API: POST/GET {base}/contents/generations/tasks (docs.byteplus.com, ModelArk
 // "Create / Retrieve a video generation task", checked 2026-10).
 
-import { VIDEO_MODELS, VIDEO_RESOLUTION, type VideoModel } from "@config/film";
+import { VIDEO_MODELS, type VideoModel, type VideoResolution } from "@config/film";
 
 const BASE_URL = (process.env.ARK_BASE_URL || "https://ark.ap-southeast.bytepluses.com/api/v3").replace(/\/+$/, "");
 
@@ -34,6 +34,7 @@ export interface VideoRequest {
   durationSec: number;
   ratio: string;
   generateAudio: boolean;
+  resolution: VideoResolution;
 }
 
 /** Starts a generation and returns the provider's task ID. */
@@ -47,7 +48,7 @@ export async function createVideoTask(r: VideoRequest): Promise<string> {
       content,
       duration: r.durationSec,
       ratio: r.ratio || "16:9",
-      resolution: VIDEO_RESOLUTION,
+      resolution: r.resolution,
       generate_audio: r.generateAudio,
       watermark: false,
     }),

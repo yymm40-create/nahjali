@@ -1,15 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
-import StepCard, { statusChip } from "../../StepCard";
+import StepCard from "../../StepCard";
 import type { SendMode } from "../../ActionBar";
 import type { DirectorVersion } from "@/lib/film/director";
-import { STATUS_LABELS, VIDEO_MODELS, VIDEO_PRICING, type VideoModel } from "@config/film";
+import { VIDEO_MODELS } from "@config/film";
 
 interface Video {
   id: string;
@@ -31,13 +32,6 @@ interface Props {
 }
 
 const SUPER_HINT = "قواعد إخراج وكاميرا أعمق من الدورة، ويكتب البرومبت بصيغتها (إنجليزي + صيني). كل رد من المخرج يكلّف أكثر لأن المهارة طويلة.";
-
-/** Rough cost of one generation's video, shown on its approval button. */
-const videoCost = (v: DirectorVersion) => {
-  const model: VideoModel = v.data.video_model ?? "seedance-2.5";
-  const sec = Math.min(Math.max(v.data.duration_sec || 10, 4), VIDEO_MODELS[model].maxSeconds);
-  return sec * VIDEO_PRICING[model].usdPerSecondEstimate;
-};
 
 export default function DirectorWorkspace({ projectId, stage, versions, superDirector, videos, library, job, videosRunning }: Props) {
   const router = useRouter();
@@ -71,7 +65,6 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
     try {
       const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/director`, body);
       if (jobId) setWriting(true);
-      if (body.action === "generate_video" || body.action === "approve") setRendering(true);
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -95,6 +88,12 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
   const revise = (v: DirectorVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
   const nameOf = (id: string) => map.find((g) => g.id === id)?.name ?? "";
   const laterThan = (id: string) => ordered.slice(ordered.indexOf(id) + 1).filter((g) => versions.some((v) => v.kind === "dir_generation" && v.ref_key === g && v.status === "approved"));
+  // Once every generation of the approved map is approved, go straight to the generation page (only when it happens here)
+  const allApproved = map.length > 0 && map.every((g) => versions.some((v) => v.kind === "dir_generation" && v.ref_key === g.id && v.status === "approved"));
+  const wasDone = useRef(allApproved);
+  useEffect(() => {
+    if (!wasDone.current && allApproved) router.push(`/film/${projectId}/videos`);
+  }, [allApproved, projectId, router]);
   const affects = (id: string) => {
     const later = laterThan(id);
     return later.length ? ` التوليدات المعتمدة بعده (${later.join("، ")}) ممكن تتأثر بالاستمرارية، والمخرج يوضح وش يحتاج تحديث.` : "";
@@ -220,8 +219,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
       {/* 4. One card per generation: analysis (the prompt stays hidden), then its videos */}
       {ordered.map((gid) => {
         const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === gid).at(-1)!;
-        const vids = videos.filter((x) => x.ref_key === gid);
-        const cost = videoCost(v);
+        const made = videos.filter((x) => x.ref_key === gid && x.status !== "rejected").length;
         return (
           <StepCard
             key={gid}
@@ -230,9 +228,9 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
             current={current?.id === v.id}
             busy={busy || writing}
             onApprove={v.status === "awaiting_approval" ? () => send({ action: "approve", versionId: v.id }) : undefined}
-            approveLabel={`اعتمد وولّد الفيديو ✅ · تقريبًا $${cost.toFixed(2)}`}
+            approveLabel="اعتمد وكمّل ✅"
             onSend={revise(v)}
-            warning={v.status === "approved" ? `هذا التوليد معتمد. بعد التعديل يوصلك تحليل وبرومبت جديد، ولما تعتمده يتولد فيديو جديد (تقريبًا $${cost.toFixed(2)}).${affects(gid)}` : undefined}
+            warning={v.status === "approved" ? `هذا التوليد معتمد. بعد التعديل يوصلك تحليل وبرومبت جديد تعتمده، وبعدها تولّد فيديو جديد من صفحة التوليد.${made ? " الفيديوهات اللي تولدت قبل تظل مثل ما هي." : ""}${affects(gid)}` : undefined}
           >
             <div className="flex flex-wrap gap-1 text-xs font-bold">
               <span className="chip">{VIDEO_MODELS[v.data.video_model ?? "seedance-2.5"].label}</span>
@@ -249,17 +247,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
               </details>
             )}
             {v.status === "approved" && (
-              <Videos
-                genId={gid}
-                videos={vids}
-                busy={busy}
-                cost={cost}
-                onGenerate={() => send({ action: "generate_video", genId: gid })}
-                onApprove={(id) => send({ action: "approve_video", assetId: id })}
-                onReject={(id) => send({ action: "reject_video", assetId: id })}
-                onUnapprove={(id) => send({ action: "unapprove_video", assetId: id })}
-                unapproveWarning={`تبي تتراجع عن اعتماد هذا الفيديو؟ بعدها تقدر تولّد فيديو ثاني أو ترسل تعديل.${affects(gid)}`}
-              />
+              <Link href={`/film/${projectId}/videos`} className="btn btn-ghost w-full">🎬 معتمد · ولّد الفيديو من صفحة التوليد</Link>
             )}
           </StepCard>
         );
@@ -295,51 +283,3 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
   );
 }
 
-function Videos({
-  genId, videos, busy, cost, onGenerate, onApprove, onReject, onUnapprove, unapproveWarning,
-}: {
-  genId: string;
-  videos: Video[];
-  busy: boolean;
-  cost: number;
-  onGenerate: () => void;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-  onUnapprove: (id: string) => void;
-  unapproveWarning: string;
-}) {
-  const shown = videos.filter((v) => v.status !== "rejected");
-  const generating = videos.some((v) => v.status === "generating");
-  return (
-    <div className="space-y-3">
-      {shown.map((v) => (
-        <figure key={v.id} className={`space-y-2 rounded-2xl border p-2 ${v.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
-          {v.status === "generating" ? (
-            <div className="grid aspect-video place-items-center rounded-xl bg-surface-2"><Spinner /><p className="text-sm font-bold">نولّد الفيديو… (من دقيقتين إلى ١٠ دقائق، تقدر تسكّر الصفحة)</p></div>
-          ) : v.status === "failed" ? (
-            <p className="error-box">فشل التوليد: {v.error}. ما انحسبت تكلفة.</p>
-          ) : (
-            <video src={v.url} controls playsInline className="w-full rounded-xl" aria-label={genId} />
-          )}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className={`chip ${statusChip(v.status)}`}>{STATUS_LABELS[v.status] ?? v.status}</span>
-            {v.status === "generated" && !busy && (
-              <div className="flex gap-2">
-                <button className="btn btn-primary min-h-10 px-4 text-sm" onClick={() => onApprove(v.id)}>اعتمد الفيديو ✅</button>
-                <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => onReject(v.id)}>ارفضه</button>
-              </div>
-            )}
-            {v.status === "approved" && !busy && (
-              <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => window.confirm(unapproveWarning) && onUnapprove(v.id)}>↩️ تراجع عن الاعتماد</button>
-            )}
-          </div>
-        </figure>
-      ))}
-      {!generating && !busy && (
-        <button className="btn btn-secondary w-full" onClick={onGenerate}>
-          {shown.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · تقريبًا ${cost.toFixed(2)}
-        </button>
-      )}
-    </div>
-  );
-}

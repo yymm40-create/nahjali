@@ -9,7 +9,7 @@ import ProjectEditor from "./ProjectEditor";
 import References from "./References";
 
 /** Where each project stage continues (the voices have no page yet). */
-const NEXT_PATH: Record<string, string> = { screenwriter: "/script", sheets: "/sheets", director: "/director" };
+const NEXT_PATH: Record<string, string> = { screenwriter: "/script", sheets: "/sheets", director: "/director", voices: "/videos", done: "/videos" };
 
 export const metadata = { title: "مشروع فيلم | نهج علي" };
 export const dynamic = "force-dynamic";
@@ -52,7 +52,11 @@ export default async function FilmProjectPage({ params }: PageProps<"/film/[id]"
         </div>
         {/* One button to the current section; the sections bar above opens the others */}
         <Link href={`/film/${project.id}${NEXT_PATH[project.stage] ?? "/director"}`} className="btn btn-primary w-full">
-          {project.stage === "screenwriter" ? `✍️ ${scriptStarted ? "كمّل مع السيناريست" : "ابدأ مع السيناريست"}` : `${FILM_STAGES[current]?.icon} كمّل: ${FILM_STAGES[current]?.label}`}
+          {project.stage === "screenwriter"
+            ? `✍️ ${scriptStarted ? "كمّل مع السيناريست" : "ابدأ مع السيناريست"}`
+            : project.stage === "voices" || project.stage === "done"
+              ? "🎬 فيديوهاتك (حمّلها قبل ما تنحذف)"
+              : `${FILM_STAGES[current]?.icon} كمّل: ${FILM_STAGES[current]?.label}`}
         </Link>
       </section>
 

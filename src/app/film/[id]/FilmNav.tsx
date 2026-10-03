@@ -10,21 +10,23 @@ const SECTIONS: { key: string; label: string; icon: string; path: string; reache
   { key: "script", label: "السيناريست", icon: "✍️", path: "/script", reached: "screenwriter", ready: true },
   { key: "sheets", label: "صانع الشيت", icon: "🎨", path: "/sheets", reached: "sheets", ready: true },
   { key: "director", label: "المخرج", icon: "🎥", path: "/director", reached: "director", ready: true },
+  { key: "videos", label: "التوليد", icon: "🎬", path: "/videos", reached: "director", ready: true },
   { key: "voices", label: "الأصوات", icon: "🎙️", path: "/voices", reached: "voices", ready: false },
 ];
 
 const order = (s: FilmStage) => FILM_STAGES.findIndex((x) => x.key === s);
 
 /** Sections bar: reached sections are links, the rest are locked until the project gets there. */
-export default function FilmNav({ projectId, stage }: { projectId: string; stage: FilmStage }) {
+export default function FilmNav({ projectId, stage, videosOpen }: { projectId: string; stage: FilmStage; videosOpen: boolean }) {
   const pathname = usePathname();
   const base = `/film/${projectId}`;
   return (
     <nav aria-label="أقسام المشروع" className="card p-2">
-      <ol className="grid grid-cols-5 gap-1 text-center">
+      <ol className="grid grid-cols-6 gap-1 text-center">
         {SECTIONS.map((s) => {
           const href = base + s.path;
-          const open = s.ready && order(stage) >= order(s.reached);
+          // The generation page opens once the director has an approved generation
+          const open = s.ready && order(stage) >= order(s.reached) && (s.key !== "videos" || videosOpen);
           const active = pathname === href;
           const done = order(stage) > order(s.reached) || (s.key === "story" && order(stage) > 0);
           const tile = (

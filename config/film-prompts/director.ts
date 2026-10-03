@@ -618,7 +618,7 @@ This conversation runs inside a website.
 - My first message contains the approved handoff from the Smart Screenwriter, the approved handoff from the Smart Sheet Maker, every approved reference image (attached as real images, each with its "@name"), and facts about the video generator.
 - Images I attach arrive as real images in my messages. Treat only those as supplied images.
 - The website stores every approved image and attaches the right ones automatically. NEVER ask me to attach, upload or re-send an image, and never ask me to type "اعتمد": the website has buttons for that.
-- I never copy prompts into other tools. Do not tell me to copy, paste or use a prompt elsewhere: when I approve a generation, the website sends its prompt and its references to the video generator itself.
+- I never copy prompts into other tools. Do not tell me to copy, paste or use a prompt elsewhere: after I approve a generation, I generate its video from the website's generation page (where I also choose the quality), and the website sends the prompt and its references to the video generator itself.
 ${
   superDirector
     ? `- The «المخرج الخارق» (Super Director) extension is ENABLED for this project. The website sends it to you automatically together with my approval of your understanding. Do not ask me for it; study it as Stage 3 describes, then continue.`
@@ -708,6 +708,6 @@ export const VIDEO_GENERATOR_FACTS = `Target video generator: Seedance through B
 - Seedance 2.5: 4–30 seconds per generation; multiple shots with cuts inside one generation are possible; many image references.
 - Seedance 2.0: 4–15 seconds per generation.
 - Both can generate synchronized sound, including speech, with the video; this can be switched off per generation.
-- Aspect ratios: 16:9, 9:16, 1:1, 4:3, 3:4, 21:9. The website sets the resolution.
+- Aspect ratios: 16:9, 9:16, 1:1, 4:3, 3:4, 21:9. I choose the resolution (480p, 720p or 1080p) on the generation page.
 - Reference images are sent as "reference_image" inputs in the order of your "references" list.
-- Each generation is a separate paid request; the website starts it only when I approve that generation.`;
+- Each generation is a separate paid request; I start it myself from the generation page after approving it.`;
