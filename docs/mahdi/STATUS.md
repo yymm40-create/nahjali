@@ -93,6 +93,7 @@
 - `supabase/migrations/0007_mahdi.sql`: تم تشغيله.
 - `supabase/migrations/0008_mahdi_community.sql`: تم تشغيله.
 - `supabase/migrations/0009_mahdi_notifications_cron.sql`: تم تشغيله.
+- `supabase/migrations/0013_mahdi_feedback.sql`: **لم يُشغَّل بعد.** «شاركنا رأيك»: جدول الآراء، ووقت آخر إغلاق للنافذة المنبثقة. بدونه تبقى البطاقات ظاهرة لكن الإرسال يفشل، والنافذة لا تظهر.
 - `supabase/migrations/0012_site_usernames_arabic.sql`: **لم يُشغَّل بعد.** يسمح بالحروف العربية في اسم المستخدم.
 - `supabase/migrations/0011_mahdi_reading_narrations.sql`: تم تشغيله. نوع الكتاب (صفحات أو روايات)، والروايات في الأهداف.
 - `supabase/migrations/0010_mahdi_reading_groups.sql`: تم تشغيله. الكتب، والمكتبة، وجلسات القراءة، والأهداف، وأسماء المستخدمين، والمجموعات، ومكان صور الأغلفة.

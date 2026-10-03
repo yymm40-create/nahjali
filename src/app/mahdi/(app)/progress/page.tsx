@@ -8,6 +8,7 @@ import { weekInsights } from "@/lib/mahdi/client/insights";
 import DayBars from "@/components/mahdi/DayBars";
 import TrendLine from "@/components/mahdi/TrendLine";
 import { BarRow, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
+import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
 
 /** Overview of all projects: this week, streaks, trends, projects and habits. */
@@ -84,6 +85,7 @@ export default function ProgressPage() {
           </section>
         </>
       )}
+      <FeedbackCard place="progress" />
     </div>
   );
 }

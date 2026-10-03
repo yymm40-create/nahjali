@@ -8,6 +8,7 @@ import CommunityFeed from "@/components/mahdi/CommunityFeed";
 import GroupsHome from "@/components/mahdi/GroupsHome";
 import JoinPrompt from "@/components/mahdi/JoinPrompt";
 import LeaderboardTab from "@/components/mahdi/LeaderboardTab";
+import { FeedbackCard } from "@/components/mahdi/Feedback";
 import { useMahdi } from "@/components/mahdi/Provider";
 
 const TABS = ["feed", "ranking", "challenges", "groups"] as const;
@@ -67,6 +68,7 @@ export default function CommunityPage() {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "groups" ? <GroupsHome /> : tab === "challenges" ? <ChallengeList /> : !joined ? <JoinPrompt /> : tab === "feed" ? <CommunityFeed /> : <LeaderboardTab />}
       </div>
+      <FeedbackCard place="community" />
     </div>
   );
 }

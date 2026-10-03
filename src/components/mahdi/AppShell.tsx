@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
+import { FeedbackPrompt, FeedbackSheet } from "./Feedback";
 import HabitForm from "./HabitForm";
 import Icon, { type IconName } from "./Icon";
 import ProjectForm from "./ProjectForm";
@@ -36,6 +37,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [menu, setMenu] = useState(false);
   const [newHabit, setNewHabit] = useState(false);
   const [newProject, setNewProject] = useState(false);
+  const [feedback, setFeedback] = useState(false);
 
   const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
   const inProject = projects.find((p) => p.id === contextProject);
@@ -76,6 +78,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="block truncate text-sm font-semibold">{t.mawla(profile.displayName)}</span>
             </span>
           </Link>
+          <button type="button" className="m-side-item w-full text-sm" onClick={() => setFeedback(true)}>
+            <Icon name="chat" size={18} /> {t.feedback.cta}
+          </button>
           <Link href="/" className="m-side-item text-sm">
             <Icon name="chevronRight" size={18} /> {t.backToSite}
           </Link>
@@ -157,6 +162,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </Sheet>
       <HabitForm open={newHabit} onClose={() => setNewHabit(false)} projectId={inProject?.id} />
       <ProjectForm open={newProject} onClose={() => setNewProject(false)} onSaved={(id) => router.push(`/mahdi/projects/${id}`)} />
+      <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} place="sidebar" />
+      <FeedbackPrompt />
       <RewardReveal />
       <Toasts />
     </div>

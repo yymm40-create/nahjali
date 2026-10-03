@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { canUseFilm } from "@/lib/film/access";
 import { SECTIONS } from "@config/sections";
-import { isAdmin } from "@config/site";
+import { BOOKLET_LOCKED, bookletClosedFor, isAdmin } from "@config/site";
 
 /** Home: the site's sections (config/sections.ts). */
 export default async function Home() {
@@ -29,6 +29,9 @@ export default async function Home() {
           {SECTIONS.filter((s) => !s.requiresFilmAccess || isAdmin(user?.email)).map((s) => {
             // The film section is shown to the owner only (for now)
             const locked = s.requiresFilmAccess && user && !filmAllowed;
+            // «تحت التطوير»: shown, but only the owner can open it
+            const dev = s.underDevelopment && BOOKLET_LOCKED;
+            const closed = locked || (dev && bookletClosedFor(user?.email));
             const body = (
               <>
                 <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-surface-2 text-4xl">{s.icon}</span>
@@ -36,6 +39,7 @@ export default async function Home() {
                   <h3 className="flex items-center gap-2 text-xl font-extrabold">
                     {s.title}
                     {locked && <span className="chip text-xs">قريبًا</span>}
+                    {dev && <span className="chip text-xs">تحت التطوير</span>}
                   </h3>
                   <p className="font-bold text-muted">{s.description}</p>
                 </div>
@@ -43,7 +47,7 @@ export default async function Home() {
             );
             return (
               <li key={s.key}>
-                {locked ? (
+                {closed ? (
                   <div className="card flex items-center gap-4 p-4 opacity-70" aria-disabled="true">
                     {body}
                   </div>

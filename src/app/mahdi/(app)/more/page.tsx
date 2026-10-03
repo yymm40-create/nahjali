@@ -9,6 +9,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile, Shrine } from "@/lib/mahdi/types";
 import Avatar from "@/components/mahdi/Avatar";
+import { FeedbackCard } from "@/components/mahdi/Feedback";
 import InstallCard from "@/components/mahdi/InstallCard";
 import UsernameForm from "@/components/mahdi/UsernameForm";
 import Icon from "@/components/mahdi/Icon";
@@ -84,6 +85,7 @@ export default function MorePage() {
           </Link>
         ))}
       </nav>
+      <FeedbackCard place="more" />
       <InstallCard />
 
       <section className="m-card space-y-5 p-5">

@@ -42,6 +42,20 @@ export default async function MahdiAdminPage() {
     ? (await db.from("mahdi_books").select("id, title, author, pages, unit, description, cover_path, hidden_at, hidden_reason, created_at").in("id", reportedMissing.slice(0, 100))).data ?? []
     : [];
 
+  // Feedback («شاركنا رأيك»), newest first, with who sent it (empty until migration 0013 runs)
+  const fb = (await db.from("mahdi_feedback").select("id, user_id, rating, kind, message, place, created_at").order("created_at", { ascending: false }).limit(500)).data ?? [];
+  const fbIds = [...new Set(fb.map((x) => x.user_id as string))];
+  const fbNames = new Map<string, string>();
+  const fbHandles = new Map<string, string>();
+  if (fbIds.length) {
+    const [names, handles] = await Promise.all([
+      db.from("mahdi_profiles").select("user_id, display_name").in("user_id", fbIds),
+      db.from("site_usernames").select("user_id, username").in("user_id", fbIds),
+    ]);
+    for (const p of names.data ?? []) fbNames.set(p.user_id, p.display_name);
+    for (const u of handles.data ?? []) fbHandles.set(u.user_id, u.username);
+  }
+
   const memberCount: Record<string, number> = {};
   for (const m of members) memberCount[m.challenge_id] = (memberCount[m.challenge_id] ?? 0) + 1;
 
@@ -57,6 +71,16 @@ export default async function MahdiAdminPage() {
   }
 
   const data: AdminData = {
+    feedback: fb.map((x) => ({
+      id: x.id as string,
+      name: fbNames.get(x.user_id) ?? "",
+      username: fbHandles.get(x.user_id) ?? "",
+      rating: (x.rating as number | null) ?? null,
+      kind: x.kind as string,
+      message: (x.message as string) ?? "",
+      place: (x.place as string) ?? "",
+      createdAt: x.created_at as string,
+    })),
     books: [...(bookRows.data ?? []), ...extraBooks]
       .map((b) => ({
         id: b.id as string,
