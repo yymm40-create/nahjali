@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export const metadata = { title: "تحت التطوير | نهج علي" };
 
-/** Where the closed «كتيب نهج علي» pages send visitors (see BOOKLET_LOCKED in config/site.ts). */
+/** Where the closed «كتيب نهج علي» pages send visitors (who may open it is set on /admin/limits). */
 export default function UnderDevelopment() {
   return (
     <div className="card space-y-4 p-6 text-center">

@@ -18,7 +18,7 @@ export type LimitKey = keyof typeof LIMITS;
 export interface LimitRow {
   scope: "all" | "email" | "plan";
   target: string;
-  key: LimitKey;
+  key: LimitKey | `access_${string}` | `allow_${string}`;
   value: number;
 }
 
@@ -57,4 +57,50 @@ export async function editsLeft(projectId: string, stage: "screenwriter" | "shee
 export async function assertCanEdit(projectId: string, stage: "screenwriter" | "sheets" | "director", email?: string | null) {
   const left = await editsLeft(projectId, stage, email);
   if (left === 0) throw new UserError("خلصت التعديلات المتاحة لك في هذي المرحلة. تقدر تعتمد وتكمّل.", 403);
+}
+
+// ───────────── Who can use each section (also set from /admin/limits) ─────────────
+// Stored in the same table: key "access_<section>" (scope all) = the mode's code; per email,
+// key "allow_<section>" = 1 (always allowed) or 0 (blocked), whatever the mode.
+
+export const ACCESS_MODES = {
+  closed: { code: 0, label: "مغلق (أنت بس)" },
+  invite: { code: 1, label: "إيميلات محددة بس" },
+  trial: { code: 2, label: "تجربة لأول عدد من المستخدمين" },
+  open: { code: 3, label: "مفتوح للجميع" },
+} as const;
+export type AccessMode = keyof typeof ACCESS_MODES;
+
+export const SECTIONS_ACCESS = {
+  film: { label: "🎬 صانع الفيلم", modes: ["closed", "invite", "trial", "open"] as AccessMode[], default: "trial" as AccessMode },
+  booklet: { label: "📖 كتيب نهج علي", modes: ["closed", "invite", "open"] as AccessMode[], default: "closed" as AccessMode },
+} as const;
+export type AccessSection = keyof typeof SECTIONS_ACCESS;
+
+const modeOf = (code: number | undefined): AccessMode | undefined =>
+  (Object.entries(ACCESS_MODES).find(([, m]) => m.code === code)?.[0] as AccessMode | undefined);
+
+/** The section's current mode for everyone. */
+export async function accessMode(section: AccessSection, rows?: LimitRow[]): Promise<AccessMode> {
+  const r = (rows ?? (await limitRows())).find((x) => x.scope === "all" && (x.key as string) === `access_${section}`);
+  const m = modeOf(r?.value);
+  return m && SECTIONS_ACCESS[section].modes.includes(m) ? m : SECTIONS_ACCESS[section].default;
+}
+
+/** A per-email decision for the section: true (always allowed), false (blocked) or undefined (follow the mode). */
+export async function emailAccess(section: AccessSection, email?: string | null, rows?: LimitRow[]) {
+  const mail = email?.toLowerCase();
+  if (!mail) return undefined;
+  const r = (rows ?? (await limitRows())).find((x) => x.scope === "email" && x.target === mail && (x.key as string) === `allow_${section}`);
+  return r === undefined ? undefined : r.value > 0;
+}
+
+/** «كتيب نهج علي»: may this user open it? The owner always can. */
+export async function bookletOpenFor(email?: string | null) {
+  if (isAdmin(email)) return true;
+  const rows = await limitRows();
+  const own = await emailAccess("booklet", email, rows);
+  if (own !== undefined) return own;
+  const mode = await accessMode("booklet", rows);
+  return mode === "open";
 }

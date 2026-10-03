@@ -8,7 +8,7 @@ export interface SiteSection {
   href: string;
   /** Only users with access to the film branch can open it (the owner, and the public trial's users while it lasts); others see "قريبًا". */
   requiresFilmAccess?: boolean;
-  /** Listed but closed («تحت التطوير») while BOOKLET_LOCKED is on in config/site.ts; the owner can still open it. */
+  /** Listed but closed («تحت التطوير») while «كتيب نهج علي» is not open for everyone (/admin/limits); the owner can still open it. */
   underDevelopment?: boolean;
 }
 

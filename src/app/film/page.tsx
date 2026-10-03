@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { filmTrialState, requireFilmUser } from "@/lib/film/access";
-import { FILM_PUBLIC_TRIAL } from "@config/film";
+import { filmTrialApplies, filmTrialState, requireFilmUser } from "@/lib/film/access";
+import { accessMode } from "@/lib/film/limits";
 import type { FilmProject } from "@/lib/film/types";
 import { FILM_STAGES } from "@config/film";
 
@@ -24,12 +24,12 @@ export default async function FilmHome() {
     return (
       <div className="card space-y-3 p-6 text-center">
         <p className="text-5xl">🎬</p>
-        {FILM_PUBLIC_TRIAL.open && (await filmTrialState(user)) === "done" ? (
+        {(await filmTrialApplies(user)) && (await filmTrialState(user)) === "done" ? (
           <>
             <h1 className="display text-3xl">انتهت تجربتك المجانية 🎉</h1>
             <p className="font-bold text-muted">شكرًا لك على التجربة! صانع الفيلم مقفل حاليًا، وبنعلن أول ما يرجع إن شاء الله.</p>
           </>
-        ) : FILM_PUBLIC_TRIAL.open ? (
+        ) : (await accessMode("film")) === "trial" ? (
           <>
             <h1 className="display text-3xl">صانع الفيلم مقفل حاليًا</h1>
             <p className="font-bold text-muted">اكتمل عدد المجرّبين في الفترة المجانية. بنعلن أول ما يرجع إن شاء الله.</p>
