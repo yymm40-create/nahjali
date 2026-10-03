@@ -6,6 +6,9 @@ import { dayGoals, dayScore, monthGoals, periodGoalsOn, summarize, weekGoals, we
 import { dayStreak, daysSinceLastActivity, itemStreak, weekStreak } from "../src/lib/mahdi/engine/streaks";
 import { compare, periodOf, previousPeriod, recentPeriods } from "../src/lib/mahdi/engine/compare";
 import type { EngineContext, Item, Version } from "../src/lib/mahdi/engine/types";
+import { alreadySent, dueSlot, inQuietHours, minuteOfDayIn, minutesSince, reminderSlots, toMinutes } from "../src/lib/mahdi/engine/reminders";
+import { boardScore, MIN_GOALS, rankEntries, type BoardEntry } from "../src/lib/mahdi/server/leaderboard";
+import type { Habit } from "../src/lib/mahdi/types";
 
 let failures = 0;
 const check = (ok: boolean, label: string, detail?: unknown) => {
@@ -181,6 +184,48 @@ check(todayIn("America/New_York", new Date("2026-10-03T22:30:00Z")) === "2026-10
   check(r.join() === "2026-10-01,2026-09-01,2026-08-01", "recent months, newest first", r);
   const e = compare(buildTimeline([], "2026-09-01", "2026-10-08", ctx), prev, wk);
   check(e.delta === null, "no data: no fake comparison");
+}
+
+// ── 13. reminders: when is one due? ──
+{
+  check(toMinutes("20:00") === 1200 && toMinutes("07:05") === 425 && toMinutes("24:00") === null && toMinutes("7:00") === null, "HH:MM to minutes, rejects bad times");
+  check(reminderSlots("off", ["20:00"]).length === 0, "off sends nothing");
+  check(reminderSlots("daily", ["20:00"]).join() === "1200", "daily: one slot");
+  check(reminderSlots("every_12h", ["08:00"]).join() === "480,1200", "every 12 hours from 08:00", reminderSlots("every_12h", ["08:00"]));
+  check(reminderSlots("every_6h", ["20:00"]).join() === "120,480,840,1200", "every 6 hours from 20:00 wraps past midnight", reminderSlots("every_6h", ["20:00"]));
+  check(reminderSlots("custom", ["21:00", "08:30", "08:30"]).join() === "510,1260", "custom: sorted and without duplicates");
+  check(inQuietHours(toMinutes("23:30")!, "23:00", "07:00") && inQuietHours(toMinutes("03:00")!, "23:00", "07:00") && !inQuietHours(toMinutes("07:00")!, "23:00", "07:00") && !inQuietHours(toMinutes("20:00")!, "23:00", "07:00"), "quiet hours that cross midnight");
+  check(inQuietHours(600, "09:00", "12:00") && !inQuietHours(780, "09:00", "12:00") && !inQuietHours(600, "09:00", "09:00"), "quiet hours inside one day; equal start and end = none");
+  check(minutesSince(5, 1435) === 10, "minutes since a slot wrap around midnight");
+  check(dueSlot(1210, [1200])?.ago === 10 && dueSlot(1225, [1200]) === null && dueSlot(1199, [1200]) === null, "due only in the 20 minutes after the slot");
+  const now = new Date("2026-10-03T17:10:30Z");
+  check(!alreadySent(null, 10, now) && alreadySent("2026-10-03T17:05:00Z", 10, now) === true && alreadySent("2026-10-03T16:59:00Z", 10, now) === false, "the same slot is not sent twice, a new one is");
+  check(minuteOfDayIn("Asia/Riyadh", new Date("2026-10-03T17:10:30Z")) === 20 * 60 + 10, "minute of the day in the user's time zone");
+}
+
+// ── 14. the public ranking ──
+{
+  const habit = (id: string, vs: Version[]): Habit => ({ id, projectId: "p", name: id, icon: "", category: "", notes: "", reminderTime: null, sortOrder: 0, versions: vs });
+  const today = "2026-10-09"; // Friday: the board's week is Sat 10-03 … Fri 10-09
+  const a = habit("a", [v("2026-09-01")]);
+  const b = habit("b", [v("2026-09-01")]);
+  const logsAll = (id: string, days: string[], value = 1) => Object.fromEntries(days.map((d) => [d, value]));
+  const past = ["2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"];
+
+  check(boardScore([a], { a: logsAll("a", past) }, today, "week") === null, "one habit gives only 6 goals in the week: below the minimum of " + MIN_GOALS.week + ", no rank yet");
+  const two = boardScore([a, b], { a: logsAll("a", past), b: logsAll("b", past.slice(0, 3)) }, today, "week");
+  check(two !== null && two.goals === 12 && near(two.score, 9 / 12), "two habits: 12 goals, mean of progress", two);
+  const counter = habit("a", [v("2026-09-01", { measure: "count", target: 2 })]);
+  const over = boardScore([counter, b], { a: logsAll("a", past, 5), b: logsAll("b", past, 1) }, today, "week");
+  check(over !== null && over.score === 1 && over.overCount === 6, "extra work never raises the score above 100%, it is counted apart", over);
+  check(boardScore([a, b], {}, "2026-10-09", "month") === null, "8 days of two daily habits = 16 goals: below the monthly minimum of 20");
+  const m = boardScore([a, b], {}, "2026-10-20", "month");
+  check(m !== null && m.goals === 38 && m.score === 0, "19 days of two daily habits = 38 goals, passes the minimum", m);
+
+  const e = (name: string, score: number, goals = 10): BoardEntry => ({ userId: name, displayName: name, avatarUrl: null, frame: "", score, goals, overCount: 0 });
+  const ranked = rankEntries([e("c", 0.8), e("a", 0.9), e("b", 0.9), e("d", 0.5)]);
+  check(ranked.map((r) => r.rank).join() === "1,1,3,4", "ties share a rank (1, 1, 3, 4)", ranked.map((r) => r.rank));
+  check(rankEntries([e("x", 0.874), e("y", 0.8749)]).map((r) => r.rank).join() === "1,1", "scores that show the same percent share a rank");
 }
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");

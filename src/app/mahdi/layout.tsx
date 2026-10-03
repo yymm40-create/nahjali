@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Amiri, IBM_Plex_Sans_Arabic } from "next/font/google";
+import RegisterSW from "@/components/mahdi/RegisterSW";
 import ThemeRoot from "@/components/mahdi/ThemeRoot";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { getShrines, pickShrine } from "@/lib/mahdi/server/snapshot";
@@ -13,6 +14,10 @@ const display = Amiri({ variable: "--font-amiri", subsets: ["arabic"], weight: [
 export const metadata: Metadata = {
   title: { default: t.brand, template: `%s · ${t.brand}` },
   description: t.auth.tagline,
+  // Installable app: its own manifest and scope, separate from the rest of the site
+  manifest: "/mahdi/manifest.webmanifest",
+  icons: { icon: "/mahdi/icons/icon-192.png", apple: "/mahdi/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: t.brand, statusBarStyle: "black-translucent" },
 };
 
 export async function generateViewport(): Promise<Viewport> {
@@ -32,6 +37,7 @@ export default async function MahdiLayout({ children }: { children: React.ReactN
       fontClass={`${sans.variable} ${display.variable}`}
       skipLabel={t.common.skipToContent}
     >
+      <RegisterSW />
       {children}
     </ThemeRoot>
   );

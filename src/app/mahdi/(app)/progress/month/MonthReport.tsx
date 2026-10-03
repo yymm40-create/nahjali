@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { addDays, addMonths, compare, dayScore, eachDay, endOfMonth, minDate, periodOf, previousPeriod, scoreBy, startOfMonth, startOfWeek, weekScore } from "@/lib/mahdi/engine";
 import { fmtDate, fmtMonth, fmtNum, fmtPct, fmtPoints, t } from "@/lib/mahdi/i18n";
-import { bySort, pickPhrase } from "@/lib/mahdi/client/derive";
+import { bySort, itemHref, pickPhrase } from "@/lib/mahdi/client/derive";
 import { monthInsight } from "@/lib/mahdi/client/insights";
 import Icon from "@/components/mahdi/Icon";
 import { BarRow, Delta, Insights, ProgressTabs, Tile } from "@/components/mahdi/Stats";
@@ -138,7 +138,7 @@ export default function MonthReport({ month }: { month?: string }) {
                 {[...byHabit]
                   .sort((a, b) => (b[1].score ?? 0) - (a[1].score ?? 0))
                   .map(([id, sc]) => (
-                    <BarRow key={id} label={name(id)} score={sc.score} href={`/mahdi/habits/${id}`} extra={`${sc.achieved}/${sc.required}`} />
+                    <BarRow key={id} label={name(id)} score={sc.score} href={itemHref(id)} extra={`${sc.achieved}/${sc.required}`} />
                   ))}
               </ul>
             </section>

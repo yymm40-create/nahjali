@@ -2,7 +2,7 @@
 import { versionAt, type ISODate, type Item, type Version } from "../engine";
 import { fmtNum, joinDays, t } from "../i18n";
 import { addDays, maxDate, minDate } from "../engine";
-import type { Habit, Phrase, PhraseContext, Snapshot } from "../types";
+import type { Challenge, Habit, Membership, Phrase, PhraseContext, Snapshot } from "../types";
 
 export const toItems = (habits: Habit[], logs: Snapshot["logs"]): Item[] =>
   habits.map((h) => ({ id: h.id, projectId: h.projectId, versions: h.versions, logs: logs[h.id] ?? {} }));
@@ -76,19 +76,26 @@ export const safeNext = (n: unknown) => (typeof n === "string" && (n === "/mahdi
 
 /** Joined unified challenges, shaped like habits (id "c:<challenge>", group "challenges") so they log and score the same way. */
 export const CHALLENGE_GROUP = "challenges";
+
+/** One joined challenge as a habit: it starts when the user joined (or the challenge started) and stops when they leave or it ends. */
+export function challengeAsHabit(c: Challenge, m: Pick<Membership, "joinedOn" | "leftOn">, icon = ""): Habit {
+  const from = maxDate(m.joinedOn, c.startsOn);
+  const base = { measure: c.measure, target: c.target, unit: c.unit, freq: c.freq, days: [] as number[] };
+  const versions: Habit["versions"] = [{ effectiveFrom: from, ...base, state: "active" }];
+  const stops = [m.leftOn, c.endsOn ? addDays(c.endsOn, 1) : null].filter((x): x is string => Boolean(x));
+  if (stops.length) versions.push({ effectiveFrom: maxDate(from, stops.reduce(minDate)), ...base, state: "archived" });
+  if (versions.length === 2 && versions[1].effectiveFrom === from) versions.shift();
+  return { id: `c:${c.id}`, projectId: CHALLENGE_GROUP, name: c.title, icon, category: "", notes: "", reminderTime: null, sortOrder: 0, versions };
+}
+
 export function challengeHabits(snap: Snapshot): Habit[] {
   const out: Habit[] = [];
   for (const m of snap.challenges.memberships) {
     const c = snap.challenges.list.find((x) => x.id === m.challengeId);
-    if (!c) continue;
-    const icon = snap.challenges.sections.find((s) => s.id === c.sectionId)?.icon ?? "";
-    const from = maxDate(m.joinedOn, c.startsOn);
-    const base = { measure: c.measure, target: c.target, unit: c.unit, freq: c.freq, days: [] as number[] };
-    const versions: Habit["versions"] = [{ effectiveFrom: from, ...base, state: "active" }];
-    const stops = [m.leftOn, c.endsOn ? addDays(c.endsOn, 1) : null].filter((x): x is string => Boolean(x));
-    if (stops.length) versions.push({ effectiveFrom: maxDate(from, stops.reduce(minDate)), ...base, state: "archived" });
-    if (versions.length === 2 && versions[1].effectiveFrom === from) versions.shift();
-    out.push({ id: `c:${c.id}`, projectId: CHALLENGE_GROUP, name: c.title, icon, category: "", notes: "", reminderTime: null, sortOrder: 0, versions });
+    if (c) out.push(challengeAsHabit(c, m, snap.challenges.sections.find((s) => s.id === c.sectionId)?.icon ?? ""));
   }
   return out;
 }
+
+/** The details page of a habit, or of a challenge for ids like "c:<id>". */
+export const itemHref = (id: string) => (id.startsWith("c:") ? `/mahdi/challenges/${id.slice(2)}` : `/mahdi/habits/${id}`);
