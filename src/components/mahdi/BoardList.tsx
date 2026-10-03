@@ -35,7 +35,7 @@ export default function BoardList({ entries, me, label }: { entries: BoardRow[];
           {e.mine && <span className="m-chip m-chip-gold ms-2">{t.leaderboard.you}</span>}
         </span>
         <span className="m-num block text-sm m-muted">
-          {e.username && <span dir="ltr">@{e.username} · </span>}
+          {e.username && <><bdi dir="auto">{e.username}</bdi> · </>}
           {e.seconds !== undefined
             ? [e.pages || !e.narrations ? t.reading.pages(e.pages ?? 0) : "", e.narrations ? t.reading.narrations(e.narrations) : ""].filter(Boolean).join(" · ")
             : t.units.goals(e.goals ?? 0)}

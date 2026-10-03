@@ -3,6 +3,7 @@ import AppShell from "@/components/mahdi/AppShell";
 import MahdiProvider from "@/components/mahdi/Provider";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
+import { ensureUsername } from "@/lib/username";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,12 @@ export default async function MahdiAppLayout({ children }: { children: React.Rea
   if (!user) redirect("/mahdi/start");
   if (!profile) redirect("/mahdi/welcome");
   const snapshot = await loadSnapshot(supabase, profile);
+  // Every account has a unique username: the name already used here becomes it, unless someone has it
+  if (!snapshot.username) {
+    const name = await ensureUsername(supabase, user, [profile.displayName]).catch(() => null);
+    if (!name) redirect("/mahdi/username");
+    snapshot.username = name;
+  }
 
   return (
     <MahdiProvider initial={snapshot}>
