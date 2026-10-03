@@ -31,6 +31,7 @@ interface Video {
   status: string;
   error: string | null;
   resolution: string;
+  ratio: string;
   removed: boolean;
   createdAt: string;
   url: string;
@@ -54,6 +55,10 @@ export default function VideosWorkspace({
 }) {
   const router = useRouter();
   const [resolution, setResolution] = useState<VideoResolution>(DEFAULT_VIDEO_RESOLUTION);
+  // Orientation for every video: the director's choice by default (the most common one in the approved generations)
+  const [ratio, setRatio] = useState<"16:9" | "9:16">(() =>
+    generations.filter((g) => g.ratio === "9:16").length > generations.length / 2 ? "9:16" : "16:9",
+  );
   const [rendering, setRendering] = useState(videosRunning > 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -101,7 +106,31 @@ export default function VideosWorkspace({
         </p>
       </section>
 
-      {/* The last decision before generating: quality (each has its price) */}
+      {/* The last decisions before generating: orientation, then quality (each has its price) */}
+      <section className="card space-y-3 p-4">
+        <h2 className="text-lg font-extrabold">اتجاه الفيديو</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {([["16:9", "🖥️ عرضي", "للشاشات واليوتيوب"], ["9:16", "📱 طولي", "للجوال والريلز"]] as const).map(([r, label, hint]) => (
+            <button
+              key={r}
+              className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-start ${ratio === r ? "border-gold bg-gold/10" : "border-line"}`}
+              onClick={() => setRatio(r)}
+              aria-pressed={ratio === r}
+            >
+              <span className={`shrink-0 rounded-md border-2 border-current ${r === "16:9" ? "h-6 w-10" : "h-10 w-6"}`} aria-hidden />
+              <span>
+                <span className="block font-extrabold">{label} <span dir="ltr">{r}</span></span>
+                <span className="block text-xs font-bold text-muted">{hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        {generations.some((g) => g.ratio !== ratio) && (
+          <p className="text-xs font-bold text-muted">⚠️ المخرج خطّط بعض التوليدات على اتجاه ثاني؛ تغييره ممكن يغيّر التأطير. لو تبي إخراج مبني على هذا الاتجاه، اطلبه من المخرج.</p>
+        )}
+      </section>
+
+
       <section className="card space-y-3 p-4">
         <h2 className="text-lg font-extrabold">جودة الفيديو</h2>
         <div className="grid grid-cols-3 gap-2">
@@ -135,7 +164,7 @@ export default function VideosWorkspace({
               <h2 className="text-xl font-extrabold">{g.id}{g.name ? ` · ${g.name}` : ""}</h2>
               <div className="flex flex-wrap gap-1 text-xs font-bold">
                 <span className="chip">{VIDEO_MODELS[g.model].label}</span>
-                <span className="chip" dir="ltr">{g.durationSec}s · {g.ratio}</span>
+                <span className="chip" dir="ltr">{g.durationSec}s · {ratio}</span>
                 <span className="chip">{g.audio ? "🔊 بصوت" : "🔇 بدون صوت"}</span>
               </div>
             </header>
@@ -155,6 +184,7 @@ export default function VideosWorkspace({
                   <span className={`chip ${statusChip(v.status)}`}>
                     {STATUS_LABELS[v.status] ?? v.status}
                     {v.resolution ? ` · ${v.resolution}` : ""}
+                    {v.ratio ? ` · ${v.ratio === "9:16" ? "طولي" : "عرضي"}` : ""}
                     {v.url && !v.removed ? ` · يبقى ${daysLeft(v.createdAt)} يوم` : ""}
                   </span>
                   {!busy && (
@@ -185,9 +215,9 @@ export default function VideosWorkspace({
             {!generating && !busy && (
               <button
                 className={`btn w-full ${mine.length ? "btn-ghost" : "btn-primary"}`}
-                onClick={() => send({ action: "generate_video", genId: g.id, resolution })}
+                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio })}
               >
-                {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · {VIDEO_RESOLUTIONS[resolution].label} · تقريبًا <span dir="ltr">{usd(cost)}</span>
+                {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · {ratio === "9:16" ? "طولي" : "عرضي"} · {VIDEO_RESOLUTIONS[resolution].label} · تقريبًا <span dir="ltr">{usd(cost)}</span>
               </button>
             )}
           </article>

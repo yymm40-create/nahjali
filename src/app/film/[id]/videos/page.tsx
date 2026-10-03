@@ -62,6 +62,7 @@ export default async function VideosPage({ params }: PageProps<"/film/[id]/video
           status: v.status,
           error: v.error,
           resolution: String(v.meta?.resolution ?? ""),
+          ratio: String(v.meta?.ratio ?? ""),
           removed: Boolean(v.meta?.removed_at),
           createdAt: v.created_at,
           url: links[v.id]?.url ?? "",
