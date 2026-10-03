@@ -6,7 +6,6 @@ import SignOutButton from "./SignOutButton";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { isAdmin } from "@config/site";
 import { SECTIONS } from "@config/sections";
-import { isAdmin } from "@config/site";
 
 const ITEM = "rounded-xl px-3 py-2 hover:bg-surface-2";
 
