@@ -9,6 +9,7 @@ import type { EngineContext, Item, Version } from "../src/lib/mahdi/engine/types
 import { alreadySent, dueSlot, inQuietHours, minuteOfDayIn, minutesSince, reminderSlots, toMinutes } from "../src/lib/mahdi/engine/reminders";
 import { boardScore, MIN_GOALS, rankEntries, type BoardEntry } from "../src/lib/mahdi/server/leaderboard";
 import type { Habit } from "../src/lib/mahdi/types";
+import { bookProgress, countPages, formatRanges, goalProgress, mergeRanges, normalizeTitle, parsePagesInput, readingSummary, USERNAME_RE, type ReadingSession } from "../src/lib/mahdi/engine/reading";
 
 let failures = 0;
 const check = (ok: boolean, label: string, detail?: unknown) => {
@@ -226,6 +227,29 @@ check(todayIn("America/New_York", new Date("2026-10-03T22:30:00Z")) === "2026-10
   const ranked = rankEntries([e("c", 0.8), e("a", 0.9), e("b", 0.9), e("d", 0.5)]);
   check(ranked.map((r) => r.rank).join() === "1,1,3,4", "ties share a rank (1, 1, 3, 4)", ranked.map((r) => r.rank));
   check(rankEntries([e("x", 0.874), e("y", 0.8749)]).map((r) => r.rank).join() === "1,1", "scores that show the same percent share a rank");
+}
+
+// ── 15. reading: pages, progress, time, goals ──
+{
+  check(JSON.stringify(mergeRanges([[30, 32], [1, 5], [6, 8], [4, 2], [40, 50]], 45)) === "[[1,8],[30,32],[40,45]]", "ranges merge, touch, flip and clamp to the book's pages", mergeRanges([[30, 32], [1, 5], [6, 8], [4, 2], [40, 50]], 45));
+  check(countPages([[1, 10], [5, 12], [20, 20]]) === 13, "a page read twice counts once");
+  check(JSON.stringify(parsePagesInput("١٥-٢٠، 33, 40 - 42")) === "[[15,20],[33,33],[40,42]]", "typed pages with Arabic digits and commas", parsePagesInput("١٥-٢٠، 33, 40 - 42"));
+  check(JSON.stringify(parsePagesInput("10 إلى 12")) === "[[10,12]]", "«إلى» between two pages");
+  check(parsePagesInput("5-abc") === null && parsePagesInput("900", 300) === null, "nonsense or a page beyond the book is refused");
+  check(formatRanges([[1, 12], [30, 30]]) === "1–12، 30", "ranges shown back to the reader");
+  const ses = (id: string, date: string, seconds: number, ranges: [number, number][]): ReadingSession => ({ id, bookId: "b", date, seconds, ranges, pages: countPages(ranges), note: "" });
+  const list = [ses("1", "2026-10-06", 1800, [[1, 20]]), ses("2", "2026-10-07", 1800, [[15, 40]]), ses("3", "2026-10-08", 0, [[100, 109]])];
+  const p = bookProgress(list, 200);
+  check(p.readPages === 50 && near(p.share, 0.25), "progress = distinct pages / book pages", p);
+  check(p.pagesPerHour !== null && Math.round(p.pagesPerHour) === 46 && p.secondsLeft !== null, "reading speed from timed sessions, and time left", p);
+  check(p.nextPage === 41, "where to continue: the first page not read", p.nextPage);
+  check(bookProgress([ses("x", "2026-10-08", 0, [[1, 10]])], 10).nextPage === null, "a book read to the end has no next page");
+  const sum = readingSummary(list, "2026-10-08", 6);
+  check(sum.today.pages === 10 && sum.week.seconds === 3600 && sum.streak === 3, "today, this week and the reading streak", sum);
+  check(readingSummary(list, "2026-10-09", 6).streak === 3 && readingSummary(list, "2026-10-10", 6).streak === 0, "the streak waits for today, then breaks after a missed day");
+  check(goalProgress({ metric: "minutes", target: 20 }, sum.week)?.share === 1 && goalProgress({ metric: "pages", target: 40 }, sum.today)?.done === 10, "goals in minutes or pages, capped at 100%");
+  check(normalizeTitle("الكافِي") === normalizeTitle("الكافى") && normalizeTitle("أصول  الكافي") === "اصول الكافي", "Arabic titles match with or without diacritics and alef forms");
+  check(USERNAME_RE.test("abu_ali") && !USERNAME_RE.test("1abc") && !USERNAME_RE.test("ab") && !USERNAME_RE.test("علي"), "usernames: Latin letters, digits and _, 3–20, starting with a letter");
 }
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");

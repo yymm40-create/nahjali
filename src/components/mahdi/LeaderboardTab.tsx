@@ -18,24 +18,27 @@ interface Board {
 export default function LeaderboardTab() {
   const { state, store, toast } = useMahdi();
   const [period, setPeriod] = useState<"week" | "month">("week");
+  const [metric, setMetric] = useState<"score" | "reading">("score");
   // The answer is stored with the period it belongs to, so switching tabs shows «جارٍ التحميل» without extra state
-  const [result, setResult] = useState<{ period: "week" | "month"; board: Board } | null>(null);
-  const [failed, setFailed] = useState<{ period: "week" | "month"; message: string } | null>(null);
+  const [result, setResult] = useState<{ key: string; board: Board } | null>(null);
+  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
+  const key = `${period}:${metric}`;
   const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false);
   const optedIn = state.snap.privacy.leaderboard;
 
   useEffect(() => {
     let live = true;
-    mahdiFetch<Board>(`/api/mahdi/leaderboard?period=${period}`)
-      .then((board) => live && (setResult({ period, board }), setFailed(null)))
-      .catch((e: Error) => live && setFailed({ period, message: e.message }));
+    const k = `${period}:${metric}`;
+    mahdiFetch<Board>(`/api/mahdi/leaderboard?period=${period}&metric=${metric}`)
+      .then((board) => live && (setResult({ key: k, board }), setFailed(null)))
+      .catch((e: Error) => live && setFailed({ key: k, message: e.message }));
     return () => {
       live = false;
     };
-  }, [period, optedIn, reload]);
-  const board = result?.period === period ? result.board : null;
-  const error = failed?.period === period ? failed.message : "";
+  }, [period, metric, optedIn, reload]);
+  const board = result?.key === key ? result.board : null;
+  const error = failed?.key === key ? failed.message : "";
 
   const onBoard = Boolean(board?.entries.some((e) => e.mine) || board?.me);
 
@@ -48,8 +51,17 @@ export default function LeaderboardTab() {
           </button>
         ))}
       </div>
-      <p className="text-sm m-muted">{t.leaderboard.how}</p>
-      <p className="text-sm m-muted">{t.leaderboard.min(board?.min ?? (period === "week" ? 7 : 20))} {t.leaderboard.note}</p>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.leaderboard.metric}>
+        {(["score", "reading"] as const).map((m) => (
+          <button key={m} type="button" role="radio" aria-checked={metric === m} className="m-option min-h-10 px-3 text-sm font-semibold" onClick={() => setMetric(m)}>
+            {t.leaderboard.metrics[m]}
+          </button>
+        ))}
+      </div>
+      <p className="text-sm m-muted">{metric === "score" ? t.leaderboard.how : t.leaderboard.readingHow}</p>
+      <p className="text-sm m-muted">
+        {metric === "score" && t.leaderboard.min(board?.min ?? (period === "week" ? 7 : 20))} {t.leaderboard.note}
+      </p>
 
       {!optedIn && (
         <div className="m-note flex flex-wrap items-center gap-3">
@@ -74,7 +86,7 @@ export default function LeaderboardTab() {
           </button>
         </div>
       )}
-      {optedIn && board && !onBoard && <p className="m-note">{t.leaderboard.notYet(board.min)}</p>}
+      {optedIn && board && !onBoard && metric === "score" && <p className="m-note">{t.leaderboard.notYet(board.min)}</p>}
 
       {error ? (
         <p className="m-error" role="alert">
@@ -83,7 +95,7 @@ export default function LeaderboardTab() {
       ) : !board ? (
         <p className="m-muted">{t.common.loading}</p>
       ) : board.entries.length ? (
-        <BoardList entries={board.entries} me={board.me} label={`${t.leaderboard.list}: ${t.leaderboard[period]} (${fmtNum(board.total)})`} />
+        <BoardList entries={board.entries} me={board.me} label={`${t.leaderboard.list}: ${t.leaderboard.metrics[metric]} · ${t.leaderboard[period]} (${fmtNum(board.total)})`} />
       ) : (
         <p className="m-card p-6 text-center m-muted">{t.leaderboard.empty}</p>
       )}

@@ -63,6 +63,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Icon name={n.icon} /> {n.label}
             </Link>
           ))}
+          <Link href="/mahdi/reading" className="m-side-item" aria-current={pathname.startsWith("/mahdi/reading") ? "page" : undefined}>
+            <Icon name="book" /> {t.reading.nav}
+          </Link>
         </nav>
         <button type="button" className="m-btn m-btn-primary" onClick={onAdd}>
           <Icon name="plus" /> {inProject ? t.add.habitIn(inProject.name) : t.nav.add}

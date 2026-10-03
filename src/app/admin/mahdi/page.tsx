@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
 import { t } from "@/lib/mahdi/i18n";
 import { selectAll } from "@/lib/mahdi/server/snapshot";
+import { coverUrl } from "@/lib/mahdi/server/reading";
 import MahdiAdminTools, { type AdminData } from "./MahdiAdminTools";
 
 export const metadata = { title: "لأجل المهدي | لوحة التحكم" };
@@ -26,6 +27,21 @@ export default async function MahdiAdminPage() {
     db.from("mahdi_posts").select("id").not("hidden_at", "is", null),
   ]);
 
+  // Books: reported ones and the newest, with how many libraries hold each (empty until migration 0010 runs)
+  const [bookReports, bookRows, holders] = await Promise.all([
+    selectAll<{ book_id: string; reason: string }>((a, b) => db.from("mahdi_book_reports").select("book_id, reason").order("book_id").order("user_id").range(a, b)).catch(() => []),
+    db.from("mahdi_books").select("id, title, author, pages, description, cover_path, hidden_at, hidden_reason, created_at").order("created_at", { ascending: false }).limit(300),
+    selectAll<{ book_id: string }>((a, b) => db.from("mahdi_user_books").select("book_id").order("book_id").order("user_id").range(a, b)).catch(() => []),
+  ]);
+  const bookReasons = new Map<string, string[]>();
+  for (const r of bookReports) (bookReasons.get(r.book_id) ?? bookReasons.set(r.book_id, []).get(r.book_id)!).push(r.reason);
+  const readers: Record<string, number> = {};
+  for (const h of holders) readers[h.book_id] = (readers[h.book_id] ?? 0) + 1;
+  const reportedMissing = [...bookReasons.keys()].filter((bid) => !(bookRows.data ?? []).some((b) => b.id === bid));
+  const extraBooks = reportedMissing.length
+    ? (await db.from("mahdi_books").select("id, title, author, pages, description, cover_path, hidden_at, hidden_reason, created_at").in("id", reportedMissing.slice(0, 100))).data ?? []
+    : [];
+
   const memberCount: Record<string, number> = {};
   for (const m of members) memberCount[m.challenge_id] = (memberCount[m.challenge_id] ?? 0) + 1;
 
@@ -41,6 +57,20 @@ export default async function MahdiAdminPage() {
   }
 
   const data: AdminData = {
+    books: [...(bookRows.data ?? []), ...extraBooks]
+      .map((b) => ({
+        id: b.id as string,
+        title: b.title as string,
+        author: b.author as string,
+        pages: b.pages as number,
+        description: b.description as string,
+        coverUrl: coverUrl(b.cover_path as string | null),
+        hidden: Boolean(b.hidden_at),
+        hiddenReason: (b.hidden_reason as string) ?? "",
+        reasons: bookReasons.get(b.id) ?? [],
+        readers: readers[b.id] ?? 0,
+      }))
+      .sort((a, b) => Number(a.hidden) - Number(b.hidden) || b.reasons.length - a.reasons.length),
     sections: sections.data ?? [],
     challenges: (challenges.data ?? []).map((c) => ({ ...c, target: Number(c.target), members: memberCount[c.id] ?? 0 })),
     texts: texts.data ?? [],

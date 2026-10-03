@@ -67,6 +67,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     projectId: typeof body.projectId === "string" ? body.projectId : undefined,
     habitId: typeof body.habitId === "string" ? body.habitId : undefined,
     milestoneId: typeof body.milestoneId === "string" ? body.milestoneId : undefined,
+    bookId: typeof body.bookId === "string" ? body.bookId : undefined,
   });
   if (!payload) throw new UserError(t.reports.noData, 400);
 

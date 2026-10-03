@@ -6,6 +6,8 @@ import { fromDbError } from "@/lib/mahdi/server/api";
 import { cleanIcon, cleanLine, cleanText, oneOf, parseBool, parseConfig, parseDate, parseIntIn, requireName } from "@/lib/mahdi/server/validate";
 import { t } from "@/lib/mahdi/i18n";
 import { UUID_RE } from "@/lib/mahdi/server/api";
+import { normalizeTitle } from "@/lib/mahdi/engine";
+import { COVER_BUCKET } from "@/lib/mahdi/server/reading";
 
 const A = t.admin;
 const CONTEXTS = ["home", "day_complete", "weekly", "monthly", "comeback", "milestone", "notification"] as const;
@@ -26,6 +28,7 @@ const bad = (msg: string) => new UserError(msg, 400);
  * Owner-only content management for «لأجل المهدي». One route, one `action` per change:
  *   section.save / section.delete · challenge.save / challenge.status / challenge.delete
  *   text.save / text.delete · phrase.save / phrase.delete · post.hide / post.unhide · reports.dismiss
+ *   book.save / book.hide / book.unhide / book.dismiss
  * Everything runs with the service role, after checking that the caller is the owner. Anyone else gets 404.
  */
 export const POST = handle(async (req: Request) => {
@@ -171,6 +174,31 @@ export const POST = handle(async (req: Request) => {
       break;
     case "reports.dismiss":
       await run(db.from("mahdi_post_reports").delete().eq("post_id", id(body.postId)));
+      break;
+
+    // ── shared book catalogue ──
+    case "book.save": {
+      const bid = id(body.id);
+      const title = cleanLine(body.title, 120);
+      if (!title) throw bad(A.errors.name);
+      const pages = parseIntIn(body.pages, 1, 10000);
+      const row: Record<string, unknown> = { title, title_norm: normalizeTitle(title), author: cleanLine(body.author, 80), pages, description: cleanText(body.description, 500) };
+      if (body.removeCover === true) {
+        const { data: cur } = await db.from("mahdi_books").select("cover_path").eq("id", bid).single();
+        if (cur?.cover_path) await db.storage.from(COVER_BUCKET).remove([cur.cover_path]);
+        row.cover_path = null;
+      }
+      await run(db.from("mahdi_books").update(row).eq("id", bid));
+      break;
+    }
+    case "book.hide":
+      await run(db.from("mahdi_books").update({ hidden_at: new Date().toISOString(), hidden_reason: cleanLine(body.reason, 200) }).eq("id", id(body.id)));
+      break;
+    case "book.unhide":
+      await run(db.from("mahdi_books").update({ hidden_at: null, hidden_reason: "" }).eq("id", id(body.id)));
+      break;
+    case "book.dismiss":
+      await run(db.from("mahdi_book_reports").delete().eq("book_id", id(body.id)));
       break;
 
     default:

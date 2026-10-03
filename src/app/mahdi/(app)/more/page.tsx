@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Profile, Shrine } from "@/lib/mahdi/types";
 import Avatar from "@/components/mahdi/Avatar";
 import InstallCard from "@/components/mahdi/InstallCard";
+import UsernameForm from "@/components/mahdi/UsernameForm";
 import Icon from "@/components/mahdi/Icon";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -70,6 +71,8 @@ export default function MorePage() {
       <nav className="grid gap-2 sm:grid-cols-2" aria-label={t.more.title}>
         {(
           [
+            ["/mahdi/reading", "book", t.reading.title],
+            ["/mahdi/groups", "users", t.groups.title],
             ["/mahdi/more/rewards", "sparkle", t.rewards.title],
             ["/mahdi/community", "globe", t.community.title],
             ["/mahdi/more/privacy", "lock", t.privacy.title],
@@ -140,6 +143,9 @@ export default function MorePage() {
           </button>
         </form>
         <p className="text-sm m-muted">{t.mawla(profile.displayName)}</p>
+        <div className="border-t pt-4" style={{ borderColor: "var(--m-line)" }}>
+          <UsernameForm />
+        </div>
       </section>
 
       <section className="m-card space-y-4 p-5">

@@ -8,3 +8,4 @@ export * from "./streaks";
 export * from "./compare";
 export * from "./milestones";
 export * from "./reminders";
+export * from "./reading";

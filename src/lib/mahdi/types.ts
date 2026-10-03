@@ -1,6 +1,6 @@
 // Data shapes shared by the server, the browser store and (later) a native app.
 import type { MahdiTheme, ProjectColor } from "@config/mahdi";
-import type { ISODate, Version } from "./engine";
+import type { ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
 
 export interface Shrine {
   id: string;
@@ -73,6 +73,9 @@ export interface Snapshot {
   privacy: Privacy;
   challenges: ChallengeData;
   notifications: NotificationSettings;
+  reading: ReadingData;
+  /** The site-wide @username, or null until chosen. */
+  username: string | null;
   projects: Project[];
   habits: Habit[];
   /** habitId → date → value. Only days from `logsFrom` on. */
@@ -148,4 +151,34 @@ export interface NotificationSettings {
   quietStart: string;
   quietEnd: string;
   habitReminders: boolean;
+}
+
+/** A book of the shared catalogue. */
+export interface Book {
+  id: string;
+  title: string;
+  author: string;
+  pages: number;
+  description: string;
+  coverUrl: string | null;
+  addedByMe: boolean;
+  /** Hidden by the admin (only its owner still sees it). */
+  hidden: boolean;
+}
+
+export type LibraryState = "reading" | "paused" | "finished";
+
+/** A book in my library: at most 3 are 'reading' at a time. */
+export interface LibraryEntry {
+  book: Book;
+  state: LibraryState;
+  addedAt: string;
+  finishedAt: string | null;
+}
+
+export interface ReadingData {
+  library: LibraryEntry[];
+  /** All my sessions, oldest first. */
+  sessions: ReadingSession[];
+  goals: ReadingGoals;
 }

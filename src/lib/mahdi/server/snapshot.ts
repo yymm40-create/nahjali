@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HISTORY_DAYS } from "@config/mahdi";
 import { addDays, todayIn } from "../engine";
 import type { Challenge, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
+import { DEFAULT_GOALS, loadReading, loadUsername } from "./reading";
 import { habitsFromRows, projectFromRow, shrineFromRow, type HabitRow, type LogRow, type ProjectRow, type ShrineRow, type VersionRow } from "./rows";
 
 const PAGE = 1000; // Supabase returns at most 1000 rows per request
@@ -42,7 +43,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
   const today = todayIn(profile.timeZone);
   const logsFrom = addDays(today, -HISTORY_DAYS);
 
-  const [shrines, phrases, extra, projects, habits, versions, logs] = await Promise.all([
+  const [shrines, phrases, extra, reading, username, projects, habits, versions, logs] = await Promise.all([
     getShrines(),
     supabase
       .from("mahdi_phrases")
@@ -50,6 +51,9 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
       .order("sort_order")
       .then(({ data }) => (data ?? []) as Phrase[]),
     loadExtras(supabase, logsFrom),
+    // Reading and usernames arrive with migration 0010; until it runs, the app works without them
+    loadReading(supabase, profile.userId).catch(() => ({ library: [], sessions: [], goals: DEFAULT_GOALS })),
+    loadUsername(supabase, profile.userId).catch(() => null),
     selectAll<ProjectRow>((a, b) => supabase.from("mahdi_projects").select("*").order("sort_order").order("created_at").range(a, b)),
     selectAll<HabitRow>((a, b) => supabase.from("mahdi_habits").select("*").order("sort_order").order("created_at").range(a, b)),
     selectAll<VersionRow>((a, b) =>
@@ -70,6 +74,8 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     shrines,
     phrases,
     ...extra,
+    reading,
+    username,
     projects: projects.map(projectFromRow),
     habits: habitsFromRows(habits, versions),
     logs: byHabit,

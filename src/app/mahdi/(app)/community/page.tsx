@@ -5,13 +5,14 @@ import { useRef } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import ChallengeList from "@/components/mahdi/ChallengeList";
 import CommunityFeed from "@/components/mahdi/CommunityFeed";
+import GroupsHome from "@/components/mahdi/GroupsHome";
 import JoinPrompt from "@/components/mahdi/JoinPrompt";
 import LeaderboardTab from "@/components/mahdi/LeaderboardTab";
 import { useMahdi } from "@/components/mahdi/Provider";
 
-const TABS = ["feed", "ranking", "challenges"] as const;
+const TABS = ["feed", "ranking", "challenges", "groups"] as const;
 type Tab = (typeof TABS)[number];
-const LABEL = t.community.tabLabels;
+const LABEL = { ...t.community.tabLabels, groups: t.groups.tab };
 
 /** «المجتمع»: the wall, the ranking and the unified challenges. The wall and the ranking need the user to join first. */
 export default function CommunityPage() {
@@ -19,7 +20,7 @@ export default function CommunityPage() {
   const params = useSearchParams();
   const q = params.get("tab");
   const tab: Tab = TABS.includes(q as Tab) ? (q as Tab) : "feed";
-  const refs = useRef<Record<Tab, HTMLButtonElement | null>>({ feed: null, ranking: null, challenges: null });
+  const refs = useRef<Record<Tab, HTMLButtonElement | null>>({ feed: null, ranking: null, challenges: null, groups: null });
 
   // The tab lives in the address (?tab=); replaceState changes it without reloading the page or the data
   const choose = (next: Tab) => {
@@ -42,7 +43,7 @@ export default function CommunityPage() {
   return (
     <div className="space-y-5">
       <h1 className="m-display text-3xl">{t.community.title}</h1>
-      <div role="tablist" aria-label={t.community.tabs} className="grid grid-cols-3 gap-2">
+      <div role="tablist" aria-label={t.community.tabs} className="grid grid-cols-4 gap-1.5">
         {TABS.map((k, i) => (
           <button
             key={k}
@@ -64,7 +65,7 @@ export default function CommunityPage() {
         ))}
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === "challenges" ? <ChallengeList /> : !joined ? <JoinPrompt /> : tab === "feed" ? <CommunityFeed /> : <LeaderboardTab />}
+        {tab === "groups" ? <GroupsHome /> : tab === "challenges" ? <ChallengeList /> : !joined ? <JoinPrompt /> : tab === "feed" ? <CommunityFeed /> : <LeaderboardTab />}
       </div>
     </div>
   );
