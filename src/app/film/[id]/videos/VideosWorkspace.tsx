@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
+import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
+import QuestionsForm from "../../QuestionsForm";
+import ActionBar from "../../ActionBar";
 import { statusChip } from "../../StepCard";
 import {
   clampVideoSeconds,
@@ -20,6 +23,10 @@ import {
 } from "@config/film";
 
 interface Generation {
+  /** The director's understanding of the client's video notes, as options to choose from. */
+  questions: { id: string; body: string; items: { question: string; options: string[] }[] } | null;
+  /** The revised generation written after those answers, waiting for approval. */
+  revision: { id: string; body: string } | null;
   id: string;
   name: string;
   model: VideoModel;
@@ -47,7 +54,7 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 const daysLeft = (createdAt: string) => Math.max(0, Math.ceil(VIDEO_KEEP_DAYS - (Date.now() - new Date(createdAt).getTime()) / 86_400_000));
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideoUsed,
+  projectId, stage, generations, videos, videosRunning, trialVideoUsed, job,
 }: {
   projectId: string;
   stage: string;
@@ -56,6 +63,7 @@ export default function VideosWorkspace({
   videosRunning: number;
   /** Public trial: whether this user's one free video is made or being made (null: no trial limit). */
   trialVideoUsed: boolean | null;
+  job: { status: string; error: string | null } | null;
 }) {
   const router = useRouter();
   const [resolution, setResolution] = useState<VideoResolution>(DEFAULT_VIDEO_RESOLUTION);
@@ -71,32 +79,42 @@ export default function VideosWorkspace({
     generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
   );
   const [rendering, setRendering] = useState(videosRunning > 0);
+  // The director answering the client's notes on a video
+  const [writing, setWriting] = useState(job?.status === "running");
+  const [feedbackFor, setFeedbackFor] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   // Poll while videos are generated (the poll also saves finished videos)
   useEffect(() => {
-    if (!rendering) return;
+    if (!rendering && !writing) return;
     const timer = setInterval(async () => {
       try {
-        const s = await api<{ videosRunning: number }>(`/api/film/projects/${projectId}/director`);
-        if (s.videosRunning === 0) {
-          setRendering(false);
-          router.refresh();
-        }
+        const s = await api<{ status: string | null; videosRunning: number }>(`/api/film/projects/${projectId}/director`);
+        const w = s.status === "running";
+        const r = s.videosRunning > 0;
+        if (w !== writing || r !== rendering) router.refresh();
+        setWriting(w);
+        setRendering(r);
       } catch {
         // keep polling
       }
     }, 6000);
     return () => clearInterval(timer);
-  }, [rendering, projectId, router]);
+  }, [rendering, writing, projectId, router]);
 
   async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError("");
     try {
-      await postJson(`/api/film/projects/${projectId}/director`, body);
-      if (body.action === "generate_video") setRendering(true);
+      const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/director`, body);
+      if (jobId) setWriting(true);
+      if (body.action === "generate_video" || body.action === "approve_and_generate") setRendering(true);
+      if (body.action === "video_feedback") {
+        setFeedbackFor(null);
+        setFeedback("");
+      }
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -225,6 +243,9 @@ export default function VideosWorkspace({
                       {v.status === "generated" && !v.removed && (
                         <>
                           <button className="btn btn-primary min-h-10 px-4 text-sm" onClick={() => send({ action: "approve_video", assetId: v.id })}>اعتمد ✅</button>
+                          {!writing && (
+                            <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => setFeedbackFor(feedbackFor === v.id ? null : v.id)}>✏️ اطلب تعديل</button>
+                          )}
                           <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => send({ action: "reject_video", assetId: v.id })}>ارفضه</button>
                         </>
                       )}
@@ -239,8 +260,48 @@ export default function VideosWorkspace({
                     </div>
                   )}
                 </div>
+                {feedbackFor === v.id && !busy && (
+                  <div className="space-y-2">
+                    <textarea
+                      className="field min-h-24"
+                      value={feedback}
+                      onChange={(e) => setFeedback(e.target.value.slice(0, 4000))}
+                      placeholder="وش تبي يتغيّر في هذا الفيديو؟ اكتب بكلامك، والمخرج يرد عليك بفهمه وخيارات قبل ما يعدّل."
+                    />
+                    <button className="btn btn-secondary w-full" disabled={!feedback.trim()} onClick={() => send({ action: "video_feedback", assetId: v.id, text: feedback })}>
+                      أرسل التعديلات للمخرج
+                    </button>
+                  </div>
+                )}
               </figure>
             ))}
+
+            {/* Notes on a video → the director's understanding as options → the revised generation → a new video */}
+            {g.questions && (
+              <div className="space-y-3 rounded-2xl border-2 border-gold p-4">
+                <p className="font-extrabold">🎬 فهم المخرج لتعديلاتك</p>
+                <details className="text-sm">
+                  <summary className="cursor-pointer font-extrabold text-muted">اعرض رسالة المخرج كاملة</summary>
+                  <Markdown text={g.questions.body} hideCode />
+                </details>
+                <QuestionsForm questions={g.questions.items} busy={busy || writing} onSubmit={(answers) => send({ action: "answers", versionId: g.questions!.id, answers })} />
+              </div>
+            )}
+            {g.revision && (
+              <div className="space-y-3 rounded-2xl border-2 border-gold p-4">
+                <p className="font-extrabold">✅ التعديل جاهز</p>
+                <details className="text-sm">
+                  <summary className="cursor-pointer font-extrabold text-muted">اعرض تحليل المخرج للنسخة المعدّلة</summary>
+                  <Markdown text={g.revision.body} hideCode />
+                </details>
+                <ActionBar
+                  busy={busy || writing}
+                  onApprove={() => send({ action: "approve_and_generate", versionId: g.revision!.id, resolution, ratio, durationSec: sec, model })}
+                  approveLabel={`اعتمد وولّد من جديد · ≈ ${usd(cost)}`}
+                  onSend={(mode, text) => send({ action: "revise", text, versionId: g.revision!.id, mode })}
+                />
+              </div>
+            )}
 
             {!generating && !busy && (
               <div className="space-y-1 rounded-2xl bg-surface-2 p-3">
@@ -269,7 +330,7 @@ export default function VideosWorkspace({
                 )}
               </div>
             )}
-            {!generating && !busy && (
+            {!generating && !busy && !g.questions && !g.revision && (
               <button
                 className={`btn w-full ${mine.length ? "btn-ghost" : "btn-primary"}`}
                 onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model })}
@@ -281,8 +342,23 @@ export default function VideosWorkspace({
         );
       })}
 
+      {writing && (
+        <div className="card flex items-center gap-3 p-5" role="status">
+          <Spinner />
+          <div>
+            <p className="font-extrabold">المخرج يقرأ تعديلاتك ويكتب…</p>
+            <p className="text-sm font-bold text-muted">من دقيقة إلى ٣ دقائق. تقدر تسكّر الصفحة وترجع.</p>
+          </div>
+        </div>
+      )}
+      {job?.status === "failed" && !writing && (
+        <div className="card space-y-3 p-5">
+          <p className="error-box">ما كمل رد المخرج: {job.error}. ما انحسبت عليك تكلفة.</p>
+          <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "retry" })}>أعد المحاولة</button>
+        </div>
+      )}
       {kept.length > 0 && (
-        <p className="text-center text-sm font-bold text-muted">تبي تعدّل توليد؟ ارجع لـ <Link href={`/film/${projectId}/director`} className="underline">المخرج</Link> واطلب التعديل، وبعد ما تعتمده ولّده هنا من جديد.</p>
+        <p className="text-center text-sm font-bold text-muted">تقدر بعد تطلب تعديل أكبر من صفحة <Link href={`/film/${projectId}/director`} className="underline">المخرج</Link>.</p>
       )}
       {stage === "voices" || stage === "done" ? (
         <div className="card space-y-1 p-5 text-center">
