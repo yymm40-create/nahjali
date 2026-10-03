@@ -357,10 +357,15 @@ This conversation runs inside a website.
 - The website gives every approved reference an "@name" (for example @الأخ_الكبير). You may mention these names in your Arabic text. The image prompts stay in English.
 - For some map items I may supply my own image instead of a generated sheet. If I approve it "as is", it is final for that ID and needs no prompt. If I supply it "as a reference", write that sheet's prompt using the attached image as the reference for that subject's design.
 - Generating images is done by the website with the prompts you write. It happens only when I press its generate button.
+- The website stores every image I upload and every image it generates, and attaches the right ones to your messages automatically (the approved master image, my uploads, approved sheets). NEVER ask me to attach, upload or re-send an image, and never ask me to type "اعتمد": the website has buttons for that. There is no place in the website for me to upload anything during the conversation.
+- I never copy prompts into other tools. Do not tell me to copy, paste or use a prompt elsewhere; the website uses it directly. Write the prompt only inside the fenced block, and keep the Arabic text of "content" about the design itself (what is in the sheet and why), not about how to run the prompt.
+- When I give 1–4 images for one item "as a reference", they may be real photos of a real person: turn the subject into a complete, consistent character sheet in the project's approved style, keeping the identity (face, age, build, distinctive features) faithful to those images.
+- If you want to propose a change to what you just delivered (a design improvement, a fix, a risk you noticed), put it in "suggestion" as a short Arabic text and keep it OUT of "content". I will decide whether to apply it or to approve and continue.
 
 Every reply you send must be ONE JSON object that matches the provided schema:
 - "stage": the workflow stage of this reply (2–7).
 - "content": the current deliverable only, in Arabic Markdown, following the FORMAT section. This includes the request for "اعتمد" where the workflow requires it. Put the English image prompt in a fenced block inside "content" as well.
+- "suggestion": a proposed change to this deliverable, in short Arabic, or an empty string if you have none.
 - "notes": brief review notes, kept separate (an empty string if none).
 - "questions": Stage 3 only — the same questions as structured items. An empty array in every other stage.
 - "sheet_map": Stage 2 only — every planned sheet with its ID (STY-00, CHR-01…, ENV-01…), kind, name (Arabic) and short coverage. An empty array in every other stage.
@@ -373,11 +378,12 @@ When I press the website's approval button, you receive exactly "اعتمد" (so
 export const SHEET_MAKER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["stage", "content", "notes", "questions", "sheet_map", "prompt", "sheet_id", "references"],
+  required: ["stage", "content", "notes", "suggestion", "questions", "sheet_map", "prompt", "sheet_id", "references"],
   properties: {
     stage: { type: "integer", enum: [2, 3, 4, 5, 6, 7] },
     content: { type: "string" },
     notes: { type: "string" },
+    suggestion: { type: "string" },
     questions: {
       type: "array",
       items: {

@@ -16,7 +16,7 @@ const RED = "rounded-xl border-s-4 border-red-500 bg-red-500/10 px-3 py-1 font-b
  * Small, safe Markdown renderer for the assistants' replies (headings, lists, bold, ``` blocks).
  * Everything is rendered as text nodes — no HTML from the model is ever injected.
  */
-export default function Markdown({ text, highlightRequests }: { text: string; highlightRequests?: boolean }) {
+export default function Markdown({ text, highlightRequests, hideCode }: { text: string; highlightRequests?: boolean; hideCode?: boolean }) {
   let inRequest = false;
   const red = (line: string) => Boolean(highlightRequests && (inRequest || REQUEST_LINE.test(line)));
   const out: ReactNode[] = [];
@@ -38,6 +38,7 @@ export default function Markdown({ text, highlightRequests }: { text: string; hi
       flushList();
       const block: string[] = [];
       while (++i < lines.length && !lines[i].trim().startsWith("```")) block.push(lines[i]);
+      if (hideCode) continue;
       out.push(
         <div key={`pre${i}`} className="whitespace-pre-wrap rounded-2xl border border-line bg-surface-2 p-4 leading-8">
           {block.join("\n")}

@@ -14,6 +14,7 @@ const ESTIMATE_USD = 0.8;
 const MAX_TOKENS = 32000;
 export const MASTER_ID = "STY-00";
 export const STYLE_TEST_ID = "STYLE-TEST";
+export const MAX_REFERENCE_UPLOADS = 4;
 
 // Prefixed so version numbers never collide with the screenwriter's deliverables of the same name
 export type SheetKind = "sheet_understanding" | "sheet_questions" | "style_test" | "style" | "sheet_prompt" | "sheet_handoff";
@@ -30,6 +31,7 @@ interface Reply {
   stage: number;
   content: string;
   notes: string;
+  suggestion: string;
   questions: { question: string; options: string[] }[];
   sheet_map: MapItem[];
   prompt: string;
@@ -45,6 +47,7 @@ export interface SheetVersion {
   body: string;
   data: {
     notes?: string;
+    suggestion?: string;
     questions?: Reply["questions"];
     answers?: string[];
     sheet_map?: MapItem[];
@@ -158,7 +161,8 @@ export type SheetAction =
   | { action: "generate_image"; sheetId: string }
   | { action: "approve_image"; assetId: string }
   | { action: "reject_image"; assetId: string }
-  | { action: "rename"; assetId: string; name: string };
+  | { action: "rename"; assetId: string; name: string }
+  | { action: "remove_upload"; assetId: string };
 
 export async function sheetAction(project: FilmProject, user: { id: string; email?: string | null }, input: SheetAction): Promise<{ jobId: string | null }> {
   if (project.stage === "screenwriter") throw new UserError("اعتمد السيناريو أول.", 409);
@@ -277,8 +281,8 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       refIds.delete(input.sheetId);
       const refs = [...refIds].map((id) => images[id]).filter(Boolean);
       // The user's own picture given "as a reference" for this sheet
-      const own = assets.filter((a) => a.kind === "upload" && a.ref_key === input.sheetId && a.meta?.mode === "reference").at(-1);
-      if (own) refs.push(own);
+      const own = assets.filter((a) => a.kind === "upload" && a.ref_key === input.sheetId && a.meta?.mode === "reference" && a.status === "uploaded");
+      refs.push(...own);
       await startImage(project, user, { sheetId: input.sheetId, prompt: prompt.data.prompt, refs, kind: "sheet", versionId: prompt.id, meta: {} });
       return { jobId: null };
     }
@@ -303,6 +307,14 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       const a = assets.find((x) => x.id === input.assetId);
       if (!a || a.kind !== "image") throw new UserError("ما لقينا الصورة.", 404);
       await db().from("film_assets").update({ status: "rejected" }).eq("id", a.id);
+      return { jobId: null };
+    }
+
+    case "remove_upload": {
+      const a = assets.find((x) => x.id === input.assetId);
+      if (!a || a.kind !== "upload" || a.status !== "uploaded") throw new UserError("ما لقينا الصورة.", 404);
+      const { error } = await db().from("film_assets").update({ status: "rejected" }).eq("id", a.id);
+      if (error) throw error;
       return { jobId: null };
     }
 
@@ -334,17 +346,27 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
     const choice: MapChoice = item.id === MASTER_ID ? "make" : (choices[item.id] ?? "make");
     clean[item.id] = choice;
     if (choice === "make") continue;
-    const up = assets.filter((a) => a.kind === "upload" && a.ref_key === item.id).at(-1);
-    if (!up) throw new UserError(`ارفع صورة «${item.name}» أول، أو اختر «اصنعه لي».`, 400);
-    const { error: upErr } = await db().from("film_assets").update({
-      status: choice === "as_is" ? "approved" : "uploaded",
-      meta: { ...up.meta, mode: choice, ...(choice === "as_is" ? { at_name: atName(item.name) } : {}) },
-    }).eq("id", up.id);
-    if (upErr) throw upErr;
+    const active = assets.filter((a) => a.kind === "upload" && a.ref_key === item.id && a.status !== "rejected");
+    // "As is" is one final picture (the latest); "reference" can carry up to 4 pictures of the same subject
+    const ups = choice === "as_is" ? active.slice(-1) : active.slice(-MAX_REFERENCE_UPLOADS);
+    if (!ups.length) throw new UserError(`ارفع صورة «${item.name}» أول، أو اختر «اصنعه لي».`, 400);
+    const extra = active.filter((a) => !ups.includes(a)).map((a) => a.id);
+    if (extra.length) {
+      const { error: exErr } = await db().from("film_assets").update({ status: "rejected" }).in("id", extra);
+      if (exErr) throw exErr;
+    }
+    for (const up of ups) {
+      const { error: upErr } = await db().from("film_assets").update({
+        status: choice === "as_is" ? "approved" : "uploaded",
+        meta: { ...up.meta, mode: choice, ...(choice === "as_is" ? { at_name: atName(item.name) } : {}) },
+      }).eq("id", up.id);
+      if (upErr) throw upErr;
+    }
+    const marks = ups.map((u) => `[[image:${u.id}]]`).join(" ");
     lines.push(
       choice === "as_is"
-        ? `- ${item.id} (${item.name}): عندي صورته الجاهزة، معتمدة كما هي ولا تحتاج برومبت: [[image:${up.id}]]`
-        : `- ${item.id} (${item.name}): هذي صورة مرجعية من عندي، اصنع الشيت منها بستايل المشروع: [[image:${up.id}]]`,
+        ? `- ${item.id} (${item.name}): عندي صورته الجاهزة، معتمدة كما هي ولا تحتاج برومبت: ${marks}`
+        : `- ${item.id} (${item.name}): هذي ${ups.length > 1 ? `${ups.length} صور مرجعية` : "صورة مرجعية"} من عندي (قد تكون لشخص حقيقي)، حوّلها إلى شيت متكامل بستايل المشروع مع الحفاظ على الملامح: ${marks}`,
     );
   }
   // Must really flip the version: a silent no-op here left the map "awaiting approval" with no job started
@@ -504,6 +526,7 @@ export async function runSheetReply(projectId: string, jobId: string) {
       body: r.content,
       data: {
         notes: r.notes,
+        suggestion: r.suggestion?.trim() || undefined,
         questions: kind === "sheet_questions" ? r.questions : undefined,
         sheet_map: kind === "sheet_understanding" ? r.sheet_map : undefined,
         prompt: r.prompt || undefined,
@@ -542,7 +565,7 @@ export async function sheetUploadUrl(project: FilmProject, sheetId: string, mime
 }
 
 /** Step 2: records the uploaded picture against its map item. */
-export async function confirmSheetUpload(project: FilmProject, sheetId: string, path: string) {
+export async function confirmSheetUpload(project: FilmProject, sheetId: string, path: string, mode: MapChoice = "as_is") {
   const dir = `${projectDir(project)}/sheets`;
   if (!path.startsWith(`${dir}/upload-${sheetId}-`) || path.includes("..")) throw new UserError("ملف غير صحيح.", 400);
   const name = path.slice(dir.length + 1);
@@ -550,8 +573,13 @@ export async function confirmSheetUpload(project: FilmProject, sheetId: string, 
   const file = list?.find((f) => f.name === name);
   const size = Number(file?.metadata?.size ?? 0);
   if (!file || size <= 0 || size > 20 * 1024 * 1024) throw new UserError("ما وصل الملف أو حجمه أكبر من ٢٠ ميجا.", 400);
-  // Only the latest upload counts for this item
-  await db().from("film_assets").update({ status: "rejected" }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", sheetId);
+  if (mode === "reference") {
+    const { count } = await db().from("film_assets").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", sheetId).neq("status", "rejected");
+    if ((count ?? 0) >= MAX_REFERENCE_UPLOADS) throw new UserError(`الحد الأقصى ${MAX_REFERENCE_UPLOADS} صور لكل عنصر.`, 400);
+  } else {
+    // "As is": only the latest upload counts for this item
+    await db().from("film_assets").update({ status: "rejected" }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", sheetId);
+  }
   const { error } = await db().from("film_assets").insert({
     project_id: project.id, kind: "upload", ref_key: sheetId, storage_path: path, file_name: name,
     mime: String(file.metadata?.mimetype ?? ""), bytes: size, status: "uploaded", meta: {},

@@ -8,6 +8,8 @@ import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
+
+const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
 import { STATUS_LABELS } from "@config/film";
 
 interface Asset {
@@ -131,6 +133,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             assets={assets}
             busy={busy || writing}
             onRefresh={() => router.refresh()}
+            onRemove={(assetId) => send({ action: "remove_upload", assetId })}
             onApprove={(c) => send({ action: "approve", versionId: understanding.id, choices: c })}
           />
         </Card>
@@ -253,7 +256,7 @@ function Card({
       {!hideBody && (
         <details open={pending || current}>
           <summary className="cursor-pointer text-sm font-extrabold text-muted">اعرض النص</summary>
-          <Markdown text={v.body} highlightRequests={pending} />
+          <Markdown text={v.body} highlightRequests={pending} hideCode />
           {v.data.notes && (
             <div className="mt-2 rounded-2xl bg-surface-2 p-3 text-sm">
               <p className="font-extrabold">ملاحظات</p>
@@ -263,10 +266,26 @@ function Card({
         </details>
       )}
       {children}
+      {pending && v.data.suggestion && (
+        <div className="space-y-2 rounded-2xl border-2 border-gold bg-gold/10 p-4">
+          <p className="font-extrabold">💡 اقتراح تعديل</p>
+          <p className="font-bold leading-8">{v.data.suggestion}</p>
+          {!busy && onRevise && (
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-secondary flex-1" onClick={() => onRevise(`نفّذ التعديل المقترح: ${v.data.suggestion}`)}>نفّذ التعديل</button>
+              {onApprove ? (
+                <button className="btn btn-primary flex-1" onClick={onApprove}>اعتمد وكمّل ✅</button>
+              ) : (
+                <p className="self-center text-sm font-bold text-muted">أو كمّل بدون تعديل: اعتمد الخريطة تحت.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {!busy && (onApprove || onRevise) && (
         <div className="space-y-2">
           <div className="flex gap-2">
-            {onApprove && <button className="btn btn-primary flex-1" onClick={onApprove}>اعتمد البرومبت ✅</button>}
+            {onApprove && !v.data.suggestion && <button className="btn btn-primary flex-1" onClick={onApprove}>اعتمد وكمّل ✅</button>}
             {onRevise && (pending || v.status === "approved") && (
               <button className="btn btn-ghost flex-1" onClick={() => setRevise(!revise)}>اطلب تعديل ✏️</button>
             )}
@@ -285,7 +304,7 @@ function Card({
 
 /** Per map item: generate it, or use the user's own picture (as is / as a reference for a new sheet). */
 function MapChoices({
-  projectId, map, locked, savedChoices, assets, busy, onRefresh, onApprove,
+  projectId, map, locked, savedChoices, assets, busy, onRefresh, onRemove, onApprove,
 }: {
   projectId: string;
   map: MapItem[];
@@ -294,6 +313,7 @@ function MapChoices({
   assets: Asset[];
   busy: boolean;
   onRefresh: () => void;
+  onRemove: (assetId: string) => void;
   onApprove: (c: Record<string, MapChoice>) => void;
 }) {
   const [choices, setChoices] = useState<Record<string, MapChoice>>(savedChoices);
@@ -301,20 +321,26 @@ function MapChoices({
   const [error, setError] = useState("");
   const fileFor = useRef<string>("");
   const input = useRef<HTMLInputElement>(null);
-  const uploadOf = (id: string) => assets.filter((a) => a.kind === "upload" && a.ref_key === id && a.status !== "rejected").at(-1);
-  const missing = map.filter((m) => (choices[m.id] ?? "make") !== "make" && !uploadOf(m.id));
+  const uploadsOf = (id: string) => assets.filter((a) => a.kind === "upload" && a.ref_key === id && a.status !== "rejected");
+  const missing = map.filter((m) => (choices[m.id] ?? "make") !== "make" && uploadsOf(m.id).length === 0);
 
-  async function upload(file: File | undefined) {
+  async function upload(files: File[]) {
     const sheetId = fileFor.current;
-    if (!file || !sheetId) return;
+    if (!files.length || !sheetId) return;
     setError("");
     setUploading(sheetId);
     try {
-      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("صورة JPG أو PNG أو WEBP أقل من ٢٠ ميجا.");
-      const { path, token } = await postJson<{ path: string; token: string }>(`/api/film/projects/${projectId}/sheets`, { action: "upload_url", sheetId, mime: file.type });
-      const { error: e } = await createClient().storage.from("film").uploadToSignedUrl(path, token, file, { contentType: file.type });
-      if (e) throw new Error("تعذّر رفع الصورة.");
-      await postJson(`/api/film/projects/${projectId}/sheets`, { action: "upload_confirm", sheetId, path });
+      const mode = (choices[sheetId] ?? "make") === "reference" ? "reference" : "as_is";
+      // Up to 4 pictures for a conversion; one for "as is"
+      const room = mode === "reference" ? MAX_REFERENCE_UPLOADS - uploadsOf(sheetId).length : 1;
+      if (room <= 0) throw new Error(`الحد الأقصى ${MAX_REFERENCE_UPLOADS} صور لكل عنصر.`);
+      for (const file of files.slice(0, room)) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("صورة JPG أو PNG أو WEBP أقل من ٢٠ ميجا.");
+        const { path, token } = await postJson<{ path: string; token: string }>(`/api/film/projects/${projectId}/sheets`, { action: "upload_url", sheetId, mime: file.type });
+        const { error: e } = await createClient().storage.from("film").uploadToSignedUrl(path, token, file, { contentType: file.type });
+        if (e) throw new Error("تعذّر رفع الصورة.");
+        await postJson(`/api/film/projects/${projectId}/sheets`, { action: "upload_confirm", sheetId, path, mode });
+      }
       onRefresh();
     } catch (e) {
       setError((e as Error).message);
@@ -327,10 +353,11 @@ function MapChoices({
   return (
     <div className="space-y-2">
       <h3 className="font-extrabold">خريطة الشيتات: وش تبي نصنع؟</h3>
-      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => upload(e.target.files?.[0])} />
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => upload(Array.from(e.target.files ?? []))} />
       {map.map((m) => {
         const c = (locked ? savedChoices[m.id] : choices[m.id]) ?? "make";
-        const up = uploadOf(m.id);
+        const ups = uploadsOf(m.id);
+        const shown = c === "as_is" ? ups.slice(-1) : ups;
         return (
           <div key={m.id} className="space-y-2 rounded-2xl border border-line p-3">
             <p className="font-extrabold">{m.id} · {m.name}</p>
@@ -338,21 +365,28 @@ function MapChoices({
             {m.id === "STY-00" ? (
               <p className="text-xs font-bold text-muted">الماستر يتصنع دائمًا؛ هو مرجع الستايل لكل الفيلم.</p>
             ) : locked ? (
-              <span className="chip">{c === "make" ? "🎨 نصنعه" : c === "as_is" ? "📤 صورتك كما هي" : "📤 صورتك مرجع لشيت جديد"}</span>
+              <span className="chip">{c === "make" ? "🎨 نصنعه" : c === "as_is" ? "📤 صورتك كما هي" : "🔄 نحوّل صورتك إلى شيت"}</span>
             ) : (
               <div className="flex flex-wrap gap-2 text-sm font-bold">
-                {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "📤 عندي صورة، اصنع منها شيت"]] as const).map(([k, label]) => (
+                {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "🔄 حوّل صورتي (حتى ٤ صور) إلى شيت متكامل"]] as const).map(([k, label]) => (
                   <button key={k} className={`chip ${c === k ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: k })}>{label}</button>
                 ))}
               </div>
             )}
             {c !== "make" && (
-              <div className="flex items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
-                {up?.url && <img src={up.url} alt={m.name} className="size-16 rounded-xl object-cover" />}
-                {!locked && (
+              <div className="flex flex-wrap items-center gap-2">
+                {shown.map((u) => (
+                  <div key={u.id} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
+                    {u.url && <img src={u.url} alt={m.name} className="size-16 rounded-xl object-cover" />}
+                    {!locked && c === "reference" && (
+                      <button aria-label="احذف الصورة" className="absolute -end-1 -top-1 size-6 rounded-full bg-red-500 text-xs font-extrabold text-white" onClick={() => onRemove(u.id)}>×</button>
+                    )}
+                  </div>
+                ))}
+                {!locked && (c !== "reference" || ups.length < MAX_REFERENCE_UPLOADS) && (
                   <button className="btn btn-ghost min-h-10 px-3 text-sm" disabled={Boolean(uploading)} onClick={() => { fileFor.current = m.id; input.current?.click(); }}>
-                    {uploading === m.id ? "نرفع…" : up ? "غيّر الصورة" : "ارفع الصورة"}
+                    {uploading === m.id ? "نرفع…" : c === "reference" ? `أضف صور (${ups.length}/${MAX_REFERENCE_UPLOADS})` : ups.length ? "غيّر الصورة" : "ارفع الصورة"}
                   </button>
                 )}
               </div>
