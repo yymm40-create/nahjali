@@ -375,12 +375,14 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
   align-items: center;
   gap: 0.75rem;
   min-height: 46px;
-  padding: 0 0.9rem;
+  padding: 0.5rem 0.9rem;
   border-radius: 14px;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--m-muted);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
+.m-side-item svg { flex: none; } /* a long name wraps without squeezing its icon */
 .m-side-item:hover { background: var(--m-surface-2); color: var(--m-ink); }
 .m-side-item[aria-current="page"] { color: var(--m-ink); background: color-mix(in srgb, var(--m-gold) 14%, var(--m-surface-2)); }
 .m-side-item[aria-current="page"] svg { color: var(--m-gold-text); }
