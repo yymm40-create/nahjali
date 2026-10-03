@@ -5,7 +5,7 @@ import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
-import { filmTrialState, filmTrialVideos } from "./access";
+import { filmTrialState, filmTrialUsers, filmTrialVideos } from "./access";
 import { isAdmin } from "@config/site";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
@@ -392,7 +392,9 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
   if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);
   // Public trial: one free video per trial user; their trial ends once it is made (the owner has no limit)
   const trial = FILM_PUBLIC_TRIAL.open && !isAdmin(user.email);
-  if (trial && ((await filmTrialState(user)) !== "open" || (await filmTrialVideos(user.id)).taken > 0)) {
+  // (only in a project started during the trial, by one of its users)
+  const trialProject = new Date(project.created_at) >= new Date(FILM_PUBLIC_TRIAL.since) && (await filmTrialUsers()).includes(user.id);
+  if (trial && (!trialProject || (await filmTrialState(user)) !== "open" || (await filmTrialVideos(user.id)).taken > 0)) {
     throw new UserError("تجربتك المجانية تشمل فيديو واحد، وهو انصنع أو قاعد يتولد. شكرًا لك!", 403);
   }
 

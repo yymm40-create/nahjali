@@ -55,7 +55,8 @@ export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution,
  * When all places are taken the film maker is closed to everyone but the owner. `open: false` goes back to
  * the invite list.
  */
-export const FILM_PUBLIC_TRIAL = { open: true, users: 3 } as const;
+// `since`: only projects started from this moment count (UTC), so older test projects take no place
+export const FILM_PUBLIC_TRIAL = { open: true, users: 3, since: "2026-10-03T13:38:00Z" } as const;
 
 /** Video length the client can choose on the generation page (seconds). */
 export const VIDEO_DURATION = { min: 4, max: 15 } as const;
