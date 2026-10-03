@@ -3,7 +3,7 @@
  *  - Speed: keeps the app's own static files (scripts, styles, fonts, icons, the shrine picture) after first use.
  *  - Web Push: shows the reminder sent by the server and opens the app when it is tapped.
  */
-const VERSION = "v1";
+const VERSION = "v2"; // bump to replace cached icons and files
 const STATIC = `mahdi-static-${VERSION}`;
 const OFFLINE_URL = "/mahdi/offline";
 const BRAND = "لأجل المهدي";

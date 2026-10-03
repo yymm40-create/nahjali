@@ -18,7 +18,7 @@ export function GET() {
       scope: "/mahdi/",
       display: "standalone",
       orientation: "portrait",
-      background_color: color,
+      background_color: "#ffffff", // the splash screen matches the white icon
       theme_color: color,
       categories: ["lifestyle", "productivity"],
       icons: [
