@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
@@ -47,6 +47,12 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
     }, 4000);
     return () => clearInterval(timer);
   }, [running, projectId, router]);
+
+  // Once this section's last step is done, go straight to the next one (only when it happens here, not on later visits)
+  const openedAt = useRef(stage);
+  useEffect(() => {
+    if (openedAt.current === "screenwriter" && stage === "sheets") router.push(`/film/${projectId}/sheets`);
+  }, [stage, projectId, router]);
 
   async function send(body: Record<string, unknown>) {
     setBusy(true);
