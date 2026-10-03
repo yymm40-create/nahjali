@@ -12,7 +12,8 @@ export interface Chal { id: string; section_id: string; title: string; descripti
 export interface Txt { id: string; kind: string; text: string; attribution: string; source: string; reference: string; verification_status: "pending" | "verified" | "rejected"; verified_by: string; notes: string; contexts: string[]; active: boolean }
 export interface Phr { id: string; text: string; contexts: string[]; active: boolean; sort_order: number }
 export interface Rep { id: string; author: string; kind: string; title: string; value: string; createdAt: string; hidden: boolean; hiddenReason: string; reasons: string[]; count: number }
-export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[] }
+export interface Bk { id: string; title: string; author: string; pages: number; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number }
+export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[] }
 
 type Tab = keyof typeof A.tabs;
 const TABS = Object.keys(A.tabs) as Tab[];
@@ -75,11 +76,12 @@ export default function MahdiAdminTools({ data }: { data: AdminData }) {
 
   return (
     <div className="space-y-5">
-      <div role="tablist" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div role="tablist" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {TABS.map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`btn min-h-12 text-sm ${tab === k ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab(k)}>
             {A.tabs[k]}
             {k === "reports" && data.reports.filter((r) => !r.hidden).length > 0 && ` (${data.reports.filter((r) => !r.hidden).length})`}
+            {k === "books" && data.books.filter((b) => b.reasons.length && !b.hidden).length > 0 && ` (${data.books.filter((b) => b.reasons.length && !b.hidden).length})`}
           </button>
         ))}
       </div>
@@ -91,6 +93,7 @@ export default function MahdiAdminTools({ data }: { data: AdminData }) {
       {tab === "texts" && <TextsTab data={data} send={send} ask={ask} busy={busy} />}
       {tab === "phrases" && <PhrasesTab data={data} send={send} ask={ask} busy={busy} />}
       {tab === "reports" && <ReportsTab data={data} send={send} ask={ask} busy={busy} />}
+      {tab === "books" && <BooksTab data={data} send={send} ask={ask} busy={busy} />}
     </div>
   );
 }
@@ -373,6 +376,79 @@ function ReportsTab({ data, send, ask, busy }: TabProps) {
                 <button className="btn btn-primary px-4" disabled={busy} onClick={() => send({ action: "post.hide", id: r.id, reason: reason[r.id] ?? "" }, A.common.done)}>{R.hide}</button>
               )}
               {r.count > 0 && <button className="btn btn-ghost px-4" disabled={busy} onClick={() => ask("reports.dismiss", "", { postId: r.id })}>{R.dismiss}</button>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ───────── shared book catalogue ───────── */
+function BooksTab({ data, send, busy }: TabProps) {
+  const B = A.books;
+  const [q, setQ] = useState("");
+  const [edit, setEdit] = useState<(Bk & { removeCover?: boolean }) | null>(null);
+  const [reason, setReason] = useState<Record<string, string>>({});
+  const list = data.books.filter((b) => !q.trim() || b.title.includes(q.trim()));
+  return (
+    <section className="card space-y-3 p-4">
+      <h2 className="text-xl font-extrabold">{A.tabs.books}</h2>
+      <p className="text-sm font-bold text-muted">{B.intro}</p>
+      <input className="field" value={q} onChange={(e) => setQ(e.target.value)} placeholder={B.search} aria-label={B.search} />
+      {edit && (
+        <form
+          className="space-y-3 rounded-2xl bg-surface-2 p-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (await send({ action: "book.save", id: edit.id, title: edit.title, author: edit.author, pages: edit.pages, description: edit.description, removeCover: Boolean(edit.removeCover) })) setEdit(null);
+          }}
+        >
+          <h3 className="font-extrabold">{B.edit}</h3>
+          <Field label={B.title}><input className="field" required maxLength={120} value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={B.author}><input className="field" maxLength={80} value={edit.author} onChange={(e) => setEdit({ ...edit, author: e.target.value })} /></Field>
+            <Field label={B.pages}><input className="field" dir="ltr" inputMode="numeric" value={edit.pages} onChange={(e) => setEdit({ ...edit, pages: Number(e.target.value) || 0 })} /></Field>
+          </div>
+          <Field label={B.description}><textarea className="field" rows={3} maxLength={500} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
+          {edit.coverUrl && <Check label={B.removeCover} checked={Boolean(edit.removeCover)} onChange={(v) => setEdit({ ...edit, removeCover: v })} />}
+          <div className="flex gap-2">
+            <button className="btn btn-primary flex-1" disabled={busy}>{A.common.save}</button>
+            <button type="button" className="btn btn-ghost flex-1" onClick={() => setEdit(null)}>{A.common.cancel}</button>
+          </div>
+        </form>
+      )}
+      <ul className="space-y-3">
+        {list.length === 0 && <li className="font-bold text-muted">{B.empty}</li>}
+        {list.map((b) => (
+          <li key={b.id} className="flex gap-3 rounded-2xl bg-surface-2 px-3 py-3">
+            {b.coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={b.coverUrl} alt="" width={56} height={84} className="h-[84px] w-14 shrink-0 rounded object-cover" />
+            ) : (
+              <span className="grid h-[84px] w-14 shrink-0 place-items-center rounded bg-surface text-xs font-bold text-muted">📖</span>
+            )}
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="font-bold">{b.title} {b.hidden && <span className="text-sm text-muted">({B.hidden})</span>}</p>
+              <p className="text-sm text-muted">{b.author && `${b.author} · `}{b.pages} · {B.readers(b.readers)}{b.reasons.length > 0 && ` · ${B.reports(b.reasons.length)}`}</p>
+              {b.reasons.length > 0 && (
+                <ul className="list-disc ps-5 text-sm">
+                  {b.reasons.slice(0, 5).map((r, i) => <li key={i}>{r || A.reports.noReason}</li>)}
+                </ul>
+              )}
+              {b.hidden && b.hiddenReason && <p className="text-sm text-muted">{b.hiddenReason}</p>}
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-sm font-bold">
+                <button className="underline" onClick={() => setEdit(b)}>{A.common.edit}</button>
+                {b.hidden ? (
+                  <button className="underline" disabled={busy} onClick={() => send({ action: "book.unhide", id: b.id }, A.common.done)}>{B.unhide}</button>
+                ) : (
+                  <>
+                    <input className="field min-w-32 flex-1 text-sm" maxLength={200} placeholder={B.reasonLabel} aria-label={B.reasonLabel} value={reason[b.id] ?? ""} onChange={(e) => setReason({ ...reason, [b.id]: e.target.value })} />
+                    <button className="underline" disabled={busy} onClick={() => send({ action: "book.hide", id: b.id, reason: reason[b.id] ?? "" }, A.common.done)}>{B.hide}</button>
+                  </>
+                )}
+                {b.reasons.length > 0 && <button className="text-muted underline" disabled={busy} onClick={() => send({ action: "book.dismiss", id: b.id }, A.common.done)}>{B.dismiss}</button>}
+              </div>
             </div>
           </li>
         ))}

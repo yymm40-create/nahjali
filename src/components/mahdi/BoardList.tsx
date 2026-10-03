@@ -1,6 +1,7 @@
 "use client";
 
 import { fmtNum, fmtPct, t } from "@/lib/mahdi/i18n";
+import { duration } from "@/lib/mahdi/client/reading";
 import Avatar from "./Avatar";
 
 export interface BoardRow {
@@ -8,10 +9,14 @@ export interface BoardRow {
   displayName: string;
   avatarUrl: string | null;
   frame: string;
-  /** 0…1 */
-  score: number;
-  goals: number;
-  overCount: number;
+  /** 0…1 (commitment rankings) */
+  score?: number;
+  goals?: number;
+  overCount?: number;
+  /** Reading rankings */
+  seconds?: number;
+  pages?: number;
+  username?: string;
   mine: boolean;
 }
 
@@ -29,11 +34,12 @@ export default function BoardList({ entries, me, label }: { entries: BoardRow[];
           {e.mine && <span className="m-chip m-chip-gold ms-2">{t.leaderboard.you}</span>}
         </span>
         <span className="m-num block text-sm m-muted">
-          {t.units.goals(e.goals)}
-          {e.overCount > 0 && ` · ${t.leaderboard.extra}: ${fmtNum(e.overCount)}`}
+          {e.username && <span dir="ltr">@{e.username} · </span>}
+          {e.seconds !== undefined ? t.reading.pages(e.pages ?? 0) : t.units.goals(e.goals ?? 0)}
+          {(e.overCount ?? 0) > 0 && ` · ${t.leaderboard.extra}: ${fmtNum(e.overCount!)}`}
         </span>
       </span>
-      <span className="m-num text-xl font-semibold">{fmtPct(e.score)}</span>
+      <span className="m-num text-xl font-semibold">{e.seconds !== undefined ? duration(e.seconds) : fmtPct(e.score ?? null)}</span>
     </li>
   );
   return (
