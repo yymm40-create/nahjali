@@ -3,7 +3,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
 import { readingReply } from "@/lib/mahdi/server/reading-write";
 
-const metricOf = (v: unknown) => (v === "minutes" || v === "pages" ? v : null);
+const metricOf = (v: unknown) => (v === "minutes" || v === "pages" || v === "narrations" ? v : null);
 
 function goal(v: unknown) {
   if (v === null || v === undefined) return { metric: null, target: null };

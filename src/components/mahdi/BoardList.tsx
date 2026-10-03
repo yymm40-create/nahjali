@@ -16,6 +16,7 @@ export interface BoardRow {
   /** Reading rankings */
   seconds?: number;
   pages?: number;
+  narrations?: number;
   username?: string;
   mine: boolean;
 }
@@ -35,7 +36,9 @@ export default function BoardList({ entries, me, label }: { entries: BoardRow[];
         </span>
         <span className="m-num block text-sm m-muted">
           {e.username && <span dir="ltr">@{e.username} · </span>}
-          {e.seconds !== undefined ? t.reading.pages(e.pages ?? 0) : t.units.goals(e.goals ?? 0)}
+          {e.seconds !== undefined
+            ? [e.pages || !e.narrations ? t.reading.pages(e.pages ?? 0) : "", e.narrations ? t.reading.narrations(e.narrations) : ""].filter(Boolean).join(" · ")
+            : t.units.goals(e.goals ?? 0)}
           {(e.overCount ?? 0) > 0 && ` · ${t.leaderboard.extra}: ${fmtNum(e.overCount!)}`}
         </span>
       </span>

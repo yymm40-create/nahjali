@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { goalProgress } from "@/lib/mahdi/engine";
+import { goalProgress, type ReadingMetric } from "@/lib/mahdi/engine";
 import { fmtNum, fmtPct, t } from "@/lib/mahdi/i18n";
 import { duration, flushPending, loadTimer, pendingCount, type TimerState } from "@/lib/mahdi/client/reading";
 import BookCover from "@/components/mahdi/BookCover";
@@ -38,7 +38,7 @@ export default function ReadingPage() {
   const timerBook = timer && reading.library.find((e) => e.book.id === timer.bookId);
   const daily = goalProgress(reading.goals.daily, summary.today);
   const weekly = goalProgress(reading.goals.weekly, summary.week);
-  const unit = (m: "minutes" | "pages") => (m === "minutes" ? t.reading.unitMinutes : t.reading.unitPages);
+  const unit = (m: ReadingMetric) => (m === "minutes" ? t.reading.unitMinutes : m === "narrations" ? t.reading.unitNarrations : t.reading.unitPages);
 
   return (
     <div className="space-y-6">
@@ -68,6 +68,7 @@ export default function ReadingPage() {
             <p className="m-eyebrow">{label}</p>
             <p className="m-num text-lg font-semibold">{duration(v.seconds)}</p>
             <p className="m-num text-sm m-muted">{t.reading.pages(v.pages)}</p>
+            {v.narrations > 0 && <p className="m-num text-sm m-muted">{t.reading.narrations(v.narrations)}</p>}
           </div>
         ))}
       </section>
@@ -131,11 +132,11 @@ export default function ReadingPage() {
                     <span style={{ width: `${p.share * 100}%` }} />
                   </div>
                   <p className="m-num text-sm m-muted">
-                    {fmtPct(p.share)} · {t.reading.progress(p.readPages, p.totalPages)}
+                    {fmtPct(p.share)} · {t.reading.u[book.unit].progress(p.readPages, p.totalPages)}
                     {p.secondsLeft !== null && <> · {t.reading.timeLeft(duration(p.secondsLeft))}</>}
                   </p>
                   <Link href={`/mahdi/reading/session?book=${book.id}`} className="m-btn m-btn-primary m-btn-sm w-full sm:w-auto">
-                    <Icon name="timer" size={18} /> {p.nextPage && p.readPages > 0 ? t.reading.continueFrom(p.nextPage) : t.reading.start}
+                    <Icon name="timer" size={18} /> {p.nextPage && p.readPages > 0 ? t.reading.u[book.unit].continueFrom(p.nextPage) : t.reading.start}
                   </Link>
                 </div>
               </li>

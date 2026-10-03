@@ -8,6 +8,7 @@ import { parseNumberInput } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { shrinkImage } from "@/lib/mahdi/client/reading";
 import type { Book, ReadingData } from "@/lib/mahdi/types";
+import type { BookUnit } from "@/lib/mahdi/engine";
 import BookCover from "@/components/mahdi/BookCover";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -23,7 +24,7 @@ export default function AddBookPage() {
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ title: "", author: "", pages: "", description: "" });
+  const [form, setForm] = useState<{ title: string; author: string; pages: string; description: string; unit: BookUnit }>({ title: "", author: "", pages: "", description: "", unit: "page" });
   const [cover, setCover] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -65,13 +66,14 @@ export default function AddBookPage() {
     e.preventDefault();
     const pages = Math.round(parseNumberInput(form.pages));
     if (!form.title.trim()) return setError(t.reading.titleRequired);
-    if (!(pages >= 1 && pages <= 10000)) return setError(t.reading.pagesRequired);
+    if (!(pages >= 1 && pages <= 10000)) return setError(t.reading.u[form.unit].totalRequired);
     setBusy(true);
     setError("");
     const data = new FormData();
     data.append("title", form.title.trim());
     data.append("author", form.author.trim());
     data.append("pages", String(pages));
+    data.append("unit", form.unit);
     data.append("description", form.description.trim());
     if (cover) data.append("cover", await shrinkImage(cover), "cover.jpg");
     try {
@@ -129,7 +131,7 @@ export default function AddBookPage() {
                     <span className="block truncate font-semibold">{b.title}</span>
                     <span className="m-num block truncate text-sm m-muted">
                       {b.author ? `${b.author} · ` : ""}
-                      {t.reading.pages(b.pages)}
+                      {t.reading.u[b.unit].count(b.pages)}
                     </span>
                   </span>
                   {mine.has(b.id) ? (
@@ -192,13 +194,24 @@ export default function AddBookPage() {
             <span className="m-label">{t.reading.bookTitle}</span>
             <input className="m-field" required maxLength={120} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </label>
+          <fieldset className="space-y-2">
+            <legend className="m-label">{t.reading.kind}</legend>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.reading.kind}>
+              {(["page", "narration"] as const).map((u) => (
+                <button key={u} type="button" role="radio" aria-checked={form.unit === u} className="m-option min-h-11 px-3 text-sm font-semibold" onClick={() => setForm({ ...form, unit: u })}>
+                  {t.reading.kinds[u]}
+                </button>
+              ))}
+            </div>
+            <p className="m-hint">{t.reading.kindHint}</p>
+          </fieldset>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="m-label">{t.reading.author} <span className="m-hint">({t.common.optional})</span></span>
               <input className="m-field" maxLength={80} value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} />
             </label>
             <label className="block">
-              <span className="m-label">{t.reading.totalPages}</span>
+              <span className="m-label">{t.reading.u[form.unit].total}</span>
               <input className="m-field m-num" inputMode="numeric" required value={form.pages} onChange={(e) => setForm({ ...form, pages: e.target.value })} />
             </label>
           </div>

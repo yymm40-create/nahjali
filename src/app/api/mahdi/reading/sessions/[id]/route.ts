@@ -10,10 +10,11 @@ type Ctx = { params: Promise<{ id: string }> };
 export const DELETE = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { supabase, profile } = await requireProfile(req);
   const id = requireId((await params).id);
-  const { data } = await supabase.from("mahdi_reading_sessions").delete().eq("id", id).select("log_date, seconds, pages_count");
+  const { data } = await supabase.from("mahdi_reading_sessions").delete().eq("id", id).select("book_id, log_date, seconds, pages_count");
   const s = data?.[0];
   if (!s) throw new UserError(t.errors.notFound, 404);
-  const { goals } = await loadReading(supabase, profile.userId);
-  await applyToHabit(supabase, goals, s.log_date, s.seconds, s.pages_count, -1).catch((e) => console.error("[mahdi reading habit]", e));
+  const { goals, library } = await loadReading(supabase, profile.userId);
+  const unit = library.find((e) => e.book.id === s.book_id)?.book.unit ?? "page";
+  await applyToHabit(supabase, goals, s.log_date, s.seconds, s.pages_count, unit, -1).catch((e) => console.error("[mahdi reading habit]", e));
   return NextResponse.json(await readingReply(supabase, profile));
 });

@@ -70,13 +70,14 @@ export function buildShare(tl: Timeline, snap: Pick<Snapshot, "projects" | "habi
     }
     case "reading": {
       const w = readingSummary(snap.reading.sessions, tl.ctx.asOf, ws).week;
-      if (w.seconds < 60 && w.pages === 0) return null;
+      if (w.seconds < 60 && w.pages === 0 && w.narrations === 0) return null;
       const m = Math.floor(w.seconds / 60);
-      return { ...base, title: t.share.cardReading, value: t.reading.hours(Math.floor(m / 60), m % 60), sub: w.pages ? t.reading.pages(w.pages) : "" };
+      const sub = [w.pages ? t.reading.pages(w.pages) : "", w.narrations ? t.reading.narrations(w.narrations) : ""].filter(Boolean).join(" · ");
+      return { ...base, title: t.share.cardReading, value: t.reading.hours(Math.floor(m / 60), m % 60), sub };
     }
     case "book": {
       const e = snap.reading.library.find((x) => x.book.id === o.bookId && x.state === "finished");
-      return e ? { ...base, title: t.share.cardBook, value: e.book.title, label: e.book.author, sub: t.reading.pages(e.book.pages) } : null;
+      return e ? { ...base, title: t.share.cardBook, value: e.book.title, label: e.book.author, sub: t.reading.u[e.book.unit].count(e.book.pages) } : null;
     }
     case "milestone": {
       const m = MILESTONES.find((x) => x.id === o.milestoneId);

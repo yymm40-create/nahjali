@@ -1,17 +1,17 @@
 // SERVER ONLY. Shared steps of the reading routes: the linked habit, the reply, and checks.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { habitDelta, isDueOn, versionAt, type ReadingGoals } from "../engine";
+import { habitDelta, isDueOn, versionAt, type BookUnit, type ReadingGoals } from "../engine";
 import type { Profile } from "../types";
 import { habitsFromRows, type HabitRow, type VersionRow } from "./rows";
 import { loadReading } from "./reading";
 
 /**
- * Adds (or, with `sign = -1`, takes back) a session's minutes or pages to the habit linked in the reading goals,
+ * Adds (or, with `sign = -1`, takes back) a session's minutes, pages or narrations to the habit linked in the reading goals,
  * on the session's day. A done/not-done habit becomes done. Nothing happens if the habit does not run that day.
  */
-export async function applyToHabit(supabase: SupabaseClient, goals: ReadingGoals, date: string, seconds: number, pages: number, sign: 1 | -1) {
+export async function applyToHabit(supabase: SupabaseClient, goals: ReadingGoals, date: string, seconds: number, count: number, unit: BookUnit, sign: 1 | -1) {
   if (!goals.habitId) return;
-  const delta = habitDelta(goals.habitMetric, seconds, pages);
+  const delta = habitDelta(goals.habitMetric, seconds, count, unit);
   if (delta <= 0) return;
   const [{ data: h }, { data: vs }, { data: log }] = await Promise.all([
     supabase.from("mahdi_habits").select("*").eq("id", goals.habitId).maybeSingle(),

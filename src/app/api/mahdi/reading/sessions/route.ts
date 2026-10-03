@@ -15,8 +15,9 @@ export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
   const body = await readJson(req);
   const bookId = requireId(body.bookId);
-  const { data: entry } = await supabase.from("mahdi_user_books").select("book:mahdi_books (pages)").eq("book_id", bookId).maybeSingle();
-  const pagesInBook = (entry as unknown as { book: { pages: number } | null } | null)?.book?.pages;
+  const { data: entry } = await supabase.from("mahdi_user_books").select("book:mahdi_books (pages, unit)").eq("book_id", bookId).maybeSingle();
+  const book = (entry as unknown as { book: { pages: number; unit: "page" | "narration" } | null } | null)?.book;
+  const pagesInBook = book?.pages;
   if (!pagesInBook) throw new UserError(t.errors.notFound, 404);
 
   const now = Date.now();
@@ -56,7 +57,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   );
 
   const reading = await loadReading(supabase, profile.userId);
-  await applyToHabit(supabase, reading.goals, date, seconds, pages, 1).catch((e) => console.error("[mahdi reading habit]", e));
+  await applyToHabit(supabase, reading.goals, date, seconds, pages, book!.unit === "narration" ? "narration" : "page", 1).catch((e) => console.error("[mahdi reading habit]", e));
   return NextResponse.json({ reading });
 });
 

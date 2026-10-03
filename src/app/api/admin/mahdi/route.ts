@@ -182,7 +182,14 @@ export const POST = handle(async (req: Request) => {
       const title = cleanLine(body.title, 120);
       if (!title) throw bad(A.errors.name);
       const pages = parseIntIn(body.pages, 1, 10000);
-      const row: Record<string, unknown> = { title, title_norm: normalizeTitle(title), author: cleanLine(body.author, 80), pages, description: cleanText(body.description, 500) };
+      const row: Record<string, unknown> = {
+        title,
+        title_norm: normalizeTitle(title),
+        author: cleanLine(body.author, 80),
+        pages,
+        unit: body.unit === "narration" ? "narration" : "page",
+        description: cleanText(body.description, 500),
+      };
       if (body.removeCover === true) {
         const { data: cur } = await db.from("mahdi_books").select("cover_path").eq("id", bid).single();
         if (cur?.cover_path) await db.storage.from(COVER_BUCKET).remove([cur.cover_path]);

@@ -30,7 +30,7 @@ export default async function MahdiAdminPage() {
   // Books: reported ones and the newest, with how many libraries hold each (empty until migration 0010 runs)
   const [bookReports, bookRows, holders] = await Promise.all([
     selectAll<{ book_id: string; reason: string }>((a, b) => db.from("mahdi_book_reports").select("book_id, reason").order("book_id").order("user_id").range(a, b)).catch(() => []),
-    db.from("mahdi_books").select("id, title, author, pages, description, cover_path, hidden_at, hidden_reason, created_at").order("created_at", { ascending: false }).limit(300),
+    db.from("mahdi_books").select("id, title, author, pages, unit, description, cover_path, hidden_at, hidden_reason, created_at").order("created_at", { ascending: false }).limit(300),
     selectAll<{ book_id: string }>((a, b) => db.from("mahdi_user_books").select("book_id").order("book_id").order("user_id").range(a, b)).catch(() => []),
   ]);
   const bookReasons = new Map<string, string[]>();
@@ -39,7 +39,7 @@ export default async function MahdiAdminPage() {
   for (const h of holders) readers[h.book_id] = (readers[h.book_id] ?? 0) + 1;
   const reportedMissing = [...bookReasons.keys()].filter((bid) => !(bookRows.data ?? []).some((b) => b.id === bid));
   const extraBooks = reportedMissing.length
-    ? (await db.from("mahdi_books").select("id, title, author, pages, description, cover_path, hidden_at, hidden_reason, created_at").in("id", reportedMissing.slice(0, 100))).data ?? []
+    ? (await db.from("mahdi_books").select("id, title, author, pages, unit, description, cover_path, hidden_at, hidden_reason, created_at").in("id", reportedMissing.slice(0, 100))).data ?? []
     : [];
 
   const memberCount: Record<string, number> = {};
@@ -63,6 +63,7 @@ export default async function MahdiAdminPage() {
         title: b.title as string,
         author: b.author as string,
         pages: b.pages as number,
+        unit: (b.unit === "narration" ? "narration" : "page") as "page" | "narration",
         description: b.description as string,
         coverUrl: coverUrl(b.cover_path as string | null),
         hidden: Boolean(b.hidden_at),
