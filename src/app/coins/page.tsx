@@ -1,0 +1,98 @@
+import { requireUser } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { coinBalance, coinsRequired } from "@/lib/coins";
+import SmartCoin from "@/components/SmartCoin";
+import { IMAGE_ESTIMATE_USD } from "@/lib/film/images";
+import { COIN_PACKAGES, SMART_COIN, coinsFor } from "@config/coins";
+import { VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { isAdmin } from "@config/site";
+
+export const metadata = { title: "النقود الذكية | نهج علي" };
+export const dynamic = "force-dynamic";
+
+const REASONS: Record<string, string> = { grant: "إضافة", reserve: "حجز", settle: "تسوية", refund: "إرجاع", purchase: "شراء" };
+
+/** «النقود الذكية»: the user's balance, what each operation costs, the packages and the history. */
+export default async function CoinsPage() {
+  const user = await requireUser("/coins");
+  const [balance, required, ledger] = await Promise.all([
+    coinBalance(user.id),
+    coinsRequired(),
+    createAdminClient().from("smart_coin_ledger").select("delta,reason,label,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(30),
+  ]);
+  const owner = isAdmin(user.email);
+  const prices: [string, number][] = [
+    ["رد السيناريست أو صانع الشيت (تقريبًا)", coinsFor(0.12)],
+    ["رد المخرج (تقريبًا)", coinsFor(0.15)],
+    ["صورة اختبار ستايل", coinsFor(IMAGE_ESTIMATE_USD.test)],
+    ["صورة شيت", coinsFor(IMAGE_ESTIMATE_USD.sheet)],
+  ];
+
+  return (
+    <div className="space-y-6">
+      <section className="card space-y-2 p-6 text-center">
+        <SmartCoin size={56} className="mx-auto" />
+        <h1 className="display text-4xl">{SMART_COIN.name}</h1>
+        <p className="display text-5xl text-sky-500" dir="ltr">{owner ? "∞" : (balance ?? 0).toLocaleString("en")}</p>
+        <p className="text-sm font-bold text-muted">
+          {owner ? "أنت صاحب الموقع: بدون حد." : required ? "كل عملية في صناعة الأفلام تنخصم من رصيدك حسب تكلفتها، والعملية اللي تفشل ترجع لك." : "حاليًا الاستخدام مجاني في فترة التجربة، وما ينخصم شي من رصيدك."}
+        </p>
+      </section>
+
+      <section className="card space-y-3 p-4">
+        <h2 className="text-xl font-extrabold">كم تكلف كل عملية؟</h2>
+        <ul className="space-y-1 text-sm font-bold">
+          {prices.map(([label, coins]) => (
+            <li key={label} className="flex justify-between gap-2">
+              <span>{label}</span>
+              <span className="flex items-center gap-1" dir="ltr"><SmartCoin size={16} />{coins}</span>
+            </li>
+          ))}
+        </ul>
+        <h3 className="font-extrabold">الفيديو (لكل ٥ ثواني · لكل ١٠ ثواني)</h3>
+        <div className="overflow-hidden rounded-2xl border border-line text-sm font-bold">
+          {(Object.keys(VIDEO_MODELS) as VideoModel[]).map((m) =>
+            (Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[]).map((q) => (
+              <div key={`${m}-${q}`} className="flex justify-between gap-2 border-b border-line p-2 last:border-0">
+                <span dir="ltr">{VIDEO_MODELS[m].label} · {q}</span>
+                <span className="flex items-center gap-1" dir="ltr">
+                  <SmartCoin size={16} />{coinsFor(videoEstimateUsd(m, q, 5))} · {coinsFor(videoEstimateUsd(m, q, 10))}
+                </span>
+              </div>
+            )),
+          )}
+        </div>
+        <p className="text-xs font-bold text-muted">الرد الطويل أو الفيديو الأطول ياخذ أكثر؛ الخصم النهائي حسب التكلفة الفعلية للعملية.</p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xl font-extrabold">الباقات</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {COIN_PACKAGES.map((p) => (
+            <div key={p.key} className={`card space-y-1 p-4 text-center ${"popular" in p && p.popular ? "border-2 border-sky-400" : ""}`}>
+              {"popular" in p && p.popular && <span className="chip bg-sky-400 text-xs text-white">الأكثر طلبًا</span>}
+              <p className="font-extrabold">{p.name}</p>
+              <p className="flex items-center justify-center gap-1 text-2xl font-extrabold text-sky-500" dir="ltr"><SmartCoin size={22} />{p.coins}</p>
+              <p className="display text-2xl">{p.priceSar} ر.س</p>
+              {p.note && <p className="text-xs font-bold text-muted">{p.note}</p>}
+              <button className="btn btn-ghost w-full text-sm" disabled>الشراء قريبًا</button>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs font-bold text-muted">الأسعار قبل ضريبة القيمة المضافة.</p>
+      </section>
+
+      {(ledger.data ?? []).length > 0 && (
+        <section className="card space-y-2 p-4">
+          <h2 className="text-xl font-extrabold">آخر الحركات</h2>
+          {(ledger.data ?? []).map((r, i) => (
+            <div key={i} className="flex justify-between gap-2 text-sm font-bold">
+              <span>{REASONS[r.reason] ?? r.reason}{r.label ? ` · ${r.label}` : ""}</span>
+              <span className={r.delta >= 0 ? "text-teal" : "text-red-500"} dir="ltr">{r.delta > 0 ? `+${r.delta}` : r.delta}</span>
+            </div>
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}

@@ -4,7 +4,7 @@ import { BOOKLET_PATHS } from "@config/site";
 import { bookletOpenFor } from "@/lib/film/limits";
 
 // Pages that require a signed-in user
-const PROTECTED = ["/new", "/order", "/my-booklets", "/admin", "/film"];
+const PROTECTED = ["/new", "/order", "/my-booklets", "/admin", "/film", "/coins"];
 
 /** Refreshes the Supabase session cookie on every request and guards protected pages. */
 export async function proxy(request: NextRequest) {
