@@ -47,15 +47,15 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 const daysLeft = (createdAt: string) => Math.max(0, Math.ceil(VIDEO_KEEP_DAYS - (Date.now() - new Date(createdAt).getTime()) / 86_400_000));
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialLeft,
+  projectId, stage, generations, videos, videosRunning, trialVideoUsed,
 }: {
   projectId: string;
   stage: string;
   generations: Generation[];
   videos: Video[];
   videosRunning: number;
-  /** Free videos left in the public trial (null: no trial limit for this user). */
-  trialLeft: number | null;
+  /** Public trial: whether this user's one free video is made or being made (null: no trial limit). */
+  trialVideoUsed: boolean | null;
 }) {
   const router = useRouter();
   const [resolution, setResolution] = useState<VideoResolution>(DEFAULT_VIDEO_RESOLUTION);
@@ -109,9 +109,9 @@ export default function VideosWorkspace({
 
   return (
     <div className="space-y-4">
-      {trialLeft !== null && (
+      {trialVideoUsed !== null && (
         <p className="card p-4 text-center font-extrabold">
-          🎁 فترة تجربة مجانية: {trialLeft > 0 ? `باقي ${trialLeft} فيديو مجاني (للموقع كله)` : "خلصت الفيديوهات المجانية"}
+          🎁 {trialVideoUsed ? "انصنع فيديوك المجاني، وبعده تنتهي تجربتك. حمّله وشكرًا لك!" : "تجربتك المجانية تشمل فيديو واحد؛ أول ما ينصنع تنتهي التجربة. اختر جودته ومدته على راحتك."}
         </p>
       )}
       <section className="space-y-1 rounded-2xl border-2 border-red-500 bg-red-500/10 p-4">

@@ -50,11 +50,12 @@ export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution,
   videoUsd(model, resolution, videoTokens(resolution, seconds));
 
 /**
- * Public trial: while `open`, every signed-in user can use the film maker (no invite needed), until
- * `freeVideos` videos have been made by users other than the owner. Then the film maker locks for everyone
- * but the owner, until the owner decides otherwise (set `open: false` to go back to the invite list).
+ * Public trial: while `open`, the first `users` people (the owner excluded) to start a film project can use
+ * the film maker for free, from the story to their first video; once that video is made their trial is over.
+ * When all places are taken the film maker is closed to everyone but the owner. `open: false` goes back to
+ * the invite list.
  */
-export const FILM_PUBLIC_TRIAL = { open: true, freeVideos: 3 } as const;
+export const FILM_PUBLIC_TRIAL = { open: true, users: 3 } as const;
 
 /** Video length the client can choose on the generation page (seconds). */
 export const VIDEO_DURATION = { min: 4, max: 15 } as const;
