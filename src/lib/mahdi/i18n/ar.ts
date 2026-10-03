@@ -21,6 +21,8 @@ export const ar = {
     community: "المجتمع",
     add: "إضافة",
     account: "حسابي وإعداداتي",
+    // Longer names in the side menu (computer); the phone's bottom bar keeps the short ones
+    side: { projects: "العادات العلوية", community: "المجتمع الولائي", reading: "القارئ العلوي" },
     main: "التنقل الرئيسي",
   },
 
@@ -631,9 +633,9 @@ export const ar = {
     artwork: "الصورة لوحة فنية لحرم الإمام علي عليه السلام.",
   },
 
-  // «القارئ العلوي»
+  // «متعلّم على سبيل نجاة»
   reading: {
-    title: "القارئ العلوي",
+    title: "متعلّم على سبيل نجاة",
     tagline: "رفيقك في القراءة: كتبك، ووقتك، وتقدّمك صفحةً بعد صفحة.",
     nav: "القراءة",
     current: "كتبي الحالية",

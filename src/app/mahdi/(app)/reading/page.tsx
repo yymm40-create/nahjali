@@ -10,7 +10,7 @@ import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
 
-/** «القارئ العلوي»: my current books, today's reading and the goals. */
+/** «متعلّم على سبيل نجاة»: my current books, today's reading and the goals. */
 export default function ReadingPage() {
   const { store } = useMahdi();
   const { reading, summary, current, progress, userId } = useReading();

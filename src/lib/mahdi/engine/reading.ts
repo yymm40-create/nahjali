@@ -1,4 +1,4 @@
-// «القارئ العلوي»: pages, progress, time and goals of reading. Pure functions (no React, no database).
+// «متعلّم على سبيل نجاة»: pages, progress, time and goals of reading. Pure functions (no React, no database).
 // A book is counted in pages, or (for books of narrations such as al-Kafi) in narrations: the same numbering rules
 // apply to both, so "pages" below means "units of the book" unless a function says otherwise.
 import { addDays, startOfMonth, startOfWeek, type ISODate } from "./dates";
