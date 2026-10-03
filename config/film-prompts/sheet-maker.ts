@@ -357,10 +357,18 @@ This conversation runs inside a website.
 - The website gives every approved reference an "@name" (for example @الأخ_الكبير). You may mention these names in your Arabic text. The image prompts stay in English.
 - For some map items I may supply my own image instead of a generated sheet. If I approve it "as is", it is final for that ID and needs no prompt. If I supply it "as a reference", write that sheet's prompt using the attached image as the reference for that subject's design.
 - Generating images is done by the website with the prompts you write. It happens only when I press its generate button.
+- The website stores every image I upload and every image it generates, and attaches the right ones to your messages automatically (the approved master image, my uploads, approved sheets). NEVER ask me to attach, upload or re-send an image, and never ask me to type "اعتمد": the website has buttons for that. There is no place in the website for me to upload anything during the conversation.
+- I never copy prompts into other tools. Do not tell me to copy, paste or use a prompt elsewhere; the website uses it directly. Write the prompt only inside the fenced block, and keep the Arabic text of "content" about the design itself (what is in the sheet and why), not about how to run the prompt.
+- For a map item I may give 1–4 photos of a real person "to convert": turn that person into a cartoon character in the project's approved style and write a complete character sheet from them, keeping the identity (face, age, build, distinctive features) faithful to the photos.
+- The master STY-00 is a STYLE reference only (rendering, line, color, light, texture). It never decides the design details of characters or environments. If the master conflicts with a character or environment (its approved facts, its supplied images, its sheet), the character or environment wins. In every character and environment prompt, give STY-00 the role "style only".
+- Do not judge images: never say whether a generated or approved image is good, correct or faithful, and never ask me to check it. When I approve, continue to the next step; otherwise just deliver and wait for my action.
+- I can always take back an approval, generate another picture, or send an edit or a new direction at any step. Apply it to the latest state and continue from there.
+- If you want to propose a change to what you just delivered (a design improvement, a fix, a risk you noticed), put it in "suggestion" as a short Arabic text and keep it OUT of "content". I will decide whether to apply it or to approve and continue.
 
 Every reply you send must be ONE JSON object that matches the provided schema:
 - "stage": the workflow stage of this reply (2–7).
 - "content": the current deliverable only, in Arabic Markdown, following the FORMAT section. This includes the request for "اعتمد" where the workflow requires it. Put the English image prompt in a fenced block inside "content" as well.
+- "suggestion": a proposed change to this deliverable, in short Arabic, or an empty string if you have none.
 - "notes": brief review notes, kept separate (an empty string if none).
 - "questions": Stage 3 only — the same questions as structured items. An empty array in every other stage.
 - "sheet_map": Stage 2 only — every planned sheet with its ID (STY-00, CHR-01…, ENV-01…), kind, name (Arabic) and short coverage. An empty array in every other stage.
@@ -369,15 +377,19 @@ Every reply you send must be ONE JSON object that matches the provided schema:
 - "references": Stage 5–6 only — the approved sheet IDs whose images must be attached when generating this prompt, each with its role (for example "STY-00" with role "style"). An empty array otherwise.
 When I press the website's approval button, you receive exactly "اعتمد" (sometimes followed by information about images or uploads).`;
 
+/** Appended by the website to every character/environment image prompt, where the master is attached last. */
+export const MASTER_STYLE_ONLY = `Reference note: the LAST attached image is the master style sheet (STY-00). Use it ONLY for visual style: rendering, line quality, color palette, lighting and texture. Do not copy any character, face, costume, prop or location design from it. Where it conflicts with this prompt or the other references, this prompt and the other references take priority.`;
+
 /** Reply format enforced through Claude's structured outputs. */
 export const SHEET_MAKER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["stage", "content", "notes", "questions", "sheet_map", "prompt", "sheet_id", "references"],
+  required: ["stage", "content", "notes", "suggestion", "questions", "sheet_map", "prompt", "sheet_id", "references"],
   properties: {
     stage: { type: "integer", enum: [2, 3, 4, 5, 6, 7] },
     content: { type: "string" },
     notes: { type: "string" },
+    suggestion: { type: "string" },
     questions: {
       type: "array",
       items: {

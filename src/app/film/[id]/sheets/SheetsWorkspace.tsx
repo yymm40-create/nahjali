@@ -7,7 +7,11 @@ import { createClient } from "@/lib/supabase/client";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
+import ActionBar, { type SendMode } from "../../ActionBar";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
+
+const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
+const SHEET_COST = "تقريبًا $0.40";
 import { STATUS_LABELS } from "@config/film";
 
 interface Asset {
@@ -96,6 +100,17 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   const current = [...versions].filter((v) => v.kind !== "sheet_handoff" && v.kind !== "style").sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
   const failed = job?.status === "failed" && !writing;
   const started = versions.length > 0 || writing || failed;
+  const revise = (v: SheetVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
+  const backToSheets = stage === "director" ? " والمشروع انتقل للمخرج، فبيرجع لصانع الشيت لين تعتمد صورة جديدة." : "";
+  // Sheets whose approved picture used this sheet as a reference (the master is every sheet's style reference)
+  const dependents = (sid: string) =>
+    orderedSheets.filter((id) => id !== sid && assets.some((a) => a.kind === "image" && a.ref_key === id && a.status === "approved") &&
+      (sid === MASTER || versions.some((v) => v.kind === "sheet_prompt" && v.ref_key === id && v.status === "approved" && v.data.references?.some((r) => r.sheet_id === sid))));
+  const nameOf = (id: string) => map.find((m) => m.id === id)?.name ?? id;
+  const affects = (sid: string) => {
+    const d = dependents(sid);
+    return d.length ? ` الصور المعتمدة اللي انبنت عليه (${d.map(nameOf).join("، ")}) تظل مثل ما هي، ولو تبيها تتبع التغيير أعد توليدها.` : "";
+  };
 
   return (
     <div className="space-y-4">
@@ -122,7 +137,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
 
       {/* 1. Understanding + sheet map with the user's choice per item */}
       {understanding && (
-        <Card title="الفهم وخريطة الشيتات" v={understanding} current={current?.id === understanding.id} busy={busy || writing} onRevise={(text) => send({ action: "revise", text, versionId: understanding.id })}>
+        <Card title="الفهم وخريطة الشيتات" v={understanding} current={current?.id === understanding.id} busy={busy || writing} onSend={revise(understanding)} noActions>
           <MapChoices
             projectId={projectId}
             map={map}
@@ -131,14 +146,25 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             assets={assets}
             busy={busy || writing}
             onRefresh={() => router.refresh()}
+            onRemove={(assetId) => send({ action: "remove_upload", assetId })}
             onApprove={(c) => send({ action: "approve", versionId: understanding.id, choices: c })}
+            onSend={revise(understanding)}
+            warning={understanding.status === "approved" ? `الخريطة معتمدة. تعديلها ممكن يضيف أو يحذف شيتات؛ اللي اعتمدته يظل محفوظ، وصانع الشيت يوضح وش يتأثر.${backToSheets}` : undefined}
           />
         </Card>
       )}
 
       {/* 2. Design questions */}
       {questions && (
-        <Card title="أسئلة التصميم" v={questions} current={false} busy hideBody={questions.status === "awaiting_approval"}>
+        <Card
+          title="أسئلة التصميم"
+          v={questions}
+          current={false}
+          busy={busy || writing}
+          hideBody={questions.status === "awaiting_approval"}
+          onSend={questions.status === "approved" ? revise(questions) : undefined}
+          warning="غيّرت إجابة؟ اكتبها هنا. الستايل والشيتات اللي بعدها ما تتغيّر تلقائيًا، وصانع الشيت يوضح وش يتأثر."
+        >
           {questions.status === "awaiting_approval" ? (
             <QuestionsForm questions={questions.data.questions ?? []} busy={busy || writing} onSubmit={(answers) => send({ action: "answers", versionId: questions.id, answers })} />
           ) : (
@@ -157,6 +183,13 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           busy={busy || writing}
           onTest={(ids) => send({ action: "test_styles", styleIds: ids })}
           onChoose={(id) => send({ action: "choose_style", styleId: id })}
+          actions={
+            <ActionBar
+              busy={busy || writing}
+              onSend={revise(styleTest)}
+              warning={style ? "الستايل معتمد ومستخدم في كل البرومبتات بعده. تغييره يعني إعادة الماستر والشيتات وصورها (تكلفة صور جديدة)." : undefined}
+            />
+          }
         />
       )}
 
@@ -173,7 +206,9 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             current={current?.id === v.id}
             busy={busy || writing}
             onApprove={v.status === "awaiting_approval" ? () => send({ action: "approve", versionId: v.id }) : undefined}
-            onRevise={(text) => send({ action: "revise", text, versionId: v.id })}
+            approveLabel={`اعتمد وولّد الصورة ✅ · ${SHEET_COST}`}
+            onSend={revise(v)}
+            warning={v.status === "approved" ? `هذا البرومبت معتمد. بعد التعديل يوصلك برومبت جديد، ولما تعتمده تتولد صورة جديدة (${SHEET_COST}).${affects(sid)}` : undefined}
           >
             {v.status === "approved" && (
               <SheetImages
@@ -183,6 +218,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
                 onGenerate={() => send({ action: "generate_image", sheetId: sid })}
                 onApprove={(id) => send({ action: "approve_image", assetId: id })}
                 onReject={(id) => send({ action: "reject_image", assetId: id })}
+                onUnapprove={(id) => send({ action: "unapprove_image", assetId: id })}
+                unapproveWarning={`تبي تتراجع عن اعتماد هذي الصورة؟ بعدها تقدر تولّد صورة ثانية أو ترسل تعديل.${affects(sid)}${backToSheets}`}
               />
             )}
           </Card>
@@ -229,7 +266,10 @@ function Card({
   busy,
   hideBody,
   onApprove,
-  onRevise,
+  approveLabel,
+  onSend,
+  warning,
+  noActions,
   children,
 }: {
   title: string;
@@ -238,11 +278,13 @@ function Card({
   busy: boolean;
   hideBody?: boolean;
   onApprove?: () => void;
-  onRevise?: (text: string) => void;
+  approveLabel?: string;
+  onSend?: (mode: SendMode, text: string) => void;
+  warning?: string;
+  /** The card's actions live inside its children (the map: approval needs the per-item choices). */
+  noActions?: boolean;
   children?: ReactNode;
 }) {
-  const [revise, setRevise] = useState(false);
-  const [text, setText] = useState("");
   const pending = v.status === "awaiting_approval";
   return (
     <article className={`card space-y-3 p-5 ${pending ? "border-2 border-gold" : ""}`}>
@@ -253,7 +295,7 @@ function Card({
       {!hideBody && (
         <details open={pending || current}>
           <summary className="cursor-pointer text-sm font-extrabold text-muted">اعرض النص</summary>
-          <Markdown text={v.body} highlightRequests={pending} />
+          <Markdown text={v.body} highlightRequests={pending} hideCode />
           {v.data.notes && (
             <div className="mt-2 rounded-2xl bg-surface-2 p-3 text-sm">
               <p className="font-extrabold">ملاحظات</p>
@@ -262,22 +304,19 @@ function Card({
           )}
         </details>
       )}
-      {children}
-      {!busy && (onApprove || onRevise) && (
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            {onApprove && <button className="btn btn-primary flex-1" onClick={onApprove}>اعتمد البرومبت ✅</button>}
-            {onRevise && (pending || v.status === "approved") && (
-              <button className="btn btn-ghost flex-1" onClick={() => setRevise(!revise)}>اطلب تعديل ✏️</button>
-            )}
-          </div>
-          {revise && onRevise && (
-            <div className="space-y-2">
-              <textarea className="field min-h-24" value={text} onChange={(e) => setText(e.target.value.slice(0, 4000))} placeholder="اكتب وش تبي يتغيّر" />
-              <button className="btn btn-secondary w-full" disabled={!text.trim()} onClick={() => { onRevise(text); setRevise(false); setText(""); }}>أرسل التعديل</button>
-            </div>
+      {pending && v.data.suggestion && (
+        <div className="space-y-2 rounded-2xl border-2 border-gold bg-gold/10 p-4">
+          <p className="font-extrabold">💡 اقتراح تعديل</p>
+          <p className="font-bold leading-8">{v.data.suggestion}</p>
+          {!busy && onSend && (
+            <button className="btn btn-secondary w-full" onClick={() => onSend("edit", `نفّذ التعديل المقترح: ${v.data.suggestion}`)}>نفّذ التعديل المقترح</button>
           )}
+          <p className="text-sm font-bold text-muted">أو اعتمد وكمّل بدون تعديل.</p>
         </div>
+      )}
+      {children}
+      {!noActions && (
+        <ActionBar busy={busy} onApprove={onApprove} approveLabel={approveLabel} onSend={onSend} warning={warning} />
       )}
     </article>
   );
@@ -285,7 +324,7 @@ function Card({
 
 /** Per map item: generate it, or use the user's own picture (as is / as a reference for a new sheet). */
 function MapChoices({
-  projectId, map, locked, savedChoices, assets, busy, onRefresh, onApprove,
+  projectId, map, locked, savedChoices, assets, busy, onRefresh, onRemove, onApprove, onSend, warning,
 }: {
   projectId: string;
   map: MapItem[];
@@ -294,27 +333,36 @@ function MapChoices({
   assets: Asset[];
   busy: boolean;
   onRefresh: () => void;
+  onRemove: (assetId: string) => void;
   onApprove: (c: Record<string, MapChoice>) => void;
+  onSend: (mode: SendMode, text: string) => void;
+  warning?: string;
 }) {
   const [choices, setChoices] = useState<Record<string, MapChoice>>(savedChoices);
   const [uploading, setUploading] = useState("");
   const [error, setError] = useState("");
   const fileFor = useRef<string>("");
   const input = useRef<HTMLInputElement>(null);
-  const uploadOf = (id: string) => assets.filter((a) => a.kind === "upload" && a.ref_key === id && a.status !== "rejected").at(-1);
-  const missing = map.filter((m) => (choices[m.id] ?? "make") !== "make" && !uploadOf(m.id));
+  const uploadsOf = (id: string) => assets.filter((a) => a.kind === "upload" && a.ref_key === id && a.status !== "rejected");
+  const missing = map.filter((m) => (choices[m.id] ?? "make") !== "make" && uploadsOf(m.id).length === 0);
 
-  async function upload(file: File | undefined) {
+  async function upload(files: File[]) {
     const sheetId = fileFor.current;
-    if (!file || !sheetId) return;
+    if (!files.length || !sheetId) return;
     setError("");
     setUploading(sheetId);
     try {
-      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("صورة JPG أو PNG أو WEBP أقل من ٢٠ ميجا.");
-      const { path, token } = await postJson<{ path: string; token: string }>(`/api/film/projects/${projectId}/sheets`, { action: "upload_url", sheetId, mime: file.type });
-      const { error: e } = await createClient().storage.from("film").uploadToSignedUrl(path, token, file, { contentType: file.type });
-      if (e) throw new Error("تعذّر رفع الصورة.");
-      await postJson(`/api/film/projects/${projectId}/sheets`, { action: "upload_confirm", sheetId, path });
+      const mode = choices[sheetId] ?? "make";
+      // Up to 4 photos to convert a real person; one picture otherwise
+      const room = mode === "convert" ? MAX_REFERENCE_UPLOADS - uploadsOf(sheetId).length : 1;
+      if (room <= 0) throw new Error(`الحد الأقصى ${MAX_REFERENCE_UPLOADS} صور لكل عنصر.`);
+      for (const file of files.slice(0, room)) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("صورة JPG أو PNG أو WEBP أقل من ٢٠ ميجا.");
+        const { path, token } = await postJson<{ path: string; token: string }>(`/api/film/projects/${projectId}/sheets`, { action: "upload_url", sheetId, mime: file.type });
+        const { error: e } = await createClient().storage.from("film").uploadToSignedUrl(path, token, file, { contentType: file.type });
+        if (e) throw new Error("تعذّر رفع الصورة.");
+        await postJson(`/api/film/projects/${projectId}/sheets`, { action: "upload_confirm", sheetId, path, mode });
+      }
       onRefresh();
     } catch (e) {
       setError((e as Error).message);
@@ -327,10 +375,11 @@ function MapChoices({
   return (
     <div className="space-y-2">
       <h3 className="font-extrabold">خريطة الشيتات: وش تبي نصنع؟</h3>
-      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => upload(e.target.files?.[0])} />
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => upload(Array.from(e.target.files ?? []))} />
       {map.map((m) => {
         const c = (locked ? savedChoices[m.id] : choices[m.id]) ?? "make";
-        const up = uploadOf(m.id);
+        const ups = uploadsOf(m.id);
+        const shown = c === "convert" ? ups : ups.slice(-1);
         return (
           <div key={m.id} className="space-y-2 rounded-2xl border border-line p-3">
             <p className="font-extrabold">{m.id} · {m.name}</p>
@@ -338,21 +387,28 @@ function MapChoices({
             {m.id === "STY-00" ? (
               <p className="text-xs font-bold text-muted">الماستر يتصنع دائمًا؛ هو مرجع الستايل لكل الفيلم.</p>
             ) : locked ? (
-              <span className="chip">{c === "make" ? "🎨 نصنعه" : c === "as_is" ? "📤 صورتك كما هي" : "📤 صورتك مرجع لشيت جديد"}</span>
+              <span className="chip">{c === "make" ? "🎨 نصنعه" : c === "as_is" ? "📤 صورتك كما هي" : c === "reference" ? "🖼️ شيت من صورتك" : "🔄 نحوّل الشخصية الواقعية إلى كرتون"}</span>
             ) : (
               <div className="flex flex-wrap gap-2 text-sm font-bold">
-                {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "📤 عندي صورة، اصنع منها شيت"]] as const).map(([k, label]) => (
+                {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "🖼️ عندي صورة، اصنع منها شيت"], ["convert", "🔄 حوّل شخصية واقعية إلى كرتون (حتى ٤ صور)"]] as const).map(([k, label]) => (
                   <button key={k} className={`chip ${c === k ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: k })}>{label}</button>
                 ))}
               </div>
             )}
             {c !== "make" && (
-              <div className="flex items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
-                {up?.url && <img src={up.url} alt={m.name} className="size-16 rounded-xl object-cover" />}
-                {!locked && (
+              <div className="flex flex-wrap items-center gap-2">
+                {shown.map((u) => (
+                  <div key={u.id} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
+                    {u.url && <img src={u.url} alt={m.name} className="size-16 rounded-xl object-cover" />}
+                    {!locked && c === "convert" && (
+                      <button aria-label="احذف الصورة" className="absolute -end-1 -top-1 size-6 rounded-full bg-red-500 text-xs font-extrabold text-white" onClick={() => onRemove(u.id)}>×</button>
+                    )}
+                  </div>
+                ))}
+                {!locked && (c !== "convert" || ups.length < MAX_REFERENCE_UPLOADS) && (
                   <button className="btn btn-ghost min-h-10 px-3 text-sm" disabled={Boolean(uploading)} onClick={() => { fileFor.current = m.id; input.current?.click(); }}>
-                    {uploading === m.id ? "نرفع…" : up ? "غيّر الصورة" : "ارفع الصورة"}
+                    {uploading === m.id ? "نرفع…" : c === "convert" ? `أضف صور (${ups.length}/${MAX_REFERENCE_UPLOADS})` : ups.length ? "غيّر الصورة" : "ارفع الصورة"}
                   </button>
                 )}
               </div>
@@ -361,18 +417,20 @@ function MapChoices({
         );
       })}
       {error && <p className="error-box">{error}</p>}
-      {!locked && !busy && (
-        <>
-          {missing.length > 0 && <p className="text-sm font-bold text-red-500">ارفع صورة: {missing.map((m) => m.name).join("، ")}</p>}
-          <button className="btn btn-primary w-full" disabled={missing.length > 0} onClick={() => onApprove(choices)}>اعتمد الفهم والخريطة ✅</button>
-        </>
-      )}
+      {!locked && !busy && missing.length > 0 && <p className="text-sm font-bold text-red-500">ارفع صورة: {missing.map((m) => m.name).join("، ")}</p>}
+      <ActionBar
+        busy={busy}
+        onApprove={!locked && missing.length === 0 ? () => onApprove(choices) : undefined}
+        approveLabel="اعتمد الفهم والخريطة ✅"
+        onSend={onSend}
+        warning={warning}
+      />
     </div>
   );
 }
 
 function StyleTest({
-  v, styles, tests, chosen, busy, onTest, onChoose,
+  v, styles, tests, chosen, busy, onTest, onChoose, actions,
 }: {
   v: SheetVersion;
   styles: StyleCard[];
@@ -381,6 +439,7 @@ function StyleTest({
   busy: boolean;
   onTest: (ids: string[]) => void;
   onChoose: (id: string) => void;
+  actions?: ReactNode;
 }) {
   const [picked, setPicked] = useState<string[]>([]);
   const groups = [...new Set(styles.map((s) => s.group))];
@@ -446,12 +505,13 @@ function StyleTest({
           </button>
         </div>
       )}
+      {actions}
     </article>
   );
 }
 
 function SheetImages({
-  sheetId, images, busy, onGenerate, onApprove, onReject,
+  sheetId, images, busy, onGenerate, onApprove, onReject, onUnapprove, unapproveWarning,
 }: {
   sheetId: string;
   images: Asset[];
@@ -459,6 +519,8 @@ function SheetImages({
   onGenerate: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onUnapprove: (id: string) => void;
+  unapproveWarning: string;
 }) {
   const shown = images.filter((i) => i.status !== "rejected");
   const generating = images.some((i) => i.status === "generating");
@@ -483,12 +545,15 @@ function SheetImages({
                 <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => onReject(img.id)}>ارفضها</button>
               </div>
             )}
+            {img.status === "approved" && !busy && (
+              <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => window.confirm(unapproveWarning) && onUnapprove(img.id)}>↩️ تراجع عن الاعتماد</button>
+            )}
           </div>
         </figure>
       ))}
       {!generating && !busy && (
         <button className={`btn w-full ${approved ? "btn-ghost" : "btn-secondary"}`} onClick={onGenerate}>
-          {shown.length ? "🔁 ولّد نسخة ثانية" : "🖼️ ولّد الصورة"} · تقريبًا $0.40
+          {shown.length ? "🔁 ولّد نسخة ثانية" : "🖼️ ولّد الصورة"} · {SHEET_COST}
         </button>
       )}
     </div>
