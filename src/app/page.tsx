@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { canUseFilm } from "@/lib/film/access";
 import { SECTIONS } from "@config/sections";
-import { BOOKLET_LOCKED, bookletClosedFor, isAdmin } from "@config/site";
+import { BOOKLET_LOCKED, bookletClosedFor } from "@config/site";
 
 /** Home: the site's sections (config/sections.ts). */
 export default async function Home() {
@@ -26,8 +26,8 @@ export default async function Home() {
       <section className="space-y-3">
         <h2 className="display text-3xl">وش تبي تسوي اليوم؟</h2>
         <ul className="space-y-3">
-          {SECTIONS.filter((s) => !s.requiresFilmAccess || isAdmin(user?.email)).map((s) => {
-            // The film section is shown to the owner only (for now)
+          {SECTIONS.map((s) => {
+            // Signed-out visitors can still open the film card (they are asked to sign in first)
             const locked = s.requiresFilmAccess && user && !filmAllowed;
             // «تحت التطوير»: shown, but only the owner can open it
             const dev = s.underDevelopment && BOOKLET_LOCKED;

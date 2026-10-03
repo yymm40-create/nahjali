@@ -6,7 +6,7 @@ export interface SiteSection {
   description: string;
   icon: string;
   href: string;
-  /** The film section: listed for the site owner only (isAdmin in config/site.ts); hidden from everyone else. */
+  /** Only users with access to the film branch can open it (the owner, and the public trial's users while it lasts); others see "قريبًا". */
   requiresFilmAccess?: boolean;
   /** Listed but closed («تحت التطوير») while BOOKLET_LOCKED is on in config/site.ts; the owner can still open it. */
   underDevelopment?: boolean;
