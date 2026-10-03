@@ -98,6 +98,7 @@ export default async function MahdiAdminPage() {
         <Link href="/admin" className="text-sm font-bold text-muted">{t.admin.back}</Link>
         <h1 className="display text-4xl">{t.admin.title}</h1>
         <p className="font-bold text-muted">{t.admin.intro}</p>
+        <Link href="/admin/mahdi/users" className="btn btn-secondary mt-2 w-full">{t.admin.users.link}</Link>
       </header>
       <MahdiAdminTools data={data} />
     </div>
