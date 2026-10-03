@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireFilmUser } from "@/lib/film/access";
+import { filmTrialOver, requireFilmUser } from "@/lib/film/access";
 import type { FilmProject } from "@/lib/film/types";
 import { FILM_STAGES } from "@config/film";
 
@@ -23,8 +23,17 @@ export default async function FilmHome() {
     return (
       <div className="card space-y-3 p-6 text-center">
         <p className="text-5xl">🎬</p>
-        <h1 className="display text-3xl">صناعة فيلم: قريبًا</h1>
-        <p className="font-bold text-muted">هذا القسم تحت التجربة ومتاح للمدعوين فقط حاليًا. بنعلن عنه أول ما يجهز إن شاء الله.</p>
+        {(await filmTrialOver()) ? (
+          <>
+            <h1 className="display text-3xl">صانع الفيلم مقفل حاليًا</h1>
+            <p className="font-bold text-muted">خلصت فترة التجربة المجانية. شكرًا لكل من جرّب، وبنعلن أول ما يرجع إن شاء الله.</p>
+          </>
+        ) : (
+          <>
+            <h1 className="display text-3xl">صناعة فيلم: قريبًا</h1>
+            <p className="font-bold text-muted">هذا القسم تحت التجربة ومتاح للمدعوين فقط حاليًا. بنعلن عنه أول ما يجهز إن شاء الله.</p>
+          </>
+        )}
         <Link href="/" className="btn btn-ghost">الرئيسية</Link>
       </div>
     );

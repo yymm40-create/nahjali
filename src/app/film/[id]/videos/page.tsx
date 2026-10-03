@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireFilmUser, requireProject } from "@/lib/film/access";
+import { filmTrialVideos, requireFilmUser, requireProject } from "@/lib/film/access";
+import { isAdmin } from "@config/site";
+import { FILM_PUBLIC_TRIAL } from "@config/film";
 import { checkVideos, directorVersions, directorVideos, purgeOldVideos } from "@/lib/film/director";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
@@ -69,6 +71,7 @@ export default async function VideosPage({ params }: PageProps<"/film/[id]/video
           download: links[v.id]?.download ?? "",
         }))}
         videosRunning={videosRunning}
+        trialLeft={FILM_PUBLIC_TRIAL.open && !isAdmin(user.email) ? Math.max(0, FILM_PUBLIC_TRIAL.freeVideos - (await filmTrialVideos()).taken) : null}
       />
     </div>
   );

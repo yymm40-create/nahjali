@@ -47,13 +47,15 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 const daysLeft = (createdAt: string) => Math.max(0, Math.ceil(VIDEO_KEEP_DAYS - (Date.now() - new Date(createdAt).getTime()) / 86_400_000));
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning,
+  projectId, stage, generations, videos, videosRunning, trialLeft,
 }: {
   projectId: string;
   stage: string;
   generations: Generation[];
   videos: Video[];
   videosRunning: number;
+  /** Free videos left in the public trial (null: no trial limit for this user). */
+  trialLeft: number | null;
 }) {
   const router = useRouter();
   const [resolution, setResolution] = useState<VideoResolution>(DEFAULT_VIDEO_RESOLUTION);
@@ -107,6 +109,11 @@ export default function VideosWorkspace({
 
   return (
     <div className="space-y-4">
+      {trialLeft !== null && (
+        <p className="card p-4 text-center font-extrabold">
+          🎁 فترة تجربة مجانية: {trialLeft > 0 ? `باقي ${trialLeft} فيديو مجاني (للموقع كله)` : "خلصت الفيديوهات المجانية"}
+        </p>
+      )}
       <section className="space-y-1 rounded-2xl border-2 border-red-500 bg-red-500/10 p-4">
         <p className="font-extrabold text-red-500">⬇️ حمّل فيديوهاتك</p>
         <p className="text-sm font-bold">
