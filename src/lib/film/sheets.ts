@@ -336,17 +336,26 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
     if (choice === "make") continue;
     const up = assets.filter((a) => a.kind === "upload" && a.ref_key === item.id).at(-1);
     if (!up) throw new UserError(`ارفع صورة «${item.name}» أول، أو اختر «اصنعه لي».`, 400);
-    await db().from("film_assets").update({
+    const { error: upErr } = await db().from("film_assets").update({
       status: choice === "as_is" ? "approved" : "uploaded",
       meta: { ...up.meta, mode: choice, ...(choice === "as_is" ? { at_name: atName(item.name) } : {}) },
     }).eq("id", up.id);
+    if (upErr) throw upErr;
     lines.push(
       choice === "as_is"
         ? `- ${item.id} (${item.name}): عندي صورته الجاهزة، معتمدة كما هي ولا تحتاج برومبت: [[image:${up.id}]]`
         : `- ${item.id} (${item.name}): هذي صورة مرجعية من عندي، اصنع الشيت منها بستايل المشروع: [[image:${up.id}]]`,
     );
   }
-  await db().from("film_versions").update({ status: "approved", approved_at: new Date().toISOString(), data: { ...v.data, choices: clean } }).eq("id", v.id);
+  // Must really flip the version: a silent no-op here left the map "awaiting approval" with no job started
+  const { data: done, error: verErr } = await db()
+    .from("film_versions")
+    .update({ status: "approved", approved_at: new Date().toISOString(), data: { ...v.data, choices: clean } })
+    .eq("id", v.id)
+    .eq("status", "awaiting_approval")
+    .select("id");
+  if (verErr) throw verErr;
+  if (!done?.length) throw new UserError("الخريطة ما انعتمدت (تغيّرت حالتها). حدّث الصفحة وجرّب.", 409);
   const text = lines.length ? `اعتمد\n\nمعلومات عن الصور:\n${lines.join("\n")}` : "اعتمد";
   const id = await addUserMessage(project.id, text);
   return queueReply(project, user, id);
