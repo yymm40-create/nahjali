@@ -1,6 +1,6 @@
 // Data shapes shared by the server, the browser store and (later) a native app.
 import type { MahdiTheme, ProjectColor } from "@config/mahdi";
-import type { ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
+import type { BookUnit, ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
 
 export interface Shrine {
   id: string;
@@ -158,7 +158,9 @@ export interface Book {
   id: string;
   title: string;
   author: string;
+  /** Number of pages, or of narrations for a book counted by narrations. */
   pages: number;
+  unit: BookUnit;
   description: string;
   coverUrl: string | null;
   addedByMe: boolean;

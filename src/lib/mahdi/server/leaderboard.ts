@@ -165,12 +165,13 @@ export interface ReadingEntry {
   frame: string;
   seconds: number;
   pages: number;
+  narrations: number;
 }
 
 /** By whole minutes read (most first); equal minutes share a rank. */
 export function rankReading(entries: ReadingEntry[]): (ReadingEntry & { rank: number })[] {
   const min = (e: ReadingEntry) => Math.floor(e.seconds / 60);
-  const sorted = [...entries].sort((a, b) => min(b) - min(a) || b.pages - a.pages || a.displayName.localeCompare(b.displayName, "ar") || a.userId.localeCompare(b.userId));
+  const sorted = [...entries].sort((a, b) => min(b) - min(a) || b.pages + b.narrations - (a.pages + a.narrations) || a.displayName.localeCompare(b.displayName, "ar") || a.userId.localeCompare(b.userId));
   let rank = 0;
   return sorted.map((e, i) => {
     if (i === 0 || min(e) !== min(sorted[i - 1])) rank = i + 1;
@@ -184,20 +185,31 @@ export const periodStartFor = (tz: string, period: LeaderboardPeriod, now = new 
   return { today, start: period === "week" ? startOfWeek(today, BOARD_WEEK_START) : startOfMonth(today) };
 };
 
-/** Minutes and pages read in the period by each of the given users (sessions read with the service role). */
+/** Minutes, pages and narrations read in the period by each of the given users (read with the service role). */
 export async function readingTotalsFor(userIds: string[], tzOf: Map<string, string>, period: LeaderboardPeriod, now = new Date()) {
   const db = createAdminClient();
-  const out = new Map<string, { seconds: number; pages: number }>();
+  const out = new Map<string, { seconds: number; pages: number; narrations: number }>();
   const earliest = addDays(todayIn("Etc/GMT+12", now), -32);
   for (const part of chunks(userIds)) {
-    const rows = await selectAll<{ user_id: string; log_date: string; seconds: number; pages_count: number }>((a, b) =>
-      db.from("mahdi_reading_sessions").select("user_id, log_date, seconds, pages_count").in("user_id", part).gte("log_date", earliest).order("id").range(a, b),
+    const rows = await selectAll<{ user_id: string; book_id: string; log_date: string; seconds: number; pages_count: number }>((a, b) =>
+      db.from("mahdi_reading_sessions").select("user_id, book_id, log_date, seconds, pages_count").in("user_id", part).gte("log_date", earliest).order("id").range(a, b),
     );
+    // Books counted by narrations add to narrations, the others to pages
+    const narrationBooks = new Set<string>();
+    for (const ids of chunks([...new Set(rows.map((r) => r.book_id))])) {
+      const { data } = await db.from("mahdi_books").select("id").in("id", ids).eq("unit", "narration");
+      for (const b of data ?? []) narrationBooks.add(b.id);
+    }
     for (const r of rows) {
       const { today, start } = periodStartFor(tzOf.get(r.user_id) ?? "Asia/Riyadh", period, now);
       if (r.log_date < start || r.log_date > today) continue;
-      const cur = out.get(r.user_id) ?? { seconds: 0, pages: 0 };
-      out.set(r.user_id, { seconds: cur.seconds + r.seconds, pages: cur.pages + r.pages_count });
+      const cur = out.get(r.user_id) ?? { seconds: 0, pages: 0, narrations: 0 };
+      const isNarration = narrationBooks.has(r.book_id);
+      out.set(r.user_id, {
+        seconds: cur.seconds + r.seconds,
+        pages: cur.pages + (isNarration ? 0 : r.pages_count),
+        narrations: cur.narrations + (isNarration ? r.pages_count : 0),
+      });
     }
   }
   return out;

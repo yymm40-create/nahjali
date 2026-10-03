@@ -106,7 +106,7 @@ export async function groupRanking(db: SupabaseClient, members: Awaited<ReturnTy
   const now = new Date();
   if (metric === "reading") {
     const totals = await readingTotalsFor(active.map((m) => m.userId), new Map(active.map((m) => [m.userId, m.tz])), period, now);
-    const ranked = rankReading(active.map((m) => ({ ...base(m), ...(totals.get(m.userId) ?? { seconds: 0, pages: 0 }) })));
+    const ranked = rankReading(active.map((m) => ({ ...base(m), ...(totals.get(m.userId) ?? { seconds: 0, pages: 0, narrations: 0 }) })));
     return { ranked: ranked.map(({ userId, ...e }) => ({ ...e, mine: userId === me })), unranked: [] };
   }
   const earliest = addDays(todayIn("Etc/GMT+12", now), -45);

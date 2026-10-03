@@ -91,6 +91,7 @@ export default function SessionPage() {
     );
   }
   if (timer === undefined) return <p className="m-muted">{t.common.loading}</p>;
+  const U = t.reading.u[book.unit];
 
   const other = timer && timer.bookId !== book.id ? reading.library.find((e) => e.book.id === timer.bookId) : null;
   const mine = timer && timer.bookId === book.id ? timer : null;
@@ -98,7 +99,7 @@ export default function SessionPage() {
 
   const begin = () => {
     const first = Math.round(parseNumberInput(startPage || String(p.nextPage ?? 1)));
-    if (!(first >= 1 && first <= book.pages)) return setError(t.reading.pagesInvalid(book.pages));
+    if (!(first >= 1 && first <= book.pages)) return setError(U.invalid(book.pages));
     setError("");
     const at = timeNow();
     setTimer({ bookId: book.id, startPage: first, startedAt: at, accumulated: 0, runningSince: at });
@@ -120,8 +121,8 @@ export default function SessionPage() {
 
   async function save() {
     if (!mine) return;
-    if (endPage && !main.length) return setError(t.reading.pagesInvalid(book!.pages));
-    if (extraRanges === null) return setError(t.reading.pagesInvalid(book!.pages));
+    if (endPage && !main.length) return setError(U.invalid(book!.pages));
+    if (extraRanges === null) return setError(U.invalid(book!.pages));
     const seconds = Math.floor(elapsedMs(mine) / 1000);
     if (!ranges.length && seconds < 30) return setError(t.reading.sessionTooShort);
     setBusy(true);
@@ -150,7 +151,7 @@ export default function SessionPage() {
         <div className="min-w-0">
           <p className="m-eyebrow">{t.reading.sessionTitle}</p>
           <h1 className="m-display truncate text-2xl">{book.title}</h1>
-          <p className="m-num text-sm m-muted">{t.reading.progress(p.readPages, p.totalPages)}</p>
+          <p className="m-num text-sm m-muted">{U.progress(p.readPages, p.totalPages)}</p>
         </div>
       </header>
 
@@ -164,7 +165,7 @@ export default function SessionPage() {
       {!timer && (
         <section className="m-card space-y-4 p-5">
           <label className="block">
-            <span className="m-label">{t.reading.startPage}</span>
+            <span className="m-label">{U.startQ}</span>
             <input className="m-field m-num text-lg" inputMode="numeric" value={startPage} placeholder={String(p.nextPage ?? 1)} onChange={(e) => setStartPage(e.target.value)} />
           </label>
           {error && <p className="m-error" role="alert">{error}</p>}
@@ -178,7 +179,7 @@ export default function SessionPage() {
         <section className="m-card space-y-6 p-6 text-center" aria-live="polite">
           <p className={`m-chip mx-auto w-fit ${mine.runningSince ? "m-chip-success" : ""}`}>{mine.runningSince ? t.reading.running : t.reading.paused}</p>
           <p className="m-timer" role="timer" aria-label={t.reading.duration}>{clock(ms)}</p>
-          <p className="m-num text-sm m-muted">{t.reading.startedAt(mine.startPage)}</p>
+          <p className="m-num text-sm m-muted">{U.startedAt(mine.startPage)}</p>
           <div className="grid grid-cols-2 gap-3">
             {mine.runningSince ? (
               <button type="button" className="m-btn m-btn-ghost whitespace-nowrap px-3" onClick={pause}><Icon name="pause" size={20} /> {t.reading.pauseTimer}</button>
@@ -207,20 +208,20 @@ export default function SessionPage() {
           <h2 className="text-lg font-semibold">{t.reading.finishTitle}</h2>
           <p className="m-num m-muted">{t.reading.duration}: {clock(ms)}</p>
           <label className="block">
-            <span className="m-label">{t.reading.endPage}</span>
+            <span className="m-label">{U.endLabel}</span>
             <input className="m-field m-num text-lg" inputMode="numeric" autoFocus value={endPage} onChange={(e) => setEndPage(e.target.value)} placeholder={String(mine.startPage)} />
-            {main.length > 0 && <span className="m-hint mt-1 block">{t.reading.readRange(main[0][0], main[0][1])}</span>}
+            {main.length > 0 && <span className="m-hint mt-1 block">{U.readRange(main[0][0], main[0][1])}</span>}
           </label>
           <label className="block">
-            <span className="m-label">{t.reading.extraPages}</span>
+            <span className="m-label">{U.extra}</span>
             <input className="m-field m-num" inputMode="text" dir="ltr" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="40-45, 60" />
-            <span className="m-hint mt-1 block">{t.reading.extraPagesHint}</span>
+            <span className="m-hint mt-1 block">{U.extraHint}</span>
           </label>
           <label className="block">
             <span className="m-label">{t.reading.note}</span>
             <textarea className="m-field" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.reading.notePlaceholder} />
           </label>
-          {ranges.length > 0 && <p className="m-num text-sm font-semibold">{t.reading.pages(countPages(ranges))}</p>}
+          {ranges.length > 0 && <p className="m-num text-sm font-semibold">{U.count(countPages(ranges))}</p>}
           {error && <p className="m-error" role="alert">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
             <button type="button" className="m-btn m-btn-ghost" onClick={() => (setEnding(false), resume())}>{t.reading.resumeTimer}</button>

@@ -25,8 +25,9 @@ export const GET = mahdiRoute(async (req: Request) => {
 });
 
 /**
- * Adds a new book to the catalogue and to my library (form data: title, author, pages, description, cover).
- * If the same book (same title and pages) already exists, that one is added instead, so the catalogue has no copies.
+ * Adds a new book to the catalogue and to my library (form data: title, author, pages, unit, description, cover).
+ * `unit` is "page" or "narration" (books of narrations are followed by narration number).
+ * If the same book (same title, count and unit) already exists, that one is added instead, so the catalogue has no copies.
  */
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
@@ -34,8 +35,9 @@ export const POST = mahdiRoute(async (req: Request) => {
   if (!form) throw new UserError(t.errors.invalid, 400);
   const title = cleanLine(form.get("title"), 120);
   if (!title) throw new UserError(t.reading.titleRequired, 400);
+  const unit = form.get("unit") === "narration" ? "narration" : "page";
   const pages = Number(form.get("pages"));
-  if (!Number.isInteger(pages) || pages < 1 || pages > 10000) throw new UserError(t.reading.pagesRequired, 400);
+  if (!Number.isInteger(pages) || pages < 1 || pages > 10000) throw new UserError(t.reading.u[unit].totalRequired, 400);
   const author = cleanLine(form.get("author"), 80);
   const description = cleanText(form.get("description"), 500);
   const cover = form.get("cover");
@@ -45,7 +47,7 @@ export const POST = mahdiRoute(async (req: Request) => {
 
   const db = createAdminClient();
   const titleNorm = normalizeTitle(title);
-  const { data: same } = await db.from("mahdi_books").select("id").eq("title_norm", titleNorm).eq("pages", pages).is("hidden_at", null).limit(1).maybeSingle();
+  const { data: same } = await db.from("mahdi_books").select("id").eq("title_norm", titleNorm).eq("pages", pages).eq("unit", unit).is("hidden_at", null).limit(1).maybeSingle();
   let bookId = same?.id as string | undefined;
   let duplicate = Boolean(bookId);
 
@@ -76,7 +78,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     }
     const { data: created, error } = await db
       .from("mahdi_books")
-      .insert({ title, title_norm: titleNorm, author, pages, description, cover_path: coverPath, added_by: user.id })
+      .insert({ title, title_norm: titleNorm, author, pages, unit, description, cover_path: coverPath, added_by: user.id })
       .select("id")
       .single();
     if (error) throw error;

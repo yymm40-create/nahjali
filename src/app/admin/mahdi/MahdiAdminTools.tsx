@@ -12,7 +12,7 @@ export interface Chal { id: string; section_id: string; title: string; descripti
 export interface Txt { id: string; kind: string; text: string; attribution: string; source: string; reference: string; verification_status: "pending" | "verified" | "rejected"; verified_by: string; notes: string; contexts: string[]; active: boolean }
 export interface Phr { id: string; text: string; contexts: string[]; active: boolean; sort_order: number }
 export interface Rep { id: string; author: string; kind: string; title: string; value: string; createdAt: string; hidden: boolean; hiddenReason: string; reasons: string[]; count: number }
-export interface Bk { id: string; title: string; author: string; pages: number; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number }
+export interface Bk { id: string; title: string; author: string; pages: number; unit: "page" | "narration"; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number }
 export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[] }
 
 type Tab = keyof typeof A.tabs;
@@ -401,7 +401,7 @@ function BooksTab({ data, send, busy }: TabProps) {
           className="space-y-3 rounded-2xl bg-surface-2 p-3"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (await send({ action: "book.save", id: edit.id, title: edit.title, author: edit.author, pages: edit.pages, description: edit.description, removeCover: Boolean(edit.removeCover) })) setEdit(null);
+            if (await send({ action: "book.save", id: edit.id, title: edit.title, author: edit.author, pages: edit.pages, unit: edit.unit, description: edit.description, removeCover: Boolean(edit.removeCover) })) setEdit(null);
           }}
         >
           <h3 className="font-extrabold">{B.edit}</h3>
@@ -410,6 +410,12 @@ function BooksTab({ data, send, busy }: TabProps) {
             <Field label={B.author}><input className="field" maxLength={80} value={edit.author} onChange={(e) => setEdit({ ...edit, author: e.target.value })} /></Field>
             <Field label={B.pages}><input className="field" dir="ltr" inputMode="numeric" value={edit.pages} onChange={(e) => setEdit({ ...edit, pages: Number(e.target.value) || 0 })} /></Field>
           </div>
+          <Field label={t.reading.kind}>
+            <select className="field" value={edit.unit} onChange={(e) => setEdit({ ...edit, unit: e.target.value === "narration" ? "narration" : "page" })}>
+              <option value="page">{t.reading.kinds.page}</option>
+              <option value="narration">{t.reading.kinds.narration}</option>
+            </select>
+          </Field>
           <Field label={B.description}><textarea className="field" rows={3} maxLength={500} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
           {edit.coverUrl && <Check label={B.removeCover} checked={Boolean(edit.removeCover)} onChange={(v) => setEdit({ ...edit, removeCover: v })} />}
           <div className="flex gap-2">
@@ -430,7 +436,7 @@ function BooksTab({ data, send, busy }: TabProps) {
             )}
             <div className="min-w-0 flex-1 space-y-1">
               <p className="font-bold">{b.title} {b.hidden && <span className="text-sm text-muted">({B.hidden})</span>}</p>
-              <p className="text-sm text-muted">{b.author && `${b.author} · `}{b.pages} · {B.readers(b.readers)}{b.reasons.length > 0 && ` · ${B.reports(b.reasons.length)}`}</p>
+              <p className="text-sm text-muted">{b.author && `${b.author} · `}{t.reading.u[b.unit].count(b.pages)} · {B.readers(b.readers)}{b.reasons.length > 0 && ` · ${B.reports(b.reasons.length)}`}</p>
               {b.reasons.length > 0 && (
                 <ul className="list-disc ps-5 text-sm">
                   {b.reasons.slice(0, 5).map((r, i) => <li key={i}>{r || A.reports.noReason}</li>)}

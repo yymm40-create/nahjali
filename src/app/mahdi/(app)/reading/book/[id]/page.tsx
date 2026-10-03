@@ -40,6 +40,7 @@ export default function BookPage() {
   }
   const { book, state } = entry;
   const p = progress(book.id);
+  const U = t.reading.u[book.unit];
   const sessions = [...sessionsOf(book.id)].reverse();
   const notes = sessions.filter((s) => s.note);
 
@@ -62,13 +63,13 @@ export default function BookPage() {
   async function addPages(e: React.FormEvent) {
     e.preventDefault();
     const ranges = parsePagesInput(pagesText, book.pages);
-    if (!ranges || ranges.length === 0) return setPagesError(t.reading.pagesInvalid(book.pages));
+    if (!ranges || ranges.length === 0) return setPagesError(U.invalid(book.pages));
     setBusy(true);
     setPagesError("");
     try {
       const fresh = await sendSession(userId, { bookId: book.id, date: today, seconds: 0, ranges, note: "" });
       if (fresh) apply(fresh);
-      toast(fresh ? t.reading.pagesSaved : t.reading.savedOffline);
+      toast(fresh ? U.saved : t.reading.savedOffline);
       setPagesText("");
     } catch (err) {
       setPagesError((err as Error).message);
@@ -87,7 +88,7 @@ export default function BookPage() {
         <div className="min-w-0 space-y-1">
           <h1 className="m-display text-2xl">{book.title}</h1>
           {book.author && <p className="m-muted">{book.author}</p>}
-          <p className="m-num text-sm m-muted">{t.reading.pages(book.pages)}</p>
+          <p className="m-num text-sm m-muted">{U.count(book.pages)}</p>
           {state === "finished" && entry.finishedAt && <p className="m-chip m-chip-success w-fit">{t.reading.finishedOn(fmtDate(entry.finishedAt.slice(0, 10)))}</p>}
         </div>
       </header>
@@ -95,18 +96,18 @@ export default function BookPage() {
 
       <section className="m-card space-y-3 p-5" aria-labelledby="prog">
         <div className="flex items-baseline justify-between">
-          <h2 id="prog" className="font-semibold">{t.reading.readPages}</h2>
+          <h2 id="prog" className="font-semibold">{U.read}</h2>
           <span className="m-num text-2xl font-semibold">{fmtPct(p.share)}</span>
         </div>
-        <div className="m-pagemap" role="img" aria-label={`${t.reading.pageMap}: ${formatRanges(p.ranges) || "—"}`}>
+        <div className="m-pagemap" role="img" aria-label={`${U.map}: ${formatRanges(p.ranges) || "—"}`}>
           {p.ranges.map(([a, b]) => (
             <span key={a} style={{ insetInlineStart: `${((a - 1) / book.pages) * 100}%`, width: `${((b - a + 1) / book.pages) * 100}%` }} />
           ))}
         </div>
         <p className="m-num text-sm m-muted">
-          {t.reading.progress(p.readPages, p.totalPages)}
+          {U.progress(p.readPages, p.totalPages)}
           {p.seconds > 0 && <> · {duration(p.seconds)}</>}
-          {p.pagesPerHour !== null && <> · {t.reading.speed(Math.round(p.pagesPerHour))}</>}
+          {p.pagesPerHour !== null && <> · {U.speed(Math.round(p.pagesPerHour))}</>}
           {p.secondsLeft !== null && <> · {t.reading.timeLeft(duration(p.secondsLeft))}</>}
         </p>
         {p.ranges.length > 0 && (
@@ -117,7 +118,7 @@ export default function BookPage() {
 
         {state === "reading" && (
           <Link href={`/mahdi/reading/session?book=${book.id}`} className="m-btn m-btn-primary w-full">
-            <Icon name="timer" /> {p.nextPage && p.readPages > 0 ? t.reading.continueFrom(p.nextPage) : t.reading.start}
+            <Icon name="timer" /> {p.nextPage && p.readPages > 0 ? U.continueFrom(p.nextPage) : t.reading.start}
           </Link>
         )}
         {state !== "reading" && (
@@ -137,12 +138,12 @@ export default function BookPage() {
 
       <form className="m-card space-y-3 p-5" onSubmit={addPages}>
         <label className="block">
-          <span className="m-label">{t.reading.addPages}</span>
+          <span className="m-label">{U.add}</span>
           <input className="m-field m-num" dir="ltr" value={pagesText} onChange={(e) => setPagesText(e.target.value)} placeholder="1-12, 30" />
-          <span className="m-hint mt-1 block">{t.reading.addPagesHint}</span>
+          <span className="m-hint mt-1 block">{U.addHint}</span>
         </label>
         {pagesError && <p className="m-error" role="alert">{pagesError}</p>}
-        <button className="m-btn m-btn-ghost w-full" disabled={busy || !pagesText.trim()}>{t.reading.addPagesSave}</button>
+        <button className="m-btn m-btn-ghost w-full" disabled={busy || !pagesText.trim()}>{U.addSave}</button>
       </form>
 
       {notes.length > 0 && (
@@ -170,7 +171,7 @@ export default function BookPage() {
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold">{fmtRelativeDay(s.date, today)}</span>
                   <span className="m-num block text-sm m-muted">
-                    {s.seconds > 0 ? duration(s.seconds) : t.reading.manual} · {t.reading.pages(s.pages)}
+                    {s.seconds > 0 ? duration(s.seconds) : t.reading.manual} · {U.count(s.pages)}
                     {s.ranges.length > 0 && <> (<bdi dir="ltr">{formatRanges(s.ranges)}</bdi>)</>}
                   </span>
                 </span>

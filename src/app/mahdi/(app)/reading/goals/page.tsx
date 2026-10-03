@@ -13,6 +13,7 @@ import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
 
 type GoalForm = { on: boolean; metric: ReadingMetric; target: string };
+const unitName = (m: ReadingMetric) => (m === "minutes" ? t.reading.unitMinutes : m === "narrations" ? t.reading.unitNarrations : t.reading.unitPages);
 const toForm = (g: ReadingGoals["daily"]): GoalForm => ({ on: Boolean(g), metric: g?.metric ?? "minutes", target: g ? String(g.target) : "" });
 
 /** Daily and weekly reading goals, the habit filled by each session, and the reading stats. */
@@ -53,12 +54,13 @@ export default function ReadingGoalsPage() {
   const goalRow = (label: string, g: GoalForm, set: (g: GoalForm) => void) => (
     <fieldset className="space-y-2">
       <legend className="m-label">{label}</legend>
-      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={label}>
+      <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label={label}>
         {(
           [
             ["off", t.reading.goalOff],
             ["minutes", t.reading.metricMinutes],
             ["pages", t.reading.metricPages],
+            ["narrations", t.reading.metricNarrations],
           ] as const
         ).map(([k, l]) => {
           const on = k === "off" ? !g.on : g.on && g.metric === k;
@@ -72,7 +74,7 @@ export default function ReadingGoalsPage() {
       {g.on && (
         <label className="flex items-center gap-2">
           <input className="m-field m-num w-28" inputMode="numeric" required value={g.target} onChange={(e) => set({ ...g, target: e.target.value })} aria-label={`${label}: ${t.reading.goalValue}`} />
-          <span className="m-muted">{g.metric === "minutes" ? t.reading.unitMinutes : t.reading.unitPages}</span>
+          <span className="m-muted">{unitName(g.metric)}</span>
         </label>
       )}
     </fieldset>
@@ -96,7 +98,9 @@ export default function ReadingGoalsPage() {
           {(
             [
               [t.reading.totalTime, duration(summary.month.seconds), t.reading.month],
-              [t.reading.statPages, fmtNum(summary.month.pages), t.reading.month],
+              summary.month.narrations > 0
+                ? [t.reading.statPages, `${fmtNum(summary.month.pages)} · ${t.reading.narrations(summary.month.narrations)}`, t.reading.month]
+                : [t.reading.statPages, fmtNum(summary.month.pages), t.reading.month],
               [t.reading.sessionsCount, fmtNum(summary.month.sessions), t.reading.month],
               [t.reading.booksFinished, fmtNum(finished), ""],
             ] as const
@@ -110,9 +114,9 @@ export default function ReadingGoalsPage() {
         </dl>
         {(dg || wg) && (
           <p className="m-num text-sm m-muted">
-            {dg && `${t.reading.dailyGoal}: ${t.reading.goalDone(dg.done, dg.target, dg.metric === "minutes" ? t.reading.unitMinutes : t.reading.unitPages)}`}
+            {dg && `${t.reading.dailyGoal}: ${t.reading.goalDone(dg.done, dg.target, unitName(dg.metric))}`}
             {dg && wg && " · "}
-            {wg && `${t.reading.weeklyGoal}: ${t.reading.goalDone(wg.done, wg.target, wg.metric === "minutes" ? t.reading.unitMinutes : t.reading.unitPages)}`}
+            {wg && `${t.reading.weeklyGoal}: ${t.reading.goalDone(wg.done, wg.target, unitName(wg.metric))}`}
           </p>
         )}
         <div>
@@ -142,10 +146,10 @@ export default function ReadingGoalsPage() {
             ))}
           </select>
           {habitId && (
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.reading.habitMetric}>
-              {(["minutes", "pages"] as const).map((m) => (
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t.reading.habitMetric}>
+              {(["minutes", "pages", "narrations"] as const).map((m) => (
                 <button key={m} type="button" role="radio" aria-checked={habitMetric === m} className="m-option min-h-11 px-2 text-sm font-semibold" onClick={() => setHabitMetric(m)}>
-                  {m === "minutes" ? t.reading.metricMinutes : t.reading.metricPages}
+                  {m === "minutes" ? t.reading.metricMinutes : m === "narrations" ? t.reading.metricNarrations : t.reading.metricPages}
                 </button>
               ))}
             </div>

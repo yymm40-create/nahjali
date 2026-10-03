@@ -1,23 +1,30 @@
 // «متعلّم على سبيل نجاة»: pages, progress, time and goals of reading. Pure functions (no React, no database).
+// A book is counted in pages, or (for books of narrations such as al-Kafi) in narrations: the same numbering rules
+// apply to both, so "pages" below means "units of the book" unless a function says otherwise.
 import { addDays, startOfMonth, startOfWeek, type ISODate } from "./dates";
 
 /** Pages read, as inclusive ranges: [[1, 12], [30, 30]]. */
 export type PageRange = [number, number];
 
+/** How a book is counted: pages, or numbered narrations (روايات). */
+export type BookUnit = "page" | "narration";
+
 export interface ReadingSession {
   id: string;
   bookId: string;
+  /** The unit of the session's book. */
+  unit: BookUnit;
   /** The day it counts for (the user's own calendar). */
   date: ISODate;
   /** 0 for pages added by hand without the timer. */
   seconds: number;
   ranges: PageRange[];
-  /** Distinct pages in this session. */
+  /** Distinct pages (or narrations, for a book of narrations) in this session. */
   pages: number;
   note: string;
 }
 
-export type ReadingMetric = "minutes" | "pages";
+export type ReadingMetric = "minutes" | "pages" | "narrations";
 
 export interface ReadingGoals {
   daily: { metric: ReadingMetric; target: number } | null;
@@ -121,12 +128,20 @@ export function bookProgress(sessions: readonly ReadingSession[], totalPages: nu
 
 export interface ReadingTotals {
   seconds: number;
+  /** Pages read in books counted by pages. */
   pages: number;
+  /** Narrations read in books counted by narrations. */
+  narrations: number;
   sessions: number;
 }
 
-const add = (t: ReadingTotals, s: ReadingSession) => ({ seconds: t.seconds + s.seconds, pages: t.pages + s.pages, sessions: t.sessions + 1 });
-const ZERO: ReadingTotals = { seconds: 0, pages: 0, sessions: 0 };
+const add = (t: ReadingTotals, s: ReadingSession): ReadingTotals => ({
+  seconds: t.seconds + s.seconds,
+  pages: t.pages + (s.unit === "narration" ? 0 : s.pages),
+  narrations: t.narrations + (s.unit === "narration" ? s.pages : 0),
+  sessions: t.sessions + 1,
+});
+const ZERO: ReadingTotals = { seconds: 0, pages: 0, narrations: 0, sessions: 0 };
 
 /** Totals of the sessions between two days (inclusive). */
 export function readingTotals(sessions: readonly ReadingSession[], from: ISODate, to: ISODate): ReadingTotals {
@@ -140,7 +155,7 @@ export interface ReadingSummary {
   /** Consecutive days with reading, ending today (or yesterday, if today has nothing yet). */
   streak: number;
   /** The last 7 days, oldest first. */
-  last7: { date: ISODate; seconds: number; pages: number }[];
+  last7: { date: ISODate; seconds: number; pages: number; narrations: number }[];
 }
 
 export function readingSummary(sessions: readonly ReadingSession[], today: ISODate, weekStart: number): ReadingSummary {
@@ -159,21 +174,22 @@ export function readingSummary(sessions: readonly ReadingSession[], today: ISODa
     last7: Array.from({ length: 7 }, (_, k) => {
       const date = addDays(today, k - 6);
       const t = readingTotals(sessions, date, date);
-      return { date, seconds: t.seconds, pages: t.pages };
+      return { date, seconds: t.seconds, pages: t.pages, narrations: t.narrations };
     }),
   };
 }
 
-/** Progress towards a goal: the amount done (minutes or pages) and the share 0…1 (capped). */
+/** Progress towards a goal: the amount done (minutes, pages or narrations) and the share 0…1 (capped). */
 export function goalProgress(goal: { metric: ReadingMetric; target: number } | null, t: ReadingTotals) {
   if (!goal) return null;
-  const done = goal.metric === "minutes" ? Math.floor(t.seconds / 60) : t.pages;
+  const done = goal.metric === "minutes" ? Math.floor(t.seconds / 60) : goal.metric === "narrations" ? t.narrations : t.pages;
   return { done, target: goal.target, share: Math.min(1, done / goal.target), metric: goal.metric };
 }
 
-/** What a session adds to the linked habit (minutes or pages; a done/not-done habit becomes done). */
-export function habitDelta(metric: ReadingMetric, seconds: number, pages: number): number {
-  return metric === "minutes" ? Math.floor(seconds / 60) : pages;
+/** What a session adds to the linked habit: minutes, or the pages / narrations read (only from books counted that way). */
+export function habitDelta(metric: ReadingMetric, seconds: number, count: number, unit: BookUnit): number {
+  if (metric === "minutes") return Math.floor(seconds / 60);
+  return (metric === "narrations") === (unit === "narration") ? count : 0;
 }
 
 /**

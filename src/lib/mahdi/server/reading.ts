@@ -1,6 +1,6 @@
 // SERVER ONLY. My library, reading sessions and goals (through RLS: only my own rows), and the shared catalogue.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { mergeRanges, type PageRange, type ReadingGoals, type ReadingSession } from "../engine";
+import { mergeRanges, type BookUnit, type PageRange, type ReadingGoals, type ReadingSession } from "../engine";
 import type { Book, LibraryEntry, ReadingData } from "../types";
 import { selectAll } from "./snapshot";
 
@@ -16,19 +16,21 @@ export interface BookRow {
   title: string;
   author: string;
   pages: number;
+  unit: BookUnit;
   description: string;
   cover_path: string | null;
   added_by: string | null;
   hidden_at: string | null;
 }
 
-export const BOOK_COLUMNS = "id, title, author, pages, description, cover_path, added_by, hidden_at";
+export const BOOK_COLUMNS = "id, title, author, pages, unit, description, cover_path, added_by, hidden_at";
 
 export const bookFromRow = (r: BookRow, me: string): Book => ({
   id: r.id,
   title: r.title,
   author: r.author,
   pages: r.pages,
+  unit: r.unit === "narration" ? "narration" : "page",
   description: r.description,
   coverUrl: coverUrl(r.cover_path),
   addedByMe: r.added_by === me,
@@ -47,9 +49,10 @@ interface SessionRow {
   note: string;
 }
 
-export const sessionFromRow = (r: SessionRow): ReadingSession => ({
+export const sessionFromRow = (r: SessionRow, unit: BookUnit = "page"): ReadingSession => ({
   id: r.id,
   bookId: r.book_id,
+  unit,
   date: r.log_date,
   seconds: r.seconds,
   ranges: mergeRanges(Array.isArray(r.ranges) ? (r.ranges as PageRange[]) : []),
@@ -67,11 +70,13 @@ export async function loadReading(supabase: SupabaseClient, me: string): Promise
     supabase.from("mahdi_reading_goals").select("*").maybeSingle(),
   ]);
   const g = goals.data;
+  const library = ((lib.data ?? []) as unknown as { state: LibraryEntry["state"]; added_at: string; finished_at: string | null; book: BookRow | null }[])
+    .filter((r) => r.book)
+    .map((r) => ({ book: bookFromRow(r.book!, me), state: r.state, addedAt: r.added_at, finishedAt: r.finished_at }));
+  const unitOf = new Map(library.map((e) => [e.book.id, e.book.unit]));
   return {
-    library: ((lib.data ?? []) as unknown as { state: LibraryEntry["state"]; added_at: string; finished_at: string | null; book: BookRow | null }[])
-      .filter((r) => r.book)
-      .map((r) => ({ book: bookFromRow(r.book!, me), state: r.state, addedAt: r.added_at, finishedAt: r.finished_at })),
-    sessions: sessions.map(sessionFromRow),
+    library,
+    sessions: sessions.map((s) => sessionFromRow(s, unitOf.get(s.book_id))),
     goals: g
       ? {
           daily: g.daily_metric ? { metric: g.daily_metric, target: g.daily_target } : null,

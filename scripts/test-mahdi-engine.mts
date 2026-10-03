@@ -9,7 +9,7 @@ import type { EngineContext, Item, Version } from "../src/lib/mahdi/engine/types
 import { alreadySent, dueSlot, inQuietHours, minuteOfDayIn, minutesSince, reminderSlots, toMinutes } from "../src/lib/mahdi/engine/reminders";
 import { boardScore, MIN_GOALS, rankEntries, type BoardEntry } from "../src/lib/mahdi/server/leaderboard";
 import type { Habit } from "../src/lib/mahdi/types";
-import { bookProgress, countPages, formatRanges, goalProgress, mergeRanges, normalizeTitle, parsePagesInput, readingSummary, USERNAME_RE, type ReadingSession } from "../src/lib/mahdi/engine/reading";
+import { bookProgress, countPages, formatRanges, goalProgress, habitDelta, mergeRanges, normalizeTitle, parsePagesInput, readingSummary, USERNAME_RE, type ReadingSession } from "../src/lib/mahdi/engine/reading";
 
 let failures = 0;
 const check = (ok: boolean, label: string, detail?: unknown) => {
@@ -237,7 +237,7 @@ check(todayIn("America/New_York", new Date("2026-10-03T22:30:00Z")) === "2026-10
   check(JSON.stringify(parsePagesInput("10 إلى 12")) === "[[10,12]]", "«إلى» between two pages");
   check(parsePagesInput("5-abc") === null && parsePagesInput("900", 300) === null, "nonsense or a page beyond the book is refused");
   check(formatRanges([[1, 12], [30, 30]]) === "1–12، 30", "ranges shown back to the reader");
-  const ses = (id: string, date: string, seconds: number, ranges: [number, number][]): ReadingSession => ({ id, bookId: "b", date, seconds, ranges, pages: countPages(ranges), note: "" });
+  const ses = (id: string, date: string, seconds: number, ranges: [number, number][], unit: "page" | "narration" = "page"): ReadingSession => ({ id, bookId: "b", unit, date, seconds, ranges, pages: countPages(ranges), note: "" });
   const list = [ses("1", "2026-10-06", 1800, [[1, 20]]), ses("2", "2026-10-07", 1800, [[15, 40]]), ses("3", "2026-10-08", 0, [[100, 109]])];
   const p = bookProgress(list, 200);
   check(p.readPages === 50 && near(p.share, 0.25), "progress = distinct pages / book pages", p);
@@ -248,6 +248,13 @@ check(todayIn("America/New_York", new Date("2026-10-03T22:30:00Z")) === "2026-10
   check(sum.today.pages === 10 && sum.week.seconds === 3600 && sum.streak === 3, "today, this week and the reading streak", sum);
   check(readingSummary(list, "2026-10-09", 6).streak === 3 && readingSummary(list, "2026-10-10", 6).streak === 0, "the streak waits for today, then breaks after a missed day");
   check(goalProgress({ metric: "minutes", target: 20 }, sum.week)?.share === 1 && goalProgress({ metric: "pages", target: 40 }, sum.today)?.done === 10, "goals in minutes or pages, capped at 100%");
+  // A book of narrations (e.g. al-Kafi) is followed by narration number, and counted apart from pages
+  const mixed = [...list, ses("5", "2026-10-08", 600, [[1, 12]], "narration")];
+  const ms = readingSummary(mixed, "2026-10-08", 6);
+  check(ms.today.pages === 10 && ms.today.narrations === 12 && ms.today.seconds === 600, "narrations are counted apart from pages", ms.today);
+  check(goalProgress({ metric: "narrations", target: 24 }, ms.today)?.share === 0.5 && goalProgress({ metric: "pages", target: 20 }, ms.today)?.done === 10, "a goal in narrations counts only books of narrations");
+  check(habitDelta("narrations", 600, 12, "narration") === 12 && habitDelta("pages", 600, 12, "narration") === 0 && habitDelta("minutes", 600, 12, "narration") === 10, "the linked habit gets narrations, pages or minutes as chosen");
+  check(bookProgress([ses("6", "2026-10-08", 0, [[1, 40], [41, 50]], "narration")], 100).nextPage === 51, "progress in a book of narrations works like pages");
   check(normalizeTitle("الكافِي") === normalizeTitle("الكافى") && normalizeTitle("أصول  الكافي") === "اصول الكافي", "Arabic titles match with or without diacritics and alef forms");
   check(USERNAME_RE.test("abu_ali") && !USERNAME_RE.test("1abc") && !USERNAME_RE.test("ab") && !USERNAME_RE.test("علي"), "usernames: Latin letters, digits and _, 3–20, starting with a letter");
 }
