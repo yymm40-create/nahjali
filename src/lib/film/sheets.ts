@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
+import { assertCanEdit } from "./limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { addMessage, buildTurns } from "./conversation";
@@ -232,7 +233,9 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (!text || text.length > 4000) throw new UserError("اكتب التعديل (٤٠٠٠ حرف كحد أقصى).", 400);
       const target = input.versionId ? versions.find((x) => x.id === input.versionId) : undefined;
       const prefix =
-        input.mode === "direct" ? "توجيه / أمر جديد:\n" : target?.kind === "sheet_prompt" ? `تعديل على ${target.ref_key}:\n` : "";
+        input.mode === "direct" ? "توجيه / أمر جديد:\n" : target?.kind === "sheet_prompt" ? `تعديل على ${target.ref_key}:\n` : "تعديل:\n";
+      // Counted against the owner's edit limit (/admin/limits)
+      await assertCanEdit(project.id, "sheets", user.email);
       const id = await addUserMessage(project.id, prefix + text);
       return { jobId: await queueReply(project, user, id) };
     }

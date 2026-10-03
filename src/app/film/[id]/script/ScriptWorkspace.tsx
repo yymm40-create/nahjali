@@ -7,7 +7,7 @@ import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
-import ActionBar from "../../ActionBar";
+import ActionBar, { EditsLeftContext } from "../../ActionBar";
 import type { ScriptVersion } from "@/lib/film/script";
 import { KIND_LABELS, KIND_ORDER, type ScriptKind } from "@config/film-prompts/screenwriter";
 import { STATUS_LABELS } from "@config/film";
@@ -18,6 +18,8 @@ interface Props {
   versions: ScriptVersion[];
   job: { status: string; error: string | null } | null;
   stage: string;
+  /** Edits left in this stage (the owner's limits); null = no limit. */
+  editsLeft: number | null;
 }
 
 const COST_HINT = "كل رد من السيناريست يكلف تقريبًا من $0.05 إلى $0.60";
@@ -25,7 +27,7 @@ const COST_HINT = "كل رد من السيناريست يكلف تقريبًا �
 const chipClass = (s: string) =>
   s === "approved" ? "bg-teal text-white" : s === "awaiting_approval" ? "bg-gold text-on-gold" : "";
 
-export default function ScriptWorkspace({ projectId, hasStory, versions, job, stage }: Props) {
+export default function ScriptWorkspace({ projectId, hasStory, versions, job, stage, editsLeft }: Props) {
   const router = useRouter();
   const [running, setRunning] = useState(job?.status === "running");
   const [busy, setBusy] = useState(false);
@@ -94,6 +96,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   }
 
   return (
+    <EditsLeftContext value={editsLeft}>
     <div className="space-y-4">
       {shown.map((v) => {
         const isCurrent = v.id === current?.id && v.status === "awaiting_approval";
@@ -195,5 +198,6 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
       {!running && <p className="text-center text-xs font-bold text-muted">{COST_HINT}</p>}
       {error && <p className="error-box">{error}</p>}
     </div>
+    </EditsLeftContext>
   );
 }

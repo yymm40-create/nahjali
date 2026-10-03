@@ -8,7 +8,7 @@ import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import StepCard from "../../StepCard";
-import type { SendMode } from "../../ActionBar";
+import { EditsLeftContext, type SendMode } from "../../ActionBar";
 import type { DirectorVersion } from "@/lib/film/director";
 import { VIDEO_MODELS } from "@config/film";
 
@@ -29,11 +29,13 @@ interface Props {
   library: { name: string; sheetId: string; url: string }[];
   job: { status: string; error: string | null } | null;
   videosRunning: number;
+  /** Edits left in this stage (the owner's limits); null = no limit. */
+  editsLeft: number | null;
 }
 
 const SUPER_HINT = "قواعد إخراج وكاميرا أعمق من الدورة، ويكتب البرومبت بصيغتها (إنجليزي + صيني). كل رد من المخرج يكلّف أكثر لأن المهارة طويلة.";
 
-export default function DirectorWorkspace({ projectId, stage, versions, superDirector, videos, library, job, videosRunning }: Props) {
+export default function DirectorWorkspace({ projectId, stage, versions, superDirector, videos, library, job, videosRunning, editsLeft }: Props) {
   const router = useRouter();
   const [writing, setWriting] = useState(job?.status === "running");
   const [rendering, setRendering] = useState(videosRunning > 0);
@@ -100,6 +102,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
   };
 
   return (
+    <EditsLeftContext value={editsLeft}>
     <div className="space-y-4">
       {library.length > 0 && (
         <section className="card space-y-2 p-4">
@@ -280,6 +283,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
       ) : null}
       {error && <p className="error-box">{error}</p>}
     </div>
+    </EditsLeftContext>
   );
 }
 

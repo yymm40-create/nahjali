@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
+import { editsLeft } from "@/lib/film/limits";
 import { latestScriptJob, scriptVersions } from "@/lib/film/script";
 import { projectCost } from "@/lib/film/usage";
 import ScriptWorkspace from "./ScriptWorkspace";
@@ -28,6 +29,7 @@ export default async function ScriptPage({ params }: PageProps<"/film/[id]/scrip
         </p>
       </header>
       <ScriptWorkspace
+        editsLeft={await editsLeft(id, "screenwriter", user.email)}
         projectId={id}
         hasStory={project.story.trim().length >= 10}
         versions={versions}

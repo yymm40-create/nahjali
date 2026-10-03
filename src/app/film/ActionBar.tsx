@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 
 export type SendMode = "edit" | "direct";
+
+/** Edits the user has left in this stage (the owner's limits, /admin/limits); null = no limit. */
+export const EditsLeftContext = createContext<number | null>(null);
 
 /**
  * The same actions at every film step: approval on one side; on the other, an edit of this deliverable
@@ -24,7 +27,10 @@ export default function ActionBar({
 }) {
   const [mode, setMode] = useState<SendMode | null>(null);
   const [text, setText] = useState("");
-  if (busy || (!onApprove && !onSend)) return null;
+  const left = useContext(EditsLeftContext);
+  const editable = Boolean(onSend);
+  const send = left === 0 ? undefined : onSend;
+  if (busy || (!onApprove && !editable)) return null;
   const toggle = (m: SendMode) => setMode(mode === m ? null : m);
   return (
     <div className="space-y-2">
@@ -32,14 +38,19 @@ export default function ActionBar({
         {onApprove && (
           <button className="btn btn-primary flex-1" onClick={onApprove}>{approveLabel}</button>
         )}
-        {onSend && (
+        {send && (
           <div className="flex flex-1 gap-2">
             <button className={`btn flex-1 px-2 ${mode === "edit" ? "btn-secondary" : "btn-ghost"}`} onClick={() => toggle("edit")}>تعديل ✏️</button>
             <button className={`btn flex-1 px-2 ${mode === "direct" ? "btn-secondary" : "btn-ghost"}`} onClick={() => toggle("direct")}>توجيه أو أمر جديد 🧭</button>
           </div>
         )}
       </div>
-      {mode && onSend && (
+      {!editable ? null : left === 0 ? (
+        <p className="text-center text-xs font-bold text-muted">خلصت التعديلات المتاحة لك في هذي المرحلة.</p>
+      ) : left !== null && send ? (
+        <p className="text-center text-xs font-bold text-muted">باقي لك {left} {left === 1 ? "تعديل" : "تعديلات"} في هذي المرحلة</p>
+      ) : null}
+      {mode && send && (
         <div className="space-y-2">
           {warning && <p className="rounded-2xl border-s-4 border-gold bg-gold/10 p-3 text-sm font-bold">⚠️ {warning}</p>}
           <textarea
@@ -51,7 +62,7 @@ export default function ActionBar({
           <button
             className="btn btn-secondary w-full"
             disabled={!text.trim()}
-            onClick={() => { onSend(mode, text); setMode(null); setText(""); }}
+            onClick={() => { send(mode, text); setMode(null); setText(""); }}
           >
             {mode === "edit" ? "أرسل التعديل" : "أرسل التوجيه"}
           </button>

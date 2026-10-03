@@ -6,6 +6,7 @@ import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { filmTrialState, filmTrialUsers, filmTrialVideos } from "./access";
+import { assertCanEdit, getLimit } from "./limits";
 import { isAdmin } from "@config/site";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
@@ -285,7 +286,9 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       if (!text || text.length > 4000) throw new UserError("اكتب التعديل (٤٠٠٠ حرف كحد أقصى).", 400);
       const target = input.versionId ? versions.find((x) => x.id === input.versionId) : undefined;
       const prefix =
-        input.mode === "direct" ? "توجيه / أمر جديد:\n" : target?.kind === "dir_generation" ? `تعديل على ${target.ref_key}:\n` : "";
+        input.mode === "direct" ? "توجيه / أمر جديد:\n" : target?.kind === "dir_generation" ? `تعديل على ${target.ref_key}:\n` : "تعديل:\n";
+      // Counted against the owner's edit limit (/admin/limits)
+      await assertCanEdit(project.id, "director", user.email);
       const id = await addUserMessage(project.id, prefix + text);
       return { jobId: await queueReply(project, user, id) };
     }
@@ -319,6 +322,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       if (!text || text.length > 4000) throw new UserError("اكتب تعديلاتك (٤٠٠٠ حرف كحد أقصى).", 400);
       const a = (await directorVideos(project.id)).find((x) => x.id === input.assetId);
       if (!a || !["generated", "approved", "rejected"].includes(a.status)) throw new UserError("ما لقينا الفيديو.", 404);
+      await assertCanEdit(project.id, "director", user.email);
       const id = await addUserMessage(project.id, `ملاحظاتي على فيديو ${a.ref_key} بعد توليده:\n${text}`);
       return { jobId: await queueReply(project, user, id) };
     }
@@ -426,8 +430,8 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
   const trial = FILM_PUBLIC_TRIAL.open && !isAdmin(user.email);
   // (only in a project started during the trial, by one of its users)
   const trialProject = new Date(project.created_at) >= new Date(FILM_PUBLIC_TRIAL.since) && (await filmTrialUsers()).includes(user.id);
-  if (trial && (!trialProject || (await filmTrialState(user)) !== "open" || (await filmTrialVideos(user.id)).taken > 0)) {
-    throw new UserError("تجربتك المجانية تشمل فيديو واحد، وهو انصنع أو قاعد يتولد. شكرًا لك!", 403);
+  if (trial && (!trialProject || (await filmTrialState(user)) !== "open" || (await filmTrialVideos(user.id)).taken >= (await getLimit("videos", user.email)))) {
+    throw new UserError("خلصت فيديوهات تجربتك المجانية (أو آخرها قاعد يتولد). شكرًا لك!", 403);
   }
 
   const meta = { ...(trial ? { trial: true } : {}), model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true };

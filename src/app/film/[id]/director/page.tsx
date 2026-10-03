@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
+import { editsLeft } from "@/lib/film/limits";
 import { checkVideos, directorVersions, directorVideos, referenceLibrary, superDirectorOn } from "@/lib/film/director";
 import { latestJob } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
@@ -47,6 +48,7 @@ export default async function DirectorPage({ params }: PageProps<"/film/[id]/dir
         </p>
       </header>
       <DirectorWorkspace
+        editsLeft={await editsLeft(id, "director", user.email)}
         projectId={id}
         stage={project.stage}
         versions={versions}
