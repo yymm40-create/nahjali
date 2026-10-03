@@ -210,7 +210,3 @@ export function normalizeTitle(s: string): string {
     .toLowerCase()
     .slice(0, 200);
 }
-
-/** Usernames: lowercase Latin letters, digits and _, 3–20 characters, starting with a letter. */
-export const USERNAME_RE = /^[a-z][a-z0-9_]{2,19}$/;
-export const cleanUsername = (s: string) => s.trim().replace(/^@/, "").toLowerCase();

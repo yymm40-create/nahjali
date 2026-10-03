@@ -1,6 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { usernameGate } from "@/lib/username";
 
 /**
  * Verifies a one-time email token (token_hash) and signs the user in.
@@ -15,8 +16,11 @@ export async function GET(request: Request) {
 
   if (tokenHash && type) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
-    if (!error) return NextResponse.redirect(`${origin}${safeNext}`);
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
+    if (!error) {
+      const gate = data.user ? await usernameGate(supabase, data.user, safeNext).catch(() => null) : null;
+      return NextResponse.redirect(`${origin}${gate ?? safeNext}`);
+    }
   }
   return NextResponse.redirect(`${origin}/login?error=1`);
 }

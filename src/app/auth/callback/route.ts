@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { usernameGate } from "@/lib/username";
 
 /** Google sends the user back here; we exchange the code for a session cookie. */
 export async function GET(request: Request) {
@@ -12,8 +13,12 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(`${origin}${safeNext}`);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      // Every account has a unique username, chosen (or confirmed) right after signing in
+      const gate = data.user ? await usernameGate(supabase, data.user, safeNext).catch(() => null) : null;
+      return NextResponse.redirect(`${origin}${gate ?? safeNext}`);
+    }
   }
   // «لأجل المهدي» has its own sign-in page
   const loginPage = safeNext === "/mahdi" || safeNext.startsWith("/mahdi/") ? "/mahdi/login" : "/login";

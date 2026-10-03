@@ -9,12 +9,19 @@ import type { Shrine } from "@/lib/mahdi/types";
 import Icon from "@/components/mahdi/Icon";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
 import { useLook } from "@/components/mahdi/ThemeRoot";
+import { UsernameField, useUsernameCheck } from "@/components/mahdi/UsernameForm";
+import { cleanUsername, suggestUsername } from "@/lib/username-rules";
 
-export default function Onboarding({ shrines, suggestedName }: { shrines: Shrine[]; suggestedName: string }) {
+export default function Onboarding({ shrines, suggestedName, username: existingUsername }: { shrines: Shrine[]; suggestedName: string; username: string | null }) {
   const router = useRouter();
   const look = useLook();
   const [step, setStep] = useState(0);
   const [name, setName] = useState(suggestedName);
+  // The username follows the name until the person edits it; an account that already has one keeps it
+  const [username, setUsername] = useState<string | null>(existingUsername);
+  const [handle, setHandle] = useState(suggestUsername(suggestedName) ?? "");
+  const [handleTouched, setHandleTouched] = useState(false);
+  const handleStatus = useUsernameCheck(handle, username);
   const [shrineId, setShrineId] = useState(look.shrine?.id ?? DEFAULT_SHRINE);
   const [project, setProject] = useState("");
   const [custom, setCustom] = useState("");
@@ -81,20 +88,48 @@ export default function Onboarding({ shrines, suggestedName }: { shrines: Shrine
         {step === 1 && (
           <form
             className="space-y-4"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (name.trim()) next();
-              else setError(t.onboarding.nameRequired);
+              if (!name.trim()) return setError(t.onboarding.nameRequired);
+              if (username) return next();
+              // The username is saved now: a taken name has to be changed before going on
+              if (handleStatus.state !== "ok") return setError(handleStatus.message || t.username.invalid);
+              setBusy(true);
+              try {
+                const r = await mahdiFetch<{ username: string }>("/api/mahdi/username", { method: "PUT", json: { username: cleanUsername(handle) } });
+                setUsername(r.username);
+                next();
+              } catch (err) {
+                setError((err as Error).message);
+              }
+              setBusy(false);
             }}
           >
             <h1 className="text-2xl font-semibold">{t.onboarding.nameTitle}</h1>
             <label className="block">
               <span className="sr-only">{t.more.name}</span>
-              <input className="m-field text-lg" value={name} onChange={(e) => setName(e.target.value)} maxLength={MAHDI_LIMITS.nameMax} placeholder={t.onboarding.namePlaceholder} autoFocus required />
+              <input
+                className="m-field text-lg"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError("");
+                  if (!handleTouched) setHandle(suggestUsername(e.target.value) ?? "");
+                }}
+                maxLength={MAHDI_LIMITS.nameMax}
+                placeholder={t.onboarding.namePlaceholder}
+                autoFocus
+                required
+              />
             </label>
             {name.trim() && <p className="m-display m-gold text-2xl">{t.mawla(name.trim())}</p>}
             <p className="m-hint">{t.onboarding.nameHint}</p>
-            <Nav back={back} canNext={Boolean(name.trim())} submit />
+            {username ? (
+              <p className="m-chip w-fit" dir="auto">{t.username.yours(username)}</p>
+            ) : (
+              <UsernameField value={handle} onChange={(v) => (setHandle(v), setHandleTouched(true), setError(""))} status={handleStatus} />
+            )}
+            <Nav back={back} canNext={Boolean(name.trim()) && !busy && (Boolean(username) || handleStatus.state === "ok")} submit />
           </form>
         )}
 

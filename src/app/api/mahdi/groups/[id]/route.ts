@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cleanUsername, USERNAME_RE } from "@/lib/mahdi/engine";
+import { cleanUsername, USERNAME_RE } from "@/lib/username-rules";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { groupCount, groupMembers, groupRanking, MAX_GROUPS, MAX_MEMBERS, requireGroup } from "@/lib/mahdi/server/groups";

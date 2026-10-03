@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getOwnedOrder, handle, MESSAGES, requireApiUser, UserError } from "@/lib/api";
 import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
 import { claimOrder, getCharacters, setOrderStatus, sourcePath } from "@/lib/orders";
-import { checkRateLimit, logGeneration } from "@/lib/generation";
+import { checkRateLimit, logGeneration, withHairCheck } from "@/lib/generation";
 import { generateFromReference } from "@/lib/openai";
 import { characterPrompt } from "@config/prompts";
 import { STYLES } from "@config/styles";
@@ -37,9 +37,11 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
 
   let image: Buffer;
   try {
-    image = await generateFromReference(Buffer.from(await source.data.arrayBuffer()), characterPrompt(order.style, order.child_gender ?? "boy"),
-      order.quality,
-      { cutout: false, styleReference: STYLES[order.style].referenceImage },
+    const photo = Buffer.from(await source.data.arrayBuffer());
+    const gender = order.child_gender ?? "boy";
+    // A girl's picture is only kept when no hair at all is visible
+    image = await withHairCheck(gender, "character", order.id, order.quality, () =>
+      generateFromReference(photo, characterPrompt(order.style, gender), order.quality, { cutout: false, styleReference: STYLES[order.style].referenceImage }),
     );
     await logGeneration(order.id, "character", order.quality, true);
   } catch (err) {

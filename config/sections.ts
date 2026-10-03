@@ -6,7 +6,7 @@ export interface SiteSection {
   description: string;
   icon: string;
   href: string;
-  /** Only users with access to the film branch can open it; others see "قريبًا". */
+  /** The film section: listed for the site owner only (isAdmin in config/site.ts); hidden from everyone else. */
   requiresFilmAccess?: boolean;
 }
 

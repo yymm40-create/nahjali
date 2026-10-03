@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
-import { GENERATION_SETTINGS } from "@config/prompts";
+import { GENERATION_SETTINGS, HAIR_CHECK } from "@config/prompts";
 import type { QualityKey } from "@config/pricing";
 
 let client: OpenAI | null = null;
@@ -47,6 +47,36 @@ export async function generateFromReference(
   if (!b64) throw new Error("OpenAI returned no image");
   const image = Buffer.from(b64, "base64");
   return cutout ? ensureTransparent(image) : image;
+}
+
+/**
+ * Looks at a girl's picture and says whether any hair shows. true = hair visible (reject the picture),
+ * false = fully covered, null = the check itself could not run (logged; the caller decides).
+ */
+export async function hairVisible(png: Buffer): Promise<boolean | null> {
+  try {
+    // A smaller copy is enough to see the hairline and keeps the check cheap
+    const jpeg = await sharp(png).flatten({ background: "#ffffff" }).resize(768, 768, { fit: "inside" }).jpeg({ quality: 85 }).toBuffer();
+    const res = await openai().chat.completions.create({
+      model: HAIR_CHECK.model,
+      max_tokens: 3,
+      temperature: 0,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: HAIR_CHECK.prompt },
+            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${jpeg.toString("base64")}`, detail: "high" } },
+          ],
+        },
+      ],
+    });
+    const answer = (res.choices[0]?.message?.content ?? "").trim().toUpperCase();
+    return !answer.startsWith("NO");
+  } catch (err) {
+    console.error("hair check failed", err);
+    return null;
+  }
 }
 
 /**

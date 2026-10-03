@@ -31,12 +31,12 @@ export default async function Header() {
                 ☰
               </summary>
               <nav className="card absolute end-0 mt-2 flex w-48 flex-col p-2 text-base font-extrabold">
-                {SECTIONS.filter((s) => !s.requiresFilmAccess || filmAllowed).map((s) => (
+                {SECTIONS.filter((s) => !s.requiresFilmAccess || (filmAllowed && isAdmin(user?.email))).map((s) => (
                   <Link key={s.key} href={s.href} className={ITEM}>{s.icon} {s.title}</Link>
                 ))}
                 <hr className="my-1 border-line" />
                 <Link href="/my-booklets" className={ITEM}>📚 كتيباتي</Link>
-                {filmAllowed && <Link href="/film" className={ITEM}>🎞️ مشاريع أفلامي</Link>}
+                {filmAllowed && isAdmin(user?.email) && <Link href="/film" className={ITEM}>🎞️ مشاريع أفلامي</Link>}
                 {isAdmin(user.email) && (
                   <Link href="/admin" className={ITEM}>📊 لوحة التحكم</Link>
                 )}

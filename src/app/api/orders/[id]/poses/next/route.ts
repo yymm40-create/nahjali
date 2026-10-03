@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getOwnedOrder, handle, MESSAGES, requireApiUser, UserError } from "@/lib/api";
 import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
 import { getApprovedCharacter, setOrderStatus, staleBefore } from "@/lib/orders";
-import { checkRateLimit, logGeneration } from "@/lib/generation";
+import { checkRateLimit, logGeneration, withHairCheck } from "@/lib/generation";
 import { generateFromReference } from "@/lib/openai";
 import type { Order, Pose } from "@/lib/types";
 import { POSES, posePrompt } from "@config/prompts";
@@ -66,11 +66,12 @@ async function generatePose(order: Order, characterPath: string, pose: Pose) {
     const ref = await db.storage.from(BUCKETS.generated).download(characterPath);
     if (ref.error) throw ref.error;
 
-    // The APPROVED character is the reference, so every page shows the same character
-    const image = await generateFromReference(Buffer.from(await ref.data.arrayBuffer()), prompt, order.quality, {
-      cutout: true,
-      styleReference: STYLES[order.style].referenceImage,
-    });
+    // The APPROVED character is the reference, so every page shows the same character.
+    // A girl's pose with any visible hair is rejected and goes back to the queue (retried like a failed pose).
+    const reference = Buffer.from(await ref.data.arrayBuffer());
+    const image = await withHairCheck(order.child_gender ?? "boy", "pose", order.id, order.quality, () =>
+      generateFromReference(reference, prompt, order.quality, { cutout: true, styleReference: STYLES[order.style].referenceImage }),
+    );
     await logGeneration(order.id, "pose", order.quality, true);
 
     const path = `${order.user_id}/${order.id}/pose-${pose.pose_key}.png`;

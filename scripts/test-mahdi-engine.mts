@@ -9,7 +9,8 @@ import type { EngineContext, Item, Version } from "../src/lib/mahdi/engine/types
 import { alreadySent, dueSlot, inQuietHours, minuteOfDayIn, minutesSince, reminderSlots, toMinutes } from "../src/lib/mahdi/engine/reminders";
 import { boardScore, MIN_GOALS, rankEntries, type BoardEntry } from "../src/lib/mahdi/server/leaderboard";
 import type { Habit } from "../src/lib/mahdi/types";
-import { bookProgress, countPages, formatRanges, goalProgress, habitDelta, mergeRanges, normalizeTitle, parsePagesInput, readingSummary, USERNAME_RE, type ReadingSession } from "../src/lib/mahdi/engine/reading";
+import { bookProgress, countPages, formatRanges, goalProgress, habitDelta, mergeRanges, normalizeTitle, parsePagesInput, readingSummary, type ReadingSession } from "../src/lib/mahdi/engine/reading";
+import { cleanUsername, suggestUsername, USERNAME_RE } from "../src/lib/username-rules";
 
 let failures = 0;
 const check = (ok: boolean, label: string, detail?: unknown) => {
@@ -256,7 +257,9 @@ check(todayIn("America/New_York", new Date("2026-10-03T22:30:00Z")) === "2026-10
   check(habitDelta("narrations", 600, 12, "narration") === 12 && habitDelta("pages", 600, 12, "narration") === 0 && habitDelta("minutes", 600, 12, "narration") === 10, "the linked habit gets narrations, pages or minutes as chosen");
   check(bookProgress([ses("6", "2026-10-08", 0, [[1, 40], [41, 50]], "narration")], 100).nextPage === 51, "progress in a book of narrations works like pages");
   check(normalizeTitle("الكافِي") === normalizeTitle("الكافى") && normalizeTitle("أصول  الكافي") === "اصول الكافي", "Arabic titles match with or without diacritics and alef forms");
-  check(USERNAME_RE.test("abu_ali") && !USERNAME_RE.test("1abc") && !USERNAME_RE.test("ab") && !USERNAME_RE.test("علي"), "usernames: Latin letters, digits and _, 3–20, starting with a letter");
+  check(USERNAME_RE.test("abu_ali") && USERNAME_RE.test("علي") && USERNAME_RE.test("عبدالله_2") && !USERNAME_RE.test("1abc") && !USERNAME_RE.test("ab") && !USERNAME_RE.test("علي حسن"), "usernames: Arabic or Latin letters, digits and _, 3–20, starting with a letter");
+  check(cleanUsername(" @Abu Ali ") === "abu_ali" && cleanUsername("عَبْدُ اللّٰه") === "عبد_الله" && cleanUsername("علي١٢") === "علي12", "typed usernames: spaces → _, no diacritics, Arabic digits, lowercase");
+  check(suggestUsername("عبدالله محمد") === "عبدالله_محمد" && suggestUsername("أبو علي 🌙") === "أبو_علي" && suggestUsername("عبدالله بن محمد الطويل جدا") === "عبدالله_بن_محمد" && suggestUsername("ع") === null && suggestUsername("admin") === null, "the name a person already uses becomes the suggested username");
 }
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");

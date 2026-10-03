@@ -134,7 +134,7 @@ export default function GroupPage() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{t.mawla(m.displayName)}</span>
                 <span className="flex flex-wrap items-center gap-2 text-sm m-muted">
-                  {m.username && <bdi dir="ltr">@{m.username}</bdi>}
+                  {m.username && <bdi dir="auto">{m.username}</bdi>}
                   {m.leader && <span className="m-chip m-chip-gold">{t.groups.leader}</span>}
                   {m.status === "invited" && <span className="m-chip">{t.groups.pending}</span>}
                 </span>
@@ -161,10 +161,7 @@ export default function GroupPage() {
           >
             <label className="block">
               <span className="m-label">{t.groups.invite}</span>
-              <span className="relative block">
-                <input className="m-field" style={{ paddingLeft: "2rem" }} dir="ltr" autoCapitalize="none" autoCorrect="off" spellCheck={false} required maxLength={21} value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="abu_ali" aria-label={t.groups.inviteLabel} />
-                <span className="m-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" dir="ltr">@</span>
-              </span>
+              <input className="m-field" dir="auto" autoCapitalize="none" autoCorrect="off" spellCheck={false} required maxLength={24} value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t.username.placeholder.replace(/^.*: /, "")} aria-label={t.groups.inviteLabel} />
             </label>
             <button className="m-btn m-btn-primary w-full" disabled={busy || !username.trim()}>{t.groups.inviteSend}</button>
           </form>
