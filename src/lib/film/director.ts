@@ -157,10 +157,21 @@ export type DirectorAction =
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
-  | { action: "generate_video"; genId: string; resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel }
+  | ({ action: "generate_video"; genId: string } & VideoChoice)
+  | ({ action: "approve_and_generate"; versionId: string } & VideoChoice)
+  | { action: "video_feedback"; assetId: string; text: string }
   | { action: "approve_video"; assetId: string }
   | { action: "unapprove_video"; assetId: string }
   | { action: "reject_video"; assetId: string };
+
+/** The client's choices on the generation page (each wins over the director's plan). */
+type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel };
+const readChoice = (c: VideoChoice) => ({
+  resolution: c.resolution in VIDEO_RESOLUTIONS ? c.resolution : DEFAULT_VIDEO_RESOLUTION,
+  ratio: c.ratio === "9:16" || c.ratio === "16:9" ? c.ratio : undefined,
+  seconds: c.durationSec ? clampVideoSeconds(Number(c.durationSec)) : undefined,
+  model: c.model && c.model in VIDEO_MODELS ? c.model : undefined,
+});
 
 export async function directorAction(project: FilmProject, user: User, input: DirectorAction): Promise<{ jobId: string | null }> {
   if (project.stage === "screenwriter" || project.stage === "sheets") throw new UserError("اعتمد كل صور الشيتات أول.", 409);
@@ -296,15 +307,36 @@ export async function directorAction(project: FilmProject, user: User, input: Di
     case "generate_video": {
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
-      const resolution = input.resolution in VIDEO_RESOLUTIONS ? input.resolution : DEFAULT_VIDEO_RESOLUTION;
-      // The client's orientation choice on the generation page wins over the director's ratio
-      const ratio = input.ratio === "9:16" || input.ratio === "16:9" ? input.ratio : undefined;
-      // …and so does the length they set (4–15 seconds)
-      const seconds = input.durationSec ? clampVideoSeconds(Number(input.durationSec)) : undefined;
-      // …and so does the Seedance version they pick
-      const model = input.model && input.model in VIDEO_MODELS ? input.model : undefined;
-      await startVideo(project, user, v, await referenceLibrary(project.id), resolution, ratio, seconds, model);
+      const c = readChoice(input);
+      await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model);
       return { jobId: null };
+    }
+
+    case "video_feedback": {
+      // After a video: the client's notes go to the director, who answers with his understanding as options first
+      busy();
+      const text = String(input.text ?? "").trim();
+      if (!text || text.length > 4000) throw new UserError("اكتب تعديلاتك (٤٠٠٠ حرف كحد أقصى).", 400);
+      const a = (await directorVideos(project.id)).find((x) => x.id === input.assetId);
+      if (!a || !["generated", "approved", "rejected"].includes(a.status)) throw new UserError("ما لقينا الفيديو.", 404);
+      const id = await addUserMessage(project.id, `ملاحظاتي على فيديو ${a.ref_key} بعد توليده:\n${text}`);
+      return { jobId: await queueReply(project, user, id) };
+    }
+
+    case "approve_and_generate": {
+      // The revised generation after video notes: one click approves it and makes the video again
+      busy();
+      const v = versions.find((x) => x.id === input.versionId);
+      if (!v || v.kind !== "dir_generation" || v.status !== "awaiting_approval" || latest(versions, v.kind, v.ref_key)?.id !== v.id) {
+        throw new UserError("هذي مو آخر نسخة. حدّث الصفحة وجرّب.", 409);
+      }
+      const lib = await referenceLibrary(project.id);
+      readyForVideo(v, lib);
+      await setApproved(v, versions);
+      const c = readChoice(input);
+      await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model);
+      const id = await addUserMessage(project.id, "اعتمد");
+      return { jobId: await queueReply(project, user, id) };
     }
 
     case "approve_video": {
@@ -547,7 +579,8 @@ export async function runDirectorReply(projectId: string, jobId: string) {
     const result = await callClaudeJson<Reply>({ system, turns, schema: DIRECTOR_SCHEMA, maxTokens: MAX_TOKENS });
     const r = result.data;
     const kind = KIND_FOR(r);
-    const ref = kind === "dir_generation" ? r.gen_id.trim() : "";
+    // Questions about one generation (after video notes) belong to it, like the generation itself
+    const ref = kind === "dir_generation" || (kind === "dir_questions" && r.gen_id) ? r.gen_id.trim() : "";
 
     const client = db();
     const same = versions.filter((v) => v.kind === kind && v.ref_key === ref);
