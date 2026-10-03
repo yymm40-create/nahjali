@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Baloo_Bhaijaan_2, Lalezar } from "next/font/google";
 import Link from "next/link";
 import Header from "@/components/Header";
+import SiteChrome from "@/components/SiteChrome";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
 import "./globals.css";
 
@@ -28,18 +29,27 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-full flex-col font-sans">
-        <div role="status" className="bg-gold px-4 py-2 text-center text-sm font-extrabold text-on-gold">
-          🚧 الموقع تحت التجربة، وسيتم تطويره قريبًا إن شاء الله
-        </div>
-        <Header />
-        <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-16 pt-4">{children}</main>
-        <footer className="mx-auto flex w-full max-w-xl flex-col items-center gap-2 px-4 py-8 text-sm font-bold text-muted">
-          <div className="flex gap-6">
-            <Link href="/privacy" className="hover:text-ink">سياسة الخصوصية</Link>
-            <Link href="/terms" className="hover:text-ink">الشروط والأحكام</Link>
-          </div>
-          <p>نهج علي © ٢٠٢٦</p>
-        </footer>
+        <SiteChrome
+          top={
+            <>
+              <div role="status" className="bg-gold px-4 py-2 text-center text-sm font-extrabold text-on-gold">
+                🚧 الموقع تحت التجربة، وسيتم تطويره قريبًا إن شاء الله
+              </div>
+              <Header />
+            </>
+          }
+          bottom={
+            <footer className="mx-auto flex w-full max-w-xl flex-col items-center gap-2 px-4 py-8 text-sm font-bold text-muted">
+              <div className="flex gap-6">
+                <Link href="/privacy" className="hover:text-ink">سياسة الخصوصية</Link>
+                <Link href="/terms" className="hover:text-ink">الشروط والأحكام</Link>
+              </div>
+              <p>نهج علي © ٢٠٢٦</p>
+            </footer>
+          }
+        >
+          {children}
+        </SiteChrome>
       </body>
     </html>
   );

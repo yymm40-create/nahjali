@@ -156,7 +156,9 @@ export async function succeedJob(jobId: string, actual: { costUsd: number; units
 export async function failJob(jobId: string, error: unknown, providerCostUsd?: number) {
   const db = createAdminClient();
   const now = new Date().toISOString();
-  const message = String(error instanceof Error ? error.message : error).slice(0, 1000);
+  const message = String(
+    error instanceof Error ? error.message : typeof error === "object" && error && "message" in error ? (error as { message: unknown }).message : error,
+  ).slice(0, 1000);
   await db.from("film_jobs").update({ status: "failed", finished_at: now, error: message }).eq("id", jobId);
   await db
     .from("film_usage")

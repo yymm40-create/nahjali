@@ -26,4 +26,11 @@ export const SECTIONS: SiteSection[] = [
     href: "/film",
     requiresFilmAccess: true,
   },
+  {
+    key: "mahdi",
+    title: "لأجل المهدي",
+    description: "تابع عاداتك ومشاريعك اليومية بهدوء وثبات، واعرف أين تقدّمت وأين تحتاج انتباهًا.",
+    icon: "📿",
+    href: "/mahdi",
+  },
 ];

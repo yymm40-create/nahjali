@@ -58,9 +58,16 @@ export default async function FilmProjectPage({ params }: PageProps<"/film/[id]"
           <h2 className="text-lg font-extrabold">المرحلة الحالية: {FILM_STAGES[current]?.label}</h2>
           <span className="chip">{scriptStarted ? STATUS_LABELS.awaiting_approval : STATUS_LABELS.draft}</span>
         </div>
-        <Link href={`/film/${project.id}/script`} className="btn btn-primary w-full">
-          ✍️ {scriptStarted ? "افتح السيناريست" : "ابدأ مع السيناريست"}
-        </Link>
+        {project.stage === "screenwriter" ? (
+          <Link href={`/film/${project.id}/script`} className="btn btn-primary w-full">
+            ✍️ {scriptStarted ? "افتح السيناريست" : "ابدأ مع السيناريست"}
+          </Link>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <Link href={`/film/${project.id}/script`} className="btn btn-ghost">✍️ السيناريو</Link>
+            <Link href={`/film/${project.id}/sheets`} className="btn btn-primary">🎨 صانع الشيت</Link>
+          </div>
+        )}
       </section>
 
       <ProjectEditor

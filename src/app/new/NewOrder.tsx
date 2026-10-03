@@ -104,10 +104,10 @@ export default function NewOrder(props: Props) {
         <p className="chip w-full justify-center py-2 text-base">
           🎁{" "}
           {noTrialsLeft
-            ? "استخدمت كل تجاربك المجانية"
+            ? "استخدمت تجاربك المجانية لليوم · جرّب بكرة"
             : trialsLeft === null
               ? "مجاني بالكامل · تجارب غير محدودة لحسابك"
-              : `مجاني بالكامل · باقي لك ${trialsLeft} ${trialsLeft === 1 ? "تجربة" : "تجارب"}`}
+              : `مجاني بالكامل · باقي لك اليوم ${trialsLeft} ${trialsLeft === 1 ? "تجربة" : "تجارب"}`}
         </p>
       )}
       <Steps labels={["الطفل", "الستايل", "الجودة"]} current={step} />

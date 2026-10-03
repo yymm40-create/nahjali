@@ -224,7 +224,7 @@ export async function runScriptJob(projectId: string, jobId: string) {
     const turns: ClaudeTurn[] = [];
     for (const m of msgs) {
       const last = turns.at(-1);
-      if (last && last.role === m.role) last.content += `\n\n${m.content}`;
+      if (last && last.role === m.role) last.content = `${last.content}\n\n${m.content}`;
       else turns.push({ role: m.role, content: m.content });
     }
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
@@ -244,7 +244,6 @@ export async function runScriptJob(projectId: string, jobId: string) {
     if (!kind) throw new Error(`unexpected stage ${reply.stage}`);
 
     const client = db();
-    await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: result.raw });
 
     const versions = await scriptVersions(projectId);
     const same = versions.filter((v) => v.kind === kind);
@@ -266,6 +265,8 @@ export async function runScriptJob(projectId: string, jobId: string) {
       created_by: "assistant",
     });
     if (error) throw error;
+    // The reply joins the conversation only once its deliverable is stored, so a failure stays retryable
+    await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: result.raw });
     if (isHandoff) await client.from("film_projects").update({ stage: "sheets" }).eq("id", projectId);
 
     await succeedJob(jobId, { costUsd: claudeCost(usage), units: totalTokens(usage) });

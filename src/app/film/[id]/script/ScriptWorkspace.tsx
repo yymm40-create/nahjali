@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
+import QuestionsForm from "../../QuestionsForm";
 import type { ScriptVersion } from "@/lib/film/script";
 import { KIND_LABELS, KIND_ORDER, type ScriptKind } from "@config/film-prompts/screenwriter";
 import { STATUS_LABELS } from "@config/film";
@@ -110,7 +111,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
 
             {/* Questions waiting for answers are shown as a form instead of text */}
             {v.kind === "questions" && isCurrent ? (
-              <QuestionsForm version={v} busy={busy || running} onSubmit={(answers) => send({ action: "answers", versionId: v.id, answers })} />
+              <QuestionsForm questions={v.data.questions ?? []} busy={busy || running} onSubmit={(answers) => send({ action: "answers", versionId: v.id, answers })} />
             ) : (
               <details open={isCurrent} className="group">
                 <summary className="cursor-pointer text-sm font-extrabold text-muted group-open:hidden">اعرض النص</summary>
@@ -211,7 +212,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
       {stage !== "screenwriter" && (
         <div className="card space-y-2 p-5 text-center">
           <p className="text-lg font-extrabold">✅ السيناريو معتمد وانتقل لصانع الشيت</p>
-          <p className="text-sm font-bold text-muted">صانع الشيت ينضاف في المرحلة الجاية من التطوير.</p>
+          <Link href={`/film/${projectId}/sheets`} className="btn btn-primary w-full">🎨 افتح صانع الشيت</Link>
         </div>
       )}
 
@@ -220,35 +221,3 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
     </div>
   );
 }
-
-function QuestionsForm({ version, busy, onSubmit }: { version: ScriptVersion; busy: boolean; onSubmit: (answers: string[]) => void }) {
-  const qs = version.data.questions ?? [];
-  const [choice, setChoice] = useState<string[]>(qs.map(() => ""));
-  const [other, setOther] = useState<string[]>(qs.map(() => ""));
-  const answer = (i: number) => (choice[i] === "__other" ? other[i].trim() : choice[i]);
-  const ready = qs.every((_, i) => answer(i));
-  const setAt = (arr: string[], i: number, v: string) => arr.map((x, j) => (j === i ? v : x));
-
-  return (
-    <div className="space-y-5">
-      {qs.map((q, i) => (
-        <fieldset key={i} className="space-y-2">
-          <legend className="mb-1 font-extrabold">{i + 1}. {q.question}</legend>
-          {[...q.options, "__other"].map((opt) => (
-            <label key={opt} className={`flex cursor-pointer items-start gap-2 rounded-2xl border p-3 ${choice[i] === opt ? "border-gold bg-surface-2" : "border-line"}`}>
-              <input type="radio" className="mt-1.5 accent-[var(--gold)]" name={`q${i}`} checked={choice[i] === opt} onChange={() => setChoice(setAt(choice, i, opt))} />
-              <span className="font-bold">{opt === "__other" ? "جواب ثاني من عندي" : opt}</span>
-            </label>
-          ))}
-          {choice[i] === "__other" && (
-            <textarea className="field min-h-20" value={other[i]} onChange={(e) => setOther(setAt(other, i, e.target.value.slice(0, 1500)))} placeholder="اكتب جوابك" />
-          )}
-        </fieldset>
-      ))}
-      <button className="btn btn-primary w-full" disabled={busy || !ready} onClick={() => onSubmit(qs.map((_, i) => answer(i)))}>
-        أرسل إجاباتي
-      </button>
-    </div>
-  );
-}
-

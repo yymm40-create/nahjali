@@ -29,10 +29,16 @@ export function claudeCost(u: ClaudeUsage) {
 export const totalTokens = (u: ClaudeUsage) =>
   u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + u.output_tokens;
 
+export type ClaudePart = { type: "text"; text: string } | { type: "image"; url: string };
+
 export interface ClaudeTurn {
   role: "user" | "assistant";
-  content: string;
+  /** Plain text, or text + images (images are sent by short-lived URL so Claude can look at them). */
+  content: string | ClaudePart[];
 }
+
+const toBlock = (p: ClaudePart) =>
+  p.type === "text" ? { type: "text", text: p.text } : { type: "image", source: { type: "url", url: p.url } };
 
 /**
  * One Messages API call with a cached system prompt and a JSON-schema reply.
@@ -52,17 +58,12 @@ export async function callClaudeJson<T>({
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
 
-  const messages = turns.map((t, i) => ({
-    role: t.role,
-    content: [
-      {
-        type: "text",
-        text: t.content,
-        // Cache breakpoint on the latest turn: the next request reuses everything up to here
-        ...(i === turns.length - 1 ? { cache_control: { type: "ephemeral" } } : {}),
-      },
-    ],
-  }));
+  const messages = turns.map((t, i) => {
+    const blocks: Record<string, unknown>[] = (typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content).map(toBlock);
+    // Cache breakpoint on the latest turn: the next request reuses everything up to here
+    if (i === turns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
+    return { role: t.role, content: blocks };
+  });
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

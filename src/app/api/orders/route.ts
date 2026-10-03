@@ -8,7 +8,7 @@ import {
   ATTEMPTS_ALLOWED,
   FREE_TRIAL,
   FREE_TRIAL_DAILY_LIMIT,
-  FREE_TRIAL_MAX_ORDERS,
+  dailyTrialLimit,
   hasUnlimitedTrials,
   isQuality,
   QUALITY_TIERS,
@@ -45,19 +45,21 @@ export const POST = handle(async (req: Request) => {
 
   const db = createAdminClient();
   if (FREE_TRIAL && !hasUnlimitedTrials(user.email)) {
-    const { count } = await db
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("is_trial", true);
-    if ((count ?? 0) >= FREE_TRIAL_MAX_ORDERS) {
-      throw new UserError(`استخدمت التجارب المجانية المتاحة لحسابك (${FREE_TRIAL_MAX_ORDERS}).`, 403);
-    }
-
     // Midnight in Riyadh (UTC+3), expressed in UTC
     const now = new Date();
     const riyadh = new Date(now.getTime() + 3 * 3600_000);
     const dayStart = new Date(Date.UTC(riyadh.getUTCFullYear(), riyadh.getUTCMonth(), riyadh.getUTCDate()) - 3 * 3600_000);
+    const { count } = await db
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("is_trial", true)
+      .gte("created_at", dayStart.toISOString());
+    const limit = dailyTrialLimit(user);
+    if ((count ?? 0) >= limit) {
+      throw new UserError(`وصلت للحد اليومي للتجارب المجانية (${limit} في اليوم). جرّب بكرة إن شاء الله.`, 403);
+    }
+
     const { count: today } = await db
       .from("orders")
       .select("id", { count: "exact", head: true })

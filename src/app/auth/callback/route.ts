@@ -14,5 +14,7 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(`${origin}${safeNext}`);
   }
-  return NextResponse.redirect(`${origin}/login?error=1`);
+  // «لأجل المهدي» has its own sign-in page
+  const loginPage = safeNext === "/mahdi" || safeNext.startsWith("/mahdi/") ? "/mahdi/login" : "/login";
+  return NextResponse.redirect(`${origin}${loginPage}?error=1`);
 }

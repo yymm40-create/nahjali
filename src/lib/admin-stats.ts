@@ -10,6 +10,7 @@ export interface AdminUser {
   orders: number;
   ready: number;
   lastOrderAt: string | null;
+  dailyTrials: number | null;
 }
 
 export interface FeedbackRow {
@@ -50,6 +51,7 @@ export async function loadAdminStats() {
         orders: mine.length,
         ready: mine.filter((o) => o.status === "ready").length,
         lastOrderAt: mine[0]?.created_at ?? null,
+        dailyTrials: Number(u.app_metadata?.daily_trials) || null,
       };
     })
     .sort((a, b) => (b.lastOrderAt ?? b.createdAt).localeCompare(a.lastOrderAt ?? a.createdAt));
@@ -85,7 +87,19 @@ export async function loadAdminStats() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   };
 
+  // Distinct people whose latest sign-in falls in each window (Riyadh days; week = last 7 days, month = last 30)
+  const todayStr = riyadhDay(new Date().toISOString());
+  const dayIdx = (iso: string) => Math.round((Date.parse(todayStr) - Date.parse(riyadhDay(iso))) / DAY_MS);
+  const signIns = authUsers.filter((u) => u.last_sign_in_at).map((u) => dayIdx(u.last_sign_in_at as string));
+  const logins = {
+    today: signIns.filter((d) => d === 0).length,
+    yesterday: signIns.filter((d) => d === 1).length,
+    week: signIns.filter((d) => d <= 6).length,
+    month: signIns.filter((d) => d <= 29).length,
+  };
+
   return {
+    logins,
     kpis: {
       signups: authUsers.length,
       triedUsers: usersWithOrders.size,
