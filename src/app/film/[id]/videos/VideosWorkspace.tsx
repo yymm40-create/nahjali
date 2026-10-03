@@ -7,8 +7,10 @@ import { api, postJson } from "@/lib/fetch";
 import Spinner from "@/components/Spinner";
 import { statusChip } from "../../StepCard";
 import {
+  clampVideoSeconds,
   DEFAULT_VIDEO_RESOLUTION,
   STATUS_LABELS,
+  VIDEO_DURATION,
   VIDEO_KEEP_DAYS,
   VIDEO_MODELS,
   VIDEO_RESOLUTIONS,
@@ -59,6 +61,9 @@ export default function VideosWorkspace({
   const [ratio, setRatio] = useState<"16:9" | "9:16">(() =>
     generations.filter((g) => g.ratio === "9:16").length > generations.length / 2 ? "9:16" : "16:9",
   );
+  // Length of each video (4–15 s), starting from the director's plan; the price follows it
+  const [seconds, setSeconds] = useState<Record<string, number>>(() => Object.fromEntries(generations.map((g) => [g.id, clampVideoSeconds(g.durationSec)])));
+  const secOf = (g: Generation) => seconds[g.id] ?? clampVideoSeconds(g.durationSec);
   const [rendering, setRendering] = useState(videosRunning > 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -94,7 +99,7 @@ export default function VideosWorkspace({
     }
   }
 
-  const total = generations.reduce((s, g) => s + videoEstimateUsd(g.model, resolution, g.durationSec), 0);
+  const total = generations.reduce((s, g) => s + videoEstimateUsd(g.model, resolution, secOf(g)), 0);
   const kept = videos.filter((v) => v.url && v.status !== "rejected");
 
   return (
@@ -157,14 +162,15 @@ export default function VideosWorkspace({
       {generations.map((g) => {
         const mine = videos.filter((v) => v.ref_key === g.id && v.status !== "rejected");
         const generating = mine.some((v) => v.status === "generating");
-        const cost = videoEstimateUsd(g.model, resolution, g.durationSec);
+        const sec = secOf(g);
+        const cost = videoEstimateUsd(g.model, resolution, sec);
         return (
           <article key={g.id} className="card space-y-3 p-5">
             <header className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-extrabold">{g.id}{g.name ? ` · ${g.name}` : ""}</h2>
               <div className="flex flex-wrap gap-1 text-xs font-bold">
                 <span className="chip">{VIDEO_MODELS[g.model].label}</span>
-                <span className="chip" dir="ltr">{g.durationSec}s · {ratio}</span>
+                <span className="chip" dir="ltr">{ratio}</span>
                 <span className="chip">{g.audio ? "🔊 بصوت" : "🔇 بدون صوت"}</span>
               </div>
             </header>
@@ -213,9 +219,36 @@ export default function VideosWorkspace({
             ))}
 
             {!generating && !busy && (
+              <div className="space-y-1 rounded-2xl bg-surface-2 p-3">
+                <div className="flex items-center justify-between text-sm font-extrabold">
+                  <label htmlFor={`sec-${g.id}`}>مدة الفيديو: <span dir="ltr">{sec}s</span></label>
+                  <span dir="ltr">≈ {usd(cost)}</span>
+                </div>
+                <input
+                  id={`sec-${g.id}`}
+                  type="range"
+                  min={VIDEO_DURATION.min}
+                  max={VIDEO_DURATION.max}
+                  step={1}
+                  value={sec}
+                  onChange={(e) => setSeconds({ ...seconds, [g.id]: Number(e.target.value) })}
+                  className="w-full accent-gold"
+                  dir="ltr"
+                />
+                <div className="flex justify-between text-xs font-bold text-muted" dir="ltr">
+                  <span>{VIDEO_DURATION.min}s</span>
+                  {clampVideoSeconds(g.durationSec) !== sec && <span>المخرج خطّط {clampVideoSeconds(g.durationSec)}s</span>}
+                  <span>{VIDEO_DURATION.max}s</span>
+                </div>
+                {sec < clampVideoSeconds(g.durationSec) && (
+                  <p className="text-xs font-bold text-red-500">⚠️ أقصر من خطة المخرج؛ ممكن الحوار أو الأحداث ما تلحق تكتمل.</p>
+                )}
+              </div>
+            )}
+            {!generating && !busy && (
               <button
                 className={`btn w-full ${mine.length ? "btn-ghost" : "btn-primary"}`}
-                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio })}
+                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec })}
               >
                 {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · {ratio === "9:16" ? "طولي" : "عرضي"} · {VIDEO_RESOLUTIONS[resolution].label} · تقريبًا <span dir="ltr">{usd(cost)}</span>
               </button>
