@@ -8,8 +8,23 @@ export type Gender = "boy" | "girl";
 /** Shared rules that keep every character child-friendly and fully stylized. */
 const STYLIZE = `A fully stylized cartoon CHILD character (about 5–8 years old), NOT a realistic human: no photorealism, no realistic skin pores, no photographic lighting. Big expressive eyes, warm friendly expression, modest and wholesome.`;
 
-/** Girls: always a full Zainabiya abaya, face and hands only, no makeup. */
+/** Girls: always a full Zainabiya abaya, face and hands only, no makeup, and NOT ONE hair visible. */
 const GIRL_DRESS = `She wears a modest black Iraqi Zainabiya abaya: one loose black cloak draped from the top of the head down to the ankles, worn over a snug underscarf that tightly frames the face; ALL hair, ears and neck fully covered; long loose sleeves to the wrists; only the face and the hands are visible. Absolutely no makeup, no lipstick, no jewelry — a natural child's face.`;
+
+/** Repeated at the very end of every girl prompt, so it wins over anything seen in her photo. */
+export const GIRL_NO_HAIR = `ABSOLUTE RULE — ZERO HAIR VISIBLE: do not draw a single hair anywhere. Ignore the hair in the photo completely (do not copy its colour, fringe, bangs, parting or style). The underscarf edge sits across the upper forehead and tightly around the cheeks, hiding the entire hairline: no strands on the forehead, temples, cheeks or neck, no hair peeking from under the scarf, no braid, no ponytail, no hair on the shoulders or back. The head covering is fully opaque black fabric.`;
+
+/** Asked to an image-reading model after every girl image; anything but "NO" rejects the picture. */
+export const HAIR_CHECK = {
+  model: "gpt-4o-mini",
+  prompt: `This is a cartoon picture of a girl who must wear a full hijab. Look very carefully at the forehead, temples, cheeks, around the face, the neck, shoulders and back. Is ANY hair visible at all — even a single strand, fringe, bangs, a lock under the scarf edge, a braid or a ponytail? Answer with exactly one word: YES or NO.`,
+  /**
+   * Extra generations in the same request when hair is found (each costs money and ~1–2 minutes; a request may
+   * run 5 minutes). Poses get no extra one here: a rejected pose goes back to the queue and is retried like any
+   * failed pose (POSE_MAX_RETRIES).
+   */
+  retries: { character: 1, pose: 0 },
+};
 
 /** Boys keep the SAME clothes as in the uploaded photo on every page (owner's request) and never wear a cap. */
 const BOY_DRESS = `He wears exactly the same clothes as the child in the FIRST reference image (same garments, colours and patterns), simplified in the cartoon style. Do not change his outfit. Nothing on his head: no cap, no hat, no kufi.`;
@@ -28,7 +43,9 @@ export const hasStyleReference = (style: StyleKey) => Boolean(STYLES[style].refe
 export function characterPrompt(style: StyleKey, gender: Gender) {
   return [
     `Turn the child in the FIRST reference photo into a stylized animated movie character (a complete cartoon re-design, not a filtered photo).`,
-    `Keep them clearly recognizable: same face shape, skin tone, eye colour and features${gender === "boy" ? ", hair colour and hairstyle" : ""}.`,
+    gender === "boy"
+      ? `Keep them clearly recognizable: same face shape, skin tone, eye colour and features, hair colour and hairstyle.`
+      : `Keep her clearly recognizable from her FACE ONLY: same face shape, skin tone, eye colour and facial features. Take nothing from her hair or clothes in the photo.`,
     STYLIZE,
     dress(gender),
     `Pose: standing relaxed with a warm happy smile, facing the viewer.`,
@@ -36,6 +53,7 @@ export function characterPrompt(style: StyleKey, gender: Gender) {
     `Plain flat light grey background.`,
     hasStyleReference(style) ? STYLE_REFERENCE_NOTE : "",
     `ART STYLE: ${STYLES[style].prompt}`,
+    gender === "girl" ? GIRL_NO_HAIR : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -70,6 +88,7 @@ export function posePrompt(poseKey: string, style: StyleKey, gender: Gender) {
     GREEN_SCREEN,
     hasStyleReference(style) ? STYLE_REFERENCE_NOTE : "",
     `ART STYLE: ${STYLES[style].prompt}`,
+    gender === "girl" ? GIRL_NO_HAIR : "",
   ]
     .filter(Boolean)
     .join("\n");

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MESSAGES, UserError } from "@/lib/api";
-import { GENERATION_SETTINGS } from "@config/prompts";
+import { GENERATION_SETTINGS, HAIR_CHECK, type Gender } from "@config/prompts";
+import { hairVisible } from "@/lib/openai";
 import { ESTIMATED_COST_USD, RATE_LIMIT, type QualityKey } from "@config/pricing";
 
 /** Throws if the user started too many generations recently (counted from generation_logs). */
@@ -38,4 +39,27 @@ export async function logGeneration(
       success,
       error: error ? String(error instanceof Error ? error.message : error).slice(0, 1000) : null,
     });
+}
+
+/**
+ * Girls must never show any hair (full abaya). Every girl picture is checked by an image-reading model before it is
+ * kept: one with hair is thrown away and made again (HAIR_CHECK.retries), and if it still shows hair the
+ * generation fails (the attempt is not used up, so the parent can simply try again).
+ * If the check itself can't run, the picture is kept and the problem is logged.
+ */
+export async function withHairCheck(
+  gender: Gender,
+  kind: "character" | "pose",
+  orderId: string,
+  quality: QualityKey,
+  make: () => Promise<Buffer>,
+): Promise<Buffer> {
+  let image = await make();
+  if (gender !== "girl") return image;
+  for (let extra = 0; ; extra++) {
+    if ((await hairVisible(image)) !== true) return image;
+    await logGeneration(orderId, kind, quality, true, "rejected: hair visible"); // it still cost money
+    if (extra >= HAIR_CHECK.retries[kind]) throw new Error("hair visible in the girl's picture");
+    image = await make();
+  }
 }
