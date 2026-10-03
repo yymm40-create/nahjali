@@ -49,6 +49,13 @@ export const videoUsd = (model: VideoModel, resolution: VideoResolution, tokens:
 export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution, seconds: number) =>
   videoUsd(model, resolution, videoTokens(resolution, seconds));
 
+/**
+ * Public trial: while `open`, every signed-in user can use the film maker (no invite needed), until
+ * `freeVideos` videos have been made by users other than the owner. Then the film maker locks for everyone
+ * but the owner, until the owner decides otherwise (set `open: false` to go back to the invite list).
+ */
+export const FILM_PUBLIC_TRIAL = { open: true, freeVideos: 3 } as const;
+
 /** Video length the client can choose on the generation page (seconds). */
 export const VIDEO_DURATION = { min: 4, max: 15 } as const;
 export const clampVideoSeconds = (sec: number) => Math.min(Math.max(Math.round(sec || 10), VIDEO_DURATION.min), VIDEO_DURATION.max);

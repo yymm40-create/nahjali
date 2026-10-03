@@ -4,17 +4,40 @@ import { requireUser } from "@/lib/auth";
 import { requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
+import { FILM_PUBLIC_TRIAL } from "@config/film";
 import type { FilmProject } from "./types";
 
 export const FILM_MESSAGES = {
-  noAccess: "فرع صناعة الفيلم متاح حاليًا للمدعوين فقط.",
+  noAccess: "صانع الفيلم مقفل حاليًا.",
   notFound: "ما لقينا هذا المشروع.",
 } as const;
 
-/** The owner always has access; everyone else must be on the invite list (/admin/film). */
+/**
+ * Free trial videos made so far (`made`: finished, whatever the client did with them since) and still
+ * counting against the trial (`taken`: also the ones being generated now).
+ */
+export async function filmTrialVideos() {
+  const { data } = await createAdminClient().from("film_assets").select("status").eq("kind", "video").eq("meta->>trial", "true");
+  const rows = (data ?? []) as { status: string }[];
+  return {
+    made: rows.filter((r) => ["generated", "approved", "rejected"].includes(r.status)).length,
+    taken: rows.filter((r) => r.status !== "failed").length,
+  };
+}
+
+/** True once the public trial's free videos have all been made: the film maker is locked for everyone but the owner. */
+export async function filmTrialOver() {
+  return FILM_PUBLIC_TRIAL.open && (await filmTrialVideos()).made >= FILM_PUBLIC_TRIAL.freeVideos;
+}
+
+/**
+ * The owner always has access. During the public trial everyone signed in has access until it is over;
+ * otherwise only the invite list (/admin/film).
+ */
 export async function canUseFilm(email: string | undefined | null) {
   if (!email) return false;
   if (isAdmin(email)) return true;
+  if (FILM_PUBLIC_TRIAL.open) return !(await filmTrialOver());
   const { data } = await createAdminClient()
     .from("film_allowed_emails")
     .select("email")
