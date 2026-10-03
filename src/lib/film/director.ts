@@ -5,7 +5,7 @@ import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
-import { filmTrialVideos } from "./access";
+import { filmTrialState, filmTrialVideos } from "./access";
 import { isAdmin } from "@config/site";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
@@ -390,10 +390,10 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
   const durationSec = Math.min(seconds ?? clampVideoSeconds(v.data.duration_sec ?? 10), VIDEO_MODELS[model].maxSeconds);
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);
-  // Public trial: only a few free videos in total (the owner's own videos don't count)
+  // Public trial: one free video per trial user; their trial ends once it is made (the owner has no limit)
   const trial = FILM_PUBLIC_TRIAL.open && !isAdmin(user.email);
-  if (trial && (await filmTrialVideos()).taken >= FILM_PUBLIC_TRIAL.freeVideos) {
-    throw new UserError("خلصت الفيديوهات المجانية في فترة التجربة. شكرًا لك، وبنعلن أول ما يرجع التوليد إن شاء الله.", 403);
+  if (trial && ((await filmTrialState(user)) !== "open" || (await filmTrialVideos(user.id)).taken > 0)) {
+    throw new UserError("تجربتك المجانية تشمل فيديو واحد، وهو انصنع أو قاعد يتولد. شكرًا لك!", 403);
   }
 
   const meta = { ...(trial ? { trial: true } : {}), model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true };

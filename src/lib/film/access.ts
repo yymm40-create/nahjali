@@ -12,12 +12,49 @@ export const FILM_MESSAGES = {
   notFound: "ما لقينا هذا المشروع.",
 } as const;
 
+type Who = { id: string; email?: string | null };
+
+let ownerIds: Promise<Set<string>> | null = null;
+/** User IDs of the owner's accounts (looked up once per server instance). */
+function getOwnerIds() {
+  ownerIds ??= (async () => {
+    const out = new Set<string>();
+    for (let page = 1; page <= 20; page++) {
+      const { data, error } = await createAdminClient().auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) throw error;
+      for (const u of data.users) if (isAdmin(u.email)) out.add(u.id);
+      if (data.users.length < 1000) break;
+    }
+    return out;
+  })().catch((e) => {
+    ownerIds = null;
+    throw e;
+  });
+  return ownerIds;
+}
+
+/** The trial's users: the first `users` people (owner excluded) to start a film project, in order. */
+export async function filmTrialUsers() {
+  const owners = await getOwnerIds();
+  const { data } = await createAdminClient().from("film_projects").select("user_id,created_at").order("created_at", { ascending: true }).limit(500);
+  const ids: string[] = [];
+  for (const r of (data ?? []) as { user_id: string }[]) {
+    if (!owners.has(r.user_id) && !ids.includes(r.user_id)) ids.push(r.user_id);
+    if (ids.length === FILM_PUBLIC_TRIAL.users) break;
+  }
+  return ids;
+}
+
 /**
- * Free trial videos made so far (`made`: finished, whatever the client did with them since) and still
- * counting against the trial (`taken`: also the ones being generated now).
+ * A trial user's videos: `made` once one has finished (their trial is then over), `taken` also counts one
+ * being generated now (so they can't start a second).
  */
-export async function filmTrialVideos() {
-  const { data } = await createAdminClient().from("film_assets").select("status").eq("kind", "video").eq("meta->>trial", "true");
+export async function filmTrialVideos(userId: string) {
+  const db = createAdminClient();
+  const { data: projects } = await db.from("film_projects").select("id").eq("user_id", userId);
+  const ids = (projects ?? []).map((p) => p.id as string);
+  if (!ids.length) return { made: 0, taken: 0 };
+  const { data } = await db.from("film_assets").select("status").eq("kind", "video").in("project_id", ids);
   const rows = (data ?? []) as { status: string }[];
   return {
     made: rows.filter((r) => ["generated", "approved", "rejected"].includes(r.status)).length,
@@ -25,23 +62,26 @@ export async function filmTrialVideos() {
   };
 }
 
-/** True once the public trial's free videos have all been made: the film maker is locked for everyone but the owner. */
-export async function filmTrialOver() {
-  return FILM_PUBLIC_TRIAL.open && (await filmTrialVideos()).made >= FILM_PUBLIC_TRIAL.freeVideos;
+/** Why a signed-in user can't use the film maker during the trial: their own trial is done, or all places are taken. */
+export async function filmTrialState(user: Who): Promise<"open" | "done" | "full"> {
+  if (isAdmin(user.email)) return "open";
+  const users = await filmTrialUsers();
+  if (users.includes(user.id)) return (await filmTrialVideos(user.id)).made > 0 ? "done" : "open";
+  return users.length < FILM_PUBLIC_TRIAL.users ? "open" : "full";
 }
 
 /**
- * The owner always has access. During the public trial everyone signed in has access until it is over;
- * otherwise only the invite list (/admin/film).
+ * The owner always has access. During the public trial, the first few users (one full film each, until
+ * their first video is made); afterwards only the owner. Otherwise only the invite list (/admin/film).
  */
-export async function canUseFilm(email: string | undefined | null) {
-  if (!email) return false;
-  if (isAdmin(email)) return true;
-  if (FILM_PUBLIC_TRIAL.open) return !(await filmTrialOver());
+export async function canUseFilm(user: Who) {
+  if (!user.email) return false;
+  if (isAdmin(user.email)) return true;
+  if (FILM_PUBLIC_TRIAL.open) return (await filmTrialState(user)) === "open";
   const { data } = await createAdminClient()
     .from("film_allowed_emails")
     .select("email")
-    .eq("email", email.toLowerCase())
+    .eq("email", user.email.toLowerCase())
     .maybeSingle();
   return Boolean(data);
 }
@@ -49,13 +89,13 @@ export async function canUseFilm(email: string | undefined | null) {
 /** For server pages: signed-in user with film access, or null if signed in without access. */
 export async function requireFilmUser(next: string): Promise<{ user: User; allowed: boolean }> {
   const user = await requireUser(next);
-  return { user, allowed: await canUseFilm(user.email) };
+  return { user, allowed: await canUseFilm(user) };
 }
 
 /** For API routes: signed-in user with film access, else 401/403. */
 export async function requireFilmApiUser() {
   const user = await requireApiUser();
-  if (!(await canUseFilm(user.email))) throw new UserError(FILM_MESSAGES.noAccess, 403);
+  if (!(await canUseFilm(user))) throw new UserError(FILM_MESSAGES.noAccess, 403);
   return user;
 }
 

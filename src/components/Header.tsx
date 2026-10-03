@@ -14,7 +14,7 @@ export default async function Header() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const filmAllowed = user ? await canUseFilm(user.email) : false;
+  const filmAllowed = user ? await canUseFilm(user) : false;
 
   return (
     <header className="sticky top-0 z-20 border-b border-line/60 bg-page/80 backdrop-blur-md">

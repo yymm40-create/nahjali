@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { filmTrialOver, requireFilmUser } from "@/lib/film/access";
+import { filmTrialState, requireFilmUser } from "@/lib/film/access";
+import { FILM_PUBLIC_TRIAL } from "@config/film";
 import type { FilmProject } from "@/lib/film/types";
 import { FILM_STAGES } from "@config/film";
 
@@ -17,16 +18,21 @@ const STEPS = [
 const stageLabel = (key: string) => FILM_STAGES.find((s) => s.key === key)?.label ?? key;
 
 export default async function FilmHome() {
-  const { allowed } = await requireFilmUser("/film");
+  const { user, allowed } = await requireFilmUser("/film");
 
   if (!allowed) {
     return (
       <div className="card space-y-3 p-6 text-center">
         <p className="text-5xl">🎬</p>
-        {(await filmTrialOver()) ? (
+        {FILM_PUBLIC_TRIAL.open && (await filmTrialState(user)) === "done" ? (
+          <>
+            <h1 className="display text-3xl">انتهت تجربتك المجانية 🎉</h1>
+            <p className="font-bold text-muted">شكرًا لك على التجربة! صانع الفيلم مقفل حاليًا، وبنعلن أول ما يرجع إن شاء الله.</p>
+          </>
+        ) : FILM_PUBLIC_TRIAL.open ? (
           <>
             <h1 className="display text-3xl">صانع الفيلم مقفل حاليًا</h1>
-            <p className="font-bold text-muted">خلصت فترة التجربة المجانية. شكرًا لكل من جرّب، وبنعلن أول ما يرجع إن شاء الله.</p>
+            <p className="font-bold text-muted">اكتمل عدد المجرّبين في الفترة المجانية. بنعلن أول ما يرجع إن شاء الله.</p>
           </>
         ) : (
           <>

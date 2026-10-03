@@ -71,7 +71,7 @@ export default async function VideosPage({ params }: PageProps<"/film/[id]/video
           download: links[v.id]?.download ?? "",
         }))}
         videosRunning={videosRunning}
-        trialLeft={FILM_PUBLIC_TRIAL.open && !isAdmin(user.email) ? Math.max(0, FILM_PUBLIC_TRIAL.freeVideos - (await filmTrialVideos()).taken) : null}
+        trialVideoUsed={FILM_PUBLIC_TRIAL.open && !isAdmin(user.email) ? (await filmTrialVideos(user.id)).taken > 0 : null}
       />
     </div>
   );

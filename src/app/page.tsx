@@ -10,7 +10,7 @@ export default async function Home() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const filmAllowed = user ? await canUseFilm(user.email) : false;
+  const filmAllowed = user ? await canUseFilm(user) : false;
 
   return (
     <div className="space-y-8">
