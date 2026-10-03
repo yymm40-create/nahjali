@@ -31,11 +31,10 @@ export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = "720p";
 /**
  * Video cost. BytePlus bills Seedance by output tokens ≈ width × height × 24 fps × seconds ÷ 1024, at a price
  * per 1M tokens that depends on the model and the quality (owner's ModelArk console, "without video input").
- * Seedance 2.5 prices are not confirmed yet: 2.0's are used until they are.
  */
 export const VIDEO_PRICE_PER_MILLION_TOKENS: Record<VideoModel, Record<VideoResolution, number>> = {
   "seedance-2.0": { "480p": 7, "720p": 7, "1080p": 7.7 },
-  "seedance-2.5": { "480p": 7, "720p": 7, "1080p": 7.7 },
+  "seedance-2.5": { "480p": 10.7, "720p": 10.7, "1080p": 11.7 },
 };
 
 /** Approximate tokens of one video (the provider reports the real count once it is done). */
