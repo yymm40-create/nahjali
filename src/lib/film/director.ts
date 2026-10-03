@@ -7,7 +7,7 @@ import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
-import { DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
   DIRECTOR_PROMPT,
@@ -155,7 +155,7 @@ export type DirectorAction =
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
-  | { action: "generate_video"; genId: string; resolution: VideoResolution; ratio?: "16:9" | "9:16" }
+  | { action: "generate_video"; genId: string; resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number }
   | { action: "approve_video"; assetId: string }
   | { action: "unapprove_video"; assetId: string }
   | { action: "reject_video"; assetId: string };
@@ -297,7 +297,9 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const resolution = input.resolution in VIDEO_RESOLUTIONS ? input.resolution : DEFAULT_VIDEO_RESOLUTION;
       // The client's orientation choice on the generation page wins over the director's ratio
       const ratio = input.ratio === "9:16" || input.ratio === "16:9" ? input.ratio : undefined;
-      await startVideo(project, user, v, await referenceLibrary(project.id), resolution, ratio);
+      // …and so does the length they set (4–15 seconds)
+      const seconds = input.durationSec ? clampVideoSeconds(Number(input.durationSec)) : undefined;
+      await startVideo(project, user, v, await referenceLibrary(project.id), resolution, ratio, seconds);
       return { jobId: null };
     }
 
@@ -378,10 +380,10 @@ function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>) {
 }
 
 /** Creates the video asset + paid job, and sends the generation to Seedance in the background. */
-async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string) {
+async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number) {
   const { prompt, refs } = readyForVideo(v, lib);
   const model: VideoModel = v.data.video_model || project.video_model || "seedance-2.5";
-  const durationSec = Math.min(Math.max(Math.round(v.data.duration_sec || 10), 4), VIDEO_MODELS[model].maxSeconds);
+  const durationSec = Math.min(seconds ?? clampVideoSeconds(v.data.duration_sec ?? 10), VIDEO_MODELS[model].maxSeconds);
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);
 

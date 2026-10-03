@@ -49,6 +49,10 @@ export const videoUsd = (model: VideoModel, resolution: VideoResolution, tokens:
 export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution, seconds: number) =>
   videoUsd(model, resolution, videoTokens(resolution, seconds));
 
+/** Video length the client can choose on the generation page (seconds). */
+export const VIDEO_DURATION = { min: 4, max: 15 } as const;
+export const clampVideoSeconds = (sec: number) => Math.min(Math.max(Math.round(sec || 10), VIDEO_DURATION.min), VIDEO_DURATION.max);
+
 /** Generated videos are kept on the site this many days; the client is asked to download them. */
 export const VIDEO_KEEP_DAYS = 7;
 
