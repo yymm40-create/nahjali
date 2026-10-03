@@ -33,10 +33,15 @@ function getOwnerIds() {
   return ownerIds;
 }
 
-/** The trial's users: the first `users` people (owner excluded) to start a film project, in order. */
+/** The trial's users: the first `users` people (owner excluded) to start a film project since the trial began, in order. */
 export async function filmTrialUsers() {
   const owners = await getOwnerIds();
-  const { data } = await createAdminClient().from("film_projects").select("user_id,created_at").order("created_at", { ascending: true }).limit(500);
+  const { data } = await createAdminClient()
+    .from("film_projects")
+    .select("user_id,created_at")
+    .gte("created_at", FILM_PUBLIC_TRIAL.since)
+    .order("created_at", { ascending: true })
+    .limit(500);
   const ids: string[] = [];
   for (const r of (data ?? []) as { user_id: string }[]) {
     if (!owners.has(r.user_id) && !ids.includes(r.user_id)) ids.push(r.user_id);
@@ -51,7 +56,7 @@ export async function filmTrialUsers() {
  */
 export async function filmTrialVideos(userId: string) {
   const db = createAdminClient();
-  const { data: projects } = await db.from("film_projects").select("id").eq("user_id", userId);
+  const { data: projects } = await db.from("film_projects").select("id").eq("user_id", userId).gte("created_at", FILM_PUBLIC_TRIAL.since);
   const ids = (projects ?? []).map((p) => p.id as string);
   if (!ids.length) return { made: 0, taken: 0 };
   const { data } = await db.from("film_assets").select("status").eq("kind", "video").in("project_id", ids);
