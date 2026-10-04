@@ -50,6 +50,7 @@ export default async function Header() {
                 {SECTIONS.filter((s) => (!s.requiresFilmAccess || filmAllowed) && !(s.underDevelopment && !bookletOpen)).map((s) => (
                   <Link key={s.key} href={s.href} className={ITEM}>{s.icon} {s.title}</Link>
                 ))}
+                <Link href="/jawad-ai" className={ITEM}>✨ منصة الذكاء الاصطناعي</Link>
                 <hr className="my-1 border-line" />
                 {bookletOpen && <Link href="/my-booklets" className={ITEM}>📚 كتيباتي</Link>}
                 {filmAllowed && <Link href="/film" className={ITEM}>🎞️ مشاريع أفلامي</Link>}

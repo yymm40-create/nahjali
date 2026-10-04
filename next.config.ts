@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
     "/api/**/*": ["./templates/**/*", "./config/style-reference.png", "./assets/fonts/**/*", "./node_modules/harfbuzzjs/dist/*.wasm"],
     // The order page reads the template list
     "/new": ["./templates/*/template.json"],
+    // JAWAD AI's icons and share image read the shipped logo from disk
+    "/jawad-ai/**/*": ["./public/jawad-ai/logo.png"],
   },
   // sharp is a native module; keep it out of the bundle
   serverExternalPackages: ["sharp", "harfbuzzjs"],

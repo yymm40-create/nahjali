@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
+import { useFilmBase } from "../FilmBase";
 
 /** The first screen of a film: title + the user's own story. Saved as soon as it is created. */
 export default function NewProject() {
   const router = useRouter();
+  const filmBase = useFilmBase();
   const [values, setValues] = useState<FieldValues>({ title: "", story: "", fixedFacts: "", targetDurationSec: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -17,7 +19,7 @@ export default function NewProject() {
     setError("");
     try {
       const { id } = await postJson<{ id: string }>("/api/film/projects", values);
-      router.push(`/film/${id}`);
+      router.push(`${filmBase}/${id}`);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

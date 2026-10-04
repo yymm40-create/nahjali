@@ -74,6 +74,8 @@ export type AccessMode = keyof typeof ACCESS_MODES;
 export const SECTIONS_ACCESS = {
   film: { label: "🎬 صانع الفيلم", modes: ["closed", "invite", "trial", "open"] as AccessMode[], default: "trial" as AccessMode },
   booklet: { label: "📖 كتيب نهج علي", modes: ["closed", "invite", "open"] as AccessMode[], default: "closed" as AccessMode },
+  // «الجواد الذكي!» | JAWAD AI: closed by default — the owner only; everyone else sees «قيد التطوير». "invite" = the emails below
+  jawad: { label: "✨ JAWAD AI", modes: ["closed", "invite", "open"] as AccessMode[], default: "closed" as AccessMode },
 } as const;
 export type AccessSection = keyof typeof SECTIONS_ACCESS;
 

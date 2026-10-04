@@ -15,6 +15,7 @@ import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
 const SHEET_COST = "تقريبًا $0.40";
 import { STATUS_LABELS } from "@config/film";
+import { useFilmBase } from "../../FilmBase";
 
 interface Asset {
   id: string;
@@ -51,6 +52,7 @@ const TEST = "STYLE-TEST";
 
 export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft }: Props) {
   const router = useRouter();
+  const filmBase = useFilmBase();
   const [writing, setWriting] = useState(job?.status === "running");
   const [painting, setPainting] = useState(imagesRunning > 0);
   const [busy, setBusy] = useState(false);
@@ -77,8 +79,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   // Once this section's last step is done, go straight to the next one (only when it happens here, not on later visits)
   const openedAt = useRef(stage);
   useEffect(() => {
-    if (openedAt.current === "sheets" && stage === "director") router.push(`/film/${projectId}/director`);
-  }, [stage, projectId, router]);
+    if (openedAt.current === "sheets" && stage === "director") router.push(`${filmBase}/${projectId}/director`);
+  }, [stage, projectId, router, filmBase]);
 
   async function send(body: Record<string, unknown>) {
     setBusy(true);
@@ -269,7 +271,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
       {stage === "director" || stage === "voices" || stage === "done" ? (
         <div className="card space-y-1 p-5 text-center">
           <p className="text-lg font-extrabold">✅ الشيتات كلها معتمدة وانتقلت للمخرج السينمائي</p>
-          <Link href={`/film/${projectId}/director`} className="btn btn-primary w-full">🎥 افتح المخرج</Link>
+          <Link href={`${filmBase}/${projectId}/director`} className="btn btn-primary w-full">🎥 افتح المخرج</Link>
         </div>
       ) : null}
       {error && <p className="error-box">{error}</p>}

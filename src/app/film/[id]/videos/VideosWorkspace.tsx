@@ -22,6 +22,7 @@ import {
   type VideoModel,
   type VideoResolution,
 } from "@config/film";
+import { useFilmBase } from "../../FilmBase";
 
 interface Generation {
   /** The director's understanding of the client's video notes, as options to choose from. */
@@ -70,6 +71,7 @@ export default function VideosWorkspace({
   job: { status: string; error: string | null } | null;
 }) {
   const router = useRouter();
+  const filmBase = useFilmBase();
   const [resolution, setResolution] = useState<VideoResolution>(DEFAULT_VIDEO_RESOLUTION);
   // Orientation for every video: the director's choice by default (the most common one in the approved generations)
   const [ratio, setRatio] = useState<"16:9" | "9:16">(() =>
@@ -366,7 +368,7 @@ export default function VideosWorkspace({
         </div>
       )}
       {kept.length > 0 && (
-        <p className="text-center text-sm font-bold text-muted">تقدر بعد تطلب تعديل أكبر من صفحة <Link href={`/film/${projectId}/director`} className="underline">المخرج</Link>.</p>
+        <p className="text-center text-sm font-bold text-muted">تقدر بعد تطلب تعديل أكبر من صفحة <Link href={`${filmBase}/${projectId}/director`} className="underline">المخرج</Link>.</p>
       )}
       {stage === "voices" || stage === "done" ? (
         <div className="card space-y-1 p-5 text-center">

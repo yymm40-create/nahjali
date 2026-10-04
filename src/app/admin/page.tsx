@@ -48,6 +48,7 @@ export default async function AdminPage() {
         <Link href="/admin/limits" className="btn btn-secondary mt-2 w-full">🎚️ التحكم بالموارد والمحاولات</Link>
         <Link href="/admin/pricing" className="btn btn-secondary mt-2 w-full">🧮 حاسبة الأسعار والأرباح</Link>
         <Link href="/admin/mahdi" className="btn btn-secondary mt-2 w-full">🌙 لأجل المهدي: التحديات والنصوص والبلاغات</Link>
+        <Link href="/jawad-ai/admin" className="btn btn-secondary mt-2 w-full">✨ JAWAD AI: الشعار والإعلانات والمولدات والأسعار والمهام</Link>
       </header>
 
       {/* KPI tiles */}

@@ -1,0 +1,82 @@
+// JAWAD AI — what the studio shows for a job's state. Shared by the browser and the server.
+
+export type JobStatus = "validating" | "queued" | "submitting" | "running" | "saving" | "succeeded" | "failed" | "cancelled";
+
+/** The stage of a job in plain Arabic. `providerStatus` refines "running" (in the provider's queue / generating). */
+export function stageLabel(status: JobStatus, providerStatus?: string | null) {
+  switch (status) {
+    case "validating":
+      return "التحقق من الطلب";
+    case "queued":
+      return "بالانتظار";
+    case "submitting":
+      return "الإرسال إلى المزوّد";
+    case "running":
+      return providerStatus === "queued" ? "في طابور المزوّد" : "التوليد";
+    case "saving":
+      return "حفظ الناتج";
+    case "succeeded":
+      return "اكتمل";
+    case "failed":
+      return "فشل";
+    case "cancelled":
+      return "أُلغي";
+  }
+}
+
+export const isOpenStatus = (s: JobStatus) => s === "validating" || s === "queued" || s === "submitting" || s === "running" || s === "saving";
+
+export interface OutputView {
+  id: string;
+  kind: "image" | "video" | "audio";
+  url: string | null;
+  downloadUrl: string;
+  mime: string;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+}
+
+export interface JobView {
+  type: "job";
+  id: string;
+  createdAt: string;
+  finishedAt: string | null;
+  status: JobStatus;
+  providerStatus: string | null;
+  /** Only a real percentage from the provider (none of the current providers report one). */
+  progress: number | null;
+  generatorId: string;
+  generatorName: string;
+  sectionId: string;
+  outputKind: "image" | "video" | "audio";
+  mode: string;
+  prompt: string;
+  instructions: string;
+  settings: Record<string, string | number | boolean>;
+  refStyle: "none" | "frames" | "references";
+  refs: { uploadId: string; kind: "image" | "video" | "audio"; role: "first_frame" | "last_frame" | "reference" }[];
+  priceCoins: number;
+  charged: boolean;
+  chargeState: "none" | "held" | "settled" | "refunded";
+  error: string | null;
+  cancellable: boolean;
+  outputs: OutputView[];
+}
+
+/** A picture or video made in the film maker, shown in the studio and linked to its project. */
+export interface FilmItemView {
+  type: "film";
+  id: string;
+  createdAt: string;
+  kind: "image" | "video";
+  url: string | null;
+  downloadUrl: string | null;
+  projectId: string;
+  projectTitle: string;
+  refKey: string;
+  href: string;
+}
+
+export type WorkItem = JobView | FilmItemView;
+export type WorksFilter = "all" | "image" | "video" | "audio";

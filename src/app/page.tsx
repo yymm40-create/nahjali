@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { canUseFilm } from "@/lib/film/access";
 import { SECTIONS } from "@config/sections";
 import { accessMode, bookletOpenFor } from "@/lib/film/limits";
+import { loadRuntime } from "@/lib/jawad/server/runtime";
+import { jawadVisibleTo } from "@/lib/jawad/server/access";
 
 /** Home: the site's sections (config/sections.ts). */
 export default async function Home() {
@@ -13,7 +15,7 @@ export default async function Home() {
   } = await supabase.auth.getUser();
   const filmAllowed = user ? await canUseFilm(user) : false;
   // «كتيب نهج علي»: who may open it is set on /admin/limits
-  const [bookletMode, bookletOpen] = await Promise.all([accessMode("booklet"), bookletOpenFor(user?.email)]);
+  const [bookletMode, bookletOpen, jawad, jawadOpen] = await Promise.all([accessMode("booklet"), bookletOpenFor(user?.email), loadRuntime(), jawadVisibleTo(user)]);
 
   return (
     <div className="space-y-8">
@@ -27,6 +29,23 @@ export default async function Home() {
 
       <section className="space-y-3">
         <h2 className="display text-3xl">وش تبي تسوي اليوم؟</h2>
+        {/* «الجواد الذكي!» | JAWAD AI: its own identity, also on this card */}
+        <Link
+          href="/jawad-ai"
+          className="flex items-center gap-4 overflow-hidden rounded-3xl border border-[#2a3550] bg-[#0b0c0f] p-4 text-[#eef1f6] shadow-[0_10px_30px_-12px_rgba(59,140,255,0.45)] transition hover:-translate-y-0.5"
+        >
+          <Image src={jawad.brand.logoUrl} alt="" width={64} height={64} unoptimized={jawad.brand.customLogo} className="size-16 shrink-0 rounded-full" />
+          <div className="flex-1">
+            <h3 className="flex flex-wrap items-center gap-2 text-xl font-extrabold">
+              منصة الذكاء الاصطناعي
+              {/* In development for everyone but the owner (and invited emails): the card explains what's coming */}
+              {!jawadOpen && <span className="rounded-full border border-[#e9b546]/50 px-2 py-0.5 text-xs font-bold text-[#e9b546]">قيد التطوير</span>}
+            </h3>
+            <p className="text-sm font-bold text-[#a3abb9]">
+              <span dir="ltr" className="text-[#3b8cff]">JAWAD AI</span> · الجواد الذكي! — {jawadOpen ? "صور وفيديو وصوت وأفلام بالذكاء الاصطناعي." : "منصة لصناعة الصور والفيديو والصوت والأفلام بالذكاء الاصطناعي، نجهّزها الآن. اضغط لتعرف وش فيها."}
+            </p>
+          </div>
+        </Link>
         <ul className="space-y-3">
           {SECTIONS.map((s) => {
             // Signed-out visitors can still open the film card (they are asked to sign in first)

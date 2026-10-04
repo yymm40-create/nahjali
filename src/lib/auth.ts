@@ -9,7 +9,9 @@ export async function requireUser(next = "/") {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
+  // «الجواد الذكي!» | JAWAD AI signs in on its own page (the film maker also lives there)
+  const login = next === "/jawad-ai" || next.startsWith("/jawad-ai/") ? "/jawad-ai/login" : "/login";
+  if (!user) redirect(`${login}?next=${encodeURIComponent(next)}`);
   return user;
 }
 

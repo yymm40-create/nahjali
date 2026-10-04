@@ -20,7 +20,8 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}${gate ?? safeNext}`);
     }
   }
-  // «لأجل المهدي» has its own sign-in page
-  const loginPage = safeNext === "/mahdi" || safeNext.startsWith("/mahdi/") ? "/mahdi/login" : "/login";
-  return NextResponse.redirect(`${origin}${loginPage}?error=1`);
+  // «لأجل المهدي» and «الجواد الذكي!» have their own sign-in pages
+  const own = ["/mahdi", "/jawad-ai"].find((p) => safeNext === p || safeNext.startsWith(`${p}/`));
+  const loginPage = own ? `${own}/login` : "/login";
+  return NextResponse.redirect(`${origin}${loginPage}?error=1${own === "/jawad-ai" ? `&next=${encodeURIComponent(safeNext)}` : ""}`);
 }
