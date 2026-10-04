@@ -42,6 +42,9 @@ export default async function MahdiAdminPage() {
     ? (await db.from("mahdi_books").select("id, title, author, pages, unit, description, cover_path, hidden_at, hidden_reason, created_at").in("id", reportedMissing.slice(0, 100))).data ?? []
     : [];
 
+  // Questions to «المساعد» that wait for an answer (none until migration 0018 runs)
+  const waiting = (await db.from("mahdi_assistant_messages").select("id", { count: "exact", head: true }).eq("from_owner", false).is("read_at", null)).count ?? 0;
+
   // Feedback («شاركنا رأيك»), newest first, with who sent it (empty until migration 0013 runs)
   const fb = (await db.from("mahdi_feedback").select("id, user_id, rating, kind, message, place, created_at").order("created_at", { ascending: false }).limit(500)).data ?? [];
   const fbIds = [...new Set(fb.map((x) => x.user_id as string))];
@@ -122,6 +125,7 @@ export default async function MahdiAdminPage() {
         <Link href="/admin" className="text-sm font-bold text-muted">{t.admin.back}</Link>
         <h1 className="display text-4xl">{t.admin.title}</h1>
         <p className="font-bold text-muted">{t.admin.intro}</p>
+        <Link href="/admin/mahdi/assistant" className={`btn mt-2 w-full ${waiting ? "btn-primary" : "btn-secondary"}`}>{waiting ? t.admin.assistant.linkWaiting(waiting) : t.admin.assistant.link}</Link>
         <Link href="/admin/mahdi/users" className="btn btn-secondary mt-2 w-full">{t.admin.users.link}</Link>
       </header>
       <MahdiAdminTools data={data} />

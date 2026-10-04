@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
+import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import AssistantSheet from "./AssistantSheet";
 import { FeedbackPrompt, FeedbackSheet } from "./Feedback";
 import HabitForm from "./HabitForm";
 import Icon, { type IconName } from "./Icon";
@@ -14,13 +16,44 @@ import Sheet from "./Sheet";
 import Toasts from "./Toasts";
 import Avatar from "./Avatar";
 import RewardReveal from "./RewardReveal";
+import Robot from "./Robot";
 
 const NAV: { href: string; label: string; side?: string; icon: IconName; match: (p: string) => boolean }[] = [
   { href: "/mahdi", label: t.nav.home, icon: "home", match: (p) => p === "/mahdi" || p.startsWith("/mahdi/day") },
   { href: "/mahdi/projects", label: t.nav.projects, side: t.nav.side.projects, icon: "projects", match: (p) => p.startsWith("/mahdi/projects") || p.startsWith("/mahdi/habits") },
+  { href: "/mahdi/reading", label: t.nav.reading, side: t.nav.side.reading, icon: "book", match: (p) => p.startsWith("/mahdi/reading") },
   { href: "/mahdi/progress", label: t.nav.progress, side: t.nav.side.progress, icon: "progress", match: (p) => p.startsWith("/mahdi/progress") },
   { href: "/mahdi/community", label: t.nav.community, side: t.nav.side.community, icon: "globe", match: (p) => p.startsWith("/mahdi/community") || p.startsWith("/mahdi/challenges") || p.startsWith("/mahdi/share") },
 ];
+
+/** Tells the top bar to ask again how many notifications are unread (after reading them). */
+export const INBOX_EVENT = "mahdi:inbox";
+
+/** How many notifications are unread: asked on opening, every minute, when the app comes back, and on INBOX_EVENT. */
+function useUnread() {
+  const [unread, setUnread] = useState(0);
+  const refresh = useCallback(() => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    mahdiFetch<{ unread: number }>("/api/mahdi/inbox?count=1")
+      .then((r) => setUnread(r.unread))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    const first = setTimeout(refresh, 0);
+    const every = setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(INBOX_EVENT, refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(INBOX_EVENT, refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [refresh]);
+  return { unread, refresh };
+}
 
 /** The context of the "+" button: inside a project it means "a habit in this project". */
 function useAddContext() {
@@ -38,12 +71,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [newHabit, setNewHabit] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const [feedback, setFeedback] = useState(false);
+  const [assistant, setAssistant] = useState(false);
+  const { unread, refresh } = useUnread();
+  // A reply notification opens «المساعد» with ?assistant=1 on any screen
+  const searchParams = useSearchParams();
+  const assistantFromLink = searchParams.get("assistant") === "1";
+  const closeAssistant = () => {
+    setAssistant(false);
+    if (assistantFromLink) router.replace(pathname, { scroll: false });
+  };
 
   const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
   const inProject = projects.find((p) => p.id === contextProject);
   const { profile } = state.snap;
-  // The home screen and the daily screens already show the avatar in their own header
-  const homeLike = pathname === "/mahdi" || pathname.startsWith("/mahdi/day");
 
   const onAdd = () => {
     if (projects.length === 0) setNewProject(true);
@@ -64,9 +104,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Icon name={n.icon} /> {n.side ?? n.label}
             </Link>
           ))}
-          <Link href="/mahdi/reading" className="m-side-item" aria-current={pathname.startsWith("/mahdi/reading") ? "page" : undefined}>
-            <Icon name="book" /> {t.nav.side.reading}
-          </Link>
         </nav>
         <button type="button" className="m-btn m-btn-primary" onClick={onAdd}>
           <Icon name="plus" /> {inProject ? t.add.habitIn(inProject.name) : t.nav.add}
@@ -81,22 +118,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button type="button" className="m-side-item w-full text-sm" onClick={() => setFeedback(true)}>
             <Icon name="chat" size={18} /> {t.feedback.cta}
           </button>
-          <Link href="/" className="m-side-item text-sm">
-            <Icon name="chevronRight" size={18} /> {t.backToSite}
-          </Link>
         </div>
       </aside>
 
       <div className="min-w-0">
-        {!homeLike && (
-          // Phones: the avatar in the header opens «المزيد» (account and settings), since the bottom bar has «المجتمع» instead
-          <header className="m-topbar lg:hidden">
-            <Link href="/mahdi" className="m-display m-gold text-xl">{t.brand}</Link>
-            <Link href="/mahdi/more" className="m-icon-btn size-12" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
-              <Avatar profile={profile} size={36} />
-            </Link>
-          </header>
-        )}
+        {/* Every screen: back to «نهج علي», the assistant and the notifications, always in the same place */}
+        <header className="m-topbar" aria-label={t.bar.label}>
+          <Link href="/" className="m-bar-site">
+            <Icon name="chevronRight" size={18} strokeWidth={2.2} />
+            <span className="lg:hidden">{t.bar.site}</span>
+            <span className="hidden lg:inline">{t.bar.siteLong}</span>
+          </Link>
+          <Link href="/mahdi" className="m-display m-gold min-w-0 truncate text-lg max-[379px]:hidden lg:hidden">{t.brand}</Link>
+          <span className="flex-1" />
+          <button type="button" className="m-bar-btn" onClick={() => setAssistant(true)} aria-label={t.bar.assistant}>
+            <Robot size={28} />
+            <span>{t.bar.assistant}</span>
+          </button>
+          <Link
+            href="/mahdi/inbox"
+            className="m-bar-btn relative"
+            aria-label={unread ? t.bar.inboxUnread(unread) : t.bar.inbox}
+            aria-current={pathname.startsWith("/mahdi/inbox") ? "page" : undefined}
+          >
+            <Icon name="bell" size={24} />
+            <span>{t.bar.inbox}</span>
+            {unread > 0 && <span className="m-badge m-num" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
+          </Link>
+        </header>
         <SyncBanner />
         <main id="m-main" className="m-content-pad mx-auto w-full max-w-[1120px] px-4 pt-4 sm:px-6 lg:px-10 lg:pt-8">
           {children}
@@ -105,8 +154,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Phones: bottom navigation with the "+" in the middle */}
       <nav aria-label={t.nav.main} className="m-bottom-nav lg:hidden">
-        <div className="mx-auto grid h-full max-w-lg grid-cols-5 items-center px-2">
-          {NAV.slice(0, 2).map((n) => (
+        <div className="mx-auto grid h-full max-w-xl grid-cols-7 items-center px-1">
+          {NAV.slice(0, 3).map((n) => (
             <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
               <Icon name={n.icon} /> {n.label}
             </Link>
@@ -116,11 +165,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Icon name="plus" size={28} strokeWidth={2.2} />
             </button>
           </div>
-          {NAV.slice(2).map((n) => (
+          {NAV.slice(3).map((n) => (
             <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
               <Icon name={n.icon} /> {n.label}
             </Link>
           ))}
+          <Link href="/mahdi/more" className="m-nav-item" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
+            <Avatar profile={profile} size={24} /> {t.nav.me}
+          </Link>
         </div>
       </nav>
 
@@ -163,6 +215,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <HabitForm open={newHabit} onClose={() => setNewHabit(false)} projectId={inProject?.id} />
       <ProjectForm open={newProject} onClose={() => setNewProject(false)} onSaved={(id) => router.push(`/mahdi/projects/${id}`)} />
       <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} place="sidebar" />
+      <AssistantSheet open={assistant || assistantFromLink} onClose={closeAssistant} onRead={refresh} />
       <FeedbackPrompt />
       <RewardReveal />
       <Toasts />

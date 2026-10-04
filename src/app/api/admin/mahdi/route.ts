@@ -8,6 +8,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { UUID_RE } from "@/lib/mahdi/server/api";
 import { normalizeTitle } from "@/lib/mahdi/engine";
 import { COVER_BUCKET } from "@/lib/mahdi/server/reading";
+import { notify } from "@/lib/mahdi/server/inbox";
 
 const A = t.admin;
 const CONTEXTS = ["home", "day_complete", "weekly", "monthly", "comeback", "milestone", "notification"] as const;
@@ -28,7 +29,7 @@ const bad = (msg: string) => new UserError(msg, 400);
  * Owner-only content management for «لأجل المهدي». One route, one `action` per change:
  *   section.save / section.delete · challenge.save / challenge.status / challenge.delete
  *   text.save / text.delete · phrase.save / phrase.delete · post.hide / post.unhide · reports.dismiss
- *   book.save / book.hide / book.unhide / book.dismiss
+ *   book.save / book.hide / book.unhide / book.dismiss · assistant.reply / assistant.read
  * Everything runs with the service role, after checking that the caller is the owner. Anyone else gets 404.
  */
 export const POST = handle(async (req: Request) => {
@@ -206,6 +207,21 @@ export const POST = handle(async (req: Request) => {
       break;
     case "book.dismiss":
       await run(db.from("mahdi_book_reports").delete().eq("book_id", id(body.id)));
+      break;
+
+    // ── «المساعد»: the owner answers by hand; the person gets a notification ──
+    case "assistant.reply": {
+      const uid = id(body.userId);
+      const text = cleanText(body.text, 2000);
+      if (!text) throw bad(t.admin.assistant.empty);
+      const now = new Date().toISOString();
+      await run(db.from("mahdi_assistant_messages").insert({ user_id: uid, from_owner: true, body: text }));
+      await run(db.from("mahdi_assistant_messages").update({ read_at: now }).eq("user_id", uid).eq("from_owner", false).is("read_at", null));
+      await notify([uid], { kind: "assistant_reply", title: t.assistant.replyTitle, body: text, url: "/mahdi?assistant=1" });
+      break;
+    }
+    case "assistant.read":
+      await run(db.from("mahdi_assistant_messages").update({ read_at: new Date().toISOString() }).eq("user_id", id(body.userId)).eq("from_owner", false).is("read_at", null));
       break;
 
     default:

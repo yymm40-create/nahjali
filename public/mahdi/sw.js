@@ -101,7 +101,8 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       const open = list.find((c) => c.url.startsWith(new URL("/mahdi", self.location.origin).href));
-      if (open) return open.focus();
+      // An open window goes to the notification's page (a reply opens «المساعد», for example)
+      if (open) return open.focus().then((c) => (c.url === path ? c : c.navigate(path).catch(() => c)));
       return self.clients.openWindow(path);
     }),
   );
