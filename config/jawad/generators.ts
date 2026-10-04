@@ -13,6 +13,14 @@ const CHECKED = "2026-10-04";
 
 /** Price key of «المخرج الخارق» (the prompt rewrite offered in video making), per use. */
 export const DIRECTOR_PRICE_KEY = "director:prompt";
+/** «التعديل الذكي» of a finished result: the fixed fee, and (videos) Claude writing the corrected prompt. Per edit. */
+export const EDIT_FEE_KEY = "edit:fee";
+export const EDIT_CLAUDE_KEY = "edit:claude";
+/**
+ * Claude Opus 5.5 writing a corrected video prompt, one answer at its ceiling: the Super Director skill (~10,000 tokens
+ * at the cache-write rate $5/M) + up to 16 frames and the texts (~8,000 tokens × $4/M) + up to 6,000 output tokens × $20/M.
+ */
+export const EDIT_CLAUDE_USD = (10_000 * 5 + 8_000 * 4 + 6_000 * 20) / 1e6;
 const MB = 1024 * 1024;
 
 /** Hundredths of a coin for a provider cost (rounded up), on the site's coin price (config/coins.ts). */
@@ -124,6 +132,7 @@ const gptImage2: GeneratorDef = {
       })),
     ),
     { key: "prompt:1kb", label: "كل ١٠٠٠ بايت من البرومبت", defaultCenti: centiFor((1000 * GPT_IMAGE_2_PRICE.textIn) / 1e6), basis: "سقف: كل بايت ≤ توكن واحد × $5/مليون" },
+    { key: EDIT_FEE_KEY, label: "التعديل الذكي · رسوم إضافية (للمرة)", defaultCenti: 1000, basis: "سعر ثابت حدّده المالك (10 نقدات) فوق سعر الصورة؛ يشمل كتابة Claude للبرومبت المعدّل" },
     { key: "ref:image", label: "كل صورة مرجعية", defaultCenti: centiFor((GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6), basis: `سقف (غير متحقق لـ gpt-image-2): ${GPT_IMAGE_2_REF_TOKENS_CAP.toLocaleString("en")} توكن، أقصى ما وثّقته OpenAI لصورة مدخلة في gpt-image-1، × $${GPT_IMAGE_2_PRICE.imageIn}/مليون. التكلفة الفعلية تُسجَّل مع كل مهمة` },
   ],
   modeFor: (_style, refs) => (refs.length ? gptImage2Modes[1] : gptImage2Modes[0]),
@@ -303,6 +312,13 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
         defaultCenti: 3000,
         basis: "سعر ثابت حدّده المالك (30 نقدة): Claude Opus 5.5 يعيد كتابة البرومبت بمهارة «المخرج الخارق»",
       },
+      {
+        key: EDIT_CLAUDE_KEY,
+        label: "التعديل الذكي · Claude يكتب البرومبت المعدّل (للمرة)",
+        defaultCenti: centiFor(EDIT_CLAUDE_USD),
+        basis: `سقف إجابة واحدة لـ Claude Opus 5.5: مهارة المخرج الخارق (~10,000 توكن × $5/مليون) + حتى 16 لقطة والنصوص (~8,000 × $4) + حتى 6,000 توكن ناتج × $20 = $${EDIT_CLAUDE_USD.toFixed(3)}`,
+      },
+      { key: EDIT_FEE_KEY, label: "التعديل الذكي · رسوم إضافية (للمرة)", defaultCenti: 3000, basis: "سعر ثابت حدّده المالك (30 نقدة) فوق Claude وسعر الفيديو" },
     ],
     modeFor(style, refs) {
       if (!refs.length) return modes[0];

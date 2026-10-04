@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn, type ClaudeUsage } from "@/lib/film/anthropic";
 import { SUPER_DIRECTOR } from "@config/film-prompts/director";
 import { DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
-import type { RefRole, RefStyle, Settings } from "@config/jawad/types";
+import type { GeneratorDef, RefKind, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { DIRECTOR_LIMITS, directorProblems, directorPrompt, type DirectorOutput } from "../director";
 import { evaluate } from "../engine";
 import { cleanRefName, defaultRefName } from "../mentions";
@@ -20,7 +20,15 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
 /** Images Claude looks at (the rest of the references are described in text). */
 const MAX_IMAGES = 8;
 
-/** The website's task, after the skill (both fixed, so the whole system prompt is cached across requests). */
+/** The website's rules for every Super Director prompt (develop or edit); they override the skill where they differ. */
+const WEBSITE_RULES = `Website rules (they override the skill wherever they differ):
+1. Output the final EN/ZH pair as the JSON object {"en": "...", "zh": "..."} (instead of the array), with the same content rules.
+2. Length: "en" at most ${DIRECTOR_LIMITS.en} characters and "zh" at most ${DIRECTOR_LIMITS.zh} characters, each counted WITHOUT the spoken lines (rule 4). Trim in the skill's order (Narrative Summary, then Static Description, then Style & Mood) and keep the Dynamic Description.
+3. The settings chosen in the website are binding. They override the user's text and the skill's defaults: model version, duration, aspect ratio, resolution, sound on/off and reference mode. State the duration naturally in both prompts.
+4. Spoken lines (dialogue, voice-over, singing): any Arabic line is written in Latin letters as a faithful transliteration of the same Arabic words — the prompts must contain NO Arabic script at all. Put every spoken line inside straight double quotes "..." (the same text in "en" and "zh"); use double quotes for nothing else. Lines in other languages stay in their original language, also in double quotes. When sound is off, write no spoken lines and no Audio section.
+5. References: the user's attachments have names. Refer to each one only as @name, exactly as given — these are the website's attachment labels and replace <<<image_n>>>, <<<video_n>>> and <<<audio_n>>>. Never invent a reference or a name. Images among them are attached to the message so you can see them; videos and audio are described.`;
+
+/** «طوّر البرومبت»: the website's task, after the skill (both fixed, so the whole system prompt is cached across requests). */
 const WEBSITE_TASK = `
 
 ---
@@ -29,13 +37,26 @@ const WEBSITE_TASK = `
 
 You run in the background of the JAWAD AI video studio; the user never sees this exchange. They wrote a prompt for a Seedance video and asked the Super Director to develop it. This message IS the final prompt-delivery stage: deliver the final prompt now. Do not ask questions, do not explain, add no approval gates.
 
-Website rules (they override the skill wherever they differ):
-1. Output the final EN/ZH pair as the JSON object {"en": "...", "zh": "..."} (instead of the array), with the same content rules.
-2. Length: "en" at most ${DIRECTOR_LIMITS.en} characters and "zh" at most ${DIRECTOR_LIMITS.zh} characters, each counted WITHOUT the spoken lines (rule 4). Trim in the skill's order (Narrative Summary, then Static Description, then Style & Mood) and keep the Dynamic Description.
-3. The settings chosen in the website are binding. They override the user's text and the skill's defaults: model version, duration, aspect ratio, resolution, sound on/off and reference mode. State the duration naturally in both prompts.
-4. Spoken lines (dialogue, voice-over, singing): any Arabic line is written in Latin letters as a faithful transliteration of the same Arabic words — the prompts must contain NO Arabic script at all. Put every spoken line inside straight double quotes "..." (the same text in "en" and "zh"); use double quotes for nothing else. Lines in other languages stay in their original language, also in double quotes. When sound is off, write no spoken lines and no Audio section.
-5. References: the user's attachments have names. Refer to each one only as @name, exactly as given — these are the website's attachment labels and replace <<<image_n>>>, <<<video_n>>> and <<<audio_n>>>. Never invent a reference or a name. Images among them are attached to the message so you can see them; videos and audio are described.
+${WEBSITE_RULES}
 6. Keep the user's story, characters, actions, camera directions and dialogue (only transliterating Arabic); improve the direction, do not change what happens.`;
+
+/** «التعديل الذكي»: the Super Director fixes a video that was already made, from the user's notes and its frames. */
+export const EDIT_TASK = `
+
+---
+
+## WEBSITE TASK — JAWAD AI SMART EDIT (applies on top of the skill above)
+
+You run in the background of the JAWAD AI video studio; the user never sees this exchange. The user already generated a video with the PREVIOUS PROMPT below. Frames taken from that video are attached, each labelled with its time in seconds, so you can see what was really made. The user then wrote what went wrong and what to change (with times when they know them). This message IS the final prompt-delivery stage: deliver the corrected prompt now. Do not ask questions, do not explain, add no approval gates.
+
+Your job, with a super editor's eye:
+- Study the frames against the previous prompt and the user's notes. Find the cause of each problem (an over-busy action, a vague description, a camera move the model cannot hold, a hand or face detail left open, a timing that is too tight, a conflicting instruction…).
+- Write a NEW prompt that keeps everything that worked (story, characters, look, wardrobe, setting, lighting, camera language, dialogue and timing) and fixes exactly what the user asked, with direction that prevents the same errors from happening again (precise anatomy and contact points, simpler or slower motion where it broke, stable framing, clear spatial positions, explicit continuity).
+- Do not change what the user did not ask to change.
+- When the task says only a PART is being regenerated: the new clip replaces only that part of the original and is cut in cleanly. It starts exactly at the first-frame image and ends exactly at the last-frame image, over the given duration. Describe only what happens inside that part, matching the original's look, motion speed and direction, so both cuts are invisible.
+
+${WEBSITE_RULES}
+6. Spoken lines that worked in the previous video stay word for word (transliterated as in rule 4).`;
 
 const SCHEMA = {
   type: "object",
@@ -123,23 +144,7 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
 
   try {
     const names = meta.map((m) => m.name);
-    const parts: ClaudePart[] = [
-      {
-        type: "text",
-        text: [
-          "Settings (binding):",
-          `- Model: ${def.name} (${def.model.id})`,
-          `- Duration: ${s.duration} seconds`,
-          `- Aspect ratio: ${s.ratio === "adaptive" ? "follows the first-frame image" : s.ratio}`,
-          `- Resolution: ${s.resolution}`,
-          `- Sound: ${s.audio ? "on (the model generates synchronized sound)" : "off (a silent video)"}`,
-          `- Reference mode: ${MODE_EN[e.mode.id] ?? e.mode.id}`,
-          "",
-          meta.length ? "References (in the order they are sent):" : "References: none.",
-          ...meta.map((m) => `- @${m.name} — ${KIND_EN[m.kind]}${m.role !== "reference" ? ` (${m.role === "first_frame" ? "first frame" : "last frame"})` : ""}${m.durationMs ? `, ${(m.durationMs / 1000).toFixed(1)} s` : ""}`),
-        ].join("\n"),
-      },
-    ];
+    const parts: ClaudePart[] = [{ type: "text", text: settingsText(def, s, e.mode.id, meta) }];
     // The pictures themselves, by short-lived link, each introduced by its name
     const images = found.rows.map((r, i) => ({ r, name: meta[i].name })).filter((x) => x.r.kind === "image").slice(0, MAX_IMAGES);
     if (images.length) {
@@ -151,27 +156,49 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
     }
     parts.push({ type: "text", text: `The user's prompt:\n<<<\n${prompt}\n>>>` });
 
-    let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
-    const usage: ClaudeUsage[] = [];
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const r = await callClaudeJson<DirectorOutput>({ system: SUPER_DIRECTOR + WEBSITE_TASK, turns, schema: SCHEMA, maxTokens: 16000 });
-      usage.push(r.usage);
-      const problems = directorProblems(r.data, names);
-      if (!problems.length) {
-        const usd = usage.reduce((t, u) => t + claudeCost(u), 0);
-        console.info("jawad director", { user: user.id, generator: def.id, attempts: attempt, usd: Number(usd.toFixed(4)) });
-        return { kind: "done", prompt: directorPrompt(r.data), coins: charged ? coins : 0, balance };
-      }
-      // Once more, with what to fix
-      turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${problems.join("\n- ")}` }];
-    }
-    throw new Error("director answer broke the website rules twice");
+    const r = await directorRun(WEBSITE_TASK, parts, names);
+    console.info("jawad director", { user: user.id, generator: def.id, attempts: r.attempts, usd: Number(r.usd.toFixed(4)) });
+    return { kind: "done", prompt: r.prompt, coins: charged ? coins : 0, balance };
   } catch (err) {
     console.error("jawad director failed", user.id, err);
     if (charged) await refund(user.id, coins, ref);
     if (err instanceof UserError) throw err;
     throw new UserError(`تعذّر تطوير البرومبت الآن؛ جرّب مرة ثانية.${charged ? ` أعدنا لك ${coins} نقدة.` : ""}`, 502);
   }
+}
+
+/** The binding settings and the named references, as Claude reads them. */
+export function settingsText(def: GeneratorDef, s: Settings, modeId: string, meta: { name: string; kind: RefKind; role: RefRole; durationMs?: number | null }[]) {
+  return [
+    "Settings (binding):",
+    `- Model: ${def.name} (${def.model.id})`,
+    `- Duration: ${s.duration} seconds`,
+    `- Aspect ratio: ${s.ratio === "adaptive" ? "follows the first-frame image" : s.ratio}`,
+    `- Resolution: ${s.resolution}`,
+    `- Sound: ${s.audio ? "on (the model generates synchronized sound)" : "off (a silent video)"}`,
+    `- Reference mode: ${MODE_EN[modeId] ?? modeId}`,
+    "",
+    meta.length ? "References (in the order they are sent):" : "References: none.",
+    ...meta.map((m) => `- @${m.name} — ${KIND_EN[m.kind]}${m.role !== "reference" ? ` (${m.role === "first_frame" ? "first frame" : "last frame"})` : ""}${m.durationMs ? `, ${(m.durationMs / 1000).toFixed(1)} s` : ""}`),
+  ].join("\n");
+}
+
+/**
+ * Asks the Super Director (the skill + a website task) for an EN/ZH prompt, once more if the answer breaks a
+ * website rule. Throws when it fails twice.
+ */
+export async function directorRun(task: string, parts: ClaudePart[], names: string[]): Promise<{ prompt: string; usd: number; attempts: number }> {
+  let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
+  const usage: ClaudeUsage[] = [];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const r = await callClaudeJson<DirectorOutput>({ system: SUPER_DIRECTOR + task, turns, schema: SCHEMA, maxTokens: 16000 });
+    usage.push(r.usage);
+    const problems = directorProblems(r.data, names);
+    if (!problems.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
+    // Once more, with what to fix
+    turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${problems.join("\n- ")}` }];
+  }
+  throw new Error("director answer broke the website rules twice");
 }
 
 async function refund(userId: string, coins: number, ref: string) {

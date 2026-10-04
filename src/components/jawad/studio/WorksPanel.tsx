@@ -6,6 +6,7 @@ import { generatorById } from "@config/jawad/generators";
 import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
 import SmartCoin from "@/components/SmartCoin";
 import Dialog from "../Dialog";
+import SmartEdit from "./SmartEdit";
 import Icon from "../Icon";
 import LocalTime from "../LocalTime";
 import LoginLink from "../LoginLink";
@@ -77,6 +78,8 @@ export interface WorksPanelProps {
   onCancel: (j: JobView) => void;
   onRetrySubmit: (j: JobView) => void;
   canUseAsRef: (o: OutputView) => string | null;
+  /** «التعديل الذكي» made a new job. */
+  onEdited: (j: JobView, balance: number | null) => void;
 }
 
 export default function WorksPanel(p: WorksPanelProps) {
@@ -273,8 +276,10 @@ function OutputMedia({ o, onOpen, cover }: { o: OutputView; onOpen?: () => void;
   );
 }
 
-function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
+function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef, onEdited }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
   const [details, setDetails] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
   const open = isOpenStatus(j.status);
   const chips = settingChips(j);
   const outs = j.outputs;
@@ -374,6 +379,11 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
                 </button>
               );
             })}
+          {editable && (
+            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setEditing(true)}>
+              <Icon name="wand" size={14} /> التعديل الذكي
+            </button>
+          )}
           {j.cancellable && (
             <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs text-jw-danger" onClick={() => onCancel(j)}>
               <Icon name="stop" size={14} /> إلغاء (في الطابور)
@@ -387,6 +397,17 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
         </div>
         {j.status === "validating" && j.error && <p className="text-xs text-jw-warn">{j.error}</p>}
       </div>
+      {editable && (
+        <SmartEdit
+          job={j}
+          open={editing}
+          onClose={() => setEditing(false)}
+          onCreated={(nj, balance) => {
+            setEditing(false);
+            onEdited(nj, balance);
+          }}
+        />
+      )}
     </article>
   );
 }

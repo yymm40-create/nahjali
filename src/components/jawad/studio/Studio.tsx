@@ -737,6 +737,11 @@ export default function Studio({ section, generators, prices: initialPrices, use
             onCancel={cancel}
             onRetrySubmit={(j) => submit(j.priceCoins)}
             canUseAsRef={canUseAsRef}
+            onEdited={(j, balance) => {
+              setItems((cur) => (filter === "all" || filter === j.outputKind ? [j, ...cur.filter((c) => c.id !== j.id)] : cur));
+              announceBalance(balance);
+              setTab("works");
+            }}
           />
         </div>
       </div>
