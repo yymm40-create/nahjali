@@ -16,6 +16,7 @@ import { generatorById, GPT_IMAGE_2_SIZES } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
+import { cleanRefName, defaultRefName, promptForModel } from "../mentions";
 import { probe, sniff } from "../media";
 import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { refsFor, type UploadRow } from "./uploads";
@@ -39,8 +40,9 @@ export interface JobRow {
   mode: string;
   output_kind: "image" | "video" | "audio";
   prompt: string;
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number };
-  refs: { uploadId: string; kind: string; role: RefRole }[];
+  /** modelPrompt: the prompt as the model receives it (each «@name» written the model's way), when it differs. */
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string };
+  refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
   pricing_version: string;
@@ -152,11 +154,20 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const rawRefs = Array.isArray(b.refs) ? b.refs.slice(0, 60) : [];
   const refStyle: RefStyle = b.refStyle === "frames" || b.refStyle === "references" ? b.refStyle : "none";
   const wanted = rawRefs.map((r) => {
-    const x = (r ?? {}) as { uploadId?: unknown; role?: unknown };
+    const x = (r ?? {}) as { uploadId?: unknown; role?: unknown; name?: unknown };
     const role = refStyle === "frames" && ROLES.includes(x.role as RefRole) ? (x.role as RefRole) : "reference";
-    return { uploadId: String(x.uploadId ?? ""), role };
+    return { uploadId: String(x.uploadId ?? ""), role, name: cleanRefName(x.name) };
   });
-  const { meta } = await refsFor(user.id, wanted);
+  // Frames go first frame, then last frame: the order the model numbers them in
+  if (refStyle === "frames") wanted.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
+  const found = await refsFor(user.id, wanted);
+  // Every reference has a name: the one chosen, else the next default of its type (image1, video1…)
+  const given = wanted.flatMap((w) => (w.name ? [w.name] : []));
+  const meta = found.meta.map((m, i) => {
+    const name = wanted[i].name ?? defaultRefName(m.kind, given);
+    if (!wanted[i].name) given.push(name);
+    return { ...m, name };
+  });
   const settings = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Settings;
   const prompt = typeof b.prompt === "string" ? b.prompt : "";
   const instructions = typeof b.instructions === "string" ? b.instructions : "";
@@ -168,6 +179,9 @@ export async function createJob(user: { id: string; email?: string | null }, own
   if (!e.price.ok) return { kind: "issues", issues: [{ field: "price", message: e.price.reason }] };
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
   if (Number(b.expectedCoins) !== e.price.coins) return { kind: "price_changed", coins: e.price.coins, lines: e.price.lines, prices: table };
+
+  // What the model reads: each «@name» written the way it numbers references (the user's prompt is kept as written)
+  const modelPrompt = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
 
   const charge = !owner && e.price.coins > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
@@ -181,8 +195,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin },
-      refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role })),
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}) },
+      refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: e.price.coins,
       price_breakdown: e.price.lines,
       pricing_version: priceVersion(table),
@@ -272,7 +286,7 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   if (def.output === "image") {
     const res = await openaiImage({
       model: def.model.id,
-      prompt: job.prompt,
+      prompt: job.inputs.modelPrompt ?? job.prompt,
       aspect: String(s.aspect),
       resolution: s.resolution === "hi" ? "hi" : "std",
       quality: (["low", "medium", "high"].includes(String(s.quality)) ? s.quality : "medium") as "low" | "medium" | "high",
@@ -319,7 +333,8 @@ async function submitVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   const paths = refs.map((r) => r.storage_path);
   // ModelArk fetches the files itself: short-lived links to our private copies
   const signed = paths.length ? (await db().storage.from(JAWAD_BUCKET).createSignedUrls(paths, 3 * 3600)).data ?? [] : [];
-  const content: ArkContent[] = job.prompt.trim() ? [{ type: "text", text: job.prompt }] : [];
+  const text = job.inputs.modelPrompt ?? job.prompt;
+  const content: ArkContent[] = text.trim() ? [{ type: "text", text }] : [];
   refs.forEach((r, i) => {
     const url = signed[i]?.signedUrl;
     if (!url) throw new ProviderError("rejected", "تعذّر تجهيز أحد المراجع.", `no signed url for ${r.storage_path}`);

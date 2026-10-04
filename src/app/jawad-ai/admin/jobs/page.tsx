@@ -60,6 +60,8 @@ export default async function JobsPage({ searchParams }: PageProps<"/jawad-ai/ad
                 <p><span className="text-jw-muted">مهمة المزوّد:</span> <span dir="ltr">{j.provider_task_id ?? "—"} ({j.submit_state})</span></p>
                 <p><span className="text-jw-muted">التكلفة:</span> <span dir="ltr">تقدير ${Number(j.cost_usd_estimate ?? 0).toFixed(4)} · فعلي {j.cost_usd_actual == null ? "—" : `$${Number(j.cost_usd_actual).toFixed(4)}`}</span></p>
                 <p className="whitespace-pre-wrap" dir="auto"><span className="text-jw-muted">البرومبت:</span> {j.prompt || "—"}</p>
+                {j.inputs.modelPrompt && <p className="whitespace-pre-wrap" dir="auto"><span className="text-jw-muted">كما وصل للمولد:</span> {j.inputs.modelPrompt}</p>}
+                {j.refs.length > 0 && <p dir="ltr" style={{ textAlign: "right" }}><span className="text-jw-muted">المراجع:</span> {j.refs.map((r) => `${r.name ? `@${r.name}` : "—"} (${r.kind}/${r.role})`).join(" · ")}</p>}
                 <p dir="ltr" className="break-all font-mono text-[11px]" style={{ textAlign: "right" }}>{JSON.stringify(j.inputs.settings)}</p>
                 {j.error_message && <p className="text-jw-danger">للمستخدم: {j.error_message}</p>}
                 {j.error_detail && <p className="break-all text-jw-warn" dir="ltr" style={{ textAlign: "right" }}>داخلي: {j.error_detail}</p>}

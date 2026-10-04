@@ -26,6 +26,8 @@ export interface RefItem {
   localId: string;
   uploadId: string | null;
   kind: RefKind;
+  /** Its name in the prompt («@image1», or one the user chose). */
+  name: string;
   role: RefRole;
   fileName: string;
   status: "uploading" | "checking" | "ready" | "rejected" | "error" | "missing";
@@ -54,6 +56,7 @@ export const refMeta = (r: RefItem): RefMeta => ({
   id: r.uploadId ?? r.localId,
   kind: r.kind,
   role: r.role,
+  name: r.name,
   mime: r.mime,
   bytes: r.bytes,
   width: r.width,

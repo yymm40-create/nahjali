@@ -49,6 +49,8 @@ export interface RefMeta {
   height?: number | null;
   durationMs?: number | null;
   fps?: number | null;
+  /** The name the prompt mentions it by («@image1» or one the user chose). */
+  name?: string | null;
   /** pending: still uploading/being checked · ready · rejected */
   status: "pending" | "ready" | "rejected";
 }
@@ -164,6 +166,8 @@ export interface GeneratorDef {
   options: OptionDef[];
   files: Partial<Record<RefKind, FileRule>>;
   prompt: { label: string; placeholder: string; max: number; arabic: boolean; arabicNote?: string };
+  /** How the model itself names the n-th reference of a type in a prompt (each «@name» is sent this way). */
+  refLabel?: (kind: RefKind, n: number) => string;
   /** A second text field sent separately (e.g. the voice's performance description). */
   extraText?: { key: "instructions"; label: string; placeholder: string; max: number };
   priceKeys: PriceKeyDef[];

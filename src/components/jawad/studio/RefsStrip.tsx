@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { findMentions, REF_NAME_MAX } from "@/lib/jawad/mentions";
 import type { GeneratorDef, RefKind, RefRole, RefStyle } from "@config/jawad/types";
 import type { Evaluation } from "@/lib/jawad/engine";
 import Dialog from "../Dialog";
@@ -32,18 +33,23 @@ interface Props {
   onRetry: (localId: string) => void;
   onRemove: (localId: string) => void;
   onRole: (localId: string, role: RefRole) => void;
+  /** Renames a reference; returns why not, or null. */
+  onRename: (localId: string, name: string) => string | null;
+  /** The prompt, to mark the references it mentions. */
+  prompt: string;
 }
 
-function Thumb({ r, problem, big, onOpen, onRemove, onRetry }: { r: RefItem; problem?: string; big: boolean; onOpen: () => void; onRemove: () => void; onRetry: () => void }) {
+function Thumb({ r, problem, big, mentioned, onOpen, onRemove, onRetry }: { r: RefItem; problem?: string; big: boolean; mentioned: boolean; onOpen: () => void; onRemove: () => void; onRetry: () => void }) {
   const size = big ? "size-28" : "size-[68px]";
   const bad = r.status === "rejected" || r.status === "error" || r.status === "missing" || Boolean(problem);
   return (
-    <div className={`group relative ${size} shrink-0`}>
+    <div className={`shrink-0 ${big ? "w-28" : "w-[68px]"}`}>
+    <div className={`group relative ${size}`}>
       <button
         type="button"
         onClick={onOpen}
-        className={`relative block size-full overflow-hidden rounded-lg border bg-jw-bg-2 ${bad ? "border-jw-danger" : "border-jw-line-strong"}`}
-        aria-label={`${KIND_AR[r.kind]}: ${r.fileName || "مرجع"}${problem ? ` — ${problem}` : ""}`}
+        className={`relative block size-full overflow-hidden rounded-lg border bg-jw-bg-2 ${bad ? "border-jw-danger" : mentioned ? "border-jw-accent" : "border-jw-line-strong"}`}
+        aria-label={`${KIND_AR[r.kind]}: ${r.fileName || "مرجع"} (@${r.name})${problem ? ` — ${problem}` : ""}`}
         title={problem ?? r.error ?? r.fileName}
       >
         {r.url && r.kind === "image" ? (
@@ -79,11 +85,57 @@ function Thumb({ r, problem, big, onOpen, onRemove, onRetry }: { r: RefItem; pro
         <button type="button" onClick={onRemove} className="grid size-6 place-items-center rounded-full border border-jw-line-strong bg-jw-surface-3" aria-label="احذف المرجع"><Icon name="x" size={12} /></button>
       </div>
     </div>
+      {/* Its name in the prompt; lit when the prompt mentions it. Tap to rename. */}
+      <button type="button" onClick={onOpen} dir="ltr" title={mentioned ? "مذكور في البرومبت · اضغط لإعادة التسمية" : "اضغط لإعادة التسمية"} className={`mt-1 flex w-full items-center justify-center gap-0.5 truncate text-[10px] ${mentioned ? "font-semibold text-jw-accent" : "text-jw-muted hover:text-jw-ink"}`}>
+        {mentioned && <Icon name="check" size={10} />}
+        <span className="truncate">@{r.name}</span>
+      </button>
+    </div>
+  );
+}
+
+/** Rename a reference: its new «@name» (mentions in the prompt follow). */
+function RenameField({ r, onRename }: { r: RefItem; onRename: (localId: string, name: string) => string | null }) {
+  const [value, setValue] = useState(r.name);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  return (
+    <form
+      className="space-y-1.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const why = onRename(r.localId, value);
+        setError(why ?? "");
+        setSaved(!why);
+      }}
+    >
+      <label className="jw-label mb-0" htmlFor={`jw-rename-${r.localId}`}>اسم المرجع في البرومبت</label>
+      <div className="flex gap-2">
+        <div className="flex flex-1 items-center rounded-lg border border-jw-line-strong bg-jw-bg-2 ps-2.5" dir="ltr">
+          <span className="text-jw-muted">@</span>
+          <input
+            id={`jw-rename-${r.localId}`}
+            value={value}
+            maxLength={REF_NAME_MAX}
+            onChange={(e) => {
+              setValue(e.target.value.replace(/^@+/, ""));
+              setSaved(false);
+            }}
+            className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm outline-none"
+            dir="auto"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+        <button type="submit" className="jw-btn">حفظ</button>
+      </div>
+      {error ? <p className="text-xs text-jw-danger" role="alert">{error}</p> : saved ? <p className="text-xs text-jw-ok" role="status">تم. تغيّر في البرومبت أيضًا.</p> : <p className="text-[11px] text-jw-faint">اكتب ‎@ في البرومبت واختره من القائمة ليعرف المولد أي مرجع تقصد.</p>}
+    </form>
   );
 }
 
 /** The references rectangle under the generator card: starts compact, grows to show references clearly. */
-export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, owner = false, uploadBlockedReason, onAdd, onPickWork, onRetry, onRemove, onRole }: Props) {
+export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, owner = false, uploadBlockedReason, onAdd, onPickWork, onRetry, onRemove, onRole, onRename, prompt }: Props) {
   // "+" opens the «أضف مرجعًا» window: from the device or from the user's works (a frame slot: images only)
   const [adder, setAdder] = useState<{ role?: RefRole; only?: RefKind } | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -94,6 +146,8 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
   if (!ev.refStyles.length) return null;
 
   const kinds = (["image", "video", "audio"] as RefKind[]).filter((k) => def.files[k]);
+  const mentioned = new Set(findMentions(prompt).map((m) => m.name.toLocaleLowerCase()));
+  const isMentioned = (r: RefItem) => mentioned.has(r.name.toLocaleLowerCase());
   const frames = refStyle === "frames";
   const roleItem = (role: RefRole) => refs.find((r) => r.role === role);
   const problems = refs.flatMap((r) => (ev.refProblems[r.uploadId ?? r.localId] ? [{ r, msg: ev.refProblems[r.uploadId ?? r.localId] }] : []));
@@ -165,7 +219,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
                 <div key={role} className="space-y-1">
                   <span className="block text-[11px] text-jw-muted">{ROLE_AR[role]}{role === "first_frame" ? "" : " (اختياري)"}</span>
                   {r ? (
-                    <Thumb r={r} big problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
+                    <Thumb r={r} big mentioned={isMentioned(r)} problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
                   ) : (
                     <button
                       type="button"
@@ -183,7 +237,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
             {refs
               .filter((r) => r.role === "reference")
               .map((r) => (
-                <Thumb key={r.localId} r={r} big={false} problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
+                <Thumb key={r.localId} r={r} big={false} mentioned={isMentioned(r)} problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
               ))}
           </div>
         ) : (
@@ -200,7 +254,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
               <Icon name="plus" size={22} />
             </button>
             {refs.map((r) => (
-              <Thumb key={r.localId} r={r} big={expanded} problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
+              <Thumb key={r.localId} r={r} big={expanded} mentioned={isMentioned(r)} problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
             ))}
             {!refs.length && <span className="px-1 text-xs text-jw-faint">{canUpload ? `اضغط + لتختار من جهازك أو من أعمالك، أو اسحب ملفًا هنا (${kinds.map((k) => KIND_AR[k]).join("، ")})` : uploadBlockedReason}</span>}
           </div>
@@ -255,6 +309,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
               {[preview.mime, preview.width && preview.height ? `${preview.width}×${preview.height}` : "", sec(preview.durationMs), preview.fps ? `${preview.fps}fps` : "", preview.bytes ? mb(preview.bytes) : ""].filter(Boolean).join(" · ")}
             </p>
             {preview.error && <p className="error-box text-sm">{preview.error}</p>}
+            <RenameField key={preview.localId} r={refs.find((x) => x.localId === preview.localId) ?? preview} onRename={onRename} />
             {frames && preview.kind === "image" && (
               <div className="jw-seg" role="radiogroup" aria-label="دور الصورة">
                 {(["first_frame", "last_frame"] as RefRole[]).map((role) => (
