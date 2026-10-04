@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
 import AdminNav from "@/components/jawad/admin/AdminNav";
-import { requireJawadUser } from "@/lib/jawad/server/access";
+import { jawadSession, requireJawadUser } from "@/lib/jawad/server/access";
 
-export const metadata = { title: "إدارة JAWAD AI" };
+// Titled for the owner only: everyone else gets the plain 404 (not even the tab title tells it exists)
+export async function generateMetadata() {
+  return (await jawadSession()).owner ? { title: "إدارة JAWAD AI" } : { title: "الصفحة غير موجودة" };
+}
 export const dynamic = "force-dynamic";
 
 /** The owner's JAWAD AI settings (real permission check on every page and API call; 404 for everyone else). */

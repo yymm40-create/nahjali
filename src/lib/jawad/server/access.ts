@@ -1,5 +1,6 @@
 // «الجواد الذكي!» | JAWAD AI — who is signed in and whether they may use the platform. Server only.
-// Reuses the site's Supabase sign-in; who may enter is set on /admin/limits (section "✨ JAWAD AI", open by default).
+// Reuses the site's Supabase sign-in; who may enter is set on /admin/limits (section "✨ JAWAD AI", closed by default:
+// the owner only, everyone else sees «قيد التطوير»).
 
 import { cache } from "react";
 import { redirect } from "next/navigation";
@@ -11,7 +12,7 @@ import { isAdmin } from "@config/site";
 import { JAWAD } from "@config/jawad/brand";
 
 export const JAWAD_MESSAGES = {
-  closed: "منصة JAWAD AI مغلقة حاليًا.",
+  closed: "منصة JAWAD AI قيد التطوير حاليًا.",
   notFound: "ما لقينا هذا العمل.",
 } as const;
 
@@ -32,6 +33,11 @@ export async function canUseJawad(user: { email?: string | null } | null) {
   const own = await emailAccess("jawad", user.email, rows);
   if (own !== undefined) return own;
   return (await accessMode("jawad", rows)) === "open";
+}
+
+/** Should this visitor see the platform (rather than «قيد التطوير»)? Signed-out visitors see it only when it's open to all. */
+export async function jawadVisibleTo(user: { email?: string | null } | null) {
+  return user?.email ? canUseJawad(user) : (await accessMode("jawad")) === "open";
 }
 
 /** Where to sign in without leaving JAWAD AI, coming back to `next` afterwards. */

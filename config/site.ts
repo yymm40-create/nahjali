@@ -21,3 +21,5 @@ export const BOOKLET_PATHS = ["/booklet", "/new", "/order", "/my-booklets", "/ap
 
 /** Set by src/proxy.ts on requests for «الجواد الذكي!» (/jawad-ai): the root layout then renders none of the main site's chrome. */
 export const OWN_CHROME_HEADER = "x-own-chrome";
+/** The JAWAD AI path, set by the proxy only (lets its layout keep the sign-in page open while the platform is in development). */
+export const JAWAD_PATH_HEADER = "x-jawad-path";

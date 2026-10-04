@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { BOOKLET_PATHS, OWN_CHROME_HEADER } from "@config/site";
+import { BOOKLET_PATHS, JAWAD_PATH_HEADER, OWN_CHROME_HEADER } from "@config/site";
 import { bookletOpenFor } from "@/lib/film/limits";
 
 // Pages that require a signed-in user
@@ -19,8 +19,12 @@ export async function proxy(request: NextRequest) {
   // Always overwritten here, so a client can never set it.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete(OWN_CHROME_HEADER);
+  requestHeaders.delete(JAWAD_PATH_HEADER);
   const jawad = request.nextUrl.pathname === "/jawad-ai" || request.nextUrl.pathname.startsWith("/jawad-ai/");
-  if (jawad) requestHeaders.set(OWN_CHROME_HEADER, "jawad-ai");
+  if (jawad) {
+    requestHeaders.set(OWN_CHROME_HEADER, "jawad-ai");
+    requestHeaders.set(JAWAD_PATH_HEADER, request.nextUrl.pathname);
+  }
   const forward = { request: { headers: requestHeaders } };
 
   let response = NextResponse.next(forward);

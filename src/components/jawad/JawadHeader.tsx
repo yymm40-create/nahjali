@@ -9,7 +9,8 @@ import LoginLink from "./LoginLink";
 import SectionsBar from "./SectionsBar";
 
 /** JAWAD AI's compact header: the identity (back to JAWAD AI's home only), the balance and the account; then the sections bar. */
-export default function JawadHeader({ rt, user, owner, balance, username }: { rt: Runtime; user: User | null; owner: boolean; balance: number | null; username: string | null }) {
+/** `preview`: JAWAD AI is still in development for this visitor — identity and account only, no sections or balance. */
+export default function JawadHeader({ rt, user, owner, balance, username, preview = false }: { rt: Runtime; user: User | null; owner: boolean; balance: number | null; username: string | null; preview?: boolean }) {
   const sections = rt.sections.filter((s) => s.enabled || owner).map((s) => ({ id: s.id, name: s.name, icon: s.icon, path: s.path, hidden: !s.enabled }));
   return (
     <header className="sticky top-0 z-30">
@@ -25,7 +26,7 @@ export default function JawadHeader({ rt, user, owner, balance, username }: { rt
           <div className="flex items-center gap-2">
             {user ? (
               <>
-                <CoinBalance initial={balance} unlimited={owner} />
+                {!preview && <CoinBalance initial={balance} unlimited={owner} />}
                 <AccountMenu name={username ?? ""} email={user.email ?? ""} owner={owner} />
               </>
             ) : (
@@ -34,7 +35,7 @@ export default function JawadHeader({ rt, user, owner, balance, username }: { rt
           </div>
         </div>
       </div>
-      <SectionsBar sections={sections} />
+      {!preview && <SectionsBar sections={sections} />}
     </header>
   );
 }
