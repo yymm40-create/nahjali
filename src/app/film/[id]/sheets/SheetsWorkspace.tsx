@@ -260,6 +260,14 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "retry" })}>أعد المحاولة</button>
         </div>
       )}
+      {stage === "sheets" && !writing && !failed && map.length > 0 && mapVersion?.status === "approved" &&
+        map.every((m) => assets.some((a) => a.ref_key === m.id && a.status === "approved")) && (
+        <div className="card space-y-2 p-5 text-center">
+          <p className="text-lg font-extrabold">✅ كل الصور معتمدة</p>
+          <p className="text-sm font-bold text-muted">لو ما انتقل المشروع للمخرج تلقائيًا، اضغط هنا (ما ينحسب من تعديلاتك).</p>
+          <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "finish" })}>🎥 جهّز التسليم وانتقل للمخرج</button>
+        </div>
+      )}
       {stage === "director" || stage === "voices" || stage === "done" ? (
         <div className="card space-y-1 p-5 text-center">
           <p className="text-lg font-extrabold">✅ الشيتات كلها معتمدة وانتقلت للمخرج السينمائي</p>

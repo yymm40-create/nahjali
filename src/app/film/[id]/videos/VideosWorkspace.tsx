@@ -16,6 +16,7 @@ import {
   VIDEO_DURATION,
   VIDEO_KEEP_DAYS,
   VIDEO_MODELS,
+  VIDEO_OPEN_RESOLUTIONS,
   VIDEO_RESOLUTIONS,
   videoEstimateUsd,
   type VideoModel,
@@ -196,12 +197,13 @@ export default function VideosWorkspace({
           {RESOLUTIONS.map((r) => (
             <button
               key={r}
-              className={`rounded-2xl border-2 p-3 text-start ${resolution === r ? "border-gold bg-gold/10" : "border-line"}`}
+              className={`rounded-2xl border-2 p-3 text-start ${resolution === r ? "border-gold bg-gold/10" : "border-line"} disabled:opacity-50`}
               onClick={() => setResolution(r)}
+              disabled={!VIDEO_OPEN_RESOLUTIONS.includes(r)}
               aria-pressed={resolution === r}
             >
               <span className="block font-extrabold" dir="ltr">{VIDEO_RESOLUTIONS[r].label}</span>
-              <span className="block text-xs font-bold text-muted">{VIDEO_RESOLUTIONS[r].hint}</span>
+              <span className="block text-xs font-bold text-muted">{VIDEO_OPEN_RESOLUTIONS.includes(r) ? VIDEO_RESOLUTIONS[r].hint : "🔒 مقفلة حاليًا"}</span>
             </button>
           ))}
         </div>

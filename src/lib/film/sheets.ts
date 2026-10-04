@@ -156,6 +156,7 @@ export type SheetAction =
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
+  | { action: "finish" }
   | { action: "test_styles"; styleIds: string[] }
   | { action: "choose_style"; styleId: string }
   | { action: "generate_image"; sheetId: string }
@@ -252,6 +253,18 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
         .maybeSingle();
       if (!last || last.role !== "user") throw new UserError("ما فيه شي يحتاج إعادة.", 409);
       return { jobId: await queueReply(project, user, last.id) };
+    }
+
+    case "finish": {
+      // Every picture is approved but the project never reached the director (e.g. the handoff reply came
+      // back as something else): ask the sheet maker for the handoff again. Not counted as an edit.
+      busy();
+      if (project.stage !== "sheets") throw new UserError("المشروع انتقل للمخرج من قبل.", 409);
+      const { map } = approvedMap(versions);
+      const images = approvedImages(assets);
+      const missing = map.filter((m) => !images[m.id]);
+      if (!map.length || missing.length) throw new UserError(`باقي صور ما انعتمدت: ${missing.map((m) => m.name).join("، ")}`, 409);
+      return { jobId: await maybeFinish(project, user) };
     }
 
     case "test_styles": {
@@ -398,6 +411,8 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
   return queueReply(project, user, id);
 }
 
+const FINISH_REQUEST = "كل صور الشيتات صارت معتمدة";
+
 /**
  * When every sheet has its approved picture, the handoff is (re)built in the background with the real
  * statuses, and the project moves on to the director.
@@ -409,7 +424,7 @@ async function maybeFinish(project: FilmProject, user: { id: string; email?: str
   const images = approvedImages(assets);
   if (!map.length || !map.every((m) => images[m.id])) return null;
   const list = map.map((m) => `- ${m.id} (${m.name}) ${images[m.id].meta?.at_name ?? ""}: [[image:${images[m.id].id}]]`).join("\n");
-  const id = await addUserMessage(project.id, `كل صور الشيتات صارت معتمدة ومرفقة هنا:\n${list}\n\nجهّز رسالة التسليم النهائية بحالاتها الصحيحة.`);
+  const id = await addUserMessage(project.id, `${FINISH_REQUEST} ومرفقة هنا:\n${list}\n\nجهّز رسالة التسليم النهائية بحالاتها الصحيحة.`);
   return queueReply(project, user, id);
 }
 
@@ -501,7 +516,18 @@ export async function runSheetReply(projectId: string, jobId: string) {
     if (turns.at(-1)?.role !== "user") throw new Error("nothing to answer");
     const result = await callClaudeJson<Reply>({ system: SYSTEM, turns, schema: SHEET_MAKER_SCHEMA, maxTokens: MAX_TOKENS });
     const r = result.data;
-    const kind = KIND_BY_STAGE[r.stage];
+    const { data: asked } = await db()
+      .from("film_messages")
+      .select("content")
+      .eq("project_id", projectId)
+      .eq("stage", STAGE)
+      .eq("role", "user")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    // The answer to the handoff request is the handoff, whatever stage the reply labels itself with,
+    // so the project always moves on to the director once every picture is approved
+    const kind = String(asked?.content ?? "").startsWith(FINISH_REQUEST) ? "sheet_handoff" : KIND_BY_STAGE[r.stage];
     if (!kind) throw new Error(`unexpected stage ${r.stage}`);
     const ref = kind === "sheet_prompt" ? (r.stage === 5 ? MASTER_ID : r.sheet_id || "?") : "";
 
