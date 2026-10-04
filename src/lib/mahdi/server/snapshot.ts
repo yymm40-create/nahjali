@@ -33,6 +33,11 @@ export async function getShrines(): Promise<Shrine[]> {
   return list;
 }
 
+/** After the owner changes a shrine (other server instances catch up within the 5 minutes). */
+export function forgetShrines() {
+  shrineCache = null;
+}
+
 /** The shrine to show: the user's choice when it has a picture and is active, else the first active one. */
 export function pickShrine(shrines: Shrine[], id: string | null | undefined): Shrine | null {
   const usable = (s: Shrine) => s.active && s.imageUrl;

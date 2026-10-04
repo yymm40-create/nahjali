@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { t } from "@/lib/mahdi/i18n";
+import ShrinesTab, { type ShrineAdmin } from "./ShrinesTab";
 
 const A = t.admin;
 
@@ -14,7 +15,7 @@ export interface Phr { id: string; text: string; contexts: string[]; active: boo
 export interface Rep { id: string; type: "post" | "story"; author: string; kind: string; title: string; value: string; caption: string; quote: string; media: { url: string; kind: "image" | "video" } | null; createdAt: string; hidden: boolean; hiddenReason: string; reasons: string[]; categories: string[]; count: number }
 export interface Bk { id: string; title: string; author: string; pages: number; unit: "page" | "narration"; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number; pdfUrl: string | null; pdfSize: number | null }
 export interface Fb { id: string; name: string; username: string; rating: number | null; kind: string; message: string; place: string; createdAt: string }
-export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[]; feedback: Fb[] }
+export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[]; feedback: Fb[]; shrines: ShrineAdmin[] }
 
 type Tab = keyof typeof A.tabs;
 const TABS = Object.keys(A.tabs) as Tab[];
@@ -96,6 +97,7 @@ export default function MahdiAdminTools({ data }: { data: AdminData }) {
       {tab === "reports" && <ReportsTab data={data} send={send} ask={ask} busy={busy} />}
       {tab === "books" && <BooksTab data={data} send={send} ask={ask} busy={busy} />}
       {tab === "feedback" && <FeedbackTab data={data} />}
+      {tab === "shrines" && <ShrinesTab shrines={data.shrines} />}
     </div>
   );
 }

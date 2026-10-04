@@ -11,9 +11,13 @@ import { COVER_BUCKET } from "@/lib/mahdi/server/reading";
 import { notify } from "@/lib/mahdi/server/inbox";
 import { removePdf } from "@/lib/mahdi/server/book-files";
 import { deletePost } from "@/lib/mahdi/server/social";
+import { approveShrine, generateShrineDraft } from "@/lib/mahdi/server/shrine-art";
+import { forgetShrines } from "@/lib/mahdi/server/snapshot";
 import { deleteStory } from "@/lib/mahdi/server/stories";
 
 const A = t.admin;
+// Generating a shrine's picture with GPT Image 2 takes up to a minute or two
+export const maxDuration = 300;
 const CONTEXTS = ["home", "day_complete", "weekly", "monthly", "comeback", "milestone", "notification"] as const;
 
 const id = (v: unknown) => {
@@ -32,7 +36,7 @@ const bad = (msg: string) => new UserError(msg, 400);
  * Owner-only content management for «لأجل المهدي». One route, one `action` per change:
  *   section.save / section.delete · challenge.save / challenge.status / challenge.delete
  *   text.save / text.delete · phrase.save / phrase.delete · post.hide / post.unhide / post.delete · reports.dismiss
- *   story.delete / story.reports.dismiss
+ *   story.delete / story.reports.dismiss · shrine.generate / shrine.approve / shrine.active
  *   book.save / book.hide / book.unhide / book.dismiss / book.pdf.remove · assistant.reply / assistant.read
  * Everything runs with the service role, after checking that the caller is the owner. Anyone else gets 404.
  */
@@ -229,6 +233,24 @@ export const POST = handle(async (req: Request) => {
       break;
     case "book.dismiss":
       await run(db.from("mahdi_book_reports").delete().eq("book_id", id(body.id)));
+      break;
+
+    // ── shrines: GPT Image 2 makes a picture; the owner approves it (then it shows) or makes another ──
+    case "shrine.generate": {
+      const sid = String(body.id ?? "");
+      const prompt = cleanText(body.prompt, 4000);
+      if (!/^[a-z0-9-]{2,40}$/.test(sid) || !prompt) throw bad(A.errors.unknown);
+      const draft = await generateShrineDraft(sid, prompt);
+      return NextResponse.json({ ok: true, draft });
+    }
+    case "shrine.approve": {
+      await approveShrine(String(body.id ?? ""), String(body.path ?? ""));
+      forgetShrines();
+      break;
+    }
+    case "shrine.active":
+      await run(db.from("mahdi_shrines").update({ active: parseBool(body.active) }).eq("id", String(body.id ?? "")).not("image_url", "is", null));
+      forgetShrines();
       break;
 
     // ── «المساعد»: the owner answers by hand; the person gets a notification ──
