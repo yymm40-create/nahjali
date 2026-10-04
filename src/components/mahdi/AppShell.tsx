@@ -62,7 +62,7 @@ function useAddContext() {
   return m?.[1];
 }
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, familyMember = false }: { children: React.ReactNode; familyMember?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { state } = useMahdi();
@@ -146,6 +146,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {unread > 0 && <span className="m-badge m-num" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
           </Link>
         </header>
+        {familyMember && (
+          <Link href="/mahdi/more/family" className="m-note mx-4 mt-3 flex items-center gap-2 text-sm font-semibold sm:mx-6 lg:mx-10">
+            <Icon name="users" size={18} />
+            <span className="flex-1">{t.family.memberBanner(profile.displayName)}</span>
+            <span className="m-gold">{t.family.switchAccount}</span>
+          </Link>
+        )}
         <SyncBanner />
         <main id="m-main" className="m-content-pad mx-auto w-full max-w-[1120px] px-4 pt-4 sm:px-6 lg:px-10 lg:pt-8">
           {children}
