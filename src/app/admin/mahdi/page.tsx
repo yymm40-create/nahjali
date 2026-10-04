@@ -6,6 +6,7 @@ import { isAdmin } from "@config/site";
 import { t } from "@/lib/mahdi/i18n";
 import { selectAll } from "@/lib/mahdi/server/snapshot";
 import { coverUrl } from "@/lib/mahdi/server/reading";
+import { PDF_BUCKET } from "@/lib/mahdi/server/book-files";
 import MahdiAdminTools, { type AdminData } from "./MahdiAdminTools";
 
 export const metadata = { title: "لأجل المهدي | لوحة التحكم" };
@@ -30,7 +31,7 @@ export default async function MahdiAdminPage() {
   // Books: reported ones and the newest, with how many libraries hold each (empty until migration 0010 runs)
   const [bookReports, bookRows, holders] = await Promise.all([
     selectAll<{ book_id: string; reason: string }>((a, b) => db.from("mahdi_book_reports").select("book_id, reason").order("book_id").order("user_id").range(a, b)).catch(() => []),
-    db.from("mahdi_books").select("id, title, author, pages, unit, description, cover_path, hidden_at, hidden_reason, created_at").order("created_at", { ascending: false }).limit(300),
+    db.from("mahdi_books").select("*").order("created_at", { ascending: false }).limit(300),
     selectAll<{ book_id: string }>((a, b) => db.from("mahdi_user_books").select("book_id").order("book_id").order("user_id").range(a, b)).catch(() => []),
   ]);
   const bookReasons = new Map<string, string[]>();
@@ -39,8 +40,17 @@ export default async function MahdiAdminPage() {
   for (const h of holders) readers[h.book_id] = (readers[h.book_id] ?? 0) + 1;
   const reportedMissing = [...bookReasons.keys()].filter((bid) => !(bookRows.data ?? []).some((b) => b.id === bid));
   const extraBooks = reportedMissing.length
-    ? (await db.from("mahdi_books").select("id, title, author, pages, unit, description, cover_path, hidden_at, hidden_reason, created_at").in("id", reportedMissing.slice(0, 100))).data ?? []
+    ? (await db.from("mahdi_books").select("*").in("id", reportedMissing.slice(0, 100))).data ?? []
     : [];
+
+  // Books' PDFs: short links for the owner to look at them (after migration 0019)
+  const allBooks = [...(bookRows.data ?? []), ...extraBooks];
+  const pdfPaths = allBooks.flatMap((b) => (b.pdf_path ? [b.pdf_path as string] : []));
+  const pdfLinks = new Map<string, string>();
+  if (pdfPaths.length) {
+    const { data: signed } = await db.storage.from(PDF_BUCKET).createSignedUrls(pdfPaths, 3600);
+    for (const x of signed ?? []) if (x.path && x.signedUrl) pdfLinks.set(x.path, x.signedUrl);
+  }
 
   // Questions to «المساعد» that wait for an answer (none until migration 0018 runs)
   const waiting = (await db.from("mahdi_assistant_messages").select("id", { count: "exact", head: true }).eq("from_owner", false).is("read_at", null)).count ?? 0;
@@ -84,7 +94,7 @@ export default async function MahdiAdminPage() {
       place: (x.place as string) ?? "",
       createdAt: x.created_at as string,
     })),
-    books: [...(bookRows.data ?? []), ...extraBooks]
+    books: allBooks
       .map((b) => ({
         id: b.id as string,
         title: b.title as string,
@@ -97,6 +107,8 @@ export default async function MahdiAdminPage() {
         hiddenReason: (b.hidden_reason as string) ?? "",
         reasons: bookReasons.get(b.id) ?? [],
         readers: readers[b.id] ?? 0,
+        pdfUrl: b.pdf_path ? (pdfLinks.get(b.pdf_path) ?? null) : null,
+        pdfSize: (b.pdf_size as number | null) ?? null,
       }))
       .sort((a, b) => Number(a.hidden) - Number(b.hidden) || b.reasons.length - a.reasons.length),
     sections: sections.data ?? [],

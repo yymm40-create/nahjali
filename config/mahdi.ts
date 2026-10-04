@@ -68,3 +68,13 @@ export const MAHDI_LIMITS = {
   maxLogOps: 100,
   avatarMaxBytes: 5 * 1024 * 1024,
 };
+
+/**
+ * «حسّن الغلاف»: GPT Image 2 cleans a photo of a book cover (one 1024×1536 image at medium quality). Its cost by
+ * OpenAI's official formula: 1,372 output tokens × $30/M + the photo at the 7,100-token cap × $8/M + up to 2,000
+ * prompt tokens × $5/M ≈ $0.108 → 4 coins (see config/coins.ts). Free for the owner and while coins are off.
+ */
+export const COVER_ENHANCE = { model: "gpt-image-2-2026-04-21", size: "1024x1536", quality: "medium", costUsd: 0.108, coins: 4, perDay: 10 } as const;
+
+/** A book's PDF for download: one file per book, uploaded straight to storage (never through the website). */
+export const BOOK_PDF = { maxBytes: 50 * 1024 * 1024, perDay: 10 } as const;

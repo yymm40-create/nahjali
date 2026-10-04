@@ -130,3 +130,25 @@ export async function shrinkImage(file: File, max = 1200): Promise<Blob> {
     return file;
   }
 }
+
+/**
+ * Uploads a book's PDF straight to storage with a one-time link from the server (large files never pass through the
+ * website), reporting progress. Returns the stored path, which the book form then sends.
+ */
+export async function uploadBookPdf(file: File, onProgress: (pct: number) => void): Promise<string> {
+  const { path, token } = await mahdiFetch<{ path: string; token: string }>("/api/mahdi/reading/pdf", { method: "POST", json: { size: file.size } });
+  const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/upload/sign/mahdi-book-files/${path}?token=${encodeURIComponent(token)}`;
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "");
+    xhr.setRequestHeader("content-type", "application/pdf");
+    xhr.setRequestHeader("cache-control", "max-age=3600");
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(t.reading.pdf.failed)));
+    xhr.onerror = () => reject(new Error(t.reading.pdf.failed));
+    xhr.send(file);
+  });
+  return path;
+}

@@ -6,6 +6,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { BOOK_COLUMNS, bookFromRow, COVER_BUCKET, MAX_READING, type BookRow } from "@/lib/mahdi/server/reading";
 import { readingReply } from "@/lib/mahdi/server/reading-write";
+import { checkUploadedPdf, removePdf } from "@/lib/mahdi/server/book-files";
 import { cleanLine, cleanText } from "@/lib/mahdi/server/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -25,7 +26,8 @@ export const GET = mahdiRoute(async (req: Request) => {
 });
 
 /**
- * Adds a new book to the catalogue and to my library (form data: title, author, pages, unit, description, cover).
+ * Adds a new book to the catalogue and to my library (form data: title, author, pages, unit, description, cover,
+ * and `pdf`: the path of a PDF already uploaded with a link from /api/mahdi/reading/pdf).
  * `unit` is "page" or "narration" (books of narrations are followed by narration number).
  * If the same book (same title, count and unit) already exists, that one is added instead, so the catalogue has no copies.
  */
@@ -41,15 +43,21 @@ export const POST = mahdiRoute(async (req: Request) => {
   const author = cleanLine(form.get("author"), 80);
   const description = cleanText(form.get("description"), 500);
   const cover = form.get("cover");
+  const pdf = form.get("pdf") ? await checkUploadedPdf(user.id, form.get("pdf")) : null;
 
   const { count: reading } = await supabase.from("mahdi_user_books").select("book_id", { count: "exact", head: true }).eq("state", "reading");
   if ((reading ?? 0) >= MAX_READING) throw new UserError(t.reading.full, 400);
 
   const db = createAdminClient();
   const titleNorm = normalizeTitle(title);
-  const { data: same } = await db.from("mahdi_books").select("id").eq("title_norm", titleNorm).eq("pages", pages).eq("unit", unit).is("hidden_at", null).limit(1).maybeSingle();
+  const { data: same } = await db.from("mahdi_books").select("*").eq("title_norm", titleNorm).eq("pages", pages).eq("unit", unit).is("hidden_at", null).limit(1).maybeSingle();
   let bookId = same?.id as string | undefined;
   let duplicate = Boolean(bookId);
+  // The same book already exists: my PDF goes to it if it has none, otherwise it isn't needed
+  if (same && pdf) {
+    if (same.pdf_path) await removePdf(pdf.path);
+    else await db.from("mahdi_books").update({ pdf_path: pdf.path, pdf_size: pdf.size, pdf_added_by: user.id }).eq("id", same.id);
+  }
 
   if (!bookId) {
     // At most 10 new books a day per person
@@ -78,7 +86,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     }
     const { data: created, error } = await db
       .from("mahdi_books")
-      .insert({ title, title_norm: titleNorm, author, pages, unit, description, cover_path: coverPath, added_by: user.id })
+      .insert({ title, title_norm: titleNorm, author, pages, unit, description, cover_path: coverPath, added_by: user.id, ...(pdf ? { pdf_path: pdf.path, pdf_size: pdf.size, pdf_added_by: user.id } : {}) })
       .select("id")
       .single();
     if (error) throw error;
