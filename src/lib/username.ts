@@ -1,6 +1,7 @@
 // SERVER ONLY. Reading and claiming the site-wide @username.
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { syncPublicProfile } from "@/lib/mahdi/server/public";
 import { cleanUsername, RESERVED_USERNAMES, suggestUsername, USERNAME_RE, type UsernameProblem } from "./username-rules";
 
 /** The user's username, or null (read with the user's own session, through RLS). */
@@ -27,6 +28,8 @@ export async function claimUsername(supabase: SupabaseClient, userId: string, in
     if ((error as { code?: string }).code === "23505") return { name: checked.name, problem: "taken" };
     throw error;
   }
+  // The community page of «لأجل المهدي» is found by this name
+  await syncPublicProfile(userId).catch(() => {});
   return checked;
 }
 

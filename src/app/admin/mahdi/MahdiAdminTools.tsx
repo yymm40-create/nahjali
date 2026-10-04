@@ -11,7 +11,7 @@ export interface Section { id: string; name: string; description: string; icon: 
 export interface Chal { id: string; section_id: string; title: string; description: string; rules: string; measure: "check" | "count" | "amount"; target: number; unit: string; freq: "daily" | "weekly" | "monthly"; starts_on: string; ends_on: string | null; status: "draft" | "published" | "archived"; leaderboard: boolean; members: number }
 export interface Txt { id: string; kind: string; text: string; attribution: string; source: string; reference: string; verification_status: "pending" | "verified" | "rejected"; verified_by: string; notes: string; contexts: string[]; active: boolean }
 export interface Phr { id: string; text: string; contexts: string[]; active: boolean; sort_order: number }
-export interface Rep { id: string; author: string; kind: string; title: string; value: string; createdAt: string; hidden: boolean; hiddenReason: string; reasons: string[]; count: number }
+export interface Rep { id: string; type: "post" | "story"; author: string; kind: string; title: string; value: string; caption: string; quote: string; media: { url: string; kind: "image" | "video" } | null; createdAt: string; hidden: boolean; hiddenReason: string; reasons: string[]; categories: string[]; count: number }
 export interface Bk { id: string; title: string; author: string; pages: number; unit: "page" | "narration"; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number; pdfUrl: string | null; pdfSize: number | null }
 export interface Fb { id: string; name: string; username: string; rating: number | null; kind: string; message: string; place: string; createdAt: string }
 export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[]; feedback: Fb[] }
@@ -355,32 +355,54 @@ function ReportsTab({ data, send, ask, busy }: TabProps) {
       <p className="text-sm font-bold text-muted">{R.intro}</p>
       <ul className="space-y-3">
         {data.reports.length === 0 && <li className="font-bold text-muted">{R.empty}</li>}
-        {data.reports.map((r) => (
-          <li key={r.id} className="space-y-2 rounded-2xl bg-surface-2 px-3 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
-              <span>{r.title} · <span dir="ltr">{r.value}</span></span>
-              <span className="text-sm text-muted">{r.hidden ? R.hidden : R.count(r.count)}</span>
-            </div>
-            <p className="text-sm text-muted">{R.by}: {r.author || "—"}</p>
-            {r.reasons.length > 0 && (
-              <ul className="list-disc ps-5 text-sm">
-                {r.reasons.slice(0, 5).map((x, i) => <li key={i}>{x || R.noReason}</li>)}
-              </ul>
-            )}
-            {r.hidden && r.hiddenReason && <p className="text-sm text-muted">{r.hiddenReason}</p>}
-            <div className="flex flex-wrap items-end gap-2">
-              {!r.hidden && (
-                <input className="field min-w-40 flex-1" maxLength={200} placeholder={R.reasonLabel} value={reason[r.id] ?? ""} onChange={(e) => setReason({ ...reason, [r.id]: e.target.value })} aria-label={R.reasonLabel} />
+        {data.reports.map((r) => {
+          const cats = [...new Set(r.categories)];
+          const urgent = cats.some((c) => c === "singing" || c === "indecent");
+          return (
+            <li key={`${r.type}-${r.id}`} className={`space-y-2 rounded-2xl bg-surface-2 px-3 py-3 ${urgent && !r.hidden ? "ring-2 ring-red-400" : ""}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
+                <span>
+                  {r.type === "story" ? R.story : r.media ? (r.media.kind === "video" ? R.video : R.photo) : r.quote ? R.quote : `${r.title} · `}
+                  {!r.media && !r.quote && r.type === "post" && <span dir="ltr">{r.value}</span>}
+                </span>
+                <span className="text-sm text-muted">{r.hidden ? R.hidden : R.count(r.count)}</span>
+              </div>
+              {cats.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {cats.map((c) => (
+                    <span key={c} className={`chip text-sm ${c === "singing" || c === "indecent" ? "ring-2 ring-red-400" : ""}`}>{(t.social.report.categories as Record<string, string>)[c] ?? c}</span>
+                  ))}
+                </div>
               )}
-              {r.hidden ? (
-                <button className="btn btn-ghost px-4" disabled={busy} onClick={() => send({ action: "post.unhide", id: r.id }, A.common.done)}>{R.unhide}</button>
-              ) : (
-                <button className="btn btn-primary px-4" disabled={busy} onClick={() => send({ action: "post.hide", id: r.id, reason: reason[r.id] ?? "" }, A.common.done)}>{R.hide}</button>
+              {r.media?.kind === "image" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={r.media.url} alt="" className="max-h-80 rounded-xl bg-black object-contain" />
               )}
-              {r.count > 0 && <button className="btn btn-ghost px-4" disabled={busy} onClick={() => ask("reports.dismiss", "", { postId: r.id })}>{R.dismiss}</button>}
-            </div>
-          </li>
-        ))}
+              {r.media?.kind === "video" && <video src={r.media.url} controls playsInline preload="metadata" className="max-h-80 w-full rounded-xl bg-black" />}
+              {(r.quote || r.caption) && <p className="whitespace-pre-line text-sm" dir="auto">{r.quote || r.caption}</p>}
+              <p className="text-sm text-muted">{R.by}: {r.author || "—"}</p>
+              {r.reasons.some(Boolean) && (
+                <ul className="list-disc ps-5 text-sm">
+                  {r.reasons.slice(0, 5).map((x, i) => <li key={i}>{x || R.noReason}</li>)}
+                </ul>
+              )}
+              {r.hidden && r.hiddenReason && <p className="text-sm text-muted">{r.hiddenReason}</p>}
+              <div className="flex flex-wrap items-end gap-2">
+                {r.type === "post" && !r.hidden && (
+                  <input className="field min-w-40 flex-1" maxLength={200} placeholder={R.reasonLabel} value={reason[r.id] ?? ""} onChange={(e) => setReason({ ...reason, [r.id]: e.target.value })} aria-label={R.reasonLabel} />
+                )}
+                {r.type === "post" &&
+                  (r.hidden ? (
+                    <button className="btn btn-ghost px-4" disabled={busy} onClick={() => send({ action: "post.unhide", id: r.id }, A.common.done)}>{R.unhide}</button>
+                  ) : (
+                    <button className="btn btn-primary px-4" disabled={busy} onClick={() => send({ action: "post.hide", id: r.id, reason: reason[r.id] ?? "" }, A.common.done)}>{R.hide}</button>
+                  ))}
+                <button className="btn btn-ghost px-4 text-red-500" disabled={busy} onClick={() => ask(r.type === "story" ? "story.delete" : "post.delete", r.id)}>{R.delete}</button>
+                {r.count > 0 && <button className="btn btn-ghost px-4" disabled={busy} onClick={() => ask(r.type === "story" ? "story.reports.dismiss" : "reports.dismiss", "", r.type === "story" ? { storyId: r.id } : { postId: r.id })}>{R.dismiss}</button>}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -8,7 +8,7 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { buildShare, SHARE_KINDS, type ShareKind } from "@/lib/mahdi/client/share";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
-import { renderCardPng, ShareCardView } from "@/components/mahdi/ShareCard";
+import { renderCardPng, renderStoryPng, ShareCardView } from "@/components/mahdi/ShareCard";
 import { useLook } from "@/components/mahdi/ThemeRoot";
 
 /** «شارك إنجازي»: pick what to share and what to reveal, then save, share or post to the community. */
@@ -33,6 +33,28 @@ export default function SharePage() {
   async function png() {
     const css = getComputedStyle(document.querySelector(".mahdi-root")!);
     return renderCardPng(payload!, { name, closing, image, fonts: { sans: css.getPropertyValue("--font-plex") || "sans-serif", display: css.getPropertyValue("--font-amiri") || "serif" } });
+  }
+
+  const fonts = () => {
+    const css = getComputedStyle(document.querySelector(".mahdi-root")!);
+    return { sans: css.getPropertyValue("--font-plex") || "sans-serif", display: css.getPropertyValue("--font-amiri") || "serif" };
+  };
+
+  /** Instagram: a story-sized picture with my name, picture and @username, through the phone's share sheet. */
+  async function instagram() {
+    setBusy(true);
+    try {
+      const blob = await renderStoryPng(payload!, { name: snap.profile.displayName, username: snap.username, avatarUrl: snap.profile.avatarUrl, closing, image, fonts: fonts() });
+      const file = new File([blob], "lajl-almahdi-story.png", { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] }).catch(() => {});
+      else {
+        download(file);
+        toast(t.social.instagram.fallback);
+      }
+    } catch (e) {
+      toast((e as Error).message);
+    }
+    setBusy(false);
   }
 
   async function nativeShare() {
@@ -124,8 +146,12 @@ export default function SharePage() {
 
         <section className="space-y-3">
           {payload ? <ShareCardView payload={payload} name={name} closing={closing} image={image} /> : <p className="m-card p-6 text-center m-muted">{t.reports.noData}</p>}
+          <button type="button" className="m-btn m-btn-primary w-full" disabled={!payload || busy} onClick={instagram}>
+            <Icon name="camera" size={18} /> {t.social.instagram.button}
+          </button>
+          <p className="m-hint">{t.social.instagram.hint}</p>
           <div className="grid gap-2 sm:grid-cols-3">
-            <button type="button" className="m-btn m-btn-primary" disabled={!payload} onClick={nativeShare}><Icon name="globe" size={18} /> {t.share.nativeShare}</button>
+            <button type="button" className="m-btn m-btn-ghost" disabled={!payload} onClick={nativeShare}><Icon name="globe" size={18} /> {t.share.nativeShare}</button>
             <button type="button" className="m-btn m-btn-ghost" disabled={!payload} onClick={async () => download(await png())}><Icon name="arrowDown" size={18} /> {t.share.download}</button>
             <button type="button" className="m-btn m-btn-ghost" disabled={!payload || busy || !snap.privacy.community} onClick={post}><Icon name="sparkle" size={18} /> {t.share.toCommunity}</button>
           </div>
