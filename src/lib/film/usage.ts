@@ -1,6 +1,4 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { UserError } from "@/lib/api";
-import { isAdmin } from "@config/site";
 import { refundCoins, reserveCoins, settleCoins } from "@/lib/coins";
 
 /** What a coin movement says in the user's history. */
@@ -27,19 +25,6 @@ export function riyadhMonthStart(now = new Date()) {
   return new Date(Date.UTC(r.getUTCFullYear(), r.getUTCMonth(), 1) - RIYADH_MS);
 }
 
-export interface FilmCaps {
-  daily_site_cap_usd: number;
-  monthly_user_cap_usd: number;
-}
-
-export async function getCaps(): Promise<FilmCaps> {
-  const { data } = await createAdminClient().from("film_settings").select("*").eq("id", true).maybeSingle();
-  return {
-    daily_site_cap_usd: Number(data?.daily_site_cap_usd ?? 30),
-    monthly_user_cap_usd: Number(data?.monthly_user_cap_usd ?? 10),
-  };
-}
-
 interface UsageRow {
   state: "reserved" | "settled" | "released";
   estimated_cost_usd: number | string;
@@ -49,33 +34,6 @@ interface UsageRow {
 /** What a ledger row counts for: real cost once settled, the estimate while reserved, nothing once released. */
 export const rowCost = (r: UsageRow) =>
   r.state === "released" ? 0 : r.state === "settled" ? Number(r.actual_cost_usd ?? r.estimated_cost_usd) : Number(r.estimated_cost_usd);
-
-async function spentSince(since: Date, userId?: string) {
-  let q = createAdminClient()
-    .from("film_usage")
-    .select("state,estimated_cost_usd,actual_cost_usd")
-    .gte("created_at", since.toISOString())
-    .neq("state", "released");
-  if (userId) q = q.eq("user_id", userId);
-  const { data } = await q;
-  return ((data ?? []) as UsageRow[]).reduce((s, r) => s + rowCost(r), 0);
-}
-
-/** Throws a clear Arabic message if this operation would pass the site's daily cap or the user's monthly cap. */
-export async function assertWithinCaps(user: { id: string; email?: string | null }, estimateUsd: number) {
-  const caps = await getCaps();
-  const today = await spentSince(riyadhDayStart());
-  if (today + estimateUsd > caps.daily_site_cap_usd) {
-    throw new UserError(`وصلنا للحد اليومي للموقع ($${caps.daily_site_cap_usd}). جرّب بكرة إن شاء الله، أو ارفع الحد من لوحة التحكم.`, 429);
-  }
-  // The owner has no personal monthly cap; the daily site cap still protects the budget
-  if (!isAdmin(user.email)) {
-    const month = await spentSince(riyadhMonthStart(), user.id);
-    if (month + estimateUsd > caps.monthly_user_cap_usd) {
-      throw new UserError(`وصلت للحد الشهري لحسابك ($${caps.monthly_user_cap_usd}).`, 429);
-    }
-  }
-}
 
 export interface StartJobInput {
   projectId: string;
@@ -98,8 +56,6 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   const db = createAdminClient();
   const existing = await db.from("film_jobs").select("*").eq("idempotency_key", input.idempotencyKey).maybeSingle();
   if (existing.data) return { job: existing.data as FilmJob, created: false };
-
-  await assertWithinCaps(input.user, input.estimateUsd);
 
   const { data, error } = await db
     .from("film_jobs")
