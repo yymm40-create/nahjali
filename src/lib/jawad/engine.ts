@@ -219,3 +219,12 @@ export function priceVersion(table: Record<string, number | null>) {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return (h >>> 0).toString(36);
 }
+
+/** The provider's advice on prompt length, when the prompt goes past it (a warning only, never a block). */
+export function promptAdvice(def: GeneratorDef, prompt: string): string | null {
+  const a = def.prompt.advise;
+  if (!a) return null;
+  const words = prompt.trim() ? prompt.trim().split(/\s+/u).length : 0;
+  const cjk = (prompt.match(/[\u3400-\u9fff\uf900-\ufaff]/gu) ?? []).length;
+  return words > a.maxWords || cjk > a.maxCjk ? a.note : null;
+}

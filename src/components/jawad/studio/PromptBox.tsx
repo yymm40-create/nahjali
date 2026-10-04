@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { GeneratorDef, RefKind } from "@config/jawad/types";
-import type { Evaluation } from "@/lib/jawad/engine";
+import { promptAdvice, type Evaluation } from "@/lib/jawad/engine";
 import { findMentions, looksLikeRef, sameName } from "@/lib/jawad/mentions";
 import Icon from "../Icon";
 import type { RefItem } from "./types";
@@ -98,6 +98,7 @@ export default function PromptBox({
   const promptIssue = touched || prompt ? ev.issues.find((i) => i.field === "prompt")?.message : undefined;
   const instrIssue = ev.issues.find((i) => i.field === "instructions")?.message;
   const optional = !ev.mode.promptRequired;
+  const advice = promptAdvice(def, prompt);
   // References can be mentioned only where the generator takes them
   const canMention = Boolean(def.refLabel) && ev.refStyles.length > 0;
 
@@ -255,6 +256,7 @@ export default function PromptBox({
           <p className="mt-1 text-[11px] text-jw-faint">اكتب ‎@ لتختار مرجعًا وتذكره في البرومبت؛ هذا يقلل أخطاء المولد.</p>
         )}
         {!def.prompt.arabic && def.prompt.arabicNote && !promptIssue && <p className="mt-1 text-[11px] text-jw-faint">{def.prompt.arabicNote}</p>}
+        {advice && <p className="mt-1 text-[11px] text-jw-warn">{advice}</p>}
         {promptIssue && <p id="jw-prompt-issue" className="mt-1.5 text-xs text-jw-danger" role="alert">{promptIssue}</p>}
       </div>
       {def.extraText && (
