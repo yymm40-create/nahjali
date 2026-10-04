@@ -9,6 +9,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { RefKind, RefMeta, RefRole } from "@config/jawad/types";
 import { MAX_UPLOAD_BYTES, probe, sniff, UPLOAD_EXT, UPLOAD_MIMES } from "../media";
+import { FILM_BUCKET } from "@/lib/film/types";
 import { JAWAD_BUCKET } from "./runtime";
 
 export interface UploadRow {
@@ -186,6 +187,34 @@ export async function deleteUpload(userId: string, id: unknown) {
 }
 
 /** "Use as reference": copies one of the user's results into a new, checked reference. */
+/** "Use as reference" for a picture or video of one of the user's film projects (owner checked through the project). */
+export async function uploadFromFilmAsset(userId: string, assetId: unknown) {
+  if (!isUuid(assetId)) throw new UserError("ملف غير صحيح.", 400);
+  const { data: a } = await db().from("film_assets").select("project_id,storage_path,ref_key,kind").eq("id", assetId).maybeSingle();
+  if (!a?.storage_path) throw new UserError("ما لقينا هذا العمل.", 404);
+  const { data: p } = await db().from("film_projects").select("user_id").eq("id", a.project_id).maybeSingle();
+  if (!p || p.user_id !== userId) throw new UserError("ما لقينا هذا العمل.", 404);
+  const { data: blob, error: dl } = await db().storage.from(FILM_BUCKET).download(a.storage_path);
+  if (dl || !blob) throw new UserError("تعذّر قراءة الملف؛ جرّب مرة ثانية.", 502);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (bytes.length > MAX_UPLOAD_BYTES) throw new UserError("الملف أكبر من ٥٠ ميجا.", 400);
+  // What the file really is, from its bytes (the server checks it again when confirming)
+  const s = sniff(bytes);
+  const kind = s ? UPLOAD_MIMES[s.mime] : undefined;
+  if (!s || !kind) throw new UserError("هذا النوع من الملفات لا يُستخدم كمرجع.", 400);
+  const path = `${userId}/refs/${randomUUID()}.${UPLOAD_EXT[s.mime]}`;
+  const up = await db().storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: s.mime, upsert: false });
+  if (up.error) throw up.error;
+  const name = `${String(a.ref_key || "film").replace(/[^\w-]/g, "").slice(0, 40) || "film"}.${UPLOAD_EXT[s.mime]}`;
+  const { data: row, error } = await db()
+    .from("jawad_uploads")
+    .insert({ user_id: userId, kind, storage_path: path, file_name: name, mime: s.mime, bytes: bytes.length, status: "pending" })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return confirmUpload(userId, row.id);
+}
+
 export async function uploadFromOutput(userId: string, outputId: unknown) {
   if (!isUuid(outputId)) throw new UserError("ملف غير صحيح.", 400);
   const { data: out } = await db().from("jawad_outputs").select("*").eq("id", outputId).eq("user_id", userId).maybeSingle();
