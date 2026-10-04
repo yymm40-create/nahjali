@@ -553,6 +553,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
               onRefStyle={setRefStyle}
               refs={draft.refs}
               canUpload={Boolean(user && allowed)}
+              owner={owner}
               uploadBlockedReason={!user ? "سجّل الدخول لرفع المراجع." : !allowed ? "المنصة مغلقة لحسابك." : null}
               onAdd={addFiles}
               onRetry={retryUpload}

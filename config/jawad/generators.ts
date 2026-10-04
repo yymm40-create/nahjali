@@ -42,6 +42,12 @@ export function gptImage2OutputTokens(w: number, h: number, quality: "low" | "me
 }
 /** USD per 1M tokens for gpt-image-2 (pricing page, standard): text in 5 · image in 8 · image out 30. */
 const GPT_IMAGE_2_PRICE = { textIn: 5, imageIn: 8, imageOut: 30 };
+/**
+ * Tokens of one reference image — a cap: OpenAI documents input image tokens only for gpt-image-1, whose worst case
+ * (portrait/landscape, high fidelity) is 65 + 6 tiles × 129 + 6,240 = 7,079 tokens. The real count comes back in
+ * the response's usage and is stored as the job's actual cost.
+ */
+const GPT_IMAGE_2_REF_TOKENS_CAP = 7100;
 
 /**
  * gpt-image-2 sizes we offer. Every size meets the documented rules (edges multiples of 16, long/short ≤ 3,
@@ -112,7 +118,7 @@ const gptImage2: GeneratorDef = {
       })),
     ),
     { key: "prompt:1kb", label: "كل ١٠٠٠ بايت من البرومبت", defaultCenti: centiFor((1000 * GPT_IMAGE_2_PRICE.textIn) / 1e6), basis: "سقف: كل بايت ≤ توكن واحد × $5/مليون" },
-    { key: "ref:image", label: "كل صورة مرجعية", defaultCenti: null, basis: "غير متحقق: OpenAI لا يوثّق عدد توكنات الصورة المدخلة لـ gpt-image-2" },
+    { key: "ref:image", label: "كل صورة مرجعية", defaultCenti: centiFor((GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6), basis: `سقف (غير متحقق لـ gpt-image-2): ${GPT_IMAGE_2_REF_TOKENS_CAP.toLocaleString("en")} توكن، أقصى ما وثّقته OpenAI لصورة مدخلة في gpt-image-1، × $${GPT_IMAGE_2_PRICE.imageIn}/مليون. التكلفة الفعلية تُسجَّل مع كل مهمة` },
   ],
   modeFor: (_style, refs) => (refs.length ? gptImage2Modes[1] : gptImage2Modes[0]),
   rules: () => ({ options: opt(gptImage2.options), issues: [], notes: [] }),
@@ -141,8 +147,9 @@ const gptImage2: GeneratorDef = {
     const tier = s.resolution === "hi" ? "hi" : "std";
     const size = GPT_IMAGE_2_SIZES[tier][String(s.aspect)] ?? GPT_IMAGE_2_SIZES.std["1:1"];
     const q = (s.quality as (typeof QUALITIES)[number]) ?? "medium";
-    // Reference images are left out: their token count is not documented for gpt-image-2
-    return (Number(s.count) || 1) * outUsd(size[0], size[1], q) + (utf8Bytes(d.prompt) * GPT_IMAGE_2_PRICE.textIn) / 1e6;
+    // Reference images at their cap (their real token count is not documented for gpt-image-2)
+    const refs = (d.refs.filter((r) => r.kind === "image").length * GPT_IMAGE_2_REF_TOKENS_CAP * GPT_IMAGE_2_PRICE.imageIn) / 1e6;
+    return (Number(s.count) || 1) * outUsd(size[0], size[1], q) + (utf8Bytes(d.prompt) * GPT_IMAGE_2_PRICE.textIn) / 1e6 + refs;
   },
   sources: [
     { label: "OpenAI — Image generation guide (sizes, quality, calculator)", url: "https://developers.openai.com/api/docs/guides/image-generation", checked: CHECKED },
@@ -155,7 +162,7 @@ const gptImage2: GeneratorDef = {
     { item: "عدد الصور", status: "verified", note: "n من 1 إلى 10؛ نعرض حتى 4." },
     { item: "الصور المرجعية", status: "verified", note: "نقطة edits تقبل حتى 16 صورة؛ نقبل PNG وJPEG وWEBP حتى 20MB." },
     { item: "سعر المخرجات", status: "verified", note: "$30 لكل مليون توكن، وعدد التوكنات بمعادلة الحاسبة الرسمية (يطابق الأسعار المنشورة)." },
-    { item: "سعر الصور المرجعية", status: "unverified", note: "OpenAI يوثّق توكنات الصورة المدخلة لـ gpt-image-1 فقط؛ لذلك المراجع معطلة حتى تحدد سعرها." },
+    { item: "سعر الصور المرجعية", status: "unverified", note: "OpenAI يوثّق توكنات الصورة المدخلة لـ gpt-image-1 فقط؛ نسعّرها افتراضيًا بسقف أقصى حالة موثّقة (7,100 توكن × $8/مليون)، والتكلفة الفعلية تُسجَّل من usage." },
     { item: "الخلفية الشفافة", status: "unverified", note: "موثّقة كمعاينة (preview) لـ gpt-image-2؛ غير معروضة." },
     { item: "التقدم والإلغاء", status: "verified", note: "طلب متزامن بلا نسبة تقدم ولا إلغاء." },
   ],
@@ -182,6 +189,11 @@ const SEEDANCE_PIXELS: Record<"2.5" | "2.0", Record<string, Record<string, [numb
 const SEEDANCE_RATE: Record<"2.5" | "2.0", Record<string, number>> = {
   "2.5": { "480p": 10.7, "720p": 10.7, "1080p": 11.7 },
   "2.0": { "480p": 7.0, "720p": 7.0, "1080p": 7.7, "4k": 4.0 },
+};
+/** USD per 1M tokens when the input contains a video (same pricing page). The whole task is billed at this rate. */
+const SEEDANCE_RATE_WITH_VIDEO: Record<"2.5" | "2.0", Record<string, number>> = {
+  "2.5": { "480p": 6.4, "720p": 6.4, "1080p": 7.0 },
+  "2.0": { "480p": 4.3, "720p": 4.3, "1080p": 4.7, "4k": 2.4 },
 };
 /** tokens = (input video seconds + output seconds) × width × height × 24 / 1024 (ModelArk pricing). Ceiling: the largest size of the resolution. */
 const seedanceSecondUsd = (v: "2.5" | "2.0", res: string, ratio?: string) => {
@@ -262,8 +274,13 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       ...resolutions.map((r) => ({
         key: `vref:sec:${r}`,
         label: `كل ثانية من فيديو مرجعي · ${RES_LABEL[r]}`,
-        defaultCenti: null,
-        basis: "غير متحقق: مع فيديو مرجعي يطبَّق حد أدنى للتوكنات من جدول تقديري خارجي",
+        // Priced like an output second (the higher "without video" rate): the real "with video" rate is lower,
+        // which leaves room for the minimum token consumption ModelArk only estimates. 4K follows sec:4k (held).
+        defaultCenti: r === "4k" ? null : centiFor(seedanceSecondUsd(v, r)),
+        basis:
+          r === "4k"
+            ? "يتبع 4K: موقوف حتى تحدد سعره"
+            : `سقف: بسعر ثانية المخرج ($${SEEDANCE_RATE[v][r]}/مليون)، والفعلي مع فيديو $${SEEDANCE_RATE_WITH_VIDEO[v][r]}/مليون + حد أدنى تقديري للتوكنات`,
       })),
     ],
     modeFor(style, refs) {
@@ -296,7 +313,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       const vids = d.refs.filter((r) => r.kind === "video");
       if (vids.length) {
         const vk = table[`vref:sec:${res}`];
-        if (vk == null) return { ok: false, reason: "مراجع الفيديو غير مسعّرة بعد (حد أدنى للتوكنات غير موثّق بدقة)." };
+        if (vk == null) return { ok: false, reason: "مراجع الفيديو بهذه الدقة غير مسعّرة." };
         const inSec = Math.ceil(vids.reduce((s, r) => s + (r.durationMs ?? 0), 0) / 1000);
         lines.push({ label: `${inSec} ث فيديو مرجعي`, centi: inSec * vk });
       }
@@ -307,7 +324,11 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       const res = String(d.settings.resolution);
       if (!SEEDANCE_PIXELS[v][res]) return null;
       const ratio = mode.refStyle === "frames" ? undefined : String(d.settings.ratio);
-      return seedanceSecondUsd(v, res, ratio) * Number(d.settings.duration);
+      const inMs = d.refs.filter((r) => r.kind === "video").reduce((s, r) => s + (r.durationMs ?? 0), 0);
+      if (!inMs) return seedanceSecondUsd(v, res, ratio) * Number(d.settings.duration);
+      // With a video in the input: (input + output seconds) at the "with video" rate
+      const perSec = seedanceSecondUsd(v, res, ratio) * (SEEDANCE_RATE_WITH_VIDEO[v][res] / SEEDANCE_RATE[v][res]);
+      return perSec * (inMs / 1000 + Number(d.settings.duration));
     },
     sources: [
       { label: "BytePlus ModelArk — Create a video generation task", url: "https://docs.byteplus.com/en/docs/ModelArk/1520757", checked: CHECKED },
@@ -322,7 +343,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       { item: "المراجع", status: "verified", note: `صور 1–${lim.images}، صوت حتى ${lim.audios} (مجموع ≤ ${lim.totalMs / 1000} ث، كل مقطع 2–${lim.clipMax / 1000} ث، MP3/WAV ≤ 15MB)؛ صورة ≤ 30MB، أضلاع 300–6000، نسبة 0.4–2.5.${is25 ? "" : " الصوت وحده غير مقبول في 2.0."}` },
       { item: "اللغة", status: "verified", note: is25 ? "يدعم البرومبت العربي." : "لا يدعم العربية رسميًا؛ نمنع البرومبت العربي." },
       { item: "السعر", status: "verified", note: `توكنات = (مدة الفيديو المرجعي + المخرج) × العرض × الارتفاع × 24 ÷ 1024؛ بلا فيديو مرجعي: ${resolutions.map((r) => `${RES_LABEL[r]} $${SEEDANCE_RATE[v][r]}`).join(" · ")} لكل مليون. لا يُحسب الفشل.` },
-      { item: "مراجع الفيديو", status: "unverified", note: "يطبَّق حد أدنى للتوكنات من جدول «تقديري» خارجي؛ معطلة حتى تحدد سعرها." },
+      { item: "مراجع الفيديو", status: "unverified", note: `مع فيديو مرجعي تُحسب المهمة كلها بسعر «مع فيديو» (${resolutions.map((r) => `${RES_LABEL[r]} $${SEEDANCE_RATE_WITH_VIDEO[v][r]}`).join(" · ")} لكل مليون)، مع حد أدنى للتوكنات تقديري فقط؛ نسعّر ثانية المرجع افتراضيًا كثانية مخرج (سقف).` },
       { item: "التقدم", status: "verified", note: "الحالات queued/running/succeeded/failed/expired بلا نسبة مئوية؛ نعرض مؤشرًا غير محدد." },
       { item: "الإلغاء", status: "verified", note: "ممكن فقط والمهمة في الطابور (queued)." },
       { item: "الإشعارات", status: "verified", note: "callback_url يرسل POST عند تغيّر الحالة؛ نتحقق منه بالاستعلام عن المهمة ولا نثق بمحتواه." },
@@ -365,7 +386,15 @@ const miniTts: GeneratorDef = {
   files: {},
   prompt: { label: "النص المنطوق", placeholder: "اكتب الكلام كما سيُنطق حرفيًا…", max: 1800, arabic: true },
   extraText: { key: "instructions", label: "وصف الأداء (اختياري)", placeholder: "مثال: صوت هادئ ودافئ، بإيقاع بطيء…", max: 300 },
-  priceKeys: [{ key: "chars:1k", label: "كل ١٠٠٠ حرف (النص + وصف الأداء)", defaultCenti: null, basis: "غير متحقق: OpenAI لا يوثّق عدد توكنات الصوت لكل ثانية" }],
+  priceKeys: [
+    {
+      key: "chars:1k",
+      label: "كل ١٠٠٠ حرف (النص + وصف الأداء)",
+      // OpenAI's own published per-character speech price (tts-1-hd: $30 / 1M characters)
+      defaultCenti: centiFor((1000 * 30) / 1e6),
+      basis: "بسعر OpenAI المنشور لنموذج الصوت عالي الجودة tts-1-hd ($30 لكل مليون حرف)؛ توكنات الصوت لكل ثانية غير موثّقة لهذا النموذج",
+    },
+  ],
   modeFor: () => ttsMode,
   rules: () => ({ options: opt(miniTts.options), issues: [], notes: ["الأصوات محسّنة للإنجليزية؛ النطق العربي مدعوم لكن جودته تختلف حسب الصوت."] }),
   price(d, _mode, table) {
@@ -377,6 +406,7 @@ const miniTts: GeneratorDef = {
   costUsd: () => null,
   sources: [
     { label: "OpenAI — Text to speech guide (voices, formats, languages)", url: "https://developers.openai.com/api/docs/guides/text-to-speech", checked: CHECKED },
+    { label: "OpenAI — Pricing (gpt-4o-mini-tts tokens; tts-1-hd $30 / 1M characters)", url: "https://developers.openai.com/api/docs/pricing", checked: CHECKED },
     { label: "OpenAI — Create speech (input ≤ 4096 chars, instructions)", url: "https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create", checked: CHECKED },
     { label: "OpenAI — GPT-4o mini TTS model (2000 input tokens, prices)", url: "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts", checked: CHECKED },
   ],
@@ -388,7 +418,7 @@ const miniTts: GeneratorDef = {
     { item: "اللغة", status: "verified", note: "يتبع لغات Whisper ومنها العربية؛ لا يوجد معامل لغة (تُستنتج من النص)." },
     { item: "السرعة", status: "unverified", note: "speed موثّق للنقطة عمومًا دون تأكيد لهذا النموذج؛ غير معروض." },
     { item: "معدل العينة", status: "unverified", note: "موثّق فقط لـ pcm (24kHz)؛ غير معروض." },
-    { item: "السعر", status: "unverified", note: "$0.60/مليون توكن نص و$12/مليون توكن صوت، لكن توكنات الصوت لكل ثانية غير موثّقة؛ يحتاج سعرًا منك." },
+    { item: "السعر", status: "unverified", note: "$0.60/مليون توكن نص و$12/مليون توكن صوت، لكن توكنات الصوت لكل ثانية غير موثّقة؛ نسعّر افتراضيًا بسعر OpenAI المنشور لـ tts-1-hd ($30/مليون حرف)." },
   ],
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي (سياسة OpenAI)."],
 };

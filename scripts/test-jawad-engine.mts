@@ -61,16 +61,20 @@ test("price changes with count and quality", () => {
   assert.ok(p1.ok && p4.ok && p4.coins > p1.coins * 3);
 });
 
-test("image references stay off until their price is set, then they work", () => {
+test("image references work by default (priced at a declared cap); a missing price turns them off", () => {
   const d = g("openai-gpt-image-2");
   const input = { settings: defaultSettings(d), prompt: "make it night", instructions: "", refStyle: "references" as const, refs: [img()] };
-  const off = evaluate(d, input, priceTable(d, {}));
-  assert.equal(off.refKinds.image.allowed, false);
-  assert.equal(off.price.ok, false);
-  const on = evaluate(d, input, priceTable(d, { "ref:image": 150 }));
+  const on = evaluate(d, input, priceTable(d, {}));
   assert.equal(on.refKinds.image.allowed, true);
   assert.ok(on.price.ok);
   assert.deepEqual(on.issues, []);
+  // 7,100 tokens × $8 / 1M = $0.0568 → 1.71 coins per reference image
+  assert.equal(priceTable(d, {})["ref:image"], 171);
+  const missing = { ...priceTable(d, {}) };
+  delete missing["ref:image"];
+  const off = evaluate(d, input, missing);
+  assert.equal(off.refKinds.image.allowed, false);
+  assert.equal(off.price.ok, false);
 });
 
 test("Seedance first frame: ratio fixed to adaptive (no silent crop)", () => {
@@ -118,11 +122,19 @@ test("Seedance 2.0 omni: audio alone is refused; total audio over 15 s is refuse
   assert.ok(long.issues.some((i) => i.message.includes("مجموع")));
 });
 
-test("Seedance video references stay off (unverified minimum tokens) until priced", () => {
+test("Seedance video references work by default: each reference second priced like an output second", () => {
   const d = g("byteplus-seedance-2-5");
-  const e = evaluate(d, { settings: defaultSettings(d), prompt: "x", instructions: "", refStyle: "references", refs: [vid(5000)] }, priceTable(d, {}));
-  assert.equal(e.refKinds.video.allowed, false);
-  assert.equal(e.price.ok, false);
+  const t = priceTable(d, {});
+  assert.equal(t["vref:sec:720p"], t["sec:720p"]);
+  const e = evaluate(d, { settings: defaultSettings(d), prompt: "x", instructions: "", refStyle: "references", refs: [vid(5000)] }, t);
+  assert.equal(e.refKinds.video.allowed, true);
+  assert.ok(e.price.ok);
+  // 5 s reference + 5 s output = 10 seconds at the 720p price
+  assert.equal(e.price.coins, Math.ceil((10 * t["sec:720p"]!) / 100));
+  // 4K stays held on 2.0 (storage limit), with its reference price
+  const t2 = priceTable(g("byteplus-seedance-2-0"), {});
+  assert.equal(t2["sec:4k"], null);
+  assert.equal(t2["vref:sec:4k"], null);
 });
 
 test("a too-small image is refused for Seedance (min side 300) with a clear reason", () => {
@@ -141,11 +153,13 @@ test("switching to an image generator keeps a video reference but blocks sending
   assert.ok(e.issues.length > 0);
 });
 
-test("audio: no aspect ratio, separate performance text, price waits for the owner", () => {
+test("audio: no aspect ratio, separate performance text, priced by default like tts-1-hd", () => {
   const d = g("openai-gpt-4o-mini-tts");
   assert.ok(!d.options.some((o) => o.key === "aspect" || o.key === "ratio"));
   const e = evaluate(d, { settings: defaultSettings(d), prompt: "مرحبًا بكم", instructions: "بهدوء", refStyle: "none", refs: [] }, priceTable(d, {}));
-  assert.equal(e.price.ok, false);
+  // $30 / 1M characters → 0.90 coin per 1,000 characters, at least 1 coin
+  assert.ok(e.price.ok && e.price.coins === 1);
+  assert.equal(priceTable(d, {})["chars:1k"], 90);
   const priced = evaluate(d, { settings: defaultSettings(d), prompt: "مرحبًا بكم", instructions: "بهدوء", refStyle: "none", refs: [] }, priceTable(d, { "chars:1k": 200 }));
   assert.ok(priced.price.ok && priced.price.coins === 2);
 });

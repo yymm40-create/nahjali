@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { generatorById } from "@config/jawad/generators";
 import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
 import SmartCoin from "@/components/SmartCoin";
@@ -17,6 +17,35 @@ const FILTERS: { key: WorksFilter; label: string; icon: string }[] = [
   { key: "audio", label: "الصوت", icon: "audio" },
 ];
 
+// Thumbnail size of the works: "large" cards with details, or "small" squares (tap one for its card).
+// Remembered on this device; works without storage too (then only for this visit).
+type Density = "large" | "small";
+const DENSITY_KEY = "jw-works-density";
+const densityListeners = new Set<() => void>();
+let densityMemory: Density | null = null;
+function readDensity(): Density {
+  if (densityMemory) return densityMemory;
+  try {
+    return localStorage.getItem(DENSITY_KEY) === "small" ? "small" : "large";
+  } catch {
+    return "large";
+  }
+}
+function writeDensity(d: Density) {
+  densityMemory = d;
+  try {
+    localStorage.setItem(DENSITY_KEY, d);
+  } catch {
+    // private mode or blocked storage: kept in memory for this visit
+  }
+  densityListeners.forEach((l) => l());
+}
+const subscribeDensity = (l: () => void) => {
+  densityListeners.add(l);
+  return () => {
+    densityListeners.delete(l);
+  };
+};
 
 /** Short, readable summary of the settings used (technical values left-to-right). */
 function settingChips(j: JobView) {
@@ -52,6 +81,11 @@ export interface WorksPanelProps {
 
 export default function WorksPanel(p: WorksPanelProps) {
   const [viewer, setViewer] = useState<{ job: JobView; index: number } | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const density = useSyncExternalStore(subscribeDensity, readDensity, () => "large" as Density);
+  const small = density === "small";
+  // The card of a small square, kept live (its job keeps updating while open)
+  const detail = detailId ? p.items.find((it) => itemKey(it) === detailId) ?? null : null;
   const sentinel = useRef<HTMLDivElement>(null);
   const { hasMore, loading, onMore } = p;
 
@@ -68,12 +102,22 @@ export default function WorksPanel(p: WorksPanelProps) {
     <section aria-label="أعمالي" className="flex min-h-0 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-jw-line px-4 py-2.5">
         <h2 className="text-sm font-semibold">أعمالي</h2>
-        <div className="jw-seg" role="tablist" aria-label="تصفية الأعمال">
-          {FILTERS.map((f) => (
-            <button key={f.key} type="button" role="tab" aria-selected={p.filter === f.key} onClick={() => p.onFilter(f.key)} className="!min-h-8 !px-2.5 !text-xs">
-              <Icon name={f.icon} size={14} /> {f.label}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="jw-seg" role="tablist" aria-label="تصفية الأعمال">
+            {FILTERS.map((f) => (
+              <button key={f.key} type="button" role="tab" aria-selected={p.filter === f.key} onClick={() => p.onFilter(f.key)} className="!min-h-8 !px-2.5 !text-xs">
+                <Icon name={f.icon} size={14} /> {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="jw-seg" role="radiogroup" aria-label="حجم المعاينات">
+            <button type="button" role="radio" aria-checked={!small} onClick={() => writeDensity("large")} className="!min-h-8 !px-2" title="معاينات كبيرة مع التفاصيل">
+              <Icon name="expand" size={14} /> <span className="sr-only sm:not-sr-only">كبيرة</span>
             </button>
-          ))}
+            <button type="button" role="radio" aria-checked={small} onClick={() => writeDensity("small")} className="!min-h-8 !px-2" title="مربعات صغيرة">
+              <Icon name="grid" size={14} /> <span className="sr-only sm:not-sr-only">صغيرة</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -95,6 +139,15 @@ export default function WorksPanel(p: WorksPanelProps) {
           ) : (
             <Empty icon="sparkles" title={p.filter === "all" ? "لا توجد أعمال بعد" : "لا توجد أعمال من هذا النوع"} text="ستظهر هنا كل توليداتك وأعمال أفلامك، الأحدث أولًا." />
           )
+        ) : small ? (
+          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            {p.items.map((it) => (
+              <li key={itemKey(it)} className="jw-fade-in">
+                <Tile it={it} onOpen={() => setDetailId(itemKey(it))} />
+              </li>
+            ))}
+            {p.loading && Array.from({ length: 6 }, (_, i) => <li key={`sk-${i}`} className="jw-skeleton aspect-square rounded-lg" />)}
+          </ul>
         ) : (
           <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
             {p.items.map((it) =>
@@ -129,10 +182,62 @@ export default function WorksPanel(p: WorksPanelProps) {
         )}
       </div>
 
+      <Dialog open={Boolean(detail)} onClose={() => setDetailId(null)} title={detail ? (detail.type === "job" ? detail.generatorName : "الفيلم السينمائي") : ""}>
+        {detail && (
+          <div className="p-3">
+            {detail.type === "job" ? (
+              <JobCard
+                j={detail}
+                {...p}
+                onOpen={(index) => {
+                  setDetailId(null);
+                  setViewer({ job: detail, index });
+                }}
+              />
+            ) : (
+              <FilmCard f={detail} />
+            )}
+          </div>
+        )}
+      </Dialog>
+
       <Dialog open={Boolean(viewer)} onClose={() => setViewer(null)} title={viewer ? `${viewer.job.generatorName} · ${viewer.index + 1}/${viewer.job.outputs.length}` : ""} wide>
         {viewer && <Viewer job={viewer.job} index={viewer.index} onIndex={(index) => setViewer({ ...viewer, index })} />}
       </Dialog>
     </section>
+  );
+}
+
+const itemKey = (it: WorkItem) => (it.type === "job" ? it.id : `film-${it.id}`);
+
+/** A small square: the first result (or the job's state); tap for the full card. Videos never play here. */
+function Tile({ it, onOpen }: { it: WorkItem; onOpen: () => void }) {
+  const job = it.type === "job" ? it : null;
+  const film = it.type === "film" ? it : null;
+  const out = job?.status === "succeeded" ? job.outputs[0] : undefined;
+  const url = job ? out?.url ?? null : film?.url ?? null;
+  const kind = job ? out?.kind ?? job.outputKind : film?.kind ?? "image";
+  const open = job ? isOpenStatus(job.status) : false;
+  const failed = Boolean(job && !open && job.status !== "succeeded");
+  const label = job ? `${job.generatorName}${job.prompt ? `: ${job.prompt.slice(0, 80)}` : ""} — ${stageLabel(job.status, job.providerStatus)}` : `الفيلم السينمائي: ${film?.projectTitle ?? ""}`;
+  return (
+    <button type="button" onClick={onOpen} aria-label={label} title={label} className="group relative block aspect-square w-full overflow-hidden rounded-lg border border-jw-line bg-jw-bg-2 transition hover:border-jw-accent focus-visible:border-jw-accent">
+      {url && kind === "image" ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" loading="lazy" className="size-full object-cover" />
+      ) : url && kind === "video" ? (
+        <video src={`${url}#t=0.1`} muted preload="metadata" playsInline tabIndex={-1} className="pointer-events-none size-full object-cover" />
+      ) : (
+        <span className="grid size-full place-items-center text-jw-muted">
+          {open ? <span className="jw-spinner" /> : <Icon name={failed ? "alert" : kind === "audio" ? "audio" : kind === "video" ? "video" : "image"} size={22} className={failed && job?.status !== "cancelled" ? "text-jw-danger" : kind === "audio" ? "text-jw-accent" : ""} />}
+        </span>
+      )}
+      {/* What kind of work, and how many results */}
+      <span className="absolute bottom-1 start-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5 text-[10px] text-white">
+        <Icon name={it.type === "film" ? "film" : kind === "video" ? "play" : kind === "audio" ? "audio" : "image"} size={10} />
+        {job && job.outputs.length > 1 && <span dir="ltr">{job.outputs.length}</span>}
+      </span>
+    </button>
   );
 }
 
