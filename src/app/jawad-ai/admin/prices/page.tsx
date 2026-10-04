@@ -2,12 +2,14 @@ import PricesAdmin from "@/components/jawad/admin/PricesAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GENERATORS } from "@config/jawad/generators";
 import { SMART_COIN, COIN_COST_USD } from "@config/coins";
+import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 export const metadata = { title: "الأسعار" };
 
 const fmt = (c: number | null) => (c == null ? "الافتراضي" : (c / 100).toFixed(2));
 
 export default async function PricesPage() {
+  await requireJawadOwnerPage("/jawad-ai/admin/prices");
   const db = createAdminClient();
   const [{ data: rules }, { data: log }] = await Promise.all([
     db.from("jawad_price_rules").select("generator_id,price_key,centicoins"),

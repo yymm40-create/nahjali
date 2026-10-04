@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stageLabel } from "@/lib/jawad/labels";
 import type { JobRow } from "@/lib/jawad/server/jobs";
 import { generatorById } from "@config/jawad/generators";
+import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 export const metadata = { title: "المهام والسجلات" };
 
@@ -12,6 +13,7 @@ const when = (iso: string) => new Date(iso).toLocaleString("ar-SA-u-ca-gregory-n
 
 /** Every job (all users), its errors and events, and JAWAD AI's coin movements. */
 export default async function JobsPage({ searchParams }: PageProps<"/jawad-ai/admin/jobs">) {
+  await requireJawadOwnerPage("/jawad-ai/admin/jobs");
   const sp = await searchParams;
   const status = (STATUSES as readonly string[]).includes(String(sp.status)) ? String(sp.status) : "all";
   const db = createAdminClient();

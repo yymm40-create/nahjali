@@ -1,6 +1,5 @@
-import { notFound } from "next/navigation";
 import AdminNav from "@/components/jawad/admin/AdminNav";
-import { jawadSession, requireJawadUser } from "@/lib/jawad/server/access";
+import { jawadSession, requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 // Titled for the owner only: everyone else gets the plain 404 (not even the tab title tells it exists)
 export async function generateMetadata() {
@@ -10,8 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** The owner's JAWAD AI settings (real permission check on every page and API call; 404 for everyone else). */
 export default async function JawadAdminLayout({ children }: { children: React.ReactNode }) {
-  const { owner } = await requireJawadUser("/jawad-ai/admin");
-  if (!owner) notFound();
+  await requireJawadOwnerPage("/jawad-ai/admin");
   return (
     <div className="mx-auto max-w-6xl space-y-5 px-4 pb-16 pt-5">
       <header className="space-y-3">
