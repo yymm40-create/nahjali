@@ -15,6 +15,7 @@ import { GeneratorCard, GeneratorPicker } from "./GeneratorCard";
 import OutputSettings from "./OutputSettings";
 import PromptBox from "./PromptBox";
 import RefsStrip from "./RefsStrip";
+import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
 import { refMeta, type Draft, type RefItem, type StudioProps } from "./types";
@@ -490,10 +491,17 @@ export default function Studio({ section, generators, prices: initialPrices, use
     setTab("settings");
   }
 
+  /** One of the user's works (a JAWAD result or a film picture/video) copied into a new, checked reference. */
+  async function addFromWork(source: WorkSource, role?: RefRole): Promise<string | null> {
+    const { ok, body } = await postJson<{ upload: UploadView }>("/api/jawad/uploads/from-output", source);
+    if (!ok) return body.error ?? "تعذّر إضافته كمرجع.";
+    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference")] }));
+    return null;
+  }
+
   async function useAsRef(o: OutputView) {
-    const { ok, body } = await postJson<{ upload: UploadView }>("/api/jawad/uploads/from-output", { outputId: o.id });
-    if (!ok) return setNotice(body.error ?? "تعذّر إضافته كمرجع.");
-    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? nextFrameRole(d.refs) : "reference")] }));
+    const err = await addFromWork({ outputId: o.id });
+    if (err) return setNotice(err);
     setNotice("أضفناه إلى المراجع.");
     setTab("settings");
   }
@@ -556,6 +564,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
               owner={owner}
               uploadBlockedReason={!user ? "سجّل الدخول لرفع المراجع." : !allowed ? "المنصة مغلقة لحسابك." : null}
               onAdd={addFiles}
+              onPickWork={addFromWork}
               onRetry={retryUpload}
               onRemove={removeRef}
               onRole={(id, role) => updateRef(id, { role })}

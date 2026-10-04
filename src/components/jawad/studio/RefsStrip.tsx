@@ -1,16 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { GeneratorDef, RefKind, RefRole, RefStyle } from "@config/jawad/types";
 import type { Evaluation } from "@/lib/jawad/engine";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+import RefAdder, { type WorkSource } from "./RefAdder";
 import type { RefItem } from "./types";
 
 const KIND_AR: Record<RefKind, string> = { image: "صورة", video: "فيديو", audio: "صوت" };
 const KIND_ICON: Record<RefKind, string> = { image: "image", video: "video", audio: "audio" };
-const ACCEPT: Record<RefKind, string> = { image: "image/png,image/jpeg,image/webp", video: "video/mp4,video/quicktime", audio: "audio/mpeg,audio/wav,audio/x-wav" };
 const ROLE_AR: Record<RefRole, string> = { first_frame: "الإطار الأول", last_frame: "الإطار الأخير", reference: "مرجع" };
 const STYLE_AR: Record<RefStyle, string> = { none: "بدون", frames: "إطار أول / أخير", references: "مراجع متعددة" };
 
@@ -28,6 +27,8 @@ interface Props {
   owner?: boolean;
   uploadBlockedReason: string | null;
   onAdd: (kind: RefKind, files: File[], role?: RefRole) => void;
+  /** One of the user's works as a reference; resolves to an error message, or null when added. */
+  onPickWork: (source: WorkSource, role?: RefRole) => Promise<string | null>;
   onRetry: (localId: string) => void;
   onRemove: (localId: string) => void;
   onRole: (localId: string, role: RefRole) => void;
@@ -82,61 +83,53 @@ function Thumb({ r, problem, big, onOpen, onRemove, onRetry }: { r: RefItem; pro
 }
 
 /** The references rectangle under the generator card: starts compact, grows to show references clearly. */
-export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, owner = false, uploadBlockedReason, onAdd, onRetry, onRemove, onRole }: Props) {
-  const [menu, setMenu] = useState(false);
+export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, owner = false, uploadBlockedReason, onAdd, onPickWork, onRetry, onRemove, onRole }: Props) {
+  // "+" opens the «أضف مرجعًا» window: from the device or from the user's works (a frame slot: images only)
+  const [adder, setAdder] = useState<{ role?: RefRole; only?: RefKind } | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [preview, setPreview] = useState<RefItem | null>(null);
   const [drag, setDrag] = useState(false);
   const [dropError, setDropError] = useState("");
-  const inputs = useRef<Record<string, HTMLInputElement | null>>({});
-  const pendingRole = useRef<RefRole | undefined>(undefined);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menu) return;
-    const close = (e: Event) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !menuRef.current?.contains(e.target as Node)) setMenu(false);
-    };
-    document.addEventListener("click", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [menu]);
 
   if (!ev.refStyles.length) return null;
 
-  const pick = (kind: RefKind, role?: RefRole) => {
-    if (!canUpload) return;
-    pendingRole.current = role;
-    inputs.current[kind]?.click();
-  };
   const kinds = (["image", "video", "audio"] as RefKind[]).filter((k) => def.files[k]);
   const frames = refStyle === "frames";
   const roleItem = (role: RefRole) => refs.find((r) => r.role === role);
   const problems = refs.flatMap((r) => (ev.refProblems[r.uploadId ?? r.localId] ? [{ r, msg: ev.refProblems[r.uploadId ?? r.localId] }] : []));
   const refIssues = ev.issues.filter((i) => i.field === "refs");
 
-  async function onDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDrag(false);
+  /** Files from the device (picker or drop): each goes in by what it really is (its first bytes). */
+  async function addFiles(files: File[], role?: RefRole, only?: RefKind) {
     setDropError("");
     if (!canUpload) return setDropError(uploadBlockedReason ?? "");
-    const files = [...e.dataTransfer.files];
     const { sniff } = await import("@/lib/jawad/media");
+    let nextRole = role;
     for (const f of files) {
       const s = sniff(new Uint8Array(await f.slice(0, 64).arrayBuffer()));
       if (!s) {
-        setDropError(`«${f.name}»: نوع غير مقبول.`);
+        setDropError(`«${f.name}»: نوع غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، MP3/WAV).`);
+        continue;
+      }
+      if (only && s.kind !== only) {
+        setDropError(`«${f.name}»: هنا ${KIND_AR[only]} فقط.`);
         continue;
       }
       if (!ev.refKinds[s.kind].allowed) {
         setDropError(`«${f.name}»: ${ev.refKinds[s.kind].reason}`);
         continue;
       }
-      onAdd(s.kind, [f], frames ? (roleItem("first_frame") ? "last_frame" : "first_frame") : undefined);
+      const r = frames && s.kind === "image" ? nextRole ?? (roleItem("first_frame") ? "last_frame" : "first_frame") : undefined;
+      onAdd(s.kind, [f], r);
+      // A second picture picked for the first frame goes to the last frame
+      if (r === "first_frame") nextRole = "last_frame";
     }
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDrag(false);
+    addFiles([...e.dataTransfer.files]);
   }
 
   return (
@@ -176,7 +169,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
                   ) : (
                     <button
                       type="button"
-                      onClick={() => pick("image", role)}
+                      onClick={() => setAdder({ role, only: "image" })}
                       disabled={!canUpload || !ev.refKinds.image.allowed}
                       title={!canUpload ? uploadBlockedReason ?? "" : ev.refKinds.image.reason}
                       className="grid size-28 place-items-center rounded-lg border border-jw-line-strong bg-jw-surface text-jw-muted hover:text-jw-ink disabled:cursor-not-allowed disabled:opacity-50"
@@ -195,60 +188,21 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
           </div>
         ) : (
           <div className={`flex items-center gap-2 ${expanded ? "flex-wrap" : "jw-scroll overflow-x-auto pb-1"}`}>
-            <div className="relative shrink-0" ref={menuRef}>
-              <button
-                type="button"
-                onClick={() => setMenu((m) => !m)}
-                disabled={!canUpload}
-                title={!canUpload ? uploadBlockedReason ?? "" : "أضف مرجعًا"}
-                aria-haspopup="menu"
-                aria-expanded={menu}
-                className={`grid ${expanded ? "size-28" : "size-[68px]"} place-items-center rounded-lg border border-jw-line-strong bg-jw-surface text-jw-muted hover:text-jw-ink disabled:cursor-not-allowed disabled:opacity-50`}
-                aria-label="أضف مرجعًا"
-              >
-                <Icon name="plus" size={22} />
-              </button>
-              {menu && (
-                <div role="menu" className="jw-panel absolute start-0 top-full z-30 mt-1 w-64 p-1.5 shadow-2xl shadow-black/60">
-                  {kinds.map((k) => {
-                    const a = ev.refKinds[k];
-                    return (
-                      <div key={k}>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={!a.allowed}
-                          onClick={() => {
-                            setMenu(false);
-                            pick(k);
-                          }}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-start text-sm hover:bg-jw-surface-3 disabled:cursor-not-allowed disabled:text-jw-muted disabled:hover:bg-transparent"
-                        >
-                          <Icon name={KIND_ICON[k]} size={16} />
-                          {KIND_AR[k]}
-                        </button>
-                        {/* Why it's off, readable, right under it (and, for the owner, where to fix it) */}
-                        {!a.allowed && (
-                          <p className="-mt-1 px-3 pb-2 ps-[38px] text-[11px] leading-relaxed text-jw-warn">
-                            {a.reason}
-                            {owner && a.needsPrice && (
-                              <>
-                                {" "}
-                                <Link href="/jawad-ai/admin/prices" className="underline">حدد السعر</Link>
-                              </>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => setAdder({})}
+              disabled={!canUpload}
+              title={!canUpload ? uploadBlockedReason ?? "" : "أضف مرجعًا"}
+              aria-haspopup="dialog"
+              className={`grid shrink-0 ${expanded ? "size-28" : "size-[68px]"} place-items-center rounded-lg border border-jw-line-strong bg-jw-surface text-jw-muted hover:text-jw-ink disabled:cursor-not-allowed disabled:opacity-50`}
+              aria-label="أضف مرجعًا"
+            >
+              <Icon name="plus" size={22} />
+            </button>
             {refs.map((r) => (
               <Thumb key={r.localId} r={r} big={expanded} problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
             ))}
-            {!refs.length && <span className="px-1 text-xs text-jw-faint">{canUpload ? `اسحب ملفًا هنا أو اضغط + (${kinds.map((k) => KIND_AR[k]).join("، ")})` : uploadBlockedReason}</span>}
+            {!refs.length && <span className="px-1 text-xs text-jw-faint">{canUpload ? `اضغط + لتختار من جهازك أو من أعمالك، أو اسحب ملفًا هنا (${kinds.map((k) => KIND_AR[k]).join("، ")})` : uploadBlockedReason}</span>}
           </div>
         )}
         {!frames && refs.length > 3 && (
@@ -258,23 +212,20 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
         )}
       </div>
 
-      {kinds.map((k) => (
-        <input
-          key={k}
-          ref={(el) => {
-            inputs.current[k] = el;
-          }}
-          type="file"
-          accept={ACCEPT[k]}
+      {adder && (
+        <RefAdder
+          open
+          onClose={() => setAdder(null)}
+          title={adder.role && adder.role !== "reference" ? `${ROLE_AR[adder.role]}: أضف صورة` : "أضف مرجعًا"}
+          kinds={kinds}
+          only={adder.only}
+          refKinds={ev.refKinds}
+          owner={owner}
           multiple={!frames}
-          className="hidden"
-          onChange={(e) => {
-            const files = [...(e.target.files ?? [])];
-            e.target.value = "";
-            if (files.length) onAdd(k, files, pendingRole.current);
-          }}
+          onFiles={(files) => addFiles(files, adder.role, adder.only)}
+          onPickWork={(source) => onPickWork(source, adder.role)}
         />
-      ))}
+      )}
 
       {(dropError || problems.length > 0 || refIssues.length > 0) && (
         <ul className="space-y-1 text-xs text-jw-danger" role="alert">
