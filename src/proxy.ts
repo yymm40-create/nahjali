@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { BOOKLET_PATHS } from "@config/site";
+import { BOOKLET_PATHS, OWN_CHROME_HEADER } from "@config/site";
 import { bookletOpenFor } from "@/lib/film/limits";
 
 // Pages that require a signed-in user
@@ -15,7 +15,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  let response = NextResponse.next({ request });
+  // «الجواد الذكي!» | JAWAD AI renders none of the main site's chrome, not even on the server (see the root layout).
+  // Always overwritten here, so a client can never set it.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(OWN_CHROME_HEADER);
+  const jawad = request.nextUrl.pathname === "/jawad-ai" || request.nextUrl.pathname.startsWith("/jawad-ai/");
+  if (jawad) requestHeaders.set(OWN_CHROME_HEADER, "jawad-ai");
+  const forward = { request: { headers: requestHeaders } };
+
+  let response = NextResponse.next(forward);
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,8 +34,11 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+            requestHeaders.set("cookie", request.cookies.toString());
+          });
+          response = NextResponse.next(forward);
           cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
         },
       },

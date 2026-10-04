@@ -22,5 +22,6 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}${gate ?? safeNext}`);
     }
   }
-  return NextResponse.redirect(`${origin}/login?error=1`);
+  const jawad = safeNext === "/jawad-ai" || safeNext.startsWith("/jawad-ai/");
+  return NextResponse.redirect(`${origin}${jawad ? `/jawad-ai/login?error=1&next=${encodeURIComponent(safeNext)}` : "/login?error=1"}`);
 }

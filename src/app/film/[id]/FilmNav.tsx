@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FILM_STAGES, type FilmStage } from "@config/film";
+import { useFilmBase } from "../FilmBase";
 
 /** The sections of a film project, in order; `reached` is the project stage from which a section opens. */
 const SECTIONS: { key: string; label: string; icon: string; path: string; reached: FilmStage; ready: boolean }[] = [
@@ -19,7 +20,7 @@ const order = (s: FilmStage) => FILM_STAGES.findIndex((x) => x.key === s);
 /** Sections bar: reached sections are links, the rest are locked until the project gets there. */
 export default function FilmNav({ projectId, stage, videosOpen }: { projectId: string; stage: FilmStage; videosOpen: boolean }) {
   const pathname = usePathname();
-  const base = `/film/${projectId}`;
+  const base = `${useFilmBase()}/${projectId}`;
   return (
     <nav aria-label="أقسام المشروع" className="card p-2">
       <ol className="grid grid-cols-6 gap-1 text-center">

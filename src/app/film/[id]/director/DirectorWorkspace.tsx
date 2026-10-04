@@ -11,6 +11,7 @@ import StepCard from "../../StepCard";
 import { EditsLeftContext, type SendMode } from "../../ActionBar";
 import type { DirectorVersion } from "@/lib/film/director";
 import { VIDEO_MODELS } from "@config/film";
+import { useFilmBase } from "../../FilmBase";
 
 interface Video {
   id: string;
@@ -37,6 +38,7 @@ const SUPER_HINT = "قواعد إخراج وكاميرا أعمق من الدو�
 
 export default function DirectorWorkspace({ projectId, stage, versions, superDirector, videos, library, job, videosRunning, editsLeft }: Props) {
   const router = useRouter();
+  const filmBase = useFilmBase();
   const [writing, setWriting] = useState(job?.status === "running");
   const [rendering, setRendering] = useState(videosRunning > 0);
   const [busy, setBusy] = useState(false);
@@ -94,8 +96,8 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
   const allApproved = map.length > 0 && map.every((g) => versions.some((v) => v.kind === "dir_generation" && v.ref_key === g.id && v.status === "approved"));
   const wasDone = useRef(allApproved);
   useEffect(() => {
-    if (!wasDone.current && allApproved) router.push(`/film/${projectId}/videos`);
-  }, [allApproved, projectId, router]);
+    if (!wasDone.current && allApproved) router.push(`${filmBase}/${projectId}/videos`);
+  }, [allApproved, projectId, router, filmBase]);
   const affects = (id: string) => {
     const later = laterThan(id);
     return later.length ? ` التوليدات المعتمدة بعده (${later.join("، ")}) ممكن تتأثر بالاستمرارية، والمخرج يوضح وش يحتاج تحديث.` : "";
@@ -250,7 +252,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
               </details>
             )}
             {v.status === "approved" && (
-              <Link href={`/film/${projectId}/videos`} className="btn btn-ghost w-full">🎬 معتمد · ولّد الفيديو من صفحة التوليد</Link>
+              <Link href={`${filmBase}/${projectId}/videos`} className="btn btn-ghost w-full">🎬 معتمد · ولّد الفيديو من صفحة التوليد</Link>
             )}
           </StepCard>
         );

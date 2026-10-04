@@ -18,3 +18,6 @@ export const isAdmin = (email: string | undefined | null) => Boolean(email && AD
  * While it isn't open for everyone, it stays listed and marked «تحت التطوير».
  */
 export const BOOKLET_PATHS = ["/booklet", "/new", "/order", "/my-booklets", "/api/orders", "/api/feedback"];
+
+/** Set by src/proxy.ts on requests for «الجواد الذكي!» (/jawad-ai): the root layout then renders none of the main site's chrome. */
+export const OWN_CHROME_HEADER = "x-own-chrome";

@@ -5,7 +5,16 @@ import { useEffect, useState } from "react";
 import { cleanUsername, USERNAME_RE } from "@/lib/username-rules";
 
 /** Choose the username (prefilled from the account's name); can't continue until it is free. */
-export default function UsernameStep({ suggestion, next }: { suggestion: string; next: string }) {
+export default function UsernameStep({
+  suggestion,
+  next,
+  intro = "لكل حساب في نهج علي اسم مميز ما يتكرر، يعرفك فيه غيرك ويضيفك به إخوتك. المسافة تصير _ .",
+}: {
+  suggestion: string;
+  next: string;
+  /** The paragraph under the title (each branch says it in its own words). */
+  intro?: string;
+}) {
   const router = useRouter();
   const [value, setValue] = useState(suggestion);
   const [check, setCheck] = useState<{ name: string; ok: boolean; message: string } | null>(null);
@@ -50,7 +59,7 @@ export default function UsernameStep({ suggestion, next }: { suggestion: string;
       }}
     >
       <h1 className="display text-4xl">اختر اسم المستخدم</h1>
-      <p className="font-bold text-muted">لكل حساب في نهج علي اسم مميز ما يتكرر، يعرفك فيه غيرك ويضيفك به إخوتك. المسافة تصير _ .</p>
+      <p className="font-bold text-muted">{intro}</p>
       <label className="block space-y-1">
         <span className="text-sm font-bold">اسم المستخدم</span>
         <input className="field" dir="auto" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={24} autoFocus value={value} onChange={(e) => (setValue(e.target.value), setError(""))} placeholder="مثال: عبدالله_محمد" />

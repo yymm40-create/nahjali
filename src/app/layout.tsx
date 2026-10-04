@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Baloo_Bhaijaan_2, Lalezar } from "next/font/google";
 import Link from "next/link";
+import { headers } from "next/headers";
 import Header from "@/components/Header";
 import SiteChrome from "@/components/SiteChrome";
+import { OWN_CHROME_HEADER } from "@config/site";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
 import "./globals.css";
 
@@ -21,7 +23,9 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // «الجواد الذكي!» | JAWAD AI has its own identity: none of the site's banner, header or footer is rendered there
+  const ownChrome = Boolean((await headers()).get(OWN_CHROME_HEADER));
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning className={`${body.variable} ${display.variable} h-full antialiased`}>
       <head>
@@ -31,21 +35,25 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         <SiteChrome
           top={
-            <>
-              <div role="status" className="bg-gold px-4 py-2 text-center text-sm font-extrabold text-on-gold">
-                🚧 الموقع تحت التجربة، وسيتم تطويره قريبًا إن شاء الله
-              </div>
-              <Header />
-            </>
+            ownChrome ? null : (
+              <>
+                <div role="status" className="bg-gold px-4 py-2 text-center text-sm font-extrabold text-on-gold">
+                  🚧 الموقع تحت التجربة، وسيتم تطويره قريبًا إن شاء الله
+                </div>
+                <Header />
+              </>
+            )
           }
           bottom={
-            <footer className="mx-auto flex w-full max-w-xl flex-col items-center gap-2 px-4 py-8 text-sm font-bold text-muted">
-              <div className="flex gap-6">
-                <Link href="/privacy" className="hover:text-ink">سياسة الخصوصية</Link>
-                <Link href="/terms" className="hover:text-ink">الشروط والأحكام</Link>
-              </div>
-              <p>نهج علي © ٢٠٢٦</p>
-            </footer>
+            ownChrome ? null : (
+              <footer className="mx-auto flex w-full max-w-xl flex-col items-center gap-2 px-4 py-8 text-sm font-bold text-muted">
+                <div className="flex gap-6">
+                  <Link href="/privacy" className="hover:text-ink">سياسة الخصوصية</Link>
+                  <Link href="/terms" className="hover:text-ink">الشروط والأحكام</Link>
+                </div>
+                <p>نهج علي © ٢٠٢٦</p>
+              </footer>
+            )
           }
         >
           {children}

@@ -70,6 +70,23 @@
   --color-on-gold: var(--on-gold);
   --font-sans: var(--font-baloo), system-ui, sans-serif;
   --font-display: var(--font-lalezar), var(--font-baloo), sans-serif;
+  /* «الجواد الذكي!» | JAWAD AI: utility names for its own tokens (defined only inside .jw, src/app/jawad-ai/jawad.css) */
+  --color-jw-bg: var(--jw-bg);
+  --color-jw-bg-2: var(--jw-bg-2);
+  --color-jw-surface: var(--jw-surface);
+  --color-jw-surface-2: var(--jw-surface-2);
+  --color-jw-surface-3: var(--jw-surface-3);
+  --color-jw-line: var(--jw-line);
+  --color-jw-line-strong: var(--jw-line-strong);
+  --color-jw-ink: var(--jw-ink);
+  --color-jw-muted: var(--jw-muted);
+  --color-jw-faint: var(--jw-faint);
+  --color-jw-accent: var(--jw-accent);
+  --color-jw-accent-soft: var(--jw-accent-soft);
+  --color-jw-danger: var(--jw-danger);
+  --color-jw-ok: var(--jw-ok);
+  --color-jw-warn: var(--jw-warn);
+  --color-jw-gold: var(--jw-gold);
 }
 
 html {

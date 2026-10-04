@@ -1,11 +1,8 @@
-import { redirect } from "next/navigation";
-import { requireFilmUser } from "@/lib/film/access";
-import NewProject from "./NewProject";
+import NewFilmView from "../_views/NewFilm";
 
 export const metadata = { title: "مشروع فيلم جديد | نهج علي" };
 
-export default async function NewFilmPage() {
-  const { allowed } = await requireFilmUser("/film/new");
-  if (!allowed) redirect("/film");
-  return <NewProject />;
+// The page itself is shared with «الجواد الذكي!» (src/app/jawad-ai/film): same projects, stages and approvals.
+export default function NewFilmPage() {
+  return <NewFilmView base="/film" />;
 }

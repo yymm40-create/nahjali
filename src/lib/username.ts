@@ -71,5 +71,7 @@ export async function usernameGate(supabase: SupabaseClient, user: User, next: s
     const { data: profile } = await supabase.from("mahdi_profiles").select("display_name").eq("user_id", user.id).maybeSingle();
     if (await ensureUsername(supabase, user, [profile?.display_name])) return null;
   }
-  return `/username?next=${encodeURIComponent(next)}`;
+  // «الجواد الذكي!» | JAWAD AI asks for it in its own identity
+  const page = next === "/jawad-ai" || next.startsWith("/jawad-ai/") ? "/jawad-ai/username" : "/username";
+  return `${page}?next=${encodeURIComponent(next)}`;
 }

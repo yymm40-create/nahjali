@@ -1,0 +1,337 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { generatorById } from "@config/jawad/generators";
+import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
+import SmartCoin from "@/components/SmartCoin";
+import Dialog from "../Dialog";
+import Icon from "../Icon";
+import LoginLink from "../LoginLink";
+
+const FILTERS: { key: WorksFilter; label: string; icon: string }[] = [
+  { key: "all", label: "الكل", icon: "grid" },
+  { key: "image", label: "الصور", icon: "image" },
+  { key: "video", label: "الفيديو", icon: "video" },
+  { key: "audio", label: "الصوت", icon: "audio" },
+];
+
+const when = (iso: string) => new Date(iso).toLocaleString("ar-SA-u-nu-latn", { dateStyle: "medium", timeStyle: "short" });
+
+/** Short, readable summary of the settings used (technical values left-to-right). */
+function settingChips(j: JobView) {
+  const def = generatorById(j.generatorId);
+  const out: string[] = [];
+  for (const o of def?.options ?? []) {
+    const v = j.settings[o.key];
+    if (v === undefined) continue;
+    if (o.kind === "choice") out.push(v === "adaptive" ? "نسبة الإطار الأول" : o.values.find((x) => x.value === v)?.label ?? String(v));
+    if (o.kind === "int") out.push(`${v} ${o.unit}`);
+    if (o.kind === "bool" && v) out.push(o.label);
+  }
+  return out;
+}
+
+export interface WorksPanelProps {
+  items: WorkItem[];
+  filter: WorksFilter;
+  onFilter: (f: WorksFilter) => void;
+  loading: boolean;
+  hasMore: boolean;
+  onMore: () => void;
+  error: string | null;
+  offline: boolean;
+  signedIn: boolean;
+  allowed: boolean;
+  onReuse: (j: JobView) => void;
+  onUseAsRef: (o: OutputView, j: JobView) => void;
+  onCancel: (j: JobView) => void;
+  onRetrySubmit: (j: JobView) => void;
+  canUseAsRef: (o: OutputView) => string | null;
+}
+
+export default function WorksPanel(p: WorksPanelProps) {
+  const [viewer, setViewer] = useState<{ job: JobView; index: number } | null>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { hasMore, loading, onMore } = p;
+
+  // Load the next page when the end of the list comes into view
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(([e]) => e.isIntersecting && !loading && onMore(), { rootMargin: "600px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loading, onMore]);
+
+  return (
+    <section aria-label="أعمالي" className="flex min-h-0 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-jw-line px-4 py-2.5">
+        <h2 className="text-sm font-semibold">أعمالي</h2>
+        <div className="jw-seg" role="tablist" aria-label="تصفية الأعمال">
+          {FILTERS.map((f) => (
+            <button key={f.key} type="button" role="tab" aria-selected={p.filter === f.key} onClick={() => p.onFilter(f.key)} className="!min-h-8 !px-2.5 !text-xs">
+              <Icon name={f.icon} size={14} /> {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="jw-scroll min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+        {p.offline && (
+          <p className="mb-3 flex items-center gap-2 rounded-lg border border-jw-warn/40 bg-jw-warn/10 px-3 py-2 text-xs text-jw-warn" role="status">
+            <Icon name="alert" size={14} /> انقطع الاتصال. أعمالك محفوظة على الخادم، وستتحدث الحالة عند عودة الاتصال.
+          </p>
+        )}
+        {!p.signedIn ? (
+          <Empty icon="user" title="سجّل الدخول لترى أعمالك" text="تُحفظ كل أعمالك في حسابك وتبقى خاصة بك.">
+            <LoginLink />
+          </Empty>
+        ) : !p.allowed ? (
+          <Empty icon="lock" title="المنصة مغلقة لحسابك حاليًا" text="تواصل مع إدارة المنصة إذا كنت تتوقع أن تكون متاحة لك." />
+        ) : p.items.length === 0 && !p.loading ? (
+          p.error ? (
+            <Empty icon="alert" title="تعذّر تحميل أعمالك" text={p.error} />
+          ) : (
+            <Empty icon="sparkles" title={p.filter === "all" ? "لا توجد أعمال بعد" : "لا توجد أعمال من هذا النوع"} text="ستظهر هنا كل توليداتك وأعمال أفلامك، الأحدث أولًا." />
+          )
+        ) : (
+          <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+            {p.items.map((it) =>
+              it.type === "job" ? (
+                <li key={it.id} className="jw-fade-in">
+                  <JobCard j={it} onOpen={(index) => setViewer({ job: it, index })} {...p} />
+                </li>
+              ) : (
+                <li key={`film-${it.id}`} className="jw-fade-in">
+                  <FilmCard f={it} />
+                </li>
+              ),
+            )}
+            {p.loading &&
+              Array.from({ length: 3 }, (_, i) => (
+                <li key={`sk-${i}`} className="jw-panel overflow-hidden">
+                  <div className="jw-skeleton aspect-video" />
+                  <div className="space-y-2 p-3">
+                    <div className="jw-skeleton h-3 w-1/2 rounded" />
+                    <div className="jw-skeleton h-3 w-3/4 rounded" />
+                  </div>
+                </li>
+              ))}
+          </ul>
+        )}
+        {p.error && p.items.length > 0 && <p className="mt-3 text-center text-xs text-jw-danger">{p.error}</p>}
+        <div ref={sentinel} aria-hidden className="h-4" />
+        {hasMore && !loading && (
+          <div className="mt-2 flex justify-center">
+            <button type="button" className="jw-btn" onClick={onMore}>عرض المزيد</button>
+          </div>
+        )}
+      </div>
+
+      <Dialog open={Boolean(viewer)} onClose={() => setViewer(null)} title={viewer ? `${viewer.job.generatorName} · ${viewer.index + 1}/${viewer.job.outputs.length}` : ""} wide>
+        {viewer && <Viewer job={viewer.job} index={viewer.index} onIndex={(index) => setViewer({ ...viewer, index })} />}
+      </Dialog>
+    </section>
+  );
+}
+
+function Empty({ icon, title, text, children }: { icon: string; title: string; text: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
+      <span className="grid size-12 place-items-center rounded-2xl bg-jw-surface-2 text-jw-muted"><Icon name={icon} size={22} /></span>
+      <p className="font-semibold">{title}</p>
+      <p className="max-w-sm text-sm text-jw-muted">{text}</p>
+      {children}
+    </div>
+  );
+}
+
+function OutputMedia({ o, onOpen, cover }: { o: OutputView; onOpen?: () => void; cover?: boolean }) {
+  if (!o.url) return <div className="grid aspect-video place-items-center bg-jw-bg-2 text-xs text-jw-faint">الملف غير متاح</div>;
+  if (o.kind === "image") {
+    return (
+      <button type="button" onClick={onOpen} className="block size-full" aria-label="تكبير الصورة">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={o.url} alt="" loading="lazy" className={`size-full ${cover ? "object-cover" : "object-contain"} bg-jw-bg-2`} />
+      </button>
+    );
+  }
+  // Players never start (or make sound) by themselves
+  if (o.kind === "video") return <video src={o.url} controls preload="metadata" playsInline className="size-full bg-black object-contain" />;
+  return (
+    <div className="flex h-full flex-col justify-center gap-2 bg-jw-bg-2 p-3">
+      <Icon name="audio" size={28} className="mx-auto text-jw-accent" />
+      <audio src={o.url} controls preload="metadata" className="w-full" />
+    </div>
+  );
+}
+
+function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
+  const [details, setDetails] = useState(false);
+  const open = isOpenStatus(j.status);
+  const chips = settingChips(j);
+  const outs = j.outputs;
+  return (
+    <article className="jw-panel overflow-hidden" aria-busy={open}>
+      <div className={`relative ${j.outputKind === "audio" ? "h-28" : "aspect-video"} bg-jw-bg-2`}>
+        {j.status === "succeeded" && outs.length ? (
+          outs.length === 1 ? (
+            <OutputMedia o={outs[0]} onOpen={() => onOpen(0)} />
+          ) : (
+            <div className="grid size-full grid-cols-2 gap-px bg-jw-line">
+              {outs.slice(0, 4).map((o, i) => (
+                <div key={o.id} className="overflow-hidden">
+                  <OutputMedia o={o} onOpen={() => onOpen(i)} cover />
+                </div>
+              ))}
+            </div>
+          )
+        ) : open ? (
+          <div className="flex size-full flex-col items-center justify-center gap-3" role="status" aria-live="polite">
+            <span className="jw-spinner jw-spinner-lg" />
+            <span className="text-sm">{stageLabel(j.status, j.providerStatus)}</span>
+            {/* A percentage only when the provider reports real progress */}
+            {j.progress != null && <span className="text-xs tabular-nums text-jw-muted" dir="ltr">{j.progress}%</span>}
+          </div>
+        ) : (
+          <div className="flex size-full flex-col items-center justify-center gap-2 px-4 text-center">
+            <Icon name="alert" size={22} className={j.status === "cancelled" ? "text-jw-muted" : "text-jw-danger"} />
+            <span className="text-sm font-medium">{stageLabel(j.status)}</span>
+            {j.error && <span className="text-xs text-jw-muted">{j.error}</span>}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm font-semibold" dir="ltr">{j.generatorName}</span>
+          <span className="shrink-0 text-[11px] text-jw-faint">{when(j.createdAt)}</span>
+        </div>
+        {j.prompt && <p className="line-clamp-2 text-xs text-jw-muted" dir="auto">{j.prompt}</p>}
+        <div className="flex flex-wrap gap-1">
+          {chips.map((c) => (
+            <span key={c} className="jw-chip" dir="auto">{c}</span>
+          ))}
+          <span className="jw-chip">
+            <SmartCoin size={12} />
+            <span dir="ltr">{j.priceCoins}</span>
+            {j.chargeState === "refunded" ? " · أُعيدت" : !j.charged ? " · بلا خصم" : ""}
+          </span>
+        </div>
+
+        {details && (
+          <div className="space-y-1.5 rounded-lg border border-jw-line bg-jw-bg-2 p-2.5 text-xs">
+            <p className="text-jw-muted">البرومبت:</p>
+            <p className="whitespace-pre-wrap" dir="auto">{j.prompt || "—"}</p>
+            {j.instructions && (
+              <>
+                <p className="pt-1 text-jw-muted">وصف الأداء:</p>
+                <p className="whitespace-pre-wrap" dir="auto">{j.instructions}</p>
+              </>
+            )}
+            <p className="pt-1 text-jw-muted">الإعدادات:</p>
+            <p dir="ltr" className="font-mono text-[11px]" style={{ textAlign: "right" }}>{JSON.stringify(j.settings)}</p>
+            {j.refs.length > 0 && <p className="text-jw-muted">المراجع: {j.refs.length}</p>}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-1 pt-1">
+          <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" onClick={() => setDetails((d) => !d)} aria-expanded={details}>
+            <Icon name="eye" size={14} /> {details ? "إخفاء" : "التفاصيل"}
+          </button>
+          <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" onClick={() => onReuse(j)}>
+            <Icon name="retry" size={14} /> استخدم الإعدادات
+          </button>
+          {j.status === "succeeded" &&
+            outs.map((o, i) => (
+              <a key={o.id} href={o.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download>
+                <Icon name="download" size={14} /> تنزيل{outs.length > 1 ? ` ${i + 1}` : ""}
+              </a>
+            ))}
+          {j.status === "succeeded" &&
+            outs.slice(0, 1).map((o) => {
+              const why = canUseAsRef(o);
+              return (
+                <button key={`ref-${o.id}`} type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" disabled={Boolean(why)} title={why ?? "أضفه إلى المراجع"} onClick={() => onUseAsRef(o, j)}>
+                  <Icon name="layers" size={14} /> كمرجع
+                </button>
+              );
+            })}
+          {j.cancellable && (
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs text-jw-danger" onClick={() => onCancel(j)}>
+              <Icon name="stop" size={14} /> إلغاء (في الطابور)
+            </button>
+          )}
+          {j.status === "validating" && j.error && (
+            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs" onClick={() => onRetrySubmit(j)}>
+              <Icon name="retry" size={14} /> أعد الإرسال
+            </button>
+          )}
+        </div>
+        {j.status === "validating" && j.error && <p className="text-xs text-jw-warn">{j.error}</p>}
+      </div>
+    </article>
+  );
+}
+
+function FilmCard({ f }: { f: FilmItemView }) {
+  return (
+    <article className="jw-panel overflow-hidden">
+      <div className="aspect-video bg-jw-bg-2">
+        {f.url ? (
+          f.kind === "video" ? (
+            <video src={f.url} controls preload="metadata" playsInline className="size-full bg-black object-contain" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={f.url} alt="" loading="lazy" className="size-full object-contain" />
+          )
+        ) : (
+          <div className="grid size-full place-items-center text-xs text-jw-faint">الملف غير متاح</div>
+        )}
+      </div>
+      <div className="space-y-2 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-sm font-semibold"><Icon name="film" size={14} className="text-jw-accent" /> الفيلم السينمائي</span>
+          <span className="shrink-0 text-[11px] text-jw-faint">{when(f.createdAt)}</span>
+        </div>
+        <p className="truncate text-xs text-jw-muted" dir="auto">من مشروع: {f.projectTitle} {f.refKey && <span dir="ltr">· {f.refKey}</span>}</p>
+        <div className="flex flex-wrap gap-1">
+          <Link href={f.href} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs"><Icon name="external" size={14} /> فتح المشروع</Link>
+          {f.downloadUrl && <a href={f.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download><Icon name="download" size={14} /> تنزيل</a>}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function Viewer({ job, index, onIndex }: { job: JobView; index: number; onIndex: (i: number) => void }) {
+  const o = job.outputs[index];
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" && index < job.outputs.length - 1) onIndex(index + 1);
+      if (e.key === "ArrowRight" && index > 0) onIndex(index - 1);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [index, job.outputs.length, onIndex]);
+  if (!o) return null;
+  return (
+    <div className="space-y-3 p-3">
+      <div className="grid max-h-[75dvh] place-items-center overflow-hidden rounded-lg bg-black">
+        {o.kind === "image" && o.url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={o.url} alt="" className="max-h-[75dvh] object-contain" />
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-1">
+          <button type="button" className="jw-btn jw-btn-icon" disabled={index === 0} onClick={() => onIndex(index - 1)} aria-label="السابقة"><Icon name="chevronRight" /></button>
+          <button type="button" className="jw-btn jw-btn-icon" disabled={index >= job.outputs.length - 1} onClick={() => onIndex(index + 1)} aria-label="التالية"><Icon name="chevronLeft" /></button>
+        </div>
+        <span className="text-xs text-jw-muted" dir="ltr">{o.width && o.height ? `${o.width}×${o.height}` : ""}</span>
+        <a href={o.downloadUrl} className="jw-btn jw-btn-primary" download><Icon name="download" size={16} /> تنزيل</a>
+      </div>
+    </div>
+  );
+}

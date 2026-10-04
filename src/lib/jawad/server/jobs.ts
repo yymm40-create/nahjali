@@ -1,0 +1,524 @@
+// «الجواد الذكي!» | JAWAD AI — generation jobs. Server only.
+//
+//   click ─► createJob: re-check everything on the server (registry, stored files, current prices), compare the price
+//            the user saw, then ONE database call creates the job and takes its coins (or refuses: no job, no charge).
+//            The click's idempotency key makes any repeat return the same job.
+//   after ─► runJob: claims the job, sends it to the provider (never retried blindly), saves results to our storage.
+//   poll / callback / daily sweep ─► advanceJob: reads the provider's real state, saves finished videos, gives up on
+//            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
+//   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
+
+import { after } from "next/server";
+import { createHmac, timingSafeEqual } from "crypto";
+import { UserError } from "@/lib/api";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { generatorById, GPT_IMAGE_2_SIZES } from "@config/jawad/generators";
+import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
+import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
+import { evaluate, priceVersion } from "../engine";
+import { probe, sniff } from "../media";
+import { loadRuntime, JAWAD_BUCKET } from "./runtime";
+import { refsFor, type UploadRow } from "./uploads";
+import { ProviderError, providerUserId } from "./providers/common";
+import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
+import { arkCancelTask, arkCreateTask, arkGetTask, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
+
+const db = () => createAdminClient();
+
+export type JobStatus = "queued" | "submitting" | "running" | "saving" | "succeeded" | "failed" | "cancelled";
+const OPEN: JobStatus[] = ["queued", "submitting", "running", "saving"];
+
+export interface JobRow {
+  id: string;
+  user_id: string;
+  idempotency_key: string;
+  section_id: string;
+  generator_id: string;
+  provider: string;
+  model_id: string;
+  mode: string;
+  output_kind: "image" | "video" | "audio";
+  prompt: string;
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number };
+  refs: { uploadId: string; kind: string; role: RefRole }[];
+  price_coins: number;
+  price_breakdown: { label: string; centi: number }[];
+  pricing_version: string;
+  charged: boolean;
+  charge_state: "none" | "held" | "settled" | "refunded";
+  status: JobStatus;
+  submit_state: "pending" | "sending" | "accepted" | "unknown" | "rejected";
+  progress: number | null;
+  provider_task_id: string | null;
+  provider_status: string | null;
+  submitted_at: string | null;
+  error_message: string | null;
+  error_detail: string | null;
+  cost_usd_estimate: number | null;
+  cost_usd_actual: number | null;
+  provider_units: Record<string, unknown> | null;
+  lease_until: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutputRow {
+  id: string;
+  job_id: string;
+  user_id: string;
+  kind: "image" | "video" | "audio";
+  idx: number;
+  storage_path: string;
+  mime: string;
+  bytes: number | null;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+/** How long a worker may hold a job before another request may take over (longer than the provider timeout + saving). */
+const LEASE_MS = 7 * 60_000;
+/** The request that started a video keeps watching it this long; polling and the callback do the rest. */
+const WATCH_MS = 200_000;
+/** A video task never runs longer than this on our side (ModelArk expires it at 2 h). */
+const VIDEO_STALE_MS = 2 * 3600_000 + 15 * 60_000;
+/** How long we look for a task whose creation answer was lost before refunding. */
+const UNKNOWN_GIVE_UP_MS = 15 * 60_000;
+const MAX_SAVE_ATTEMPTS = 4;
+
+const now = () => new Date().toISOString();
+const later = (ms: number) => new Date(Date.now() + ms).toISOString();
+const coinLabel = (d: GeneratorDef | undefined) => `JAWAD AI · ${d?.name ?? "توليد"}`;
+
+async function event(jobId: string, type: string, detail: Record<string, unknown> = {}) {
+  await db().from("jawad_job_events").insert({ job_id: jobId, type, detail });
+}
+
+/** Ends a job exactly once (refunds held coins unless it succeeded). Returns false if it had already ended. */
+export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status: "succeeded" | "failed" | "cancelled", o: { message?: string; detail?: string; costUsd?: number | null; units?: Record<string, unknown> } = {}) {
+  const { data, error } = await db().rpc("jawad_finish_job", {
+    p_job: job.id,
+    p_status: status,
+    p_error_message: o.message ?? null,
+    p_error_detail: o.detail?.slice(0, 2000) ?? null,
+    p_cost_usd: o.costUsd ?? null,
+    p_units: o.units ?? null,
+    p_label: coinLabel(generatorById(job.generator_id)),
+  });
+  if (error) throw error;
+  return Boolean(data);
+}
+
+// ───────────────────────────── create ─────────────────────────────
+
+export interface GenerateBody {
+  idempotencyKey?: unknown;
+  sectionId?: unknown;
+  generatorId?: unknown;
+  refStyle?: unknown;
+  settings?: unknown;
+  prompt?: unknown;
+  instructions?: unknown;
+  refs?: unknown;
+  expectedCoins?: unknown;
+}
+
+export type CreateResult =
+  | { kind: "created" | "existing"; job: JobRow; balance: number | null }
+  | { kind: "issues"; issues: { field: string; message: string }[] }
+  | { kind: "price_changed"; coins: number; lines: { label: string; centi: number }[]; prices: Record<string, number | null> };
+
+const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
+
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string): Promise<CreateResult> {
+  const key = String(b.idempotencyKey ?? "");
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
+  const def = generatorById(String(b.generatorId ?? ""));
+  if (!def) throw new UserError("المولد غير معروف.", 400);
+
+  // The same click again: the job it already made (no new check, no new charge)
+  const existing = await db().from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key).maybeSingle();
+  if (existing.data) return { kind: "existing", job: existing.data as JobRow, balance: null };
+
+  const rt = await loadRuntime();
+  if (!rt.migrated) throw new UserError("منصة JAWAD AI قيد التجهيز (قاعدة البيانات).", 503);
+  const rg = rt.generators.find((g) => g.id === def.id)!;
+  if (!(rg.live || (owner && rg.keyConfigured))) throw new UserError("هذا المولد غير متاح حاليًا.", 403);
+  const section = rt.sections.find((s) => s.id === b.sectionId && s.output === def.output && (s.enabled || owner));
+  if (!section || rg.sectionId !== section.id) throw new UserError("هذا المولد لا يتبع هذا القسم.", 400);
+
+  const rawRefs = Array.isArray(b.refs) ? b.refs.slice(0, 60) : [];
+  const refStyle: RefStyle = b.refStyle === "frames" || b.refStyle === "references" ? b.refStyle : "none";
+  const wanted = rawRefs.map((r) => {
+    const x = (r ?? {}) as { uploadId?: unknown; role?: unknown };
+    const role = refStyle === "frames" && ROLES.includes(x.role as RefRole) ? (x.role as RefRole) : "reference";
+    return { uploadId: String(x.uploadId ?? ""), role };
+  });
+  const { meta } = await refsFor(user.id, wanted);
+  const settings = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Settings;
+  const prompt = typeof b.prompt === "string" ? b.prompt : "";
+  const instructions = typeof b.instructions === "string" ? b.instructions : "";
+  if (prompt.length > 40_000 || instructions.length > 5_000) throw new UserError("النص طويل جدًا.", 400);
+
+  const table = rt.prices[def.id];
+  const e = evaluate(def, { settings, prompt, instructions, refStyle, refs: meta, strict: true }, table);
+  if (e.issues.length) return { kind: "issues", issues: e.issues };
+  if (!e.price.ok) return { kind: "issues", issues: [{ field: "price", message: e.price.reason }] };
+  // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
+  if (Number(b.expectedCoins) !== e.price.coins) return { kind: "price_changed", coins: e.price.coins, lines: e.price.lines, prices: table };
+
+  const charge = !owner && e.price.coins > 0;
+  const { data, error } = await db().rpc("jawad_create_job", {
+    p_job: {
+      user_id: user.id,
+      idempotency_key: key,
+      section_id: section.id,
+      generator_id: def.id,
+      provider: def.provider.id,
+      model_id: def.model.id,
+      mode: e.mode.id,
+      output_kind: def.output,
+      prompt,
+      inputs: { settings: e.settings, instructions, refStyle, origin },
+      refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role })),
+      price_coins: e.price.coins,
+      price_breakdown: e.price.lines,
+      pricing_version: priceVersion(table),
+      cost_usd_estimate: e.price.usdCeiling ?? "",
+    },
+    p_charge: charge,
+    p_max_active: MAX_ACTIVE_JOBS,
+    p_label: coinLabel(def),
+  });
+  if (error) {
+    const msg = String(error.message ?? "");
+    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${e.price.coins} نقدة.`, 402);
+    if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
+    throw error;
+  }
+  const row = (data as { job_id: string; created: boolean; balance: number | null }[])[0];
+  const { data: job } = await db().from("jawad_jobs").select("*").eq("id", row.job_id).single();
+  if (row.created) after(() => runJob(row.job_id));
+  return { kind: row.created ? "created" : "existing", job: job as JobRow, balance: row.balance };
+}
+
+// ───────────────────────────── run ─────────────────────────────
+
+/** Takes a queued job (only one worker ever does) and sends it. */
+export async function runJob(jobId: string) {
+  const { data } = await db()
+    .from("jawad_jobs")
+    .update({ status: "submitting", submit_state: "sending", submitted_at: now(), lease_until: later(LEASE_MS) })
+    .eq("id", jobId)
+    .eq("status", "queued")
+    .eq("submit_state", "pending")
+    .select("*");
+  const job = (data?.[0] ?? null) as JobRow | null;
+  if (!job) return;
+  const def = generatorById(job.generator_id);
+  try {
+    if (!def) throw new ProviderError("rejected", "المولد لم يعد متاحًا.", `unknown generator ${job.generator_id}`);
+    const { rows } = await refsFor(job.user_id, job.refs.map((r) => ({ uploadId: r.uploadId, role: r.role }))).catch(() => {
+      throw new ProviderError("rejected", "أحد المراجع حُذف قبل الإرسال. لم يُخصم منك شيء.", "reference missing at submit");
+    });
+    if (def.provider.id === "byteplus-modelark") await submitVideo(job, def, rows);
+    else await runSync(job, def, rows);
+  } catch (e) {
+    await failFromError(job, def, e);
+  }
+}
+
+async function failFromError(job: JobRow, def: GeneratorDef | undefined, e: unknown) {
+  const p = e instanceof ProviderError ? e : new ProviderError("unknown", "صار خطأ غير متوقع أثناء التوليد.", String(e instanceof Error ? e.stack ?? e.message : e));
+  console.error("jawad job failed", job.id, p.detail);
+  // An async provider may have the task: look for it instead of refunding (and never send it twice)
+  if (p.outcome === "unknown" && def?.api.tracking === "async" && !job.provider_task_id) {
+    await db().from("jawad_jobs").update({ submit_state: "unknown", lease_until: null, error_detail: p.detail.slice(0, 2000) }).eq("id", job.id);
+    await event(job.id, "submit_unknown", { detail: p.detail.slice(0, 300) });
+    return;
+  }
+  if (p.outcome === "unknown") await db().from("jawad_jobs").update({ submit_state: "unknown" }).eq("id", job.id);
+  else if (job.submit_state !== "accepted") await db().from("jawad_jobs").update({ submit_state: "rejected" }).eq("id", job.id);
+  await finishJob(job, "failed", { message: p.userMessage, detail: p.detail });
+}
+
+async function download(path: string) {
+  const { data, error } = await db().storage.from(JAWAD_BUCKET).download(path);
+  if (error || !data) throw new ProviderError("rejected", "تعذّر قراءة أحد المراجع.", `download ${path}: ${error?.message}`);
+  return Buffer.from(await data.arrayBuffer());
+}
+
+async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, ext: string, dims: { width?: number | null; height?: number | null; durationMs?: number | null }) {
+  const path = `${job.user_id}/outputs/${job.id}/${idx}.${ext}`;
+  const up = await db().storage.from(JAWAD_BUCKET).upload(path, file, { contentType: mime, upsert: true });
+  if (up.error) throw new Error(`storage upload: ${up.error.message}`);
+  const { error } = await db()
+    .from("jawad_outputs")
+    .upsert(
+      { job_id: job.id, user_id: job.user_id, kind: job.output_kind, idx, storage_path: path, mime, bytes: file.length, width: dims.width ?? null, height: dims.height ?? null, duration_ms: dims.durationMs ?? null },
+      { onConflict: "job_id,idx" },
+    );
+  if (error) throw new Error(`output row: ${error.message}`);
+}
+
+/** OpenAI image / speech: one request returns the result; it is saved before the job is called done. */
+async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+  const s = job.inputs.settings;
+  await db().from("jawad_jobs").update({ status: "running", submit_state: "accepted", provider_status: "generating" }).eq("id", job.id);
+  await event(job.id, "submitted");
+
+  if (def.output === "image") {
+    const res = await openaiImage({
+      model: def.model.id,
+      prompt: job.prompt,
+      aspect: String(s.aspect),
+      resolution: s.resolution === "hi" ? "hi" : "std",
+      quality: (["low", "medium", "high"].includes(String(s.quality)) ? s.quality : "medium") as "low" | "medium" | "high",
+      count: Number(s.count) || 1,
+      references: await Promise.all(refs.map(async (r) => ({ bytes: await download(r.storage_path), mime: r.mime ?? "image/png" }))),
+      user: providerUserId(job.user_id),
+    });
+    await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+    const size = GPT_IMAGE_2_SIZES[s.resolution === "hi" ? "hi" : "std"][String(s.aspect)];
+    for (const [i, png] of res.images.entries()) await saveOutput(job, i, png, "image/png", "png", { width: size?.[0], height: size?.[1] });
+    await finishJob(job, "succeeded", { costUsd: res.costUsd, units: res.usage ? { ...res.usage } : undefined });
+    return;
+  }
+
+  if (def.output === "audio") {
+    const format = String(s.format);
+    const audio = await openaiSpeech({ model: def.model.id, input: job.prompt, instructions: job.inputs.instructions ?? "", voice: String(s.voice), format });
+    await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+    const bytes = new Uint8Array(audio);
+    const sn = sniff(bytes);
+    const durationMs = sn ? probe(bytes, sn).durationMs : undefined;
+    await saveOutput(job, 0, audio, TTS_MIME[format] ?? "audio/mpeg", format === "opus" ? "ogg" : format, { durationMs });
+    await finishJob(job, "succeeded", {});
+    return;
+  }
+  throw new ProviderError("rejected", "نوع غير مدعوم.", `sync output ${def.output}`);
+}
+
+// ───────────────────────────── video (ModelArk) ─────────────────────────────
+
+/** Callback links carry a per-job signature so random calls are ignored (the payload itself is never trusted). */
+function hookSecret() {
+  return process.env.JAWAD_WEBHOOK_SECRET || createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").update("jawad-webhook").digest("hex");
+}
+export const hookToken = (jobId: string) => createHmac("sha256", hookSecret()).update(jobId).digest("hex").slice(0, 40);
+export function hookTokenValid(jobId: string, token: string) {
+  const a = Buffer.from(hookToken(jobId));
+  const b = Buffer.from(token);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+async function submitVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+  const s = job.inputs.settings;
+  const paths = refs.map((r) => r.storage_path);
+  // ModelArk fetches the files itself: short-lived links to our private copies
+  const signed = paths.length ? (await db().storage.from(JAWAD_BUCKET).createSignedUrls(paths, 3 * 3600)).data ?? [] : [];
+  const content: ArkContent[] = job.prompt.trim() ? [{ type: "text", text: job.prompt }] : [];
+  refs.forEach((r, i) => {
+    const url = signed[i]?.signedUrl;
+    if (!url) throw new ProviderError("rejected", "تعذّر تجهيز أحد المراجع.", `no signed url for ${r.storage_path}`);
+    const role = job.refs[i]?.role;
+    if (r.kind === "image") content.push({ type: "image_url", image_url: { url }, role: role === "first_frame" || role === "last_frame" ? role : "reference_image" });
+    else if (r.kind === "video") content.push({ type: "video_url", video_url: { url }, role: "reference_video" });
+    else content.push({ type: "audio_url", audio_url: { url }, role: "reference_audio" });
+  });
+  const origin = job.inputs.origin;
+  const callback = origin?.startsWith("https://") ? `${origin}/api/jawad/webhooks/modelark?job=${job.id}&t=${hookToken(job.id)}` : undefined;
+
+  const taskId = await arkCreateTask({
+    model: def.model.id,
+    content,
+    ratio: String(s.ratio),
+    resolution: String(s.resolution),
+    duration: Number(s.duration),
+    generate_audio: Boolean(s.audio),
+    ...(callback ? { callback_url: callback } : {}),
+    safety_identifier: providerUserId(job.user_id),
+  });
+  await db()
+    .from("jawad_jobs")
+    .update({ provider_task_id: taskId, submit_state: "accepted", status: "running", provider_status: "queued", lease_until: null })
+    .eq("id", job.id);
+  await event(job.id, "submitted", { task: taskId });
+
+  // Short videos often finish within a few minutes: keep watching while this request is alive
+  const until = Date.now() + WATCH_MS;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 10_000));
+    const fresh = await loadJob(job.id);
+    if (!fresh || !OPEN.includes(fresh.status)) return;
+    await advanceJob(fresh, { force: true });
+  }
+}
+
+export async function loadJob(id: string) {
+  const { data } = await db().from("jawad_jobs").select("*").eq("id", id).maybeSingle();
+  return (data as JobRow) ?? null;
+}
+
+const TASK_END_MESSAGE: Record<string, string> = {
+  failed: "فشل التوليد لدى المزوّد. لم يُخصم منك شيء؛ عدّل الطلب وجرّب.",
+  expired: "انتهت مهلة المهمة لدى المزوّد قبل أن تبدأ. لم يُخصم منك شيء.",
+  cancelled: "أُلغيت المهمة. لم يُخصم منك شيء.",
+};
+
+/** Copies a finished video to our storage (the provider's link lasts 24 h) and ends the job. One worker at a time. */
+async function saveVideo(job: JobRow, task: ArkTask) {
+  // Taken by one worker only: a running job, or a save whose worker died (lease over). Plain filters on purpose:
+  // PostgREST re-applies an or(...) filter to the returned rows, which would hide the row we just claimed.
+  const claim = { status: "saving", lease_until: later(LEASE_MS), provider_status: "succeeded" };
+  const first = await db().from("jawad_jobs").update(claim).eq("id", job.id).eq("status", "running").select("*");
+  const retry = first.data?.length ? null : await db().from("jawad_jobs").update(claim).eq("id", job.id).eq("status", "saving").lt("lease_until", now()).select("*");
+  const claimed = (first.data?.[0] ?? retry?.data?.[0] ?? null) as JobRow | null;
+  if (!claimed) return;
+  try {
+    if (!task.videoUrl) throw new Error("succeeded without video_url");
+    const res = await fetch(task.videoUrl, { signal: AbortSignal.timeout(120_000) });
+    if (!res.ok) throw new Error(`video download ${res.status}`);
+    const file = Buffer.from(await res.arrayBuffer());
+    const bytes = new Uint8Array(file);
+    const sn = sniff(bytes);
+    const dims = sn?.kind === "video" ? probe(bytes, sn) : {};
+    const mime = sn?.kind === "video" ? sn.mime : "video/mp4";
+    await saveOutput(claimed, 0, file, mime, mime === "video/quicktime" ? "mov" : "mp4", dims);
+    // The real cost from the provider's token count (rate of the resolution, input without video)
+    const usd = task.tokens != null ? (task.tokens * videoRate(job)) / 1e6 : null;
+    await finishJob(claimed, "succeeded", { costUsd: usd, units: { tokens: task.tokens, duration: task.duration, ratio: task.ratio, resolution: task.resolution } });
+  } catch (e) {
+    const attempts = (claimed.inputs.saveAttempts ?? 0) + 1;
+    console.error("jawad video save failed", job.id, e);
+    await event(job.id, "save_failed", { attempt: attempts, error: String(e instanceof Error ? e.message : e).slice(0, 300) });
+    if (attempts >= MAX_SAVE_ATTEMPTS) {
+      await finishJob(claimed, "failed", { message: "اكتمل الفيديو لكن تعذّر حفظه. لم يُخصم منك شيء.", detail: String(e instanceof Error ? e.message : e) });
+    } else {
+      // Back to "running": the next check reads the task again and retries the copy
+      await db().from("jawad_jobs").update({ status: "running", lease_until: null, inputs: { ...claimed.inputs, saveAttempts: attempts } }).eq("id", job.id);
+    }
+  }
+}
+
+/** USD per 1M tokens of the job's model and resolution (input without video), from ModelArk's price page. */
+function videoRate(job: JobRow) {
+  const res = String(job.inputs.settings.resolution);
+  const rates: Record<string, Record<string, number>> = {
+    "dreamina-seedance-2-5-260628": { "480p": 10.7, "720p": 10.7, "1080p": 11.7 },
+    "dreamina-seedance-2-0-260128": { "480p": 7, "720p": 7, "1080p": 7.7, "4k": 4 },
+  };
+  return rates[job.model_id]?.[res] ?? 0;
+}
+
+/** A task we sent but never got an answer for: find it among the account's recent tasks (never send a second one). */
+async function reconcileUnknown(job: JobRow) {
+  const sent = new Date(job.submitted_at ?? job.created_at).getTime();
+  const tasks = await arkListTasks(job.model_id).catch(() => null);
+  const mine = providerUserId(job.user_id);
+  const candidates = (tasks ?? [])
+    .filter((t) => t.safetyIdentifier === mine && t.createdAt != null && t.createdAt * 1000 >= sent - 30_000 && t.createdAt * 1000 <= sent + 180_000)
+    .sort((a, b) => Math.abs(a.createdAt! * 1000 - sent) - Math.abs(b.createdAt! * 1000 - sent));
+  for (const t of candidates) {
+    // The unique index stops one task from being claimed by two jobs
+    const { error } = await db()
+      .from("jawad_jobs")
+      .update({ provider_task_id: t.id, submit_state: "accepted", status: "running", provider_status: t.status })
+      .eq("id", job.id)
+      .is("provider_task_id", null);
+    if (!error) {
+      await event(job.id, "reconciled", { task: t.id });
+      return;
+    }
+  }
+  if (tasks && Date.now() - sent > UNKNOWN_GIVE_UP_MS) {
+    await finishJob(job, "failed", { message: "لم يتأكد وصول الطلب إلى المزوّد، ولم يُخصم منك شيء. جرّب مرة ثانية.", detail: "submission unknown; no matching task found" });
+  }
+}
+
+/**
+ * Moves an unfinished job forward from what is really true now. Safe to call often and from anywhere
+ * (polling, the provider's callback, the daily sweep): every step is guarded so it happens once.
+ */
+export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
+  if (!OPEN.includes(job.status)) return;
+  const age = Date.now() - new Date(job.created_at).getTime();
+  const leaseOver = !job.lease_until || new Date(job.lease_until).getTime() < Date.now();
+  const def = generatorById(job.generator_id);
+
+  if (job.status === "queued") {
+    // The request that created it died before sending: start it now (the claim makes this happen once)
+    if (age > 60_000) after(() => runJob(job.id));
+    return;
+  }
+  if (job.status === "submitting") {
+    if (job.submit_state === "sending" && leaseOver) {
+      if (def?.api.tracking === "async") {
+        await db().from("jawad_jobs").update({ submit_state: "unknown" }).eq("id", job.id).eq("submit_state", "sending");
+        return reconcileUnknown({ ...job, submit_state: "unknown" });
+      }
+      await finishJob(job, "failed", { message: "انقطع التوليد قبل أن يكتمل. لم يُخصم منك شيء.", detail: "worker lost while sending" });
+      return;
+    }
+    if (job.submit_state === "unknown") return reconcileUnknown(job);
+    return;
+  }
+  if (def?.api.tracking !== "async") {
+    // Sync providers finish inside their own request; a lost worker means the result is gone
+    if (leaseOver && Date.now() - new Date(job.updated_at).getTime() > LEASE_MS) {
+      await finishJob(job, "failed", { message: "انقطع التوليد قبل حفظ النتيجة. لم يُخصم منك شيء.", detail: "worker lost while running/saving" });
+    }
+    return;
+  }
+
+  // ModelArk: read the real task state (at most every few seconds per job unless forced)
+  if (!job.provider_task_id) return;
+  if (job.status === "saving" && !leaseOver) return;
+  if (!o.force && Date.now() - new Date(job.updated_at).getTime() < 6000) return;
+  const task = await arkGetTask(job.provider_task_id).catch((e) => {
+    console.error("jawad task check failed", job.id, e);
+    return null;
+  });
+  const sent = new Date(job.submitted_at ?? job.created_at).getTime();
+  if (!task) {
+    if (Date.now() - sent > VIDEO_STALE_MS) await finishJob(job, "failed", { message: "انتهى وقت التوليد. لم يُخصم منك شيء.", detail: "stale; task unreadable" });
+    return;
+  }
+  if (task.status === "succeeded") return saveVideo(job, task);
+  if (task.status === "failed" || task.status === "expired" || task.status === "cancelled") {
+    await finishJob(job, task.status === "cancelled" ? "cancelled" : "failed", { message: TASK_END_MESSAGE[task.status], detail: task.error ?? task.status });
+    return;
+  }
+  if (Date.now() - sent > VIDEO_STALE_MS) {
+    await arkCancelTask(task.id).catch(() => null);
+    await finishJob(job, "failed", { message: "انتهى وقت التوليد. لم يُخصم منك شيء.", detail: `stale in ${task.status}` });
+    return;
+  }
+  if (task.status !== job.provider_status || o.force) {
+    await db().from("jawad_jobs").update({ provider_status: task.status }).eq("id", job.id).in("status", ["running"]);
+  }
+}
+
+/** Cancels a video still waiting in the provider's queue (ModelArk cannot stop a running one). */
+export async function cancelJob(userId: string, jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job || job.user_id !== userId) throw new UserError("ما لقينا هذا التوليد.", 404);
+  const def = generatorById(job.generator_id);
+  if (def?.api.cancel !== "queued-only" || job.status !== "running" || !job.provider_task_id) {
+    throw new UserError("لا يمكن إلغاء هذا التوليد الآن.", 409);
+  }
+  const task = await arkGetTask(job.provider_task_id);
+  if (task.status !== "queued") throw new UserError("بدأ التوليد فعلًا، ولا يسمح المزوّد بإيقافه.", 409);
+  await arkCancelTask(job.provider_task_id);
+  await finishJob(job, "cancelled", { message: "ألغيت التوليد. أُعيد لك رصيده.", detail: "cancelled by user while queued" });
+}
+
+/** Moves the given user's (or everyone's) unfinished jobs forward. */
+export async function advanceOpenJobs(userId?: string, limit = 25) {
+  let q = db().from("jawad_jobs").select("*").in("status", OPEN).order("created_at", { ascending: true }).limit(limit);
+  if (userId) q = q.eq("user_id", userId);
+  const { data } = await q;
+  for (const j of (data ?? []) as JobRow[]) await advanceJob(j).catch((e) => console.error("jawad advance failed", j.id, e));
+}

@@ -11,6 +11,7 @@ import ActionBar, { EditsLeftContext } from "../../ActionBar";
 import type { ScriptVersion } from "@/lib/film/script";
 import { KIND_LABELS, KIND_ORDER, type ScriptKind } from "@config/film-prompts/screenwriter";
 import { STATUS_LABELS } from "@config/film";
+import { useFilmBase } from "../../FilmBase";
 
 interface Props {
   projectId: string;
@@ -29,6 +30,7 @@ const chipClass = (s: string) =>
 
 export default function ScriptWorkspace({ projectId, hasStory, versions, job, stage, editsLeft }: Props) {
   const router = useRouter();
+  const filmBase = useFilmBase();
   const [running, setRunning] = useState(job?.status === "running");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -53,8 +55,8 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   // Once this section's last step is done, go straight to the next one (only when it happens here, not on later visits)
   const openedAt = useRef(stage);
   useEffect(() => {
-    if (openedAt.current === "screenwriter" && stage === "sheets") router.push(`/film/${projectId}/sheets`);
-  }, [stage, projectId, router]);
+    if (openedAt.current === "screenwriter" && stage === "sheets") router.push(`${filmBase}/${projectId}/sheets`);
+  }, [stage, projectId, router, filmBase]);
 
   async function send(body: Record<string, unknown>) {
     setBusy(true);
@@ -83,7 +85,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
         <p className="font-bold">السيناريست بيقرأ قصتك ويعرض عليك فهمه أول، وما يكمّل إلا لما تكتب «اعتمد».</p>
         {!hasStory && (
           <p className="error-box">
-            اكتب قصتك أول في <Link href={`/film/${projectId}`} className="underline">صفحة المشروع</Link>.
+            اكتب قصتك أول في <Link href={`${filmBase}/${projectId}`} className="underline">صفحة المشروع</Link>.
           </p>
         )}
         <button className="btn btn-primary w-full text-xl" disabled={!hasStory || busy} onClick={() => send({ action: "start" })}>
@@ -191,7 +193,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
       {stage !== "screenwriter" && (
         <div className="card space-y-2 p-5 text-center">
           <p className="text-lg font-extrabold">✅ السيناريو معتمد وانتقل لصانع الشيت</p>
-          <Link href={`/film/${projectId}/sheets`} className="btn btn-primary w-full">🎨 افتح صانع الشيت</Link>
+          <Link href={`${filmBase}/${projectId}/sheets`} className="btn btn-primary w-full">🎨 افتح صانع الشيت</Link>
         </div>
       )}
 
