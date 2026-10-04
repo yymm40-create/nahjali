@@ -26,7 +26,9 @@ export const VIDEO_RESOLUTIONS = {
   "1080p": { label: "1080p (Full HD)", hint: "أعلى جودة", width: 1920, height: 1080 },
 } as const;
 export type VideoResolution = keyof typeof VIDEO_RESOLUTIONS;
-export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = "720p";
+/** Qualities users can pick right now, for both Seedance models (owner: 480p only until he says otherwise). */
+export const VIDEO_OPEN_RESOLUTIONS: readonly VideoResolution[] = ["480p"];
+export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = "480p";
 
 /**
  * Video cost. BytePlus bills Seedance by output tokens ≈ width × height × 24 fps × seconds ÷ 1024, at a price

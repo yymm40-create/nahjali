@@ -9,7 +9,7 @@ import { filmTrialApplies, filmTrialState, filmTrialUsers, filmTrialVideos } fro
 import { assertCanEdit, getLimit } from "./limits";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
-import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, FILM_PUBLIC_TRIAL, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, FILM_PUBLIC_TRIAL, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
   DIRECTOR_PROMPT,
@@ -167,7 +167,7 @@ export type DirectorAction =
 /** The client's choices on the generation page (each wins over the director's plan). */
 type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel };
 const readChoice = (c: VideoChoice) => ({
-  resolution: c.resolution in VIDEO_RESOLUTIONS ? c.resolution : DEFAULT_VIDEO_RESOLUTION,
+  resolution: VIDEO_OPEN_RESOLUTIONS.includes(c.resolution) ? c.resolution : DEFAULT_VIDEO_RESOLUTION,
   ratio: c.ratio === "9:16" || c.ratio === "16:9" ? c.ratio : undefined,
   seconds: c.durationSec ? clampVideoSeconds(Number(c.durationSec)) : undefined,
   model: c.model && c.model in VIDEO_MODELS ? c.model : undefined,
