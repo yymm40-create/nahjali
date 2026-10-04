@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCaps, riyadhDayStart, riyadhMonthStart, rowCost } from "@/lib/film/usage";
+import { riyadhDayStart, riyadhMonthStart, rowCost } from "@/lib/film/usage";
 import { isAdmin } from "@config/site";
 import { FILM_STAGES } from "@config/film";
 import FilmAdminTools from "./FilmAdminTools";
@@ -23,8 +23,7 @@ export default async function FilmAdminPage() {
   if (!isAdmin(user.email)) notFound();
   const db = createAdminClient();
 
-  const [caps, invited, usage, projects, jobs, storage] = await Promise.all([
-    getCaps(),
+  const [invited, usage, projects, jobs, storage] = await Promise.all([
     db.from("film_allowed_emails").select("email,created_at").order("created_at"),
     db.from("film_usage").select("user_id,service,state,estimated_cost_usd,actual_cost_usd,created_at").gte("created_at", riyadhMonthStart().toISOString()),
     db.from("film_projects").select("id", { count: "exact", head: true }),
@@ -62,7 +61,7 @@ export default async function FilmAdminPage() {
   const storedMb = (storage.data ?? []).reduce((s, a) => s + Number(a.bytes ?? 0), 0) / 1024 / 1024;
 
   const tiles: [string, string, string?][] = [
-    ["صرف اليوم", usd(todaySpent), `الحد ${usd(caps.daily_site_cap_usd)}`],
+    ["صرف اليوم", usd(todaySpent)],
     ["صرف هذا الشهر", usd(monthSpent)],
     ["المشاريع", String(projects.count ?? 0)],
     ["عمليات التوليد", String(jobList.length), `${failed} فشلت (ما انحسبت)`],
@@ -118,11 +117,7 @@ export default async function FilmAdminPage() {
         </ul>
       </section>
 
-      <FilmAdminTools
-        invited={(invited.data ?? []).map((r) => r.email)}
-        daily={caps.daily_site_cap_usd}
-        monthly={caps.monthly_user_cap_usd}
-      />
+      <FilmAdminTools invited={(invited.data ?? []).map((r) => r.email)} />
     </div>
   );
 }

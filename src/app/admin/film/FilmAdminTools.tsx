@@ -4,11 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 
-/** Invite list for the film branch + the spending caps. */
-export default function FilmAdminTools({ invited, daily, monthly }: { invited: string[]; daily: number; monthly: number }) {
+/** Invite list for the film branch. */
+export default function FilmAdminTools({ invited }: { invited: string[] }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [caps, setCaps] = useState({ daily: String(daily), monthly: String(monthly) });
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
@@ -52,23 +51,6 @@ export default function FilmAdminTools({ invited, daily, monthly }: { invited: s
             </li>
           ))}
         </ul>
-      </section>
-
-      <section className="card space-y-3 p-4">
-        <h2 className="text-xl font-extrabold">حدود الصرف (بالدولار)</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-1">
-            <span className="text-sm font-bold">الموقع كله باليوم</span>
-            <input className="field" dir="ltr" inputMode="decimal" value={caps.daily} onChange={(e) => setCaps({ ...caps, daily: e.target.value })} />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-bold">كل مدعو بالشهر</span>
-            <input className="field" dir="ltr" inputMode="decimal" value={caps.monthly} onChange={(e) => setCaps({ ...caps, monthly: e.target.value })} />
-          </label>
-        </div>
-        <button className="btn btn-secondary w-full" onClick={() => send({ action: "caps", daily: caps.daily, monthly: caps.monthly }, "انحفظت الحدود ✅")}>
-          احفظ الحدود
-        </button>
       </section>
 
       {msg && <p className="card p-3 text-center font-extrabold">{msg}</p>}

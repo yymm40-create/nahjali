@@ -1,9 +1,9 @@
 // DEV ONLY: checks the film branch foundation against the real Supabase project, then cleans up.
 //   1. Isolation: the owner's session cannot read another user's project, files or usage.
-//   2. Usage ledger: same key → one job; failure → released (not counted); success → settled; caps block.
+//   2. Usage ledger: same key → one job; failure → released (not counted); success → settled.
 // Usage: npx tsx --env-file=.env.local scripts/test-film-foundation.mts
 import { createClient } from "@supabase/supabase-js";
-import { assertWithinCaps, failJob, getCaps, projectCost, startJob, succeedJob } from "../src/lib/film/usage";
+import { failJob, projectCost, startJob, succeedJob } from "../src/lib/film/usage";
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const admin = createClient(URL_, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -71,16 +71,6 @@ try {
   check(r3.state === "settled" && Number(r3.actual_cost_usd) === 0.515, "retry success → settled with the real cost");
   check(Math.abs((await projectCost(theirs.id)).total - 0.515) < 1e-6, "project cost = only the successful job");
 
-  const caps = await getCaps();
-  await admin.from("film_settings").update({ monthly_user_cap_usd: 0.6 }).eq("id", true);
-  let blocked = false;
-  try {
-    await assertWithinCaps(u, 0.2);
-  } catch (e) {
-    blocked = /الحد الشهري|للحد الشهري/.test((e as Error).message);
-  }
-  check(blocked, "monthly cap blocks an operation that would pass it (Arabic message)");
-  await admin.from("film_settings").update({ monthly_user_cap_usd: caps.monthly_user_cap_usd }).eq("id", true);
 } finally {
   await admin.storage.from("film").remove([theirFile]);
   await admin.from("film_usage").delete().eq("operation", "test");
