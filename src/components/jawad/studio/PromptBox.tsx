@@ -67,6 +67,7 @@ export default function PromptBox({
   onInstructions,
   touched,
   onTouched,
+  locked = null,
 }: {
   def: GeneratorDef;
   ev: Evaluation;
@@ -79,6 +80,8 @@ export default function PromptBox({
   /** "Write the prompt" is only shown once the field was used (never as an error on a fresh page). */
   touched: boolean;
   onTouched: () => void;
+  /** While something else writes the prompt (the Super Director): read-only, with this message over it. */
+  locked?: string | null;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
@@ -170,6 +173,8 @@ export default function PromptBox({
           <textarea
             ref={area}
             id="jw-prompt"
+            readOnly={Boolean(locked)}
+            aria-busy={Boolean(locked)}
             dir="auto"
             rows={5}
             value={prompt}
@@ -207,7 +212,12 @@ export default function PromptBox({
             aria-controls={menu ? "jw-mention-list" : undefined}
             aria-activedescendant={menu && options.length ? `jw-mention-${Math.min(active, options.length - 1)}` : undefined}
           />
-          {menu && (
+          {locked && (
+            <div className="absolute inset-0 z-20 grid place-items-center rounded-[10px] bg-jw-bg/75 backdrop-blur-[2px]" role="status" aria-live="polite">
+              <span className="flex items-center gap-2 text-sm"><span className="jw-spinner" aria-hidden /> {locked}</span>
+            </div>
+          )}
+          {menu && !locked && (
             <div className="jw-panel absolute z-30 p-1 shadow-2xl shadow-black/60" style={{ left: menu.left, top: menu.top, width: MENU_W }}>
               {options.length ? (
                 <ul id="jw-mention-list" role="listbox" aria-label="المراجع" className="jw-scroll max-h-56 overflow-y-auto">

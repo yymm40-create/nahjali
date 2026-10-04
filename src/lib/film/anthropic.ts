@@ -65,7 +65,8 @@ export async function callClaudeJson<T>({
     return { role: t.role, content: blocks };
   });
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
+  const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: {
       "x-api-key": key,

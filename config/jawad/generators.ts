@@ -10,6 +10,9 @@ import { COIN_COST_USD } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
 
 const CHECKED = "2026-10-04";
+
+/** Price key of «المخرج الخارق» (the prompt rewrite offered in video making), per use. */
+export const DIRECTOR_PRICE_KEY = "director:prompt";
 const MB = 1024 * 1024;
 
 /** Hundredths of a coin for a provider cost (rounded up), on the site's coin price (config/coins.ts). */
@@ -294,6 +297,12 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
             ? "يتبع 4K: موقوف حتى تحدد سعره"
             : `سقف: بسعر ثانية المخرج ($${SEEDANCE_RATE[v][r]}/مليون)، والفعلي مع فيديو $${SEEDANCE_RATE_WITH_VIDEO[v][r]}/مليون + حد أدنى تقديري للتوكنات`,
       })),
+      {
+        key: DIRECTOR_PRICE_KEY,
+        label: "تطوير البرومبت بالمخرج الخارق (للمرة)",
+        defaultCenti: 3000,
+        basis: "سعر ثابت حدّده المالك (30 نقدة): Claude Opus 5.5 يعيد كتابة البرومبت بمهارة «المخرج الخارق»",
+      },
     ],
     modeFor(style, refs) {
       if (!refs.length) return modes[0];
