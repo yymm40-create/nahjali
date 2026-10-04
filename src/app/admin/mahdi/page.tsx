@@ -8,6 +8,7 @@ import { selectAll } from "@/lib/mahdi/server/snapshot";
 import { coverUrl } from "@/lib/mahdi/server/reading";
 import { PDF_BUCKET } from "@/lib/mahdi/server/book-files";
 import { signMedia } from "@/lib/mahdi/server/media";
+import { SHRINE_ART } from "@config/mahdi-shrines";
 import MahdiAdminTools, { type AdminData } from "./MahdiAdminTools";
 
 export const metadata = { title: "لأجل المهدي | لوحة التحكم" };
@@ -94,7 +95,11 @@ export default async function MahdiAdminPage() {
     for (const p of (await db.from("mahdi_profiles").select("user_id, display_name").in("user_id", authorIds)).data ?? []) authors.set(p.user_id, p.display_name);
   }
 
+  // The shrines and the researched descriptions their pictures are generated from
+  const { data: shrineRows } = await db.from("mahdi_shrines").select("id, name, place, image_url, active, sort_order").order("sort_order");
+
   const data: AdminData = {
+    shrines: (shrineRows ?? []).map((r) => ({ id: r.id as string, name: r.name as string, place: r.place as string, imageUrl: (r.image_url as string | null) ?? null, active: Boolean(r.active), prompt: SHRINE_ART[r.id as string]?.prompt ?? "" })),
     feedback: fb.map((x) => ({
       id: x.id as string,
       name: fbNames.get(x.user_id) ?? "",
