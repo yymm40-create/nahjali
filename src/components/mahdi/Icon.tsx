@@ -47,6 +47,8 @@ const PATHS = {
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
   flag: "M5 21V4M5 4h11l-2 4 2 4H5",
   chat: "M4 5h16v11H10l-6 4zM8 9h8M8 12h5",
+  bell: "M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0",
+  send: "M20 4 3.5 10.5l7 2.5 2.5 7zM20 4l-9.5 9",
 } as const;
 
 export type IconName = keyof typeof PATHS;

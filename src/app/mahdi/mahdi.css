@@ -348,9 +348,10 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-width: 56px;
+  min-width: 0;
   height: 100%;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
+  white-space: nowrap;
   font-weight: 600;
   color: var(--m-muted);
   transition: color 0.2s ease;
@@ -360,8 +361,8 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
 .m-fab {
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
+  width: 54px;
+  height: 54px;
   margin-top: -22px;
   border-radius: 20px;
   color: var(--m-gold-ink);
@@ -387,7 +388,7 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
 .m-side-item[aria-current="page"] { color: var(--m-ink); background: color-mix(in srgb, var(--m-gold) 14%, var(--m-surface-2)); }
 .m-side-item[aria-current="page"] svg { color: var(--m-gold-text); }
 
-/* Phones: slim header with the brand and the account avatar */
+/* Every screen: the bar at the top (back to «نهج علي», the assistant, the notifications) */
 .m-topbar {
   position: sticky;
   top: 0;
@@ -404,7 +405,67 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
   backdrop-filter: blur(14px) saturate(1.2);
 }
-.m-topbar [aria-current="page"] { outline: 2px solid var(--m-gold); outline-offset: -2px; border-radius: 999px; }
+.m-topbar [aria-current="page"] { outline: 2px solid var(--m-gold); outline-offset: -2px; }
+@media (min-width: 1024px) {
+  .m-topbar { min-height: 64px; padding: 0 40px; gap: 14px; }
+}
+.m-bar-site {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 40px;
+  padding: 0 0.85rem 0 0.7rem;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--m-ink);
+  background: var(--m-surface-2);
+  border: 1px solid color-mix(in srgb, var(--m-gold) 45%, var(--m-line));
+  transition: background-color 0.2s ease, transform 0.12s ease;
+}
+.m-bar-site:hover { background: color-mix(in srgb, var(--m-gold) 14%, var(--m-surface-2)); }
+.m-bar-site:active { transform: scale(0.96); }
+.m-bar-btn {
+  display: inline-flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 52px;
+  height: 52px;
+  padding: 0 0.2rem;
+  border-radius: 14px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--m-ink);
+  transition: background-color 0.2s ease, transform 0.12s ease;
+}
+/* Larger screens: icon and name side by side, on a soft button */
+@media (min-width: 640px) {
+  .m-bar-btn { flex-direction: row; gap: 0.4rem; height: 44px; padding: 0 0.75rem 0 0.6rem; font-size: 0.92rem; font-weight: 600; background: var(--m-surface-2); }
+}
+.m-bar-btn:hover { background: color-mix(in srgb, var(--m-gold) 14%, var(--m-surface-2)); }
+.m-bar-btn:active { transform: scale(0.94); }
+.m-badge {
+  position: absolute;
+  top: 1px;
+  inset-inline-end: 4px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: #d43c3c;
+  box-shadow: 0 0 0 2px var(--m-surface-solid);
+}
 
 .m-content-pad { padding-bottom: calc(var(--m-nav-h) + var(--m-safe-b) + 28px); }
 @media (min-width: 1024px) {
@@ -493,6 +554,8 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
 .m-skip:focus { top: 12px; }
 
 .m-scroll-x { overflow-x: auto; scrollbar-width: none; }
+/* A fieldset is as wide as its content by default: a scrolling row inside it pushed whole forms off the screen */
+.mahdi-root fieldset { min-inline-size: 0; }
 .m-scroll-x::-webkit-scrollbar { display: none; }
 
 @media (prefers-reduced-motion: reduce) {

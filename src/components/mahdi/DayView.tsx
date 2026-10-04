@@ -8,7 +8,6 @@ import { fmtDateLong, fmtHijri, fmtPct, fmtRelativeDay, t } from "@/lib/mahdi/i1
 import { bySort, CHALLENGE_GROUP, habitStatus, pickPhrase } from "@/lib/mahdi/client/derive";
 import type { Project } from "@/lib/mahdi/types";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
-import Avatar from "./Avatar";
 import ReadingCard from "./ReadingCard";
 import DayBars from "./DayBars";
 import HabitForm from "./HabitForm";
@@ -85,11 +84,6 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
               <h1 className="m-display text-3xl">{fmtRelativeDay(date, today)}</h1>
             )}
           </div>
-          {home && (
-            <Link href="/mahdi/more" className="lg:hidden" aria-label={t.more.title}>
-              <Avatar profile={profile} size={44} />
-            </Link>
-          )}
         </div>
         <nav className="mt-3 flex items-center gap-2" aria-label={t.home.otherDays}>
           <Link href={`/mahdi/day/${addDays(date, -1)}`} className="m-btn m-btn-ghost m-btn-sm" aria-label={t.common.previousDay}>
