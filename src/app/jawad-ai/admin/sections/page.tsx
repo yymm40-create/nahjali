@@ -2,10 +2,12 @@ import SectionsAdmin from "@/components/jawad/admin/SectionsAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { DEFAULT_SECTIONS, SECTION_ICONS, SECTION_IMPLEMENTATIONS } from "@config/jawad/sections";
+import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 export const metadata = { title: "الأقسام" };
 
 export default async function SectionsPage() {
+  await requireJawadOwnerPage("/jawad-ai/admin/sections");
   const rt = await loadRuntime();
   const { data } = await createAdminClient().from("jawad_sections").select("id");
   const stored = new Set((data ?? []).map((r) => r.id as string));

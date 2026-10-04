@@ -3,7 +3,7 @@
 // the owner only, everyone else sees «قيد التطوير»).
 
 import { cache } from "react";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiUser, UserError } from "@/lib/api";
@@ -48,6 +48,16 @@ export async function requireJawadUser(next: string) {
   const { user, owner } = await jawadSession();
   if (!user) redirect(jawadLogin(next));
   return { user, owner, allowed: await canUseJawad(user) };
+}
+
+/**
+ * Dashboard pages: the owner, else sign-in (signed out) or 404. Every dashboard page calls it itself: a page renders
+ * alongside its layout, so the layout's check alone would still let the page's content into the response.
+ */
+export async function requireJawadOwnerPage(next: string) {
+  const { user, owner } = await requireJawadUser(next);
+  if (!owner) notFound();
+  return user;
 }
 
 /** API: the signed-in user allowed to use JAWAD AI, else 401/403. */

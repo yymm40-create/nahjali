@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { adRows } from "@/lib/jawad/server/ads";
 import { loadRuntime, PROVIDER_KEYS } from "@/lib/jawad/server/runtime";
 import { GENERATORS } from "@config/jawad/generators";
+import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 function Row({ ok, label, detail }: { ok: boolean | null; label: string; detail: React.ReactNode }) {
   return (
@@ -32,6 +33,7 @@ async function lastDay() {
 
 /** Where JAWAD AI stands, and what still needs the owner. */
 export default async function JawadAdminHome() {
+  await requireJawadOwnerPage("/jawad-ai/admin");
   const rt = await loadRuntime();
   const ads = await adRows();
   const [open, failed, done] = await lastDay();

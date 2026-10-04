@@ -2,11 +2,13 @@ import GeneratorsAdmin from "@/components/jawad/admin/GeneratorsAdmin";
 import Icon from "@/components/jawad/Icon";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { GENERATORS } from "@config/jawad/generators";
+import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 export const metadata = { title: "المولدات" };
 
 /** Each integration: shown name, sample picture, section, order, switch — plus its documented capabilities and sources. */
 export default async function GeneratorsPage() {
+  await requireJawadOwnerPage("/jawad-ai/admin/generators");
   const rt = await loadRuntime();
   return (
     <div className="space-y-8">
