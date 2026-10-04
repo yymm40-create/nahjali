@@ -23,9 +23,12 @@ export default async function MahdiAppLayout({ children }: { children: React.Rea
     snapshot.username = name;
   }
 
+  // A family member's account (entered by the parent) says so on every screen, with the way back
+  const { data: family } = await supabase.from("mahdi_family").select("parent_id").eq("member_id", user.id).maybeSingle();
+
   return (
     <MahdiProvider initial={snapshot}>
-      <AppShell>{children}</AppShell>
+      <AppShell familyMember={Boolean(family)}>{children}</AppShell>
     </MahdiProvider>
   );
 }

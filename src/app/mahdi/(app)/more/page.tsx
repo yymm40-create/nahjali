@@ -72,6 +72,7 @@ export default function MorePage() {
       <nav className="grid gap-2 sm:grid-cols-2" aria-label={t.more.title}>
         {(
           [
+            ["/mahdi/more/family", "users", t.family.link],
             ["/mahdi/reading", "book", t.reading.title],
             ["/mahdi/groups", "users", t.groups.title],
             ["/mahdi/more/rewards", "sparkle", t.rewards.title],
