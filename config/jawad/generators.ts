@@ -320,9 +320,6 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
         if (mode.id === "first_last_frame") notes.push("إذا اختلفت نسبة الإطار الأخير عن الأول، يقصّه المزوّد ليطابق الأول.");
       }
       if (!def.prompt.arabic && hasArabic(d.prompt)) issues.push({ field: "prompt", message: def.prompt.arabicNote! });
-      if (d.refs.some((r) => r.kind === "image" || r.kind === "video")) {
-        notes.push("لا يقبل Seedance رفع صور أو فيديوهات فيها وجوه بشرية حقيقية كمراجع (سياسة المزوّد).");
-      }
       return { options: opt(def.options, states), issues, notes };
     },
     price(d, mode, table) {
