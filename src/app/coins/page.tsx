@@ -3,7 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { coinBalance, coinsRequired } from "@/lib/coins";
 import SmartCoin from "@/components/SmartCoin";
 import { IMAGE_ESTIMATE_USD } from "@/lib/film/images";
-import { COIN_PACKAGES, SMART_COIN, coinsFor } from "@config/coins";
+import { SMART_COIN, coinsFor } from "@config/coins";
+import CoinsShop from "./CoinsShop";
 import { VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, type VideoResolution } from "@config/film";
 import { isAdmin } from "@config/site";
 
@@ -15,11 +16,17 @@ const REASONS: Record<string, string> = { grant: "إضافة", reserve: "حجز"
 /** «النقود الذكية»: the user's balance, what each operation costs, the packages and the history. */
 export default async function CoinsPage() {
   const user = await requireUser("/coins");
-  const [balance, required, ledger] = await Promise.all([
+  const [balance, required, ledger, walletRow] = await Promise.all([
     coinBalance(user.id),
     coinsRequired(),
     createAdminClient().from("smart_coin_ledger").select("delta,reason,label,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(30),
+    createAdminClient().from("smart_coin_wallets").select("*").eq("user_id", user.id).maybeSingle(),
   ]);
+  const wallet = walletRow.data as Record<string, unknown> | null;
+  // A full film (2 edits per stage, two 10 s 480p videos on Seedance 2.5), as on the pricing calculator
+  const journeyCoins =
+    8 * coinsFor(0.12) + 12 * coinsFor(0.12) + 2 * coinsFor(IMAGE_ESTIMATE_USD.test) + 6 * coinsFor(IMAGE_ESTIMATE_USD.sheet) + 8 * coinsFor(0.15) +
+    2 * coinsFor(videoEstimateUsd("seedance-2.5", "480p", 10));
   const owner = isAdmin(user.email);
   const prices: [string, number][] = [
     ["رد السيناريست أو صانع الشيت (تقريبًا)", coinsFor(0.12)],
@@ -65,22 +72,19 @@ export default async function CoinsPage() {
         <p className="text-xs font-bold text-muted">الرد الطويل أو الفيديو الأطول ياخذ أكثر؛ الخصم النهائي حسب التكلفة الفعلية للعملية.</p>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-extrabold">الباقات</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {COIN_PACKAGES.map((p) => (
-            <div key={p.key} className={`card space-y-1 p-4 text-center ${"popular" in p && p.popular ? "border-2 border-sky-400" : ""}`}>
-              {"popular" in p && p.popular && <span className="chip bg-sky-400 text-xs text-white">الأكثر طلبًا</span>}
-              <p className="font-extrabold">{p.name}</p>
-              <p className="flex items-center justify-center gap-1 text-2xl font-extrabold text-sky-500" dir="ltr"><SmartCoin size={22} />{p.coins}</p>
-              <p className="display text-2xl">{p.priceSar} ر.س</p>
-              {p.note && <p className="text-xs font-bold text-muted">{p.note}</p>}
-              <button className="btn btn-ghost w-full text-sm" disabled>الشراء قريبًا</button>
-            </div>
-          ))}
-        </div>
-        <p className="text-xs font-bold text-muted">الأسعار قبل ضريبة القيمة المضافة.</p>
-      </section>
+      <CoinsShop
+        plan={(wallet?.plan as string | null) ?? null}
+        planPeriod={(wallet?.plan_period as string | null) ?? null}
+        autoTopup={Boolean(wallet?.auto_topup)}
+        autoTopupSar={Number(wallet?.auto_topup_sar ?? 50)}
+        balance={owner ? null : (balance ?? 0)}
+        coinsPerVideo={{
+          "2.0 · 480p": coinsFor(videoEstimateUsd("seedance-2.0", "480p", 10)),
+          "2.5 · 480p": coinsFor(videoEstimateUsd("seedance-2.5", "480p", 10)),
+          "2.5 · 720p": coinsFor(videoEstimateUsd("seedance-2.5", "720p", 10)),
+        }}
+        journeyCoins={journeyCoins}
+      />
 
       {(ledger.data ?? []).length > 0 && (
         <section className="card space-y-2 p-4">
