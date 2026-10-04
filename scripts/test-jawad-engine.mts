@@ -81,6 +81,18 @@ test("Seedance first frame: ratio fixed to adaptive (no silent crop)", () => {
   assert.deepEqual(e.issues, []);
 });
 
+test("frames mode: a file outside the two frame slots (or a frame role outside frames mode) blocks sending", () => {
+  const d = g("byteplus-seedance-2-5");
+  const base = { settings: defaultSettings(d), prompt: "", instructions: "" };
+  const extra = img();
+  const e = evaluate(d, { ...base, refStyle: "frames", refs: [img({ role: "first_frame" }), extra] }, priceTable(d, {}));
+  assert.ok(e.refProblems[extra.id]?.includes("الإطارين"));
+  assert.ok(e.issues.some((i) => i.field === "refs"));
+  const stray = img({ role: "first_frame" });
+  const o = evaluate(d, { ...base, prompt: "a horse", refStyle: "references", refs: [stray] }, priceTable(d, {}));
+  assert.ok(o.refProblems[stray.id]);
+});
+
 test("Seedance text-to-video: 9:16 and 16:9 both offered; duration clamped to the model's range", () => {
   const d = g("byteplus-seedance-2-0");
   const e = evaluate(d, { settings: { ...defaultSettings(d), ratio: "9:16", duration: 99 }, prompt: "A drone shot over dunes", instructions: "", refStyle: "frames", refs: [] }, priceTable(d, {}));

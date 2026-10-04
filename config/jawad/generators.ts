@@ -252,8 +252,12 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       ...resolutions.map((r) => ({
         key: `sec:${r}`,
         label: `كل ثانية · ${RES_LABEL[r]}`,
-        defaultCenti: centiFor(seedanceSecondUsd(v, r)),
-        basis: `$${SEEDANCE_RATE[v][r]}/مليون توكن × أكبر مقاس للدقة × 24 إطار ÷ 1024`,
+        // 4K waits for the owner: a long 4K file can pass the 50MB per-file storage limit (provider paid, file not saved)
+        defaultCenti: r === "4k" ? null : centiFor(seedanceSecondUsd(v, r)),
+        basis:
+          r === "4k"
+            ? `موقوف حتى تحدد سعره: ملف 4K الطويل قد يتجاوز حد 50MB لكل ملف في التخزين. ارفع الحد في Supabase أولًا. السعر المحسوب: ${(centiFor(seedanceSecondUsd(v, r)) / 100).toFixed(2)} للثانية ($${SEEDANCE_RATE[v][r]}/مليون توكن)`
+            : `$${SEEDANCE_RATE[v][r]}/مليون توكن × أكبر مقاس للدقة × 24 إطار ÷ 1024`,
       })),
       ...resolutions.map((r) => ({
         key: `vref:sec:${r}`,
@@ -323,6 +327,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       { item: "الإلغاء", status: "verified", note: "ممكن فقط والمهمة في الطابور (queued)." },
       { item: "الإشعارات", status: "verified", note: "callback_url يرسل POST عند تغيّر الحالة؛ نتحقق منه بالاستعلام عن المهمة ولا نثق بمحتواه." },
       { item: "الحفظ", status: "verified", note: "رابط الفيديو صالح 24 ساعة؛ ننسخه فورًا إلى تخزيننا." },
+      ...(is25 ? [] : [{ item: "4K", status: "verified" as const, note: "مدعوم من المزوّد، لكنه موقوف عندنا حتى تحدد سعره: الملف الطويل قد يتجاوز حد 50MB لكل ملف في التخزين." }]),
     ],
     notes: is25 ? [] : ["لا يقبل البرومبت العربي."],
   };

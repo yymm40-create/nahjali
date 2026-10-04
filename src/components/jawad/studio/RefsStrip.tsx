@@ -184,6 +184,11 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
                 </div>
               );
             })}
+            {refs
+              .filter((r) => r.role === "reference")
+              .map((r) => (
+                <Thumb key={r.localId} r={r} big={false} problem={ev.refProblems[r.uploadId ?? r.localId]} onOpen={() => setPreview(r)} onRemove={() => onRemove(r.localId)} onRetry={() => onRetry(r.localId)} />
+              ))}
           </div>
         ) : (
           <div className={`flex items-center gap-2 ${expanded ? "flex-wrap" : "jw-scroll overflow-x-auto pb-1"}`}>
@@ -262,7 +267,7 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
         <ul className="space-y-1 text-xs text-jw-danger" role="alert">
           {dropError && <li>{dropError}</li>}
           {problems.map(({ r, msg }) => (
-            <li key={r.localId}>«{r.fileName || KIND_AR[r.kind]}»: {msg}</li>
+            <li key={r.localId}>«{r.fileName || KIND_AR[r.kind]}»: {r.error ?? msg}</li>
           ))}
           {refIssues.map((i) => (
             <li key={i.message}>{i.message}</li>

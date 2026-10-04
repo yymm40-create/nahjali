@@ -8,7 +8,7 @@ import { generatorById } from "@config/jawad/generators";
 export const metadata = { title: "المهام والسجلات" };
 
 const STATUSES = ["all", "open", "failed", "succeeded", "cancelled"] as const;
-const when = (iso: string) => new Date(iso).toLocaleString("ar-SA-u-nu-latn", { timeZone: "Asia/Riyadh", dateStyle: "short", timeStyle: "medium" });
+const when = (iso: string) => new Date(iso).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", dateStyle: "short", timeStyle: "medium" });
 
 /** Every job (all users), its errors and events, and JAWAD AI's coin movements. */
 export default async function JobsPage({ searchParams }: PageProps<"/jawad-ai/admin/jobs">) {

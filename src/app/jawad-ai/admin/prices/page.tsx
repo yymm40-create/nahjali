@@ -47,7 +47,7 @@ export default async function PricesPage() {
               <tbody>
                 {log.map((r) => (
                   <tr key={r.id} className="border-t border-jw-line">
-                    <td className="py-2">{new Date(r.changed_at).toLocaleString("ar-SA-u-nu-latn", { timeZone: "Asia/Riyadh", dateStyle: "short", timeStyle: "short" })}</td>
+                    <td className="py-2">{new Date(r.changed_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", dateStyle: "short", timeStyle: "short" })}</td>
                     <td className="py-2" dir="ltr">{GENERATORS.find((g) => g.id === r.generator_id)?.name ?? r.generator_id}</td>
                     <td className="py-2" dir="ltr">{r.price_key}</td>
                     <td className="py-2 tabular-nums">{fmt(r.old_centicoins)}</td>

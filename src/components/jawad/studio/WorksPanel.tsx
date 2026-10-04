@@ -7,6 +7,7 @@ import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputV
 import SmartCoin from "@/components/SmartCoin";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+import LocalTime from "../LocalTime";
 import LoginLink from "../LoginLink";
 
 const FILTERS: { key: WorksFilter; label: string; icon: string }[] = [
@@ -16,7 +17,6 @@ const FILTERS: { key: WorksFilter; label: string; icon: string }[] = [
   { key: "audio", label: "الصوت", icon: "audio" },
 ];
 
-const when = (iso: string) => new Date(iso).toLocaleString("ar-SA-u-nu-latn", { dateStyle: "medium", timeStyle: "short" });
 
 /** Short, readable summary of the settings used (technical values left-to-right). */
 function settingChips(j: JobView) {
@@ -158,7 +158,8 @@ function OutputMedia({ o, onOpen, cover }: { o: OutputView; onOpen?: () => void;
     );
   }
   // Players never start (or make sound) by themselves
-  if (o.kind === "video") return <video src={o.url} controls preload="metadata" playsInline className="size-full bg-black object-contain" />;
+  // "#t=0.1" makes browsers show the first frame instead of a black box
+  if (o.kind === "video") return <video src={`${o.url}#t=0.1`} controls preload="metadata" playsInline className="size-full bg-black object-contain" />;
   return (
     <div className="flex h-full flex-col justify-center gap-2 bg-jw-bg-2 p-3">
       <Icon name="audio" size={28} className="mx-auto text-jw-accent" />
@@ -206,7 +207,7 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
       <div className="space-y-2 p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-sm font-semibold" dir="ltr">{j.generatorName}</span>
-          <span className="shrink-0 text-[11px] text-jw-faint">{when(j.createdAt)}</span>
+          <LocalTime iso={j.createdAt} className="shrink-0 text-[11px] text-jw-faint" />
         </div>
         {j.prompt && <p className="line-clamp-2 text-xs text-jw-muted" dir="auto">{j.prompt}</p>}
         <div className="flex flex-wrap gap-1">
@@ -281,7 +282,7 @@ function FilmCard({ f }: { f: FilmItemView }) {
       <div className="aspect-video bg-jw-bg-2">
         {f.url ? (
           f.kind === "video" ? (
-            <video src={f.url} controls preload="metadata" playsInline className="size-full bg-black object-contain" />
+            <video src={`${f.url}#t=0.1`} controls preload="metadata" playsInline className="size-full bg-black object-contain" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={f.url} alt="" loading="lazy" className="size-full object-contain" />
@@ -293,7 +294,7 @@ function FilmCard({ f }: { f: FilmItemView }) {
       <div className="space-y-2 p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-sm font-semibold"><Icon name="film" size={14} className="text-jw-accent" /> الفيلم السينمائي</span>
-          <span className="shrink-0 text-[11px] text-jw-faint">{when(f.createdAt)}</span>
+          <LocalTime iso={f.createdAt} className="shrink-0 text-[11px] text-jw-faint" />
         </div>
         <p className="truncate text-xs text-jw-muted" dir="auto">من مشروع: {f.projectTitle} {f.refKey && <span dir="ltr">· {f.refKey}</span>}</p>
         <div className="flex flex-wrap gap-1">

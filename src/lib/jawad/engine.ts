@@ -133,7 +133,9 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
     else {
       const allowed = mode.refs[r.kind];
       const p = !allowed || allowed.max === 0 ? `الوضع «${mode.label}» لا يقبل ${KIND_AR_PL[r.kind]}.` : fileProblem(def, r);
-      if (p) refProblems[r.id] = p;
+      // A file never takes part in a way the user can't see: frames mode uses only the two frame slots
+      const role = mode.refStyle === "frames" ? (r.role === "reference" ? "في وضع «إطار أول / أخير» تُستخدم صورتا الإطارين فقط؛ احذف هذا المرجع." : null) : r.role !== "reference" ? "دور الإطار لا يُستخدم في هذا الوضع." : null;
+      if (p || role) refProblems[r.id] = (p ?? role)!;
     }
   }
   if (refs.some((r) => r.status === "pending")) issues.push({ field: "refs", message: "انتظر حتى يكتمل رفع المراجع وفحصها." });

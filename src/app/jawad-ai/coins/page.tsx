@@ -71,7 +71,7 @@ export default async function JawadCoins() {
                   {REASON[r.reason] ?? r.reason} <span className="text-xs text-jw-muted" dir="auto">{r.label}</span>
                 </span>
                 <span className="flex items-center gap-3">
-                  <span className="text-xs text-jw-faint">{new Date(r.created_at).toLocaleString("ar-SA-u-nu-latn", { dateStyle: "short", timeStyle: "short" })}</span>
+                  <span className="text-xs text-jw-faint">{new Date(r.created_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "short", timeStyle: "short" })}</span>
                   <span className={`tabular-nums ${r.delta < 0 ? "text-jw-danger" : "text-jw-ok"}`} dir="ltr">{r.delta > 0 ? `+${r.delta}` : r.delta}</span>
                 </span>
               </li>

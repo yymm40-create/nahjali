@@ -85,6 +85,18 @@ const defaultStyle = (id: string): RefStyle => {
   return (def?.modes.map((m) => m.refStyle).find((s) => s !== "none") ?? "none") as RefStyle;
 };
 
+/** Roles for a reference style: frames → the first two images become first/last frame; otherwise all references. */
+function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
+  let firstSet = false;
+  let lastSet = false;
+  return refs.map((r) => {
+    if (style !== "frames" || r.kind !== "image") return { ...r, role: "reference" as RefRole };
+    if (!firstSet) return (firstSet = true), { ...r, role: "first_frame" as RefRole };
+    if (!lastSet) return (lastSet = true), { ...r, role: "last_frame" as RefRole };
+    return { ...r, role: "reference" as RefRole };
+  });
+}
+
 export default function Studio({ section, generators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks }: StudioProps) {
   const router = useRouter();
   const key = draftKey(user?.id, section.id);
@@ -186,27 +198,18 @@ export default function Studio({ section, generators, prices: initialPrices, use
     if (id === draft.generatorId) return;
     const nd = generatorById(id);
     setDraft((d) => {
-      const style = d.refStyle[id] ?? defaultStyle(id);
+      // Stay in the reference style the user is working in when the new generator has it
+      const supports = (s: RefStyle) => Boolean(nd?.modes.some((m) => m.refStyle === s));
+      const style = d.refs.length && supports(refStyle) ? refStyle : d.refStyle[id] ?? defaultStyle(id);
       // Keep the prompt and every reference: incompatible ones are marked (and not sendable), never deleted
-      return { ...d, generatorId: id, refs: d.refs.map((r) => ({ ...r, role: style === "frames" ? r.role : "reference" })) };
+      return { ...d, generatorId: id, refStyle: { ...d.refStyle, [id]: style }, refs: style === refStyle ? d.refs : withRoles(d.refs, style) };
     });
     setNotice(nd ? `بدّلت إلى ${nd.name}. احتفظنا بالبرومبت والمراجع؛ غير المتوافق منها معلَّم بالأحمر.` : "");
   }
 
   function setRefStyle(s: RefStyle) {
     if (!def) return;
-    setDraft((d) => {
-      let firstSet = false;
-      let lastSet = false;
-      const refs = d.refs.map((r) => {
-        if (s !== "frames") return { ...r, role: "reference" as RefRole };
-        if (r.kind !== "image") return { ...r, role: "reference" as RefRole };
-        if (!firstSet) return (firstSet = true), { ...r, role: "first_frame" as RefRole };
-        if (!lastSet) return (lastSet = true), { ...r, role: "last_frame" as RefRole };
-        return { ...r, role: "reference" as RefRole };
-      });
-      return { ...d, refStyle: { ...d.refStyle, [def.id]: s }, refs };
-    });
+    setDraft((d) => ({ ...d, refStyle: { ...d.refStyle, [def.id]: s }, refs: withRoles(d.refs, s) }));
   }
 
   // ── uploads ──
