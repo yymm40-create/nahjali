@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { GENERATORS, generatorById, gptImage2OutputTokens, defaultSettings, GPT_IMAGE_2_SIZES, centiFor, coinsOf } from "../config/jawad/generators";
 import { evaluate, priceTable, priceVersion } from "../src/lib/jawad/engine";
+import { cleanRefName, defaultRefName, findMentions, promptForModel, renameMentions } from "../src/lib/jawad/mentions";
 import type { RefMeta } from "../config/jawad/types";
 
 let passed = 0;
@@ -180,6 +181,47 @@ test("strict (server) mode refuses an unsupported value instead of silently repl
 test("price version changes when a price changes", () => {
   const d = g("byteplus-seedance-2-5");
   assert.notEqual(priceVersion(priceTable(d, {})), priceVersion(priceTable(d, { "sec:720p": 999 })));
+});
+
+test("reference names: image1, video1… by type; a freed number is reused; names are cleaned", () => {
+  assert.equal(defaultRefName("image", []), "image1");
+  assert.equal(defaultRefName("image", ["image1", "IMAGE2", "video1"]), "image3");
+  assert.equal(defaultRefName("image", ["image2"]), "image1");
+  assert.equal(cleanRefName("@حصان"), "حصان");
+  assert.equal(cleanRefName(" my horse "), "my_horse");
+  assert.equal(cleanRefName("bad!name"), null);
+  assert.equal(cleanRefName("x".repeat(25)), null);
+});
+
+test("mentions: «@name» found, e-mail addresses ignored, renames follow whole names only", () => {
+  assert.deepEqual(findMentions("a@b.com and @image1, (@حصان) @image10").map((m) => m.name), ["image1", "حصان", "image10"]);
+  assert.equal(renameMentions("@image1 jumps over @image10", "image1", "horse"), "@horse jumps over @image10");
+});
+
+test("the model reads each «@name» its own way (by type and send order); the user's prompt stays as written", () => {
+  const refs = [
+    { name: "horse", kind: "image" as const },
+    { name: "beat", kind: "audio" as const },
+    { name: "image1", kind: "image" as const }, // a default name that is now the 2nd image
+  ];
+  const seed = g("byteplus-seedance-2-5").refLabel!;
+  const r = promptForModel("@horse runs to @image1 on @beat; mail me at a@b.com; @nobody", refs, seed);
+  assert.equal(r.text, "@image1 runs to @image2 on @audio1; mail me at a@b.com; @nobody");
+  assert.deepEqual(r.unknown, ["nobody"]);
+  const gpt = g("openai-gpt-image-2").refLabel!;
+  assert.equal(promptForModel("put @hat on @dog", [{ name: "dog", kind: "image" }, { name: "hat", kind: "image" }], gpt).text, "put Image 2 on Image 1");
+});
+
+test("a mention that can only mean a reference must be added; two references can't share a name", () => {
+  const d = g("byteplus-seedance-2-5");
+  const base = { settings: defaultSettings(d), instructions: "", refStyle: "references" as const };
+  const one = img({ name: "image1" });
+  const missing = evaluate(d, { ...base, prompt: "@image1 meets @image3", refs: [one] }, priceTable(d, {}));
+  assert.ok(missing.issues.some((i) => i.field === "prompt" && i.message.includes("@image3")));
+  const plain = evaluate(d, { ...base, prompt: "@image1 meets @someone", refs: [one] }, priceTable(d, {}));
+  assert.ok(!plain.issues.some((i) => i.field === "prompt"));
+  const dup = evaluate(d, { ...base, prompt: "x", refs: [img({ name: "Horse" }), img({ name: "horse" })] }, priceTable(d, {}));
+  assert.ok(dup.issues.some((i) => i.field === "refs" && i.message.includes("@horse")));
 });
 
 test("all generators have sources, a version and verification notes", () => {

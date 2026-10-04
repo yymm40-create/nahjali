@@ -55,7 +55,9 @@ export interface JobView {
   instructions: string;
   settings: Record<string, string | number | boolean>;
   refStyle: "none" | "frames" | "references";
-  refs: { uploadId: string; kind: "image" | "video" | "audio"; role: "first_frame" | "last_frame" | "reference" }[];
+  refs: { uploadId: string; kind: "image" | "video" | "audio"; role: "first_frame" | "last_frame" | "reference"; name?: string }[];
+  /** The prompt as the model received it, when «@name» mentions were written its way. */
+  modelPrompt: string | null;
   priceCoins: number;
   charged: boolean;
   chargeState: "none" | "held" | "settled" | "refunded";

@@ -338,7 +338,17 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
             )}
             <p className="pt-1 text-jw-muted">الإعدادات:</p>
             <p dir="ltr" className="font-mono text-[11px]" style={{ textAlign: "right" }}>{JSON.stringify(j.settings)}</p>
-            {j.refs.length > 0 && <p className="text-jw-muted">المراجع: {j.refs.length}</p>}
+            {j.refs.length > 0 && (
+              <p className="text-jw-muted">
+                المراجع: <span dir="ltr">{j.refs.map((r) => (r.name ? `@${r.name}` : "—")).join(" · ")}</span>
+              </p>
+            )}
+            {j.modelPrompt && (
+              <>
+                <p className="pt-1 text-jw-muted">كما وصل للمولد (أسماء المراجع بصيغته):</p>
+                <p className="whitespace-pre-wrap" dir="auto">{j.modelPrompt}</p>
+              </>
+            )}
           </div>
         )}
 

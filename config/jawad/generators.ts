@@ -108,6 +108,8 @@ const gptImage2: GeneratorDef = {
   ],
   files: { image: IMAGE_FILE },
   prompt: { label: "البرومبت", placeholder: "صف الصورة التي تريدها…", max: 4000, arabic: true },
+  // OpenAI's prompting guide: refer to input images by index ("Image 1", "Image 2")
+  refLabel: (_kind, n) => `Image ${n}`,
   priceKeys: [
     ...(["std", "hi"] as const).flatMap((tier) =>
       QUALITIES.map((q) => ({
@@ -155,6 +157,7 @@ const gptImage2: GeneratorDef = {
     { label: "OpenAI — Image generation guide (sizes, quality, calculator)", url: "https://developers.openai.com/api/docs/guides/image-generation", checked: CHECKED },
     { label: "OpenAI — Images API reference (edits: up to 16 images, sizes)", url: "https://developers.openai.com/api/reference/resources/images", checked: CHECKED },
     { label: "OpenAI — Pricing (gpt-image-2)", url: "https://developers.openai.com/api/docs/pricing", checked: CHECKED },
+    { label: "OpenAI — GPT Image prompting guide (refer to inputs as Image 1, Image 2)", url: "https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide", checked: CHECKED },
   ],
   verification: [
     { item: "المقاسات والنِّسب", status: "verified", note: "أي مقاس بأضلاع من مضاعفات 16، نسبة ≤ 3:1، و655,360–8,294,400 بكسل؛ ما فوق 2560×1440 تجريبي فلم نعرضه." },
@@ -165,6 +168,7 @@ const gptImage2: GeneratorDef = {
     { item: "سعر الصور المرجعية", status: "unverified", note: "OpenAI يوثّق توكنات الصورة المدخلة لـ gpt-image-1 فقط؛ نسعّرها افتراضيًا بسقف أقصى حالة موثّقة (7,100 توكن × $8/مليون)، والتكلفة الفعلية تُسجَّل من usage." },
     { item: "الخلفية الشفافة", status: "unverified", note: "موثّقة كمعاينة (preview) لـ gpt-image-2؛ غير معروضة." },
     { item: "التقدم والإلغاء", status: "verified", note: "طلب متزامن بلا نسبة تقدم ولا إلغاء." },
+    { item: "أسماء المراجع في البرومبت", status: "verified", note: "دليل OpenAI: الإشارة للصور المدخلة بترتيبها «Image 1» و«Image 2»؛ كل «‎@اسم» يُرسل بهذا الشكل." },
   ],
   notes: ["كل طلب متزامن: يرجع بالصور مباشرة (base64) ونحفظها في تخزيننا."],
 };
@@ -330,10 +334,13 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       const perSec = seedanceSecondUsd(v, res, ratio) * (SEEDANCE_RATE_WITH_VIDEO[v][res] / SEEDANCE_RATE[v][res]);
       return perSec * (inMs / 1000 + Number(d.settings.duration));
     },
+    // Seedance 2.0 references in a prompt: @image1 · @video1 · @audio1, by type in the order they are sent
+    refLabel: (kind, n) => `@${kind}${n}`,
     sources: [
       { label: "BytePlus ModelArk — Create a video generation task", url: "https://docs.byteplus.com/en/docs/ModelArk/1520757", checked: CHECKED },
       { label: "BytePlus ModelArk — Retrieve / List / Cancel a video generation task", url: "https://docs.byteplus.com/en/docs/ModelArk/1521309", checked: CHECKED },
       { label: "BytePlus ModelArk — Model pricing (video generation)", url: "https://docs.byteplus.com/en/docs/ModelArk/1544106", checked: CHECKED },
+      { label: "Seedance 2.0 multimodal guide (@image1 · @video1 · @audio1 by upload order) — public guide", url: "https://wavespeed.ai/blog/posts/seedance-2-0-complete-guide-multimodal-video-creation/", checked: CHECKED },
     ],
     verification: [
       { item: "الأوضاع", status: "verified", note: "نص · إطار أول · إطار أول وأخير · مراجع متعددة، ولا يُجمع بينها في طلب واحد." },
@@ -348,6 +355,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       { item: "الإلغاء", status: "verified", note: "ممكن فقط والمهمة في الطابور (queued)." },
       { item: "الإشعارات", status: "verified", note: "callback_url يرسل POST عند تغيّر الحالة؛ نتحقق منه بالاستعلام عن المهمة ولا نثق بمحتواه." },
       { item: "الحفظ", status: "verified", note: "رابط الفيديو صالح 24 ساعة؛ ننسخه فورًا إلى تخزيننا." },
+      { item: "أسماء المراجع في البرومبت", status: "unverified", note: "‎@image1 · ‎@video1 · ‎@audio1 حسب النوع وترتيب الإرسال، من أدلة Seedance 2.0 المنشورة؛ صفحة ModelArk الرسمية لا تُقرأ آليًا هنا. كل «‎@اسم» يُرسل بهذا الشكل." },
       ...(is25 ? [] : [{ item: "4K", status: "verified" as const, note: "مدعوم من المزوّد، لكنه موقوف عندنا حتى تحدد سعره: الملف الطويل قد يتجاوز حد 50MB لكل ملف في التخزين." }]),
     ],
     notes: is25 ? [] : ["لا يقبل البرومبت العربي."],

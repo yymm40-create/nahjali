@@ -13,6 +13,7 @@ import type {
   RefStyle,
   Settings,
 } from "@config/jawad/types";
+import { findMentions, looksLikeRef, sameName } from "./mentions";
 
 export interface EvalInput {
   settings: Settings;
@@ -126,6 +127,17 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
     issues.push({ field: "instructions", message: `${def.extraText.label} أطول من ${def.extraText.max} حرف.` });
   }
   if (!def.extraText && input.instructions.trim()) issues.push({ field: "instructions", message: "هذا المولد لا يقبل وصف أداء منفصلًا." });
+
+  // «@name» in the prompt: a name that can only mean a reference (image3…) must be one that is added
+  const missing = new Set<string>();
+  for (const m of findMentions(prompt)) {
+    if (!refs.some((r) => r.name && sameName(r.name, m.name)) && looksLikeRef(m.name)) missing.add(m.name);
+  }
+  for (const n of missing) issues.push({ field: "prompt", message: `«@${n}» ليس اسم مرجع مضاف. أضف المرجع أو صحّح الاسم.` });
+  // Two references can't share a name (a mention must point to one)
+  const named = refs.filter((r) => r.name);
+  const dup = named.find((r, i) => named.findIndex((x) => sameName(x.name!, r.name!)) !== i);
+  if (dup) issues.push({ field: "refs", message: `مرجعان بالاسم نفسه «@${dup.name}»؛ غيّر اسم أحدهما.` });
 
   // References: each file, then counts, totals, roles and combinations
   for (const r of refs) {

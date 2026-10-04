@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defaultSettings, generatorById } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
+import { cleanRefName, defaultRefName, renameMentions, sameName } from "@/lib/jawad/mentions";
 import { isOpenStatus, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
 import SmartCoin from "@/components/SmartCoin";
 import { announceBalance, BALANCE_EVENT } from "../CoinBalance";
@@ -45,11 +46,9 @@ async function call<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; 
 }
 const postJson = <T,>(url: string, data: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 
-const fromView = (v: UploadView, role: RefRole, localId = uid()): RefItem => ({
-  localId,
+/** The file side of a reference, from the server's view (its name and role stay the user's). */
+const viewFields = (v: UploadView): Omit<RefItem, "localId" | "kind" | "name" | "role"> => ({
   uploadId: v.id,
-  kind: v.kind,
-  role,
   fileName: v.fileName,
   status: v.status === "ready" ? "ready" : v.status === "rejected" ? "rejected" : "checking",
   progress: 1,
@@ -62,6 +61,7 @@ const fromView = (v: UploadView, role: RefRole, localId = uid()): RefItem => ({
   durationMs: v.durationMs,
   fps: v.fps,
 });
+const fromView = (v: UploadView, role: RefRole, name: string, localId = uid()): RefItem => ({ localId, kind: v.kind, name, role, ...viewFields(v) });
 
 function readDraft(key: string): Partial<Draft> | null {
   try {
@@ -85,6 +85,18 @@ const defaultStyle = (id: string): RefStyle => {
   const def = generatorById(id);
   return (def?.modes.map((m) => m.refStyle).find((s) => s !== "none") ?? "none") as RefStyle;
 };
+
+/** Every reference gets a name (a draft kept from before names existed gets the defaults: image1, video1…). */
+function withNames(refs: RefItem[]): RefItem[] {
+  const taken: string[] = refs.flatMap((r) => (cleanRefName(r.name) ? [r.name] : []));
+  return refs.map((r) => {
+    if (cleanRefName(r.name)) return r;
+    const name = defaultRefName(r.kind, taken);
+    taken.push(name);
+    return { ...r, name };
+  });
+}
+const nextName = (kind: RefKind, refs: RefItem[]) => defaultRefName(kind, refs.map((r) => r.name));
 
 /** Roles for a reference style: frames → the first two images become first/last frame; otherwise all references. */
 function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
@@ -142,7 +154,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         instructions: typeof saved.instructions === "string" ? saved.instructions : "",
         settings: saved.settings ?? {},
         refStyle: saved.refStyle ?? {},
-        refs: Array.isArray(saved.refs) ? saved.refs : [],
+        refs: Array.isArray(saved.refs) ? withNames(saved.refs) : [],
       }));
       // Fresh links (and existence) of the kept references
       const ids = (saved.refs ?? []).flatMap((r) => (r.uploadId ? [r.uploadId] : []));
@@ -154,7 +166,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
             ...d,
             refs: d.refs.map((r) => {
               const v = r.uploadId ? byId.get(r.uploadId) : undefined;
-              return v ? fromView(v, r.role, r.localId) : { ...r, status: "missing", url: null, error: "الملف لم يعد موجودًا؛ احذفه." };
+              return v ? fromView(v, r.role, r.name, r.localId) : { ...r, status: "missing", url: null, error: "الملف لم يعد موجودًا؛ احذفه." };
             }),
           }));
         });
@@ -230,7 +242,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       const conf = await postJson<{ upload: UploadView }>("/api/jawad/uploads/confirm", { id: signed.body.id });
       if (!conf.ok) throw new Error(conf.body.error ?? "تعذّر فحص الملف.");
       const v = conf.body.upload;
-      updateRef(item.localId, { ...fromView(v, item.role, item.localId) });
+      updateRef(item.localId, viewFields(v));
       if (v.status === "ready") files.current.delete(item.localId);
     } catch (e) {
       updateRef(item.localId, { status: "error", error: navigator.onLine ? (e as Error).message : "انقطع الاتصال أثناء الرفع." });
@@ -239,29 +251,33 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   function addFiles(kind: RefKind, list: File[], role?: RefRole) {
     if (!def) return;
-    const added: { item: RefItem; file: File }[] = [];
+    // The new references and their files; each upload starts on its own (never from inside a state update,
+    // which may run later). Their names and roles are given in the (pure) update below.
+    const added = list.map((file) => ({
+      file,
+      item: {
+        localId: uid(),
+        uploadId: null,
+        kind,
+        name: "",
+        role: role ?? "reference",
+        fileName: file.name,
+        status: "uploading",
+        progress: 0,
+        error: null,
+        url: kind === "audio" ? null : URL.createObjectURL(file),
+        mime: file.type,
+        bytes: file.size,
+        width: null,
+        height: null,
+        durationMs: null,
+        fps: null,
+      } as RefItem,
+    }));
     setDraft((d) => {
       const refs = [...d.refs];
-      for (const file of list) {
-        const r: RefItem = {
-          localId: uid(),
-          uploadId: null,
-          kind,
-          role: refStyle === "frames" && kind === "image" ? role ?? nextFrameRole(refs) : "reference",
-          fileName: file.name,
-          status: "uploading",
-          progress: 0,
-          error: null,
-          url: kind === "audio" ? null : URL.createObjectURL(file),
-          mime: file.type,
-          bytes: file.size,
-          width: null,
-          height: null,
-          durationMs: null,
-          fps: null,
-        };
-        refs.push(r);
-        added.push({ item: r, file });
+      for (const { item } of added) {
+        refs.push({ ...item, name: nextName(kind, refs), role: refStyle === "frames" && kind === "image" ? role ?? nextFrameRole(refs) : "reference" });
       }
       return { ...d, refs };
     });
@@ -397,6 +413,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       settings: ev?.settings ?? settings,
       refStyle,
       refs: [],
+      modelPrompt: null,
       priceCoins: expectedCoins,
       charged: !owner,
       chargeState: "none",
@@ -415,7 +432,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       settings: ev?.settings ?? settings,
       prompt: draft.prompt,
       instructions: draft.instructions,
-      refs: draft.refs.map((r) => ({ uploadId: r.uploadId, role: r.role })),
+      refs: draft.refs.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
     };
     try {
@@ -473,10 +490,13 @@ export default function Studio({ section, generators, prices: initialPrices, use
     if (j.refs.length) {
       const { ok, body } = await call<{ uploads: UploadView[] }>(`/api/jawad/uploads?ids=${j.refs.map((r) => r.uploadId).join(",")}`);
       const byId = new Map((ok ? body.uploads : []).map((u) => [u.id, u]));
-      refs = j.refs.map((r) => {
-        const v = byId.get(r.uploadId);
-        return v ? fromView(v, r.role) : { localId: uid(), uploadId: r.uploadId, kind: r.kind, role: r.role, fileName: "", status: "missing", progress: 1, error: "هذا المرجع حُذف.", url: null, mime: "", bytes: 0, width: null, height: null, durationMs: null, fps: null };
-      });
+      refs = withNames(
+        j.refs.map((r) => {
+          const v = byId.get(r.uploadId);
+          const name = r.name ?? "";
+          return v ? fromView(v, r.role, name) : { localId: uid(), uploadId: r.uploadId, kind: r.kind, name, role: r.role, fileName: "", status: "missing", progress: 1, error: "هذا المرجع حُذف.", url: null, mime: "", bytes: 0, width: null, height: null, durationMs: null, fps: null };
+        }),
+      );
     }
     setDraft((d) => ({
       ...d,
@@ -495,7 +515,18 @@ export default function Studio({ section, generators, prices: initialPrices, use
   async function addFromWork(source: WorkSource, role?: RefRole): Promise<string | null> {
     const { ok, body } = await postJson<{ upload: UploadView }>("/api/jawad/uploads/from-output", source);
     if (!ok) return body.error ?? "تعذّر إضافته كمرجع.";
-    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference")] }));
+    setDraft((d) => ({ ...d, refs: [...d.refs, fromView(body.upload, refStyle === "frames" && body.upload.kind === "image" ? role ?? nextFrameRole(d.refs) : "reference", nextName(body.upload.kind, d.refs))] }));
+    return null;
+  }
+
+  /** Renames a reference (and its «@mentions» in the prompt). Returns why not, or null. */
+  function renameRef(localId: string, raw: string): string | null {
+    const name = cleanRefName(raw);
+    if (!name) return "الاسم: حروف أو أرقام أو _ أو - بلا مسافات (حتى ٢٤ حرفًا).";
+    const item = draft.refs.find((r) => r.localId === localId);
+    if (!item) return null;
+    if (draft.refs.some((r) => r.localId !== localId && sameName(r.name, name))) return `يوجد مرجع آخر باسم «@${name}».`;
+    setDraft((d) => ({ ...d, prompt: renameMentions(d.prompt, item.name, name), refs: d.refs.map((r) => (r.localId === localId ? { ...r, name } : r)) }));
     return null;
   }
 
@@ -565,6 +596,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
               uploadBlockedReason={!user ? "سجّل الدخول لرفع المراجع." : !allowed ? "المنصة مغلقة لحسابك." : null}
               onAdd={addFiles}
               onPickWork={addFromWork}
+              onRename={renameRef}
+              prompt={draft.prompt}
               onRetry={retryUpload}
               onRemove={removeRef}
               onRole={(id, role) => updateRef(id, { role })}
@@ -574,6 +607,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
               ev={ev}
               prompt={draft.prompt}
               instructions={draft.instructions}
+              refs={draft.refs}
               onPrompt={(prompt) => setDraft((d) => ({ ...d, prompt }))}
               onInstructions={(instructions) => setDraft((d) => ({ ...d, instructions }))}
               touched={touched}
