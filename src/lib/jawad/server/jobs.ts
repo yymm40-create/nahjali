@@ -387,7 +387,7 @@ async function saveVideo(job: JobRow, task: ArkTask) {
     const dims = sn?.kind === "video" ? probe(bytes, sn) : {};
     const mime = sn?.kind === "video" ? sn.mime : "video/mp4";
     await saveOutput(claimed, 0, file, mime, mime === "video/quicktime" ? "mov" : "mp4", dims);
-    // The real cost from the provider's token count (rate of the resolution, input without video)
+    // The real cost from the provider's token count (rate of the resolution, with or without video input)
     const usd = task.tokens != null ? (task.tokens * videoRate(job)) / 1e6 : null;
     await finishJob(claimed, "succeeded", { costUsd: usd, units: { tokens: task.tokens, duration: task.duration, ratio: task.ratio, resolution: task.resolution } });
   } catch (e) {
@@ -403,14 +403,15 @@ async function saveVideo(job: JobRow, task: ArkTask) {
   }
 }
 
-/** USD per 1M tokens of the job's model and resolution (input without video), from ModelArk's price page. */
+/** USD per 1M tokens of the job's model and resolution, from ModelArk's price page: a video in the input bills the whole task at the "with video" rate. */
 function videoRate(job: JobRow) {
   const res = String(job.inputs.settings.resolution);
-  const rates: Record<string, Record<string, number>> = {
-    "dreamina-seedance-2-5-260628": { "480p": 10.7, "720p": 10.7, "1080p": 11.7 },
-    "dreamina-seedance-2-0-260128": { "480p": 7, "720p": 7, "1080p": 7.7, "4k": 4 },
+  const withVideo = job.refs.some((r) => r.kind === "video");
+  const rates: Record<string, Record<string, [number, number]>> = {
+    "dreamina-seedance-2-5-260628": { "480p": [10.7, 6.4], "720p": [10.7, 6.4], "1080p": [11.7, 7.0] },
+    "dreamina-seedance-2-0-260128": { "480p": [7, 4.3], "720p": [7, 4.3], "1080p": [7.7, 4.7], "4k": [4, 2.4] },
   };
-  return rates[job.model_id]?.[res] ?? 0;
+  return rates[job.model_id]?.[res]?.[withVideo ? 1 : 0] ?? 0;
 }
 
 /** A task we sent but never got an answer for: find it among the account's recent tasks (never send a second one). */

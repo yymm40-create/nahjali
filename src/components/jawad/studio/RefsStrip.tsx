@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { GeneratorDef, RefKind, RefRole, RefStyle } from "@config/jawad/types";
 import type { Evaluation } from "@/lib/jawad/engine";
@@ -23,6 +24,8 @@ interface Props {
   onRefStyle: (s: RefStyle) => void;
   refs: RefItem[];
   canUpload: boolean;
+  /** The owner gets a direct link to the prices page when a kind is off only for a missing price. */
+  owner?: boolean;
   uploadBlockedReason: string | null;
   onAdd: (kind: RefKind, files: File[], role?: RefRole) => void;
   onRetry: (localId: string) => void;
@@ -79,7 +82,7 @@ function Thumb({ r, problem, big, onOpen, onRemove, onRetry }: { r: RefItem; pro
 }
 
 /** The references rectangle under the generator card: starts compact, grows to show references clearly. */
-export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, uploadBlockedReason, onAdd, onRetry, onRemove, onRole }: Props) {
+export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, owner = false, uploadBlockedReason, onAdd, onRetry, onRemove, onRole }: Props) {
   const [menu, setMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [preview, setPreview] = useState<RefItem | null>(null);
@@ -210,23 +213,33 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
                   {kinds.map((k) => {
                     const a = ev.refKinds[k];
                     return (
-                      <button
-                        key={k}
-                        type="button"
-                        role="menuitem"
-                        disabled={!a.allowed}
-                        onClick={() => {
-                          setMenu(false);
-                          pick(k);
-                        }}
-                        className="flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-start text-sm hover:bg-jw-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Icon name={KIND_ICON[k]} size={16} className="mt-0.5" />
-                        <span>
-                          <span className="block">{KIND_AR[k]}</span>
-                          {!a.allowed && <span className="block text-[11px] text-jw-faint">{a.reason}</span>}
-                        </span>
-                      </button>
+                      <div key={k}>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={!a.allowed}
+                          onClick={() => {
+                            setMenu(false);
+                            pick(k);
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-start text-sm hover:bg-jw-surface-3 disabled:cursor-not-allowed disabled:text-jw-muted disabled:hover:bg-transparent"
+                        >
+                          <Icon name={KIND_ICON[k]} size={16} />
+                          {KIND_AR[k]}
+                        </button>
+                        {/* Why it's off, readable, right under it (and, for the owner, where to fix it) */}
+                        {!a.allowed && (
+                          <p className="-mt-1 px-3 pb-2 ps-[38px] text-[11px] leading-relaxed text-jw-warn">
+                            {a.reason}
+                            {owner && a.needsPrice && (
+                              <>
+                                {" "}
+                                <Link href="/jawad-ai/admin/prices" className="underline">حدد السعر</Link>
+                              </>
+                            )}
+                          </p>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

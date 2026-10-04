@@ -34,7 +34,8 @@ export interface Evaluation {
   /** Why a reference cannot be sent, by reference id. */
   refProblems: Record<string, string>;
   /** Whether "+" may add each kind now, and why not. */
-  refKinds: Record<RefKind, { allowed: boolean; reason?: string }>;
+  /** What "+" may add now; `needsPrice`: off only because the owner's price for it is missing. */
+  refKinds: Record<RefKind, { allowed: boolean; reason?: string; needsPrice?: boolean }>;
   /** Reference styles this generator offers (besides none). */
   refStyles: RefStyle[];
   price: PriceResult;
@@ -172,9 +173,9 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
     if (!def.files[kind] || max === 0) refKinds[kind] = { allowed: false, reason: `${def.name} لا يقبل ${KIND_AR_PL[kind]} في هذا الوضع.` };
     else if (have >= max) refKinds[kind] = { allowed: false, reason: `وصلت الحد (${max}).` };
     else if (kind === "video" && def.priceKeys.some((k) => k.key.startsWith("vref:")) && prices[`vref:sec:${settings.resolution}`] == null) {
-      refKinds[kind] = { allowed: false, reason: "مراجع الفيديو موقوفة حتى يُحدَّد سعرها." };
+      refKinds[kind] = { allowed: false, reason: "مراجع الفيديو بهذه الدقة موقوفة حتى يُحدَّد سعرها.", needsPrice: true };
     } else if (kind === "image" && def.priceKeys.some((k) => k.key === "ref:image") && prices["ref:image"] == null) {
-      refKinds[kind] = { allowed: false, reason: "الصور المرجعية موقوفة حتى يُحدَّد سعرها." };
+      refKinds[kind] = { allowed: false, reason: "الصور المرجعية موقوفة حتى يُحدَّد سعرها.", needsPrice: true };
     } else refKinds[kind] = { allowed: true };
   }
 
