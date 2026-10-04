@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { defaultSettings, generatorById } from "@config/jawad/generators";
+import { defaultSettings, DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
 import { cleanRefName, defaultRefName, renameMentions, sameName } from "@/lib/jawad/mentions";
@@ -14,6 +14,7 @@ import Icon from "../Icon";
 import LoginLink from "../LoginLink";
 import { GeneratorCard, GeneratorPicker } from "./GeneratorCard";
 import OutputSettings from "./OutputSettings";
+import DirectorBoost from "./DirectorBoost";
 import PromptBox from "./PromptBox";
 import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
@@ -134,6 +135,9 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   // Submitting
   const [submitting, setSubmitting] = useState(false);
+  // «المخرج الخارق»: writing the prompt now, and the prompt it replaced (to bring back)
+  const [directing, setDirecting] = useState(false);
+  const [beforeDirector, setBeforeDirector] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [confirm, setConfirm] = useState<{ coins: number; was: number } | null>(null);
   const pendingKey = useRef<string | null>(null);
@@ -388,8 +392,61 @@ export default function Studio({ section, generators, prices: initialPrices, use
   else if (!allowed) blockers.push("المنصة مغلقة لحسابك حاليًا.");
   if (gen && !gen.live && !owner) blockers.push("هذا المولد غير متاح حاليًا.");
   if (busyUploads) blockers.push("انتظر حتى يكتمل رفع المراجع وفحصها.");
+  if (directing) blockers.push("انتظر حتى ينتهي «المخرج الخارق» من كتابة البرومبت.");
   if (ev) for (const i of ev.issues) if (!blockers.includes(i.message)) blockers.push(i.message);
   if (user && !owner && price != null && balance != null && balance < price) blockers.push(`رصيدك (${balance}) لا يكفي لهذا التوليد (${price} نقدة).`);
+
+  // «المخرج الخارق» (video making): its price, and why it can't run now
+  const directorCenti = def?.priceKeys.some((k) => k.key === DIRECTOR_PRICE_KEY) ? prices[def.id]?.[DIRECTOR_PRICE_KEY] : undefined;
+  const directorCoins = directorCenti == null ? null : Math.ceil(directorCenti / 100);
+  const directorWhy = !user
+    ? "سجّل الدخول أولًا."
+    : !allowed
+      ? "المنصة مغلقة لحسابك حاليًا."
+      : !draft.prompt.trim()
+        ? "اكتب فكرتك في البرومبت أولًا، ثم طوّرها."
+        : busyUploads
+          ? "انتظر حتى يكتمل رفع المراجع."
+          : submitting
+            ? "انتظر حتى يبدأ التوليد."
+            : !owner && directorCoins != null && balance != null && balance < directorCoins
+              ? `رصيدك (${balance}) لا يكفي (${directorCoins} نقدة).`
+              : null;
+
+  async function runDirector(expectedCoins: number) {
+    if (!def || directing) return;
+    setDirecting(true);
+    setNotice("");
+    const original = draft.prompt;
+    try {
+      const r = await postJson<{ prompt: string; coins: number; balance: number | null; code?: string }>("/api/jawad/director", {
+        idempotencyKey: uid(),
+        sectionId: section.id,
+        generatorId: def.id,
+        refStyle,
+        settings: ev?.settings ?? settings,
+        prompt: original,
+        refs: draft.refs.filter((r) => r.uploadId && r.status === "ready").map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
+        expectedCoins,
+      });
+      if (r.status === 409 && r.body.code === "price_changed" && typeof r.body.coins === "number") {
+        const coins = r.body.coins;
+        setPrices((p) => ({ ...p, [def.id]: { ...(p[def.id] ?? {}), [DIRECTOR_PRICE_KEY]: coins * 100 } }));
+        return setNotice(`تغيّر سعر «المخرج الخارق» إلى ${coins} نقدة. اضغط «طوّر» مرة ثانية إذا تبيه.`);
+      }
+      if (!r.ok) return setNotice(r.body.error ?? "تعذّر تطوير البرومبت.");
+      // The new prompt replaces the old one (which can be brought back)
+      setBeforeDirector(original);
+      setDraft((d) => ({ ...d, prompt: r.body.prompt }));
+      setTouched(true);
+      announceBalance(r.body.balance);
+      setNotice(r.body.coins ? `طوّر «المخرج الخارق» البرومبت وخُصمت ${r.body.coins} نقدة. راجعه ثم اضغط «توليد».` : "طوّر «المخرج الخارق» البرومبت. راجعه ثم اضغط «توليد».");
+    } catch {
+      setNotice("انقطع الاتصال أثناء التطوير. إذا خُصمت النقود ولم يتغير البرومبت، تواصل معنا.");
+    } finally {
+      setDirecting(false);
+    }
+  }
 
   async function submit(expectedCoins: number) {
     if (!def || !gen || submitting) return;
@@ -612,7 +669,23 @@ export default function Studio({ section, generators, prices: initialPrices, use
               onInstructions={(instructions) => setDraft((d) => ({ ...d, instructions }))}
               touched={touched}
               onTouched={() => setTouched(true)}
+              locked={directing ? "«المخرج الخارق» يكتب البرومبت…" : null}
             />
+            {directorCoins != null && (
+              <DirectorBoost
+                coins={directorCoins}
+                owner={owner}
+                disabledReason={directorWhy}
+                busy={directing}
+                canUndo={beforeDirector != null && beforeDirector !== draft.prompt}
+                onRun={() => runDirector(directorCoins)}
+                onUndo={() => {
+                  setDraft((d) => ({ ...d, prompt: beforeDirector ?? d.prompt }));
+                  setBeforeDirector(null);
+                  setNotice("رجعنا برومبتك السابق.");
+                }}
+              />
+            )}
             <OutputSettings ev={ev} values={ev.settings} onChange={setSetting} />
           </div>
 

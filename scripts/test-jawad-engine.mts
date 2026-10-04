@@ -1,9 +1,10 @@
 // JAWAD AI: checks the central registry and the shared request rules (no keys, no network).
 // Run: npx tsx scripts/test-jawad-engine.mts
 import assert from "node:assert/strict";
-import { GENERATORS, generatorById, gptImage2OutputTokens, defaultSettings, GPT_IMAGE_2_SIZES, centiFor, coinsOf } from "../config/jawad/generators";
+import { DIRECTOR_PRICE_KEY, GENERATORS, generatorById, gptImage2OutputTokens, defaultSettings, GPT_IMAGE_2_SIZES, centiFor, coinsOf } from "../config/jawad/generators";
 import { evaluate, priceTable, priceVersion, promptAdvice } from "../src/lib/jawad/engine";
 import { cleanRefName, defaultRefName, findMentions, promptForModel, renameMentions } from "../src/lib/jawad/mentions";
+import { directorProblems, directorPrompt, unspokenLength } from "../src/lib/jawad/director";
 import type { RefMeta } from "../config/jawad/types";
 
 let passed = 0;
@@ -237,6 +238,26 @@ test("prompt length: up to 32,000 characters (GPT Image 2's documented limit); S
   assert.equal(promptAdvice(sd, "a horse runs"), null);
   assert.ok(promptAdvice(sd, "马".repeat(501)));
   assert.equal(promptAdvice(gi, long), null);
+});
+
+test("«المخرج الخارق»: 30 coins by default in video making only", () => {
+  for (const id of ["byteplus-seedance-2-5", "byteplus-seedance-2-0"]) assert.equal(priceTable(g(id), {})[DIRECTOR_PRICE_KEY], 3000);
+  for (const id of ["openai-gpt-image-2", "openai-gpt-4o-mini-tts"]) assert.equal(priceTable(g(id), {})[DIRECTOR_PRICE_KEY], undefined);
+});
+
+test("«المخرج الخارق» answers: EN ≤ 1000 / ZH ≤ 500 without the spoken lines, no Arabic script, only the given @names", () => {
+  const spoken = '"Marhaban ya sadiqi, kayfa haluk? ' + "na ".repeat(200) + '"';
+  const ok = { en: "Style & Mood: dusk. Dynamic Description: @horse gallops for 8 seconds. Audio: " + spoken, zh: "风格与氛围：黄昏。动态描述：@horse 奔跑八秒。音频：" + spoken };
+  assert.ok(unspokenLength(ok.en) < 120 && ok.en.length > 600, "spoken lines don't count");
+  assert.deepEqual(directorProblems(ok, ["horse"]), []);
+  assert.equal(directorPrompt(ok), `${ok.en}\n\n${ok.zh}`);
+  const arabic = directorProblems({ ...ok, en: ok.en + ' "مرحبا"' }, ["horse"]);
+  assert.ok(arabic.some((p) => p.includes("Arabic script")));
+  assert.ok(directorProblems({ ...ok, en: "a".repeat(1001) }, ["horse"]).some((p) => p.includes("1001")));
+  assert.ok(directorProblems({ ...ok, zh: "马".repeat(501) }, ["horse"]).some((p) => p.includes("501")));
+  assert.ok(directorProblems({ ...ok, en: ok.en + " with @image3" }, ["horse"]).some((p) => p.includes("@image3")));
+  assert.ok(directorProblems({ ...ok, en: "<<<image_1>>> runs" }, ["horse"]).some((p) => p.includes("@names only")));
+  assert.ok(directorProblems({ en: "", zh: "x" }, []).length > 0);
 });
 
 test("all generators have sources, a version and verification notes", () => {
