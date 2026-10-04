@@ -23,6 +23,7 @@ import { refsFor, type UploadRow } from "./uploads";
 import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
+import { prepareEdit, type EditInputs } from "./smart-edit";
 
 const db = () => createAdminClient();
 
@@ -41,7 +42,7 @@ export interface JobRow {
   output_kind: "image" | "video" | "audio";
   prompt: string;
   /** modelPrompt: the prompt as the model receives it (each «@name» written the model's way), when it differs. */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -229,18 +230,20 @@ export async function runJob(jobId: string) {
     .eq("status", "queued")
     .eq("submit_state", "pending")
     .select("*");
-  const job = (data?.[0] ?? null) as JobRow | null;
+  let job = (data?.[0] ?? null) as JobRow | null;
   if (!job) return;
   const def = generatorById(job.generator_id);
   try {
     if (!def) throw new ProviderError("rejected", "المولد لم يعد متاحًا.", `unknown generator ${job.generator_id}`);
+    // «التعديل الذكي»: Claude writes the corrected prompt first
+    if (job.inputs.edit && !job.inputs.edit.done) job = await prepareEdit(job);
     const { rows } = await refsFor(job.user_id, job.refs.map((r) => ({ uploadId: r.uploadId, role: r.role }))).catch(() => {
       throw new ProviderError("rejected", "أحد المراجع حُذف قبل الإرسال. لم يُخصم منك شيء.", "reference missing at submit");
     });
     if (def.provider.id === "byteplus-modelark") await submitVideo(job, def, rows);
     else await runSync(job, def, rows);
   } catch (e) {
-    await failFromError(job, def, e);
+    await failFromError(job!, def, e);
   }
 }
 

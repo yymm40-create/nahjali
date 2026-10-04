@@ -215,6 +215,24 @@ export async function uploadFromFilmAsset(userId: string, assetId: unknown) {
   return confirmUpload(userId, row.id);
 }
 
+/** A picture made on the server for the user (a frame of their own video), stored as a checked reference. */
+export async function uploadFromBuffer(userId: string, bytes: Uint8Array, fileName: string) {
+  if (bytes.length > MAX_UPLOAD_BYTES) throw new UserError("الملف أكبر من ٥٠ ميجا.", 400);
+  const s = sniff(bytes);
+  const kind = s ? UPLOAD_MIMES[s.mime] : undefined;
+  if (!s || !kind) throw new UserError("ملف غير صالح.", 400);
+  const path = `${userId}/refs/${randomUUID()}.${UPLOAD_EXT[s.mime]}`;
+  const up = await db().storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: s.mime, upsert: false });
+  if (up.error) throw up.error;
+  const { data: row, error } = await db()
+    .from("jawad_uploads")
+    .insert({ user_id: userId, kind, storage_path: path, file_name: fileName.slice(0, 200), mime: s.mime, bytes: bytes.length, status: "pending" })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return confirmUpload(userId, row.id);
+}
+
 export async function uploadFromOutput(userId: string, outputId: unknown) {
   if (!isUuid(outputId)) throw new UserError("ملف غير صحيح.", 400);
   const { data: out } = await db().from("jawad_outputs").select("*").eq("id", outputId).eq("user_id", userId).maybeSingle();

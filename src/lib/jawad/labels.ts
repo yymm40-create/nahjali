@@ -10,7 +10,7 @@ export function stageLabel(status: JobStatus, providerStatus?: string | null) {
     case "queued":
       return "بالانتظار";
     case "submitting":
-      return "الإرسال إلى المزوّد";
+      return providerStatus === "rewriting" ? "يكتب البرومبت المعدّل" : "الإرسال إلى المزوّد";
     case "running":
       return providerStatus === "queued" ? "في طابور المزوّد" : "التوليد";
     case "saving":
