@@ -105,6 +105,10 @@ export interface Privacy {
   community: boolean;
   leaderboard: boolean;
   showAvatar: boolean;
+  /** Only accepted followers see my posts and stories. */
+  privateAccount: boolean;
+  /** Stories on top of the community, or only in their own place. */
+  storiesInFeed: boolean;
 }
 
 export interface ChallengeSection {

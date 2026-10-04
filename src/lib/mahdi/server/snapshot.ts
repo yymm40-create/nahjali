@@ -90,7 +90,7 @@ const DEFAULT_NOTIFICATIONS: NotificationSettings = { mode: "off", times: ["20:0
 async function loadExtras(supabase: SupabaseClient, logsFrom: string): Promise<Pick<Snapshot, "rewards" | "privacy" | "challenges" | "notifications">> {
   const [rewards, privacy, sections, list, members, clogs, notif] = await Promise.all([
     supabase.from("mahdi_user_rewards").select("milestone_id, unlocked_at, seen_at"),
-    supabase.from("mahdi_privacy").select("community, leaderboard, show_avatar").maybeSingle(),
+    supabase.from("mahdi_privacy").select("*").maybeSingle(),
     supabase.from("mahdi_challenge_sections").select("id, name, description, icon").order("sort_order"),
     supabase.from("mahdi_challenges").select("*").order("starts_on", { ascending: false }),
     supabase.from("mahdi_challenge_members").select("challenge_id, joined_on, left_on, on_leaderboard"),
@@ -102,7 +102,13 @@ async function loadExtras(supabase: SupabaseClient, logsFrom: string): Promise<P
   const n = notif.data;
   return {
     rewards: (rewards.data ?? []).map((r) => ({ milestoneId: r.milestone_id, unlockedAt: r.unlocked_at, seenAt: r.seen_at })),
-    privacy: { community: Boolean(privacy.data?.community), leaderboard: Boolean(privacy.data?.leaderboard), showAvatar: Boolean(privacy.data?.show_avatar) },
+    privacy: {
+      community: Boolean(privacy.data?.community),
+      leaderboard: Boolean(privacy.data?.leaderboard),
+      showAvatar: Boolean(privacy.data?.show_avatar),
+      privateAccount: Boolean(privacy.data?.private_account),
+      storiesInFeed: privacy.data?.stories_in_feed !== false,
+    },
     challenges: {
       sections: sections.data ?? [],
       list: (list.data ?? []).map(

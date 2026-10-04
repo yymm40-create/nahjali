@@ -10,6 +10,8 @@ import { normalizeTitle } from "@/lib/mahdi/engine";
 import { COVER_BUCKET } from "@/lib/mahdi/server/reading";
 import { notify } from "@/lib/mahdi/server/inbox";
 import { removePdf } from "@/lib/mahdi/server/book-files";
+import { deletePost } from "@/lib/mahdi/server/social";
+import { deleteStory } from "@/lib/mahdi/server/stories";
 
 const A = t.admin;
 const CONTEXTS = ["home", "day_complete", "weekly", "monthly", "comeback", "milestone", "notification"] as const;
@@ -29,7 +31,8 @@ const bad = (msg: string) => new UserError(msg, 400);
 /**
  * Owner-only content management for «لأجل المهدي». One route, one `action` per change:
  *   section.save / section.delete · challenge.save / challenge.status / challenge.delete
- *   text.save / text.delete · phrase.save / phrase.delete · post.hide / post.unhide · reports.dismiss
+ *   text.save / text.delete · phrase.save / phrase.delete · post.hide / post.unhide / post.delete · reports.dismiss
+ *   story.delete / story.reports.dismiss
  *   book.save / book.hide / book.unhide / book.dismiss / book.pdf.remove · assistant.reply / assistant.read
  * Everything runs with the service role, after checking that the caller is the owner. Anyone else gets 404.
  */
@@ -176,6 +179,15 @@ export const POST = handle(async (req: Request) => {
       break;
     case "reports.dismiss":
       await run(db.from("mahdi_post_reports").delete().eq("post_id", id(body.postId)));
+      break;
+    case "post.delete":
+      await deletePost(id(body.id));
+      break;
+    case "story.delete":
+      await deleteStory(id(body.id));
+      break;
+    case "story.reports.dismiss":
+      await run(db.from("mahdi_story_reports").delete().eq("story_id", id(body.storyId)));
       break;
 
     // ── shared book catalogue ──

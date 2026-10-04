@@ -41,6 +41,8 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   }
 
   if (!("report" in body)) throw new UserError(t.errors.invalid, 400);
-  await supabase.from("mahdi_book_reports").upsert({ book_id: id, user_id: user.id, reason: cleanLine(body.report, 300) }, { ignoreDuplicates: true });
+  // A plain insert: "ignore if already there" needs a read permission reporters do not have (one report per person)
+  const { error } = await supabase.from("mahdi_book_reports").insert({ book_id: id, user_id: user.id, reason: cleanLine(body.report, 300) });
+  if (error && error.code !== "23505") throw error;
   return NextResponse.json({ ok: true });
 });

@@ -7,6 +7,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { selectAll } from "@/lib/mahdi/server/snapshot";
 import { coverUrl } from "@/lib/mahdi/server/reading";
 import { PDF_BUCKET } from "@/lib/mahdi/server/book-files";
+import { signMedia } from "@/lib/mahdi/server/media";
 import MahdiAdminTools, { type AdminData } from "./MahdiAdminTools";
 
 export const metadata = { title: "لأجل المهدي | لوحة التحكم" };
@@ -24,7 +25,7 @@ export default async function MahdiAdminPage() {
     selectAll<{ challenge_id: string }>((a, b) => db.from("mahdi_challenge_members").select("challenge_id").order("challenge_id").order("user_id").range(a, b)),
     db.from("mahdi_religious_texts").select("*").order("created_at", { ascending: false }),
     db.from("mahdi_phrases").select("*").order("sort_order"),
-    selectAll<{ post_id: string; reason: string }>((a, b) => db.from("mahdi_post_reports").select("post_id, reason").order("post_id").order("user_id").range(a, b)),
+    selectAll<{ post_id: string; reason: string; category?: string }>((a, b) => db.from("mahdi_post_reports").select("*").order("post_id").order("user_id").range(a, b)),
     db.from("mahdi_posts").select("id").not("hidden_at", "is", null),
   ]);
 
@@ -74,11 +75,21 @@ export default async function MahdiAdminPage() {
 
   // Reported posts (with their reports), plus posts already hidden
   const reasons = new Map<string, string[]>();
-  for (const r of reports) (reasons.get(r.post_id) ?? reasons.set(r.post_id, []).get(r.post_id)!).push(r.reason);
+  const categories = new Map<string, string[]>();
+  for (const r of reports) {
+    (reasons.get(r.post_id) ?? reasons.set(r.post_id, []).get(r.post_id)!).push(r.reason);
+    (categories.get(r.post_id) ?? categories.set(r.post_id, []).get(r.post_id)!).push(r.category ?? "other");
+  }
   const postIds = [...new Set([...reasons.keys(), ...(hidden.data ?? []).map((p) => p.id)])];
-  const posts = postIds.length ? await db.from("mahdi_posts").select("id, user_id, kind, payload, closing, created_at, hidden_at, hidden_reason").in("id", postIds.slice(0, 200)) : { data: [] };
+  const posts = postIds.length ? await db.from("mahdi_posts").select("*").in("id", postIds.slice(0, 200)) : { data: [] };
+
+  // Reported stories (after migration 0020)
+  const storyReports = await selectAll<{ story_id: string; reason: string; category: string }>((a, b) => db.from("mahdi_story_reports").select("*").order("story_id").order("user_id").range(a, b)).catch(() => []);
+  const storyIds = [...new Set(storyReports.map((r) => r.story_id))];
+  const stories = storyIds.length ? ((await db.from("mahdi_stories").select("*").in("id", storyIds.slice(0, 200))).data ?? []) : [];
+  const mediaLinks = await signMedia([...(posts.data ?? []).map((p) => p.media_path as string | null), ...stories.map((x) => x.media_path as string | null)], 3600);
   const authors = new Map<string, string>();
-  const authorIds = [...new Set((posts.data ?? []).map((p) => p.user_id as string))];
+  const authorIds = [...new Set([...(posts.data ?? []).map((p) => p.user_id as string), ...stories.map((x) => x.user_id as string)])];
   if (authorIds.length) {
     for (const p of (await db.from("mahdi_profiles").select("user_id, display_name").in("user_id", authorIds)).data ?? []) authors.set(p.user_id, p.display_name);
   }
@@ -115,20 +126,45 @@ export default async function MahdiAdminPage() {
     challenges: (challenges.data ?? []).map((c) => ({ ...c, target: Number(c.target), members: memberCount[c.id] ?? 0 })),
     texts: texts.data ?? [],
     phrases: phrases.data ?? [],
-    reports: (posts.data ?? [])
-      .map((p) => ({
+    reports: [
+      ...(posts.data ?? []).map((p) => ({
         id: p.id as string,
+        type: "post" as const,
         author: authors.get(p.user_id) ?? "",
         kind: p.kind as string,
         title: String((p.payload as { title?: string })?.title ?? ""),
         value: String((p.payload as { value?: string })?.value ?? ""),
+        caption: String(p.caption ?? (p.payload as { text?: string })?.text ?? ""),
+        quote: String((p.payload as { text?: string })?.text ?? ""),
+        media: p.media_path && mediaLinks.get(p.media_path) ? { url: mediaLinks.get(p.media_path)!, kind: p.media_kind as "image" | "video" } : null,
         createdAt: p.created_at as string,
         hidden: Boolean(p.hidden_at),
         hiddenReason: (p.hidden_reason as string) ?? "",
         reasons: reasons.get(p.id) ?? [],
+        categories: categories.get(p.id) ?? [],
         count: (reasons.get(p.id) ?? []).length,
-      }))
-      .sort((a, b) => Number(a.hidden) - Number(b.hidden) || b.count - a.count),
+      })),
+      ...stories.map((x) => {
+        const rs = storyReports.filter((r) => r.story_id === x.id);
+        return {
+          id: x.id as string,
+          type: "story" as const,
+          author: authors.get(x.user_id) ?? "",
+          kind: x.kind as string,
+          title: "",
+          value: "",
+          caption: String(x.text ?? ""),
+          quote: x.kind === "quote" ? String(x.text ?? "") : "",
+          media: x.media_path && mediaLinks.get(x.media_path) ? { url: mediaLinks.get(x.media_path)!, kind: (x.kind === "video" ? "video" : "image") as "image" | "video" } : null,
+          createdAt: x.created_at as string,
+          hidden: Boolean(x.hidden_at),
+          hiddenReason: (x.hidden_reason as string) ?? "",
+          reasons: rs.map((r) => r.reason),
+          categories: rs.map((r) => r.category),
+          count: rs.length,
+        };
+      }),
+    ].sort((a, b) => Number(a.hidden) - Number(b.hidden) || b.count - a.count),
   };
 
   return (

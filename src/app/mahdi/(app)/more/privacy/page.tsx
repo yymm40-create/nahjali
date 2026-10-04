@@ -42,6 +42,8 @@ export default function PrivacyPage() {
         {row("community", t.privacy.community, `${t.privacy.communityHint} ${t.privacy.leaveNote}`)}
         {row("leaderboard", t.privacy.leaderboard, t.privacy.leaderboardHint, !p.community)}
         {row("showAvatar", t.privacy.showAvatar, t.more.avatarHint, !p.community)}
+        {row("privateAccount", t.privacy.privateAccount, t.privacy.privateAccountHint, !p.community)}
+        {row("storiesInFeed", t.privacy.storiesInFeed, t.privacy.storiesInFeedHint, !p.community)}
       </section>
     </div>
   );
