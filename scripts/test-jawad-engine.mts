@@ -2,7 +2,7 @@
 // Run: npx tsx scripts/test-jawad-engine.mts
 import assert from "node:assert/strict";
 import { GENERATORS, generatorById, gptImage2OutputTokens, defaultSettings, GPT_IMAGE_2_SIZES, centiFor, coinsOf } from "../config/jawad/generators";
-import { evaluate, priceTable, priceVersion } from "../src/lib/jawad/engine";
+import { evaluate, priceTable, priceVersion, promptAdvice } from "../src/lib/jawad/engine";
 import { cleanRefName, defaultRefName, findMentions, promptForModel, renameMentions } from "../src/lib/jawad/mentions";
 import type { RefMeta } from "../config/jawad/types";
 
@@ -222,6 +222,21 @@ test("a mention that can only mean a reference must be added; two references can
   assert.ok(!plain.issues.some((i) => i.field === "prompt"));
   const dup = evaluate(d, { ...base, prompt: "x", refs: [img({ name: "Horse" }), img({ name: "horse" })] }, priceTable(d, {}));
   assert.ok(dup.issues.some((i) => i.field === "refs" && i.message.includes("@horse")));
+});
+
+test("prompt length: up to 32,000 characters (GPT Image 2's documented limit); Seedance past BytePlus's advice only warns", () => {
+  const gi = g("openai-gpt-image-2");
+  const base = { settings: defaultSettings(gi), instructions: "", refStyle: "none" as const, refs: [] };
+  assert.ok(!evaluate(gi, { ...base, prompt: "a".repeat(32000) }, priceTable(gi, {})).issues.some((i) => i.field === "prompt"));
+  assert.ok(evaluate(gi, { ...base, prompt: "a".repeat(32001) }, priceTable(gi, {})).issues.some((i) => i.field === "prompt"));
+  const sd = g("byteplus-seedance-2-5");
+  const long = Array.from({ length: 1200 }, () => "word").join(" ");
+  const e = evaluate(sd, { settings: defaultSettings(sd), instructions: "", refStyle: "none", refs: [], prompt: long }, priceTable(sd, {}));
+  assert.ok(!e.issues.some((i) => i.field === "prompt"), "not blocked");
+  assert.ok(promptAdvice(sd, long)?.includes("BytePlus"));
+  assert.equal(promptAdvice(sd, "a horse runs"), null);
+  assert.ok(promptAdvice(sd, "马".repeat(501)));
+  assert.equal(promptAdvice(gi, long), null);
 });
 
 test("all generators have sources, a version and verification notes", () => {

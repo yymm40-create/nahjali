@@ -165,7 +165,16 @@ export interface GeneratorDef {
   modes: ModeDef[];
   options: OptionDef[];
   files: Partial<Record<RefKind, FileRule>>;
-  prompt: { label: string; placeholder: string; max: number; arabic: boolean; arabicNote?: string };
+  prompt: {
+    label: string;
+    placeholder: string;
+    /** Hard limit (the provider's documented one). */
+    max: number;
+    arabic: boolean;
+    arabicNote?: string;
+    /** The provider's advice on length (not a limit): past it, a warning is shown, nothing is blocked. */
+    advise?: { maxWords: number; maxCjk: number; note: string };
+  };
   /** How the model itself names the n-th reference of a type in a prompt (each «@name» is sent this way). */
   refLabel?: (kind: RefKind, n: number) => string;
   /** A second text field sent separately (e.g. the voice's performance description). */

@@ -107,7 +107,8 @@ const gptImage2: GeneratorDef = {
     { key: "count", label: "عدد الصور", kind: "int", min: 1, max: 4, default: 1, unit: "صورة" },
   ],
   files: { image: IMAGE_FILE },
-  prompt: { label: "البرومبت", placeholder: "صف الصورة التي تريدها…", max: 4000, arabic: true },
+  // OpenAI API reference: the prompt can be up to 32,000 characters for GPT Image models
+  prompt: { label: "البرومبت", placeholder: "صف الصورة التي تريدها…", max: 32000, arabic: true },
   // OpenAI's prompting guide: refer to input images by index ("Image 1", "Image 2")
   refLabel: (_kind, n) => `Image ${n}`,
   priceKeys: [
@@ -168,6 +169,7 @@ const gptImage2: GeneratorDef = {
     { item: "سعر الصور المرجعية", status: "unverified", note: "OpenAI يوثّق توكنات الصورة المدخلة لـ gpt-image-1 فقط؛ نسعّرها افتراضيًا بسقف أقصى حالة موثّقة (7,100 توكن × $8/مليون)، والتكلفة الفعلية تُسجَّل من usage." },
     { item: "الخلفية الشفافة", status: "unverified", note: "موثّقة كمعاينة (preview) لـ gpt-image-2؛ غير معروضة." },
     { item: "التقدم والإلغاء", status: "verified", note: "طلب متزامن بلا نسبة تقدم ولا إلغاء." },
+    { item: "طول البرومبت", status: "verified", note: "حتى 32,000 حرف (مرجع Images API)." },
     { item: "أسماء المراجع في البرومبت", status: "verified", note: "دليل OpenAI: الإشارة للصور المدخلة بترتيبها «Image 1» و«Image 2»؛ كل «‎@اسم» يُرسل بهذا الشكل." },
   ],
   notes: ["كل طلب متزامن: يرجع بالصور مباشرة (base64) ونحفظها في تخزيننا."],
@@ -261,9 +263,15 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 50 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minPixels: 407_696, maxPixels: 8_295_044, minMs: 2000, maxMs: lim.clipMax, minFps: 24, maxFps: 60 },
       audio: { mimes: ["audio/mpeg", "audio/wav"], maxBytes: 15 * MB, minMs: 2000, maxMs: lim.clipMax },
     },
-    prompt: is25
-      ? { label: "البرومبت", placeholder: "صف المشهد والحركة والكاميرا… (اختياري مع المراجع)", max: 4000, arabic: true }
-      : { label: "البرومبت", placeholder: "Describe the scene, motion and camera…", max: 4000, arabic: false, arabicNote: "Seedance 2.0 يدعم رسميًا الإنجليزية والإسبانية والإندونيسية والبرتغالية واليابانية فقط؛ للعربية اختر Seedance 2.5." },
+    // No hard limit documented (we accept up to 32,000 characters); BytePlus advises ≤ 500 Chinese characters or 1,000 English words
+    prompt: {
+      label: "البرومبت",
+      placeholder: is25 ? "صف المشهد والحركة والكاميرا… (اختياري مع المراجع)" : "Describe the scene, motion and camera…",
+      max: 32000,
+      arabic: is25,
+      ...(is25 ? {} : { arabicNote: "Seedance 2.0 يدعم رسميًا الإنجليزية والإسبانية والإندونيسية والبرتغالية واليابانية فقط؛ للعربية اختر Seedance 2.5." }),
+      advise: { maxWords: 1000, maxCjk: 500, note: "البرومبت أطول مما تنصح به BytePlus (1000 كلمة إنجليزية أو 500 حرف صيني)؛ قد يتجاهل المولد بعض التفاصيل ويركّز على الأهم. يمكنك الإرسال مع ذلك." },
+    },
     priceKeys: [
       ...resolutions.map((r) => ({
         key: `sec:${r}`,
@@ -349,6 +357,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       { item: "المدة", status: "verified", note: `من 4 إلى ${maxSec} ثانية (نرسل مدة محددة، لا -1).` },
       { item: "المراجع", status: "verified", note: `صور 1–${lim.images}، صوت حتى ${lim.audios} (مجموع ≤ ${lim.totalMs / 1000} ث، كل مقطع 2–${lim.clipMax / 1000} ث، MP3/WAV ≤ 15MB)؛ صورة ≤ 30MB، أضلاع 300–6000، نسبة 0.4–2.5.${is25 ? "" : " الصوت وحده غير مقبول في 2.0."}` },
       { item: "اللغة", status: "verified", note: is25 ? "يدعم البرومبت العربي." : "لا يدعم العربية رسميًا؛ نمنع البرومبت العربي." },
+      { item: "طول البرومبت", status: "verified", note: "لا حد ثابت موثّق؛ يُنصح بـ ≤ 1000 كلمة إنجليزية أو 500 حرف صيني. نقبل حتى 32,000 حرف وننبّه بعد التوصية دون منع." },
       { item: "السعر", status: "verified", note: `توكنات = (مدة الفيديو المرجعي + المخرج) × العرض × الارتفاع × 24 ÷ 1024؛ بلا فيديو مرجعي: ${resolutions.map((r) => `${RES_LABEL[r]} $${SEEDANCE_RATE[v][r]}`).join(" · ")} لكل مليون. لا يُحسب الفشل.` },
       { item: "مراجع الفيديو", status: "unverified", note: `مع فيديو مرجعي تُحسب المهمة كلها بسعر «مع فيديو» (${resolutions.map((r) => `${RES_LABEL[r]} $${SEEDANCE_RATE_WITH_VIDEO[v][r]}`).join(" · ")} لكل مليون)، مع حد أدنى للتوكنات تقديري فقط؛ نسعّر ثانية المرجع افتراضيًا كثانية مخرج (سقف).` },
       { item: "التقدم", status: "verified", note: "الحالات queued/running/succeeded/failed/expired بلا نسبة مئوية؛ نعرض مؤشرًا غير محدد." },
