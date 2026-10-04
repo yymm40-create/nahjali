@@ -191,7 +191,7 @@ export function createStore(initial: Snapshot) {
       if (online) schedule(0);
     },
 
-    /** Re-checks "today" (called every minute, so the app rolls over at midnight in the user's time zone). */
+    /** Re-checks "today" (called every minute, so the app rolls over at 6:00 in the morning in the user's time zone). */
     tick() {
       const today = todayIn(state.snap.profile.timeZone);
       if (today !== state.today) set({ today });
