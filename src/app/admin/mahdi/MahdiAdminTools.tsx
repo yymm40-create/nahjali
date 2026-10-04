@@ -12,7 +12,7 @@ export interface Chal { id: string; section_id: string; title: string; descripti
 export interface Txt { id: string; kind: string; text: string; attribution: string; source: string; reference: string; verification_status: "pending" | "verified" | "rejected"; verified_by: string; notes: string; contexts: string[]; active: boolean }
 export interface Phr { id: string; text: string; contexts: string[]; active: boolean; sort_order: number }
 export interface Rep { id: string; author: string; kind: string; title: string; value: string; createdAt: string; hidden: boolean; hiddenReason: string; reasons: string[]; count: number }
-export interface Bk { id: string; title: string; author: string; pages: number; unit: "page" | "narration"; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number }
+export interface Bk { id: string; title: string; author: string; pages: number; unit: "page" | "narration"; description: string; coverUrl: string | null; hidden: boolean; hiddenReason: string; reasons: string[]; readers: number; pdfUrl: string | null; pdfSize: number | null }
 export interface Fb { id: string; name: string; username: string; rating: number | null; kind: string; message: string; place: string; createdAt: string }
 export interface AdminData { sections: Section[]; challenges: Chal[]; texts: Txt[]; phrases: Phr[]; reports: Rep[]; books: Bk[]; feedback: Fb[] }
 
@@ -445,6 +445,12 @@ function BooksTab({ data, send, busy }: TabProps) {
                 </ul>
               )}
               {b.hidden && b.hiddenReason && <p className="text-sm text-muted">{b.hiddenReason}</p>}
+              {b.pdfUrl && (
+                <p className="flex flex-wrap gap-3 text-sm font-bold">
+                  <a href={b.pdfUrl} target="_blank" rel="noreferrer" className="underline">{B.pdf(`${((b.pdfSize ?? 0) / 1024 / 1024).toFixed(1)} MB`)}</a>
+                  <button className="text-muted underline" disabled={busy} onClick={() => confirm(A.common.confirm) && send({ action: "book.pdf.remove", id: b.id }, A.common.done)}>{B.pdfRemove}</button>
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-2 pt-1 text-sm font-bold">
                 <button className="underline" onClick={() => setEdit(b)}>{A.common.edit}</button>
                 {b.hidden ? (

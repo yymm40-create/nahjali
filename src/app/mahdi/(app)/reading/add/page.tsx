@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { parseNumberInput } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import { shrinkImage } from "@/lib/mahdi/client/reading";
+import { shrinkImage, uploadBookPdf } from "@/lib/mahdi/client/reading";
 import type { Book, ReadingData } from "@/lib/mahdi/types";
 import type { BookUnit } from "@/lib/mahdi/engine";
 import BookCover from "@/components/mahdi/BookCover";
+import { CoverPicker, PdfPicker } from "@/components/mahdi/BookFiles";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useReading } from "@/components/mahdi/useReading";
@@ -25,9 +26,9 @@ export default function AddBookPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState<{ title: string; author: string; pages: string; description: string; unit: BookUnit }>({ title: "", author: "", pages: "", description: "", unit: "page" });
-  const [cover, setCover] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [cover, setCover] = useState<Blob | null>(null);
+  const [pdf, setPdf] = useState<File | null>(null);
+  const [uploading, setUploading] = useState<number | null>(null);
   const full = current.length >= 3;
   const mine = new Map(reading.library.map((e) => [e.book.id, e.state]));
 
@@ -44,10 +45,6 @@ export default function AddBookPage() {
       clearTimeout(id);
     };
   }, [q]);
-
-  useEffect(() => () => {
-    if (preview) URL.revokeObjectURL(preview);
-  }, [preview]);
 
   async function choose(book: Book) {
     setBusy(true);
@@ -75,8 +72,13 @@ export default function AddBookPage() {
     data.append("pages", String(pages));
     data.append("unit", form.unit);
     data.append("description", form.description.trim());
-    if (cover) data.append("cover", await shrinkImage(cover), "cover.jpg");
     try {
+      // An enhanced cover is already small; a photo is made smaller first
+      if (cover) data.append("cover", cover instanceof File ? await shrinkImage(cover) : cover, cover instanceof File ? "cover.jpg" : "cover.webp");
+      if (pdf) {
+        setUploading(0);
+        data.append("pdf", await uploadBookPdf(pdf, setUploading));
+      }
       const res = await mahdiFetch<{ bookId: string; duplicate: boolean; reading: ReadingData }>("/api/mahdi/reading/books", { method: "POST", body: data });
       store.setSnapPart({ reading: res.reading });
       toast(res.duplicate ? t.reading.duplicate : t.reading.created);
@@ -84,6 +86,7 @@ export default function AddBookPage() {
     } catch (err) {
       setError((err as Error).message);
     }
+    setUploading(null);
     setBusy(false);
   }
 
@@ -163,33 +166,7 @@ export default function AddBookPage() {
       {creating && (
         <form className="m-card space-y-4 p-5" onSubmit={create}>
           <h2 className="text-lg font-semibold">{t.reading.newBook}</h2>
-          <div className="flex items-center gap-4">
-            <BookCover book={{ title: form.title || t.reading.bookTitle, coverUrl: preview }} width={84} />
-            <div className="space-y-2">
-              <p className="m-label">{t.reading.cover}</p>
-              <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => fileRef.current?.click()}>
-                <Icon name="camera" size={18} /> {cover ? t.reading.coverChange : t.reading.coverPick}
-              </button>
-              <p className="m-hint">{t.reading.coverHint}</p>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="sr-only"
-                tabIndex={-1}
-                aria-hidden="true"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > 20 * 1024 * 1024) return setError(t.reading.coverTooBig);
-                  setCover(f);
-                  setPreview(URL.createObjectURL(f));
-                  e.target.value = "";
-                }}
-              />
-            </div>
-          </div>
+          <CoverPicker title={form.title} onChange={setCover} />
           <label className="block">
             <span className="m-label">{t.reading.bookTitle}</span>
             <input className="m-field" required maxLength={120} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -220,10 +197,11 @@ export default function AddBookPage() {
             <textarea className="m-field" rows={3} maxLength={500} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             <span className="m-hint mt-1 block">{t.reading.descriptionHint}</span>
           </label>
+          <PdfPicker file={pdf} onChange={setPdf} disabled={busy} />
           {error && <p className="m-error" role="alert">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
             <button type="button" className="m-btn m-btn-ghost" onClick={() => setCreating(false)}>{t.common.back}</button>
-            <button className="m-btn m-btn-primary" disabled={busy}>{busy ? t.common.saving : t.reading.create}</button>
+            <button className="m-btn m-btn-primary" disabled={busy}>{uploading !== null ? t.reading.pdf.uploading(uploading) : busy ? t.common.saving : t.reading.create}</button>
           </div>
           <p className="m-num text-center text-sm m-muted">{fmtNum(form.description.length)}/500</p>
         </form>

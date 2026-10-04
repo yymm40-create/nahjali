@@ -166,6 +166,8 @@ export interface Book {
   addedByMe: boolean;
   /** Hidden by the admin (only its owner still sees it). */
   hidden: boolean;
+  /** Size in bytes of the book's PDF for download, or null when it has none. */
+  pdfSize: number | null;
 }
 
 export type LibraryState = "reading" | "paused" | "finished";

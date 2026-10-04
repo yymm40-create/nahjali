@@ -6,9 +6,10 @@ import { useState } from "react";
 import { formatRanges, parsePagesInput } from "@/lib/mahdi/engine";
 import { fmtDate, fmtNum, fmtPct, fmtRelativeDay, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import { duration, sendSession } from "@/lib/mahdi/client/reading";
+import { duration, sendSession, uploadBookPdf } from "@/lib/mahdi/client/reading";
 import type { ReadingData } from "@/lib/mahdi/types";
 import BookCover from "@/components/mahdi/BookCover";
+import { PdfPicker, pdfSizeLabel } from "@/components/mahdi/BookFiles";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -29,6 +30,9 @@ export default function BookPage() {
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [pdf, setPdf] = useState<File | null>(null);
+  const [uploading, setUploading] = useState<number | null>(null);
+  const [pdfError, setPdfError] = useState("");
 
   if (!entry) {
     return (
@@ -58,6 +62,21 @@ export default function BookPage() {
       toast((e as Error).message);
     }
     setBusy(false);
+  }
+
+  async function attachPdf() {
+    if (!pdf) return;
+    setPdfError("");
+    setUploading(0);
+    try {
+      const path = await uploadBookPdf(pdf, setUploading);
+      apply((await mahdiFetch<{ reading: ReadingData }>(`/api/mahdi/reading/books/${book.id}`, { method: "POST", json: { pdf: path } })).reading);
+      setPdf(null);
+      toast(t.reading.pdf.added);
+    } catch (err) {
+      setPdfError((err as Error).message);
+    }
+    setUploading(null);
   }
 
   async function addPages(e: React.FormEvent) {
@@ -128,6 +147,25 @@ export default function BookPage() {
         )}
         {state !== "reading" && current.length >= 3 && <p className="text-sm m-muted">{t.reading.full}</p>}
       </section>
+
+      {book.pdfSize !== null && !book.hidden && (
+        // A plain link: the server checks the reader and answers with a short download link
+        <a href={`/api/mahdi/reading/books/${book.id}/pdf`} className="m-btn m-btn-ghost w-full" download>
+          <Icon name="arrowDown" size={18} /> {t.reading.pdf.download}
+          {book.pdfSize > 0 && <span className="m-num m-muted text-sm">({pdfSizeLabel(book.pdfSize)})</span>}
+        </a>
+      )}
+      {book.pdfSize === null && book.addedByMe && !book.hidden && (
+        <section className="m-card space-y-3 p-5" aria-label={t.reading.pdf.add}>
+          <PdfPicker file={pdf} onChange={setPdf} disabled={uploading !== null} />
+          {pdfError && <p className="m-error text-sm" role="alert">{pdfError}</p>}
+          {pdf && (
+            <button type="button" className="m-btn m-btn-primary w-full" disabled={uploading !== null} onClick={attachPdf}>
+              {uploading !== null ? t.reading.pdf.uploading(uploading) : t.reading.pdf.add}
+            </button>
+          )}
+        </section>
+      )}
 
       {book.description && (
         <section className="m-card space-y-1 p-5">

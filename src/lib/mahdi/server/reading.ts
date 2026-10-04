@@ -21,9 +21,13 @@ export interface BookRow {
   cover_path: string | null;
   added_by: string | null;
   hidden_at: string | null;
+  /** From migration 0019 (absent before it runs). */
+  pdf_path?: string | null;
+  pdf_size?: number | null;
 }
 
-export const BOOK_COLUMNS = "id, title, author, pages, unit, description, cover_path, added_by, hidden_at";
+/** Every column, so the optional ones of later migrations come along once they exist. */
+export const BOOK_COLUMNS = "*";
 
 export const bookFromRow = (r: BookRow, me: string): Book => ({
   id: r.id,
@@ -35,6 +39,7 @@ export const bookFromRow = (r: BookRow, me: string): Book => ({
   coverUrl: coverUrl(r.cover_path),
   addedByMe: r.added_by === me,
   hidden: Boolean(r.hidden_at),
+  pdfSize: r.pdf_path ? (r.pdf_size ?? 0) : null,
 });
 
 export const DEFAULT_GOALS: ReadingGoals = { daily: null, weekly: null, habitId: null, habitMetric: "minutes" };

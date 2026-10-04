@@ -9,6 +9,7 @@ import { UUID_RE } from "@/lib/mahdi/server/api";
 import { normalizeTitle } from "@/lib/mahdi/engine";
 import { COVER_BUCKET } from "@/lib/mahdi/server/reading";
 import { notify } from "@/lib/mahdi/server/inbox";
+import { removePdf } from "@/lib/mahdi/server/book-files";
 
 const A = t.admin;
 const CONTEXTS = ["home", "day_complete", "weekly", "monthly", "comeback", "milestone", "notification"] as const;
@@ -29,7 +30,7 @@ const bad = (msg: string) => new UserError(msg, 400);
  * Owner-only content management for «لأجل المهدي». One route, one `action` per change:
  *   section.save / section.delete · challenge.save / challenge.status / challenge.delete
  *   text.save / text.delete · phrase.save / phrase.delete · post.hide / post.unhide · reports.dismiss
- *   book.save / book.hide / book.unhide / book.dismiss · assistant.reply / assistant.read
+ *   book.save / book.hide / book.unhide / book.dismiss / book.pdf.remove · assistant.reply / assistant.read
  * Everything runs with the service role, after checking that the caller is the owner. Anyone else gets 404.
  */
 export const POST = handle(async (req: Request) => {
@@ -202,6 +203,15 @@ export const POST = handle(async (req: Request) => {
     case "book.hide":
       await run(db.from("mahdi_books").update({ hidden_at: new Date().toISOString(), hidden_reason: cleanLine(body.reason, 200) }).eq("id", id(body.id)));
       break;
+    case "book.pdf.remove": {
+      const bid = id(body.id);
+      const { data: b } = await db.from("mahdi_books").select("*").eq("id", bid).maybeSingle();
+      if (b?.pdf_path) {
+        await run(db.from("mahdi_books").update({ pdf_path: null, pdf_size: null, pdf_added_by: null }).eq("id", bid));
+        await removePdf(b.pdf_path as string);
+      }
+      break;
+    }
     case "book.unhide":
       await run(db.from("mahdi_books").update({ hidden_at: null, hidden_reason: "" }).eq("id", id(body.id)));
       break;
