@@ -26,6 +26,7 @@ import { arkCancelTask, arkCreateTask, arkGetTask, arkListTasks, type ArkContent
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
 import { resolveVoice } from "./voices";
+import { makeVideoSfx, storeSfxFrames, type VideoSfxInputs } from "./video-sfx";
 
 const db = () => createAdminClient();
 
@@ -44,7 +45,7 @@ export interface JobRow {
   output_kind: "image" | "video" | "audio";
   prompt: string;
   /** modelPrompt: the prompt as the model receives it (each «@name» written the model's way), when it differs. */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; sfx?: VideoSfxInputs };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -128,6 +129,8 @@ export interface GenerateBody {
   instructions?: unknown;
   refs?: unknown;
   expectedCoins?: unknown;
+  /** «مؤثرات من فيديو»: small JPEG frames of the video, `{ t, data: "data:image/jpeg;base64,…" }`. */
+  frames?: unknown;
 }
 
 export type CreateResult =
@@ -189,6 +192,13 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
   if (Number(b.expectedCoins) !== e.price.coins) return { kind: "price_changed", coins: e.price.coins, lines: e.price.lines, prices: table };
 
+  // «مؤثرات من فيديو»: the frames the studio took of the video are kept with the job (Claude watches them)
+  let sfx: VideoSfxInputs | undefined;
+  if (e.mode.id === "video_to_sfx") {
+    if (!process.env.ANTHROPIC_API_KEY) throw new UserError("صناعة المؤثرات من الفيديو غير متاحة حاليًا.", 503);
+    sfx = await storeSfxFrames(user.id, key, b.frames, meta.find((m) => m.kind === "video")?.durationMs ?? 0);
+  }
+
   // What the model reads: each «@name» written the way it numbers references (the user's prompt is kept as written)
   const modelPrompt = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
 
@@ -204,7 +214,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(sfx ? { sfx } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: e.price.coins,
       price_breakdown: e.price.lines,
@@ -216,6 +226,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
     p_label: coinLabel(def),
   });
   if (error) {
+    // No job: the frames kept for it go too
+    if (sfx) await db().storage.from(JAWAD_BUCKET).remove(sfx.frames.map((f) => f.path)).catch(() => null);
     const msg = String(error.message ?? "");
     if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${e.price.coins} نقدة.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
@@ -328,9 +340,19 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   throw new ProviderError("rejected", "نوع غير مدعوم.", `sync output ${def.output}`);
 }
 
-/** ElevenLabs: Eleven v4 speech, a sound effect, or a song (with an optional reference recording). Saved as MP3. */
+/**
+ * ElevenLabs: Eleven v4 speech, a sound effect, or a song (with an optional reference recording), saved as MP3; or the
+ * sound effects of a video, mixed into one WAV track of the video's length.
+ */
 async function runEleven(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   const s = job.inputs.settings;
+  if (job.mode === "video_to_sfx") {
+    const r = await makeVideoSfx(job, Number(s.influence) || 0.3);
+    await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+    await saveOutput(job, 0, r.audio, "audio/wav", "wav", { durationMs: r.durationMs });
+    await finishJob(job, "succeeded", { costUsd: r.costUsd, units: r.units });
+    return;
+  }
   let audio: Buffer;
   let costUsd: number;
   let units: Record<string, unknown> = {};

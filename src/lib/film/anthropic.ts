@@ -49,11 +49,16 @@ export async function callClaudeJson<T>({
   turns,
   schema,
   maxTokens,
+  effort = "medium",
+  fallback = false,
 }: {
   system: string;
   turns: ClaudeTurn[];
   schema: object;
   maxTokens: number;
+  effort?: "low" | "medium" | "high" | "xhigh";
+  /** A request the safety checks decline is answered by Anthropic's recommended fallback model instead (server-side). */
+  fallback?: boolean;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -72,13 +77,15 @@ export async function callClaudeJson<T>({
       "x-api-key": key,
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
+      ...(fallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}),
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
       max_tokens: maxTokens,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages,
-      output_config: { effort: "medium", format: { type: "json_schema", schema } },
+      output_config: { effort, format: { type: "json_schema", schema } },
+      ...(fallback ? { fallbacks: "default" } : {}),
     }),
   });
 

@@ -7,6 +7,7 @@ import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputV
 import SmartCoin from "@/components/SmartCoin";
 import Dialog from "../Dialog";
 import SmartEdit from "./SmartEdit";
+import SoundOnVideo from "./SoundOnVideo";
 import Icon from "../Icon";
 import LocalTime from "../LocalTime";
 import LoginLink from "../LoginLink";
@@ -64,6 +65,9 @@ function settingChips(j: JobView) {
     if (o.kind === "int") out.push(`${v} ${o.unit}`);
     if (o.kind === "bool" && v) out.push(o.label);
   }
+  // A sound made another way than from the text alone («من فيديو»، «بمقطع مرجعي»)
+  const mode = def?.output === "audio" ? def.modes.find((m) => m.id === j.mode) : undefined;
+  if (mode && mode.refStyle !== "none") out.unshift(mode.label);
   return out;
 }
 
@@ -285,6 +289,10 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
   const [details, setDetails] = useState(false);
   const [editing, setEditing] = useState(false);
   const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
+  // «مؤثرات من فيديو»: the track can be watched under its video
+  const [watching, setWatching] = useState(false);
+  const sourceVideo = j.mode === "video_to_sfx" ? j.refs.find((r) => r.kind === "video") : undefined;
+  const track = j.status === "succeeded" && sourceVideo ? j.outputs[0] : undefined;
   const open = isOpenStatus(j.status);
   const chips = settingChips(j);
   const outs = j.outputs;
@@ -384,6 +392,11 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
                 </button>
               );
             })}
+          {track?.url && (
+            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setWatching(true)}>
+              <Icon name="play" size={14} /> شاهد مع الفيديو
+            </button>
+          )}
           {editable && (
             <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setEditing(true)}>
               <Icon name="wand" size={14} /> التعديل الذكي
@@ -402,6 +415,7 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
         </div>
         {j.status === "validating" && j.error && <p className="text-xs text-jw-warn">{j.error}</p>}
       </div>
+      {track?.url && sourceVideo && <SoundOnVideo uploadId={sourceVideo.uploadId} audioUrl={track.url} downloadUrl={track.downloadUrl} open={watching} onClose={() => setWatching(false)} />}
       {editable && (
         <SmartEdit
           job={j}

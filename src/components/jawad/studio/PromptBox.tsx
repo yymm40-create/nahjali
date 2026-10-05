@@ -101,6 +101,7 @@ export default function PromptBox({
   const promptIssue = touched || prompt ? ev.issues.find((i) => i.field === "prompt")?.message : undefined;
   const instrIssue = ev.issues.find((i) => i.field === "instructions")?.message;
   const optional = !ev.mode.promptRequired;
+  const label = ev.mode.prompt?.label ?? def.prompt.label;
   const advice = promptAdvice(def, prompt);
   // References can be mentioned only where the generator takes them
   const canMention = Boolean(def.refLabel) && ev.refStyles.length > 0;
@@ -159,7 +160,7 @@ export default function PromptBox({
       <div>
         <label htmlFor="jw-prompt" className="jw-label flex items-center justify-between">
           <span>
-            {def.prompt.label} {optional && <span className="text-jw-faint">(اختياري مع المراجع)</span>}
+            {label} {optional && <span className="text-jw-faint">(اختياري مع المراجع)</span>}
           </span>
           <span className={`tabular-nums ${prompt.length > def.prompt.max ? "text-jw-danger" : "text-jw-faint"}`} dir="ltr">{prompt.length}/{def.prompt.max}</span>
         </label>
@@ -204,7 +205,7 @@ export default function PromptBox({
               onTouched();
               setMenu(null);
             }}
-            placeholder={def.prompt.placeholder}
+            placeholder={ev.mode.prompt?.placeholder ?? def.prompt.placeholder}
             className={`jw-textarea relative block min-h-[132px] ${canMention ? "!bg-transparent [scrollbar-gutter:stable]" : ""} ${promptIssue ? "jw-invalid" : ""}`}
             aria-invalid={Boolean(promptIssue)}
             aria-describedby={promptIssue ? "jw-prompt-issue" : undefined}

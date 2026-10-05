@@ -68,7 +68,7 @@ const clean = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
 
 /** A frame sent by the browser: a real JPEG of a sensible size (it only ever reaches this user's own edit). */
-async function readFrame(data: unknown, maxBytes: number, maxSide: number) {
+export async function readFrame(data: unknown, maxBytes: number, maxSide: number) {
   if (typeof data !== "string") throw new UserError("لقطة غير صالحة.", 400);
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(data);
   if (!m) throw new UserError("لقطة غير صالحة.", 400);

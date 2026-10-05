@@ -68,6 +68,8 @@ export interface ModeDef {
   /** At least one reference of these kinds must be present. */
   needsOneOf?: RefKind[];
   promptRequired: boolean;
+  /** The text box reads differently in this mode (e.g. an optional note instead of the description). */
+  prompt?: { label?: string; placeholder?: string };
 }
 
 export interface ChoiceOption {

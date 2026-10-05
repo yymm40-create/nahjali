@@ -8,6 +8,7 @@
 
 import { COIN_COST_USD } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
+import { VIDEO_SFX, videoSfxSeconds } from "./video-sfx";
 
 const CHECKED = "2026-10-04";
 
@@ -545,7 +546,24 @@ const elevenV4: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا يُنسخ صوت شخص إلا بإذنه."],
 };
 
+/** «مؤثرات من فيديو»: the owner's price per second of video (Claude watching it + the effects + the mix). */
+export const VIDEO_SFX_KEY = "video:sec";
+/**
+ * Claude Opus 5.5 planning the sounds of one video, at its ceiling: up to 60 frames (≤ 512 px, ~400 tokens each) and
+ * the texts (~4,000 tokens) × $4/M + up to 20,000 output tokens (thinking included) × $20/M.
+ */
+export const VIDEO_SFX_CLAUDE_USD = ((VIDEO_SFX.framesMax * 400 + 4_000) * 4 + 20_000 * 20) / 1e6;
+const videoMsOf = (refs: RefMeta[]) => refs.find((r) => r.kind === "video")?.durationMs ?? 0;
+
 const sfxMode: ModeDef = { id: "text_to_sfx", label: "مؤثر من الوصف", refStyle: "none", refs: {}, promptRequired: true };
+const sfxVideoMode: ModeDef = {
+  id: "video_to_sfx",
+  label: "من فيديو",
+  refStyle: "references",
+  refs: { video: { min: 1, max: 1 } },
+  promptRequired: false,
+  prompt: { label: "توجيه إضافي", placeholder: "مثال: ركّز على صوت السيوف · أضف مطرًا في الخلفية · بدون أصوات خطوات" },
+};
 const elevenSfx: GeneratorDef = {
   id: "elevenlabs-sfx-v2",
   name: "ElevenLabs Sound Effects",
@@ -554,7 +572,7 @@ const elevenSfx: GeneratorDef = {
   provider: { id: "elevenlabs", label: "ElevenLabs" },
   model: { id: "eleven_text_to_sound_v2", family: "Text to Sound", version: "v2" },
   api: { name: "ElevenLabs Sound Effects API", endpoint: "POST /v1/sound-generation", tracking: "sync", progress: "none", cancel: "none" },
-  modes: [sfxMode],
+  modes: [sfxMode, sfxVideoMode],
   options: [
     { key: "duration", label: "المدة", kind: "int", min: 1, max: 30, default: 5, unit: "ثانية" },
     {
@@ -567,25 +585,72 @@ const elevenSfx: GeneratorDef = {
     },
     { key: "loop", label: "مؤثر يتكرر بسلاسة (لوب)", kind: "bool", default: false, hint: "للخلفيات: مطر، رياح، زحام…" },
   ],
-  files: {},
+  files: { video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 50 * MB, minMs: VIDEO_SFX.minMs, maxMs: VIDEO_SFX.maxMs } },
   prompt: { label: "وصف المؤثر", placeholder: "مثال: خطوات على أرض حجرية في ممر واسع، صدى خفيف، ليلًا… (الإنجليزية أدق)", max: 2000, arabic: true },
-  priceKeys: [{ key: "sec", label: "كل ثانية", defaultCenti: centiFor(ELEVEN_PRICE.sfxPerMin / 60), basis: `سعر ElevenLabs المنشور للمؤثرات: $${ELEVEN_PRICE.sfxPerMin} للدقيقة` }],
-  modeFor: () => sfxMode,
-  rules: () => ({ options: opt(elevenSfx.options), issues: [], notes: ["الوصف بالإنجليزية يعطي نتائج أدق؛ المؤثرات بلا كلام ولا موسيقى."] }),
-  price(d, _mode, table) {
+  priceKeys: [
+    { key: "sec", label: "كل ثانية", defaultCenti: centiFor(ELEVEN_PRICE.sfxPerMin / 60), basis: `سعر ElevenLabs المنشور للمؤثرات: $${ELEVEN_PRICE.sfxPerMin} للدقيقة` },
+    {
+      key: VIDEO_SFX_KEY,
+      label: "مؤثرات من فيديو · كل ثانية من الفيديو",
+      defaultCenti: 100,
+      basis: `سعر ثابت حدّده المالك (30 نقدة لكل 30 ثانية). التكلفة القصوى لفيديو 30 ثانية: Claude ‏$${VIDEO_SFX_CLAUDE_USD.toFixed(2)} + مؤثرات حتى ${30 + VIDEO_SFX.eventsTotalSec} ثانية × $${ELEVEN_PRICE.sfxPerMin}/دقيقة`,
+    },
+  ],
+  modeFor: (_style, refs) => (refs.some((r) => r.kind === "video") ? sfxVideoMode : sfxMode),
+  rules(_d, mode) {
+    if (mode.id !== "video_to_sfx") {
+      return {
+        options: opt(elevenSfx.options),
+        issues: [],
+        notes: ["الوصف بالإنجليزية يعطي نتائج أدق؛ المؤثرات بلا كلام ولا موسيقى.", `أو أضف فيديو (حتى ${Math.floor(VIDEO_SFX.maxMs / 1000)} ثانية) في المراجع: يشاهده Claude ويصنع مؤثراته في أماكنها على طوله.`],
+      };
+    }
+    return {
+      // The track takes the video's own length; the background loops by itself
+      options: opt(elevenSfx.options, { duration: { hidden: true }, loop: { hidden: true } }),
+      issues: [],
+      notes: [
+        "يشاهد Claude الفيديو لقطةً لقطة، ويحدد كل صوت ولحظته (ضربة، خطوة، باب، سيارة…) وصوت المكان في الخلفية، ثم تُصنع المؤثرات وتُركّب في أماكنها.",
+        `الناتج ملف صوت WAV بطول الفيديو نفسه، تضعه تحته في أي محرر. الفيديو حتى ${Math.floor(VIDEO_SFX.maxMs / 1000)} ثانية.`,
+        "مؤثرات فقط: بلا كلام ولا موسيقى (للموسيقى استخدم Eleven Music).",
+      ],
+    };
+  },
+  price(d, mode, table) {
+    if (mode.id === "video_to_sfx") {
+      const per = table[VIDEO_SFX_KEY];
+      if (per == null) return { ok: false, reason: "سعر المؤثرات من الفيديو لم يُحدد بعد." };
+      const ms = videoMsOf(d.refs);
+      if (!ms) return { ok: false, reason: "أضف الفيديو أولًا." };
+      const sec = videoSfxSeconds(ms);
+      return total([{ label: `${sec} ث فيديو · تحليل Claude + المؤثرات + التركيب`, centi: sec * per }], elevenSfx.costUsd(d, mode));
+    }
     const per = table.sec;
     if (per == null) return { ok: false, reason: "سعر المؤثرات لم يُحدد بعد." };
     const sec = Number(d.settings.duration) || 5;
     return total([{ label: `${sec} ث`, centi: sec * per }], elevenSfx.costUsd(d, sfxMode));
   },
-  costUsd: (d) => ((Number(d.settings.duration) || 5) * ELEVEN_PRICE.sfxPerMin) / 60,
-  sources: elSources([{ label: "ElevenLabs — Create sound effect (text, duration_seconds 0.5–30, loop, prompt_influence)", url: "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert" }]),
+  costUsd(d, mode) {
+    if (mode.id === "video_to_sfx") return VIDEO_SFX_CLAUDE_USD + ((videoMsOf(d.refs) / 1000 + VIDEO_SFX.eventsTotalSec) * ELEVEN_PRICE.sfxPerMin) / 60;
+    return ((Number(d.settings.duration) || 5) * ELEVEN_PRICE.sfxPerMin) / 60;
+  },
+  sources: [
+    ...elSources([{ label: "ElevenLabs — Create sound effect (text, duration_seconds 0.5–30, loop, prompt_influence, output_format pcm_*)", url: "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert" }]),
+    { label: "Claude — Vision (images in a message)", url: "https://platform.claude.com/docs/en/build-with-claude/vision", checked: EL_CHECKED },
+    { label: "Claude — Structured outputs (JSON schema)", url: "https://platform.claude.com/docs/en/build-with-claude/structured-outputs", checked: EL_CHECKED },
+  ],
   verification: [
     { item: "النموذج", status: "verified", note: "eleven_text_to_sound_v2، النموذج الوحيد للمؤثرات." },
     { item: "المدة", status: "verified", note: "0.5–30 ثانية؛ نرسل مدة محددة (1–30) ليكون السعر معروفًا." },
     { item: "اللوب والالتزام بالوصف", status: "verified", note: "loop (v2 فقط) وprompt_influence من 0 إلى 1 (الافتراضي 0.3)." },
     { item: "المراجع", status: "verified", note: "واجهة المؤثرات لا تقبل صوتًا مرجعيًا؛ المرجع يُستعمل كما هو من «مكتبة الأعمال»." },
     { item: "السعر", status: "verified", note: `$${ELEVEN_PRICE.sfxPerMin} للدقيقة.` },
+    {
+      item: "من فيديو",
+      status: "verified",
+      note: `Claude Opus 5.5 يرى حتى ${VIDEO_SFX.framesMax} لقطة من الفيديو بوقت كل منها ويرجع خطة JSON: حتى ${VIDEO_SFX.eventsMax} مؤثرًا بلحظته ومدته وارتفاعه + صوت خلفية؛ يُصنع كل واحد بمدة محددة ويُركّب على طول الفيديو بالضبط.`,
+    },
+    { item: "صيغة التركيب", status: "unverified", note: "نطلب pcm_48000 (الوثيقة تقصر pcm_44100 وحدها على خطة Pro ولا تذكر 48kHz)، وإن رفضها الحساب نكمل بـ pcm_24000. الناتج WAV أحادي 48kHz." },
   ],
   notes: [],
 };
