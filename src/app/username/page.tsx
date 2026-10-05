@@ -7,7 +7,7 @@ import UsernameStep from "./UsernameStep";
 export const metadata = { title: "اسم المستخدم | نهج علي" };
 export const dynamic = "force-dynamic";
 
-const safe = (n: unknown) => (typeof n === "string" && n.startsWith("/") && !n.startsWith("//") ? n : "/");
+const safe = (n: unknown) => (typeof n === "string" && n.startsWith("/") && !n.startsWith("//") && !n.includes("\\") ? n : "/");
 
 /** Right after creating an account (or when the old name is taken): every account picks a unique username. */
 export default async function UsernamePage({ searchParams }: PageProps<"/username">) {

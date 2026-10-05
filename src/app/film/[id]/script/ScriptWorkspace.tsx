@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
@@ -32,7 +32,11 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   const router = useRouter();
   const filmBase = useFilmBase();
   const [running, setRunning] = useState(job?.status === "running");
-  const [busy, setBusy] = useState(false);
+  const [sending, setBusy] = useState(false);
+  // Busy until the new page data has arrived: the old screen's buttons can't be pressed a second time
+  const [refreshing, startRefresh] = useTransition();
+  const refresh = useCallback(() => startRefresh(() => router.refresh()), [router]);
+  const busy = sending || refreshing;
   const [error, setError] = useState("");
 
   // While the screenwriter writes, poll until the job finishes, then reload the page data
@@ -43,19 +47,19 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
         const s = await api<{ status: string | null }>(`/api/film/projects/${projectId}/script`);
         if (s.status !== "running") {
           setRunning(false);
-          router.refresh();
+          refresh();
         }
       } catch {
         // keep polling; a network blip should not stop it
       }
     }, 4000);
     return () => clearInterval(timer);
-  }, [running, projectId, router]);
+  }, [running, projectId, router, refresh]);
 
   // Once this section's last step is done, go straight to the next one (only when it happens here, not on later visits)
   const openedAt = useRef(stage);
   useEffect(() => {
-    if (openedAt.current === "screenwriter" && stage === "sheets") router.push(`${filmBase}/${projectId}/sheets`);
+    if (openedAt.current === "screenwriter" && stage === "sheets") router.push(`${filmBase}/${projectId}/sheets?start=1`);
   }, [stage, projectId, router, filmBase]);
 
   async function send(body: Record<string, unknown>) {
@@ -64,7 +68,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
     try {
       const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/script`, body);
       if (jobId) setRunning(true);
-      router.refresh();
+      refresh();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -77,6 +81,17 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   const shown = KIND_ORDER.filter((k) => k !== "handoff").map(latest).filter(Boolean) as ScriptVersion[];
   const current = [...versions].sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
   const failed = job?.status === "failed" && !running;
+
+  // Arrived from the project page (…/script?start=1): the screenwriter starts by itself, no second press
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || versions.length || running || failed || !hasStory || new URLSearchParams(window.location.search).get("start") !== "1") return;
+    autoStarted.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    // (a moment, so the story's last words saved on the way here arrive first)
+    const t = setTimeout(() => send({ action: "start" }), 900);
+    return () => clearTimeout(t);
+  });
 
   if (versions.length === 0 && !running && !failed) {
     return (
@@ -176,7 +191,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
           <Spinner />
           <div>
             <p className="font-extrabold">{latest("screenplay")?.status === "approved" ? "ننقل السيناريو لصانع الشيت…" : "السيناريست يكتب…"}</p>
-            <p className="text-sm font-bold text-muted">ممكن ياخذ من دقيقة إلى ٣ دقائق. تقدر تسكّر الصفحة وترجع، الرد ينحفظ.</p>
+            <p className="text-sm font-bold text-muted">ممكن ياخذ من دقيقة إلى ٣ دقائق. لا تضغط شي، الصفحة بتتحدّث لحالها ⏳ وتقدر تسكّرها وترجع، الرد ينحفظ.</p>
           </div>
         </div>
       )}

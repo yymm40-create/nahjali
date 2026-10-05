@@ -244,8 +244,17 @@ export async function runScriptJob(projectId: string, jobId: string) {
     }
 
     const reply = result.data;
-    const kind = STAGE_KIND[reply.stage];
+    let kind = STAGE_KIND[reply.stage];
     if (!kind) throw new Error(`unexpected stage ${reply.stage}`);
+    // After «اعتمد» the reply is the NEXT deliverable, whatever stage it labels itself with: resending the approved
+    // stage would push the user's approval into the old copies and show the same step again
+    if (msgs.filter((m) => m.role === "user").at(-1)?.content.trim() === "اعتمد") {
+      const done = (await scriptVersions(projectId))
+        .filter((v) => v.status === "approved" && v.kind !== "handoff")
+        .sort((a, b) => String(a.approved_at ?? "").localeCompare(String(b.approved_at ?? "")))
+        .at(-1);
+      if (done && KIND_ORDER.indexOf(kind) <= KIND_ORDER.indexOf(done.kind)) kind = KIND_ORDER[KIND_ORDER.indexOf(done.kind) + 1] ?? kind;
+    }
 
     const client = db();
 

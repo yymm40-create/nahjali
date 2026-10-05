@@ -45,10 +45,11 @@ export default function ActionBar({
           </div>
         )}
       </div>
+      {onApprove && send && <p className="text-center text-xs font-bold text-muted">💡 عجبك؟ اضغط «اعتمد». تبي تغيّر شي؟ اضغط «تعديل».</p>}
       {!editable ? null : left === 0 ? (
         <p className="text-center text-xs font-bold text-muted">خلصت التعديلات المتاحة لك في هذي المرحلة.</p>
       ) : left !== null && send ? (
-        <p className="text-center text-xs font-bold text-muted">باقي لك {left} {left === 1 ? "تعديل" : "تعديلات"} في هذي المرحلة</p>
+        <p className="text-center text-xs font-bold text-muted">باقي لك {left} {left === 1 ? "تعديل" : "تعديلات"} في هذي المرحلة، فاكتب كل اللي تبيه مرة وحدة.</p>
       ) : null}
       {mode && send && (
         <div className="space-y-2">

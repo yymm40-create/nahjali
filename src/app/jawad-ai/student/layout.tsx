@@ -7,7 +7,8 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   return (
     <div className="st">
       <Backdrop />
-      <div className="relative z-[1]">{children}</div>
+      {/* room at the bottom for the floating «رأيك» button */}
+      <div className="relative z-[1] pb-24">{children}</div>
       <StudentChrome />
     </div>
   );

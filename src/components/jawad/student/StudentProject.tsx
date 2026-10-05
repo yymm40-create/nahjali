@@ -78,8 +78,12 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
             title="حذف المادة"
             onClick={async () => {
               if (!confirm("حذف هذه المادة وكل ملفاتها ونواتجها نهائيًا؟")) return;
-              await p.act({ action: "delete" }).catch(() => null);
-              window.location.href = STUDENT.base;
+              try {
+                await p.act({ action: "delete" });
+                window.location.href = STUDENT.base;
+              } catch (e) {
+                alert(`ما انحذفت المادة: ${e instanceof Error ? e.message : String(e)}`);
+              }
             }}
           >
             <Icon name="trash" size={16} />

@@ -38,7 +38,16 @@ export function FileLinks({ o, only }: { o: OutputView; only?: (n: string) => bo
 
 export function PdfFrame({ o, name }: { o: OutputView; name: string }) {
   if (!o.files.includes(name)) return null;
-  return <iframe title="معاينة" src={`${fileUrl(o.id, name, true)}&t=${encodeURIComponent(o.updatedAt)}`} className="h-[70vh] w-full rounded-lg border border-jw-line bg-white" />;
+  const src = `${fileUrl(o.id, name, true)}&t=${encodeURIComponent(o.updatedAt)}`;
+  return (
+    <>
+      {/* phones show an embedded PDF blank or as one page: a button opens it in the phone's own viewer */}
+      <a href={src} target="_blank" rel="noopener" className="jw-btn jw-btn-primary w-full sm:hidden">
+        <Icon name="download" size={16} /> افتح الملف 📄
+      </a>
+      <iframe title="معاينة" src={src} className="hidden h-[70vh] w-full rounded-lg border border-jw-line bg-white sm:block" />
+    </>
+  );
 }
 
 function BlockView({ b, research }: { b: Block; research: Research | null }) {

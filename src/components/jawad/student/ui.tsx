@@ -46,6 +46,11 @@ export function PaidButton({
     try {
       const r = (await run({ confirm: false })) as { quote?: number; balance?: number | null };
       key.current = newKey();
+      // free steps start right away: nothing to agree to
+      if (!r.quote) {
+        await run({ confirm: true, key: key.current });
+        return;
+      }
       setQuote({ coins: r.quote ?? 0, balance: r.balance ?? null });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

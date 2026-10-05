@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
@@ -101,7 +101,11 @@ export default function VideosWorkspace({
   const [writing, setWriting] = useState(job?.status === "running");
   const [feedbackFor, setFeedbackFor] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [sending, setBusy] = useState(false);
+  // Busy until the new page data has arrived: the old screen's buttons can't be pressed a second time
+  const [refreshing, startRefresh] = useTransition();
+  const refresh = useCallback(() => startRefresh(() => router.refresh()), [router]);
+  const busy = sending || refreshing;
   const [error, setError] = useState("");
 
   // Poll while videos are generated (the poll also saves finished videos)
@@ -112,7 +116,7 @@ export default function VideosWorkspace({
         const s = await api<{ status: string | null; videosRunning: number }>(`/api/film/projects/${projectId}/director`);
         const w = s.status === "running";
         const r = s.videosRunning > 0;
-        if (w !== writing || r !== rendering) router.refresh();
+        if (w !== writing || r !== rendering) refresh();
         setWriting(w);
         setRendering(r);
       } catch {
@@ -120,7 +124,7 @@ export default function VideosWorkspace({
       }
     }, 6000);
     return () => clearInterval(timer);
-  }, [rendering, writing, projectId, router]);
+  }, [rendering, writing, projectId, router, refresh]);
 
   // The video section: its finished videos, to choose one for a generation
   const [pickFor, setPickFor] = useState<string | null>(null);
@@ -155,7 +159,7 @@ export default function VideosWorkspace({
         setFeedbackFor(null);
         setFeedback("");
       }
-      router.refresh();
+      refresh();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -448,7 +452,8 @@ export default function VideosWorkspace({
       {stage === "voices" || stage === "done" ? (
         <div className="card space-y-1 p-5 text-center">
           <p className="text-lg font-extrabold">✅ كل الفيديوهات معتمدة</p>
-          <p className="text-sm font-bold text-muted">الأصوات تنضاف في المرحلة الجاية من التطوير. لا تنسى تحمّل فيديوهاتك.</p>
+          <p className="text-sm font-bold text-muted">لا تنسى تحمّل فيديوهاتك.</p>
+          <Link href={`${filmBase}/${projectId}/voices`} className="btn btn-primary w-full">🎙️ كمّل: الأصوات</Link>
         </div>
       ) : null}
       {error && <p className="error-box">{error}</p>}

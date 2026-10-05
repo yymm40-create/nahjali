@@ -11,7 +11,10 @@ export const maxDuration = 300;
  * Also moves JAWAD AI's unfinished jobs forward (saves finished videos, refunds stale ones) in case nobody had the
  * studio open; every step there happens once, so an extra call changes nothing.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  // With CRON_SECRET set in Vercel, Vercel's own cron sends it and nobody else can start this sweep
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) return new Response(null, { status: 404 });
   const checked = await deleteExpiredSourcePhotos();
   await advanceOpenJobs(undefined, 50).catch((e) => console.error("jawad sweep failed", e));
   // «الطالب الذكي»: projects idle for 30 days are deleted with their files; unfinished steps continue

@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   // Without a destination, the home page with all the sections
   const next = searchParams.get("next") ?? "/";
   // Only allow same-site relative redirects
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/";
 
   if (code) {
     const supabase = await createClient();

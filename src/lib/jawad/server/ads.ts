@@ -48,7 +48,7 @@ export const emptyAd = (slot: AdSlot = "main"): AdContent => ({ title: "", href:
 export function cleanAdHref(href: unknown): string | null {
   const s = typeof href === "string" ? href.trim() : "";
   if (!s) return "";
-  if (s.startsWith("/") && !s.startsWith("//") && !/[\s<>"']/.test(s)) return s.slice(0, 500);
+  if (s.startsWith("/") && !s.startsWith("//") && !s.includes("\\") && !/[\s<>"']/.test(s)) return s.slice(0, 500);
   try {
     const u = new URL(s);
     return u.protocol === "https:" && !/[\s<>"']/.test(s) ? u.toString().slice(0, 500) : null;

@@ -45,10 +45,11 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
       <section className="card space-y-3 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-extrabold">المرحلة الحالية: {FILM_STAGES[current]?.label}</h2>
-          <span className="chip">{scriptStarted ? STATUS_LABELS.awaiting_approval : STATUS_LABELS.draft}</span>
+          <span className="chip">{scriptStarted ? `${FILM_STAGES[current]?.icon ?? ""} ${current + 1}/${FILM_STAGES.length}` : STATUS_LABELS.draft}</span>
         </div>
         {/* One button to the current section; the sections bar above opens the others */}
-        <Link href={`${base}/${project.id}${NEXT_PATH[project.stage] ?? "/director"}`} className="btn btn-primary w-full">
+        {project.stage === "screenwriter" && !scriptStarted && <p className="text-sm font-bold text-muted">💡 اكتب قصتك تحت 👇 وبعدين اضغط الزر، والسيناريست يبدأ على طول.</p>}
+        <Link href={`${base}/${project.id}${NEXT_PATH[project.stage] ?? "/director"}${project.stage === "screenwriter" && !scriptStarted ? "?start=1" : ""}`} className="btn btn-primary w-full">
           {project.stage === "screenwriter"
             ? `✍️ ${scriptStarted ? "كمّل مع السيناريست" : "ابدأ مع السيناريست"}`
             : project.stage === "voices"

@@ -1,4 +1,5 @@
 // The site's sections, shown on the home page and in the header menu. Add a new one here.
+// (The film maker lives only inside «الجواد الذكي!» now: /jawad-ai/film; old /film links redirect there, see proxy.ts.)
 
 export interface SiteSection {
   key: string;
@@ -6,8 +7,6 @@ export interface SiteSection {
   description: string;
   icon: string;
   href: string;
-  /** Only users with access to the film branch can open it (the owner, and the public trial's users while it lasts); others see "قريبًا". */
-  requiresFilmAccess?: boolean;
   /** Listed but closed («تحت التطوير») while «كتيب نهج علي» is not open for everyone (/admin/limits); the owner can still open it. */
   underDevelopment?: boolean;
 }
@@ -20,14 +19,6 @@ export const SECTIONS: SiteSection[] = [
     icon: "📖",
     href: "/booklet",
     underDevelopment: true,
-  },
-  {
-    key: "film",
-    title: "صناعة فيلم",
-    description: "من فكرتك إلى سيناريو وشخصيات ومقاطع فيديو وأصوات، خطوة بخطوة.",
-    icon: "🎬",
-    href: "/film",
-    requiresFilmAccess: true,
   },
   {
     key: "mahdi",

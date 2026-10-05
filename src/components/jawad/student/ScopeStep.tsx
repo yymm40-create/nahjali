@@ -35,6 +35,7 @@ export default function ScopeStep({ p }: { p: ProjectHook }) {
       <section className="jw-panel space-y-4 p-4">
         <div className="space-y-2">
           <h2 className="font-semibold">١. هل تلتزم بما في المادة فقط، أم تسمح بشرح وإضافات من معرفة المساعد؟</h2>
+          <p className="text-xs text-jw-muted">💡 «المادة فقط» = من كتابك فقط · «الإضافات» = يشرح بأمثلة من عنده.</p>
           <Q value={add} set={setAdd} no="المادة فقط" yes="أسمح بالإضافات" />
           <p className="text-xs text-jw-faint">
             {add ? "أي إضافة تظهر في الملفات مفصولة وموسومة «إضافة من المساعد — ليست من المادة»." : "لن تُدخل أي حقيقة أو مثال من خارج المادة؛ إعادة الصياغة والتبسيط لما فيها مسموحة."}

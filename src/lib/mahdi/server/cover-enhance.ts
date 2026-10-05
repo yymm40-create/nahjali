@@ -63,6 +63,13 @@ export async function enhanceCover(user: User, photo: unknown): Promise<{ image:
     }
   }
   const { data: use } = await db.from("mahdi_ai_uses").insert({ user_id: user.id, kind: KIND }).select("id").single();
+  // Counted again after saving: several requests sent at the same moment can't all pass the daily limit
+  const again = await db.from("mahdi_ai_uses").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("kind", KIND).gte("created_at", since);
+  if ((again.count ?? 0) > COVER_ENHANCE.perDay) {
+    if (use) await db.from("mahdi_ai_uses").delete().eq("id", use.id);
+    if (coins) await refundCoins(ref).catch((e) => console.error("[mahdi] cover refund", ref, e));
+    throw new UserError(E.tooMany, 429);
+  }
 
   try {
     const r = await openaiImage({

@@ -130,6 +130,10 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
     }
     const next = nextAuto(state);
     if (!next) {
+      // say why it stopped (a child would think the button did nothing)
+      const failed = state.outputs.find((o) => o.status === "failed");
+      if (["sources", "review"].includes(state.project.stage) && !state.sources.some((x) => x.status === "ready")) setError("أضف مادتك أولًا (صور أو PDF أو نص)، وبعدها اضغط المساعد مرة ثانية.");
+      else if (failed) setError(`تعثّر «${failed.title}». افتحه واضغط «أعد المحاولة»، وبعدها شغّل المساعد مرة ثانية.`);
       stop();
       return;
     }

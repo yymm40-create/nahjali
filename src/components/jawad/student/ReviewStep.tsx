@@ -33,6 +33,7 @@ export default function ReviewStep({ p }: { p: ProjectHook }) {
           </h2>
           <span className={`jw-chip ${seg.status === "approved" ? "!text-jw-ok" : ""}`}>{seg.status === "approved" ? "معتمد" : "ينتظر المراجعة"}</span>
         </div>
+        <p className="text-xs text-jw-muted">💡 قارن النص بكتابك وصحّح أي خطأ، ثم اضغط «اعتمد». الكلمات بين ⟦ ⟧ ما اتضحت: اكتبها مثل ما في الكتاب.</p>
         {seg.uncertain.length > 0 && (
           <div className="rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-3 text-sm">
             <b className="mb-1 block text-jw-warn">مواضع تحتاج مراجعتك (معلّمة في النص بـ ⟦ ⟧):</b>

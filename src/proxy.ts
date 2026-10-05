@@ -55,6 +55,13 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
+  // The film maker lives only inside «الجواد الذكي!»: old /film links open the same page there
+  if (path === "/film" || path.startsWith("/film/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/jawad-ai${path}`;
+    return NextResponse.redirect(url);
+  }
+
   // «كتيب نهج علي»: open, closed (owner only) or for given emails, as set on /admin/limits (pages and API)
   if (BOOKLET_PATHS.some((p) => path === p || path.startsWith(p + "/")) && !(await bookletOpenFor(user?.email))) {
     if (path.startsWith("/api/")) return NextResponse.json({ error: "كتيب نهج علي تحت التطوير حاليًا." }, { status: 503 });

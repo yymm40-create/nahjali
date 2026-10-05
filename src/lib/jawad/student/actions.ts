@@ -12,7 +12,7 @@ import { loadCtx } from "./context";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
 import { checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
-import type { AudioPlan, DocPlan, QuizPlan, SlidePlan } from "./model";
+import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "./model";
 import { estimate } from "./outputs";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
 import { researchCeiling } from "./research";
@@ -261,8 +261,9 @@ export async function projectAction(user: User, id: string, b: Body) {
       const u = await latestVersion<Understanding>(p.id, "understanding");
       if (!u || u.content.basedOnText !== p.text_version) throw new UserError(NOT_NOW);
       await db.from("student_versions").update({ approved: true }).eq("id", u.id);
+      // the scope questions were answered before (a revised understanding): straight back to the outputs
       const next = { ...p, understanding_version: u.version, stage: "scope" as const };
-      await touch(p.id, { understanding_version: u.version, stage: p.allow_additions === null ? "scope" : p.stage === "outputs" ? "outputs" : "scope" });
+      await touch(p.id, { understanding_version: u.version, stage: p.allow_additions === null ? "scope" : "outputs" });
       await markStale(next);
       return { ok: true };
     }
@@ -434,8 +435,10 @@ export async function outputAction(user: User, id: string, b: Body) {
   const p = await getProject(user.id, o.project_id);
   if (p.stage !== "outputs") throw new UserError("أكمل اعتماد المراحل السابقة أولًا.");
   await touch(p.id);
-  const run = (kind: string, usd: number, input: Record<string, unknown> = {}, stage?: string, status?: string) =>
-    paid(user, b, { projectId: p.id, outputId: o.id, kind, usd, input, stage, started: status ? () => saveOutput(o.id, { status, error: null }) : undefined });
+  // `extra` (the student's request, approval taken back) is saved only once the job really started: a refused job
+  // (busy, short balance) leaves the output exactly as it was
+  const run = (kind: string, usd: number, input: Record<string, unknown> = {}, stage?: string, status?: string, extra: Record<string, unknown> = {}) =>
+    paid(user, b, { projectId: p.id, outputId: o.id, kind, usd, input, stage, started: status ? () => saveOutput(o.id, { ...extra, status, error: null }) : undefined });
 
   switch (b.action) {
     case "settings": {
@@ -457,8 +460,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       if (o.status === "waiting") throw new UserError("هذا الصوت يقرأ ناتجًا لم يُعتمد بعد: اعتمد ذلك الناتج أولًا.");
       const note = text(b.note, 4000);
       const requests = note ? [...o.requests, { at: new Date().toISOString(), kind: (b.kind === "other" ? "other" : "edit") as "edit", text: note }] : o.requests;
-      if (b.confirm && note) await saveOutput(o.id, { requests });
-      return run("plan", await estimate(user.id, o, "plan"), { note, previous: Boolean(note && o.plan) }, o.kind === "audio" ? "تجهيز نص القراءة" : "إعداد الخطة", "planning");
+      return run("plan", await estimate(user.id, o, "plan"), { note, previous: Boolean(note && o.plan) }, o.kind === "audio" ? "تجهيز نص القراءة" : "إعداد الخطة", "planning", note ? { requests } : {});
     }
     case "plan_save": {
       if (!o.plan) throw new UserError(NOT_NOW);
@@ -491,7 +493,11 @@ export async function outputAction(user: User, id: string, b: Body) {
       }
       if (!o.plan_approved || !["ready", "trial_offer", "trial_review", "review", "done", "failed"].includes(o.status)) throw new UserError(NOT_NOW);
       const prevRun = Number((o.content as { run?: number } | null)?.run ?? 0);
-      return run("final", await estimate(user.id, o, "final"), o.kind === "audio" ? { run: prevRun + 1 } : {}, "إنشاء الناتج", "running");
+      // what the trial made is kept and not charged again (so the trial's coins are not given back as well)
+      const reusedTrial =
+        (["summary", "explain", "book"].includes(o.kind) && ((o.content as Doc | null)?.chapters?.length ?? 0) > 0) ||
+        (o.kind === "slides" && Boolean((o.plan as SlidePlan | null)?.slides?.some((x) => x.rendered?.path)));
+      return run("final", await estimate(user.id, o, "final"), o.kind === "audio" ? { run: prevRun + 1 } : { reusedTrial }, "إنشاء الناتج", "running");
     }
     case "audio_retry": {
       const c = o.content as { run?: number; failedParts?: number } | null;
@@ -509,17 +515,14 @@ export async function outputAction(user: User, id: string, b: Body) {
       const requests = [...o.requests, { at: new Date().toISOString(), kind: kind as "edit", text: note }];
       if (o.kind === "summary" || o.kind === "explain" || o.kind === "book" || o.kind === "quiz") {
         const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
-        if (b.confirm) await saveOutput(o.id, { requests, approved: false });
-        return run("revise", await estimate(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running");
+        return run("revise", await estimate(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
       }
       // slides made as pictures: one slide is drawn again with the request
       if (o.kind === "slides" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
-        if (b.confirm) await saveOutput(o.id, { requests, approved: false });
-        return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الشريحة من جديد", "running");
+        return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الشريحة من جديد", "running", { requests, approved: false });
       }
       // slides / audio: the change goes into the plan (slide map / reading text), which is approved again
-      if (b.confirm) await saveOutput(o.id, { requests, approved: false });
-      return run("plan", await estimate(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning");
+      return run("plan", await estimate(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning", { requests, approved: false });
     }
     case "approve": {
       if (o.status !== "review") throw new UserError(NOT_NOW);

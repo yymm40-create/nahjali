@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { canUseFilm } from "@/lib/film/access";
 import SignOutButton from "./SignOutButton";
+import MenuDetails from "./MenuDetails";
 import SmartCoin from "./SmartCoin";
 import { coinBalance } from "@/lib/coins";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -17,7 +17,6 @@ export default async function Header() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const filmAllowed = user ? await canUseFilm(user) : false;
   const bookletOpen = user ? await bookletOpenFor(user.email) : false;
   // «النقود الذكية»: the user's balance (null until the coin tables exist)
   const coins = user ? await coinBalance(user.id) : null;
@@ -42,24 +41,24 @@ export default async function Header() {
           )}
           <ThemeSwitcher />
           {user ? (
-            <details className="relative">
+            <MenuDetails className="relative">
               <summary className="grid size-11 cursor-pointer list-none place-items-center rounded-full border border-line bg-surface text-xl">
                 ☰
               </summary>
               <nav className="card absolute end-0 mt-2 flex w-48 flex-col p-2 text-base font-extrabold">
-                {SECTIONS.filter((s) => (!s.requiresFilmAccess || filmAllowed) && !(s.underDevelopment && !bookletOpen)).map((s) => (
+                {SECTIONS.filter((s) => !(s.underDevelopment && !bookletOpen)).map((s) => (
                   <Link key={s.key} href={s.href} className={ITEM}>{s.icon} {s.title}</Link>
                 ))}
+                <Link href="/jawad-ai/student" className={ITEM}>🎒 الطالب الذكي</Link>
                 <Link href="/jawad-ai" className={ITEM}>✨ منصة الذكاء الاصطناعي</Link>
                 <hr className="my-1 border-line" />
                 {bookletOpen && <Link href="/my-booklets" className={ITEM}>📚 كتيباتي</Link>}
-                {filmAllowed && <Link href="/film" className={ITEM}>🎞️ مشاريع أفلامي</Link>}
                 {isAdmin(user.email) && (
                   <Link href="/admin" className={ITEM}>📊 لوحة التحكم</Link>
                 )}
                 <SignOutButton />
               </nav>
-            </details>
+            </MenuDetails>
           ) : (
             <Link href="/login" className="btn btn-ghost min-h-11 px-4 text-base">
               دخول
