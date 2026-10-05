@@ -9,6 +9,7 @@ import { filmTrialApplies, filmTrialState, filmTrialUsers, filmTrialVideos } fro
 import { assertCanEdit, getLimit } from "./limits";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
+import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
 import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, FILM_PUBLIC_TRIAL, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
@@ -162,7 +163,10 @@ export type DirectorAction =
   | { action: "video_feedback"; assetId: string; text: string }
   | { action: "approve_video"; assetId: string }
   | { action: "unapprove_video"; assetId: string }
-  | { action: "reject_video"; assetId: string };
+  | { action: "reject_video"; assetId: string }
+  // the film ⇄ the video section: send a film video there (for «التعديل الذكي»), or take a video from there
+  | { action: "send_to_studio"; assetId: string }
+  | { action: "use_studio_video"; genId: string; jobId: string };
 
 /** The client's choices on the generation page (each wins over the director's plan). */
 type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel };
@@ -173,7 +177,7 @@ const readChoice = (c: VideoChoice) => ({
   model: c.model && c.model in VIDEO_MODELS ? c.model : undefined,
 });
 
-export async function directorAction(project: FilmProject, user: User, input: DirectorAction): Promise<{ jobId: string | null }> {
+export async function directorAction(project: FilmProject, user: User, input: DirectorAction): Promise<{ jobId: string | null; studioJobId?: string }> {
   if (project.stage === "screenwriter" || project.stage === "sheets") throw new UserError("اعتمد كل صور الشيتات أول.", 409);
   const versions = await directorVersions(project.id);
   const convo = await latestJob(project.id, STAGE);
@@ -361,6 +365,44 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const { error } = await db().from("film_assets").update({ status: "generated" }).eq("id", a.id);
       if (error) throw error;
       if (project.stage !== "director") await db().from("film_projects").update({ stage: "director" }).eq("id", project.id);
+      return { jobId: null };
+    }
+
+    case "send_to_studio": {
+      const a = (await directorVideos(project.id)).find((x) => x.id === input.assetId);
+      if (!a || !["generated", "approved"].includes(a.status)) throw new UserError("ما لقينا الفيديو.", 404);
+      const v = versions.find((x) => x.id === a.version_id) ?? versions.filter((x) => x.kind === "dir_generation" && x.ref_key === a.ref_key && x.status === "approved").at(-1);
+      if (!v) throw new UserError("ما لقينا توليد هذا الفيديو.", 404);
+      const lib = await referenceLibrary(project.id);
+      let refs: FilmAsset[] = [];
+      try {
+        refs = videoRefs(v, lib);
+      } catch {
+        refs = [];
+      }
+      const m = (a.meta ?? {}) as Record<string, unknown>;
+      const studioJobId = await filmVideoToStudio(project, user, a, {
+        prompt: videoPrompt(v.data.prompt ?? ""),
+        refs,
+        model: String(m.model ?? v.data.video_model ?? "seedance-2.5"),
+        durationSec: Number(m.durationSec ?? v.data.duration_sec ?? 10),
+        ratio: String(m.ratio ?? v.data.ratio ?? "16:9"),
+        resolution: String(m.resolution ?? "480p"),
+        audio: Boolean(m.generateAudio ?? v.data.generate_audio ?? true),
+      });
+      return { jobId: null, studioJobId };
+    }
+
+    case "use_studio_video": {
+      // A video made (or edited) in the video section becomes this generation's approved video
+      const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
+      if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
+      const assetId = await studioVideoToFilm(project, user, input.genId, v.id, String(input.jobId ?? ""));
+      const videos = await directorVideos(project.id);
+      const older = videos.filter((x) => x.ref_key === input.genId && x.id !== assetId && x.status === "approved").map((x) => x.id);
+      if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
+      await db().from("film_assets").update({ status: "approved" }).eq("id", assetId);
+      await maybeFinish(project, versions, (await directorVideos(project.id)));
       return { jobId: null };
     }
 

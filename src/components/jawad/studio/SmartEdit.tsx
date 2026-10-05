@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
-import { generatorById } from "@config/jawad/generators";
+import { EDIT_FEE_KEY, GENERATORS, generatorById } from "@config/jawad/generators";
 import type { JobView, OutputView } from "@/lib/jawad/labels";
 import { cutRange, EDIT_LIMITS, frameTimes, type EditMode, type EditRange } from "@/lib/jawad/smart-edit";
 import Dialog from "../Dialog";
@@ -26,7 +26,10 @@ const CHOICES: Record<"video" | "image", { mode: EditMode; title: string; text: 
 /** «التعديل الذكي» of a finished video or image: pick the kind of edit, write what to fix, see the price, generate. */
 export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobView; open: boolean; onClose: () => void; onCreated: (j: JobView, balance: number | null) => void }) {
   const kind = job.outputKind === "video" ? "video" : "image";
-  const def = generatorById(job.generatorId);
+  // The edit can be made with another generator of the same kind (chosen before generating)
+  const choices = GENERATORS.filter((g) => g.output === kind && g.priceKeys.some((k) => k.key === EDIT_FEE_KEY));
+  const [genId, setGenId] = useState(job.generatorId);
+  const def = generatorById(genId) ?? generatorById(job.generatorId);
   const durOpt = def?.options.find((o) => o.key === "duration" && o.kind === "int") as { min?: number; max?: number } | undefined;
   const [outIdx, setOutIdx] = useState(0);
   const out: OutputView | undefined = job.outputs[outIdx];
@@ -44,8 +47,8 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   const part = mode === "parts" ? (ranges[0] ?? null) : null;
   const cut = part && Number.isFinite(part.from) && Number.isFinite(part.to) ? cutRange(part.from, part.to, videoSec, durOpt?.min ?? 4, durOpt?.max ?? 15) : null;
   const rangesOk = mode !== "parts" || Boolean(cut);
-  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges };
-  const quoteKey = JSON.stringify([out?.id, mode, ranges.map((r) => [r.from, r.to])]);
+  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId };
+  const quoteKey = JSON.stringify([out?.id, mode, genId, ranges.map((r) => [r.from, r.to])]);
 
   // The price (again whenever the kind of edit or the marked times change)
   useEffect(() => {
@@ -218,6 +221,21 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                       <p className="text-xs text-jw-danger">حدّد جزءًا صحيحًا داخل مدة المقطع ({fmt(videoSec)} ث).</p>
                     ))}
                 </div>
+              )}
+
+              {choices.length > 1 && (
+                <label className="block space-y-1">
+                  <span className="text-sm font-semibold">المولّد</span>
+                  <select className="jw-select" value={genId} disabled={Boolean(busy)} onChange={(e) => { setGenId(e.target.value); setQuote(null); key.current = null; }}>
+                    {choices.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                        {g.id === job.generatorId ? " (نفس مولد الأصل)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="block text-[11px] text-jw-faint">اختر المولد قبل التوليد؛ الإعدادات تنتقل كما هي حيث يدعمها، والسعر يتحدّث.</span>
+                </label>
               )}
 
               <label className="block space-y-1">

@@ -55,9 +55,21 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 /** Days left before a video file is removed from the site. */
 const daysLeft = (createdAt: string) => Math.max(0, Math.ceil(VIDEO_KEEP_DAYS - (Date.now() - new Date(createdAt).getTime()) / 86_400_000));
 
+interface StudioVideo {
+  jobId: string;
+  url: string;
+  seconds: number | null;
+  generator: string;
+  prompt: string;
+  from: string;
+  at: string;
+}
+
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null,
 }: {
+  /** JAWAD AI's video section (when this user may use it): «التعديل الذكي» there, and its videos can be chosen here */
+  studioPath?: string | null;
   projectId: string;
   stage: string;
   generations: Generation[];
@@ -110,11 +122,33 @@ export default function VideosWorkspace({
     return () => clearInterval(timer);
   }, [rendering, writing, projectId, router]);
 
+  // The video section: its finished videos, to choose one for a generation
+  const [pickFor, setPickFor] = useState<string | null>(null);
+  const [studio, setStudio] = useState<StudioVideo[] | null>(null);
+  async function openPicker(genId: string) {
+    setPickFor(pickFor === genId ? null : genId);
+    if (studio === null) {
+      try {
+        const r = await fetch(`/api/film/projects/${projectId}/studio`, { cache: "no-store" });
+        const j = await r.json();
+        setStudio(r.ok ? (j.videos as StudioVideo[]) : []);
+      } catch {
+        setStudio([]);
+      }
+    }
+  }
+
   async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError("");
     try {
-      const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/director`, body);
+      const { jobId, studioJobId } = await postJson<{ jobId: string | null; studioJobId?: string }>(`/api/film/projects/${projectId}/director`, body);
+      if (studioJobId && studioPath) {
+        // opens the video section with «التعديل الذكي» of this video ready
+        router.push(`${studioPath}?edit=${studioJobId}`);
+        return;
+      }
+      if (body.action === "use_studio_video") setPickFor(null);
       if (jobId) setWriting(true);
       if (body.action === "generate_video" || body.action === "approve_and_generate") setRendering(true);
       if (body.action === "video_feedback") {
@@ -259,6 +293,11 @@ export default function VideosWorkspace({
                           <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => send({ action: "reject_video", assetId: v.id })}>ارفضه</button>
                         </>
                       )}
+                      {studioPath && v.url && !v.removed && ["generated", "approved"].includes(v.status) && (
+                        <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => send({ action: "send_to_studio", assetId: v.id })}>
+                          🪄 التعديل الذكي
+                        </button>
+                      )}
                       {v.status === "approved" && (
                         <button
                           className="btn btn-ghost min-h-10 px-4 text-sm"
@@ -285,6 +324,42 @@ export default function VideosWorkspace({
                 )}
               </figure>
             ))}
+
+            {/* A video made in the video section (or edited there with «التعديل الذكي») can be this generation's video */}
+            {studioPath && (
+              <div className="space-y-2">
+                <button className="btn btn-ghost min-h-10 w-full text-sm" onClick={() => openPicker(g.id)} disabled={busy}>
+                  🎞️ {pickFor === g.id ? "إخفاء" : "اختر فيديو من قسم الفيديو لهذا التوليد"}
+                </button>
+                {pickFor === g.id && (
+                  <div className="space-y-2 rounded-2xl border border-line p-2">
+                    {studio === null ? (
+                      <div className="grid place-items-center p-4"><Spinner /></div>
+                    ) : studio.length === 0 ? (
+                      <p className="p-3 text-center text-sm font-bold text-muted">
+                        ما عندك فيديوهات في قسم الفيديو بعد. <a className="underline" href={studioPath}>اصنع واحدًا هناك</a> ثم ارجع واختره.
+                      </p>
+                    ) : (
+                      <ul className="grid gap-2 sm:grid-cols-2">
+                        {studio.map((s) => (
+                          <li key={s.jobId} className="space-y-1 rounded-xl bg-surface-2 p-2">
+                            {s.url && <video src={`${s.url}#t=0.1`} controls preload="metadata" playsInline className="aspect-video w-full rounded-lg bg-black object-contain" />}
+                            <p className="text-xs font-bold text-muted">
+                              {s.generator}
+                              {s.seconds ? ` · ${s.seconds} ث` : ""}
+                              {s.from ? ` · ${s.from}` : ""}
+                            </p>
+                            <button className="btn btn-primary min-h-10 w-full text-sm" disabled={busy} onClick={() => send({ action: "use_studio_video", genId: g.id, jobId: s.jobId })}>
+                              اعتمده لهذا التوليد ✅
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Notes on a video → the director's understanding as options → the revised generation → a new video */}
             {g.questions && (
