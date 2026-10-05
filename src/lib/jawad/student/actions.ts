@@ -13,6 +13,7 @@ import { coverage, extractCeiling, pdfPageCount } from "./extract";
 import { checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
 import type { AudioPlan, DocPlan, QuizPlan, SlidePlan } from "./model";
 import { estimate } from "./outputs";
+import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
 import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
 
@@ -534,6 +535,15 @@ export async function outputAction(user: User, id: string, b: Body) {
       if (!draft) throw new UserError(NOT_NOW);
       await saveOutput(o.id, { settings: { ...o.settings, design: draft, _styleDraft: null } });
       return { ok: true };
+    }
+    case "pictures": {
+      // the finished output drawn as designed pages with GPT Image 2 (or one page drawn again with a note)
+      if (!PICTURE_KINDS.includes(o.kind) || !["review", "done"].includes(o.status) || !o.content) throw new UserError(NOT_NOW);
+      const quality = b.quality === "medium" ? "medium" : "high";
+      const page = Number.isInteger(b.page) ? Number(b.page) : -1;
+      const note = text(b.note, 2000);
+      const usd = page >= 0 ? pageUsd(quality) : picturesPlan(o, quality).usd;
+      return run("pictures", usd, { quality, page, note }, "صفحات مصممة بـ GPT Image 2");
     }
     case "quiz_attempt": {
       const c = o.content as { questions: { type: string; answer: string }[] } | null;

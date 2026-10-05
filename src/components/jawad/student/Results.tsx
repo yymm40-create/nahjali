@@ -19,10 +19,11 @@ const FILE_LABEL: Record<string, string> = {
   trial_pptx: "النسخة التجريبية PPTX",
   quiz_pdf: "ورقة الأسئلة PDF",
   answers_pdf: "ورقة الإجابات PDF",
+  pictures_pdf: "الصفحات المصممة PDF",
 };
 
 export function FileLinks({ o, only }: { o: OutputView; only?: (n: string) => boolean }) {
-  const files = o.files.filter((f) => (only ? only(f) : !f.startsWith("trial_")));
+  const files = o.files.filter((f) => (only ? only(f) : !f.startsWith("trial_") && f !== "pictures_pdf"));
   if (!files.length) return null;
   return (
     <div className="flex flex-wrap gap-2">
