@@ -118,7 +118,11 @@ export async function setCast(project: FilmProject, userId: string, speaker: unk
 }
 
 /** Speaks one line with its speaker's voice (Eleven v4) and keeps it with the project. */
-export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown) {
+/** The feeling asked for, as Eleven v4 reads it: one short word or phrase between [ ] (e.g. [whispers], [excited]). */
+export const cleanEmotion = (v: unknown) => String(v ?? "").replace(/[\[\]\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+
+export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown, emotionRaw?: unknown) {
+  const emotion = cleanEmotion(emotionRaw);
   if (!voicesReady()) throw new UserError("أصوات ElevenLabs غير متاحة حاليًا.", 503);
   const k = String(idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(k)) throw new UserError("طلب غير صحيح.", 400);
@@ -143,7 +147,9 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       console.error("film voice diction skipped", err);
       return { text: line.line, languageCode: arabic ? "ar" : undefined, fixes: [], usd: 0 };
     });
-    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: spoken.text, languageCode: spoken.languageCode });
+    // the feeling goes first, between [ ], where Eleven v4 takes it as a direction (it is never read aloud)
+    const withFeeling = emotion && !spoken.text.trimStart().startsWith("[") ? `[${emotion}] ${spoken.text}` : spoken.text;
+    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: withFeeling, languageCode: spoken.languageCode });
     const path = `${projectDir(project)}/voices/${line.genId}-${line.index}-${Date.now()}.mp3`;
     const up = await db().storage.from(FILM_BUCKET).upload(path, audio, { contentType: "audio/mpeg", upsert: false });
     if (up.error) throw new Error(`storage: ${up.error.message}`);
@@ -156,7 +162,7 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       mime: "audio/mpeg",
       bytes: audio.length,
       status: "generated",
-      meta: { speaker: line.speaker, text: line.line, voice, durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
+      meta: { speaker: line.speaker, text: line.line, voice, ...(emotion ? { emotion } : {}), durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
     });
     if (error) throw error;
     await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * ELEVEN_PRICE.v4PerKChars + spoken.usd, units: spoken.text.length });

@@ -22,6 +22,6 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     await setCast(project, user.id, b.speaker, b.voice);
     return NextResponse.json({ ok: true });
   }
-  if (b.action === "speak") return NextResponse.json(await speakLine(project, user, b.key, b.idempotencyKey));
+  if (b.action === "speak") return NextResponse.json(await speakLine(project, user, b.key, b.idempotencyKey, b.emotion));
   throw new UserError("طلب غير صحيح.", 400);
 });

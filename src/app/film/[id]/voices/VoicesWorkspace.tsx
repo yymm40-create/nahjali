@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Spinner from "@/components/Spinner";
 import type { VoiceLine } from "@/lib/film/voices";
+import EmotionPicker from "../../EmotionPicker";
 
 interface Choice {
   value: string;
@@ -33,6 +34,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
   const [s, setS] = useState<State | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [feel, setFeel] = useState<Record<string, string>>({});
 
   const load = useCallback(() => api<State>(url).then(setS).catch((e: Error) => setError(e.message)), [url]);
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
     for (const key of keys) {
       setBusy(key);
       try {
-        await postJson(url, { action: "speak", key, idempotencyKey: uid() });
+        await postJson(url, { action: "speak", key, idempotencyKey: uid(), emotion: feel[key] ?? "" });
         await load();
       } catch (e) {
         setError((e as Error).message);
@@ -130,6 +132,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
               return (
                 <li key={l.key} className="space-y-2 rounded-2xl border border-line p-3" data-line={l.key}>
                   <p className="text-sm"><span className="font-extrabold">{l.speaker}:</span> <span dir="rtl">{l.line}</span></p>
+                  <EmotionPicker value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(busy)} />
                   {a?.url && <audio controls preload="none" src={a.url} className="w-full" />}
                   {stale && <p className="text-xs font-bold text-muted">تغيّرت الجملة بعد توليد صوتها؛ ولّدها من جديد.</p>}
                   <button type="button" className="btn btn-secondary min-h-10 px-4 text-sm" disabled={Boolean(busy) || !s?.cast[l.speaker]} onClick={() => speak([l.key])}>
