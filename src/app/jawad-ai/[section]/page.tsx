@@ -4,6 +4,7 @@ import { coinBalance } from "@/lib/coins";
 import { canUseJawad, jawadSession } from "@/lib/jawad/server/access";
 import { loadRuntime, sectionGenerators } from "@/lib/jawad/server/runtime";
 import { worksPage } from "@/lib/jawad/server/works";
+import { isUnlimited } from "@config/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -36,7 +37,8 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
       generators={generators}
       prices={Object.fromEntries(generators.map((g) => [g.id, rt.prices[g.id]]))}
       user={user ? { id: user.id } : null}
-      owner={owner}
+      // a free guest is shown the studio without prices blocking them (charges are skipped on the server too)
+      owner={owner || isUnlimited(user?.email)}
       allowed={allowed}
       balance={balance}
       initialWorks={initialWorks}

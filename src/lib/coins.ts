@@ -5,7 +5,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { coinsFor } from "@config/coins";
-import { isAdmin } from "@config/site";
+import { isUnlimited } from "@config/site";
 
 const db = () => createAdminClient();
 
@@ -35,7 +35,7 @@ export const grantCoins = (userId: string, amount: number, note: string) => adju
 
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
 export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string) {
-  if (isAdmin(user.email) || !(await coinsRequired())) return;
+  if (isUnlimited(user.email) || !(await coinsRequired())) return;
   const coins = coinsFor(estimateUsd);
   const left = await adjust(user.id, -coins, "reserve", jobId, label);
   if (left === null) {

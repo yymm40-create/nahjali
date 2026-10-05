@@ -134,23 +134,35 @@ export function useProject(initial: ProjectState) {
     };
   }, [busy, state, refresh]);
 
+  // every press shows that something is happening (a bar at the top) until the page has the new state
+  const [pending, setPending] = useState(0);
+  const track = useCallback(async <T,>(fn: () => Promise<T>) => {
+    setPending((n) => n + 1);
+    try {
+      return await fn();
+    } finally {
+      setPending((n) => Math.max(0, n - 1));
+    }
+  }, []);
   const act = useCallback(
-    async (body: Record<string, unknown>) => {
-      const r = await post(`/api/jawad/student/projects/${initial.project.id}`, body);
-      await refresh();
-      return r;
-    },
-    [initial.project.id, refresh],
+    (body: Record<string, unknown>) =>
+      track(async () => {
+        const r = await post(`/api/jawad/student/projects/${initial.project.id}`, body);
+        await refresh();
+        return r;
+      }),
+    [initial.project.id, refresh, track],
   );
   const actOutput = useCallback(
-    async (id: string, body: Record<string, unknown>) => {
-      const r = await post(`/api/jawad/student/outputs/${id}`, body);
-      await refresh();
-      return r;
-    },
-    [refresh],
+    (id: string, body: Record<string, unknown>) =>
+      track(async () => {
+        const r = await post(`/api/jawad/student/outputs/${id}`, body);
+        await refresh();
+        return r;
+      }),
+    [refresh, track],
   );
-  return { state, refresh, act, actOutput, busy, error };
+  return { state, refresh, act, actOutput, busy, error, pending: pending > 0 };
 }
 
 export const fileUrl = (outputId: string, name: string, inline = false) => `/api/jawad/student/outputs/${outputId}/file?name=${name}${inline ? "&inline=1" : ""}`;

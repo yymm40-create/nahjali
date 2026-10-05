@@ -13,6 +13,19 @@ export const ADMIN_EMAILS = ["yymm40@gmail.com"];
 export const isAdmin = (email: string | undefined | null) => Boolean(email && ADMIN_EMAILS.includes(email.toLowerCase()));
 
 /**
+ * Guests the owner lets into JAWAD AI with everything free (no coins, no limits) until a set time; after it they are
+ * like everyone else again. They do not get the dashboard.
+ */
+export const FREE_GUESTS: { email: string; until: string }[] = [
+  // the owner's guest, until tomorrow 12:00 noon (Saudi time)
+  { email: "emanalialali91@gmail.com", until: "2026-10-06T12:00:00+03:00" },
+];
+export const isFreeGuest = (email: string | undefined | null) =>
+  Boolean(email && FREE_GUESTS.some((g) => g.email === email.toLowerCase() && Date.now() < new Date(g.until).getTime()));
+/** Makes things without paying: the owner, or a free guest while their time lasts. */
+export const isUnlimited = (email: string | undefined | null) => isAdmin(email) || isFreeGuest(email);
+
+/**
  * «كتيب نهج علي»'s pages and API. Who may open them (closed / given emails / everyone; closed by default, the
  * owner always) is set on /admin/limits — see bookletOpenFor in src/lib/film/limits.ts, used by src/proxy.ts.
  * While it isn't open for everyone, it stays listed and marked «تحت التطوير».

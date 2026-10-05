@@ -34,7 +34,9 @@ export default async function JawadLayout({ children }: { children: React.ReactN
   const allowed = await jawadVisibleTo(user);
   const path = h.get(JAWAD_PATH_HEADER) ?? "";
   // (the dashboard keeps its own owner check: a plain JAWAD 404 for everyone else)
-  const preview = !allowed && path !== `${JAWAD.base}/login` && path !== `${JAWAD.base}/username` && !path.startsWith(`${JAWAD.base}/admin`);
+  // «الطالب الذكي» is open to every visitor (making something needs signing in), even while the rest is closed
+  const student = path === `${JAWAD.base}/student` || path.startsWith(`${JAWAD.base}/student/`);
+  const preview = !allowed && !student && path !== `${JAWAD.base}/login` && path !== `${JAWAD.base}/username` && !path.startsWith(`${JAWAD.base}/admin`);
   const [balance, username] = user && !preview
     ? await Promise.all([coinBalance(user.id), getUsername(await createClient(), user.id).catch(() => null)])
     : [null, null];
@@ -43,7 +45,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       <a href="#jw-main" className="sr-only z-50 rounded-lg bg-jw-accent px-3 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
         تخطَّ إلى المحتوى
       </a>
-      <JawadHeader rt={rt} user={user} owner={owner} balance={balance} username={username} preview={!allowed} />
+      <JawadHeader rt={rt} user={user} owner={owner} balance={balance} username={username} preview={!allowed && !student} />
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
     </div>
   );

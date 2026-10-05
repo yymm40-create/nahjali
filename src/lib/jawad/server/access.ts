@@ -8,7 +8,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiUser, UserError } from "@/lib/api";
 import { accessMode, emailAccess, limitRows } from "@/lib/film/limits";
-import { isAdmin } from "@config/site";
+import { isAdmin, isFreeGuest, isUnlimited } from "@config/site";
 import { JAWAD } from "@config/jawad/brand";
 
 export const JAWAD_MESSAGES = {
@@ -28,7 +28,7 @@ export const jawadSession = cache(async (): Promise<{ user: User | null; owner: 
 /** May this person use JAWAD AI? The owner always may. */
 export async function canUseJawad(user: { email?: string | null } | null) {
   if (!user?.email) return false;
-  if (isAdmin(user.email)) return true;
+  if (isAdmin(user.email) || isFreeGuest(user.email)) return true;
   const rows = await limitRows();
   const own = await emailAccess("jawad", user.email, rows);
   if (own !== undefined) return own;
@@ -64,7 +64,14 @@ export async function requireJawadOwnerPage(next: string) {
 export async function requireJawadApiUser() {
   const user = await requireApiUser();
   if (!(await canUseJawad(user))) throw new UserError(JAWAD_MESSAGES.closed, 403);
-  return { user, owner: isAdmin(user.email) };
+  // a free guest makes everything without coins, like the owner (but never gets the dashboard)
+  return { user, owner: isUnlimited(user.email) };
+}
+
+/** API for «الطالب الذكي»: open to every signed-in person (the rest of JAWAD AI may still be closed). */
+export async function requireStudentApiUser() {
+  const user = await requireApiUser();
+  return { user, owner: isUnlimited(user.email) };
 }
 
 /** API: the owner only (404 for everyone else, like the rest of the dashboard). */

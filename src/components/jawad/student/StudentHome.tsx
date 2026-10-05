@@ -21,8 +21,14 @@ const HOW = [
 export default function StudentHome({
   name,
   projects,
+  loginHref = null,
+  left = null,
 }: {
+  /** materials this person can still make (null: no limit) */
+  left?: number | null;
   name: string;
+  /** signed-out visitor: where to sign in before making anything */
+  loginHref?: string | null;
   projects: { id: string; title: string; level: string; stage: string; last_activity_at: string; expiresAt: string }[] | null;
 }) {
   const router = useRouter();
@@ -33,11 +39,20 @@ export default function StudentHome({
   const [audience, setAudience] = useState("");
   const { busy, error, run } = useAsync();
 
-  const create = () =>
-    run(async () => {
+  // stays "busy" until the next page opens, so the button never looks like it did nothing
+  const [going, setGoing] = useState(false);
+  const create = () => {
+    if (loginHref) {
+      setGoing(true);
+      router.push(loginHref);
+      return;
+    }
+    return run(async () => {
       const r = await post<{ id: string }>("/api/jawad/student/projects", { title, level: level === "آخر" ? other : level, audience });
+      setGoing(true);
       router.push(`${STUDENT.base}/${r.id}`);
     });
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-16 px-4 py-8 sm:px-6 sm:py-12">
@@ -55,6 +70,11 @@ export default function StudentHome({
             <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-7 !text-base" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
               <Icon name="plus" size={18} /> ابدأ مادة جديدة
             </button>
+            {loginHref && (
+              <a href={loginHref} className="jw-btn !min-h-12 !px-6">
+                تسجيل الدخول
+              </a>
+            )}
             {projects && projects.length > 0 && (
               <a href="#my-materials" className="jw-btn !min-h-12 !px-6">
                 موادي ({projects.length})
@@ -144,6 +164,7 @@ export default function StudentHome({
             مادة جديدة
           </h2>
           <p className="text-sm text-jw-muted">ثلاث معلومات فقط، ثم ترفع مادتك.</p>
+          {left !== null && <p className={`text-xs font-bold ${left ? "text-jw-accent" : "text-jw-danger"}`}>{left ? `متبقٍّ لك ${left === 1 ? "مادة واحدة" : `${left} مادتان`} من ٢` : "استخدمت المادتين المتاحتين لحسابك."}</p>}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -168,14 +189,16 @@ export default function StudentHome({
         </div>
         <ErrorLine error={error} />
         <div className="text-center">
-          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-10 !text-base" onClick={create} disabled={busy}>
-            {busy ? <span className="jw-spinner" aria-hidden /> : <Icon name="sparkles" size={18} />}
-            ابدأ
+          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-10 !text-base" onClick={create} disabled={busy || going || left === 0}>
+            {busy || going ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : <Icon name="sparkles" size={18} />}
+            {loginHref ? "سجّل دخولك وابدأ" : going ? "جارٍ الفتح…" : "ابدأ"}
           </button>
+          {loginHref && <p className="mt-2 text-xs text-jw-muted">التصفح مفتوح للجميع. لتصنع من مادتك سجّل دخولك أولًا، وترجع هنا مباشرة.</p>}
         </div>
       </section>
 
       {/* ───────── my materials ───────── */}
+      {!loginHref && (
       <section id="my-materials" aria-labelledby="mine" className="space-y-5">
         <h2 id="mine" className="st-section-title text-xl">موادي</h2>
         {projects === null ? (
@@ -210,6 +233,7 @@ export default function StudentHome({
           </ul>
         )}
       </section>
+      )}
     </div>
   );
 }
