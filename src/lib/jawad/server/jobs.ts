@@ -12,7 +12,7 @@ import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
+import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
@@ -26,6 +26,7 @@ import { arkCancelTask, arkCreateTask, arkGetTask, arkListTasks, type ArkContent
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
 import { resolveVoice } from "./voices";
+import { prepareSpeech } from "./diction";
 import { makeSmartSplit, removeFrames, storeFrames, videoHasSound, type VideoInputs } from "./smart-split";
 import { keepMadeItem } from "./library";
 import { libraryAccess, libraryNames } from "./library-access";
@@ -48,8 +49,11 @@ export interface JobRow {
   mode: string;
   output_kind: "image" | "video" | "audio";
   prompt: string;
-  /** modelPrompt: the prompt as the model receives it (each «@name» written the model's way), when it differs. */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string } };
+  /**
+   * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
+   * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
+   */
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -387,9 +391,17 @@ async function runEleven(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   if (def.model.id === "eleven_v4") {
     const voice = await resolveVoice(job.user_id, String(s.voice));
     if (!voice.ok) throw new ProviderError("rejected", voice.reason, `voice ${String(s.voice)}`);
-    audio = await elevenSpeech({ voiceId: voice.voiceId, text: job.prompt, model: def.model.id, stability: Number(s.stability) });
-    costUsd = (job.prompt.length / 1000) * ELEVEN_PRICE.v4PerKChars;
-    units = { characters: job.prompt.length };
+    // «النطق الدقيق»: the Arabic words whose sound depends on their vowels, written so the voice says them right
+    const diction = dictionOf({ settings: s, prompt: job.prompt });
+    if (diction !== "off") await db().from("jawad_jobs").update({ provider_status: "diction" }).eq("id", job.id);
+    const spoken = await prepareSpeech(job.prompt, diction).catch((e) => {
+      throw new ProviderError("rejected", "تعذّر تدقيق النطق الآن. لم يُخصم منك شيء؛ جرّب مرة ثانية أو اختر «كما كتبت».", `diction: ${String(e instanceof Error ? e.message : e).slice(0, 300)}`);
+    });
+    if (spoken.fixes.length) job.inputs = { ...job.inputs, modelPrompt: spoken.text, diction: { mode: diction, words: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } };
+    if (diction !== "off") await db().from("jawad_jobs").update({ inputs: job.inputs, provider_status: "generating" }).eq("id", job.id);
+    audio = await elevenSpeech({ voiceId: voice.voiceId, text: spoken.text, model: def.model.id, stability: Number(s.stability), languageCode: spoken.languageCode });
+    costUsd = (spoken.text.length / 1000) * ELEVEN_PRICE.v4PerKChars + spoken.usd;
+    units = { characters: spoken.text.length, ...(diction !== "off" ? { diction, fixed: spoken.fixes.length, claudeUsd: Number(spoken.usd.toFixed(4)) } : {}), ...(spoken.languageCode ? { languageCode: spoken.languageCode } : {}) };
   } else if (def.model.id === "eleven_text_to_sound_v2") {
     const seconds = Number(s.duration) || 5;
     audio = await elevenSoundEffect({ text: job.prompt, seconds, loop: Boolean(s.loop), influence: Number(s.influence) || 0.3 });

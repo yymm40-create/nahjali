@@ -66,6 +66,7 @@ export async function jobViews(jobs: JobRow[]): Promise<JobView[]> {
       refStyle: j.inputs.refStyle ?? "none",
       refs: j.refs as JobView["refs"],
       modelPrompt: j.inputs.modelPrompt ?? null,
+      diction: j.inputs.diction?.words ?? [],
       priceCoins: j.price_coins,
       charged: j.charged,
       chargeState: j.charge_state,

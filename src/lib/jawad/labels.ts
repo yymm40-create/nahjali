@@ -19,6 +19,8 @@ export function stageLabel(status: JobStatus, providerStatus?: string | null) {
       const made = /^sounds (\d+)\/(\d+)$/.exec(providerStatus ?? "");
       if (made) return `يصنع الأصوات (${made[1]} من ${made[2]})`;
       if (providerStatus === "mixing") return "يجهّز المسارات على طول الفيديو";
+      // «النطق الدقيق»
+      if (providerStatus === "diction") return "Claude يضبط نطق الكلمات";
       return "التوليد";
     }
     case "saving":
@@ -66,8 +68,10 @@ export interface JobView {
   settings: Record<string, string | number | boolean>;
   refStyle: "none" | "frames" | "references";
   refs: { uploadId: string; kind: "image" | "video" | "audio"; role: "first_frame" | "last_frame" | "reference"; name?: string }[];
-  /** The prompt as the model received it, when «@name» mentions were written its way. */
+  /** The prompt as the model received it, when «@name» mentions (or Arabic words, by «النطق الدقيق») were written its way. */
   modelPrompt: string | null;
+  /** «النطق الدقيق»: the words whose pronunciation was set, each with its full vowels. */
+  diction: { word: string; vocalized: string }[];
   priceCoins: number;
   charged: boolean;
   chargeState: "none" | "held" | "settled" | "refunded";
