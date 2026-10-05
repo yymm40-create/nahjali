@@ -9,6 +9,7 @@ import DayView from "./DayView";
 import Icon from "./Icon";
 import JoinPrompt from "./JoinPrompt";
 import { useMahdi } from "./Provider";
+import PeopleSearch from "./social/PeopleSearch";
 import { StoriesBar } from "./social/Stories";
 
 const H = t.slider;
@@ -133,6 +134,7 @@ function FollowingPane() {
           <Icon name="plus" size={18} /> {H.newPost}
         </Link>
       </div>
+      <PeopleSearch />
       <StoriesBar big />
       <CommunityFeed
         source="following"

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, requireProfile, UserError } from "@/lib/mahdi/server/api";
-import { peopleOf, profileView, userByUsername } from "@/lib/mahdi/server/social";
+import { peopleOf, profileView, personByUsername } from "@/lib/mahdi/server/social";
 
 type Ctx = { params: Promise<{ username: string }> };
 
@@ -11,7 +11,7 @@ type Ctx = { params: Promise<{ username: string }> };
  */
 export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { supabase, user } = await requireProfile(req);
-  const person = await userByUsername(decodeURIComponent((await params).username));
+  const person = await personByUsername(decodeURIComponent((await params).username));
   if (!person) throw new UserError(t.social.profile.notFound, 404);
   const view = await profileView(supabase, user.id, person);
   const list = new URL(req.url).searchParams.get("list");

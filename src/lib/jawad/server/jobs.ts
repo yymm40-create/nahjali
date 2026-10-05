@@ -173,7 +173,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
   });
   const settings = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Settings;
   const prompt = typeof b.prompt === "string" ? b.prompt : "";
-  const instructions = typeof b.instructions === "string" ? b.instructions : "";
+  // A performance description is only for generators that take one (a page left from another generator may send it)
+  const instructions = def.extraText && typeof b.instructions === "string" ? b.instructions : "";
   if (prompt.length > 40_000 || instructions.length > 5_000) throw new UserError("النص طويل جدًا.", 400);
 
   const table = rt.prices[def.id];

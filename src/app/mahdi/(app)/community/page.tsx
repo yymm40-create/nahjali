@@ -9,6 +9,7 @@ import CommunityFeed from "@/components/mahdi/CommunityFeed";
 import GroupsHome from "@/components/mahdi/GroupsHome";
 import JoinPrompt from "@/components/mahdi/JoinPrompt";
 import { StoriesBar } from "@/components/mahdi/social/Stories";
+import PeopleSearch from "@/components/mahdi/social/PeopleSearch";
 import LeaderboardTab from "@/components/mahdi/LeaderboardTab";
 import { FeedbackCard } from "@/components/mahdi/Feedback";
 import Icon from "@/components/mahdi/Icon";
@@ -65,6 +66,7 @@ export default function CommunityPage() {
           </div>
         )}
       </div>
+      <PeopleSearch />
       <div role="tablist" aria-label={t.community.tabs} className="m-scroll-x -mx-1 flex gap-1.5 px-1 pb-1">
         {TABS.map((k, i) => (
           <button
