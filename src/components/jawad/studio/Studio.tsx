@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
-import { sfxFrameTimes, VIDEO_SFX } from "@config/jawad/video-sfx";
+import { needsFrames, sfxFrameTimes, SMART_SPLIT_MODE, VIDEO_SFX } from "@config/jawad/smart-split";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
 import { cleanRefName, defaultRefName, renameMentions, sameName } from "@/lib/jawad/mentions";
 import { isOpenStatus, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
@@ -143,7 +143,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   // Submitting
   const [submitting, setSubmitting] = useState(false);
-  // «مؤثرات من فيديو»: taking the video's frames before sending (what the button says meanwhile)
+  // «الفصل الذكي»: taking the video's frames before sending (what the button says meanwhile)
   const [preparing, setPreparing] = useState("");
   // «المخرج الخارق»: writing the prompt now, and the prompt it replaced (to bring back)
   const [directing, setDirecting] = useState(false);
@@ -460,7 +460,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
     }
   }
 
-  /** «مؤثرات من فيديو»: small frames of the stored video with their times (a fresh link if the old one expired). */
+  /** «الفصل الذكي»: small frames of the stored video with their times (a fresh link if the old one expired). */
   async function videoFrames(): Promise<{ t: number; data: string }[]> {
     const video = draft.refs.find((r) => r.kind === "video" && r.status === "ready");
     if (!video?.uploadId || !video.durationMs) throw new Error("no video");
@@ -479,7 +479,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
   async function submit(expectedCoins: number) {
     if (!def || !gen || submitting) return;
     let frames: { t: number; data: string }[] | undefined;
-    if (ev?.mode.id === "video_to_sfx") {
+    if (ev?.mode.id === SMART_SPLIT_MODE && needsFrames(ev.settings)) {
       setSubmitting(true);
       setSubmitError("");
       setPreparing("يجهّز لقطات الفيديو…");

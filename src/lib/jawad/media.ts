@@ -108,6 +108,19 @@ export function probeIsoBmff(b: Uint8Array): Probe {
   return out;
 }
 
+/** MP4 / MOV: whether the file has a sound track (a track whose handler is "soun"). Needs the whole file. */
+export function hasSoundTrack(b: Uint8Array): boolean {
+  const moov = [...boxes(b, 0, b.length)].find((x) => x.type === "moov");
+  if (!moov) return false;
+  for (const trak of boxes(b, moov.body, moov.end)) {
+    if (trak.type !== "trak") continue;
+    const mdia = child(b, trak, "mdia");
+    const hdlr = mdia && child(b, mdia, "hdlr");
+    if (hdlr && ascii(b, hdlr.body + 8, 4) === "soun") return true;
+  }
+  return false;
+}
+
 /** WAV: duration from the data size and byte rate. */
 export function probeWav(b: Uint8Array): Probe {
   let o = 12;

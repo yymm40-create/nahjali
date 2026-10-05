@@ -13,6 +13,8 @@ export interface MixClip {
   trimLead?: boolean;
   /** The background: repeated until the end of the track. */
   loop?: boolean;
+  /** Seconds of fade when the clip reaches the end of the track (a short one by default; music fades out gently). */
+  fadeOut?: number;
 }
 
 /** Linear resampling (the generator's 24 or 48 kHz to the track's rate). */
@@ -55,8 +57,9 @@ export function mixTrack(clips: MixClip[], durationMs: number, rate = 48_000): F
     const len = end - start;
     if (len <= 0) continue;
     const fadeIn = Math.min(len, Math.round(rate * (c.loop ? 0.3 : 0.004)));
-    const cut = !c.loop && start + x.length > n;
-    const fadeOut = Math.min(len, Math.round(rate * (c.loop ? 0.4 : cut ? 0.03 : 0.004)));
+    // Reaching the end of the track (cut by it, or ending right on it): faded out
+    const cut = !c.loop && start + x.length >= n;
+    const fadeOut = Math.min(len, Math.round(rate * (c.loop ? 0.4 : cut ? (c.fadeOut ?? 0.03) : 0.004)));
     for (let i = 0; i < len; i++) {
       let g = c.gain;
       if (i < fadeIn) g *= i / fadeIn;
