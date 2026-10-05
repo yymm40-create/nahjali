@@ -575,6 +575,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       refStyle,
       refs: [],
       modelPrompt: null,
+      diction: [],
       priceCoins: expectedCoins,
       charged: !owner,
       chargeState: "none",

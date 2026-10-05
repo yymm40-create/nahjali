@@ -367,16 +367,43 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
               </>
             )}
             <p className="pt-1 text-jw-muted">الإعدادات:</p>
-            <p dir="ltr" className="font-mono text-[11px]" style={{ textAlign: "right" }}>{JSON.stringify(j.settings)}</p>
+            <p dir="ltr" className="break-all font-mono text-[11px]" style={{ textAlign: "right" }}>{JSON.stringify(j.settings)}</p>
             {j.refs.length > 0 && (
               <p className="text-jw-muted">
                 المراجع: <span dir="ltr">{j.refs.map((r) => (r.name ? `@${r.name}` : "—")).join(" · ")}</span>
               </p>
             )}
+            {j.diction.length > 0 && (
+              <>
+                <p className="pt-1 text-jw-muted">النطق الدقيق (كلمات ضُبط نطقها):</p>
+                <p className="leading-7" dir="rtl">
+                  {j.diction.map((d, k) => (
+                    <span key={k} className="me-2 inline-block">
+                      {d.word} ← <span className="font-semibold text-jw-ink">{d.vocalized}</span>
+                    </span>
+                  ))}
+                </p>
+              </>
+            )}
             {j.modelPrompt && (
               <>
-                <p className="pt-1 text-jw-muted">كما وصل للمولد (أسماء المراجع بصيغته):</p>
-                <p className="whitespace-pre-wrap" dir="auto">{j.modelPrompt}</p>
+                <p className="pt-1 text-jw-muted">{j.diction.length ? "كما وصل لـ ElevenLabs:" : "كما وصل للمولد (أسماء المراجع بصيغته):"}</p>
+                {j.diction.length ? (
+                  // The Arabic text with each phonetic word («/…/», left to right) kept in its place
+                  <p className="whitespace-pre-wrap leading-7" dir="rtl">
+                    {j.modelPrompt.split(/(\/[^/\n]+\/)/).map((part, k) =>
+                      k % 2 ? (
+                        <bdi key={k} dir="ltr" className="rounded bg-jw-bg-2 px-1 font-mono text-[11px]">
+                          {part}
+                        </bdi>
+                      ) : (
+                        part
+                      ),
+                    )}
+                  </p>
+                ) : (
+                  <p className="whitespace-pre-wrap" dir="auto">{j.modelPrompt}</p>
+                )}
               </>
             )}
           </div>
