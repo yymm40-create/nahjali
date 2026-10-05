@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { deleteExpiredSourcePhotos } from "@/lib/orders";
 import { advanceOpenJobs } from "@/lib/jawad/server/jobs";
+import { studentSweep } from "@/lib/jawad/student/cleanup";
 
 export const maxDuration = 300;
 
@@ -13,5 +14,7 @@ export const maxDuration = 300;
 export async function GET() {
   const checked = await deleteExpiredSourcePhotos();
   await advanceOpenJobs(undefined, 50).catch((e) => console.error("jawad sweep failed", e));
+  // «الطالب الذكي»: projects idle for 30 days are deleted with their files; unfinished steps continue
+  await studentSweep().catch((e) => console.error("student sweep failed", e));
   return NextResponse.json({ ok: true, checked });
 }

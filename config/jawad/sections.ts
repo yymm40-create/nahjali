@@ -9,12 +9,13 @@ export const SECTION_IMPLEMENTATIONS = {
   "studio:video": { label: "استوديو الفيديو (مولدات الفيديو)", output: "video" as OutputKind },
   "studio:audio": { label: "استوديو الصوت (مولدات الصوت)", output: "audio" as OutputKind },
   film: { label: "صناعة الفيلم بالخطوات (المسار القائم)", output: null },
+  student: { label: "الطالب الذكي (مواد دراسية إلى ملخصات وكتب وعروض وصوت واختبارات)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
 export const isImplementation = (s: string): s is SectionImplementation => s in SECTION_IMPLEMENTATIONS;
 
 /** Icons the owner can pick for a section (drawn by src/components/jawad/Icon.tsx). */
-export const SECTION_ICONS = ["image", "video", "film", "audio", "sparkles", "wand", "layers", "camera", "mic", "music", "palette", "user"] as const;
+export const SECTION_ICONS = ["image", "video", "film", "audio", "book", "sparkles", "wand", "layers", "camera", "mic", "music", "palette", "user"] as const;
 export type SectionIcon = (typeof SECTION_ICONS)[number];
 
 export interface SectionDef {
@@ -31,10 +32,15 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "video", name: "صناعة الفيديو", icon: "video", implementation: "studio:video", sort: 20, enabled: true },
   { id: "film", name: "الفيلم السينمائي", icon: "film", implementation: "film", sort: 30, enabled: true },
   { id: "audio", name: "صناعة الصوت", icon: "audio", implementation: "studio:audio", sort: 40, enabled: true },
+  { id: "student", name: "الطالب الذكي", icon: "book", implementation: "student", sort: 50, enabled: true },
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["admin", "login", "username", "coins", "api", "works", "film"];
+export const RESERVED_SECTION_IDS = ["admin", "login", "username", "coins", "api", "works", "film", "student"];
 
-/** Where a section opens. The film maker keeps its own pages; studio sections open at /jawad-ai/<id>. */
-export const sectionPath = (s: Pick<SectionDef, "id" | "implementation">) => (s.implementation === "film" ? "/jawad-ai/film" : `/jawad-ai/${s.id}`);
+/** Implementations with their own fixed pages (one section each, not added again by the owner). */
+export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student"];
+
+/** Where a section opens. The film maker and «الطالب الذكي» keep their own pages; studio sections open at /jawad-ai/<id>. */
+export const sectionPath = (s: Pick<SectionDef, "id" | "implementation">) =>
+  s.implementation === "film" ? "/jawad-ai/film" : s.implementation === "student" ? "/jawad-ai/student" : `/jawad-ai/${s.id}`;

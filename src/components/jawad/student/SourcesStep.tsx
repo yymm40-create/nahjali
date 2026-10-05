@@ -1,0 +1,134 @@
+"use client";
+
+import { useRef, useState } from "react";
+import Icon from "@/components/jawad/Icon";
+import { putWithProgress } from "@/components/jawad/studio/upload";
+import type { ProjectHook } from "./StudentProject";
+import { ErrorLine, JobStatus, PaidButton, useAsync } from "./ui";
+
+const KIND = { text: "نص مكتوب", image: "صورة", pdf: "PDF" } as const;
+
+export default function SourcesStep({ p }: { p: ProjectHook }) {
+  const { sources, jobs, project, segments } = p.state;
+  const [text, setText] = useState("");
+  const [uploads, setUploads] = useState<{ name: string; progress: number; error?: string }[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { busy, error, run } = useAsync();
+  const job = jobs.find((j) => j.kind === "extract");
+  const running = jobs.some((j) => j.status === "queued" || j.status === "running");
+
+  const upload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const list = [...files];
+    setUploads(list.map((f) => ({ name: f.name, progress: 0 })));
+    // one after the other, in the order chosen, so the material keeps its order
+    for (const [i, f] of list.entries()) {
+      try {
+        const mime = f.type || (f.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "");
+        const r = (await p.act({ action: "source_file", name: f.name, mime, bytes: f.size })) as { sourceId: string; signedUrl: string };
+        await putWithProgress(r.signedUrl, f, mime, (x) => setUploads((u) => u.map((y, k) => (k === i ? { ...y, progress: x } : y))));
+        await p.act({ action: "source_confirm", sourceId: r.sourceId });
+        setUploads((u) => u.map((y, k) => (k === i ? { ...y, progress: 1 } : y)));
+      } catch (e) {
+        setUploads((u) => u.map((y, k) => (k === i ? { ...y, error: e instanceof Error ? e.message : String(e) } : y)));
+      }
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const move = (id: string, d: -1 | 1) => {
+    const ids = sources.map((s) => s.id);
+    const i = ids.indexOf(id);
+    const j = i + d;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    return run(() => p.act({ action: "source_order", ids }));
+  };
+
+  const pending = sources.filter((s) => s.status === "ready" && (s.kind === "pdf" ? s.pagesDone < s.pages : s.pagesDone < 1));
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+      <section className="space-y-4">
+        <div className="jw-panel space-y-3 p-4">
+          <h2 className="font-semibold">أضف نصًا مكتوبًا</h2>
+          <textarea className="jw-textarea" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="الصق النص هنا. يُحفظ كما كتبته تمامًا." aria-label="النص" />
+          <button type="button" className="jw-btn" disabled={busy || !text.trim()} onClick={() => run(async () => { await p.act({ action: "source_text", body: text }); setText(""); })}>
+            <Icon name="plus" size={16} /> أضف النص
+          </button>
+        </div>
+
+        <div className="jw-panel space-y-3 p-4">
+          <h2 className="font-semibold">ارفع صورًا أو ملفات PDF</h2>
+          <p className="text-sm text-jw-muted">تستطيع رفع عدة ملفات؛ تُحفظ بترتيب اختيارها ويمكنك تغيير الترتيب. PDF النصي والمصوّر كلاهما مقبول.</p>
+          <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple className="hidden" onChange={(e) => upload(e.target.files)} />
+          <button type="button" className="jw-btn" onClick={() => fileRef.current?.click()}>
+            <Icon name="upload" size={16} /> اختر الملفات
+          </button>
+          {uploads.length > 0 && (
+            <ul className="space-y-1 text-sm">
+              {uploads.map((u, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="truncate">{u.name}</span>
+                  {u.error ? <span className="text-jw-danger">{u.error}</span> : u.progress < 1 ? <span className="text-jw-muted">{Math.round(u.progress * 100)}٪</span> : <Icon name="check" size={14} className="text-jw-ok" />}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <aside className="space-y-3">
+        <div className="jw-panel space-y-2 p-4">
+          <h2 className="font-semibold">مدخلات المادة ({sources.length})</h2>
+          {sources.length === 0 && <p className="text-sm text-jw-muted">لا شيء بعد.</p>}
+          <ol className="space-y-2">
+            {sources.map((s, i) => (
+              <li key={s.id} className="flex items-center gap-2 rounded-lg bg-jw-surface-2 p-2 text-sm">
+                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-jw-surface-3 text-xs">{i + 1}</span>
+                <span className="min-w-0 flex-1">
+                  <b className="block truncate">{s.name || KIND[s.kind]}</b>
+                  <span className="text-xs text-jw-muted">
+                    {KIND[s.kind]}
+                    {s.kind === "pdf" && s.pages ? ` · ${s.pages} صفحة` : ""}
+                    {s.status === "pending" ? " · لم يكتمل الرفع" : s.status === "rejected" ? " · مرفوض" : s.kind === "pdf" ? ` · قُرئ ${s.pagesDone} من ${s.pages}` : s.pagesDone ? " · قُرئ" : ""}
+                  </span>
+                </span>
+                {s.kind !== "text" && s.status === "ready" && (
+                  <a className="jw-btn jw-btn-quiet jw-btn-icon" href={`/api/jawad/student/projects/${project.id}/source/${s.id}`} target="_blank" rel="noreferrer" aria-label="فتح الملف">
+                    <Icon name="eye" size={14} />
+                  </a>
+                )}
+                <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" aria-label="لأعلى" onClick={() => move(s.id, -1)} disabled={i === 0 || busy}>
+                  <Icon name="chevronDown" size={14} className="rotate-180" />
+                </button>
+                <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" aria-label="لأسفل" onClick={() => move(s.id, 1)} disabled={i === sources.length - 1 || busy}>
+                  <Icon name="chevronDown" size={14} />
+                </button>
+                <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" aria-label="حذف" onClick={() => confirm("حذف هذا المدخل ونصه المستخرج؟") && run(() => p.act({ action: "source_remove", sourceId: s.id }))} disabled={busy || running}>
+                  <Icon name="trash" size={14} />
+                </button>
+              </li>
+            ))}
+          </ol>
+          <ErrorLine error={error} />
+        </div>
+
+        <div className="jw-panel space-y-3 p-4">
+          <h2 className="font-semibold">استخراج النص</h2>
+          <p className="text-sm text-jw-muted">
+            النص المكتوب يُحفظ كما هو. الصور وصفحات PDF يقرؤها المساعد حرفيًا صفحة صفحة، ويعلّم الكلمات غير المقروءة بـ ⟦؟⟧ بدل تخمينها. القراءة الآلية ليست دقيقة 100٪، لذلك ستراجع النص كاملًا بعدها.
+          </p>
+          <JobStatus job={job && (job.status !== "succeeded" ? job : undefined)} />
+          {pending.length > 0 ? (
+            <PaidButton label={segments.length ? "أكمل الاستخراج" : "استخرج النص"} what={`قراءة ${pending.length} مدخل (الصور وصفحات PDF عبر Claude).`} disabled={running} run={(b) => p.act({ action: "extract", ...b })} />
+          ) : sources.length > 0 && segments.length > 0 ? (
+            <p className="text-sm text-jw-ok">
+              <Icon name="check" size={14} className="inline" /> استُخرج كل شيء. انتقل إلى «مراجعة النص».
+            </p>
+          ) : null}
+        </div>
+      </aside>
+    </div>
+  );
+}

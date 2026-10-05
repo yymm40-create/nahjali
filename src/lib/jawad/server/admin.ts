@@ -8,7 +8,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GENERATORS, generatorById } from "@config/jawad/generators";
 import { cleanAccent } from "@config/jawad/brand";
-import { DEFAULT_SECTIONS, isImplementation, RESERVED_SECTION_IDS, SECTION_ICONS, SECTION_IMPLEMENTATIONS } from "@config/jawad/sections";
+import { DEFAULT_SECTIONS, FIXED_IMPLEMENTATIONS, isImplementation, RESERVED_SECTION_IDS, SECTION_ICONS, SECTION_IMPLEMENTATIONS } from "@config/jawad/sections";
 import { probe, sniff } from "../media";
 import { AD_SLOTS, cleanAdHref, emptyAd, type AdContent, type AdRow, type AdSlot } from "./ads";
 import { JAWAD_PUBLIC_BUCKET, loadRuntime } from "./runtime";
@@ -204,7 +204,7 @@ export async function saveSection(b: { id?: unknown; name?: unknown; icon?: unkn
   if (!(SECTION_ICONS as readonly string[]).includes(icon)) throw new UserError("اختر أيقونة من القائمة.", 400);
   // A built-in section keeps its component; a new one must use an implemented studio (the film maker has one place)
   const implementation = builtIn ? builtIn.implementation : String(b.implementation ?? "");
-  if (!isImplementation(implementation) || (!builtIn && implementation === "film")) throw new UserError("اربط القسم بمكوّن منفّذ.", 400);
+  if (!isImplementation(implementation) || (!builtIn && FIXED_IMPLEMENTATIONS.includes(implementation))) throw new UserError("اربط القسم بمكوّن منفّذ.", 400);
   const sort = Math.round(Number(b.sort));
   if (!Number.isFinite(sort) || sort < 0 || sort > 10000) throw new UserError("الترتيب رقم من ٠ إلى ١٠٠٠٠.", 400);
   const { error } = await db().from("jawad_sections").upsert({ id, name, icon, implementation, sort, enabled: Boolean(b.enabled), updated_at: new Date().toISOString() });

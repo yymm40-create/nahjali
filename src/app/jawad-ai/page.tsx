@@ -14,6 +14,7 @@ const BLURB: Record<string, string> = {
   "studio:video": "فيديو من النص أو من إطار أول وأخير أو مراجع متعددة.",
   "studio:audio": "كلام منطوق بأصوات مختلفة ووصف أداء منفصل.",
   film: "من الفكرة إلى السيناريو والشيتات والمقاطع، خطوة بخطوة.",
+  student: "ارفع مادتك الدراسية: ملخص، شرح، كتاب PDF، عرض PPTX، تسجيل صوتي واختبار.",
 };
 
 /** JAWAD AI's home: the three ads first, then the sections. */
