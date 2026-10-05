@@ -56,7 +56,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   const vi = STEPS.findIndex((s) => s.id === view);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6" data-st-stage={view} data-st-project={project.id}>
       <header className="st-rise flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <Link href={STUDENT.base} className="jw-btn jw-btn-icon" aria-label="موادي">
