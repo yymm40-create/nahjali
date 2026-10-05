@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import AssistantSheet from "./AssistantSheet";
+import AssistantFloat from "./AssistantFloat";
 import { FeedbackPrompt, FeedbackSheet } from "./Feedback";
 import HabitForm from "./HabitForm";
 import Icon, { type IconName } from "./Icon";
@@ -16,7 +16,6 @@ import Sheet from "./Sheet";
 import Toasts from "./Toasts";
 import Avatar from "./Avatar";
 import RewardReveal from "./RewardReveal";
-import Robot from "./Robot";
 
 const NAV: { href: string; label: string; side?: string; icon: IconName; match: (p: string) => boolean }[] = [
   { href: "/mahdi", label: t.nav.home, icon: "home", match: (p) => p === "/mahdi" || p.startsWith("/mahdi/day") },
@@ -71,15 +70,11 @@ export default function AppShell({ children, familyMember = false }: { children:
   const [newHabit, setNewHabit] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const [feedback, setFeedback] = useState(false);
-  const [assistant, setAssistant] = useState(false);
   const { unread, refresh } = useUnread();
   // A reply notification opens «المساعد» with ?assistant=1 on any screen
   const searchParams = useSearchParams();
   const assistantFromLink = searchParams.get("assistant") === "1";
-  const closeAssistant = () => {
-    setAssistant(false);
-    if (assistantFromLink) router.replace(pathname, { scroll: false });
-  };
+  const linkClosed = () => router.replace(pathname, { scroll: false });
 
   const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
   const inProject = projects.find((p) => p.id === contextProject);
@@ -122,19 +117,19 @@ export default function AppShell({ children, familyMember = false }: { children:
       </aside>
 
       <div className="min-w-0">
-        {/* Every screen: back to «نهج علي», the assistant and the notifications, always in the same place */}
+        {/* Every screen: back to «نهج علي», the community, the notifications and the account, always in the same place */}
         <header className="m-topbar" aria-label={t.bar.label}>
           <Link href="/" className="m-bar-site">
             <Icon name="chevronRight" size={18} strokeWidth={2.2} />
             <span className="lg:hidden">{t.bar.site}</span>
             <span className="hidden lg:inline">{t.bar.siteLong}</span>
           </Link>
-          <Link href="/mahdi" className="m-display m-gold min-w-0 truncate text-lg max-[379px]:hidden lg:hidden">{t.brand}</Link>
+          <Link href="/mahdi" className="m-display m-gold min-w-0 truncate text-lg max-sm:hidden lg:hidden">{t.brand}</Link>
           <span className="flex-1" />
-          <button type="button" className="m-bar-btn" onClick={() => setAssistant(true)} aria-label={t.bar.assistant}>
-            <Robot size={28} />
-            <span>{t.bar.assistant}</span>
-          </button>
+          <Link href="/mahdi/community" className="m-bar-btn" aria-current={NAV[4].match(pathname) ? "page" : undefined}>
+            <Icon name="globe" size={24} />
+            <span>{t.bar.community}</span>
+          </Link>
           <Link
             href="/mahdi/inbox"
             className="m-bar-btn relative"
@@ -144,6 +139,10 @@ export default function AppShell({ children, familyMember = false }: { children:
             <Icon name="bell" size={24} />
             <span>{t.bar.inbox}</span>
             {unread > 0 && <span className="m-badge m-num" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
+          </Link>
+          <Link href="/mahdi/more" className="m-bar-btn" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
+            <Avatar profile={profile} size={26} />
+            <span>{t.bar.account}</span>
           </Link>
         </header>
         {familyMember && (
@@ -159,10 +158,10 @@ export default function AppShell({ children, familyMember = false }: { children:
         </main>
       </div>
 
-      {/* Phones: bottom navigation with the "+" in the middle */}
+      {/* Phones: bottom navigation with the "+" in the middle (the community and the account are in the top bar) */}
       <nav aria-label={t.nav.main} className="m-bottom-nav lg:hidden">
-        <div className="mx-auto grid h-full max-w-xl grid-cols-7 items-center px-1">
-          {NAV.slice(0, 3).map((n) => (
+        <div className="mx-auto grid h-full max-w-xl grid-cols-5 items-center px-1">
+          {NAV.slice(0, 2).map((n) => (
             <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
               <Icon name={n.icon} /> {n.label}
             </Link>
@@ -172,14 +171,11 @@ export default function AppShell({ children, familyMember = false }: { children:
               <Icon name="plus" size={28} strokeWidth={2.2} />
             </button>
           </div>
-          {NAV.slice(3).map((n) => (
+          {NAV.slice(2, 4).map((n) => (
             <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
               <Icon name={n.icon} /> {n.label}
             </Link>
           ))}
-          <Link href="/mahdi/more" className="m-nav-item" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
-            <Avatar profile={profile} size={24} /> {t.nav.me}
-          </Link>
         </div>
       </nav>
 
@@ -222,7 +218,7 @@ export default function AppShell({ children, familyMember = false }: { children:
       <HabitForm open={newHabit} onClose={() => setNewHabit(false)} projectId={inProject?.id} />
       <ProjectForm open={newProject} onClose={() => setNewProject(false)} onSaved={(id) => router.push(`/mahdi/projects/${id}`)} />
       <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} place="sidebar" />
-      <AssistantSheet open={assistant || assistantFromLink} onClose={closeAssistant} onRead={refresh} />
+      <AssistantFloat openFromLink={assistantFromLink} onLinkClosed={linkClosed} onRead={refresh} />
       <FeedbackPrompt />
       <RewardReveal />
       <Toasts />

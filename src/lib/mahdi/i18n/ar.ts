@@ -36,6 +36,18 @@ export const ar = {
     inbox: "الإشعارات",
     inboxUnread: (n: number) => `الإشعارات، ${n} غير مقروءة`,
     assistant: "المساعد",
+    community: "المجتمع",
+    account: "حسابي",
+  },
+
+  // The home screen's slider: the day (progress…) or the people I follow (stories and posts)
+  slider: {
+    label: "اختر الشاشة",
+    home: "الرئيسية",
+    following: "المتابَعون",
+    followingTitle: "ممن تتابعهم",
+    newPost: "منشور",
+    explore: "اكتشف موالين تتابعهم",
   },
 
   inbox: {
@@ -65,6 +77,13 @@ export const ar = {
     notReady: "المساعد قيد التجهيز؛ جرّب لاحقًا.",
     loadError: "تعذّر تحميل المحادثة.",
     replyTitle: "ردّ عليك المساعد",
+    open: "افتح المساعد",
+    fold: "صغّر المحادثة",
+    hide: "أخفِ زر المساعد",
+    hidden: "أخفينا زر المساعد. ترجعه من «حسابي».",
+    setting: "زر المساعد العائم",
+    settingHint: "الروبوت أسفل الشاشة: اسحبه لأي مكان، واضغطه لتفتح محادثة صغيرة ما تغطي الشاشة.",
+    show: "أظهر زر المساعد",
     newTitle: (name: string) => `سؤال جديد للمساعد من ${name}`,
   },
 
@@ -590,6 +609,7 @@ export const ar = {
       tooMany: "رفعت ملفات كثيرة اليوم؛ جرّب بكرة.",
       failed: "تعذّر رفع الملف؛ جرّب مرة ثانية.",
       unplayable: "تعذّر تشغيل هذا المقطع على جهازك.",
+      videoOff: "نشر المقاطع متوقف حاليًا؛ انشر صورة أو اقتباسًا.",
     },
     report: {
       title: "بلّغ عن هذا المحتوى",
@@ -649,6 +669,25 @@ export const ar = {
       next: "التالية",
       previous: "السابقة",
       close: "أغلق",
+      addMore: "أضف قصة أخرى",
+      camera: {
+        title: "قصة جديدة",
+        shutter: "التقط الصورة",
+        flip: "بدّل الكاميرا",
+        files: "ملفاتك",
+        text: "قصة نصية",
+        denied: "ما سمحت للتطبيق باستخدام الكاميرا. اسمح بها من إعدادات المتصفح، أو اختر صورة من ملفاتك.",
+        noCamera: "ما قدرنا نفتح الكاميرا على هذا الجهاز. اختر صورة من ملفاتك.",
+        starting: "تفتح الكاميرا…",
+        pick: "اختر من ملفاتك",
+        native: "صوّر بكاميرا الجهاز",
+        retake: "صوّر من جديد",
+        captionPlaceholder: "أضف كلمة (اختياري)",
+        textPlaceholder: "اكتب قصتك…",
+        publish: "انشر القصة",
+        styles: "لون الخلفية",
+        back: "رجوع",
+      },
     },
     instagram: {
       button: "شارك في إنستغرام",

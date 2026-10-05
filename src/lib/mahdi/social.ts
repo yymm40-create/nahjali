@@ -1,4 +1,5 @@
 // «لأجل المهدي» · the community's people, posts, comments and stories as the browser sees them (shared types).
+import { SOCIAL_VIDEO } from "@config/mahdi";
 import type { SharePayload } from "./client/share";
 
 export interface SocialUser {
@@ -14,7 +15,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = ["singing", "indecent", "abus
 
 /** The new kinds of posts (the older ones are achievement cards built by the server). */
 export type MediaPostKind = "photo" | "quote" | "video";
-export const MEDIA_POST_KINDS: MediaPostKind[] = ["photo", "quote", "video"];
+export const MEDIA_POST_KINDS: MediaPostKind[] = SOCIAL_VIDEO ? ["photo", "quote", "video"] : ["photo", "quote"];
 
 export interface PostMedia {
   kind: "image" | "video";
@@ -84,3 +85,12 @@ export interface StoryGroup {
   /** Has stories I have not seen yet. */
   fresh: boolean;
 }
+
+/** The backgrounds of text stories (the server keeps the same names). */
+export const STORY_BACKGROUNDS = {
+  gold: "radial-gradient(120% 120% at 50% 0%, #3a2f1c, #14110c 70%)",
+  night: "radial-gradient(120% 120% at 50% 0%, #1b2440, #0b0e18 70%)",
+  green: "radial-gradient(120% 120% at 50% 0%, #163a2c, #0a1510 70%)",
+  rose: "radial-gradient(120% 120% at 50% 0%, #3a1c26, #150b0f 70%)",
+} as const;
+export type StoryStyle = keyof typeof STORY_BACKGROUNDS;

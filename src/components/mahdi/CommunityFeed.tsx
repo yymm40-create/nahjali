@@ -62,8 +62,8 @@ function useViewTracker() {
   };
 }
 
-/** A feed of posts: «المتابَعون», «استكشف», or one person's page (`user`). */
-export default function CommunityFeed({ source = "following", user, empty }: { source?: "following" | "explore"; user?: string; empty?: React.ReactNode }) {
+/** A feed of posts: «المتابَعون», «استكشف», or one person's page (`user`). `flat`: the home screen's look. */
+export default function CommunityFeed({ source = "following", user, empty, flat = false }: { source?: "following" | "explore"; user?: string; empty?: React.ReactNode; flat?: boolean }) {
   const [posts, setPosts] = useState<PostView[] | null>(null);
   const [more, setMore] = useState(false);
   const [error, setError] = useState("");
@@ -120,10 +120,10 @@ export default function CommunityFeed({ source = "following", user, empty }: { s
       {posts.length === 0 ? (
         (empty ?? <p className="m-card p-6 text-center m-muted">{source === "explore" ? S.exploreEmpty : S.followingEmpty}</p>)
       ) : (
-        <ul className="space-y-5" aria-label={t.community.feed}>
+        <ul className={flat ? "m-feed-flat" : "space-y-5"} aria-label={t.community.feed}>
           {posts.map((p) => (
             <li key={p.id} ref={watch}>
-              <PostCard post={p} onChange={(np) => setPosts((list) => (list ?? []).map((x) => (x.id === np.id ? np : x)))} onRemoved={(id) => setPosts((list) => (list ?? []).filter((x) => x.id !== id))} />
+              <PostCard flat={flat} post={p} onChange={(np) => setPosts((list) => (list ?? []).map((x) => (x.id === np.id ? np : x)))} onRemoved={(id) => setPosts((list) => (list ?? []).filter((x) => x.id !== id))} />
             </li>
           ))}
         </ul>
@@ -134,7 +134,7 @@ export default function CommunityFeed({ source = "following", user, empty }: { s
           {loading ? t.common.loading : t.community.loadMore}
         </button>
       )}
-      {!user && source === "following" && posts.length === 0 && (
+      {!user && !empty && source === "following" && posts.length === 0 && (
         <Link href="/mahdi/community?tab=explore" className="m-btn m-btn-ghost w-full">
           <Icon name="search" size={18} /> {t.community.tabLabels.explore}
         </Link>

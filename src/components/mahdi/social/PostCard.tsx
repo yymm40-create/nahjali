@@ -60,8 +60,11 @@ export function QuoteCard({ text, by, compact = false }: { text: string; by?: st
 
 const secs = (ms: number | null) => (ms ? `0:${String(Math.round(ms / 1000)).padStart(2, "0")}` : "");
 
-/** One post in a feed or on its own page: the content, «أحسنت», comments, views, report or delete. */
-export default function PostCard({ post, onChange, onRemoved, openComments = false }: { post: PostView; onChange: (p: PostView) => void; onRemoved: (id: string) => void; openComments?: boolean }) {
+/**
+ * One post in a feed or on its own page: the content, «أحسنت», comments, views, report or delete. `flat` is the
+ * home screen's «المتابَعون» look: no card, the picture from edge to edge on phones, round action buttons.
+ */
+export default function PostCard({ post, onChange, onRemoved, openComments = false, flat = false }: { post: PostView; onChange: (p: PostView) => void; onRemoved: (id: string) => void; openComments?: boolean; flat?: boolean }) {
   const { state, toast } = useMahdi();
   const { shrine } = useLook();
   const [comments, setComments] = useState(openComments);
@@ -83,7 +86,7 @@ export default function PostCard({ post, onChange, onRemoved, openComments = fal
   }
 
   return (
-    <article className="m-card space-y-3 p-4" data-post={post.id}>
+    <article className={flat ? "m-post-flat space-y-3" : "m-card space-y-3 p-4"} data-post={post.id}>
       <div className="flex items-center gap-2">
         <UserChip user={post.author} sub={when} />
         {post.mine ? (
@@ -99,7 +102,7 @@ export default function PostCard({ post, onChange, onRemoved, openComments = fal
 
       {post.media?.kind === "image" ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={post.media.url} alt={post.caption || ""} loading="lazy" className="max-h-[70vh] w-full rounded-2xl bg-black object-contain" style={post.media.width && post.media.height ? { aspectRatio: `${post.media.width} / ${post.media.height}` } : undefined} />
+        <img src={post.media.url} alt={post.caption || ""} loading="lazy" className={`max-h-[70vh] w-full bg-black object-contain ${flat ? "m-post-media" : "rounded-2xl"}`} style={post.media.width && post.media.height ? { aspectRatio: `${post.media.width} / ${post.media.height}` } : undefined} />
       ) : post.media?.kind === "video" ? (
         <div className="relative">
           <video src={`${post.media.url}#t=0.1`} controls playsInline preload="metadata" className="max-h-[70vh] w-full rounded-2xl bg-black" style={post.media.width && post.media.height ? { aspectRatio: `${post.media.width} / ${post.media.height}` } : undefined} />
@@ -115,14 +118,14 @@ export default function PostCard({ post, onChange, onRemoved, openComments = fal
       <div className="flex items-center gap-2">
         <button
           type="button"
-          className="m-btn m-btn-ghost m-btn-sm"
+          className={flat ? "m-post-act" : "m-btn m-btn-ghost m-btn-sm"}
           aria-pressed={post.ahsantByMe}
           onClick={toggleAhsant}
           style={post.ahsantByMe ? { borderColor: "var(--m-gold)", color: "var(--m-gold-text)" } : undefined}
         >
           <Icon name="star" size={18} /> {S.ahsant} <span className="m-num">{fmtNum(post.ahsant)}</span>
         </button>
-        <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setComments(true)} aria-label={S.commentsCount(post.comments)}>
+        <button type="button" className={flat ? "m-post-act" : "m-btn m-btn-ghost m-btn-sm"} onClick={() => setComments(true)} aria-label={S.commentsCount(post.comments)}>
           <Icon name="chat" size={18} /> <span className="m-num">{fmtNum(post.comments)}</span>
         </button>
         <span className="m-muted ms-auto flex items-center gap-1 text-sm" title={S.views(post.views)} aria-label={S.views(post.views)}>

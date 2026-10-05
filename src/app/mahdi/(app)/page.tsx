@@ -1,5 +1,5 @@
-import DayView from "@/components/mahdi/DayView";
+import HomeSlider from "@/components/mahdi/HomeSlider";
 
 export default function MahdiHome() {
-  return <DayView home />;
+  return <HomeSlider />;
 }

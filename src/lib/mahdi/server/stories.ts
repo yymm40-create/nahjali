@@ -8,6 +8,7 @@ import { UserError } from "./api";
 import { checkUploadedMedia, removeMedia, signMedia } from "./media";
 import { followingIds, notMigrated, usersById } from "./social";
 import { cleanLine, cleanText } from "./validate";
+import { SOCIAL_VIDEO } from "@config/mahdi";
 
 const db = () => createAdminClient();
 const STYLES = ["gold", "night", "green", "rose"];
@@ -71,8 +72,8 @@ export async function storyGroups(supabase: SupabaseClient, me: string): Promise
 
 /** A new story (members of the community; up to 10 a day). */
 export async function addStory(supabase: SupabaseClient, userId: string, body: Record<string, unknown>) {
-  const kind = body.kind === "video" ? "video" : body.kind === "quote" ? "quote" : body.kind === "photo" ? "photo" : null;
-  if (!kind) throw new UserError(t.errors.invalid, 400);
+  const kind = body.kind === "video" && SOCIAL_VIDEO ? "video" : body.kind === "quote" ? "quote" : body.kind === "photo" ? "photo" : null;
+  if (!kind) throw new UserError(body.kind === "video" ? t.social.media.videoOff : t.errors.invalid, 400);
   const since = new Date(Date.now() - 86_400_000).toISOString();
   const { count, error: e0 } = await supabase.from("mahdi_stories").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since);
   if (e0) throw notMigrated(e0) ? new UserError(t.social.notReady, 503) : e0;
