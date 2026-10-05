@@ -9,6 +9,7 @@ import OutputsStep from "./OutputsStep";
 import ReviewStep from "./ReviewStep";
 import ScopeStep from "./ScopeStep";
 import SourcesStep from "./SourcesStep";
+import { useAutopilot } from "./autopilot";
 import { STEP_LOOK } from "./look";
 import { ErrorLine } from "./ui";
 import UnderstandingStep from "./UnderstandingStep";
@@ -24,6 +25,7 @@ type StepId = (typeof STEPS)[number]["id"];
 
 export default function StudentProject({ initial }: { initial: ProjectState }) {
   const p = useProject(initial);
+  const auto = useAutopilot(p.state, p.busy, p.refresh);
   const { project } = p.state;
   const reached = STEPS.findIndex((s) => s.id === project.stage);
   const [view, setView] = useState<StepId>(project.stage);
@@ -93,6 +95,30 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
           ))}
         </div>
         <p className="mt-4 text-center text-sm text-jw-muted">{HINT[STEPS[vi].id]}</p>
+        {auto.mode ? (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl p-3 text-white" style={{ background: "var(--st-grad)" }} role="status" aria-live="polite">
+            <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden />
+            <span className="font-semibold">🤖 المساعد يكمل {auto.mode.scope === "step" ? "هذه الخطوة" : "كل الخطوات"} تلقائيًا{auto.doing ? `: ${auto.doing}` : ""}</span>
+            <button type="button" className="rounded-full bg-white px-4 py-1 text-sm font-bold text-pink-600" onClick={auto.stop}>
+              أوقف
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <button type="button" className="jw-btn" onClick={() => auto.start("step")}>
+              ⚡ تخطَّ هذه الخطوة — دع المساعد يقرر
+            </button>
+            <button type="button" className="jw-btn" onClick={() => auto.start("all")}>
+              🤖 دع المساعد يكمل كل الخطوات
+            </button>
+            <span className="w-full text-center text-[11px] text-jw-faint">يختار المساعد الإعدادات ويعتمد بدلًا عنك، والخطوات المدفوعة تُخصم بسعرها. تقدر توقفه في أي وقت.</span>
+          </div>
+        )}
+        {auto.error && (
+          <div className="mt-3">
+            <ErrorLine error={auto.error} />
+          </div>
+        )}
       </nav>
 
       <ErrorLine error={p.error} />

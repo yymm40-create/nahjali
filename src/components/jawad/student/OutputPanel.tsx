@@ -192,6 +192,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
             </>
           )}
           {o.kind === "quiz" && o.settings.usage !== "sheet" && <QuizPlay o={o} />}
+          {["summary", "explain", "transcript", "book", "quiz"].includes(o.kind) && o.content !== null && <PicturesPanel o={o} act={act} running={running} />}
 
           {o.status === "review" ? (
             <Gate
@@ -543,6 +544,56 @@ function AudioSettings({ s, set, texts }: { s: S; set: (p: S) => void; texts: Ou
         <Icon name="alert" size={12} className="me-1 inline" />
         قد يخطئ التشكيل أو النطق، خاصة في الأسماء والمصطلحات. ستراجع النص المعد للقراءة بتشكيله قبل الإرسال.
       </p>
+    </div>
+  );
+}
+
+/** Any finished written output as designed pages drawn by GPT Image 2, put together as a PDF. */
+function PicturesPanel({ o, act, running }: { o: OutputView; act: (b: S) => Promise<unknown>; running: boolean }) {
+  const [quality, setQuality] = useState<"high" | "medium">("high");
+  const [page, setPage] = useState(0);
+  const [note, setNote] = useState("");
+  const pics = (o.content as { pictures?: { pages: { title: string; rendered: unknown }[] } } | null)?.pictures;
+  const has = o.files.includes("pictures_pdf");
+  return (
+    <div className="space-y-3 overflow-hidden rounded-2xl p-4 text-white" style={{ background: "linear-gradient(135deg,#7c3aed,#db2777 55%,#f97316)" }}>
+      <div className="flex items-start gap-3">
+        <span className="text-3xl" aria-hidden>
+          🪄
+        </span>
+        <div>
+          <b className="block text-lg">{has ? "صفحاتك المصممة بـ GPT Image 2" : "حوّلها إلى صفحات مصممة بـ GPT Image 2"}</b>
+          <p className="text-sm text-white/90">كل صفحة تُرسم كلوحة دراسية جميلة بأسلوبك — أجمل وأفخم بكثير، وتكلفتها أعلى. قد تظهر نسبة خطأ بسيطة في بعض الكلمات.</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white/15 p-2 text-sm">
+        <span>الجودة:</span>
+        {(["high", "medium"] as const).map((q) => (
+          <button key={q} type="button" aria-pressed={quality === q} onClick={() => setQuality(q)} className={`rounded-full px-3 py-1 ${quality === q ? "bg-white text-pink-600" : "bg-white/20"}`}>
+            {q === "high" ? "عالية" : "متوسطة (أرخص)"}
+          </button>
+        ))}
+        <PaidButton label={has ? "حدّث الصفحات" : "ارسمها الآن"} what={`رسم صفحات «${o.title}» بـ GPT Image 2 ثم جمعها في PDF. الصفحات التي لم تتغير لا تُرسم من جديد.`} disabled={running} run={(b) => act({ action: "pictures", quality, ...b })} />
+      </div>
+      {has && (
+        <div className="space-y-2 rounded-xl bg-white p-2 text-jw-ink">
+          <PdfFrame o={o} name="pictures_pdf" />
+          <FileLinks o={o} only={(f) => f === "pictures_pdf"} />
+          {pics && pics.pages.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <select className="jw-select w-auto" value={page} onChange={(e) => setPage(Number(e.target.value))} aria-label="الصفحة">
+                {pics.pages.map((pg, i) => (
+                  <option key={i} value={i}>
+                    أعد رسم الصفحة {i + 1}: {pg.title}
+                  </option>
+                ))}
+              </select>
+              <input className="jw-input w-auto flex-1" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظتك على هذه الصفحة (اختياري)" />
+              <PaidButton label="أعد رسمها" primary={false} what="تُرسم هذه الصفحة وحدها من جديد، وبقية الصفحات كما هي." disabled={running} run={(b) => act({ action: "pictures", quality, page, note, ...b })} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
