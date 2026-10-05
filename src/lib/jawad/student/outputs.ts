@@ -625,7 +625,7 @@ async function transcriptStep(o: Output): Promise<StepResult> {
   const pdfPath = filePath(o, "transcript.pdf");
   const txtPath = filePath(o, "transcript.txt");
   await putFile(pdfPath, pdf, "application/pdf");
-  await putFile(txtPath, content.segments.map((s) => `[${s.label}]\n${s.text}`).join("\n\n"), "text/plain; charset=utf-8");
+  await putFile(txtPath, content.segments.map((s) => `[${s.label}]\n${s.text}`).join("\n\n"), "text/plain");
   await saveOutput(o.id, { status: "review", files: { pdf: pdfPath, txt: txtPath } });
   return { done: true, stage: "التفريغ جاهز" };
 }
