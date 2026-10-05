@@ -110,6 +110,20 @@ export default function ReviewStep({ p }: { p: ProjectHook }) {
               </button>
             ))}
           </div>
+          {coverage.approved < coverage.total && (
+            <button
+              type="button"
+              className="jw-btn w-full"
+              disabled={busy || dirty}
+              onClick={() =>
+                confirm(`اعتماد كل الأجزاء المتبقية (${coverage.total - coverage.approved}) كما هي الآن؟ تقدر تلغي اعتماد أي جزء بعدها.`) &&
+                run(() => p.act({ action: "segments_approve_all" }))
+              }
+            >
+              <Icon name="check" size={16} /> اعتمد كل الصفحات مرة وحدة
+            </button>
+          )}
+          {dirty && <p className="text-xs text-jw-warn">احفظ تعديلك على الجزء الحالي أولًا.</p>}
         </div>
 
         <Gate
