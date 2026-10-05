@@ -37,6 +37,26 @@ export default function ProjectEditor({ projectId, initial, locked }: { projectI
     return () => clearTimeout(timer);
   }, [values, projectId]);
 
+  // Leaving the page within a moment of typing (e.g. straight to «ابدأ مع السيناريست»): the last words are still saved
+  const latest = useRef(values);
+  useEffect(() => {
+    latest.current = values;
+  });
+  useEffect(
+    () => () => {
+      const v = latest.current;
+      const changed = (Object.keys(v) as (keyof FieldValues)[]).filter((k) => v[k] !== saved.current[k]);
+      if (!changed.length || !v.title.trim()) return;
+      fetch(`/api/film/projects/${projectId}`, {
+        method: "PATCH",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(changed.map((k) => [k, v[k]]))),
+      }).catch(() => {});
+    },
+    [projectId],
+  );
+
   // Warn before leaving with unsaved text
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {

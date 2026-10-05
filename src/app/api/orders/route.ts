@@ -73,6 +73,15 @@ export const POST = handle(async (req: Request) => {
     .select("id")
     .single();
   if (error) throw error;
+  // Counted again after saving: several orders sent at the same moment can't all pass the check above
+  if (FREE_TRIAL && !hasUnlimitedTrials(user.email)) {
+    const { count } = await db.from("orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("is_trial", true);
+    const limit = dailyTrialLimit(user);
+    if ((count ?? 0) > limit) {
+      await db.from("orders").delete().eq("id", data.id);
+      throw new UserError(`استخدمت التجربة المجانية المتاحة لحسابك (${limit}).`, 403);
+    }
+  }
 
   // Also run the photo clean-up opportunistically (the daily cron is the backstop)
   await deleteExpiredSourcePhotos();

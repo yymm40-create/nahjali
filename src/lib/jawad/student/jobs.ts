@@ -10,8 +10,10 @@
 
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
-import { refundCoins, releaseCoins, reserveCoins, settleCoins } from "@/lib/coins";
+import { coinsRequired, refundCoins, releaseCoins, reserveCoins, settleCoins } from "@/lib/coins";
 import { coinsFor } from "@config/coins";
+import { isUnlimited } from "@config/site";
+import { STUDENT } from "@config/jawad/student";
 import { sdb } from "./db";
 import { HANDLERS } from "./handlers";
 
@@ -54,7 +56,8 @@ export interface Handler {
 const KEY = /^[A-Za-z0-9_-]{8,80}$/;
 const RUN_BUDGET_MS = 150_000;
 const LEASE_MS = 330_000;
-const MAX_ATTEMPTS = 40;
+// Runs (not steps): a long job (a big PDF, a long book) takes many steps but only a few runs of 150 s each
+const MAX_RUNS = 60;
 
 export function checkKey(key: unknown): string {
   const k = String(key ?? "");
@@ -76,6 +79,17 @@ export async function createJob(
   // One open job per project at a time: outputs are made one after the other, in the student's order
   const { data: busy } = await db.from("student_jobs").select("id").eq("project_id", o.projectId).in("status", ["queued", "running"]).limit(1);
   if (busy?.length) throw new UserError("فيه عملية شغالة على هذه المادة، انتظر تخلص ثم كمّل.", 409);
+
+  // Free trial (no coins taken): a daily ceiling per person, so nobody can repeat paid steps without end
+  if (o.estimateUsd > 0 && !isUnlimited(user.email) && !(await coinsRequired())) {
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { data: today } = await db.from("student_jobs").select("estimate_usd,cost_usd,status").eq("user_id", user.id).gte("created_at", since);
+    const used = ((today ?? []) as { estimate_usd: number; cost_usd: number; status: string }[]).reduce(
+      (s, j) => s + (j.status === "succeeded" ? Number(j.cost_usd) : j.status === "failed" ? 0 : Number(j.estimate_usd)),
+      0,
+    );
+    if (used + o.estimateUsd > STUDENT.freeDailyUsd) throw new UserError("وصلت حد التجربة المجانية لليوم. كمّل بكرة إن شاء الله 🌙", 429);
+  }
 
   const { data, error } = await db
     .from("student_jobs")
@@ -124,14 +138,15 @@ export async function runJob(id: string) {
   const handler = HANDLERS[job.kind];
   const started = Date.now();
   try {
-    if (job.attempts >= MAX_ATTEMPTS) throw new Error("too many attempts");
+    if (job.attempts >= MAX_RUNS) throw new Error("too many runs");
+    job = { ...job, attempts: job.attempts + 1 };
+    await db.from("student_jobs").update({ attempts: job.attempts }).eq("id", id);
     for (;;) {
       const r = await handler.step(job);
       const patch = {
         cost_usd: Number(job.cost_usd) + (r.usd ?? 0),
         stage: r.stage ?? job.stage,
         progress: r.progress ?? job.progress,
-        attempts: job.attempts + 1,
         updated_at: new Date().toISOString(),
         ...(r.result !== undefined ? { result: r.result } : {}),
       };
@@ -165,13 +180,21 @@ async function chargedCoins(jobId: string) {
   return -((data ?? []) as { delta: number }[]).reduce((s, r) => s + r.delta, 0);
 }
 
-/** A finished trial is taken off the final version's price (the owner's choice), once. */
+/**
+ * A finished trial is taken off the final version's price (the owner's choice), once. The final already skips what
+ * the trial made (its chapter / slides are kept, see outputs.ts), so that part is never charged twice; the refund
+ * below is only for a final that had to make everything again (e.g. the design changed after the trial).
+ */
 async function creditTrial(job: Job) {
   if (job.kind === "trial" && job.output_id) {
     await sdb().from("student_outputs").update({ trial_coins: await chargedCoins(job.id) }).eq("id", job.output_id);
     return;
   }
   if (job.kind !== "final" || !job.output_id) return;
+  if (job.input?.reusedTrial) {
+    await sdb().from("student_outputs").update({ trial_coins: 0 }).eq("id", job.output_id);
+    return;
+  }
   const { data } = await sdb().from("student_outputs").select("trial_coins").eq("id", job.output_id).maybeSingle();
   const trial = (data?.trial_coins as number) ?? 0;
   if (trial <= 0) return;

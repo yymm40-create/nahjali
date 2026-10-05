@@ -13,6 +13,9 @@ import { ErrorLine, Gate, JobStatus, PaidButton, Seg, useAsync } from "./ui";
 
 type S = Record<string, unknown>;
 const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
+/** JSON with sorted keys: the database returns the same settings with its keys in another order. */
+const stable = (v: unknown): string =>
+  Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as S)[k])}`).join(",")}}` : JSON.stringify(v) ?? "null";
 
 /** One output, from its settings to its approved files. */
 export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView }) {
@@ -21,6 +24,12 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
   const mine = job && (job.status === "queued" || job.status === "running");
   const [settings, setSettings] = useState<S>(o.settings);
+  // saved settings from the server (cleaned and clamped there) replace the local copy; a poll with the same settings doesn't
+  const [serverSettings, setServerSettings] = useState(() => stable(o.settings));
+  if (serverSettings !== stable(o.settings)) {
+    setServerSettings(stable(o.settings));
+    setSettings(o.settings);
+  }
   const [plan, setPlan] = useState<unknown>(o.plan);
   // a new plan from the server (made, revised or saved) replaces the local copy
   const [serverPlan, setServerPlan] = useState<unknown>(o.plan);
@@ -31,7 +40,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
   const { busy, error, run } = useAsync();
   const act = (body: S) => p.actOutput(o.id, body);
   const set = (patch: S) => setSettings({ ...settings, ...patch });
-  const settingsDirty = JSON.stringify(settings) !== JSON.stringify(o.settings);
+  const settingsDirty = stable(settings) !== stable(o.settings);
   const planDirty = JSON.stringify(plan) !== JSON.stringify(o.plan);
   const labels = new Map(segments.map((s) => [s.sid, s.label]));
   const images = sources.filter((s) => s.kind === "image" && s.status === "ready").map((s, i) => ({ id: s.id, name: s.name || `صورة ${i + 1}` }));
@@ -489,7 +498,7 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
 function AudioSettings({ s, set, texts }: { s: S; set: (p: S) => void; texts: OutputView[] }) {
   const [voices, setVoices] = useState<{ value: string; name: string; description: string }[] | null>(null);
   useEffect(() => {
-    fetch("/api/jawad/voices")
+    fetch("/api/jawad/student/voices")
       .then((r) => r.json())
       .then((j: { mine?: { value: string; name: string; description: string }[]; ready?: { value: string; name: string; description: string }[] }) => setVoices([...(j.mine ?? []), ...(j.ready ?? [])]))
       .catch(() => setVoices([]));

@@ -111,6 +111,7 @@ export const newKey = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.rand
 export function useProject(initial: ProjectState) {
   const [state, setState] = useState(initial);
   const [error, setError] = useState<string | null>(null);
+  const [missed, setMissed] = useState(0);
   const busy = state.jobs.some((j) => j.status === "queued" || j.status === "running");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -123,6 +124,8 @@ export function useProject(initial: ProjectState) {
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذّر التحديث.");
+      // a failed refresh changes no state: count it, so the next poll is still scheduled
+      setMissed((n) => n + 1);
     }
   }, [initial.project.id]);
 
@@ -132,7 +135,7 @@ export function useProject(initial: ProjectState) {
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [busy, state, refresh]);
+  }, [busy, state, missed, refresh]);
 
   // every press shows that something is happening (a bar at the top) until the page has the new state
   const [pending, setPending] = useState(0);

@@ -136,7 +136,7 @@ function SectionRow({
         <div className="ms-auto flex gap-2">
           {onCancel && <button type="button" className="jw-btn jw-btn-quiet" onClick={onCancel}>إلغاء</button>}
           {!isNew && (s.overridden || !s.builtIn) && (
-            <button type="button" className="jw-btn jw-btn-quiet" disabled={busy} onClick={() => run(() => adminPost("section_delete", { id: s.id }))}>
+            <button type="button" className="jw-btn jw-btn-quiet" disabled={busy} onClick={() => confirm(s.builtIn ? "ترجع هذا القسم لإعداداته الافتراضية؟" : "تحذف هذا القسم نهائيًا؟") && run(() => adminPost("section_delete", { id: s.id }))}>
               {s.builtIn ? "رجوع للافتراضي" : "حذف القسم"}
             </button>
           )}

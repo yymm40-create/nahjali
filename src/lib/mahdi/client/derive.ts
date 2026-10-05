@@ -72,7 +72,7 @@ export function pickPhrase(phrases: Phrase[], context: PhraseContext, seed: stri
 export const bySort = <T extends { sortOrder: number; name: string }>(a: T, b: T) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ar");
 
 /** Only same-site paths inside the branch (for ?next= after sign-in). */
-export const safeNext = (n: unknown) => (typeof n === "string" && (n === "/mahdi" || n.startsWith("/mahdi/")) && !n.startsWith("//") ? n : "/mahdi");
+export const safeNext = (n: unknown) => (typeof n === "string" && (n === "/mahdi" || n.startsWith("/mahdi/")) && !n.startsWith("//") && !n.includes("\\") ? n : "/mahdi");
 
 /** Joined unified challenges, shaped like habits (id "c:<challenge>", group "challenges") so they log and score the same way. */
 export const CHALLENGE_GROUP = "challenges";

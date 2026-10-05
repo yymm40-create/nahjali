@@ -13,7 +13,16 @@ export async function POST(req: Request) {
     const {
       data: { user },
     } = await (await createClient()).auth.getUser();
-    await createAdminClient().from("student_visits").insert({ user_id: user?.id ?? null, visitor, path });
+    // one row per visitor and page every 10 minutes (reloads and floods don't fill the statistics)
+    const db = createAdminClient();
+    const { count } = await db
+      .from("student_visits")
+      .select("id", { count: "exact", head: true })
+      .eq("visitor", visitor)
+      .eq("path", path)
+      .gte("created_at", new Date(Date.now() - 10 * 60_000).toISOString());
+    if (count) return NextResponse.json({ ok: true });
+    await db.from("student_visits").insert({ user_id: user?.id ?? null, visitor, path });
   } catch {
     // statistics only
   }

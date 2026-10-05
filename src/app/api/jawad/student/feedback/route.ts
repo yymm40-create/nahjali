@@ -13,6 +13,12 @@ export const POST = handle(async (req: Request) => {
   const {
     data: { user },
   } = await (await createClient()).auth.getUser();
+  // a few notes a day per person, and a ceiling for notes without an account (no flooding the owner's page)
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  let recent = createAdminClient().from("student_feedback").select("id", { count: "exact", head: true }).gte("created_at", since);
+  recent = user ? recent.eq("user_id", user.id) : recent.is("user_id", null);
+  const { count } = await recent;
+  if ((count ?? 0) >= (user ? 10 : 100)) throw new UserError("وصلتنا ملاحظاتك اليوم، شكرًا لك! تقدر ترسل غيرها بكرة.", 429);
   const projectId = typeof b.projectId === "string" && /^[0-9a-f-]{36}$/.test(b.projectId) ? b.projectId : null;
   const { error } = await createAdminClient()
     .from("student_feedback")

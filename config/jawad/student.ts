@@ -14,6 +14,8 @@ export const STUDENT = {
   /** Web searches Claude may run for one research request ($10 per 1,000 searches, Anthropic's price). */
   maxSearches: 8,
   webSearchUsd: 10 / 1000,
+  /** While coins are not required (the free trial), one person's paid steps are capped at this many dollars a day. */
+  freeDailyUsd: 8,
 } as const;
 
 export const LEVELS = ["ابتدائي", "متوسط", "ثانوي", "جامعي", "دراسات عليا"] as const;

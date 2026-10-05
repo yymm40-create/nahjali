@@ -158,6 +158,7 @@ export type DirectorAction =
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
+  | { action: "continue" }
   | ({ action: "generate_video"; genId: string } & VideoChoice)
   | ({ action: "approve_and_generate"; versionId: string } & VideoChoice)
   | { action: "video_feedback"; assetId: string; text: string }
@@ -293,6 +294,17 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       // Counted against the owner's edit limit (/admin/limits)
       await assertCanEdit(project.id, "director", user.email);
       const id = await addUserMessage(project.id, prefix + text);
+      return { jobId: await queueReply(project, user, id) };
+    }
+
+    case "continue": {
+      // The director answered with a note while generations of the approved map are still to come: carry on
+      // (not counted as an edit)
+      busy();
+      const map = versions.filter((v) => v.kind === "dir_map" && v.status === "approved").at(-1)?.data.generation_map ?? [];
+      const left = map.filter((g) => !versions.some((v) => v.kind === "dir_generation" && v.ref_key === g.id));
+      if (!left.length) throw new UserError("كل التوليدات وصلت.", 409);
+      const id = await addUserMessage(project.id, "اعتمد");
       return { jobId: await queueReply(project, user, id) };
     }
 

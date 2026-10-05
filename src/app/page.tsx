@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { canUseFilm } from "@/lib/film/access";
 import { SECTIONS } from "@config/sections";
 import { accessMode, bookletOpenFor } from "@/lib/film/limits";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
@@ -13,7 +12,6 @@ export default async function Home() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const filmAllowed = user ? await canUseFilm(user) : false;
   // «كتيب نهج علي»: who may open it is set on /admin/limits
   const [bookletMode, bookletOpen, jawad, jawadOpen] = await Promise.all([accessMode("booklet"), bookletOpenFor(user?.email), loadRuntime(), jawadVisibleTo(user)]);
 
@@ -65,18 +63,15 @@ export default async function Home() {
         </Link>
         <ul className="space-y-3">
           {SECTIONS.map((s) => {
-            // Signed-out visitors can still open the film card (they are asked to sign in first)
-            const locked = s.requiresFilmAccess && user && !filmAllowed;
             // «تحت التطوير»: shown, but only the owner can open it
             const dev = s.underDevelopment && bookletMode !== "open";
-            const closed = locked || (s.underDevelopment && !bookletOpen);
+            const closed = s.underDevelopment && !bookletOpen;
             const body = (
               <>
                 <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-surface-2 text-4xl">{s.icon}</span>
                 <div className="flex-1">
                   <h3 className="flex items-center gap-2 text-xl font-extrabold">
                     {s.title}
-                    {locked && <span className="chip text-xs">قريبًا</span>}
                     {dev && <span className="chip text-xs">تحت التطوير</span>}
                   </h3>
                   <p className="font-bold text-muted">{s.description}</p>

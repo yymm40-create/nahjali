@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
@@ -41,7 +41,11 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
   const filmBase = useFilmBase();
   const [writing, setWriting] = useState(job?.status === "running");
   const [rendering, setRendering] = useState(videosRunning > 0);
-  const [busy, setBusy] = useState(false);
+  const [sending, setBusy] = useState(false);
+  // Busy until the new page data has arrived: the old screen's buttons can't be pressed a second time
+  const [refreshing, startRefresh] = useTransition();
+  const refresh = useCallback(() => startRefresh(() => router.refresh()), [router]);
+  const busy = sending || refreshing;
   const [error, setError] = useState("");
   const [useSuper, setUseSuper] = useState(true);
 
@@ -53,7 +57,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
         const s = await api<{ status: string | null; videosRunning: number }>(`/api/film/projects/${projectId}/director`);
         const w = s.status === "running";
         const r = s.videosRunning > 0;
-        if (w !== writing || r !== rendering) router.refresh();
+        if (w !== writing || r !== rendering) refresh();
         setWriting(w);
         setRendering(r);
       } catch {
@@ -61,7 +65,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
       }
     }, 6000);
     return () => clearInterval(timer);
-  }, [writing, rendering, projectId, router]);
+  }, [writing, rendering, projectId, router, refresh]);
 
   async function send(body: Record<string, unknown>) {
     setBusy(true);
@@ -69,7 +73,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
     try {
       const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/director`, body);
       if (jobId) setWriting(true);
-      router.refresh();
+      refresh();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -133,6 +137,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
               <span className="block text-sm font-bold text-muted">{SUPER_HINT}</span>
             </span>
           </label>
+          <p className="text-center text-sm font-bold text-muted">💡 مو متأكد؟ خلّه مثل ما هو واضغط «ابدأ».</p>
           <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start", superDirector: useSuper })}>
             {busy ? "نرسل…" : "ابدأ مع المخرج"}
           </button>
@@ -259,7 +264,11 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
       })}
 
       {note && note.created_at === current?.created_at && (
-        <StepCard title="من المخرج" v={note} current busy={busy || writing} onSend={revise(note)} />
+        <StepCard title="من المخرج" v={note} current busy={busy || writing} onSend={revise(note)}>
+          {!writing && map.some((g) => !genIds.includes(g.id)) && (
+            <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "continue" })}>كمّل للتوليد الجاي ▶ (ما ينحسب من تعديلاتك)</button>
+          )}
+        </StepCard>
       )}
 
       {writing && (
@@ -267,7 +276,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
           <Spinner />
           <div>
             <p className="font-extrabold">المخرج يكتب…</p>
-            <p className="text-sm font-bold text-muted">من دقيقة إلى ٣ دقائق. تقدر تسكّر الصفحة وترجع.</p>
+            <p className="text-sm font-bold text-muted">من دقيقة إلى ٣ دقائق. لا تضغط شي، الصفحة بتتحدّث لحالها ⏳ وتقدر تسكّرها وترجع.</p>
           </div>
         </div>
       )}
@@ -280,7 +289,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
       {stage === "voices" || stage === "done" ? (
         <div className="card space-y-1 p-5 text-center">
           <p className="text-lg font-extrabold">✅ كل الفيديوهات معتمدة وانتقل المشروع للأصوات</p>
-          <p className="text-sm font-bold text-muted">الأصوات تنضاف في المرحلة الجاية من التطوير.</p>
+          <Link href={`${filmBase}/${projectId}/voices`} className="btn btn-primary w-full">🎙️ افتح الأصوات</Link>
         </div>
       ) : null}
       {error && <p className="error-box">{error}</p>}

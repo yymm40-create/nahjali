@@ -107,7 +107,7 @@ export default function SourcesStep({ p }: { p: ProjectHook }) {
       <aside className="space-y-3">
         <div className="jw-panel space-y-2 p-4">
           <h2 className="font-semibold">مدخلات المادة ({sources.length})</h2>
-          {sources.length === 0 && <p className="text-sm text-jw-muted">لا شيء بعد.</p>}
+          {sources.length === 0 && <p className="text-sm text-jw-muted">لا شيء بعد. 💡 صوّر كل صفحة صورة واضحة ومستقيمة، أو ارفع ملف PDF، ثم اضغط «استخرج النص».</p>}
           <ol className="space-y-2">
             {sources.map((s, i) => (
               <li key={s.id} className="flex items-center gap-2 rounded-lg bg-jw-surface-2 p-2 text-sm">

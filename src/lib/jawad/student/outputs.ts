@@ -583,7 +583,7 @@ async function audioStep(job: Job, o: Output): Promise<StepResult> {
       await putFile(path, mp3, "audio/mpeg");
       await db.from("student_audio_parts").update({ status: "done", path, bytes: mp3.length, seconds: check.seconds, attempts: next.attempts + 1, error: null }).eq("id", next.id);
       const doneN = parts.filter((p) => p.status === "done").length + 1;
-      return { done: false, usd: (next.text.length / 1000) * ELEVEN_PRICE.v4PerKChars, stage: `توليد الصوت: المقطع ${next.idx} من ${parts.length}`, progress: { parts: parts.length, done: doneN } };
+      return { done: false, usd: (next.text.length / 1000) * ELEVEN_PRICE.v4PerKChars, stage: `توليد الصوت: المقطع ${next.idx} من ${parts.length}`, progress: { ...job.progress, parts: parts.length, done: doneN } };
     } catch (e) {
       // the part is tried up to 3 times; the parts already made are kept and never made (or charged) again
       const attempts = next.attempts + 1;
@@ -740,7 +740,14 @@ async function styleStep(job: Job): Promise<StepResult> {
 async function failed(job: Job, message: string) {
   if (!job.output_id) return;
   const o = await getOutput(job.user_id, job.output_id);
-  const back: Record<string, string> = { plan: o.plan ? "plan_review" : "settings", trial: "trial_offer", style: o.status };
+  // back to where the student can simply press again (a failed revision keeps the finished output and its files)
+  const back: Record<string, string> = {
+    plan: o.plan ? "plan_review" : "settings",
+    trial: "trial_offer",
+    style: o.status,
+    revise: o.files && Object.keys(o.files).length ? "review" : o.plan_approved ? "ready" : "failed",
+    final: o.plan_approved ? "ready" : "failed",
+  };
   await saveOutput(o.id, { status: back[job.kind] ?? "failed", error: message });
 }
 

@@ -144,6 +144,18 @@ async function checkPin(parentId: string, pin: unknown) {
   if (!s) throw new UserError(F().pinFirst, 400);
   if (s.locked_until && new Date(s.locked_until).getTime() > Date.now()) throw new UserError(F().locked(LOCK.minutes), 429);
   const p = cleanPin(pin);
+  // Counted atomically before comparing (supabase/migrations/0028): guesses sent all at once can't skip the lock
+  const tried = await db().rpc("mahdi_family_pin_try", { p_parent: parentId, p_tries: LOCK.tries, p_minutes: LOCK.minutes });
+  if (!tried.error) {
+    if (tried.data === null) throw new UserError(F().locked(LOCK.minutes), 429);
+    if (p && (await pinMatches(p, s.pin_hash))) {
+      await db().from("mahdi_family_settings").update({ failed: 0, locked_until: null }).eq("parent_id", parentId);
+      return;
+    }
+    const lockedNow = Number(tried.data) >= LOCK.tries;
+    throw new UserError(lockedNow ? F().locked(LOCK.minutes) : F().wrongPin, lockedNow ? 429 : 403);
+  }
+  // (before the migration is run: the old check)
   if (p && (await pinMatches(p, s.pin_hash))) {
     if (s.failed) await db().from("mahdi_family_settings").update({ failed: 0, locked_until: null }).eq("parent_id", parentId);
     return;

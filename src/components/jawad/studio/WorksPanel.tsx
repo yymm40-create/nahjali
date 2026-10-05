@@ -294,7 +294,11 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
   useEffect(() => {
     if (!editable) return;
     const t = setTimeout(() => {
-      if (new URLSearchParams(window.location.search).get("edit") !== j.id) return;
+      const q = new URLSearchParams(window.location.search);
+      if (q.get("edit") !== j.id) return;
+      // once: a later filter change or remount doesn't open it again
+      q.delete("edit");
+      window.history.replaceState(null, "", `${window.location.pathname}${q.size ? `?${q}` : ""}`);
       setEditing(true);
       document.getElementById(`job-${j.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 400);

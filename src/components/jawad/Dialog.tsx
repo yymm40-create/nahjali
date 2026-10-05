@@ -29,6 +29,11 @@ export default function Dialog({
       ref={ref}
       className={`jw-dialog m-auto ${wide ? "max-w-[min(1100px,calc(100vw-2rem))]" : ""}`}
       onClose={onClose}
+      // Escape asks the parent like the ✕ does: a dialog that must stay open (something running) stays open
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-label={title}
     >

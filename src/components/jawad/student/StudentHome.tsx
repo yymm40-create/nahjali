@@ -164,7 +164,7 @@ export default function StudentHome({
             مادة جديدة
           </h2>
           <p className="text-sm text-jw-muted">ثلاث معلومات فقط، ثم ترفع مادتك.</p>
-          {left !== null && <p className={`text-xs font-bold ${left ? "text-jw-accent" : "text-jw-danger"}`}>{left ? `متبقٍّ لك ${left === 1 ? "مادة واحدة" : `${left} مادتان`} من ٢` : "استخدمت المادتين المتاحتين لحسابك."}</p>}
+          {left !== null && <p className={`text-xs font-bold ${left ? "text-jw-accent" : "text-jw-danger"}`}>{left ? `متبقٍّ لك ${left === 1 ? "مادة واحدة" : "مادتان"} من ٢ — اكتب اسمًا واضحًا قبل «ابدأ»` : "استخدمت المادتين المتاحتين لحسابك."}</p>}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -178,6 +178,7 @@ export default function StudentHome({
         </div>
         <div className="space-y-2">
           <span className="jw-label">المستوى التعليمي</span>
+          <p className="text-center text-xs text-jw-muted">💡 اختر صفّك، فيكتب المساعد بكلمات تناسب عمرك.</p>
           <div className="jw-seg justify-center" role="radiogroup" aria-label="المستوى التعليمي">
             {[...LEVELS, "آخر"].map((l) => (
               <button key={l} type="button" role="radio" aria-checked={level === l} onClick={() => setLevel(l)}>

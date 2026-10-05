@@ -28,7 +28,8 @@ export async function buildTurns(projectId: string, stage: string): Promise<Clau
   const ids = [...new Set(msgs.flatMap((m) => [...m.content.matchAll(IMAGE_MARK)].map((x) => x[1])))];
   const urls: Record<string, string> = {};
   if (ids.length) {
-    const { data: rows } = await client.from("film_assets").select("id,storage_path").in("id", ids);
+    // only this project's pictures (an id typed into a message can't pull in someone else's)
+    const { data: rows } = await client.from("film_assets").select("id,storage_path").eq("project_id", projectId).in("id", ids);
     for (const r of rows ?? []) {
       if (!r.storage_path) continue;
       const s = await client.storage.from(FILM_BUCKET).createSignedUrl(r.storage_path, 3600);

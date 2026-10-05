@@ -154,6 +154,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
   // «مكتبتي»: the person's characters and places, mentioned by «@name» (null until loaded)
   const [library, setLibrary] = useState<{ items: LibraryItem[]; active: boolean } | null>(null);
   const pendingKey = useRef<string | null>(null);
+  // what the pending key was made for: a changed request gets a new key (else the server returns the old job)
+  const pendingSig = useRef("");
 
   const gen = generators.find((g) => g.id === draft.generatorId) ?? generators[0];
   const def = gen ? generatorById(gen.id) : undefined;
@@ -554,6 +556,9 @@ export default function Studio({ section, generators, prices: initialPrices, use
         setSubmitting(false);
       }
     }
+    const sig = JSON.stringify([section.id, def.id, refStyle, ev?.settings ?? settings, draft.prompt, instructions, draft.refs.map((r) => [r.uploadId, r.role, r.name])]);
+    if (pendingSig.current !== sig) pendingKey.current = null;
+    pendingSig.current = sig;
     const idem = (pendingKey.current ??= uid());
     const tempId = `temp-${idem}`;
     const temp: JobView = {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { createClient } from "@/lib/supabase/client";
 import Markdown from "@/components/Markdown";
@@ -55,8 +55,21 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   const filmBase = useFilmBase();
   const [writing, setWriting] = useState(job?.status === "running");
   const [painting, setPainting] = useState(imagesRunning > 0);
-  const [busy, setBusy] = useState(false);
+  const [sending, setBusy] = useState(false);
+  // Busy until the new page data has arrived: the old screen's buttons can't be pressed a second time
+  const [refreshing, startRefresh] = useTransition();
+  const refresh = useCallback(() => startRefresh(() => router.refresh()), [router]);
+  const busy = sending || refreshing;
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  // The page's data changed (a refresh, another tab): follow it, so a picture started elsewhere is followed here too
+  const [seen, setSeen] = useState({ job: job?.status, images: imagesRunning });
+  if (seen.job !== job?.status || seen.images !== imagesRunning) {
+    setSeen({ job: job?.status, images: imagesRunning });
+    if (job?.status === "running") setWriting(true);
+    if (imagesRunning > 0) setPainting(true);
+  }
 
   // Poll while the sheet maker writes or pictures are generated
   useEffect(() => {
@@ -66,7 +79,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         const s = await api<{ status: string | null; imagesRunning: number }>(`/api/film/projects/${projectId}/sheets`);
         const w = s.status === "running";
         const p = s.imagesRunning > 0;
-        if (w !== writing || p !== painting) router.refresh();
+        if (w !== writing || p !== painting) refresh();
         setWriting(w);
         setPainting(p);
       } catch {
@@ -74,7 +87,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
       }
     }, 4000);
     return () => clearInterval(timer);
-  }, [writing, painting, projectId, router]);
+  }, [writing, painting, projectId, router, refresh]);
 
   // Once this section's last step is done, go straight to the next one (only when it happens here, not on later visits)
   const openedAt = useRef(stage);
@@ -85,11 +98,15 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/sheets`, body);
+      const { jobId, images, warning } = await postJson<{ jobId: string | null; images?: number; warning?: string }>(`/api/film/projects/${projectId}/sheets`, body);
       if (jobId) setWriting(true);
-      if (body.action === "test_styles" || body.action === "generate_image") setPainting(true);
-      router.refresh();
+      if (images) setPainting(true);
+      if (warning) setNotice(warning);
+      // «finish» found the project already with the director: go there
+      if (body.action === "finish" && !jobId) router.push(`${filmBase}/${projectId}/director`);
+      refresh();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -111,6 +128,31 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   const current = [...versions].filter((v) => v.kind !== "sheet_handoff" && v.kind !== "style").sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
   const failed = job?.status === "failed" && !writing;
   const started = versions.length > 0 || writing || failed;
+  const masterApproved = assets.some((a) => a.kind === "image" && a.ref_key === MASTER && a.status === "approved");
+  const approvedIds = new Set(assets.filter((a) => a.status === "approved").map((a) => a.ref_key));
+  // «كل الشيتات مع بعض»: prompts waiting, new pictures waiting, and sheets still without a prompt
+  const waitingPrompts = orderedSheets.filter((sid) => sid !== MASTER && latestOf("sheet_prompt", sid)?.status === "awaiting_approval");
+  const readyImages = map.filter((m) => m.id !== MASTER && !approvedIds.has(m.id) && assets.some((a) => a.kind === "image" && a.ref_key === m.id && a.status === "generated"));
+  const noPrompt = mapVersion?.status === "approved" ? map.filter((m) => m.id !== MASTER && choices[m.id] !== "as_is" && !promptIds.includes(m.id)) : [];
+  const allApproved = stage === "sheets" && map.length > 0 && mapVersion?.status === "approved" && map.every((m) => approvedIds.has(m.id));
+
+  // Arrived from the screenwriter (…/sheets?start=1): the sheet maker starts by itself, no second press
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || started || new URLSearchParams(window.location.search).get("start") !== "1") return;
+    autoStarted.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    const t = setTimeout(() => send({ action: "start" }), 0);
+    return () => clearTimeout(t);
+  });
+  // Every picture approved: the handoff to the director is prepared by itself (once)
+  const autoFinished = useRef(false);
+  useEffect(() => {
+    if (autoFinished.current || !allApproved || writing || failed || busy) return;
+    autoFinished.current = true;
+    const t = setTimeout(() => send({ action: "finish" }), 0);
+    return () => clearTimeout(t);
+  });
   const revise = (v: SheetVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
   const backToSheets = stage === "director" ? " والمشروع انتقل للمخرج، فبيرجع لصانع الشيت لين تعتمد صورة جديدة." : "";
   // Sheets whose approved picture used this sheet as a reference (the master is every sheet's style reference)
@@ -157,7 +199,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             savedChoices={choices}
             assets={assets}
             busy={busy || writing}
-            onRefresh={() => router.refresh()}
+            onRefresh={refresh}
             onRemove={(assetId) => send({ action: "remove_upload", assetId })}
             onApprove={(c) => send({ action: "approve", versionId: understanding.id, choices: c })}
             onSend={revise(understanding)}
@@ -178,7 +220,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           warning="غيّرت إجابة؟ اكتبها هنا. الستايل والشيتات اللي بعدها ما تتغيّر تلقائيًا، وصانع الشيت يوضح وش يتأثر."
         >
           {questions.status === "awaiting_approval" ? (
-            <QuestionsForm questions={questions.data.questions ?? []} busy={busy || writing} onSubmit={(answers) => send({ action: "answers", versionId: questions.id, answers })} />
+            <QuestionsForm key={questions.id} questions={questions.data.questions ?? []} busy={busy || writing} onSubmit={(answers) => send({ action: "answers", versionId: questions.id, answers })} />
           ) : (
             <p className="text-sm font-bold text-muted">تمت الإجابة.</p>
           )}
@@ -205,7 +247,28 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         />
       )}
 
-      {/* 4. Master and every sheet */}
+      {/* 4. Master and every sheet — with one-click buttons for all of them together */}
+      {(waitingPrompts.length > 1 || readyImages.length > 1 || (masterApproved && noPrompt.length > 0 && !writing)) && (
+        <section className="card space-y-2 border-2 border-gold p-4 shadow-lg">
+          <p className="text-sm font-extrabold">⚡ اصنعهم كلهم مع بعض</p>
+          {waitingPrompts.length > 1 && (
+            <button className="btn btn-primary w-full" disabled={busy || writing} onClick={() => send({ action: "approve_all_prompts" })}>
+              {busy ? "نرسل…" : `✅ اعتمد كل البرومبتات (${waitingPrompts.length}) وولّد صورها مرة وحدة · تقريبًا $${(waitingPrompts.length * 0.4).toFixed(2)}`}
+            </button>
+          )}
+          {readyImages.length > 1 && (
+            <button className="btn btn-secondary w-full" disabled={busy} onClick={() => send({ action: "approve_all_images" })}>
+              ✅ اعتمد كل الصور الجديدة ({readyImages.length})
+            </button>
+          )}
+          {masterApproved && noPrompt.length > 0 && !writing && !waitingPrompts.length && (
+            <button className="btn btn-ghost w-full" disabled={busy} onClick={() => send({ action: "write_all" })}>
+              ✍️ اكتب برومبتات الباقي ({noPrompt.length}) دفعة وحدة
+            </button>
+          )}
+          <p className="text-xs font-bold text-muted">تبي تعدّل وحدة بس؟ عدّلها في بطاقتها تحت، وبعدين اضغط الزر هنا للباقي.</p>
+        </section>
+      )}
       {orderedSheets.map((sid) => {
         const v = latestOf("sheet_prompt", sid)!;
         const item = map.find((m) => m.id === sid);
@@ -222,10 +285,14 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             onSend={revise(v)}
             warning={v.status === "approved" ? `هذا البرومبت معتمد. بعد التعديل يوصلك برومبت جديد، ولما تعتمده تتولد صورة جديدة (${SHEET_COST}).${affects(sid)}` : undefined}
           >
-            {v.status === "approved" && (
+            {sid === MASTER && v.status === "awaiting_approval" && (
+              <p className="rounded-2xl bg-surface-2 p-3 text-sm font-bold">💡 هذا «الماستر»: شكل الرسم لكل الفيلم. اعتمده أول، وبعد ما تعتمد صورته نكتب كل الشيتات الباقية مع بعض.</p>
+            )}
+            {(v.status === "approved" || imgs.some((i) => i.status !== "rejected")) && (
               <SheetImages
                 sheetId={sid}
                 images={imgs}
+                canGenerate={v.status === "approved"}
                 busy={busy}
                 onGenerate={() => send({ action: "generate_image", sheetId: sid })}
                 onApprove={(id) => send({ action: "approve_image", assetId: id })}
@@ -249,8 +316,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         <div className="card flex items-center gap-3 p-5" role="status">
           <Spinner />
           <div>
-            <p className="font-extrabold">صانع الشيت يكتب…</p>
-            <p className="text-sm font-bold text-muted">من دقيقة إلى ٣ دقائق. تقدر تسكّر الصفحة وترجع.</p>
+            <p className="font-extrabold">{masterApproved && noPrompt.length > 1 ? `صانع الشيت يكتب ${noPrompt.length} شيتات مع بعض…` : "صانع الشيت يكتب…"}</p>
+            <p className="text-sm font-bold text-muted">من دقيقة إلى ٣ دقائق. لا تضغط شي، الصفحة بتتحدّث لحالها ⏳ وتقدر تسكّرها وترجع.</p>
           </div>
         </div>
       )}
@@ -260,11 +327,10 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "retry" })}>أعد المحاولة</button>
         </div>
       )}
-      {stage === "sheets" && !writing && !failed && map.length > 0 && mapVersion?.status === "approved" &&
-        map.every((m) => assets.some((a) => a.ref_key === m.id && a.status === "approved")) && (
+      {allApproved && !writing && !failed && (
         <div className="card space-y-2 p-5 text-center">
           <p className="text-lg font-extrabold">✅ كل الصور معتمدة</p>
-          <p className="text-sm font-bold text-muted">لو ما انتقل المشروع للمخرج تلقائيًا، اضغط هنا (ما ينحسب من تعديلاتك).</p>
+          <p className="text-sm font-bold text-muted">نجهّز التسليم وننقلك للمخرج تلقائيًا. لو ما انتقلت، اضغط هنا (ما ينحسب من تعديلاتك).</p>
           <button className="btn btn-primary w-full" disabled={busy} onClick={() => send({ action: "finish" })}>🎥 جهّز التسليم وانتقل للمخرج</button>
         </div>
       )}
@@ -274,6 +340,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <Link href={`${filmBase}/${projectId}/director`} className="btn btn-primary w-full">🎥 افتح المخرج</Link>
         </div>
       ) : null}
+      {notice && <p className="rounded-2xl border border-gold bg-surface-2 p-3 text-sm font-bold">⚠️ {notice}</p>}
       {error && <p className="error-box">{error}</p>}
     </div>
     </EditsLeftContext>
@@ -333,6 +400,7 @@ function MapChoices({
   return (
     <div className="space-y-2">
       <h3 className="font-extrabold">خريطة الشيتات: وش تبي نصنع؟</h3>
+      {!locked && <p className="text-sm font-bold text-muted">💡 هذي الشخصيات والأماكن اللي بنرسمها. ما عندك صورة؟ خلّها على «اصنعه لي» واضغط «اعتمد» تحت.</p>}
       <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => upload(Array.from(e.target.files ?? []))} />
       {map.map((m) => {
         const c = (locked ? savedChoices[m.id] : choices[m.id]) ?? "make";
@@ -444,6 +512,7 @@ function StyleTest({
       ) : (
         <div className="space-y-3">
           <h3 className="font-extrabold">اختر من ٢ إلى ٤ ستايلات للتجربة ({picked.length}/٤)</h3>
+          <p className="text-sm font-bold text-muted">💡 اختر ٢ أو ٣ أشكال رسم، نجرّبها على لقطة من قصتك، وبعدين تختار اللي يعجبك.</p>
           {groups.map((g) => (
             <div key={g} className="space-y-2">
               <p className="text-sm font-extrabold text-muted">{g}</p>
@@ -469,10 +538,12 @@ function StyleTest({
 }
 
 function SheetImages({
-  sheetId, images, busy, onGenerate, onApprove, onReject, onUnapprove, unapproveWarning,
+  sheetId, images, canGenerate, busy, onGenerate, onApprove, onReject, onUnapprove, unapproveWarning,
 }: {
   sheetId: string;
   images: Asset[];
+  /** Only with an approved prompt (a new prompt waiting for approval still shows the pictures made before). */
+  canGenerate: boolean;
   busy: boolean;
   onGenerate: () => void;
   onApprove: (id: string) => void;
@@ -485,6 +556,7 @@ function SheetImages({
   const approved = images.some((i) => i.status === "approved");
   return (
     <div className="space-y-3">
+      {shown.some((i) => i.status === "generated") && <p className="text-sm font-bold text-muted">💡 عجبتك الصورة؟ اعتمدها. ما عجبتك؟ ولّد نسخة ثانية أو اكتب تعديل.</p>}
       {shown.map((img) => (
         <figure key={img.id} className={`space-y-2 rounded-2xl border p-2 ${img.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
           {img.status === "generating" ? (
@@ -509,7 +581,7 @@ function SheetImages({
           </div>
         </figure>
       ))}
-      {!generating && !busy && (
+      {canGenerate && !generating && !busy && (
         <button className={`btn w-full ${approved ? "btn-ghost" : "btn-secondary"}`} onClick={onGenerate}>
           {shown.length ? "🔁 ولّد نسخة ثانية" : "🖼️ ولّد الصورة"} · {SHEET_COST}
         </button>
