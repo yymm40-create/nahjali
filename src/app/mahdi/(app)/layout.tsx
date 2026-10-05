@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/mahdi/AppShell";
 import MahdiProvider from "@/components/mahdi/Provider";
@@ -22,6 +23,9 @@ export default async function MahdiAppLayout({ children }: { children: React.Rea
     if (!name) redirect("/mahdi/username");
     snapshot.username = name;
   }
+
+  // Arrived from someone's invitation link and now in the app: to that person's page, once
+  if ((await cookies()).has("mahdi_invite")) redirect("/api/mahdi/invite?done=1");
 
   // A family member's account (entered by the parent) says so on every screen, with the way back
   const { data: family } = await supabase.from("mahdi_family").select("parent_id").eq("member_id", user.id).maybeSingle();
