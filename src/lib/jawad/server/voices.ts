@@ -19,6 +19,15 @@ import { ProviderError } from "./providers/common";
 import { elevenCloneVoice, elevenDeleteVoice, elevenDesignVoice, elevenPremadeVoices, elevenSaveDesigned } from "./providers/elevenlabs";
 
 const db = () => createAdminClient();
+/** ElevenLabs' long-standing default voices, shown when the key may not read the voice list. */
+const FALLBACK_VOICES = [
+  ["JBFqnCBsd6RMkjVDRZzb", "George", "male"],
+  ["21m00Tcm4TlvDq8ikWAM", "Rachel", "female"],
+  ["EXAVITQu4vr4xnSDxMaL", "Sarah", "female"],
+  ["nPczCjzI2devNBz1zQrb", "Brian", "male"],
+  ["onwK4e9ZLuTAKqWW03F9", "Daniel", "male"],
+  ["XrExE9yKIg1WjnnlVkGX", "Matilda", "female"],
+].map(([voiceId, name, gender]) => ({ voiceId, name, category: "premade", labels: { gender } as Record<string, string>, previewUrl: null as string | null }));
 const V4 = "elevenlabs-eleven-v4";
 const LABEL = "JAWAD AI · مكتبة الأصوات";
 /** How a reference recording shapes a designed voice: prompt_strength near 0 follows the recording, near 1 the words. */
@@ -73,7 +82,8 @@ export async function listVoices(userId: string, owner: boolean): Promise<{ mine
   let ready: VoiceView[] = [];
   let readyError: string | null = null;
   try {
-    ready = (await elevenPremadeVoices()).map((v) => ({ id: v.voiceId, value: `p:${v.voiceId}`, name: v.name, description: [v.labels.gender, v.labels.accent, v.labels.age, v.labels.descriptive ?? v.labels.description].filter(Boolean).join(" · "), origin: "ready" as const, previewUrl: v.previewUrl, labels: v.labels }));
+    const list = await elevenPremadeVoices().catch(() => [] as Awaited<ReturnType<typeof elevenPremadeVoices>>);
+    ready = (list.length ? list : FALLBACK_VOICES).map((v) => ({ id: v.voiceId, value: `p:${v.voiceId}`, name: v.name, description: [v.labels.gender, v.labels.accent, v.labels.age, v.labels.descriptive ?? v.labels.description].filter(Boolean).join(" · "), origin: "ready" as const, previewUrl: v.previewUrl, labels: v.labels }));
   } catch (e) {
     readyError = e instanceof ProviderError ? e.userMessage : "تعذّر جلب أصوات ElevenLabs الجاهزة.";
   }
@@ -90,10 +100,13 @@ export async function resolveVoice(userId: string, value: string): Promise<{ ok:
     return data ? { ok: true, voiceId: data.provider_voice_id as string } : { ok: false, reason: "هذا الصوت لم يعد في مكتبتك. اختر صوتًا آخر." };
   }
   if (value.startsWith("p:")) {
+    // A ready voice: sent as is (a key without permission to read the voice list must not block speech);
+    // an unknown id is refused by ElevenLabs and the coins come back
     const id = value.slice(2);
+    if (!/^[A-Za-z0-9]{16,32}$/.test(id)) return { ok: false, reason: "الصوت غير صحيح." };
     const list = await elevenPremadeVoices().catch(() => null);
-    if (!list) return { ok: false, reason: "تعذّر التحقق من الصوت لدى ElevenLabs الآن. جرّب بعد قليل." };
-    return list.some((v) => v.voiceId === id) ? { ok: true, voiceId: id } : { ok: false, reason: "هذا الصوت غير متاح. اختر صوتًا آخر." };
+    if (list && list.length && !list.some((v) => v.voiceId === id) && !FALLBACK_VOICES.some((v) => v.voiceId === id)) return { ok: false, reason: "هذا الصوت غير متاح. اختر صوتًا آخر." };
+    return { ok: true, voiceId: id };
   }
   return { ok: false, reason: "اختر صوتًا." };
 }
