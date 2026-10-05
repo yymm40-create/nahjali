@@ -15,11 +15,41 @@ import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { audioDurationMs, resolveVoice } from "@/lib/jawad/server/voices";
 import { prepareSpeech } from "@/lib/jawad/server/diction";
 import { directorVersions } from "./director";
+import { isAdmin } from "@config/site";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 
 const db = () => createAdminClient();
 const MODEL = "eleven_v4";
+// If the account's ElevenLabs plan does not have the newest model yet, the line is spoken with the one before it
+const FALLBACK_MODEL = "eleven_v3";
+
+/**
+ * Speaks a line; a 4xx about the model or the language flag (never billed) is tried once more the other way.
+ * Anything else is reported as it is.
+ */
+async function speak(o: { voiceId: string; text: string; languageCode?: string }) {
+  try {
+    return { audio: await elevenSpeech({ ...o, model: MODEL, stability: 0.5 }), model: MODEL };
+  } catch (e) {
+    const d = e instanceof ProviderError ? e.detail.toLowerCase() : "";
+    if (/model/.test(d) && /(not found|invalid|does not exist|not available|unknown|unsupported|not allowed)/.test(d)) {
+      return { audio: await elevenSpeech({ ...o, model: FALLBACK_MODEL, stability: 0.5 }), model: FALLBACK_MODEL };
+    }
+    if (/language_code|language/.test(d) && o.languageCode) {
+      return { audio: await elevenSpeech({ voiceId: o.voiceId, text: o.text, model: MODEL, stability: 0.5 }), model: MODEL };
+    }
+    throw e;
+  }
+}
+
+/** The owner sees what went wrong; everyone else a clean sentence. */
+function voiceFailure(e: unknown, email?: string | null) {
+  const base = e instanceof ProviderError ? e.userMessage : "تعذّر توليد الصوت الآن. لم يُخصم منك شيء.";
+  if (!isAdmin(email)) return base;
+  const detail = e instanceof ProviderError ? e.detail : e instanceof Error ? e.message : String(e);
+  return `${base} (للمالك: ${detail.slice(0, 400)})`;
+}
 
 export interface VoiceLine {
   /** genId:index — stable while the generation's approved version stays the same. */
@@ -108,8 +138,12 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
   try {
     // Who speaks, and the scene's other lines: Claude tells from them who is addressed (أنتَ or أنتِ)
     const scene = lines.filter((l) => l.genId === line.genId).map((l) => `${l.speaker}: ${l.line}`).join("\n");
-    const spoken = await prepareSpeech(line.line, arabic ? "precise" : "off", `This is one line of a film, said by «${line.speaker}». The scene's lines, in order:\n${scene}`);
-    const audio = await elevenSpeech({ voiceId: resolved.voiceId, text: spoken.text, model: MODEL, stability: 0.5, languageCode: spoken.languageCode });
+    // «النطق الدقيق» helps the voice; if it can't run (Claude busy or a rule broken) the line is still spoken as written
+    const spoken = await prepareSpeech(line.line, arabic ? "precise" : "off", `This is one line of a film, said by «${line.speaker}». The scene's lines, in order:\n${scene}`).catch((err) => {
+      console.error("film voice diction skipped", err);
+      return { text: line.line, languageCode: arabic ? "ar" : undefined, fixes: [], usd: 0 };
+    });
+    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: spoken.text, languageCode: spoken.languageCode });
     const path = `${projectDir(project)}/voices/${line.genId}-${line.index}-${Date.now()}.mp3`;
     const up = await db().storage.from(FILM_BUCKET).upload(path, audio, { contentType: "audio/mpeg", upsert: false });
     if (up.error) throw new Error(`storage: ${up.error.message}`);
@@ -122,13 +156,14 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       mime: "audio/mpeg",
       bytes: audio.length,
       status: "generated",
-      meta: { speaker: line.speaker, text: line.line, voice, durationMs: audioDurationMs(audio) ?? null, model: MODEL, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
+      meta: { speaker: line.speaker, text: line.line, voice, durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
     });
     if (error) throw error;
     await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * ELEVEN_PRICE.v4PerKChars + spoken.usd, units: spoken.text.length });
     return { jobId: job.id, status: "succeeded" };
   } catch (e) {
+    console.error("film voice line failed", line.key, e);
     await failJob(job.id, e instanceof ProviderError ? e.detail : e);
-    throw new UserError(e instanceof ProviderError ? e.userMessage : "تعذّر توليد الصوت الآن. لم يُخصم منك شيء.", 502);
+    throw new UserError(voiceFailure(e, user.email), 502);
   }
 }

@@ -10,6 +10,7 @@ import { assertCanEdit, getLimit } from "./limits";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
+import { buildVoiceTrack, voiceTrackNote } from "./voice-track";
 import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, FILM_PUBLIC_TRIAL, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
@@ -170,8 +171,10 @@ export type DirectorAction =
   | { action: "use_studio_video"; genId: string; jobId: string };
 
 /** The client's choices on the generation page (each wins over the director's plan). */
-type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel };
+type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel; useVoices?: boolean };
 const readChoice = (c: VideoChoice) => ({
+  // «الأصوات قبل الفيديو»: the generation's spoken lines go with the request as reference audio
+  useVoices: c.useVoices === true,
   resolution: VIDEO_OPEN_RESOLUTIONS.includes(c.resolution) ? c.resolution : DEFAULT_VIDEO_RESOLUTION,
   ratio: c.ratio === "9:16" || c.ratio === "16:9" ? c.ratio : undefined,
   seconds: c.durationSec ? clampVideoSeconds(Number(c.durationSec)) : undefined,
@@ -326,7 +329,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
       const c = readChoice(input);
-      await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model);
+      await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
       return { jobId: null };
     }
 
@@ -353,7 +356,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       readyForVideo(v, lib);
       await setApproved(v, versions);
       const c = readChoice(input);
-      await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model);
+      await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
       const id = await addUserMessage(project.id, "اعتمد");
       return { jobId: await queueReply(project, user, id) };
     }
@@ -473,10 +476,20 @@ function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>) {
 }
 
 /** Creates the video asset + paid job, and sends the generation to Seedance in the background. */
-async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel) {
-  const { prompt, refs } = readyForVideo(v, lib);
+async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel, useVoices = false) {
+  const ready = readyForVideo(v, lib);
+  const { refs } = ready;
+  let prompt = ready.prompt;
   const model: VideoModel = chosenModel || v.data.video_model || project.video_model || "seedance-2.5";
-  const durationSec = Math.min(seconds ?? clampVideoSeconds(v.data.duration_sec ?? 10), VIDEO_MODELS[model].maxSeconds);
+  let durationSec = Math.min(seconds ?? clampVideoSeconds(v.data.duration_sec ?? 10), VIDEO_MODELS[model].maxSeconds);
+  // The spoken lines, made first, ride along as reference audio; the video is at least as long as they are
+  let voiceTrack: string | null = null;
+  if (useVoices) {
+    const t = await buildVoiceTrack(project, v.ref_key, model);
+    voiceTrack = t.path;
+    prompt += voiceTrackNote(t);
+    durationSec = Math.min(VIDEO_MODELS[model].maxSeconds, Math.max(durationSec, Math.ceil(t.seconds) + 1));
+  }
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);
   // Public trial: one free video per trial user; their trial ends once it is made (the owner has no limit)
@@ -487,7 +500,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     throw new UserError("خلصت فيديوهات تجربتك المجانية (أو آخرها قاعد يتولد). شكرًا لك!", 403);
   }
 
-  const meta = { ...(trial ? { trial: true } : {}), model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true };
+  const meta = { ...(trial ? { trial: true } : {}), model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true, ...(voiceTrack ? { voiceTrack } : {}) };
   const { data: asset, error } = await db()
     .from("film_assets")
     .insert({ project_id: project.id, kind: "video", ref_key: v.ref_key, version_id: v.id, status: "generating", meta })
@@ -508,21 +521,22 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     await db().from("film_assets").delete().eq("id", asset.id);
     throw e;
   });
-  after(() => submitVideo(project, job.id, asset.id, { prompt, refs, ...meta }));
+  after(() => submitVideo(project, job.id, asset.id, { prompt, refs, ...meta, voiceTrack }));
 }
 
 async function submitVideo(
   project: FilmProject,
   jobId: string,
   assetId: string,
-  o: { prompt: string; refs: FilmAsset[]; model: VideoModel; durationSec: number; resolution: VideoResolution; ratio: string; generateAudio: boolean },
+  o: { prompt: string; refs: FilmAsset[]; model: VideoModel; durationSec: number; resolution: VideoResolution; ratio: string; generateAudio: boolean; voiceTrack?: string | null },
 ) {
   const client = db();
   try {
     const paths = o.refs.map((r) => r.storage_path!).filter(Boolean);
     const signed = paths.length ? (await client.storage.from(FILM_BUCKET).createSignedUrls(paths, 7200)).data ?? [] : [];
     const imageUrls = signed.map((s) => s.signedUrl).filter(Boolean) as string[];
-    const taskId = await createVideoTask({ model: o.model, prompt: o.prompt, imageUrls, durationSec: o.durationSec, resolution: o.resolution, ratio: o.ratio, generateAudio: o.generateAudio });
+    const track = o.voiceTrack ? (await client.storage.from(FILM_BUCKET).createSignedUrl(o.voiceTrack, 7200)).data?.signedUrl : null;
+    const taskId = await createVideoTask({ model: o.model, prompt: o.prompt, imageUrls, audioUrls: track ? [track] : [], durationSec: o.durationSec, resolution: o.resolution, ratio: o.ratio, generateAudio: o.generateAudio });
     await client.from("film_jobs").update({ provider_task_id: taskId }).eq("id", jobId);
     // Keep watching for a while; the page's polling (checkVideos) finishes the rest
     const until = Date.now() + WATCH_MS;

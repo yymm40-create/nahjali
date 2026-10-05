@@ -33,6 +33,8 @@ export interface VideoRequest {
   prompt: string;
   /** Short-lived URLs of the reference images, in <<<image_n>>> order. */
   imageUrls: string[];
+  /** Short-lived URLs of reference audio (the shot's spoken dialogue): the model lip-syncs to it and keeps it. */
+  audioUrls?: string[];
   durationSec: number;
   ratio: string;
   generateAudio: boolean;
@@ -43,6 +45,7 @@ export interface VideoRequest {
 export async function createVideoTask(r: VideoRequest): Promise<string> {
   const content: Record<string, unknown>[] = [{ type: "text", text: r.prompt }];
   for (const url of r.imageUrls) content.push({ type: "image_url", image_url: { url }, role: "reference_image" });
+  for (const url of r.audioUrls ?? []) content.push({ type: "audio_url", audio_url: { url }, role: "reference_audio" });
   const body = await arkCall("/contents/generations/tasks", {
     method: "POST",
     body: JSON.stringify({
