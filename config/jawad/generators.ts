@@ -8,6 +8,7 @@
 
 import { COIN_COST_USD } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
+import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
 
 const CHECKED = "2026-10-04";
@@ -475,6 +476,16 @@ export const ELEVEN_PRICE = { v4PerKChars: 0.08, sfxPerMin: 0.12, musicPerMin: 0
  * at the v4 speech rate). Saving a voice costs nothing at ElevenLabs but takes one of the account's voice slots.
  */
 export const VOICE_DESIGN_USD = (3 * 1000 * ELEVEN_PRICE.v4PerKChars) / 1000;
+/**
+ * «النطق الدقيق»: Claude Opus 5.5 vowels the words of an Arabic text that need it (USD per 1,000 characters, a
+ * ceiling with its thinking: about 1.5K input tokens at $4/M and 2K output tokens at $20/M).
+ */
+export const DICTION_USD_PER_K = 0.05;
+/** Whether a request's text goes through «النطق الدقيق» (an Arabic text, and a mode other than «كما كتبت»). */
+export const dictionOf = (d: { settings: Settings; prompt: string }): Diction => {
+  const m = String(d.settings[DICTION_KEY] ?? "off") as Diction;
+  return m !== "off" && mostlyArabic(d.prompt) ? m : "off";
+};
 /** Price keys of the voice library (on the Eleven v4 generator): designing a voice, and copying one from a recording. */
 export const VOICE_DESIGN_KEY = "voice:design";
 export const VOICE_CLONE_KEY = "voice:clone";
@@ -511,28 +522,47 @@ const elevenV4: GeneratorDef = {
         { value: "1", label: "ثابت", hint: "إلقاء متّزن" },
       ],
     },
+    { key: DICTION_KEY, label: "دقة النطق العربي", kind: "choice", default: "precise", values: DICTION_VALUES },
   ],
   files: {},
-  prompt: { label: "النص المنطوق", placeholder: "اكتب الكلام كما سيُنطق… ويمكنك توجيه الأداء بوسوم مثل [whispers] أو [laughs] أو [sighs].", max: 5000, arabic: true },
+  prompt: { label: "النص المنطوق", placeholder: "اكتب الكلام كما سيُنطق… شكّل الكلمة اللي تبي نطقها بالضبط (أنتِ، لكِ). وجّه الأداء بوسوم مثل [whispers] أو [laughs].", max: 5000, arabic: true },
   priceKeys: [
     { key: "chars:1k", label: "كل ١٠٠٠ حرف", defaultCenti: centiFor(ELEVEN_PRICE.v4PerKChars), basis: `سعر ElevenLabs المنشور لـ Eleven v4: $${ELEVEN_PRICE.v4PerKChars} لكل ١٠٠٠ حرف (السعر العادي، لا خصم الإطلاق)` },
     { key: VOICE_DESIGN_KEY, label: "تصميم صوت بالوصف (٣ عينات)", defaultCenti: centiFor(VOICE_DESIGN_USD), basis: `سقف: ٣ عينات × ١٠٠٠ حرف بسعر الكلام ($${ELEVEN_PRICE.v4PerKChars}/١٠٠٠)؛ لا يوجد سعر منفصل منشور لتصميم الأصوات` },
     { key: VOICE_CLONE_KEY, label: "نسخ صوت من تسجيل (للمرة)", defaultCenti: 500, basis: "سعر ثابت حدّده المالك (5 نقدات): النسخ الفوري بلا تكلفة لدى ElevenLabs لكنه يشغل خانة صوت في الحساب" },
+    { key: "diction:1k", label: "النطق الدقيق (كل ١٠٠٠ حرف عربي)", defaultCenti: centiFor(DICTION_USD_PER_K), basis: `تقدير: Claude Opus 5.5 يشكّل الكلمات الملتبسة ($4/$20 لكل مليون توكن دخل/خرج) ≈ $${DICTION_USD_PER_K} لكل ١٠٠٠ حرف مع التفكير` },
   ],
   modeFor: () => v4Mode,
-  rules: () => ({ options: opt(elevenV4.options), issues: [], notes: ["وجّه الأداء بوسوم بين قوسين مثل [whispers] و[laughs] و[shouts]؛ يتكلم أكثر من ٩٠ لغة منها العربية."] }),
+  rules(d) {
+    const notes = ["وجّه الأداء بوسوم بين قوسين مثل [whispers] و[laughs] و[shouts]؛ يتكلم أكثر من ٩٠ لغة منها العربية."];
+    const mode = String(d.settings[DICTION_KEY] ?? "precise");
+    if (mostlyArabic(d.prompt)) {
+      if (mode === "off" && hasMarks(d.prompt)) notes.unshift("«كما كتبت»: ElevenLabs يتجاهل الحركات غالبًا (مثل أنتِ ← أنتَ). «دقيق» يضمن نطقها.");
+      else if (mode === "precise") notes.unshift("«دقيق»: Claude يشكّل الكلمات اللي يتغيّر نطقها بالحركات (حركاتك تبقى كما هي، والمؤنث يمشي على كل الكلام)، وتوصل لـ ElevenLabs بكتابتها الصوتية (IPA)، الطريقة الرسمية لضبط النطق في Eleven v4. تشوفها في «التفاصيل».");
+      else if (mode === "spelled") notes.unshift("«كتابة صوتية»: نفس التشكيل، لكن نهاية المؤنث تُكتب حرفًا (أنتِ ← أنتي، لكِ ← لكي) والباقي بحركاته. جرّبها إذا صوتك ما ضبط مع «دقيق».");
+    }
+    return { options: opt(elevenV4.options), issues: [], notes };
+  },
   price(d, _mode, table) {
     const per = table["chars:1k"];
     if (per == null) return { ok: false, reason: "سعر الكلام لم يُحدد بعد." };
     const k = Math.max(1, Math.ceil(d.prompt.length / 1000));
-    return total([{ label: `${k} × ١٠٠٠ حرف`, centi: k * per }], elevenV4.costUsd(d, v4Mode));
+    const lines = [{ label: `${k} × ١٠٠٠ حرف`, centi: k * per }];
+    if (dictionOf(d) !== "off") {
+      const dp = table["diction:1k"];
+      if (dp == null) return { ok: false, reason: "سعر النطق الدقيق لم يُحدد بعد." };
+      lines.push({ label: `النطق الدقيق · ${k} × ١٠٠٠ حرف`, centi: k * dp });
+    }
+    return total(lines, elevenV4.costUsd(d, v4Mode));
   },
-  costUsd: (d) => (Math.max(1, d.prompt.length) / 1000) * ELEVEN_PRICE.v4PerKChars,
+  costUsd: (d) => (Math.max(1, d.prompt.length) / 1000) * (ELEVEN_PRICE.v4PerKChars + (dictionOf(d) !== "off" ? DICTION_USD_PER_K : 0)),
   sources: elSources([
     { label: "ElevenLabs — Create speech (voice_id, model_id, voice_settings, output_format)", url: "https://elevenlabs.io/docs/api-reference/text-to-speech/convert" },
     { label: "ElevenLabs — Design a voice (eleven_ttv_v3, reference audio, prompt strength)", url: "https://elevenlabs.io/docs/api-reference/text-to-voice/design" },
     { label: "ElevenLabs — Create a voice from a preview", url: "https://elevenlabs.io/docs/api-reference/text-to-voice/create" },
     { label: "ElevenLabs — Eleven v4 (help center)", url: "https://elevenlabs.io/docs/help-center/product/core-capabilities/text-to-speech/what-is-eleven-v4" },
+    { label: "ElevenLabs — Best practices: IPA with Eleven v4 (/…/ inline)", url: "https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices" },
+    { label: "ElevenLabs — Pronunciation dictionaries (IPA in languages other than English needs eleven_v4)", url: "https://elevenlabs.io/docs/eleven-api/guides/how-to/text-to-speech/pronunciation-dictionaries" },
   ]),
   verification: [
     { item: "النموذج", status: "verified", note: "eleven_v4 أحدث نموذج كلام (أُطلق 28 سبتمبر 2026)، حد 10,000 حرف للطلب؛ نقبل حتى 5,000." },
@@ -540,6 +570,8 @@ const elevenV4: GeneratorDef = {
     { item: "تصميم الصوت", status: "verified", note: "POST /v1/text-to-voice/design بنموذج eleven_ttv_v3 (الأحدث) يرجع عينات؛ مع مرجع صوتي (reference_audio_base64) وقوة الوصف prompt_strength." },
     { item: "الأداء", status: "verified", note: "voice_settings.stability: الأقل أكثر تعبيرًا والأعلى أثبت (الافتراضي 0.5)؛ نرسل 0 أو 0.5 أو 1." },
     { item: "الصيغة", status: "verified", note: "mp3_44100_128 (الافتراضي)." },
+    { item: "النطق العربي", status: "verified", note: "Eleven v4 يقرأ IPA بين شرطتين «/…/» داخل النص لضبط نطق كلمة، وفي غير الإنجليزية لازم eleven_v4. language_code (ISO 639-1) يفرض اللغة على النموذج وقراءة الأرقام؛ نرسل «ar» للنص العربي." },
+    { item: "الحركات", status: "unverified", note: "لا تذكر ElevenLabs الحركات العربية؛ ولاحظنا أنها تُتجاهل غالبًا. لذلك «النطق الدقيق» يرسل الكلمات المشكّلة بنطقها الصوتي بدل الاعتماد على الحركات. جودة IPA قد تختلف من صوت لصوت (توصية ElevenLabs: جرّب صوتك)، و«كتابة صوتية» بديل." },
     { item: "السعر", status: "verified", note: `$${ELEVEN_PRICE.v4PerKChars} لكل ١٠٠٠ حرف (عليه خصم إطلاق مؤقت حتى 12 أكتوبر؛ نسعّر بالسعر العادي).` },
     { item: "سعر تصميم الصوت", status: "unverified", note: "غير منشور منفصلًا؛ نسعّره بسقف ٣ عينات × ١٠٠٠ حرف بسعر الكلام." },
   ],
