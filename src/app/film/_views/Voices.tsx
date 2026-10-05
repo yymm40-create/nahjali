@@ -18,7 +18,7 @@ export default async function VoicesView({ id, base }: { id: string; base: strin
         <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">🎙️ الأصوات</h1>
         <p className="text-sm font-bold text-muted">
-          لكل شخصية صوت، ولكل جملة كتبها المخرج ملف صوتي بـ Eleven v4. الأصوات من «مكتبتي» في «الجواد الذكي!» (صمّم صوتًا أو احفظ بصمة صوتك) أو من أصوات ElevenLabs الجاهزة.
+          لكل شخصية صوت، ولكل جملة كتبها المخرج ملف صوتي بـ Eleven v4. ولّدها قبل الفيديو: في صفحة «التوليد» تروح أصوات كل مقطع مع طلب الفيديو مرجعًا، فتتحرك شفاه الشخصيات عليها ويبقى صوتها كما هو. الأصوات من «مكتبتي» في «الجواد الذكي!» (صمّم صوتًا أو احفظ بصمة صوتك) أو من أصوات ElevenLabs الجاهزة.
         </p>
       </header>
       <VoicesWorkspace projectId={id} initialLines={lines} />

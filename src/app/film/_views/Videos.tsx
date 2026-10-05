@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { filmTrialApplies, filmTrialVideos, requireFilmUser, requireProject } from "@/lib/film/access";
 import { editsLeft, getLimit } from "@/lib/film/limits";
 import { checkVideos, directorVersions, directorVideos, purgeOldVideos } from "@/lib/film/director";
+import { voiceReadiness } from "@/lib/film/voice-track";
+import { voicesReady } from "@/lib/film/voices";
 import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
@@ -21,7 +23,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
 
   await purgeOldVideos(project);
   const videosRunning = await checkVideos(project);
-  const [versions, videos, cost, job] = await Promise.all([directorVersions(id), directorVideos(id), projectCost(id), latestJob(id, "director")]);
+  const [versions, videos, cost, job, spoken] = await Promise.all([directorVersions(id), directorVideos(id), projectCost(id), latestJob(id, "director"), voiceReadiness(id).catch(() => [])]);
   const map = versions.filter((v) => v.kind === "dir_map" && v.status === "approved").at(-1)?.data.generation_map ?? [];
   const approved = versions.filter((v) => v.kind === "dir_generation" && v.status === "approved");
   if (!approved.length) redirect(`${base}/${id}/director`);
@@ -39,6 +41,8 @@ export default async function VideosView({ id, base }: { id: string; base: strin
       durationSec: v.data.duration_sec ?? 10,
       ratio: v.data.ratio ?? "16:9",
       audio: v.data.generate_audio ?? true,
+      // «الأصوات قبل الفيديو»: this shot's spoken lines, and whether each one's audio is made
+      lines: spoken.filter((l) => l.genId === g).map((l) => ({ key: l.key, speaker: l.speaker, line: l.line, spoken: l.spoken })),
       questions: q?.status === "awaiting_approval" ? { id: q.id, body: q.body, items: q.data.questions ?? [] } : null,
       revision: r?.status === "awaiting_approval" ? { id: r.id, body: r.body } : null,
     };
@@ -65,7 +69,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">🎬 توليد الفيديو</h1>
         <p className="text-sm font-bold text-muted">
-          آخر قرار قبل التوليد: اختر الجودة، وولّد كل توليد معتمد من المخرج. الفيديو حتى الآن <span dir="ltr">${(cost.byService.seedance ?? 0).toFixed(2)}</span>
+          آخر قرار قبل التوليد: ولّد أصوات كل مقطع أول (تروح مع الفيديو مرجعًا فتتحرك الشفاه عليها)، ثم اختر الجودة وولّد. الفيديو حتى الآن <span dir="ltr">${(cost.byService.seedance ?? 0).toFixed(2)}</span>
         </p>
       </header>
       <VideosWorkspace
@@ -89,6 +93,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         trialVideosLeft={(await filmTrialApplies(user)) ? Math.max(0, (await getLimit("videos", user.email)) - (await filmTrialVideos(user.id)).taken) : null}
         editsLeft={await editsLeft(id, "director", user.email)}
         studioPath={studioPath}
+        voicesOn={voicesReady()}
       />
     </div>
   );

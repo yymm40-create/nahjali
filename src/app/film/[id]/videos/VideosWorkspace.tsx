@@ -35,6 +35,15 @@ interface Generation {
   durationSec: number;
   ratio: string;
   audio: boolean;
+  /** This shot's spoken lines and whether each one's audio is made («الأصوات قبل الفيديو»). */
+  lines: { key: string; speaker: string; line: string; spoken: boolean }[];
+}
+/** The voices page's state, loaded once here for the per-shot voice blocks. */
+interface VoiceState {
+  ready: boolean;
+  cast: Record<string, string>;
+  audios: { key: string; url: string; text: string }[];
+  voices: { value: string; name: string; group: "mine" | "ready" }[];
 }
 interface Video {
   id: string;
@@ -66,8 +75,10 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false,
 }: {
+  /** ElevenLabs is configured on the server: the voices block is shown. */
+  voicesOn?: boolean;
   /** JAWAD AI's video section (when this user may use it): «التعديل الذكي» there, and its videos can be chosen here */
   studioPath?: string | null;
   projectId: string;
@@ -168,6 +179,50 @@ export default function VideosWorkspace({
   }
 
   const kept = videos.filter((v) => v.url && v.status !== "rejected");
+
+  // ── «الأصوات قبل الفيديو»: the lines of each shot are spoken here, then ride along as reference audio ──
+  const voicesUrl = `/api/film/projects/${projectId}/voices`;
+  const [voice, setVoice] = useState<VoiceState | null>(null);
+  const [speaking, setSpeaking] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState("");
+  const hasLines = generations.some((g) => g.lines.length);
+  useEffect(() => {
+    if (!voicesOn || !hasLines) return;
+    api<VoiceState>(voicesUrl).then(setVoice).catch((e: Error) => setVoiceError(e.message));
+  }, [voicesOn, hasLines, voicesUrl]);
+  // Per shot: send its voices with the video (on by default; off when it has no lines)
+  const [withVoices, setWithVoices] = useState<Record<string, boolean>>({});
+  const sendVoices = (g: Generation) => g.lines.length > 0 && voicesOn && (withVoices[g.id] ?? true);
+  const spokenOf = (g: Generation, key: string) => {
+    const a = voice?.audios.find((x) => x.key === key);
+    const l = g.lines.find((x) => x.key === key);
+    return Boolean(a && l && a.text === l.line) || Boolean(!voice && l?.spoken);
+  };
+  const allSpoken = (g: Generation) => g.lines.every((l) => spokenOf(g, l.key));
+  async function castVoice(speaker: string, value: string) {
+    setVoiceError("");
+    setVoice((x) => (x ? { ...x, cast: { ...x.cast, [speaker]: value } } : x));
+    try {
+      await postJson(voicesUrl, { action: "cast", speaker, voice: value });
+    } catch (e) {
+      setVoiceError((e as Error).message);
+    }
+  }
+  async function speakLines(keys: string[]) {
+    setVoiceError("");
+    for (const key of keys) {
+      setSpeaking(key);
+      try {
+        await postJson(voicesUrl, { action: "speak", key, idempotencyKey: crypto.randomUUID() });
+        setVoice(await api<VoiceState>(voicesUrl));
+      } catch (e) {
+        setVoiceError((e as Error).message);
+        break;
+      }
+    }
+    setSpeaking(null);
+    refresh();
+  }
 
   return (
     <EditsLeftContext value={editsLeft}>
@@ -385,11 +440,67 @@ export default function VideosWorkspace({
                 </details>
                 <ActionBar
                   busy={busy || writing}
-                  onApprove={() => send({ action: "approve_and_generate", versionId: g.revision!.id, resolution, ratio, durationSec: sec, model })}
+                  onApprove={() => send({ action: "approve_and_generate", versionId: g.revision!.id, resolution, ratio, durationSec: sec, model, useVoices: sendVoices(g) && allSpoken(g) })}
                   approveLabel={`اعتمد وولّد من جديد · ≈ ${usd(cost)}`}
                   onSend={(mode, text) => send({ action: "revise", text, versionId: g.revision!.id, mode })}
                 />
               </div>
+            )}
+
+            {voicesOn && g.lines.length > 0 && !generating && (
+              <section className="space-y-2 rounded-2xl border border-line p-3" aria-label="أصوات هذا المقطع">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-extrabold">🎙️ أصوات هذا المقطع {allSpoken(g) ? <span className="chip bg-teal text-xs text-white">جاهزة ✅</span> : <span className="chip text-xs">{g.lines.filter((l) => spokenOf(g, l.key)).length}/{g.lines.length}</span>}</p>
+                  <label className="flex items-center gap-2 text-sm font-bold">
+                    <input type="checkbox" className="size-4 accent-gold" checked={sendVoices(g)} onChange={(e) => setWithVoices({ ...withVoices, [g.id]: e.target.checked })} />
+                    ترسل مع الفيديو مرجعًا (تتحرك الشفاه عليها)
+                  </label>
+                </div>
+                <p className="text-xs font-bold text-muted">💡 ولّد الصوت أول، وبعدها الفيديو: Seedance يلتزم بالصوت المرفق ويحرّك الشفاه عليه ولا يولّد كلامًا غيره.</p>
+                {voice && [...new Set(g.lines.map((l) => l.speaker))].map((sp) => (
+                  <div key={sp} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="font-extrabold">{sp}</span>
+                    <select className="field min-h-9 w-full max-w-xs text-sm" aria-label={`صوت ${sp}`} value={voice.cast[sp] ?? ""} onChange={(e) => castVoice(sp, e.target.value)} disabled={Boolean(speaking)}>
+                      <option value="" disabled>اختر صوتًا…</option>
+                      {voice.voices.some((v) => v.group === "mine") && <optgroup label="أصواتي">{voice.voices.filter((v) => v.group === "mine").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>}
+                      <optgroup label="أصوات ElevenLabs الجاهزة">{voice.voices.filter((v) => v.group === "ready").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>
+                    </select>
+                  </div>
+                ))}
+                <ol className="space-y-1">
+                  {g.lines.map((l) => {
+                    const a = voice?.audios.find((x) => x.key === l.key);
+                    const ok = spokenOf(g, l.key);
+                    return (
+                      <li key={l.key} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-2 text-sm">
+                        <span className="flex-1"><b>{l.speaker}:</b> {l.line}</span>
+                        {a?.url && ok && <audio controls preload="none" src={a.url} className="h-8 w-40" />}
+                        <button
+                          type="button"
+                          className={`btn min-h-8 px-3 text-xs ${ok ? "btn-ghost" : "btn-secondary"}`}
+                          disabled={Boolean(speaking) || !voice?.cast[l.speaker]}
+                          title={!voice?.cast[l.speaker] ? `اختر صوتًا لـ${l.speaker} أول` : undefined}
+                          onClick={() => speakLines([l.key])}
+                        >
+                          {speaking === l.key ? "يولّد…" : ok ? "🔁 من جديد" : "🎙️ ولّد"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {voice && !allSpoken(g) && (
+                  <button
+                    type="button"
+                    className="btn btn-primary min-h-10 w-full text-sm"
+                    disabled={Boolean(speaking) || g.lines.some((l) => !voice.cast[l.speaker])}
+                    onClick={() => speakLines(g.lines.filter((l) => !spokenOf(g, l.key)).map((l) => l.key))}
+                  >
+                    {speaking ? "يولّد الأصوات…" : `🎙️ ولّد أصوات هذا المقطع (${g.lines.filter((l) => !spokenOf(g, l.key)).length})`}
+                  </button>
+                )}
+                {!voice && !voiceError && <Spinner />}
+                {voiceError && <p className="error-box text-sm">{voiceError}</p>}
+              </section>
             )}
 
             {!generating && !busy && (
@@ -422,9 +533,11 @@ export default function VideosWorkspace({
             {!generating && !busy && !g.questions && !g.revision && (
               <button
                 className={`btn w-full ${mine.length ? "btn-ghost" : "btn-primary"}`}
-                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model })}
+                disabled={sendVoices(g) && !allSpoken(g)}
+                title={sendVoices(g) && !allSpoken(g) ? "ولّد أصوات المقطع أول، أو أطفئ «ترسل مع الفيديو»" : undefined}
+                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices: sendVoices(g) })}
               >
-                {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"} · {ratio === "9:16" ? "طولي" : "عرضي"} · {VIDEO_MODELS[model].label} · {VIDEO_RESOLUTIONS[resolution].label}
+                {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"}{sendVoices(g) ? " 🎙️ بالأصوات" : ""} · {ratio === "9:16" ? "طولي" : "عرضي"} · {VIDEO_MODELS[model].label} · {VIDEO_RESOLUTIONS[resolution].label}
               </button>
             )}
           </article>
