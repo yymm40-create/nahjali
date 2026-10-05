@@ -207,6 +207,13 @@ export async function projectAction(user: User, id: string, b: Body) {
       await touch(p.id, { stage: "review" });
       return { ok: true };
     }
+    case "segments_approve_all": {
+      // every part still waiting, as it stands now (the student's corrections included)
+      const { error } = await db.from("student_segments").update({ status: "approved", updated_at: new Date().toISOString() }).eq("project_id", p.id).eq("status", "pending");
+      if (error) throw error;
+      await touch(p.id, { stage: "review" });
+      return { ok: true };
+    }
     case "segment_approve":
     case "segment_reopen": {
       const status = b.action === "segment_approve" ? "approved" : "pending";
