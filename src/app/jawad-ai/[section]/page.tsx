@@ -31,6 +31,8 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
   const [balance, initialWorks] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null)]) : [null, null];
 
   return (
+    // each section has its own look (sections.css), by its output type
+    <div className="jw-sec" data-jw-section={s.output}>
     <Studio
       key={s.id}
       section={{ id: s.id, name: s.name, output: s.output }}
@@ -43,5 +45,6 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
       balance={balance}
       initialWorks={initialWorks}
     />
+    </div>
   );
 }

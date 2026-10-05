@@ -1,5 +1,6 @@
 "use client";
 
+import SectionHint from "@/components/jawad/SectionHint";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
@@ -735,7 +736,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         {(["settings", "works"] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`relative py-2.5 text-sm ${tab === t ? "text-jw-ink" : "text-jw-muted"}`}>
             {t === "settings" ? "الإعدادات" : "أعمالي"}
-            {t === "works" && openCount > 0 && <span className="ms-1.5 inline-grid size-5 place-items-center rounded-full bg-jw-accent text-[10px] text-white">{openCount}</span>}
+            {t === "works" && openCount > 0 && <span className="ms-1.5 inline-grid size-5 place-items-center rounded-full bg-jw-accent text-[10px] text-[var(--jw-on-accent)]">{openCount}</span>}
             <span className={`absolute inset-x-6 bottom-0 h-0.5 rounded-full ${tab === t ? "bg-jw-accent" : ""}`} />
           </button>
         ))}
@@ -745,6 +746,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       <div dir="ltr" className="mx-auto max-w-[1600px] lg:grid lg:h-[calc(100dvh-var(--jw-header-h)-var(--jw-bar-h))] lg:grid-cols-[minmax(340px,1fr)_minmax(0,2fr)]">
         <aside dir="rtl" aria-label="إعدادات التوليد" className={`${tab === "settings" ? "flex" : "hidden"} min-h-0 flex-col lg:flex lg:border-r lg:border-jw-line`}>
           <div className="jw-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+            <SectionHint kind={section.output} />
             <GeneratorCard gen={gen} owner={owner} onOpen={() => setPicker(true)} />
             {notice && (
               <p className="flex items-start gap-2 rounded-lg border border-jw-line bg-jw-surface-2 px-3 py-2 text-xs text-jw-muted" role="status">
@@ -830,7 +832,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
                 {submitting ? <span className="jw-spinner" /> : <Icon name="sparkles" size={18} />}
                 {generateLabel}
                 {price != null && (
-                  <span className="ms-1 flex items-center gap-1 rounded-full bg-black/25 px-2 py-0.5 text-sm">
+                  <span className="ms-1 flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--jw-on-accent)_15%,transparent)] px-2 py-0.5 text-sm">
                     <SmartCoin size={15} />
                     <span dir="ltr" className="tabular-nums">{price}</span>
                   </span>

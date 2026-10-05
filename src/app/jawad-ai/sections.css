@@ -1,0 +1,163 @@
+/*
+ * «الجواد الذكي!» — every section feels different, the frame stays the same.
+ * The header and the sections bar (the frame) keep JAWAD's dark look; each section's page is wrapped in
+ * <div class="jw-sec" data-jw-section="image|video|audio|film"> and gets its own colours, mood and a light decoration
+ * (CSS only). Every widget reads the --jw-* tokens, so redefining them here re-themes buttons, panels, inputs and
+ * dialogs at once. Sections the owner adds take the look of their output type. «الطالب الذكي» has its own (.st).
+ */
+
+.jw .jw-sec {
+  /* re-derived here: a token computed from another one keeps the value it got on .jw unless declared again */
+  --jw-accent-soft: color-mix(in srgb, var(--jw-accent) 15%, transparent);
+  --jw-accent-line: color-mix(in srgb, var(--jw-accent) 55%, transparent);
+  --page: var(--jw-bg);
+  --surface: var(--jw-surface);
+  --surface-2: var(--jw-surface-2);
+  --ink: var(--jw-ink);
+  --muted: var(--jw-muted);
+  --line: var(--jw-line-strong);
+  --gold: var(--jw-accent);
+  --gold-2: color-mix(in srgb, var(--jw-accent) 70%, white);
+  --on-gold: var(--jw-on-accent);
+
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100dvh - var(--jw-header-h) - var(--jw-bar-h));
+  background: var(--jw-bg);
+  color: var(--jw-ink);
+}
+.jw .jw-sec::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.jw .jw-sec .jw-panel {
+  box-shadow: var(--jw-sec-shadow, none);
+}
+
+/* ── الصور «المرسم»: a bright gallery on paper, warm coral ── */
+.jw [data-jw-section="image"] {
+  --jw-bg: #fbf7f1;
+  --jw-bg-2: #ffffff;
+  --jw-surface: #ffffff;
+  --jw-surface-2: #f4ede3;
+  --jw-surface-3: #ebe1d3;
+  --jw-line: rgba(90, 60, 30, 0.1);
+  --jw-line-strong: rgba(90, 60, 30, 0.2);
+  --jw-ink: #2a1f14;
+  --jw-muted: #6b5a48;
+  --jw-faint: #7a6754;
+  --jw-accent: #c2410c;
+  --jw-on-accent: #ffffff;
+  --jw-danger: #e11d48;
+  --jw-ok: #059669;
+  --jw-warn: #b45309;
+  --jw-radius: 18px;
+  --jw-sec-shadow: 0 12px 32px -14px rgba(120, 72, 24, 0.28);
+  color-scheme: light;
+}
+.jw [data-jw-section="image"]::before {
+  background:
+    linear-gradient(90deg, #c2410c, #f59e0b, #be185d, #7c3aed, #0891b2) top / 100% 4px no-repeat,
+    radial-gradient(#e7dccd 1px, transparent 1.2px) 0 0 / 18px 18px;
+}
+
+/* ── الفيديو «النيون»: a night studio, cyan and violet glow ── */
+.jw [data-jw-section="video"] {
+  --jw-bg: #0a0b1e;
+  --jw-bg-2: #0e1026;
+  --jw-surface: #12142b;
+  --jw-surface-2: #1a1d3a;
+  --jw-surface-3: #24284d;
+  --jw-line: rgba(165, 180, 252, 0.1);
+  --jw-line-strong: rgba(165, 180, 252, 0.2);
+  --jw-ink: #eef0ff;
+  --jw-muted: #a9aed6;
+  --jw-faint: #8389b8;
+  --jw-accent: #22d3ee;
+  --jw-on-accent: #04131a;
+  --jw-radius: 12px;
+  --jw-sec-shadow: 0 0 0 1px rgba(34, 211, 238, 0.12), 0 12px 40px -16px rgba(168, 85, 247, 0.45);
+  color-scheme: dark;
+}
+.jw [data-jw-section="video"]::before {
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
+    radial-gradient(700px 420px at 95% -5%, rgba(34, 211, 238, 0.16), transparent 65%),
+    radial-gradient(700px 480px at -5% 105%, rgba(168, 85, 247, 0.2), transparent 65%);
+}
+.jw [data-jw-section="video"] .jw-btn-primary {
+  box-shadow: 0 0 24px -6px #22d3ee;
+}
+
+/* ── الصوت «الكابينة»: a quiet recording booth, mint and teal ── */
+.jw [data-jw-section="audio"] {
+  --jw-bg: #f2faf7;
+  --jw-bg-2: #ffffff;
+  --jw-surface: #ffffff;
+  --jw-surface-2: #e3f4ee;
+  --jw-surface-3: #cfeae1;
+  --jw-line: rgba(15, 70, 60, 0.1);
+  --jw-line-strong: rgba(15, 70, 60, 0.2);
+  --jw-ink: #0f2a24;
+  --jw-muted: #3f6159;
+  --jw-faint: #557269;
+  --jw-accent: #0f766e;
+  --jw-on-accent: #ffffff;
+  --jw-danger: #e11d48;
+  --jw-ok: #047857;
+  --jw-warn: #b45309;
+  --jw-radius: 24px;
+  --jw-sec-shadow: 0 8px 24px -12px rgba(15, 118, 110, 0.25);
+  color-scheme: light;
+}
+.jw [data-jw-section="audio"]::before {
+  background:
+    repeating-radial-gradient(circle at 100% 0, rgba(15, 118, 110, 0.07) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, rgba(15, 118, 110, 0.1) 0 3px, transparent 3px 7px) bottom / 100% 70px no-repeat;
+}
+
+/* ── الفيلم «السينما»: a dark theatre, warm gold, a film strip on top ── */
+.jw [data-jw-section="film"] {
+  --jw-bg: #0e0a07;
+  --jw-bg-2: #130e0a;
+  --jw-surface: #1a1410;
+  --jw-surface-2: #241c16;
+  --jw-surface-3: #30261e;
+  --jw-line: rgba(233, 181, 70, 0.1);
+  --jw-line-strong: rgba(233, 181, 70, 0.22);
+  --jw-ink: #f6ead8;
+  --jw-muted: #c4b39b;
+  --jw-faint: #9a8970;
+  --jw-accent: #e9b546;
+  --jw-on-accent: #1a1206;
+  --jw-radius: 10px;
+  --jw-sec-shadow: inset 0 1px 0 rgba(233, 181, 70, 0.12), 0 18px 40px -20px #000;
+  --teal: #2f9e8f;
+  color-scheme: dark;
+}
+.jw [data-jw-section="film"]::before {
+  background:
+    repeating-linear-gradient(90deg, #0e0a07 0 10px, transparent 10px 22px) 0 4px / 100% 6px no-repeat,
+    linear-gradient(#2a2018, #2a2018) top / 100% 14px no-repeat,
+    radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.55));
+}
+.jw [data-jw-section="film"] .card {
+  box-shadow: var(--jw-sec-shadow);
+}
+
+/* ── the first-time hint of each section ── */
+.jw-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border: 1px solid var(--jw-accent-line);
+  background: var(--jw-accent-soft);
+  border-radius: var(--jw-radius);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1.75;
+  color: var(--jw-ink);
+}

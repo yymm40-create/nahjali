@@ -63,8 +63,8 @@ function Thumb({ r, problem, big, mentioned, onOpen, onRemove, onRetry }: { r: R
         ) : (
           <span className="grid size-full place-items-center text-jw-muted"><Icon name={KIND_ICON[r.kind]} size={big ? 26 : 20} /></span>
         )}
-        {r.durationMs ? <span className="absolute bottom-1 start-1 rounded bg-black/70 px-1 text-[10px]" dir="ltr">{sec(r.durationMs)}</span> : null}
-        {r.role !== "reference" && <span className="absolute inset-x-0 top-0 bg-black/70 px-1 text-center text-[10px]">{ROLE_AR[r.role]}</span>}
+        {r.durationMs ? <span className="absolute bottom-1 start-1 rounded bg-black/70 px-1 text-[10px] text-white" dir="ltr">{sec(r.durationMs)}</span> : null}
+        {r.role !== "reference" && <span className="absolute inset-x-0 top-0 bg-black/70 px-1 text-center text-[10px] text-white">{ROLE_AR[r.role]}</span>}
         {(r.status === "uploading" || r.status === "checking") && (
           <span className="absolute inset-0 grid place-items-center bg-black/55">
             {r.status === "uploading" ? (
@@ -72,7 +72,7 @@ function Thumb({ r, problem, big, mentioned, onOpen, onRemove, onRetry }: { r: R
                 <span className="block h-1 overflow-hidden rounded bg-white/20">
                   <span className="block h-full bg-jw-accent" style={{ width: `${Math.round(r.progress * 100)}%` }} />
                 </span>
-                <span className="mt-1 block text-center text-[10px] tabular-nums" dir="ltr">{Math.round(r.progress * 100)}%</span>
+                <span className="mt-1 block text-center text-[10px] tabular-nums text-white" dir="ltr">{Math.round(r.progress * 100)}%</span>
               </span>
             ) : (
               <span className="jw-spinner" role="status" aria-label="يُفحص على الخادم" />
