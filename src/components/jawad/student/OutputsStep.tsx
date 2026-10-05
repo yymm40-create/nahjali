@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { OUTPUT_KINDS, OUTPUT_STATUS } from "@config/jawad/student";
+import { KIND_LOOK, Tile } from "./look";
 import OutputPanel from "./OutputPanel";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, useAsync } from "./ui";
@@ -36,13 +37,18 @@ export default function OutputsStep({ p }: { p: ProjectHook }) {
                 type="button"
                 aria-pressed={on}
                 onClick={() => setPick(on ? pick.filter((x) => x !== k.kind) : [...pick, k.kind])}
-                className={`rounded-xl border p-3 text-start transition-colors ${on ? "border-jw-accent bg-jw-accent-soft" : "border-jw-line hover:bg-jw-surface-2"}`}
+                className={`relative flex items-start gap-3 rounded-2xl border bg-white p-4 text-start transition-all hover:-translate-y-0.5 ${on ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}
               >
-                <b className="flex items-center gap-1">
-                  {on && <Icon name="check" size={14} className="text-jw-accent" />}
-                  {k.name}
-                </b>
-                <span className="block text-xs text-jw-muted">{k.blurb}</span>
+                <Tile emoji={KIND_LOOK[k.kind].emoji} grad={KIND_LOOK[k.kind].grad} size={44} />
+                <span className="min-w-0">
+                  <b className="block">{k.name}</b>
+                  <span className="block text-xs text-jw-muted">{k.blurb}</span>
+                </span>
+                {on && (
+                  <span className="absolute top-2 left-2 grid size-6 place-items-center rounded-full text-white" style={{ background: "var(--st-grad)" }}>
+                    <Icon name="check" size={14} />
+                  </span>
+                )}
               </button>
             );
           })}
@@ -62,6 +68,7 @@ export default function OutputsStep({ p }: { p: ProjectHook }) {
                 const job = jobs.find((j) => j.outputId === o.id && (j.status === "queued" || j.status === "running"));
                 return (
                   <li key={o.id} className={`flex items-center gap-1 rounded-lg p-2 ${open === o.id ? "bg-jw-surface-3" : "hover:bg-jw-surface-2"}`}>
+                    <Tile emoji={KIND_LOOK[o.kind].emoji} grad={KIND_LOOK[o.kind].grad} size={32} />
                     <button type="button" className="min-w-0 flex-1 text-start" onClick={() => setOpen(o.id)}>
                       <b className="block truncate text-sm">
                         {i + 1}. {o.title}

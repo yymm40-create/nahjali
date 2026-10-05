@@ -13,6 +13,7 @@ export default function SourcesStep({ p }: { p: ProjectHook }) {
   const [text, setText] = useState("");
   const [uploads, setUploads] = useState<{ name: string; progress: number; error?: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [drag, setDrag] = useState(false);
   const { busy, error, run } = useAsync();
   const job = jobs.find((j) => j.kind === "extract");
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
@@ -50,32 +51,57 @@ export default function SourcesStep({ p }: { p: ProjectHook }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
       <section className="space-y-4">
-        <div className="jw-panel space-y-3 p-4">
-          <h2 className="font-semibold">أضف نصًا مكتوبًا</h2>
-          <textarea className="jw-textarea" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="الصق النص هنا. يُحفظ كما كتبته تمامًا." aria-label="النص" />
-          <button type="button" className="jw-btn" disabled={busy || !text.trim()} onClick={() => run(async () => { await p.act({ action: "source_text", body: text }); setText(""); })}>
-            <Icon name="plus" size={16} /> أضف النص
-          </button>
-        </div>
-
-        <div className="jw-panel space-y-3 p-4">
-          <h2 className="font-semibold">ارفع صورًا أو ملفات PDF</h2>
-          <p className="text-sm text-jw-muted">تستطيع رفع عدة ملفات؛ تُحفظ بترتيب اختيارها ويمكنك تغيير الترتيب. PDF النصي والمصوّر كلاهما مقبول.</p>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => fileRef.current?.click()}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDrag(true);
+          }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDrag(false);
+            upload(e.dataTransfer.files);
+          }}
+          className={`jw-panel flex cursor-pointer flex-col items-center gap-3 border-2 border-dashed p-8 text-center transition-all ${drag ? "scale-[1.01] !border-pink-400 bg-pink-50" : "!border-violet-300 hover:!border-violet-500"}`}
+        >
+          <span className="st-tile size-16 text-3xl" style={{ background: "linear-gradient(135deg,#0ea5e9,#6366f1)" }} aria-hidden>
+            📤
+          </span>
+          <b className="text-lg">اسحب ملفاتك هنا أو اضغط للاختيار</b>
+          <span className="text-sm text-jw-muted">صور أو ملفات PDF — عدة ملفات مرة وحدة، بالترتيب الذي تختاره</span>
           <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple className="hidden" onChange={(e) => upload(e.target.files)} />
-          <button type="button" className="jw-btn" onClick={() => fileRef.current?.click()}>
-            <Icon name="upload" size={16} /> اختر الملفات
-          </button>
-          {uploads.length > 0 && (
-            <ul className="space-y-1 text-sm">
-              {uploads.map((u, i) => (
-                <li key={i} className="flex items-center gap-2">
-                  <span className="truncate">{u.name}</span>
-                  {u.error ? <span className="text-jw-danger">{u.error}</span> : u.progress < 1 ? <span className="text-jw-muted">{Math.round(u.progress * 100)}٪</span> : <Icon name="check" size={14} className="text-jw-ok" />}
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
+        {uploads.length > 0 && (
+          <ul className="jw-panel space-y-2 p-4 text-sm">
+            {uploads.map((u, i) => (
+              <li key={i} className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{u.name}</span>
+                  {u.error ? <span className="text-jw-danger">{u.error}</span> : u.progress >= 1 ? <Icon name="check" size={16} className="text-jw-ok" /> : null}
+                </div>
+                {!u.error && (
+                  <div className="h-1.5 overflow-hidden rounded-full bg-jw-surface-3">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${Math.round(u.progress * 100)}%`, background: "var(--st-grad)" }} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <details className="jw-panel p-4">
+          <summary className="cursor-pointer font-semibold">✍️ أو الصق نصًا مكتوبًا</summary>
+          <div className="mt-3 space-y-3">
+            <textarea className="jw-textarea" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="الصق النص هنا. يُحفظ كما كتبته تمامًا." aria-label="النص" />
+            <button type="button" className="jw-btn" disabled={busy || !text.trim()} onClick={() => run(async () => { await p.act({ action: "source_text", body: text }); setText(""); })}>
+              <Icon name="plus" size={16} /> أضف النص
+            </button>
+          </div>
+        </details>
       </section>
 
       <aside className="space-y-3">

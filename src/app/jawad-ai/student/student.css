@@ -1,0 +1,464 @@
+/*
+ * «الطالب الذكي» — its own bright, playful look inside JAWAD AI (the rest of JAWAD stays dark).
+ * Everything is scoped to .st: the JAWAD tokens are redefined here, so every shared widget (panels, buttons, inputs,
+ * dialogs) turns light and colourful without touching the other sections.
+ */
+
+.jw .st {
+  --jw-bg: #f7f5ff;
+  --jw-bg-2: #ffffff;
+  --jw-surface: rgba(255, 255, 255, 0.82);
+  --jw-surface-2: #f3f0ff;
+  --jw-surface-3: #e9e4ff;
+  --jw-line: rgba(76, 52, 160, 0.1);
+  --jw-line-strong: rgba(76, 52, 160, 0.2);
+  --jw-ink: #1d1640;
+  --jw-muted: #5b5480;
+  --jw-faint: #8a84aa;
+  --jw-accent: #7c3aed;
+  --jw-accent-soft: rgba(124, 58, 237, 0.12);
+  --jw-accent-line: rgba(124, 58, 237, 0.45);
+  --jw-danger: #e11d48;
+  --jw-ok: #059669;
+  --jw-warn: #d97706;
+  --jw-gold: #f59e0b;
+  --jw-radius: 22px;
+  --st-grad: linear-gradient(120deg, #7c3aed 0%, #db2777 45%, #f97316 100%);
+  --st-grad-cool: linear-gradient(120deg, #0ea5e9 0%, #6366f1 50%, #a855f7 100%);
+  --st-shadow: 0 10px 30px -12px rgba(76, 52, 160, 0.28), 0 2px 6px -2px rgba(76, 52, 160, 0.12);
+
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100dvh - var(--jw-header-h) - var(--jw-bar-h));
+  color: var(--jw-ink);
+  color-scheme: light;
+  background:
+    radial-gradient(900px 500px at 100% -10%, rgba(168, 85, 247, 0.22), transparent 60%),
+    radial-gradient(700px 450px at -10% 20%, rgba(14, 165, 233, 0.18), transparent 60%),
+    radial-gradient(800px 500px at 50% 110%, rgba(249, 115, 22, 0.16), transparent 60%),
+    linear-gradient(180deg, #fbfaff 0%, #f4f1ff 100%);
+  overflow: hidden;
+}
+
+/* ── surfaces ── */
+.st .jw-panel {
+  background: var(--jw-surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: var(--st-shadow);
+}
+.st .jw-dialog {
+  background: #fff;
+  color: var(--jw-ink);
+  border-radius: 24px;
+  box-shadow: 0 30px 80px -20px rgba(76, 52, 160, 0.45);
+}
+
+/* ── buttons: pill shapes, a glowing gradient for the main action ── */
+.st .jw-btn {
+  border-radius: 999px;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  background: #fff;
+  border: 1px solid var(--jw-line-strong);
+  color: var(--jw-ink);
+  font-weight: 600;
+  box-shadow: 0 2px 8px -4px rgba(76, 52, 160, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.15s ease;
+}
+.st .jw-btn:hover {
+  background: #faf8ff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -8px rgba(76, 52, 160, 0.35);
+}
+.st .jw-btn-primary {
+  background: var(--st-grad);
+  background-size: 160% 160%;
+  border: 0;
+  color: #fff;
+  box-shadow: 0 10px 24px -10px rgba(219, 39, 119, 0.65);
+  animation: st-grad-move 6s ease infinite;
+}
+.st .jw-btn-primary:hover {
+  background: var(--st-grad);
+  background-size: 160% 160%;
+  box-shadow: 0 14px 30px -10px rgba(219, 39, 119, 0.75);
+}
+.st .jw-btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--jw-muted);
+}
+.st .jw-btn-quiet:hover {
+  background: var(--jw-surface-2);
+  box-shadow: none;
+}
+.st .jw-btn-icon {
+  width: 2.4rem;
+  min-height: 2.4rem;
+  padding: 0;
+}
+@keyframes st-grad-move {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* ── fields ── */
+.st .jw-input,
+.st .jw-textarea,
+.st .jw-select {
+  background: #fff;
+  border-radius: 14px;
+  border-color: rgba(76, 52, 160, 0.18);
+}
+.st .jw-seg button {
+  border-radius: 999px;
+  background: #fff;
+  min-height: 2.4rem;
+  padding: 0.3rem 1rem;
+}
+.st .jw-seg button[aria-checked="true"],
+.st .jw-seg button[aria-selected="true"] {
+  background: var(--st-grad);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 16px -8px rgba(219, 39, 119, 0.6);
+}
+.st .jw-chip {
+  background: #fff;
+  border-color: var(--jw-line-strong);
+}
+.st .jw-spinner {
+  border-color: rgba(124, 58, 237, 0.2);
+  border-top-color: #db2777;
+}
+.st details > summary {
+  list-style: none;
+}
+.st details > summary::-webkit-details-marker {
+  display: none;
+}
+.st details > summary::before {
+  content: "＋";
+  display: inline-block;
+  width: 1.4em;
+  color: var(--jw-accent);
+  font-weight: 700;
+}
+.st details[open] > summary::before {
+  content: "－";
+}
+
+/* ── type ── */
+.st .st-gradient-text {
+  background: var(--st-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.st .st-section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── colourful badges for kinds and steps ── */
+.st .st-tile {
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* ── the stepper ── */
+.st .st-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.25rem;
+  position: relative;
+}
+.st .st-steps::before {
+  content: "";
+  position: absolute;
+  inset-inline: 10%;
+  top: 1.35rem;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--jw-surface-3);
+  z-index: 0;
+}
+.st .st-steps .bar {
+  position: absolute;
+  inset-inline-start: 10%;
+  top: 1.35rem;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--st-grad);
+  z-index: 0;
+  transition: width 0.6s ease;
+}
+.st .st-step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--jw-faint);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.st .st-step:disabled {
+  cursor: default;
+}
+.st .st-step .dot {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 2px solid var(--jw-surface-3);
+  color: var(--jw-faint);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.st .st-step.done .dot {
+  background: var(--st-grad-cool);
+  border-color: transparent;
+  color: #fff;
+}
+.st .st-step.done {
+  color: var(--jw-muted);
+}
+.st .st-step.current .dot {
+  background: var(--st-grad);
+  border-color: transparent;
+  color: #fff;
+  transform: scale(1.12);
+  box-shadow: 0 0 0 6px rgba(219, 39, 119, 0.15), 0 10px 24px -8px rgba(219, 39, 119, 0.7);
+  animation: st-pulse 2.4s ease-in-out infinite;
+}
+.st .st-step.current,
+.st .st-step.viewing {
+  color: var(--jw-ink);
+}
+.st .st-step.viewing:not(.current) .dot {
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.2);
+}
+@keyframes st-pulse {
+  50% {
+    box-shadow: 0 0 0 10px rgba(219, 39, 119, 0.06), 0 10px 24px -8px rgba(219, 39, 119, 0.7);
+  }
+}
+
+/* ── entrance ── */
+.st .st-rise {
+  animation: st-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes st-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+/* ── the 3D study objects floating in the background ── */
+.st-scene {
+  /* fixed to the screen: the objects stay in view while the page scrolls, and the canvas stays screen-sized */
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  perspective: 900px;
+  overflow: hidden;
+}
+.st-float {
+  position: absolute;
+  transform-style: preserve-3d;
+  animation: st-float 9s ease-in-out infinite;
+  opacity: 0.9;
+}
+@keyframes st-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotateX(10deg) rotateY(-20deg) rotateZ(-8deg);
+  }
+  50% {
+    transform: translate3d(0, -26px, 40px) rotateX(-12deg) rotateY(25deg) rotateZ(6deg);
+  }
+}
+
+/* a pencil: hexagonal-ish body (3 faces), wooden tip, eraser */
+.st-pencil {
+  width: 170px;
+  height: 22px;
+  transform-style: preserve-3d;
+}
+.st-pencil .face {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+}
+.st-pencil .face.b {
+  transform: rotateX(60deg) translateZ(-6px);
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+.st-pencil .face.c {
+  transform: rotateX(-60deg) translateZ(-6px);
+  background: linear-gradient(90deg, #fcd34d, #fbbf24);
+}
+.st-pencil .tip {
+  position: absolute;
+  inset-inline-end: -34px;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-block: 11px solid transparent;
+  border-inline-start: 36px solid #f4d6a8;
+}
+.st-pencil .tip::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 22px;
+  top: -4px;
+  border-block: 4px solid transparent;
+  border-inline-start: 14px solid #312e81;
+}
+.st-pencil .eraser {
+  position: absolute;
+  inset-inline-start: -26px;
+  top: 0;
+  width: 26px;
+  height: 22px;
+  border-radius: 6px 0 0 6px;
+  background: linear-gradient(90deg, #f472b6 0 70%, #cbd5e1 70%);
+}
+
+/* a book: cover + pages with real depth */
+.st-book {
+  width: 110px;
+  height: 140px;
+  transform-style: preserve-3d;
+}
+.st-book .cover,
+.st-book .back {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px 12px 12px 4px;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  box-shadow: inset 6px 0 0 rgba(0, 0, 0, 0.15);
+  transform: translateZ(14px);
+}
+.st-book .cover::after {
+  content: "";
+  position: absolute;
+  inset: 22px 18px auto;
+  height: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 16px 0 rgba(255, 255, 255, 0.45);
+}
+.st-book .back {
+  transform: translateZ(-14px);
+  background: #4f46e5;
+}
+.st-book .pages {
+  position: absolute;
+  inset-block: 4px;
+  inset-inline-end: 0;
+  width: 28px;
+  background: repeating-linear-gradient(90deg, #fff 0 2px, #e5e7eb 2px 3px);
+  transform: rotateY(90deg) translateZ(96px);
+}
+
+/* a glossy cube */
+.st-cube {
+  width: 64px;
+  height: 64px;
+  transform-style: preserve-3d;
+}
+.st-cube span {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  opacity: 0.92;
+}
+.st-cube span:nth-child(1) {
+  transform: translateZ(32px);
+  background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+}
+.st-cube span:nth-child(2) {
+  transform: rotateY(90deg) translateZ(32px);
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+}
+.st-cube span:nth-child(3) {
+  transform: rotateX(90deg) translateZ(32px);
+  background: linear-gradient(135deg, #a5f3fc, #22d3ee);
+}
+.st-cube span:nth-child(4) {
+  transform: rotateY(-90deg) translateZ(32px);
+  background: #0284c7;
+}
+.st-cube span:nth-child(5) {
+  transform: rotateX(-90deg) translateZ(32px);
+  background: #0369a1;
+}
+.st-cube span:nth-child(6) {
+  transform: rotateY(180deg) translateZ(32px);
+  background: #0ea5e9;
+}
+
+/* a glowing orb and a star */
+.st-orb {
+  width: 80px;
+  height: 80px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, #fff 0%, #f9a8d4 20%, #db2777 60%, #831843 100%);
+  box-shadow: 0 20px 40px -10px rgba(219, 39, 119, 0.55);
+}
+.st-star {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  filter: drop-shadow(0 10px 14px rgba(245, 158, 11, 0.45));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-float,
+  .st .jw-btn-primary,
+  .st .st-step.current .dot,
+  .st .st-rise {
+    animation: none !important;
+  }
+}
+@media (max-width: 640px) {
+  .st-scene .st-float.hide-sm {
+    display: none;
+  }
+  .st .st-step {
+    font-size: 0.68rem;
+  }
+  .st .st-step .dot {
+    width: 2.3rem;
+    height: 2.3rem;
+  }
+  .st .st-steps::before,
+  .st .st-steps .bar {
+    top: 1.15rem;
+  }
+}

@@ -357,27 +357,41 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
     case "slides":
       return (
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1 sm:col-span-2">
+          <div className="space-y-2 sm:col-span-2">
             <span className="jw-label">طريقة صنع الشرائح</span>
-            <Seg
-              label="طريقة صنع الشرائح"
-              value={str(s.render, "editable") as "editable"}
-              options={[
-                { id: "editable", label: "نص حقيقي قابل للتعديل (PPTX + PDF)" },
-                { id: "image", label: "كل شريحة صورة بـ GPT Image 2 ثم PDF" },
-              ]}
-              onChange={(render) => set({ render })}
-            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                aria-pressed={s.render === "image"}
+                onClick={() => set({ render: "image" })}
+                className={`relative overflow-hidden rounded-2xl p-4 text-start text-white transition-transform hover:-translate-y-0.5 ${s.render === "image" ? "ring-4 ring-pink-300" : "opacity-90"}`}
+                style={{ background: "linear-gradient(135deg,#7c3aed,#db2777 55%,#f97316)" }}
+              >
+                <span className="absolute top-3 left-3 rounded-full bg-white/25 px-2 py-0.5 text-[11px] font-bold">الأفضل ✨</span>
+                <span className="block text-2xl" aria-hidden>
+                  🪄
+                </span>
+                <b className="block text-lg">صناعة بـ GPT Image 2</b>
+                <span className="block text-sm text-white/90">كل شريحة تُرسم كلوحة فنية كاملة بأسلوبك — أجمل وأفخم بكثير من الصناعة العادية، وتُجمع في PDF. تكلفتها أعلى.</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={s.render !== "image"}
+                onClick={() => set({ render: "editable" })}
+                className={`rounded-2xl border bg-white p-4 text-start transition-transform hover:-translate-y-0.5 ${s.render !== "image" ? "border-jw-accent ring-4 ring-violet-200" : "border-jw-line"}`}
+              >
+                <span className="block text-2xl" aria-hidden>
+                  🧩
+                </span>
+                <b className="block text-lg">الصناعة العادية</b>
+                <span className="block text-sm text-jw-muted">شرائح PPTX تقدر تعدّل نصها بنفسك، مع نسخة PDF. أرخص.</span>
+              </button>
+            </div>
             {s.render === "image" && (
-              <div className="space-y-2 rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-3 text-xs">
-                <p>
-                  <Icon name="alert" size={12} className="me-1 inline text-jw-warn" />
-                  كل شريحة تُرسم كاملة كصورة (العنوان والنص والعنصر البصري) بأسلوبك المختار، ثم تُجمع في PDF بالترتيب، مع ملف PPTX من نفس الصور. النص داخل الصورة <b>لا يمكن تعديله</b>، وقد يخطئ النموذج في بعض الحروف العربية: راجع كل شريحة، وتقدر تطلب إعادة رسم أي شريحة لوحدها. الشرائح بنسبة 16:9.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span>جودة الصور:</span>
-                  <Seg label="جودة الصور" value={str(s.imageQuality, "high") as "high"} options={[{ id: "high", label: "عالية (أوضح للنص)" }, { id: "medium", label: "متوسطة (أرخص)" }]} onChange={(imageQuality) => set({ imageQuality })} />
-                </div>
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-jw-surface-2 p-3 text-sm">
+                <span>جودة الرسم:</span>
+                <Seg label="جودة الرسم" value={str(s.imageQuality, "high") as "high"} options={[{ id: "high", label: "عالية" }, { id: "medium", label: "متوسطة (أرخص)" }]} onChange={(imageQuality) => set({ imageQuality })} />
+                <span className="w-full text-xs text-jw-faint">قد تظهر نسبة خطأ بسيطة في بعض الكلمات، وتقدر تطلب إعادة رسم أي شريحة لوحدها.</span>
               </div>
             )}
           </div>
