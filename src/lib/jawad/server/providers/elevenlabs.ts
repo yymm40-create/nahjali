@@ -18,6 +18,12 @@ function apiKey() {
 async function fail(res: Response, what: string): Promise<never> {
   const text = (await res.text().catch(() => "")).slice(0, 900);
   const t = text.toLowerCase();
+  if (/missing_permissions|missing the permission/.test(t)) {
+    const perm = (text.match(/permission[^a-z_]*([a-z_]+)/i) || [])[1] ?? "";
+    throw new ProviderError("rejected", `مفتاح ElevenLabs ينقصه إذن${perm ? ` «${perm}»` : ""}. فعّل الصلاحيات من إعدادات المفتاح في ElevenLabs. لم يُخصم منك شيء.`, `${what} ${res.status} ${text}`);
+  }
+  if (res.status === 401) throw new ProviderError("rejected", "مفتاح ElevenLabs غير صحيح أو موقوف. لم يُخصم منك شيء.", `${what} 401 ${text}`);
+  if (/quota_exceeded|insufficient|credits/.test(t)) throw new ProviderError("rejected", "رصيد حساب ElevenLabs لا يكفي. لم يُخصم منك شيء.", `${what} ${res.status} ${text}`);
   if (/voice_limit|voice limit|maximum number of voices|custom voices/.test(t)) {
     throw new ProviderError("rejected", "امتلأت خانات الأصوات في حساب ElevenLabs. احذف صوتًا من مكتبتك أو أبلغ الإدارة.", `${what} ${res.status} ${text}`);
   }
