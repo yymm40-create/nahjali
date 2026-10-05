@@ -7,6 +7,7 @@ import type { JobView, OutputView } from "@/lib/jawad/labels";
 import { cutRange, EDIT_LIMITS, frameTimes, type EditMode, type EditRange } from "@/lib/jawad/smart-edit";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+import { grabFrames } from "./frames";
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const fmt = (s: number) => (Number.isFinite(s) ? s.toFixed(1) : "—");
@@ -21,39 +22,6 @@ const CHOICES: Record<"video" | "image", { mode: EditMode; title: string; text: 
     { mode: "full", title: "أعد الصورة كاملة", text: "يكتب Claude برومبتًا جديدًا من برومبتك السابق وتعديلاتك، وتُصنع الصورة من جديد.", icon: "retry" },
   ],
 };
-
-/** Frames of a video at given times, as JPEG data URLs (`width` null keeps the video's own size). */
-async function grabFrames(url: string, times: number[], width: number | null, quality: number) {
-  const v = document.createElement("video");
-  v.crossOrigin = "anonymous";
-  v.muted = true;
-  v.playsInline = true;
-  v.preload = "auto";
-  v.src = url;
-  await new Promise<void>((res, rej) => {
-    v.onloadeddata = () => res();
-    v.onerror = () => rej(new Error("load"));
-  });
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
-  const out: string[] = [];
-  for (const t of times) {
-    await new Promise<void>((res, rej) => {
-      v.onseeked = () => res();
-      v.onerror = () => rej(new Error("seek"));
-      v.currentTime = Math.max(0, Math.min(t, v.duration - 0.04));
-    });
-    const w = width ? Math.min(width, v.videoWidth) : v.videoWidth;
-    const h = Math.round((v.videoHeight * w) / v.videoWidth);
-    canvas.width = w;
-    canvas.height = h;
-    ctx.drawImage(v, 0, 0, w, h);
-    out.push(canvas.toDataURL("image/jpeg", quality));
-  }
-  v.removeAttribute("src");
-  v.load();
-  return out;
-}
 
 /** «التعديل الذكي» of a finished video or image: pick the kind of edit, write what to fix, see the price, generate. */
 export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobView; open: boolean; onClose: () => void; onCreated: (j: JobView, balance: number | null) => void }) {

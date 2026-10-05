@@ -180,6 +180,34 @@ export async function elevenSoundEffect(o: { text: string; seconds: number; loop
   return audioOf(res, "sfx");
 }
 
+/** Sample rate of raw sound for mixing: 48 kHz (the video standard) until the account turns it down, then 24 kHz. */
+let pcmRate = 48_000;
+
+/**
+ * A sound effect as raw samples for mixing (ElevenLabs' pcm_* formats: 16-bit little-endian mono). pcm_44100 is
+ * documented as Pro-only; 48 kHz is asked first, and if the account's plan refuses it, every plan's 24 kHz.
+ */
+export async function elevenSoundPcm(o: { text: string; seconds: number; loop: boolean; influence: number }): Promise<{ samples: Float32Array; rate: number }> {
+  const body = JSON.stringify({ text: o.text, duration_seconds: o.seconds, loop: o.loop, prompt_influence: o.influence, model_id: "eleven_text_to_sound_v2" });
+  for (;;) {
+    const rate = pcmRate;
+    try {
+      const res = await call(`/v1/sound-generation?output_format=pcm_${rate}`, { method: "POST", body, timeoutMs: 90_000 }, "sfx raw");
+      const buf = await audioOf(res, "sfx raw");
+      const samples = new Float32Array(buf.length >> 1);
+      for (let i = 0; i < samples.length; i++) samples[i] = buf.readInt16LE(i * 2) / 32768;
+      return { samples, rate };
+    } catch (e) {
+      // Refused for the format (not billed): once more at the rate every plan has
+      if (rate !== 24_000 && e instanceof ProviderError && /output_format|pcm_|tier|subscription|upgrade|not available/i.test(e.detail)) {
+        pcmRate = 24_000;
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 // ───────────────────────────── music ─────────────────────────────
 
 interface PlanChunk {

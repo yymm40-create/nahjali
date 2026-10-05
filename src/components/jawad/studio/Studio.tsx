@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
+import { sfxFrameTimes, VIDEO_SFX } from "@config/jawad/video-sfx";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
 import { cleanRefName, defaultRefName, renameMentions, sameName } from "@/lib/jawad/mentions";
 import { isOpenStatus, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
@@ -12,6 +13,7 @@ import { announceBalance, BALANCE_EVENT } from "../CoinBalance";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import LoginLink from "../LoginLink";
+import { grabFrames } from "./frames";
 import { GeneratorCard, GeneratorPicker } from "./GeneratorCard";
 import OutputSettings from "./OutputSettings";
 import DirectorBoost from "./DirectorBoost";
@@ -141,6 +143,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   // Submitting
   const [submitting, setSubmitting] = useState(false);
+  // «مؤثرات من فيديو»: taking the video's frames before sending (what the button says meanwhile)
+  const [preparing, setPreparing] = useState("");
   // «المخرج الخارق»: writing the prompt now, and the prompt it replaced (to bring back)
   const [directing, setDirecting] = useState(false);
   const [beforeDirector, setBeforeDirector] = useState<string | null>(null);
@@ -456,8 +460,39 @@ export default function Studio({ section, generators, prices: initialPrices, use
     }
   }
 
+  /** «مؤثرات من فيديو»: small frames of the stored video with their times (a fresh link if the old one expired). */
+  async function videoFrames(): Promise<{ t: number; data: string }[]> {
+    const video = draft.refs.find((r) => r.kind === "video" && r.status === "ready");
+    if (!video?.uploadId || !video.durationMs) throw new Error("no video");
+    const times = sfxFrameTimes(video.durationMs / 1000);
+    const take = (url: string) =>
+      grabFrames(url, times, VIDEO_SFX.frameSide, VIDEO_SFX.frameQuality, { by: "side", onFrame: (n) => setPreparing(`يجهّز لقطات الفيديو (${n} من ${times.length})…`) });
+    const shots = await take(video.url ?? "").catch(async () => {
+      const r = await call<{ uploads: UploadView[] }>(`/api/jawad/uploads?ids=${video.uploadId}`);
+      const url = r.ok ? r.body.uploads[0]?.url : null;
+      if (!url) throw new Error("no url");
+      return take(url);
+    });
+    return times.map((t, i) => ({ t, data: shots[i] }));
+  }
+
   async function submit(expectedCoins: number) {
     if (!def || !gen || submitting) return;
+    let frames: { t: number; data: string }[] | undefined;
+    if (ev?.mode.id === "video_to_sfx") {
+      setSubmitting(true);
+      setSubmitError("");
+      setPreparing("يجهّز لقطات الفيديو…");
+      try {
+        frames = await videoFrames();
+      } catch {
+        setSubmitError("تعذّر قراءة الفيديو في المتصفح؛ جرّب مرة ثانية أو أعد رفعه بصيغة MP4.");
+        return;
+      } finally {
+        setPreparing("");
+        setSubmitting(false);
+      }
+    }
     const idem = (pendingKey.current ??= uid());
     const tempId = `temp-${idem}`;
     const temp: JobView = {
@@ -499,6 +534,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       instructions,
       refs: draft.refs.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
+      ...(frames ? { frames } : {}),
     };
     try {
       const r = await postJson<{ job: JobView; balance: number | null; code?: string; coins?: number; prices?: Record<string, number | null>; issues?: { message: string }[] }>("/api/jawad/generate", body);
@@ -726,6 +762,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
               </button>
             )}
             <div id="jw-gen-why" aria-live="polite">
+              {preparing && <p className="text-xs text-jw-muted" role="status">{preparing}</p>}
               {submitError && <p className="text-xs text-jw-danger" role="alert">{submitError}</p>}
               {user && blockers.length > 0 && !submitError && <p className="text-xs text-jw-muted">{blockers[0]}</p>}
               {owner && price != null && <p className="text-[11px] text-jw-faint">كصاحب المنصة لا يُخصم منك؛ يُسجَّل السعر للمتابعة فقط.</p>}

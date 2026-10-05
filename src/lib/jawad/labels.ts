@@ -11,8 +11,15 @@ export function stageLabel(status: JobStatus, providerStatus?: string | null) {
       return "بالانتظار";
     case "submitting":
       return providerStatus === "rewriting" ? "يكتب البرومبت المعدّل" : "الإرسال إلى المزوّد";
-    case "running":
-      return providerStatus === "queued" ? "في طابور المزوّد" : "التوليد";
+    case "running": {
+      if (providerStatus === "queued") return "في طابور المزوّد";
+      // «مؤثرات من فيديو»
+      if (providerStatus === "watching") return "Claude يشاهد الفيديو ويحدد الأصوات";
+      const made = /^sounds (\d+)\/(\d+)$/.exec(providerStatus ?? "");
+      if (made) return `يصنع المؤثرات (${made[1]} من ${made[2]})`;
+      if (providerStatus === "mixing") return "يركّب المؤثرات على طول الفيديو";
+      return "التوليد";
+    }
     case "saving":
       return "حفظ الناتج";
     case "succeeded":
