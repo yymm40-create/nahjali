@@ -18,6 +18,7 @@ import { isUuid, refsFor } from "./uploads";
 import { ProviderError } from "./providers/common";
 import { elevenCloneVoice, elevenDeleteVoice, elevenDesignVoice, elevenPremadeVoices, elevenSaveDesigned } from "./providers/elevenlabs";
 
+import { libraryAccess, libraryOpenFor, requireLibrary } from "./library-access";
 const db = () => createAdminClient();
 /** ElevenLabs' long-standing default voices, shown when the key may not read the voice list. */
 const FALLBACK_VOICES = [
@@ -73,8 +74,9 @@ async function signed(paths: (string | null)[]) {
 }
 
 /** The person's own voices, then ElevenLabs' ready voices (when the key works). */
-export async function listVoices(userId: string, owner: boolean): Promise<{ mine: VoiceView[]; ready: VoiceView[]; readyError: string | null; limit: number; migrated: boolean }> {
+export async function listVoices(userId: string, owner: boolean): Promise<{ mine: VoiceView[]; ready: VoiceView[]; readyError: string | null; limit: number; migrated: boolean; library: { active: boolean; migrated: boolean } }> {
   await gate(owner);
+  const lib = await libraryAccess(userId, owner);
   const { data, error } = await db().from("jawad_voices").select("*").eq("user_id", userId).order("created_at", { ascending: false });
   const rows = (data ?? []) as VoiceRow[];
   const links = await signed(rows.map((r) => r.preview_path));
@@ -87,7 +89,7 @@ export async function listVoices(userId: string, owner: boolean): Promise<{ mine
   } catch (e) {
     readyError = e instanceof ProviderError ? e.userMessage : "تعذّر جلب أصوات ElevenLabs الجاهزة.";
   }
-  return { mine, ready, readyError, limit: JAWAD_VOICE_LIMIT, migrated: !missing(error) };
+  return { mine, ready, readyError, limit: JAWAD_VOICE_LIMIT, migrated: !missing(error), library: { active: lib.active, migrated: lib.migrated } };
 }
 
 /** The ElevenLabs voice id behind a request's voice, checked: one of the ready voices, or one of the person's own. */
@@ -97,6 +99,8 @@ export async function resolveVoice(userId: string, value: string): Promise<{ ok:
     if (!isUuid(id)) return { ok: false, reason: "الصوت غير صحيح." };
     const { data, error } = await db().from("jawad_voices").select("provider_voice_id").eq("id", id).eq("user_id", userId).maybeSingle();
     if (missing(error)) return { ok: false, reason: "مكتبة الأصوات قيد التجهيز." };
+    // A saved voice is part of «المكتبة»: used while the add-on runs (the owner always)
+    if (data && !(await libraryOpenFor(userId))) return { ok: false, reason: "صوتك محفوظ في «المكتبة»، وهي مقفلة الآن. فعّل اشتراك المكتبة لتستخدمه، أو اختر صوتًا جاهزًا." };
     return data ? { ok: true, voiceId: data.provider_voice_id as string } : { ok: false, reason: "هذا الصوت لم يعد في مكتبتك. اختر صوتًا آخر." };
   }
   if (value.startsWith("p:")) {
@@ -142,6 +146,7 @@ export interface DraftView {
 /** Three previews of a voice described in words (and, if given, leaning on a reference recording). */
 export async function designVoice(user: { id: string }, owner: boolean, b: { key?: unknown; description?: unknown; text?: unknown; referenceId?: unknown; referenceUse?: unknown }): Promise<DraftView> {
   const prices = await gate(owner);
+  await requireLibrary(user.id, owner);
   const key = String(b.key ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const description = typeof b.description === "string" ? b.description.trim() : "";
@@ -200,6 +205,7 @@ async function draftView(row: { id: string; status: string; previews: { path: st
 /** Keeps one preview of a design as a voice in the person's library. */
 export async function saveDesigned(user: { id: string }, owner: boolean, b: { draftId?: unknown; index?: unknown; name?: unknown }): Promise<VoiceView> {
   await gate(owner);
+  await requireLibrary(user.id, owner);
   if (!isUuid(b.draftId)) throw new UserError("طلب غير صحيح.", 400);
   const name = cleanName(b.name);
   if (!name) throw new UserError("سمِّ الصوت.", 400);
@@ -223,6 +229,7 @@ export async function saveDesigned(user: { id: string }, owner: boolean, b: { dr
 /** «يستخدمه نفسه»: a voice copied from a recording the person has the right to use. */
 export async function cloneVoice(user: { id: string }, owner: boolean, b: { key?: unknown; uploadId?: unknown; name?: unknown; consent?: unknown; removeNoise?: unknown }): Promise<VoiceView> {
   const prices = await gate(owner);
+  await requireLibrary(user.id, owner);
   const key = String(b.key ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   if (b.consent !== true) throw new UserError("أكّد أن الصوت صوتك أو أن لديك إذن صاحبه.", 400);

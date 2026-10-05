@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
+import { LIBRARY_ADDON } from "@config/coins";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { probeFile, putWithProgress } from "./upload";
 
-interface Voice {
+export interface Voice {
   id: string;
   value: string;
   name: string;
@@ -20,6 +22,8 @@ interface Library {
   readyError: string | null;
   limit: number;
   migrated: boolean;
+  /** «المكتبة» (an add-on): saving and using one's own voices. */
+  library: { active: boolean; migrated: boolean };
 }
 interface Draft {
   id: string;
@@ -37,7 +41,7 @@ async function post<T>(body: unknown): Promise<T> {
 }
 
 /** One small play/stop button for a voice sample (only one plays at a time). */
-function Play({ url, label }: { url: string | null; label: string }) {
+export function Play({ url, label }: { url: string | null; label: string }) {
   const [on, setOn] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
   useEffect(() => () => audio.current?.pause(), []);
@@ -104,21 +108,26 @@ export default function VoicePicker({ value, onChange, coins }: { value: string;
           {current && !lib.mine.some((v) => v.value === value) && !showReady && <Row v={current} on onPick={onChange} />}
           {lib.mine.length > 0 && (
             <>
-              <p className="text-[11px] font-semibold text-jw-faint">أصواتي ({lib.mine.length}/{lib.limit})</p>
+              <p className="text-[11px] font-semibold text-jw-faint">أصواتي ({lib.mine.length}/{lib.limit}){lib.library.active ? "" : " · مقفلة"}</p>
               {lib.mine.map((v) => (
-                <Row key={v.id} v={v} on={v.value === value} onPick={onChange} onDeleted={load} mine />
+                <Row key={v.id} v={v} on={v.value === value} onPick={onChange} onDeleted={load} mine locked={!lib.library.active} />
               ))}
             </>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="jw-btn" onClick={() => setStudio("design")} disabled={!lib.migrated}>
-              <Icon name="wand" size={16} /> صمّم صوتًا
-            </button>
-            <button type="button" className="jw-btn" onClick={() => setStudio("clone")} disabled={!lib.migrated}>
-              <Icon name="mic" size={16} /> من تسجيل
-            </button>
-          </div>
-          {!lib.migrated && <p className="text-[11px] text-jw-faint">مكتبة الأصوات قيد التجهيز (ملف قاعدة البيانات 0023).</p>}
+          {!lib.migrated || !lib.library.migrated ? (
+            <p className="rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-2 text-[11px] text-jw-warn">«صمّم صوتك الخاص» يحتاج ملف قاعدة البيانات 0025 في Supabase (SQL Editor ← Run).</p>
+          ) : lib.library.active ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="jw-btn" onClick={() => setStudio("design")}>
+                <Icon name="wand" size={16} /> صمّم صوتًا
+              </button>
+              <button type="button" className="jw-btn" onClick={() => setStudio("clone")}>
+                <Icon name="mic" size={16} /> بصمة صوتك
+              </button>
+            </div>
+          ) : (
+            <LibraryLock what="صمّم صوتك الخاص من الوصف، أو احفظ بصمة صوتك أنت" />
+          )}
           <button type="button" className="jw-btn jw-btn-quiet w-full justify-between" aria-expanded={showReady} onClick={() => setShowReady(!showReady)}>
             <span>أصوات ElevenLabs الجاهزة {lib.ready.length ? `(${lib.ready.length})` : ""}</span>
             <Icon name="chevronDown" size={16} className={showReady ? "rotate-180" : ""} />
@@ -149,12 +158,26 @@ export default function VoicePicker({ value, onChange, coins }: { value: string;
   );
 }
 
-function Row({ v, on, onPick, mine = false, onDeleted }: { v: Voice; on: boolean; onPick: (value: string) => void; mine?: boolean; onDeleted?: () => void }) {
+/** «المكتبة» is closed for this person: what it opens, and where to subscribe. */
+export function LibraryLock({ what }: { what: string }) {
+  return (
+    <Link href="/jawad-ai/library" className="flex items-center gap-3 rounded-xl border border-dashed border-jw-accent/50 bg-jw-accent/5 p-3 text-start text-sm hover:bg-jw-accent/10">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-jw-accent/15 text-jw-accent"><Icon name="lock" size={16} /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">{what}</span>
+        <span className="block text-[11px] text-jw-muted">ضمن «{LIBRARY_ADDON.name}» · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span>
+      </span>
+      <Icon name="chevronLeft" size={16} className="text-jw-faint" />
+    </Link>
+  );
+}
+
+function Row({ v, on, onPick, mine = false, locked = false, onDeleted }: { v: Voice; on: boolean; onPick: (value: string) => void; mine?: boolean; locked?: boolean; onDeleted?: () => void }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${on ? "border-jw-accent bg-jw-accent/10" : "border-jw-line bg-jw-bg-2"}`}>
+    <div className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${on ? "border-jw-accent bg-jw-accent/10" : "border-jw-line bg-jw-bg-2"} ${locked ? "opacity-60" : ""}`}>
       <Play url={v.previewUrl} label={v.name} />
-      <button type="button" role="radio" aria-checked={on} className="min-w-0 flex-1 text-start" onClick={() => onPick(v.value)}>
+      <button type="button" role="radio" aria-checked={on} aria-disabled={locked} title={locked ? "مقفل: يحتاج اشتراك «المكتبة»" : undefined} className="min-w-0 flex-1 text-start" onClick={() => !locked && onPick(v.value)}>
         <span className="block truncate text-sm font-semibold">{v.name}</span>
         {(v.description || v.origin !== "ready") && (
           <span className="block truncate text-[11px] text-jw-faint" dir="auto">
@@ -201,10 +224,111 @@ async function uploadRecording(file: File, onProgress: (p: number) => void) {
   return { id: conf.upload.id, durationMs: conf.upload.durationMs };
 }
 
-function RecordingField({ label, hint, value, onChange }: { label: string; hint: string; value: { id: string; name: string; sec: number } | null; onChange: (v: { id: string; name: string; sec: number } | null) => void }) {
+/** A recording as a 16-bit mono WAV (the server takes MP3 or WAV; the browser records in its own format). */
+async function toWav(blob: Blob, rate = 44_100): Promise<Blob> {
+  const ctx = new AudioContext();
+  try {
+    const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * rate)), rate);
+    const src = off.createBufferSource();
+    src.buffer = decoded;
+    src.connect(off.destination);
+    src.start();
+    const x = (await off.startRendering()).getChannelData(0);
+    const b = new ArrayBuffer(44 + x.length * 2);
+    const v = new DataView(b);
+    const str = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    str(0, "RIFF");
+    v.setUint32(4, 36 + x.length * 2, true);
+    str(8, "WAVE");
+    str(12, "fmt ");
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true);
+    v.setUint32(28, rate * 2, true);
+    v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true);
+    str(36, "data");
+    v.setUint32(40, x.length * 2, true);
+    for (let i = 0; i < x.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x[i])) * 0x7fff, true);
+    return new Blob([b], { type: "audio/wav" });
+  } finally {
+    void ctx.close();
+  }
+}
+
+/** «سجّل الآن»: records from the microphone (up to `maxSec`) and hands back a WAV file. */
+function MicButton({ maxSec, disabled, onFile, onError }: { maxSec: number; disabled: boolean; onFile: (f: File) => void; onError: (m: string) => void }) {
+  const [rec, setRec] = useState<{ mr: MediaRecorder; started: number } | null>(null);
+  const [sec, setSec] = useState(0);
+  const chunks = useRef<Blob[]>([]);
+  useEffect(() => {
+    if (!rec) return;
+    const t = setInterval(() => {
+      const s = Math.floor((Date.now() - rec.started) / 1000);
+      setSec(s);
+      if (s >= maxSec && rec.mr.state === "recording") rec.mr.stop();
+    }, 250);
+    return () => clearInterval(t);
+  }, [rec, maxSec]);
+  useEffect(() => () => rec?.mr.stream.getTracks().forEach((t) => t.stop()), [rec]);
+
+  async function start() {
+    onError("");
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return onError("متصفحك لا يسجّل من الميكروفون؛ ارفع ملفًا بدلًا منه.");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 } });
+      const mr = new MediaRecorder(stream);
+      chunks.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data.size) chunks.current.push(e.data);
+      };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRec(null);
+        try {
+          const wav = await toWav(new Blob(chunks.current, { type: mr.mimeType }));
+          onFile(new File([wav], "تسجيلي.wav", { type: "audio/wav" }));
+        } catch {
+          onError("تعذّر تجهيز التسجيل؛ جرّب مرة ثانية أو ارفع ملفًا.");
+        }
+      };
+      mr.start(500);
+      setSec(0);
+      setRec({ mr, started: Date.now() });
+    } catch {
+      onError("ما قدرنا نفتح الميكروفون. اسمح للموقع باستخدامه من إعدادات المتصفح، أو ارفع ملفًا.");
+    }
+  }
+
+  const mmss = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  return rec ? (
+    <button type="button" className="jw-btn w-full !border-jw-danger/60 text-jw-danger" onClick={() => rec.mr.stop()} aria-live="polite">
+      <span className="size-2.5 animate-pulse rounded-full bg-jw-danger" aria-hidden /> يسجّل <span dir="ltr" className="tabular-nums">{mmss}</span> · اضغط للإيقاف
+    </button>
+  ) : (
+    <button type="button" className="jw-btn w-full" disabled={disabled} onClick={start}>
+      <Icon name="mic" size={16} /> سجّل الآن بصوتك
+    </button>
+  );
+}
+
+function RecordingField({ label, hint, value, onChange, maxSec }: { label: string; hint: string; value: { id: string; name: string; sec: number } | null; onChange: (v: { id: string; name: string; sec: number } | null) => void; maxSec: number }) {
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
+  async function send(f: File) {
+    setError("");
+    setProgress(0);
+    try {
+      const r = await uploadRecording(f, setProgress);
+      onChange({ id: r.id, name: f.name, sec: Math.round((r.durationMs ?? 0) / 1000) });
+    } catch (err) {
+      setError((err as Error).message);
+    }
+    setProgress(null);
+  }
   return (
     <div>
       <span className="jw-label">{label}</span>
@@ -217,10 +341,15 @@ function RecordingField({ label, hint, value, onChange }: { label: string; hint:
             <Icon name="x" size={14} />
           </button>
         </div>
+      ) : progress !== null ? (
+        <p className="jw-btn w-full" role="status">يرفع… {Math.round(progress * 100)}٪</p>
       ) : (
-        <button type="button" className="jw-btn w-full" disabled={progress !== null} onClick={() => input.current?.click()}>
-          <Icon name="upload" size={16} /> {progress !== null ? `يرفع… ${Math.round(progress * 100)}٪` : "ارفع تسجيلًا (MP3 أو WAV)"}
-        </button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <MicButton maxSec={maxSec} disabled={false} onFile={send} onError={setError} />
+          <button type="button" className="jw-btn w-full" onClick={() => input.current?.click()}>
+            <Icon name="upload" size={16} /> ارفع ملفًا (MP3 أو WAV)
+          </button>
+        </div>
       )}
       <p className="mt-1 text-[11px] text-jw-faint">{hint}</p>
       {error && <p className="mt-1 text-xs text-jw-danger" role="alert">{error}</p>}
@@ -231,19 +360,10 @@ function RecordingField({ label, hint, value, onChange }: { label: string; hint:
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"
-        onChange={async (e) => {
+        onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
-          if (!f) return;
-          setError("");
-          setProgress(0);
-          try {
-            const r = await uploadRecording(f, setProgress);
-            onChange({ id: r.id, name: f.name, sec: Math.round((r.durationMs ?? 0) / 1000) });
-          } catch (err) {
-            setError((err as Error).message);
-          }
-          setProgress(null);
+          if (f) void send(f);
         }}
       />
     </div>
@@ -254,7 +374,7 @@ function RecordingField({ label, hint, value, onChange }: { label: string; hint:
  * The voice studio: «صمّم بالوصف» (three previews from a description, optionally leaning on a reference recording:
  * «يستوحي منه» or «يتعلّم منه»), or «من تسجيل» (the very voice of a recording, with the owner of the voice's consent).
  */
-function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clone"; coins: { design: number | null; clone: number | null }; onClose: () => void; onSaved: (v: Voice) => void }) {
+export function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clone"; coins: { design: number | null; clone: number | null }; onClose: () => void; onSaved: (v: Voice) => void }) {
   const [tab, setTab] = useState<"design" | "clone">(mode);
   const [description, setDescription] = useState("");
   const [text, setText] = useState("");
@@ -306,6 +426,13 @@ function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clon
     setBusy(false);
   }
 
+  // Why the button can't be pressed yet (said under it, never a silent grey button)
+  const d = description.trim().length;
+  const t = text.trim().length;
+  const designWhy =
+    coins.design === null ? "سعر التصميم لم يُحدد بعد في لوحة الإدارة." : d < 20 ? `صف الصوت في ٢٠ حرفًا على الأقل (الآن ${d}): الجنس، العمر، اللهجة، النبرة، الإيقاع.` : t > 0 && t < 100 ? `نص العينات ١٠٠ حرف على الأقل (الآن ${t})، أو اتركه فارغًا.` : null;
+  const cloneWhy = coins.clone === null ? "سعر الحفظ لم يُحدد بعد في لوحة الإدارة." : !reference ? "سجّل بصوتك أو ارفع تسجيلًا أولًا." : !name.trim() ? "سمِّ الصوت." : !consent ? "أكّد أن الصوت صوتك أو أن صاحبه أذن لك." : null;
+
   const price = (n: number | null) =>
     n === null ? "السعر غير محدد بعد" : n === 0 ? "" : (
       <span className="inline-flex items-center gap-1">
@@ -321,7 +448,7 @@ function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clon
             <Icon name="wand" size={15} /> صمّم بالوصف
           </button>
           <button type="button" role="tab" aria-selected={shown === "clone"} onClick={() => setTab("clone")}>
-            <Icon name="mic" size={15} /> من تسجيل
+            <Icon name="mic" size={15} /> بصمة صوتك
           </button>
         </div>
 
@@ -367,7 +494,7 @@ function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clon
                 <span className="jw-label">نص العينات (اختياري، ١٠٠–١٠٠٠ حرف)</span>
                 <textarea className="jw-textarea min-h-20" maxLength={1000} dir="auto" value={text} onChange={(e) => setText(e.target.value)} placeholder="اتركه فارغًا ليكتب المولد نصًا مناسبًا للوصف." />
               </label>
-              <RecordingField label="تسجيل مرجعي (اختياري)" hint="يُبنى الصوت عليه مع الوصف (حتى ٦٠ ثانية). لنسخ الصوت نفسه استخدم «من تسجيل»." value={reference} onChange={setReference} />
+              <RecordingField label="تسجيل مرجعي (اختياري)" hint="يُبنى الصوت عليه مع الوصف (حتى ٦٠ ثانية). لحفظ صوتك نفسه استخدم «بصمة صوتك»." value={reference} onChange={setReference} maxSec={58} />
               {reference && (
                 <div className="jw-seg" role="radiogroup" aria-label="طريقة استخدام المرجع">
                   <button type="button" role="radio" aria-checked={use === "inspire"} onClick={() => setUse("inspire")}>
@@ -378,14 +505,15 @@ function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clon
                   </button>
                 </div>
               )}
-              <button type="button" className="jw-btn jw-btn-primary w-full" disabled={busy || description.trim().length < 20 || (text.trim().length > 0 && text.trim().length < 100) || coins.design === null} onClick={design}>
+              <button type="button" className="jw-btn jw-btn-primary w-full" disabled={busy || Boolean(designWhy)} aria-describedby="jw-design-why" onClick={design}>
                 <Icon name="sparkles" size={16} /> {busy ? "يصمّم… (قرابة نصف دقيقة)" : <>صمّم ٣ عينات {price(coins.design)}</>}
               </button>
+              {designWhy && !busy && <p id="jw-design-why" className="text-[11px] text-jw-muted">{designWhy}</p>}
             </div>
           )
         ) : (
           <div className="space-y-3">
-            <RecordingField label="التسجيل" hint="تسجيل نظيف لصوت واحد بلا موسيقى، من ٣٠ ثانية إلى ٣ دقائق، يعطي أفضل نسخة." value={reference} onChange={setReference} />
+            <RecordingField label="بصمة صوتك" hint="سجّل بصوتك الطبيعي في مكان هادئ (من ٣٠ ثانية إلى دقيقتين أفضل): اقرأ أي نص بنبرتك المعتادة. أو ارفع تسجيلًا نظيفًا لصوت واحد بلا موسيقى." value={reference} onChange={setReference} maxSec={170} />
             <label className="block">
               <span className="jw-label">اسم الصوت</span>
               <input className="jw-input" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: صوتي" dir="auto" />
@@ -398,9 +526,10 @@ function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clon
               <input type="checkbox" className="mt-1 size-4 accent-[var(--jw-accent)]" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
               <span>أقرّ أن هذا الصوت صوتي، أو أن صاحبه أذن لي صراحةً باستخدامه. نسخ صوت أحد دون إذنه ممنوع.</span>
             </label>
-            <button type="button" className="jw-btn jw-btn-primary w-full" disabled={busy || !reference || !consent || !name.trim() || coins.clone === null} onClick={clone}>
-              <Icon name="mic" size={16} /> {busy ? "ينسخ الصوت…" : <>انسخ الصوت {price(coins.clone)}</>}
+            <button type="button" className="jw-btn jw-btn-primary w-full" disabled={busy || Boolean(cloneWhy)} aria-describedby="jw-clone-why" onClick={clone}>
+              <Icon name="mic" size={16} /> {busy ? "يحفظ صوتك…" : <>احفظ صوتي في مكتبتي {price(coins.clone)}</>}
             </button>
+            {cloneWhy && !busy && <p id="jw-clone-why" className="text-[11px] text-jw-muted">{cloneWhy}</p>}
           </div>
         )}
         {error && <p className="text-sm text-jw-danger" role="alert">{error}</p>}

@@ -54,6 +54,24 @@ export const PLANS = [
 export type PlanKey = (typeof PLANS)[number]["key"];
 
 /**
+ * «المكتبة»: an add-on on its own (with or without a plan). It opens the person's library in JAWAD AI: their own voices
+ * (designed from a description, or their very voice from a recording), characters and places as pictures (made from a
+ * description, or from their own picture), each mentioned by «@name» in any prompt. Making things still costs coins
+ * like any generation; the add-on is what keeps them. The owner always has it.
+ */
+export const LIBRARY_ADDON = {
+  key: "library",
+  name: "المكتبة",
+  monthlySar: 50,
+  features: [
+    "صمّم صوتك الخاص من الوصف، أو احفظ بصمة صوتك أنت من تسجيل",
+    "احفظ شخصياتك وأماكنك كصور: تصنعها من الوصف أو من صورة عندك",
+    "منشن أي واحد منها بـ «@اسمه» في البرومبت مباشرة",
+    "تستخدمها في الصور والفيديو والكلام وصانع الأفلام",
+  ],
+} as const;
+
+/**
  * Yearly billing: a discount so that our monthly profit is 35% of the (discounted) price instead of 50%.
  * The cost behind a monthly price P is P / (1 + markup); the yearly monthly price is that cost / (1 − 0.35).
  */

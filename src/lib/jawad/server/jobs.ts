@@ -27,6 +27,9 @@ import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
 import { resolveVoice } from "./voices";
 import { makeSmartSplit, removeFrames, storeFrames, videoHasSound, type VideoInputs } from "./smart-split";
+import { keepMadeItem } from "./library";
+import { libraryAccess, libraryNames } from "./library-access";
+import type { LibraryKind } from "@config/jawad/library";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, stemsOf, type Stem } from "@config/jawad/smart-split";
 
 const db = () => createAdminClient();
@@ -46,7 +49,7 @@ export interface JobRow {
   output_kind: "image" | "video" | "audio";
   prompt: string;
   /** modelPrompt: the prompt as the model receives it (each «@name» written the model's way), when it differs. */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -141,7 +144,11 @@ export type CreateResult =
 
 const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
 
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string): Promise<CreateResult> {
+/**
+ * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
+ * description; its picture is kept in the library when the job succeeds.
+ */
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string } } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
@@ -168,6 +175,11 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // Frames go first frame, then last frame: the order the model numbers them in
   if (refStyle === "frames") wanted.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
   const found = await refsFor(user.id, wanted);
+  // A character or place of «المكتبة» is used while the add-on runs (the owner always)
+  const kept = await libraryNames(found.rows.map((r) => r.id));
+  if (kept.length && !(await libraryAccess(user.id, owner)).active) {
+    return { kind: "issues", issues: [{ field: "refs", message: `«@${kept[0]}» من مكتبتك، و«المكتبة» مقفلة الآن. فعّل اشتراكها أو احذف هذا المرجع.` }] };
+  }
   // Every reference has a name: the one chosen, else the next default of its type (image1, video1…)
   const given = wanted.flatMap((w) => (w.name ? [w.name] : []));
   const meta = found.meta.map((m, i) => {
@@ -224,7 +236,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(video ? { video } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: e.price.coins,
       price_breakdown: e.price.lines,
@@ -331,6 +343,9 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
     await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
     const size = GPT_IMAGE_2_SIZES[s.resolution === "hi" ? "hi" : "std"][String(s.aspect)];
     for (const [i, png] of res.images.entries()) await saveOutput(job, i, png, "image/png", "png", { width: size?.[0], height: size?.[1] });
+    // «المكتبة»: a character or place made from a description is kept under its name (the picture stays in the works
+    // either way, and can be added to the library by hand if this fails)
+    if (job.inputs.library) await keepMadeItem(job).catch((e) => event(job.id, "library_keep_failed", { error: String(e instanceof Error ? e.message : e).slice(0, 300) }));
     await finishJob(job, "succeeded", { costUsd: res.costUsd, units: res.usage ? { ...res.usage } : undefined });
     return;
   }

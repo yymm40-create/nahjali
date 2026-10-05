@@ -63,6 +63,8 @@ export default function PromptBox({
   prompt,
   instructions,
   refs,
+  library = [],
+  onPickLibrary,
   onPrompt,
   onInstructions,
   touched,
@@ -75,6 +77,10 @@ export default function PromptBox({
   instructions: string;
   /** The added references (their «@names» can be mentioned). */
   refs: RefItem[];
+  /** «مكتبتي»: characters and places not added yet (listed after the references; choosing one adds it). */
+  library?: RefItem[];
+  /** Adds a library item (by its pseudo reference's localId); false when it can't be added here. */
+  onPickLibrary?: (localId: string) => boolean;
   onPrompt: (s: string) => void;
   onInstructions: (s: string) => void;
   /** "Write the prompt" is only shown once the field was used (never as an error on a fresh page). */
@@ -112,7 +118,8 @@ export default function PromptBox({
   // Not a reference and not obviously meant as one (those block sending, see the engine): sent as plain text
   const strays = [...new Set(mentions.filter((m) => !refOf(m.name) && !looksLikeRef(m.name)).map((m) => m.name))];
 
-  const options = menu ? refs.filter((r) => r.name.toLocaleLowerCase().includes(menu.query.toLocaleLowerCase())) : [];
+  const options = menu ? [...refs, ...library].filter((r) => r.name.toLocaleLowerCase().includes(menu.query.toLocaleLowerCase())) : [];
+  const fromLibrary = (r: RefItem) => library.some((x) => x.localId === r.localId);
 
   function update(el: HTMLTextAreaElement) {
     if (!canMention) return;
@@ -129,6 +136,8 @@ export default function PromptBox({
   function choose(r: RefItem) {
     const el = area.current;
     if (!el || !menu) return;
+    // A library item becomes a reference first (it may not be allowed here)
+    if (fromLibrary(r) && !onPickLibrary?.(r.localId)) return setMenu(null);
     const caret = el.selectionStart;
     const insert = `@${r.name} `;
     const next = prompt.slice(0, menu.start) + insert + prompt.slice(caret).replace(/^ /, "");
@@ -237,12 +246,12 @@ export default function PromptBox({
                     >
                       <RefChip r={r} size={26} />
                       <span className="min-w-0 flex-1 truncate" dir="ltr" style={{ textAlign: "right" }}>@{r.name}</span>
-                      <span className="text-[11px] text-jw-muted">{KIND_AR[r.kind]}</span>
+                      <span className="text-[11px] text-jw-muted">{fromLibrary(r) ? "مكتبتي" : KIND_AR[r.kind]}</span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="px-2 py-2 text-xs text-jw-muted">{refs.length ? "لا يوجد مرجع بهذا الاسم." : "لا توجد مراجع بعد؛ أضفها من «+» في المراجع أولًا."}</p>
+                <p className="px-2 py-2 text-xs text-jw-muted">{refs.length || library.length ? "لا يوجد مرجع بهذا الاسم." : "لا توجد مراجع بعد؛ أضفها من «+» في المراجع أولًا."}</p>
               )}
             </div>
           )}

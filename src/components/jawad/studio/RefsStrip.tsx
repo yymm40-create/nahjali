@@ -7,6 +7,7 @@ import type { Evaluation } from "@/lib/jawad/engine";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import RefAdder, { type WorkSource } from "./RefAdder";
+import type { LibraryItem } from "../library/LibraryPage";
 import type { RefItem } from "./types";
 
 const KIND_AR: Record<RefKind, string> = { image: "صورة", video: "فيديو", audio: "صوت" };
@@ -30,6 +31,8 @@ interface Props {
   onAdd: (kind: RefKind, files: File[], role?: RefRole) => void;
   /** One of the user's works as a reference; resolves to an error message, or null when added. */
   onPickWork: (source: WorkSource, role?: RefRole) => Promise<string | null>;
+  library?: { items: LibraryItem[]; active: boolean } | null;
+  onPickLibrary?: (item: LibraryItem, role?: RefRole) => string | null;
   onRetry: (localId: string) => void;
   onRemove: (localId: string) => void;
   onRole: (localId: string, role: RefRole) => void;
@@ -135,7 +138,7 @@ function RenameField({ r, onRename }: { r: RefItem; onRename: (localId: string, 
 }
 
 /** The references rectangle under the generator card: starts compact, grows to show references clearly. */
-export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, owner = false, uploadBlockedReason, onAdd, onPickWork, onRetry, onRemove, onRole, onRename, prompt }: Props) {
+export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUpload, owner = false, uploadBlockedReason, onAdd, onPickWork, library, onPickLibrary, onRetry, onRemove, onRole, onRename, prompt }: Props) {
   // "+" opens the «أضف مرجعًا» window: from the device or from the user's works (a frame slot: images only)
   const [adder, setAdder] = useState<{ role?: RefRole; only?: RefKind } | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -278,6 +281,8 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
           multiple={!frames}
           onFiles={(files) => addFiles(files, adder.role, adder.only)}
           onPickWork={(source) => onPickWork(source, adder.role)}
+          library={library}
+          onPickLibrary={onPickLibrary ? (item) => onPickLibrary(item, adder.role) : undefined}
         />
       )}
 

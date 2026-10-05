@@ -6,7 +6,8 @@ import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLON
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
 import { needsFrames, sfxFrameTimes, SMART_SPLIT_MODE, VIDEO_SFX } from "@config/jawad/smart-split";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
-import { cleanRefName, defaultRefName, renameMentions, sameName } from "@/lib/jawad/mentions";
+import { cleanRefName, defaultRefName, findMentions, renameMentions, sameName } from "@/lib/jawad/mentions";
+import type { LibraryItem } from "../library/LibraryPage";
 import { isOpenStatus, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
 import SmartCoin from "@/components/SmartCoin";
 import { announceBalance, BALANCE_EVENT } from "../CoinBalance";
@@ -150,6 +151,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
   const [beforeDirector, setBeforeDirector] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [confirm, setConfirm] = useState<{ coins: number; was: number } | null>(null);
+  // «مكتبتي»: the person's characters and places, mentioned by «@name» (null until loaded)
+  const [library, setLibrary] = useState<{ items: LibraryItem[]; active: boolean } | null>(null);
   const pendingKey = useRef<string | null>(null);
 
   const gen = generators.find((g) => g.id === draft.generatorId) ?? generators[0];
@@ -395,6 +398,64 @@ export default function Studio({ section, generators, prices: initialPrices, use
       window.removeEventListener("offline", offlineFn);
     };
   }, [openKey]);
+
+  // ── «مكتبتي» ──
+  useEffect(() => {
+    if (!user || !allowed) return;
+    let live = true;
+    fetch("/api/jawad/library", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { access?: { active: boolean }; items?: LibraryItem[] } | null) => {
+        if (live && b?.access) setLibrary({ items: b.items ?? [], active: b.access.active });
+      })
+      .catch(() => null);
+    return () => {
+      live = false;
+    };
+  }, [user, allowed]);
+
+  /** A library item as a reference of the draft (its picture is the person's own checked upload). */
+  const libraryRef = (it: LibraryItem, role: RefRole): RefItem => ({
+    localId: uid(),
+    uploadId: it.uploadId,
+    kind: "image",
+    name: it.name,
+    role,
+    fileName: it.name,
+    status: "ready",
+    progress: 1,
+    error: null,
+    url: it.url,
+    mime: it.mime,
+    bytes: it.bytes,
+    width: it.width,
+    height: it.height,
+    durationMs: null,
+    fps: null,
+  });
+  const canUseLibrary = Boolean(library?.active && def?.refLabel && ev?.refKinds.image?.allowed);
+  /** Adds a library item as a reference; why not, or null. */
+  function addLibraryRef(it: LibraryItem, role?: RefRole): string | null {
+    if (draft.refs.some((r) => r.uploadId === it.uploadId)) return null;
+    if (!library?.active) return "«المكتبة» مقفلة.";
+    if (!ev?.refKinds.image?.allowed) return ev?.refKinds.image?.reason ?? "هذا المولد لا يقبل صورًا مرجعية.";
+    if (draft.refs.some((r) => sameName(r.name, it.name))) return `يوجد مرجع آخر باسم «@${it.name}»؛ غيّر اسمه أولًا.`;
+    setDraft((d) => ({ ...d, refs: [...d.refs, libraryRef(it, refStyle === "frames" ? role ?? nextFrameRole(d.refs) : "reference")] }));
+    return null;
+  }
+  /** The prompt as typed; «@name» of a library item not added yet adds its picture by itself. */
+  function onPrompt(prompt: string) {
+    setDraft((d) => {
+      if (!canUseLibrary || !library) return { ...d, prompt };
+      const named = findMentions(prompt).map((m) => m.name);
+      const add = library.items.filter((it) => named.some((n) => sameName(n, it.name)) && !d.refs.some((r) => r.uploadId === it.uploadId || sameName(r.name, it.name)));
+      if (!add.length) return { ...d, prompt };
+      let refs = d.refs;
+      for (const it of add) refs = [...refs, libraryRef(it, refStyle === "frames" ? nextFrameRole(refs) : "reference")];
+      return { ...d, prompt, refs };
+    });
+  }
+  const libraryOptions = canUseLibrary && library ? library.items.filter((it) => !draft.refs.some((r) => r.uploadId === it.uploadId)).map((it) => ({ ...libraryRef(it, "reference"), localId: `lib:${it.id}` })) : [];
 
   // ── generate ──
   const price = ev?.price.ok ? ev.price.coins : null;
@@ -697,6 +758,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
               uploadBlockedReason={!user ? "سجّل الدخول لرفع المراجع." : !allowed ? "المنصة مغلقة لحسابك." : null}
               onAdd={addFiles}
               onPickWork={addFromWork}
+              library={user && allowed ? library : null}
+              onPickLibrary={addLibraryRef}
               onRename={renameRef}
               prompt={draft.prompt}
               onRetry={retryUpload}
@@ -709,7 +772,14 @@ export default function Studio({ section, generators, prices: initialPrices, use
               prompt={draft.prompt}
               instructions={draft.instructions}
               refs={draft.refs}
-              onPrompt={(prompt) => setDraft((d) => ({ ...d, prompt }))}
+              onPrompt={onPrompt}
+              library={libraryOptions}
+              onPickLibrary={(localId) => {
+                const it = library?.items.find((x) => `lib:${x.id}` === localId);
+                const err = it ? addLibraryRef(it) : "ما لقينا هذا العنصر.";
+                if (err) setNotice(err);
+                return !err;
+              }}
               onInstructions={(instructions) => setDraft((d) => ({ ...d, instructions }))}
               touched={touched}
               onTouched={() => setTouched(true)}

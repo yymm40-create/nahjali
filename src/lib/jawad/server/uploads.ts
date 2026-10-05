@@ -11,6 +11,7 @@ import type { RefKind, RefMeta, RefRole } from "@config/jawad/types";
 import { MAX_UPLOAD_BYTES, probe, sniff, UPLOAD_EXT, UPLOAD_MIMES } from "../media";
 import { FILM_BUCKET } from "@/lib/film/types";
 import { JAWAD_BUCKET } from "./runtime";
+import { inLibrary } from "./library-access";
 
 export interface UploadRow {
   id: string;
@@ -173,6 +174,8 @@ export async function deleteUpload(userId: string, id: unknown) {
   const { data } = await db().from("jawad_uploads").select("*").eq("id", id).eq("user_id", userId).maybeSingle();
   const row = data as UploadRow | null;
   if (!row) return;
+  // A picture kept in «المكتبة» stays (removing it from a draft's references doesn't delete it from the library)
+  if (await inLibrary(row.id)) return;
   // A reference an unfinished job still needs is kept until that job ends
   const { data: open } = await db()
     .from("jawad_jobs")
