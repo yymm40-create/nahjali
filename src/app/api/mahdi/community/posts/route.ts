@@ -9,7 +9,7 @@ import { syncPublicProfile } from "@/lib/mahdi/server/public";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MEDIA_POST_KINDS, type MediaPostKind } from "@/lib/mahdi/social";
 import { checkUploadedMedia } from "@/lib/mahdi/server/media";
-import { feed, notMigrated, postViews, userByUsername } from "@/lib/mahdi/server/social";
+import { feed, notMigrated, postViews, personByUsername } from "@/lib/mahdi/server/social";
 import { cleanLine, cleanText } from "@/lib/mahdi/server/validate";
 import { SOCIAL_VIDEO } from "@config/mahdi";
 
@@ -23,7 +23,7 @@ export const GET = mahdiRoute(async (req: Request) => {
   const before = sp.get("before");
   const username = sp.get("user");
   if (username) {
-    const person = await userByUsername(username);
+    const person = await personByUsername(username);
     if (!person) throw new UserError(t.social.profile.notFound, 404);
     return NextResponse.json(await feed(supabase, user.id, { kind: "user", userId: person.id, before }));
   }

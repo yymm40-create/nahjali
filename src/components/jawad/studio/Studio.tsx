@@ -207,9 +207,11 @@ export default function Studio({ section, generators, prices: initialPrices, use
     return () => window.removeEventListener(BALANCE_EVENT, on);
   }, []);
 
+  // A performance description only goes to generators that take one (it stays in the draft for when the user switches back)
+  const instructions = def?.extraText ? draft.instructions : "";
   const ev = useMemo(
-    () => (def ? evaluate(def, { settings, prompt: draft.prompt, instructions: draft.instructions, refStyle, refs: draft.refs.map(refMeta) }, prices[def.id] ?? {}) : null),
-    [def, settings, draft.prompt, draft.instructions, refStyle, draft.refs, prices],
+    () => (def ? evaluate(def, { settings, prompt: draft.prompt, instructions, refStyle, refs: draft.refs.map(refMeta) }, prices[def.id] ?? {}) : null),
+    [def, settings, draft.prompt, instructions, refStyle, draft.refs, prices],
   );
 
   // ── editing ──
@@ -472,7 +474,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       outputKind: def.output,
       mode: ev?.mode.id ?? "",
       prompt: draft.prompt,
-      instructions: draft.instructions,
+      instructions,
       settings: ev?.settings ?? settings,
       refStyle,
       refs: [],
@@ -494,7 +496,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       refStyle,
       settings: ev?.settings ?? settings,
       prompt: draft.prompt,
-      instructions: draft.instructions,
+      instructions,
       refs: draft.refs.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
     };

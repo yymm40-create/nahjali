@@ -9,6 +9,7 @@ import type { CommentView, FollowState, PostView, ProfileView, ReportCategory, S
 import { UserError } from "./api";
 import { missingTable, notify, ownerIds } from "./inbox";
 import { removeMedia, signMedia } from "./media";
+import { avatarUrl } from "./rows";
 
 const db = () => createAdminClient();
 const S = () => t.social;
@@ -45,6 +46,47 @@ export async function userByUsername(username: string): Promise<SocialUser | nul
     throw error;
   }
   return data ? toUser(data as ProfileRow) : null;
+}
+
+/**
+ * Anyone of the app by username: a member of the community, or — since everyone can be found unless their account is
+ * locked — someone who hasn't joined it (their name, and their picture only if they show it). Family members' accounts
+ * are never found this way.
+ */
+export async function personByUsername(username: string): Promise<SocialUser | null> {
+  const found = await userByUsername(username);
+  if (found) return found;
+  const name = username.trim().replace(/^@/, "");
+  if (!name || name.length > 30) return null;
+  const { data: handle } = await db().from("site_usernames").select("user_id, username").ilike("username", name.replace(/[%_\\]/g, "\\$&")).limit(1).maybeSingle();
+  if (!handle) return null;
+  const id = handle.user_id as string;
+  const [{ data: profile }, { data: privacy }, { data: family }] = await Promise.all([
+    db().from("mahdi_profiles").select("display_name, avatar_path, frame").eq("user_id", id).maybeSingle(),
+    db().from("mahdi_privacy").select("*").eq("user_id", id).maybeSingle(),
+    db().from("mahdi_family").select("member_id").eq("member_id", id).maybeSingle(),
+  ]);
+  const pr = privacy as { private_account?: boolean; show_avatar?: boolean } | null;
+  if (!profile || pr?.private_account || family) return null;
+  return { id, username: handle.username as string, displayName: profile.display_name as string, avatarUrl: pr?.show_avatar ? avatarUrl(profile.avatar_path as string | null) : null, frame: (profile.frame as string) ?? "" };
+}
+
+/** «ابحث»: people by name or username, forgiving (first letters, Arabic letter forms, small typos). Locked accounts are left out. */
+export async function searchPeople(me: string, q: string): Promise<SocialUser[]> {
+  const query = q.trim().slice(0, 40);
+  if (!query.replace(/^@/, "")) return [];
+  const { data, error } = await db().rpc("mahdi_search_people", { p_q: query, p_me: me, p_limit: 20 });
+  if (error) {
+    if (notMigrated(error) || error.code === "PGRST202" || error.code === "42883") throw new UserError(S().search.notReady, 503);
+    throw error;
+  }
+  return ((data ?? []) as { user_id: string; username: string | null; display_name: string; avatar_path: string | null; show_avatar: boolean }[]).map((r) => ({
+    id: r.user_id,
+    username: r.username,
+    displayName: r.display_name,
+    avatarUrl: r.show_avatar ? avatarUrl(r.avatar_path) : null,
+    frame: "",
+  }));
 }
 
 export async function isPrivate(userId: string) {
