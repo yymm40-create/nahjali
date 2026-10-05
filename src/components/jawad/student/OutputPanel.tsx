@@ -130,7 +130,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
         <div className="jw-panel space-y-3 border-jw-line-strong p-4">
           <h3 className="font-semibold">نسخة تجريبية قبل التصنيع الكامل؟</h3>
           <p className="text-sm text-jw-muted">
-            {o.kind === "book" ? "يُكتب الفصل الأول ويُطبع مع الغلاف بالخطوط والتصميم الذي اخترته" : "تُصنع أول ٣ شرائح بملف PPTX وPDF"}، لترى الخط والتصميم على مادتك الحقيقية. النسخة التجريبية مدفوعة، ومبلغها يُخصم من سعر النسخة النهائية إذا أكملت.
+            {o.kind === "book" ? "يُكتب الفصل الأول ويُطبع مع الغلاف بالخطوط والتصميم الذي اخترته" : o.settings.render === "image" ? "تُرسم أول ٣ شرائح كصور بـ GPT Image 2 وتُجمع في PDF" : "تُصنع أول ٣ شرائح بملف PPTX وPDF"}، لترى الخط والتصميم على مادتك الحقيقية. النسخة التجريبية مدفوعة، ومبلغها يُخصم من سعر النسخة النهائية إذا أكملت.
           </p>
           <div className="flex flex-wrap gap-2">
             <PaidButton label="اصنع نسخة تجريبية" what="نسخة تجريبية موسومة «نسخة تجريبية»." disabled={running || settingsDirty} run={(b) => act({ action: "trial", ...b })} />
@@ -145,7 +145,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
           <h3 className="font-semibold">النسخة التجريبية</h3>
           <PdfFrame o={o} name="trial_pdf" />
           <FileLinks o={o} only={(f) => f.startsWith("trial_")} />
-          {o.kind === "slides" && <SlidesFonts design={o.settings.design} />}
+          {o.kind === "slides" && o.settings.render !== "image" && <SlidesFonts design={o.settings.design} />}
           <div className="jw-panel space-y-2 p-4">
             <p className="text-sm text-jw-muted">
               بعد الاعتماد يُصنع الناتج كاملًا بنفس التصميم{o.trialCoins ? `، ويُخصم ${o.trialCoins} نقدة (مبلغ التجربة) من سعره` : ""}. للتعديل: غيّر الخط أو التصميم من الإعدادات واحفظ ثم اصنع نسخة تجريبية جديدة، أو عدّل الخطة.
@@ -172,7 +172,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
                 <p className="text-sm text-jw-warn">شرائح نصها أطول من مساحتها حتى بعد تصغير الخط: {(o.content as { overflow: number[] }).overflow.join("، ")}. وزّعها على شرائح أكثر من الخريطة.</p>
               )}
               <PdfFrame o={o} name="pdf" />
-              <SlidesFonts design={o.settings.design} />
+              {o.settings.render !== "image" && <SlidesFonts design={o.settings.design} />}
             </>
           )}
           {(o.kind === "summary" || o.kind === "explain") && o.content !== null && <DocView doc={o.content as Doc} research={researchContent} />}
@@ -229,9 +229,20 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
 
 function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: string; kind: "edit" | "other"; act: (b: S) => Promise<unknown>; running: boolean }) {
   const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "book" ? (o.content as Doc | null) : null;
+  const pictures = o.kind === "slides" && o.settings.render === "image" ? (o.plan as SlidePlan | null) : null;
   const [chapter, setChapter] = useState(-1);
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {pictures && (
+        <select className="jw-select w-auto" value={chapter} onChange={(e) => setChapter(Number(e.target.value))} aria-label="الشريحة المعنية">
+          <option value={-1}>تعديل خريطة الشرائح كلها</option>
+          {pictures.slides.map((sl, i) => (
+            <option key={i} value={i}>
+              أعد رسم الشريحة {i + 1}: {sl.title}
+            </option>
+          ))}
+        </select>
+      )}
       {doc && (
         <select className="jw-select w-auto" value={chapter} onChange={(e) => setChapter(Number(e.target.value))} aria-label="الجزء المعني">
           <option value={-1}>كل الفصول</option>
@@ -242,7 +253,7 @@ function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: s
           ))}
         </select>
       )}
-      <PaidButton label="أرسل" what={doc && chapter >= 0 ? "تعديل هذا الفصل فقط، وبقية الناتج كما هي." : "تعديل الناتج حسب طلبك."} disabled={running} run={(b) => act({ action: "request", note, kind, chapter, ...b })} />
+      <PaidButton label="أرسل" what={pictures && chapter >= 0 ? "تُرسم هذه الشريحة من جديد مع طلبك، وبقية الشرائح كما هي." : doc && chapter >= 0 ? "تعديل هذا الفصل فقط، وبقية الناتج كما هي." : "تعديل الناتج حسب طلبك."} disabled={running} run={(b) => act({ action: "request", note, kind, chapter, ...b })} />
     </div>
   );
 }
@@ -346,6 +357,30 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
     case "slides":
       return (
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1 sm:col-span-2">
+            <span className="jw-label">طريقة صنع الشرائح</span>
+            <Seg
+              label="طريقة صنع الشرائح"
+              value={str(s.render, "editable") as "editable"}
+              options={[
+                { id: "editable", label: "نص حقيقي قابل للتعديل (PPTX + PDF)" },
+                { id: "image", label: "كل شريحة صورة بـ GPT Image 2 ثم PDF" },
+              ]}
+              onChange={(render) => set({ render })}
+            />
+            {s.render === "image" && (
+              <div className="space-y-2 rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-3 text-xs">
+                <p>
+                  <Icon name="alert" size={12} className="me-1 inline text-jw-warn" />
+                  كل شريحة تُرسم كاملة كصورة (العنوان والنص والعنصر البصري) بأسلوبك المختار، ثم تُجمع في PDF بالترتيب، مع ملف PPTX من نفس الصور. النص داخل الصورة <b>لا يمكن تعديله</b>، وقد يخطئ النموذج في بعض الحروف العربية: راجع كل شريحة، وتقدر تطلب إعادة رسم أي شريحة لوحدها. الشرائح بنسبة 16:9.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>جودة الصور:</span>
+                  <Seg label="جودة الصور" value={str(s.imageQuality, "high") as "high"} options={[{ id: "high", label: "عالية (أوضح للنص)" }, { id: "medium", label: "متوسطة (أرخص)" }]} onChange={(imageQuality) => set({ imageQuality })} />
+                </div>
+              </div>
+            )}
+          </div>
           <Field s={s} set={set} k="audience" label="الجمهور" ph="زملاء الصف، لجنة تقييم…" />
           <Field s={s} set={set} k="purpose" label="الغرض" ph="عرض بحث، مراجعة، شرح درس…" />
           <label className="block text-sm">

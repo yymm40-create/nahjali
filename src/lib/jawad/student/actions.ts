@@ -368,10 +368,20 @@ function cleanPlan(o: Output, plan: unknown): unknown {
   if (!plan || typeof plan !== "object") throw new UserError("الخطة غير صالحة.");
   const s = (v: unknown, n = 4000) => String(v ?? "").slice(0, n);
   const arr = <T>(v: unknown, f: (x: Record<string, unknown>) => T, n = 300) => (Array.isArray(v) ? v.slice(0, n).map((x) => f((x ?? {}) as Record<string, unknown>)) : []);
+  // a file path from the browser is kept only if it is one of this project's own files
+  const own = (v: unknown) => {
+    const path = s(v, 400);
+    return path.startsWith(`${o.user_id}/${o.project_id}/`) && !path.includes("..") ? path : "";
+  };
   const img = (x: unknown) => {
     const i = (x ?? {}) as Record<string, unknown>;
     const mode = ["none", "own", "generate"].includes(String(i.mode)) ? String(i.mode) : "none";
-    return { mode: mode as "none", sourceId: s(i.sourceId, 40), prompt: s(i.prompt, 1000), path: mode === "none" ? "" : s(i.path, 400) };
+    return { mode: mode as "none", sourceId: s(i.sourceId, 40), prompt: s(i.prompt, 1000), path: mode === "none" ? "" : own(i.path) };
+  };
+  const rendered = (x: unknown) => {
+    const r = (x ?? null) as Record<string, unknown> | null;
+    const path = r ? own(r.path) : "";
+    return path ? { path, sig: s(r!.sig, 32) } : null;
   };
   const p = plan as Record<string, unknown>;
   const prev = (o.plan ?? {}) as Record<string, unknown>;
@@ -390,6 +400,7 @@ function cleanPlan(o: Output, plan: unknown): unknown {
         relation: s(x.relation, 600),
         segments: Array.isArray(x.segments) ? x.segments.slice(0, 200).map((t) => s(t, 8)) : [],
         image: img(x.image),
+        rendered: rendered(x.rendered),
       })),
     } satisfies SlidePlan;
   }
@@ -489,6 +500,11 @@ export async function outputAction(user: User, id: string, b: Body) {
         const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
         if (b.confirm) await saveOutput(o.id, { requests, approved: false });
         return run("revise", await estimate(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running");
+      }
+      // slides made as pictures: one slide is drawn again with the request
+      if (o.kind === "slides" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
+        if (b.confirm) await saveOutput(o.id, { requests, approved: false });
+        return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الشريحة من جديد", "running");
       }
       // slides / audio: the change goes into the plan (slide map / reading text), which is approved again
       if (b.confirm) await saveOutput(o.id, { requests, approved: false });
