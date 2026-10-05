@@ -19,6 +19,12 @@ async function sign(bucket: string, paths: string[]) {
   return new Map((data ?? []).map((d, i) => [paths[i], d.signedUrl ?? ""]));
 }
 
+/** A result's name from its file (`…/dialogue.mp3` → "dialogue"); results numbered by position have none. */
+export const outputName = (path: string) => {
+  const base = path.split("/").pop()!.replace(/\.[^.]+$/, "");
+  return /^\d+$/.test(base) ? null : base;
+};
+
 /** Views of jobs with their results (the caller has already checked they belong to the user). */
 export async function jobViews(jobs: JobRow[]): Promise<JobView[]> {
   if (!jobs.length) return [];
@@ -35,6 +41,7 @@ export async function jobViews(jobs: JobRow[]): Promise<JobView[]> {
         kind: o.kind,
         url: urls.get(o.storage_path) || null,
         downloadUrl: `/api/jawad/outputs/${o.id}`,
+        name: outputName(o.storage_path),
         mime: o.mime,
         width: o.width,
         height: o.height,

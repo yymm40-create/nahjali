@@ -26,7 +26,8 @@ import { arkCancelTask, arkCreateTask, arkGetTask, arkListTasks, type ArkContent
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
 import { resolveVoice } from "./voices";
-import { makeVideoSfx, storeSfxFrames, type VideoSfxInputs } from "./video-sfx";
+import { makeSmartSplit, removeFrames, storeFrames, videoHasSound, type VideoInputs } from "./smart-split";
+import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, stemsOf, type Stem } from "@config/jawad/smart-split";
 
 const db = () => createAdminClient();
 
@@ -45,7 +46,7 @@ export interface JobRow {
   output_kind: "image" | "video" | "audio";
   prompt: string;
   /** modelPrompt: the prompt as the model receives it (each «@name» written the model's way), when it differs. */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; sfx?: VideoSfxInputs };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -129,7 +130,7 @@ export interface GenerateBody {
   instructions?: unknown;
   refs?: unknown;
   expectedCoins?: unknown;
-  /** «مؤثرات من فيديو»: small JPEG frames of the video, `{ t, data: "data:image/jpeg;base64,…" }`. */
+  /** «الفصل الذكي»: small JPEG frames of the video, `{ t, data: "data:image/jpeg;base64,…" }`. */
   frames?: unknown;
 }
 
@@ -188,15 +189,24 @@ export async function createJob(user: { id: string; email?: string | null }, own
     const v = await resolveVoice(user.id, String(e.settings.voice));
     if (!v.ok) return { kind: "issues", issues: [{ field: "voice", message: v.reason }] };
   }
+  // «الفصل الذكي»: the dialogue comes from the video's own sound, so the video must have one
+  const splitVideo = e.mode.id === SMART_SPLIT_MODE ? found.rows.find((r) => r.kind === "video") : undefined;
+  if (splitVideo && e.settings.dialogue === true && !(await videoHasSound(splitVideo.storage_path))) {
+    return { kind: "issues", issues: [{ field: "dialogue", message: "هذا الفيديو بلا صوت، فلا يوجد حوار لفصله. ألغِ «الحوار» أو اختر فيديو فيه صوت." }] };
+  }
   if (!e.price.ok) return { kind: "issues", issues: [{ field: "price", message: e.price.reason }] };
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
   if (Number(b.expectedCoins) !== e.price.coins) return { kind: "price_changed", coins: e.price.coins, lines: e.price.lines, prices: table };
 
-  // «مؤثرات من فيديو»: the frames the studio took of the video are kept with the job (Claude watches them)
-  let sfx: VideoSfxInputs | undefined;
-  if (e.mode.id === "video_to_sfx") {
-    if (!process.env.ANTHROPIC_API_KEY) throw new UserError("صناعة المؤثرات من الفيديو غير متاحة حاليًا.", 503);
-    sfx = await storeSfxFrames(user.id, key, b.frames, meta.find((m) => m.kind === "video")?.durationMs ?? 0);
+  // «الفصل الذكي»: the frames the studio took of the video are kept with the job (Claude watches them for the music
+  // and the effects; the dialogue needs only the video)
+  let video: VideoInputs | undefined;
+  if (e.mode.id === SMART_SPLIT_MODE) {
+    const durationMs = meta.find((m) => m.kind === "video")?.durationMs ?? 0;
+    if (needsFrames(e.settings)) {
+      if (!process.env.ANTHROPIC_API_KEY) throw new UserError("الفصل الذكي غير متاح حاليًا.", 503);
+      video = await storeFrames(user.id, key, b.frames, durationMs);
+    } else video = { durationMs, frames: [] };
   }
 
   // What the model reads: each «@name» written the way it numbers references (the user's prompt is kept as written)
@@ -214,7 +224,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(sfx ? { sfx } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(video ? { video } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: e.price.coins,
       price_breakdown: e.price.lines,
@@ -227,7 +237,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
   });
   if (error) {
     // No job: the frames kept for it go too
-    if (sfx) await db().storage.from(JAWAD_BUCKET).remove(sfx.frames.map((f) => f.path)).catch(() => null);
+    if (video) await removeFrames(video);
     const msg = String(error.message ?? "");
     if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${e.price.coins} نقدة.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
@@ -287,8 +297,9 @@ async function download(path: string) {
   return Buffer.from(await data.arrayBuffer());
 }
 
-async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, ext: string, dims: { width?: number | null; height?: number | null; durationMs?: number | null }) {
-  const path = `${job.user_id}/outputs/${job.id}/${idx}.${ext}`;
+/** Saves one result (`name`: what it is, when a job makes several kinds, e.g. «الفصل الذكي»'s tracks). */
+async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, ext: string, dims: { width?: number | null; height?: number | null; durationMs?: number | null }, name?: string) {
+  const path = `${job.user_id}/outputs/${job.id}/${name ?? idx}.${ext}`;
   const up = await db().storage.from(JAWAD_BUCKET).upload(path, file, { contentType: mime, upsert: true });
   if (up.error) throw new Error(`storage upload: ${up.error.message}`);
   const { error } = await db()
@@ -341,15 +352,17 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
 }
 
 /**
- * ElevenLabs: Eleven v4 speech, a sound effect, or a song (with an optional reference recording), saved as MP3; or the
- * sound effects of a video, mixed into one WAV track of the video's length.
+ * ElevenLabs: Eleven v4 speech, a sound effect, or a song (with an optional reference recording), saved as MP3; or
+ * «الفصل الذكي»: a video's dialogue, music and effects as separate tracks of the video's length.
  */
 async function runEleven(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   const s = job.inputs.settings;
-  if (job.mode === "video_to_sfx") {
-    const r = await makeVideoSfx(job, Number(s.influence) || 0.3);
+  // (jobs made before «الفصل الذكي» were effects only, in the sound effects generator)
+  if (def.id === SMART_SPLIT_ID || job.mode === "video_to_sfx") {
+    const stems: Stem[] = job.mode === "video_to_sfx" ? ["sfx"] : stemsOf(s);
+    const r = await makeSmartSplit(job, stems, refs.find((x) => x.kind === "video"), Number(s.influence) || 0.3);
     await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
-    await saveOutput(job, 0, r.audio, "audio/wav", "wav", { durationMs: r.durationMs });
+    for (const [i, f] of r.files.entries()) await saveOutput(job, i, f.audio, f.mime, f.ext, { durationMs: f.durationMs }, f.stem);
     await finishJob(job, "succeeded", { costUsd: r.costUsd, units: r.units });
     return;
   }

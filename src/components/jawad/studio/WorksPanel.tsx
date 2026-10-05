@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { generatorById } from "@config/jawad/generators";
+import { isStem, SMART_SPLIT_ID, STEM_LABEL } from "@config/jawad/smart-split";
 import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
 import SmartCoin from "@/components/SmartCoin";
 import Dialog from "../Dialog";
@@ -289,18 +290,29 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
   const [details, setDetails] = useState(false);
   const [editing, setEditing] = useState(false);
   const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
-  // «مؤثرات من فيديو»: the track can be watched under its video
+  // «الفصل الذكي»: each track by name; they can be watched under their video, together or one by one
   const [watching, setWatching] = useState(false);
-  const sourceVideo = j.mode === "video_to_sfx" ? j.refs.find((r) => r.kind === "video") : undefined;
-  const track = j.status === "succeeded" && sourceVideo ? j.outputs[0] : undefined;
+  const sourceVideo = j.mode === "video_to_sfx" || j.generatorId === SMART_SPLIT_ID ? j.refs.find((r) => r.kind === "video") : undefined;
+  const stemLabel = (o: OutputView) => (isStem(o.name) ? STEM_LABEL[o.name] : null);
+  const tracks = j.status === "succeeded" && sourceVideo ? j.outputs.flatMap((o) => (o.url ? [{ id: o.id, label: stemLabel(o) ?? "الصوت", url: o.url, downloadUrl: o.downloadUrl }] : [])) : [];
+  const stemmed = j.outputs.length > 1 && j.outputs.every((o) => o.kind === "audio");
   const open = isOpenStatus(j.status);
   const chips = settingChips(j);
   const outs = j.outputs;
   return (
     <article className="jw-panel overflow-hidden" aria-busy={open}>
-      <div className={`relative ${j.outputKind === "audio" ? "h-28" : "aspect-video"} bg-jw-bg-2`}>
+      <div className={`relative ${j.outputKind === "audio" ? (stemmed && j.status === "succeeded" ? "" : "h-28") : "aspect-video"} bg-jw-bg-2`}>
         {j.status === "succeeded" && outs.length ? (
-          outs.length === 1 ? (
+          stemmed ? (
+            <ul className="space-y-1.5 p-2.5" aria-label="المسارات">
+              {outs.map((o) => (
+                <li key={o.id} className="flex items-center gap-2">
+                  <span className="w-16 shrink-0 text-xs font-medium">{stemLabel(o) ?? "الصوت"}</span>
+                  {o.url ? <audio src={o.url} controls preload="metadata" className="h-9 min-w-0 flex-1" aria-label={stemLabel(o) ?? "الصوت"} /> : <span className="text-xs text-jw-faint">الملف غير متاح</span>}
+                </li>
+              ))}
+            </ul>
+          ) : outs.length === 1 ? (
             <OutputMedia o={outs[0]} onOpen={() => onOpen(0)} />
           ) : (
             <div className="grid size-full grid-cols-2 gap-px bg-jw-line">
@@ -380,7 +392,7 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
           {j.status === "succeeded" &&
             outs.map((o, i) => (
               <a key={o.id} href={o.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download>
-                <Icon name="download" size={14} /> تنزيل{outs.length > 1 ? ` ${i + 1}` : ""}
+                <Icon name="download" size={14} /> تنزيل{stemLabel(o) && outs.length > 1 ? ` ${stemLabel(o)}` : outs.length > 1 ? ` ${i + 1}` : ""}
               </a>
             ))}
           {j.status === "succeeded" &&
@@ -392,7 +404,7 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
                 </button>
               );
             })}
-          {track?.url && (
+          {tracks.length > 0 && (
             <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setWatching(true)}>
               <Icon name="play" size={14} /> شاهد مع الفيديو
             </button>
@@ -415,7 +427,7 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
         </div>
         {j.status === "validating" && j.error && <p className="text-xs text-jw-warn">{j.error}</p>}
       </div>
-      {track?.url && sourceVideo && <SoundOnVideo uploadId={sourceVideo.uploadId} audioUrl={track.url} downloadUrl={track.downloadUrl} open={watching} onClose={() => setWatching(false)} />}
+      {tracks.length > 0 && sourceVideo && <SoundOnVideo uploadId={sourceVideo.uploadId} tracks={tracks} open={watching} onClose={() => setWatching(false)} />}
       {editable && (
         <SmartEdit
           job={j}

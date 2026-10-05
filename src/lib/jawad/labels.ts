@@ -13,11 +13,12 @@ export function stageLabel(status: JobStatus, providerStatus?: string | null) {
       return providerStatus === "rewriting" ? "يكتب البرومبت المعدّل" : "الإرسال إلى المزوّد";
     case "running": {
       if (providerStatus === "queued") return "في طابور المزوّد";
-      // «مؤثرات من فيديو»
-      if (providerStatus === "watching") return "Claude يشاهد الفيديو ويحدد الأصوات";
+      // «الفصل الذكي»
+      if (providerStatus === "watching") return "Claude يشاهد الفيديو ويخطط الأصوات";
+      if (providerStatus === "isolating") return "يفصل الحوار من صوت الفيديو";
       const made = /^sounds (\d+)\/(\d+)$/.exec(providerStatus ?? "");
-      if (made) return `يصنع المؤثرات (${made[1]} من ${made[2]})`;
-      if (providerStatus === "mixing") return "يركّب المؤثرات على طول الفيديو";
+      if (made) return `يصنع الأصوات (${made[1]} من ${made[2]})`;
+      if (providerStatus === "mixing") return "يجهّز المسارات على طول الفيديو";
       return "التوليد";
     }
     case "saving":
@@ -38,6 +39,8 @@ export interface OutputView {
   kind: "image" | "video" | "audio";
   url: string | null;
   downloadUrl: string;
+  /** What this result is when a job makes several kinds (e.g. «الفصل الذكي»: dialogue / music / sfx). */
+  name: string | null;
   mime: string;
   width: number | null;
   height: number | null;

@@ -184,16 +184,15 @@ export async function elevenSoundEffect(o: { text: string; seconds: number; loop
 let pcmRate = 48_000;
 
 /**
- * A sound effect as raw samples for mixing (ElevenLabs' pcm_* formats: 16-bit little-endian mono). pcm_44100 is
- * documented as Pro-only; 48 kHz is asked first, and if the account's plan refuses it, every plan's 24 kHz.
+ * Raw samples for mixing (ElevenLabs' pcm_* formats: 16-bit little-endian mono) from a sound or music endpoint.
+ * pcm_44100 is documented as Pro-only; 48 kHz is asked first, and if the account's plan refuses it, every plan's 24 kHz.
  */
-export async function elevenSoundPcm(o: { text: string; seconds: number; loop: boolean; influence: number }): Promise<{ samples: Float32Array; rate: number }> {
-  const body = JSON.stringify({ text: o.text, duration_seconds: o.seconds, loop: o.loop, prompt_influence: o.influence, model_id: "eleven_text_to_sound_v2" });
+async function rawPcm(path: string, body: string, timeoutMs: number, what: string): Promise<{ samples: Float32Array; rate: number }> {
   for (;;) {
     const rate = pcmRate;
     try {
-      const res = await call(`/v1/sound-generation?output_format=pcm_${rate}`, { method: "POST", body, timeoutMs: 90_000 }, "sfx raw");
-      const buf = await audioOf(res, "sfx raw");
+      const res = await call(`${path}?output_format=pcm_${rate}`, { method: "POST", body, timeoutMs }, what);
+      const buf = await audioOf(res, what);
       const samples = new Float32Array(buf.length >> 1);
       for (let i = 0; i < samples.length; i++) samples[i] = buf.readInt16LE(i * 2) / 32768;
       return { samples, rate };
@@ -208,6 +207,23 @@ export async function elevenSoundPcm(o: { text: string; seconds: number; loop: b
   }
 }
 
+/** A sound effect as raw samples for mixing. */
+export function elevenSoundPcm(o: { text: string; seconds: number; loop: boolean; influence: number }) {
+  const body = JSON.stringify({ text: o.text, duration_seconds: o.seconds, loop: o.loop, prompt_influence: o.influence, model_id: "eleven_text_to_sound_v2" });
+  return rawPcm("/v1/sound-generation", body, 90_000, "sfx raw");
+}
+
+// ───────────────────────────── voice isolation ─────────────────────────────
+
+/** The voices of a recording or a video (ElevenLabs takes MP4/MOV as they are), without the music and noise around them. */
+export async function elevenIsolateVoice(o: { file: Buffer; mime: string; name: string }) {
+  const form = new FormData();
+  form.append("audio", new Blob([new Uint8Array(o.file)], { type: o.mime }), o.name);
+  form.append("file_format", "other");
+  const res = await call("/v1/audio-isolation", { method: "POST", body: form, timeoutMs: 150_000 }, "isolation");
+  return audioOf(res, "isolation");
+}
+
 // ───────────────────────────── music ─────────────────────────────
 
 interface PlanChunk {
@@ -218,6 +234,19 @@ interface PlanChunk {
   context_adherence?: string;
   conditioning_ref?: { song_id: string; range: { start_ms: number; end_ms: number } };
   condition_strength?: "low" | "medium" | "high" | "xhigh";
+}
+
+export interface MusicSection {
+  text: string;
+  duration_ms: number;
+  positive_styles: string[];
+  negative_styles: string[];
+}
+
+/** Music in sections of exact lengths (Eleven Music composition plan), as raw samples for trimming to a video. */
+export function elevenMusicPcm(o: { sections: MusicSection[]; model: string }) {
+  const body = JSON.stringify({ composition_plan: { chunks: o.sections }, model_id: o.model, respect_sections_durations: true });
+  return rawPcm("/v1/music", body, 160_000, "music raw");
 }
 
 /** A song from a description (Eleven Music). */
