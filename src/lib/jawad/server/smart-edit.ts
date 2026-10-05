@@ -54,6 +54,8 @@ export interface EditBody {
   /** Video, «الأجزاء»: the full-size frames at the start and the end of the cut (they become the first/last frames). */
   cutFrames?: unknown;
   expectedCoins?: unknown;
+  /** The generator to make the edit with (another one of the same kind may be picked; default: the original's). */
+  generatorId?: unknown;
   /** Only the price, nothing is made. */
   quote?: unknown;
 }
@@ -104,8 +106,13 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   if (!source || source.status !== "succeeded") throw new UserError("ما لقينا هذا العمل.", 404);
   const { data: out } = await db().from("jawad_outputs").select("*").eq("id", b.outputId).eq("job_id", source.id).maybeSingle();
   if (!out) throw new UserError("ما لقينا هذا العمل.", 404);
-  const def = generatorById(source.generator_id);
-  if (!def || (def.output !== "video" && def.output !== "image")) throw new UserError("التعديل الذكي متاح للفيديو والصور فقط.", 400);
+  const original = generatorById(source.generator_id);
+  if (!original || (original.output !== "video" && original.output !== "image")) throw new UserError("التعديل الذكي متاح للفيديو والصور فقط.", 400);
+  // The student may switch to another generator of the same kind before making the edit
+  const picked = typeof b.generatorId === "string" && b.generatorId ? generatorById(b.generatorId) : original;
+  if (!picked || picked.output !== original.output) throw new UserError("اختر مولدًا من نفس النوع.", 400);
+  const def = picked;
+  const switched = def.id !== original.id;
 
   const rt = await loadRuntime();
   if (!rt.migrated) throw new UserError("منصة JAWAD AI قيد التجهيز (قاعدة البيانات).", 503);
@@ -115,7 +122,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   if (!section) throw new UserError("هذا القسم غير متاح حاليًا.", 403);
   const table = rt.prices[def.id];
   const extra = editLines(def, table);
-  if (!extra) throw new UserError("التعديل الذكي غير متاح حاليًا.", 403);
+  if (!extra) throw new UserError(switched ? `التعديل الذكي غير متاح على ${def.name}.` : "التعديل الذكي غير متاح حاليًا.", 403);
 
   // What to change
   const mode = b.mode as EditMode;
@@ -182,7 +189,8 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   // The price: the generation (an image prompt at its cap; a video's price does not depend on the prompt) + the edit
   const placeholder = def.output === "image" ? "x".repeat(EDIT_LIMITS.imagePromptBytes) : "x";
   const price = (m: RefMeta[]) => {
-    const e = evaluate(def, { settings, prompt: placeholder, instructions: "", refStyle, refs: m, strict: true }, table);
+    // Another generator: the original's settings are carried over where they fit, the rest take that generator's defaults
+    const e = evaluate(def, { settings, prompt: placeholder, instructions: "", refStyle, refs: m, strict: !switched }, table);
     if (e.issues.length) return { e, issues: e.issues };
     if (!e.price.ok) return { e, issues: [{ field: "price", message: e.price.reason }] };
     const lines = [...e.price.lines, ...extra];

@@ -7,6 +7,8 @@ import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canUseJawad } from "@/lib/jawad/server/access";
+import { loadRuntime } from "@/lib/jawad/server/runtime";
 import VideosWorkspace from "../[id]/videos/VideosWorkspace";
 
 
@@ -41,6 +43,11 @@ export default async function VideosView({ id, base }: { id: string; base: strin
       revision: r?.status === "awaiting_approval" ? { id: r.id, body: r.body } : null,
     };
   });
+
+  // JAWAD AI's video section, when this person may use it (only inside JAWAD AI): «التعديل الذكي» and its videos
+  const rt = base.startsWith("/jawad-ai") ? await loadRuntime() : null;
+  const videoSection = rt?.sections.find((s) => s.implementation === "studio:video" && s.enabled);
+  const studioPath = videoSection && (await canUseJawad(user)) ? videoSection.path : null;
 
   // Short-lived links: one to watch, one that downloads the file
   const db = createAdminClient();
@@ -81,6 +88,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         job={job ? { status: job.status, error: job.error } : null}
         trialVideosLeft={(await filmTrialApplies(user)) ? Math.max(0, (await getLimit("videos", user.email)) - (await filmTrialVideos(user.id)).taken) : null}
         editsLeft={await editsLeft(id, "director", user.email)}
+        studioPath={studioPath}
       />
     </div>
   );

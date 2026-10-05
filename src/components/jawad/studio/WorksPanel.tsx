@@ -290,6 +290,16 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
   const [details, setDetails] = useState(false);
   const [editing, setEditing] = useState(false);
   const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
+  // Opened with ?edit=<this job> (e.g. a film video sent here): «التعديل الذكي» opens by itself
+  useEffect(() => {
+    if (!editable) return;
+    const t = setTimeout(() => {
+      if (new URLSearchParams(window.location.search).get("edit") !== j.id) return;
+      setEditing(true);
+      document.getElementById(`job-${j.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [editable, j.id]);
   // «الفصل الذكي»: each track by name; they can be watched under their video, together or one by one
   const [watching, setWatching] = useState(false);
   const sourceVideo = j.mode === "video_to_sfx" || j.generatorId === SMART_SPLIT_ID ? j.refs.find((r) => r.kind === "video") : undefined;
@@ -300,7 +310,7 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
   const chips = settingChips(j);
   const outs = j.outputs;
   return (
-    <article className="jw-panel overflow-hidden" aria-busy={open}>
+    <article id={`job-${j.id}`} className="jw-panel overflow-hidden" aria-busy={open}>
       <div className={`relative ${j.outputKind === "audio" ? (stemmed && j.status === "succeeded" ? "" : "h-28") : "aspect-video"} bg-jw-bg-2`}>
         {j.status === "succeeded" && outs.length ? (
           stemmed ? (
