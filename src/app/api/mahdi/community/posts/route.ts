@@ -11,6 +11,7 @@ import { MEDIA_POST_KINDS, type MediaPostKind } from "@/lib/mahdi/social";
 import { checkUploadedMedia } from "@/lib/mahdi/server/media";
 import { feed, notMigrated, postViews, userByUsername } from "@/lib/mahdi/server/social";
 import { cleanLine, cleanText } from "@/lib/mahdi/server/validate";
+import { SOCIAL_VIDEO } from "@config/mahdi";
 
 /**
  * A page of posts, newest first: `?feed=following` (people I follow and me; the default), `?feed=explore` (public
@@ -45,6 +46,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   const { count } = await supabase.from("mahdi_posts").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", since);
   if ((count ?? 0) >= 10) throw new UserError(t.social.post.tooMany, 429);
 
+  if (body.kind === "video" && !SOCIAL_VIDEO) throw new UserError(t.social.media.videoOff, 400);
   if (MEDIA_POST_KINDS.includes(body.kind as MediaPostKind)) {
     const kind = body.kind as MediaPostKind;
     const caption = cleanText(body.caption, 1000);

@@ -1,26 +1,30 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import type { SocialUser, StoryGroup } from "@/lib/mahdi/social";
+import { STORY_BACKGROUNDS, type SocialUser, type StoryGroup } from "@/lib/mahdi/social";
 import Avatar from "../Avatar";
 import Icon from "../Icon";
 import { useMahdi } from "../Provider";
 import Sheet from "../Sheet";
 import { QuoteCard, UserChip } from "./PostCard";
 import ReportSheet from "./ReportSheet";
+import StoryCamera from "./StoryCamera";
 
 const S = t.social.stories;
 const PHOTO_MS = 6000;
 const clock = new Intl.DateTimeFormat("ar-u-nu-latn", { hour: "numeric", minute: "2-digit" });
 
-/** The row of people with stories (mine first). Tapping one opens the viewer. */
-export function StoriesBar({ compact = false }: { compact?: boolean }) {
+/**
+ * The row of people with stories (mine first). Tapping one opens the viewer; «أضف قصة» (and the «+» on my own
+ * picture) opens the camera straight away. `big` is the larger row of the home screen's «المتابَعون».
+ */
+export function StoriesBar({ compact = false, big = false }: { compact?: boolean; big?: boolean }) {
   const { state } = useMahdi();
   const [groups, setGroups] = useState<StoryGroup[] | null>(null);
   const [open, setOpen] = useState<number | null>(null);
+  const [camera, setCamera] = useState(false);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -36,38 +40,36 @@ export function StoriesBar({ compact = false }: { compact?: boolean }) {
   if (!groups) return compact ? null : <p className="m-muted text-sm">{t.common.loading}</p>;
   const mine = groups.find((g) => g.mine);
   const me = state.snap.profile;
+  const pic = big ? 66 : 58;
+  const cell = big ? "w-[80px]" : "w-[72px]";
 
   return (
     <section aria-label={S.title}>
       <ul className="m-scroll-x -mx-1 flex gap-3 px-1 pb-1">
-        <li className="shrink-0">
-          {mine ? (
-            <button type="button" className="flex w-[72px] flex-col items-center gap-1" onClick={() => setOpen(groups.indexOf(mine))}>
-              <Ring fresh={false}>
-                <Avatar profile={{ displayName: me.displayName, avatarUrl: me.avatarUrl }} size={58} />
-              </Ring>
-              <span className="w-full truncate text-center text-xs font-semibold">{S.yours}</span>
-            </button>
-          ) : (
-            <Link href="/mahdi/post/new?story=1" className="flex w-[72px] flex-col items-center gap-1">
-              <span className="relative">
-                <Ring fresh={false}>
-                  <Avatar profile={{ displayName: me.displayName, avatarUrl: me.avatarUrl }} size={58} />
-                </Ring>
-                <span className="absolute -bottom-0.5 -end-0.5 grid size-6 place-items-center rounded-full border-2 text-[var(--m-gold-ink)]" style={{ background: "var(--m-gold)", borderColor: "var(--m-bg)" }}>
-                  <Icon name="plus" size={14} strokeWidth={2.6} />
-                </span>
-              </span>
-              <span className="w-full truncate text-center text-xs font-semibold">{S.add}</span>
-            </Link>
-          )}
+        <li className="relative shrink-0">
+          <button type="button" className={`flex ${cell} flex-col items-center gap-1`} onClick={() => (mine ? setOpen(groups.indexOf(mine)) : setCamera(true))} aria-label={mine ? S.yours : S.add}>
+            <Ring fresh={false}>
+              <Avatar profile={{ displayName: me.displayName, avatarUrl: me.avatarUrl }} size={pic} />
+            </Ring>
+            <span className="w-full truncate text-center text-xs font-semibold">{mine ? S.yours : S.add}</span>
+          </button>
+          {/* The «+»: always a new story, straight to the camera */}
+          <button
+            type="button"
+            className="absolute end-1 grid size-7 place-items-center rounded-full border-2 text-[var(--m-gold-ink)]"
+            style={{ top: pic + 10 - 27, background: "var(--m-gold)", borderColor: "var(--m-bg)" }}
+            onClick={() => setCamera(true)}
+            aria-label={mine ? S.addMore : S.add}
+          >
+            <Icon name="plus" size={15} strokeWidth={2.6} />
+          </button>
         </li>
         {groups.map((g, i) =>
           g.mine ? null : (
             <li key={g.user.id} className="shrink-0">
-              <button type="button" className="flex w-[72px] flex-col items-center gap-1" onClick={() => setOpen(i)}>
+              <button type="button" className={`flex ${cell} flex-col items-center gap-1`} onClick={() => setOpen(i)}>
                 <Ring fresh={g.fresh}>
-                  <Avatar profile={g.user} size={58} />
+                  <Avatar profile={g.user} size={pic} />
                 </Ring>
                 <span className="w-full truncate text-center text-xs">{g.user.displayName}</span>
               </button>
@@ -86,6 +88,7 @@ export function StoriesBar({ compact = false }: { compact?: boolean }) {
           }}
         />
       )}
+      <StoryCamera open={camera} onClose={() => setCamera(false)} onPublished={() => setReload((n) => n + 1)} />
     </section>
   );
 }
@@ -98,12 +101,7 @@ function Ring({ fresh, children }: { fresh: boolean; children: React.ReactNode }
   );
 }
 
-const QUOTE_BG: Record<string, string> = {
-  gold: "radial-gradient(120% 120% at 50% 0%, #3a2f1c, #14110c 70%)",
-  night: "radial-gradient(120% 120% at 50% 0%, #1b2440, #0b0e18 70%)",
-  green: "radial-gradient(120% 120% at 50% 0%, #163a2c, #0a1510 70%)",
-  rose: "radial-gradient(120% 120% at 50% 0%, #3a1c26, #150b0f 70%)",
-};
+const QUOTE_BG: Record<string, string> = STORY_BACKGROUNDS;
 
 /** Full screen, one person after another; tap the far side for the next story, the near side for the previous. */
 function StoryViewer({ groups, start, onClose }: { groups: StoryGroup[]; start: number; onClose: () => void }) {

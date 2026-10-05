@@ -6,24 +6,25 @@ import { useEffect, useRef, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { checkMediaFile, uploadMedia } from "@/lib/mahdi/client/media";
-import type { MediaPostKind } from "@/lib/mahdi/social";
+import { MEDIA_POST_KINDS, type MediaPostKind } from "@/lib/mahdi/social";
 import Icon, { type IconName } from "@/components/mahdi/Icon";
 import JoinPrompt from "@/components/mahdi/JoinPrompt";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { QuoteCard } from "@/components/mahdi/social/PostCard";
+import StoryCamera from "@/components/mahdi/social/StoryCamera";
 
 const P = t.social.post;
-const KINDS: { kind: MediaPostKind; icon: IconName }[] = [
-  { kind: "photo", icon: "image" },
-  { kind: "quote", icon: "quote" },
-  { kind: "video", icon: "video" },
-];
+const ICONS: Record<MediaPostKind, IconName> = { photo: "image", quote: "quote", video: "video" };
+const KINDS = MEDIA_POST_KINDS.map((kind) => ({ kind, icon: ICONS[kind] }));
 
-/** «منشور جديد»: a photo, a quote, or a video of up to 30 seconds, with a caption. */
+/**
+ * «منشور جديد»: a photo or a quote (or a short video when videos are on), with a caption. A story opens the camera
+ * straight away (?story=1 too).
+ */
 export default function NewPostPage() {
   const router = useRouter();
   const { state, toast } = useMahdi();
-  const [story, setStory] = useState(useSearchParams().get("story") === "1");
+  const [camera, setCamera] = useState(useSearchParams().get("story") === "1");
   const [kind, setKind] = useState<MediaPostKind>("photo");
   const [file, setFile] = useState<{ file: File; url: string } | null>(null);
   const [caption, setCaption] = useState("");
@@ -54,12 +55,6 @@ export default function NewPostPage() {
     try {
       const media = kind === "quote" ? undefined : await uploadMedia(file!.file, kind === "video" ? "video" : "image", (pct) => setBusy(pct));
       setBusy(null);
-      if (story) {
-        await mahdiFetch("/api/mahdi/social/stories", { method: "POST", json: { kind, media, text: kind === "quote" ? quote.text : caption } });
-        toast(t.social.stories.published);
-        router.push("/mahdi/community");
-        return;
-      }
       await mahdiFetch("/api/mahdi/community/posts", { method: "POST", json: { kind, caption, media, quote: kind === "quote" ? quote : undefined } });
       toast(P.published);
       router.push(state.snap.username ? `/mahdi/u/${encodeURIComponent(state.snap.username)}` : "/mahdi/community");
@@ -74,13 +69,16 @@ export default function NewPostPage() {
       <Link href="/mahdi/community" className="m-btn m-btn-quiet m-btn-sm -ms-3">
         <Icon name="chevronRight" size={18} /> {t.community.title}
       </Link>
-      <h1 className="m-display text-3xl">{story ? t.social.stories.new : P.title}</h1>
+      <h1 className="m-display text-3xl">{P.title}</h1>
       <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={P.title}>
-        <button type="button" role="radio" aria-checked={!story} className="m-option min-h-11 text-sm font-semibold" onClick={() => setStory(false)}>{P.title}</button>
-        <button type="button" role="radio" aria-checked={story} className="m-option min-h-11 text-sm font-semibold" onClick={() => setStory(true)}>{t.social.stories.new}</button>
+        <button type="button" role="radio" aria-checked className="m-option min-h-11 text-sm font-semibold">{P.title}</button>
+        <button type="button" role="radio" aria-checked={false} className="m-option min-h-11 text-sm font-semibold" onClick={() => setCamera(true)}>
+          <Icon name="camera" size={18} /> {t.social.stories.new}
+        </button>
       </div>
+      <StoryCamera open={camera} onClose={() => setCamera(false)} onPublished={() => router.push("/mahdi?view=following")} />
 
-      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={P.title}>
+      <div className={`grid gap-2 ${KINDS.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} role="radiogroup" aria-label={P.title}>
         {KINDS.map((k) => (
           <button
             key={k.kind}
@@ -145,15 +143,12 @@ export default function NewPostPage() {
             />
           </>
         )}
-        {!(story && kind === "quote") && (
-          <label className="block">
-            <span className="m-label">{P.caption}</span>
-            <textarea className="m-field" rows={story ? 2 : 3} maxLength={story ? 200 : 1000} dir="auto" value={caption} onChange={(e) => setCaption(e.target.value)} />
-          </label>
-        )}
+        <label className="block">
+          <span className="m-label">{P.caption}</span>
+          <textarea className="m-field" rows={3} maxLength={1000} dir="auto" value={caption} onChange={(e) => setCaption(e.target.value)} />
+        </label>
         <p className="m-hint">
           {state.snap.privacy.privateAccount ? P.audiencePrivate : P.audiencePublic}
-          {story && ` ${t.social.stories.expires}`}
         </p>
         <p className="m-note text-sm">{t.social.rules}</p>
         {error && <p className="m-error" role="alert">{error}</p>}

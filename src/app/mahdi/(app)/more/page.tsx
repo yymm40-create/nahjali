@@ -16,12 +16,15 @@ import Icon from "@/components/mahdi/Icon";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useLook } from "@/components/mahdi/ThemeRoot";
+import Robot from "@/components/mahdi/Robot";
+import { setAssistantPrefs, useAssistantPrefs } from "@/lib/mahdi/client/assistant-prefs";
 
 /** Account and settings: name, picture, look, calendar, time zone, sign out. */
 export default function MorePage() {
   const router = useRouter();
   const { state, store, toast } = useMahdi();
   const look = useLook();
+  const assistant = useAssistantPrefs();
   const { profile, shrines } = state.snap;
   const [name, setName] = useState(profile.displayName);
   const [busy, setBusy] = useState(false);
@@ -157,6 +160,15 @@ export default function MorePage() {
         <h2 className="pt-2 font-semibold">{t.more.shrine}</h2>
         <ShrinePicker shrines={shrines} value={look.shrine?.id ?? profile.shrineId} onChange={chooseShrine} />
         {look.shrine?.isArtwork && <p className="m-hint">{t.more.artwork}</p>}
+        {/* The floating «المساعد» (shown or hidden on this device) */}
+        <label className="flex items-start gap-3 border-t pt-4" style={{ borderColor: "var(--m-line)" }}>
+          <Robot size={40} className="shrink-0" />
+          <span className="flex-1">
+            <span className="block font-semibold">{t.assistant.setting}</span>
+            <span className="m-hint block">{t.assistant.settingHint}</span>
+          </span>
+          <input type="checkbox" role="switch" className="mt-1 size-6 shrink-0 accent-[var(--m-gold)]" checked={!assistant.hidden} onChange={(e) => setAssistantPrefs({ hidden: !e.target.checked })} aria-label={t.assistant.show} />
+        </label>
       </section>
 
       <section className="m-card space-y-4 p-5">

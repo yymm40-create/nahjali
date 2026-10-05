@@ -78,3 +78,6 @@ export const COVER_ENHANCE = { model: "gpt-image-2-2026-04-21", size: "1024x1536
 
 /** A book's PDF for download: one file per book, uploaded straight to storage (never through the website). */
 export const BOOK_PDF = { maxBytes: 50 * 1024 * 1024, perDay: 10 } as const;
+
+/** Videos in posts and stories: off for now (the owner's choice). Photos and quotes stay; old videos still play. */
+export const SOCIAL_VIDEO = false;
