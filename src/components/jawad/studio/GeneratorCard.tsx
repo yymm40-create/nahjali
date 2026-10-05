@@ -23,7 +23,7 @@ export function GeneratorCard({ gen, onOpen, owner }: { gen: StudioGenerator; on
     <button type="button" onClick={onOpen} className="jw-panel group block w-full overflow-hidden text-start transition-colors hover:border-jw-line-strong" aria-haspopup="dialog" aria-label={`المولد: ${gen.name}. اضغط للتغيير`}>
       <div className="relative">
         <Sample g={gen} className="aspect-[16/7] w-full" />
-        {!gen.live && owner && <span className="jw-chip absolute start-2 top-2 bg-black/70">مخفي عن المستخدمين</span>}
+        {!gen.live && owner && <span className="jw-chip absolute start-2 top-2 bg-black/70 !text-white">مخفي عن المستخدمين</span>}
       </div>
       <div className="flex items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">

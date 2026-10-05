@@ -21,6 +21,7 @@ html:has(.jw) body {
   --jw-ink: #eef1f6;
   --jw-muted: #a3abb9;
   --jw-faint: #737c8c;
+  --jw-on-accent: #ffffff;
   --jw-accent-soft: color-mix(in srgb, var(--jw-accent) 16%, transparent);
   --jw-accent-line: color-mix(in srgb, var(--jw-accent) 55%, transparent);
   --jw-danger: #ff7a7a;
@@ -54,8 +55,8 @@ html:has(.jw) body {
   isolation: isolate;
   min-height: 100dvh;
   font-family: var(--jw-font);
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: 16px;
+  line-height: 1.75;
   color: var(--jw-ink);
   background:
     radial-gradient(900px 380px at 85% -120px, color-mix(in srgb, var(--jw-accent) 9%, transparent), transparent 70%),
@@ -78,7 +79,6 @@ html:has(.jw) body {
 .jw .display {
   font-family: var(--jw-font);
   font-weight: 700;
-  letter-spacing: -0.01em;
 }
 .jw .chip {
   font-weight: 500;
@@ -95,7 +95,7 @@ html:has(.jw) body {
 .jw .error-box {
   border-color: color-mix(in srgb, var(--jw-danger) 45%, transparent);
   background: color-mix(in srgb, var(--jw-danger) 10%, transparent);
-  color: #ffd2d2;
+  color: color-mix(in srgb, var(--jw-danger) 55%, var(--jw-ink));
 }
 .jw .font-extrabold {
   font-weight: 650;
@@ -137,7 +137,7 @@ html:has(.jw) body {
 .jw-btn-primary {
   background: var(--jw-accent);
   border-color: transparent;
-  color: #fff;
+  color: var(--jw-on-accent);
   font-weight: 600;
 }
 .jw-btn-primary:hover {
@@ -201,7 +201,6 @@ html:has(.jw) body {
   font-weight: 500;
   color: var(--jw-muted);
   margin-bottom: 0.4rem;
-  letter-spacing: 0.01em;
 }
 
 /* Segmented choice (ratios, quality…) */
