@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadUser } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { GENERATORS } from "@config/jawad/generators";
-import { SMART_COIN } from "@config/coins";
+import Link from "next/link";
+import { LIBRARY_ADDON, SMART_COIN } from "@config/coins";
+import { libraryAccess } from "@/lib/jawad/server/library-access";
 import { CONTACT_EMAIL } from "@config/site";
 
 export const metadata = { title: "النقود الذكية" };
@@ -15,10 +17,11 @@ const REASON: Record<string, string> = { reserve: "خصم توليد", refund: "
 /** The user's «النقود الذكية» inside JAWAD AI: balance, what each generation costs, and their history. */
 export default async function JawadCoins() {
   const { user, owner } = await requireJawadUser("/jawad-ai/coins");
-  const [balance, rt, { data: ledger }] = await Promise.all([
+  const [balance, rt, { data: ledger }, library] = await Promise.all([
     coinBalance(user.id),
     loadRuntime(),
     createAdminClient().from("smart_coin_ledger").select("id,delta,reason,label,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
+    libraryAccess(user.id, owner),
   ]);
   const live = GENERATORS.filter((g) => rt.generators.find((x) => x.id === g.id)?.live || owner);
 
@@ -34,6 +37,14 @@ export default async function JawadCoins() {
           <span dir="ltr">{owner ? "∞" : (balance ?? 0).toLocaleString("en")}</span>
         </p>
       </section>
+
+      <Link href="/jawad-ai/library" className="jw-panel flex flex-wrap items-center justify-between gap-3 p-5 hover:border-jw-accent/50">
+        <span>
+          <span className="block font-semibold">📚 «{LIBRARY_ADDON.name}» · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span>
+          <span className="block text-sm text-jw-muted">أصواتك وشخصياتك وأماكنك محفوظة، وتمنشنها بـ «@اسمها».</span>
+        </span>
+        <span className={`jw-chip !px-3 !py-1 ${library.active ? "!border-jw-accent/50 text-jw-accent" : ""}`}>{owner ? "مفتوحة لك دائمًا" : library.active ? "مفعّلة" : "غير مفعّلة"}</span>
+      </Link>
 
       <section className="jw-panel p-5">
         <h2 className="mb-3 font-semibold">الأسعار الحالية</h2>

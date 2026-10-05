@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import SmartCoin from "@/components/SmartCoin";
-import { AUTO_TOP_UP, ONE_TIME_PASS, PLANS, TOP_UP, topUpCoins, yearlyPrice } from "@config/coins";
+import { AUTO_TOP_UP, LIBRARY_ADDON, ONE_TIME_PASS, PLANS, TOP_UP, topUpCoins, yearlyPrice } from "@config/coins";
 
 const fmt = (n: number) => n.toLocaleString("en");
 
@@ -13,7 +13,7 @@ const fmt = (n: number) => n.toLocaleString("en");
  * top-up. Paying is enabled once the payment gateway is connected; until then the buttons say so.
  */
 export default function CoinsShop({
-  plan, planPeriod, autoTopup, autoTopupSar, balance, coinsPerVideo, journeyCoins,
+  plan, planPeriod, autoTopup, autoTopupSar, balance, coinsPerVideo, journeyCoins, libraryUntil = null,
 }: {
   plan: string | null;
   planPeriod: string | null;
@@ -23,6 +23,8 @@ export default function CoinsShop({
   balance: number | null;
   coinsPerVideo: Record<string, number>;
   journeyCoins: number;
+  /** «المكتبة» (an add-on): until when it runs (null: not running). */
+  libraryUntil?: string | null;
 }) {
   const router = useRouter();
   const [period, setPeriod] = useState<"monthly" | "yearly">(planPeriod === "yearly" ? "yearly" : "monthly");
@@ -141,6 +143,26 @@ export default function CoinsShop({
           <button className="btn btn-ghost text-sm" disabled>اشترِ — قريبًا</button>
         </div>
         <p className="text-xs font-bold text-muted">الأسعار قبل ضريبة القيمة المضافة (١٥٪).</p>
+      </section>
+
+      {/* «المكتبة»: an add-on on its own, with or without a plan */}
+      <section className="card space-y-3 p-4" aria-labelledby="library-addon">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="library-addon" className="text-xl font-extrabold">📚 إضافة «{LIBRARY_ADDON.name}»</h2>
+          <p><span className="display text-3xl">{period === "monthly" ? LIBRARY_ADDON.monthlySar : fmt(yearlyPrice(LIBRARY_ADDON.monthlySar).total)}</span> <span className="font-bold text-muted">{period === "monthly" ? "ر.س شهريًا" : "ر.س للسنة"}</span></p>
+        </div>
+        <p className="text-sm font-bold text-muted">إضافة بروحها، مع أي اشتراك أو بدونه، في «الجواد الذكي!».</p>
+        <ul className="space-y-1 text-sm font-bold">
+          {LIBRARY_ADDON.features.map((f) => <li key={f}>✓ {f}</li>)}
+        </ul>
+        <p className="text-xs font-bold text-muted">الصنع نفسه (تصميم صوت أو رسم صورة) يُخصم بالنقود الذكية مثل أي توليد.</p>
+        {libraryUntil ? (
+          <p className="rounded-xl bg-sky-400/10 p-2 text-sm font-extrabold">✅ مفعّلة عندك حتى {new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "long", year: "numeric" }).format(new Date(libraryUntil))}</p>
+        ) : (
+          <button className="btn btn-primary w-full" disabled>
+            {period === "monthly" ? `اشترك في المكتبة · ${LIBRARY_ADDON.monthlySar} ر.س شهريًا` : `اشترك سنوي · ${fmt(yearlyPrice(LIBRARY_ADDON.monthlySar).total)} ر.س للسنة`} — قريبًا
+          </button>
+        )}
       </section>
 
       {/* Extra coins: subscribers of المبدع / الاستوديو */}

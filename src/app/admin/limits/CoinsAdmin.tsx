@@ -13,6 +13,8 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState("100");
   const [note, setNote] = useState("");
+  const [libEmail, setLibEmail] = useState("");
+  const [libMonths, setLibMonths] = useState(1);
 
   async function send(body: Record<string, unknown>, done?: string) {
     setBusy(true);
@@ -57,6 +59,23 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
         <button className="btn btn-primary w-full" disabled={busy || !email.trim() || !Number(amount)} onClick={() => send({ action: "grant", email, amount: Number(amount), note }, "تم ✅")}>
           نفّذ
         </button>
+      </div>
+
+      <div className="space-y-2 rounded-2xl bg-surface-2 p-3">
+        <p className="font-extrabold">📚 فعّل «المكتبة» لشخص</p>
+        <p className="text-xs font-bold text-muted">إضافة الجواد الذكي (٥٠ ريال شهريًا). إلى أن يتفعّل الدفع في الموقع، تفعّلها من هنا لمن دفع لك. الأشهر تُضاف من اليوم أو من نهاية اشتراكه الحالي.</p>
+        <input className="field" dir="ltr" type="email" placeholder="name@example.com" value={libEmail} onChange={(e) => setLibEmail(e.target.value)} />
+        <div className="flex flex-wrap gap-2">
+          {[1, 3, 6, 12].map((m) => (
+            <button key={m} type="button" className={`rounded-full border-2 px-3 py-1 text-sm font-extrabold ${libMonths === m ? "border-sky-400 bg-sky-400/10" : "border-line"}`} onClick={() => setLibMonths(m)}>
+              {m === 12 ? "سنة" : m === 1 ? "شهر" : `${m} أشهر`}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button className="btn btn-primary" disabled={busy || !libEmail.trim()} onClick={() => send({ action: "library", email: libEmail, months: libMonths }, "تم تفعيل المكتبة ✅")}>فعّل</button>
+          <button className="btn btn-ghost" disabled={busy || !libEmail.trim()} onClick={() => window.confirm("إيقاف «المكتبة» لهذا الشخص الآن؟") && send({ action: "library", email: libEmail, months: 0 }, "تم الإيقاف")}>أوقفها</button>
+        </div>
       </div>
 
       {top.length > 0 && (

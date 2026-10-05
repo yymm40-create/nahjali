@@ -8,6 +8,8 @@ import type { WorkItem, WorksFilter } from "@/lib/jawad/labels";
 import { UPLOAD_MIMES } from "@/lib/jawad/media";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+import type { LibraryItem } from "../library/LibraryPage";
+import { LibraryLock } from "./VoicePicker";
 
 const KIND_AR: Record<RefKind, string> = { image: "صورة", video: "فيديو", audio: "صوت" };
 const KIND_PL: Record<RefKind, string> = { image: "الصور", video: "الفيديو", audio: "الصوت" };
@@ -40,15 +42,19 @@ interface Props {
   onFiles: (files: File[]) => void;
   /** Adds a work as a reference; resolves to an error message, or null when added. */
   onPickWork: (source: WorkSource) => Promise<string | null>;
+  /** «مكتبتي»: the person's characters and places (null: not loaded / signed out). */
+  library?: { items: LibraryItem[]; active: boolean } | null;
+  /** Adds a library item as a reference; an error message, or null when added. */
+  onPickLibrary?: (item: LibraryItem) => string | null;
 }
 
 /**
  * «أضف مرجعًا»: from the device (opens its file picker) or from the user's works, sorted by type.
  * A modal window, so nothing around it can hide or clip it.
  */
-export default function RefAdder({ open, onClose, title, kinds: genKinds, only, refKinds, owner, multiple, onFiles, onPickWork }: Props) {
+export default function RefAdder({ open, onClose, title, kinds: genKinds, only, refKinds, owner, multiple, onFiles, onPickWork, library, onPickLibrary }: Props) {
   const inputId = useId();
-  const [tab, setTab] = useState<"device" | "works">("device");
+  const [tab, setTab] = useState<"device" | "works" | "library">("device");
   const [filter, setFilter] = useState<WorksFilter>("all");
   const [items, setItems] = useState<WorkItem[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -120,7 +126,7 @@ export default function RefAdder({ open, onClose, title, kinds: genKinds, only, 
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={title} wide={tab === "works"}>
+    <Dialog open={open} onClose={onClose} title={title} wide={tab !== "device"}>
       <div className="space-y-4 p-4">
         <div className="jw-seg" role="tablist" aria-label="مصدر المرجع">
           <button type="button" role="tab" aria-selected={tab === "device"} onClick={() => setTab("device")}>
@@ -129,9 +135,50 @@ export default function RefAdder({ open, onClose, title, kinds: genKinds, only, 
           <button type="button" role="tab" aria-selected={tab === "works"} onClick={showWorks}>
             <Icon name="grid" size={15} /> من أعمالي
           </button>
+          {library && (
+            <button type="button" role="tab" aria-selected={tab === "library"} onClick={() => setTab("library")}>
+              <Icon name="layers" size={15} /> من مكتبتي
+            </button>
+          )}
         </div>
 
-        {tab === "device" ? (
+        {tab === "library" && library ? (
+          !library.active ? (
+            <LibraryLock what="احفظ شخصياتك وأماكنك ومنشنها بـ «@اسمها» في أي برومبت" />
+          ) : !library.items.length ? (
+            <p className="py-10 text-center text-sm text-jw-muted">
+              مكتبتك فارغة. <Link href="/jawad-ai/library" className="underline">أضف شخصية أو مكانًا</Link>
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {error && <p className="text-xs text-jw-danger" role="alert">{error}</p>}
+              <ul className="grid max-h-[55dvh] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4 lg:grid-cols-6">
+                {library.items.map((it) => {
+                  const blocked = why("image");
+                  return (
+                    <li key={it.id}>
+                      <button
+                        type="button"
+                        disabled={Boolean(blocked)}
+                        title={blocked ?? `@${it.name}`}
+                        aria-label={`${it.kind === "character" ? "شخصية" : "مكان"}: @${it.name}${blocked ? ` — ${blocked}` : ""}`}
+                        onClick={() => {
+                          const err = onPickLibrary?.(it) ?? null;
+                          if (err) setError(err);
+                          else onClose();
+                        }}
+                        className="relative block aspect-square w-full overflow-hidden rounded-lg border border-jw-line bg-jw-bg-2 transition hover:border-jw-accent disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Preview url={it.url} kind="image" onBroken={() => null} />
+                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 px-1 py-0.5 text-[11px] text-white" dir="auto">@{it.name}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )
+        ) : tab === "device" ? (
           <div className="space-y-3">
             {allowed.length ? (
               // A label opens the device's file picker natively (no scripted click that a browser could block)

@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic";
 const REASONS: Record<string, string> = { grant: "إضافة", reserve: "حجز", settle: "تسوية", refund: "إرجاع", purchase: "شراء" };
 
 /** «النقود الذكية»: the user's balance, what each operation costs, the packages and the history. */
+/** The end of an add-on that is still running (null when it isn't). */
+const runningUntil = (v: unknown) => (typeof v === "string" && new Date(v).getTime() > Date.now() ? v : null);
+
 export default async function CoinsPage() {
   const user = await requireUser("/coins");
   const [balance, required, ledger, walletRow] = await Promise.all([
@@ -77,6 +80,7 @@ export default async function CoinsPage() {
         planPeriod={(wallet?.plan_period as string | null) ?? null}
         autoTopup={Boolean(wallet?.auto_topup)}
         autoTopupSar={Number(wallet?.auto_topup_sar ?? 50)}
+        libraryUntil={runningUntil(wallet?.library_until)}
         balance={owner ? null : (balance ?? 0)}
         coinsPerVideo={{
           "2.0 · 480p": coinsFor(videoEstimateUsd("seedance-2.0", "480p", 10)),
