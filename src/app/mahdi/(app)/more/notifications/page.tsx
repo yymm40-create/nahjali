@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
@@ -129,6 +130,9 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-6">
+      <Link href="/mahdi/more" className="m-btn m-btn-quiet m-btn-sm -ms-3">
+        <Icon name="chevronRight" size={18} /> {t.more.title}
+      </Link>
       <h1 className="m-display text-3xl">{t.notify.title}</h1>
       <p className="m-note">{t.notify.intro}</p>
 

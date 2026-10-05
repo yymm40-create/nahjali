@@ -142,10 +142,8 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
             {o.kind === "book" ? "يُكتب الفصل الأول ويُطبع مع الغلاف بالخطوط والتصميم الذي اخترته" : o.settings.render === "image" ? "تُرسم أول ٣ شرائح كصور بـ GPT Image 2 وتُجمع في PDF" : "تُصنع أول ٣ شرائح بملف PPTX وPDF"}، لترى الخط والتصميم على مادتك الحقيقية. النسخة التجريبية مدفوعة، ومبلغها يُخصم من سعر النسخة النهائية إذا أكملت.
           </p>
           <div className="flex flex-wrap gap-2">
-            <PaidButton label="اصنع نسخة تجريبية" what="نسخة تجريبية موسومة «نسخة تجريبية»." disabled={running || settingsDirty} run={(b) => act({ action: "trial", ...b })} />
-            <button type="button" className="jw-btn" disabled={busy} onClick={() => run(() => act({ action: "skip_trial" }))}>
-              تخطَّ التجربة
-            </button>
+            <PaidButton label="ابدأ التصنيع الكامل" what="إنشاء الناتج كاملًا على الخطة المعتمدة." disabled={running || settingsDirty} run={(b) => act({ action: "final", ...b })} />
+            <PaidButton label="نسخة تجريبية أولًا" primary={false} what="نسخة تجريبية موسومة «نسخة تجريبية»." disabled={running || settingsDirty} run={(b) => act({ action: "trial", ...b })} />
           </div>
         </div>
       )}

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import type { OrderStatus } from "@/lib/types";
 import Spinner from "@/components/Spinner";
+import Link from "next/link";
+import { CONTACT_EMAIL } from "@config/site";
 
 interface StatusResponse {
   status: OrderStatus;
@@ -74,6 +76,8 @@ export default function ProgressRunner({ orderId }: { orderId: string }) {
         <p className="font-bold text-muted">
           بعض صور الشخصية ما طلعت بشكل صحيح بعد أكثر من محاولة. تواصل معنا ونحل المشكلة لك، وما راح تخسر طلبك.
         </p>
+        <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`كتيب ${orderId}`)}`} className="btn btn-primary w-full" dir="ltr">{CONTACT_EMAIL}</a>
+        <Link href="/my-booklets" className="btn btn-ghost w-full">↩ ارجع إلى كتيباتي</Link>
       </div>
     );
   }

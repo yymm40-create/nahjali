@@ -1,17 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
-import Dialog from "../Dialog";
 import Icon from "../Icon";
 
 /**
- * «المخرج الخارق» under the prompt (video making): asks first, then the website rewrites the prompt in the background
+ * «المخرج الخارق» under the prompt (video making): one press, and the website rewrites the prompt in the background
  * and puts it in the prompt box. The price is on the button; the previous prompt can be brought back.
  */
 export default function DirectorBoost({
   coins,
-  owner,
   disabledReason,
   busy,
   canUndo,
@@ -19,7 +16,6 @@ export default function DirectorBoost({
   onUndo,
 }: {
   coins: number;
-  owner: boolean;
   /** Why it can't run now (shown under it), or null. */
   disabledReason: string | null;
   busy: boolean;
@@ -27,7 +23,6 @@ export default function DirectorBoost({
   onRun: () => void;
   onUndo: () => void;
 }) {
-  const [ask, setAsk] = useState(false);
   return (
     <section aria-label="المخرج الخارق" className="rounded-xl border border-jw-accent/35 bg-jw-accent-soft p-3">
       <div className="flex items-center gap-3">
@@ -36,7 +31,7 @@ export default function DirectorBoost({
           <p className="text-sm font-semibold">طوّر البرومبت بمهارة «المخرج الخارق»</p>
           <p className="text-[11px] text-jw-muted">يعيد كتابة فكرتك كبرومبت سينمائي لـ Seedance ويضعه مكان برومبتك.</p>
         </div>
-        <button type="button" className="jw-btn jw-btn-primary shrink-0 !px-3" disabled={Boolean(disabledReason) || busy} onClick={() => setAsk(true)} aria-describedby={disabledReason ? "jw-director-why" : undefined}>
+        <button type="button" className="jw-btn jw-btn-primary shrink-0 !px-3" disabled={Boolean(disabledReason) || busy} onClick={onRun} aria-describedby={disabledReason ? "jw-director-why" : undefined}>
           {busy ? (
             <>
               <span className="jw-spinner" aria-hidden /> يكتب…
@@ -58,32 +53,6 @@ export default function DirectorBoost({
         </button>
       )}
 
-      <Dialog open={ask} onClose={() => setAsk(false)} title="المخرج الخارق">
-        <div className="space-y-3 p-4">
-          <p className="font-semibold">تبي تطوّر البرومبت بمهارة «المخرج الخارق»؟</p>
-          <ul className="list-disc space-y-1 ps-5 text-sm text-jw-muted">
-            <li>
-              {owner ? "سعره " : "يُخصم "}
-              <span className="font-semibold text-jw-ink" dir="ltr">{coins}</span> نقدة{owner ? " (لا يُخصم منك كمالك)" : ""}، ويُعاد إذا تعذّر التطوير.
-            </li>
-            <li>يُكتب برومبت جديد (إنجليزي ثم صيني) مكان برومبتك الحالي، مع الحفاظ على مدة الفيديو وإعداداته ومراجعك.</li>
-            <li>تقدر ترجع لبرومبتك السابق، وبعدها تراجعه وتضغط «توليد» بنفسك.</li>
-          </ul>
-          <div className="flex justify-end gap-2">
-            <button type="button" className="jw-btn" onClick={() => setAsk(false)}>لا</button>
-            <button
-              type="button"
-              className="jw-btn jw-btn-primary"
-              onClick={() => {
-                setAsk(false);
-                onRun();
-              }}
-            >
-              نعم، طوّره
-            </button>
-          </div>
-        </div>
-      </Dialog>
     </section>
   );
 }

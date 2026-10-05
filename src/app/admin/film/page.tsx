@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import { riyadhDayStart, riyadhMonthStart, rowCost } from "@/lib/film/usage";
 import { isAdmin } from "@config/site";
 import { FILM_STAGES } from "@config/film";
@@ -36,7 +36,7 @@ export default async function FilmAdminPage() {
     db.from("film_projects").select("id,user_id,title,stage,created_at,updated_at").order("updated_at", { ascending: false }),
     db.from("film_assets").select("project_id,kind"),
     db.from("film_usage").select("project_id,state,estimated_cost_usd,actual_cost_usd"),
-    db.auth.admin.listUsers({ perPage: 1000 }),
+    listAllUsers().then((users) => ({ data: { users } })),
   ]);
   const emailOf = new Map((people.data?.users ?? []).map((u) => [u.id, u.email ?? ""]));
   const projectRows = (plist ?? []).map((p) => {

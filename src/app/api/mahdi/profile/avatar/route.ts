@@ -40,7 +40,7 @@ export const POST = mahdiRoute(async (req: Request) => {
   if (error) throw error;
 
   const old = (await supabase.from("mahdi_profiles").select("avatar_path").eq("user_id", user.id).single()).data?.avatar_path;
-  const row = check(await supabase.from("mahdi_profiles").update({ avatar_path: path }).eq("user_id", user.id).select("*").single());
+  const row = check(await createAdminClient().from("mahdi_profiles").update({ avatar_path: path }).eq("user_id", user.id).select("*").single());
   if (old && old.startsWith(`${user.id}/`)) await storage.remove([old]);
   await syncPublicProfile(user.id);
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });
@@ -50,7 +50,7 @@ export const POST = mahdiRoute(async (req: Request) => {
 export const DELETE = mahdiRoute(async (req: Request) => {
   const { supabase, user } = await requireProfile(req);
   const old = (await supabase.from("mahdi_profiles").select("avatar_path").eq("user_id", user.id).single()).data?.avatar_path;
-  const row = check(await supabase.from("mahdi_profiles").update({ avatar_path: null }).eq("user_id", user.id).select("*").single());
+  const row = check(await createAdminClient().from("mahdi_profiles").update({ avatar_path: null }).eq("user_id", user.id).select("*").single());
   if (old && old.startsWith(`${user.id}/`)) await createAdminClient().storage.from(AVATAR_BUCKET).remove([old]);
   await syncPublicProfile(user.id);
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });

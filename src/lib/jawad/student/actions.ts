@@ -2,7 +2,7 @@
 // Paid steps answer `{ quote: coins }` first (nothing runs) and run only when sent again with `confirm: true` and a key.
 
 import { UserError } from "@/lib/api";
-import { coinBalance } from "@/lib/coins";
+import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
 import { isUnlimited } from "@config/site";
@@ -17,6 +17,7 @@ import { estimate } from "./outputs";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
 import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
+import { autoSettings } from "./defaults";
 
 type User = { id: string; email?: string | null };
 type Body = Record<string, unknown>;
@@ -106,7 +107,9 @@ export async function createProject(user: User & { app_metadata?: Record<string,
 
 /** Quote first (nothing runs), then run with the same key once the student confirmed. */
 async function paid(user: User, b: Body, o: { projectId: string; outputId?: string; kind: string; usd: number; input?: Record<string, unknown>; stage?: string; started?: () => Promise<void> }) {
-  const coins = o.usd > 0 ? coinsFor(o.usd) : 0;
+  // nothing is charged (the owner, a free guest, or while coins are switched off): no price to agree to
+  const free = isUnlimited(user.email) || !(await coinsRequired());
+  const coins = o.usd > 0 && !free ? coinsFor(o.usd) : 0;
   if (!b.confirm) return { quote: coins, balance: await coinBalance(user.id) };
   const key = checkKey(b.key);
   const { job, created } = await createJob(user, { projectId: o.projectId, outputId: o.outputId ?? null, kind: o.kind, key, input: o.input, estimateUsd: o.usd, stage: o.stage });
@@ -262,8 +265,11 @@ export async function projectAction(user: User, id: string, b: Body) {
       if (!u || u.content.basedOnText !== p.text_version) throw new UserError(NOT_NOW);
       await db.from("student_versions").update({ approved: true }).eq("id", u.id);
       // the scope questions were answered before (a revised understanding): straight back to the outputs
-      const next = { ...p, understanding_version: u.version, stage: "scope" as const };
-      await touch(p.id, { understanding_version: u.version, stage: p.allow_additions === null ? "scope" : "outputs" });
+      // Not answered before: the assistant's defaults (explanations allowed and marked, no paid web search), so the
+      // outputs open right away; the student can still change both from «حدود المصدر» in the stepper
+      const firstTime = p.allow_additions === null;
+      const next = { ...p, understanding_version: u.version, stage: "outputs" as const, ...(firstTime ? { allow_additions: true, web_search: false } : {}) };
+      await touch(p.id, { understanding_version: u.version, stage: "outputs", ...(firstTime ? { allow_additions: true, web_search: false } : {}) });
       await markStale(next);
       return { ok: true };
     }
@@ -304,6 +310,8 @@ export async function projectAction(user: User, id: string, b: Body) {
         ord: existing.length + i,
         title: OUTPUT_KINDS.find((o) => o.kind === k)!.name,
         status: "settings",
+        // pre-filled with the assistant's choices for this level: «اعرض الخطة» is one press away
+        settings: autoSettings(k, p.level),
       }));
       await db.from("student_outputs").insert(rows);
       await touch(p.id);

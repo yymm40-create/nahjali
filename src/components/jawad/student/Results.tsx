@@ -3,13 +3,13 @@
 // «الطالب الذكي» — finished outputs: written documents (with additions and research marked), the verbatim transcript,
 // slides and books as PDF previews, audio players, and the interactive quiz.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { QUESTION_TYPES, fontById, type Design } from "@config/jawad/student";
 import type { Block, Doc, Question } from "@/lib/jawad/student/model";
 import { docText } from "@/lib/jawad/student/model";
 import { fileUrl, post, type OutputView, type Research } from "./client";
-import { ErrorLine } from "./ui";
+import { ErrorLine, PaidButton } from "./ui";
 
 const FILE_LABEL: Record<string, string> = {
   pdf: "PDF",
@@ -254,11 +254,110 @@ export function AudioResult({ o }: { o: OutputView }) {
 
 const TYPE_LABEL = Object.fromEntries(QUESTION_TYPES.map((t) => [t.id, t.label]));
 
+/**
+ * «بطاقات مراجعة»: every question as a card to flip (question → answer and why). «أعرفها» puts it away, «أراجعها»
+ * brings it back later in the round; what the student knows is remembered in this browser (per output).
+ */
+function Flashcards({ o, qs }: { o: OutputView; qs: Question[] }) {
+  const KEY = `st-cards:${o.id}`;
+  const [known, setKnown] = useState<Set<number>>(new Set());
+  const [queue, setQueue] = useState<number[]>([]);
+  const [flipped, setFlipped] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let k = new Set<number>();
+    try {
+      k = new Set<number>(JSON.parse(localStorage.getItem(KEY) ?? "[]") as number[]);
+    } catch {
+      // nothing remembered
+    }
+    const t = setTimeout(() => {
+      setKnown(k);
+      setQueue(qs.map((_, i) => i).filter((i) => !k.has(i)));
+      setLoaded(true);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [KEY, qs]);
+  const remember = (k: Set<number>) => {
+    setKnown(k);
+    try {
+      localStorage.setItem(KEY, JSON.stringify([...k]));
+    } catch {
+      // private mode
+    }
+  };
+  const i = queue[0];
+  const q = i === undefined ? null : qs[i];
+  const mastery = qs.length ? Math.round((known.size / qs.length) * 100) : 0;
+  const answer = (ok: boolean) => {
+    setFlipped(false);
+    if (ok) remember(new Set([...known, i]));
+    // «أراجعها»: the card comes back after a few others
+    setQueue((cur) => (ok ? cur.slice(1) : [...cur.slice(1, 4), cur[0], ...cur.slice(4)]));
+  };
+  if (!loaded) return null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-jw-muted">أتقنت {known.size} من {qs.length} ({mastery}٪)</span>
+        <div className="h-2 w-40 overflow-hidden rounded-full bg-jw-surface-3"><div className="h-full rounded-full bg-jw-ok transition-all" style={{ width: `${mastery}%` }} /></div>
+      </div>
+      {q ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setFlipped((f) => !f)}
+            className={`jw-panel block min-h-44 w-full p-5 text-start transition-colors ${flipped ? "border-jw-ok/50 bg-jw-ok/5" : "hover:border-jw-accent-line"}`}
+            aria-live="polite"
+          >
+            <span className="mb-2 block text-xs text-jw-faint">{flipped ? "الإجابة" : "السؤال"} · بطاقة {qs.length - queue.length + 1} من {qs.length}</span>
+            {flipped ? (
+              <>
+                <b className="block text-lg text-jw-ok">{q.answer}</b>
+                {q.explanation && <span className="mt-2 block text-sm text-jw-muted">{q.explanation}</span>}
+              </>
+            ) : (
+              <b className="block text-lg">{q.question}</b>
+            )}
+            {!flipped && <span className="mt-3 block text-xs text-jw-faint">💡 فكّر بالجواب، وبعدين اضغط البطاقة تنقلب.</span>}
+          </button>
+          {flipped && (
+            <div className="flex gap-2">
+              <button type="button" className="jw-btn jw-btn-primary flex-1" onClick={() => answer(true)}>أعرفها ✅</button>
+              <button type="button" className="jw-btn flex-1" onClick={() => answer(false)}>أراجعها 🔁</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="jw-panel space-y-2 p-5 text-center">
+          <p className="text-3xl">🏆</p>
+          <p className="font-bold">أتقنت كل البطاقات!</p>
+          <button type="button" className="jw-btn" onClick={() => { remember(new Set()); setQueue(qs.map((_, k) => k)); }}>ابدأ جولة جديدة</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function QuizPlay({ o }: { o: OutputView }) {
   const qs = ((o.content as { questions: Question[] } | null)?.questions ?? []) as Question[];
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [result, setResult] = useState<{ score: number | null; right: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"quiz" | "cards">("quiz");
+  // «ركّز على أخطائي»: the topics of the questions answered wrong, for a new quiz about them
+  const wrong = result ? qs.filter((q, i) => q.options.length && answers[i] !== q.answer) : [];
+  if (mode === "cards") {
+    return (
+      <div className="space-y-3">
+        <div className="jw-seg" role="radiogroup" aria-label="طريقة المراجعة">
+          <button type="button" role="radio" aria-checked={false} onClick={() => setMode("quiz")}>📝 اختبار</button>
+          <button type="button" role="radio" aria-checked onClick={() => setMode("cards")}>🃏 بطاقات مراجعة</button>
+        </div>
+        <Flashcards o={o} qs={qs} />
+      </div>
+    );
+  }
   const submit = async () => {
     setError(null);
     try {
@@ -269,6 +368,10 @@ export function QuizPlay({ o }: { o: OutputView }) {
   };
   return (
     <div className="space-y-4">
+      <div className="jw-seg" role="radiogroup" aria-label="طريقة المراجعة">
+        <button type="button" role="radio" aria-checked onClick={() => setMode("quiz")}>📝 اختبار</button>
+        <button type="button" role="radio" aria-checked={false} onClick={() => setMode("cards")}>🃏 بطاقات مراجعة</button>
+      </div>
       {qs.map((q, i) => (
         <fieldset key={i} className="space-y-2 rounded-lg bg-jw-surface-2 p-3">
           <legend className="font-semibold">
@@ -307,6 +410,18 @@ export function QuizPlay({ o }: { o: OutputView }) {
           <button type="button" className="jw-btn jw-btn-quiet" onClick={() => { setResult(null); setAnswers({}); }}>
             أعد الاختبار
           </button>
+          {wrong.length > 0 && (
+            <PaidButton
+              label={`اختبار جديد يركّز على أخطائي (${wrong.length})`}
+              primary={false}
+              what="يكتب المساعد أسئلة جديدة عن النقاط التي أخطأت فيها، بدل الأسئلة الحالية."
+              run={async (b) => {
+                const r = await post(`/api/jawad/student/outputs/${o.id}`, { action: "request", kind: "other", note: `اختبار جديد يركّز على ما أخطأت فيه، وهو: ${wrong.map((q) => q.question).join(" | ").slice(0, 3000)}`, ...b });
+                window.dispatchEvent(new Event("st-refresh"));
+                return r;
+              }}
+            />
+          )}
         </div>
       ) : (
         <button type="button" className="jw-btn jw-btn-primary" onClick={submit} disabled={!qs.length}>

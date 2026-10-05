@@ -114,14 +114,17 @@ export default function ReviewStep({ p }: { p: ProjectHook }) {
           {coverage.approved < coverage.total && (
             <button
               type="button"
-              className="jw-btn w-full"
-              disabled={busy || dirty}
+              className="jw-btn jw-btn-primary w-full"
+              disabled={busy || dirty || coverage.missing.length > 0 || coverage.duplicate.length > 0}
               onClick={() =>
-                confirm(`اعتماد كل الأجزاء المتبقية (${coverage.total - coverage.approved}) كما هي الآن؟ تقدر تلغي اعتماد أي جزء بعدها.`) &&
-                run(() => p.act({ action: "segments_approve_all" }))
+                run(async () => {
+                  // one press: every remaining page approved as it is, then the whole text (a page can still be reopened later)
+                  await p.act({ action: "segments_approve_all" });
+                  await p.act({ action: "text_approve" });
+                })
               }
             >
-              <Icon name="check" size={16} /> اعتمد كل الصفحات مرة وحدة
+              <Icon name="check" size={16} /> اعتمد كل الصفحات وتابع ({coverage.total - coverage.approved} متبقية)
             </button>
           )}
           {dirty && <p className="text-xs text-jw-warn">احفظ تعديلك على الجزء الحالي أولًا.</p>}

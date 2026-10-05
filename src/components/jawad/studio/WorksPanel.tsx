@@ -84,6 +84,8 @@ export interface WorksPanelProps {
   signedIn: boolean;
   allowed: boolean;
   onReuse: (j: JobView) => void;
+  /** The same request again, as a new result. */
+  onVariation: (j: JobView) => void;
   onUseAsRef: (o: OutputView, j: JobView) => void;
   onCancel: (j: JobView) => void;
   onRetrySubmit: (j: JobView) => void;
@@ -150,7 +152,7 @@ export default function WorksPanel(p: WorksPanelProps) {
           p.error ? (
             <Empty icon="alert" title="تعذّر تحميل أعمالك" text={p.error} />
           ) : (
-            <Empty icon="sparkles" title={p.filter === "all" ? "لا توجد أعمال بعد" : "لا توجد أعمال من هذا النوع"} text="ستظهر هنا كل توليداتك وأعمال أفلامك، الأحدث أولًا." />
+            <Empty icon="sparkles" title={p.filter === "all" ? "لا توجد أعمال بعد" : "لا توجد أعمال من هذا النوع"} text="اكتب وصفًا في الخانة واضغط «توليد»؛ أول عمل لك يظهر هنا خلال ثوانٍ إلى دقائق." />
           )
         ) : small ? (
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
@@ -286,8 +288,18 @@ function OutputMedia({ o, onOpen, cover }: { o: OutputView; onOpen?: () => void;
   );
 }
 
-function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef, onEdited }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
+function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetrySubmit, canUseAsRef, onEdited }: { j: JobView; onOpen: (i: number) => void } & WorksPanelProps) {
   const [details, setDetails] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(new URL(url, window.location.origin).href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("انسخ الرابط:", url);
+    }
+  };
   const [editing, setEditing] = useState(false);
   const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
   // Opened with ?edit=<this job> (e.g. a film video sent here): «التعديل الذكي» opens by itself
@@ -430,21 +442,43 @@ function JobCard({ j, onOpen, onReuse, onUseAsRef, onCancel, onRetrySubmit, canU
           <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" onClick={() => onReuse(j)}>
             <Icon name="retry" size={14} /> استخدم الإعدادات
           </button>
+          {j.status === "succeeded" && (
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" title="نفس الطلب مرة ثانية، نتيجة جديدة بنفس السعر" onClick={() => onVariation(j)}>
+              <Icon name="sparkles" size={14} /> نسخة ثانية · {j.priceCoins}
+            </button>
+          )}
           {j.status === "succeeded" &&
             outs.map((o, i) => (
               <a key={o.id} href={o.downloadUrl} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" download>
                 <Icon name="download" size={14} /> تنزيل{stemLabel(o) && outs.length > 1 ? ` ${stemLabel(o)}` : outs.length > 1 ? ` ${i + 1}` : ""}
               </a>
             ))}
+          {j.status === "succeeded" && outs.length > 1 && (
+            <button
+              type="button"
+              className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs"
+              onClick={() => {
+                // one click, every file (a moment apart so the browser accepts them all)
+                outs.forEach((o, i) => setTimeout(() => { const a = document.createElement("a"); a.href = o.downloadUrl; a.download = ""; a.click(); }, i * 400));
+              }}
+            >
+              <Icon name="download" size={14} /> نزّل الكل
+            </button>
+          )}
           {j.status === "succeeded" &&
-            outs.slice(0, 1).map((o) => {
+            outs.map((o, i) => {
               const why = canUseAsRef(o);
               return (
                 <button key={`ref-${o.id}`} type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" disabled={Boolean(why)} title={why ?? "أضفه إلى المراجع"} onClick={() => onUseAsRef(o, j)}>
-                  <Icon name="layers" size={14} /> كمرجع
+                  <Icon name="layers" size={14} /> كمرجع{outs.length > 1 ? ` ${stemLabel(o) ?? i + 1}` : ""}
                 </button>
               );
             })}
+          {j.status === "succeeded" && outs[0] && (
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" title="رابط مؤقت (١٠ دقائق) ترسله لأي أحد" onClick={() => copyLink(outs[0].downloadUrl)}>
+              <Icon name={copied ? "check" : "copy"} size={14} /> {copied ? "انسخ الرابط ✓" : "رابط مؤقت"}
+            </button>
+          )}
           {tracks.length > 0 && (
             <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setWatching(true)}>
               <Icon name="play" size={14} /> شاهد مع الفيديو

@@ -7,6 +7,7 @@ import { check, mahdiRoute, readJson, requireUser, UserError } from "@/lib/mahdi
 import { profileFromRow, type ProfileRow } from "@/lib/mahdi/server/rows";
 import { getShrines } from "@/lib/mahdi/server/snapshot";
 import { syncPublicProfile } from "@/lib/mahdi/server/public";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { parseBool, parseIntIn, parseTheme, parseTimeZone, requireName } from "@/lib/mahdi/server/validate";
 
 async function profileFields(supabase: SupabaseClient, body: Record<string, unknown>, creating: boolean) {
@@ -49,9 +50,12 @@ async function profileFields(supabase: SupabaseClient, body: Record<string, unkn
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireUser(req);
   const fields = await profileFields(supabase, await readJson(req), true);
+  // written with the server's own key: the earned columns (frame, variant, view) are checked above and are not
+  // writable with a person's key (supabase/migrations/0029)
+  const admin = createAdminClient();
   const query = profile
-    ? supabase.from("mahdi_profiles").update(fields).eq("user_id", user.id)
-    : supabase.from("mahdi_profiles").insert({ user_id: user.id, ...fields });
+    ? admin.from("mahdi_profiles").update(fields).eq("user_id", user.id)
+    : admin.from("mahdi_profiles").insert({ user_id: user.id, ...fields });
   const row = check(await query.select("*").single());
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });
 });
@@ -62,7 +66,7 @@ export const PATCH = mahdiRoute(async (req: Request) => {
   if (!profile) throw new UserError(t.errors.noProfile, 403);
   const fields = await profileFields(supabase, await readJson(req), false);
   if (Object.keys(fields).length === 0) return NextResponse.json({ profile });
-  const row = check(await supabase.from("mahdi_profiles").update(fields).eq("user_id", user.id).select("*").single());
+  const row = check(await createAdminClient().from("mahdi_profiles").update(fields).eq("user_id", user.id).select("*").single());
   if ("display_name" in fields || "frame" in fields) await syncPublicProfile(user.id);
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });
 });

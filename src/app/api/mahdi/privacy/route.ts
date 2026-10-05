@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { forgetLeaderboard } from "@/lib/mahdi/server/leaderboard";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { syncPublicProfile } from "@/lib/mahdi/server/public";
@@ -38,6 +39,7 @@ export const PATCH = mahdiRoute(async (req: Request) => {
   if (!next.community) await supabase.from("mahdi_challenge_members").update({ on_leaderboard: false }).eq("user_id", user.id);
   if (social && cur.private_account && !next.private_account) await createAdminClient().from("mahdi_follows").update({ status: "accepted" }).eq("followee_id", user.id).eq("status", "pending");
   await syncPublicProfile(user.id);
+  forgetLeaderboard();
   return NextResponse.json({
     privacy: { community: next.community, leaderboard: next.leaderboard, showAvatar: next.show_avatar, privateAccount: social && next.private_account, storiesInFeed: next.stories_in_feed },
   });

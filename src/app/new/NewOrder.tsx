@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
+import Link from "next/link";
 import Steps from "@/components/Steps";
 
 interface Option {
@@ -39,7 +40,9 @@ export default function NewOrder(props: Props) {
   const [gender, setGender] = useState<"boy" | "girl" | "">("");
   const [parentMessage, setParentMessage] = useState("");
   const [style, setStyle] = useState(props.defaultStyle);
-  const [quality, setQuality] = useState(props.defaultQuality);
+  // one quality today (the others say «قريبًا»): chosen for the customer, no step of its own
+  const quality = tiers.find((t) => t.available)?.key ?? props.defaultQuality;
+  const tier = tiers.find((t) => t.key === quality);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -110,7 +113,12 @@ export default function NewOrder(props: Props) {
               : `مجاني بالكامل · باقي لك ${trialsLeft} ${trialsLeft === 1 ? "تجربة" : "تجارب"}`}
         </p>
       )}
-      <Steps labels={["الطفل", "الستايل", "الجودة"]} current={step} />
+      <Steps labels={["الطفل", "الستايل"]} current={step} />
+      {noTrialsLeft && step === 0 && (
+        <p className="error-box text-center">
+          استخدمت التجارب المجانية المتاحة لحسابك. <Link href="/my-booklets" className="underline">كتيباتك هنا</Link>.
+        </p>
+      )}
 
       {step === 0 && (
         <section className="space-y-5">
@@ -167,7 +175,7 @@ export default function NewOrder(props: Props) {
               تنطبع في صفحة &quot;هذا أنا&quot;. إذا تركتوها فاضية، تبقى أسطر تكتبون فيها بخط يدكم. ({parentMessage.length}/١٤٠)
             </span>
           </label>
-          <button className="btn btn-primary w-full" disabled={!nameOk || !gender} onClick={() => setStep(1)}>
+          <button className="btn btn-primary w-full" disabled={!nameOk || !gender || noTrialsLeft} onClick={() => setStep(1)}>
             التالي
           </button>
         </section>
@@ -187,50 +195,19 @@ export default function NewOrder(props: Props) {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-[auto_1fr] gap-3">
-            <button className="btn btn-ghost" onClick={() => setStep(0)}>رجوع</button>
-            <button className="btn btn-primary" onClick={() => setStep(2)}>التالي</button>
-          </div>
-        </section>
-      )}
-
-      {step === 2 && (
-        <section className="space-y-5">
-          <h1 className="display text-3xl">اختر الجودة</h1>
-          <div role="radiogroup" className="space-y-3">
-            {tiers.map((t) => (
-              <button
-                key={t.key}
-                role="radio"
-                aria-checked={quality === t.key}
-                aria-disabled={!t.available}
-                disabled={!t.available}
-                onClick={() => setQuality(t.key)}
-                className="option flex w-full items-center justify-between gap-3 p-4 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <span>
-                  <span className="flex items-center gap-2 text-lg font-extrabold">
-                    {t.label}
-                    {!t.available && <span className="chip py-0 text-xs">قريبًا</span>}
-                  </span>
-                  <span className="block text-sm font-bold text-muted">{t.description}</span>
-                </span>
-                <span className="shrink-0 text-end">
-                  {freeTrial ? (
-                    <>
-                      <span className="block text-sm font-bold text-muted line-through">{sar(t.price_halalas)}</span>
-                      <span className="display block text-xl text-teal">مجانًا</span>
-                    </>
-                  ) : (
-                    <span className="display block text-xl">{sar(t.price_halalas)}</span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
+          {tier && (
+            <p className="flex items-center justify-between rounded-2xl bg-surface-2 p-3 font-extrabold">
+              <span>{tier.label} · {tier.description}</span>
+              {freeTrial ? (
+                <span><span className="text-sm text-muted line-through">{sar(tier.price_halalas)}</span> <span className="display text-xl text-teal">مجانًا</span></span>
+              ) : (
+                <span className="display text-xl">{sar(tier.price_halalas)}</span>
+              )}
+            </p>
+          )}
           {error && <p className="error-box">{error}</p>}
           <div className="grid grid-cols-[auto_1fr] gap-3">
-            <button className="btn btn-ghost" onClick={() => setStep(1)} disabled={busy}>رجوع</button>
+            <button className="btn btn-ghost" onClick={() => setStep(0)} disabled={busy}>رجوع</button>
             <button className="btn btn-primary" onClick={createOrder} disabled={busy || noTrialsLeft || !templateId}>
               {busy ? "لحظة…" : freeTrial ? "جرّب مجانًا ✨" : "التالي: الدفع"}
             </button>

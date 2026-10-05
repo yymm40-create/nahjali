@@ -70,6 +70,7 @@ export default function PromptBox({
   touched,
   onTouched,
   locked = null,
+  onSubmit,
 }: {
   def: GeneratorDef;
   ev: Evaluation;
@@ -88,6 +89,8 @@ export default function PromptBox({
   onTouched: () => void;
   /** While something else writes the prompt (the Super Director): read-only, with this message over it. */
   locked?: string | null;
+  /** Ctrl/Cmd+Enter in the prompt. */
+  onSubmit?: () => void;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
@@ -198,6 +201,11 @@ export default function PromptBox({
               if (menu) setMenu(null);
             }}
             onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && onSubmit) {
+                e.preventDefault();
+                onSubmit();
+                return;
+              }
               if (!menu) return;
               if (e.key === "Escape") {
                 e.preventDefault();

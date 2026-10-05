@@ -70,12 +70,9 @@ export default function NewPostPage() {
         <Icon name="chevronRight" size={18} /> {t.community.title}
       </Link>
       <h1 className="m-display text-3xl">{P.title}</h1>
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={P.title}>
-        <button type="button" role="radio" aria-checked className="m-option min-h-11 text-sm font-semibold">{P.title}</button>
-        <button type="button" role="radio" aria-checked={false} className="m-option min-h-11 text-sm font-semibold" onClick={() => setCamera(true)}>
-          <Icon name="camera" size={18} /> {t.social.stories.new}
-        </button>
-      </div>
+      <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => setCamera(true)}>
+        <Icon name="camera" size={18} /> {t.social.stories.new}
+      </button>
       <StoryCamera open={camera} onClose={() => setCamera(false)} onPublished={() => router.push("/mahdi?view=following")} />
 
       <div className={`grid gap-2 ${KINDS.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} role="radiogroup" aria-label={P.title}>

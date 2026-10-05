@@ -54,7 +54,7 @@ export default function TrialLimit({ users }: { users: { email: string; daily: n
             <li key={u.email} className="flex items-center justify-between gap-2">
               <span dir="ltr" className="truncate">{u.email}</span>
               <span className="flex items-center gap-2">
-                {u.daily}/يوم
+                {u.daily} إجمالًا
                 <button className="btn btn-ghost min-h-8 px-2 text-xs" disabled={busy} onClick={() => save(u.email, 0)}>إلغاء</button>
               </span>
             </li>

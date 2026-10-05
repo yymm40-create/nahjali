@@ -137,6 +137,12 @@ export function useProject(initial: ProjectState) {
     };
   }, [busy, state, missed, refresh]);
 
+  useEffect(() => {
+    const on = () => void refresh();
+    window.addEventListener("st-refresh", on);
+    return () => window.removeEventListener("st-refresh", on);
+  }, [refresh]);
+
   // every press shows that something is happening (a bar at the top) until the page has the new state
   const [pending, setPending] = useState(0);
   const track = useCallback(async <T,>(fn: () => Promise<T>) => {

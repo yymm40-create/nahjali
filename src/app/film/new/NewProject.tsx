@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
 import { useFilmBase } from "../FilmBase";
@@ -13,6 +13,15 @@ export default function NewProject() {
   const [values, setValues] = useState<FieldValues>({ title: "", story: "", fixedFacts: "", targetDurationSec: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Arrived from «وش تبي تصنع اليوم؟» with an idea: it is the story, and its first words the title (both editable)
+  useEffect(() => {
+    const idea = new URLSearchParams(window.location.search).get("idea")?.trim();
+    if (!idea) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    const t = setTimeout(() => setValues((v) => (v.story || v.title ? v : { ...v, story: idea, title: idea.replace(/^فيلم\s*(عن|يحكي|يتكلم عن)?\s*/u, "").split(/[،,.؟!\n]/)[0].slice(0, 60).trim() || "فيلمي" })), 0);
+    return () => clearTimeout(t);
+  }, []);
 
   async function create() {
     setBusy(true);

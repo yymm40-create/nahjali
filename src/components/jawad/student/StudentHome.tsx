@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { LEVELS, OUTPUT_KINDS, STUDENT } from "@config/jawad/student";
 import { post } from "./client";
@@ -41,6 +41,17 @@ export default function StudentHome({
 
   // stays "busy" until the next page opens, so the button never looks like it did nothing
   const [going, setGoing] = useState(false);
+  // Arrived from JAWAD's home with what they typed: it names the material and the form is brought into view
+  useEffect(() => {
+    const idea = new URLSearchParams(window.location.search).get("idea")?.trim();
+    if (!idea) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    const t = setTimeout(() => {
+      setTitle((cur) => cur || idea.slice(0, 80));
+      document.getElementById("new-material")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
   const create = () => {
     if (loginHref) {
       setGoing(true);
@@ -48,7 +59,7 @@ export default function StudentHome({
       return;
     }
     return run(async () => {
-      const r = await post<{ id: string }>("/api/jawad/student/projects", { title, level: level === "آخر" ? other : level, audience });
+      const r = await post<{ id: string }>("/api/jawad/student/projects", { title: title.trim() || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`, level: level === "آخر" ? other : level, audience });
       setGoing(true);
       router.push(`${STUDENT.base}/${r.id}`);
     });

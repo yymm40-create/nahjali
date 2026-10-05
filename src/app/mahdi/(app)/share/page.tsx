@@ -149,7 +149,7 @@ export default function SharePage() {
             <label className="block">
               <span className="m-label">{t.share.pickProject}</span>
               <select className="m-field" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                {snap.projects.sort(bySort).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {[...snap.projects].sort(bySort).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </label>
           )}
