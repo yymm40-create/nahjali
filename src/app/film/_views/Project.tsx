@@ -1,3 +1,4 @@
+import RewindCard from "../[id]/RewindCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
@@ -70,6 +71,8 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
           targetDurationSec: project.target_duration_sec ? String(project.target_duration_sec) : "",
         }}
       />
+
+      {project.stage !== "screenwriter" && <RewindCard projectId={project.id} />}
 
       <References projectId={project.id} initial={references} />
 

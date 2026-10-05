@@ -146,9 +146,13 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     return () => clearTimeout(t);
   });
   // Every picture approved: the handoff to the director is prepared by itself (once)
+  // (only when the last approval happens on this page: arriving with everything already approved, e.g. after going
+  // back to edit a sheet, must not send the project on by itself)
   const autoFinished = useRef(false);
+  const sawOpen = useRef(false);
   useEffect(() => {
-    if (autoFinished.current || !allApproved || writing || failed || busy) return;
+    if (!allApproved) sawOpen.current = true;
+    if (autoFinished.current || !sawOpen.current || !allApproved || writing || failed || busy) return;
     autoFinished.current = true;
     const t = setTimeout(() => send({ action: "finish" }), 0);
     return () => clearTimeout(t);

@@ -24,6 +24,7 @@ import {
 } from "@config/film";
 import { useFilmBase } from "../../FilmBase";
 import EmotionPicker from "../../EmotionPicker";
+import RewindCard from "../RewindCard";
 
 interface Generation {
   /** The director's understanding of the client's video notes, as options to choose from. */
@@ -573,6 +574,7 @@ export default function VideosWorkspace({
           <Link href={`${filmBase}/${projectId}/voices`} className="btn btn-primary w-full">🎙️ كمّل: الأصوات</Link>
         </div>
       ) : null}
+      <RewindCard projectId={projectId} />
       {error && <p className="error-box">{error}</p>}
     </div>
     </EditsLeftContext>
