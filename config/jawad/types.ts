@@ -78,6 +78,13 @@ export interface ChoiceOption {
   default: string;
   /** Shown left-to-right (technical values such as 16:9, 720p, voice names). */
   ltr?: boolean;
+  /**
+   * Values outside `values` that are also valid in form (the person's own saved voices, the provider's voice list);
+   * the server checks each one really exists and belongs to the person before anything is charged.
+   */
+  accepts?: RegExp;
+  /** Drawn by a dedicated picker instead of the plain buttons. */
+  picker?: "voice";
 }
 export interface IntOption {
   key: string;
@@ -151,7 +158,7 @@ export interface GeneratorDef {
   output: OutputKind;
   /** The built-in section that shows it (the owner can move it to another section of the same output). */
   defaultSection: string;
-  provider: { id: "openai" | "byteplus-modelark"; label: string };
+  provider: { id: "openai" | "byteplus-modelark" | "elevenlabs"; label: string };
   model: { id: string; family: string; version: string };
   api: {
     name: string;

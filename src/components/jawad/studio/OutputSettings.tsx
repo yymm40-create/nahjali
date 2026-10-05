@@ -3,16 +3,24 @@
 import type { OptionState, Settings, SettingValue } from "@config/jawad/types";
 import type { Evaluation } from "@/lib/jawad/engine";
 import Icon from "../Icon";
+import VoicePicker from "./VoicePicker";
 
 /** The output options this generator really supports in this mode (nothing shared by default between generators). */
-export default function OutputSettings({ ev, values, onChange }: { ev: Evaluation; values: Settings; onChange: (key: string, v: SettingValue) => void }) {
+export default function OutputSettings({ ev, values, onChange, voiceCoins }: { ev: Evaluation; values: Settings; onChange: (key: string, v: SettingValue) => void; voiceCoins?: { design: number | null; clone: number | null } }) {
   const shown = ev.options.filter((o) => !o.hidden);
   if (!shown.length) return null;
   return (
     <section aria-label="إعدادات المخرجات" className="space-y-4">
-      {shown.map((o) => (
-        <Field key={o.key} o={o} value={values[o.key] ?? o.default} onChange={(v) => onChange(o.key, v)} issue={ev.issues.find((i) => i.field === o.key)?.message} />
-      ))}
+      {shown.map((o) =>
+        o.kind === "choice" && o.picker === "voice" ? (
+          <div key={o.key}>
+            <VoicePicker value={String(values[o.key] ?? o.default)} onChange={(v) => onChange(o.key, v)} coins={voiceCoins ?? { design: null, clone: null }} />
+            {ev.issues.find((i) => i.field === o.key) && <p className="mt-1.5 text-xs text-jw-danger" role="alert">{ev.issues.find((i) => i.field === o.key)!.message}</p>}
+          </div>
+        ) : (
+          <Field key={o.key} o={o} value={values[o.key] ?? o.default} onChange={(v) => onChange(o.key, v)} issue={ev.issues.find((i) => i.field === o.key)?.message} />
+        ),
+      )}
       {ev.notes.length > 0 && (
         <ul className="space-y-1.5">
           {ev.notes.map((n) => (

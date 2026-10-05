@@ -12,7 +12,7 @@ import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generatorById, GPT_IMAGE_2_SIZES } from "@config/jawad/generators";
+import { ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
@@ -24,6 +24,8 @@ import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
 import { prepareEdit, type EditInputs } from "./smart-edit";
+import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
+import { resolveVoice } from "./voices";
 
 const db = () => createAdminClient();
 
@@ -177,6 +179,11 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const table = rt.prices[def.id];
   const e = evaluate(def, { settings, prompt, instructions, refStyle, refs: meta, strict: true }, table);
   if (e.issues.length) return { kind: "issues", issues: e.issues };
+  // A voice must really exist: one of ElevenLabs' ready voices, or one in the person's own library
+  if (def.options.some((o) => o.kind === "choice" && o.picker === "voice")) {
+    const v = await resolveVoice(user.id, String(e.settings.voice));
+    if (!v.ok) return { kind: "issues", issues: [{ field: "voice", message: v.reason }] };
+  }
   if (!e.price.ok) return { kind: "issues", issues: [{ field: "price", message: e.price.reason }] };
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
   if (Number(b.expectedCoins) !== e.price.coins) return { kind: "price_changed", coins: e.price.coins, lines: e.price.lines, prices: table };
@@ -304,6 +311,8 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
     return;
   }
 
+  if (def.provider.id === "elevenlabs") return runEleven(job, def, refs);
+
   if (def.output === "audio") {
     const format = String(s.format);
     const audio = await openaiSpeech({ model: def.model.id, input: job.prompt, instructions: job.inputs.instructions ?? "", voice: String(s.voice), format });
@@ -316,6 +325,49 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
     return;
   }
   throw new ProviderError("rejected", "نوع غير مدعوم.", `sync output ${def.output}`);
+}
+
+/** ElevenLabs: Eleven v4 speech, a sound effect, or a song (with an optional reference recording). Saved as MP3. */
+async function runEleven(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+  const s = job.inputs.settings;
+  let audio: Buffer;
+  let costUsd: number;
+  let units: Record<string, unknown> = {};
+  if (def.model.id === "eleven_v4") {
+    const voice = await resolveVoice(job.user_id, String(s.voice));
+    if (!voice.ok) throw new ProviderError("rejected", voice.reason, `voice ${String(s.voice)}`);
+    audio = await elevenSpeech({ voiceId: voice.voiceId, text: job.prompt, model: def.model.id, stability: Number(s.stability) });
+    costUsd = (job.prompt.length / 1000) * ELEVEN_PRICE.v4PerKChars;
+    units = { characters: job.prompt.length };
+  } else if (def.model.id === "eleven_text_to_sound_v2") {
+    const seconds = Number(s.duration) || 5;
+    audio = await elevenSoundEffect({ text: job.prompt, seconds, loop: Boolean(s.loop), influence: Number(s.influence) || 0.3 });
+    costUsd = (seconds * ELEVEN_PRICE.sfxPerMin) / 60;
+    units = { seconds };
+  } else {
+    const seconds = Number(s.duration) || 60;
+    const ref = refs.find((r) => r.kind === "audio");
+    if (ref) {
+      const refMs = Math.min(ref.duration_ms ?? MUSIC_REF_MS, MUSIC_REF_MS);
+      const use = MUSIC_REF_USE[String(s.refUse)] ?? MUSIC_REF_USE.inspire;
+      await db().from("jawad_jobs").update({ provider_status: "uploading reference" }).eq("id", job.id);
+      const r = await elevenMusicWithReference({ prompt: job.prompt, lengthMs: seconds * 1000, instrumental: Boolean(s.instrumental), model: def.model.id, reference: await download(ref.storage_path), mime: ref.mime ?? "audio/mpeg", refMs, strength: use.strength });
+      audio = r.audio;
+      costUsd = ((seconds + (ref.duration_ms ?? 0) / 1000) * ELEVEN_PRICE.musicPerMin) / 60;
+      units = { seconds, referenceMs: ref.duration_ms, strength: use.strength, songId: r.songId };
+    } else {
+      const r = await elevenMusic({ prompt: job.prompt, lengthMs: seconds * 1000, instrumental: Boolean(s.instrumental), model: def.model.id });
+      audio = r.audio;
+      costUsd = (seconds * ELEVEN_PRICE.musicPerMin) / 60;
+      units = { seconds, songId: r.songId };
+    }
+  }
+  await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+  const bytes = new Uint8Array(audio);
+  const sn = sniff(bytes);
+  const durationMs = sn ? probe(bytes, sn).durationMs : undefined;
+  await saveOutput(job, 0, audio, "audio/mpeg", "mp3", { durationMs });
+  await finishJob(job, "succeeded", { costUsd, units });
 }
 
 // ───────────────────────────── video (ModelArk) ─────────────────────────────

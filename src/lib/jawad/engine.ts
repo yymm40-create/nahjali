@@ -81,7 +81,7 @@ export function fileProblem(def: GeneratorDef, r: RefMeta): string | null {
 
 /** The value an option takes: the user's if valid, otherwise its default (ints are clamped). */
 function normalize(o: OptionState, raw: unknown) {
-  if (o.kind === "choice") return o.values.some((v) => v.value === raw) ? String(raw) : o.default;
+  if (o.kind === "choice") return o.values.some((v) => v.value === raw) || (typeof raw === "string" && o.accepts?.test(raw)) ? String(raw) : o.default;
   if (o.kind === "int") {
     const n = Math.round(Number(raw));
     return Number.isFinite(n) ? Math.min(o.max, Math.max(o.min, n)) : o.default;

@@ -8,8 +8,8 @@ import { FILM_STAGES, STATUS_LABELS } from "@config/film";
 import ProjectEditor from "../[id]/ProjectEditor";
 import References from "../[id]/References";
 
-/** Where each project stage continues (the voices have no page yet). */
-const NEXT_PATH: Record<string, string> = { screenwriter: "/script", sheets: "/sheets", director: "/director", voices: "/videos", done: "/videos" };
+/** Where each project stage continues. */
+const NEXT_PATH: Record<string, string> = { screenwriter: "/script", sheets: "/sheets", director: "/director", voices: "/voices", done: "/videos" };
 
 
 export default async function ProjectView({ id, base }: { id: string; base: string }) {
@@ -51,7 +51,9 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
         <Link href={`${base}/${project.id}${NEXT_PATH[project.stage] ?? "/director"}`} className="btn btn-primary w-full">
           {project.stage === "screenwriter"
             ? `✍️ ${scriptStarted ? "كمّل مع السيناريست" : "ابدأ مع السيناريست"}`
-            : project.stage === "voices" || project.stage === "done"
+            : project.stage === "voices"
+              ? "🎙️ كمّل: الأصوات"
+              : project.stage === "done"
               ? "🎬 فيديوهاتك (حمّلها قبل ما تنحذف)"
               : `${FILM_STAGES[current]?.icon} كمّل: ${FILM_STAGES[current]?.label}`}
         </Link>

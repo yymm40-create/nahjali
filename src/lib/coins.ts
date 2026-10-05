@@ -62,3 +62,16 @@ export async function refundCoins(jobId: string) {
   const r = await reserved(jobId);
   if (r && r.held > 0) await adjust(r.userId, r.held, "refund", jobId, r.label, true);
 }
+
+/**
+ * A fixed price in coins (from a price table the owner can edit), taken before an operation that is not a job: the
+ * coins are held at once, or the operation is refused clearly. `releaseCoins` gives them back if it fails.
+ */
+export async function holdCoins(userId: string, coins: number, ref: string, label: string) {
+  if (coins <= 0) return;
+  const left = await adjust(userId, -coins, "reserve", ref, label);
+  if (left === null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذه العملية تحتاج ${coins} نقدة.`, 402);
+}
+export async function releaseCoins(userId: string, coins: number, ref: string, label: string) {
+  if (coins > 0) await adjust(userId, coins, "refund", ref, label, true);
+}

@@ -55,7 +55,12 @@ function settingChips(j: JobView) {
   for (const o of def?.options ?? []) {
     const v = j.settings[o.key];
     if (v === undefined) continue;
-    if (o.kind === "choice") out.push(v === "adaptive" ? "نسبة الإطار الأول" : o.values.find((x) => x.value === v)?.label ?? String(v));
+    if (o.kind === "choice") {
+      const known = o.values.find((x) => x.value === v)?.label;
+      // A voice from the person's library or ElevenLabs' list (its name lives on the server)
+      const voice = o.picker === "voice" && !known ? (String(v).startsWith("v:") ? "صوت من مكتبتي" : "صوت جاهز") : null;
+      out.push(v === "adaptive" ? "نسبة الإطار الأول" : known ?? voice ?? String(v));
+    }
     if (o.kind === "int") out.push(`${v} ${o.unit}`);
     if (o.kind === "bool" && v) out.push(o.label);
   }
