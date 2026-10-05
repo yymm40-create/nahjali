@@ -13,9 +13,9 @@ export const metadata = { title: "الطالب الذكي" };
 /** One material, from its sources to its outputs. Only its owner can open it. */
 export default async function StudentProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [{ user, owner, allowed }, rt] = await Promise.all([requireJawadUser(`${STUDENT.base}/${id}`), loadRuntime()]);
+  const [{ user, owner }, rt] = await Promise.all([requireJawadUser(`${STUDENT.base}/${id}`), loadRuntime()]);
   const section = rt.sections.find((s) => s.implementation === "student");
-  if (!allowed || !section || (!section.enabled && !owner)) notFound();
+  if (!section || (!section.enabled && !owner)) notFound();
   const state = await projectState(user, id).catch((e) => {
     if (e instanceof UserError) return null;
     throw e;

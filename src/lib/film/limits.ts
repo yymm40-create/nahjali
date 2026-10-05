@@ -4,7 +4,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isAdmin } from "@config/site";
+import { isAdmin, isUnlimited } from "@config/site";
 
 export const LIMITS = {
   edits_screenwriter: { label: "تعديلات السيناريست", hint: "طلبات «تعديل» و«توجيه» في محادثة السيناريست، لكل مشروع", default: 2, perUser: true },
@@ -48,7 +48,7 @@ async function editsUsed(projectId: string, stage: "screenwriter" | "sheets" | "
 
 /** Edits left for this user in this stage of this project (null: no limit, the owner). */
 export async function editsLeft(projectId: string, stage: "screenwriter" | "sheets" | "director", email?: string | null) {
-  if (isAdmin(email)) return null;
+  if (isUnlimited(email)) return null;
   const limit = await getLimit(`edits_${stage}`, email);
   return Math.max(0, limit - (await editsUsed(projectId, stage)));
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { STUDENT } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
@@ -35,6 +35,16 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
     setLastStage(project.stage);
     setView(project.stage);
   }
+  // a new step opens at the top of the steps bar, smoothly
+  const navRef = useRef<HTMLElement>(null);
+  const firstView = useRef(true);
+  useEffect(() => {
+    if (firstView.current) {
+      firstView.current = false;
+      return;
+    }
+    navRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [view]);
 
   const HINT: Record<StepId, string> = {
     sources: "أضف نصك أو ارفع الصور وملفات PDF، ثم استخرج النص.",
@@ -77,7 +87,8 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
         </div>
       </header>
 
-      <nav aria-label="مراحل المادة" className="jw-panel px-2 py-4 sm:px-6">
+      {p.pending && <div className="st-loading" role="progressbar" aria-label="جارٍ التنفيذ" />}
+      <nav ref={navRef} aria-label="مراحل المادة" className="jw-panel scroll-mt-24 px-2 py-4 sm:px-6">
         <div className="st-steps">
           <span className="bar" style={{ width: `${(reached / (STEPS.length - 1)) * 80}%` }} aria-hidden />
           {STEPS.map((s, i) => (

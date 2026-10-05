@@ -3,7 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/auth";
 import { requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isAdmin } from "@config/site";
+import { isAdmin, isFreeGuest } from "@config/site";
 import { FILM_PUBLIC_TRIAL } from "@config/film";
 import { accessMode, emailAccess, getLimit } from "./limits";
 import type { FilmProject } from "./types";
@@ -81,7 +81,7 @@ export async function filmTrialState(user: Who): Promise<"open" | "done" | "full
  */
 export async function canUseFilm(user: Who) {
   if (!user.email) return false;
-  if (isAdmin(user.email)) return true;
+  if (isAdmin(user.email) || isFreeGuest(user.email)) return true;
   // The owner's choices on /admin/limits: a decision for this email first, then the mode for everyone
   const own = await emailAccess("film", user.email);
   if (own !== undefined) return own;

@@ -5,6 +5,7 @@ import { UserError } from "@/lib/api";
 import { coinBalance } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
+import { isUnlimited } from "@config/site";
 import { FONTS, OUTPUT_KINDS, STUDENT, STYLES, STYLE_ROLES, type Design } from "@config/jawad/student";
 import { claudeCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
@@ -82,13 +83,22 @@ export async function listProjects(userId: string) {
   }));
 }
 
-export async function createProject(user: User, b: Body) {
+/** Materials each person may make in «الطالب الذكي» (the owner's choice); the owner and free guests have no limit. */
+export const MATERIALS_PER_PERSON = 2;
+/** How many materials this person has made so far (kept on the account, so deleting one does not give it back). */
+export const materialsMade = (user: { app_metadata?: Record<string, unknown> }) => Number(user.app_metadata?.student_made ?? 0) || 0;
+
+export async function createProject(user: User & { app_metadata?: Record<string, unknown> }, b: Body) {
+  const made = materialsMade(user);
+  const limited = !isUnlimited(user.email);
+  if (limited && made >= MATERIALS_PER_PERSON) throw new UserError(`لكل حساب ${MATERIALS_PER_PERSON} مادتان فقط في «الطالب الذكي»، واستخدمتهما.`, 403);
   const { data, error } = await sdb()
     .from("student_projects")
     .insert({ user_id: user.id, title: text(b.title, 200) || "مادة جديدة", level: text(b.level, 120), audience: text(b.audience, 300) })
     .select("id")
     .single();
   if (error) throw error.code === "42P01" ? new UserError("قسم «الطالب الذكي» قيد التجهيز: شغّل ملف SQL رقم 0026.", 503) : error;
+  if (limited) await sdb().auth.admin.updateUserById(user.id, { app_metadata: { ...(user.app_metadata ?? {}), student_made: made + 1 } });
   return data.id as string;
 }
 

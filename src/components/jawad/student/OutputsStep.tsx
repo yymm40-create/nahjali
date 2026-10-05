@@ -13,7 +13,19 @@ export default function OutputsStep({ p }: { p: ProjectHook }) {
   const [pick, setPick] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(outputs.find((o) => o.status !== "done")?.id ?? outputs[0]?.id ?? null);
   const { busy, error, run } = useAsync();
-  const selected = outputs.find((o) => o.id === open) ?? null;
+  // the open output: the one picked, else the first still to do — and when the open one is approved, the next opens
+  const firstOpen = outputs.find((o) => o.status !== "done") ?? outputs[0] ?? null;
+  const [seenStatus, setSeenStatus] = useState<Record<string, string>>({});
+  const current = outputs.find((o) => o.id === open);
+  if (current && seenStatus[current.id] !== current.status) {
+    const was = seenStatus[current.id];
+    setSeenStatus({ ...seenStatus, [current.id]: current.status });
+    if (was && was !== "done" && current.status === "done") {
+      const next = outputs.find((o) => o.ord > current.ord && o.status !== "done");
+      if (next) setOpen(next.id);
+    }
+  }
+  const selected = current ?? firstOpen;
 
   const move = (id: string, d: -1 | 1) => {
     const ids = outputs.map((o) => o.id);
@@ -54,13 +66,13 @@ export default function OutputsStep({ p }: { p: ProjectHook }) {
           })}
         </div>
         <ErrorLine error={error} />
-        <button type="button" className="jw-btn jw-btn-primary" disabled={!pick.length || busy} onClick={() => run(async () => { await p.act({ action: "outputs_add", kinds: pick }); setPick([]); })}>
+        <button type="button" className="jw-btn jw-btn-primary" disabled={!pick.length || busy} onClick={() => run(async () => { await p.act({ action: "outputs_add", kinds: pick }); setPick([]); setOpen(null); setTimeout(() => document.getElementById("st-queue")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150); })}>
           <Icon name="plus" size={16} /> أضف إلى الطابور ({pick.length})
         </button>
       </section>
 
       {outputs.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+        <div id="st-queue" className="grid scroll-mt-24 gap-4 lg:grid-cols-[300px_1fr]">
           <aside className="jw-panel h-fit space-y-2 p-3">
             <h2 className="text-sm font-semibold">طابور التنفيذ (بالترتيب، واحد بعد الآخر)</h2>
             <ol className="space-y-1">
@@ -69,7 +81,7 @@ export default function OutputsStep({ p }: { p: ProjectHook }) {
                 return (
                   <li key={o.id} className={`flex items-center gap-1 rounded-lg p-2 ${open === o.id ? "bg-jw-surface-3" : "hover:bg-jw-surface-2"}`}>
                     <Tile emoji={KIND_LOOK[o.kind].emoji} grad={KIND_LOOK[o.kind].grad} size={32} />
-                    <button type="button" className="min-w-0 flex-1 text-start" onClick={() => setOpen(o.id)}>
+                    <button type="button" className="min-w-0 flex-1 text-start" onClick={() => { setOpen(o.id); setTimeout(() => document.getElementById(`o-${o.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }}>
                       <b className="block truncate text-sm">
                         {i + 1}. {o.title}
                       </b>

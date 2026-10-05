@@ -29,6 +29,23 @@ export default async function Home() {
 
       <section className="space-y-3">
         <h2 className="display text-3xl">وش تبي تسوي اليوم؟</h2>
+        {/* «الطالب الذكي» (a JAWAD AI section, open to every visitor; making something needs signing in) */}
+        <Link
+          href="/jawad-ai/student"
+          className="relative flex items-center gap-4 overflow-hidden rounded-3xl p-4 text-white shadow-[0_14px_34px_-14px_rgba(219,39,119,0.7)] transition hover:-translate-y-0.5"
+          style={{ background: "linear-gradient(120deg,#7c3aed 0%,#db2777 55%,#f97316 100%)" }}
+        >
+          <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-white/20 text-4xl" aria-hidden>
+            🎒
+          </span>
+          <div className="flex-1">
+            <h3 className="flex flex-wrap items-center gap-2 text-xl font-extrabold">
+              الطالب الذكي
+              <span className="rounded-full bg-white/25 px-2 py-0.5 text-xs font-bold">جديد ✨</span>
+            </h3>
+            <p className="text-sm font-bold text-white/90">ارفع دروسك وحوّلها إلى ملخصات وكتب وعروض وتسجيلات صوتية واختبارات.</p>
+          </div>
+        </Link>
         {/* «الجواد الذكي!» | JAWAD AI: its own identity, also on this card */}
         <Link
           href="/jawad-ai"

@@ -462,3 +462,33 @@
     top: 1.15rem;
   }
 }
+
+/* ── every press is felt: a quick squeeze, and a running bar at the top while the page updates ── */
+.st button:not(:disabled):active,
+.st a.jw-btn:active,
+.st [role="button"]:active {
+  transform: scale(0.96);
+}
+.st button,
+.st a.jw-btn {
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.15s ease, opacity 0.15s ease;
+}
+.st-loading {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  height: 4px;
+  z-index: 60;
+  background: linear-gradient(90deg, transparent, #db2777, #7c3aed, #f97316, transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: st-loading 1s ease-in-out infinite;
+}
+@keyframes st-loading {
+  from {
+    background-position: -50% 0;
+  }
+  to {
+    background-position: 150% 0;
+  }
+}
