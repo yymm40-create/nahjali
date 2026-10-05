@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import { ACCESS_MODES, accessMode, LIMITS, SECTIONS_ACCESS, type AccessSection, type LimitRow } from "@/lib/film/limits";
 import { isAdmin } from "@config/site";
 import LimitsAdmin from "./LimitsAdmin";
@@ -21,7 +21,7 @@ export default async function LimitsPage() {
   const db = createAdminClient();
   const [wallets, people, required] = await Promise.all([
     db.from("smart_coin_wallets").select("user_id,balance").order("balance", { ascending: false }).limit(10),
-    db.auth.admin.listUsers({ perPage: 1000 }),
+    listAllUsers().then((users) => ({ data: { users } })),
     coinsRequired(),
   ]);
   const emailOf = new Map((people.data?.users ?? []).map((u) => [u.id, u.email ?? u.id]));

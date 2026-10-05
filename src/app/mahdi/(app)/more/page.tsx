@@ -109,6 +109,7 @@ export default function MorePage() {
                   try {
                     const { profile: p } = await mahdiFetch<{ profile: Profile }>("/api/mahdi/profile/avatar", { method: "DELETE" });
                     store.setProfile(p);
+                    toast(t.common.saved);
                   } catch (e) {
                     toast((e as Error).message);
                   }

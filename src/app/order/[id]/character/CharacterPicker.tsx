@@ -30,10 +30,11 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
       await postJson(`/api/orders/${orderId}/character`);
       router.replace(`/order/${orderId}/character`);
       router.refresh();
+      // stays «generating» until the page re-renders with the new character (the list's key remounts this component)
     } catch (e) {
       setError((e as Error).message);
+      setGenerating(false);
     }
-    setGenerating(false);
   }
 
   // Start automatically right after upload (once)
@@ -118,6 +119,7 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
       <button className="btn btn-ghost w-full" onClick={generate} disabled={attemptsLeft <= 0 || approving}>
         {characters.length ? "أعد التوليد" : "ولّد الشخصية"} ({attemptsLeft} متبقية)
       </button>
+      {attemptsLeft <= 0 && <p className="text-center text-sm font-bold text-muted">خلّصت محاولاتك، اعتمد واحدة من الشخصيات فوق.</p>}
       {attemptsLeft > 0 && (
         <Link href={`/order/${orderId}/upload`} className="block text-center font-bold underline">
           أبي أغيّر الصورة

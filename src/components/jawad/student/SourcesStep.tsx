@@ -147,7 +147,9 @@ export default function SourcesStep({ p }: { p: ProjectHook }) {
           </p>
           <JobStatus job={job && (job.status !== "succeeded" ? job : undefined)} />
           {pending.length > 0 ? (
-            <PaidButton label={segments.length ? "أكمل الاستخراج" : "استخرج النص"} what={`قراءة ${pending.length} مدخل (الصور وصفحات PDF عبر Claude).`} disabled={running} run={(b) => p.act({ action: "extract", ...b })} />
+            <div className={running || busy ? "" : "st-attention rounded-xl"}>
+              <PaidButton label={segments.length ? "أكمل الاستخراج" : "استخرج النص"} what={`قراءة ${pending.length} مدخل (الصور وصفحات PDF عبر Claude).`} disabled={running} run={(b) => p.act({ action: "extract", ...b })} />
+            </div>
           ) : sources.length > 0 && segments.length > 0 ? (
             <p className="text-sm text-jw-ok">
               <Icon name="check" size={14} className="inline" /> استُخرج كل شيء. انتقل إلى «مراجعة النص».

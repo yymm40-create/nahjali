@@ -3,7 +3,7 @@ import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { getShrines } from "@/lib/mahdi/server/snapshot";
 import { t } from "@/lib/mahdi/i18n";
 import Onboarding from "./Onboarding";
-import { getUsername } from "@/lib/username";
+import { ensureUsername, getUsername } from "@/lib/username";
 
 export const metadata = { title: t.onboarding.welcomeTitle };
 
@@ -14,5 +14,7 @@ export default async function WelcomePage() {
   if (profile) redirect("/mahdi");
   const meta = user.user_metadata ?? {};
   const suggested = typeof meta.full_name === "string" ? meta.full_name.split(" ")[0] : typeof meta.name === "string" ? meta.name.split(" ")[0] : "";
-  return <Onboarding shrines={await getShrines()} suggestedName={suggested.slice(0, 30)} username={await getUsername(supabase, user.id)} />;
+  // the @username is claimed from the account's name without asking (it can be changed any time in «المزيد»)
+  const username = (await getUsername(supabase, user.id)) ?? (await ensureUsername(supabase, user, [suggested]).catch(() => null));
+  return <Onboarding shrines={await getShrines()} suggestedName={suggested.slice(0, 30)} username={username} />;
 }

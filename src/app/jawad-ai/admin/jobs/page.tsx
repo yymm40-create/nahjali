@@ -1,6 +1,6 @@
 import Link from "next/link";
 import AdvanceJobsButton from "@/components/jawad/admin/AdvanceJobsButton";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import { stageLabel } from "@/lib/jawad/labels";
 import type { JobRow } from "@/lib/jawad/server/jobs";
 import { generatorById } from "@config/jawad/generators";
@@ -22,7 +22,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jawad-ai/ad
   else if (status !== "all") q = q.eq("status", status);
   const [{ data: jobsData }, people, { data: ledger }] = await Promise.all([
     q,
-    db.auth.admin.listUsers({ perPage: 1000 }),
+    listAllUsers().then((users) => ({ data: { users } })),
     db.from("smart_coin_ledger").select("*").like("label", "JAWAD AI%").order("created_at", { ascending: false }).limit(60),
   ]);
   const jobs = (jobsData ?? []) as JobRow[];

@@ -9,19 +9,14 @@ import type { Shrine } from "@/lib/mahdi/types";
 import Icon from "@/components/mahdi/Icon";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
 import { useLook } from "@/components/mahdi/ThemeRoot";
-import { UsernameField, useUsernameCheck } from "@/components/mahdi/UsernameForm";
-import { cleanUsername, suggestUsername } from "@/lib/username-rules";
 
 export default function Onboarding({ shrines, suggestedName, username: existingUsername }: { shrines: Shrine[]; suggestedName: string; username: string | null }) {
   const router = useRouter();
   const look = useLook();
   const [step, setStep] = useState(0);
   const [name, setName] = useState(suggestedName);
-  // The username follows the name until the person edits it; an account that already has one keeps it
-  const [username, setUsername] = useState<string | null>(existingUsername);
-  const [handle, setHandle] = useState(suggestUsername(suggestedName) ?? "");
-  const [handleTouched, setHandleTouched] = useState(false);
-  const handleStatus = useUsernameCheck(handle, username);
+  // the @username was claimed from the name on the way in; a taken name is sorted out later in «المزيد»
+  const username = existingUsername;
   const [shrineId, setShrineId] = useState(look.shrine?.id ?? DEFAULT_SHRINE);
   const [project, setProject] = useState("");
   const [custom, setCustom] = useState("");
@@ -37,7 +32,7 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
         method: "POST",
         json: { displayName: name.trim(), shrineId, theme: look.theme, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh" },
       });
-      setStep(4);
+      setStep(2);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -76,36 +71,17 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
 
       <section className="m-card space-y-6 p-6">
         {step === 0 && (
-          <div className="space-y-4">
-            <h1 className="m-display m-gold text-4xl">{t.onboarding.welcomeTitle}</h1>
-            <p className="text-lg">{t.onboarding.welcomeBody}</p>
-            <button type="button" className="m-btn m-btn-primary w-full text-lg" onClick={next}>
-              {t.onboarding.start}
-            </button>
-          </div>
-        )}
-
-        {step === 1 && (
           <form
             className="space-y-4"
-            onSubmit={async (e) => {
+            onSubmit={(e) => {
               e.preventDefault();
               if (!name.trim()) return setError(t.onboarding.nameRequired);
-              if (username) return next();
-              // The username is saved now: a taken name has to be changed before going on
-              if (handleStatus.state !== "ok") return setError(handleStatus.message || t.username.invalid);
-              setBusy(true);
-              try {
-                const r = await mahdiFetch<{ username: string }>("/api/mahdi/username", { method: "PUT", json: { username: cleanUsername(handle) } });
-                setUsername(r.username);
-                next();
-              } catch (err) {
-                setError((err as Error).message);
-              }
-              setBusy(false);
+              next();
             }}
           >
-            <h1 className="text-2xl font-semibold">{t.onboarding.nameTitle}</h1>
+            <h1 className="m-display m-gold text-3xl">{t.onboarding.welcomeTitle}</h1>
+            <p className="text-lg">{t.onboarding.welcomeBody}</p>
+            <h2 className="text-xl font-semibold">{t.onboarding.nameTitle}</h2>
             <label className="block">
               <span className="sr-only">{t.more.name}</span>
               <input
@@ -114,7 +90,6 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
                 onChange={(e) => {
                   setName(e.target.value);
                   setError("");
-                  if (!handleTouched) setHandle(suggestUsername(e.target.value) ?? "");
                 }}
                 maxLength={MAHDI_LIMITS.nameMax}
                 placeholder={t.onboarding.namePlaceholder}
@@ -124,42 +99,37 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
             </label>
             {name.trim() && <p className="m-display m-gold text-2xl">{t.mawla(name.trim())}</p>}
             <p className="m-hint">{t.onboarding.nameHint}</p>
-            {username ? (
-              <p className="m-chip w-fit" dir="auto">{t.username.yours(username)}</p>
-            ) : (
-              <UsernameField value={handle} onChange={(v) => (setHandle(v), setHandleTouched(true), setError(""))} status={handleStatus} />
-            )}
-            <Nav back={back} canNext={Boolean(name.trim()) && !busy && (Boolean(username) || handleStatus.state === "ok")} submit />
+            {username && <p className="m-chip w-fit" dir="auto">{t.username.yours(username)}</p>}
+            <button type="submit" className="m-btn m-btn-primary w-full text-lg" disabled={!name.trim()}>
+              {t.onboarding.start} <Icon name="chevronLeft" size={18} />
+            </button>
           </form>
         )}
 
-        {step === 2 && (
-          <div className="space-y-4">
-            <h1 className="text-2xl font-semibold">{t.onboarding.shrineTitle}</h1>
-            <p className="m-hint">{t.onboarding.shrineHint}</p>
-            <ShrinePicker
-              shrines={shrines}
-              value={shrineId}
-              onChange={(s) => {
-                setShrineId(s.id);
-                look.setShrine(s);
-              }}
-            />
-            <Nav back={back} next={next} canNext />
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-4">
-            <h1 className="text-2xl font-semibold">{t.onboarding.themeTitle}</h1>
-            <p className="m-hint">{t.onboarding.themeHint}</p>
-            <ThemePicker value={look.theme} onChange={(th: MahdiTheme) => look.setTheme(th)} />
+        {step === 1 && (
+          <div className="space-y-5">
+            <h1 className="text-2xl font-semibold">{t.onboarding.lookTitle}</h1>
+            <div className="space-y-2">
+              <p className="m-hint">{t.onboarding.shrineHint}</p>
+              <ShrinePicker
+                shrines={shrines}
+                value={shrineId}
+                onChange={(s) => {
+                  setShrineId(s.id);
+                  look.setShrine(s);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <p className="m-hint">{t.onboarding.themeHint}</p>
+              <ThemePicker value={look.theme} onChange={(th: MahdiTheme) => look.setTheme(th)} />
+            </div>
             {error && <p className="m-error" role="alert">{error}</p>}
             <Nav back={back} next={saveProfile} canNext={!busy} label={busy ? t.common.saving : t.common.next} />
           </div>
         )}
 
-        {step === 4 && (
+        {step === 2 && (
           <div className="space-y-4">
             <h1 className="text-2xl font-semibold">{t.onboarding.projectTitle}</h1>
             <p className="m-hint">{t.onboarding.projectHint}</p>
@@ -193,7 +163,7 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
             </button>
           </div>
         )}
-        {error && step < 3 && <p className="m-error" role="alert">{error}</p>}
+        {error && step === 0 && <p className="m-error" role="alert">{error}</p>}
       </section>
     </main>
   );

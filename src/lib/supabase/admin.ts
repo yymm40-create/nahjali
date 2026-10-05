@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type User } from "@supabase/supabase-js";
 
 /**
  * Service-role client: bypasses RLS. SERVER ONLY.
@@ -21,4 +21,17 @@ export async function signedUrl(bucket: string, path: string, expiresIn = 3600, 
     .createSignedUrl(path, expiresIn, download ? { download } : undefined);
   if (error) throw error;
   return data.signedUrl;
+}
+
+/** Every account (the admin API lists 1000 at a time); for the owner's pages and look-ups by e-mail. */
+export async function listAllUsers() {
+  const db = createAdminClient();
+  const out: User[] = [];
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    out.push(...data.users);
+    if (data.users.length < 1000) break;
+  }
+  return out;
 }

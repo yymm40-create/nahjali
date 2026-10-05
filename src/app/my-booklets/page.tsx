@@ -5,6 +5,16 @@ import { getTemplate } from "@/lib/templates";
 import { STATUS_LABELS, stepPath, type Order } from "@/lib/types";
 import FeedbackForm from "@/components/FeedbackForm";
 
+// what the customer does next, in one line (a child-friendly nudge)
+const NEXT_HINT: Partial<Record<Order["status"], string>> = {
+  pending_payment: "اضغط لإكمال الدفع",
+  paid: "اضغط لرفع صورة طفلك 📸",
+  awaiting_approval: "اضغط لاعتماد الشخصية ✅",
+  generating_character: "نصمم الشخصية، شوي وتجهز",
+  ready: "اضغط للتحميل ⬇️",
+  failed: "اضغط وتواصل معنا",
+};
+
 export default async function MyBookletsPage() {
   await requireUser("/my-booklets");
   // Read through RLS: the user only ever sees their own orders
@@ -30,8 +40,11 @@ export default async function MyBookletsPage() {
             <h2 className="text-lg font-extrabold">{names[o.template_id]}</h2>
             <p className="text-sm font-bold text-muted">{new Date(o.created_at).toLocaleDateString("ar-SA")}</p>
           </div>
-          <span className={`chip ${o.status === "ready" ? "bg-teal text-white" : o.status === "failed" ? "bg-red-500 text-white" : ""}`}>
-            {STATUS_LABELS[o.status]}
+          <span className="text-end">
+            <span className={`chip ${o.status === "ready" ? "bg-teal text-white" : o.status === "failed" ? "bg-red-500 text-white" : ""}`}>
+              {STATUS_LABELS[o.status]}
+            </span>
+            {NEXT_HINT[o.status] && <span className="mt-1 block text-xs font-bold text-muted">{NEXT_HINT[o.status]}</span>}
           </span>
         </Link>
       ))}

@@ -56,7 +56,7 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
           <input className="field flex-1" placeholder="ملاحظة (مثلًا: هدية التجربة)" value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
         <p className="text-xs font-bold text-muted">رقم موجب يضيف، وسالب يسحب. كل نقدة تقريبًا ٠٫٢٥ ريال للعميل.</p>
-        <button className="btn btn-primary w-full" disabled={busy || !email.trim() || !Number(amount)} onClick={() => send({ action: "grant", email, amount: Number(amount), note }, "تم ✅")}>
+        <button className="btn btn-primary w-full" disabled={busy || !email.trim() || !Number(amount)} onClick={() => window.confirm(`${Number(amount) < 0 ? "تسحب" : "تضيف"} ${Math.abs(Number(amount))} نقدة ${Number(amount) < 0 ? "من" : "لـ"} ${email.trim()}؟`) && send({ action: "grant", email, amount: Number(amount), note }, "تم ✅")}>
           نفّذ
         </button>
       </div>

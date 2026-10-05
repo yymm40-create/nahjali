@@ -73,7 +73,15 @@ export async function deleteExpiredSourcePhotos() {
     .select("id,user_id")
     .lt("created_at", olderThan)
     .gte("created_at", since);
-  const paths = (data ?? []).map(sourcePath);
+  // the order may be old while its photo is new (uploaded again today): only photos older than the limit go
+  const candidates = (data ?? []) as Pick<Order, "id" | "user_id">[];
+  const paths: string[] = [];
+  for (const o of candidates) {
+    const dir = sourcePath(o).split("/").slice(0, -1).join("/");
+    const { data: files } = await db.storage.from(BUCKETS.sources).list(dir, { search: "source.png" });
+    const f = files?.find((x) => x.name === "source.png");
+    if (f && new Date(f.created_at ?? f.updated_at ?? 0).toISOString() < olderThan) paths.push(sourcePath(o));
+  }
   for (let i = 0; i < paths.length; i += 100) {
     const { error } = await db.storage.from(BUCKETS.sources).remove(paths.slice(i, i + 100));
     if (error) console.error("cleanup failed", error);

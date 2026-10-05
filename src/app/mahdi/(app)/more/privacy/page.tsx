@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import Icon from "@/components/mahdi/Icon";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { Privacy } from "@/lib/mahdi/types";
@@ -36,6 +38,9 @@ export default function PrivacyPage() {
 
   return (
     <div className="space-y-6">
+      <Link href="/mahdi/more" className="m-btn m-btn-quiet m-btn-sm -ms-3">
+        <Icon name="chevronRight" size={18} /> {t.more.title}
+      </Link>
       <h1 className="m-display text-3xl">{t.privacy.title}</h1>
       <p className="m-note">{t.privacy.intro}</p>
       <section className="m-card divide-y px-5" style={{ borderColor: "var(--m-line)" }}>

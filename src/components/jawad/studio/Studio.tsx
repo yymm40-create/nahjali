@@ -1,6 +1,7 @@
 "use client";
 
 import SectionHint from "@/components/jawad/SectionHint";
+import PromptHelpers from "./PromptHelpers";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
@@ -41,6 +42,24 @@ interface UploadView {
   url: string | null;
 }
 
+/** The person is on another tab: the title changes until they come back, and a system notification when allowed. */
+function notifyDone(count: number, anyFailed: boolean) {
+  const title = document.title;
+  const text = anyFailed ? "توقف أحد التوليدات" : count > 1 ? `اكتمل ${count} توليدات ✅` : "اكتمل توليدك ✅";
+  document.title = `${text} · ${title.replace(/^.*?✅ · |^توقف أحد التوليدات · /, "")}`;
+  const back = () => {
+    if (!document.hidden) {
+      document.title = title;
+      document.removeEventListener("visibilitychange", back);
+    }
+  };
+  document.addEventListener("visibilitychange", back);
+  try {
+    if ("Notification" in window && Notification.permission === "granted") new Notification("JAWAD AI", { body: text, icon: "/jawad-ai/icon" });
+  } catch {
+    // notifications blocked
+  }
+}
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const draftKey = (userId: string | undefined, sectionId: string) => `jawad:draft:v1:${userId ?? "anon"}:${sectionId}`;
 
@@ -131,6 +150,11 @@ export default function Studio({ section, generators, prices: initialPrices, use
   const [balance, setBalance] = useState(initialBalance);
   const [picker, setPicker] = useState(false);
   const [tab, setTab] = useState<"settings" | "works">("settings");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") !== "works") return;
+    const t = setTimeout(() => setTab("works"), 0);
+    return () => clearTimeout(t);
+  }, []);
   const [notice, setNotice] = useState("");
   const [touched, setTouched] = useState(false);
   const files = useRef(new Map<string, File>());
@@ -166,7 +190,19 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   // ── draft: restore once, then keep it (prompt, settings, references) ──
   function restore() {
-    const saved = readDraft(key);
+    let saved = readDraft(key);
+    // written before signing in (under "anon"): it is this person's draft, so it follows them into their account
+    if (user && !saved?.prompt && !saved?.refs?.length) {
+      const anon = readDraft(draftKey(undefined, section.id));
+      if (anon?.prompt || anon?.refs?.length) {
+        saved = { ...(saved ?? {}), ...anon, refs: anon.refs ?? saved?.refs };
+        try {
+          localStorage.removeItem(draftKey(undefined, section.id));
+        } catch {
+          // nothing to clean
+        }
+      }
+    }
     if (saved) {
       setDraft((d) => ({
         generatorId: saved.generatorId && generators.some((g) => g.id === saved.generatorId) ? saved.generatorId : d.generatorId,
@@ -377,6 +413,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
         if (ok) {
           setOffline(false);
           const byId = new Map(body.jobs.map((j) => [j.id, j]));
+          const finished = body.jobs.filter((j) => j.status === "succeeded" || j.status === "failed").length;
+          if (finished && document.hidden) notifyDone(finished, body.jobs.some((j) => j.status === "failed"));
           setItems((cur) => cur.map((it) => (it.type === "job" && byId.has(it.id) ? byId.get(it.id)! : it)));
           announceBalance(body.balance);
         }
@@ -592,6 +630,11 @@ export default function Studio({ section, generators, prices: initialPrices, use
     setSubmitting(true);
     setSubmitError("");
     if (filter === "all" || filter === def.output) setItems((cur) => [temp, ...cur.filter((c) => c.id !== tempId)]);
+    try {
+      if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
+    } catch {
+      // not available
+    }
     const body = {
       idempotencyKey: idem,
       sectionId: section.id,
@@ -706,6 +749,35 @@ export default function Studio({ section, generators, prices: initialPrices, use
     setTab("settings");
   }
 
+  /** «نسخة ثانية»: the same prompt, settings and references, generated again (a new result, same price). */
+  async function variation(j: JobView) {
+    if (!user || !allowed) return setNotice("سجّل الدخول للتوليد.");
+    if (!generators.some((g) => g.id === j.generatorId)) return setNotice("مولد هذا العمل غير متاح الآن.");
+    setNotice("");
+    const tempId = `temp-${uid()}`;
+    const temp: JobView = { ...j, id: tempId, createdAt: new Date().toISOString(), finishedAt: null, status: "validating", providerStatus: null, progress: null, error: null, cancellable: false, outputs: [], chargeState: "none" };
+    setItems((cur) => [temp, ...cur]);
+    const r = await postJson<{ job: JobView; balance: number | null; coins?: number; code?: string }>("/api/jawad/generate", {
+      idempotencyKey: uid(),
+      sectionId: j.sectionId,
+      generatorId: j.generatorId,
+      refStyle: j.refStyle,
+      settings: j.settings,
+      prompt: j.prompt,
+      instructions: j.instructions,
+      refs: j.refs.map((x) => ({ uploadId: x.uploadId, role: x.role, name: x.name ?? "" })),
+      expectedCoins: j.priceCoins,
+    }).catch(() => null);
+    setItems((cur) => cur.filter((c) => c.id !== tempId));
+    if (!r) return setNotice("انقطع الاتصال، جرّب مرة ثانية.");
+    if (!r.ok) {
+      if (r.status === 409 && r.body.code === "price_changed" && typeof r.body.coins === "number") return setNotice(`تغيّر السعر إلى ${r.body.coins} نقدة؛ اضغط «استخدم الإعدادات» ثم «توليد» لتأكيده.`);
+      return setNotice(r.body.error ?? "تعذّر بدء التوليد.");
+    }
+    setItems((cur) => [r.body.job, ...cur.filter((c) => c.id !== r.body.job.id)]);
+    announceBalance(r.body.balance);
+  }
+
   async function cancel(j: JobView) {
     const { ok, body } = await postJson<{ balance: number | null }>(`/api/jawad/jobs/${j.id}/cancel`, {});
     if (!ok) return setNotice(body.error ?? "تعذّر الإلغاء.");
@@ -792,11 +864,14 @@ export default function Studio({ section, generators, prices: initialPrices, use
               touched={touched}
               onTouched={() => setTouched(true)}
               locked={directing ? "«المخرج الخارق» يكتب البرومبت…" : null}
+              onSubmit={() => {
+                if (user && price != null && !blockers.length && !submitting) submit(price);
+              }}
             />
+            <PromptHelpers kind={def.output} prompt={draft.prompt} onPrompt={onPrompt} disabled={directing} />
             {directorCoins != null && (
               <DirectorBoost
                 coins={directorCoins}
-                owner={owner}
                 disabledReason={directorWhy}
                 busy={directing}
                 canUndo={beforeDirector != null && beforeDirector !== draft.prompt}
@@ -861,6 +936,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
             signedIn={Boolean(user)}
             allowed={allowed}
             onReuse={reuse}
+            onVariation={variation}
             onUseAsRef={useAsRef}
             onCancel={cancel}
             onRetrySubmit={(j) => submit(j.priceCoins)}

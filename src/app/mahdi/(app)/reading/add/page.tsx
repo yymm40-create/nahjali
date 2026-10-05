@@ -37,8 +37,12 @@ export default function AddBookPage() {
     let live = true;
     const id = setTimeout(() => {
       mahdiFetch<{ books: Book[] }>(`/api/mahdi/reading/books?q=${encodeURIComponent(q.trim())}`)
-        .then((r) => live && setResults(r.books))
-        .catch(() => live && setResults([]));
+        .then((r) => {
+          if (!live) return;
+          setResults(r.books);
+          setError("");
+        })
+        .catch((e) => live && setError((e as Error).message));
     }, 300);
     return () => {
       live = false;

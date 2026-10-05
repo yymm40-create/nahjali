@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import type { Order } from "@/lib/types";
 
 export interface AdminUser {
@@ -29,7 +29,7 @@ export const riyadhDay = (iso: string) => new Date(new Date(iso).getTime() + 3 *
 export async function loadAdminStats() {
   const db = createAdminClient();
   const [{ data: authData }, { data: orders }, { data: feedback }, { data: logs }, { data: characters }] = await Promise.all([
-    db.auth.admin.listUsers({ perPage: 1000 }),
+    listAllUsers().then((users) => ({ data: { users } })),
     db.from("orders").select("*").order("created_at", { ascending: false }),
     db.from("feedback").select("*").order("created_at", { ascending: false }),
     db.from("generation_logs").select("estimated_cost_usd,success,created_at"),

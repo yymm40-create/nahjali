@@ -58,6 +58,8 @@ export function boardScore(habits: Habit[], logs: UserData["logs"], today: strin
 
 const cache = new Map<LeaderboardPeriod, { at: number; entries: RankedEntry[] }>();
 const TTL = 5 * 60_000;
+/** Someone changed who may see them: the board is built again on the next read. */
+export const forgetLeaderboard = () => cache.clear();
 
 /** The whole board for a period, cached in memory for 5 minutes per server instance. */
 export async function getLeaderboard(period: LeaderboardPeriod): Promise<RankedEntry[]> {
