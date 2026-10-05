@@ -23,6 +23,7 @@ import {
   type VideoResolution,
 } from "@config/film";
 import { useFilmBase } from "../../FilmBase";
+import EmotionPicker from "../../EmotionPicker";
 
 interface Generation {
   /** The director's understanding of the client's video notes, as options to choose from. */
@@ -184,6 +185,8 @@ export default function VideosWorkspace({
   const voicesUrl = `/api/film/projects/${projectId}/voices`;
   const [voice, setVoice] = useState<VoiceState | null>(null);
   const [speaking, setSpeaking] = useState<string | null>(null);
+  // the feeling of each line, sent between [ ] when it is spoken
+  const [feel, setFeel] = useState<Record<string, string>>({});
   const [voiceError, setVoiceError] = useState("");
   const hasLines = generations.some((g) => g.lines.length);
   useEffect(() => {
@@ -213,7 +216,7 @@ export default function VideosWorkspace({
     for (const key of keys) {
       setSpeaking(key);
       try {
-        await postJson(voicesUrl, { action: "speak", key, idempotencyKey: crypto.randomUUID() });
+        await postJson(voicesUrl, { action: "speak", key, idempotencyKey: crypto.randomUUID(), emotion: feel[key] ?? "" });
         setVoice(await api<VoiceState>(voicesUrl));
       } catch (e) {
         setVoiceError((e as Error).message);
@@ -474,6 +477,7 @@ export default function VideosWorkspace({
                     return (
                       <li key={l.key} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-2 text-sm">
                         <span className="flex-1"><b>{l.speaker}:</b> {l.line}</span>
+                        <div className="w-full"><EmotionPicker value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(speaking)} /></div>
                         {a?.url && ok && <audio controls preload="none" src={a.url} className="h-8 w-40" />}
                         <button
                           type="button"
