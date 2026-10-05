@@ -8,6 +8,7 @@ const COIN_LABELS: Record<string, string> = {
   sheet_image: "صورة شيت",
   director: "رد المخرج",
   director_video: "فيديو",
+  voice_line: "صوت جملة (ElevenLabs)",
 };
 import type { FilmJob, FilmService } from "./types";
 

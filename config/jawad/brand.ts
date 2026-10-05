@@ -22,3 +22,9 @@ export const WORKS_PAGE_SIZE = 18;
 
 /** A valid #rrggbb accent colour, or the default. */
 export const cleanAccent = (c: unknown) => (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : JAWAD.defaultAccent);
+
+/**
+ * Voices a person can keep in their library. Every saved voice takes one of the site's ElevenLabs voice slots (their
+ * number depends on the ElevenLabs plan), so keep this × the number of users within the plan.
+ */
+export const JAWAD_VOICE_LIMIT = 10;

@@ -462,12 +462,217 @@ const miniTts: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي (سياسة OpenAI)."],
 };
 
+// ───────────────────────────── ElevenLabs · Eleven v4 · Sound effects v2 · Music v2.5 ─────────────────────────────
+// Checked on 2026-10-05 against ElevenLabs' models page, API reference, pay-as-you-go API pricing and the official
+// JS SDK 2.70.0 (released with Eleven v4 on 2026-09-28).
+
+const EL_CHECKED = "2026-10-05";
+/** USD (pay-as-you-go API, regular price, not the launch discount): v4 per 1K characters · SFX and music per minute. */
+export const ELEVEN_PRICE = { v4PerKChars: 0.08, sfxPerMin: 0.12, musicPerMin: 0.15 };
+/**
+ * Voice design: three spoken previews of up to 1,000 characters each (no separate API price is published; a ceiling
+ * at the v4 speech rate). Saving a voice costs nothing at ElevenLabs but takes one of the account's voice slots.
+ */
+export const VOICE_DESIGN_USD = (3 * 1000 * ELEVEN_PRICE.v4PerKChars) / 1000;
+/** Price keys of the voice library (on the Eleven v4 generator): designing a voice, and copying one from a recording. */
+export const VOICE_DESIGN_KEY = "voice:design";
+export const VOICE_CLONE_KEY = "voice:clone";
+/**
+ * A voice in a request: «p:<id>» one of ElevenLabs' ready voices, «v:<uuid>» one the person saved in their library.
+ * George is in ElevenLabs' own examples and in every account's default voices.
+ */
+export const ELEVEN_VOICE = /^(p:[A-Za-z0-9]{16,32}|v:[0-9a-f-]{36})$/;
+export const ELEVEN_DEFAULT_VOICE = "p:JBFqnCBsd6RMkjVDRZzb";
+const AUDIO_REF = { mimes: ["audio/mpeg", "audio/wav"], maxBytes: 15 * MB };
+const elSources = (extra: { label: string; url: string }[]) => [
+  { label: "ElevenLabs — Models (eleven_v4, eleven_ttv_v3, eleven_text_to_sound_v2, music_v2_5)", url: "https://elevenlabs.io/docs/overview/models", checked: EL_CHECKED },
+  { label: "ElevenLabs — API pricing (pay as you go)", url: "https://elevenlabs.io/pricing/api", checked: EL_CHECKED },
+  ...extra.map((x) => ({ ...x, checked: EL_CHECKED })),
+];
+
+const v4Mode: ModeDef = { id: "text_to_speech", label: "نص إلى كلام", refStyle: "none", refs: {}, promptRequired: true };
+const elevenV4: GeneratorDef = {
+  id: "elevenlabs-eleven-v4",
+  name: "Eleven v4",
+  output: "audio",
+  defaultSection: "audio",
+  provider: { id: "elevenlabs", label: "ElevenLabs" },
+  model: { id: "eleven_v4", family: "Eleven v4", version: "2026-09-28" },
+  api: { name: "ElevenLabs Text to Speech API", endpoint: "POST /v1/text-to-speech/{voice_id}", tracking: "sync", progress: "none", cancel: "none" },
+  modes: [v4Mode],
+  options: [
+    { key: "voice", label: "الصوت", kind: "choice", ltr: true, default: ELEVEN_DEFAULT_VOICE, values: [{ value: ELEVEN_DEFAULT_VOICE, label: "George" }], accepts: ELEVEN_VOICE, picker: "voice" },
+    {
+      key: "stability", label: "الأداء", kind: "choice", default: "0.5",
+      values: [
+        { value: "0", label: "معبّر", hint: "انفعال أكثر" },
+        { value: "0.5", label: "طبيعي" },
+        { value: "1", label: "ثابت", hint: "إلقاء متّزن" },
+      ],
+    },
+  ],
+  files: {},
+  prompt: { label: "النص المنطوق", placeholder: "اكتب الكلام كما سيُنطق… ويمكنك توجيه الأداء بوسوم مثل [whispers] أو [laughs] أو [sighs].", max: 5000, arabic: true },
+  priceKeys: [
+    { key: "chars:1k", label: "كل ١٠٠٠ حرف", defaultCenti: centiFor(ELEVEN_PRICE.v4PerKChars), basis: `سعر ElevenLabs المنشور لـ Eleven v4: $${ELEVEN_PRICE.v4PerKChars} لكل ١٠٠٠ حرف (السعر العادي، لا خصم الإطلاق)` },
+    { key: VOICE_DESIGN_KEY, label: "تصميم صوت بالوصف (٣ عينات)", defaultCenti: centiFor(VOICE_DESIGN_USD), basis: `سقف: ٣ عينات × ١٠٠٠ حرف بسعر الكلام ($${ELEVEN_PRICE.v4PerKChars}/١٠٠٠)؛ لا يوجد سعر منفصل منشور لتصميم الأصوات` },
+    { key: VOICE_CLONE_KEY, label: "نسخ صوت من تسجيل (للمرة)", defaultCenti: 500, basis: "سعر ثابت حدّده المالك (5 نقدات): النسخ الفوري بلا تكلفة لدى ElevenLabs لكنه يشغل خانة صوت في الحساب" },
+  ],
+  modeFor: () => v4Mode,
+  rules: () => ({ options: opt(elevenV4.options), issues: [], notes: ["وجّه الأداء بوسوم بين قوسين مثل [whispers] و[laughs] و[shouts]؛ يتكلم أكثر من ٩٠ لغة منها العربية."] }),
+  price(d, _mode, table) {
+    const per = table["chars:1k"];
+    if (per == null) return { ok: false, reason: "سعر الكلام لم يُحدد بعد." };
+    const k = Math.max(1, Math.ceil(d.prompt.length / 1000));
+    return total([{ label: `${k} × ١٠٠٠ حرف`, centi: k * per }], elevenV4.costUsd(d, v4Mode));
+  },
+  costUsd: (d) => (Math.max(1, d.prompt.length) / 1000) * ELEVEN_PRICE.v4PerKChars,
+  sources: elSources([
+    { label: "ElevenLabs — Create speech (voice_id, model_id, voice_settings, output_format)", url: "https://elevenlabs.io/docs/api-reference/text-to-speech/convert" },
+    { label: "ElevenLabs — Design a voice (eleven_ttv_v3, reference audio, prompt strength)", url: "https://elevenlabs.io/docs/api-reference/text-to-voice/design" },
+    { label: "ElevenLabs — Create a voice from a preview", url: "https://elevenlabs.io/docs/api-reference/text-to-voice/create" },
+    { label: "ElevenLabs — Eleven v4 (help center)", url: "https://elevenlabs.io/docs/help-center/product/core-capabilities/text-to-speech/what-is-eleven-v4" },
+  ]),
+  verification: [
+    { item: "النموذج", status: "verified", note: "eleven_v4 أحدث نموذج كلام (أُطلق 28 سبتمبر 2026)، حد 10,000 حرف للطلب؛ نقبل حتى 5,000." },
+    { item: "الأصوات", status: "verified", note: "أصوات ElevenLabs الجاهزة في الحساب + الأصوات المحفوظة في مكتبة الشخص (مصمّمة بالوصف أو منسوخة من تسجيل)." },
+    { item: "تصميم الصوت", status: "verified", note: "POST /v1/text-to-voice/design بنموذج eleven_ttv_v3 (الأحدث) يرجع عينات؛ مع مرجع صوتي (reference_audio_base64) وقوة الوصف prompt_strength." },
+    { item: "الأداء", status: "verified", note: "voice_settings.stability: الأقل أكثر تعبيرًا والأعلى أثبت (الافتراضي 0.5)؛ نرسل 0 أو 0.5 أو 1." },
+    { item: "الصيغة", status: "verified", note: "mp3_44100_128 (الافتراضي)." },
+    { item: "السعر", status: "verified", note: `$${ELEVEN_PRICE.v4PerKChars} لكل ١٠٠٠ حرف (عليه خصم إطلاق مؤقت حتى 12 أكتوبر؛ نسعّر بالسعر العادي).` },
+    { item: "سعر تصميم الصوت", status: "unverified", note: "غير منشور منفصلًا؛ نسعّره بسقف ٣ عينات × ١٠٠٠ حرف بسعر الكلام." },
+  ],
+  notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا يُنسخ صوت شخص إلا بإذنه."],
+};
+
+const sfxMode: ModeDef = { id: "text_to_sfx", label: "مؤثر من الوصف", refStyle: "none", refs: {}, promptRequired: true };
+const elevenSfx: GeneratorDef = {
+  id: "elevenlabs-sfx-v2",
+  name: "ElevenLabs Sound Effects",
+  output: "audio",
+  defaultSection: "audio",
+  provider: { id: "elevenlabs", label: "ElevenLabs" },
+  model: { id: "eleven_text_to_sound_v2", family: "Text to Sound", version: "v2" },
+  api: { name: "ElevenLabs Sound Effects API", endpoint: "POST /v1/sound-generation", tracking: "sync", progress: "none", cancel: "none" },
+  modes: [sfxMode],
+  options: [
+    { key: "duration", label: "المدة", kind: "int", min: 1, max: 30, default: 5, unit: "ثانية" },
+    {
+      key: "influence", label: "الالتزام بالوصف", kind: "choice", default: "0.3",
+      values: [
+        { value: "0.3", label: "حر", hint: "تنوع أكثر" },
+        { value: "0.6", label: "متوازن" },
+        { value: "0.9", label: "حرفي", hint: "يتبع الوصف بدقة" },
+      ],
+    },
+    { key: "loop", label: "مؤثر يتكرر بسلاسة (لوب)", kind: "bool", default: false, hint: "للخلفيات: مطر، رياح، زحام…" },
+  ],
+  files: {},
+  prompt: { label: "وصف المؤثر", placeholder: "مثال: خطوات على أرض حجرية في ممر واسع، صدى خفيف، ليلًا… (الإنجليزية أدق)", max: 2000, arabic: true },
+  priceKeys: [{ key: "sec", label: "كل ثانية", defaultCenti: centiFor(ELEVEN_PRICE.sfxPerMin / 60), basis: `سعر ElevenLabs المنشور للمؤثرات: $${ELEVEN_PRICE.sfxPerMin} للدقيقة` }],
+  modeFor: () => sfxMode,
+  rules: () => ({ options: opt(elevenSfx.options), issues: [], notes: ["الوصف بالإنجليزية يعطي نتائج أدق؛ المؤثرات بلا كلام ولا موسيقى."] }),
+  price(d, _mode, table) {
+    const per = table.sec;
+    if (per == null) return { ok: false, reason: "سعر المؤثرات لم يُحدد بعد." };
+    const sec = Number(d.settings.duration) || 5;
+    return total([{ label: `${sec} ث`, centi: sec * per }], elevenSfx.costUsd(d, sfxMode));
+  },
+  costUsd: (d) => ((Number(d.settings.duration) || 5) * ELEVEN_PRICE.sfxPerMin) / 60,
+  sources: elSources([{ label: "ElevenLabs — Create sound effect (text, duration_seconds 0.5–30, loop, prompt_influence)", url: "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert" }]),
+  verification: [
+    { item: "النموذج", status: "verified", note: "eleven_text_to_sound_v2، النموذج الوحيد للمؤثرات." },
+    { item: "المدة", status: "verified", note: "0.5–30 ثانية؛ نرسل مدة محددة (1–30) ليكون السعر معروفًا." },
+    { item: "اللوب والالتزام بالوصف", status: "verified", note: "loop (v2 فقط) وprompt_influence من 0 إلى 1 (الافتراضي 0.3)." },
+    { item: "المراجع", status: "verified", note: "واجهة المؤثرات لا تقبل صوتًا مرجعيًا؛ المرجع يُستعمل كما هو من «مكتبة الأعمال»." },
+    { item: "السعر", status: "verified", note: `$${ELEVEN_PRICE.sfxPerMin} للدقيقة.` },
+  ],
+  notes: [],
+};
+
+/** How a reference song is used: inspired by it, learning from it closely, or keeping it (Eleven Music's condition strength). */
+export const MUSIC_REF_USE: Record<string, { label: string; strength: "low" | "medium" | "high" | "xhigh" }> = {
+  inspire: { label: "يستوحي منه", strength: "low" },
+  learn: { label: "يتعلّم منه", strength: "high" },
+  same: { label: "يستخدمه نفسه", strength: "xhigh" },
+};
+/** The part of a reference song the music is conditioned on (Eleven Music's audio reference is about 30 seconds). */
+export const MUSIC_REF_MS = 30_000;
+const musicModes: ModeDef[] = [
+  { id: "text_to_music", label: "من الوصف", refStyle: "none", refs: {}, promptRequired: true },
+  { id: "music_reference", label: "بمقطع مرجعي", refStyle: "references", refs: { audio: { min: 1, max: 1 } }, promptRequired: true },
+];
+const elevenMusic: GeneratorDef = {
+  id: "elevenlabs-music-v2-5",
+  name: "Eleven Music v2.5",
+  output: "audio",
+  defaultSection: "audio",
+  provider: { id: "elevenlabs", label: "ElevenLabs" },
+  model: { id: "music_v2_5", family: "Eleven Music", version: "2.5" },
+  api: { name: "ElevenLabs Music API", endpoint: "POST /v1/music · POST /v1/music/plan · POST /v1/music/upload", tracking: "sync", progress: "none", cancel: "none" },
+  modes: musicModes,
+  options: [
+    { key: "duration", label: "المدة", kind: "int", min: 10, max: 300, step: 5, default: 60, unit: "ثانية" },
+    { key: "instrumental", label: "بدون غناء (آلات فقط)", kind: "bool", default: false },
+    {
+      key: "refUse", label: "المقطع المرجعي", kind: "choice", default: "inspire",
+      values: Object.entries(MUSIC_REF_USE).map(([value, x]) => ({ value, label: x.label })),
+    },
+  ],
+  files: { audio: { ...AUDIO_REF, minMs: 5_000, maxMs: 60_000 } },
+  prompt: { label: "وصف المقطوعة", placeholder: "الأسلوب والآلات والإيقاع والمزاج… والكلمات إن أردت غناءً (الإنجليزية أدق للأسلوب).", max: 4000, arabic: true },
+  priceKeys: [
+    { key: "sec", label: "كل ثانية من المقطوعة", defaultCenti: centiFor(ELEVEN_PRICE.musicPerMin / 60), basis: `سعر ElevenLabs المنشور للموسيقى: $${ELEVEN_PRICE.musicPerMin} للدقيقة` },
+    { key: "ref:sec", label: "كل ثانية من المقطع المرجعي (رفعه)", defaultCenti: centiFor(ELEVEN_PRICE.musicPerMin / 60), basis: "رفع مقطع لـ Eleven Music بسعر توليد المقطوعة نفسه (وثيقة Upload music)" },
+  ],
+  modeFor: (_style, refs) => (refs.some((r) => r.kind === "audio") ? musicModes[1] : musicModes[0]),
+  rules(d, mode) {
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (mode.id !== "music_reference") states.refUse = { hidden: true };
+    const notes = mode.id === "music_reference" ? [`يُبنى على أول ${MUSIC_REF_MS / 1000} ثانية من المقطع المرجعي: «يستوحي» بحرية، «يتعلّم» بقرب، «يستخدمه نفسه» بأقرب ما يمكن.`] : [];
+    void d;
+    return { options: opt(elevenMusic.options, states), issues: [], notes };
+  },
+  price(d, mode, table) {
+    const per = table.sec;
+    if (per == null) return { ok: false, reason: "سعر الموسيقى لم يُحدد بعد." };
+    const sec = Number(d.settings.duration) || 60;
+    const lines = [{ label: `${sec} ث`, centi: sec * per }];
+    if (mode.id === "music_reference") {
+      const rk = table["ref:sec"];
+      if (rk == null) return { ok: false, reason: "سعر المقطع المرجعي لم يُحدد بعد." };
+      const refSec = Math.ceil(d.refs.filter((r) => r.kind === "audio").reduce((s, r) => s + (r.durationMs ?? 0), 0) / 1000);
+      lines.push({ label: `${refSec} ث مرجع`, centi: refSec * rk });
+    }
+    return total(lines, elevenMusic.costUsd(d, mode));
+  },
+  costUsd(d, mode) {
+    const sec = Number(d.settings.duration) || 60;
+    const refSec = mode.id === "music_reference" ? d.refs.filter((r) => r.kind === "audio").reduce((s, r) => s + (r.durationMs ?? 0), 0) / 1000 : 0;
+    return ((sec + refSec) * ELEVEN_PRICE.musicPerMin) / 60;
+  },
+  sources: elSources([
+    { label: "ElevenLabs — Compose music (prompt or composition_plan, music_length_ms 3,000–600,000, music_v2_5)", url: "https://elevenlabs.io/docs/api-reference/music/compose" },
+    { label: "ElevenLabs — Upload music (song_id; billed like a generation)", url: "https://elevenlabs.io/docs/api-reference/music/upload" },
+    { label: "ElevenLabs — Composition plans (chunks, styles, conditioning)", url: "https://elevenlabs.io/docs/eleven-api/guides/how-to/music/composition-plans" },
+  ]),
+  verification: [
+    { item: "النموذج", status: "verified", note: "music_v2_5 أحدث نماذج Eleven Music." },
+    { item: "المدة", status: "verified", note: "3 ثوانٍ إلى 10 دقائق في الواجهة البرمجية؛ نقدم 10–300 ثانية." },
+    { item: "بدون غناء", status: "verified", note: "force_instrumental مع الوصف؛ ومع المرجع يُطلب في الخطة نفسها." },
+    { item: "المقطع المرجعي", status: "verified", note: "يُرفع (POST /v1/music/upload → song_id)، ثم تُبنى خطة من الوصف (POST /v1/music/plan) ويُربط أول مقطع بالمرجع (conditioning_ref) بقوة low/high/xhigh." },
+    { item: "إتاحة المرجع", status: "unverified", note: "بعض وثائق ElevenLabs تقصر رفع المقاطع على حسابات المؤسسات؛ إن رفضه المزوّد تُعاد النقود وتظهر رسالة واضحة." },
+    { item: "السعر", status: "verified", note: `$${ELEVEN_PRICE.musicPerMin} للدقيقة، والرفع بسعر التوليد نفسه.` },
+  ],
+  notes: ["احترم حقوق المقاطع المرجعية: ElevenLabs يفحص المرفوع، وإن وجد محتوى محميًّا يرفضه ويحتسب نصف التكلفة."],
+};
+
 function total(lines: { label: string; centi: number }[], usd: number | null): PriceResult {
   const centi = lines.reduce((s, l) => s + l.centi, 0);
   return { ok: true, coins: coinsOf(centi), lines, usdCeiling: usd };
 }
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, seedance("2.5"), seedance("2.0"), miniTts];
+export const GENERATORS: GeneratorDef[] = [gptImage2, seedance("2.5"), seedance("2.0"), miniTts, elevenV4, elevenSfx, elevenMusic];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

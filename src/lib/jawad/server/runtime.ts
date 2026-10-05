@@ -56,6 +56,8 @@ export const PROVIDER_KEYS: Record<GeneratorDef["provider"]["id"], string[]> = {
   openai: ["OPENAI_API_KEY"],
   // ARK_API_KEY is the documented name; the film branch's Vercel project stores it as seedance_api
   "byteplus-modelark": ["ARK_API_KEY", "seedance_api", "SEEDANCE_API"],
+  // ELEVENLABS_API_KEY is the documented name; the owner's own style of names is accepted too
+  elevenlabs: ["ELEVENLABS_API_KEY", "elevenlabs_api", "ELEVENLABS_API", "XI_API_KEY"],
 };
 export const keyConfigured = (d: GeneratorDef) => PROVIDER_KEYS[d.provider.id].some((k) => Boolean(process.env[k]));
 

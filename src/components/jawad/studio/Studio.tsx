@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { defaultSettings, DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
+import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
 import { cleanRefName, defaultRefName, renameMentions, sameName } from "@/lib/jawad/mentions";
@@ -46,6 +46,12 @@ async function call<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; 
   return { ok: res.ok, status: res.status, body };
 }
 const postJson = <T,>(url: string, data: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+
+/** What designing or copying a voice costs this person (the owner pays nothing). */
+const voiceCoins = (table: Record<string, number | null>, owner: boolean) => {
+  const c = (k: string) => (owner ? 0 : table[k] == null ? null : coinsOf(table[k]!));
+  return { design: c(VOICE_DESIGN_KEY), clone: c(VOICE_CLONE_KEY) };
+};
 
 /** The file side of a reference, from the server's view (its name and role stay the user's). */
 const viewFields = (v: UploadView): Omit<RefItem, "localId" | "kind" | "name" | "role"> => ({
@@ -686,7 +692,12 @@ export default function Studio({ section, generators, prices: initialPrices, use
                 }}
               />
             )}
-            <OutputSettings ev={ev} values={ev.settings} onChange={setSetting} />
+            <OutputSettings
+              ev={ev}
+              values={ev.settings}
+              onChange={setSetting}
+              voiceCoins={def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, owner) : undefined}
+            />
           </div>
 
           {/* Always reachable: the button sticks to the bottom of the panel */}

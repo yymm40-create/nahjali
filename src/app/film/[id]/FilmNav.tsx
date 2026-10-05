@@ -12,7 +12,7 @@ const SECTIONS: { key: string; label: string; icon: string; path: string; reache
   { key: "sheets", label: "صانع الشيت", icon: "🎨", path: "/sheets", reached: "sheets", ready: true },
   { key: "director", label: "المخرج", icon: "🎥", path: "/director", reached: "director", ready: true },
   { key: "videos", label: "التوليد", icon: "🎬", path: "/videos", reached: "director", ready: true },
-  { key: "voices", label: "الأصوات", icon: "🎙️", path: "/voices", reached: "voices", ready: false },
+  { key: "voices", label: "الأصوات", icon: "🎙️", path: "/voices", reached: "director", ready: true },
 ];
 
 const order = (s: FilmStage) => FILM_STAGES.findIndex((x) => x.key === s);
@@ -27,7 +27,7 @@ export default function FilmNav({ projectId, stage, videosOpen }: { projectId: s
         {SECTIONS.map((s) => {
           const href = base + s.path;
           // The generation page opens once the director has an approved generation
-          const open = s.ready && order(stage) >= order(s.reached) && (s.key !== "videos" || videosOpen);
+          const open = s.ready && order(stage) >= order(s.reached) && ((s.key !== "videos" && s.key !== "voices") || videosOpen);
           const active = pathname === href;
           const done = order(stage) > order(s.reached) || (s.key === "story" && order(stage) > 0);
           const tile = (

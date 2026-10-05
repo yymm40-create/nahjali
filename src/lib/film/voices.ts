@@ -1,0 +1,125 @@
+// The film maker's «الأصوات»: every Arabic line the director wrote for the approved generations (dialogue_ar), a voice
+// cast for each speaker (the person's own voices from JAWAD AI's library, or ElevenLabs' ready voices), and each line
+// spoken with Eleven v4 into the project's audio files. Server only. Charged like the other film operations
+// (reserve → settle on success → refund on failure).
+
+import { UserError } from "@/lib/api";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { ELEVEN_PRICE, ELEVEN_VOICE } from "@config/jawad/generators";
+import { keyConfigured } from "@/lib/jawad/server/runtime";
+import { generatorById } from "@config/jawad/generators";
+import { elevenPremadeVoices, elevenSpeech } from "@/lib/jawad/server/providers/elevenlabs";
+import { ProviderError } from "@/lib/jawad/server/providers/common";
+import { audioDurationMs, resolveVoice } from "@/lib/jawad/server/voices";
+import { directorVersions } from "./director";
+import { failJob, startJob, succeedJob } from "./usage";
+import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
+
+const db = () => createAdminClient();
+const MODEL = "eleven_v4";
+
+export interface VoiceLine {
+  /** genId:index — stable while the generation's approved version stays the same. */
+  key: string;
+  genId: string;
+  genName: string;
+  index: number;
+  speaker: string;
+  line: string;
+}
+
+/** Whether the film maker can speak lines (the ElevenLabs key is on the server). */
+export const voicesReady = () => keyConfigured(generatorById("elevenlabs-eleven-v4")!);
+
+/** The spoken lines of the approved generations, in the generation map's order. */
+export async function voiceLines(projectId: string): Promise<VoiceLine[]> {
+  const versions = await directorVersions(projectId);
+  const map = versions.filter((v) => v.kind === "dir_map" && v.status === "approved").at(-1)?.data.generation_map ?? [];
+  const approved = versions.filter((v) => v.kind === "dir_generation" && v.status === "approved");
+  const ids = [...new Set([...map.map((g) => g.id), ...approved.map((v) => v.ref_key)])].filter((g) => approved.some((v) => v.ref_key === g));
+  return ids.flatMap((g) => {
+    const v = approved.filter((x) => x.ref_key === g).at(-1)!;
+    const name = map.find((m) => m.id === g)?.name ?? "";
+    return (v.data.dialogue_ar ?? [])
+      .filter((d) => d.line?.trim())
+      .map((d, index) => ({ key: `${g}:${index}`, genId: g, genName: name, index, speaker: (d.speaker || "الراوي").trim().slice(0, 80), line: d.line.trim() }));
+  });
+}
+
+export async function voiceCast(projectId: string): Promise<Record<string, string>> {
+  const { data } = await db().from("film_voice_cast").select("speaker, voice").eq("project_id", projectId);
+  return Object.fromEntries((data ?? []).map((r) => [r.speaker as string, r.voice as string]));
+}
+
+/** The latest spoken file of each line. */
+export async function lineAudios(projectId: string) {
+  const { data } = await db().from("film_assets").select("*").eq("project_id", projectId).eq("kind", "audio").like("ref_key", "line:%").order("created_at", { ascending: true });
+  const rows = (data ?? []) as FilmAsset[];
+  const latest = new Map<string, FilmAsset>();
+  for (const r of rows) latest.set(r.ref_key.slice(5), r);
+  const list = [...latest.values()].filter((r) => r.storage_path);
+  const links = list.length ? ((await db().storage.from(FILM_BUCKET).createSignedUrls(list.map((r) => r.storage_path!), 3600)).data ?? []) : [];
+  return list.map((r, i) => ({ key: r.ref_key.slice(5), url: links[i]?.signedUrl ?? "", text: String(r.meta?.text ?? ""), voice: String(r.meta?.voice ?? ""), durationMs: Number(r.meta?.durationMs ?? 0) || null, createdAt: r.created_at }));
+}
+
+/** The voices to choose from: the person's library, then ElevenLabs' ready voices. */
+export async function castChoices(userId: string) {
+  const { data } = await db().from("jawad_voices").select("id, name, origin").eq("user_id", userId).order("created_at", { ascending: false });
+  const mine = (data ?? []).map((r) => ({ value: `v:${r.id}`, name: r.name as string, group: "mine" as const }));
+  const ready = await elevenPremadeVoices()
+    .then((l) => l.map((v) => ({ value: `p:${v.voiceId}`, name: `${v.name}${v.labels.gender ? ` · ${v.labels.gender === "male" ? "رجل" : v.labels.gender === "female" ? "امرأة" : v.labels.gender}` : ""}`, group: "ready" as const })))
+    .catch(() => []);
+  return [...mine, ...ready];
+}
+
+export async function setCast(project: FilmProject, userId: string, speaker: unknown, voice: unknown) {
+  const s = typeof speaker === "string" ? speaker.trim() : "";
+  const v = typeof voice === "string" ? voice : "";
+  if (!ELEVEN_VOICE.test(v)) throw new UserError("اختر صوتًا.", 400);
+  const lines = await voiceLines(project.id);
+  if (!lines.some((l) => l.speaker === s)) throw new UserError("هذه الشخصية ليست في جمل الفيلم.", 400);
+  const ok = await resolveVoice(userId, v);
+  if (!ok.ok) throw new UserError(ok.reason, 400);
+  const { error } = await db().from("film_voice_cast").upsert({ project_id: project.id, speaker: s, voice: v, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+/** Speaks one line with its speaker's voice (Eleven v4) and keeps it with the project. */
+export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown) {
+  if (!voicesReady()) throw new UserError("أصوات ElevenLabs غير متاحة حاليًا.", 503);
+  const k = String(idempotencyKey ?? "");
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(k)) throw new UserError("طلب غير صحيح.", 400);
+  const line = (await voiceLines(project.id)).find((l) => l.key === key);
+  if (!line) throw new UserError("ما لقينا هذه الجملة؛ ربما تغيّر التوليد.", 404);
+  const voice = (await voiceCast(project.id))[line.speaker];
+  if (!voice) throw new UserError(`اختر صوتًا لـ«${line.speaker}» أولًا.`, 400);
+  const resolved = await resolveVoice(user.id, voice);
+  if (!resolved.ok) throw new UserError(resolved.reason, 400);
+
+  const estimateUsd = (Math.max(1, line.line.length) / 1000) * ELEVEN_PRICE.v4PerKChars;
+  const { job, created } = await startJob({ projectId: project.id, user, service: "elevenlabs", operation: "voice_line", idempotencyKey: `voice:${project.id}:${k}`, estimateUsd, units: line.line.length, unit: "character" });
+  if (!created) return { jobId: job.id, status: job.status };
+  try {
+    const audio = await elevenSpeech({ voiceId: resolved.voiceId, text: line.line, model: MODEL, stability: 0.5 });
+    const path = `${projectDir(project)}/voices/${line.genId}-${line.index}-${Date.now()}.mp3`;
+    const up = await db().storage.from(FILM_BUCKET).upload(path, audio, { contentType: "audio/mpeg", upsert: false });
+    if (up.error) throw new Error(`storage: ${up.error.message}`);
+    const { error } = await db().from("film_assets").insert({
+      project_id: project.id,
+      kind: "audio",
+      ref_key: `line:${line.key}`,
+      storage_path: path,
+      file_name: `${line.genId}-${line.index + 1}.mp3`,
+      mime: "audio/mpeg",
+      bytes: audio.length,
+      status: "generated",
+      meta: { speaker: line.speaker, text: line.line, voice, durationMs: audioDurationMs(audio) ?? null, model: MODEL, jobId: job.id },
+    });
+    if (error) throw error;
+    await succeedJob(job.id, { costUsd: estimateUsd, units: line.line.length });
+    return { jobId: job.id, status: "succeeded" };
+  } catch (e) {
+    await failJob(job.id, e instanceof ProviderError ? e.detail : e);
+    throw new UserError(e instanceof ProviderError ? e.userMessage : "تعذّر توليد الصوت الآن. لم يُخصم منك شيء.", 502);
+  }
+}
