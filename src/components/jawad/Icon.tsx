@@ -4,6 +4,7 @@ const PATHS: Record<string, string> = {
   video: "M3 6h12v12H3zM15 10l6-3.5v11L15 14",
   film: "M4 3h16v18H4zM8 3v18M16 3v18M4 7.5h4M4 12h4M4 16.5h4M16 7.5h4M16 12h4M16 16.5h4",
   audio: "M3 10v4M7 7v10M11 4v16M15 8v8M19 11v2",
+  book: "M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 19V5M8 7h7M8 11h5",
   sparkles: "M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z",
   wand: "M4 20L15 9M14 4v2M14 10v2M10 8h2M16 8h2M17.5 4.5l-1 1M17.5 11.5l-1-1",
   layers: "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5",

@@ -52,7 +52,7 @@ export default function SectionsAdmin({ sections, icons, implementations }: { se
           s={{ id: "", name: "", icon: "sparkles", implementation: "studio:image", sort: 100, enabled: false, builtIn: false, overridden: false }}
           isNew
           icons={icons}
-          implementations={implementations.filter((i) => i.key !== "film")}
+          implementations={implementations.filter((i) => i.key !== "film" && i.key !== "student")}
           busy={busy}
           run={run}
           onCancel={() => setAdding(false)}
@@ -107,7 +107,7 @@ function SectionRow({
         ) : (
           <div>
             <span className="jw-label">المسار</span>
-            <p className="truncate py-2 text-xs text-jw-muted" dir="ltr">{v.implementation === "film" ? "/jawad-ai/film" : `/jawad-ai/${v.id}`}</p>
+            <p className="truncate py-2 text-xs text-jw-muted" dir="ltr">{v.implementation === "film" ? "/jawad-ai/film" : v.implementation === "student" ? "/jawad-ai/student" : `/jawad-ai/${v.id}`}</p>
           </div>
         )}
       </div>

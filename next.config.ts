@@ -16,9 +16,11 @@ const nextConfig: NextConfig = {
     "/new": ["./templates/*/template.json"],
     // JAWAD AI's icons and share image read the shipped logo from disk
     "/jawad-ai/**/*": ["./public/jawad-ai/logo.png"],
+    // «الطالب الذكي»: the OFL fonts embedded in its PDFs, and the serverless Chromium that prints them
+    "/api/jawad/student/**/*": ["./assets/fonts/**/*", "./node_modules/@sparticuz/chromium/bin/**/*"],
   },
   // sharp is a native module; keep it out of the bundle
-  serverExternalPackages: ["sharp", "harfbuzzjs"],
+  serverExternalPackages: ["sharp", "harfbuzzjs", "@sparticuz/chromium", "puppeteer-core"],
   experimental: {
     // Photo uploads go through a route handler (up to 10 MB)
     proxyClientMaxBodySize: "12mb",
