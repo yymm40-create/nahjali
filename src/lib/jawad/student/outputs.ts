@@ -17,6 +17,18 @@ import type { Handler, Job, StepResult } from "./jobs";
 import { BLOCK_TYPES, docText, emptyImage, type AudioPlan, type Block, type Chapter, type Doc, type DocPlan, type Question, type QuizPlan, type SlidePlan } from "./model";
 import { docHtml, quizHtml, transcriptHtml } from "./render/html";
 import { designFonts, fontFacesData, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
+import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
+
+/** Slides made as pictures with GPT Image 2 (the student's choice), and at which quality. */
+const asPictures = (o: Output) => o.kind === "slides" && o.settings.render === "image";
+const pictureQuality = (o: Output): SlideQuality => (o.settings.imageQuality === "medium" ? "medium" : "high");
+/** Slides (within the first `limit`) whose picture is missing or was drawn from different content / style. */
+const toDraw = (o: Output, plan: SlidePlan, limit?: number) =>
+  plan.slides
+    .slice(0, limit ?? plan.slides.length)
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => !s.rendered?.path || s.rendered.sig !== slideSig(s, designOf(o), pictureQuality(o)))
+    .map(({ i }) => i);
 
 const IMAGE_MODEL = "gpt-image-2-2026-04-21";
 /** Ceiling of one generated picture (gpt-image-2, 1536×1024, medium quality: $0.041 + prompt) — the real cost is settled. */
@@ -71,6 +83,11 @@ export async function estimate(userId: string, o: Output, action: string, chapte
     list.slice(0, only ?? list.length).filter((x) => x.image.mode === "generate" && !x.image.path).length * IMAGE_USD;
   if (o.kind === "slides") {
     const p = plan as SlidePlan;
+    if (asPictures(o)) {
+      const per = slideImageUsd(pictureQuality(o));
+      if (action === "revise") return per;
+      return toDraw(o, p, action === "trial" ? 3 : undefined).length * per;
+    }
     return action === "trial" ? imgs(p.slides, 3) : imgs(p.slides);
   }
   if (o.kind === "audio") {
@@ -414,11 +431,36 @@ async function renderSlides(o: Output, plan: SlidePlan, only?: number[]) {
   return { pdfPath, pptxPath, overflow: fit.filter((f) => f[2]).map((f) => f[0] + 1) };
 }
 
+/** Draws the next slide picture still missing (or out of date), or null when all are drawn. */
+async function pictureStep(o: Output, plan: SlidePlan, limit?: number): Promise<StepResult | null> {
+  const todo = toDraw(o, plan, limit);
+  if (!todo.length) return null;
+  const i = todo[0];
+  const design = designOf(o);
+  const d = await drawSlide(o, plan, i, design, pictureQuality(o));
+  plan.slides[i].rendered = { path: d.path, sig: slideSig(plan.slides[i], design, pictureQuality(o)) };
+  await saveOutput(o.id, { plan });
+  const total = Math.min(limit ?? plan.slides.length, plan.slides.length);
+  return { done: false, usd: d.usd, stage: `رسم الشريحة ${i + 1} بـ GPT Image 2 (${total - todo.length + 1} من ${total})` };
+}
+
 // ───────────────────────────── trial ─────────────────────────────
 
 async function trialStep(job: Job): Promise<StepResult> {
   const o = await getOutput(job.user_id, job.output_id!);
   const c = await loadCtx(job.user_id, o.project_id);
+  if (o.kind === "slides" && asPictures(o)) {
+    const plan = o.plan as SlidePlan;
+    const r = await pictureStep(o, plan, 3);
+    if (r) return r;
+    const paths = plan.slides.slice(0, 3).map((s) => s.rendered!.path);
+    const pdfPath = filePath(o, "trial.pdf");
+    await putFile(pdfPath, await picturesPdf(paths), "application/pdf");
+    const files: Record<string, string> = { ...o.files, trial_pdf: pdfPath };
+    delete files.trial_pptx;
+    await saveOutput(o.id, { status: "trial_review", trial: { pictures: true }, files }, { kind: "trial", snapshot: { files: [pdfPath] }, userId: o.user_id });
+    return { done: true, stage: "النسخة التجريبية جاهزة" };
+  }
   if (o.kind === "slides") {
     const plan = o.plan as SlidePlan;
     const img = await nextImage(o, c, plan.slides, 3);
@@ -580,6 +622,30 @@ async function finalStep(job: Job): Promise<StepResult> {
   const c = await loadCtx(job.user_id, o.project_id);
   if (o.kind === "quiz") return quizStep(job, o, c);
   if (o.kind === "audio") return audioStep(job, o);
+  if (o.kind === "slides" && asPictures(o)) {
+    const plan = o.plan as SlidePlan;
+    if (job.kind === "revise") {
+      // one slide drawn again with the student's request; the others stay as they are
+      const i = Number(job.input.chapter);
+      if (!job.progress.drawn && plan.slides[i]) {
+        const design = designOf(o);
+        const d = await drawSlide(o, plan, i, design, pictureQuality(o), String(job.input.note ?? ""));
+        plan.slides[i].rendered = { path: d.path, sig: slideSig(plan.slides[i], design, pictureQuality(o)) };
+        await saveOutput(o.id, { plan });
+        return { done: false, usd: d.usd, progress: { drawn: true }, stage: `رسم الشريحة ${i + 1} من جديد` };
+      }
+    } else {
+      const r = await pictureStep(o, plan);
+      if (r) return r;
+    }
+    const paths = plan.slides.map((s) => s.rendered!.path);
+    const pdfPath = filePath(o, "slides.pdf");
+    const pptxPath = filePath(o, "slides.pptx");
+    await putFile(pdfPath, await picturesPdf(paths), "application/pdf");
+    await putFile(pptxPath, await picturesPptx(plan, paths), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    await saveOutput(o.id, { status: "review", content: { pictures: true, overflow: [] }, files: { ...o.files, pdf: pdfPath, pptx: pptxPath } }, { kind: job.kind === "revise" ? "revision" : "final", snapshot: { plan, files: [pdfPath, pptxPath] }, userId: o.user_id });
+    return { done: true, stage: "العرض جاهز" };
+  }
   if (o.kind === "slides") {
     const plan = o.plan as SlidePlan;
     const img = await nextImage(o, c, plan.slides);

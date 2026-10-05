@@ -50,6 +50,8 @@ export interface Slide {
   relation: string;
   segments: string[];
   image: ImageChoice;
+  /** slides made as pictures (GPT Image 2): the drawn picture and what it was drawn from */
+  rendered?: { path: string; sig: string } | null;
 }
 
 export interface SlidePlan {

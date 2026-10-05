@@ -13,7 +13,7 @@ import { ErrorLine } from "./ui";
 
 const FILE_LABEL: Record<string, string> = {
   pdf: "PDF",
-  pptx: "PPTX (قابل للتعديل)",
+  pptx: "PPTX",
   txt: "نص TXT",
   trial_pdf: "النسخة التجريبية PDF",
   trial_pptx: "النسخة التجريبية PPTX",
