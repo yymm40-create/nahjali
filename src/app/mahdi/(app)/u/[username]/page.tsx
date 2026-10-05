@@ -109,7 +109,10 @@ export default function PersonPage() {
         ) : profile.state === "pending" ? (
           <button type="button" className="m-btn m-btn-ghost w-full" disabled={busy} onClick={() => act("unfollow")}>{P.requested} · {P.cancelRequest}</button>
         ) : (
-          <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("follow")}><Icon name="plus" size={18} /> {profile.followsMe ? P.followBack : P.follow}</button>
+          <>
+            {params.get("invited") && <p className="m-card p-3 text-center text-sm">{t.social.invite.arrived(profile.user.displayName)}</p>}
+            <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("follow")}><Icon name="plus" size={18} /> {profile.followsMe ? P.followBack : P.follow}</button>
+          </>
         )}
       </header>
 

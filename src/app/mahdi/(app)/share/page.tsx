@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { MILESTONES } from "@config/mahdi-rewards";
 import { t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
@@ -8,10 +8,18 @@ import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { buildShare, SHARE_KINDS, type ShareKind } from "@/lib/mahdi/client/share";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
-import { renderCardPng, renderStoryPng, ShareCardView } from "@/components/mahdi/ShareCard";
+import { renderCardPng, renderStoryPng } from "@/components/mahdi/ShareCard";
 import { useLook } from "@/components/mahdi/ThemeRoot";
 
-/** «شارك إنجازي»: pick what to share and what to reveal, then save, share or post to the community. */
+const I = t.social.instagram;
+const noop = () => () => {};
+/** The site's address as the browser sees it (empty while rendering on the server). */
+const useOrigin = () => useSyncExternalStore(noop, () => location.origin, () => "");
+
+/**
+ * «شارك إنجازي»: pick what to share and what to reveal, see the very picture that will be shared, then share it to
+ * an Instagram story (with the link to one's page copied for Instagram's link sticker), save it, or post it.
+ */
 export default function SharePage() {
   const { state, timeline, toast } = useMahdi();
   const { shrine } = useLook();
@@ -26,25 +34,63 @@ export default function SharePage() {
   const [bookId, setBookId] = useState(finishedBooks[0]?.book.id ?? "");
   const [closing, setClosing] = useState("");
   const [busy, setBusy] = useState(false);
+  const [format, setFormat] = useState<"story" | "card">("story");
+  const [preview, setPreview] = useState<string | null>(null);
   const payload = buildShare(timeline, snap, { kind, showDelta, projectId, habitId, milestoneId, bookId });
   const name = showName ? snap.profile.displayName : undefined;
   const image = shrine?.imageUrl ?? null;
+  const origin = useOrigin();
+  // The link to my page: it opens an invitation for visitors, and my page for those already in the app
+  const link = snap.username && origin ? `${origin}/mahdi/join/${encodeURIComponent(snap.username)}` : "";
 
-  async function png() {
+  const look = () => {
     const css = getComputedStyle(document.querySelector(".mahdi-root")!);
-    return renderCardPng(payload!, { name, closing, image, fonts: { sans: css.getPropertyValue("--font-plex") || "sans-serif", display: css.getPropertyValue("--font-amiri") || "serif" } });
+    return { fonts: { sans: css.getPropertyValue("--font-plex") || "sans-serif", display: css.getPropertyValue("--font-amiri") || "serif" }, image, site: `${location.host}/mahdi` };
+  };
+  const story = () => renderStoryPng(payload!, { name: snap.profile.displayName, username: snap.username, avatarUrl: snap.profile.avatarUrl, closing, ...look() });
+  const card = () => renderCardPng(payload!, { name, closing, ...look() });
+  const png = () => (format === "story" ? story() : card());
+
+  // The preview is the very picture that will be shared (drawn again when a choice changes)
+  const key = JSON.stringify([payload, closing, name, format, image, snap.profile.avatarUrl, snap.username]);
+  useEffect(() => {
+    if (!payload) return;
+    let live = true;
+    let url: string | null = null;
+    const timer = setTimeout(() => {
+      (format === "story" ? story() : card())
+        .then((b) => {
+          if (!live) return;
+          url = URL.createObjectURL(b);
+          setPreview(url);
+        })
+        .catch(() => null);
+    }, 200);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      if (url) setTimeout(() => URL.revokeObjectURL(url!), 1000);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  async function copyLink(forStory = false) {
+    if (!link) return toast(I.noUsername);
+    try {
+      await navigator.clipboard.writeText(link);
+      toast(forStory ? I.copiedForStory : I.copied);
+    } catch {
+      toast(I.copyFailed);
+    }
   }
 
-  const fonts = () => {
-    const css = getComputedStyle(document.querySelector(".mahdi-root")!);
-    return { sans: css.getPropertyValue("--font-plex") || "sans-serif", display: css.getPropertyValue("--font-amiri") || "serif" };
-  };
-
-  /** Instagram: a story-sized picture with my name, picture and @username, through the phone's share sheet. */
+  /** Instagram: the story picture through the phone's share sheet, with the link to my page copied for the sticker. */
   async function instagram() {
     setBusy(true);
+    // Copied first, while the tap still counts as the person's own action
+    if (link) await copyLink(true);
     try {
-      const blob = await renderStoryPng(payload!, { name: snap.profile.displayName, username: snap.username, avatarUrl: snap.profile.avatarUrl, closing, image, fonts: fonts() });
+      const blob = await story();
       const file = new File([blob], "lajl-almahdi-story.png", { type: "image/png" });
       if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] }).catch(() => {});
       else {
@@ -58,7 +104,7 @@ export default function SharePage() {
   }
 
   async function nativeShare() {
-    const file = new File([await png()], "lajl-almahdi.png", { type: "image/png" });
+    const file = new File([await png()], format === "story" ? "lajl-almahdi-story.png" : "lajl-almahdi.png", { type: "image/png" });
     if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: t.brand }).catch(() => {});
     else download(file);
   }
@@ -145,11 +191,46 @@ export default function SharePage() {
         </section>
 
         <section className="space-y-3">
-          {payload ? <ShareCardView payload={payload} name={name} closing={closing} image={image} /> : <p className="m-card p-6 text-center m-muted">{t.reports.noData}</p>}
-          <button type="button" className="m-btn m-btn-primary w-full" disabled={!payload || busy} onClick={instagram}>
-            <Icon name="camera" size={18} /> {t.social.instagram.button}
-          </button>
-          <p className="m-hint">{t.social.instagram.hint}</p>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={I.format}>
+            {(["story", "card"] as const).map((f) => (
+              <button key={f} type="button" role="radio" aria-checked={format === f} className="m-option min-h-10 px-3 text-sm font-semibold" onClick={() => setFormat(f)}>
+                {f === "story" ? I.story : I.card}
+              </button>
+            ))}
+          </div>
+          {payload ? (
+            <div className={`mx-auto overflow-hidden rounded-3xl bg-[#0d0c0b] shadow-xl ${format === "story" ? "aspect-[9/16] max-w-[min(100%,340px)]" : "aspect-[4/5] max-w-[min(100%,420px)]"}`}>
+              {preview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={preview} alt={I.preview} className="size-full object-contain" />
+              ) : (
+                <div className="grid size-full place-items-center text-sm text-[#efcd7e]" role="status">{I.preview}…</div>
+              )}
+            </div>
+          ) : (
+            <p className="m-card p-6 text-center m-muted">{t.reports.noData}</p>
+          )}
+          {/* Instagram and the link to my page, side by side */}
+          <div className="m-btn-pair grid grid-cols-2 gap-2">
+            <button type="button" className="m-btn m-btn-primary" disabled={!payload || busy} onClick={instagram}>
+              <Icon name="camera" size={18} /> {I.button}
+            </button>
+            <button type="button" className="m-btn m-btn-ghost" disabled={!link} onClick={() => copyLink()}>
+              <Icon name="link" size={18} /> {I.copyLink}
+            </button>
+          </div>
+          {link ? (
+            <div className="m-card space-y-2 p-3 text-sm">
+              <p className="m-label !mb-0">{I.yourLink}</p>
+              <p className="select-all break-all rounded-lg bg-[var(--m-surface-2)] px-2 py-1.5 text-xs" dir="ltr">{link}</p>
+              <p className="font-semibold">{I.stepsTitle}</p>
+              <ol className="list-inside list-decimal space-y-1 m-muted">
+                {I.steps.map((s) => <li key={s}>{s}</li>)}
+              </ol>
+            </div>
+          ) : (
+            <p className="m-hint">{I.noUsername}</p>
+          )}
           <div className="grid gap-2 sm:grid-cols-3">
             <button type="button" className="m-btn m-btn-ghost" disabled={!payload} onClick={nativeShare}><Icon name="globe" size={18} /> {t.share.nativeShare}</button>
             <button type="button" className="m-btn m-btn-ghost" disabled={!payload} onClick={async () => download(await png())}><Icon name="arrowDown" size={18} /> {t.share.download}</button>
