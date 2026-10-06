@@ -1,0 +1,219 @@
+// «الممنتج الذكي» — the export, made entirely in the person's browser (WebCodecs through Mediabunny, MPL-2.0): no
+// server time, no upload of the media. Frame by frame: each clip's source is decoded in order, drawn with the same
+// drawFrame as the preview and encoded to H.264 (or what the browser can encode) in an MP4. The sound is mixed in
+// short pieces with the Web Audio API, so even a long project never holds all its sound in memory at once.
+
+import {
+  ALL_FORMATS,
+  AudioBufferSink,
+  AudioBufferSource,
+  BufferTarget,
+  CanvasSink,
+  CanvasSource,
+  getFirstEncodableAudioCodec,
+  getFirstEncodableVideoCodec,
+  Input,
+  Mp4OutputFormat,
+  Output,
+  QUALITY_HIGH,
+  UrlSource,
+  type WrappedCanvas,
+} from "mediabunny";
+import { clipEnd, duration, sourceTime, type Clip, type Timeline } from "@/lib/editor/model";
+import { drawFrame, exportSize, type Frame } from "./render";
+
+export interface ExportAsset {
+  id: string;
+  kind: "video" | "audio" | "image";
+  url: string | null;
+  hasAudio: boolean;
+}
+
+export interface ExportResult {
+  blob: Blob;
+  width: number;
+  height: number;
+  codec: string;
+  audio: string | null;
+  /** the project has sound but this browser can't encode it: the file came out silent */
+  lostSound: boolean;
+}
+
+const SAMPLE_RATE = 48_000;
+/** Seconds of sound mixed at a time (and the video frames of the same seconds right after, so both stay interleaved). */
+const CHUNK_S = 5;
+
+export class ExportError extends Error {}
+
+/** Can this browser make the file at all? (WebCodecs: Chrome/Edge 94+, Safari 16.4+/17, recent Firefox.) */
+export const canExport = () => typeof window !== "undefined" && "VideoEncoder" in window;
+
+export async function exportVideo(
+  tl: Timeline,
+  assets: ExportAsset[],
+  quality: 720 | 1080,
+  onProgress: (p: number) => void,
+  signal: AbortSignal,
+): Promise<ExportResult> {
+  const total = duration(tl);
+  if (!total) throw new ExportError("التايملاين فاضي؛ أضف مقطعًا أول.");
+  const { width, height } = exportSize(tl, quality);
+  const fps = tl.fps;
+  const byId = new Map(assets.map((a) => [a.id, a]));
+  for (const track of tl.tracks) {
+    for (const c of track.clips) {
+      if (c.assetId && !byId.get(c.assetId)?.url) throw new ExportError("أحد الملفات في التايملاين ما عاد موجود (ربما انحذف). احذف مقطعه وجرّب.");
+    }
+  }
+
+  const videoCodec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width, height, quality: QUALITY_HIGH, frameRate: fps });
+  if (!videoCodec) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بدقة ${quality}p. جرّب Chrome أو Edge على الكمبيوتر، أو دقة أقل.`);
+
+  // sound: clips we can hear
+  const audible = tl.tracks.flatMap((track) =>
+    track.muted ? [] : track.clips.filter((c) => !c.text && c.volume > 0 && c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio),
+  );
+  const audioCodec = audible.length && "AudioEncoder" in window ? await getFirstEncodableAudioCodec(["aac", "opus"], { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality: QUALITY_HIGH }) : null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { alpha: false })!;
+  const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+  const video = new CanvasSource(canvas, { codec: videoCodec, bitrate: QUALITY_HIGH, keyFrameInterval: 2 });
+  output.addVideoTrack(video, { frameRate: fps });
+  const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: QUALITY_HIGH }) : null;
+  if (audio) output.addAudioTrack(audio);
+
+  // one decoder input per file, opened lazily
+  const inputs = new Map<string, Input>();
+  const input = (a: ExportAsset) => {
+    let i = inputs.get(a.id);
+    if (!i) {
+      i = new Input({ source: new UrlSource(a.url!), formats: ALL_FORMATS });
+      inputs.set(a.id, i);
+    }
+    return i;
+  };
+  const images = new Map<string, ImageBitmap>();
+  const visual = tl.tracks.filter((t) => t.kind !== "audio" && !t.hidden).flatMap((t) => t.clips.filter((c) => !c.text && c.assetId));
+
+  // each video clip: its frames in order, one per output frame it covers
+  const streams = new Map<string, { it: AsyncGenerator<WrappedCanvas | null>; last: Frame | null }>();
+  async function streamOf(c: Clip, a: ExportAsset) {
+    let s = streams.get(c.id);
+    if (s) return s;
+    const track = await input(a).getPrimaryVideoTrack();
+    if (!track) throw new ExportError("أحد مقاطع الفيديو ما فيه صورة يقدر المتصفح يقرأها.");
+    if (!(await track.canDecode())) throw new ExportError("متصفحك ما يقدر يقرأ ترميز أحد مقاطع الفيديو. جرّب Chrome على الكمبيوتر.");
+    const first = Math.ceil((c.start * fps) / 1000);
+    const last = Math.ceil((clipEnd(c) * fps) / 1000) - 1;
+    const times = function* () {
+      for (let f = first; f <= last; f++) yield Math.max(0, sourceTime(c, (f * 1000) / fps) / 1000);
+    };
+    s = { it: new CanvasSink(track, { poolSize: 3 }).canvasesAtTimestamps(times()), last: null };
+    streams.set(c.id, s);
+    return s;
+  }
+
+  const frames = Math.ceil((total * fps) / 1000);
+  let frame = 0;
+  try {
+    for (const c of visual) {
+      const a = byId.get(c.assetId!)!;
+      if (a.kind === "image" && !images.has(a.id)) {
+        const r = await fetch(a.url!);
+        if (!r.ok) throw new ExportError("تعذّر تحميل إحدى الصور.");
+        images.set(a.id, await createImageBitmap(await r.blob()));
+      }
+    }
+    await output.start();
+
+    for (let chunk = 0; chunk * CHUNK_S * 1000 < total; chunk++) {
+      const from = chunk * CHUNK_S * 1000;
+      const to = Math.min(total, from + CHUNK_S * 1000);
+      if (audio) await audio.add(await mixChunk(from, to));
+
+      const until = Math.min(frames, Math.ceil((to * fps) / 1000));
+      for (; frame < until; frame++) {
+        if (signal.aborted) throw new DOMException("cancelled", "AbortError");
+        const ms = (frame * 1000) / fps;
+        const now = new Map<string, Frame | null>();
+        for (const c of visual) {
+          if (ms < c.start || ms >= clipEnd(c)) continue;
+          const a = byId.get(c.assetId!)!;
+          if (a.kind === "image") {
+            const b = images.get(a.id)!;
+            now.set(c.id, { img: b, width: b.width, height: b.height });
+            continue;
+          }
+          const s = await streamOf(c, a);
+          const n = await s.it.next();
+          // past the end of its file the clip holds its last frame
+          if (!n.done && n.value) s.last = { img: n.value.canvas as CanvasImageSource, width: n.value.canvas.width, height: n.value.canvas.height };
+          now.set(c.id, s.last);
+        }
+        // drawFrame draws in the timeline's units; one scale maps them to the output size
+        ctx.setTransform(width / tl.width, 0, 0, height / tl.height, 0, 0);
+        drawFrame(ctx, tl, ms, (c) => now.get(c.id) ?? null);
+        await video.add(frame / fps, 1 / fps);
+        onProgress(frame / frames);
+      }
+    }
+    await output.finalize();
+  } catch (err) {
+    await output.cancel().catch(() => {});
+    throw err;
+  } finally {
+    for (const s of streams.values()) await s.it.return(undefined).catch(() => {});
+    for (const i of inputs.values()) i.dispose();
+    for (const b of images.values()) b.close();
+  }
+  const buf = (output.target as BufferTarget).buffer;
+  if (!buf) throw new ExportError("ما انكتب الملف؛ جرّب مرة ثانية.");
+  onProgress(1);
+  return { blob: new Blob([buf], { type: "video/mp4" }), width, height, codec: videoCodec, audio: audioCodec, lostSound: audible.length > 0 && !audioCodec };
+
+  /** The mixed sound of [from, to) ms: every audible clip's decoded sound placed at its moment, at its volume. */
+  async function mixChunk(from: number, to: number) {
+    const len = Math.max(1, Math.round(((to - from) / 1000) * SAMPLE_RATE));
+    const mix = new OfflineAudioContext(2, len, SAMPLE_RATE);
+    for (const c of audible) {
+      const s = Math.max(from, c.start);
+      const e = Math.min(to, clipEnd(c));
+      if (e <= s) continue;
+      const a = byId.get(c.assetId!)!;
+      const track = await input(a).getPrimaryAudioTrack();
+      if (!track || !(await track.canDecode())) continue;
+      const gain = mix.createGain();
+      gain.gain.value = c.volume;
+      gain.connect(mix.destination);
+      const src0 = sourceTime(c, s) / 1000;
+      const src1 = sourceTime(c, e) / 1000;
+      for await (const wb of new AudioBufferSink(track).buffers(src0, src1)) {
+        const node = mix.createBufferSource();
+        node.buffer = wb.buffer;
+        node.playbackRate.value = c.speed;
+        node.connect(gain);
+        // where this piece of sound falls in the chunk, and what of it is outside the clip's part
+        const at = (c.start + ((wb.timestamp * 1000 - c.in) / c.speed) - from) / 1000;
+        const skip = Math.max(0, src0 - wb.timestamp);
+        node.start(Math.max(0, at + skip / c.speed), skip);
+        node.stop(Math.max(0, (e - from) / 1000));
+      }
+    }
+    return mix.startRendering();
+  }
+}
+
+/** Saves the file on the device. */
+export function download(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name.endsWith(".mp4") ? name : `${name}.mp4`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

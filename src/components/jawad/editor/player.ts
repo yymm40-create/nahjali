@@ -1,0 +1,251 @@
+// «الممنتج الذكي» — the live preview. The browser's own <video>/<audio> elements play the media (hardware decoding,
+// cheap on phones); every animation frame we keep each one at its clip's moment and draw the frame on one canvas with
+// the same drawFrame the export uses. Only clips near the playhead hold an element, so long projects stay light.
+
+import { clipEnd, clipsAt, duration, sourceTime, type Clip, type Timeline } from "@/lib/editor/model";
+import { drawFrame, type Frame } from "./render";
+
+export interface PlayerAsset {
+  id: string;
+  kind: "video" | "audio" | "image";
+  url: string | null;
+}
+
+/** How far ahead clips get their element ready (so a cut doesn't wait), and how far around them it is kept. */
+const AHEAD_MS = 2500;
+const KEEP_MS = 6000;
+/** The most the preview lets a playing element drift before it is put back on time. */
+const DRIFT_S = 0.25;
+
+type Media = HTMLVideoElement | HTMLAudioElement;
+
+export class Player {
+  private ctx: CanvasRenderingContext2D;
+  private tl: Timeline;
+  private assets = new Map<string, PlayerAsset>();
+  private media = new Map<string, Media>();
+  private images = new Map<string, HTMLImageElement>();
+  private host: HTMLDivElement;
+  private raf = 0;
+  private clock = { perf: 0, ms: 0 };
+  private listeners = new Set<(ms: number, playing: boolean) => void>();
+  ms = 0;
+  playing = false;
+
+  constructor(
+    private canvas: HTMLCanvasElement,
+    tl: Timeline,
+  ) {
+    this.ctx = canvas.getContext("2d")!;
+    this.tl = tl;
+    // media elements decode best when they are in the page (Safari); this box keeps them out of sight
+    this.host = document.createElement("div");
+    this.host.style.cssText = "position:fixed;left:-10px;top:-10px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none";
+    document.body.appendChild(this.host);
+    document.fonts?.ready.then(() => this.draw()).catch(() => {});
+  }
+
+  /** Called on every change of the timeline or the library. */
+  update(tl: Timeline, assets: PlayerAsset[]) {
+    this.tl = tl;
+    this.assets = new Map(assets.map((a) => [a.id, a]));
+    if (this.canvas.width !== tl.width || this.canvas.height !== tl.height) {
+      this.canvas.width = tl.width;
+      this.canvas.height = tl.height;
+    }
+    this.ms = Math.min(this.ms, duration(tl));
+    this.sync(true);
+    this.draw();
+  }
+
+  subscribe(fn: (ms: number, playing: boolean) => void) {
+    this.listeners.add(fn);
+    return () => void this.listeners.delete(fn);
+  }
+  private emit() {
+    for (const fn of this.listeners) fn(this.ms, this.playing);
+  }
+
+  /** (not clamped to the current length: a change about to arrive may make the timeline longer; update() clamps) */
+  seek(ms: number) {
+    this.ms = Math.max(0, Math.round(ms));
+    this.clock = { perf: performance.now(), ms: this.ms };
+    this.sync(true);
+    this.draw();
+    this.emit();
+  }
+
+  play() {
+    const end = duration(this.tl);
+    if (!end) return;
+    if (this.ms >= end - 30) this.ms = 0;
+    this.playing = true;
+    this.clock = { perf: performance.now(), ms: this.ms };
+    this.sync(true);
+    cancelAnimationFrame(this.raf);
+    this.raf = requestAnimationFrame(this.tick);
+    this.emit();
+  }
+
+  pause() {
+    this.playing = false;
+    cancelAnimationFrame(this.raf);
+    for (const m of this.media.values()) m.pause();
+    this.emit();
+  }
+
+  toggle() {
+    if (this.playing) this.pause();
+    else this.play();
+  }
+
+  destroy() {
+    this.pause();
+    for (const m of this.media.values()) release(m);
+    this.media.clear();
+    this.host.remove();
+    this.listeners.clear();
+  }
+
+  private tick = (now: number) => {
+    if (!this.playing) return;
+    // a clip still loading holds the clock, so picture and sound never run ahead of each other
+    const waiting = this.active().some(({ clip }) => {
+      const m = this.media.get(clip.id);
+      return m instanceof HTMLVideoElement && (m.seeking || m.readyState < 3);
+    });
+    if (waiting) this.clock = { perf: now, ms: this.ms };
+    else this.ms = Math.round(this.clock.ms + (now - this.clock.perf));
+    const end = duration(this.tl);
+    if (this.ms >= end) {
+      this.ms = end;
+      this.draw();
+      this.pause();
+      return;
+    }
+    this.sync(false);
+    this.draw();
+    this.emit();
+    this.raf = requestAnimationFrame(this.tick);
+  };
+
+  /** The moment shown: at the very end the last frame stays on screen (not a black one). */
+  private shown() {
+    const end = duration(this.tl);
+    return end > 0 && this.ms >= end ? end - 1 : this.ms;
+  }
+
+  private active() {
+    return clipsAt(this.tl, this.shown()).filter(({ clip }) => !clip.text);
+  }
+
+  /** Every media clip near the playhead gets its element, at the right moment, playing or paused. */
+  private sync(hard: boolean) {
+    const ms = this.shown();
+    const wanted = new Set<string>();
+    for (const track of this.tl.tracks) {
+      for (const clip of track.clips) {
+        if (clip.text || !clip.assetId) continue;
+        const a = this.assets.get(clip.assetId);
+        if (!a?.url) continue;
+        if (a.kind === "image") {
+          if (track.kind !== "audio" && !this.images.has(a.id)) this.loadImage(a);
+          continue;
+        }
+        const end = clipEnd(clip);
+        if (end < ms - KEEP_MS || clip.start > ms + KEEP_MS) continue;
+        wanted.add(clip.id);
+        const on = ms >= clip.start && ms < end;
+        const soon = !on && clip.start > ms && clip.start - ms < AHEAD_MS;
+        if (!on && !soon && !this.media.has(clip.id)) continue;
+        const m = this.element(clip, a);
+        const silent = track.muted || clip.volume <= 0 || (track.kind !== "audio" && a.kind === "audio");
+        m.muted = silent;
+        m.volume = Math.min(1, Math.max(0, clip.volume));
+        if (Math.abs(m.playbackRate - clip.speed) > 0.001) m.playbackRate = clip.speed;
+        const at = (on ? sourceTime(clip, ms) : clip.in) / 1000;
+        if (on && this.playing) {
+          if (hard || Math.abs(m.currentTime - at) > DRIFT_S * clip.speed) seekTo(m, at);
+          if (m.paused) m.play().catch(() => {});
+        } else {
+          if (!m.paused) m.pause();
+          if (Math.abs(m.currentTime - at) > 0.02) seekTo(m, at);
+        }
+      }
+    }
+    for (const [id, m] of this.media) {
+      if (!wanted.has(id)) {
+        release(m);
+        this.media.delete(id);
+      }
+    }
+  }
+
+  private element(clip: Clip, a: PlayerAsset): Media {
+    let m = this.media.get(clip.id);
+    if (m && m.dataset.src === a.url) return m;
+    if (m) release(m);
+    m = document.createElement(a.kind === "video" ? "video" : "audio");
+    m.crossOrigin = "anonymous";
+    m.preload = "auto";
+    if (m instanceof HTMLVideoElement) m.playsInline = true;
+    m.dataset.src = a.url!;
+    m.src = a.url!;
+    // while paused, a frame that arrives after a seek is drawn straight away
+    const redraw = () => !this.playing && this.draw();
+    m.addEventListener("seeked", redraw);
+    m.addEventListener("loadeddata", redraw);
+    this.host.appendChild(m);
+    this.media.set(clip.id, m);
+    return m;
+  }
+
+  private loadImage(a: PlayerAsset) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => this.draw();
+    img.src = a.url!;
+    this.images.set(a.id, img);
+  }
+
+  private frameOf = (clip: Clip): Frame | null => {
+    const a = clip.assetId ? this.assets.get(clip.assetId) : null;
+    if (!a) return null;
+    if (a.kind === "image") {
+      const img = this.images.get(a.id);
+      return img?.complete && img.naturalWidth ? { img, width: img.naturalWidth, height: img.naturalHeight } : null;
+    }
+    const m = this.media.get(clip.id);
+    if (!(m instanceof HTMLVideoElement) || m.readyState < 2) return null;
+    return { img: m, width: m.videoWidth, height: m.videoHeight };
+  };
+
+  draw() {
+    drawFrame(this.ctx, this.tl, this.shown(), this.frameOf);
+  }
+
+  /** A still of the current frame (for the project's cover). */
+  snapshot(type = "image/jpeg", quality = 0.8) {
+    try {
+      return this.canvas.toDataURL(type, quality);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function seekTo(m: Media, s: number) {
+  const max = Number.isFinite(m.duration) ? Math.max(0, m.duration - 0.01) : s;
+  try {
+    m.currentTime = Math.min(Math.max(0, s), max);
+  } catch {
+    /* not ready yet: the next sync tries again */
+  }
+}
+
+function release(m: Media) {
+  m.pause();
+  m.removeAttribute("src");
+  m.load();
+  m.remove();
+}

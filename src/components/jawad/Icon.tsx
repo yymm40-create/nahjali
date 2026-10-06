@@ -39,6 +39,22 @@ const PATHS: Record<string, string> = {
   wallet: "M3 7h18v13H3zM3 7l3-3h12l1 3M16 13.5h2",
   external: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
   eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  eyeOff: "M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C3.9 8.4 2 12 2 12s4 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2",
+  scissors: "M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.1 7.9L20 20M8.1 16.1L20 4",
+  undo: "M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
+  redo: "M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3",
+  pause: "M7 5h3v14H7zM14 5h3v14h-3z",
+  magnet: "M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4zM6 8h4M14 8h4",
+  type: "M5 6V4h14v2M12 4v16M9 20h6",
+  volume: "M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",
+  volumeOff: "M4 9v6h4l5 4V5L8 9zM17 9l5 6M22 9l-5 6",
+  unlock: "M6 11h12v10H6zM8 11V7a4 4 0 0 1 7.7-1.5",
+  zoomIn: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4M11 8v6M8 11h6",
+  zoomOut: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4M8 11h6",
+  ratio: "M4 6h16v12H4zM8 3v3M16 18v3",
+  skipBack: "M19 5L9 12l10 7zM5 5v14",
+  skipFwd: "M5 5l10 7-10 7zM19 5v14",
+  folder: "M3 6h6l2 2h10v11H3z",
 };
 
 export type IconName = keyof typeof PATHS;

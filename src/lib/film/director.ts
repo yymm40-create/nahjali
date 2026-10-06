@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { filmPathsInUse } from "@/lib/editor/server";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
@@ -599,7 +600,10 @@ export async function purgeOldVideos(project: FilmProject) {
     .eq("kind", "video")
     .not("storage_path", "is", null)
     .lt("created_at", cutoff);
-  const old = (data ?? []) as Pick<FilmAsset, "id" | "storage_path" | "meta">[];
+  const found = (data ?? []) as Pick<FilmAsset, "id" | "storage_path" | "meta">[];
+  // a video still used in an edit of «الممنتج الذكي» stays until that edit's own clean-up (3 days after its export)
+  const inEdit = await filmPathsInUse(found.map((a) => a.storage_path!)).catch(() => new Set<string>());
+  const old = found.filter((a) => !inEdit.has(a.storage_path!));
   if (!old.length) return;
   const { error } = await db().storage.from(FILM_BUCKET).remove(old.map((a) => a.storage_path!));
   if (error) return console.error("video purge failed", error);

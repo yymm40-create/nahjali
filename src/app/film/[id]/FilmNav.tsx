@@ -13,6 +13,7 @@ const SECTIONS: { key: string; label: string; icon: string; path: string; reache
   { key: "director", label: "المخرج", icon: "🎥", path: "/director", reached: "director", ready: true },
   { key: "videos", label: "التوليد", icon: "🎬", path: "/videos", reached: "director", ready: true },
   { key: "voices", label: "الأصوات", icon: "🎙️", path: "/voices", reached: "director", ready: true },
+  { key: "edit", label: "المونتاج", icon: "✂️", path: "/edit", reached: "director", ready: true },
 ];
 
 const order = (s: FilmStage) => FILM_STAGES.findIndex((x) => x.key === s);
@@ -23,11 +24,11 @@ export default function FilmNav({ projectId, stage, videosOpen }: { projectId: s
   const base = `${useFilmBase()}/${projectId}`;
   return (
     <nav aria-label="أقسام المشروع" className="card p-2">
-      <ol className="grid grid-cols-6 gap-1 text-center">
+      <ol className="grid grid-cols-7 gap-1 text-center">
         {SECTIONS.map((s) => {
           const href = base + s.path;
           // The generation page opens once the director has an approved generation
-          const open = s.ready && order(stage) >= order(s.reached) && ((s.key !== "videos" && s.key !== "voices") || videosOpen);
+          const open = s.ready && order(stage) >= order(s.reached) && (!["videos", "voices", "edit"].includes(s.key) || videosOpen);
           const active = pathname === href;
           const done = order(stage) > order(s.reached) || (s.key === "story" && order(stage) > 0);
           const tile = (

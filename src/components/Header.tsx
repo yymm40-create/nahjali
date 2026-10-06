@@ -50,6 +50,7 @@ export default async function Header() {
                   <Link key={s.key} href={s.href} className={ITEM}>{s.icon} {s.title}</Link>
                 ))}
                 <Link href="/jawad-ai/student" className={ITEM}>🎒 الطالب الذكي</Link>
+                <Link href="/jawad-ai/editor" className={ITEM}>✂️ الممنتج الذكي</Link>
                 <Link href="/jawad-ai" className={ITEM}>✨ منصة الذكاء الاصطناعي</Link>
                 <hr className="my-1 border-line" />
                 {bookletOpen && <Link href="/my-booklets" className={ITEM}>📚 كتيباتي</Link>}
