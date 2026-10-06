@@ -27,7 +27,8 @@ export default function CoinsShop({
   const cheapest = Math.min(...Object.values(coinsPerVideo));
   return (
     <div className="space-y-6">
-      <section className="card space-y-3 p-4">
+      {/* (not in the phone app: a store app may only sell through the store) */}
+      <section className="card hide-in-app space-y-3 p-4">
         <h2 className="text-xl font-extrabold">🛍️ الباقات — قريبًا</h2>
         <p className="text-sm font-bold text-muted">
           الدفع من داخل الموقع يتفعّل قريبًا إن شاء الله. لين ذاك الوقت، تبي نقود؟ راسلنا: <a href={`mailto:${CONTACT_EMAIL}`} className="underline" dir="ltr">{CONTACT_EMAIL}</a>

@@ -244,3 +244,8 @@ body {
     rotate: 360deg;
   }
 }
+
+/* inside the phone app (mobile/): what a store app may not show (prices to buy outside the stores) */
+html[data-native-app] .hide-in-app {
+  display: none !important;
+}

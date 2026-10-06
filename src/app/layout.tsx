@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import Header from "@/components/Header";
 import SiteChrome from "@/components/SiteChrome";
 import NavFeedback from "@/components/NavFeedback";
+import NativeAppBridge from "@/components/NativeAppBridge";
 import { OWN_CHROME_HEADER } from "@config/site";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
 import "./globals.css";
@@ -35,6 +36,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <NavFeedback />
+        <NativeAppBridge />
         <SiteChrome
           top={
             ownChrome ? null : (

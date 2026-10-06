@@ -1,0 +1,26 @@
+{
+  "appId": "app.nahjali.app",
+  "appName": "نهج علي",
+  "webDir": "www",
+  "server": {
+    "url": "https://nahjali.vercel.app",
+    "errorPath": "offline.html",
+    "allowNavigation": ["nahjali.vercel.app", "*.supabase.co", "accounts.google.com", "*.google.com", "appleid.apple.com", "*.r2.cloudflarestorage.com"]
+  },
+  "ios": {
+    "contentInset": "never",
+    "scheme": "NahjAli",
+    "appendUserAgent": "NahjAliApp/1.0",
+    "overrideUserAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1 NahjAliApp/1.0",
+    "allowsLinkPreview": false
+  },
+  "android": {
+    "overrideUserAgent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 NahjAliApp/1.0",
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 1500, "launchAutoHide": true, "backgroundColor": "#0a1430", "showSpinner": false },
+    "StatusBar": { "style": "DARK", "backgroundColor": "#0a1430", "overlaysWebView": false }
+  }
+}

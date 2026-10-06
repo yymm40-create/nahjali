@@ -55,6 +55,7 @@ export default function AccountMenu({ name, email, owner }: { name: string; emai
           >
             <Icon name="logout" size={16} /> تسجيل الخروج
           </button>
+          <Link href="/account/delete" className={`${item} text-xs text-jw-faint`}><Icon name="trash" size={14} /> حذف حسابي</Link>
         </nav>
       </div>
     </details>

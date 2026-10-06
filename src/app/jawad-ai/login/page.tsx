@@ -4,6 +4,8 @@ import { EMAIL_LOGIN_ENABLED } from "@config/pricing";
 import { JAWAD } from "@config/jawad/brand";
 import EmailLogin from "@/app/login/EmailLogin";
 import LoginButton from "@/app/login/LoginButton";
+import AppleButton from "@/app/login/AppleButton";
+import { appleLoginOn } from "@/lib/auth-providers";
 import { jawadSession } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 
@@ -27,6 +29,7 @@ export default async function JawadLogin({ searchParams }: PageProps<"/jawad-ai/
         </div>
         {error && <p className="error-box text-sm">تعذّر تسجيل الدخول. جرّب مرة ثانية.</p>}
         <LoginButton next={nextPath} />
+        {(await appleLoginOn()) && <AppleButton next={nextPath} />}
         {EMAIL_LOGIN_ENABLED && (
           <>
             <div className="flex items-center gap-3 text-xs text-jw-muted">

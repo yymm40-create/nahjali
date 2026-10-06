@@ -5,6 +5,8 @@ name: Desktop app
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
   push:
     branches: [main]
     paths: ["desktop/**", ".github/workflows/desktop.yml"]
@@ -39,10 +41,18 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
       - name: Build
-        run: npx electron-builder ${{ matrix.target }} --publish never
+        # (with the Developer ID certificate: signed as the team, hardened, then notarized by notarize.js; without it the
+        # Mac build stays signed ad hoc, as package.json says)
+        run: npx electron-builder ${{ matrix.target }} --publish never ${{ matrix.os == 'macos-latest' && secrets.MAC_CERT_P12_BASE64 != '' && format('-c.mac.identity={0} -c.mac.hardenedRuntime=true', secrets.APPLE_TEAM_ID) || '' }}
         env:
-          # no Apple / Microsoft certificate yet: the Mac build is signed ad hoc
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # With the Apple Developer account's secrets (Developer ID certificate + an app-specific password), the Mac
+          # build is signed and notarized by Apple and opens without any warning; without them it is signed ad hoc.
+          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CERT_P12_BASE64 != '' && 'true' || 'false' }}
       - uses: actions/upload-artifact@v4
         with:
           name: haidara-cut-${{ matrix.os }}
@@ -53,6 +63,8 @@ jobs:
 
   release:
     needs: build
+    # (a pull request only checks the builds; main publishes)
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

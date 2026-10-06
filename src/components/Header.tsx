@@ -58,6 +58,7 @@ export default async function Header() {
                   <Link href="/admin" className={ITEM}>📊 لوحة التحكم</Link>
                 )}
                 <SignOutButton />
+                <Link href="/account/delete" className="rounded-xl px-3 py-2 text-sm text-muted hover:bg-surface-2">🗑️ حذف حسابي</Link>
               </nav>
             </MenuDetails>
           ) : (
