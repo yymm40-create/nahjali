@@ -29,7 +29,7 @@ import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 
-export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => void;
+export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => unknown;
 export type InspectorTab = "basic" | "motion" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];

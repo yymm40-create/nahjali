@@ -444,14 +444,6 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     fadeIn: int(o.fadeIn, 0, 60_000, 0),
     fadeOut: int(o.fadeOut, 0, 60_000, 0),
     shape: pick(o.shape, ["rect", "rounded", "circle"] as const, "rect"),
-    bg:
-      kind === "video" && o.bg && typeof o.bg === "object"
-        ? {
-            mode: pick((o.bg as Record<string, unknown>).mode, ["remove", "blur", "color"] as const, "blur"),
-            color: color((o.bg as Record<string, unknown>).color, DEFAULT_BACKDROP.color),
-            blur: int((o.bg as Record<string, unknown>).blur, 1, 100, DEFAULT_BACKDROP.blur),
-          }
-        : null,
     words: kind !== "text" || !Array.isArray(o.words)
       ? []
       : o.words
@@ -462,6 +454,14 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
             return { s: s0, e: int(w.e, s0, LIMITS.maxMs, s0), w: str(w.w, 60, "") };
           })
           .filter((w) => w.w),
+    bg:
+      kind === "video" && o.bg && typeof o.bg === "object"
+        ? {
+            mode: pick((o.bg as Record<string, unknown>).mode, ["remove", "blur", "color"] as const, "blur"),
+            color: color((o.bg as Record<string, unknown>).color, DEFAULT_BACKDROP.color),
+            blur: int((o.bg as Record<string, unknown>).blur, 1, 100, DEFAULT_BACKDROP.blur),
+          }
+        : null,
   };
 }
 

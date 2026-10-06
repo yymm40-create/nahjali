@@ -6,6 +6,7 @@ import { apply, applyAll, CommandError, type Applied, type Command } from "@/lib
 import { clipEnd, duration, findClip, formatTime, type AssetInfo, type Timeline as TL } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
+import AssistantPanel from "./AssistantPanel";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
@@ -56,6 +57,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const [sheet, setSheet] = useState<null | "library" | "inspector">(null);
   const [exporting, setExporting] = useState(false);
   const [captioning, setCaptioning] = useState(false);
+  const [assisting, setAssisting] = useState(false);
   const [purgeAt, setPurgeAt] = useState(project.purgeAt);
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
   const [waves, setWaves] = useState<Record<string, string | null>>({});
@@ -400,6 +402,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         <span className={`hidden shrink-0 text-[11px] sm:inline ${save === "error" || save === "conflict" ? "text-jw-danger" : "text-jw-faint"}`} aria-live="polite">
           {SAVE_TEXT[save]}
         </span>
+        <button type="button" className={`jw-btn shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => setAssisting((v) => !v)} aria-pressed={assisting} title="قل لـ Claude وش تبي ويعدّل التايملاين">
+          <Icon name="sparkles" size={16} /> Claude
+        </button>
         <button type="button" className="jw-btn jw-btn-primary shrink-0" disabled={readOnly || !total} onClick={() => setExporting(true)}>
           <Icon name="download" size={16} /> <span className="hidden sm:inline">صدّر</span>
         </button>
@@ -468,7 +473,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         </section>
 
         <aside
-          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[65dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col border-jw-line bg-jw-surface lg:static lg:z-auto lg:flex lg:h-auto lg:w-72 lg:shrink-0 lg:rounded-none lg:border-s lg:shadow-none`}
+          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[65dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col border-jw-line bg-jw-surface lg:static lg:z-auto ${assisting ? "lg:hidden" : "lg:flex"} lg:h-auto lg:w-72 lg:shrink-0 lg:rounded-none lg:border-s lg:shadow-none`}
           aria-label="الإعدادات"
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
@@ -476,6 +481,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
             <Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} />
           </div>
         </aside>
+        {/* Claude: beside the preview on a computer, the whole screen on a phone */}
+        {assisting && (
+          <aside className="fixed inset-0 z-50 flex flex-col bg-jw-surface lg:static lg:z-auto lg:w-80 lg:shrink-0 lg:border-s lg:border-jw-line" aria-label="Claude">
+            <AssistantPanel projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => setAssisting(false)} readOnly={readOnly} />
+          </aside>
+        )}
       </div>
 
       {/* transport and tools */}

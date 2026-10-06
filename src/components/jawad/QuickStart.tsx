@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "./Icon";
 
 export interface QuickSection {
@@ -51,6 +51,17 @@ export default function QuickStart({ sections, userId, loginHref }: { sections: 
   const router = useRouter();
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<Kind | null>(null);
+  // arriving with an idea (a shot «الممنتج الذكي» suggested, for one): it is already in the box
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const idea = q.get("idea")?.slice(0, 500);
+    const kind = q.get("kind") as Kind | null;
+    const t = setTimeout(() => {
+      if (idea) setText(idea);
+      if (kind && kind in KIND_AR) setPicked(kind);
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
   const [going, setGoing] = useState(false);
   const kind: Kind = picked ?? guessKind(text);
   const info = KIND_AR[kind];
