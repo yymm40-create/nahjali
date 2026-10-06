@@ -366,6 +366,30 @@ export default function Inspector({
       {current === "motion" && (
         <div className="space-y-3">
           {!text && (
+            <details className="rounded-lg border border-jw-line p-2" open={!!clip.crop}>
+              <summary className="flex cursor-pointer items-center justify-between text-xs font-semibold">
+                <span>✂️ القص (Crop)</span>
+                {clip.crop && (
+                  <button type="button" className="text-[11px] font-normal text-jw-muted hover:text-jw-ink" disabled={locked} onClick={(e) => { e.preventDefault(); set({ crop: null }, "crop:reset"); }}>
+                    رجّع
+                  </button>
+                )}
+              </summary>
+              <div className="mt-2 grid grid-cols-2 gap-x-3">
+                {(
+                  [
+                    ["l", "يسار"],
+                    ["r", "يمين"],
+                    ["t", "فوق"],
+                    ["b", "تحت"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <Slider key={k} label={label} value={Math.round((clip.crop?.[k] ?? 0) * 100)} min={0} max={45} step={1} disabled={locked} onChange={(v) => set({ crop: { [k]: v / 100 } }, `crop:${k}`)} format={(v) => `${v}%`} />
+                ))}
+              </div>
+            </details>
+          )}
+          {!text && (
             <div className="space-y-1">
               <span className="text-xs text-jw-muted">صورة داخل صورة</span>
               <div className="flex flex-wrap gap-1.5">
