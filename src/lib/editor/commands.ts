@@ -37,6 +37,7 @@ import {
   type ClipFx,
   readAnim,
   readFx,
+  TRACK_COLORS,
   NO_SOUND_FX,
   readSound,
   DEFAULT_BACKDROP,
@@ -82,7 +83,7 @@ export type Command =
   | { type: "duplicate"; clipId: string }
   | { type: "update_clip"; clipId: string; patch: ClipPatch }
   | { type: "add_track"; kind: TrackKind }
-  | { type: "update_track"; trackId: string; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name" | "duck">> }
+  | { type: "update_track"; trackId: string; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name" | "duck" | "color">> }
   /** a motion point at timeline time `at` with this look (one already there is replaced) */
   | { type: "set_key"; clipId: string; at: number; transform: Partial<Transform> }
   | { type: "remove_key"; clipId: string; at: number }
@@ -607,11 +608,15 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (p.hidden != null) track.hidden = !!p.hidden;
       if (p.locked != null) track.locked = !!p.locked;
       if (p.name != null) track.name = String(p.name).slice(0, 40);
+      if (p.color !== undefined) {
+        if (p.color !== null && !TRACK_COLORS.includes(p.color)) fail("لون غير معروف.");
+        track.color = p.color;
+      }
       if (p.duck != null) {
         if (track.kind !== "audio") fail("الخفض التلقائي لمسارات الصوت.");
         track.duck = !!p.duck;
       }
-      const label = p.duck != null ? (track.duck ? "خفض تلقائي وقت الكلام" : "أطفأت الخفض التلقائي") : p.locked != null ? (track.locked ? "قفلت مسارًا" : "فتحت مسارًا") : p.muted != null ? (track.muted ? "كتمت مسارًا" : "شغّلت صوت مسار") : p.hidden != null ? (track.hidden ? "أخفيت مسارًا" : "أظهرت مسارًا") : "سمّيت مسارًا";
+      const label = p.duck != null ? (track.duck ? "خفض تلقائي وقت الكلام" : "أطفأت الخفض التلقائي") : p.locked != null ? (track.locked ? "قفلت مسارًا" : "فتحت مسارًا") : p.muted != null ? (track.muted ? "كتمت مسارًا" : "شغّلت صوت مسار") : p.hidden != null ? (track.hidden ? "أخفيت مسارًا" : "أظهرت مسارًا") : p.color !== undefined ? "لوّنت مسارًا" : "سمّيت مسارًا";
       return { timeline: t, label };
     }
 

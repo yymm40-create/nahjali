@@ -72,3 +72,14 @@ describe("captions changed together, or one apart", () => {
     expect(() => apply(t, { type: "update_clip", clipId: main(t).clips[0].id, patch: { own: true } }, assets)).toThrow();
   });
 });
+
+describe("track colours", () => {
+  it("takes one of the 15 colours, or none, and refuses others", () => {
+    const t = emptyTimeline();
+    const id = t.tracks[0].id;
+    const red = apply(t, { type: "update_track", trackId: id, patch: { color: "#ef4444" } }, assets).timeline;
+    expect(red.tracks[0].color).toBe("#ef4444");
+    expect(apply(red, { type: "update_track", trackId: id, patch: { color: null } }, assets).timeline.tracks[0].color).toBeNull();
+    expect(() => apply(t, { type: "update_track", trackId: id, patch: { color: "#123456" } }, assets)).toThrow(/لون/);
+  });
+});

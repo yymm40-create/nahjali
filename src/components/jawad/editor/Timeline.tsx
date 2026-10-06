@@ -5,7 +5,8 @@
 // Touch (CapCut's way): a tap selects, a selected clip drags, its big handles trim, two fingers zoom, one finger scrolls.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { clipEnd, clipLength, duration, formatTime, mainTrack, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
+import { createPortal } from "react-dom";
+import { clipEnd, clipLength, duration, formatTime, mainTrack, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
 import type { Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
 import type { EditorAsset } from "./types";
@@ -36,6 +37,8 @@ interface Props {
   onDropFiles: (files: File[], at: number, trackId: string | null) => void;
   /** a file dragged from the project's library */
   onDropAsset: (assetId: string, at: number, trackId: string | null) => void;
+  /** «عادي» (pictures along the clips) or «بريمير» (solid coloured clips, named tracks, timecode) */
+  look?: "classic" | "pro";
 }
 
 /** What the library puts on a drag (the asset's id). */
@@ -85,7 +88,20 @@ const TRACK_KINDS: { kind: Track["kind"]; label: string; icon: "layers" | "music
   { kind: "text", label: "نص وكابشن", icon: "type" },
 ];
 
-export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset }: Props) {
+/** A timecode HH:MM:SS:FF (the «بريمير» timeline). */
+export const timecode = (ms: number, fps: number) => {
+  const f = Math.floor(((ms % 1000) / 1000) * fps);
+  const s = Math.floor(ms / 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}:${p(f)}`;
+};
+const PRO_TONE = { video: "#4f5bd5", image: "#b9822f", audio: "#2f8a5c", text: "#a3478f" } as const;
+
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, look = "classic" }: Props) {
+  const pro = look === "pro";
+  // track labels like V1, V2, A1, T1 (bottom-up for pictures, top-down for sound)
+  const labels = new Map<string, string>();
+  for (const kind of ["video", "audio", "text"] as const) tl.tracks.filter((t) => t.kind === kind).forEach((t, i) => labels.set(t.id, `${kind === "video" ? "V" : kind === "audio" ? "A" : "T"}${i + 1}`));
   const HEAD = compact ? 40 : 144;
   const scroller = useRef<HTMLDivElement>(null);
   const playhead = useRef<HTMLDivElement>(null);
@@ -419,7 +435,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const wave = a && k === "audio" ? waves[a.id] : null;
     // the whole file's waveform, stretched so this clip shows its own part of it
     const fullPx = a?.durationMs ? lanePx(a.durationMs / c.speed) : 0;
-    const tone = k === "audio" ? "bg-emerald-600/80" : k === "text" ? "bg-violet-600/85" : k === "image" ? "bg-sky-700/80" : "bg-zinc-700";
+    const tone = pro ? "" : k === "audio" ? "bg-emerald-600/80" : k === "text" ? "bg-violet-600/85" : k === "image" ? "bg-sky-700/80" : "bg-zinc-700";
+    // the track's own colour (if the person gave it one): the clip's fill on «بريمير», a tint on «عادي»
+    const paint = track.color ?? (pro ? PRO_TONE[k as keyof typeof PRO_TONE] ?? PRO_TONE.video : null);
     const missing = a && (a.status !== "ready" || !a.url);
     const handle = compact ? 18 : 10;
     return (
@@ -429,16 +447,18 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         tabIndex={-1}
         aria-label={c.text ? `نص: ${c.text.body}` : (a?.name ?? "مقطع")}
         aria-pressed={sel}
-        className={`absolute top-1 bottom-1 overflow-hidden rounded-md text-[11px] text-white shadow ${tone} ${sel ? "z-10 ring-2 ring-jw-accent" : "ring-1 ring-black/40"} ${d?.moved && d.mode === "move" ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
+        className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${d?.moved && d.mode === "move" ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
         style={{
           left: lanePx(start),
           width: Math.max(4, lanePx(end - start)),
           touchAction: sel ? "none" : "pan-x pan-y",
           cursor: readOnly || track.locked ? "default" : "grab",
-          backgroundImage: thumb && k !== "audio" ? `url(${thumb})` : wave ? `url(${wave})` : k === "audio" ? "repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 2px, transparent 2px 5px)" : undefined,
-          backgroundSize: thumb && k !== "audio" ? "auto 100%" : wave && fullPx ? `${fullPx}px 70%` : k === "audio" ? "auto 60%" : undefined,
-          backgroundRepeat: wave ? "no-repeat" : "repeat-x",
-          backgroundPosition: wave && fullPx ? `${-lanePx(c.in / c.speed) - (d && d.moved && d.mode === "start" ? lanePx(d.ghostStart - c.start) : 0)}px 60%` : k === "audio" ? "0 50%" : undefined,
+          backgroundColor: paint ?? undefined,
+          // «بريمير»: one picture at the clip's head; «عادي»: pictures all along
+          backgroundImage: pro ? (thumb && k !== "audio" ? `url(${thumb})` : wave ? `url(${wave})` : undefined) : thumb && k !== "audio" ? `url(${thumb})` : wave ? `url(${wave})` : k === "audio" ? "repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 2px, transparent 2px 5px)" : undefined,
+          backgroundSize: thumb && k !== "audio" ? (pro ? "auto calc(100% - 14px)" : "auto 100%") : wave && fullPx ? `${fullPx}px ${pro ? "62%" : "70%"}` : k === "audio" ? "auto 60%" : undefined,
+          backgroundRepeat: pro || wave ? "no-repeat" : "repeat-x",
+          backgroundPosition: wave && fullPx ? `${-lanePx(c.in / c.speed) - (d && d.moved && d.mode === "start" ? lanePx(d.ghostStart - c.start) : 0)}px ${pro ? "85%" : "60%"}` : pro && thumb ? "0 14px" : k === "audio" ? "0 50%" : undefined,
         }}
         onPointerDown={(e) => {
           tapDown(e, c);
@@ -455,7 +475,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
           setDrag(null);
         }}
       >
-        <span className="pointer-events-none absolute inset-x-0 top-0 truncate bg-gradient-to-b from-black/60 to-transparent px-1.5 py-0.5 font-medium" dir="auto">
+        {!pro && track.color && <span className="pointer-events-none absolute inset-0 border-s-4" style={{ borderColor: track.color, background: `${track.color}33` }} />}
+        <span className={`pointer-events-none absolute inset-x-0 top-0 truncate px-1.5 py-0.5 font-medium ${pro ? "h-[14px] bg-black/35 py-0 text-[10px] leading-[14px]" : "bg-gradient-to-b from-black/60 to-transparent"}`} dir="auto">
           {c.text ? c.text.body : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
         </span>
         {!compact && lanePx(end - start) > 60 && (
@@ -547,7 +568,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
             <div className="relative flex-1 cursor-col-resize border-b border-jw-line bg-jw-surface" style={{ touchAction: "none" }} onPointerDown={scrub} onPointerMove={scrubMove}>
               {ticks.map((ms) => (
                 <span key={ms} className="absolute top-0 h-full border-l border-jw-line-strong ps-1 text-[10px] leading-[26px] text-jw-faint" style={{ left: lanePx(ms) }}>
-                  {formatTime(ms, step < 1000)}
+                  {pro ? timecode(ms, tl.fps) : formatTime(ms, step < 1000)}
                 </span>
               ))}
               {/* beat marks */}
@@ -569,10 +590,10 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                   if (el) rows.current.set(track.id, el);
                   else rows.current.delete(track.id);
                 }}
-                className={`flex border-b border-jw-line ${isMain ? "bg-jw-surface-2/40" : ""} ${target || dropAt?.trackId === track.id ? "bg-jw-accent/10" : ""}`}
+                className={`flex border-b border-jw-line ${pro ? (ordered.indexOf(track) % 2 ? "bg-black/[0.06]" : "bg-black/[0.02]") : isMain ? "bg-jw-surface-2/40" : ""} ${target || dropAt?.trackId === track.id ? "bg-jw-accent/10" : ""}`}
                 style={{ height: height(track) }}
               >
-                <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} />
+                <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} label={pro ? labels.get(track.id) : undefined} />
                 <div className="relative flex-1" onPointerDown={laneDown} onPointerUp={laneUp}>
                   {track.clips.map((c) => (moving?.id === c.id && moving.ghostTrack !== track.id ? null : clipView(track, c)))}
                   {/* a clip being dragged here from another track */}
@@ -639,7 +660,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   );
 }
 
-function TrackHead({ track, isMain, width, compact, readOnly, run }: { track: Track; isMain: boolean; width: number; compact: boolean; readOnly: boolean; run: Props["run"] }) {
+function TrackHead({ track, isMain, width, compact, readOnly, run, label }: { track: Track; isMain: boolean; width: number; compact: boolean; readOnly: boolean; run: Props["run"]; label?: string }) {
+  // the colours open over the editor (the timeline's own box would cut them off)
+  const [painting, setPainting] = useState<{ x: number; y: number } | null>(null);
   const toggle = (patch: Partial<Pick<Track, "muted" | "hidden" | "locked">>) => run({ type: "update_track", trackId: track.id, patch });
   const btn = "grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-3";
   const icon = track.kind === "audio" ? "music" : track.kind === "text" ? "type" : isMain ? "film" : "layers";
@@ -647,11 +670,56 @@ function TrackHead({ track, isMain, width, compact, readOnly, run }: { track: Tr
     <div className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted" style={{ width, minWidth: width }} dir="rtl">
       {!compact && (
         <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px]" title={track.name}>
-          <Icon name={icon} size={13} />
+          {label ? (
+            <b className="grid h-5 min-w-7 place-items-center rounded-sm px-1 text-[10px] text-white" style={{ background: track.color ?? "#5b6170" }} dir="ltr">
+              {label}
+            </b>
+          ) : (
+            <Icon name={icon} size={13} />
+          )}
           <span className="truncate">{isMain ? "الرئيسي" : track.name}</span>
         </span>
       )}
-      <div className={`flex ${compact ? "flex-col" : ""} items-center`}>
+      <div className={`relative flex ${compact ? "flex-col" : ""} items-center`}>
+        {!compact && !readOnly && (
+          <button
+            type="button"
+            className={btn}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setPainting((v) => (v ? null : { x: r.left, y: r.bottom + 4 }));
+            }}
+            aria-label="لون المسار"
+            title="لون المسار"
+            aria-expanded={!!painting}
+          >
+            <span className="h-3 w-3 rounded-full border border-black/20" style={{ background: track.color ?? "transparent" }} />
+          </button>
+        )}
+        {painting &&
+          createPortal(
+          <div role="menu" aria-label="ألوان المسار" dir="rtl" className="fixed z-[80] grid w-44 grid-cols-5 gap-1.5 rounded-xl border border-jw-line bg-jw-surface p-2 shadow-xl" style={{ left: painting.x, top: Math.min(painting.y, window.innerHeight - 170) }}>
+            {TRACK_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="menuitemradio"
+                aria-checked={track.color === c}
+                aria-label={c}
+                className={`h-6 w-6 rounded-full border-2 ${track.color === c ? "border-jw-ink" : "border-white"}`}
+                style={{ background: c }}
+                onClick={() => {
+                  setPainting(null);
+                  run({ type: "update_track", trackId: track.id, patch: { color: c } });
+                }}
+              />
+            ))}
+            <button type="button" role="menuitemradio" aria-checked={!track.color} className="col-span-5 rounded-lg border border-jw-line py-1 text-[11px] text-jw-muted hover:text-jw-ink" onClick={() => { setPainting(null); run({ type: "update_track", trackId: track.id, patch: { color: null } }); }}>
+              بدون لون
+            </button>
+          </div>,
+          document.querySelector("[data-ed-theme]") ?? document.body,
+          )}
         {track.kind !== "text" && (
           <button type="button" disabled={readOnly} className={`${btn} ${track.muted ? "text-jw-danger" : ""}`} onClick={() => toggle({ muted: !track.muted })} aria-label={track.muted ? "شغّل الصوت" : "اكتم"} title={track.muted ? "شغّل الصوت" : "اكتم"}>
             <Icon name={track.muted ? "volumeOff" : "volume"} size={13} />

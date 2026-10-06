@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { clipEnd, type Timeline } from "@/lib/editor/model";
+import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
+import { framesOf } from "./media";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
 import Icon from "../Icon";
@@ -90,6 +91,30 @@ export default function AssistantPanel({
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
 
   const sent = useRef(0);
+  // pictures of clips already looked at (kept while the clip's part stays the same)
+  const seenFrames = useRef(new Map<string, { t: number; data: string }[]>());
+  const lookAt = async () => {
+    if (selected.length !== 1) return null;
+    const f = findClip(tl, selected[0]);
+    const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+    if (!f || !a?.url || a.kind === "audio" || f.track.kind === "audio") return null;
+    const c = f.clip;
+    const key = `${c.id}:${c.in}:${c.out}:${c.start}`;
+    let frames = seenFrames.current.get(key);
+    if (!frames) {
+      setBusy("Claude يشوف المقطع المحدد…");
+      try {
+        const n = a.kind === "image" ? 1 : Math.min(6, Math.max(2, Math.round((c.out - c.in) / 2000)));
+        const src = await framesOf(a.url, a.kind, c.in, c.out, n);
+        // the moments on the timeline (what the person sees)
+        frames = src.map((x) => ({ t: Math.round(c.start + (x.t - c.in) / c.speed), data: x.data }));
+        seenFrames.current.set(key, frames);
+      } catch {
+        return null;
+      }
+    }
+    return { clipId: c.id, frames };
+  };
   const send = async (words = text) => {
     const message = words.trim();
     if (!message || busy || readOnly) return;
@@ -99,6 +124,8 @@ export default function AssistantPanel({
     try {
       setBusy("نسمع الصوت ونلقى السكتات…");
       const quiet = await quietParts(tl, assets);
+      // the clip the person chose: Claude looks at a few of its moments to know what is in it
+      const look = await lookAt();
       setBusy("Claude يشتغل على التايملاين…");
       const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
@@ -108,6 +135,7 @@ export default function AssistantPanel({
         playhead: player?.ms ?? 0,
         selected,
         quiet,
+        look,
       });
       let done = 0;
       if (r.commands.length) {
@@ -198,6 +226,15 @@ export default function AssistantPanel({
         )}
         <div ref={end} />
       </div>
+      {(() => {
+        const f = selected.length === 1 ? findClip(tl, selected[0]) : null;
+        const as = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+        return as && as.kind !== "audio" && f!.track.kind !== "audio" ? (
+          <p className="flex items-center gap-1.5 border-t border-jw-line px-3 pt-1.5 text-[11px] text-jw-muted">
+            <Icon name="eye" size={13} className="text-jw-accent" /> Claude بيشوف المقطع المحدد «{as.name}» مع رسالتك
+          </p>
+        ) : null;
+      })()}
       <form
         className="flex items-end gap-2 border-t border-jw-line p-2"
         onSubmit={(e) => {

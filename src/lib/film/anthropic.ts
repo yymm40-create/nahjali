@@ -29,7 +29,7 @@ export function claudeCost(u: ClaudeUsage) {
 export const totalTokens = (u: ClaudeUsage) =>
   u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + u.output_tokens;
 
-export type ClaudePart = { type: "text"; text: string } | { type: "image"; url: string };
+export type ClaudePart = { type: "text"; text: string } | { type: "image"; url: string } | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" };
 
 export interface ClaudeTurn {
   role: "user" | "assistant";
@@ -38,7 +38,11 @@ export interface ClaudeTurn {
 }
 
 const toBlock = (p: ClaudePart) =>
-  p.type === "text" ? { type: "text", text: p.text } : { type: "image", source: { type: "url", url: p.url } };
+  p.type === "text"
+    ? { type: "text", text: p.text }
+    : p.type === "image64"
+      ? { type: "image", source: { type: "base64", media_type: p.mediaType, data: p.data } }
+      : { type: "image", source: { type: "url", url: p.url } };
 
 /**
  * One Messages API call with a cached system prompt and a JSON-schema reply.
