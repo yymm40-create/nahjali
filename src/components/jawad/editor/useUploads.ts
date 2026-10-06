@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { putWithProgress } from "../studio/upload";
 import { probe, shortName } from "./media";
+import { sendInParts, UploadGone, type PartsUpload } from "./parts";
 import type { EditorAsset } from "./types";
 
 /** Where a dropped file goes once it is uploaded (none: the usual place). */
@@ -23,6 +24,32 @@ export interface UploadItem {
   progress: number;
   error: string | null;
   note: string | null;
+}
+
+interface Started {
+  id: string;
+  mime: string;
+  signedUrl?: string;
+  multipart?: { uploadId: string; partSize: number };
+}
+
+// A large file's upload, kept per file so the same file picked again after a reload goes on where it stopped
+const resumeKey = (projectId: string, f: File) => `editor-upload:${projectId}:${f.name}:${f.size}:${f.lastModified}`;
+function readResume(key: string): (PartsUpload & { mime: string }) | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) ?? "null");
+    return v && typeof v.id === "string" && typeof v.uploadId === "string" && typeof v.partSize === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeResume(key: string, v: (PartsUpload & { mime: string }) | null) {
+  try {
+    if (v) localStorage.setItem(key, JSON.stringify(v));
+    else localStorage.removeItem(key);
+  } catch {
+    // private mode: no resume after a reload, the upload itself still works
+  }
 }
 
 /**
@@ -49,20 +76,33 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: P
         try {
           const m = await probe(file);
           if (!m.playable) patch(key, { note: "متصفحك قد لا يعرض هذا الملف أثناء المونتاج (ترميز غير مدعوم)؛ جرّب Chrome." });
-          const s = await postJson<{ id: string; mime: string; signedUrl: string }>(`/api/jawad/editor/projects/${projectId}`, {
-            action: "sign_upload",
-            kind: m.kind,
-            container: m.container,
-            bytes: file.size,
-            name: shortName(file.name),
-          });
-          try {
-            await putWithProgress(s.signedUrl, file, s.mime, (p) => patch(key, { progress: p }));
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : "";
-            // the storage plan's own limit (50 MB per file on Supabase Free)
-            if (/\((413|400)\)/.test(msg)) throw new Error(`«${file.name}» أكبر من الحجم المسموح في التخزين حاليًا. قصّه أو صغّره وجرّب.`);
-            throw err;
+          const start = () =>
+            postJson<Started>(`/api/jawad/editor/projects/${projectId}`, {
+              action: "sign_upload",
+              kind: m.kind,
+              container: m.container,
+              bytes: file.size,
+              name: shortName(file.name),
+            });
+          const rk = resumeKey(projectId, file);
+          const before = readResume(rk);
+          let s: Started = before ? { id: before.id, mime: before.mime, multipart: before } : await start();
+          if (s.multipart) {
+            const progress = (p: number) => patch(key, { progress: p });
+            writeResume(rk, { id: s.id, mime: s.mime, ...s.multipart });
+            try {
+              await sendInParts(projectId, { id: s.id, ...s.multipart }, file, progress);
+            } catch (err) {
+              // the earlier upload of this file is gone: once more from the start
+              if (!(err instanceof UploadGone) || !before) throw err;
+              s = await start();
+              writeResume(rk, s.multipart ? { id: s.id, mime: s.mime, ...s.multipart } : null);
+              if (s.multipart) await sendInParts(projectId, { id: s.id, ...s.multipart }, file, progress);
+              else await putWithProgress(s.signedUrl!, file, s.mime, progress);
+            }
+            writeResume(rk, null);
+          } else {
+            await putWithProgress(s.signedUrl!, file, s.mime, (p) => patch(key, { progress: p }));
           }
           const r = await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${projectId}`, {
             action: "confirm_upload",

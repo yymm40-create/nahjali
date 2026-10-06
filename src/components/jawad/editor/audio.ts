@@ -3,12 +3,23 @@
 
 const cache = new Map<string, Promise<AudioBuffer>>();
 const KEEP = 10;
+/** Read whole only up to this; a bigger file would not fit in the browser's memory. */
+const WHOLE_MAX = 1024 ** 3;
+
+/** The file's size from its first byte's answer (Content-Range), or null when the server doesn't say. */
+async function sizeOf(url: string) {
+  const r = await fetch(url, { headers: { range: "bytes=0-0" } }).catch(() => null);
+  const total = Number(r?.headers.get("content-range")?.split("/")[1]);
+  await r?.body?.cancel().catch(() => {});
+  return Number.isFinite(total) && total > 0 ? total : null;
+}
 
 /** The whole sound of a file at 48 kHz (its own channels). */
 export function decodeWhole(url: string): Promise<AudioBuffer> {
   let p = cache.get(url);
   if (!p) {
     p = (async () => {
+      if (((await sizeOf(url)) ?? 0) > WHOLE_MAX) throw new Error("صوت هذا الملف ما يُقرأ في هذا المتصفح لأن الملف كبير جدًا؛ افتح الممنتج في Chrome.");
       const r = await fetch(url);
       if (!r.ok) throw new Error("تعذّر تحميل الملف.");
       const data = await r.arrayBuffer();

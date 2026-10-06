@@ -7,6 +7,7 @@ import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { canExport, download, exportVideo, ExportError, type ExportResult } from "./export";
 import { exportSize } from "./render";
+import { sendInParts } from "./parts";
 import type { EditorAsset } from "./types";
 
 type Phase = { k: "idle" } | { k: "running"; p: number } | { k: "done"; r: ExportResult; saved: boolean | null; purgeAt: string | null } | { k: "error"; m: string };
@@ -66,12 +67,18 @@ export default function ExportPanel({
       );
       download(r.blob, name);
       setPhase({ k: "done", r, saved: null, purgeAt: null });
-      // a copy with the project (deleted with it after 3 days); too big for the storage plan → just not kept
+      // a copy with the project (deleted with it after 3 days); if it can't be stored → just not kept
       let saved = false;
       try {
-        const s = await postJson<{ signedUrl: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "export_sign" });
-        const put = await fetch(s.signedUrl, { method: "PUT", headers: { "content-type": "video/mp4" }, body: r.blob });
-        saved = put.ok;
+        const s = await postJson<{ signedUrl?: string; multipart?: { uploadId: string; partSize: number } }>(`/api/jawad/editor/projects/${projectId}`, { action: "export_sign", bytes: r.blob.size });
+        if (s.multipart) {
+          // a long video: in parts, like large uploads
+          await sendInParts(projectId, { id: "export", ...s.multipart }, r.blob, () => {});
+          saved = true;
+        } else {
+          const put = await fetch(s.signedUrl!, { method: "PUT", headers: { "content-type": "video/mp4" }, body: r.blob });
+          saved = put.ok;
+        }
       } catch {
         saved = false;
       }

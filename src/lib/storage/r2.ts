@@ -117,3 +117,69 @@ export async function presignPut(key: string, expiresIn = 7200) {
   url.searchParams.set("X-Amz-Expires", String(expiresIn));
   return (await r2().client.sign(url.toString(), { method: "PUT", aws: { signQuery: true } })).url;
 }
+
+// —— Large files: the browser sends the file in parts (each up to 5 GB, up to 10,000 parts, about 5 TB in all) ——
+
+/** Starts a multi-part upload; returns its id. */
+export async function createMultipart(key: string, contentType: string) {
+  const res = await send(`${objectUrl(key)}?uploads`, { method: "POST", headers: { "content-type": contentType } });
+  const id = tag(await res.text(), "UploadId");
+  if (!id) throw new R2Error("R2 did not start the upload", res.status);
+  return unxml(id);
+}
+
+const partUrl = (key: string, uploadId: string, part: number) => {
+  const url = new URL(objectUrl(key));
+  url.searchParams.set("partNumber", String(part));
+  url.searchParams.set("uploadId", uploadId);
+  return url;
+};
+
+/** A link the browser PUTs one part to (its answer's ETag header is the part's receipt). */
+export async function presignPart(key: string, uploadId: string, part: number, expiresIn = 6 * 3600) {
+  const url = partUrl(key, uploadId, part);
+  url.searchParams.set("X-Amz-Expires", String(expiresIn));
+  return (await r2().client.sign(url.toString(), { method: "PUT", aws: { signQuery: true } })).url;
+}
+
+/** The parts R2 already has (to go on after a page reload); null when the upload is gone. */
+export async function listParts(key: string, uploadId: string): Promise<{ part: number; etag: string; size: number }[] | null> {
+  const out: { part: number; etag: string; size: number }[] = [];
+  let marker = "";
+  for (;;) {
+    const url = new URL(objectUrl(key));
+    url.searchParams.set("uploadId", uploadId);
+    url.searchParams.set("max-parts", "1000");
+    if (marker) url.searchParams.set("part-number-marker", marker);
+    const res = await send(url.toString());
+    if (res.status === 404) return null;
+    const xml = await res.text();
+    for (const m of xml.matchAll(/<Part>([\s\S]*?)<\/Part>/g)) {
+      out.push({ part: Number(tag(m[1], "PartNumber")), etag: unxml(tag(m[1], "ETag") ?? ""), size: Number(tag(m[1], "Size") ?? 0) });
+    }
+    if (tag(xml, "IsTruncated") !== "true") return out;
+    marker = tag(xml, "NextPartNumberMarker") ?? "";
+    if (!marker) return out;
+  }
+}
+
+/** Joins the parts into the file. */
+export async function completeMultipart(key: string, uploadId: string, parts: { part: number; etag: string }[]) {
+  const url = new URL(objectUrl(key));
+  url.searchParams.set("uploadId", uploadId);
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const body = `<CompleteMultipartUpload>${[...parts]
+    .sort((a, b) => a.part - b.part)
+    .map((p) => `<Part><PartNumber>${p.part}</PartNumber><ETag>${esc(p.etag)}</ETag></Part>`)
+    .join("")}</CompleteMultipartUpload>`;
+  const res = await send(url.toString(), { method: "POST", headers: { "content-type": "application/xml" }, body });
+  const text = await res.text();
+  // S3 can answer 200 with an error inside
+  if (res.status === 404 || /<Error>/.test(text)) throw new R2Error(`R2 could not join the parts: ${tag(text, "Message") ?? res.status}`, res.status === 404 ? 404 : 400);
+}
+
+export async function abortMultipart(key: string, uploadId: string) {
+  const url = new URL(objectUrl(key));
+  url.searchParams.set("uploadId", uploadId);
+  await send(url.toString(), { method: "DELETE" }).catch(() => null);
+}

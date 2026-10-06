@@ -199,6 +199,28 @@ class Bucket {
     return f ? { size: Number(f.metadata?.size ?? 0), mimetype: String(f.metadata?.mimetype ?? ""), lastModified: f.updated_at ?? "" } : null;
   }
 
+  // —— Large files in parts (see r2.ts) ——
+
+  createMultipart(path: string, contentType: string) {
+    return r2.createMultipart(this.key(path), contentType);
+  }
+
+  signParts(path: string, uploadId: string, parts: number[]) {
+    return Promise.all(parts.map(async (part) => ({ part, url: await r2.presignPart(this.key(path), uploadId, part) })));
+  }
+
+  uploadedParts(path: string, uploadId: string) {
+    return r2.listParts(this.key(path), uploadId);
+  }
+
+  completeMultipart(path: string, uploadId: string, parts: { part: number; etag: string }[]) {
+    return r2.completeMultipart(this.key(path), uploadId, parts);
+  }
+
+  abortMultipart(path: string, uploadId: string) {
+    return r2.abortMultipart(this.key(path), uploadId);
+  }
+
   getPublicUrl(path: string) {
     return { data: { publicUrl: publicFileUrl(this.bucket, path) } };
   }

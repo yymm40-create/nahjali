@@ -18,6 +18,13 @@ export const PURGE_AFTER_MS = 3 * 86_400_000;
 const LINK_SECONDS = 6 * 3600;
 const MAX_PROJECTS = 200;
 const MAX_ASSETS = 500;
+/** Above this a file goes up in parts (R2 takes one PUT up to 5 GB; parts also go on after a cut). */
+const PARTS_FROM = 100 * 1024 * 1024;
+/** R2's own limit for one file (10,000 parts of up to 5 GB). */
+export const MAX_FILE_BYTES = 4.9 * 1024 ** 4;
+const MiB = 1024 * 1024;
+/** 64 MB parts, bigger for files whose 64 MB parts would pass 9,500. */
+const partSize = (bytes: number) => Math.max(64 * MiB, Math.ceil(bytes / 9500 / MiB) * MiB);
 
 const db = () => createAdminClient();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -232,7 +239,10 @@ export function stillOpen(p: EditorProject) {
   if (p.purged_at) throw new UserError("انحذفت ملفات هذا المشروع بعد ٣ أيام من تصديره. ابدأ مشروعًا جديدًا.", 410);
 }
 
-/** Step 1 of an upload: a pending record and a one-time URL. No size limit of ours (the storage plan's applies). */
+/**
+ * Step 1 of an upload: a pending record and a one-time URL, or for a large file a multi-part upload
+ * (`multipart`: the browser asks for the parts' links, sends them, then joins them with completeUpload).
+ */
 export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; container?: unknown; bytes?: unknown; name?: unknown }) {
   stillOpen(p);
   const kind = b.kind as AssetKind;
@@ -247,6 +257,7 @@ export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; con
   if (!type || !EDITOR_MIMES.has(type.mime)) throw new UserError("نوع الملف غير مقبول.", 400);
   const bytes = Number(b.bytes);
   if (!Number.isFinite(bytes) || bytes <= 0) throw new UserError("الملف فاضي.", 400);
+  if (bytes > MAX_FILE_BYTES) throw new UserError("الملف أكبر من ٤٫٩ تيرا، أكبر حجم يقبله التخزين.", 400);
   const { count } = await db().from("editor_assets").select("id", { count: "exact", head: true }).eq("project_id", p.id);
   if ((count ?? 0) >= MAX_ASSETS) throw new UserError("مكتبة هذا المشروع ممتلئة؛ احذف ملفات ما تحتاجها.", 429);
 
@@ -257,9 +268,56 @@ export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; con
     .select("id")
     .single();
   if (error) throw new UserError(NOT_READY, 503);
+  if (bytes > PARTS_FROM) {
+    const uploadId = await storage.from(EDITOR_BUCKET).createMultipart(path, type.mime);
+    return { id: row.id as string, mime: type.mime, multipart: { uploadId, partSize: partSize(bytes) } };
+  }
   const signed = await storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
   if (signed.error) throw signed.error;
   return { id: row.id as string, mime: type.mime, signedUrl: signed.data.signedUrl };
+}
+
+/** Where a multi-part upload goes: a pending file of this project, or (`id: "export"`) the project's export. */
+async function partsTarget(p: EditorProject, id: unknown, uploadId: unknown) {
+  if (typeof uploadId !== "string" || !uploadId || uploadId.length > 1024) throw new UserError("رفع غير صحيح.", 400);
+  if (id === "export") return { path: `${p.user_id}/${p.id}/export.mp4`, uploadId };
+  if (!isUuid(id)) throw new UserError("ملف غير صحيح.", 400);
+  const { data } = await db().from("editor_assets").select("path,bucket,status").eq("id", id).eq("project_id", p.id).maybeSingle();
+  if (!data || data.status !== "pending" || data.bucket !== EDITOR_BUCKET) throw new UserError("ما لقينا هذا الرفع؛ ابدأه من جديد.", 404);
+  return { path: data.path as string, uploadId };
+}
+
+const partNumbers = (v: unknown) => {
+  const list = Array.isArray(v) ? v.slice(0, 50).map(Number) : [];
+  if (!list.length || list.some((n) => !Number.isInteger(n) || n < 1 || n > 10_000)) throw new UserError("أجزاء غير صحيحة.", 400);
+  return list;
+};
+
+/** Links for the next parts of a multi-part upload (up to 50 at a time; each works for 6 hours). */
+export async function partUrls(p: EditorProject, b: { id?: unknown; uploadId?: unknown; parts?: unknown }) {
+  stillOpen(p);
+  const t = await partsTarget(p, b.id, b.uploadId);
+  return { urls: await storage.from(EDITOR_BUCKET).signParts(t.path, t.uploadId, partNumbers(b.parts)) };
+}
+
+/** The parts already stored, to go on after a cut or a reload; `parts: null` when the upload has to start again. */
+export async function uploadedParts(p: EditorProject, b: { id?: unknown; uploadId?: unknown }) {
+  const t = await partsTarget(p, b.id, b.uploadId);
+  return { parts: await storage.from(EDITOR_BUCKET).uploadedParts(t.path, t.uploadId) };
+}
+
+/** Joins the parts into the file; the upload is then confirmed as usual (confirm_upload / exported). */
+export async function completeUpload(p: EditorProject, b: { id?: unknown; uploadId?: unknown; parts?: unknown }) {
+  stillOpen(p);
+  const t = await partsTarget(p, b.id, b.uploadId);
+  const parts = (Array.isArray(b.parts) ? b.parts.slice(0, 10_000) : []).map((x) => ({ part: Number((x as { part?: unknown })?.part), etag: String((x as { etag?: unknown })?.etag ?? "") }));
+  if (!parts.length || parts.some((x) => !Number.isInteger(x.part) || x.part < 1 || x.part > 10_000 || !x.etag || x.etag.length > 200)) throw new UserError("أجزاء غير صحيحة.", 400);
+  try {
+    await storage.from(EDITOR_BUCKET).completeMultipart(t.path, t.uploadId, parts);
+  } catch {
+    throw new UserError("تعذّر تجميع أجزاء الملف؛ جرّب الرفع مرة ثانية.", 409);
+  }
+  return { ok: true };
 }
 
 /** The first bytes of a stored file, through a short link (the file itself may be large). */
@@ -435,10 +493,14 @@ export async function importAssets(p: EditorProject, b: { items?: unknown }) {
 // ---------- export and the 3-day deletion ----------
 
 /** A one-time URL to keep a copy of the exported video with the project (it is deleted with the rest). */
-export async function signExportUpload(p: EditorProject) {
+export async function signExportUpload(p: EditorProject, b: { bytes?: unknown } = {}) {
   stillOpen(p);
   const path = `${p.user_id}/${p.id}/export.mp4`;
   await storage.from(EDITOR_BUCKET).remove([path]);
+  const bytes = Number(b.bytes);
+  if (Number.isFinite(bytes) && bytes > PARTS_FROM && bytes <= MAX_FILE_BYTES) {
+    return { multipart: { uploadId: await storage.from(EDITOR_BUCKET).createMultipart(path, "video/mp4"), partSize: partSize(bytes) } };
+  }
   const signed = await storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
   if (signed.error) throw signed.error;
   return { signedUrl: signed.data.signedUrl };
@@ -487,8 +549,9 @@ export async function sweepEditor() {
     await db().from("editor_assets").update({ status: "missing" }).eq("project_id", p.id);
     await db().from("editor_projects").update({ purged_at: now, export_path: null }).eq("id", p.id);
   }
-  const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
-  const { data: stale } = await db().from("editor_assets").select("id,bucket,path").eq("status", "pending").lt("created_at", dayAgo).limit(200);
+  // A very large file can take more than a day to send, so unfinished uploads are given a week (as R2 keeps their parts)
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data: stale } = await db().from("editor_assets").select("id,bucket,path").eq("status", "pending").lt("created_at", weekAgo).limit(200);
   const list = (stale ?? []) as Pick<AssetRow, "id" | "bucket" | "path">[];
   if (list.length) {
     await storage.from(EDITOR_BUCKET).remove(list.filter((r) => r.bucket === EDITOR_BUCKET).map((r) => r.path));
