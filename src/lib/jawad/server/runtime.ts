@@ -9,12 +9,12 @@ import { GENERATORS } from "@config/jawad/generators";
 import { DEFAULT_SECTIONS, isImplementation, SECTION_IMPLEMENTATIONS, sectionPath, type SectionImplementation } from "@config/jawad/sections";
 import type { GeneratorDef, OutputKind } from "@config/jawad/types";
 import { priceTable } from "../engine";
+import { publicFileUrl } from "@/lib/storage/public";
 
 export const JAWAD_BUCKET = "jawad";
 export const JAWAD_PUBLIC_BUCKET = "jawad-public";
 
-export const publicUrl = (path: string) =>
-  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${JAWAD_PUBLIC_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
+export const publicUrl = (path: string) => publicFileUrl(JAWAD_PUBLIC_BUCKET, path);
 
 export interface RuntimeSection {
   id: string;

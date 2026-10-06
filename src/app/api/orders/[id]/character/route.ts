@@ -7,6 +7,7 @@ import { generateFromReference } from "@/lib/openai";
 import { characterPrompt } from "@config/prompts";
 import { STYLES } from "@config/styles";
 
+import { storage } from "@/lib/storage";
 // Image generation can take a couple of minutes
 export const maxDuration = 300;
 
@@ -25,7 +26,7 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
   await checkRateLimit(user.id);
 
   const db = createAdminClient();
-  const source = await db.storage.from(BUCKETS.sources).download(sourcePath(order));
+  const source = await storage.from(BUCKETS.sources).download(sourcePath(order));
   if (source.error) throw new UserError(MESSAGES.noSource, 400);
 
   const claimed = await claimOrder(order.id, ["paid", "awaiting_approval"], "generating_character");
@@ -53,7 +54,7 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
 
   const attempt = claimed.attempts_used + 1;
   const path = `${order.user_id}/${order.id}/character-${attempt}-${Date.now()}.png`;
-  const up = await db.storage.from(BUCKETS.generated).upload(path, image, { contentType: "image/png" });
+  const up = await storage.from(BUCKETS.generated).upload(path, image, { contentType: "image/png" });
   if (up.error) {
     await restoreStatus(order.id);
     throw up.error;

@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
-import { createClient } from "@/lib/supabase/client";
 import { FILM_LIMITS } from "@config/film";
 
 interface Ref {
@@ -32,8 +31,8 @@ export default function References({ projectId, initial }: { projectId: string; 
           mime: file.type,
           bytes: file.size,
         });
-        const { error: upErr } = await createClient().storage.from("film").uploadToSignedUrl(path, token, file, { contentType: file.type });
-        if (upErr) throw new Error("تعذّر رفع الصورة. جرّب مرة ثانية.");
+        const put = await fetch(token, { method: "PUT", headers: { "content-type": file.type }, body: file });
+        if (!put.ok) throw new Error("تعذّر رفع الصورة. جرّب مرة ثانية.");
         await postJson(`/api/film/projects/${projectId}/uploads/confirm`, { path, fileName: file.name });
       }
       router.refresh();

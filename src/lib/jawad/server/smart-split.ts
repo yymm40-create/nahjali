@@ -22,6 +22,7 @@ import { readFrame } from "./smart-edit";
 import type { UploadRow } from "./uploads";
 import type { JobRow } from "./jobs";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 /** The tracks' sample rate (the video standard). */
 const MIX_RATE = 48_000;
@@ -47,7 +48,7 @@ export interface VideoInputs {
 
 /** Whether a stored video has a sound track to take the dialogue from. */
 export async function videoHasSound(path: string) {
-  const { data, error } = await db().storage.from(JAWAD_BUCKET).download(path);
+  const { data, error } = await storage.from(JAWAD_BUCKET).download(path);
   if (error || !data) throw new UserError("تعذّر قراءة الفيديو؛ جرّب مرة ثانية.", 400);
   return hasSoundTrack(new Uint8Array(await data.arrayBuffer()));
 }
@@ -68,14 +69,14 @@ export async function storeFrames(userId: string, key: string, raw: unknown, dur
   }
   const frames = checked.map((c, i) => ({ t: c.t, path: `${userId}/sfx/${key}/f${i}.jpg` }));
   await inBatches(checked, 8, async (c, i) => {
-    const up = await db().storage.from(JAWAD_BUCKET).upload(frames[i].path, c.bytes, { contentType: "image/jpeg", upsert: true });
+    const up = await storage.from(JAWAD_BUCKET).upload(frames[i].path, c.bytes, { contentType: "image/jpeg", upsert: true });
     if (up.error) throw up.error;
   });
   return { durationMs, frames };
 }
 
 export const removeFrames = (v: VideoInputs) =>
-  v.frames.length ? db().storage.from(JAWAD_BUCKET).remove(v.frames.map((f) => f.path)).then(() => null, () => null) : Promise.resolve(null);
+  v.frames.length ? storage.from(JAWAD_BUCKET).remove(v.frames.map((f) => f.path)).then(() => null, () => null) : Promise.resolve(null);
 
 async function inBatches<T>(items: T[], size: number, fn: (item: T, i: number) => Promise<void>) {
   let next = 0;
@@ -216,7 +217,7 @@ export function musicSections(m: SoundPlan["music"], totalMs: number): MusicSect
 
 async function planVideo(v: VideoInputs, note: string, want: { music: boolean; sfx: boolean }): Promise<{ plan: SoundPlan; usage: ClaudeUsage }> {
   const sec = v.durationMs / 1000;
-  const { data } = await db().storage.from(JAWAD_BUCKET).createSignedUrls(v.frames.map((f) => f.path), 900);
+  const { data } = await storage.from(JAWAD_BUCKET).createSignedUrls(v.frames.map((f) => f.path), 900);
   const ask = want.music && want.sfx ? "the music and the sound effects" : want.music ? "the music only (leave the events empty and the ambience description empty)" : "the sound effects only (leave the music sections empty)";
   const parts: ClaudePart[] = [{ type: "text", text: `Plan: ${ask}.\nVideo length: ${sec.toFixed(2)} s. ${v.frames.length} frames follow, in order, each labeled with its time.` }];
   v.frames.forEach((f, i) => {
@@ -242,7 +243,7 @@ export interface SplitFile {
 /** الحوار: the voices of the video's own sound (the video is sent as it is). */
 async function dialogueTrack(video: UploadRow | undefined, durationMs: number): Promise<SplitFile & { usd: number }> {
   if (!video) throw new ProviderError("rejected", "الفيديو حُذف قبل الفصل. أُعيدت لك نقودك.", "dialogue: no video");
-  const { data, error } = await db().storage.from(JAWAD_BUCKET).download(video.storage_path);
+  const { data, error } = await storage.from(JAWAD_BUCKET).download(video.storage_path);
   if (error || !data) throw new ProviderError("rejected", "تعذّر قراءة الفيديو. أُعيدت لك نقودك؛ جرّب مرة ثانية.", `dialogue download: ${error?.message}`);
   const file = Buffer.from(await data.arrayBuffer());
   if (!hasSoundTrack(new Uint8Array(file))) throw new ProviderError("rejected", "الفيديو بلا صوت، فلا يوجد حوار لفصله. أُعيدت لك نقودك.", "dialogue: no sound track");

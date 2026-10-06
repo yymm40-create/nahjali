@@ -6,6 +6,7 @@ import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { FILM_BUCKET, projectDir } from "@/lib/film/types";
 import { FILM_LIMITS } from "@config/film";
 
+import { storage } from "@/lib/storage";
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 const BAD_FILE = "المرجع لازم يكون صورة JPG أو PNG أو WEBP وحجمها أقل من ٢٠ ميجا.";
 
@@ -34,7 +35,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   }
 
   const path = `${projectDir(project)}/uploads/${randomUUID()}.${EXT[mime]}`;
-  const { data, error } = await db.storage.from(FILM_BUCKET).createSignedUploadUrl(path);
+  const { data, error } = await storage.from(FILM_BUCKET).createSignedUploadUrl(path);
   if (error) throw error;
   return NextResponse.json({ path: data.path, token: data.token });
 });

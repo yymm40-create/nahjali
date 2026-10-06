@@ -9,6 +9,7 @@ import { POSES, posePrompt } from "@config/prompts";
 import { STYLES } from "@config/styles";
 import { POSE_MAX_RETRIES } from "@config/pricing";
 
+import { storage } from "@/lib/storage";
 export const maxDuration = 300;
 
 /**
@@ -63,7 +64,7 @@ async function generatePose(order: Order, characterPath: string, pose: Pose) {
   try {
     if (!POSES[pose.pose_key]) throw new Error(`No pose "${pose.pose_key}" in config/prompts.ts`);
     const prompt = posePrompt(pose.pose_key, order.style, order.child_gender ?? "boy");
-    const ref = await db.storage.from(BUCKETS.generated).download(characterPath);
+    const ref = await storage.from(BUCKETS.generated).download(characterPath);
     if (ref.error) throw ref.error;
 
     // The APPROVED character is the reference, so every page shows the same character.
@@ -75,7 +76,7 @@ async function generatePose(order: Order, characterPath: string, pose: Pose) {
     await logGeneration(order.id, "pose", order.quality, true);
 
     const path = `${order.user_id}/${order.id}/pose-${pose.pose_key}.png`;
-    const up = await db.storage.from(BUCKETS.generated).upload(path, image, { contentType: "image/png", upsert: true });
+    const up = await storage.from(BUCKETS.generated).upload(path, image, { contentType: "image/png", upsert: true });
     if (up.error) throw up.error;
     await db.from("poses").update({ status: "done", image_path: path, started_at: null }).eq("id", pose.id);
   } catch (err) {

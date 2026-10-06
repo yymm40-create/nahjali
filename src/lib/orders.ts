@@ -1,6 +1,7 @@
 import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
 import type { Character, Order, OrderStatus } from "@/lib/types";
 
+import { storage } from "@/lib/storage";
 /** A "working" status older than this is treated as crashed and can be claimed again. */
 export const STALE_MS = 6 * 60_000;
 
@@ -56,7 +57,7 @@ export const SOURCE_PHOTO_MAX_AGE_MS = 24 * 3600_000;
 
 /** Deletes the customer's original photo. Safe to call when it is already gone. */
 export async function deleteSourcePhoto(o: Pick<Order, "user_id" | "id">) {
-  const { error } = await createAdminClient().storage.from(BUCKETS.sources).remove([sourcePath(o)]);
+  const { error } = await storage.from(BUCKETS.sources).remove([sourcePath(o)]);
   if (error) console.error("failed to delete source photo", o.id, error);
 }
 
@@ -78,12 +79,12 @@ export async function deleteExpiredSourcePhotos() {
   const paths: string[] = [];
   for (const o of candidates) {
     const dir = sourcePath(o).split("/").slice(0, -1).join("/");
-    const { data: files } = await db.storage.from(BUCKETS.sources).list(dir, { search: "source.png" });
+    const { data: files } = await storage.from(BUCKETS.sources).list(dir, { search: "source.png" });
     const f = files?.find((x) => x.name === "source.png");
     if (f && new Date(f.created_at ?? f.updated_at ?? 0).toISOString() < olderThan) paths.push(sourcePath(o));
   }
   for (let i = 0; i < paths.length; i += 100) {
-    const { error } = await db.storage.from(BUCKETS.sources).remove(paths.slice(i, i + 100));
+    const { error } = await storage.from(BUCKETS.sources).remove(paths.slice(i, i + 100));
     if (error) console.error("cleanup failed", error);
   }
   return paths.length;

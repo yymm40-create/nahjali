@@ -10,6 +10,7 @@ import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject
 import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
 import { findStyle } from "@config/film-styles";
 
+import { storage } from "@/lib/storage";
 const STAGE = "sheets";
 const SYSTEM = `${SHEET_MAKER_PROMPT}\n\n${SHEET_APP_INTEGRATION}`;
 const ESTIMATE_USD = 0.8;
@@ -573,7 +574,7 @@ async function runImage(project: FilmProject, jobId: string, assetId: string, o:
   try {
     const refs: Buffer[] = [];
     for (const r of o.refs) {
-      const f = await client.storage.from(FILM_BUCKET).download(r.storage_path!);
+      const f = await storage.from(FILM_BUCKET).download(r.storage_path!);
       if (f.error) throw f.error;
       refs.push(Buffer.from(await f.data.arrayBuffer()));
     }
@@ -584,7 +585,7 @@ async function runImage(project: FilmProject, jobId: string, assetId: string, o:
       quality: o.kind === "test" ? "medium" : "high",
     });
     const path = `${projectDir(project)}/sheets/${assetId}.png`;
-    const up = await client.storage.from(FILM_BUCKET).upload(path, png, { contentType: "image/png", upsert: true });
+    const up = await storage.from(FILM_BUCKET).upload(path, png, { contentType: "image/png", upsert: true });
     if (up.error) throw up.error;
     await client.from("film_assets").update({ status: "generated", storage_path: path, mime: "image/png", bytes: png.length, error: null }).eq("id", assetId);
     await succeedJob(jobId, { costUsd: costUsd ?? IMAGE_ESTIMATE_USD[o.kind], units: tokens });
@@ -726,7 +727,7 @@ export async function sheetUploadUrl(project: FilmProject, sheetId: string, mime
   const ext = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as Record<string, string>)[mime];
   if (!ext || !/^[A-Z]{3}-\d{2}$/.test(sheetId)) throw new UserError("صورة JPG أو PNG أو WEBP فقط.", 400);
   const path = `${projectDir(project)}/sheets/upload-${sheetId}-${Date.now()}.${ext}`;
-  const { data, error } = await db().storage.from(FILM_BUCKET).createSignedUploadUrl(path);
+  const { data, error } = await storage.from(FILM_BUCKET).createSignedUploadUrl(path);
   if (error) throw error;
   return { path: data.path, token: data.token };
 }
@@ -736,7 +737,7 @@ export async function confirmSheetUpload(project: FilmProject, sheetId: string, 
   const dir = `${projectDir(project)}/sheets`;
   if (!path.startsWith(`${dir}/upload-${sheetId}-`) || path.includes("..")) throw new UserError("ملف غير صحيح.", 400);
   const name = path.slice(dir.length + 1);
-  const { data: list } = await db().storage.from(FILM_BUCKET).list(dir, { search: name });
+  const { data: list } = await storage.from(FILM_BUCKET).list(dir, { search: name });
   const file = list?.find((f) => f.name === name);
   const size = Number(file?.metadata?.size ?? 0);
   if (!file || size <= 0 || size > 20 * 1024 * 1024) throw new UserError("ما وصل الملف أو حجمه أكبر من ٢٠ ميجا.", 400);

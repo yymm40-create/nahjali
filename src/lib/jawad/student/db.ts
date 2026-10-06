@@ -4,6 +4,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { STUDENT } from "@config/jawad/student";
 
+import { storage } from "@/lib/storage";
 export const sdb = () => createAdminClient();
 
 export interface Project {
@@ -158,24 +159,24 @@ export async function saveOutput(id: string, patch: Partial<Output>, history?: {
 // ───────────────────────────── files ─────────────────────────────
 
 export async function putFile(path: string, body: Buffer | Uint8Array | string, contentType: string) {
-  const { error } = await sdb().storage.from(STUDENT.bucket).upload(path, body, { contentType, upsert: true });
+  const { error } = await storage.from(STUDENT.bucket).upload(path, body, { contentType, upsert: true });
   if (error) throw error;
 }
 
 export async function getFile(path: string): Promise<Buffer> {
-  const { data, error } = await sdb().storage.from(STUDENT.bucket).download(path);
+  const { data, error } = await storage.from(STUDENT.bucket).download(path);
   if (error || !data) throw error ?? new Error("file not found");
   return Buffer.from(await data.arrayBuffer());
 }
 
 export async function signFile(path: string, seconds = 600, download?: string) {
-  const { data, error } = await sdb().storage.from(STUDENT.bucket).createSignedUrl(path, seconds, download ? { download } : undefined);
+  const { data, error } = await storage.from(STUDENT.bucket).createSignedUrl(path, seconds, download ? { download } : undefined);
   if (error) throw error;
   return data.signedUrl;
 }
 
 export async function removeFolder(prefix: string) {
-  const store = sdb().storage.from(STUDENT.bucket);
+  const store = storage.from(STUDENT.bucket);
   // Supabase lists one folder level at a time
   const walk = async (dir: string): Promise<string[]> => {
     const { data } = await store.list(dir, { limit: 1000 });

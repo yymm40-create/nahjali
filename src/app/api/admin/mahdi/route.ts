@@ -15,6 +15,7 @@ import { approveShrine, generateShrineDraft } from "@/lib/mahdi/server/shrine-ar
 import { forgetShrines } from "@/lib/mahdi/server/snapshot";
 import { deleteStory } from "@/lib/mahdi/server/stories";
 
+import { storage } from "@/lib/storage";
 const A = t.admin;
 // Generating a shrine's picture with GPT Image 2 takes up to a minute or two
 export const maxDuration = 300;
@@ -210,7 +211,7 @@ export const POST = handle(async (req: Request) => {
       };
       if (body.removeCover === true) {
         const { data: cur } = await db.from("mahdi_books").select("cover_path").eq("id", bid).single();
-        if (cur?.cover_path) await db.storage.from(COVER_BUCKET).remove([cur.cover_path]);
+        if (cur?.cover_path) await storage.from(COVER_BUCKET).remove([cur.cover_path]);
         row.cover_path = null;
       }
       await run(db.from("mahdi_books").update(row).eq("id", bid));

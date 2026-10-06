@@ -19,6 +19,7 @@ import { isAdmin } from "@config/site";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 const MODEL = "eleven_v4";
 // If the account's ElevenLabs plan does not have the newest model yet, the line is spoken with the one before it
@@ -91,7 +92,7 @@ export async function lineAudios(projectId: string) {
   const latest = new Map<string, FilmAsset>();
   for (const r of rows) latest.set(r.ref_key.slice(5), r);
   const list = [...latest.values()].filter((r) => r.storage_path);
-  const links = list.length ? ((await db().storage.from(FILM_BUCKET).createSignedUrls(list.map((r) => r.storage_path!), 3600)).data ?? []) : [];
+  const links = list.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(list.map((r) => r.storage_path!), 3600)).data ?? []) : [];
   return list.map((r, i) => ({ key: r.ref_key.slice(5), url: links[i]?.signedUrl ?? "", text: String(r.meta?.text ?? ""), voice: String(r.meta?.voice ?? ""), durationMs: Number(r.meta?.durationMs ?? 0) || null, createdAt: r.created_at }));
 }
 
@@ -151,7 +152,7 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
     const withFeeling = emotion && !spoken.text.trimStart().startsWith("[") ? `[${emotion}] ${spoken.text}` : spoken.text;
     const { audio, model } = await speak({ voiceId: resolved.voiceId, text: withFeeling, languageCode: spoken.languageCode });
     const path = `${projectDir(project)}/voices/${line.genId}-${line.index}-${Date.now()}.mp3`;
-    const up = await db().storage.from(FILM_BUCKET).upload(path, audio, { contentType: "audio/mpeg", upsert: false });
+    const up = await storage.from(FILM_BUCKET).upload(path, audio, { contentType: "audio/mpeg", upsert: false });
     if (up.error) throw new Error(`storage: ${up.error.message}`);
     const { error } = await db().from("film_assets").insert({
       project_id: project.id,

@@ -19,6 +19,7 @@ import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
 import { autoSettings } from "./defaults";
 
+import { storage } from "@/lib/storage";
 type User = { id: string; email?: string | null };
 type Body = Record<string, unknown>;
 
@@ -160,7 +161,7 @@ export async function projectAction(user: User, id: string, b: Body) {
       if (error) throw error;
       const path = `${user.id}/${p.id}/src/${data.id}.${ext}`;
       await db.from("student_sources").update({ path }).eq("id", data.id);
-      const { data: up, error: e2 } = await db.storage.from(STUDENT.bucket).createSignedUploadUrl(path);
+      const { data: up, error: e2 } = await storage.from(STUDENT.bucket).createSignedUploadUrl(path);
       if (e2) throw e2;
       return { sourceId: data.id, signedUrl: up.signedUrl };
     }
@@ -194,7 +195,7 @@ export async function projectAction(user: User, id: string, b: Body) {
     case "source_remove": {
       const s = (await sources(p.id)).find((x) => x.id === b.sourceId);
       if (!s) throw new UserError("ما لقينا هذا المدخل.", 404);
-      if (s.path) await db.storage.from(STUDENT.bucket).remove([s.path]);
+      if (s.path) await storage.from(STUDENT.bucket).remove([s.path]);
       await db.from("student_sources").delete().eq("id", s.id);
       // the full text changed: it must be approved again
       await touch(p.id, { stage: p.text_version ? "review" : p.stage });

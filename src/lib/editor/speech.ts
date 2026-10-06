@@ -11,6 +11,7 @@ import { elevenAlign, elevenTranscribe } from "@/lib/jawad/server/providers/elev
 import { charged, editorLimit, type Who } from "./pricing";
 import { EDITOR_BUCKET, isUuid, stillOpen, type AssetRow, type EditorProject } from "./server";
 
+import { storage } from "@/lib/storage";
 const LANGS = ["ar", "en", "fr", "ur", "fa", "tr"];
 const TMP_TYPES: Record<string, { ext: string; mime: string }> = { webm: { ext: "webm", mime: "audio/webm" }, wav: { ext: "wav", mime: "audio/wav" } };
 
@@ -28,7 +29,7 @@ export async function signSpeechUpload(p: EditorProject, b: { format?: unknown }
   stillOpen(p);
   const t = TMP_TYPES[String(b.format)] ?? TMP_TYPES.webm;
   const path = `${p.user_id}/${p.id}/tmp/${randomUUID()}.${t.ext}`;
-  const signed = await db().storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
+  const signed = await storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
   if (signed.error) throw signed.error;
   return { path, mime: t.mime, signedUrl: signed.data.signedUrl };
 }
@@ -63,8 +64,8 @@ const range = (b: { from?: unknown; to?: unknown }, row: AssetRow) => {
 async function takePiece(p: EditorProject, path: unknown) {
   const prefix = `${p.user_id}/${p.id}/tmp/`;
   if (typeof path !== "string" || !path.startsWith(prefix) || path.includes("..") || !/^[0-9a-f-]{36}\.(webm|wav)$/.test(path.slice(prefix.length))) throw new UserError("ملف صوت غير صحيح.", 400);
-  const dl = await db().storage.from(EDITOR_BUCKET).download(path);
-  await db().storage.from(EDITOR_BUCKET).remove([path]);
+  const dl = await storage.from(EDITOR_BUCKET).download(path);
+  await storage.from(EDITOR_BUCKET).remove([path]);
   if (dl.error || !dl.data) throw new UserError("ما وصل الصوت؛ جرّب مرة ثانية.", 409);
   return { file: dl.data, name: path.slice(prefix.length) };
 }

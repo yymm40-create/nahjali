@@ -11,12 +11,20 @@ import { applyAll, CommandError, type Command } from "./commands";
 import { editorSniff, EDITOR_MIMES, KIND_AR, storedType } from "./media";
 import { emptyTimeline, isProjectKind, PROJECT_KINDS, readTimeline, type AssetInfo, type AssetKind, type ProjectKind, type Timeline } from "./model";
 
+import { storage } from "@/lib/storage";
 export const EDITOR_BUCKET = "editor";
 /** Media of a project is deleted this long after its export (the person downloads the video first). */
 export const PURGE_AFTER_MS = 3 * 86_400_000;
 const LINK_SECONDS = 6 * 3600;
 const MAX_PROJECTS = 200;
 const MAX_ASSETS = 500;
+/** Above this a file goes up in parts (R2 takes one PUT up to 5 GB; parts also go on after a cut). */
+const PARTS_FROM = 100 * 1024 * 1024;
+/** R2's own limit for one file (10,000 parts of up to 5 GB). */
+export const MAX_FILE_BYTES = 4.9 * 1024 ** 4;
+const MiB = 1024 * 1024;
+/** 64 MB parts, bigger for files whose 64 MB parts would pass 9,500. */
+const partSize = (bytes: number) => Math.max(64 * MiB, Math.ceil(bytes / 9500 / MiB) * MiB);
 
 const db = () => createAdminClient();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -139,7 +147,7 @@ async function sign(rows: AssetRow[]) {
   for (const bucket of ["editor", "jawad", "film"] as const) {
     const list = rows.filter((r) => r.bucket === bucket && r.status === "ready");
     if (!list.length) continue;
-    const { data } = await db().storage.from(bucket).createSignedUrls(list.map((r) => r.path), LINK_SECONDS);
+    const { data } = await storage.from(bucket).createSignedUrls(list.map((r) => r.path), LINK_SECONDS);
     (data ?? []).forEach((d, i) => d.signedUrl && out.set(list[i].id, d.signedUrl));
   }
   return out;
@@ -231,7 +239,10 @@ export function stillOpen(p: EditorProject) {
   if (p.purged_at) throw new UserError("انحذفت ملفات هذا المشروع بعد ٣ أيام من تصديره. ابدأ مشروعًا جديدًا.", 410);
 }
 
-/** Step 1 of an upload: a pending record and a one-time URL. No size limit of ours (the storage plan's applies). */
+/**
+ * Step 1 of an upload: a pending record and a one-time URL, or for a large file a multi-part upload
+ * (`multipart`: the browser asks for the parts' links, sends them, then joins them with completeUpload).
+ */
 export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; container?: unknown; bytes?: unknown; name?: unknown }) {
   stillOpen(p);
   const kind = b.kind as AssetKind;
@@ -246,6 +257,7 @@ export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; con
   if (!type || !EDITOR_MIMES.has(type.mime)) throw new UserError("نوع الملف غير مقبول.", 400);
   const bytes = Number(b.bytes);
   if (!Number.isFinite(bytes) || bytes <= 0) throw new UserError("الملف فاضي.", 400);
+  if (bytes > MAX_FILE_BYTES) throw new UserError("الملف أكبر من ٤٫٩ تيرا، أكبر حجم يقبله التخزين.", 400);
   const { count } = await db().from("editor_assets").select("id", { count: "exact", head: true }).eq("project_id", p.id);
   if ((count ?? 0) >= MAX_ASSETS) throw new UserError("مكتبة هذا المشروع ممتلئة؛ احذف ملفات ما تحتاجها.", 429);
 
@@ -256,14 +268,61 @@ export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; con
     .select("id")
     .single();
   if (error) throw new UserError(NOT_READY, 503);
-  const signed = await db().storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
+  if (bytes > PARTS_FROM) {
+    const uploadId = await storage.from(EDITOR_BUCKET).createMultipart(path, type.mime);
+    return { id: row.id as string, mime: type.mime, multipart: { uploadId, partSize: partSize(bytes) } };
+  }
+  const signed = await storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
   if (signed.error) throw signed.error;
   return { id: row.id as string, mime: type.mime, signedUrl: signed.data.signedUrl };
 }
 
+/** Where a multi-part upload goes: a pending file of this project, or (`id: "export"`) the project's export. */
+async function partsTarget(p: EditorProject, id: unknown, uploadId: unknown) {
+  if (typeof uploadId !== "string" || !uploadId || uploadId.length > 1024) throw new UserError("رفع غير صحيح.", 400);
+  if (id === "export") return { path: `${p.user_id}/${p.id}/export.mp4`, uploadId };
+  if (!isUuid(id)) throw new UserError("ملف غير صحيح.", 400);
+  const { data } = await db().from("editor_assets").select("path,bucket,status").eq("id", id).eq("project_id", p.id).maybeSingle();
+  if (!data || data.status !== "pending" || data.bucket !== EDITOR_BUCKET) throw new UserError("ما لقينا هذا الرفع؛ ابدأه من جديد.", 404);
+  return { path: data.path as string, uploadId };
+}
+
+const partNumbers = (v: unknown) => {
+  const list = Array.isArray(v) ? v.slice(0, 50).map(Number) : [];
+  if (!list.length || list.some((n) => !Number.isInteger(n) || n < 1 || n > 10_000)) throw new UserError("أجزاء غير صحيحة.", 400);
+  return list;
+};
+
+/** Links for the next parts of a multi-part upload (up to 50 at a time; each works for 6 hours). */
+export async function partUrls(p: EditorProject, b: { id?: unknown; uploadId?: unknown; parts?: unknown }) {
+  stillOpen(p);
+  const t = await partsTarget(p, b.id, b.uploadId);
+  return { urls: await storage.from(EDITOR_BUCKET).signParts(t.path, t.uploadId, partNumbers(b.parts)) };
+}
+
+/** The parts already stored, to go on after a cut or a reload; `parts: null` when the upload has to start again. */
+export async function uploadedParts(p: EditorProject, b: { id?: unknown; uploadId?: unknown }) {
+  const t = await partsTarget(p, b.id, b.uploadId);
+  return { parts: await storage.from(EDITOR_BUCKET).uploadedParts(t.path, t.uploadId) };
+}
+
+/** Joins the parts into the file; the upload is then confirmed as usual (confirm_upload / exported). */
+export async function completeUpload(p: EditorProject, b: { id?: unknown; uploadId?: unknown; parts?: unknown }) {
+  stillOpen(p);
+  const t = await partsTarget(p, b.id, b.uploadId);
+  const parts = (Array.isArray(b.parts) ? b.parts.slice(0, 10_000) : []).map((x) => ({ part: Number((x as { part?: unknown })?.part), etag: String((x as { etag?: unknown })?.etag ?? "") }));
+  if (!parts.length || parts.some((x) => !Number.isInteger(x.part) || x.part < 1 || x.part > 10_000 || !x.etag || x.etag.length > 200)) throw new UserError("أجزاء غير صحيحة.", 400);
+  try {
+    await storage.from(EDITOR_BUCKET).completeMultipart(t.path, t.uploadId, parts);
+  } catch {
+    throw new UserError("تعذّر تجميع أجزاء الملف؛ جرّب الرفع مرة ثانية.", 409);
+  }
+  return { ok: true };
+}
+
 /** The first bytes of a stored file, through a short link (the file itself may be large). */
 async function head(bucket: string, path: string) {
-  const s = await db().storage.from(bucket).createSignedUrl(path, 60);
+  const s = await storage.from(bucket).createSignedUrl(path, 60);
   if (!s.data?.signedUrl) return null;
   const r = await fetch(s.data.signedUrl, { headers: { range: "bytes=0-63" } }).catch(() => null);
   if (!r || !r.ok) return null;
@@ -273,7 +332,7 @@ async function head(bucket: string, path: string) {
 async function storedSize(bucket: string, path: string) {
   const dir = path.slice(0, path.lastIndexOf("/"));
   const name = path.slice(path.lastIndexOf("/") + 1);
-  const { data } = await db().storage.from(bucket).list(dir, { search: name, limit: 5 });
+  const { data } = await storage.from(bucket).list(dir, { search: name, limit: 5 });
   const f = (data ?? []).find((x) => x.name === name);
   return f ? Number((f.metadata as { size?: number } | null)?.size ?? 0) : null;
 }
@@ -296,7 +355,7 @@ export async function confirmAsset(p: EditorProject, b: { id?: unknown; duration
 
   const bytes = await head(row.bucket, row.path);
   const drop = async (m: string) => {
-    await db().storage.from(row.bucket).remove([row.path]);
+    await storage.from(row.bucket).remove([row.path]);
     await db().from("editor_assets").delete().eq("id", row.id);
     throw new UserError(m, 400);
   };
@@ -330,7 +389,7 @@ export async function deleteAsset(p: EditorProject, id: unknown) {
   const used = readTimeline(p.timeline).tracks.some((t) => t.clips.some((c) => c.assetId === row.id));
   if (used) throw new UserError("هذا الملف مستخدم في التايملاين؛ احذف مقاطعه أول.", 409);
   // only our own copies are deleted; a work from JAWAD AI or the film maker stays where it was
-  if (row.bucket === EDITOR_BUCKET) await db().storage.from(EDITOR_BUCKET).remove([row.path]);
+  if (row.bucket === EDITOR_BUCKET) await storage.from(EDITOR_BUCKET).remove([row.path]);
   await db().from("editor_assets").delete().eq("id", row.id);
 }
 
@@ -377,7 +436,7 @@ export async function importables(userId: string): Promise<ImportItem[]> {
   for (const bucket of [JAWAD_BUCKET, FILM_BUCKET]) {
     const list = items.filter((i) => i.bucket === bucket);
     if (!list.length) continue;
-    const { data } = await db().storage.from(bucket).createSignedUrls(list.map((i) => i.path), LINK_SECONDS);
+    const { data } = await storage.from(bucket).createSignedUrls(list.map((i) => i.path), LINK_SECONDS);
     (data ?? []).forEach((d, i) => (list[i].url = d.signedUrl ?? null));
   }
   return items.map((i): ImportItem => ({ source: i.source, id: i.id, kind: i.kind, name: i.name, durationMs: i.durationMs, width: i.width, height: i.height, createdAt: i.createdAt, url: i.url }));
@@ -434,11 +493,15 @@ export async function importAssets(p: EditorProject, b: { items?: unknown }) {
 // ---------- export and the 3-day deletion ----------
 
 /** A one-time URL to keep a copy of the exported video with the project (it is deleted with the rest). */
-export async function signExportUpload(p: EditorProject) {
+export async function signExportUpload(p: EditorProject, b: { bytes?: unknown } = {}) {
   stillOpen(p);
   const path = `${p.user_id}/${p.id}/export.mp4`;
-  await db().storage.from(EDITOR_BUCKET).remove([path]);
-  const signed = await db().storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
+  await storage.from(EDITOR_BUCKET).remove([path]);
+  const bytes = Number(b.bytes);
+  if (Number.isFinite(bytes) && bytes > PARTS_FROM && bytes <= MAX_FILE_BYTES) {
+    return { multipart: { uploadId: await storage.from(EDITOR_BUCKET).createMultipart(path, "video/mp4"), partSize: partSize(bytes) } };
+  }
+  const signed = await storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
   if (signed.error) throw signed.error;
   return { signedUrl: signed.data.signedUrl };
 }
@@ -451,12 +514,12 @@ export async function markExported(p: EditorProject, b: { saved?: unknown }) {
   const saved = b.saved === true && (await storedSize(EDITOR_BUCKET, path)) != null;
   const patch = { exported_at: new Date(now).toISOString(), purge_at: new Date(now + PURGE_AFTER_MS).toISOString(), export_path: saved ? path : null };
   await db().from("editor_projects").update(patch).eq("id", p.id);
-  return { purgeAt: patch.purge_at, exportUrl: saved ? ((await db().storage.from(EDITOR_BUCKET).createSignedUrl(path, LINK_SECONDS, { download: `${p.title || "montage"}.mp4` })).data?.signedUrl ?? null) : null };
+  return { purgeAt: patch.purge_at, exportUrl: saved ? ((await storage.from(EDITOR_BUCKET).createSignedUrl(path, LINK_SECONDS, { download: `${p.title || "montage"}.mp4` })).data?.signedUrl ?? null) : null };
 }
 
 export async function exportLink(p: EditorProject) {
   if (!p.export_path || p.purged_at) return null;
-  return (await db().storage.from(EDITOR_BUCKET).createSignedUrl(p.export_path, LINK_SECONDS, { download: `${p.title || "montage"}.mp4` })).data?.signedUrl ?? null;
+  return (await storage.from(EDITOR_BUCKET).createSignedUrl(p.export_path, LINK_SECONDS, { download: `${p.title || "montage"}.mp4` })).data?.signedUrl ?? null;
 }
 
 /** Deletes a project and everything it uploaded. */
@@ -468,9 +531,9 @@ export async function deleteProject(p: EditorProject) {
 async function removeFiles(p: EditorProject) {
   const own = (await assetRows(p.id)).filter((r) => r.bucket === EDITOR_BUCKET).map((r) => r.path);
   // and any sound pieces left from captions (normally deleted right after use)
-  const { data: tmp } = await db().storage.from(EDITOR_BUCKET).list(`${p.user_id}/${p.id}/tmp`, { limit: 1000 });
+  const { data: tmp } = await storage.from(EDITOR_BUCKET).list(`${p.user_id}/${p.id}/tmp`, { limit: 1000 });
   const paths = [...own, `${p.user_id}/${p.id}/export.mp4`, ...(tmp ?? []).map((f) => `${p.user_id}/${p.id}/tmp/${f.name}`)];
-  for (let i = 0; i < paths.length; i += 100) await db().storage.from(EDITOR_BUCKET).remove(paths.slice(i, i + 100));
+  for (let i = 0; i < paths.length; i += 100) await storage.from(EDITOR_BUCKET).remove(paths.slice(i, i + 100));
 }
 
 /**
@@ -486,11 +549,12 @@ export async function sweepEditor() {
     await db().from("editor_assets").update({ status: "missing" }).eq("project_id", p.id);
     await db().from("editor_projects").update({ purged_at: now, export_path: null }).eq("id", p.id);
   }
-  const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
-  const { data: stale } = await db().from("editor_assets").select("id,bucket,path").eq("status", "pending").lt("created_at", dayAgo).limit(200);
+  // A very large file can take more than a day to send, so unfinished uploads are given a week (as R2 keeps their parts)
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data: stale } = await db().from("editor_assets").select("id,bucket,path").eq("status", "pending").lt("created_at", weekAgo).limit(200);
   const list = (stale ?? []) as Pick<AssetRow, "id" | "bucket" | "path">[];
   if (list.length) {
-    await db().storage.from(EDITOR_BUCKET).remove(list.filter((r) => r.bucket === EDITOR_BUCKET).map((r) => r.path));
+    await storage.from(EDITOR_BUCKET).remove(list.filter((r) => r.bucket === EDITOR_BUCKET).map((r) => r.path));
     await db().from("editor_assets").delete().in("id", list.map((r) => r.id));
   }
   return { purged: (data ?? []).length, stale: list.length };

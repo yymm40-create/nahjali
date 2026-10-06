@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
-import { createClient } from "@/lib/supabase/client";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
@@ -388,8 +387,8 @@ function MapChoices({
       for (const file of files.slice(0, room)) {
         if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("صورة JPG أو PNG أو WEBP أقل من ٢٠ ميجا.");
         const { path, token } = await postJson<{ path: string; token: string }>(`/api/film/projects/${projectId}/sheets`, { action: "upload_url", sheetId, mime: file.type });
-        const { error: e } = await createClient().storage.from("film").uploadToSignedUrl(path, token, file, { contentType: file.type });
-        if (e) throw new Error("تعذّر رفع الصورة.");
+        const put = await fetch(token, { method: "PUT", headers: { "content-type": file.type }, body: file }).catch(() => null);
+        if (!put?.ok) throw new Error("تعذّر رفع الصورة.");
         await postJson(`/api/film/projects/${projectId}/sheets`, { action: "upload_confirm", sheetId, path, mode });
       }
       onRefresh();

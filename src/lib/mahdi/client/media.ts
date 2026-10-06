@@ -39,13 +39,12 @@ export async function checkMediaFile(file: File, kind: "image" | "video"): Promi
 export async function uploadMedia(file: File, kind: "image" | "video", onProgress: (pct: number) => void): Promise<string> {
   const body: Blob = kind === "image" ? await shrinkImage(file, 2000) : file;
   const { path, token } = await mahdiFetch<{ path: string; token: string }>("/api/mahdi/social/media", { method: "POST", json: { kind, size: body.size } });
-  const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/upload/sign/mahdi-media/${path}?token=${encodeURIComponent(token)}`;
+  // `token` is the one-time upload link
+  const url = token;
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
-    xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "");
     xhr.setRequestHeader("content-type", kind === "image" ? "image/jpeg" : file.type === "video/quicktime" ? "video/quicktime" : "video/mp4");
-    xhr.setRequestHeader("x-upsert", "false");
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
     xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(t.social.media.failed)));
     xhr.onerror = () => reject(new Error(t.social.media.failed));

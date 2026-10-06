@@ -5,11 +5,11 @@ import { editsLeft } from "@/lib/film/limits";
 import { latestJob, runningImageJobs, sheetAssets, sheetVersions } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { FILM_STYLES } from "@config/film-styles";
 import SheetsWorkspace from "../[id]/sheets/SheetsWorkspace";
 
 
+import { storage } from "@/lib/storage";
 export default async function SheetsView({ id, base }: { id: string; base: string }) {
   const { user, allowed } = await requireFilmUser(`${base}/${id}/sheets`);
   if (!allowed) redirect(base);
@@ -25,7 +25,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
   ]);
   // Short-lived links: every picture stays private
   const paths = assets.filter((a) => a.storage_path).map((a) => a.storage_path!);
-  const signed = paths.length ? ((await createAdminClient().storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
+  const signed = paths.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
   const url: Record<string, string> = {};
   signed.forEach((s, i) => s.signedUrl && (url[paths[i]] = s.signedUrl));
 

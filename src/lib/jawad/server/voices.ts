@@ -19,6 +19,7 @@ import { ProviderError } from "./providers/common";
 import { elevenCloneVoice, elevenDeleteVoice, elevenDesignVoice, elevenPremadeVoices, elevenSaveDesigned } from "./providers/elevenlabs";
 
 import { libraryAccess, libraryOpenFor, requireLibrary } from "./library-access";
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 /** ElevenLabs' long-standing default voices, shown when the key may not read the voice list. */
 const FALLBACK_VOICES = [
@@ -69,7 +70,7 @@ async function gate(owner: boolean) {
 async function signed(paths: (string | null)[]) {
   const list = paths.filter((p): p is string => Boolean(p));
   if (!list.length) return new Map<string, string>();
-  const { data } = await db().storage.from(JAWAD_BUCKET).createSignedUrls(list, 3600);
+  const { data } = await storage.from(JAWAD_BUCKET).createSignedUrls(list, 3600);
   return new Map((data ?? []).flatMap((x) => (x.path && x.signedUrl ? [[x.path, x.signedUrl] as const] : [])));
 }
 
@@ -129,7 +130,7 @@ async function recording(userId: string, uploadId: unknown, maxMs: number) {
   if (r.kind !== "audio" || r.status !== "ready") throw new UserError("اختر تسجيلًا صوتيًا (MP3 أو WAV) اكتمل رفعه.", 400);
   if ((r.duration_ms ?? 0) > maxMs) throw new UserError(`التسجيل أطول من ${Math.round(maxMs / 1000)} ثانية؛ قصّه ثم ارفعه.`, 400);
   if ((r.duration_ms ?? 0) < 3000) throw new UserError("التسجيل قصير جدًا؛ ارفع ٣ ثوانٍ على الأقل.", 400);
-  const { data, error } = await db().storage.from(JAWAD_BUCKET).download(r.storage_path);
+  const { data, error } = await storage.from(JAWAD_BUCKET).download(r.storage_path);
   if (error || !data) throw new UserError("تعذّر قراءة التسجيل.", 500);
   return { bytes: Buffer.from(await data.arrayBuffer()), mime: r.mime ?? "audio/mpeg", ms: r.duration_ms ?? 0 };
 }
@@ -181,7 +182,7 @@ export async function designVoice(user: { id: string }, owner: boolean, b: { key
     const previews = [];
     for (const [i, p] of res.previews.entries()) {
       const path = `${user.id}/voice-drafts/${draft.id}/${i}.mp3`;
-      const up = await db().storage.from(JAWAD_BUCKET).upload(path, p.audio, { contentType: "audio/mpeg", upsert: true });
+      const up = await storage.from(JAWAD_BUCKET).upload(path, p.audio, { contentType: "audio/mpeg", upsert: true });
       if (up.error) throw new Error(`storage: ${up.error.message}`);
       previews.push({ generatedVoiceId: p.generatedVoiceId, path, durationSec: p.durationSec });
     }
@@ -248,7 +249,7 @@ export async function cloneVoice(user: { id: string }, owner: boolean, b: { key?
     const voiceId = await elevenCloneVoice({ name: `${name} · JAWAD`, description: "Instant voice clone from the user's own recording (consent confirmed).", file: rec.bytes, mime: rec.mime, removeNoise: b.removeNoise === true });
     // The first 15 seconds or so of the recording are the sample to listen to
     const path = `${user.id}/voices/clone-${Date.now()}.${rec.mime === "audio/wav" ? "wav" : "mp3"}`;
-    await db().storage.from(JAWAD_BUCKET).upload(path, rec.bytes, { contentType: rec.mime, upsert: true });
+    await storage.from(JAWAD_BUCKET).upload(path, rec.bytes, { contentType: rec.mime, upsert: true });
     return await insertVoice(user.id, { voiceId, name, description: "", origin: "clone", sample: path, coins, copy: false });
   } catch (e) {
     await releaseCoins(user.id, coins, ref, LABEL);
@@ -262,7 +263,7 @@ async function insertVoice(userId: string, v: { voiceId: string; name: string; d
   if (v.copy !== false) {
     // The kept sample, apart from the draft (drafts can be cleared)
     preview = `${userId}/voices/${v.voiceId}.mp3`;
-    await db().storage.from(JAWAD_BUCKET).copy(v.sample, preview).catch(() => null);
+    await storage.from(JAWAD_BUCKET).copy(v.sample, preview).catch(() => null);
   }
   const { data, error } = await db()
     .from("jawad_voices")
@@ -298,7 +299,7 @@ export async function deleteVoice(userId: string, id: unknown) {
     throw new UserError(e instanceof ProviderError ? e.userMessage : "تعذّر حذف الصوت الآن.", 502);
   }
   await db().from("jawad_voices").delete().eq("id", r.id);
-  if (r.preview_path) await db().storage.from(JAWAD_BUCKET).remove([r.preview_path]).catch(() => null);
+  if (r.preview_path) await storage.from(JAWAD_BUCKET).remove([r.preview_path]).catch(() => null);
 }
 
 /** Duration of a stored sound (for outputs). */

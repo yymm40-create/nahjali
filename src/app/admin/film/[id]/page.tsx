@@ -8,6 +8,7 @@ import { FILM_BUCKET, type FilmAsset, type FilmProject } from "@/lib/film/types"
 import { FILM_STAGES, STATUS_LABELS } from "@config/film";
 import { isAdmin } from "@config/site";
 
+import { storage } from "@/lib/storage";
 export const metadata = { title: "مشروع فيلم | لوحة التحكم" };
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export default async function AdminFilmProjectPage({ params }: PageProps<"/admin
   const all = (versions.data ?? []) as Version[];
   const files = (assets.data ?? []) as FilmAsset[];
   const paths = files.filter((a) => a.storage_path).map((a) => a.storage_path!);
-  const signed = paths.length ? ((await db.storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
+  const signed = paths.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
   const url: Record<string, string> = {};
   signed.forEach((s, i) => s.signedUrl && (url[paths[i]] = s.signedUrl));
   const images = files.filter((a) => a.kind === "image" || a.kind === "upload");

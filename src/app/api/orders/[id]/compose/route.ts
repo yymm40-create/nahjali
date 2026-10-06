@@ -6,6 +6,7 @@ import { composeBooklet } from "@/lib/compose";
 import { getTemplate } from "@/lib/templates";
 import type { Pose } from "@/lib/types";
 
+import { storage } from "@/lib/storage";
 export const maxDuration = 120;
 
 /** Builds the PDF once every pose is done, stores it, and marks the order ready. */
@@ -33,7 +34,7 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
 
     const images: Record<string, Buffer> = {};
     for (const p of poses) {
-      const file = await db.storage.from(BUCKETS.generated).download(p.image_path!);
+      const file = await storage.from(BUCKETS.generated).download(p.image_path!);
       if (file.error) throw file.error;
       images[p.pose_key] = Buffer.from(await file.data.arrayBuffer());
     }
@@ -45,7 +46,7 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
       poses: images,
     });
     const path = `${order.user_id}/${order.id}/booklet.pdf`;
-    const up = await db.storage.from(BUCKETS.booklets).upload(path, pdf, { contentType: "application/pdf", upsert: true });
+    const up = await storage.from(BUCKETS.booklets).upload(path, pdf, { contentType: "application/pdf", upsert: true });
     if (up.error) throw up.error;
 
     await db.from("booklets").upsert({ order_id: order.id, pdf_path: path }, { onConflict: "order_id" });

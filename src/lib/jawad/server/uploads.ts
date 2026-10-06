@@ -13,6 +13,7 @@ import { FILM_BUCKET } from "@/lib/film/types";
 import { JAWAD_BUCKET } from "./runtime";
 import { inLibrary } from "./library-access";
 
+import { storage } from "@/lib/storage";
 export interface UploadRow {
   id: string;
   user_id: string;
@@ -67,13 +68,13 @@ export async function signUpload(userId: string, b: { kind?: unknown; mime?: unk
     .select("id")
     .single();
   if (error) throw new UserError("جداول JAWAD AI غير جاهزة بعد.", 503);
-  const signed = await db().storage.from(JAWAD_BUCKET).createSignedUploadUrl(path);
+  const signed = await storage.from(JAWAD_BUCKET).createSignedUploadUrl(path);
   if (signed.error) throw signed.error;
   return { id: row.id as string, path, signedUrl: signed.data.signedUrl, token: signed.data.token };
 }
 
 async function reject(row: UploadRow, message: string) {
-  await db().storage.from(JAWAD_BUCKET).remove([row.storage_path]);
+  await storage.from(JAWAD_BUCKET).remove([row.storage_path]);
   await db().from("jawad_uploads").update({ status: "rejected", error: message }).eq("id", row.id);
   return { ...row, status: "rejected" as const, error: message };
 }
@@ -86,7 +87,7 @@ export async function confirmUpload(userId: string, id: unknown): Promise<Upload
   if (!row) throw new UserError("ما لقينا الملف.", 404);
   if (row.status !== "pending") return row;
 
-  const dl = await db().storage.from(JAWAD_BUCKET).download(row.storage_path);
+  const dl = await storage.from(JAWAD_BUCKET).download(row.storage_path);
   if (dl.error || !dl.data) throw new UserError("ما وصل الملف بعد؛ جرّب الرفع مرة ثانية.", 409);
   const buf = new Uint8Array(await dl.data.arrayBuffer());
   if (buf.length > MAX_UPLOAD_BYTES) return reject(row, "حجم الملف أكبر من ٥٠ ميجا.");
@@ -150,7 +151,7 @@ export async function refsFor(userId: string, wanted: { uploadId: string; role: 
 /** Views with short-lived links (only the owner of the files ever gets them). */
 export async function uploadViews(rows: UploadRow[]): Promise<UploadView[]> {
   const ready = rows.filter((r) => r.status === "ready");
-  const signed = ready.length ? (await db().storage.from(JAWAD_BUCKET).createSignedUrls(ready.map((r) => r.storage_path), 6 * 3600)).data ?? [] : [];
+  const signed = ready.length ? (await storage.from(JAWAD_BUCKET).createSignedUrls(ready.map((r) => r.storage_path), 6 * 3600)).data ?? [] : [];
   const url = new Map(ready.map((r, i) => [r.id, signed[i]?.signedUrl ?? null]));
   return rows.map((r) => ({
     id: r.id,
@@ -185,7 +186,7 @@ export async function deleteUpload(userId: string, id: unknown) {
     .contains("refs", [{ uploadId: row.id }])
     .limit(1);
   if (open?.length) throw new UserError("هذا المرجع مستخدم في توليد لم ينتهِ بعد.", 409);
-  await db().storage.from(JAWAD_BUCKET).remove([row.storage_path]);
+  await storage.from(JAWAD_BUCKET).remove([row.storage_path]);
   await db().from("jawad_uploads").delete().eq("id", row.id);
 }
 
@@ -197,7 +198,7 @@ export async function uploadFromFilmAsset(userId: string, assetId: unknown) {
   if (!a?.storage_path) throw new UserError("ما لقينا هذا العمل.", 404);
   const { data: p } = await db().from("film_projects").select("user_id").eq("id", a.project_id).maybeSingle();
   if (!p || p.user_id !== userId) throw new UserError("ما لقينا هذا العمل.", 404);
-  const { data: blob, error: dl } = await db().storage.from(FILM_BUCKET).download(a.storage_path);
+  const { data: blob, error: dl } = await storage.from(FILM_BUCKET).download(a.storage_path);
   if (dl || !blob) throw new UserError("تعذّر قراءة الملف؛ جرّب مرة ثانية.", 502);
   const bytes = new Uint8Array(await blob.arrayBuffer());
   if (bytes.length > MAX_UPLOAD_BYTES) throw new UserError("الملف أكبر من ٥٠ ميجا.", 400);
@@ -206,7 +207,7 @@ export async function uploadFromFilmAsset(userId: string, assetId: unknown) {
   const kind = s ? UPLOAD_MIMES[s.mime] : undefined;
   if (!s || !kind) throw new UserError("هذا النوع من الملفات لا يُستخدم كمرجع.", 400);
   const path = `${userId}/refs/${randomUUID()}.${UPLOAD_EXT[s.mime]}`;
-  const up = await db().storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: s.mime, upsert: false });
+  const up = await storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: s.mime, upsert: false });
   if (up.error) throw up.error;
   const name = `${String(a.ref_key || "film").replace(/[^\w-]/g, "").slice(0, 40) || "film"}.${UPLOAD_EXT[s.mime]}`;
   const { data: row, error } = await db()
@@ -225,7 +226,7 @@ export async function uploadFromBuffer(userId: string, bytes: Uint8Array, fileNa
   const kind = s ? UPLOAD_MIMES[s.mime] : undefined;
   if (!s || !kind) throw new UserError("ملف غير صالح.", 400);
   const path = `${userId}/refs/${randomUUID()}.${UPLOAD_EXT[s.mime]}`;
-  const up = await db().storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: s.mime, upsert: false });
+  const up = await storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: s.mime, upsert: false });
   if (up.error) throw up.error;
   const { data: row, error } = await db()
     .from("jawad_uploads")
@@ -244,7 +245,7 @@ export async function uploadFromOutput(userId: string, outputId: unknown) {
   const kind = UPLOAD_MIMES[mime];
   if (!kind) throw new UserError("هذا النوع من النتائج لا يُستخدم كمرجع.", 400);
   const path = `${userId}/refs/${randomUUID()}.${UPLOAD_EXT[mime]}`;
-  const copy = await db().storage.from(JAWAD_BUCKET).copy(out.storage_path, path);
+  const copy = await storage.from(JAWAD_BUCKET).copy(out.storage_path, path);
   if (copy.error) throw copy.error;
   const { data: row, error } = await db()
     .from("jawad_uploads")

@@ -11,6 +11,7 @@ import { signMedia } from "@/lib/mahdi/server/media";
 import { SHRINE_ART } from "@config/mahdi-shrines";
 import MahdiAdminTools, { type AdminData } from "./MahdiAdminTools";
 
+import { storage } from "@/lib/storage";
 export const metadata = { title: "لأجل المهدي | لوحة التحكم" };
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export default async function MahdiAdminPage() {
   const pdfPaths = allBooks.flatMap((b) => (b.pdf_path ? [b.pdf_path as string] : []));
   const pdfLinks = new Map<string, string>();
   if (pdfPaths.length) {
-    const { data: signed } = await db.storage.from(PDF_BUCKET).createSignedUrls(pdfPaths, 3600);
+    const { data: signed } = await storage.from(PDF_BUCKET).createSignedUrls(pdfPaths, 3600);
     for (const x of signed ?? []) if (x.path && x.signedUrl) pdfLinks.set(x.path, x.signedUrl);
   }
 

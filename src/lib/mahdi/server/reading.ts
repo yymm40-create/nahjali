@@ -3,10 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { mergeRanges, type BookUnit, type PageRange, type ReadingGoals, type ReadingSession } from "../engine";
 import type { Book, LibraryEntry, ReadingData } from "../types";
 import { selectAll } from "./snapshot";
+import { publicFileUrl } from "@/lib/storage/public";
 
 export const COVER_BUCKET = "mahdi-book-covers";
 export const coverUrl = (path: string | null) =>
-  path ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${COVER_BUCKET}/${path}` : null;
+  path ? publicFileUrl(COVER_BUCKET, path) : null;
 
 /** Most books a person can be reading at once. */
 export const MAX_READING = 3;

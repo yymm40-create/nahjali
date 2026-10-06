@@ -15,6 +15,9 @@ import {
   saveTimeline,
   signAssetUpload,
   signExportUpload,
+  partUrls,
+  uploadedParts,
+  completeUpload,
 } from "@/lib/editor/server";
 import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
 import { assist } from "@/lib/editor/assistant";
@@ -48,6 +51,13 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
   switch (b.action) {
     case "sign_upload":
       return NextResponse.json(await signAssetUpload(p, b));
+    // large files, in parts
+    case "upload_part_urls":
+      return NextResponse.json(await partUrls(p, b));
+    case "upload_parts":
+      return NextResponse.json(await uploadedParts(p, b), noStore);
+    case "upload_complete":
+      return NextResponse.json(await completeUpload(p, b));
     case "confirm_upload":
       return NextResponse.json({ asset: await confirmAsset(p, b) });
     case "delete_asset":
@@ -56,7 +66,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "import":
       return NextResponse.json({ assets: await importAssets(p, b) });
     case "export_sign":
-      return NextResponse.json(await signExportUpload(p));
+      return NextResponse.json(await signExportUpload(p, b));
     case "exported":
       return NextResponse.json(await markExported(p, b));
     case "commands": {

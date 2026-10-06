@@ -8,6 +8,7 @@ import { VIDEO_MODELS, type VideoModel } from "@config/film";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 import { voiceLines } from "./voices";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 
 /** What Seedance accepts as reference audio (config/jawad/generators.ts, verified against ModelArk): 2–30 s on 2.5, 2–15 s on 2.0. */
@@ -45,7 +46,7 @@ export async function buildVoiceTrack(project: FilmProject, genId: string, model
 
   const parts: Uint8Array[] = [];
   for (const l of lines) {
-    const f = await db().storage.from(FILM_BUCKET).download(latest.get(l.key)!.storage_path!);
+    const f = await storage.from(FILM_BUCKET).download(latest.get(l.key)!.storage_path!);
     if (f.error) throw new Error(`storage: ${f.error.message}`);
     parts.push(new Uint8Array(await f.data.arrayBuffer()));
   }
@@ -57,7 +58,7 @@ export async function buildVoiceTrack(project: FilmProject, genId: string, model
   if (check.seconds > lim.maxSec) throw new UserError(`حوار هذا المقطع ${Math.ceil(check.seconds)} ثانية، و${VIDEO_MODELS[model].label} يقبل حتى ${lim.maxSec} ثانية من الصوت المرجعي. اطلب من المخرج يقسّم المقطع أو يقصّر الحوار.`, 409);
 
   const path = `${projectDir(project)}/voices/track-${genId}-${Date.now()}.mp3`;
-  const up = await db().storage.from(FILM_BUCKET).upload(path, track, { contentType: "audio/mpeg", upsert: false });
+  const up = await storage.from(FILM_BUCKET).upload(path, track, { contentType: "audio/mpeg", upsert: false });
   if (up.error) throw new Error(`storage: ${up.error.message}`);
   return { path, seconds: check.seconds, speakers: [...new Set(lines.map((l) => l.speaker))], lines: lines.map((l) => `${l.speaker}: ${l.line}`) };
 }

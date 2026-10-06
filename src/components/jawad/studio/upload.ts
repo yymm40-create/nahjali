@@ -56,9 +56,6 @@ export function putWithProgress(signedUrl: string, file: File, mime: string, onP
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", signedUrl);
     xhr.setRequestHeader("content-type", mime);
-    xhr.setRequestHeader("x-upsert", "false");
-    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (anon) xhr.setRequestHeader("apikey", anon);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? ok() : fail(new Error(`تعذّر رفع الملف (${xhr.status}).`)));
     xhr.onerror = () => fail(new Error("انقطع الاتصال أثناء الرفع."));

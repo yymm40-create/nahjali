@@ -6,10 +6,10 @@ import { checkVideos, directorVersions, directorVideos, referenceLibrary, superD
 import { latestJob } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
-import { createAdminClient } from "@/lib/supabase/admin";
 import DirectorWorkspace from "../[id]/director/DirectorWorkspace";
 
 
+import { storage } from "@/lib/storage";
 export default async function DirectorView({ id, base }: { id: string; base: string }) {
   const { user, allowed } = await requireFilmUser(`${base}/${id}/director`);
   if (!allowed) redirect(base);
@@ -28,7 +28,7 @@ export default async function DirectorView({ id, base }: { id: string; base: str
   // Short-lived links: every file stays private
   const refs = Object.entries(library);
   const paths = [...videos.filter((v) => v.storage_path).map((v) => v.storage_path!), ...refs.map(([, a]) => a.storage_path!).filter(Boolean)];
-  const signed = paths.length ? ((await createAdminClient().storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
+  const signed = paths.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
   const url: Record<string, string> = {};
   signed.forEach((s, i) => s.signedUrl && (url[paths[i]] = s.signedUrl));
 

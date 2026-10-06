@@ -5,6 +5,7 @@ import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { FILM_BUCKET, projectDir } from "@/lib/film/types";
 import { FILM_LIMITS } from "@config/film";
 
+import { storage } from "@/lib/storage";
 /** Step 2 of a reference upload: checks the stored file and records it in the project. */
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
@@ -17,7 +18,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
 
   const db = createAdminClient();
   const name = path.slice(dir.length + 1);
-  const { data: list, error } = await db.storage.from(FILM_BUCKET).list(dir, { search: name });
+  const { data: list, error } = await storage.from(FILM_BUCKET).list(dir, { search: name });
   if (error) throw error;
   const file = list?.find((f) => f.name === name);
   if (!file) throw new UserError("ما وصل الملف، جرّب ترفعه مرة ثانية.", 400);
@@ -25,7 +26,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const size = Number(file.metadata?.size ?? 0);
   const mime = String(file.metadata?.mimetype ?? "");
   if (!FILM_LIMITS.uploadMimes.includes(mime) || size <= 0 || size > FILM_LIMITS.maxUploadBytes) {
-    await db.storage.from(FILM_BUCKET).remove([path]);
+    await storage.from(FILM_BUCKET).remove([path]);
     throw new UserError("المرجع لازم يكون صورة JPG أو PNG أو WEBP وحجمها أقل من ٢٠ ميجا.", 400);
   }
 

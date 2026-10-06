@@ -4,11 +4,11 @@
 // (iPhone videos carry the place they were filmed), and moves it to its final name. Only checked files are used.
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { probe, sniff } from "@/lib/jawad/media";
 import { t } from "../i18n";
 import { UserError } from "./api";
 
+import { storage } from "@/lib/storage";
 export const MEDIA_BUCKET = "mahdi-media";
 export const MEDIA_LIMITS = { maxBytes: 50 * 1024 * 1024, videoMaxMs: 30_500, perDay: 30, photoSide: 1440 } as const;
 const S = () => t.social;
@@ -51,13 +51,12 @@ export async function mediaUploadLink(userId: string, kind: unknown, size: unkno
   const bytes = Number(size);
   if (!k || !Number.isInteger(bytes) || bytes < 100) throw new UserError(S().media.badType, 400);
   if (bytes > MEDIA_LIMITS.maxBytes) throw new UserError(S().media.tooBig, 413);
-  const db = createAdminClient();
   const since = new Date(Date.now() - 86_400_000).toISOString();
-  const { data: recent, error } = await db.storage.from(MEDIA_BUCKET).list(`${userId}/incoming`, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+  const { data: recent, error } = await storage.from(MEDIA_BUCKET).list(`${userId}/incoming`, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
   if (error) throw new UserError(S().notReady, 503);
   if ((recent ?? []).filter((f) => (f.created_at ?? "") >= since).length >= MEDIA_LIMITS.perDay) throw new UserError(S().media.tooMany, 429);
   const path = `${userId}/incoming/${randomUUID()}.${k === "video" ? "mp4" : "jpg"}`;
-  const { data, error: e2 } = await db.storage.from(MEDIA_BUCKET).createSignedUploadUrl(path);
+  const { data, error: e2 } = await storage.from(MEDIA_BUCKET).createSignedUploadUrl(path);
   if (e2 || !data) throw new UserError(S().notReady, 503);
   return { path, token: data.token };
 }
@@ -73,8 +72,7 @@ export interface CheckedMedia {
 /** Checks an uploaded file and moves it to its final, private name. A file that fails is deleted. */
 export async function checkUploadedMedia(userId: string, path: unknown, want: "image" | "video"): Promise<CheckedMedia> {
   if (typeof path !== "string" || !new RegExp(`^${userId}/incoming/[0-9a-f-]{36}\\.(mp4|jpg)$`).test(path)) throw new UserError(S().media.failed, 400);
-  const db = createAdminClient();
-  const bucket = db.storage.from(MEDIA_BUCKET);
+  const bucket = storage.from(MEDIA_BUCKET);
   const { data: blob, error } = await bucket.download(path);
   if (error || !blob) throw new UserError(S().media.failed, 400);
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -118,11 +116,11 @@ export async function checkUploadedMedia(userId: string, path: unknown, want: "i
 export async function signMedia(paths: (string | null | undefined)[], seconds = 3600) {
   const list = [...new Set(paths.filter((p): p is string => Boolean(p)))];
   if (!list.length) return new Map<string, string>();
-  const { data } = await createAdminClient().storage.from(MEDIA_BUCKET).createSignedUrls(list, seconds);
+  const { data } = await storage.from(MEDIA_BUCKET).createSignedUrls(list, seconds);
   return new Map((data ?? []).flatMap((d, i) => (d.signedUrl ? [[list[i], d.signedUrl] as const] : [])));
 }
 
 export async function removeMedia(paths: (string | null | undefined)[]) {
   const list = paths.filter((p): p is string => Boolean(p));
-  if (list.length) await createAdminClient().storage.from(MEDIA_BUCKET).remove(list);
+  if (list.length) await storage.from(MEDIA_BUCKET).remove(list);
 }
