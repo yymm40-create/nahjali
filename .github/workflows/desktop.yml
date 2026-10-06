@@ -71,8 +71,8 @@ jobs:
         with:
           name: haidara-cut-${{ matrix.os }}
           path: |
-            desktop/dist/Haidara-Cut-mac.dmg
-            desktop/dist/Haidara-Cut-Setup.exe
+            desktop/dist/JAWAD-AI-mac.dmg
+            desktop/dist/JAWAD-AI-Setup.exe
           if-no-files-found: error
 
   release:
@@ -85,6 +85,9 @@ jobs:
         with:
           path: out
           merge-multiple: true
+      # the same files under the names the first links used (حيدرة كت), so links already shared keep working
+      - name: Copies under the old names
+        run: cp out/JAWAD-AI-mac.dmg out/Haidara-Cut-mac.dmg && cp out/JAWAD-AI-Setup.exe out/Haidara-Cut-Setup.exe
       - name: Version
         id: v
         run: echo "tag=desktop-v1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
@@ -92,12 +95,14 @@ jobs:
         with:
           tag_name: ${{ steps.v.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: "حيدرة كت للكمبيوتر · ${{ steps.v.outputs.tag }}"
+          name: "الجواد AI للكمبيوتر · ${{ steps.v.outputs.tag }}"
           make_latest: "true"
           body: |
-            برنامج حيدرة كت للكمبيوتر.
-            - ماك: Haidara-Cut-mac.dmg (أجهزة Apple silicon و Intel)
-            - ويندوز: Haidara-Cut-Setup.exe
+            برنامج الجواد AI للكمبيوتر (ومعه حيدرة كت للمونتاج).
+            - ماك: JAWAD-AI-mac.dmg (أجهزة Apple silicon و Intel)
+            - ويندوز: JAWAD-AI-Setup.exe
           files: |
+            out/JAWAD-AI-mac.dmg
+            out/JAWAD-AI-Setup.exe
             out/Haidara-Cut-mac.dmg
             out/Haidara-Cut-Setup.exe

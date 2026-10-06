@@ -1,8 +1,8 @@
 {
   "name": "haidara-cut",
-  "productName": "حيدرة كت",
-  "version": "1.0.0",
-  "description": "حيدرة كت: مونتاج الفيديو مع مساعدك حيدرة",
+  "productName": "الجواد AI",
+  "version": "1.1.0",
+  "description": "الجواد AI: صور وفيديوهات وأصوات بالذكاء الاصطناعي، وحيدرة كت للمونتاج",
   "author": "نهج علي",
   "homepage": "https://nahjali.vercel.app/jawad-ai/editor",
   "main": "main.js",
@@ -19,8 +19,8 @@
   },
   "build": {
     "appId": "app.nahjali.haidaracut",
-    "productName": "حيدرة كت",
-    "executableName": "HaidaraCut",
+    "productName": "الجواد AI",
+    "executableName": "JawadAI",
     "copyright": "© 2026 نهج علي",
     "files": [
       "main.js",
@@ -45,17 +45,17 @@
       "icon": "build/icon.png",
       "hardenedRuntime": false,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "حيدرة كت يستخدم المايك لتسجيل صوتك في المونتاج.",
-        "NSCameraUsageDescription": "حيدرة كت يستخدم الكاميرا للتسجيل في المونتاج."
+        "NSMicrophoneUsageDescription": "الجواد AI يستخدم المايك لتسجيل صوتك.",
+        "NSCameraUsageDescription": "الجواد AI يستخدم الكاميرا للتسجيل."
       },
-      "artifactName": "Haidara-Cut-mac.${ext}",
+      "artifactName": "JAWAD-AI-mac.${ext}",
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "identity": "-"
     },
     "dmg": {
-      "title": "حيدرة كت",
+      "title": "الجواد AI",
       "window": {
         "width": 560,
         "height": 440
@@ -91,7 +91,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "Haidara-Cut-Setup.${ext}"
+      "artifactName": "JAWAD-AI-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -99,7 +99,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "حيدرة كت",
+      "shortcutName": "الجواد AI",
       "installerLanguages": [
         "ar_SA",
         "en_US"

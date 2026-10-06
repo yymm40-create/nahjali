@@ -52,7 +52,7 @@ export default function DesktopDownload() {
           <Icon name="scissors" size={30} />
         </span>
         <div>
-          <h1 className="text-2xl font-black">حيدرة كت للكمبيوتر</h1>
+          <h1 className="text-2xl font-black">الجواد AI للكمبيوتر</h1>
           <p className="text-sm text-jw-muted">برنامج للماك والويندوز: ملفاتك تبقى في جهازك بدون رفع.</p>
         </div>
       </header>
@@ -81,7 +81,7 @@ export default function DesktopDownload() {
         <h2 className="font-bold">أول مرة تفتحه</h2>
         <p className="text-jw-muted">البرنامج جديد وما عليه بعد شهادة أبل ومايكروسوفت، فالجهاز يسألك أول مرة:</p>
         <p>
-          <b>الماك:</b> افتح ملف ‎.dmg واسحب «حيدرة كت» لمجلد التطبيقات وافتحه. لو طلع «لم يُفتح HaidaraCut» اضغط <b>تم</b> (مو سلة المهملات)، بعدين: إعدادات النظام ←
+          <b>الماك:</b> افتح ملف ‎.dmg واسحب «الجواد AI» لمجلد التطبيقات وافتحه. لو طلع «لم يُفتح JawadAI» اضغط <b>تم</b> (مو سلة المهملات)، بعدين: إعدادات النظام ←
           الخصوصية والأمان ← انزل لتحت ← <b>افتح على أي حال</b> ← كلمة سر الماك ← <b>افتح</b>. مرة وحدة بس.
         </p>
         <p>
