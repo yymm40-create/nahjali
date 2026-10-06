@@ -5,5 +5,7 @@ design/*/preview
 .env*
 !.env.example
 *.pdf
+# (the download page's instructions file is served)
+!public/downloads/*.pdf
 desktop
 mobile
