@@ -35,6 +35,10 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
     } catch (err) {
       if (err instanceof UserError) return NextResponse.json({ error: err.message }, { status: err.status });
       console.error(err);
+      // a file that couldn't be saved or read (storage answers { message } objects, R2 errors start with "R2"):
+      // say so, with its reason, instead of a bare «غير متوقع»
+      const why = String((err as { message?: unknown } | null)?.message ?? "");
+      if (why && (!(err instanceof Error) || /^R2\b/.test(why))) return NextResponse.json({ error: `تعذّر حفظ أو قراءة الملف (${why.slice(0, 160)}). جرّب مرة ثانية.` }, { status: 500 });
       return NextResponse.json({ error: MESSAGES.unexpected }, { status: 500 });
     }
   };
