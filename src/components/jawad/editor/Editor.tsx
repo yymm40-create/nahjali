@@ -4,6 +4,7 @@ import Link from "next/link";
 import InstallApp from "./InstallApp";
 import { detectScenes } from "./scene-detect";
 import { takeStartKit } from "./start-kit";
+import { remapTimeline } from "./package";
 import PhoneTools, { type ClipKindOf, type PhoneAction } from "./PhoneTools";
 import { cutsOnTimeline } from "@/lib/editor/scenes";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -418,15 +419,27 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     },
     [run],
   );
+  // «افتح مشروع محفوظ»: the saved timeline, waiting for its files to be up
+  const pkgWait = useRef<{ timeline: TL; count: number; ids: Map<string, string> } | null>(null);
   const uploads = useUploads(
     project.id,
     useCallback(
       (a: EditorAsset, place?: Placement) => {
         addAssets([a]);
+        // a saved project's file: kept until all are up, then its timeline comes back pointing at them
+        const w = pkgWait.current;
+        if (w && place?.group.startsWith("pkg:")) {
+          w.ids.set(place.group.slice(4), a.id);
+          if (w.ids.size < w.count) return;
+          pkgWait.current = null;
+          commit(remapTimeline(w.timeline, w.ids), "فتحت المشروع المحفوظ");
+          flash("رجع المشروع كامل: التايملاين وكل ملفاته.");
+          return;
+        }
         // each uploaded file goes on the timeline: pictures after what is there (or where it was dropped), sound from the start
         placeAsset(a, place);
       },
-      [addAssets, placeAsset],
+      [addAssets, placeAsset, commit, flash],
     ),
   );
   const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
@@ -439,11 +452,28 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // what the launcher's «مشروع جديد» brought: device files go up and onto the timeline one after another, works
   // already in the library go on the timeline the same way
   const kitTaken = useRef(false);
+
   useEffect(() => {
     if (kitTaken.current || readOnly) return;
     kitTaken.current = true;
     const k = takeStartKit(project.id);
     if (!k) return;
+    if (k.pkg) {
+      const { timeline, media } = k.pkg;
+      pkgWait.current = { timeline, count: media.length, ids: new Map() };
+      const t = setTimeout(() => {
+        if (!media.length) {
+          commit(timeline, "فتحت المشروع المحفوظ");
+          return;
+        }
+        uploads.add(
+          media.map((m) => m.file),
+          media.map((m, i) => ({ at: 0, trackId: null, mode: "one", group: `pkg:${m.oldId}`, first: i === 0 })),
+        );
+        flash(`نرفع ${media.length} ملف من المشروع المحفوظ، وبعدها يرجع التايملاين مثل ما كان…`);
+      }, 0);
+      return () => clearTimeout(t);
+    }
     const t = setTimeout(() => {
       if (k.assets.length) {
         addAssets(k.assets);
@@ -1050,6 +1080,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         open={exporting}
         onClose={() => setExporting(false)}
         projectId={project.id}
+        kind={project.kind}
         title={title}
         tl={tl}
         assets={assets}

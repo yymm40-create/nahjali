@@ -8,6 +8,7 @@ import { PROJECT_KINDS, type ProjectKind } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
 import { leaveStartKit } from "./start-kit";
+import { unpackProject } from "./package";
 import { useDesktop } from "./desktop";
 import type { EditorAsset, ImportItem, ProjectSummary } from "./types";
 
@@ -36,6 +37,25 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
   }, []);
 
   const startNew = () => (loginHref ? router.push(loginHref) : setWizard(true));
+
+  // «افتح مشروع محفوظ»: a project saved on a device («احفظ المشروع في جهازي») becomes a new project here
+  const [opening, setOpening] = useState<string | null>(null);
+  const openSaved = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setOpening("نقرأ الملف…");
+    try {
+      const pkg = await unpackProject(file);
+      setOpening("نجهّز المشروع…");
+      const kind = pkg.kind in PROJECT_KINDS ? pkg.kind : "reel";
+      const { id } = await postJson<{ id: string }>("/api/jawad/editor/projects", { kind, title: pkg.title.slice(0, 80) });
+      leaveStartKit({ projectId: id, files: [], assets: [], pkg: { timeline: pkg.timeline, media: pkg.media } });
+      router.push(`/jawad-ai/editor/${id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذّر فتح المشروع.");
+      setOpening(null);
+    }
+  };
 
   const remove = async (p: ProjectSummary) => {
     if (!confirm(`نحذف «${p.title}» وكل ملفاته؟ ما يرجع.`)) return;
@@ -96,6 +116,31 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
                   <span className="font-bold">مشروع جديد</span>
                   <span className="text-[11px] text-jw-muted">سمّه واختر مقاطعك وابدأ</span>
                 </button>
+              </li>
+              <li>
+                <label className={`group flex aspect-[4/5] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-jw-line bg-jw-surface/60 p-3 text-center transition hover:border-jw-accent ${opening ? "pointer-events-none opacity-70" : ""}`}>
+                  <input
+                    type="file"
+                    accept=".zip,application/zip"
+                    className="sr-only"
+                    disabled={!!opening || !!loginHref}
+                    onChange={(e) => {
+                      void openSaved(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                    onClick={(e) => {
+                      if (loginHref) {
+                        e.preventDefault();
+                        router.push(loginHref);
+                      }
+                    }}
+                  />
+                  <span className="grid h-12 w-12 place-items-center rounded-full bg-jw-surface-2 text-2xl transition group-hover:scale-110" aria-hidden>
+                    {opening ? <span className="jw-spinner" /> : "📦"}
+                  </span>
+                  <span className="font-bold">افتح مشروع محفوظ</span>
+                  <span className="text-[11px] text-jw-muted">{opening ?? "ملف المشروع اللي حفظته في جهازك"}</span>
+                </label>
               </li>
               {projects.map((p) => {
                 const left = p.purgeAt && now ? Math.max(0, Math.ceil((new Date(p.purgeAt).getTime() - now) / 3_600_000)) : null;
