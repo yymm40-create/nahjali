@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
-import { makeHookAsset, makeMusicAsset } from "./make";
-import { placeHook, placeMusic } from "@/lib/editor/make";
+import { makeHookAsset, makeMusicAsset, makeSfxAsset } from "./make";
+import { placeHookDesign, placeMusic } from "@/lib/editor/make";
+import { hookAspect } from "@/lib/editor/hook-design";
 import type { MakeRequest } from "@/lib/editor/assistant";
 import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
@@ -27,7 +28,7 @@ interface Msg {
 const LONG = { messages: 40, chars: 24_000 };
 const localKey = (id: string) => `jw-editor-chat-${id}`;
 
-const QUICK = ["اصنع هوك كتابي بصورة في البداية", "حط موسيقى تناسب المقطع", "قص السكتات الطويلة", "رتّب المقاطع وحط انتقالات ناعمة", "خلّه ٣٠ ثانية بأحلى اللقطات", "حط عنوان في البداية", "سوّ لي مونتاج كامل من الملفات", "خفّض الموسيقى وقت الكلام"];
+const QUICK = ["صمّم لي نص هوك", "حط موسيقى تناسب المقطع", "قص السكتات الطويلة", "رتّب المقاطع وحط انتقالات ناعمة", "خلّه ٣٠ ثانية بأحلى اللقطات", "حط عنوان في البداية", "سوّ لي مونتاج كامل من الملفات", "خفّض الموسيقى وقت الكلام"];
 
 /**
  * The silent parts of the clips that have sound (timeline ms), from the files' loudness: Claude uses them for
@@ -211,11 +212,19 @@ export default function AssistantPanel({
       // what Claude asked to be made: made one by one, then placed (each its own undo)
       for (const q of r.requests ?? []) {
         try {
-          if (q.kind === "hook_image") {
-            setBusy(`نصمّم الهوك «${q.text}» بالصورة…`);
-            const a = await makeHookAsset(projectId, q.text, q.style);
-            onAssets([a]);
-            run(placeHook(a.id, q.at, q.lengthMs), { label: "هوك بالصورة" });
+          if (q.kind === "hook_design" && q.design) {
+            // «نص الهوك»: the picture, then the two sounds, then everything placed and timed (one undo)
+            const d = q.design;
+            setBusy(`نصنع صورة الهوك «${q.text}»…`);
+            const img = await makeHookAsset(projectId, q.text, "", { prompt: d.imagePrompt, background: d.background, aspect: hookAspect(d, q.orientation ?? "vertical") });
+            onAssets([img]);
+            setBusy("نصنع مؤثر الدخول والخروج…");
+            const sfx = await Promise.all(
+              [d.sfxIn, d.sfxOut].map((x, i) => makeSfxAsset(projectId, x.prompt, x.seconds, `${i ? "خروج" : "دخول"} الهوك · ${q.text}`).catch(() => null)),
+            );
+            onAssets(sfx.filter((a): a is EditorAsset => !!a));
+            run(placeHookDesign(d, { image: img.id, sfxIn: sfx[0]?.id ?? null, sfxOut: sfx[1]?.id ?? null }, q.at, q.orientation ?? "vertical"), { label: `نص الهوك: ${q.text.slice(0, 30)}` });
+            if (sfx.some((a) => !a)) setMsgs((m) => [...m, { role: "assistant", text: "ما قدرت أصنع أحد المؤثرين الصوتيين؛ الهوك انحط بدونه، وأمره مكتوب فوق.", error: true }]);
           } else if (q.kind === "music") {
             setBusy("نصنع الموسيقى…");
             const a = await makeMusicAsset(projectId, q.prompt, q.lengthMs || 30_000);
@@ -251,7 +260,7 @@ export default function AssistantPanel({
       <div className="flex items-center gap-2.5 border-b border-jw-line px-3 py-2.5">
         <span className="jw-orb h-9 w-9 shrink-0" data-busy={!!busy} aria-hidden />
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold">Claude · مساعدك في المونتاج</span>
+          <span className="block truncate text-sm font-bold">Claude · مساعدك في المونتاج</span>
           <span className="flex items-center gap-1 text-[11px] text-jw-muted" aria-live="polite">
             <span className={`h-1.5 w-1.5 rounded-full ${busy ? "animate-pulse bg-jw-warn" : "bg-jw-ok"}`} />
             {busy ? "يشتغل…" : "جاهز يخدمك"}
@@ -295,7 +304,7 @@ export default function AssistantPanel({
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-6 ${m.role === "user" ? "ms-auto bg-jw-accent/15" : m.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-surface-2"}`} dir="auto">
-            <p className="whitespace-pre-wrap">{m.text}</p>
+            <MsgText text={m.text} />
             {m.done ? (
               <p className="mt-1.5 flex items-center gap-2 text-[11px] text-jw-ok">
                 <Icon name="check" size={12} /> نفّذت {m.done === 1 ? "خطوة وحدة" : m.done === 2 ? "خطوتين" : `${m.done} خطوات`}
@@ -369,6 +378,50 @@ export default function AssistantPanel({
           <Icon name="chevronLeft" />
         </button>
       </form>
+    </div>
+  );
+}
+
+/** A reply as written: **bold**, and ```blocks``` (the designer's prompts) shown as copyable English blocks. */
+function MsgText({ text }: { text: string }) {
+  const parts = text.split(/```\n?([\s\S]*?)\n?```/g);
+  return (
+    <div className="space-y-1.5">
+      {parts.map((part, i) =>
+        i % 2 ? (
+          <CodeBlock key={i} code={part} />
+        ) : part.trim() ? (
+          <p key={i} className="whitespace-pre-wrap">
+            {part.replace(/^\n+|\n+$/g, "").split(/\*\*(.+?)\*\*/g).map((x, j) => (j % 2 ? <b key={j}>{x}</b> : x))}
+          </p>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+function CodeBlock({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="relative rounded-lg border border-jw-line bg-jw-bg-2">
+      <button
+        type="button"
+        className="absolute end-1 top-1 rounded px-1.5 py-0.5 text-[10px] text-jw-muted hover:text-jw-ink"
+        onClick={() =>
+          navigator.clipboard
+            .writeText(code)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            })
+            .catch(() => {})
+        }
+      >
+        {copied ? "انتسخ ✓" : "انسخ"}
+      </button>
+      <pre className="jw-scroll max-h-48 overflow-auto whitespace-pre-wrap p-2 pt-5 text-[11px] leading-5" dir="ltr">
+        {code}
+      </pre>
     </div>
   );
 }

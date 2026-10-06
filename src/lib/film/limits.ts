@@ -19,6 +19,7 @@ export const LIMITS = {
   editor_price_caption: { label: "سعر دقيقة الكابشن في الممنتج (نقدة)", hint: "لكل دقيقة صوت (تُقرّب للأعلى)، بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_hook: { label: "سعر هوك بالصورة في الممنتج (نقدة)", hint: "صورة GPT Image 2 مفرّغة؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_music: { label: "سعر دقيقة موسيقى في الممنتج (نقدة)", hint: "ElevenLabs Music؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_sfx: { label: "سعر المؤثر الصوتي في الممنتج (نقدة)", hint: "ElevenLabs؛ مؤثر دخول وخروج نص الهوك؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_stems: { label: "سعر دقيقة فصل الأصوات في الممنتج (نقدة)", hint: "كلام وموسيقى ومؤثرات؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
 } as const;
 export type LimitKey = keyof typeof LIMITS;

@@ -7,7 +7,9 @@ import type { EditorAsset } from "./types";
 
 const url = (projectId: string) => `/api/jawad/editor/projects/${projectId}`;
 
-export const makeHookAsset = (projectId: string, text: string, style = "") => postJson<{ asset: EditorAsset }>(url(projectId), { action: "make_hook", text, style }).then((r) => r.asset);
+export const makeHookAsset = (projectId: string, text: string, style = "", designed: { prompt: string; background: "transparent" | "scene"; aspect: string } | null = null) =>
+  postJson<{ asset: EditorAsset }>(url(projectId), { action: "make_hook", text, style, ...(designed ?? {}) }).then((r) => r.asset);
+export const makeSfxAsset = (projectId: string, prompt: string, seconds: number, name: string) => postJson<{ asset: EditorAsset }>(url(projectId), { action: "make_sfx", prompt, seconds, name }).then((r) => r.asset);
 
 export const makeMusicAsset = (projectId: string, prompt: string, lengthMs: number) => postJson<{ asset: EditorAsset }>(url(projectId), { action: "make_music", prompt, lengthMs }).then((r) => r.asset);
 
