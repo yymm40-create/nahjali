@@ -102,6 +102,8 @@ export default function Inspector({
   tab,
   onTab,
   flash,
+  rail = false,
+  projectView = false,
 }: {
   tl: Timeline;
   selected: string[];
@@ -112,16 +114,21 @@ export default function Inspector({
   tab: InspectorTab;
   onTab: (t: InspectorTab) => void;
   flash: (text: string, bad?: boolean) => void;
+  /** the sections are chosen from the side rail (no tabs here) */
+  rail?: boolean;
+  /** show the project's settings whatever is selected */
+  projectView?: boolean;
 }) {
   const playhead = usePlayhead(player);
   const [beatBusy, setBeatBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const found = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
-  if (!found) {
+  if (!found || projectView) {
     const ratio = ratioOf(tl);
     return (
       <div className="space-y-4 p-3">
+        {rail && !projectView && <p className="rounded-xl bg-jw-accent/10 p-2.5 text-xs leading-5 text-jw-ink">👆 اختر مقطعًا في التايملاين أو على المعاينة، وتطلع إعداداته هنا.</p>}
         <h3 className="text-sm font-semibold">المشروع</h3>
         {selected.length > 1 && <p className="text-xs text-jw-muted">محدد {selected.length} مقاطع: تقدر تحذفها أو تقصها مرة وحدة.</p>}
         <div className="space-y-1.5">
@@ -215,6 +222,8 @@ export default function Inspector({
     ...(sound ? ([["sound", "صوت"]] as [InspectorTab, string][]) : []),
   ];
   const current = tabs.some(([k]) => k === tab) ? tab : "basic";
+  // from the rail: a section this clip doesn't have shows what it has instead, saying so
+  const missing = rail && current !== tab ? { motion: "الحركة", anim: "الدخول والخروج", color: "الألوان", backdrop: "الخلفية", transition: "الانتقال", sound: "الصوت", basic: "" }[tab] : "";
 
   // ---- motion: with motion points, a change goes into the point at the playhead
   const inClip = playhead >= clip.start && playhead < clipEnd(clip);
@@ -250,7 +259,8 @@ export default function Inspector({
         </button>
       </div>
       {track.locked && <p className="text-xs text-jw-warn">المسار مقفول؛ افتح القفل من رأس المسار لتعدّل.</p>}
-      {tabs.length > 1 && (
+      {missing && <p className="rounded-lg bg-jw-surface-2 p-2 text-[11px] text-jw-muted">قسم «{missing}» ما يناسب هذا المقطع{tab === "transition" ? " (يحتاج مقطع بعده ملاصق له)" : ""}؛ هذي إعداداته الأساسية.</p>}
+      {tabs.length > 1 && !rail && (
         <div className="jw-seg" role="tablist" aria-label="أقسام التعديل">
           {tabs.map(([k, label]) => (
             <button key={k} type="button" role="tab" aria-selected={current === k} onClick={() => onTab(k)}>

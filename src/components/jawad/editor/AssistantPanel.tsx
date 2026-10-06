@@ -134,9 +134,15 @@ export default function AssistantPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-jw-line px-3 py-2">
-        <Icon name="sparkles" size={16} className="text-jw-accent" />
-        <span className="flex-1 text-sm font-semibold">Claude يمنتج معك</span>
+      <div className="flex items-center gap-2.5 border-b border-jw-line px-3 py-2.5">
+        <span className="jw-orb h-9 w-9 shrink-0" data-busy={!!busy} aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold">Claude · مساعدك في المونتاج</span>
+          <span className="flex items-center gap-1 text-[11px] text-jw-muted" aria-live="polite">
+            <span className={`h-1.5 w-1.5 rounded-full ${busy ? "animate-pulse bg-jw-warn" : "bg-jw-ok"}`} />
+            {busy ? "يشتغل…" : "جاهز يخدمك"}
+          </span>
+        </span>
         {onClose && (
           <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} aria-label="إغلاق">
             <Icon name="x" />
@@ -146,7 +152,10 @@ export default function AssistantPanel({
       <div className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
         {!msgs.length && (
           <div className="space-y-3">
-            <p className="text-xs leading-6 text-jw-muted">قل وش تبي بكلامك، وClaude يعدّل التايملاين: يقص ويرتّب ويحط انتقالات ونصوص. كل اللي يسويه تقدر تتراجع عنه بضغطة.</p>
+            <div className="max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
+              هلا! أنا مساعدك في المونتاج 👋
+              <span className="mt-1 block text-xs leading-6 text-jw-muted">قل لي وش تبي بكلامك وأنا أعدّل التايملاين: أقص السكتات، أرتّب، أحط انتقالات ونصوص وكابشن، وأنظّف الصوت. كل اللي أسويه تتراجع عنه بضغطة.</span>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {QUICK.map((q) => (
                 <button key={q} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => send(q)}>
