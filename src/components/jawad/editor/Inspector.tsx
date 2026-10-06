@@ -17,8 +17,6 @@ import {
   RATIOS,
   ratioOf,
   sourceTime,
-  TRANSITION_MS,
-  TRANSITIONS,
   transformAt,
   type Anim,
   type AnimKind,
@@ -32,13 +30,14 @@ import {
   type TextStyle,
   type Timeline,
   type Transform,
-  type TransitionKind,
 } from "@/lib/editor/model";
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
 import { soundFile } from "./audio";
 import FontPicker from "./FontPicker";
 import FxPanel from "./FxPanel";
+import TransitionPanel from "./TransitionPanel";
+import { TR_CATS, TR_LIST, type TrCat } from "@/lib/editor/transitions";
 import { clipSound } from "./voice";
 import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
@@ -159,16 +158,19 @@ export default function Inspector({
         </label>
         <div className="space-y-1.5 border-t border-jw-line pt-3">
           <span className="text-xs text-jw-muted">انتقال لكل قصّات المسار الرئيسي</span>
-          <div className="flex flex-wrap gap-1.5">
-            {(Object.keys(TRANSITIONS) as TransitionKind[]).map((k) => (
-              <button key={k} type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => run({ type: "transition_all", kind: k })}>
-                {TRANSITIONS[k].icon} {TRANSITIONS[k].label}
-              </button>
+          <select className="jw-input !min-h-9 w-full text-sm" disabled={readOnly} value="" aria-label="انتقال لكل القصّات" onChange={(e) => e.target.value && run({ type: "transition_all", kind: e.target.value === "none" ? null : e.target.value })}>
+            <option value="">اختر انتقالًا (١٠٠)…</option>
+            <option value="none">بدون انتقالات</option>
+            {(Object.keys(TR_CATS) as TrCat[]).map((c) => (
+              <optgroup key={c} label={TR_CATS[c]}>
+                {TR_LIST.filter((t) => t.cat === c).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.icon} {t.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
-            <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => run({ type: "transition_all", kind: null })}>
-              بدون
-            </button>
-          </div>
+          </select>
         </div>
         {tl.markers.length > 0 && (
           <button type="button" disabled={readOnly} className="jw-btn jw-btn-quiet w-full text-xs" onClick={() => run({ type: "set_markers", markers: [], mode: "clear" })}>
@@ -453,30 +455,7 @@ export default function Inspector({
         </div>
       )}
 
-      {current === "transition" && joined && (
-        <div className="space-y-3">
-          <p className="text-xs text-jw-muted">من هذا المقطع إلى اللي بعده (عند القص بينهم):</p>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button type="button" disabled={locked} aria-pressed={!clip.transition} className={`rounded-lg border px-1 py-2 text-xs ${!clip.transition ? "border-jw-accent bg-jw-accent/10" : "border-jw-line"}`} onClick={() => set({ transition: null }, "tr")}>
-              بدون
-            </button>
-            {(Object.keys(TRANSITIONS) as TransitionKind[]).map((k) => (
-              <button key={k} type="button" disabled={locked} aria-pressed={clip.transition?.kind === k} className={`rounded-lg border px-1 py-2 text-xs ${clip.transition?.kind === k ? "border-jw-accent bg-jw-accent/10" : "border-jw-line"}`} onClick={() => set({ transition: { kind: k } }, "tr")}>
-                <span className="block text-base leading-none">{TRANSITIONS[k].icon}</span>
-                {TRANSITIONS[k].label}
-              </button>
-            ))}
-          </div>
-          {clip.transition && (
-            <Slider label="المدة" value={clip.transition.ms} min={TRANSITION_MS.min} max={TRANSITION_MS.max} step={100} disabled={locked} onChange={(v) => set({ transition: { kind: clip.transition!.kind, ms: v } }, "tr:ms")} format={(v) => `${(v / 1000).toFixed(1)} ث`} />
-          )}
-          {clip.transition && (
-            <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => run({ type: "transition_all", trackId: track.id, kind: clip.transition!.kind, ms: clip.transition!.ms })}>
-              طبّقه على كل القصّات في هذا المسار
-            </button>
-          )}
-        </div>
-      )}
+      {current === "transition" && joined && <TransitionPanel clip={clip} trackId={track.id} thumbA={a ? (thumbs?.[a.id] ?? null) : null} thumbB={next?.assetId ? (thumbs?.[next.assetId] ?? null) : null} locked={locked} run={run} />}
 
       {current === "sound" && sound && (
         <div className="space-y-3">
