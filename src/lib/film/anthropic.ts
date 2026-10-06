@@ -1,5 +1,7 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
+import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+
 export const CLAUDE_MODEL = "claude-opus-5-5";
 
 /** USD per 1M tokens (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-02). */
@@ -28,6 +30,15 @@ export function claudeCost(u: ClaudeUsage) {
 
 export const totalTokens = (u: ClaudeUsage) =>
   u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + u.output_tokens;
+
+/**
+ * The system prompt of every Claude call on the site: what JAWAD AI is (the same text everywhere, first, so it is
+ * part of each call's cached prefix), then the task's own instructions, which take precedence.
+ */
+export const siteSystem = (task: string, cache = true) => [
+  { type: "text", text: JAWAD_KNOWLEDGE },
+  { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+];
 
 export type ClaudePart = { type: "text"; text: string } | { type: "image"; url: string } | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" };
 
@@ -86,7 +97,7 @@ export async function callClaudeJson<T>({
     body: JSON.stringify({
       model: CLAUDE_MODEL,
       max_tokens: maxTokens,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+      system: siteSystem(system),
       messages,
       output_config: { effort, format: { type: "json_schema", schema } },
       ...(fallback ? { fallbacks: "default" } : {}),
@@ -118,7 +129,7 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         max_tokens: maxTokens,
-        system,
+        system: siteSystem(system, false),
         messages,
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: maxUses }],
         output_config: { effort: "low" },
