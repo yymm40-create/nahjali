@@ -140,6 +140,40 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [big, setBig] = useState(false);
   // Claude's width on a computer (dragged by its edge; kept on this device)
   const [chatW, setChatW] = useState(400);
+  // the conversation over the whole editor (a computer), and its text size (kept on this device)
+  const [chatBig, setChatBig] = useState(false);
+  const [chatZoom, setChatZoom] = useState(1);
+  const zoomChat = (z: number) => {
+    setChatZoom(z);
+    try {
+      localStorage.setItem("jw-editor-chat-zoom", String(z));
+    } catch {}
+  };
+  // the preview on the whole screen
+  const stage = useRef<HTMLElement>(null);
+  const [full, setFull] = useState(false);
+  const toggleFull = () => {
+    const el = stage.current;
+    if (document.fullscreenElement) return void document.exitFullscreen().catch(() => {});
+    // (an iPhone can't put a page part on the whole screen: it fills the page instead)
+    if (el?.requestFullscreen && !full) el.requestFullscreen().catch(() => setFull(true));
+    else setFull((v) => !v);
+  };
+  useEffect(() => {
+    const sync = () => setFull(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  useEffect(() => {
+    if (!chatBig && !full) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setChatBig(false);
+      if (!document.fullscreenElement) setFull(false);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [chatBig, full]);
   // the timeline's look, whatever the theme: «عادي» or «بريمير»
   const [tlLook, setTlLook] = useState<"classic" | "pro">("classic");
   // a request for Claude from a button (a ready style): the panel opens and sends it
@@ -160,6 +194,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (th && th in THEMES) setTheme(th as ThemeId);
         const w = Number(localStorage.getItem("jw-editor-chat-w"));
         if (w >= 300 && w <= 900) setChatW(w);
+        const z = Number(localStorage.getItem("jw-editor-chat-zoom"));
+        if (z >= 0.85 && z <= 1.6) setChatZoom(z);
       } catch {
         /* private mode: the normal size */
       }
@@ -924,7 +960,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
-        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl`} style={wide ? { width: chatW } : undefined} aria-label="حيدرة">
+        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl ${chatBig ? "lg:!fixed lg:inset-4 lg:!z-[60] lg:!my-0 lg:flex lg:!bg-jw-surface lg:shadow-2xl lg:backdrop-blur-none" : ""}`} style={wide && !chatBig ? { width: chatW } : undefined} aria-label="حيدرة">
           {/* its edge: drag to make the conversation wider or narrower (double-click: the usual width) */}
           <div
             role="separator"
@@ -935,16 +971,19 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             onPointerDown={dragChat}
             onDoubleClick={() => setChatW(400)}
           />
-          <Guard name="حيدرة"><AssistantPanel ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
+          <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
+          <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
+          </div>
         </aside>
+        {chatBig && <button type="button" aria-label="رجّع المحادثة لمكانها" className="fixed inset-0 z-[59] hidden bg-black/50 lg:block" onClick={() => setChatBig(false)} />}
 
-        <section className="relative flex min-w-0 flex-1 flex-col" aria-label="المعاينة">
+        <section ref={stage} className={`relative flex min-w-0 flex-1 flex-col ${full ? "fixed inset-0 z-[70] bg-black" : ""}`} aria-label="المعاينة">
           <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
             <canvas ref={canvas} width={tl.width} height={tl.height} className="jw-screen max-h-full max-w-full rounded-xl" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
             <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
             <button
               type="button"
-              className="jw-glass jw-3d absolute end-3 top-3 z-20 flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold"
+              className={`jw-glass jw-3d absolute end-3 top-3 z-20 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold ${full ? "hidden" : "flex"}`}
               onClick={() => setBig((v) => !v)}
               aria-label={big ? "صغّر الشاشة" : "كبّر الشاشة"}
               title={big ? "رجّع الشاشة لحجمها (Esc)" : "كبّر الشاشة: تختفي الألواح الجانبية مؤقتًا"}
@@ -952,6 +991,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
               <Icon name={big ? "shrink" : "expand"} size={16} />
               <span className="hidden sm:inline">{big ? "صغّر الشاشة" : "كبّر الشاشة"}</span>
             </button>
+            {/* the video alone on the whole screen, with play / pause */}
+            <span className="absolute start-3 top-3 z-20 flex items-center gap-1.5">
+              <button type="button" className="jw-glass jw-3d flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold" onClick={toggleFull} aria-pressed={full} title={full ? "اطلع من ملء الشاشة (Esc)" : "الفيديو على الشاشة كاملة"}>
+                <Icon name={full ? "shrink" : "frames"} size={16} />
+                <span className="hidden sm:inline">{full ? "اطلع من ملء الشاشة" : "ملء الشاشة"}</span>
+              </button>
+              {full && (
+                <button type="button" className="jw-glass jw-3d grid h-9 w-9 place-items-center rounded-full" onClick={() => player?.toggle()} aria-label="شغّل / وقّف" title="شغّل / وقّف (مسافة)">
+                  <Icon name="play" size={16} />
+                </button>
+              )}
+            </span>
           </div>
           {toast && (
             <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>
