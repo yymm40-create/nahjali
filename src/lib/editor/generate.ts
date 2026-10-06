@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { storage as files } from "@/lib/storage";
 import { openaiImage } from "@/lib/jawad/server/providers/openai";
 import { elevenIsolateVoice, elevenMusic, elevenSoundEffect } from "@/lib/jawad/server/providers/elevenlabs";
 import { falReady, samSeparate } from "@/lib/jawad/server/providers/fal";
@@ -14,7 +15,9 @@ import { charged, type Who } from "./pricing";
 import { assetViews, EDITOR_BUCKET, isUuid, stillOpen, type EditorProject } from "./server";
 
 const db = () => createAdminClient();
-const storage = () => createAdminClient().storage;
+// (the storage every other part uses — Cloudflare R2, with the older Supabase files still readable — so what the
+// page uploads for a split is found here, and what is made here is found by the page)
+const storage = () => files;
 
 const providerError = (err: unknown): never => {
   if (err instanceof ProviderError) {
