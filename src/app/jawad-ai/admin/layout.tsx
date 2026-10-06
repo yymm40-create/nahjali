@@ -1,3 +1,4 @@
+import Link from "next/link";
 import AdminNav from "@/components/jawad/admin/AdminNav";
 import { jawadSession, requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
@@ -13,7 +14,12 @@ export default async function JawadAdminLayout({ children }: { children: React.R
   return (
     <div className="mx-auto max-w-6xl space-y-5 px-4 pb-16 pt-5">
       <header className="space-y-3">
-        <h1 className="text-xl font-bold">إدارة <span dir="ltr">JAWAD AI</span></h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-bold">إدارة <span dir="ltr">JAWAD AI</span></h1>
+          <Link href="/admin" className="text-sm font-bold text-jw-muted hover:underline">
+            → لوحة التحكم الكاملة (كل الفروع والصلاحيات)
+          </Link>
+        </div>
         <AdminNav />
       </header>
       {children}

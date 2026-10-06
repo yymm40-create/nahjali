@@ -17,10 +17,12 @@ export default function SiteChrome({ top, bottom, children }: { top: React.React
     if (missing) window.location.reload();
   }, [missing]);
   if (own || missing) return <>{children}</>;
+  // the owner's dashboard has a side menu and tables: a wider column
+  const wide = pathname === "/admin" || pathname.startsWith("/admin/");
   return (
     <>
       {top}
-      <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-16 pt-4">{children}</main>
+      <main className={`mx-auto w-full flex-1 px-4 pb-16 pt-4 ${wide ? "max-w-6xl" : "max-w-xl"}`}>{children}</main>
       {bottom}
     </>
   );
