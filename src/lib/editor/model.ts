@@ -5,6 +5,7 @@
 // Tracks are drawn bottom to top in array order: the first video track is the main one (magnetic: no gaps), tracks
 // after it are drawn over it. Audio tracks are heard, not drawn. Time always runs left → right, even in Arabic.
 
+import { FX_BY_ID, FX_MAX } from "./effects";
 import { isFont } from "./fonts";
 
 export const EDITOR_VERSION = 1;
@@ -376,6 +377,8 @@ export interface Clip {
   sound: SoundFx | null;
   /** texts and pictures: how it comes in and goes out (null = it just appears) */
   anim: Anim | null;
+  /** pictures: effects on the clip itself (effects.ts), up to three, each with a strength 0–1 */
+  fx: ClipFx[];
   /**
    * text only: this caption keeps its own look («منفصل»). The track's group changes skip it; when it joins again it
    * keeps what it has and later group changes reach it field by field.
@@ -642,6 +645,23 @@ function readColor(v: unknown): ColorGrade | null {
   };
 }
 
+export interface ClipFx {
+  id: string;
+  amount: number;
+}
+export function readFx(v: unknown): ClipFx[] {
+  if (!Array.isArray(v)) return [];
+  const out: ClipFx[] = [];
+  for (const x of v) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    if (typeof o.id !== "string" || !FX_BY_ID.has(o.id) || out.some((f) => f.id === o.id)) continue;
+    out.push({ id: o.id, amount: num(o.amount, 0, 1, 0.8) });
+    if (out.length >= FX_MAX) break;
+  }
+  return out;
+}
+
 export function readAnim(v: unknown, text: boolean): Anim | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -722,6 +742,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     own: kind === "text" && o.own === true,
     sound: kind === "text" ? null : readSound(o.sound),
     anim: kind === "audio" ? null : readAnim(o.anim, kind === "text"),
+    fx: kind === "video" ? readFx(o.fx) : [],
     bg:
       kind === "video" && o.bg && typeof o.bg === "object"
         ? {

@@ -34,7 +34,9 @@ import {
   type Backdrop,
   type SoundFx,
   type Anim,
+  type ClipFx,
   readAnim,
+  readFx,
   NO_SOUND_FX,
   readSound,
   DEFAULT_BACKDROP,
@@ -56,10 +58,12 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   sound?: Partial<SoundFx> | null;
   /** null = no entrance or exit */
   anim?: Partial<Anim> | null;
+  /** the clip's effects, all of them (replaces the list; [] = none) */
+  fx?: ClipFx[];
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null };
+const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[] };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -372,6 +376,13 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (!a || a.kind === "image" || a.hasAudio === false) fail("تحسين الصوت والمؤثرات للمقاطع اللي فيها صوت.");
         clip.sound = p.sound === null ? null : readSound({ ...(clip.sound ?? NO_SOUND_FX), ...p.sound });
       }
+      if (p.fx !== undefined) {
+        const a = clip.assetId ? assets.get(clip.assetId) : null;
+        if (clip.text || track.kind !== "video" || !a || a.kind === "audio") fail("المؤثرات للصور والفيديو.");
+        const list = readFx(p.fx);
+        if (Array.isArray(p.fx) && p.fx.length && !list.length) fail("مؤثر غير معروف.");
+        clip.fx = list;
+      }
       if (p.anim !== undefined) {
         if (track.kind === "audio") fail("الدخول والخروج للنصوص والصور والفيديو.");
         clip.anim = p.anim === null ? null : readAnim({ ...(clip.anim ?? {}), ...p.anim }, !!clip.text);
@@ -572,6 +583,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         transition: null,
         bg: null,
         anim: null,
+        fx: [],
         shape: "rect",
       };
       const dest = t.tracks.find((x) => x.kind === "audio" && !x.locked && free(x, clip.start, end)) ?? newTrack(t, "audio");

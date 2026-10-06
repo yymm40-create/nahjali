@@ -45,10 +45,31 @@ function useWide() {
   );
 }
 
+type ClipKind = "video" | "image" | "audio" | "text";
+/** What a clip is to the person: a text, a sound (a sound file, or a video's sound on a sound track), a picture, a video. */
+function kindOfClip(tl: TL, assets: EditorAsset[], id: string): ClipKind | null {
+  const f = findClip(tl, id);
+  if (!f) return null;
+  if (f.clip.text) return "text";
+  if (f.track.kind === "audio") return "audio";
+  const a = assets.find((x) => x.id === f.clip.assetId);
+  return a?.kind === "image" ? "image" : a?.kind === "audio" ? "audio" : "video";
+}
+/** The sections each kind of clip has, and the one that opens first. */
+const TABS_OF: Record<ClipKind, InspectorTab[]> = {
+  video: ["basic", "fx", "motion", "anim", "color", "backdrop", "sound", "transition"],
+  image: ["basic", "fx", "motion", "anim", "color", "backdrop", "transition"],
+  audio: ["sound", "basic"],
+  text: ["basic", "motion", "anim", "transition"],
+};
+const MAIN_TAB: Record<ClipKind, InspectorTab> = { video: "basic", image: "basic", audio: "sound", text: "basic" };
+const EDIT_LABEL: Record<ClipKind, string> = { video: "الفيديو", image: "الصورة", audio: "السرعة", text: "الكتابة" };
+
 /** The left rail's sections (a computer). */
 const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint: string }[] = [
   { id: "media", label: "الوسائط", icon: "folder", hint: "ملفاتك: ارفع، اسحب للتايملاين" },
   { id: "edit", label: "تعديل", icon: "settings", tab: "basic", hint: "النص، الصوت، السرعة، الملاءمة" },
+  { id: "fx", label: "مؤثرات", icon: "burst", tab: "fx", hint: "١٠٠ مؤثر على المقطع: تلفزيون قديم، قلتش، ضوء، مطر، مرايا…" },
   { id: "motion", label: "حركة", icon: "diamond", tab: "motion", hint: "المكان والحجم والدوران ونقاط الحركة (كي فريم)" },
   { id: "anim", label: "دخول/خروج", icon: "wand", tab: "anim", hint: "حركات الدخول والخروج" },
   { id: "color", label: "ألوان", icon: "palette", tab: "color", hint: "فلاتر وتصحيح ألوان" },
@@ -119,10 +140,19 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     }
   };
   // one clip chosen, however (a tap, a new text, Claude): its settings show on the left
-  const [seen, setSeen] = useState(selected);
-  if (seen !== selected) {
-    setSeen(selected);
-    if (selected.length === 1 && rail !== "inspector") setRail("inspector");
+  // a clip chosen, however (a tap, a new text, Claude): its own settings come up on the left — a video's for a
+  // video, the sound's for a sound, the writing for a text. The section stays when it suits the new clip too.
+  const [seen, setSeen] = useState({ sel: selected, kind: null as ClipKind | null });
+  const [wantTab, setWantTab] = useState<InspectorTab | null>(null);
+  if (seen.sel !== selected) {
+    const kind = selected.length === 1 ? kindOfClip(tl, assets, selected[0]) : null;
+    setSeen({ sel: selected, kind });
+    if (kind) {
+      if (rail !== "inspector") setRail("inspector");
+      const next = wantTab ?? (kind === seen.kind && TABS_OF[kind].includes(tab) ? tab : MAIN_TAB[kind]);
+      if (next !== tab) setTab(next);
+      if (wantTab) setWantTab(null);
+    }
   }
   // picking one clip shows its settings on the left
   const pick = useCallback((ids: string[]) => {
@@ -630,7 +660,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} /></Guard>
+            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} /></Guard>
           </div>
         </aside>
 
@@ -642,7 +672,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
 
         {/* the left rail: the editor's sections */}
         <nav className="jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex" aria-label="أقسام المحرر">
-          {RAIL.map((r) => {
+          {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r) => {
+            const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
             const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
@@ -660,7 +691,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
                 className={`jw-3d flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight ${on ? "bg-gradient-to-br from-blue-600 to-sky-500 text-white" : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
               >
                 <Icon name={r.icon} size={16} />
-                <span className="whitespace-nowrap">{r.label}</span>
+                <span className="whitespace-nowrap">{label}</span>
               </button>
             );
           })}
@@ -702,8 +733,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
 
       <div className="jw-glass mx-2 mb-2 h-[34%] min-h-[150px] shrink-0 overflow-hidden rounded-2xl lg:h-[30%] lg:min-h-[200px]">
         <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+          setWantTab("transition");
           pick([id]);
-          setTab("transition");
           if (!wide) setSheet("inspector");
         }} /></Guard>
       </div>
