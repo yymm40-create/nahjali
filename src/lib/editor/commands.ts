@@ -31,6 +31,9 @@ import {
   type TrackKind,
   type Transform,
   type TransitionKind,
+  type Word,
+  type CaptionStyle,
+  CAPTION_STYLES,
 } from "./model";
 
 export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn" | "fadeOut" | "shape">> & {
@@ -43,7 +46,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const };
+const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [] };
 
 export type Command =
   | { type: "add_clip"; assetId: string; trackId?: string; at?: number }
@@ -66,6 +69,10 @@ export type Command =
   | { type: "clear_keys"; clipId: string }
   /** beat marks the cuts snap to: `add` (merged) or `replace`; `clear` removes them all */
   | { type: "set_markers"; markers: number[]; mode: "add" | "replace" | "clear" }
+  /** a caption track: one text clip per phrase (words timed from each clip's start), in one look */
+  | { type: "add_captions"; items: { start: number; end: number; body: string; words?: Word[] }[]; style: CaptionStyle; name?: string }
+  /** one look for every text clip of a track (re-styling captions) */
+  | { type: "style_track"; trackId: string; text: Partial<TextStyle>; y?: number }
   /** the same transition at every cut of a track */
   | { type: "transition_all"; trackId?: string; kind: TransitionKind | null; ms?: number }
   | { type: "remove_track"; trackId: string }
@@ -240,6 +247,8 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         const end = clipEnd(clip);
         const start = Math.min(end - LIMITS.minClipMs, Math.max(prevEnd, Math.round(cmd.to)));
         clip.out = clip.in + (end - start) * speed;
+        // caption words stay on their moment on the timeline
+        if (clip.words.length) clip.words = clip.words.map((w) => ({ ...w, s: w.s + clip.start - start, e: w.e + clip.start - start }));
         clip.start = start;
       } else {
         const end = clipEnd(clip);
@@ -265,6 +274,16 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           if (at - c.start < LIMITS.minClipMs || clipEnd(c) - at < LIMITS.minClipMs) continue;
           const cut = Math.round(sourceTime(c, at));
           const right: Clip = { ...structuredClone(c), id: newId("c"), start: at, in: cut, fadeIn: 0 };
+          if (c.words.length) {
+            // a caption keeps each word on the side it is said; the text follows the words
+            const rel = at - c.start;
+            right.words = c.words.filter((w) => w.s >= rel).map((w) => ({ ...w, s: w.s - rel, e: w.e - rel }));
+            c.words = c.words.filter((w) => w.s < rel);
+            if (c.text && right.text) {
+              c.text = { ...c.text, body: c.words.map((w) => w.w).join(" ") || c.text.body };
+              right.text = { ...right.text, body: right.words.map((w) => w.w).join(" ") || right.text.body };
+            }
+          }
           // the cut is a plain one; what came after the clip now comes after its right part
           c.out = cut;
           c.transition = null;
@@ -339,8 +358,14 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           : null;
       }
       if (p.text && clip.text) {
+        const before = clip.text.body;
         clip.text = { ...clip.text, ...p.text };
         clip.text.body = String(clip.text.body ?? "").slice(0, LIMITS.text);
+        // a caption's words keep their timing when the words are corrected one for one; otherwise it becomes plain text
+        if (clip.words.length && clip.text.body !== before) {
+          const tokens = clip.text.body.split(/\s+/).filter(Boolean);
+          clip.words = tokens.length === clip.words.length ? clip.words.map((w, i) => ({ ...w, w: tokens[i] })) : [];
+        }
       }
       if (p.speed != null) {
         if (magnet(t, track)) tidy(t, track);
@@ -399,6 +424,69 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const all = cmd.mode === "clear" ? [] : cmd.mode === "replace" ? clean : [...t.markers, ...clean];
       t.markers = [...new Set(all)].sort((a, b) => a - b).slice(0, LIMITS.markers);
       return { timeline: t, label: cmd.mode === "clear" ? "شلت علامات الإيقاع" : `علامات الإيقاع (${t.markers.length})` };
+    }
+
+    case "add_captions": {
+      const look = CAPTION_STYLES[cmd.style] ?? CAPTION_STYLES.karaoke;
+      const items = (cmd.items ?? []).filter((it) => String(it.body ?? "").trim() && it.end > it.start);
+      if (!items.length) fail("ما فيه كلام نحطه كابشن.");
+      if (countClips(t) + items.length > LIMITS.clips) fail("الكابشن أكثر من المسموح في مشروع واحد؛ قسّم المشروع.");
+      const tall = t.height > t.width;
+      // another caption already on screen at the same moments: this one goes a line higher
+      const from = Math.min(...items.map((it) => it.start));
+      const to = Math.max(...items.map((it) => it.end));
+      const below = t.tracks.filter((x) => x.kind === "text" && x.clips.some((c) => c.start < to && clipEnd(c) > from)).length;
+      const y = Math.max(0.12, (tall ? 0.74 : 0.85) - below * (tall ? 0.18 : 0.16));
+      const track = newTrack(t, "text");
+      track.name = (cmd.name ?? "كابشن").slice(0, 40);
+      track.clips = items.map((it) => {
+        const start = Math.max(0, Math.round(it.start));
+        const len = Math.max(LIMITS.minClipMs, Math.round(it.end - start));
+        return {
+          id: newId("c"),
+          assetId: null,
+          start,
+          in: 0,
+          out: len,
+          speed: 1,
+          volume: 1,
+          fit: "contain" as const,
+          transform: { ...DEFAULT_TRANSFORM, y },
+          text: { ...DEFAULT_TEXT, ...look.style, body: String(it.body).slice(0, LIMITS.text) },
+          ...CLIP_DEFAULTS,
+          keys: [],
+          words: (it.words ?? []).slice(0, LIMITS.words).map((w) => ({ s: Math.max(0, Math.round(w.s)), e: Math.max(0, Math.round(w.e)), w: String(w.w).slice(0, 60) })),
+        };
+      });
+      // phrases never overlap on one track
+      let end = 0;
+      track.clips = track.clips
+        .sort((a, b) => a.start - b.start)
+        .filter((c) => {
+          if (c.start < end) {
+            const cut = end - c.start;
+            if (clipLength(c) - cut < LIMITS.minClipMs) return false;
+            c.start = end;
+            c.out -= cut;
+            c.words = c.words.map((w) => ({ ...w, s: Math.max(0, w.s - cut), e: Math.max(0, w.e - cut) }));
+          }
+          end = clipEnd(c);
+          return true;
+        });
+      return { timeline: t, label: `كابشن (${track.clips.length} جملة)`, select: [] };
+    }
+
+    case "style_track": {
+      const track = editable(t, cmd.trackId);
+      if (track.kind !== "text") fail("هذا للمسارات النصية.");
+      const clean = { ...cmd.text };
+      delete clean.body;
+      for (const c of track.clips) {
+        if (!c.text) continue;
+        c.text = { ...c.text, ...clean };
+        if (cmd.y != null && Number.isFinite(cmd.y)) c.transform = { ...c.transform, y: cmd.y };
+      }
+      return { timeline: t, label: "غيّرت شكل الكابشن" };
     }
 
     case "transition_all": {

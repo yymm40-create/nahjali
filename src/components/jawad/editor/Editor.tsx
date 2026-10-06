@@ -6,6 +6,7 @@ import { apply, applyAll, CommandError, type Applied, type Command } from "@/lib
 import { clipEnd, duration, findClip, formatTime, type AssetInfo, type Timeline as TL } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
+import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
 import Inspector, { type InspectorTab } from "./Inspector";
@@ -54,6 +55,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const [save, setSave] = useState<SaveState>("saved");
   const [sheet, setSheet] = useState<null | "library" | "inspector">(null);
   const [exporting, setExporting] = useState(false);
+  const [captioning, setCaptioning] = useState(false);
   const [purgeAt, setPurgeAt] = useState(project.purgeAt);
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
   const [waves, setWaves] = useState<Record<string, string | null>>({});
@@ -499,6 +501,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
           <button type="button" className={toolBtn} onClick={addText} disabled={readOnly} title="نص فوق الفيديو">
             <Icon name="type" size={16} /> نص
           </button>
+          <button type="button" className={`${toolBtn} text-jw-accent`} onClick={() => setCaptioning(true)} disabled={readOnly} title="كابشن تلقائي من الكلام، مزامنة قصيدة، ملف SRT">
+            <Icon name="sparkles" size={16} /> كابشن
+          </button>
         </div>
         <Transport player={player} total={total} />
         <button type="button" className={`${toolBtn} hidden lg:flex ${tl.magnetic ? "text-jw-accent" : ""}`} onClick={() => run({ type: "set_magnetic", on: !tl.magnetic })} disabled={readOnly} title="المغناطيس: المسار الرئيسي بدون فراغات" aria-pressed={tl.magnetic}>
@@ -528,14 +533,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         <button type="button" className={toolBtn} onClick={addText} disabled={readOnly}>
           <Icon name="type" size={19} /> نص
         </button>
-        <button type="button" className={toolBtn} onClick={duplicate} disabled={readOnly || selected.length !== 1}>
-          <Icon name="copy" size={19} /> تكرار
+        <button type="button" className={`${toolBtn} text-jw-accent`} onClick={() => setCaptioning(true)} disabled={readOnly}>
+          <Icon name="sparkles" size={19} /> كابشن
         </button>
         <button type="button" className={`${toolBtn} ${one ? "text-jw-accent" : ""}`} onClick={() => setSheet("inspector")}>
           <Icon name={one ? "settings" : "ratio"} size={19} /> {one ? "تعديل" : "المقاس"}
         </button>
       </nav>
 
+      <CaptionsPanel open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
       <ExportPanel
         open={exporting}
         onClose={() => setExporting(false)}

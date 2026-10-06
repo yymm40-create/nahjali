@@ -16,6 +16,10 @@ import {
   signAssetUpload,
   signExportUpload,
 } from "@/lib/editor/server";
+import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
+
+// listening to a long clip can take a while
+export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
 const noStore = { headers: { "Cache-Control": "no-store" } };
@@ -37,7 +41,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
 
 /** `{ action, … }`: upload (sign/confirm), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
-  const { user } = await requireStudentApiUser();
+  const { user, owner } = await requireStudentApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   switch (b.action) {
@@ -59,6 +63,12 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       if (!cmds.length) throw new UserError("ما فيه أوامر.", 400);
       return NextResponse.json(await runCommands(p, cmds, "user"));
     }
+    case "speech_sign":
+      return NextResponse.json(await signSpeechUpload(p, b));
+    case "transcribe":
+      return NextResponse.json(await transcribe(p, owner, b));
+    case "align":
+      return NextResponse.json(await align(p, owner, b));
     case "history":
       return NextResponse.json({ history: await history(p.id) }, noStore);
   }

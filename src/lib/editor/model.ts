@@ -31,7 +31,26 @@ export interface TextStyle {
   weight: 400 | 700 | 900;
   align: "center" | "right" | "left";
   font: "readex" | "naskh" | "kufi";
+  /** captions: the word being said right now in this colour (null = plain text) */
+  highlight: string | null;
 }
+
+/** A caption's spoken word: from `s` to `e` ms after the clip starts. */
+export interface Word {
+  s: number;
+  e: number;
+  w: string;
+}
+
+/** Ready caption looks (the text style, and how high on the frame). */
+export const CAPTION_STYLES = {
+  karaoke: { label: "كلمة بكلمة", style: { color: "#ffffff", highlight: "#facc15", weight: 900, size: 0.056, box: null, font: "readex" } },
+  classic: { label: "كلاسيكي", style: { color: "#ffffff", highlight: null, weight: 700, size: 0.052, box: null, font: "readex" } },
+  box: { label: "على خلفية", style: { color: "#ffffff", highlight: null, weight: 700, size: 0.05, box: "#000000b3", font: "readex" } },
+  neon: { label: "نيون", style: { color: "#b8f53d", highlight: "#ffffff", weight: 900, size: 0.064, box: null, font: "kufi" } },
+  poem: { label: "قصيدة", style: { color: "#fef3c7", highlight: "#f59e0b", weight: 700, size: 0.058, box: null, font: "naskh" } },
+} as const satisfies Record<string, { label: string; style: Partial<TextStyle> }>;
+export type CaptionStyle = keyof typeof CAPTION_STYLES;
 
 /** A colour look (CapCut's «فلاتر» + «ضبط»): 1 = unchanged for the three factors, warmth −1 (cool) … 1 (warm). */
 export interface ColorGrade {
@@ -112,6 +131,8 @@ export interface Clip {
   fadeOut: number;
   /** the picture's outline: picture-in-picture looks better rounded or round */
   shape: "rect" | "rounded" | "circle";
+  /** captions: when each word is said (text clips only) */
+  words: Word[];
 }
 
 export interface Track {
@@ -172,10 +193,10 @@ export type ProjectKind = keyof typeof PROJECT_KINDS;
 export const isProjectKind = (s: unknown): s is ProjectKind => typeof s === "string" && s in PROJECT_KINDS;
 
 /** Limits that keep a document sane (not product limits: a project has no maximum length). */
-export const LIMITS = { tracks: 40, clips: 3000, text: 500, minClipMs: 100, maxMs: 24 * 3600_000, keys: 200, markers: 5000 } as const;
+export const LIMITS = { tracks: 40, clips: 3000, text: 500, minClipMs: 100, maxMs: 24 * 3600_000, keys: 200, markers: 5000, words: 120 } as const;
 
 export const DEFAULT_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 };
-export const DEFAULT_TEXT: TextStyle = { body: "اكتب هنا", size: 0.06, color: "#ffffff", box: null, weight: 700, align: "center", font: "readex" };
+export const DEFAULT_TEXT: TextStyle = { body: "اكتب هنا", size: 0.06, color: "#ffffff", box: null, weight: 700, align: "center", font: "readex", highlight: null };
 /** How long a picture or a text lasts when it is first placed. */
 export const STILL_MS = 3000;
 
@@ -293,6 +314,17 @@ export function duckAt(spans: [number, number][], ms: number) {
 /** A clip's loudness at `ms` (volume × fades × ducking). */
 export const gainAt = (track: Track, c: Clip, ms: number, spans: [number, number][]) => c.volume * fadeAt(c, ms) * (track.duck ? duckAt(spans, ms) : 1);
 
+/** Which caption word is being said `ms` into a text clip (−1: none). */
+export function wordAt(c: Clip, ms: number) {
+  const rel = ms - c.start;
+  let i = -1;
+  for (let k = 0; k < c.words.length && c.words[k].s <= rel; k++) i = k;
+  if (i < 0) return -1;
+  // between two words the last one said stays lit until the next begins (or a short moment after it ends)
+  const next = c.words[i + 1];
+  return rel < (next ? next.s : c.words[i].e + 400) ? i : -1;
+}
+
 export function findClip(t: Timeline, clipId: string) {
   for (const track of t.tracks) {
     const i = track.clips.findIndex((c) => c.id === clipId);
@@ -336,6 +368,7 @@ function readText(v: unknown): TextStyle | null {
     weight: pick<400 | 700 | 900>(Number(o.weight), [400, 700, 900], 700),
     align: pick(o.align, ["center", "right", "left"] as const, "center"),
     font: pick(o.font, ["readex", "naskh", "kufi"] as const, "readex"),
+    highlight: o.highlight == null ? null : color(o.highlight, "#facc15"),
   };
 }
 
@@ -397,6 +430,16 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     fadeIn: int(o.fadeIn, 0, 60_000, 0),
     fadeOut: int(o.fadeOut, 0, 60_000, 0),
     shape: pick(o.shape, ["rect", "rounded", "circle"] as const, "rect"),
+    words: kind !== "text" || !Array.isArray(o.words)
+      ? []
+      : o.words
+          .slice(0, LIMITS.words)
+          .filter((w): w is Record<string, unknown> => !!w && typeof w === "object")
+          .map((w) => {
+            const s0 = int(w.s, 0, LIMITS.maxMs, 0);
+            return { s: s0, e: int(w.e, s0, LIMITS.maxMs, s0), w: str(w.w, 60, "") };
+          })
+          .filter((w) => w.w),
   };
 }
 
