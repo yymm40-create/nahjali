@@ -1,14 +1,46 @@
 "use client";
 
-import { findClip, formatTime, clipLength, RATIOS, ratioOf, type Ratio, type Timeline, type TextStyle } from "@/lib/editor/model";
+import { useEffect, useState } from "react";
+import {
+  clipEnd,
+  clipLength,
+  COLOR_PRESETS,
+  findClip,
+  formatTime,
+  NEUTRAL_COLOR,
+  RATIOS,
+  ratioOf,
+  sourceTime,
+  TRANSITION_MS,
+  TRANSITIONS,
+  transformAt,
+  type ColorPreset,
+  type Ratio,
+  type TextStyle,
+  type Timeline,
+  type Transform,
+  type TransitionKind,
+} from "@/lib/editor/model";
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
+import { detectBeats, peaksOf } from "./peaks";
+import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 
 export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => void;
+export type InspectorTab = "basic" | "motion" | "color" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
-const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+const PIP: { label: string; t: Partial<Transform> }[] = [
+  { label: "يملأ الإطار", t: { x: 0.5, y: 0.5, scale: 1 } },
+  { label: "↖ زاوية", t: { x: 0.25, y: 0.2, scale: 0.36 } },
+  { label: "↗ زاوية", t: { x: 0.75, y: 0.2, scale: 0.36 } },
+  { label: "↙ زاوية", t: { x: 0.25, y: 0.8, scale: 0.36 } },
+  { label: "↘ زاوية", t: { x: 0.75, y: 0.8, scale: 0.36 } },
+  { label: "النص الأعلى", t: { x: 0.5, y: 0.25, scale: 0.5 } },
+  { label: "النص الأسفل", t: { x: 0.5, y: 0.75, scale: 0.5 } },
+];
 
 function Slider({ label, value, min, max, step, onChange, format, disabled, ltr }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format?: (v: number) => string; disabled?: boolean; ltr?: boolean }) {
   return (
@@ -22,8 +54,51 @@ function Slider({ label, value, min, max, step, onChange, format, disabled, ltr 
   );
 }
 
+/** The playhead's time, refreshed a few times a second (for «نقطة حركة هنا»). */
+function usePlayhead(player: PlayerLike | null) {
+  const [ms, setMs] = useState(0);
+  useEffect(() => {
+    if (!player) return;
+    let last = 0;
+    const t = setTimeout(() => setMs(player.ms), 0);
+    const off = player.subscribe((m, playing) => {
+      const now = performance.now();
+      if (playing && now - last < 250) return;
+      last = now;
+      setMs(m);
+    });
+    return () => {
+      clearTimeout(t);
+      off();
+    };
+  }, [player]);
+  return ms;
+}
+
 /** What can be changed about the selected clip (or the project, when nothing is selected). */
-export default function Inspector({ tl, selected, assets, run, readOnly }: { tl: Timeline; selected: string[]; assets: Map<string, EditorAsset>; run: Run; readOnly: boolean }) {
+export default function Inspector({
+  tl,
+  selected,
+  assets,
+  run,
+  readOnly,
+  player,
+  tab,
+  onTab,
+  flash,
+}: {
+  tl: Timeline;
+  selected: string[];
+  assets: Map<string, EditorAsset>;
+  run: Run;
+  readOnly: boolean;
+  player: PlayerLike | null;
+  tab: InspectorTab;
+  onTab: (t: InspectorTab) => void;
+  flash: (text: string, bad?: boolean) => void;
+}) {
+  const playhead = usePlayhead(player);
+  const [beatBusy, setBeatBusy] = useState(false);
   const found = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
   if (!found) {
@@ -54,6 +129,24 @@ export default function Inspector({ tl, selected, assets, run, readOnly }: { tl:
             <span className="block text-jw-muted">المقاطع في المسار الرئيسي تلتصق ببعض بدون فراغات (مثل CapCut).</span>
           </span>
         </label>
+        <div className="space-y-1.5 border-t border-jw-line pt-3">
+          <span className="text-xs text-jw-muted">انتقال لكل قصّات المسار الرئيسي</span>
+          <div className="flex flex-wrap gap-1.5">
+            {(Object.keys(TRANSITIONS) as TransitionKind[]).map((k) => (
+              <button key={k} type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => run({ type: "transition_all", kind: k })}>
+                {TRANSITIONS[k].icon} {TRANSITIONS[k].label}
+              </button>
+            ))}
+            <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => run({ type: "transition_all", kind: null })}>
+              بدون
+            </button>
+          </div>
+        </div>
+        {tl.markers.length > 0 && (
+          <button type="button" disabled={readOnly} className="jw-btn jw-btn-quiet w-full text-xs" onClick={() => run({ type: "set_markers", markers: [], mode: "clear" })}>
+            شيل علامات الإيقاع ({tl.markers.length})
+          </button>
+        )}
         <p className="rounded-lg bg-jw-surface-2 p-2 text-[11px] leading-5 text-jw-muted">
           اختصارات: <b>مسافة</b> تشغيل · <b>S</b> قص · <b>Delete</b> حذف · <b>Ctrl+Z</b> تراجع · <b>Ctrl+D</b> تكرار · الأسهم إطار إطار.
         </p>
@@ -61,76 +154,82 @@ export default function Inspector({ tl, selected, assets, run, readOnly }: { tl:
     );
   }
 
-  const { clip, track } = found;
+  const { clip, track, index } = found;
   const a = clip.assetId ? assets.get(clip.assetId) : null;
   const locked = readOnly || track.locked;
   const set = (patch: ClipPatch, key: string) => run({ type: "update_clip", clipId: clip.id, patch }, { coalesce: `${clip.id}:${key}` });
-  const t = clip.transform;
   const text = clip.text;
-  const setText = (p: Partial<TextStyle>, key: string) => set({ text: p }, `text:${key}`);
+  const visual = !!text || (a ? a.kind !== "audio" : false);
+  const sound = !!a && a.kind !== "image" && a.hasAudio;
+  const next = track.clips[index + 1];
+  const joined = !!next && next.start === clipEnd(clip);
+  const tabs: [InspectorTab, string][] = [
+    ["basic", text ? "النص" : "أساسي"],
+    ...(visual ? ([["motion", "حركة"]] as [InspectorTab, string][]) : []),
+    ...(visual && !text ? ([["color", "ألوان"]] as [InspectorTab, string][]) : []),
+    ...(visual && joined ? ([["transition", "انتقال"]] as [InspectorTab, string][]) : []),
+    ...(sound ? ([["sound", "صوت"]] as [InspectorTab, string][]) : []),
+  ];
+  const current = tabs.some(([k]) => k === tab) ? tab : "basic";
+
+  // ---- motion: with motion points, a change goes into the point at the playhead
+  const inClip = playhead >= clip.start && playhead < clipEnd(clip);
+  const at = Math.min(clipEnd(clip) - 1, Math.max(clip.start, playhead));
+  const t = transformAt(clip, at);
+  const keyHere = clip.keys.some((k) => Math.abs(k.t - sourceTime(clip, at)) <= 40);
+  const move = (p: Partial<Transform>, key: string) =>
+    clip.keys.length ? run({ type: "set_key", clipId: clip.id, at, transform: p }, { coalesce: `${clip.id}:key:${key}:${Math.round(at)}` }) : set({ transform: p }, key);
+
+  const beats = async () => {
+    if (!a) return;
+    setBeatBusy(true);
+    try {
+      const peaks = await peaksOf(a.id, a.url);
+      const r = peaks ? detectBeats(peaks, clip.in, clip.out) : null;
+      if (!r || !r.beats.length) return flash("ما قدرنا نلقى إيقاعًا واضحًا في هذا الصوت.", true);
+      const marks = r.beats.map((s) => Math.round(clip.start + (s - clip.in) / clip.speed)).filter((m) => m >= clip.start && m < clipEnd(clip));
+      run({ type: "set_markers", markers: marks, mode: "add" });
+      flash(`الإيقاع ${r.bpm} ضربة في الدقيقة: ${marks.length} علامة؛ القص والسحب يلتصقون عليها.`);
+    } finally {
+      setBeatBusy(false);
+    }
+  };
 
   return (
-    <div className="space-y-4 p-3">
+    <div className="space-y-3 p-3">
       <div className="flex items-center gap-2">
         <Icon name={text ? "type" : a?.kind === "audio" ? "music" : a?.kind === "image" ? "image" : "video"} size={16} />
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold" dir="auto">{text ? "نص" : (a?.name ?? "مقطع")}</h3>
         <span className="text-xs tabular-nums text-jw-muted" dir="ltr">{formatTime(clipLength(clip))}</span>
       </div>
       {track.locked && <p className="text-xs text-jw-warn">المسار مقفول؛ افتح القفل من رأس المسار لتعدّل.</p>}
+      {tabs.length > 1 && (
+        <div className="jw-seg" role="tablist" aria-label="أقسام التعديل">
+          {tabs.map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={current === k} onClick={() => onTab(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {text && (
+      {current === "basic" && (
         <div className="space-y-3">
-          <textarea className="jw-textarea min-h-20 w-full text-sm" dir="auto" disabled={locked} value={text.body} onChange={(e) => setText({ body: e.target.value }, "body")} placeholder="اكتب النص" />
-          <Slider label="الحجم" value={Math.round(text.size * 1000) / 10} min={2} max={20} step={0.5} disabled={locked} onChange={(v) => setText({ size: v / 100 }, "size")} format={(v) => `${v}%`} />
-          <div className="space-y-1">
-            <span className="text-xs text-jw-muted">اللون</span>
-            <div className="flex flex-wrap gap-1.5">
-              {COLORS.map((c) => (
-                <button key={c} type="button" disabled={locked} aria-label={c} aria-pressed={text.color === c} className={`h-7 w-7 rounded-full border-2 ${text.color === c ? "border-jw-accent" : "border-jw-line"}`} style={{ background: c }} onClick={() => setText({ color: c }, "color")} />
-              ))}
-              <input type="color" disabled={locked} value={text.color.slice(0, 7)} onChange={(e) => setText({ color: e.target.value }, "color")} className="h-7 w-9 cursor-pointer rounded border border-jw-line bg-transparent" aria-label="لون آخر" />
+          {text && <TextControls text={text} locked={locked} setText={(p, key) => set({ text: p }, `text:${key}`)} />}
+          {sound && <Slider label="الصوت" value={Math.round(clip.volume * 100)} min={0} max={200} step={5} disabled={locked} onChange={(v) => set({ volume: v / 100 }, "volume")} format={(v) => `${v}%`} />}
+          {a && a.kind !== "image" && (
+            <div className="space-y-1">
+              <span className="text-xs text-jw-muted">السرعة (الصوت يحتفظ بطبقته)</span>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="السرعة">
+                {SPEEDS.map((s) => (
+                  <button key={s} type="button" role="radio" aria-checked={clip.speed === s} disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { speed: s } })} dir="ltr" className={`jw-chip !px-2.5 !py-1 !text-xs ${clip.speed === s ? "!border-jw-accent !text-jw-ink" : ""}`}>
+                    ×{s}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          <label className="flex items-center gap-2 text-xs">
-            <input type="checkbox" disabled={locked} checked={!!text.box} onChange={(e) => setText({ box: e.target.checked ? "#000000b3" : null }, "box")} className="accent-[var(--jw-accent)]" />
-            خلفية خلف الكلام
-          </label>
-          <div className="jw-seg" role="radiogroup" aria-label="الخط">
-            {(["readex", "naskh", "kufi"] as const).map((f) => (
-              <button key={f} type="button" role="radio" aria-checked={text.font === f} disabled={locked} onClick={() => setText({ font: f }, "font")}>
-                {f === "readex" ? "حديث" : f === "naskh" ? "نسخ" : "كوفي"}
-              </button>
-            ))}
-          </div>
-          <div className="jw-seg" role="radiogroup" aria-label="السماكة">
-            {([400, 700, 900] as const).map((w) => (
-              <button key={w} type="button" role="radio" aria-checked={text.weight === w} disabled={locked} onClick={() => setText({ weight: w }, "weight")}>
-                {w === 400 ? "عادي" : w === 700 ? "عريض" : "أعرض"}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {a && a.kind !== "image" && (
-        <Slider label="الصوت" value={Math.round(clip.volume * 100)} min={0} max={200} step={5} disabled={locked} onChange={(v) => set({ volume: v / 100 }, "volume")} format={(v) => `${v}%`} />
-      )}
-      {a && a.kind !== "image" && (
-        <div className="space-y-1">
-          <span className="text-xs text-jw-muted">السرعة</span>
-          <div className="jw-seg" role="radiogroup" aria-label="السرعة">
-            {SPEEDS.map((s) => (
-              <button key={s} type="button" role="radio" aria-checked={clip.speed === s} disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { speed: s } })} dir="ltr">
-                ×{s}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(text || a?.kind !== "audio") && (
-        <div className="space-y-3 border-t border-jw-line pt-3">
-          {!text && (
+          )}
+          {!text && a?.kind !== "audio" && (
             <div className="jw-seg" role="radiogroup" aria-label="الملاءمة">
               <button type="button" role="radio" aria-checked={clip.fit === "cover"} disabled={locked} onClick={() => set({ fit: "cover" }, "fit")}>
                 املأ الإطار
@@ -140,17 +239,159 @@ export default function Inspector({ tl, selected, assets, run, readOnly }: { tl:
               </button>
             </div>
           )}
-          <Slider label="التكبير" value={Math.round(t.scale * 100)} min={10} max={400} step={1} disabled={locked} onChange={(v) => set({ transform: { scale: v / 100 } }, "scale")} format={(v) => `${v}%`} />
-          <Slider ltr label="← يسار · يمين →" value={Math.round(t.x * 100)} min={-50} max={150} step={1} disabled={locked} onChange={(v) => set({ transform: { x: v / 100 } }, "x")} format={(v) => `${v}%`} />
-          <Slider label="فوق ↕ تحت" value={Math.round(t.y * 100)} min={-50} max={150} step={1} disabled={locked} onChange={(v) => set({ transform: { y: v / 100 } }, "y")} format={(v) => `${v}%`} />
-          <Slider label="الدوران" value={Math.round(t.rotate)} min={-180} max={180} step={1} disabled={locked} onChange={(v) => set({ transform: { rotate: v } }, "rotate")} format={(v) => `${v}°`} />
-          <Slider label="الشفافية" value={Math.round(t.opacity * 100)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ transform: { opacity: v / 100 } }, "opacity")} format={(v) => `${v}%`} />
-          <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { transform: { x: 0.5, y: text ? 0.78 : 0.5, scale: 1, rotate: 0, opacity: 1 } } })}>
+          {sound && clip.volume > 1 && <p className="text-[11px] text-jw-faint">الصوت فوق ١٠٠٪ يبان في الملف المصدَّر؛ المعاينة تشغّله حتى ١٠٠٪.</p>}
+        </div>
+      )}
+
+      {current === "motion" && (
+        <div className="space-y-3">
+          {!text && (
+            <div className="space-y-1">
+              <span className="text-xs text-jw-muted">صورة داخل صورة</span>
+              <div className="flex flex-wrap gap-1.5">
+                {PIP.map((p) => (
+                  <button key={p.label} type="button" disabled={locked} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => move(p.t, "pip")}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="jw-seg mt-1.5" role="radiogroup" aria-label="الشكل">
+                {(["rect", "rounded", "circle"] as const).map((sh) => (
+                  <button key={sh} type="button" role="radio" aria-checked={clip.shape === sh} disabled={locked} onClick={() => set({ shape: sh }, "shape")}>
+                    {sh === "rect" ? "مربع" : sh === "rounded" ? "زوايا ناعمة" : "دائرة"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <Slider label="التكبير" value={Math.round(t.scale * 100)} min={10} max={400} step={1} disabled={locked} onChange={(v) => move({ scale: v / 100 }, "scale")} format={(v) => `${v}%`} />
+          <Slider ltr label="← يسار · يمين →" value={Math.round(t.x * 100)} min={-50} max={150} step={1} disabled={locked} onChange={(v) => move({ x: v / 100 }, "x")} format={(v) => `${v}%`} />
+          <Slider label="فوق ↕ تحت" value={Math.round(t.y * 100)} min={-50} max={150} step={1} disabled={locked} onChange={(v) => move({ y: v / 100 }, "y")} format={(v) => `${v}%`} />
+          <Slider label="الدوران" value={Math.round(t.rotate)} min={-180} max={180} step={1} disabled={locked} onChange={(v) => move({ rotate: v }, "rotate")} format={(v) => `${v}°`} />
+          <Slider label="الشفافية" value={Math.round(t.opacity * 100)} min={0} max={100} step={1} disabled={locked} onChange={(v) => move({ opacity: v / 100 }, "opacity")} format={(v) => `${v}%`} />
+          <div className="space-y-1.5 rounded-lg border border-jw-line p-2">
+            <p className="text-xs font-semibold">◆ الحركة مع الوقت {clip.keys.length > 0 && <span className="font-normal text-jw-muted">({clip.keys.length} نقاط)</span>}</p>
+            <p className="text-[11px] leading-5 text-jw-muted">حط الخط الأخضر على لحظة، اضغط «نقطة هنا» وغيّر المكان أو الحجم؛ انتقل للحظة ثانية وغيّر مرة ثانية: المقطع يتحرك بينهم لحاله.</p>
+            {!inClip && <p className="text-[11px] text-jw-warn">مؤشر الوقت خارج هذا المقطع؛ حطه عليه أول.</p>}
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" className="jw-btn !min-h-8 flex-1 text-xs" disabled={locked || !inClip} onClick={() => (keyHere ? run({ type: "remove_key", clipId: clip.id, at }) : run({ type: "set_key", clipId: clip.id, at, transform: {} }))}>
+                {keyHere ? "◇ شيل النقطة هنا" : "◆ نقطة هنا"}
+              </button>
+              {clip.keys.length > 0 && (
+                <button type="button" className="jw-btn jw-btn-quiet !min-h-8 text-xs" disabled={locked} onClick={() => run({ type: "clear_keys", clipId: clip.id })}>
+                  شيل كل الحركة
+                </button>
+              )}
+            </div>
+          </div>
+          <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => run([{ type: "clear_keys", clipId: clip.id }, { type: "update_clip", clipId: clip.id, patch: { transform: { x: 0.5, y: text ? 0.78 : 0.5, scale: 1, rotate: 0, opacity: 1 } } }], { label: "رجّعت الوضع الأصلي" })}>
             <Icon name="retry" size={14} /> رجّع الوضع الأصلي
           </button>
         </div>
       )}
-      {a && a.kind !== "image" && clip.volume > 1 && <p className="text-[11px] text-jw-faint">الصوت فوق ١٠٠٪ يبان في الملف المصدَّر؛ المعاينة تشغّله حتى ١٠٠٪.</p>}
+
+      {current === "color" && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-1.5">
+            {(Object.keys(COLOR_PRESETS) as ColorPreset[]).map((k) => (
+              <button key={k} type="button" disabled={locked} aria-pressed={(clip.color?.preset ?? "none") === k} className={`rounded-lg border px-1 py-2 text-[11px] ${(clip.color?.preset ?? "none") === k ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set({ color: { preset: k } }, "color:preset")}>
+                {COLOR_PRESETS[k].label}
+              </button>
+            ))}
+          </div>
+          {(["brightness", "contrast", "saturation"] as const).map((k) => (
+            <Slider key={k} label={k === "brightness" ? "الإضاءة" : k === "contrast" ? "التباين" : "التشبع"} value={Math.round((clip.color?.[k] ?? 1) * 100)} min={k === "saturation" ? 0 : 40} max={k === "saturation" ? 250 : 180} step={1} disabled={locked} onChange={(v) => set({ color: { [k]: v / 100 } }, `color:${k}`)} format={(v) => `${v}%`} />
+          ))}
+          <Slider ltr label="← بارد · دافئ →" value={Math.round((clip.color?.warmth ?? 0) * 100)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ color: { warmth: v / 100 } }, "color:warmth")} format={(v) => `${v}`} />
+          <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked || !clip.color} onClick={() => set({ color: null }, "color:reset")}>
+            <Icon name="retry" size={14} /> الألوان الأصلية
+          </button>
+          {clip.color && JSON.stringify(clip.color) !== JSON.stringify(NEUTRAL_COLOR) && <p className="text-[11px] text-jw-faint">المعاينة والتصدير بنفس الألوان.</p>}
+        </div>
+      )}
+
+      {current === "transition" && joined && (
+        <div className="space-y-3">
+          <p className="text-xs text-jw-muted">من هذا المقطع إلى اللي بعده (عند القص بينهم):</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            <button type="button" disabled={locked} aria-pressed={!clip.transition} className={`rounded-lg border px-1 py-2 text-xs ${!clip.transition ? "border-jw-accent bg-jw-accent/10" : "border-jw-line"}`} onClick={() => set({ transition: null }, "tr")}>
+              بدون
+            </button>
+            {(Object.keys(TRANSITIONS) as TransitionKind[]).map((k) => (
+              <button key={k} type="button" disabled={locked} aria-pressed={clip.transition?.kind === k} className={`rounded-lg border px-1 py-2 text-xs ${clip.transition?.kind === k ? "border-jw-accent bg-jw-accent/10" : "border-jw-line"}`} onClick={() => set({ transition: { kind: k } }, "tr")}>
+                <span className="block text-base leading-none">{TRANSITIONS[k].icon}</span>
+                {TRANSITIONS[k].label}
+              </button>
+            ))}
+          </div>
+          {clip.transition && (
+            <Slider label="المدة" value={clip.transition.ms} min={TRANSITION_MS.min} max={TRANSITION_MS.max} step={100} disabled={locked} onChange={(v) => set({ transition: { kind: clip.transition!.kind, ms: v } }, "tr:ms")} format={(v) => `${(v / 1000).toFixed(1)} ث`} />
+          )}
+          {clip.transition && (
+            <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => run({ type: "transition_all", trackId: track.id, kind: clip.transition!.kind, ms: clip.transition!.ms })}>
+              طبّقه على كل القصّات في هذا المسار
+            </button>
+          )}
+        </div>
+      )}
+
+      {current === "sound" && sound && (
+        <div className="space-y-3">
+          <Slider label="الصوت" value={Math.round(clip.volume * 100)} min={0} max={200} step={5} disabled={locked} onChange={(v) => set({ volume: v / 100 }, "volume")} format={(v) => `${v}%`} />
+          <Slider label="ظهور تدريجي في البداية" value={clip.fadeIn} min={0} max={Math.min(10_000, clipLength(clip))} step={100} disabled={locked} onChange={(v) => set({ fadeIn: v }, "fadeIn")} format={(v) => `${(v / 1000).toFixed(1)} ث`} />
+          <Slider label="اختفاء تدريجي في النهاية" value={clip.fadeOut} min={0} max={Math.min(10_000, clipLength(clip))} step={100} disabled={locked} onChange={(v) => set({ fadeOut: v }, "fadeOut")} format={(v) => `${(v / 1000).toFixed(1)} ث`} />
+          {track.kind === "audio" && (
+            <label className="flex items-start gap-2 text-xs">
+              <input type="checkbox" disabled={locked} checked={track.duck} onChange={(e) => run({ type: "update_track", trackId: track.id, patch: { duck: e.target.checked } })} className="mt-0.5 accent-[var(--jw-accent)]" />
+              <span>
+                <b>خفض تلقائي وقت الكلام</b>
+                <span className="block text-jw-muted">صوت هذا المسار (الموسيقى مثلًا) ينخفض لحاله لما يكون فيه كلام أو صوت في المسارات الثانية، ويرجع بعده.</span>
+              </span>
+            </label>
+          )}
+          {a?.kind === "audio" && (
+            <button type="button" className="jw-btn w-full text-xs" disabled={locked || beatBusy} onClick={beats}>
+              {beatBusy ? <span className="jw-spinner" /> : "🥁"} اكشف الإيقاع (علامات يلتصق عليها القص)
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TextControls({ text, locked, setText }: { text: TextStyle; locked: boolean; setText: (p: Partial<TextStyle>, key: string) => void }) {
+  return (
+    <div className="space-y-3">
+      <textarea className="jw-textarea min-h-20 w-full text-sm" dir="auto" disabled={locked} value={text.body} onChange={(e) => setText({ body: e.target.value }, "body")} placeholder="اكتب النص" />
+      <Slider label="الحجم" value={Math.round(text.size * 1000) / 10} min={2} max={20} step={0.5} disabled={locked} onChange={(v) => setText({ size: v / 100 }, "size")} format={(v) => `${v}%`} />
+      <div className="space-y-1">
+        <span className="text-xs text-jw-muted">اللون</span>
+        <div className="flex flex-wrap gap-1.5">
+          {COLORS.map((c) => (
+            <button key={c} type="button" disabled={locked} aria-label={c} aria-pressed={text.color === c} className={`h-7 w-7 rounded-full border-2 ${text.color === c ? "border-jw-accent" : "border-jw-line"}`} style={{ background: c }} onClick={() => setText({ color: c }, "color")} />
+          ))}
+          <input type="color" disabled={locked} value={text.color.slice(0, 7)} onChange={(e) => setText({ color: e.target.value }, "color")} className="h-7 w-9 cursor-pointer rounded border border-jw-line bg-transparent" aria-label="لون آخر" />
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-xs">
+        <input type="checkbox" disabled={locked} checked={!!text.box} onChange={(e) => setText({ box: e.target.checked ? "#000000b3" : null }, "box")} className="accent-[var(--jw-accent)]" />
+        خلفية خلف الكلام
+      </label>
+      <div className="jw-seg" role="radiogroup" aria-label="الخط">
+        {(["readex", "naskh", "kufi"] as const).map((f) => (
+          <button key={f} type="button" role="radio" aria-checked={text.font === f} disabled={locked} onClick={() => setText({ font: f }, "font")}>
+            {f === "readex" ? "حديث" : f === "naskh" ? "نسخ" : "كوفي"}
+          </button>
+        ))}
+      </div>
+      <div className="jw-seg" role="radiogroup" aria-label="السماكة">
+        {([400, 700, 900] as const).map((w) => (
+          <button key={w} type="button" role="radio" aria-checked={text.weight === w} disabled={locked} onClick={() => setText({ weight: w }, "weight")}>
+            {w === 400 ? "عادي" : w === 700 ? "عريض" : "أعرض"}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

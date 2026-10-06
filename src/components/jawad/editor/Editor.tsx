@@ -7,7 +7,9 @@ import { clipEnd, duration, findClip, formatTime, type AssetInfo, type Timeline 
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
 import ExportPanel from "./ExportPanel";
-import Inspector from "./Inspector";
+import Handles from "./Handles";
+import Inspector, { type InspectorTab } from "./Inspector";
+import { peaksOf, waveImage } from "./peaks";
 import Library from "./Library";
 import { thumbnail } from "./media";
 import { Player } from "./player";
@@ -54,6 +56,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const [exporting, setExporting] = useState(false);
   const [purgeAt, setPurgeAt] = useState(project.purgeAt);
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
+  const [waves, setWaves] = useState<Record<string, string | null>>({});
+  const [tab, setTab] = useState<InspectorTab>("basic");
+  const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
 
   const tlRef = useRef(tl);
@@ -240,17 +245,31 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     };
   }, [assets, thumbs]);
 
+  // what the sound looks like, under the sound clips
+  useEffect(() => {
+    let live = true;
+    for (const a of assets) {
+      if (a.id in waves || a.kind !== "audio" || !a.url) continue;
+      void peaksOf(a.id, a.url).then((p) => live && setWaves((w) => ({ ...w, [a.id]: p ? waveImage(a.id, p) : null })));
+    }
+    return () => {
+      live = false;
+    };
+  }, [assets, waves]);
+
   // ---------- the preview ----------
   const canvas = useCallback((el: HTMLCanvasElement | null) => {
     if (!el) return;
     const p = new Player(el, tlRef.current);
     setPlayer(p);
+    setCanvasEl(el);
     return () => {
       p.destroy();
       setPlayer(null);
+      setCanvasEl(null);
     };
   }, []);
-  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null })), [assets]);
+  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio })), [assets]);
   useEffect(() => {
     player?.update(tl, playerAssets);
   }, [player, tl, playerAssets]);
@@ -435,8 +454,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col bg-black/40" aria-label="المعاينة">
-          <div className="flex min-h-0 flex-1 items-center justify-center p-2">
-            <canvas ref={canvas} width={tl.width} height={tl.height} className="max-h-full max-w-full rounded bg-black shadow-lg" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} onClick={() => player?.toggle()} />
+          <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
+            <canvas ref={canvas} width={tl.width} height={tl.height} className="max-h-full max-w-full rounded bg-black shadow-lg" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
+            <Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={setSelected} assets={assetMap} run={run} readOnly={readOnly} player={player} />
           </div>
           {toast && (
             <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>
@@ -451,7 +471,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} />
+            <Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} />
           </div>
         </aside>
       </div>
@@ -487,7 +507,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       </div>
 
       <div className="h-[34%] min-h-[150px] shrink-0 lg:h-[30%] lg:min-h-[200px]">
-        <Timeline tl={tl} assets={assetMap} thumbs={thumbs} selected={selected} onSelect={setSelected} run={run} player={player} compact={!wide} readOnly={readOnly} onEmpty={() => setSheet("library")} />
+        <Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={setSelected} run={run} player={player} compact={!wide} readOnly={readOnly} onEmpty={() => setSheet("library")} onTransition={(id) => {
+          setSelected([id]);
+          setTab("transition");
+          if (!wide) setSheet("inspector");
+        }} />
       </div>
 
       {/* the phone's tool bar */}

@@ -16,17 +16,34 @@ import {
   RATIOS,
   sourceTime,
   STILL_MS,
+  COLOR_PRESETS,
+  NEUTRAL_COLOR,
+  TRANSITION_MS,
+  TRANSITIONS,
+  transformAt,
   type AssetInfo,
   type Clip,
+  type ColorGrade,
   type Ratio,
   type TextStyle,
   type Timeline,
   type Track,
   type TrackKind,
   type Transform,
+  type TransitionKind,
 } from "./model";
 
-export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed">> & { transform?: Partial<Transform>; text?: Partial<TextStyle> };
+export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn" | "fadeOut" | "shape">> & {
+  transform?: Partial<Transform>;
+  text?: Partial<TextStyle>;
+  /** null = back to the original colours */
+  color?: Partial<ColorGrade> | null;
+  /** null = a plain cut */
+  transition?: { kind: TransitionKind; ms?: number } | null;
+};
+
+/** What every new clip starts with (besides its media and timing). */
+const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const };
 
 export type Command =
   | { type: "add_clip"; assetId: string; trackId?: string; at?: number }
@@ -42,7 +59,15 @@ export type Command =
   | { type: "duplicate"; clipId: string }
   | { type: "update_clip"; clipId: string; patch: ClipPatch }
   | { type: "add_track"; kind: TrackKind }
-  | { type: "update_track"; trackId: string; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name">> }
+  | { type: "update_track"; trackId: string; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name" | "duck">> }
+  /** a motion point at timeline time `at` with this look (one already there is replaced) */
+  | { type: "set_key"; clipId: string; at: number; transform: Partial<Transform> }
+  | { type: "remove_key"; clipId: string; at: number }
+  | { type: "clear_keys"; clipId: string }
+  /** beat marks the cuts snap to: `add` (merged) or `replace`; `clear` removes them all */
+  | { type: "set_markers"; markers: number[]; mode: "add" | "replace" | "clear" }
+  /** the same transition at every cut of a track */
+  | { type: "transition_all"; trackId?: string; kind: TransitionKind | null; ms?: number }
   | { type: "remove_track"; trackId: string }
   | { type: "set_ratio"; ratio: Ratio }
   | { type: "set_background"; color: string }
@@ -124,7 +149,7 @@ function insertMain(track: Track, c: Clip, at: number) {
 function newTrack(t: Timeline, kind: TrackKind): Track {
   if (t.tracks.length >= LIMITS.tracks) fail("وصلت لأكثر عدد من المسارات.");
   const n = t.tracks.filter((x) => x.kind === kind).length + 1;
-  const track: Track = { id: newId("t"), kind, name: `${TRACK_NAME[kind]} ${n}`, muted: false, hidden: false, locked: false, clips: [] };
+  const track: Track = { id: newId("t"), kind, name: `${TRACK_NAME[kind]} ${n}`, muted: false, hidden: false, locked: false, duck: false, clips: [] };
   // pictures go right above the other pictures (under the text); text and sound at the end
   if (kind === "video") {
     const last = t.tracks.map((x) => x.kind).lastIndexOf("video");
@@ -145,7 +170,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
       const kind = KIND_TRACK[a.kind];
       const len = a.kind === "image" ? STILL_MS : Math.max(LIMITS.minClipMs, a.durationMs ?? 5000);
-      const c: Clip = { id: newId("c"), assetId: a.id, start: 0, in: 0, out: len, speed: 1, volume: 1, fit: "cover", transform: { ...DEFAULT_TRANSFORM }, text: null };
+      const c: Clip = { id: newId("c"), assetId: a.id, start: 0, in: 0, out: len, speed: 1, volume: 1, fit: "cover", transform: { ...DEFAULT_TRANSFORM }, text: null, ...CLIP_DEFAULTS, keys: [] };
       let track = cmd.trackId ? editable(t, cmd.trackId) : null;
       if (track && track.kind !== kind) fail(kind === "audio" ? "الصوت يروح في مسار صوت." : "الصور والفيديو تروح في مسار صورة.");
       const main = mainTrack(t)!;
@@ -179,6 +204,8 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         volume: 1,
         fit: "contain",
         transform: { ...DEFAULT_TRANSFORM, y: 0.78 },
+        ...CLIP_DEFAULTS,
+        keys: [],
         text: { ...DEFAULT_TEXT, body: (cmd.body ?? DEFAULT_TEXT.body).slice(0, LIMITS.text) },
       };
       place(track, c);
@@ -237,8 +264,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           if (wanted && !wanted.has(c.id)) continue;
           if (at - c.start < LIMITS.minClipMs || clipEnd(c) - at < LIMITS.minClipMs) continue;
           const cut = Math.round(sourceTime(c, at));
-          const right: Clip = { ...structuredClone(c), id: newId("c"), start: at, in: cut };
+          const right: Clip = { ...structuredClone(c), id: newId("c"), start: at, in: cut, fadeIn: 0 };
+          // the cut is a plain one; what came after the clip now comes after its right part
           c.out = cut;
+          c.transition = null;
+          c.fadeOut = 0;
           next.push(right);
           made.push(right.id);
         }
@@ -292,6 +322,22 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         clip.speed = Math.min(10, Math.max(0.1, Number(p.speed) || 1));
       }
       if (p.transform) clip.transform = { ...clip.transform, ...Object.fromEntries(Object.entries(p.transform).filter(([, v]) => Number.isFinite(v))) };
+      if (p.fadeIn != null) clip.fadeIn = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeIn) || 0)));
+      if (p.fadeOut != null) clip.fadeOut = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeOut) || 0)));
+      if (p.shape) clip.shape = p.shape === "circle" ? "circle" : p.shape === "rounded" ? "rounded" : "rect";
+      if (p.color !== undefined) {
+        if (clip.text || track.kind === "audio") fail("الألوان للصور والفيديو فقط.");
+        const next = p.color === null ? null : { ...(clip.color ?? NEUTRAL_COLOR), ...p.color };
+        if (next && !(next.preset in COLOR_PRESETS)) next.preset = "none";
+        clip.color = next;
+      }
+      if (p.transition !== undefined) {
+        if (track.kind === "audio") fail("الانتقالات للصور والفيديو والنص.");
+        if (p.transition && !(p.transition.kind in TRANSITIONS)) fail("انتقال غير معروف.");
+        clip.transition = p.transition
+          ? { kind: p.transition.kind, ms: Math.round(Math.min(TRANSITION_MS.max, Math.max(TRANSITION_MS.min, Number(p.transition.ms ?? clip.transition?.ms ?? TRANSITION_MS.default)))) }
+          : null;
+      }
       if (p.text && clip.text) {
         clip.text = { ...clip.text, ...p.text };
         clip.text.body = String(clip.text.body ?? "").slice(0, LIMITS.text);
@@ -300,7 +346,73 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (magnet(t, track)) tidy(t, track);
         else place(track, clip);
       }
-      return { timeline: t, label: p.text ? "عدّلت النص" : p.volume != null ? "غيّرت مستوى الصوت" : p.speed != null ? "غيّرت السرعة" : "عدّلت مقطعًا", select: [clip.id] };
+      const label = p.text
+        ? "عدّلت النص"
+        : p.volume != null
+          ? "غيّرت مستوى الصوت"
+          : p.speed != null
+            ? "غيّرت السرعة"
+            : p.color !== undefined
+              ? "غيّرت الألوان"
+              : p.transition !== undefined
+                ? p.transition
+                  ? `انتقال ${TRANSITIONS[p.transition.kind].label}`
+                  : "شلت الانتقال"
+                : p.fadeIn != null || p.fadeOut != null
+                  ? "تلاشي الصوت"
+                  : "عدّلت مقطعًا";
+      return { timeline: t, label, select: [clip.id] };
+    }
+
+    case "set_key": {
+      const { clip } = owned(t, cmd.clipId);
+      if (clip.keys.length >= LIMITS.keys) fail("وصلت لأكثر عدد من نقاط الحركة لهذا المقطع.");
+      const at = Math.min(clipEnd(clip), Math.max(clip.start, cmd.at));
+      const st = Math.round(sourceTime(clip, at));
+      // the first point keeps how the clip looked until now
+      const base = transformAt(clip, at);
+      const clean = Object.fromEntries(Object.entries(cmd.transform ?? {}).filter(([, v]) => Number.isFinite(v)));
+      const m = { ...base, ...clean };
+      const key = { t: st, x: m.x, y: m.y, scale: m.scale, rotate: m.rotate, opacity: m.opacity };
+      clip.keys = [...clip.keys.filter((k) => Math.abs(k.t - st) > 15), key].sort((a, b) => a.t - b.t);
+      clip.transform = { x: key.x, y: key.y, scale: key.scale, rotate: key.rotate, opacity: key.opacity };
+      return { timeline: t, label: "نقطة حركة", select: [clip.id] };
+    }
+
+    case "remove_key": {
+      const { clip } = owned(t, cmd.clipId);
+      const st = sourceTime(clip, cmd.at);
+      const before = clip.keys.length;
+      clip.keys = clip.keys.filter((k) => Math.abs(k.t - st) > 40);
+      if (clip.keys.length === before) fail("ما فيه نقطة حركة عند المؤشر.");
+      return { timeline: t, label: "شلت نقطة حركة", select: [clip.id] };
+    }
+
+    case "clear_keys": {
+      const { clip } = owned(t, cmd.clipId);
+      clip.keys = [];
+      return { timeline: t, label: "شلت الحركة", select: [clip.id] };
+    }
+
+    case "set_markers": {
+      const clean = (cmd.markers ?? []).map((m) => Math.round(Number(m))).filter((m) => Number.isFinite(m) && m >= 0 && m <= LIMITS.maxMs);
+      const all = cmd.mode === "clear" ? [] : cmd.mode === "replace" ? clean : [...t.markers, ...clean];
+      t.markers = [...new Set(all)].sort((a, b) => a - b).slice(0, LIMITS.markers);
+      return { timeline: t, label: cmd.mode === "clear" ? "شلت علامات الإيقاع" : `علامات الإيقاع (${t.markers.length})` };
+    }
+
+    case "transition_all": {
+      const track = cmd.trackId ? editable(t, cmd.trackId) : (mainTrack(t) ?? fail("ما فيه مسار رئيسي."));
+      if (cmd.kind && !(cmd.kind in TRANSITIONS)) fail("انتقال غير معروف.");
+      let n = 0;
+      for (let i = 0; i + 1 < track.clips.length; i++) {
+        const a = track.clips[i];
+        if (track.clips[i + 1].start !== clipEnd(a)) continue;
+        a.transition = cmd.kind ? { kind: cmd.kind, ms: Math.round(Math.min(TRANSITION_MS.max, Math.max(TRANSITION_MS.min, cmd.ms ?? TRANSITION_MS.default))) } : null;
+        n++;
+      }
+      if (!n) fail("ما فيه مقاطع متلاصقة في هذا المسار.");
+      return { timeline: t, label: cmd.kind ? `انتقال ${TRANSITIONS[cmd.kind].label} لكل القصات` : "شلت كل الانتقالات" };
     }
 
     case "add_track": {
@@ -315,7 +427,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (p.hidden != null) track.hidden = !!p.hidden;
       if (p.locked != null) track.locked = !!p.locked;
       if (p.name != null) track.name = String(p.name).slice(0, 40);
-      const label = p.locked != null ? (track.locked ? "قفلت مسارًا" : "فتحت مسارًا") : p.muted != null ? (track.muted ? "كتمت مسارًا" : "شغّلت صوت مسار") : p.hidden != null ? (track.hidden ? "أخفيت مسارًا" : "أظهرت مسارًا") : "سمّيت مسارًا";
+      if (p.duck != null) {
+        if (track.kind !== "audio") fail("الخفض التلقائي لمسارات الصوت.");
+        track.duck = !!p.duck;
+      }
+      const label = p.duck != null ? (track.duck ? "خفض تلقائي وقت الكلام" : "أطفأت الخفض التلقائي") : p.locked != null ? (track.locked ? "قفلت مسارًا" : "فتحت مسارًا") : p.muted != null ? (track.muted ? "كتمت مسارًا" : "شغّلت صوت مسار") : p.hidden != null ? (track.hidden ? "أخفيت مسارًا" : "أظهرت مسارًا") : "سمّيت مسارًا";
       return { timeline: t, label };
     }
 

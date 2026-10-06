@@ -19,8 +19,9 @@ import {
   UrlSource,
   type WrappedCanvas,
 } from "mediabunny";
-import { clipEnd, duration, sourceTime, type Clip, type Timeline } from "@/lib/editor/model";
-import { drawFrame, exportSize, type Frame } from "./render";
+import { clipEnd, duration, gainAt, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
+import { drawFrame, exportSize, layersAt, type Frame } from "./render";
+import { stretch } from "./stretch";
 
 export interface ExportAsset {
   id: string;
@@ -70,9 +71,9 @@ export async function exportVideo(
   if (!videoCodec) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بدقة ${quality}p. جرّب Chrome أو Edge على الكمبيوتر، أو دقة أقل.`);
 
   // sound: clips we can hear
-  const audible = tl.tracks.flatMap((track) =>
-    track.muted ? [] : track.clips.filter((c) => !c.text && c.volume > 0 && c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio),
-  );
+  const hasSound = (c: Clip) => !c.text && !!c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio;
+  const audible: { track: Track; c: Clip }[] = tl.tracks.flatMap((track) => (track.muted ? [] : track.clips.filter((c) => c.volume > 0 && hasSound(c)).map((c) => ({ track, c }))));
+  const spans = voiceSpans(tl, hasSound);
   const audioCodec = audible.length && "AudioEncoder" in window ? await getFirstEncodableAudioCodec(["aac", "opus"], { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality: QUALITY_HIGH }) : null;
 
   const canvas = document.createElement("canvas");
@@ -98,11 +99,18 @@ export async function exportVideo(
   const images = new Map<string, ImageBitmap>();
   const visual = tl.tracks.filter((t) => t.kind !== "audio" && !t.hidden).flatMap((t) => t.clips.filter((c) => !c.text && c.assetId));
 
-  // each video clip: its frames in order, one per output frame it covers
-  const streams = new Map<string, { it: AsyncGenerator<WrappedCanvas | null>; last: Frame | null }>();
-  async function streamOf(c: Clip, a: ExportAsset) {
-    let s = streams.get(c.id);
-    if (s) return s;
+  // each video clip: its frames in order, one per output frame it covers (decoded once, front to back)
+  interface Stream {
+    it: AsyncGenerator<WrappedCanvas | null>;
+    idx: number;
+    first: number;
+    last: number;
+    cur: Frame | null;
+  }
+  const streams = new Map<string, Stream>();
+  async function streamOf(c: Clip, a: ExportAsset): Promise<Stream> {
+    const had = streams.get(c.id);
+    if (had) return had;
     const track = await input(a).getPrimaryVideoTrack();
     if (!track) throw new ExportError("أحد مقاطع الفيديو ما فيه صورة يقدر المتصفح يقرأها.");
     if (!(await track.canDecode())) throw new ExportError("متصفحك ما يقدر يقرأ ترميز أحد مقاطع الفيديو. جرّب Chrome على الكمبيوتر.");
@@ -111,9 +119,25 @@ export async function exportVideo(
     const times = function* () {
       for (let f = first; f <= last; f++) yield Math.max(0, sourceTime(c, (f * 1000) / fps) / 1000);
     };
-    s = { it: new CanvasSink(track, { poolSize: 3 }).canvasesAtTimestamps(times()), last: null };
+    const s: Stream = { it: new CanvasSink(track, { poolSize: 3 }).canvasesAtTimestamps(times()), idx: first - 1, first, last, cur: null };
     streams.set(c.id, s);
     return s;
+  }
+  /** The clip's frame at its moment `ms` (a transition asks for its first frame early and its last one late). */
+  async function frameAt(c: Clip, a: ExportAsset, ms: number) {
+    const s = await streamOf(c, a);
+    const f = Math.min(s.last, Math.max(s.first, Math.ceil((ms * fps) / 1000 - 1e-6)));
+    while (s.idx < f) {
+      const n = await s.it.next();
+      s.idx++;
+      if (n.done) {
+        s.idx = s.last;
+        break;
+      }
+      // past the end of its file the clip holds its last frame
+      if (n.value) s.cur = { img: n.value.canvas as CanvasImageSource, width: n.value.canvas.width, height: n.value.canvas.height };
+    }
+    return s.cur;
   }
 
   const frames = Math.ceil((total * fps) / 1000);
@@ -139,19 +163,13 @@ export async function exportVideo(
         if (signal.aborted) throw new DOMException("cancelled", "AbortError");
         const ms = (frame * 1000) / fps;
         const now = new Map<string, Frame | null>();
-        for (const c of visual) {
-          if (ms < c.start || ms >= clipEnd(c)) continue;
-          const a = byId.get(c.assetId!)!;
+        for (const l of layersAt(tl, ms)) {
+          if (!("clip" in l) || l.clip.text || !l.clip.assetId) continue;
+          const a = byId.get(l.clip.assetId)!;
           if (a.kind === "image") {
             const b = images.get(a.id)!;
-            now.set(c.id, { img: b, width: b.width, height: b.height });
-            continue;
-          }
-          const s = await streamOf(c, a);
-          const n = await s.it.next();
-          // past the end of its file the clip holds its last frame
-          if (!n.done && n.value) s.last = { img: n.value.canvas as CanvasImageSource, width: n.value.canvas.width, height: n.value.canvas.height };
-          now.set(c.id, s.last);
+            now.set(l.clip.id, { img: b, width: b.width, height: b.height });
+          } else now.set(l.clip.id, await frameAt(l.clip, a, l.ms));
         }
         // drawFrame draws in the timeline's units; one scale maps them to the output size
         ctx.setTransform(width / tl.width, 0, 0, height / tl.height, 0, 0);
@@ -174,11 +192,14 @@ export async function exportVideo(
   onProgress(1);
   return { blob: new Blob([buf], { type: "video/mp4" }), width, height, codec: videoCodec, audio: audioCodec, lostSound: audible.length > 0 && !audioCodec };
 
-  /** The mixed sound of [from, to) ms: every audible clip's decoded sound placed at its moment, at its volume. */
+  /**
+   * The mixed sound of [from, to) ms: every audible clip's decoded sound placed at its moment, its loudness following
+   * the volume, the fades and the ducking; a faster or slower clip is stretched without changing its pitch.
+   */
   async function mixChunk(from: number, to: number) {
     const len = Math.max(1, Math.round(((to - from) / 1000) * SAMPLE_RATE));
     const mix = new OfflineAudioContext(2, len, SAMPLE_RATE);
-    for (const c of audible) {
+    for (const { track: tr, c } of audible) {
       const s = Math.max(from, c.start);
       const e = Math.min(to, clipEnd(c));
       if (e <= s) continue;
@@ -186,10 +207,16 @@ export async function exportVideo(
       const track = await input(a).getPrimaryAudioTrack();
       if (!track || !(await track.canDecode())) continue;
       const gain = mix.createGain();
-      gain.gain.value = c.volume;
       gain.connect(mix.destination);
+      // loudness every 20 ms across this piece (fades and ducking are smooth ramps)
+      gain.gain.setValueAtTime(gainAt(tr, c, s, spans), (s - from) / 1000);
+      for (let t = s + 20; t <= e; t += 20) gain.gain.linearRampToValueAtTime(gainAt(tr, c, Math.min(t, e - 1), spans), (t - from) / 1000);
       const src0 = sourceTime(c, s) / 1000;
       const src1 = sourceTime(c, e) / 1000;
+      if (c.speed !== 1) {
+        await stretched(mix, gain, track, c, s, e, from, src0, src1);
+        continue;
+      }
       for await (const wb of new AudioBufferSink(track).buffers(src0, src1)) {
         const node = mix.createBufferSource();
         node.buffer = wb.buffer;
@@ -203,6 +230,36 @@ export async function exportVideo(
       }
     }
     return mix.startRendering();
+  }
+
+  async function stretched(mix: OfflineAudioContext, gain: GainNode, track: NonNullable<Awaited<ReturnType<Input["getPrimaryAudioTrack"]>>>, c: Clip, s: number, e: number, from: number, src0: number, src1: number) {
+    const parts: AudioBuffer[] = [];
+    let t0 = -1;
+    for await (const wb of new AudioBufferSink(track).buffers(Math.max(0, src0 - 0.05), src1 + 0.1)) {
+      if (t0 < 0) t0 = wb.timestamp;
+      parts.push(wb.buffer);
+    }
+    if (!parts.length) return;
+    const sr = parts[0].sampleRate;
+    const chs = Math.min(2, parts[0].numberOfChannels);
+    const total = parts.reduce((n, b) => n + b.length, 0);
+    const input = Array.from({ length: chs }, (_, ch) => {
+      const arr = new Float32Array(total);
+      let o = 0;
+      for (const b of parts) {
+        arr.set(b.getChannelData(Math.min(ch, b.numberOfChannels - 1)), o);
+        o += b.length;
+      }
+      return arr;
+    });
+    const outLen = Math.max(1, Math.round(((e - s) / 1000) * sr));
+    const out = stretch(input, Math.max(0, Math.round((src0 - t0) * sr)), c.speed, outLen);
+    const buf = mix.createBuffer(chs, outLen, sr);
+    out.forEach((d, ch) => buf.copyToChannel(d as Float32Array<ArrayBuffer>, ch));
+    const node = mix.createBufferSource();
+    node.buffer = buf;
+    node.connect(gain);
+    node.start((s - from) / 1000);
   }
 }
 

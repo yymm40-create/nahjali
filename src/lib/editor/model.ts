@@ -33,6 +33,60 @@ export interface TextStyle {
   font: "readex" | "naskh" | "kufi";
 }
 
+/** A colour look (CapCut's «فلاتر» + «ضبط»): 1 = unchanged for the three factors, warmth −1 (cool) … 1 (warm). */
+export interface ColorGrade {
+  preset: ColorPreset;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  warmth: number;
+}
+export const COLOR_PRESETS = {
+  none: { label: "بدون", filter: "" },
+  vivid: { label: "زاهي", filter: "saturate(1.35) contrast(1.08)" },
+  warm: { label: "دافئ", filter: "sepia(0.25) saturate(1.15) hue-rotate(-8deg)" },
+  cool: { label: "بارد", filter: "saturate(0.95) hue-rotate(12deg) brightness(1.02)" },
+  bw: { label: "أبيض وأسود", filter: "grayscale(1) contrast(1.1)" },
+  vintage: { label: "قديم", filter: "sepia(0.45) contrast(0.9) brightness(1.05) saturate(0.85)" },
+  cinema: { label: "سينمائي", filter: "contrast(1.18) saturate(0.82) brightness(0.95)" },
+  fade: { label: "باهت", filter: "contrast(0.82) brightness(1.08) saturate(0.8)" },
+} as const;
+export type ColorPreset = keyof typeof COLOR_PRESETS;
+export const NEUTRAL_COLOR: ColorGrade = { preset: "none", brightness: 1, contrast: 1, saturation: 1, warmth: 0 };
+
+/** The canvas filter for a colour look ("" when it changes nothing). */
+export function colorFilter(g: ColorGrade | null) {
+  if (!g) return "";
+  const parts: string[] = [COLOR_PRESETS[g.preset]?.filter ?? ""];
+  if (g.brightness !== 1) parts.push(`brightness(${g.brightness})`);
+  if (g.contrast !== 1) parts.push(`contrast(${g.contrast})`);
+  if (g.saturation !== 1) parts.push(`saturate(${g.saturation})`);
+  if (g.warmth > 0) parts.push(`sepia(${(g.warmth * 0.35).toFixed(3)})`);
+  if (g.warmth < 0) parts.push(`hue-rotate(${(-g.warmth * 18).toFixed(1)}deg)`);
+  return parts.filter(Boolean).join(" ");
+}
+
+/** How one picture gives way to the next on the same track (it happens around the cut; the length doesn't change). */
+export const TRANSITIONS = {
+  fade: { label: "تلاشي", icon: "◐" },
+  black: { label: "عبر الأسود", icon: "●" },
+  white: { label: "وميض أبيض", icon: "○" },
+  slide: { label: "انزلاق", icon: "⇠" },
+  zoom: { label: "تكبير", icon: "⤢" },
+  wipe: { label: "مسح", icon: "▧" },
+} as const;
+export type TransitionKind = keyof typeof TRANSITIONS;
+export interface Transition {
+  kind: TransitionKind;
+  ms: number;
+}
+export const TRANSITION_MS = { min: 200, max: 2000, default: 600 } as const;
+
+/** A moment of a moving clip («نقطة حركة»): where it is at source time `t` (ms); between two points it glides. */
+export interface Key extends Transform {
+  t: number;
+}
+
 export interface Clip {
   id: string;
   /** the media file (null for a text clip) */
@@ -48,6 +102,16 @@ export interface Clip {
   fit: "cover" | "contain";
   transform: Transform;
   text: TextStyle | null;
+  /** motion: when there are points, they decide the transform */
+  keys: Key[];
+  color: ColorGrade | null;
+  /** into the next clip on the same track, when it starts right where this one ends */
+  transition: Transition | null;
+  /** sound fading in at the start and out at the end (ms) */
+  fadeIn: number;
+  fadeOut: number;
+  /** the picture's outline: picture-in-picture looks better rounded or round */
+  shape: "rect" | "rounded" | "circle";
 }
 
 export interface Track {
@@ -57,6 +121,8 @@ export interface Track {
   muted: boolean;
   hidden: boolean;
   locked: boolean;
+  /** sound track that gets quieter by itself while someone speaks (music under a voice: «خفض تلقائي») */
+  duck: boolean;
   /** clips never overlap and are kept sorted by `start` */
   clips: Clip[];
 }
@@ -69,6 +135,8 @@ export interface Timeline {
   background: string;
   /** the main track closes its gaps by itself (CapCut's «المغناطيس»); off = clips stay where they are put */
   magnetic: boolean;
+  /** beat marks (timeline ms) the cuts snap to */
+  markers: number[];
   tracks: Track[];
 }
 
@@ -104,7 +172,7 @@ export type ProjectKind = keyof typeof PROJECT_KINDS;
 export const isProjectKind = (s: unknown): s is ProjectKind => typeof s === "string" && s in PROJECT_KINDS;
 
 /** Limits that keep a document sane (not product limits: a project has no maximum length). */
-export const LIMITS = { tracks: 40, clips: 3000, text: 500, minClipMs: 100, maxMs: 24 * 3600_000 } as const;
+export const LIMITS = { tracks: 40, clips: 3000, text: 500, minClipMs: 100, maxMs: 24 * 3600_000, keys: 200, markers: 5000 } as const;
 
 export const DEFAULT_TRANSFORM: Transform = { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 };
 export const DEFAULT_TEXT: TextStyle = { body: "اكتب هنا", size: 0.06, color: "#ffffff", box: null, weight: 700, align: "center", font: "readex" };
@@ -122,9 +190,10 @@ export function emptyTimeline(ratio: Ratio = "9:16"): Timeline {
     fps: 30,
     background: "#000000",
     magnetic: true,
+    markers: [],
     tracks: [
-      { id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, clips: [] },
-      { id: newId("t"), kind: "audio", name: "صوت", muted: false, hidden: false, locked: false, clips: [] },
+      { id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] },
+      { id: newId("t"), kind: "audio", name: "صوت", muted: false, hidden: false, locked: false, duck: false, clips: [] },
     ],
   };
 }
@@ -147,6 +216,82 @@ export function clipsAt(t: Timeline, ms: number) {
   }
   return out;
 }
+
+/** A clip's place and look at timeline time `ms` (its motion points, eased; outside them it holds the nearest). */
+export function transformAt(c: Clip, ms: number): Transform {
+  if (!c.keys.length) return c.transform;
+  const s = sourceTime(c, ms);
+  const k = c.keys;
+  if (s <= k[0].t) return k[0];
+  const last = k[k.length - 1];
+  if (s >= last.t) return last;
+  const i = k.findIndex((x) => x.t > s);
+  const a = k[i - 1];
+  const b = k[i];
+  const r = (s - a.t) / (b.t - a.t || 1);
+  const e = r * r * (3 - 2 * r);
+  const mix = (x: number, y: number) => x + (y - x) * e;
+  return { x: mix(a.x, b.x), y: mix(a.y, b.y), scale: mix(a.scale, b.scale), rotate: mix(a.rotate, b.rotate), opacity: mix(a.opacity, b.opacity) };
+}
+
+/**
+ * A transition happening on `track` at `ms`: the outgoing clip `a`, the incoming `b` and how far along it is (0–1).
+ * It runs over the cut, half before and half after, so nothing moves on the timeline.
+ */
+export function transitionAt(track: Track, ms: number) {
+  const cs = track.clips;
+  for (let i = 0; i + 1 < cs.length; i++) {
+    const a = cs[i];
+    const b = cs[i + 1];
+    if (!a.transition || b.start !== clipEnd(a)) continue;
+    const d = Math.min(a.transition.ms, clipLength(a), clipLength(b));
+    const from = b.start - d / 2;
+    if (ms >= from && ms < from + d) return { a, b, p: (ms - from) / d, kind: a.transition.kind, from, to: from + d };
+    if (b.start > ms + d) break;
+  }
+  return null;
+}
+
+/** Sound fading in and out at a clip's edges: 0–1. */
+export function fadeAt(c: Clip, ms: number) {
+  let f = 1;
+  if (c.fadeIn > 0) f = Math.min(f, (ms - c.start) / c.fadeIn);
+  if (c.fadeOut > 0) f = Math.min(f, (clipEnd(c) - ms) / c.fadeOut);
+  return Math.max(0, Math.min(1, f));
+}
+
+export const DUCK = { level: 0.25, rampMs: 300 } as const;
+
+/** Where someone (or something) is heard on the tracks that don't duck: merged [start, end) spans. */
+export function voiceSpans(t: Timeline, hasSound: (c: Clip) => boolean) {
+  const spans: [number, number][] = [];
+  for (const track of t.tracks) {
+    if (track.muted || track.duck || track.kind === "text") continue;
+    for (const c of track.clips) if (c.volume > 0 && hasSound(c)) spans.push([c.start, clipEnd(c)]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const out: [number, number][] = [];
+  for (const s of spans) {
+    const last = out[out.length - 1];
+    if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+    else out.push([s[0], s[1]]);
+  }
+  return out;
+}
+
+/** A ducking track's level at `ms`: lowered inside the voice, gliding back up over DUCK.rampMs around it. */
+export function duckAt(spans: [number, number][], ms: number) {
+  let dist = Infinity;
+  for (const [a, b] of spans) {
+    if (ms >= a && ms < b) return DUCK.level;
+    dist = Math.min(dist, Math.abs(ms - a), Math.abs(ms - b));
+    if (a > ms + DUCK.rampMs) break;
+  }
+  return DUCK.level + (1 - DUCK.level) * Math.min(1, dist / DUCK.rampMs);
+}
+
+/** A clip's loudness at `ms` (volume × fades × ducking). */
+export const gainAt = (track: Track, c: Clip, ms: number, spans: [number, number][]) => c.volume * fadeAt(c, ms) * (track.duck ? duckAt(spans, ms) : 1);
 
 export function findClip(t: Timeline, clipId: string) {
   for (const track of t.tracks) {
@@ -194,6 +339,28 @@ function readText(v: unknown): TextStyle | null {
   };
 }
 
+function readTransform(tr: Record<string, unknown>): Transform {
+  return {
+    x: num(tr.x, -2, 3, 0.5),
+    y: num(tr.y, -2, 3, 0.5),
+    scale: num(tr.scale, 0.05, 10, 1),
+    rotate: num(tr.rotate, -360, 360, 0),
+    opacity: num(tr.opacity, 0, 1, 1),
+  };
+}
+
+function readColor(v: unknown): ColorGrade | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  return {
+    preset: pick(o.preset, Object.keys(COLOR_PRESETS) as ColorPreset[], "none"),
+    brightness: num(o.brightness, 0.2, 2, 1),
+    contrast: num(o.contrast, 0.2, 2, 1),
+    saturation: num(o.saturation, 0, 3, 1),
+    warmth: num(o.warmth, -1, 1, 0),
+  };
+}
+
 function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -212,14 +379,24 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     speed: num(o.speed, 0.1, 10, 1),
     volume: num(o.volume, 0, 2, 1),
     fit: pick(o.fit, ["cover", "contain"] as const, "cover"),
-    transform: {
-      x: num(tr.x, -2, 3, 0.5),
-      y: num(tr.y, -2, 3, 0.5),
-      scale: num(tr.scale, 0.05, 10, 1),
-      rotate: num(tr.rotate, -360, 360, 0),
-      opacity: num(tr.opacity, 0, 1, 1),
-    },
+    transform: readTransform(tr),
     text,
+    keys: (Array.isArray(o.keys) ? o.keys.slice(0, LIMITS.keys) : [])
+      .filter((k): k is Record<string, unknown> => !!k && typeof k === "object")
+      .map((k) => ({ t: int(k.t, 0, LIMITS.maxMs, 0), ...readTransform(k) }))
+      .sort((a, b) => a.t - b.t)
+      .filter((k, i, all) => i === 0 || k.t !== all[i - 1].t),
+    color: kind === "audio" ? null : readColor(o.color),
+    transition:
+      kind !== "audio" && o.transition && typeof o.transition === "object"
+        ? {
+            kind: pick((o.transition as Record<string, unknown>).kind, Object.keys(TRANSITIONS) as TransitionKind[], "fade"),
+            ms: int((o.transition as Record<string, unknown>).ms, TRANSITION_MS.min, TRANSITION_MS.max, TRANSITION_MS.default),
+          }
+        : null,
+    fadeIn: int(o.fadeIn, 0, 60_000, 0),
+    fadeOut: int(o.fadeOut, 0, 60_000, 0),
+    shape: pick(o.shape, ["rect", "rounded", "circle"] as const, "rect"),
   };
 }
 
@@ -250,15 +427,20 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null): T
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, clips: settle(list) });
   }
-  if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, clips: [] });
+  if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);
   const height = int(o.height, 144, 4096, 1920);
-  const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic: o.magnetic !== false, tracks };
+  const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic: o.magnetic !== false, markers: readMarkers(o.markers), tracks };
   const main = mainTrack(out);
   if (main && out.magnetic) main.clips = pack(main.clips);
   return out;
+}
+
+function readMarkers(v: unknown) {
+  const list = (Array.isArray(v) ? v.slice(0, LIMITS.markers) : []).map((m) => Math.round(Number(m))).filter((m) => Number.isFinite(m) && m >= 0 && m <= LIMITS.maxMs);
+  return [...new Set(list)].sort((a, b) => a - b);
 }
 
 /** Sorted, and any clip that would overlap the one before it moved just after it. */
