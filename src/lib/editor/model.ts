@@ -113,6 +113,35 @@ export interface Backdrop {
 }
 export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40 };
 
+/** A sound effect on a clip (Web Audio nodes, the same in the preview and the export). */
+export const SOUND_EFFECTS = {
+  echo: { label: "صدى", icon: "🔁" },
+  reverb: { label: "قاعة", icon: "🏛️" },
+  stadium: { label: "ملعب", icon: "🏟️" },
+  cave: { label: "كهف", icon: "🕳️" },
+  radio: { label: "راديو", icon: "📻" },
+  phone: { label: "تلفون", icon: "📞" },
+  megaphone: { label: "مكبّر", icon: "📢" },
+  underwater: { label: "تحت الماء", icon: "🌊" },
+  robot: { label: "روبوت", icon: "🤖" },
+} as const;
+export type SoundEffect = keyof typeof SOUND_EFFECTS;
+
+/** A clip's sound work: noise taken out, the voice polished, an effect, the voice's pitch. */
+export interface SoundFx {
+  /** noise reduction 0–1 (0 = off) */
+  clean: number;
+  /** voice enhancer: rumble cut, less mud, more presence, evened out */
+  enhance: boolean;
+  effect: SoundEffect | null;
+  /** how much of the effect is heard 0–1 */
+  mix: number;
+  /** semitones −12…12, the length unchanged (− deeper, + thinner) */
+  pitch: number;
+}
+export const NO_SOUND_FX: SoundFx = { clean: 0, enhance: false, effect: null, mix: 0.5, pitch: 0 };
+export const hasSoundFx = (c: { sound: SoundFx | null }) => !!c.sound && (c.sound.clean > 0 || c.sound.enhance || !!c.sound.effect || c.sound.pitch !== 0);
+
 /** A moment of a moving clip («نقطة حركة»): where it is at source time `t` (ms); between two points it glides. */
 export interface Key extends Transform {
   t: number;
@@ -147,6 +176,8 @@ export interface Clip {
   words: Word[];
   /** pictures only: the person cut out from their background */
   bg: Backdrop | null;
+  /** media with sound: noise reduction, voice enhancer, effect, pitch (null = as recorded) */
+  sound: SoundFx | null;
   /**
    * text only: this caption keeps its own look («منفصل»). The track's group changes skip it; when it joins again it
    * keeps what it has and later group changes reach it field by field.
@@ -413,6 +444,19 @@ function readColor(v: unknown): ColorGrade | null {
   };
 }
 
+export function readSound(v: unknown): SoundFx | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const fx: SoundFx = {
+    clean: num(o.clean, 0, 1, 0),
+    enhance: o.enhance === true,
+    effect: typeof o.effect === "string" && o.effect in SOUND_EFFECTS ? (o.effect as SoundEffect) : null,
+    mix: num(o.mix, 0, 1, NO_SOUND_FX.mix),
+    pitch: Math.round(num(o.pitch, -12, 12, 0)),
+  };
+  return hasSoundFx({ sound: fx }) ? fx : null;
+}
+
 function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -460,6 +504,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
           })
           .filter((w) => w.w),
     own: kind === "text" && o.own === true,
+    sound: kind === "text" ? null : readSound(o.sound),
     bg:
       kind === "video" && o.bg && typeof o.bg === "object"
         ? {

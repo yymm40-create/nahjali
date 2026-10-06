@@ -32,6 +32,9 @@ import {
   type Transform,
   type TransitionKind,
   type Backdrop,
+  type SoundFx,
+  NO_SOUND_FX,
+  readSound,
   DEFAULT_BACKDROP,
   type Word,
   type CaptionStyle,
@@ -47,10 +50,12 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   transition?: { kind: TransitionKind; ms?: number } | null;
   /** null = the whole picture as filmed */
   bg?: Partial<Backdrop> | null;
+  /** null = the sound as recorded */
+  sound?: Partial<SoundFx> | null;
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false };
+const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -358,6 +363,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (p.fadeIn != null) clip.fadeIn = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeIn) || 0)));
       if (p.fadeOut != null) clip.fadeOut = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeOut) || 0)));
       if (p.shape) clip.shape = p.shape === "circle" ? "circle" : p.shape === "rounded" ? "rounded" : "rect";
+      if (p.sound !== undefined) {
+        const a = clip.assetId ? assets.get(clip.assetId) : null;
+        if (!a || a.kind === "image" || a.hasAudio === false) fail("تحسين الصوت والمؤثرات للمقاطع اللي فيها صوت.");
+        clip.sound = p.sound === null ? null : readSound({ ...(clip.sound ?? NO_SOUND_FX), ...p.sound });
+      }
       if (p.own != null) {
         if (!clip.text) fail("الفصل للكابشن والنصوص فقط.");
         clip.own = !!p.own;
@@ -558,6 +568,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const dest = t.tracks.find((x) => x.kind === "audio" && !x.locked && free(x, clip.start, end)) ?? newTrack(t, "audio");
       dest.clips = [...dest.clips, sound].sort((x, y) => x.start - y.start);
       clip.volume = 0;
+      clip.sound = null;
       clip.fadeIn = 0;
       clip.fadeOut = 0;
       return { timeline: t, label: "طلّعت الصوت من الفيديو", select: [sound.id] };

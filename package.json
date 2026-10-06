@@ -13,6 +13,7 @@
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.61.3",
     "@mediapipe/tasks-vision": "^1.0.1",
+    "@shiguredo/rnnoise-wasm": "^2025.1.5",
     "@sparticuz/chromium": "^153.0.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",

@@ -4,10 +4,11 @@
 // (hardware decoding, cheap on phones) that follow that clock, drawn on one canvas with the same drawFrame the export
 // uses. Only clips near the playhead hold an element, so long projects stay light.
 
-import { clipEnd, duration, gainAt, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
+import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
 import { drawFrame, layersAt, type Frame } from "./render";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
+import { clipSound, soundKey } from "./voice";
 
 export interface PlayerAsset {
   id: string;
@@ -50,7 +51,9 @@ export class Player {
   private ac: AudioContext | null = null;
   private anchor = { ctx: 0, ms: 0 };
   private sounds = new Map<string, AudioBuffer | "loading" | "failed">();
-  private nodes = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
+  private nodes = new Map<string, { src: AudioBufferSourceNode; gain: GainNode; key: string }>();
+  /** clips' worked sound (noise reduction, effects): ready, being made, or not possible */
+  private worked = new Map<string, AudioBuffer | "loading" | "failed">();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -178,6 +181,39 @@ export class Player {
     return null;
   }
 
+  /**
+   * The clip's worked sound once it is ready (made the first time it is asked for); until then the plain sound
+   * plays, and it switches over as soon as it is ready.
+   */
+  private workedOf(c: Clip, a: PlayerAsset) {
+    const key = soundKey(a.url!, c);
+    const had = this.worked.get(key);
+    if (had instanceof AudioBuffer) return { buf: had, key };
+    if (!had) {
+      this.worked.set(key, "loading");
+      clipSound(a.url!, c).then(
+        (b) => {
+          this.worked.set(key, b);
+          if (this.worked.size > 12) this.worked.delete(this.worked.keys().next().value!);
+          // playing the plain sound of this clip now: swap it
+          const n = this.nodes.get(c.id);
+          if (n && this.playing) {
+            try {
+              n.src.onended = null;
+              n.src.stop();
+            } catch {
+              /* ended */
+            }
+            this.nodes.delete(c.id);
+            this.schedule();
+          }
+        },
+        () => this.worked.set(key, "failed"),
+      );
+    }
+    return null;
+  }
+
   /** Does this clip's sound come from Web Audio (else from its element)? */
   private webSound(clip: Clip, a: PlayerAsset) {
     if (!this.ac || !a.hasAudio || a.kind === "image") return false;
@@ -200,7 +236,8 @@ export class Player {
         if (end <= ms || c.start > ms + SCHEDULE_MS) continue;
         const a = this.assets.get(c.assetId);
         if (!a?.url || !this.webSound(c, a)) continue;
-        const buf = this.soundOf(a);
+        const worked = hasSoundFx(c) ? this.workedOf(c, a) : null;
+        const buf = worked?.buf ?? this.soundOf(a);
         if (!buf) continue;
         // from where the clip is now (or its start, if it is still to come)
         let from = Math.max(ms, c.start);
@@ -220,7 +257,8 @@ export class Player {
           for (let t = from + 50; t < end; t += 50) gain.gain.linearRampToValueAtTime(gainAt(track, c, t, this.spans), when + (t - from) / 1000);
         } else gain.gain.value = c.volume;
         // Safari refuses a start past the sound's end or a zero length (Chrome lets them pass): those clips stay quiet
-        const offset = Math.max(0, sourceTime(c, from) / 1000);
+        // (a worked sound starts at the clip's own beginning)
+        const offset = Math.max(0, (sourceTime(c, from) - (worked ? c.in : 0)) / 1000);
         const length = ((end - from) / 1000) * c.speed;
         if (!(offset < buf.duration && length > 0.001)) {
           src.disconnect();
@@ -236,7 +274,7 @@ export class Player {
         src.onended = () => {
           if (this.nodes.get(c.id)?.src === src) this.nodes.delete(c.id);
         };
-        this.nodes.set(c.id, { src, gain });
+        this.nodes.set(c.id, { src, gain, key: worked?.key ?? "" });
       }
     }
   }

@@ -8,7 +8,10 @@ import {
   COLOR_PRESETS,
   findClip,
   formatTime,
+  hasSoundFx,
   NEUTRAL_COLOR,
+  NO_SOUND_FX,
+  SOUND_EFFECTS,
   RATIOS,
   ratioOf,
   sourceTime,
@@ -16,7 +19,11 @@ import {
   TRANSITIONS,
   transformAt,
   type CaptionStyle,
+  type Clip,
   type ColorPreset,
+  type SoundEffect,
+  type SoundFx,
+  type Track,
   type Ratio,
   type TextStyle,
   type Timeline,
@@ -26,6 +33,7 @@ import {
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
 import { soundFile } from "./audio";
+import { clipSound } from "./voice";
 import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
@@ -457,6 +465,7 @@ export default function Inspector({
               </span>
             </label>
           )}
+          <SoundWork clip={clip} track={track} url={a?.url ?? null} locked={locked} run={run} />
           {a?.kind === "audio" && (
             <button type="button" className="jw-btn w-full text-xs" disabled={locked || beatBusy} onClick={beats}>
               {beatBusy ? <span className="jw-spinner" /> : "🥁"} اكشف الإيقاع (علامات يلتصق عليها القص)
@@ -500,6 +509,88 @@ function TextControls({ text, locked, setText }: { text: TextStyle; locked: bool
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** «تحسين الصوت»: noise reduction, the voice enhancer, an effect and the voice's pitch (made on this device). */
+function SoundWork({ clip, track, url, locked, run }: { clip: Clip; track: Track; url: string | null; locked: boolean; run: Run }) {
+  const fx = clip.sound ?? NO_SOUND_FX;
+  const [state, setState] = useState<"idle" | "busy" | "ready" | "failed">("idle");
+  const set = (p: Partial<SoundFx>, key: string) => run({ type: "update_clip", clipId: clip.id, patch: { sound: p } }, { coalesce: `${clip.id}:sound:${key}` });
+  // the worked sound is made ahead (a moment after the last change), so playing it starts straight away
+  useEffect(() => {
+    if (!url || !hasSoundFx(clip)) return;
+    let live = true;
+    const t = setTimeout(() => {
+      setState("busy");
+      clipSound(url, clip).then(
+        () => live && setState("ready"),
+        () => live && setState("failed"),
+      );
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [url, clip]);
+  const others = track.clips.filter((c) => c.id !== clip.id && c.assetId);
+  return (
+    <div className="space-y-3 rounded-xl border border-jw-line p-2.5">
+      <div className="flex items-center gap-2">
+        <span className="flex-1 text-xs font-semibold">✨ تحسين الصوت</span>
+        {hasSoundFx(clip) && state === "busy" && (
+          <span className="flex items-center gap-1 text-[11px] text-jw-muted">
+            <span className="jw-spinner" /> نجهّزه…
+          </span>
+        )}
+        {hasSoundFx(clip) && state === "failed" && <span className="text-[11px] text-jw-danger">ما قدرنا نعالج صوته</span>}
+      </div>
+      <Slider label="عزل الضوضاء" value={Math.round(fx.clean * 100)} min={0} max={100} step={5} disabled={locked} onChange={(v) => set({ clean: v / 100 }, "clean")} format={(v) => (v ? `${v}%` : "بدون")} />
+      <label className="flex items-start gap-2 text-xs">
+        <input type="checkbox" disabled={locked} checked={fx.enhance} onChange={(e) => set({ enhance: e.target.checked }, "enhance")} className="mt-0.5 accent-[var(--jw-accent)]" />
+        <span>
+          <b>محسّن الصوت</b>
+          <span className="block text-jw-muted">يشيل الهمهمة والطنين، يوضّح الكلام ويخلّي مستواه متساوي.</span>
+        </span>
+      </label>
+      <div className="space-y-1.5">
+        <span className="text-xs text-jw-muted">مؤثر</span>
+        <div className="grid grid-cols-5 gap-1">
+          <button type="button" disabled={locked} aria-pressed={!fx.effect} className={`rounded-lg border px-0.5 py-1.5 text-[10px] ${!fx.effect ? "border-jw-accent bg-jw-accent/10" : "border-jw-line"}`} onClick={() => set({ effect: null }, "effect")}>
+              <span className="block text-sm leading-none">∅</span>بدون
+          </button>
+          {(Object.keys(SOUND_EFFECTS) as SoundEffect[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              disabled={locked}
+              aria-pressed={fx.effect === k}
+              className={`rounded-lg border px-0.5 py-1.5 text-[10px] ${fx.effect === k ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`}
+              // the rooms (echo, hall…) sit around the voice; the others change the voice itself
+              onClick={() => set({ effect: k, mix: ["echo", "reverb", "stadium", "cave"].includes(k) ? 0.4 : 1 }, "effect")}
+            >
+              <span className="block text-sm leading-none">{SOUND_EFFECTS[k].icon}</span>
+              {SOUND_EFFECTS[k].label}
+            </button>
+          ))}
+        </div>
+        {fx.effect && <Slider label="قوة المؤثر" value={Math.round(fx.mix * 100)} min={5} max={100} step={5} disabled={locked} onChange={(v) => set({ mix: v / 100 }, "mix")} format={(v) => `${v}%`} />}
+      </div>
+      <Slider ltr label="← أعمق · طبقة الصوت · أنحف →" value={fx.pitch} min={-12} max={12} step={1} disabled={locked} onChange={(v) => set({ pitch: v }, "pitch")} format={(v) => (v ? `${v > 0 ? "+" : ""}${v}` : "طبيعي")} />
+      <div className="flex gap-1.5">
+        {others.length > 0 && hasSoundFx(clip) && (
+          <button type="button" className="jw-btn !min-h-8 flex-1 text-[11px]" disabled={locked} onClick={() => run(others.map((c) => ({ type: "update_clip" as const, clipId: c.id, patch: { sound: { ...fx } } })), { label: "نفس تحسين الصوت لكل المسار" })}>
+            طبّقه على كل المسار ({others.length + 1})
+          </button>
+        )}
+        {hasSoundFx(clip) && (
+          <button type="button" className="jw-btn jw-btn-quiet !min-h-8 flex-1 text-[11px]" disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { sound: null } }, { label: "رجّعت الصوت الأصلي" })}>
+            <Icon name="retry" size={13} /> الصوت الأصلي
+          </button>
+        )}
+      </div>
+      <p className="text-[10px] leading-4 text-jw-faint">يشتغل على جهازك مجانًا، والتصدير يطلع بنفس الصوت اللي تسمعه.</p>
     </div>
   );
 }
