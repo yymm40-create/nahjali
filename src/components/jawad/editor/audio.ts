@@ -2,7 +2,7 @@
 // Web Audio API instead, which every browser can. Kept per file for the session (a few files at most).
 
 const cache = new Map<string, Promise<AudioBuffer>>();
-const KEEP = 4;
+const KEEP = 10;
 
 /** The whole sound of a file at 48 kHz (its own channels). */
 export function decodeWhole(url: string): Promise<AudioBuffer> {

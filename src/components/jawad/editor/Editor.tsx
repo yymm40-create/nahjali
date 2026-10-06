@@ -273,7 +273,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       setCanvasEl(null);
     };
   }, []);
-  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio })), [assets]);
+  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio, durationMs: a.durationMs })), [assets]);
   useEffect(() => {
     player?.update(tl, playerAssets);
   }, [player, tl, playerAssets]);
