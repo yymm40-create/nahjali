@@ -495,3 +495,11 @@
 .jw [data-jw-section="editor"] [data-ed-theme] {
   color: var(--jw-ink);
 }
+
+/* «الممنتج الذكي» on a phone: the edit takes the whole screen (JAWAD AI's header and sections bar step aside; the
+   editor's own back button leads out) */
+@media (max-width: 1023.98px) {
+  .jw:has([data-ed-full]) > header {
+    display: none;
+  }
+}

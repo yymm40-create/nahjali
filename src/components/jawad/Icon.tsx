@@ -35,6 +35,7 @@ const PATHS: Record<string, string> = {
   logout: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11",
   menu: "M4 7h16M4 12h16M4 17h16",
   copy: "M8 8h12v12H8zM4 16V4h12",
+  shrink: "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7",
   expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   stop: "M7 7h10v10H7z",
   frames: "M3 5h7v14H3zM14 5h7v14h-7z",
