@@ -18,7 +18,7 @@ import Guard from "./Guard";
 import SmartFix from "./SmartFix";
 import { PluginTools } from "./plugins";
 import { familyOf, loadFont, loadFontsOf } from "./fontload";
-import { separateAsset } from "./make";
+import { separateAsset, stemQuality } from "./make";
 import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
@@ -558,7 +558,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const f = findClip(tlRef.current, clipId);
     const a = f?.clip.assetId ? assets.find((x) => x.id === f.clip.assetId) : null;
     if (!f || !a || a.kind === "image" || !a.hasAudio) return flash("اختر مقطع فيه صوت.", true);
-    const r = await separateAsset(project.id, a, f.clip.in, f.clip.out, (text) => flash(text));
+    const r = await separateAsset(project.id, a, f.clip.in, f.clip.out, (text) => flash(text), stemQuality());
     addAssets(r.assets);
     run(placeStems(f.clip, r.assets.map((x) => x.id)), { label: "فصلت الكلام والموسيقى والمؤثرات" });
     flash(r.full ? "انفصل الصوت: الكلام والموسيقى والمؤثرات كل واحد في مسار." : r.assets.length > 1 ? "انفصل الكلام عن الموسيقى، كل واحد في مسار (المؤثرات بقت مع الموسيقى)." : "فصلنا الكلام في مسار بروحه. فصل الموسيقى يحتاج تفعيل خدمة fal على الخادم.");
