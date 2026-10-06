@@ -17,6 +17,7 @@ import {
   signExportUpload,
 } from "@/lib/editor/server";
 import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
+import { assist } from "@/lib/editor/assistant";
 
 // listening to a long clip can take a while
 export const maxDuration = 300;
@@ -69,6 +70,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await transcribe(p, owner, b));
     case "align":
       return NextResponse.json(await align(p, owner, b));
+    case "assistant":
+      return NextResponse.json(await assist(p, owner, b));
     case "history":
       return NextResponse.json({ history: await history(p.id) }, noStore);
   }

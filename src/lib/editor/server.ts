@@ -221,7 +221,7 @@ export async function runCommands(p: EditorProject, cmds: Command[], actor: stri
 
 /** The project's change history, newest first. */
 export async function history(projectId: string) {
-  const { data } = await db().from("editor_ops").select("version,actor,label,created_at").eq("project_id", projectId).neq("actor", "speech").order("id", { ascending: false }).limit(50);
+  const { data } = await db().from("editor_ops").select("version,actor,label,created_at").eq("project_id", projectId).not("actor", "in", "(speech,claude)").order("id", { ascending: false }).limit(50);
   return data ?? [];
 }
 

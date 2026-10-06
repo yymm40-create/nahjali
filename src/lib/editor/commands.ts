@@ -84,7 +84,12 @@ export type Command =
   | { type: "set_background"; color: string }
   | { type: "set_magnetic"; on: boolean }
   /** puts the main track's clips one after another from 0 (used by «ركّب النسخة الأولى» too) */
-  | { type: "close_gaps"; trackId?: string };
+  | { type: "close_gaps"; trackId?: string }
+  /**
+   * Cuts timeline spans out of every track at once and closes them (silences, a part to drop, «خلّه ٣٠ ثانية»):
+   * picture and sound stay in sync, and no clip id needs to be known.
+   */
+  | { type: "remove_ranges"; ranges: [number, number][] };
 
 export class CommandError extends Error {}
 
@@ -570,6 +575,40 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       return { timeline: t, label: cmd.on ? "شغّلت المغناطيس" : "أطفأت المغناطيس" };
     }
 
+    case "remove_ranges": {
+      // the spans, merged, from the end backwards (so earlier spans keep their times)
+      const spans = (cmd.ranges ?? [])
+        .map(([a, b]) => [Math.max(0, Math.round(Math.min(a, b))), Math.round(Math.max(a, b))] as [number, number])
+        .filter(([a, b]) => b - a >= 20)
+        .sort((x, y) => x[0] - y[0])
+        .reduce<[number, number][]>((m, r) => {
+          const last = m[m.length - 1];
+          if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+          else m.push([r[0], r[1]]);
+          return m;
+        }, [])
+        .reverse();
+      if (!spans.length) fail("ما فيه أجزاء نشيلها.");
+      let removed = 0;
+      for (const [a, b] of spans) {
+        for (const track of t.tracks) {
+          const hit = track.clips.some((c) => c.start < b && clipEnd(c) > a);
+          if (track.locked && (hit || track.clips.some((c) => c.start >= b))) fail(`المسار «${track.name}» مقفول؛ افتح القفل أول.`);
+          const next: Clip[] = [];
+          for (const c of track.clips) {
+            const e = clipEnd(c);
+            if (e <= a) next.push(c);
+            else if (c.start >= b) next.push({ ...c, start: c.start - (b - a) });
+            else next.push(...cutOut(c, a, b, assets));
+          }
+          track.clips = next.filter((c) => clipLength(c) >= LIMITS.minClipMs).sort((x, y) => x.start - y.start);
+          if (magnet(t, track)) track.clips = pack(track.clips);
+        }
+        removed += b - a;
+      }
+      return { timeline: t, label: `شلت ${formatTime(removed)} (${spans.length} جزء)` };
+    }
+
     case "close_gaps": {
       const track = cmd.trackId ? editable(t, cmd.trackId) : (mainTrack(t) ?? fail("ما فيه مسار رئيسي."));
       track.clips = pack(track.clips);
@@ -579,13 +618,41 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
   return fail("أمر غير معروف.");
 }
 
+/** The part of a clip outside [a, b) as one or two clips (the right one moved back to `a`). */
+function cutOut(c: Clip, a: number, b: number, assets: Map<string, AssetInfo>): Clip[] {
+  const out: Clip[] = [];
+  const e = clipEnd(c);
+  const still = isStill(c, assets);
+  if (c.start < a) {
+    const left = { ...structuredClone(c), out: still ? c.in + (a - c.start) * c.speed : Math.round(sourceTime(c, a)), transition: null, fadeOut: 0 };
+    left.words = left.words.filter((w) => w.s < a - c.start);
+    out.push(left);
+  }
+  if (e > b) {
+    const shift = b - c.start;
+    const right = { ...structuredClone(c), id: c.start < a ? newId("c") : c.id, start: a, fadeIn: 0 };
+    if (still) right.out = c.in + (e - b) * c.speed;
+    else right.in = Math.round(sourceTime(c, b));
+    right.words = right.words.filter((w) => w.s >= shift).map((w) => ({ ...w, s: w.s - shift, e: w.e - shift }));
+    out.push(right);
+  }
+  return out;
+}
+
 /** Applies several commands in order as one change (one undo step); stops at the first that can't be done. */
 export function applyAll(timeline: Timeline, cmds: Command[], assets: Map<string, AssetInfo>, label?: string): Applied {
   let t = timeline;
   let last: Applied | null = null;
-  for (const c of cmds) {
-    last = apply(t, c, assets);
-    t = last.timeline;
+  // "$2" in a later command means the clip the 2nd command made (for scripts written before the ids exist)
+  const made = new Map<string, string>();
+  const resolve = (v: unknown): unknown =>
+    typeof v === "string" && /^\$\d+$/.test(v) ? (made.get(v) ?? v) : Array.isArray(v) ? v.map(resolve) : v;
+  for (const [i, raw] of cmds.entries()) {
+    const c = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, k === "clipId" || k === "clipIds" || k === "trackId" ? resolve(v) : v])) as Command;
+    const r = apply(t, c, assets);
+    last = r;
+    t = r.timeline;
+    if (r.select?.[0]) made.set(`$${i + 1}`, r.select[0]);
   }
   return { timeline: t, label: label ?? last?.label ?? "", select: last?.select };
 }
