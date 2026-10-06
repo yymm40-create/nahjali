@@ -2,13 +2,14 @@
 // cheap on phones); every animation frame we keep each one at its clip's moment and draw the frame on one canvas with
 // the same drawFrame the export uses. Only clips near the playhead hold an element, so long projects stay light.
 
-import { clipEnd, clipsAt, duration, sourceTime, type Clip, type Timeline } from "@/lib/editor/model";
-import { drawFrame, type Frame } from "./render";
+import { clipEnd, duration, gainAt, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
+import { drawFrame, layersAt, type Frame } from "./render";
 
 export interface PlayerAsset {
   id: string;
   kind: "video" | "audio" | "image";
   url: string | null;
+  hasAudio: boolean;
 }
 
 /** How far ahead clips get their element ready (so a cut doesn't wait), and how far around them it is kept. */
@@ -23,6 +24,8 @@ export class Player {
   private ctx: CanvasRenderingContext2D;
   private tl: Timeline;
   private assets = new Map<string, PlayerAsset>();
+  /** where a voice is heard (the ducking tracks go quieter there) */
+  private spans: [number, number][] = [];
   private media = new Map<string, Media>();
   private images = new Map<string, HTMLImageElement>();
   private host: HTMLDivElement;
@@ -49,6 +52,7 @@ export class Player {
   update(tl: Timeline, assets: PlayerAsset[]) {
     this.tl = tl;
     this.assets = new Map(assets.map((a) => [a.id, a]));
+    this.spans = voiceSpans(tl, (c) => !c.text && !!this.assets.get(c.assetId ?? "")?.hasAudio);
     if (this.canvas.width !== tl.width || this.canvas.height !== tl.height) {
       this.canvas.width = tl.width;
       this.canvas.height = tl.height;
@@ -135,14 +139,18 @@ export class Player {
     return end > 0 && this.ms >= end ? end - 1 : this.ms;
   }
 
+  /** Media clips on screen now (two during a transition). */
   private active() {
-    return clipsAt(this.tl, this.shown()).filter(({ clip }) => !clip.text);
+    return layersAt(this.tl, this.shown()).flatMap((l) => ("clip" in l && !l.clip.text ? [l] : []));
   }
 
   /** Every media clip near the playhead gets its element, at the right moment, playing or paused. */
   private sync(hard: boolean) {
     const ms = this.shown();
     const wanted = new Set<string>();
+    // a clip in a transition shows a held frame (its first before the cut, its last after it)
+    const held = new Map<string, number>();
+    for (const l of layersAt(this.tl, ms)) if ("clip" in l && (ms < l.clip.start || ms >= clipEnd(l.clip))) held.set(l.clip.id, l.ms);
     for (const track of this.tl.tracks) {
       for (const clip of track.clips) {
         if (clip.text || !clip.assetId) continue;
@@ -157,13 +165,14 @@ export class Player {
         wanted.add(clip.id);
         const on = ms >= clip.start && ms < end;
         const soon = !on && clip.start > ms && clip.start - ms < AHEAD_MS;
-        if (!on && !soon && !this.media.has(clip.id)) continue;
+        if (!on && !soon && !held.has(clip.id) && !this.media.has(clip.id)) continue;
         const m = this.element(clip, a);
-        const silent = track.muted || clip.volume <= 0 || (track.kind !== "audio" && a.kind === "audio");
-        m.muted = silent;
-        m.volume = Math.min(1, Math.max(0, clip.volume));
+        // volume × fades × ducking (an element can't go above 100 %; the export can)
+        const gain = on ? gainAt(track, clip, ms, this.spans) : 0;
+        m.muted = track.muted || gain <= 0;
+        m.volume = Math.min(1, Math.max(0, gain));
         if (Math.abs(m.playbackRate - clip.speed) > 0.001) m.playbackRate = clip.speed;
-        const at = (on ? sourceTime(clip, ms) : clip.in) / 1000;
+        const at = (on ? sourceTime(clip, ms) : held.has(clip.id) ? sourceTime(clip, held.get(clip.id)!) : clip.in) / 1000;
         if (on && this.playing) {
           if (hard || Math.abs(m.currentTime - at) > DRIFT_S * clip.speed) seekTo(m, at);
           if (m.paused) m.play().catch(() => {});
@@ -189,6 +198,8 @@ export class Player {
     m.crossOrigin = "anonymous";
     m.preload = "auto";
     if (m instanceof HTMLVideoElement) m.playsInline = true;
+    // a faster or slower clip keeps its voice's pitch
+    m.preservesPitch = true;
     m.dataset.src = a.url!;
     m.src = a.url!;
     // while paused, a frame that arrives after a seek is drawn straight away

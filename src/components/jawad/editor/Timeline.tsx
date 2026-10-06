@@ -5,7 +5,7 @@
 // Touch (CapCut's way): a tap selects, a selected clip drags, its big handles trim, two fingers zoom, one finger scrolls.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { clipEnd, clipLength, duration, formatTime, mainTrack, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
+import { clipEnd, clipLength, duration, formatTime, mainTrack, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
 import type { Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
 import type { EditorAsset } from "./types";
@@ -28,6 +28,10 @@ interface Props {
   compact: boolean;
   readOnly: boolean;
   onEmpty: () => void;
+  /** the waveform pictures of the sound files */
+  waves: Record<string, string | null>;
+  /** a cut's transition button: opens the outgoing clip's «انتقال» */
+  onTransition: (clipId: string) => void;
 }
 
 type Mode = "move" | "start" | "end";
@@ -66,7 +70,7 @@ function rulerStep(pps: number) {
   return steps.find((s) => (s * pps) / 1000 >= 80) ?? 600_000;
 }
 
-export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, player, compact, readOnly, onEmpty }: Props) {
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition }: Props) {
   const HEAD = compact ? 40 : 144;
   const scroller = useRef<HTMLDivElement>(null);
   const playhead = useRef<HTMLDivElement>(null);
@@ -198,8 +202,10 @@ export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, 
   const snapPoints = useMemo(() => {
     const pts = [0];
     for (const t of tl.tracks) for (const c of t.clips) pts.push(c.start, clipEnd(c));
+    // beat marks too: cuts and moves land on the beat
+    pts.push(...tl.markers);
     return pts;
-  }, [tl.tracks]);
+  }, [tl.tracks, tl.markers]);
   const snap = (ms: number, ignore: string) => {
     const tol = (SNAP_PX * 1000) / pps;
     const own = ignore ? findOwn(ignore) : null;
@@ -359,6 +365,9 @@ export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, 
     const start = d && d.moved ? d.ghostStart : c.start;
     const end = d && d.moved ? (d.mode === "move" ? d.ghostEnd : d.mode === "start" ? d.end : d.ghostEnd) : clipEnd(c);
     const thumb = a ? thumbs[a.id] : null;
+    const wave = a && k === "audio" ? waves[a.id] : null;
+    // the whole file's waveform, stretched so this clip shows its own part of it
+    const fullPx = a?.durationMs ? lanePx(a.durationMs / c.speed) : 0;
     const tone = k === "audio" ? "bg-emerald-600/80" : k === "text" ? "bg-violet-600/85" : k === "image" ? "bg-sky-700/80" : "bg-zinc-700";
     const missing = a && (a.status !== "ready" || !a.url);
     const handle = compact ? 18 : 10;
@@ -375,10 +384,10 @@ export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, 
           width: Math.max(4, lanePx(end - start)),
           touchAction: sel ? "none" : "pan-x pan-y",
           cursor: readOnly || track.locked ? "default" : "grab",
-          backgroundImage: thumb && k !== "audio" ? `url(${thumb})` : k === "audio" ? "repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 2px, transparent 2px 5px)" : undefined,
-          backgroundSize: thumb ? "auto 100%" : k === "audio" ? "auto 60%" : undefined,
-          backgroundRepeat: k === "audio" ? "repeat-x" : "repeat-x",
-          backgroundPosition: k === "audio" ? "0 50%" : undefined,
+          backgroundImage: thumb && k !== "audio" ? `url(${thumb})` : wave ? `url(${wave})` : k === "audio" ? "repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 2px, transparent 2px 5px)" : undefined,
+          backgroundSize: thumb && k !== "audio" ? "auto 100%" : wave && fullPx ? `${fullPx}px 70%` : k === "audio" ? "auto 60%" : undefined,
+          backgroundRepeat: wave ? "no-repeat" : "repeat-x",
+          backgroundPosition: wave && fullPx ? `${-lanePx(c.in / c.speed) - (d && d.moved && d.mode === "start" ? lanePx(d.ghostStart - c.start) : 0)}px 60%` : k === "audio" ? "0 50%" : undefined,
         }}
         onPointerDown={(e) => {
           tapDown(e, c);
@@ -400,6 +409,16 @@ export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, 
         </span>
         {!compact && lanePx(end - start) > 60 && (
           <span className="pointer-events-none absolute bottom-0 left-1 text-[10px] text-white/80">{formatTime(clipLength(c))}</span>
+        )}
+        {/* motion points */}
+        {c.keys.map((key) => {
+          const x = lanePx(c.start + (key.t - c.in) / c.speed - start);
+          return x >= 0 && x <= lanePx(end - start) ? (
+            <span key={key.t} className="pointer-events-none absolute bottom-0.5 h-2 w-2 -translate-x-1/2 rotate-45 border border-black/50 bg-jw-warn" style={{ left: x }} />
+          ) : null;
+        })}
+        {(c.color || c.fadeIn > 0 || c.fadeOut > 0) && (
+          <span className="pointer-events-none absolute right-1 top-0.5 text-[9px] text-white/90">{c.color ? "🎨" : ""}{c.fadeIn > 0 || c.fadeOut > 0 ? "◢" : ""}</span>
         )}
         {sel && !readOnly && !track.locked && (
           <>
@@ -456,6 +475,10 @@ export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, 
                   {formatTime(ms, step < 1000)}
                 </span>
               ))}
+              {/* beat marks */}
+              {tl.markers.map((m) => (
+                <span key={`m${m}`} className="pointer-events-none absolute bottom-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-jw-warn" style={{ left: lanePx(m) }} />
+              ))}
             </div>
           </div>
 
@@ -482,6 +505,28 @@ export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, 
                     return c ? clipView(track, c, true) : null;
                   })()}
                   {track.hidden && <span className="pointer-events-none absolute inset-0 bg-black/40" />}
+                  {/* the cuts between touching clips: their transition, or a button to add one */}
+                  {track.kind !== "audio" &&
+                    !drag?.moved &&
+                    track.clips.map((c, i) => {
+                      const n = track.clips[i + 1];
+                      if (!n || n.start !== clipEnd(c) || (!c.transition && !isMain)) return null;
+                      return (
+                        <button
+                          key={`tr${c.id}`}
+                          type="button"
+                          disabled={readOnly || track.locked}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => onTransition(c.id)}
+                          className={`absolute -top-0.5 z-20 grid -translate-x-1/2 place-items-center rounded-b-md border text-[10px] font-bold shadow ${c.transition ? "h-4 min-w-4 border-jw-accent bg-jw-accent px-0.5 text-jw-on-accent" : "h-3.5 w-3.5 border-white/50 bg-black/70 text-white opacity-70 hover:opacity-100"}`}
+                          style={{ left: lanePx(n.start) }}
+                          aria-label={c.transition ? `انتقال: ${TRANSITIONS[c.transition.kind].label}` : "أضف انتقال"}
+                          title={c.transition ? `انتقال: ${TRANSITIONS[c.transition.kind].label}` : "أضف انتقال"}
+                        >
+                          {c.transition ? TRANSITIONS[c.transition.kind].icon : "+"}
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
             );
