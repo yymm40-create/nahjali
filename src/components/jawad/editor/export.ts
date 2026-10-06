@@ -76,7 +76,7 @@ export async function exportVideo(
   const hasSound = (c: Clip) => !c.text && !!c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio;
   const audible: { track: Track; c: Clip }[] = tl.tracks.flatMap((track) => (track.muted ? [] : track.clips.filter((c) => c.volume > 0 && hasSound(c)).map((c) => ({ track, c }))));
   const spans = voiceSpans(tl, hasSound);
-  const audioCodec = audible.length && "AudioEncoder" in window ? await getFirstEncodableAudioCodec(["aac", "opus"], { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality: QUALITY_HIGH }) : null;
+  const audioCodec = audible.length ? await soundCodec() : null;
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -296,6 +296,26 @@ export async function exportVideo(
     node.connect(gain);
     node.start((s - from) / 1000);
   }
+}
+
+let aacReady: Promise<void> | null = null;
+
+/**
+ * The sound's codec: the browser's own AAC (or Opus) encoder when it has one, else an AAC encoder that runs in the
+ * page (FFmpeg's, as WebAssembly: Safari on iPhone, for one, has none of its own), so the file never comes out silent.
+ */
+async function soundCodec() {
+  const opts = { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality: QUALITY_HIGH };
+  const native = "AudioEncoder" in window ? await getFirstEncodableAudioCodec(["aac", "opus"], opts).catch(() => null) : null;
+  if (native) return native;
+  aacReady ??= import("@mediabunny/aac-encoder").then((m) => m.registerAacEncoder());
+  try {
+    await aacReady;
+  } catch {
+    aacReady = null;
+    return null;
+  }
+  return (await getFirstEncodableAudioCodec(["aac"], opts).catch(() => null)) ?? null;
 }
 
 /** Saves the file on the device. */
