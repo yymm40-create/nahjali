@@ -23,7 +23,15 @@ export class R2Error extends Error {
 }
 
 async function send(url: string, init: RequestInit = {}) {
-  const res = await r2().client.fetch(url, init);
+  // Signed first, then sent with the body as it is: aws4fetch's own fetch turns the body into a stream, which goes
+  // out without a Content-Length, and R2 refuses those (411 MissingContentLength). A string or bytes keeps its length.
+  const body = init.body;
+  const sized = typeof body === "string" || body instanceof ArrayBuffer || ArrayBuffer.isView(body);
+  const res = sized
+    ? await r2()
+        .client.sign(url, init)
+        .then((signed) => fetch(signed.url, { method: signed.method, headers: signed.headers, body: body as BodyInit }))
+    : await r2().client.fetch(url, init);
   if (!res.ok && res.status !== 404) throw new R2Error(`R2 ${init.method ?? "GET"} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`, res.status);
   return res;
 }
