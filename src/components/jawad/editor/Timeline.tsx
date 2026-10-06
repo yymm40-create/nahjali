@@ -63,6 +63,19 @@ interface Drag {
   ghostStart: number;
   ghostEnd: number;
   ghostTrack: string;
+  /** the other selected clips, moving with it by the same time (they keep their tracks) */
+  group: { id: string; trackId: string; start: number }[];
+}
+
+/** A box being drawn over the empty timeline to select every clip it touches (in the content's pixels). */
+interface Box {
+  pointer: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** what was selected before, kept when Shift/Ctrl/Cmd is held */
+  base: string[];
 }
 
 const MIN_PPS = 1;
@@ -124,6 +137,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   const wantScroll = useRef<number | null>(null);
   const playhead = useRef<HTMLDivElement>(null);
   const rows = useRef(new Map<string, HTMLDivElement>());
+  const content = useRef<HTMLDivElement>(null);
   const [pps, setPps] = useState(40);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -322,10 +336,18 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     e.stopPropagation();
     const touch = e.pointerType === "touch";
     const isSel = selected.includes(c.id);
+    const add = e.shiftKey || e.metaKey || e.ctrlKey;
     // on a phone an unselected clip only gets selected (its touch scrolls the timeline)
     if (touch && !isSel && mode === "move") return;
-    if (!isSel) onSelect(e.shiftKey || e.metaKey || e.ctrlKey ? [...selected, c.id] : [c.id]);
+    // Shift/Ctrl/Cmd on a selected clip takes it out of the selection
+    if (isSel && add && mode === "move") return onSelect(selected.filter((id) => id !== c.id));
+    const sel = isSel ? selected : add ? [...selected, c.id] : [c.id];
+    if (!isSel) onSelect(sel);
     if (track.locked) return;
+    const group =
+      mode === "move"
+        ? tl.tracks.flatMap((t) => (t.locked ? [] : t.clips.filter((x) => x.id !== c.id && sel.includes(x.id)).map((x) => ({ id: x.id, trackId: t.id, start: x.start }))))
+        : [];
     e.currentTarget.setPointerCapture(e.pointerId);
     const a = c.assetId ? assets.get(c.assetId) : null;
     const media = a && a.kind !== "image" && a.durationMs ? a.durationMs : null;
@@ -344,6 +366,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       ghostStart: c.start,
       ghostEnd: clipEnd(c),
       ghostTrack: track.id,
+      group,
     };
     dragRef.current = d;
     setDrag(d);
@@ -363,8 +386,16 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       const sEnd = snap(s + len, d.id);
       if (sStart !== s) s = sStart;
       else if (sEnd !== s + len) s = sEnd - len;
-      next.ghostStart = Math.max(0, Math.round(s));
+      // with others: none of them goes before 0
+      const earliest = Math.min(d.start, ...d.group.map((g) => g.start));
+      next.ghostStart = Math.max(d.start - earliest, Math.round(s));
       next.ghostEnd = next.ghostStart + len;
+      if (d.group.length) {
+        next.ghostTrack = d.trackId;
+        dragRef.current = next;
+        setDrag(next);
+        return;
+      }
       // which track is under the finger; above the pictures (or under the sound) makes a new one
       const clip = findOwn(d.id)!;
       const onSound = tl.tracks.find((t) => t.id === d.trackId)?.kind === "audio";
@@ -409,6 +440,14 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     }
     if (d.mode === "move") {
       if (d.ghostTrack === d.trackId && d.ghostStart === d.start) return;
+      if (d.group.length) {
+        // all by the same time; the ones ahead first so none lands on another that hasn't moved yet
+        const dt = d.ghostStart - d.start;
+        const all = [{ id: d.id, trackId: d.trackId, start: d.start }, ...d.group].sort((a, b) => (dt > 0 ? b.start - a.start : a.start - b.start));
+        run(all.map((g) => ({ type: "move_clip" as const, clipId: g.id, trackId: g.trackId, start: Math.max(0, g.start + dt) })));
+        onSelect(all.map((g) => g.id));
+        return;
+      }
       run({ type: "move_clip", clipId: d.id, trackId: d.ghostTrack, start: d.ghostStart });
     } else if (d.mode === "start") run({ type: "trim_clip", clipId: d.id, edge: "start", to: d.ghostStart });
     else run({ type: "trim_clip", clipId: d.id, edge: "end", to: d.ghostEnd });
@@ -428,15 +467,53 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
 
   // an empty spot: unselect and move the playhead there
   const laneTap = useRef<{ x: number; y: number } | null>(null);
+  const [box, setBox] = useState<Box | null>(null);
+  /** a point of the screen in the scrolled content's pixels */
+  const contentAt = (clientX: number, clientY: number) => {
+    const r = content.current!.getBoundingClientRect();
+    return { x: clientX - r.left, y: clientY - r.top };
+  };
+  /** every clip the box touches (unlocked tracks) */
+  const inBox = (b: Box) => {
+    const top = Math.min(b.y0, b.y1);
+    const bottom = Math.max(b.y0, b.y1);
+    const lo = ((Math.min(b.x0, b.x1) - X0) * 1000) / pps;
+    const hi = ((Math.max(b.x0, b.x1) - X0) * 1000) / pps;
+    const box0 = content.current!.getBoundingClientRect().top;
+    const ids: string[] = [];
+    for (const t of ordered) {
+      const r = rows.current.get(t.id)?.getBoundingClientRect();
+      if (!r || t.locked || r.bottom - box0 < top || r.top - box0 > bottom) continue;
+      for (const c of t.clips) if (c.start < hi && clipEnd(c) > lo) ids.push(c.id);
+    }
+    return ids;
+  };
   const laneDown = (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget) return;
     if (e.pointerType === "touch") laneTap.current = { x: e.clientX, y: e.clientY };
-    else {
-      onSelect([]);
-      player?.seek(Math.min(total, msAt(e.clientX)));
+    else if (e.button === 0) {
+      // a computer: drag over the empty timeline to select with a box; a plain click unselects and moves the playhead
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const p = contentAt(e.clientX, e.clientY);
+      setBox({ pointer: e.pointerId, x0: p.x, y0: p.y, x1: p.x, y1: p.y, base: e.shiftKey || e.metaKey || e.ctrlKey ? selected : [] });
     }
   };
+  const laneMove = (e: React.PointerEvent) => {
+    if (!box || box.pointer !== e.pointerId) return;
+    const p = contentAt(e.clientX, e.clientY);
+    const next = { ...box, x1: p.x, y1: p.y };
+    setBox(next);
+    if (Math.hypot(next.x1 - next.x0, next.y1 - next.y0) >= 4) onSelect([...new Set([...next.base, ...inBox(next)])]);
+  };
   const laneUp = (e: React.PointerEvent) => {
+    if (box && box.pointer === e.pointerId) {
+      setBox(null);
+      if (Math.hypot(box.x1 - box.x0, box.y1 - box.y0) < 4) {
+        if (!box.base.length) onSelect([]);
+        player?.seek(Math.min(total, msAt(e.clientX)));
+      }
+      return;
+    }
     const t = laneTap.current;
     laneTap.current = null;
     if (!t || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 8) return;
@@ -488,8 +565,10 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const a = c.assetId ? assets.get(c.assetId) : null;
     const sel = selected.includes(c.id);
     const d = drag?.id === c.id ? drag : null;
-    const start = d && d.moved ? d.ghostStart : c.start;
-    const end = d && d.moved ? (d.mode === "move" ? d.ghostEnd : d.mode === "start" ? d.end : d.ghostEnd) : clipEnd(c);
+    // one of the others moving with the dragged clip
+    const along = !d && drag?.moved && drag.mode === "move" && drag.group.some((g) => g.id === c.id) ? drag.ghostStart - drag.start : 0;
+    const start = d && d.moved ? d.ghostStart : c.start + along;
+    const end = d && d.moved ? (d.mode === "move" ? d.ghostEnd : d.mode === "start" ? d.end : d.ghostEnd) : clipEnd(c) + along;
     const thumb = a ? thumbs[a.id] : null;
     const wave = a && k === "audio" ? waves[a.id] : null;
     // the whole file's waveform, stretched so this clip shows its own part of it
@@ -506,7 +585,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         tabIndex={-1}
         aria-label={c.text ? `نص: ${c.text.body}` : (a?.name ?? "مقطع")}
         aria-pressed={sel}
-        className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${d?.moved && d.mode === "move" ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
+        className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${(d?.moved && d.mode === "move") || along ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
         style={{
           left: X0 - HEAD + lanePx(start),
           width: Math.max(4, lanePx(end - start)),
@@ -590,7 +669,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   return (
     <div dir="ltr" data-no-press className="relative flex h-full min-h-0 flex-col bg-jw-bg-2">
       <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
-        <div className="relative" style={{ width: contentW, minHeight: "100%" }}>
+        <div ref={content} className="relative" style={{ width: contentW, minHeight: "100%" }}>
           {/* ruler */}
           <div className="sticky top-0 z-20 flex" style={{ height: compact ? RULER_PHONE : RULER }}>
             {!compact && <div className="sticky left-0 z-30 flex items-center gap-0.5 border-b border-e border-jw-line bg-jw-surface px-1" style={{ width: HEAD, minWidth: HEAD }}>
@@ -660,7 +739,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                 style={{ height: height(track) }}
               >
                 {!compact && <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} label={pro ? labels.get(track.id) : undefined} />}
-                <div className="relative flex-1" onPointerDown={laneDown} onPointerUp={laneUp}>
+                <div className="relative flex-1" onPointerDown={laneDown} onPointerMove={laneMove} onPointerUp={laneUp} onPointerCancel={() => setBox(null)}>
                   {/* a phone: «+» after the last clip adds more (CapCut's way) */}
                   {compact && isMain && !readOnly && total > 0 && (
                     <button type="button" className="absolute top-1 bottom-1 grid w-11 place-items-center rounded-md border border-jw-line bg-jw-surface text-jw-ink shadow" style={{ left: X0 + lanePx(trackEnd(track)) + 6 }} onClick={onEmpty} aria-label="أضف مقطع" title="أضف مقطع">
@@ -706,6 +785,12 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                 اترك هنا · {formatTime(dropAt.ms)}
               </span>
             </div>
+          )}
+          {box && Math.hypot(box.x1 - box.x0, box.y1 - box.y0) >= 4 && (
+            <div
+              className="pointer-events-none absolute z-40 rounded-sm border border-jw-accent bg-jw-accent/15"
+              style={{ left: Math.min(box.x0, box.x1), top: Math.min(box.y0, box.y1), width: Math.abs(box.x1 - box.x0), height: Math.abs(box.y1 - box.y0) }}
+            />
           )}
           {moving?.ghostTrack === "new" && (
             <div className="pointer-events-none absolute inset-x-0 z-20 border-2 border-dashed border-jw-accent bg-jw-accent/10 text-center text-xs text-jw-accent" style={{ top: RULER, height: 30 }}>
