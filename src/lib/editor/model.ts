@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — the timeline document. Pure (browser and server). Times are whole milliseconds on the timeline;
+// «حيدر كات» — the timeline document. Pure (browser and server). Times are whole milliseconds on the timeline;
 // a clip shows its source from `in` to `out` (source milliseconds) starting at `start`. Media files are never
 // changed: clips only point at them, so every edit can be undone.
 //

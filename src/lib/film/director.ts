@@ -602,7 +602,7 @@ export async function purgeOldVideos(project: FilmProject) {
     .not("storage_path", "is", null)
     .lt("created_at", cutoff);
   const found = (data ?? []) as Pick<FilmAsset, "id" | "storage_path" | "meta">[];
-  // a video still used in an edit of «الممنتج الذكي» stays until that edit's own clean-up (3 days after its export)
+  // a video still used in an edit of «حيدر كات» stays until that edit's own clean-up (3 days after its export)
   const inEdit = await filmPathsInUse(found.map((a) => a.storage_path!)).catch(() => new Set<string>());
   const old = found.filter((a) => !inEdit.has(a.storage_path!));
   if (!old.length) return;

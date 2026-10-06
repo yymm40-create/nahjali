@@ -1,4 +1,4 @@
-// «الممنتج الذكي»'s limits and prices, set by the owner from /admin/limits (film_limits). Everything is free while
+// «حيدر كات»'s limits and prices, set by the owner from /admin/limits (film_limits). Everything is free while
 // the prices are 0 or «النقود الذكية مطلوبة» is off; a price is held before the paid call and given back if it fails.
 
 import { coinsRequired, holdCoins, releaseCoins } from "@/lib/coins";

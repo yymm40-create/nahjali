@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — the Arabic fonts people can pick for texts and captions: 100 families with open licences (most
+// «حيدر كات» — the Arabic fonts people can pick for texts and captions: 100 families with open licences (most
 // SIL OFL), each checked to load from its CDN with CORS and to draw joined Arabic on a canvas. A font is fetched only
 // when a text uses it. Shared by the server (to accept a font id) and the page (to load it).
 

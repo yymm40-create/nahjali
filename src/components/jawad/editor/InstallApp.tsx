@@ -9,7 +9,7 @@ interface InstallPrompt extends Event {
 }
 
 /**
- * «ثبّت الممنتج على جوالك»: the editor as an app on the home screen. Chrome and Android ask with their own window;
+ * «ثبّت حيدر كات على جوالك»: the editor as an app on the home screen. Chrome and Android ask with their own window;
  * an iPhone (Safari) is shown the two taps it takes. Hidden once it runs as the app.
  */
 export default function InstallApp({ compact = false }: { compact?: boolean }) {
@@ -55,7 +55,7 @@ export default function InstallApp({ compact = false }: { compact?: boolean }) {
         {!compact && <img src="/editor-app/icon-192.png" alt="" className="size-11 rounded-xl" />}
         {!compact && (
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold">ثبّت الممنتج على شاشتك الرئيسية</p>
+            <p className="text-sm font-bold">ثبّت حيدر كات على شاشتك الرئيسية</p>
             <p className="text-xs text-jw-muted">يفتح كتطبيق بملء الشاشة، بدون شريط المتصفح.</p>
           </div>
         )}

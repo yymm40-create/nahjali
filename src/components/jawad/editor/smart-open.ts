@@ -1,5 +1,5 @@
 /**
- * «التعديل الذكي» of a finished video, opened in «الممنتج الذكي» (a new edit with its red and green tracks). Returns
+ * «التعديل الذكي» of a finished video, opened in «حيدر كات» (a new edit with its red and green tracks). Returns
  * the edit's address, or null when the editor isn't available (the page then opens its own window).
  */
 export async function smartEditInEditor(jobId: string, outputId?: string): Promise<string | null> {

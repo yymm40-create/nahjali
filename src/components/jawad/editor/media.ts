@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — the browser side of media: what a file is (bytes + Mediabunny's reading of it), its upload, and
+// «حيدر كات» — the browser side of media: what a file is (bytes + Mediabunny's reading of it), its upload, and
 // small pictures of videos for the timeline and the library.
 
 import { ALL_FORMATS, BlobSource, Input } from "mediabunny";

@@ -1,4 +1,4 @@
-// «التعديل الذكي» of a JAWAD AI video (or a film video sent there) opens in «الممنتج الذكي»: a new edit with the
+// «التعديل الذكي» of a JAWAD AI video (or a film video sent there) opens in «حيدر كات»: a new edit with the
 // video on the main track, an empty red track for the pieces to fix and a green one for what is made. Server only.
 
 import type { User } from "@supabase/supabase-js";

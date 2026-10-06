@@ -1,4 +1,4 @@
-// «الممنتج الذكي» × «التعديل الذكي»: a piece of a JAWAD AI video lifted onto the red track is sent to be made again,
+// «حيدر كات» × «التعديل الذكي»: a piece of a JAWAD AI video lifted onto the red track is sent to be made again,
 // and what comes back is laid on the green track over it. Shared by the page and the tests.
 
 import type { Clip } from "./model";

@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — draws one frame of a timeline. The preview and the export both call this, so what people see while
+// «حيدر كات» — draws one frame of a timeline. The preview and the export both call this, so what people see while
 // editing is what they get in the file.
 
 import { familyOf } from "./fontload";

@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — faster or slower sound that keeps its pitch (a voice at ×1.5 still sounds like the person, not a
+// «حيدر كات» — faster or slower sound that keeps its pitch (a voice at ×1.5 still sounds like the person, not a
 // cartoon). WSOLA: short overlapping windows of the source, each placed where it continues the previous one best.
 
 const N = 1024;

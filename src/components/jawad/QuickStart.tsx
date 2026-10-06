@@ -51,7 +51,7 @@ export default function QuickStart({ sections, userId, loginHref }: { sections: 
   const router = useRouter();
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<Kind | null>(null);
-  // arriving with an idea (a shot «الممنتج الذكي» suggested, for one): it is already in the box
+  // arriving with an idea (a shot «حيدر كات» suggested, for one): it is already in the box
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const idea = q.get("idea")?.slice(0, 500);

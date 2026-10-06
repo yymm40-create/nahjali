@@ -1,6 +1,6 @@
 "use client";
 
-// «التعديل الذكي» inside «الممنتج الذكي»: cut the pieces that didn't work, lift each one straight up onto the red
+// «التعديل الذكي» inside «حيدر كات»: cut the pieces that didn't work, lift each one straight up onto the red
 // track (same place), write what to fix in each and pick «جزئي» or «كامل»; what JAWAD AI makes comes back on the green
 // track over it, at the same place and length. Then the edit goes on as usual (arrange, export).
 
@@ -76,8 +76,10 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
       const j = jobs.find((x) => x.id === c.fix!.job);
       if (!j || placing.current.has(j.id)) continue;
       if (j.status === "failed" || j.status === "cancelled") {
-        run({ type: "update_clip", clipId: c.id, patch: { fix: { state: "failed" } } }, { label: "ما نجح التعديل" });
-        flash(j.error ? `ما نجح تعديل جزء: ${j.error}` : "ما نجح تعديل جزء؛ النقاط ترجع لك.", true);
+        // the job's own reason, written on the piece (and kept with it)
+        const why = j.error || "ما نجح التوليد عند المزوّد؛ ما انخصم منك شي.";
+        run({ type: "update_clip", clipId: c.id, patch: { fix: { state: "failed", error: why } } }, { label: "ما نجح التعديل" });
+        flash(`ما نجح تعديل الجزء ${formatTime(c.start)}: ${why}`, true);
         continue;
       }
       const out = j.status === "succeeded" ? j.outputs.find((o) => o.kind === "video") : undefined;
@@ -143,7 +145,11 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   useEffect(() => {
     if (!staleKey || readOnly) return;
     const t = setTimeout(() => {
-      for (const id of staleKey.split(",")) if (!busyIds.current.has(id)) run({ type: "update_clip", clipId: id, patch: { fix: { state: "failed", error: "انقطع الإرسال قبل ما يكمل؛ أعد المحاولة." } } });
+      for (const id of staleKey.split(",")) {
+        if (busyIds.current.has(id)) continue;
+        const job = fixOf(id)?.fix?.job;
+        run({ type: "update_clip", clipId: id, patch: { fix: job ? { state: "making", error: null } : { state: "failed", error: "انقطع الإرسال قبل ما يكمل؛ أعد المحاولة." } } });
+      }
     }, 0);
     return () => clearTimeout(t);
   }, [staleKey, readOnly, run]);

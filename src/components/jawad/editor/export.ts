@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — the export, made entirely in the person's browser (WebCodecs through Mediabunny, MPL-2.0): no
+// «حيدر كات» — the export, made entirely in the person's browser (WebCodecs through Mediabunny, MPL-2.0): no
 // server time, no upload of the media. Frame by frame: each clip's source is decoded in order, drawn with the same
 // drawFrame as the preview and encoded to H.264 (or what the browser can encode) in an MP4. The sound is mixed in
 // short pieces with the Web Audio API, so even a long project never holds all its sound in memory at once.

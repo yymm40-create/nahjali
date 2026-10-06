@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — what a media file really is, from its first bytes (never its name). Pure: the browser uses it
+// «حيدر كات» — what a media file really is, from its first bytes (never its name). Pure: the browser uses it
 // before uploading, the server again on the stored file. Wider than JAWAD AI's references: WebM, M4A, OGG, FLAC, AAC.
 
 import { sniff } from "@/lib/jawad/media";

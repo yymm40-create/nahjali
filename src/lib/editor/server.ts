@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — projects, media and saves. Server only. Every call checks the project belongs to the person; the
+// «حيدر كات» — projects, media and saves. Server only. Every call checks the project belongs to the person; the
 // browser gets short-lived links to its own files only. Uploads go straight to storage with a one-time URL (Vercel
 // limits request bodies) and are checked here from their first bytes, without loading whole files into memory.
 
@@ -29,7 +29,7 @@ const partSize = (bytes: number) => Math.max(64 * MiB, Math.ceil(bytes / 9500 / 
 const db = () => createAdminClient();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (s: unknown): s is string => typeof s === "string" && UUID.test(s);
-const NOT_READY = "الممنتج الذكي يحتاج تجهيز قاعدة البيانات أول (ملف 0030).";
+const NOT_READY = "حيدر كات يحتاج تجهيز قاعدة البيانات أول (ملف 0030).";
 
 export interface EditorProject {
   id: string;

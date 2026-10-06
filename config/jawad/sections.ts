@@ -10,7 +10,7 @@ export const SECTION_IMPLEMENTATIONS = {
   "studio:audio": { label: "استوديو الصوت (مولدات الصوت)", output: "audio" as OutputKind },
   film: { label: "صناعة الفيلم بالخطوات (المسار القائم)", output: null },
   student: { label: "الطالب الذكي (مواد دراسية إلى ملخصات وكتب وعروض وصوت واختبارات)", output: null },
-  editor: { label: "الممنتج الذكي (مونتاج الفيديو: قص وترتيب ونصوص وتصدير)", output: null },
+  editor: { label: "حيدر كات (مونتاج الفيديو: قص وترتيب ونصوص وتصدير)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
 export const isImplementation = (s: string): s is SectionImplementation => s in SECTION_IMPLEMENTATIONS;
@@ -32,7 +32,7 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "images", name: "صناعة الصور", icon: "image", implementation: "studio:image", sort: 10, enabled: true },
   { id: "video", name: "صناعة الفيديو", icon: "video", implementation: "studio:video", sort: 20, enabled: true },
   { id: "film", name: "الفيلم السينمائي", icon: "film", implementation: "film", sort: 30, enabled: true },
-  { id: "editor", name: "الممنتج الذكي", icon: "scissors", implementation: "editor", sort: 35, enabled: true },
+  { id: "editor", name: "حيدر كات", icon: "scissors", implementation: "editor", sort: 35, enabled: true },
   { id: "audio", name: "صناعة الصوت", icon: "audio", implementation: "studio:audio", sort: 40, enabled: true },
   { id: "student", name: "الطالب الذكي", icon: "book", implementation: "student", sort: 50, enabled: true },
 ];
@@ -43,6 +43,6 @@ export const RESERVED_SECTION_IDS = ["admin", "login", "username", "coins", "api
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
 export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor"];
 
-/** Where a section opens. The film maker, «الطالب الذكي» and «الممنتج الذكي» keep their own pages; studio sections open at /jawad-ai/<id>. */
+/** Where a section opens. The film maker, «الطالب الذكي» and «حيدر كات» keep their own pages; studio sections open at /jawad-ai/<id>. */
 export const sectionPath = (s: { id: string; implementation: string }) =>
   FIXED_IMPLEMENTATIONS.includes(s.implementation) ? `/jawad-ai/${s.implementation}` : `/jawad-ai/${s.id}`;
