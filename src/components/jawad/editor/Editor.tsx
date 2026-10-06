@@ -9,10 +9,13 @@ import { remapTimeline } from "./package";
 import PhoneTools, { type ClipKindOf, type PhoneAction } from "./PhoneTools";
 import { cutsOnTimeline } from "@/lib/editor/scenes";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { apply, applyAll, CommandError, type Applied, type Command } from "@/lib/editor/commands";
+import { apply, applyAll, CommandError, type Applied, type ClipPatch, type Command } from "@/lib/editor/commands";
+import ContextMenu, { type MenuItem } from "./ContextMenu";
+import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
+import { setGradeView } from "./grade-gl";
 import { clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
-import Icon from "../Icon";
+import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
 import Guard from "./Guard";
 import SmartFix from "./SmartFix";
@@ -38,6 +41,9 @@ interface Step {
   tl: TL;
   label: string;
 }
+
+/** the quick tools shown at first (the person adds or removes more) */
+const DEFAULT_TOOLS = ["split", "delete", "duplicate", "copy", "paste", "text", "captions"];
 
 const info = (a: EditorAsset): AssetInfo => ({ id: a.id, kind: a.kind, durationMs: a.durationMs, width: a.width, height: a.height, hasAudio: a.hasAudio });
 const SAVE_DELAY = 1200;
@@ -658,6 +664,81 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   };
   const remove = (ripple: boolean) => (selected.length ? run({ type: "delete", clipIds: selected, ripple }) : flash("اختر مقطعًا أول (اضغط عليه).", true));
   const duplicate = () => (selected[0] ? run({ type: "duplicate", clipId: selected[0] }) : flash("اختر مقطعًا أول.", true));
+
+  // ---------- the clipboard (Ctrl+C / X / V, and «لصق السمات» Ctrl+Alt+V) ----------
+  const copySel = (ids = selected) => {
+    const n = copyClips(tlRef.current, ids);
+    flash(n ? (n > 1 ? `نسخت ${n} مقاطع.` : "نسخت المقطع.") : "اختر مقطعًا أول.", !n);
+    return n;
+  };
+  const cutSel = (ids = selected) => {
+    if (copySel(ids)) run({ type: "delete", clipIds: ids, ripple: false }, { label: "قص" });
+  };
+  const paste = (ms = at()) => {
+    const c = pasteable();
+    if (!c) return flash("ما فيه شي منسوخ: انسخ مقطع أول (Ctrl+C).", true);
+    run({ type: "paste_clips", clips: c.clips, at: ms });
+  };
+  /** the first copied clip's looks onto the selected clips (each takes what fits it) */
+  const pasteAttrs = (which: Attr[], ids = selected) => {
+    const src = pasteable()?.clips[0]?.clip;
+    if (!src) return flash("انسخ المقطع اللي تبي سماته أول (Ctrl+C).", true);
+    const cmds: Command[] = [];
+    for (const id of ids) {
+      const f = findClip(tlRef.current, id);
+      if (!f || f.clip.id === src.id || f.track.locked) continue;
+      const a = f.clip.assetId ? infos.current.get(f.clip.assetId) : null;
+      const picture = !f.clip.text && f.track.kind === "video" && !!a && a.kind !== "audio";
+      const patch: ClipPatch = {};
+      for (const k of which) {
+        if (k === "grades" && picture) patch.grades = src.grades;
+        if (k === "fx" && picture) patch.fx = src.fx;
+        if (k === "crop" && picture) patch.crop = src.crop;
+        if (k === "bg" && picture) patch.bg = src.bg;
+        if (k === "transform" && f.track.kind !== "audio") patch.transform = src.transform;
+        if (k === "anim" && f.track.kind !== "audio") patch.anim = src.anim;
+        if (k === "sound" && a && a.kind !== "image" && a.hasAudio) patch.sound = src.sound;
+      }
+      if (Object.keys(patch).length) cmds.push({ type: "update_clip", clipId: id, patch });
+    }
+    if (!cmds.length) return flash("ما فيه سمات تنفع للمقاطع المحددة.", true);
+    run(cmds, { label: "لصق السمات" });
+  };
+  type MenuAt = { x: number; y: number; clipId: string | null; ms: number; trackId: string | null };
+  const [menu, setMenu] = useState<(MenuAt & { items: MenuItem[] }) | null>(null);
+  const openMenu = (m: MenuAt) => setMenu({ ...m, items: menuItems(m) });
+  const menuItems = (m: MenuAt): MenuItem[] => {
+    const can = !readOnly;
+    const has = !!pasteable();
+    if (!m.clipId)
+      return [
+        { label: "لصق هنا", keys: "Ctrl+V", onClick: () => paste(m.ms), disabled: !can || !has },
+        { label: "تحديد الكل", keys: "Ctrl+A", onClick: () => setSelected(tlRef.current.tracks.filter((t) => !t.locked).flatMap((t) => t.clips.map((c) => c.id))) },
+        { label: "نص هنا", onClick: () => run({ type: "add_text", at: m.ms }), disabled: !can, sep: true },
+      ];
+    const ids = selected.includes(m.clipId) ? selected : [m.clipId];
+    const f = findClip(tlRef.current, m.clipId);
+    const a = f?.clip.assetId ? infos.current.get(f.clip.assetId) : null;
+    const video = !!a && a.kind === "video" && f?.track.kind === "video";
+    return [
+      { label: "قص", keys: "Ctrl+X", onClick: () => cutSel(ids), disabled: !can },
+      { label: "نسخ", keys: "Ctrl+C", onClick: () => copySel(ids) },
+      { label: "لصق عند المؤشر", keys: "Ctrl+V", onClick: () => paste(), disabled: !can || !has },
+      {
+        label: "لصق السمات",
+        keys: "Ctrl+Alt+V",
+        disabled: !can || !has,
+        items: [{ label: "كل السمات", onClick: () => pasteAttrs(Object.keys(ATTRS) as Attr[], ids) }, ...(Object.entries(ATTRS) as [Attr, string][]).map(([k, label]) => ({ label, onClick: () => pasteAttrs([k], ids) }))],
+      },
+      { label: "تكرار", keys: "Ctrl+D", onClick: () => run({ type: "duplicate", clipId: m.clipId! }), disabled: !can || ids.length > 1, sep: true },
+      { label: "تقسيم عند المؤشر", keys: "S", onClick: split, disabled: !can },
+      ...(video ? [{ label: "فصل صوت الفيديو لمسار", onClick: () => run({ type: "extract_audio", clipId: m.clipId! }), disabled: !can }] : []),
+      ...(a && a.kind !== "image" && a.hasAudio ? [{ label: "فصل الكلام والموسيقى والمؤثرات", onClick: () => void separateClip(m.clipId!).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true)), disabled: !can }] : []),
+      ...(f && !f.clip.text && f.track.kind === "video" ? [{ label: "التلوين", onClick: () => { setWantTab("color"); pick([m.clipId!]); } }] : []),
+      { label: "حذف", keys: "Delete", onClick: () => run({ type: "delete", clipIds: ids, ripple: false }), disabled: !can, danger: true, sep: true },
+      { label: "حذف وسحب اللي بعده", keys: "Shift+Delete", onClick: () => run({ type: "delete", clipIds: ids, ripple: true }), disabled: !can, danger: true },
+    ];
+  };
   const addText = () => {
     run({ type: "add_text", at: at() });
     if (!wide) setSheet("inspector");
@@ -683,6 +764,21 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       } else if (mod && e.key.toLowerCase() === "y") {
         e.preventDefault();
         redo();
+      } else if (mod && e.altKey && e.code === "KeyV") {
+        e.preventDefault();
+        pasteAttrs(Object.keys(ATTRS) as Attr[]);
+      } else if (mod && e.code === "KeyC") {
+        if (!selected.length) return;
+        e.preventDefault();
+        copySel();
+      } else if (mod && e.code === "KeyX") {
+        if (!selected.length) return;
+        e.preventDefault();
+        cutSel();
+      } else if (mod && e.code === "KeyV") {
+        if (!pasteable()) return;
+        e.preventDefault();
+        paste();
       } else if (mod && e.key.toLowerCase() === "d") {
         e.preventDefault();
         duplicate();
@@ -838,6 +934,94 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return setSheet("inspector");
     }
   };
+  // the quick tools over the timeline: the person picks which show (kept on this device)
+  const [tools, setTools] = useState<string[]>(DEFAULT_TOOLS);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const v = JSON.parse(localStorage.getItem("jw-editor-tools") ?? "null");
+        if (Array.isArray(v)) setTools(v.filter((x) => typeof x === "string"));
+      } catch {}
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+  const pickTools = (list: string[]) => {
+    setTools(list);
+    try {
+      localStorage.setItem("jw-editor-tools", JSON.stringify(list));
+    } catch {}
+  };
+  const [cmp, setCmp] = useState(false);
+  const doTool = (id: string) => {
+    switch (id) {
+      case "split":
+        return split();
+      case "delete":
+        return remove(false);
+      case "ripple":
+        return remove(true);
+      case "duplicate":
+        return duplicate();
+      case "copy":
+        return void copySel();
+      case "cut":
+        return cutSel();
+      case "paste":
+        return paste();
+      case "attrs":
+        return pasteAttrs(Object.keys(ATTRS) as Attr[]);
+      case "text":
+        return addText();
+      case "captions":
+        return setCaptioning(true);
+      case "extract":
+        if (selected[0]) run({ type: "extract_audio", clipId: selected[0] });
+        return;
+      case "stems":
+        if (selected[0]) void separateClip(selected[0]).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true));
+        return;
+      case "color":
+        if (selected[0]) {
+          setWantTab("color");
+          pick([selected[0]]);
+        }
+        return;
+      case "compare":
+        setGradeView(cmp ? "on" : "off");
+        setCmp(!cmp);
+        player?.seek(player.ms);
+        return;
+      case "selectAll":
+        return setSelected(tlRef.current.tracks.filter((t) => !t.locked).flatMap((t) => t.clips.map((c) => c.id)));
+      case "full":
+        return toggleFull();
+      case "export":
+        return setExporting(true);
+    }
+  };
+  const single = selected.length === 1;
+  const some = selected.length > 0;
+  const quick: { id: string; label: string; icon: IconName; disabled?: boolean; title?: string; accent?: boolean; pressed?: boolean }[] = [
+    { id: "split", label: "قص", icon: "scissors", disabled: readOnly || !total, title: "قص عند المؤشر (S)" },
+    { id: "delete", label: "حذف", icon: "trash", disabled: readOnly || !some, title: "حذف (Delete)" },
+    { id: "ripple", label: "حذف وسحب", icon: "trash", disabled: readOnly || !some, title: "حذف وسحب اللي بعده (Shift+Delete)" },
+    { id: "duplicate", label: "تكرار", icon: "copy", disabled: readOnly || !single, title: "تكرار (Ctrl+D)" },
+    { id: "copy", label: "نسخ", icon: "copy", disabled: !some, title: "نسخ (Ctrl+C)" },
+    { id: "cut", label: "قص ونسخ", icon: "scissors", disabled: readOnly || !some, title: "قص (Ctrl+X)" },
+    { id: "paste", label: "لصق", icon: "download", disabled: readOnly, title: "لصق عند المؤشر (Ctrl+V)" },
+    { id: "attrs", label: "لصق السمات", icon: "layers", disabled: readOnly || !some, title: "لصق التلوين والمؤثرات والحركة (Ctrl+Alt+V)" },
+    { id: "text", label: "نص", icon: "type", disabled: readOnly, title: "نص فوق الفيديو" },
+    { id: "captions", label: "كابشن", icon: "sparkles", disabled: readOnly, title: "كابشن تلقائي من الكلام، مزامنة قصيدة، ملف SRT", accent: true },
+    { id: "extract", label: "فصل الصوت", icon: "audio", disabled: readOnly || !single, title: "صوت الفيديو في مسار لحاله" },
+    { id: "stems", label: "فصل الكلام", icon: "music", disabled: readOnly || !single, title: "الكلام والموسيقى والمؤثرات كل واحد بمسار" },
+    { id: "color", label: "تلوين", icon: "palette", disabled: !single, title: "افتح التلوين للمقطع" },
+    { id: "compare", label: "قبل/بعد", icon: "eye", pressed: cmp, title: "اعرض الصورة قبل التلوين" },
+    { id: "selectAll", label: "تحديد الكل", icon: "grid", title: "تحديد الكل (Ctrl+A)" },
+    { id: "full", label: "ملء الشاشة", icon: "frames", title: "الفيديو على الشاشة كاملة" },
+    { id: "export", label: "تصدير", icon: "download", title: "صدّر الفيديو" },
+  ];
+
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
@@ -1065,22 +1249,33 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <Icon name="redo" size={17} />
           </button>
         </div>
-        <div className="hidden items-center gap-0.5 border-s border-jw-line ps-1 lg:flex">
-          <button type="button" className={toolBtn} onClick={split} disabled={readOnly || !total} title="قص عند المؤشر (S)">
-            <Icon name="scissors" size={16} /> قص
+        <div className="relative hidden items-center gap-0.5 border-s border-jw-line ps-1 lg:flex">
+          {quick.filter((t) => tools.includes(t.id)).map((t) => (
+            <button key={t.id} type="button" className={`${toolBtn} ${t.accent ? "text-jw-accent" : ""}`} onClick={() => doTool(t.id)} disabled={t.disabled} title={t.title ?? t.label} aria-pressed={t.pressed}>
+              <Icon name={t.icon} size={16} /> {t.label}
+            </button>
+          ))}
+          <button type="button" className={`${toolBtn} !px-1.5`} onClick={() => setToolsOpen((v) => !v)} aria-expanded={toolsOpen} title="اختر أزرار هذا الشريط" aria-label="اختر أزرار الشريط">
+            <Icon name="settings" size={15} />
           </button>
-          <button type="button" className={toolBtn} onClick={() => remove(false)} disabled={readOnly || !selected.length} title="حذف (Delete) · مع سحب اللي بعده: Shift+Delete">
-            <Icon name="trash" size={16} /> حذف
-          </button>
-          <button type="button" className={toolBtn} onClick={duplicate} disabled={readOnly || selected.length !== 1} title="تكرار (Ctrl+D)">
-            <Icon name="copy" size={16} /> تكرار
-          </button>
-          <button type="button" className={toolBtn} onClick={addText} disabled={readOnly} title="نص فوق الفيديو">
-            <Icon name="type" size={16} /> نص
-          </button>
-          <button type="button" className={`${toolBtn} text-jw-accent`} onClick={() => setCaptioning(true)} disabled={readOnly} title="كابشن تلقائي من الكلام، مزامنة قصيدة، ملف SRT">
-            <Icon name="sparkles" size={16} /> كابشن
-          </button>
+          {toolsOpen && (
+            <div className="absolute bottom-full start-0 z-40 mb-1 w-64 rounded-xl border border-jw-line bg-jw-surface p-1.5 shadow-2xl" role="menu" aria-label="أزرار الشريط">
+              <p className="px-1.5 pb-1 text-[11px] text-jw-muted">اضغط على أي زر يظهر أو يختفي من الشريط</p>
+              {quick.map((t) => {
+                const on = tools.includes(t.id);
+                return (
+                  <button key={t.id} type="button" role="menuitemcheckbox" aria-checked={on} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-xs hover:bg-jw-surface-2" onClick={() => pickTools(on ? tools.filter((x) => x !== t.id) : [...tools, t.id])}>
+                    <span className={`grid h-4 w-4 place-items-center rounded border ${on ? "border-jw-accent bg-jw-accent text-jw-on-accent" : "border-jw-line"}`}>{on && <Icon name="check" size={11} />}</span>
+                    <Icon name={t.icon} size={14} />
+                    <span className="flex-1">{t.label}</span>
+                  </button>
+                );
+              })}
+              <button type="button" className="mt-1 w-full rounded-md px-2 py-1 text-[11px] text-jw-muted hover:text-jw-ink" onClick={() => pickTools(DEFAULT_TOOLS)}>
+                رجّع الأزرار الأصلية
+              </button>
+            </div>
+          )}
         </div>
         <Transport player={player} total={total} />
         <div className="hidden items-center rounded-lg border border-jw-line p-0.5 text-[11px] lg:flex" role="radiogroup" aria-label="شكل التايملاين">
@@ -1102,7 +1297,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
       <div className={`jw-glass mx-2 mb-2 shrink-0 overflow-hidden rounded-2xl ${big ? "hidden lg:block lg:h-[16%] lg:min-h-[110px]" : "h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`}>
-        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");
@@ -1130,6 +1325,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       )}
 
       <CaptionsPanel open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel
         open={exporting}
         onClose={() => setExporting(false)}

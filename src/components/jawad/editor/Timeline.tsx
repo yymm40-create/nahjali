@@ -26,6 +26,8 @@ interface Props {
   selected: string[];
   onSelect: (ids: string[]) => void;
   run: (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => void;
+  /** a right-click (two fingers on a Mac) on a clip or an empty spot */
+  onMenu?: (m: { x: number; y: number; clipId: string | null; ms: number; trackId: string | null }) => void;
   player: PlayerLike | null;
   compact: boolean;
   readOnly: boolean;
@@ -112,7 +114,7 @@ export const timecode = (ms: number, fps: number) => {
 };
 const PRO_TONE = { video: "#4f5bd5", image: "#b9822f", audio: "#2f8a5c", text: "#a3478f" } as const;
 
-export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, look = "classic" }: Props) {
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic" }: Props) {
   const pro = look === "pro";
   // track labels like V1, V2, A1, T1 (bottom-up for pictures, top-down for sound)
   const labels = new Map<string, string>();
@@ -602,6 +604,13 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
           tapDown(e, c);
           begin(e, track, c, "move");
         }}
+        onContextMenu={(e) => {
+          if (!onMenu || ghost) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (!selected.includes(c.id)) onSelect([c.id]);
+          onMenu({ x: e.clientX, y: e.clientY, clipId: c.id, ms: msAt(e.clientX), trackId: track.id });
+        }}
         onPointerMove={onMove}
         onPointerUp={(e) => {
           onUp(e);
@@ -739,7 +748,18 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                 style={{ height: height(track) }}
               >
                 {!compact && <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} label={pro ? labels.get(track.id) : undefined} />}
-                <div className="relative flex-1" onPointerDown={laneDown} onPointerMove={laneMove} onPointerUp={laneUp} onPointerCancel={() => setBox(null)}>
+                <div
+                  className="relative flex-1"
+                  onPointerDown={laneDown}
+                  onPointerMove={laneMove}
+                  onPointerUp={laneUp}
+                  onPointerCancel={() => setBox(null)}
+                  onContextMenu={(e) => {
+                    if (!onMenu || e.target !== e.currentTarget) return;
+                    e.preventDefault();
+                    onMenu({ x: e.clientX, y: e.clientY, clipId: null, ms: msAt(e.clientX), trackId: track.id });
+                  }}
+                >
                   {/* a phone: «+» after the last clip adds more (CapCut's way) */}
                   {compact && isMain && !readOnly && total > 0 && (
                     <button type="button" className="absolute top-1 bottom-1 grid w-11 place-items-center rounded-md border border-jw-line bg-jw-surface text-jw-ink shadow" style={{ left: X0 + lanePx(trackEnd(track)) + 6 }} onClick={onEmpty} aria-label="أضف مقطع" title="أضف مقطع">

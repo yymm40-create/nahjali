@@ -367,6 +367,8 @@ export interface Clip {
   fadeOut: number;
   /** the picture's outline: picture-in-picture looks better rounded or round */
   shape: "rect" | "rounded" | "circle";
+  /** «القص» (crop): the share of each side hidden (the picture keeps its size and place) */
+  crop: Crop | null;
   /** captions: when each word is said (text clips only) */
   words: Word[];
   /** pictures only: the person cut out from their background */
@@ -672,6 +674,20 @@ function readTransform(tr: Record<string, unknown>): Transform {
   };
 }
 
+export interface Crop {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
+export const NO_CROP: Crop = { l: 0, t: 0, r: 0, b: 0 };
+function readCrop(v: unknown): Crop | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const c = { l: num(o.l, 0, 0.45, 0), t: num(o.t, 0, 0.45, 0), r: num(o.r, 0, 0.45, 0), b: num(o.b, 0, 0.45, 0) };
+  return c.l || c.t || c.r || c.b ? c : null;
+}
+
 function readColor(v: unknown): ColorGrade | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -769,6 +785,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     fadeIn: int(o.fadeIn, 0, 60_000, 0),
     fadeOut: int(o.fadeOut, 0, 60_000, 0),
     shape: pick(o.shape, ["rect", "rounded", "circle"] as const, "rect"),
+    crop: kind === "audio" || kind === "text" ? null : readCrop(o.crop),
     words: kind !== "text" || !Array.isArray(o.words)
       ? []
       : o.words

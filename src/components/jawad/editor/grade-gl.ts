@@ -492,6 +492,10 @@ export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Gr
  * the left of `x`, after on the right). Kept here so the drawing reads it without passing it through everything.
  */
 export const gradeView: { mode: "on" | "off" | "split"; x: number } = { mode: "on", x: 0.5 };
+export const setGradeView = (mode: "on" | "off" | "split", x?: number) => {
+  gradeView.mode = mode;
+  if (x != null) gradeView.x = x;
+};
 
 const copies: HTMLCanvasElement[] = [];
 /** A frame copied out of the GPU canvas, so the next layer can read it (one per layer, reused). */

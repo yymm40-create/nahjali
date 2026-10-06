@@ -307,6 +307,13 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
   ctx.save();
   place(ctx, t, look, W, H);
   showFromRight(ctx, look, w, h);
+  // «القص»: the hidden sides cut away (the picture keeps its size and place, like Premiere's Crop)
+  if (clip.crop) {
+    const c = clip.crop;
+    ctx.beginPath();
+    ctx.rect(-w / 2 + c.l * w, -h / 2 + c.t * h, w * (1 - c.l - c.r), h * (1 - c.t - c.b));
+    ctx.clip();
+  }
   if (clip.shape !== "rect") {
     ctx.beginPath();
     if (clip.shape === "circle") ctx.arc(0, 0, Math.min(w, h) / 2, 0, Math.PI * 2);

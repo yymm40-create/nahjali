@@ -40,6 +40,8 @@ import {
   readFx,
   TRACK_COLORS,
   NO_SOUND_FX,
+  NO_CROP,
+  type Crop,
   readSound,
   DEFAULT_BACKDROP,
   type Word,
@@ -58,6 +60,8 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   text?: Partial<TextStyle>;
   /** null = back to the original colours */
   color?: Partial<ColorGrade> | null;
+  /** «القص» (crop): how much of each side is hidden, 0…0.45; null = the whole picture */
+  crop?: Partial<Crop> | null;
   /** «التلوين»: merged over one layer (`layer`, default the first; nested parts replaced whole); null = no grading */
   grade?: (Partial<Grade> & { layer?: number }) | null;
   /** the layers all at once (add, remove, reorder) */
@@ -75,7 +79,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, grades: [] as Grade[], transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
+const CLIP_DEFAULTS = { keys: [], crop: null, color: null, grades: [] as Grade[], transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -92,6 +96,8 @@ export type Command =
   /** ripple: what came after moves back to fill the gap; lift: the gap stays */
   | { type: "delete"; clipIds: string[]; ripple: boolean }
   | { type: "duplicate"; clipId: string }
+  /** copied clips back at `at` (their spacing kept), each on its own track when it is still there, else one of its kind */
+  | { type: "paste_clips"; clips: { clip: Clip; trackId: string }[]; at: number }
   | { type: "update_clip"; clipId: string; patch: ClipPatch }
   /** `role`: the red track of pieces to fix, or the green one of what was made («التعديل الذكي») */
   | { type: "add_track"; kind: TrackKind; role?: TrackRole }
@@ -396,6 +402,25 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       return { timeline: t, label: n > 1 ? `حذفت ${n} مقاطع` : "حذفت مقطعًا", select: [] };
     }
 
+    case "paste_clips": {
+      if (!cmd.clips.length) fail("ما فيه شي منسوخ.");
+      if (cmd.clips.length > 200) fail("كثير مرة واحدة.");
+      const base = Math.min(...cmd.clips.map((x) => x.clip.start));
+      const at = Math.max(0, Math.round(Number(cmd.at) || 0));
+      const made: string[] = [];
+      for (const { clip: src, trackId } of [...cmd.clips].sort((a, b) => a.clip.start - b.clip.start)) {
+        if (src.assetId && !assets.has(src.assetId)) fail("الملف المنسوخ مو في مكتبة هذا المشروع.");
+        const kind: TrackKind = src.text ? "text" : src.assetId ? (t.tracks.find((x) => x.id === trackId)?.kind === "audio" ? "audio" : trackFor(src, assets)) : "video";
+        const c: Clip = { ...structuredClone(src), id: newId("c"), start: at + (src.start - base), fix: null };
+        const same = t.tracks.find((x) => x.id === trackId && x.kind === kind && !x.locked && x.role !== "fix" && x.role !== "fixed");
+        const to = same ?? t.tracks.find((x) => x.kind === kind && !x.locked && !x.role) ?? newTrack(t, kind);
+        if (magnet(t, to)) insertMain(to, c, c.start);
+        else place(to, c);
+        made.push(c.id);
+      }
+      return { timeline: t, label: made.length > 1 ? `لصقت ${made.length} مقاطع` : "لصقت مقطعًا", select: made };
+    }
+
     case "duplicate": {
       const { track, clip } = owned(t, cmd.clipId);
       if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
@@ -447,6 +472,13 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         const next = p.color === null ? null : { ...(clip.color ?? NEUTRAL_COLOR), ...p.color };
         if (next && !(next.preset in COLOR_PRESETS)) next.preset = "none";
         clip.color = next;
+      }
+      if (p.crop !== undefined) {
+        if (clip.text || track.kind === "audio") fail("القص للصور والفيديو.");
+        const c = { ...(clip.crop ?? NO_CROP), ...(p.crop ?? NO_CROP) };
+        const k = (v: number) => Math.min(0.45, Math.max(0, Number(v) || 0));
+        const next = { l: k(c.l), t: k(c.t), r: k(c.r), b: k(c.b) };
+        clip.crop = p.crop === null || (!next.l && !next.t && !next.r && !next.b) ? null : next;
       }
       if (p.grade !== undefined || p.grades !== undefined) {
         if (clip.text || track.kind === "audio") fail("التلوين للصور والفيديو فقط.");
