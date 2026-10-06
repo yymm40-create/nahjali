@@ -50,7 +50,7 @@ describe("the hook designer's library", () => {
 
 describe("a design made safe", () => {
   it("keeps the hook's words verbatim in the image prompt", () => {
-    expect(checkDesign(raw, h).imagePrompt).toBe(raw.imagePrompt);
+    expect(checkDesign(raw, h).imagePrompt.startsWith(raw.imagePrompt)).toBe(true);
     const fixed = checkDesign({ ...raw, imagePrompt: "Pixar-style 3D render of the hook" }, h);
     expect(fixed.imagePrompt).toContain('"سرّ النجاح"');
   });
@@ -63,6 +63,12 @@ describe("a design made safe", () => {
     expect(d.lengthMs).toBeGreaterThanOrEqual(d.inMs + d.outMs);
     expect(d.sfxIn.seconds).toBe(5);
     expect(d.sfxIn.peakMs).toBe(5000);
+  });
+
+  it("always cuts the words out over the video (never a card behind them)", () => {
+    const d = checkDesign({ ...raw, background: "scene" }, h);
+    expect(d.background).toBe("transparent");
+    expect(d.imagePrompt).toContain("Isolated lettering only");
   });
 
   it("frames the picture by background and orientation", () => {
