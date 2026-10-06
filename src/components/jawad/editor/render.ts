@@ -2,7 +2,8 @@
 // editing is what they get in the file.
 
 import { familyOf } from "./fontload";
-import { animAt, clipEnd, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform } from "@/lib/editor/model";
+import { drawWithFx, fxPlan } from "./fx";
+import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform } from "@/lib/editor/model";
 
 export interface Frame {
   img: CanvasImageSource;
@@ -116,7 +117,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: numbe
     if (l.clip.text) drawText(ctx, l.clip, t, look, W, H, l.ms);
     else {
       const f = frameOf(l.clip, l.ms);
-      if (f && f.width && f.height) drawMedia(ctx, f, l.clip, t, look, W, H);
+      if (f && f.width && f.height) drawMedia(ctx, f, l.clip, t, look, W, H, l.ms);
     }
   }
 }
@@ -151,7 +152,7 @@ function showFromRight(ctx: CanvasRenderingContext2D, look: Drawn, w: number, h:
 /** A tiny repeatable random per frame and slice («قلتش»). */
 const jitter = (seed: number, i: number) => (((seed * 7919 + i * 104729) % 1000) / 1000) - 0.5;
 
-function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Transform, look: Drawn, W: number, H: number) {
+function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number) {
   const b = baseSize(clip.fit, f.width, f.height, W, H);
   const w = b.w * t.scale * look.scale;
   const h = b.h * t.scale * look.scale;
@@ -180,6 +181,10 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
     }
     ctx.filter = filter || "none";
     ctx.drawImage(cutout(f, f.mask), -w / 2, -h / 2, w, h);
+  } else if (clip.fx.length) {
+    // «المؤثرات»: the clip's own effects, on its own time
+    const plan = fxPlan(clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
+    drawWithFx(ctx, { img: f.img, sw: f.width, sh: f.height }, w, h, plan, filter);
   } else {
     if (filter) ctx.filter = filter;
     // «سحبة»: fading copies trail behind the move
