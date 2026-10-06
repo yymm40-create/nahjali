@@ -7,7 +7,7 @@ import sharp from "sharp";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { openaiImage } from "@/lib/jawad/server/providers/openai";
-import { elevenIsolateVoice, elevenMusic } from "@/lib/jawad/server/providers/elevenlabs";
+import { elevenIsolateVoice, elevenMusic, elevenSoundEffect } from "@/lib/jawad/server/providers/elevenlabs";
 import { falReady, samSeparate } from "@/lib/jawad/server/providers/fal";
 import { ProviderError, providerUserId } from "@/lib/jawad/server/providers/common";
 import { charged, type Who } from "./pricing";
@@ -79,11 +79,25 @@ export async function keyOutGreen(png: Buffer) {
   return trimmed ? { bytes: trimmed.data, width: trimmed.info.width, height: trimmed.info.height } : { bytes: out, width: info.width, height: info.height };
 }
 
-export async function makeHook(p: EditorProject, who: Who, b: { text?: unknown; style?: unknown }) {
+export async function makeHook(p: EditorProject, who: Who, b: { text?: unknown; style?: unknown; prompt?: unknown; background?: unknown; aspect?: unknown }) {
   stillOpen(p);
   const text = String(b.text ?? "").trim().slice(0, 80);
   if (!text) throw new UserError("اكتب نص الهوك.", 400);
   if (!process.env.OPENAI_API_KEY) throw new UserError("صناعة الصور غير مفعّلة على الخادم.", 503);
+  // «نص الهوك»: the designed prompt (Claude's); a cut-out one is drawn on flat green and keyed, a card is kept whole
+  if (typeof b.prompt === "string" && b.prompt.trim()) {
+    const scene = b.background === "scene";
+    const aspect = ["1:1", "3:2", "2:3", "16:9", "9:16"].includes(String(b.aspect)) ? String(b.aspect) : "1:1";
+    const designed = [
+      b.prompt.trim().slice(0, 3800),
+      scene ? "" : "Background: one flat solid pure green colour (#00FF00) filling the whole image around the lettering and its element, perfectly even, no gradient, no texture, no shadow cast on the background, and no green anywhere in the lettering or the element.",
+    ].filter(Boolean).join("\n");
+    const out = await charged(who, "editor_price_hook", 1, "نص الهوك بالصورة في الممنتج", () =>
+      openaiImage({ model: "gpt-image-2-2026-04-21", prompt: designed, aspect, resolution: "std", quality: "high", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError),
+    );
+    const png = scene ? await sharp(out.images[0]).png().toBuffer({ resolveWithObject: true }).then((r) => ({ bytes: r.data, width: r.info.width, height: r.info.height })) : await keyOutGreen(out.images[0]);
+    return addFile(p, { bytes: png.bytes, mime: "image/png", ext: "png", kind: "image", name: `هوك: ${text}`, width: png.width, height: png.height, meta: { made: "hook", text, designed: true } });
+  }
   const style = String(b.style ?? "").trim().slice(0, 300) || "bold modern 3D lettering, white letters with a strong yellow highlight on the key word, thick dark outline, a subtle drop shadow on the letters only";
   const prompt = [
     `A title card for a short video: the Arabic text «${text}» written exactly as given, correctly joined Arabic letters, right to left, nothing else written.`,
@@ -109,6 +123,20 @@ export async function makeMusic(p: EditorProject, who: Who, b: { prompt?: unknow
     elevenMusic({ prompt, lengthMs, instrumental: true, model: "music_v2_5" }).catch(providerError),
   );
   return addFile(p, { bytes: music.audio, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: `موسيقى: ${prompt.slice(0, 40)}`, durationMs: lengthMs, meta: { made: "music" } });
+}
+
+// ───────── a sound effect («نص الهوك»: its entrance and exit) ─────────
+
+export async function makeSfx(p: EditorProject, who: Who, b: { prompt?: unknown; seconds?: unknown; name?: unknown }) {
+  stillOpen(p);
+  const prompt = String(b.prompt ?? "").trim().slice(0, 450);
+  if (!prompt) throw new UserError("وصف المؤثر الصوتي.", 400);
+  if (!process.env.ELEVENLABS_API_KEY) throw new UserError("صناعة المؤثرات غير مفعّلة على الخادم.", 503);
+  const seconds = Math.min(5, Math.max(0.5, Math.round((Number(b.seconds) || 1) * 10) / 10));
+  const audio = await charged(who, "editor_price_sfx", 1, "مؤثر صوتي في الممنتج", () =>
+    elevenSoundEffect({ text: prompt, seconds, loop: false, influence: 0.6 }).catch(providerError),
+  );
+  return addFile(p, { bytes: audio, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: String(b.name ?? `مؤثر: ${prompt.slice(0, 30)}`).slice(0, 80), durationMs: Math.round(seconds * 1000), meta: { made: "sfx" } });
 }
 
 // ───────── talking, music and effects apart ─────────
