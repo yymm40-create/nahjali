@@ -19,11 +19,12 @@ import {
   UrlSource,
   type WrappedCanvas,
 } from "mediabunny";
-import { clipEnd, duration, gainAt, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
+import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
 import { drawFrame, exportSize, layersAt, type Frame } from "./render";
 import { stretch } from "./stretch";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
+import { clipSound } from "./voice";
 
 export interface ExportAsset {
   id: string;
@@ -216,18 +217,21 @@ export async function exportVideo(
       const e = Math.min(to, clipEnd(c));
       if (e <= s) continue;
       const a = byId.get(c.assetId!)!;
-      const track = await input(a).getPrimaryAudioTrack().catch(() => null);
+      // a clip with sound work: its worked sound (made once, the same the preview plays), from the clip's own start
+      const worked = hasSoundFx(c) ? await clipSound(a.url!, c).catch(() => null) : null;
+      const base = worked ? c.in / 1000 : 0;
+      const track = worked ? null : await input(a).getPrimaryAudioTrack().catch(() => null);
       // WebCodecs when the browser reads this sound; else the whole file through the Web Audio API (Safari + AAC)
       const fast = track ? await track.canDecode().catch(() => false) : false;
-      const whole = fast ? null : await decodeWhole(a.url!).catch(() => null);
+      const whole = worked ?? (fast ? null : await decodeWhole(a.url!).catch(() => null));
       if (!fast && !whole) continue;
       const gain = mix.createGain();
       gain.connect(mix.destination);
       // loudness every 20 ms across this piece (fades and ducking are smooth ramps)
       gain.gain.setValueAtTime(gainAt(tr, c, s, spans), (s - from) / 1000);
       for (let t = s + 20; t <= e; t += 20) gain.gain.linearRampToValueAtTime(gainAt(tr, c, Math.min(t, e - 1), spans), (t - from) / 1000);
-      const src0 = sourceTime(c, s) / 1000;
-      const src1 = sourceTime(c, e) / 1000;
+      const src0 = sourceTime(c, s) / 1000 - base;
+      const src1 = sourceTime(c, e) / 1000 - base;
       if (whole) {
         if (c.speed !== 1) {
           const sr = whole.sampleRate;
