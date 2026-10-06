@@ -52,6 +52,7 @@ export default async function Header() {
                 <Link href="/jawad-ai/student" className={ITEM}>🎒 الطالب الذكي</Link>
                 <Link href="/jawad-ai/editor" className={ITEM}>✂️ حيدرة كت</Link>
                 <Link href="/jawad-ai" className={ITEM}>✨ منصة الذكاء الاصطناعي</Link>
+                <Link href="/download" className={`${ITEM} hide-in-app`}>📲 حمّل التطبيق</Link>
                 <hr className="my-1 border-line" />
                 {bookletOpen && <Link href="/my-booklets" className={ITEM}>📚 كتيباتي</Link>}
                 {isAdmin(user.email) && (

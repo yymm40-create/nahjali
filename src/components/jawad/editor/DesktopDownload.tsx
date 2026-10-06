@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import Icon from "../Icon";
 
-// the latest release's files, by their fixed names (.github/workflows/desktop.yml)
-const LATEST = "https://github.com/yymm40-create/nahjali/releases/latest/download";
-const MAC = `${LATEST}/Haidara-Cut-mac.dmg`;
-const WIN = `${LATEST}/Haidara-Cut-Setup.exe`;
+import { DOWNLOADS } from "@config/downloads";
+
+const MAC = DOWNLOADS.mac;
+const WIN = DOWNLOADS.windows;
 
 type Os = "mac" | "win" | "other";
 

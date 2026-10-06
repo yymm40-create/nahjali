@@ -132,3 +132,18 @@ jobs:
             تطبيق نهج علي للأندرويد للتجربة: نزّل NahjAli.apk على جوالك وافتحه (اسمح بالتثبيت من هذا المصدر).
             نسخة الآيفون تنرفع لـ TestFlight بعد ربط حساب Apple Developer.
           files: out/NahjAli.apk
+      # the same file under a fixed tag: the site's download link (config/downloads.ts) never changes
+      - name: Move the fixed «android-latest» tag to this build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/android-latest" 2>/dev/null || true
+          gh release delete android-latest --repo "${{ github.repository }}" --yes 2>/dev/null || true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          target_commitish: ${{ github.sha }}
+          name: "نهج علي للأندرويد (أحدث نسخة)"
+          make_latest: "false"
+          body: "أحدث نسخة من تطبيق نهج علي للأندرويد. نزّل NahjAli.apk وافتحه على جوالك."
+          files: out/NahjAli.apk
