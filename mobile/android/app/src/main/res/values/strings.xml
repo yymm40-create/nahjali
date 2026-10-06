@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">نهج علي</string>
+    <string name="title_activity_main">نهج علي</string>
+    <string name="package_name">app.nahjali.app</string>
+    <string name="custom_url_scheme">app.nahjali.app</string>
+</resources>

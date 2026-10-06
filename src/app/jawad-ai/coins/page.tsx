@@ -40,7 +40,7 @@ export default async function JawadCoins() {
 
       <Link href="/jawad-ai/library" className="jw-panel flex flex-wrap items-center justify-between gap-3 p-5 hover:border-jw-accent/50">
         <span>
-          <span className="block font-semibold">📚 «{LIBRARY_ADDON.name}» · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span>
+          <span className="block font-semibold">📚 «{LIBRARY_ADDON.name}»<span className="hide-in-app"> · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span></span>
           <span className="block text-sm text-jw-muted">أصواتك وشخصياتك وأماكنك محفوظة، وتمنشنها بـ «@اسمها».</span>
         </span>
         <span className={`jw-chip !px-3 !py-1 ${library.active ? "!border-jw-accent/50 text-jw-accent" : ""}`}>{owner ? "مفتوحة لك دائمًا" : library.active ? "مفعّلة" : "غير مفعّلة"}</span>
@@ -67,7 +67,7 @@ export default async function JawadCoins() {
           ))}
           {!live.length && <p className="text-sm text-jw-muted">لا توجد مولدات متاحة حاليًا.</p>}
         </div>
-        <p className="mt-3 text-xs text-jw-faint">المجموع يُقرَّب لأعلى لأقرب نقدة. شحن الرصيد غير متاح من داخل المنصة حاليًا؛ للاستفسار: <span dir="ltr">{CONTACT_EMAIL}</span></p>
+        <p className="mt-3 text-xs text-jw-faint">المجموع يُقرَّب لأعلى لأقرب نقدة.<span className="hide-in-app"> شحن الرصيد غير متاح من داخل المنصة حاليًا؛ للاستفسار: <span dir="ltr">{CONTACT_EMAIL}</span></span></p>
       </section>
 
       <section className="jw-panel p-5">

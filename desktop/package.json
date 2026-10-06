@@ -43,13 +43,16 @@
       ],
       "category": "public.app-category.video",
       "icon": "build/icon.png",
-      "identity": "-",
       "hardenedRuntime": false,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "حيدرة كت يستخدم المايك لتسجيل صوتك في المونتاج.",
         "NSCameraUsageDescription": "حيدرة كت يستخدم الكاميرا للتسجيل في المونتاج."
       },
-      "artifactName": "Haidara-Cut-mac.${ext}"
+      "artifactName": "Haidara-Cut-mac.${ext}",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false,
+      "identity": "-"
     },
     "dmg": {
       "title": "حيدرة كت"
@@ -83,7 +86,8 @@
     "linux": {
       "target": "dir",
       "icon": "build/icon.png"
-    }
+    },
+    "afterSign": "notarize.js"
   },
   "repository": {
     "type": "git",

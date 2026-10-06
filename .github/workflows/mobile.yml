@@ -1,0 +1,134 @@
+# نهج علي on phones (mobile/, Capacitor): builds the Android and iPhone apps.
+# - Android: always an installable .apk (published as a release, to try on any Android phone); with the upload key's
+#   secrets also the signed .aab for Google Play, and with a Play service account it goes up to the internal testing track.
+# - iPhone: always a build for the simulator (checks the project compiles); with the App Store Connect API key's
+#   secrets it is archived, signed by Apple's automatic signing and uploaded to TestFlight.
+name: Mobile apps
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-apps
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      NAHJALI_VERSION_CODE: ${{ github.run_number }}
+      NAHJALI_VERSION_NAME: 1.0.${{ github.run_number }}
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' && secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npx cap sync android
+      - name: Installable APK
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../NahjAli.apk
+      - name: Signed bundle for Google Play
+        if: ${{ env.HAS_KEY == 'true' }}
+        working-directory: mobile/android
+        env:
+          NAHJALI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          NAHJALI_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          NAHJALI_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          NAHJALI_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon bundleRelease
+          cp app/build/outputs/bundle/release/app-release.aab ../NahjAli.aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            mobile/NahjAli.apk
+            mobile/NahjAli.aab
+          if-no-files-found: warn
+      - name: Up to Google Play (internal testing)
+        if: ${{ env.HAS_PLAY == 'true' && github.event_name != 'pull_request' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.nahjali.app
+          releaseFiles: mobile/NahjAli.aab
+          track: internal
+          status: completed
+
+  ios:
+    runs-on: macos-latest
+    env:
+      HAS_ASC: ${{ secrets.ASC_KEY_P8_BASE64 != '' }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npx cap sync ios
+      - name: Build for the simulator (the project compiles)
+        working-directory: mobile/ios/App
+        run: xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tail -20
+      - name: Archive and upload to TestFlight
+        if: ${{ env.HAS_ASC == 'true' && github.event_name != 'pull_request' }}
+        working-directory: mobile/ios/App
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "${{ secrets.ASC_KEY_P8_BASE64 }}" | base64 -d > "$RUNNER_TEMP/asc.p8"
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/asc.p8 -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/NahjAli.xcarchive" DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION=1.0 CURRENT_PROJECT_VERSION=${{ github.run_number }} $AUTH archive | tail -20
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict>' '<key>method</key><string>app-store-connect</string>' '<key>destination</key><string>upload</string>' \
+            "<key>teamID</key><string>$TEAM_ID</string>" '<key>signingStyle</key><string>automatic</string>' '</dict></plist>' > "$RUNNER_TEMP/export.plist"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/NahjAli.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/out" $AUTH | tail -20
+
+  release:
+    needs: [android, ios]
+    # (a pull request only checks the builds; main publishes)
+    if: ${{ always() && needs.android.result == 'success' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-v1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: "نهج علي للجوال · 1.0.${{ github.run_number }}"
+          make_latest: "false"
+          body: |
+            تطبيق نهج علي للأندرويد للتجربة: نزّل NahjAli.apk على جوالك وافتحه (اسمح بالتثبيت من هذا المصدر).
+            نسخة الآيفون تنرفع لـ TestFlight بعد ربط حساب Apple Developer.
+          files: out/NahjAli.apk

@@ -165,7 +165,7 @@ export function LibraryLock({ what }: { what: string }) {
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-jw-accent/15 text-jw-accent"><Icon name="lock" size={16} /></span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{what}</span>
-        <span className="block text-[11px] text-jw-muted">ضمن «{LIBRARY_ADDON.name}» · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span>
+        <span className="block text-[11px] text-jw-muted">ضمن «{LIBRARY_ADDON.name}»<span className="hide-in-app"> · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span></span>
       </span>
       <Icon name="chevronLeft" size={16} className="text-jw-faint" />
     </Link>

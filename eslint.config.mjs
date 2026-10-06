@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // the desktop program (its own package, plain Node)
     "desktop/**",
+    "mobile/**",
   ]),
 ]);
 

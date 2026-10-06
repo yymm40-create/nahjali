@@ -1,0 +1,23 @@
+{
+  "name": "nahjali-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "نهج علي: تطبيق الجوال (آيفون وأندرويد)",
+  "scripts": {
+    "sync": "cap sync",
+    "assets": "capacitor-assets generate --iconBackgroundColor '#0a1430' --iconBackgroundColorDark '#0a1430' --splashBackgroundColor '#0a1430' --splashBackgroundColorDark '#0a1430'"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2"
+  }
+}

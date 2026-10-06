@@ -251,7 +251,7 @@ function Offer() {
     <section className="jw-panel space-y-3 border-jw-accent/40 p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="flex items-center gap-2 font-semibold"><Icon name="lock" size={16} className="text-jw-accent" /> «{LIBRARY_ADDON.name}» إضافة باشتراك</h2>
-        <p className="text-2xl font-bold">
+        <p className="hide-in-app text-2xl font-bold">
           <span dir="ltr">{LIBRARY_ADDON.monthlySar}</span> <span className="text-sm font-normal text-jw-muted">ريال شهريًا</span>
         </p>
       </div>
