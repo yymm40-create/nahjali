@@ -327,6 +327,12 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
     }, 400);
     return () => clearTimeout(t);
   }, [editable, j.id]);
+  // Opened with #job-<this job> (e.g. from the editor, following an edit being made): shown once it is listed
+  useEffect(() => {
+    if (window.location.hash !== `#job-${j.id}`) return;
+    const t = setTimeout(() => document.getElementById(`job-${j.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 400);
+    return () => clearTimeout(t);
+  }, [j.id]);
   // «الفصل الذكي»: each track by name; they can be watched under their video, together or one by one
   const [watching, setWatching] = useState(false);
   const sourceVideo = j.mode === "video_to_sfx" || j.generatorId === SMART_SPLIT_ID ? j.refs.find((r) => r.kind === "video") : undefined;

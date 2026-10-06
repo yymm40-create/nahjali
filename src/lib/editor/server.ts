@@ -79,8 +79,9 @@ export interface AssetView {
   origin: AssetRow["origin"];
   /** the JAWAD AI result or film video it was brought in from */
   sourceId: string | null;
-  /** a JAWAD AI result: its job (for «التعديل الذكي») */
+  /** a JAWAD AI result (or a film video linked to one): its job and result, for «التعديل الذكي» */
   jobId: string | null;
+  outputId: string | null;
   status: AssetRow["status"];
   url: string | null;
 }
@@ -168,6 +169,7 @@ const view = (r: AssetRow, url: string | null): AssetView => ({
   origin: r.origin,
   sourceId: typeof r.meta?.sourceId === "string" ? r.meta.sourceId : null,
   jobId: typeof r.meta?.jobId === "string" ? r.meta.jobId : null,
+  outputId: typeof r.meta?.outputId === "string" ? r.meta.outputId : r.origin === "jawad" && typeof r.meta?.sourceId === "string" ? r.meta.sourceId : null,
   status: url || r.status !== "ready" ? r.status : "missing",
   url,
 });

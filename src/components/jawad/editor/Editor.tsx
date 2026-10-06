@@ -106,7 +106,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
 
 const SAVE_TEXT: Record<SaveState, string> = { saved: "محفوظ", dirty: "تعديلات…", saving: "نحفظ…", error: "ما انحفظ، نعيد…", conflict: "تغيّر من مكان ثاني" };
 
-export default function Editor({ project, initialAssets, exportUrl, backHref }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string }) {
+export default function Editor({ project, initialAssets, exportUrl, backHref, studioPath = null }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string; studioPath?: string | null }) {
   const readOnly = project.purged;
   const wide = useWide();
   const [tl, setTl] = useState(project.timeline);
@@ -838,7 +838,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         </button>
       </div>
 
-      <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} /></Guard>
+      <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>
       <div className="jw-glass mx-2 mb-2 h-[34%] min-h-[150px] shrink-0 overflow-hidden rounded-2xl lg:h-[30%] lg:min-h-[200px]">
         <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
