@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { clipEnd, clipLength, duration, formatTime, mainTrack, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
+import { clipEnd, clipLength, duration, formatTime, mainTrack, trackEnd, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
 import type { Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
 import type { EditorAsset } from "./types";
@@ -15,6 +15,7 @@ export interface PlayerLike {
   readonly ms: number;
   readonly playing: boolean;
   seek(ms: number): void;
+  pause(): void;
   subscribe(fn: (ms: number, playing: boolean) => void): () => void;
 }
 
@@ -67,6 +68,7 @@ interface Drag {
 const MIN_PPS = 1;
 const MAX_PPS = 400;
 const RULER = 26;
+const RULER_PHONE = 18;
 const SNAP_PX = 8;
 
 /** A clip on a sound track is sound, even when it comes from a video (its sound taken out). */
@@ -102,8 +104,24 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   // track labels like V1, V2, A1, T1 (bottom-up for pictures, top-down for sound)
   const labels = new Map<string, string>();
   for (const kind of ["video", "audio", "text"] as const) tl.tracks.filter((t) => t.kind === kind).forEach((t, i) => labels.set(t.id, `${kind === "video" ? "V" : kind === "audio" ? "A" : "T"}${i + 1}`));
-  const HEAD = compact ? 40 : 144;
+  // a phone (CapCut's way): no track heads, the playhead fixed in the middle and the clips slide under it; half a screen
+  // of room on each side lets the very start and the end reach it
+  const HEAD = compact ? 0 : 144;
   const scroller = useRef<HTMLDivElement>(null);
+  const [pad, setPad] = useState(0);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || !compact) return;
+    const measure = () => setPad(Math.round(el.clientWidth / 2));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [compact]);
+  /** where moment 0 sits in the scrolled content */
+  const X0 = compact ? pad : HEAD;
+  // what this component scrolled to itself (the player moving), so that scroll isn't taken for the person's finger
+  const wantScroll = useRef<number | null>(null);
   const playhead = useRef<HTMLDivElement>(null);
   const rows = useRef(new Map<string, HTMLDivElement>());
   const [pps, setPps] = useState(40);
@@ -119,10 +137,10 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const visual = tl.tracks.filter((t) => t.kind !== "audio").reverse();
     return [...visual, ...tl.tracks.filter((t) => t.kind === "audio")];
   }, [tl.tracks]);
-  const height = (t: Track) => (t.id === main?.id ? (compact ? 52 : 60) : t.kind === "audio" ? (compact ? 34 : 38) : compact ? 38 : 44);
+  const height = (t: Track) => (t.id === main?.id ? (compact ? 56 : 60) : t.kind === "audio" ? (compact ? 30 : 38) : compact ? 30 : 44);
 
   const lanePx = (ms: number) => (ms * pps) / 1000;
-  const contentW = HEAD + lanePx(total + 15_000) + 80;
+  const contentW = compact ? X0 + lanePx(total) + pad + 56 : HEAD + lanePx(total + 15_000) + 80;
 
   // ---------- zoom ----------
   const zoomTo = useCallback(
@@ -131,27 +149,35 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       const z = Math.min(MAX_PPS, Math.max(MIN_PPS, next));
       if (el) {
         const x = at?.x ?? el.clientWidth / 2;
-        const ms = at?.ms ?? ((el.scrollLeft + x - HEAD) * 1000) / pps;
+        const ms = at?.ms ?? ((el.scrollLeft + x - X0) * 1000) / pps;
         anchor.current = { ms, x };
       }
       setPps(z);
     },
-    [pps, HEAD],
+    [pps, X0],
   );
   useLayoutEffect(() => {
     const el = scroller.current;
     const a = anchor.current;
     if (!el || !a) return;
     anchor.current = null;
-    el.scrollLeft = HEAD + (a.ms * pps) / 1000 - a.x;
-  }, [pps, HEAD]);
+    const x = X0 + (a.ms * pps) / 1000 - a.x;
+    wantScroll.current = x;
+    el.scrollLeft = x;
+  }, [pps, X0]);
   const fit = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
+    if (compact) {
+      // a phone: the whole thing on the screen when it is short, about a screen for every 8 seconds otherwise
+      anchor.current = { ms: player?.ms ?? 0, x: el.clientWidth / 2 };
+      setPps(Math.min(80, Math.max(24, total ? ((el.clientWidth - 40) * 1000) / total : 48)));
+      return;
+    }
     const w = el.clientWidth - HEAD - 40;
     anchor.current = { ms: 0, x: HEAD };
     setPps(Math.min(MAX_PPS, Math.max(MIN_PPS, total ? (w * 1000) / total : 40)));
-  }, [total, HEAD]);
+  }, [total, HEAD, compact, player]);
   // the first time there is something on the timeline, show all of it
   useEffect(() => {
     if (fitted.current || !total) return;
@@ -169,7 +195,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const x = e.clientX - r.left;
-      zoomTo(pps * Math.exp(-e.deltaY * 0.01), { ms: ((el.scrollLeft + x - HEAD) * 1000) / pps, x });
+      zoomTo(pps * Math.exp(-e.deltaY * 0.01), { ms: ((el.scrollLeft + x - X0) * 1000) / pps, x });
     };
     let pinch: { d: number; pps: number; ms: number; x: number } | null = null;
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -177,7 +203,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       if (e.touches.length !== 2) return;
       const r = el.getBoundingClientRect();
       const x = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
-      pinch = { d: dist(e.touches), pps, ms: ((el.scrollLeft + x - HEAD) * 1000) / pps, x };
+      // (a phone keeps the moment under the fixed playhead where it is)
+      pinch = compact ? { d: dist(e.touches), pps, ms: player?.ms ?? 0, x: el.clientWidth / 2 } : { d: dist(e.touches), pps, ms: ((el.scrollLeft + x - X0) * 1000) / pps, x };
     };
     const move = (e: TouchEvent) => {
       if (!pinch || e.touches.length !== 2) return;
@@ -197,26 +224,58 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       el.removeEventListener("touchmove", move);
       el.removeEventListener("touchend", end);
     };
-  }, [pps, zoomTo, HEAD]);
+  }, [pps, zoomTo, X0, compact, player]);
 
   // ---------- the playhead follows the player (drawn directly: 60 times a second without re-rendering) ----------
   useEffect(() => {
     if (!player) return;
     const place = (ms: number, playing: boolean) => {
+      const el = scroller.current;
+      if (compact) {
+        // the playhead stays put; the timeline slides so this moment is under it
+        if (!el) return;
+        const x = (ms * pps) / 1000;
+        if (Math.abs(el.scrollLeft - x) < 0.5) return;
+        wantScroll.current = x;
+        el.scrollLeft = x;
+        return;
+      }
       const x = HEAD + (ms * pps) / 1000;
       if (playhead.current) playhead.current.style.transform = `translateX(${x}px)`;
-      const el = scroller.current;
       // the playhead never leaves the view (playing, a jump to the start or end, a click in the library)
       if (el && (x < el.scrollLeft + HEAD || x > el.scrollLeft + el.clientWidth - 24)) el.scrollLeft = x - HEAD - (el.clientWidth - HEAD) * (playing ? 0.15 : 0.4);
     };
     place(player.ms, false);
     return player.subscribe(place);
-  }, [player, pps, HEAD]);
+  }, [player, pps, HEAD, compact]);
+
+  // a phone: a swipe on the timeline scrubs the picture (and pauses it); the moment under the playhead is what plays
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || !compact || !player) return;
+    let raf = 0;
+    const onScroll = () => {
+      const want = wantScroll.current;
+      if (want != null && Math.abs(el.scrollLeft - want) < 1) {
+        wantScroll.current = null;
+        return;
+      }
+      wantScroll.current = null;
+      if (player.playing) player.pause();
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => player.seek(Math.max(0, Math.min(total, (el.scrollLeft * 1000) / pps))));
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [compact, player, pps, total]);
 
   const msAt = (clientX: number) => {
     const el = scroller.current!;
     const r = el.getBoundingClientRect();
-    return Math.max(0, ((clientX - r.left + el.scrollLeft - HEAD) * 1000) / pps);
+    return Math.max(0, ((clientX - r.left + el.scrollLeft - X0) * 1000) / pps);
   };
 
   // ---------- scrubbing on the ruler ----------
@@ -382,7 +441,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     laneTap.current = null;
     if (!t || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 8) return;
     onSelect([]);
-    player?.seek(Math.min(total, msAt(e.clientX)));
+    if (!compact) player?.seek(Math.min(total, msAt(e.clientX)));
   };
 
   // ---------- files dropped from the computer or the library ----------
@@ -449,7 +508,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         aria-pressed={sel}
         className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${d?.moved && d.mode === "move" ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
         style={{
-          left: lanePx(start),
+          left: X0 - HEAD + lanePx(start),
           width: Math.max(4, lanePx(end - start)),
           touchAction: sel ? "none" : "pan-x pan-y",
           cursor: readOnly || track.locked ? "default" : "grab",
@@ -477,7 +536,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       >
         {!pro && track.color && <span className="pointer-events-none absolute inset-0 border-s-4" style={{ borderColor: track.color, background: `${track.color}33` }} />}
         <span className={`pointer-events-none absolute inset-x-0 top-0 truncate px-1.5 py-0.5 font-medium ${pro ? "h-[14px] bg-black/35 py-0 text-[10px] leading-[14px]" : "bg-gradient-to-b from-black/60 to-transparent"}`} dir="auto">
-          {c.text ? c.text.body : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
+          {c.text ? c.text.body : compact ? formatTime(clipLength(c)) : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
         </span>
         {!compact && lanePx(end - start) > 60 && (
           <span className="pointer-events-none absolute bottom-0 left-1 text-[10px] text-white/80">{formatTime(clipLength(c))}</span>
@@ -533,8 +592,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
         <div className="relative" style={{ width: contentW, minHeight: "100%" }}>
           {/* ruler */}
-          <div className="sticky top-0 z-20 flex" style={{ height: RULER }}>
-            <div className="sticky left-0 z-30 flex items-center gap-0.5 border-b border-e border-jw-line bg-jw-surface px-1" style={{ width: HEAD, minWidth: HEAD }}>
+          <div className="sticky top-0 z-20 flex" style={{ height: compact ? RULER_PHONE : RULER }}>
+            {!compact && <div className="sticky left-0 z-30 flex items-center gap-0.5 border-b border-e border-jw-line bg-jw-surface px-1" style={{ width: HEAD, minWidth: HEAD }}>
               <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(pps / 1.6)} aria-label="تصغير" title="تصغير">
                 <Icon name="zoomOut" size={14} />
               </button>
@@ -570,16 +629,17 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                   ))}
                 </div>
               )}
-            </div>
-            <div className="relative flex-1 cursor-col-resize border-b border-jw-line bg-jw-surface" style={{ touchAction: "none" }} onPointerDown={scrub} onPointerMove={scrubMove}>
+            </div>}
+            <div className={`relative flex-1 border-b border-jw-line bg-jw-surface ${compact ? "" : "cursor-col-resize"}`} style={{ touchAction: compact ? "pan-x pan-y" : "none" }} onPointerDown={compact ? undefined : scrub} onPointerMove={compact ? undefined : scrubMove}>
               {ticks.map((ms) => (
-                <span key={ms} className="absolute top-0 h-full border-l border-jw-line-strong ps-1 text-[10px] leading-[26px] text-jw-faint" style={{ left: lanePx(ms) }}>
+                <span key={ms} className={compact ? "absolute top-0 h-full -translate-x-1/2 text-center text-[9px] leading-[18px] text-jw-faint" : "absolute top-0 h-full border-l border-jw-line-strong ps-1 text-[10px] leading-[26px] text-jw-faint"} style={{ left: X0 - HEAD + lanePx(ms) }}>
                   {pro ? timecode(ms, tl.fps) : formatTime(ms, step < 1000)}
                 </span>
               ))}
+              {compact && ticks.map((ms) => <span key={`d${ms}`} className="absolute top-[7px] h-1 w-1 -translate-x-1/2 rounded-full bg-jw-faint/60" style={{ left: X0 + lanePx(ms + step / 2) }} />)}
               {/* beat marks */}
               {tl.markers.map((m) => (
-                <span key={`m${m}`} className="pointer-events-none absolute bottom-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-jw-warn" style={{ left: lanePx(m) }} />
+                <span key={`m${m}`} className="pointer-events-none absolute bottom-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-jw-warn" style={{ left: X0 - HEAD + lanePx(m) }} />
               ))}
             </div>
           </div>
@@ -599,8 +659,14 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                 className={`flex border-b border-jw-line ${pro ? (ordered.indexOf(track) % 2 ? "bg-black/[0.06]" : "bg-black/[0.02]") : isMain ? "bg-jw-surface-2/40" : ""} ${target || dropAt?.trackId === track.id ? "bg-jw-accent/10" : ""}`}
                 style={{ height: height(track) }}
               >
-                <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} label={pro ? labels.get(track.id) : undefined} />
+                {!compact && <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} label={pro ? labels.get(track.id) : undefined} />}
                 <div className="relative flex-1" onPointerDown={laneDown} onPointerUp={laneUp}>
+                  {/* a phone: «+» after the last clip adds more (CapCut's way) */}
+                  {compact && isMain && !readOnly && total > 0 && (
+                    <button type="button" className="absolute top-1 bottom-1 grid w-11 place-items-center rounded-md border border-jw-line bg-jw-surface text-jw-ink shadow" style={{ left: X0 + lanePx(trackEnd(track)) + 6 }} onClick={onEmpty} aria-label="أضف مقطع" title="أضف مقطع">
+                      <Icon name="plus" size={18} strokeWidth={2.5} />
+                    </button>
+                  )}
                   {track.clips.map((c) => (moving?.id === c.id && moving.ghostTrack !== track.id ? null : clipView(track, c)))}
                   {/* a clip being dragged here from another track */}
                   {moving && moving.ghostTrack === track.id && moving.trackId !== track.id && (() => {
@@ -622,7 +688,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={() => onTransition(c.id)}
                           className={`absolute -top-0.5 z-20 grid -translate-x-1/2 place-items-center rounded-b-md border text-[10px] font-bold shadow ${c.transition ? "h-4 min-w-4 border-jw-accent bg-jw-accent px-0.5 text-jw-on-accent" : "h-3.5 w-3.5 border-white/50 bg-black/70 text-white opacity-70 hover:opacity-100"}`}
-                          style={{ left: lanePx(n.start) }}
+                          style={{ left: X0 - HEAD + lanePx(n.start) }}
                           aria-label={c.transition ? `انتقال: ${TRANSITIONS[c.transition.kind].label}` : "أضف انتقال"}
                           title={c.transition ? `انتقال: ${TRANSITIONS[c.transition.kind].label}` : "أضف انتقال"}
                         >
@@ -635,7 +701,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
             );
           })}
           {dropAt && (
-            <div className="pointer-events-none absolute bottom-0 z-30 w-0.5 bg-jw-accent shadow-[0_0_10px_var(--jw-accent)]" style={{ top: RULER, left: HEAD + lanePx(dropAt.ms) }}>
+            <div className="pointer-events-none absolute bottom-0 z-30 w-0.5 bg-jw-accent shadow-[0_0_10px_var(--jw-accent)]" style={{ top: RULER, left: X0 + lanePx(dropAt.ms) }}>
               <span className="absolute -top-0.5 left-1 whitespace-nowrap rounded bg-jw-accent px-1.5 py-0.5 text-[10px] text-jw-on-accent" dir="rtl">
                 اترك هنا · {formatTime(dropAt.ms)}
               </span>
@@ -647,13 +713,21 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
             </div>
           )}
 
-          {/* playhead */}
-          <div ref={playhead} className="pointer-events-none absolute bottom-0 top-0 z-30 w-0" style={{ transform: `translateX(${HEAD}px)` }}>
-            <div className="absolute -left-[6px] top-0 h-3 w-3 rotate-45 rounded-sm bg-jw-accent" />
-            <div className="absolute -left-px top-0 h-full w-0.5 bg-jw-accent shadow-[0_0_6px_var(--jw-accent)]" />
-          </div>
+          {/* playhead (a computer: it moves; a phone: it stays in the middle, below) */}
+          {!compact && (
+            <div ref={playhead} className="pointer-events-none absolute bottom-0 top-0 z-30 w-0" style={{ transform: `translateX(${HEAD}px)` }}>
+              <div className="absolute -left-[6px] top-0 h-3 w-3 rotate-45 rounded-sm bg-jw-accent" />
+              <div className="absolute -left-px top-0 h-full w-0.5 bg-jw-accent shadow-[0_0_6px_var(--jw-accent)]" />
+            </div>
+          )}
         </div>
       </div>
+      {compact && (
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0" aria-hidden>
+          <div className="absolute -left-[5px] top-0 h-0 w-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-jw-ink" />
+          <div className="absolute -left-px top-0 h-full w-0.5 rounded-full bg-jw-ink shadow-[0_0_4px_rgba(0,0,0,.5)]" />
+        </div>
+      )}
 
       {!total && !readOnly && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center p-4" dir="rtl">
