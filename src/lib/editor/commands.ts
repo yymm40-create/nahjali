@@ -30,6 +30,9 @@ import {
   type Timeline,
   type Track,
   type TrackKind,
+  type Sequence,
+  MAX_SEQS,
+  FIRST_SEQ,
   type Transform,
   type TransitionKind,
   type Backdrop,
@@ -108,6 +111,12 @@ export type Command =
   | { type: "clear_keys"; clipId: string }
   /** beat marks the cuts snap to: `add` (merged) or `replace`; `clear` removes them all */
   | { type: "set_markers"; markers: number[]; mode: "add" | "replace" | "clear" }
+  /** «تسلسلات»: a new empty timeline (same size and frame rate) opened; open, rename, copy or delete one */
+  | { type: "seq_new"; name?: string }
+  | { type: "seq_open"; id: string }
+  | { type: "seq_rename"; id: string; name: string }
+  | { type: "seq_duplicate"; id: string }
+  | { type: "seq_delete"; id: string }
   /** a caption track: one text clip per phrase (words timed from each clip's start), in one look */
   | { type: "add_captions"; items: { start: number; end: number; body: string; words?: Word[] }[]; style: CaptionStyle; name?: string }
   /** one look for every text clip of a track (re-styling captions); captions set apart («own») keep theirs unless `all` */
@@ -229,6 +238,17 @@ function roleTrack(t: Timeline, role: TrackRole): Track {
   }
   return track;
 }
+/** The timeline without its list of timelines (what a parked timeline holds). */
+const bare = (t: Timeline): Timeline => {
+  const { seqs, ...rest } = t;
+  void seqs;
+  return structuredClone(rest);
+};
+/** The project's timelines; a project with one gets its first entry (the open one). */
+const seqsOf = (t: Timeline): Sequence[] => (t.seqs?.length ? t.seqs : [{ id: FIRST_SEQ, name: "تسلسل 1", tl: null }]);
+/** The list with the open timeline's content parked in its own place (before another one opens). */
+const parked = (t: Timeline, seqs: Sequence[]): Sequence[] => seqs.map((x) => (x.tl ? x : { ...x, tl: bare(t) }));
+
 const FRESH_FIX: Fix = { note: "", mode: "parts", job: null, from: null, state: "draft" };
 
 const free = (track: Track, from: number, to: number) => track.clips.every((c) => clipEnd(c) <= from || c.start >= to);
@@ -576,6 +596,54 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const { clip } = owned(t, cmd.clipId);
       clip.keys = [];
       return { timeline: t, label: "شلت الحركة", select: [clip.id] };
+    }
+
+    case "seq_new": {
+      const seqs = seqsOf(t);
+      if (seqs.length >= MAX_SEQS) fail(`أكثر شي ${MAX_SEQS} تسلسل في المشروع.`);
+      const name = (cmd.name ?? "").trim().slice(0, 40) || `تسلسل ${seqs.length + 1}`;
+      const fresh: Timeline = { v: t.v, width: t.width, height: t.height, fps: t.fps, background: t.background, magnetic: true, markers: [], tracks: [{ id: newId("t"), kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] }] };
+      const id = newId("s");
+      return { timeline: { ...fresh, seqs: [...parked(t, seqs), { id, name, tl: null }] }, label: `تسلسل جديد «${name}»`, select: [] };
+    }
+    case "seq_open": {
+      const seqs = seqsOf(t);
+      const to = seqs.find((x) => x.id === cmd.id) ?? fail("ما لقينا هذا التسلسل.");
+      if (!to.tl) return { timeline: t, label: `«${to.name}»`, select: [] };
+      return { timeline: { ...to.tl, seqs: parked(t, seqs).map((x) => (x.id === to.id ? { ...x, tl: null } : x)) }, label: `فتحت «${to.name}»`, select: [] };
+    }
+    case "seq_rename": {
+      const seqs = seqsOf(t);
+      const name = String(cmd.name ?? "").trim().slice(0, 40);
+      if (!name) fail("اكتب اسم.");
+      if (!seqs.some((x) => x.id === cmd.id)) fail("ما لقينا هذا التسلسل.");
+      t.seqs = seqs.map((x) => (x.id === cmd.id ? { ...x, name } : x));
+      return { timeline: t, label: `سمّيت التسلسل «${name}»` };
+    }
+    case "seq_duplicate": {
+      const seqs = seqsOf(t);
+      if (seqs.length >= MAX_SEQS) fail(`أكثر شي ${MAX_SEQS} تسلسل في المشروع.`);
+      const i = seqs.findIndex((x) => x.id === cmd.id);
+      if (i < 0) fail("ما لقينا هذا التسلسل.");
+      const from = seqs[i];
+      const content = from.tl ? structuredClone(from.tl) : bare(t);
+      t.seqs = [...seqs.slice(0, i + 1), { id: newId("s"), name: `${from.name} (نسخة)`.slice(0, 40), tl: content }, ...seqs.slice(i + 1)];
+      return { timeline: t, label: `نسخت «${from.name}»` };
+    }
+    case "seq_delete": {
+      const seqs = seqsOf(t);
+      if (seqs.length < 2) fail("هذا التسلسل الوحيد في المشروع.");
+      const i = seqs.findIndex((x) => x.id === cmd.id);
+      if (i < 0) fail("ما لقينا هذا التسلسل.");
+      const gone = seqs[i];
+      if (gone.tl) {
+        t.seqs = seqs.filter((x) => x.id !== cmd.id);
+        return { timeline: t, label: `حذفت «${gone.name}»` };
+      }
+      // the open one: its neighbour opens in its place
+      const next = seqs[i + 1] ?? seqs[i - 1];
+      const rest = seqs.filter((x) => x.id !== cmd.id);
+      return { timeline: { ...next.tl!, seqs: rest.map((x) => (x.id === next.id ? { ...x, tl: null } : x)) }, label: `حذفت «${gone.name}»`, select: [] };
     }
 
     case "set_markers": {

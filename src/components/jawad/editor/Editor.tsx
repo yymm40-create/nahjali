@@ -11,9 +11,10 @@ import { cutsOnTimeline } from "@/lib/editor/scenes";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apply, applyAll, CommandError, type Applied, type ClipPatch, type Command } from "@/lib/editor/commands";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
+import SequenceTabs from "./SequenceTabs";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
 import { setGradeView } from "./grade-gl";
-import { clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
+import { allTracks, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
@@ -581,7 +582,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if (!wide) setSheet(null);
   };
   const removeAsset = async (a: EditorAsset) => {
-    if (tlRef.current.tracks.some((t) => t.clips.some((c) => c.assetId === a.id))) return flash("هذا الملف مستخدم في التايملاين؛ احذف مقاطعه أول.", true);
+    if (allTracks(tlRef.current).some((t) => t.clips.some((c) => c.assetId === a.id))) return flash("هذا الملف مستخدم في أحد التسلسلات؛ احذف مقاطعه أول.", true);
     await flush();
     try {
       await postJson(`/api/jawad/editor/projects/${project.id}`, { action: "delete_asset", id: a.id });
@@ -1296,12 +1297,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       </div>
 
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
-      <div className={`jw-glass mx-2 mb-2 shrink-0 overflow-hidden rounded-2xl ${big ? "hidden lg:block lg:h-[16%] lg:min-h-[110px]" : "h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`}>
+      <div className={`jw-glass mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`}>
+        {wide && <SequenceTabs tl={tl} run={run} readOnly={readOnly} />}
+        <div className="min-h-0 flex-1">
         <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");
         }} /></Guard>
+        </div>
       </div>
 
       {THEMES[theme].rail === "pages" && !big && railNav("pages")}
