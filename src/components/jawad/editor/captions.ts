@@ -3,6 +3,7 @@
 
 import { ALL_FORMATS, AudioBufferSink, AudioBufferSource, BufferTarget, canEncodeAudio, Input, Output, UrlSource, WebMOutputFormat } from "mediabunny";
 import { clipEnd, formatTime, type Clip, type Timeline, type Word } from "@/lib/editor/model";
+import { decodeWhole, sliceMono } from "./audio";
 
 export interface SpokenWord {
   s: number;
@@ -41,19 +42,32 @@ async function* pieces(track: NonNullable<Awaited<ReturnType<Input["getPrimaryAu
 export async function extractSound(url: string, fromMs: number, toMs: number, onProgress?: (p: number) => void): Promise<{ blob: Blob; format: "webm" | "wav" }> {
   const input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
   try {
-    const track = await input.getPrimaryAudioTrack();
-    if (!track) throw new Error("هذا المقطع ما فيه صوت.");
-    if (!(await track.canDecode())) throw new Error("متصفحك ما يقدر يقرأ صوت هذا المقطع.");
+    const track = await input.getPrimaryAudioTrack().catch(() => null);
     const from = fromMs / 1000;
     const to = toMs / 1000;
+    // WebCodecs when the browser reads this sound; else the Web Audio API (Safari on iPhone with AAC, for one)
+    const fast = track ? await track.canDecode().catch(() => false) : false;
+    async function* mono(rate: number) {
+      if (track && fast) {
+        yield* pieces(track, from, to, rate);
+        return;
+      }
+      let whole: AudioBuffer;
+      try {
+        whole = await decodeWhole(url);
+      } catch {
+        throw new Error("متصفحك ما يقدر يقرأ صوت هذا المقطع؛ جرّب من Chrome.");
+      }
+      for (let cs = from; cs < to; cs += CHUNK_S) yield await sliceMono(whole, cs, Math.min(to, cs + CHUNK_S), rate);
+    }
     const opus = "AudioEncoder" in window && (await canEncodeAudio("opus", { numberOfChannels: 1, sampleRate: 48000 }).catch(() => false));
+    let done = 0;
     if (opus) {
       const output = new Output({ format: new WebMOutputFormat(), target: new BufferTarget() });
       const src = new AudioBufferSource({ codec: "opus", bitrate: 32_000 });
       output.addAudioTrack(src);
       await output.start();
-      let done = 0;
-      for await (const b of pieces(track, from, to, 48000)) {
+      for await (const b of mono(48000)) {
         await src.add(b);
         done += b.length / 48000;
         onProgress?.(Math.min(1, done / Math.max(0.1, to - from)));
@@ -63,12 +77,15 @@ export async function extractSound(url: string, fromMs: number, toMs: number, on
     }
     const rate = 16000;
     const parts: Int16Array[] = [];
-    for await (const b of pieces(track, from, to, rate)) {
+    for await (const b of mono(rate)) {
       const d = b.getChannelData(0);
       const pcm = new Int16Array(d.length);
       for (let i = 0; i < d.length; i++) pcm[i] = Math.max(-1, Math.min(1, d[i])) * 0x7fff;
       parts.push(pcm);
+      done += d.length / rate;
+      onProgress?.(Math.min(1, done / Math.max(0.1, to - from)));
     }
+    if (!parts.length) throw new Error("هذا المقطع ما فيه صوت.");
     return { blob: wav(parts, rate), format: "wav" };
   } finally {
     input.dispose();
