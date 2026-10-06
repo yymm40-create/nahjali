@@ -395,6 +395,8 @@ export interface Track {
   locked: boolean;
   /** sound track that gets quieter by itself while someone speaks (music under a voice: «خفض تلقائي») */
   duck: boolean;
+  /** the colour the person gave the track (its clips wear it); none = the usual colour of its kind */
+  color?: string | null;
   /** clips never overlap and are kept sorted by `start` */
   clips: Clip[];
 }
@@ -533,6 +535,9 @@ export function fadeAt(c: Clip, ms: number) {
 }
 
 export const DUCK = { level: 0.25, rampMs: 300 } as const;
+
+/** The 15 colours a track can wear (on the timeline only; nothing changes in the video). */
+export const TRACK_COLORS = ["#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#ec4899", "#78716c"];
 
 /** Where someone (or something) is heard on the tracks that don't duck: merged [start, end) spans. */
 export function voiceSpans(t: Timeline, hasSound: (c: Clip) => boolean) {
@@ -781,7 +786,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null): T
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);

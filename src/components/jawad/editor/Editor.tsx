@@ -126,6 +126,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   // the look (kept on this device): colours, shapes and where the sections sit
   const [theme, setTheme] = useState<ThemeId>("future");
   const [picking, setPicking] = useState(false);
+  // the timeline's look, whatever the theme: «عادي» or «بريمير»
+  const [tlLook, setTlLook] = useState<"classic" | "pro">("classic");
   // a request for Claude from a button (a ready style): the panel opens and sends it
   const [ask, setAsk] = useState<{ text: string; n: number } | null>(null);
   const [purgeAt, setPurgeAt] = useState(project.purgeAt);
@@ -139,6 +141,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       try {
         const v = Number(localStorage.getItem("jw-editor-ui"));
         if (v >= 0.7 && v <= 1.4) setUi(v);
+        if (localStorage.getItem("jw-editor-tl") === "pro") setTlLook("pro");
         const th = localStorage.getItem("jw-editor-theme");
         if (th && th in THEMES) setTheme(th as ThemeId);
       } catch {
@@ -160,6 +163,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     const f = THEMES[theme].font;
     if (f) void loadFont(f, 400).then(() => loadFont(f, 700));
   }, [theme]);
+  const pickTlLook = (v: "classic" | "pro") => {
+    setTlLook(v);
+    try {
+      localStorage.setItem("jw-editor-tl", v);
+    } catch {
+      /* not kept */
+    }
+  };
   const pickTheme = (th: ThemeId) => {
     setTheme(th);
     setPicking(false);
@@ -796,13 +807,25 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
           </button>
         </div>
         <Transport player={player} total={total} />
+        <div className="hidden items-center rounded-lg border border-jw-line p-0.5 text-[11px] lg:flex" role="radiogroup" aria-label="شكل التايملاين">
+          {(
+            [
+              ["classic", "عادي"],
+              ["pro", "بريمير"],
+            ] as const
+          ).map(([v, label]) => (
+            <button key={v} type="button" role="radio" aria-checked={tlLook === v} onClick={() => pickTlLook(v)} className={`rounded-md px-2 py-1 ${tlLook === v ? "bg-jw-accent text-jw-on-accent" : "text-jw-muted hover:text-jw-ink"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <button type="button" className={`${toolBtn} hidden lg:flex ${tl.magnetic ? "text-jw-accent" : ""}`} onClick={() => run({ type: "set_magnetic", on: !tl.magnetic })} disabled={readOnly} title="المغناطيس: المسار الرئيسي بدون فراغات" aria-pressed={tl.magnetic}>
           <Icon name="magnet" size={16} /> مغناطيس
         </button>
       </div>
 
       <div className="jw-glass mx-2 mb-2 h-[34%] min-h-[150px] shrink-0 overflow-hidden rounded-2xl lg:h-[30%] lg:min-h-[200px]">
-        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");

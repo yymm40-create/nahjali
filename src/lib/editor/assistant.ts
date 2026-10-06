@@ -5,7 +5,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, type ClaudeTurn } from "@/lib/film/anthropic";
+import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { checkCommands, context, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
@@ -84,6 +84,18 @@ async function usedToday(p: EditorProject) {
   return count ?? 0;
 }
 
+/** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
+function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
+  if (!v || typeof v !== "object") return null;
+  const o = v as { clipId?: unknown; frames?: unknown };
+  if (typeof o.clipId !== "string" || !tl.tracks.some((t) => t.clips.some((c) => c.id === o.clipId)) || !Array.isArray(o.frames)) return null;
+  const frames = o.frames
+    .slice(0, 8)
+    .filter((f): f is { t: number; data: string } => !!f && typeof f === "object" && typeof (f as { data?: unknown }).data === "string" && Number.isFinite((f as { t?: unknown }).t))
+    .filter((f) => f.data.length < 400_000 && /^[A-Za-z0-9+/]+=*$/.test(f.data));
+  return frames.length ? { clipId: o.clipId, frames } : null;
+}
+
 interface Answer {
   reply: string;
   commands: string[];
@@ -91,7 +103,7 @@ interface Answer {
 }
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown }) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown }) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -122,6 +134,18 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     else m.push({ ...t });
     return m;
   }, []);
+
+  // the clip the person chose, seen: a few of its moments as pictures (sent by the page)
+  const look = readLook(b.look, tl);
+  if (look) {
+    const last = merged[merged.length - 1];
+    const parts: ClaudePart[] = [
+      { type: "text", text: last.content as string },
+      { type: "text", text: `THE SELECTED CLIP (${look.clipId}) — what it shows, at these timeline moments: ${look.frames.map((f) => `${(f.t / 1000).toFixed(1)}s`).join(", ")}. Use it to understand the clip (people, places, actions, text on screen, mood) when the request is about it.` },
+      ...look.frames.map((f): ClaudePart => ({ type: "image64", data: f.data, mediaType: "image/jpeg" })),
+    ];
+    last.content = parts;
+  }
 
   let usd = 0;
   const ask = async (msgs: ClaudeTurn[]) => {

@@ -109,3 +109,55 @@ function videoThumb(url: string) {
     v.src = url;
   });
 }
+
+// ---------- frames for Claude ----------
+
+/**
+ * `n` pictures spread over `[fromMs, toMs)` of a video (or the picture itself), as small JPEGs (base64, no prefix):
+ * what Claude looks at to understand a clip. One file at a time, a seek per picture.
+ */
+export async function framesOf(url: string, kind: AssetKind, fromMs: number, toMs: number, n = 6, height = 360): Promise<{ t: number; data: string }[]> {
+  const grab = (src: CanvasImageSource, w0: number, h0: number) => {
+    const h = Math.min(height, h0);
+    const w = Math.max(1, Math.round((w0 / h0) * h));
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    c.getContext("2d")!.drawImage(src, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.72).split(",")[1];
+  };
+  if (kind === "image") {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = url;
+    await img.decode();
+    return [{ t: fromMs, data: grab(img, img.naturalWidth, img.naturalHeight) }];
+  }
+  const v = document.createElement("video");
+  v.crossOrigin = "anonymous";
+  v.muted = true;
+  v.preload = "auto";
+  v.playsInline = true;
+  v.src = url;
+  try {
+    await new Promise<void>((ok, bad) => {
+      v.onloadeddata = () => ok();
+      v.onerror = () => bad(new Error("video"));
+      setTimeout(() => bad(new Error("timeout")), 20_000);
+    });
+    const out: { t: number; data: string }[] = [];
+    for (let i = 0; i < n; i++) {
+      const t = fromMs + ((toMs - fromMs) * (i + 0.5)) / n;
+      await new Promise<void>((ok) => {
+        v.onseeked = () => ok();
+        v.currentTime = Math.min(t / 1000, Math.max(0, (v.duration || 0) - 0.05));
+        setTimeout(ok, 4000);
+      });
+      out.push({ t: Math.round(t), data: grab(v, v.videoWidth, v.videoHeight) });
+    }
+    return out;
+  } finally {
+    v.removeAttribute("src");
+    v.load();
+  }
+}
