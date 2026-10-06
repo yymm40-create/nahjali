@@ -20,6 +20,7 @@ import {
   completeUpload,
 } from "@/lib/editor/server";
 import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
+import { makeHook, makeMusic, separate } from "@/lib/editor/generate";
 import { assist } from "@/lib/editor/assistant";
 
 // listening to a long clip can take a while
@@ -80,6 +81,12 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await transcribe(p, { id: user.id, email: user.email, owner }, b));
     case "align":
       return NextResponse.json(await align(p, { id: user.id, email: user.email, owner }, b));
+    case "make_hook":
+      return NextResponse.json({ asset: await makeHook(p, { id: user.id, email: user.email, owner }, b) });
+    case "make_music":
+      return NextResponse.json({ asset: await makeMusic(p, { id: user.id, email: user.email, owner }, b) });
+    case "separate":
+      return NextResponse.json(await separate(p, { id: user.id, email: user.email, owner }, b));
     case "assistant":
       return NextResponse.json(await assist(p, { id: user.id, email: user.email, owner }, b));
     case "history":

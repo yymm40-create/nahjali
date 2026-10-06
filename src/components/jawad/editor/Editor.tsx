@@ -10,6 +10,8 @@ import AssistantPanel from "./AssistantPanel";
 import Guard from "./Guard";
 import { PluginTools } from "./plugins";
 import { familyOf, loadFont, loadFontsOf } from "./fontload";
+import { separateAsset } from "./make";
+import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
@@ -392,6 +394,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     uploads.add(files, files.map((_, i) => ({ at, trackId, mode: mode ?? "one", group, first: i === 0 })));
     flash(files.length > 1 ? `نرفع ${files.length} ملفات وننزّلها في التايملاين…` : "نرفع الملف وننزّله في مكانه…");
   };
+  // a clip's sound split into talking, music and effects, each on its own track in step with it
+  const separateClip = async (clipId: string) => {
+    const f = findClip(tlRef.current, clipId);
+    const a = f?.clip.assetId ? assets.find((x) => x.id === f.clip.assetId) : null;
+    if (!f || !a || a.kind === "image" || !a.hasAudio) return flash("اختر مقطع فيه صوت.", true);
+    flash("نفصل الكلام والموسيقى والمؤثرات… (يأخذ دقيقة أو أكثر)");
+    const r = await separateAsset(project.id, a, f.clip.in, f.clip.out);
+    addAssets(r.assets);
+    run(placeStems(f.clip, r.assets.map((x) => x.id)), { label: "فصلت الكلام والموسيقى والمؤثرات" });
+    flash(r.full ? "انفصل الصوت: الكلام والموسيقى والمؤثرات كل واحد في مسار." : "فصلنا الكلام في مسار بروحه. فصل الموسيقى عن المؤثرات يحتاج تفعيل خدمة fal على الخادم.");
+  };
   const dropAsset = (id: string, at: number, trackId: string | null) => {
     const a = assets.find((x) => x.id === id);
     if (a) placeAsset(a, { at, trackId, mode: "one", group: "", first: true });
@@ -720,7 +733,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
         <aside className={`${chat ? "fixed inset-0 z-50 flex" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:static lg:z-auto ${assisting ? "lg:flex" : "lg:hidden"} lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl`} aria-label="Claude">
-          <Guard name="Claude"><AssistantPanel ask={ask} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
+          <Guard name="Claude"><AssistantPanel ask={ask} onAssets={addAssets} onSeparate={separateClip} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col" aria-label="المعاينة">
@@ -763,7 +776,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} /></Guard>
+            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 
