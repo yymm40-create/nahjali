@@ -392,7 +392,9 @@ export interface Fix {
   job: string | null;
   /** where in the original video the made clip starts (ms): the green clip lines up from it */
   from: number | null;
-  state: "draft" | "making" | "done" | "failed";
+  state: "draft" | "sending" | "making" | "done" | "failed";
+  /** why it failed (shown on the piece) */
+  error?: string | null;
 }
 
 export const FIX_NOTE_MAX = 300;
@@ -408,7 +410,8 @@ export function readFix(v: unknown): Fix | null {
     mode: o.mode === "whole" ? "whole" : "parts",
     job: typeof o.job === "string" && /^[0-9a-f-]{36}$/i.test(o.job) ? o.job : null,
     from: typeof o.from === "number" && Number.isFinite(o.from) && o.from >= 0 ? Math.round(Math.min(o.from, LIMITS.maxMs)) : null,
-    state: (["draft", "making", "done", "failed"] as const).find((x) => x === o.state) ?? "draft",
+    state: (["draft", "sending", "making", "done", "failed"] as const).find((x) => x === o.state) ?? "draft",
+    error: typeof o.error === "string" && o.error ? o.error.slice(0, 300) : null,
   };
 }
 

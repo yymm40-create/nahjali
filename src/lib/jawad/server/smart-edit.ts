@@ -216,7 +216,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
       const bytes = await readFrame(x.data, 400_000, 1280);
       const path = `${user.id}/edits/${editId}/f${i}.jpg`;
       const up = await storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: "image/jpeg", upsert: false });
-      if (up.error) throw up.error;
+      if (up.error) throw new Error(`حفظ لقطات الفيديو: ${up.error.message}`);
       frames.push({ t: Math.round(t * 10) / 10, path });
     }
   }
@@ -266,7 +266,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
     const msg = String(error.message ?? "");
     if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التعديل يحتاج ${final.coins} نقدة.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
-    throw error;
+    throw new Error(`إنشاء العمل: ${msg}`);
   }
   const row = (data as { job_id: string; created: boolean; balance: number | null }[])[0];
   const { data: job } = await db().from("jawad_jobs").select("*").eq("id", row.job_id).single();

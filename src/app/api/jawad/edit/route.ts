@@ -23,7 +23,13 @@ export const POST = handle(async (req: Request) => {
   } catch {
     throw new UserError("طلب غير صحيح.", 400);
   }
-  const r = await smartEdit(user, owner, body, new URL(req.url).origin);
+  const r = await smartEdit(user, owner, body, new URL(req.url).origin).catch((e: unknown) => {
+    if (e instanceof UserError) throw e;
+    // never a bare «خطأ غير متوقع»: the step that failed is logged, and the owner sees its reason
+    const why = String((e as { message?: unknown })?.message ?? e).slice(0, 200);
+    console.error("smart edit failed", why, e);
+    throw new UserError(owner ? `تعذّر بدء التعديل: ${why}` : "تعذّر بدء التعديل من جهة الخادم؛ أعد المحاولة بعد شوي (ما انخصم شي).", 500);
+  });
   if (r.kind === "quote") return NextResponse.json({ coins: r.coins, lines: r.lines, cut: r.cut });
   if (r.kind === "issues") return NextResponse.json({ error: r.issues[0]?.message ?? "الطلب غير صالح.", issues: r.issues }, { status: 422 });
   if (r.kind === "price_changed") return NextResponse.json({ error: `تغيّر السعر إلى ${r.coins} نقدة. أكّد المبلغ الجديد.`, code: "price_changed", coins: r.coins, lines: r.lines }, { status: 409 });
