@@ -8,7 +8,7 @@
 import { FX_BY_ID, FX_MAX } from "./effects";
 import { TR_LIST } from "./transitions";
 import { isFont } from "./fonts";
-import { readGrade, type Grade } from "./grade";
+import { readGrades, type Grade } from "./grade";
 
 export const EDITOR_VERSION = 1;
 
@@ -358,8 +358,8 @@ export interface Clip {
   /** motion: when there are points, they decide the transform */
   keys: Key[];
   color: ColorGrade | null;
-  /** «التلوين»: the full grade (grade.ts), on the GPU; null = none */
-  grade: Grade | null;
+  /** «التلوين»: grading layers (grade.ts), run in order on the GPU; [] = none */
+  grades: Grade[];
   /** into the next clip on the same track, when it starts right where this one ends */
   transition: Transition | null;
   /** sound fading in at the start and out at the end (ms) */
@@ -758,7 +758,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
       .sort((a, b) => a.t - b.t)
       .filter((k, i, all) => i === 0 || k.t !== all[i - 1].t),
     color: kind === "audio" ? null : readColor(o.color),
-    grade: kind === "audio" ? null : readGrade(o.grade),
+    grades: kind === "audio" ? [] : readGrades(o.grades, o.grade),
     transition:
       kind !== "audio" && o.transition && typeof o.transition === "object"
         ? {

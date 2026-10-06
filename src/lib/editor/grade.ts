@@ -105,6 +105,12 @@ export interface Lut3D {
 
 export interface Grade {
   v: 1;
+  /** a layer can be switched off without losing it */
+  on: boolean;
+  /** the layer's name («أساسي»، «البشرة»…) */
+  name: string;
+  /** colours past what the screen can show (blue LED light, neon) pulled back softly, as ACES's gamut compression; 0…1 */
+  compress: number;
   /** the camera's log curve, undone first ("none": the picture as it is) */
   log: LogId;
   /** the colours the camera recorded in: its own wide gamut, or Rec.709 / Rec.2020 (Canon, Sony, Panasonic let you pick) */
@@ -156,6 +162,9 @@ export const NEUTRAL_CURVES: Curves = { master: LINE, r: LINE, g: LINE, b: LINE,
 
 export const NEUTRAL_GRADE: Grade = {
   v: 1,
+  on: true,
+  name: "",
+  compress: 1,
   log: "none",
   logGamut: "camera",
   logRange: "video",
@@ -192,22 +201,24 @@ export const NEUTRAL_QUALIFIER: Qualifier = { hue: 0.08, hueWidth: 0.08, hueSoft
 export const NEW_SECONDARY: Secondary = { on: true, name: "", key: NEUTRAL_QUALIFIER, mask: null, hue: 0, sat: 1, lum: 0, temp: 0, contrast: 1, show: false };
 export const NEW_MASK: Mask = { kind: "ellipse", x: 0.5, y: 0.5, w: 0.6, h: 0.6, rotate: 0, feather: 0.3, round: 0.2, invert: false, points: [], keys: [] };
 export const MAX_SECONDARIES = 4;
+/** grading layers on one clip, run one after another (like nodes in series) */
+export const MAX_LAYERS = 4;
+
+/** A clip's layers read from a saved clip (the old single «grade» becomes layer 1). */
+export function readGrades(grades: unknown, single?: unknown): Grade[] {
+  const list = Array.isArray(grades) ? grades : single ? [single] : [];
+  return list.slice(0, MAX_LAYERS).map(readGrade).filter((g): g is Grade => !!g);
+}
 export const MAX_LUT = 33;
 
 /** Does this grade change anything (so a clip without one skips the GPU)? */
 export function gradeIsNeutral(g: Grade | null | undefined): boolean {
-  if (!g) return true;
+  if (!g || !g.on) return true;
   if (g.amount <= 0) return true;
-  const { v, amount, mask, look, ...rest } = g;
-  void v;
-  void amount;
-  void mask;
-  void look;
-  const { v: _v, amount: _a, mask: _m, look: _l, ...base } = NEUTRAL_GRADE;
-  void _v;
-  void _a;
-  void _m;
-  void _l;
+  const { v, amount, mask, look, name, on, compress, ...rest } = g;
+  void [v, amount, mask, look, name, on, compress];
+  const { v: _v, amount: _a, mask: _m, look: _l, name: _n, on: _o, compress: _c, ...base } = NEUTRAL_GRADE;
+  void [_v, _a, _m, _l, _n, _o, _c];
   return JSON.stringify(rest) === JSON.stringify(base);
 }
 
@@ -319,6 +330,9 @@ export function readGrade(v: unknown): Grade | null {
   const vi = obj(o.vignette);
   return {
     v: 1,
+    on: bool(o.on, true),
+    name: typeof o.name === "string" ? o.name.slice(0, 30) : "",
+    compress: num(o.compress, 0, 1, 1),
     log: (LOGS.some((l) => l.id === o.log) ? o.log : "none") as LogId,
     logGamut: (["camera", "rec709", "rec2020"] as const).includes(o.logGamut as LogGamut) ? (o.logGamut as LogGamut) : "camera",
     logRange: o.logRange === "full" ? "full" : "video",
@@ -823,7 +837,7 @@ export const LOOKS: Look[] = [
 /** A look laid over a grade (the look's values replace the grade's; the log, masks and secondaries stay). */
 export function applyLook(g: Grade, look: Look): Grade {
   const base = readGrade({ ...NEUTRAL_GRADE, ...look.grade })!;
-  return { ...base, log: g.log, amount: g.amount, mask: g.mask, secondaries: g.secondaries, lut: g.lut, lutAmount: g.lutAmount, look: look.id };
+  return { ...base, on: g.on, name: g.name, compress: g.compress, log: g.log, logGamut: g.logGamut, logRange: g.logRange, amount: g.amount, mask: g.mask, secondaries: g.secondaries, lut: g.lut, lutAmount: g.lutAmount, look: look.id };
 }
 
 // ───────── masks over time ─────────

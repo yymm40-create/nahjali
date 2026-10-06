@@ -4,7 +4,13 @@
 import { familyOf } from "./fontload";
 import { drawWithFx, fxPlan } from "./fx";
 import { transitionLook, type TrLook, type TrMask } from "@/lib/editor/transitions";
-import { gradeFrame } from "./grade-gl";
+import { gradeLayers } from "./grade-gl";
+
+/** set while the export draws: the grade always shows (no before/after view) */
+let exporting = false;
+export const setExporting = (on: boolean) => {
+  exporting = on;
+};
 import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx } from "@/lib/editor/model";
 
 export interface Frame {
@@ -291,9 +297,9 @@ const jitter = (seed: number, i: number) => (((seed * 7919 + i * 104729) % 1000)
 
 function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number) {
   // «التلوين»: the frame graded on the GPU first (the picture then goes through everything else as usual)
-  if (clip.grade) {
-    const g = gradeFrame(f.img, f.width, f.height, clip.grade, Math.max(0, ms - clip.start), clip.grade.secondaries.findIndex((s) => s.show) + 1);
-    if (g) f = { ...f, img: g };
+  if (clip.grades.length) {
+    const g = gradeLayers(f.img, f.width, f.height, clip.grades, Math.max(0, ms - clip.start), exporting);
+    if (g) f = { ...f, img: g.img };
   }
   const b = baseSize(clip.fit, f.width, f.height, W, H);
   const w = b.w * t.scale * look.scale;
