@@ -9,6 +9,7 @@ import { FILM_STAGES, STATUS_LABELS } from "@config/film";
 import ProjectEditor from "../[id]/ProjectEditor";
 import References from "../[id]/References";
 
+import { storage } from "@/lib/storage";
 /** Where each project stage continues. */
 const NEXT_PATH: Record<string, string> = { screenwriter: "/script", sheets: "/sheets", director: "/director", voices: "/voices", done: "/videos" };
 
@@ -28,7 +29,7 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
   const uploads = (data ?? []) as FilmAsset[];
   // Short-lived links: the files stay private
   const urls = uploads.length
-    ? (await db.storage.from(FILM_BUCKET).createSignedUrls(uploads.map((u) => u.storage_path!), 3600)).data ?? []
+    ? (await storage.from(FILM_BUCKET).createSignedUrls(uploads.map((u) => u.storage_path!), 3600)).data ?? []
     : [];
   const references = uploads.map((u, i) => ({ id: u.id, name: u.file_name ?? "", url: urls[i]?.signedUrl ?? "" }));
 

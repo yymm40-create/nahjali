@@ -2,6 +2,7 @@
 import type { MahdiTheme, ProjectColor } from "@config/mahdi";
 import type { Freq, HabitState, Measure, Version } from "../engine";
 import type { Habit, Profile, Project, Shrine } from "../types";
+import { publicFileUrl } from "@/lib/storage/public";
 
 export interface ShrineRow {
   id: string;
@@ -68,8 +69,7 @@ export interface LogRow {
 }
 
 export const AVATAR_BUCKET = "mahdi-avatars";
-export const avatarUrl = (path: string | null) =>
-  path ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${AVATAR_BUCKET}/${path}` : null;
+export const avatarUrl = (path: string | null) => (path ? publicFileUrl(AVATAR_BUCKET, path) : null);
 
 export const shrineFromRow = (r: ShrineRow): Shrine => ({
   id: r.id,

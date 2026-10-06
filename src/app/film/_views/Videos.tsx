@@ -8,12 +8,12 @@ import { voicesReady } from "@/lib/film/voices";
 import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { canUseJawad } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import VideosWorkspace from "../[id]/videos/VideosWorkspace";
 
 
+import { storage } from "@/lib/storage";
 export default async function VideosView({ id, base }: { id: string; base: string }) {
   const { user, allowed } = await requireFilmUser(`${base}/${id}/videos`);
   if (!allowed) redirect(base);
@@ -54,12 +54,11 @@ export default async function VideosView({ id, base }: { id: string; base: strin
   const studioPath = videoSection && (await canUseJawad(user)) ? videoSection.path : null;
 
   // Short-lived links: one to watch, one that downloads the file
-  const db = createAdminClient();
   const kept = videos.filter((v) => v.storage_path);
-  const watch = kept.length ? ((await db.storage.from(FILM_BUCKET).createSignedUrls(kept.map((v) => v.storage_path!), 3600)).data ?? []) : [];
+  const watch = kept.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(kept.map((v) => v.storage_path!), 3600)).data ?? []) : [];
   const links: Record<string, { url: string; download: string }> = {};
   for (const [i, v] of kept.entries()) {
-    const d = await db.storage.from(FILM_BUCKET).createSignedUrl(v.storage_path!, 3600, { download: `${project.title}-${v.ref_key}.mp4` });
+    const d = await storage.from(FILM_BUCKET).createSignedUrl(v.storage_path!, 3600, { download: `${project.title}-${v.ref_key}.mp4` });
     links[v.id] = { url: watch[i]?.signedUrl ?? "", download: d.data?.signedUrl ?? "" };
   }
 

@@ -25,6 +25,7 @@ import { isUuid, refsFor, uploadFromBuffer, uploadFromOutput } from "./uploads";
 import { runJob, type JobRow } from "./jobs";
 import { ProviderError } from "./providers/common";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 
 /** What an edit job keeps until Claude has written its prompt. */
@@ -214,7 +215,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
       if (!(t >= 0 && t <= videoSec + 0.1)) throw new UserError("لقطة غير صالحة.", 400);
       const bytes = await readFrame(x.data, 400_000, 1280);
       const path = `${user.id}/edits/${editId}/f${i}.jpg`;
-      const up = await db().storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: "image/jpeg", upsert: false });
+      const up = await storage.from(JAWAD_BUCKET).upload(path, bytes, { contentType: "image/jpeg", upsert: false });
       if (up.error) throw up.error;
       frames.push({ t: Math.round(t * 10) / 10, path });
     }
@@ -292,7 +293,7 @@ const IMAGE_SCHEMA = { type: "object", properties: { prompt: { type: "string" } 
 
 async function signed(paths: string[]) {
   if (!paths.length) return [];
-  const { data } = await db().storage.from(JAWAD_BUCKET).createSignedUrls(paths, 900);
+  const { data } = await storage.from(JAWAD_BUCKET).createSignedUrls(paths, 900);
   return paths.map((_, i) => data?.[i]?.signedUrl ?? null);
 }
 

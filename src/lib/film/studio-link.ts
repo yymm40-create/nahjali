@@ -12,10 +12,11 @@ import { JAWAD_BUCKET, loadRuntime } from "@/lib/jawad/server/runtime";
 import { uploadFromBuffer } from "@/lib/jawad/server/uploads";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 
 async function download(bucket: string, path: string) {
-  const { data, error } = await db().storage.from(bucket).download(path);
+  const { data, error } = await storage.from(bucket).download(path);
   if (error || !data) throw new UserError("تعذّر قراءة الملف.", 404);
   return Buffer.from(await data.arrayBuffer());
 }
@@ -45,7 +46,7 @@ export async function filmVideoToStudio(
   const id = randomUUID();
   const file = await download(FILM_BUCKET, a.storage_path);
   const path = `${user.id}/outputs/${id}/0.mp4`;
-  const up = await db().storage.from(JAWAD_BUCKET).upload(path, file, { contentType: "video/mp4", upsert: true });
+  const up = await storage.from(JAWAD_BUCKET).upload(path, file, { contentType: "video/mp4", upsert: true });
   if (up.error) throw up.error;
   const now = new Date().toISOString();
   const { error } = await db().from("jawad_jobs").insert({
@@ -89,7 +90,7 @@ export async function studioVideos(userId: string) {
   const { data: outs } = await db().from("jawad_outputs").select("id,job_id,storage_path,duration_ms").in("job_id", list.map((j) => j.id)).eq("idx", 0);
   const byJob = new Map(((outs ?? []) as { id: string; job_id: string; storage_path: string; duration_ms: number | null }[]).map((o) => [o.job_id, o]));
   const paths = list.map((j) => byJob.get(j.id)?.storage_path).filter((p): p is string => Boolean(p));
-  const { data: signed } = paths.length ? await db().storage.from(JAWAD_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
+  const { data: signed } = paths.length ? await storage.from(JAWAD_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const url = new Map((signed ?? []).map((s, i) => [paths[i], s.signedUrl]));
   return list
     .filter((j) => byJob.has(j.id))
@@ -118,7 +119,7 @@ export async function studioVideoToFilm(project: FilmProject, user: { id: string
   const file = await download(JAWAD_BUCKET, out.storage_path as string);
   const id = randomUUID();
   const path = `${projectDir(project)}/director/${id}.mp4`;
-  const up = await db().storage.from(FILM_BUCKET).upload(path, file, { contentType: "video/mp4", upsert: true });
+  const up = await storage.from(FILM_BUCKET).upload(path, file, { contentType: "video/mp4", upsert: true });
   if (up.error) throw up.error;
   const s = ((job.inputs as Record<string, unknown>)?.settings ?? {}) as Record<string, unknown>;
   const { error } = await db().from("film_assets").insert({

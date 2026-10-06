@@ -14,6 +14,7 @@ import { cleanRefName, defaultRefName } from "../mentions";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
 import { refsFor } from "./uploads";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 const LABEL = "JAWAD AI · المخرج الخارق";
 const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
@@ -148,7 +149,7 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
     // The pictures themselves, by short-lived link, each introduced by its name
     const images = found.rows.map((r, i) => ({ r, name: meta[i].name })).filter((x) => x.r.kind === "image").slice(0, MAX_IMAGES);
     if (images.length) {
-      const signed = (await db().storage.from(JAWAD_BUCKET).createSignedUrls(images.map((x) => x.r.storage_path), 600)).data ?? [];
+      const signed = (await storage.from(JAWAD_BUCKET).createSignedUrls(images.map((x) => x.r.storage_path), 600)).data ?? [];
       images.forEach((x, i) => {
         const url = signed[i]?.signedUrl;
         if (url) parts.push({ type: "text", text: `@${x.name}:` }, { type: "image", url });

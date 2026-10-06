@@ -10,12 +10,13 @@ import type { FilmItemView, JobView, OutputView, WorkItem, WorksFilter } from ".
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
 import type { JobRow, OutputRow } from "./jobs";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 const LINK_SECONDS = 6 * 3600;
 
 async function sign(bucket: string, paths: string[]) {
   if (!paths.length) return new Map<string, string>();
-  const { data } = await db().storage.from(bucket).createSignedUrls(paths, LINK_SECONDS);
+  const { data } = await storage.from(bucket).createSignedUrls(paths, LINK_SECONDS);
   return new Map((data ?? []).map((d, i) => [paths[i], d.signedUrl ?? ""]));
 }
 

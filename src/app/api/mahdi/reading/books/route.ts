@@ -10,6 +10,7 @@ import { checkUploadedPdf, removePdf } from "@/lib/mahdi/server/book-files";
 import { cleanLine, cleanText } from "@/lib/mahdi/server/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+import { storage } from "@/lib/storage";
 export const runtime = "nodejs";
 
 const COVER_MAX = 8 * 1024 * 1024;
@@ -81,7 +82,7 @@ export const POST = mahdiRoute(async (req: Request) => {
         throw new UserError(t.reading.coverBadType, 415);
       }
       coverPath = `${user.id}/${randomUUID()}.webp`;
-      const up = await db.storage.from(COVER_BUCKET).upload(coverPath, webp, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
+      const up = await storage.from(COVER_BUCKET).upload(coverPath, webp, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
       if (up.error) throw up.error;
     }
     const { data: created, error } = await db

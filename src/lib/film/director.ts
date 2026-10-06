@@ -22,6 +22,7 @@ import {
   VIDEO_GENERATOR_FACTS,
 } from "@config/film-prompts/director";
 
+import { storage } from "@/lib/storage";
 const STAGE = "director";
 const VIDEO_OP = "director_video";
 const ESTIMATE_USD = 1;
@@ -534,9 +535,9 @@ async function submitVideo(
   const client = db();
   try {
     const paths = o.refs.map((r) => r.storage_path!).filter(Boolean);
-    const signed = paths.length ? (await client.storage.from(FILM_BUCKET).createSignedUrls(paths, 7200)).data ?? [] : [];
+    const signed = paths.length ? (await storage.from(FILM_BUCKET).createSignedUrls(paths, 7200)).data ?? [] : [];
     const imageUrls = signed.map((s) => s.signedUrl).filter(Boolean) as string[];
-    const track = o.voiceTrack ? (await client.storage.from(FILM_BUCKET).createSignedUrl(o.voiceTrack, 7200)).data?.signedUrl : null;
+    const track = o.voiceTrack ? (await storage.from(FILM_BUCKET).createSignedUrl(o.voiceTrack, 7200)).data?.signedUrl : null;
     const taskId = await createVideoTask({ model: o.model, prompt: o.prompt, imageUrls, audioUrls: track ? [track] : [], durationSec: o.durationSec, resolution: o.resolution, ratio: o.ratio, generateAudio: o.generateAudio });
     await client.from("film_jobs").update({ provider_task_id: taskId }).eq("id", jobId);
     // Keep watching for a while; the page's polling (checkVideos) finishes the rest
@@ -574,7 +575,7 @@ async function finishVideo(
     if (!res.ok) throw new Error(`video download ${res.status}`);
     const file = Buffer.from(await res.arrayBuffer());
     const path = `${projectDir(project)}/director/${assetId}.mp4`;
-    const up = await client.storage.from(FILM_BUCKET).upload(path, file, { contentType: "video/mp4", upsert: true });
+    const up = await storage.from(FILM_BUCKET).upload(path, file, { contentType: "video/mp4", upsert: true });
     if (up.error) throw up.error;
     await client.from("film_assets").update({ status: "generated", storage_path: path, mime: "video/mp4", bytes: file.length, error: null }).eq("id", assetId);
     // The real token count when the provider reports it, otherwise the estimate
@@ -605,7 +606,7 @@ export async function purgeOldVideos(project: FilmProject) {
   const inEdit = await filmPathsInUse(found.map((a) => a.storage_path!)).catch(() => new Set<string>());
   const old = found.filter((a) => !inEdit.has(a.storage_path!));
   if (!old.length) return;
-  const { error } = await db().storage.from(FILM_BUCKET).remove(old.map((a) => a.storage_path!));
+  const { error } = await storage.from(FILM_BUCKET).remove(old.map((a) => a.storage_path!));
   if (error) return console.error("video purge failed", error);
   for (const a of old) {
     await db().from("film_assets").update({ storage_path: null, meta: { ...a.meta, removed_at: new Date().toISOString() } }).eq("id", a.id);

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { getOwnedOrder, handle, MESSAGES, requireApiUser, UserError } from "@/lib/api";
-import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
+import { BUCKETS } from "@/lib/supabase/admin";
 import { sourcePath } from "@/lib/orders";
 
+import { storage } from "@/lib/storage";
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
 
@@ -36,8 +37,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     throw new UserError(MESSAGES.badImage, 400);
   }
 
-  const { error } = await createAdminClient()
-    .storage.from(BUCKETS.sources)
+  const { error } = await storage.from(BUCKETS.sources)
     .upload(sourcePath(order), png, { contentType: "image/png", upsert: true });
   if (error) throw error;
 

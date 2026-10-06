@@ -10,6 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { FILM_LIMITS, FILM_STAGES, type FilmStage } from "@config/film";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 
 export const REWIND_POINTS = ["screenwriter", "sheets", "director"] as const;
@@ -75,7 +76,7 @@ export async function resetProject(project: FilmProject, toRaw: unknown) {
   const paths = new Set(doomed.map((a) => a.storage_path).filter((p): p is string => Boolean(p)));
   // the joined dialogue tracks sent to the video model are not assets: they live in the voices folder
   {
-    const { data: files } = await db().storage.from(FILM_BUCKET).list(`${projectDir(project)}/voices`, { limit: 1000 });
+    const { data: files } = await storage.from(FILM_BUCKET).list(`${projectDir(project)}/voices`, { limit: 1000 });
     for (const f of files ?? []) if (f.name.startsWith("track-") || doomed.some((a) => a.storage_path?.endsWith(f.name))) paths.add(`${projectDir(project)}/voices/${f.name}`);
   }
   if (doomed.length) {
@@ -88,7 +89,7 @@ export async function resetProject(project: FilmProject, toRaw: unknown) {
   }
   await db().from("film_voice_cast").delete().eq("project_id", project.id);
   const list = [...paths];
-  for (let i = 0; i < list.length; i += 100) await db().storage.from(FILM_BUCKET).remove(list.slice(i, i + 100)).catch((e) => console.error("rewind: file cleanup", e));
+  for (let i = 0; i < list.length; i += 100) await storage.from(FILM_BUCKET).remove(list.slice(i, i + 100)).catch((e) => console.error("rewind: file cleanup", e));
   const { error } = await db().from("film_projects").update({ stage: to as FilmStage }).eq("id", project.id);
   if (error) throw error;
   return { id: project.id };
@@ -139,7 +140,7 @@ export async function forkProject(project: FilmProject, toRaw: unknown) {
       let path = a.storage_path;
       if (path && path.startsWith(`${fromDir}/`)) {
         const next = `${toDir}/${path.slice(fromDir.length + 1)}`;
-        const { error: e } = await db().storage.from(FILM_BUCKET).copy(path, next);
+        const { error: e } = await storage.from(FILM_BUCKET).copy(path, next);
         if (e) throw new Error(`copy ${path}: ${e.message}`);
         path = next;
         copiedPaths.push(next);
@@ -164,7 +165,7 @@ export async function forkProject(project: FilmProject, toRaw: unknown) {
   } catch (e) {
     // undo: the new project goes away with its rows and files
     await db().from("film_projects").delete().eq("id", copy.id);
-    if (copiedPaths.length) await db().storage.from(FILM_BUCKET).remove(copiedPaths).catch(() => null);
+    if (copiedPaths.length) await storage.from(FILM_BUCKET).remove(copiedPaths).catch(() => null);
     console.error("film fork failed", e);
     throw new UserError("تعذّر فتح المشروع الجديد، وما تغيّر شي في مشروعك. جرّب مرة ثانية.", 502);
   }

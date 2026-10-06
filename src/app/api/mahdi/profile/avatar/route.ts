@@ -8,6 +8,7 @@ import { AVATAR_BUCKET, profileFromRow, type ProfileRow } from "@/lib/mahdi/serv
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncPublicProfile } from "@/lib/mahdi/server/public";
 
+import { storage } from "@/lib/storage";
 export const runtime = "nodejs";
 
 /**
@@ -34,14 +35,14 @@ export const POST = mahdiRoute(async (req: Request) => {
   }
 
   // Storage writes go through the service role; the path is always derived from the signed-in user
-  const storage = createAdminClient().storage.from(AVATAR_BUCKET);
+  const avatars = storage.from(AVATAR_BUCKET);
   const path = `${user.id}/${randomUUID()}.webp`;
-  const { error } = await storage.upload(path, webp, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
+  const { error } = await avatars.upload(path, webp, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
   if (error) throw error;
 
   const old = (await supabase.from("mahdi_profiles").select("avatar_path").eq("user_id", user.id).single()).data?.avatar_path;
   const row = check(await createAdminClient().from("mahdi_profiles").update({ avatar_path: path }).eq("user_id", user.id).select("*").single());
-  if (old && old.startsWith(`${user.id}/`)) await storage.remove([old]);
+  if (old && old.startsWith(`${user.id}/`)) await avatars.remove([old]);
   await syncPublicProfile(user.id);
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });
 });
@@ -51,7 +52,7 @@ export const DELETE = mahdiRoute(async (req: Request) => {
   const { supabase, user } = await requireProfile(req);
   const old = (await supabase.from("mahdi_profiles").select("avatar_path").eq("user_id", user.id).single()).data?.avatar_path;
   const row = check(await createAdminClient().from("mahdi_profiles").update({ avatar_path: null }).eq("user_id", user.id).select("*").single());
-  if (old && old.startsWith(`${user.id}/`)) await createAdminClient().storage.from(AVATAR_BUCKET).remove([old]);
+  if (old && old.startsWith(`${user.id}/`)) await storage.from(AVATAR_BUCKET).remove([old]);
   await syncPublicProfile(user.id);
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });
 });

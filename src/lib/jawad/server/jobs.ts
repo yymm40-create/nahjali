@@ -33,6 +33,7 @@ import { libraryAccess, libraryNames } from "./library-access";
 import type { LibraryKind } from "@config/jawad/library";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, stemsOf, type Stem } from "@config/jawad/smart-split";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 
 export type JobStatus = "queued" | "submitting" | "running" | "saving" | "succeeded" | "failed" | "cancelled";
@@ -308,7 +309,7 @@ async function failFromError(job: JobRow, def: GeneratorDef | undefined, e: unkn
 }
 
 async function download(path: string) {
-  const { data, error } = await db().storage.from(JAWAD_BUCKET).download(path);
+  const { data, error } = await storage.from(JAWAD_BUCKET).download(path);
   if (error || !data) throw new ProviderError("rejected", "تعذّر قراءة أحد المراجع.", `download ${path}: ${error?.message}`);
   return Buffer.from(await data.arrayBuffer());
 }
@@ -316,7 +317,7 @@ async function download(path: string) {
 /** Saves one result (`name`: what it is, when a job makes several kinds, e.g. «الفصل الذكي»'s tracks). */
 async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, ext: string, dims: { width?: number | null; height?: number | null; durationMs?: number | null }, name?: string) {
   const path = `${job.user_id}/outputs/${job.id}/${name ?? idx}.${ext}`;
-  const up = await db().storage.from(JAWAD_BUCKET).upload(path, file, { contentType: mime, upsert: true });
+  const up = await storage.from(JAWAD_BUCKET).upload(path, file, { contentType: mime, upsert: true });
   if (up.error) throw new Error(`storage upload: ${up.error.message}`);
   const { error } = await db()
     .from("jawad_outputs")
@@ -450,7 +451,7 @@ async function submitVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   const s = job.inputs.settings;
   const paths = refs.map((r) => r.storage_path);
   // ModelArk fetches the files itself: short-lived links to our private copies
-  const signed = paths.length ? (await db().storage.from(JAWAD_BUCKET).createSignedUrls(paths, 3 * 3600)).data ?? [] : [];
+  const signed = paths.length ? (await storage.from(JAWAD_BUCKET).createSignedUrls(paths, 3 * 3600)).data ?? [] : [];
   const text = job.inputs.modelPrompt ?? job.prompt;
   const content: ArkContent[] = text.trim() ? [{ type: "text", text }] : [];
   refs.forEach((r, i) => {

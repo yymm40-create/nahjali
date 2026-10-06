@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { ClaudePart, ClaudeTurn } from "./anthropic";
 import { FILM_BUCKET } from "./types";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 
 /** [[image:<asset id>]] inside a user message is sent to Claude as the real picture. */
@@ -32,7 +33,7 @@ export async function buildTurns(projectId: string, stage: string): Promise<Clau
     const { data: rows } = await client.from("film_assets").select("id,storage_path").eq("project_id", projectId).in("id", ids);
     for (const r of rows ?? []) {
       if (!r.storage_path) continue;
-      const s = await client.storage.from(FILM_BUCKET).createSignedUrl(r.storage_path, 3600);
+      const s = await storage.from(FILM_BUCKET).createSignedUrl(r.storage_path, 3600);
       if (s.data) urls[r.id] = s.data.signedUrl;
     }
   }

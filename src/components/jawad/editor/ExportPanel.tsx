@@ -70,7 +70,7 @@ export default function ExportPanel({
       let saved = false;
       try {
         const s = await postJson<{ signedUrl: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "export_sign" });
-        const put = await fetch(s.signedUrl, { method: "PUT", headers: { "content-type": "video/mp4", "x-upsert": "true", apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "" }, body: r.blob });
+        const put = await fetch(s.signedUrl, { method: "PUT", headers: { "content-type": "video/mp4" }, body: r.blob });
         saved = put.ok;
       } catch {
         saved = false;

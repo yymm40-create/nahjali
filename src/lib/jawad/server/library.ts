@@ -15,6 +15,7 @@ import { JAWAD_BUCKET, loadRuntime } from "./runtime";
 import { isUuid, uploadFromOutput, uploadViews, type UploadRow } from "./uploads";
 import { createJob, type CreateResult, type JobRow } from "./jobs";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 const IMAGE_GENERATOR = "openai-gpt-image-2";
 
@@ -177,7 +178,7 @@ export async function deleteItem(userId: string, id: unknown) {
   // The picture goes too, unless a generation still running uses it
   const { data: open } = await db().from("jawad_jobs").select("id").eq("user_id", userId).in("status", ["queued", "submitting", "running", "saving"]).contains("refs", [{ uploadId: row.upload_id }]).limit(1);
   if (up && !open?.length) {
-    await db().storage.from(JAWAD_BUCKET).remove([up.storage_path as string]);
+    await storage.from(JAWAD_BUCKET).remove([up.storage_path as string]);
     await db().from("jawad_uploads").delete().eq("id", row.upload_id);
   }
 }

@@ -1,5 +1,6 @@
 import { createClient, type User } from "@supabase/supabase-js";
 
+import { storage } from "@/lib/storage";
 /**
  * Service-role client: bypasses RLS. SERVER ONLY.
  * Every caller must check that the signed-in user owns the data first.
@@ -16,8 +17,7 @@ export const BUCKETS = { sources: "sources", generated: "generated", booklets: "
 
 /** Short-lived signed URL for a private file (default 1 hour). */
 export async function signedUrl(bucket: string, path: string, expiresIn = 3600, download?: string) {
-  const { data, error } = await createAdminClient()
-    .storage.from(bucket)
+  const { data, error } = await storage.from(bucket)
     .createSignedUrl(path, expiresIn, download ? { download } : undefined);
   if (error) throw error;
   return data.signedUrl;

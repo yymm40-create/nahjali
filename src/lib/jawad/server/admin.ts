@@ -13,6 +13,7 @@ import { probe, sniff } from "../media";
 import { AD_SLOTS, cleanAdHref, emptyAd, type AdContent, type AdRow, type AdSlot } from "./ads";
 import { JAWAD_PUBLIC_BUCKET, loadRuntime } from "./runtime";
 
+import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 const NOT_MIGRATED = "جداول JAWAD AI غير موجودة بعد: شغّل ملف SQL رقم 0017 في Supabase.";
 const must = (error: { message?: string } | null) => {
@@ -38,7 +39,7 @@ export async function signPublicUpload(purpose: Purpose, target: string, mime: s
   if (!(bytes > 0 && bytes <= lim.maxBytes)) throw new UserError(`حجم الملف أكبر من ${Math.round(lim.maxBytes / 1024 / 1024)}MB.`, 400);
   const folder = purpose === "logo" ? "brand" : purpose === "sample" ? `samples/${target}` : `ads/${target}`;
   const path = `${folder}/${randomUUID()}.${EXT[mime]}`;
-  const { data, error } = await db().storage.from(JAWAD_PUBLIC_BUCKET).createSignedUploadUrl(path);
+  const { data, error } = await storage.from(JAWAD_PUBLIC_BUCKET).createSignedUploadUrl(path);
   if (error) throw new UserError("تعذّر تجهيز الرفع (تأكد من تشغيل ملف SQL رقم 0017).", 500);
   return { path, signedUrl: data.signedUrl };
 }
@@ -46,11 +47,11 @@ export async function signPublicUpload(purpose: Purpose, target: string, mime: s
 /** Reads an uploaded public file and checks it is what it claims (bytes, size, pixels). Deletes it otherwise. */
 async function checkPublicFile(purpose: Purpose, path: string) {
   if (!/^(brand|samples\/[\w-]+|ads\/[0-9a-f-]{36})\/[0-9a-f-]{36}\.(png|jpg|webp|mp4)$/.test(path)) throw new UserError("ملف غير صحيح.", 400);
-  const { data, error } = await db().storage.from(JAWAD_PUBLIC_BUCKET).download(path);
+  const { data, error } = await storage.from(JAWAD_PUBLIC_BUCKET).download(path);
   if (error || !data) throw new UserError("ما وصل الملف؛ جرّب الرفع مرة ثانية.", 409);
   const buf = new Uint8Array(await data.arrayBuffer());
   const fail = async (msg: string): Promise<never> => {
-    await db().storage.from(JAWAD_PUBLIC_BUCKET).remove([path]);
+    await storage.from(JAWAD_PUBLIC_BUCKET).remove([path]);
     throw new UserError(msg, 400);
   };
   const s = sniff(buf);
@@ -68,7 +69,7 @@ async function checkPublicFile(purpose: Purpose, path: string) {
 }
 
 const removePublic = async (path: string | null | undefined) => {
-  if (path) await db().storage.from(JAWAD_PUBLIC_BUCKET).remove([path]);
+  if (path) await storage.from(JAWAD_PUBLIC_BUCKET).remove([path]);
 };
 
 // ───────────── identity ─────────────
@@ -184,7 +185,7 @@ export async function deleteAd(id: string) {
   const paths = [ad.draft?.media?.path, ad.draft?.poster?.path, ad.live?.media?.path, ad.live?.poster?.path].filter((p): p is string => Boolean(p));
   const { error } = await db().from("jawad_ads").delete().eq("id", id);
   must(error);
-  if (paths.length) await db().storage.from(JAWAD_PUBLIC_BUCKET).remove([...new Set(paths)]);
+  if (paths.length) await storage.from(JAWAD_PUBLIC_BUCKET).remove([...new Set(paths)]);
 }
 
 // ───────────── sections ─────────────
