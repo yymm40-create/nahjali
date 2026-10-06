@@ -7,24 +7,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { Clip } from "@/lib/editor/model";
 import { clipLength } from "@/lib/editor/model";
-import { applyLook, FLAT, LINE, LOGS, LOOKS, MAX_SECONDARIES, NEUTRAL_GRADE, NEW_MASK, NEW_SECONDARY, parseCube, toCube, type Curves, type Grade, type LogGamut, type LogId, type Mask, type Pt, type Secondary, type Wheel } from "@/lib/editor/grade";
+import { applyLook, FLAT, LINE, LOGS, LOOKS, MAX_LAYERS, MAX_SECONDARIES, NEUTRAL_GRADE, NEW_MASK, NEW_SECONDARY, parseCube, toCube, type Curves, type Grade, type LogGamut, type LogId, type Mask, type Pt, type Secondary, type Wheel } from "@/lib/editor/grade";
 import Icon from "../Icon";
-import { bakeLut, gradeReady } from "./grade-gl";
+import { bakeLut, gradeReady, gradeView } from "./grade-gl";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
 import { saveFile } from "./package";
 
-type Page = "log" | "basic" | "wheels" | "curves" | "secondary" | "mask" | "looks" | "film";
-const PAGES: [Page, string][] = [
-  ["looks", "لوكات"],
-  ["log", "لوج"],
-  ["basic", "أساسي"],
-  ["wheels", "عجلات"],
-  ["curves", "منحنيات"],
-  ["secondary", "ثانوي"],
-  ["mask", "ماسك"],
-  ["film", "فيلم"],
-];
 
 function Slider({ label, value, min, max, step, onChange, format, disabled, center, bg }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format?: (v: number) => string; disabled?: boolean; center?: boolean; bg?: string }) {
   return (
@@ -44,9 +33,9 @@ const HUE_BG = "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)";
 
 // ───────── a colour wheel ─────────
 
-function ColorWheel({ label, value, onChange, disabled }: { label: string; value: Wheel; onChange: (w: Wheel) => void; disabled: boolean }) {
+function ColorWheel({ label, value, onChange, disabled, size = 84 }: { label: string; value: Wheel; onChange: (w: Wheel) => void; disabled: boolean; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const S = 84;
+  const S = size;
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -72,7 +61,7 @@ function ColorWheel({ label, value, onChange, disabled }: { label: string; value
         im.data[o + 3] = 255 * (1 - Math.max(0, (d - 0.96) / 0.04));
       }
     g.putImageData(im, 0, 0);
-  }, []);
+  }, [S]);
   // the wheel's rgb offset ↔ a point: the hue is the angle, the strength the distance
   const [r, gg, b] = value.rgb;
   const px = ((r - (gg + b) / 2) * 0.8 * S) / 2;
@@ -308,12 +297,79 @@ import { maskAt as posAt } from "@/lib/editor/grade";
 
 // ───────── the panel ─────────
 
+type SectionId = "log" | "basic" | "creative" | "curves" | "wheels" | "hsl" | "mask" | "film";
+const OPEN_KEY = "jw-grade-open";
+
+/** A Lumetri-style section: a header that opens and closes, a reset, a short hint on hover. */
+function Section({ id, title, hint, open, onToggle, onReset, badge, children, tools }: { id: SectionId; title: string; hint: string; open: boolean; onToggle: (id: SectionId) => void; onReset?: () => void; badge?: boolean; children: React.ReactNode; tools?: React.ReactNode }) {
+  return (
+    <section className="border-b border-jw-line last:border-0">
+      <div className="flex items-center gap-1">
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 py-2 text-start text-xs font-bold" aria-expanded={open} onClick={() => onToggle(id)} title={hint}>
+          <Icon name={open ? "chevronDown" : "chevronLeft"} size={13} />
+          <span className="truncate">{title}</span>
+          {badge && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-jw-accent" aria-label="معدّل" />}
+        </button>
+        {tools}
+        {onReset && (
+          <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-faint hover:text-jw-ink" onClick={onReset} aria-label={`رجّع ${title}`} title={`رجّع ${title}`}>
+            <Icon name="retry" size={12} />
+          </button>
+        )}
+      </div>
+      {open && <div className="space-y-2 pb-3">{children}</div>}
+    </section>
+  );
+}
+
+function Seg<T extends string>({ value, options, onChange, disabled, label }: { value: T; options: [T, string][]; onChange: (v: T) => void; disabled?: boolean; label: string }) {
+  return (
+    <div className="jw-seg" role="radiogroup" aria-label={label}>
+      {options.map(([k, l]) => (
+        <button key={k} type="button" role="radio" aria-checked={value === k} disabled={disabled} onClick={() => onChange(k)}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const CURVES: [keyof Curves, string][] = [
+  ["master", "الكل"],
+  ["r", "أحمر"],
+  ["g", "أخضر"],
+  ["b", "أزرق"],
+  ["hueHue", "لون←لون"],
+  ["hueSat", "لون←تشبع"],
+  ["hueLum", "لون←إضاءة"],
+  ["lumSat", "إضاءة←تشبع"],
+  ["satSat", "تشبع←تشبع"],
+];
+const curveBg = (k: keyof Curves) => (k.startsWith("hue") ? HUE_BG : k === "r" ? "linear-gradient(135deg,#1a0000,#ff4040)" : k === "g" ? "linear-gradient(135deg,#001a00,#40ff40)" : k === "b" ? "linear-gradient(135deg,#00001a,#4040ff)" : undefined);
+const flatCurve = (k: keyof Curves) => k.startsWith("hue") || k === "lumSat" || k === "satSat";
+const isOff = (g: Grade, keys: (keyof Grade)[]) => keys.every((k) => JSON.stringify(g[k]) === JSON.stringify(NEUTRAL_GRADE[k]));
+
 export default function GradePanel({ clip, thumb, locked, run, flash, player }: { clip: Clip; thumb: string | null; locked: boolean; run: Run; flash: (m: string, bad?: boolean) => void; player: PlayerLike | null }) {
-  const g: Grade = clip.grade ?? NEUTRAL_GRADE;
-  const [page, setPage] = useState<Page>(clip.grade ? "basic" : "looks");
+  const layers = clip.grades;
+  const [li, setLi] = useState(0);
+  const L = Math.min(li, Math.max(0, layers.length - 1));
+  const g: Grade = layers[L] ?? NEUTRAL_GRADE;
   const [curve, setCurve] = useState<keyof Curves>("master");
   const [sec, setSec] = useState(0);
+  const [big, setBig] = useState<null | "wheels" | "curves">(null);
+  const [view, setView] = useState(gradeView.mode);
+  const [splitX, setSplitX] = useState(gradeView.x);
+  const [open, setOpen] = useState<SectionId[]>(["log", "basic"]);
   const [ms, setMs] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const v = JSON.parse(localStorage.getItem(OPEN_KEY) ?? "null");
+        if (Array.isArray(v)) setOpen(v);
+      } catch {}
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
   useEffect(() => {
     if (!player) return;
     const t = setTimeout(() => setMs(player.ms), 0);
@@ -323,14 +379,49 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player }: 
       off();
     };
   }, [player]);
+  // leaving the clip (or the panel): the preview goes back to showing the grade
+  useEffect(
+    () => () => {
+      gradeView.mode = "on";
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!big) return;
+    // (first, and alone: Esc here only shrinks it, the clip stays selected)
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      setBig(null);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [big]);
+
+  const toggle = (id: SectionId) =>
+    setOpen((o) => {
+      const next = o.includes(id) ? o.filter((x) => x !== id) : [...o, id];
+      try {
+        localStorage.setItem(OPEN_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   const clipT = ms - clip.start;
   const inClip = clipT >= 0 && clipT <= clipLength(clip);
-  const set = (patch: Partial<Grade>, key: string) => run({ type: "update_clip", clipId: clip.id, patch: { grade: patch } }, { coalesce: `${clip.id}:grade:${key}` });
-  const reset = () => run({ type: "update_clip", clipId: clip.id, patch: { grade: null } });
+  const set = (patch: Partial<Grade>, key: string) => run({ type: "update_clip", clipId: clip.id, patch: { grade: { ...patch, layer: L } } }, { coalesce: `${clip.id}:grade:${L}:${key}` });
+  const setLayers = (list: Grade[]) => run({ type: "update_clip", clipId: clip.id, patch: { grades: list } });
+  const resetKeys = (keys: (keyof Grade)[]) => set(Object.fromEntries(keys.map((k) => [k, NEUTRAL_GRADE[k]])) as Partial<Grade>, `reset:${keys.join()}`);
+  const redraw = () => player?.seek(player.ms);
+  const showView = (m: typeof view) => {
+    gradeView.mode = m;
+    setView(m);
+    redraw();
+  };
   const gpu = gradeReady();
   const S = g.secondaries[sec] as Secondary | undefined;
   const setSec2 = (p: Partial<Secondary>, key: string) => set({ secondaries: g.secondaries.map((s, i) => (i === sec ? { ...s, ...p } : s)) }, `sec${sec}:${key}`);
   const fileRef = useRef<HTMLInputElement>(null);
+  const D = locked;
 
   const loadCube = async (f: File | undefined) => {
     if (!f) return;
@@ -343,274 +434,288 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player }: 
     }
   };
   const exportCube = () => {
-    const bytes = bakeLut(g, 33);
+    const bytes = bakeLut(layers, 33);
     if (!bytes) return flash("ما قدرنا نصدّر LUT من هذا المتصفح.", true);
-    saveFile(new Blob([toCube(`Haidara Cut - ${LOOKS.find((l) => l.id === g.look)?.label ?? "grade"}`, 33, bytes)], { type: "text/plain" }), `haidara-grade-${Date.now().toString(36)}.cube`);
+    saveFile(new Blob([toCube("Haidara Cut grade", 33, bytes)], { type: "text/plain" }), `haidara-grade-${Date.now().toString(36)}.cube`);
     flash("نزل ملف .cube: يشتغل في بريمير ودافنشي وكاب كت.");
   };
 
-  return (
-    <div className="space-y-3">
-      {!gpu && <p className="rounded-lg bg-jw-warn/10 p-2 text-[11px] text-jw-warn">متصفحك ما يقدر يلوّن على كرت الشاشة (WebGL2)؛ التلوين ما بيبين هنا. جرّب Chrome.</p>}
-      <div className="jw-scroll -mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist" aria-label="صفحات التلوين">
-        {PAGES.map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={page === k} className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${page === k ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted hover:text-jw-ink"}`} onClick={() => setPage(k)}>
-            {label}
-          </button>
-        ))}
-      </div>
+  const wheels = (size: number) => (
+    <div className={size > 120 ? "flex flex-wrap items-start justify-center gap-6" : "grid grid-cols-2 gap-3"}>
+      <ColorWheel size={size} label="الظلال · Lift" value={g.lift} disabled={D} onChange={(w) => set({ lift: w }, "lift")} />
+      <ColorWheel size={size} label="الوسط · Gamma" value={g.gamma} disabled={D} onChange={(w) => set({ gamma: w }, "gamma")} />
+      <ColorWheel size={size} label="الأضواء · Gain" value={g.gain} disabled={D} onChange={(w) => set({ gain: w }, "gain")} />
+      <ColorWheel size={size} label="الكل · Offset" value={g.offset} disabled={D} onChange={(w) => set({ offset: w }, "offset")} />
+    </div>
+  );
+  const curveTabs = (
+    <div className="jw-scroll -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+      {CURVES.map(([k, label]) => (
+        <button key={k} type="button" className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${curve === k ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted"}`} onClick={() => setCurve(k)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  const curveEditor = <CurveEditor pts={g.curves[curve]} flat={flatCurve(curve)} disabled={D} bg={curveBg(curve)} onChange={(pts) => set({ curves: { ...g.curves, [curve]: pts } }, `curve:${curve}`)} />;
+  const enlarge = (what: "wheels" | "curves") => (
+    <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => setBig(what)} aria-label="كبّر" title="كبّر للدقة (Esc يرجعه)">
+      <Icon name="expand" size={13} />
+    </button>
+  );
 
-      {page === "looks" && (
-        <div className="space-y-3">
-          {(["سينما", "فيلم", "مزاج", "أبيض وأسود"] as const).map((grp) => (
-            <div key={grp} className="space-y-1">
-              <p className="text-[11px] font-semibold text-jw-muted">{grp}</p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {LOOKS.filter((l) => l.group === grp).map((l) => (
-                  <button key={l.id} type="button" disabled={locked} aria-pressed={g.look === l.id} title={l.hint} className={`rounded-lg border px-2 py-1.5 text-start text-[11px] leading-tight ${g.look === l.id ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { grade: applyLook(g, l) } })}>
-                    <b className="block">{l.label}</b>
-                    <span className="text-jw-faint">{l.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          <div className="space-y-1.5 rounded-lg border border-jw-line p-2">
-            <p className="text-[11px] font-semibold">LUT من ملف (.cube)</p>
-            <input ref={fileRef} type="file" accept=".cube,.CUBE" className="hidden" onChange={(e) => void loadCube(e.target.files?.[0]).then(() => (e.target.value = ""))} />
-            <div className="flex gap-1.5">
-              <button type="button" className="jw-btn !min-h-8 flex-1 text-xs" disabled={locked} onClick={() => fileRef.current?.click()}>
-                <Icon name="upload" size={14} /> {g.lut ? `LUT: ${g.lut.name}` : "ارفع LUT"}
+  return (
+    <div className="space-y-2">
+      {!gpu && <p className="rounded-lg bg-jw-warn/10 p-2 text-[11px] text-jw-warn">متصفحك ما يقدر يلوّن على كرت الشاشة (WebGL2). جرّب Chrome.</p>}
+
+      {/* layers and the before / after */}
+      <div className="sticky top-0 z-10 space-y-1.5 rounded-xl border border-jw-line bg-jw-surface p-1.5">
+        <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="طبقات التلوين">
+          {(layers.length ? layers : [NEUTRAL_GRADE]).map((x, i) => (
+            <span key={i} className={`flex items-center rounded-full border ${L === i ? "border-jw-accent bg-jw-accent/10" : "border-jw-line"}`}>
+              <button type="button" role="tab" aria-selected={L === i} className={`py-0.5 ps-2 pe-1 text-[11px] font-semibold ${x.on ? "" : "text-jw-faint line-through"}`} onClick={() => setLi(i)}>
+                {x.name || `طبقة ${i + 1}`}
               </button>
-              {g.lut && (
-                <button type="button" className="jw-btn jw-btn-quiet !min-h-8 text-xs" disabled={locked} onClick={() => set({ lut: null }, "lut")}>
-                  شيلها
+              {layers[i] && (
+                <button type="button" className="grid h-6 w-6 place-items-center rounded-full text-jw-muted hover:text-jw-ink" disabled={D} aria-label={x.on ? "طفّ الطبقة" : "شغّل الطبقة"} title={x.on ? "طفّ الطبقة" : "شغّل الطبقة"} onClick={() => setLayers(layers.map((y, k) => (k === i ? { ...y, on: !y.on } : y)))}>
+                  <Icon name={x.on ? "eye" : "eyeOff"} size={12} />
                 </button>
               )}
-            </div>
-            {g.lut && <Slider label="قوة الـLUT" value={+(g.lutAmount * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ lutAmount: v / 100 }, "lutAmount")} />}
-            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 w-full text-xs" disabled={!clip.grade} onClick={exportCube} title="التلوين كله (بدون الماسكات والحبيبات) كملف .cube لبريمير ودافنشي وكاب كت">
-              <Icon name="download" size={14} /> صدّر تلويني كـ LUT
+            </span>
+          ))}
+          {layers.length < MAX_LAYERS && (
+            <button type="button" className="rounded-full border border-dashed border-jw-line px-2 py-0.5 text-[11px]" disabled={D} title="طبقة تلوين جديدة فوق اللي قبلها" onClick={() => { setLayers([...(layers.length ? layers : [NEUTRAL_GRADE]), { ...NEUTRAL_GRADE }]); setLi(Math.max(1, layers.length)); }}>
+              + طبقة
             </button>
-          </div>
-        </div>
-      )}
-
-      {page === "log" && (
-        <div className="space-y-2">
-          <p className="text-[11px] leading-5 text-jw-muted">صوّرت بلوج (صورة باهتة رمادية)؟ اختر كاميرتك وبضغطة وحدة يتفك اللوج مثل «Color Space Transform» في دافنشي: الألوان الصحيحة (Rec.709)، الرمادي في مكانه، والأضواء تنطوي بنعومة بدون ما تحترق.</p>
-          {g.log !== "none" && (
-            <div className="space-y-2 rounded-lg border border-jw-accent/40 bg-jw-accent/5 p-2">
-              <p className="text-[11px] font-semibold">مساحة الألوان اللي صوّرت فيها</p>
-              <div className="jw-seg" role="radiogroup" aria-label="مساحة الألوان">
-                {(
-                  [
-                    ["camera", LOGS.find((l) => l.id === g.log)?.label.split("/")[1]?.trim() || "واسعة (الكاميرا)"],
-                    ["rec709", "BT.709"],
-                    ["rec2020", "BT.2020"],
-                  ] as [LogGamut, string][]
-                ).map(([k, label]) => (
-                  <button key={k} type="button" role="radio" aria-checked={g.logGamut === k} disabled={locked} onClick={() => set({ logGamut: k }, "logGamut")}>
-                    {k === "camera" && g.log.startsWith("clog") ? "Cinema Gamut" : label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] leading-5 text-jw-muted">
-                {g.log.startsWith("clog")
-                  ? "كانون: شوف في الكاميرا «Color Space» أو «Color Matrix» تحت إعداد C-Log. لو مكتوب BT.709 اختر BT.709، وإلا Cinema Gamut. لو الألوان طالعة مشعّة أو مشبّعة زيادة، غالبًا هذا هو السبب."
-                  : "إذا الكاميرا كانت مضبوطة على BT.709 أو BT.2020 اختره؛ وإلا خلّه على الأول. لو الألوان طلعت مشعّة زيادة، جرّب BT.709."}
-              </p>
-              <p className="pt-1 text-[11px] font-semibold">مستوى الإشارة في الملف</p>
-              <div className="jw-seg" role="radiogroup" aria-label="مستوى الإشارة">
-                {(
-                  [
-                    ["video", "فيديو (أغلب الكاميرات)"],
-                    ["full", "كامل (Full)"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button key={k} type="button" role="radio" aria-checked={g.logRange === k} disabled={locked} onClick={() => set({ logRange: k }, "logRange")}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-jw-faint">خلّه «فيديو» إلا إذا الصورة طلعت باهتة أو غامقة بشكل واضح بعد فك اللوج.</p>
-            </div>
           )}
-          <div className="space-y-1">
-            {LOGS.map((l) => (
-              <button key={l.id} type="button" disabled={locked} aria-pressed={g.log === l.id} className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-start text-[11px] ${g.log === l.id ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set({ log: l.id as LogId }, "log")}>
-                <span className="min-w-0 flex-1">
-                  <b className="block">
-                    {l.brand && <span className="text-jw-muted" dir="ltr">{l.brand} · </span>}
+          <span className="ms-auto flex items-center">
+            {layers[L] && (
+              <>
+                <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:text-jw-ink" disabled={D || layers.length >= MAX_LAYERS} aria-label="كرر الطبقة" title="كرر الطبقة" onClick={() => { setLayers([...layers.slice(0, L + 1), { ...layers[L] }, ...layers.slice(L + 1)]); setLi(L + 1); }}>
+                  <Icon name="copy" size={12} />
+                </button>
+                <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:text-jw-danger" disabled={D} aria-label="احذف الطبقة" title="احذف الطبقة" onClick={() => { setLayers(layers.filter((_, k) => k !== L)); setLi(Math.max(0, L - 1)); }}>
+                  <Icon name="trash" size={12} />
+                </button>
+              </>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Seg label="قبل وبعد" value={view} onChange={showView} options={[["on", "بعد"], ["off", "قبل"], ["split", "قسمة"]]} />
+          {view === "split" && <input type="range" dir="ltr" aria-label="مكان القسمة" className="min-w-0 flex-1 accent-[var(--jw-accent)]" min={5} max={95} value={Math.round(splitX * 100)} onChange={(e) => { gradeView.x = Number(e.target.value) / 100; setSplitX(gradeView.x); redraw(); }} />}
+        </div>
+        {layers[L] && (
+          <input className="jw-input w-full !py-1 text-xs" value={g.name} placeholder={`اسم الطبقة (مثلًا: البشرة)`} maxLength={30} disabled={D} onChange={(e) => set({ name: e.target.value }, "name")} />
+        )}
+      </div>
+
+      <div className="rounded-xl border border-jw-line px-2">
+        <Section id="log" title="تحويل اللوج (Input)" hint="صوّرت بلوج؟ اختر كاميرتك: ترجع الألوان والتباين مثل CST في دافنشي" open={open.includes("log")} onToggle={toggle} badge={g.log !== "none"} onReset={() => resetKeys(["log", "logGamut", "logRange", "compress"])}>
+          <select className="jw-input w-full !py-1.5 text-xs" value={g.log} disabled={D} onChange={(e) => set({ log: e.target.value as LogId }, "log")} aria-label="الكاميرا واللوج">
+            {[...new Set(LOGS.map((l) => l.brand))].map((brand) => (
+              <optgroup key={brand || "-"} label={brand || "عام"}>
+                {LOGS.filter((l) => l.brand === brand).map((l) => (
+                  <option key={l.id} value={l.id}>
                     {l.label}
-                  </b>
-                  <span className="text-jw-faint">{l.hint}</span>
-                </span>
-                {g.log === l.id && <Icon name="check" size={14} />}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {g.log !== "none" && (
+            <>
+              <p className="text-[10px] text-jw-faint">{LOGS.find((l) => l.id === g.log)?.hint}</p>
+              <label className="block space-y-0.5">
+                <span className="text-[11px] text-jw-muted" title="اللي ضبطته في الكاميرا: Color Space / Color Matrix. لو الألوان مشعّة جرّب BT.709">مساحة ألوان التصوير ⓘ</span>
+                <Seg label="مساحة الألوان" value={g.logGamut} disabled={D} onChange={(v) => set({ logGamut: v }, "logGamut")} options={[["camera", g.log.startsWith("clog") ? "Cinema Gamut" : "واسعة"], ["rec709", "BT.709"], ["rec2020", "BT.2020"]] as [LogGamut, string][]} />
+              </label>
+              <label className="block space-y-0.5">
+                <span className="text-[11px] text-jw-muted" title="خلّه «فيديو» إلا إذا الصورة طلعت باهتة أو غامقة بوضوح">مستوى الإشارة ⓘ</span>
+                <Seg label="مستوى الإشارة" value={g.logRange} disabled={D} onChange={(v) => set({ logRange: v }, "logRange")} options={[["video", "فيديو"], ["full", "كامل"]]} />
+              </label>
+              <Slider label="ضغط الألوان الزائدة (أزرق LED، نيون)" value={Math.round(g.compress * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ compress: v / 100 }, "compress")} />
+            </>
+          )}
+        </Section>
+
+        <Section id="basic" title="تصحيح أساسي" hint="توازن الأبيض، الإضاءة، التشبع" open={open.includes("basic")} onToggle={toggle} badge={!isOff(g, ["temp", "tint", "exposure", "contrast", "highlights", "shadows", "whites", "blacks", "saturation", "vibrance"])} onReset={() => resetKeys(["temp", "tint", "exposure", "contrast", "highlights", "shadows", "whites", "blacks", "saturation", "vibrance"])}>
+          <Slider label="الحرارة" value={Math.round(g.temp * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ temp: v / 100 }, "temp")} format={signed} center bg="linear-gradient(90deg,#3b82f6,#e5e7eb,#f59e0b)" />
+          <Slider label="الصبغة" value={Math.round(g.tint * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ tint: v / 100 }, "tint")} format={signed} center bg="linear-gradient(90deg,#22c55e,#e5e7eb,#d946ef)" />
+          <Slider label="التعريض" value={+g.exposure.toFixed(2)} min={-3} max={3} step={0.05} disabled={D} onChange={(v) => set({ exposure: v }, "exposure")} format={(v) => signed(+v.toFixed(2))} center />
+          <Slider label="التباين" value={Math.round(g.contrast * 100)} min={40} max={220} step={1} disabled={D} onChange={(v) => set({ contrast: v / 100 }, "contrast")} format={pct0} />
+          <Slider label="الإضاءات" value={Math.round(g.highlights * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ highlights: v / 100 }, "highlights")} format={signed} center />
+          <Slider label="الظلال" value={Math.round(g.shadows * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ shadows: v / 100 }, "shadows")} format={signed} center />
+          <Slider label="البياض" value={Math.round(g.whites * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ whites: v / 100 }, "whites")} format={signed} center />
+          <Slider label="السواد" value={Math.round(g.blacks * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ blacks: v / 100 }, "blacks")} format={signed} center />
+          <Slider label="التشبع" value={Math.round(g.saturation * 100)} min={0} max={250} step={1} disabled={D} onChange={(v) => set({ saturation: v / 100 }, "saturation")} format={pct0} />
+          <Slider label="الحيوية" value={Math.round(g.vibrance * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ vibrance: v / 100 }, "vibrance")} format={signed} center />
+        </Section>
+
+        <Section id="creative" title="إبداعي (لوكات و LUT)" hint="لوكات جاهزة، ملف LUT، تلوين الظلال والأضواء" open={open.includes("creative")} onToggle={toggle} badge={!!g.look || !!g.lut || !isOff(g, ["split"])} onReset={() => resetKeys(["look", "lut", "lutAmount", "split", "sharpen"])}>
+          <div className="flex flex-wrap gap-1">
+            {LOOKS.map((l) => (
+              <button key={l.id} type="button" disabled={D} aria-pressed={g.look === l.id} title={l.hint} className={`rounded-full border px-2 py-0.5 text-[11px] ${g.look === l.id ? "border-jw-accent bg-jw-accent/15 text-jw-accent" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { grade: { ...applyLook(g, l), layer: L } } })}>
+                {l.label}
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {page === "basic" && (
-        <div className="space-y-2">
-          <Slider label="التعريض (ستوب)" value={+g.exposure.toFixed(2)} min={-3} max={3} step={0.05} disabled={locked} onChange={(v) => set({ exposure: v }, "exposure")} format={(v) => signed(+v.toFixed(2))} center />
-          <Slider label="التباين" value={+(g.contrast * 100).toFixed(0)} min={40} max={220} step={1} disabled={locked} onChange={(v) => set({ contrast: v / 100 }, "contrast")} format={pct0} />
-          <Slider label="محور التباين" value={+(g.pivot * 100).toFixed(0)} min={10} max={90} step={1} disabled={locked} onChange={(v) => set({ pivot: v / 100 }, "pivot")} />
-          <Slider label="الحرارة (بارد ← دافئ)" value={+(g.temp * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ temp: v / 100 }, "temp")} format={signed} center bg="linear-gradient(90deg,#3b82f6,#e5e7eb,#f59e0b)" />
-          <Slider label="الصبغة (أخضر ← بنفسجي)" value={+(g.tint * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ tint: v / 100 }, "tint")} format={signed} center bg="linear-gradient(90deg,#22c55e,#e5e7eb,#d946ef)" />
-          <Slider label="الإضاءات العالية" value={+(g.highlights * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ highlights: v / 100 }, "highlights")} format={signed} center />
-          <Slider label="الظلال" value={+(g.shadows * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ shadows: v / 100 }, "shadows")} format={signed} center />
-          <Slider label="البياض" value={+(g.whites * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ whites: v / 100 }, "whites")} format={signed} center />
-          <Slider label="السواد" value={+(g.blacks * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ blacks: v / 100 }, "blacks")} format={signed} center />
-          <Slider label="التشبع" value={+(g.saturation * 100).toFixed(0)} min={0} max={250} step={1} disabled={locked} onChange={(v) => set({ saturation: v / 100 }, "saturation")} format={pct0} />
-          <Slider label="الحيوية (يرفع الألوان الضعيفة ويحمي البشرة)" value={+(g.vibrance * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ vibrance: v / 100 }, "vibrance")} format={signed} center />
-          <Slider label="الحدة" value={+(g.sharpen * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ sharpen: v / 100 }, "sharpen")} />
-          <Slider label="قوة التلوين كله" value={+(g.amount * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ amount: v / 100 }, "amount")} />
-        </div>
-      )}
-
-      {page === "wheels" && (
-        <div className="space-y-2">
-          <p className="text-[11px] text-jw-muted">مثل دافنشي: اسحب داخل العجلة نحو اللون اللي تبيه في الظلال (Lift)، الوسط (Gamma)، الأضواء (Gain)، أو الكل (Offset). الشريط تحت كل عجلة يرفع أو ينزّل إضاءتها.</p>
-          <div className="grid grid-cols-2 gap-3">
-            <ColorWheel label="الظلال · Lift" value={g.lift} disabled={locked} onChange={(w) => set({ lift: w }, "lift")} />
-            <ColorWheel label="الوسط · Gamma" value={g.gamma} disabled={locked} onChange={(w) => set({ gamma: w }, "gamma")} />
-            <ColorWheel label="الأضواء · Gain" value={g.gain} disabled={locked} onChange={(w) => set({ gain: w }, "gain")} />
-            <ColorWheel label="الكل · Offset" value={g.offset} disabled={locked} onChange={(w) => set({ offset: w }, "offset")} />
-          </div>
-          <button type="button" className="jw-btn jw-btn-quiet !min-h-8 w-full text-xs" disabled={locked} onClick={() => set({ lift: NEUTRAL_GRADE.lift, gamma: NEUTRAL_GRADE.gamma, gain: NEUTRAL_GRADE.gain, offset: NEUTRAL_GRADE.offset }, "wheels-reset")}>
-            رجّع العجلات
-          </button>
-        </div>
-      )}
-
-      {page === "curves" && (
-        <div className="space-y-2">
-          <div className="jw-scroll -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-            {(
-              [
-                ["master", "الكل"],
-                ["r", "أحمر"],
-                ["g", "أخضر"],
-                ["b", "أزرق"],
-                ["hueHue", "لون ← لون"],
-                ["hueSat", "لون ← تشبع"],
-                ["hueLum", "لون ← إضاءة"],
-                ["lumSat", "إضاءة ← تشبع"],
-                ["satSat", "تشبع ← تشبع"],
-              ] as [keyof Curves, string][]
-            ).map(([k, label]) => (
-              <button key={k} type="button" className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${curve === k ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted"}`} onClick={() => setCurve(k)}>
-                {label}
+          <input ref={fileRef} type="file" accept=".cube,.CUBE" className="hidden" onChange={(e) => void loadCube(e.target.files?.[0]).then(() => (e.target.value = ""))} />
+          <div className="flex gap-1.5">
+            <button type="button" className="jw-btn !min-h-8 min-w-0 flex-1 truncate text-xs" disabled={D} onClick={() => fileRef.current?.click()}>
+              <Icon name="upload" size={13} /> {g.lut ? g.lut.name : "LUT (.cube)"}
+            </button>
+            {g.lut && (
+              <button type="button" className="jw-btn jw-btn-quiet !min-h-8 text-xs" disabled={D} onClick={() => set({ lut: null }, "lut")}>
+                شيلها
               </button>
-            ))}
+            )}
           </div>
-          <CurveEditor pts={g.curves[curve]} flat={curve.startsWith("hue") || curve === "lumSat" || curve === "satSat"} disabled={locked} bg={curve.startsWith("hue") ? `${HUE_BG}` : curve === "r" ? "linear-gradient(135deg,#1a0000,#ff4040)" : curve === "g" ? "linear-gradient(135deg,#001a00,#40ff40)" : curve === "b" ? "linear-gradient(135deg,#00001a,#4040ff)" : undefined} onChange={(pts) => set({ curves: { ...g.curves, [curve]: pts } }, `curve:${curve}`)} />
-          <p className="text-[11px] text-jw-muted">اضغط في المنحنى تضيف نقطة، اسحبها، وضغطتين تشيلها. {curve.startsWith("hue") ? "المحور الأفقي هو اللون (أحمر، أصفر، أخضر، سماوي، أزرق، بنفسجي)." : curve === "lumSat" ? "الأفقي: الإضاءة من أسود لأبيض. العمودي: كم يزيد التشبع أو يقل." : curve === "satSat" ? "الأفقي: التشبع الحالي. العمودي: كم يصير." : "الأفقي: الدخل من أسود لأبيض. العمودي: الخرج."}</p>
-          <button type="button" className="jw-btn jw-btn-quiet !min-h-8 w-full text-xs" disabled={locked} onClick={() => set({ curves: { ...g.curves, [curve]: curve === "master" || curve.length === 1 ? LINE : FLAT } }, `curve:${curve}:reset`)}>
-            رجّع هذا المنحنى
-          </button>
-        </div>
-      )}
+          {g.lut && <Slider label="قوة الـLUT" value={Math.round(g.lutAmount * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ lutAmount: v / 100 }, "lutAmount")} />}
+          <Slider label="لون الظلال" value={Math.round(g.split.shadowHue * 360)} min={0} max={360} step={1} disabled={D} onChange={(v) => set({ split: { ...g.split, shadowHue: v / 360 } }, "split")} format={(v) => `${v}°`} bg={HUE_BG} />
+          <Slider label="قوته" value={Math.round(g.split.shadowSat * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ split: { ...g.split, shadowSat: v / 100 } }, "split")} />
+          <Slider label="لون الأضواء" value={Math.round(g.split.highHue * 360)} min={0} max={360} step={1} disabled={D} onChange={(v) => set({ split: { ...g.split, highHue: v / 360 } }, "split")} format={(v) => `${v}°`} bg={HUE_BG} />
+          <Slider label="قوته" value={Math.round(g.split.highSat * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ split: { ...g.split, highSat: v / 100 } }, "split")} />
+          <Slider label="التوازن" value={Math.round(g.split.balance * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ split: { ...g.split, balance: v / 100 } }, "split")} format={signed} center />
+          <Slider label="الحدة" value={Math.round(g.sharpen * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ sharpen: v / 100 }, "sharpen")} />
+        </Section>
 
-      {page === "secondary" && (
-        <div className="space-y-2">
-          <p className="text-[11px] leading-5 text-jw-muted">الثانوي يختار لون معيّن من الصورة (البشرة، السماء، ثوب) ويغيّره بروحه بدون ما يمس الباقي. لين ٤ ثانويات، ولكل واحد ماسك خاص.</p>
+        <Section id="curves" title="منحنيات" hint="RGB ومنحنيات اللون: نقطة بضغطة، اسحبها، ضغطتين تشيلها" open={open.includes("curves")} onToggle={toggle} badge={!isOff(g, ["curves"])} onReset={() => resetKeys(["curves"])} tools={enlarge("curves")}>
+          {curveTabs}
+          {curveEditor}
+        </Section>
+
+        <Section id="wheels" title="عجلات الألوان" hint="Lift / Gamma / Gain / Offset: اسحب نحو اللون، ضغطتين ترجعه" open={open.includes("wheels")} onToggle={toggle} badge={!isOff(g, ["lift", "gamma", "gain", "offset"])} onReset={() => resetKeys(["lift", "gamma", "gain", "offset"])} tools={enlarge("wheels")}>
+          {wheels(84)}
+        </Section>
+
+        <Section id="hsl" title="ثانوي HSL" hint="اختر لون من الصورة (البشرة، السماء…) وغيّره بروحه" open={open.includes("hsl")} onToggle={toggle} badge={g.secondaries.length > 0} onReset={() => resetKeys(["secondaries"])}>
           <div className="flex flex-wrap gap-1">
             {g.secondaries.map((s, i) => (
-              <button key={i} type="button" className={`rounded-full px-2.5 py-1 text-[11px] ${sec === i ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted"} ${!s.on ? "line-through" : ""}`} onClick={() => setSec(i)}>
+              <button key={i} type="button" className={`rounded-full px-2.5 py-0.5 text-[11px] ${sec === i ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted"} ${!s.on ? "line-through" : ""}`} onClick={() => setSec(i)}>
                 {s.name || `ثانوي ${i + 1}`}
               </button>
             ))}
             {g.secondaries.length < MAX_SECONDARIES && (
-              <button type="button" className="rounded-full border border-dashed border-jw-line px-2.5 py-1 text-[11px]" disabled={locked} onClick={() => { set({ secondaries: [...g.secondaries, { ...NEW_SECONDARY, name: "" }] }, "sec:add"); setSec(g.secondaries.length); }}>
+              <button type="button" className="rounded-full border border-dashed border-jw-line px-2.5 py-0.5 text-[11px]" disabled={D} onClick={() => { set({ secondaries: [...g.secondaries, { ...NEW_SECONDARY }] }, "sec:add"); setSec(g.secondaries.length); }}>
                 + ثانوي
               </button>
             )}
           </div>
           {S && (
-            <div className="space-y-2">
-              <div className="flex gap-1.5">
-                <input className="jw-input min-w-0 flex-1 !py-1 text-xs" value={S.name} placeholder={`ثانوي ${sec + 1}`} maxLength={40} disabled={locked} onChange={(e) => setSec2({ name: e.target.value }, "name")} />
-                <label className="flex items-center gap-1 text-[11px]">
-                  <input type="checkbox" checked={S.on} disabled={locked} onChange={(e) => setSec2({ on: e.target.checked }, "on")} /> شغّال
-                </label>
-                <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon !min-h-8 !w-8" disabled={locked} aria-label="احذف الثانوي" onClick={() => { set({ secondaries: g.secondaries.filter((_, i) => i !== sec) }, "sec:remove"); setSec(0); }}>
-                  <Icon name="trash" size={14} />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <input className="jw-input min-w-0 flex-1 !py-1 text-xs" value={S.name} placeholder={`ثانوي ${sec + 1}`} maxLength={40} disabled={D} onChange={(e) => setSec2({ name: e.target.value }, "name")} />
+                <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted" disabled={D} aria-label={S.on ? "طفّه" : "شغّله"} title={S.on ? "طفّه" : "شغّله"} onClick={() => setSec2({ on: !S.on }, "on")}>
+                  <Icon name={S.on ? "eye" : "eyeOff"} size={13} />
+                </button>
+                <button type="button" className={`rounded px-1.5 py-1 text-[10px] ${S.show ? "bg-white text-black" : "bg-jw-surface-2 text-jw-muted"}`} disabled={D} onClick={() => setSec2({ show: !S.show }, "show")} title="اعرض الاختيار: الأبيض هو المختار">
+                  الماسك
+                </button>
+                <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:text-jw-danger" disabled={D} aria-label="احذف الثانوي" onClick={() => { set({ secondaries: g.secondaries.filter((_, i) => i !== sec) }, "sec:remove"); setSec(0); }}>
+                  <Icon name="trash" size={13} />
                 </button>
               </div>
-              <div className="space-y-1.5 rounded-lg border border-jw-line p-2">
-                <p className="flex items-center justify-between text-[11px] font-semibold">
-                  <span>١) اختر اللون (Qualifier)</span>
-                  <label className="flex items-center gap-1 font-normal">
-                    <input type="checkbox" checked={S.show} disabled={locked} onChange={(e) => setSec2({ show: e.target.checked }, "show")} /> اعرض الاختيار (أبيض = مختار)
-                  </label>
-                </p>
-                <Slider label="اللون" value={+(S.key.hue * 360).toFixed(0)} min={0} max={360} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, hue: v / 360 } }, "hue")} format={(v) => `${v}°`} bg={HUE_BG} />
-                <Slider label="عرض اللون" value={+(S.key.hueWidth * 360).toFixed(0)} min={2} max={180} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, hueWidth: v / 360 } }, "hueWidth")} format={(v) => `±${v}°`} />
-                <Slider label="نعومة اللون" value={+(S.key.hueSoft * 360).toFixed(0)} min={0} max={120} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, hueSoft: v / 360 } }, "hueSoft")} format={(v) => `${v}°`} />
-                <Slider label="التشبع من" value={+(S.key.satLo * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, satLo: v / 100 } }, "satLo")} />
-                <Slider label="التشبع إلى" value={+(S.key.satHi * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, satHi: v / 100 } }, "satHi")} />
-                <Slider label="الإضاءة من" value={+(S.key.lumLo * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, lumLo: v / 100 } }, "lumLo")} />
-                <Slider label="الإضاءة إلى" value={+(S.key.lumHi * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, lumHi: v / 100 } }, "lumHi")} />
-                <Slider label="نعومة الحواف" value={+(S.key.soft * 100).toFixed(0)} min={0} max={50} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, soft: v / 100 } }, "soft")} />
-                <Slider label="وسّع / ضيّق الاختيار" value={+(S.key.grow * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => setSec2({ key: { ...S.key, grow: v / 100 } }, "grow")} format={signed} center />
-                <label className="flex items-center gap-1.5 text-[11px]">
-                  <input type="checkbox" checked={S.key.invert} disabled={locked} onChange={(e) => setSec2({ key: { ...S.key, invert: e.target.checked } }, "kinv")} /> اعكس (كل شي ما عدا هذا اللون)
-                </label>
+              <Slider label="اللون" value={Math.round(S.key.hue * 360)} min={0} max={360} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, hue: v / 360 } }, "hue")} format={(v) => `${v}°`} bg={HUE_BG} />
+              <Slider label="عرض اللون" value={Math.round(S.key.hueWidth * 360)} min={2} max={180} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, hueWidth: v / 360 } }, "hueWidth")} format={(v) => `±${v}°`} />
+              <Slider label="نعومة اللون" value={Math.round(S.key.hueSoft * 360)} min={0} max={120} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, hueSoft: v / 360 } }, "hueSoft")} format={(v) => `${v}°`} />
+              <div className="grid grid-cols-2 gap-x-2">
+                <Slider label="تشبع من" value={Math.round(S.key.satLo * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, satLo: v / 100 } }, "satLo")} />
+                <Slider label="إلى" value={Math.round(S.key.satHi * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, satHi: v / 100 } }, "satHi")} />
+                <Slider label="إضاءة من" value={Math.round(S.key.lumLo * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, lumLo: v / 100 } }, "lumLo")} />
+                <Slider label="إلى" value={Math.round(S.key.lumHi * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, lumHi: v / 100 } }, "lumHi")} />
               </div>
-              <div className="space-y-1.5 rounded-lg border border-jw-line p-2">
-                <p className="text-[11px] font-semibold">٢) غيّره</p>
-                <Slider label="حوّل اللون" value={Math.round(S.hue)} min={-180} max={180} step={1} disabled={locked} onChange={(v) => setSec2({ hue: v }, "ahue")} format={(v) => `${signed(v)}°`} center />
-                <Slider label="التشبع" value={+(S.sat * 100).toFixed(0)} min={0} max={250} step={1} disabled={locked} onChange={(v) => setSec2({ sat: v / 100 }, "asat")} format={pct0} />
-                <Slider label="الإضاءة (ستوب)" value={+S.lum.toFixed(2)} min={-2} max={2} step={0.05} disabled={locked} onChange={(v) => setSec2({ lum: v }, "alum")} format={(v) => signed(+v.toFixed(2))} center />
-                <Slider label="الحرارة" value={+(S.temp * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => setSec2({ temp: v / 100 }, "atemp")} format={signed} center bg="linear-gradient(90deg,#3b82f6,#e5e7eb,#f59e0b)" />
-                <Slider label="التباين" value={+(S.contrast * 100).toFixed(0)} min={40} max={200} step={1} disabled={locked} onChange={(v) => setSec2({ contrast: v / 100 }, "acon")} format={pct0} />
-              </div>
-              <div className="space-y-1.5 rounded-lg border border-jw-line p-2">
-                <p className="text-[11px] font-semibold">٣) ماسك خاص بهذا الثانوي (اختياري)</p>
-                <MaskEditor mask={S.mask} thumb={thumb} disabled={locked} clipT={clipT} inClip={inClip} onChange={(m) => setSec2({ mask: m }, "mask")} />
-              </div>
+              <Slider label="نعومة الحواف" value={Math.round(S.key.soft * 100)} min={0} max={50} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, soft: v / 100 } }, "soft")} />
+              <Slider label="وسّع / ضيّق" value={Math.round(S.key.grow * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => setSec2({ key: { ...S.key, grow: v / 100 } }, "grow")} format={signed} center />
+              <label className="flex items-center gap-1.5 text-[11px]">
+                <input type="checkbox" checked={S.key.invert} disabled={D} onChange={(e) => setSec2({ key: { ...S.key, invert: e.target.checked } }, "kinv")} /> اعكس الاختيار
+              </label>
+              <p className="pt-1 text-[11px] font-semibold text-jw-muted">التعديل</p>
+              <Slider label="حوّل اللون" value={Math.round(S.hue)} min={-180} max={180} step={1} disabled={D} onChange={(v) => setSec2({ hue: v }, "ahue")} format={(v) => `${signed(v)}°`} center />
+              <Slider label="التشبع" value={Math.round(S.sat * 100)} min={0} max={250} step={1} disabled={D} onChange={(v) => setSec2({ sat: v / 100 }, "asat")} format={pct0} />
+              <Slider label="الإضاءة" value={+S.lum.toFixed(2)} min={-2} max={2} step={0.05} disabled={D} onChange={(v) => setSec2({ lum: v }, "alum")} format={(v) => signed(+v.toFixed(2))} center />
+              <Slider label="الحرارة" value={Math.round(S.temp * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => setSec2({ temp: v / 100 }, "atemp")} format={signed} center bg="linear-gradient(90deg,#3b82f6,#e5e7eb,#f59e0b)" />
+              <Slider label="التباين" value={Math.round(S.contrast * 100)} min={40} max={200} step={1} disabled={D} onChange={(v) => setSec2({ contrast: v / 100 }, "acon")} format={pct0} />
+              <details className="rounded-lg border border-jw-line p-1.5">
+                <summary className="cursor-pointer text-[11px] text-jw-muted">ماسك خاص بهذا الثانوي</summary>
+                <div className="pt-2">
+                  <MaskEditor mask={S.mask} thumb={thumb} disabled={D} clipT={clipT} inClip={inClip} onChange={(m) => setSec2({ mask: m }, "mask")} />
+                </div>
+              </details>
             </div>
           )}
+        </Section>
+
+        <Section id="mask" title="ماسك (Power Window)" hint="التلوين يطبّق جوا الشكل بس (أو برّاه)، ويتحرك مع الوقت" open={open.includes("mask")} onToggle={toggle} badge={!!g.mask} onReset={() => resetKeys(["mask"])}>
+          <MaskEditor mask={g.mask} thumb={thumb} disabled={D} clipT={clipT} inClip={inClip} onChange={(m) => set({ mask: m }, "mask")} />
+        </Section>
+
+        <Section id="film" title="فيلم والإطار" hint="هالة، حبيبات، زوايا، وقوة الطبقة" open={open.includes("film")} onToggle={toggle} badge={!isOff(g, ["halation", "grain", "vignette"])} onReset={() => resetKeys(["halation", "grain", "vignette", "pivot", "amount"])}>
+          <Slider label="هالة الفيلم" value={Math.round(g.halation.amount * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ halation: { ...g.halation, amount: v / 100 } }, "halation")} />
+          {g.halation.amount > 0 && (
+            <div className="grid grid-cols-2 gap-x-2">
+              <Slider label="من سطوع" value={Math.round(g.halation.threshold * 100)} min={30} max={100} step={1} disabled={D} onChange={(v) => set({ halation: { ...g.halation, threshold: v / 100 } }, "halation")} />
+              <Slider label="الحجم" value={Math.round(g.halation.size * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ halation: { ...g.halation, size: v / 100 } }, "halation")} />
+            </div>
+          )}
+          <Slider label="الحبيبات" value={Math.round(g.grain.amount * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ grain: { ...g.grain, amount: v / 100 } }, "grain")} />
+          {g.grain.amount > 0 && <Slider label="حجم الحبة" value={Math.round(g.grain.size * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ grain: { ...g.grain, size: v / 100 } }, "grain")} />}
+          <Slider label="الزوايا" value={Math.round(g.vignette.amount * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ vignette: { ...g.vignette, amount: v / 100 } }, "vignette")} format={signed} center />
+          {g.vignette.amount !== 0 && (
+            <div className="grid grid-cols-3 gap-x-2">
+              <Slider label="الحجم" value={Math.round(g.vignette.size * 100)} min={10} max={150} step={1} disabled={D} onChange={(v) => set({ vignette: { ...g.vignette, size: v / 100 } }, "vignette")} />
+              <Slider label="النعومة" value={Math.round(g.vignette.soft * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ vignette: { ...g.vignette, soft: v / 100 } }, "vignette")} />
+              <Slider label="الاستدارة" value={Math.round(g.vignette.round * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ vignette: { ...g.vignette, round: v / 100 } }, "vignette")} />
+            </div>
+          )}
+          <Slider label="محور التباين" value={Math.round(g.pivot * 100)} min={10} max={90} step={1} disabled={D} onChange={(v) => set({ pivot: v / 100 }, "pivot")} />
+          <Slider label="قوة الطبقة" value={Math.round(g.amount * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ amount: v / 100 }, "amount")} />
+        </Section>
+      </div>
+
+      <div className="flex gap-1.5">
+        <button type="button" className="jw-btn jw-btn-quiet !min-h-8 flex-1 text-xs" disabled={!layers.length} onClick={exportCube} title="التلوين (بدون الماسكات والحبيبات) كملف .cube لبريمير ودافنشي وكاب كت">
+          <Icon name="download" size={13} /> صدّر LUT
+        </button>
+        <button type="button" className="jw-btn jw-btn-quiet !min-h-8 flex-1 text-xs" disabled={D || !layers.length} onClick={() => { run({ type: "update_clip", clipId: clip.id, patch: { grade: null } }); setLi(0); }}>
+          <Icon name="retry" size={13} /> شيل التلوين كله
+        </button>
+      </div>
+
+      {/* big wheels / curves for precise work: over the timeline, the picture stays in view */}
+      {big && (
+        <div className="fixed inset-x-3 bottom-3 z-[65] flex h-[min(46vh,560px)] flex-col rounded-2xl border border-jw-line bg-jw-surface p-3 shadow-2xl" role="dialog" aria-label={big === "wheels" ? "عجلات الألوان" : "المنحنيات"}>
+          <div className="mb-2 flex items-center gap-2">
+            <b className="text-sm">{big === "wheels" ? "عجلات الألوان" : "المنحنيات"}</b>
+            <span className="text-[11px] text-jw-faint">{layers[L]?.name || `طبقة ${L + 1}`}</span>
+            <span className="ms-auto">
+              <Seg label="قبل وبعد" value={view} onChange={showView} options={[["on", "بعد"], ["off", "قبل"], ["split", "قسمة"]]} />
+            </span>
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 text-xs" onClick={() => setBig(null)}>
+              <Icon name="shrink" size={14} /> صغّر
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {big === "wheels" ? (
+              wheels(190)
+            ) : (
+              <div className="mx-auto flex h-full max-w-[1100px] gap-4">
+                <div className="w-44 shrink-0 space-y-1">
+                  {CURVES.map(([k, label]) => (
+                    <button key={k} type="button" className={`block w-full rounded-lg px-2 py-1.5 text-start text-xs ${curve === k ? "bg-jw-accent text-jw-on-accent" : "hover:bg-jw-surface-2"}`} onClick={() => setCurve(k)}>
+                      {label}
+                    </button>
+                  ))}
+                  <button type="button" className="jw-btn jw-btn-quiet !min-h-8 w-full text-xs" disabled={D} onClick={() => set({ curves: { ...g.curves, [curve]: flatCurve(curve) ? FLAT : LINE } }, `curve:${curve}:reset`)}>
+                    رجّع المنحنى
+                  </button>
+                </div>
+                <div className="aspect-square h-full max-h-full min-w-0">{curveEditor}</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      {page === "mask" && (
-        <div className="space-y-2">
-          <p className="text-[11px] leading-5 text-jw-muted">الماسك (Power Window): التلوين كله يطبّق جوا الشكل بس (أو برّاه لو عكسته). حافة ناعمة بالدقة اللي تبيها، ويقدر يتحرك مع الوقت.</p>
-          <MaskEditor mask={g.mask} thumb={thumb} disabled={locked} clipT={clipT} inClip={inClip} onChange={(m) => set({ mask: m }, "mask")} />
-        </div>
-      )}
-
-      {page === "film" && (
-        <div className="space-y-2">
-          <p className="text-[11px] font-semibold">تلوين منفصل (Split toning)</p>
-          <Slider label="لون الظلال" value={+(g.split.shadowHue * 360).toFixed(0)} min={0} max={360} step={1} disabled={locked} onChange={(v) => set({ split: { ...g.split, shadowHue: v / 360 } }, "split")} format={(v) => `${v}°`} bg={HUE_BG} />
-          <Slider label="قوته" value={+(g.split.shadowSat * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ split: { ...g.split, shadowSat: v / 100 } }, "split")} />
-          <Slider label="لون الأضواء" value={+(g.split.highHue * 360).toFixed(0)} min={0} max={360} step={1} disabled={locked} onChange={(v) => set({ split: { ...g.split, highHue: v / 360 } }, "split")} format={(v) => `${v}°`} bg={HUE_BG} />
-          <Slider label="قوته" value={+(g.split.highSat * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ split: { ...g.split, highSat: v / 100 } }, "split")} />
-          <Slider label="التوازن (ظلال ← أضواء)" value={+(g.split.balance * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ split: { ...g.split, balance: v / 100 } }, "split")} format={signed} center />
-          <p className="pt-1 text-[11px] font-semibold">هالة الفيلم (Halation)</p>
-          <Slider label="القوة" value={+(g.halation.amount * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ halation: { ...g.halation, amount: v / 100 } }, "halation")} />
-          <Slider label="من أي سطوع" value={+(g.halation.threshold * 100).toFixed(0)} min={30} max={100} step={1} disabled={locked} onChange={(v) => set({ halation: { ...g.halation, threshold: v / 100 } }, "halation")} />
-          <Slider label="الحجم" value={+(g.halation.size * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ halation: { ...g.halation, size: v / 100 } }, "halation")} />
-          <p className="pt-1 text-[11px] font-semibold">حبيبات الفيلم (Grain)</p>
-          <Slider label="القوة" value={+(g.grain.amount * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ grain: { ...g.grain, amount: v / 100 } }, "grain")} />
-          <Slider label="الحجم" value={+(g.grain.size * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ grain: { ...g.grain, size: v / 100 } }, "grain")} />
-          <p className="pt-1 text-[11px] font-semibold">الزوايا (Vignette)</p>
-          <Slider label="القوة (سالب = فاتح)" value={+(g.vignette.amount * 100).toFixed(0)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ vignette: { ...g.vignette, amount: v / 100 } }, "vignette")} format={signed} center />
-          <Slider label="الحجم" value={+(g.vignette.size * 100).toFixed(0)} min={10} max={150} step={1} disabled={locked} onChange={(v) => set({ vignette: { ...g.vignette, size: v / 100 } }, "vignette")} />
-          <Slider label="النعومة" value={+(g.vignette.soft * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ vignette: { ...g.vignette, soft: v / 100 } }, "vignette")} />
-          <Slider label="الاستدارة" value={+(g.vignette.round * 100).toFixed(0)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ vignette: { ...g.vignette, round: v / 100 } }, "vignette")} />
-        </div>
-      )}
-
-      <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked || !clip.grade} onClick={reset}>
-        <Icon name="retry" size={14} /> شيل التلوين كله
-      </button>
     </div>
   );
 }

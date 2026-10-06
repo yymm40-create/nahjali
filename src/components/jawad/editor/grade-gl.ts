@@ -24,7 +24,7 @@ precision highp float; precision highp sampler3D;
 in vec2 uv; out vec4 o;
 uniform sampler2D img; uniform sampler2D curves; uniform sampler3D lut; uniform sampler2D maskTex[5];
 uniform vec2 res; uniform float time;
-uniform int logKind; uniform vec2 logIn; uniform mat3 gamut; uniform float exposure, temp, tint;
+uniform int logKind; uniform vec2 logIn; uniform mat3 gamut; uniform float compress; uniform float cmpX; uniform float exposure, temp, tint;
 uniform vec3 lift, gammaW, gain, offsetW; uniform float contrast, pivot, highlights, shadows, whites, blacks, saturation, vibrance;
 uniform float lutOn, lutAmount, lutSize; uniform vec4 split; uniform float splitBal;
 uniform vec3 halation; uniform vec2 grain; uniform vec4 vignette; uniform float sharpen, amount;
@@ -89,10 +89,24 @@ float window(int i, vec2 p){
   return mix(a, 1.0 - a, maskInv[i]);
 }
 
+// ACES reference gamut compression: colours past the display's gamut (negative after the matrix: blue LEDs, neon)
+// pulled back toward their achromatic value, only past a threshold, so skin and normal colours stay as they are
+float rgcPart(float d, float thr, float lim){
+  if (d < thr) return d;
+  float pw = 1.2; float s = (lim - thr)/pow(pow((1.0 - thr)/(lim - thr), -pw) - 1.0, 1.0/pw);
+  float x = (d - thr)/s; return thr + s*x/pow(1.0 + pow(x, pw), 1.0/pw);
+}
+vec3 rgc(vec3 c){
+  float ach = max(c.r, max(c.g, c.b)); if (ach <= 0.0) return c;
+  vec3 d = (ach - c)/abs(ach);
+  vec3 cd = vec3(rgcPart(d.r, 0.815, 1.147), rgcPart(d.g, 0.803, 1.264), rgcPart(d.b, 0.880, 1.312));
+  return ach - mix(d, cd, compress)*abs(ach);
+}
+
 vec3 primary(vec3 c){
   // linear light: the log undone, the gamut, exposure, warmth
   vec3 x = c*logIn.x + logIn.y;
-  vec3 lin = logKind == 0 ? srgbDec(c) : gamut * vec3(logLin(logKind, x.r), logLin(logKind, x.g), logLin(logKind, x.b));
+  vec3 lin = logKind == 0 ? srgbDec(c) : rgc(gamut * vec3(logLin(logKind, x.r), logLin(logKind, x.g), logLin(logKind, x.b)));
   lin = max(lin, 0.0) * exp2(exposure);
   lin *= vec3(1.0 + 0.22*temp - 0.08*tint, 1.0 - 0.06*abs(temp) + 0.14*tint, 1.0 - 0.22*temp - 0.08*tint);
   c = logKind == 0 ? srgbEnc(lin) : srgbEnc(tonemap(lin));
@@ -207,7 +221,10 @@ void main(){
   c = clamp(c, 0.0, 1.0);
   // the primary window and the amount
   float w = window(0, uv)*amount;
-  o = vec4(mix(src, c, w), 1.0);
+  vec3 outc = mix(src, c, w);
+  // «قبل / بعد»: the original on one side of the line, the grade on the other
+  if (cmpX >= 0.0) { outc = uv.x < cmpX ? src : outc; if (abs(uv.x - cmpX) < 1.2/res.x) outc = vec3(1.0); }
+  o = vec4(outc, 1.0);
 }`;
 
 interface Gl {
@@ -358,8 +375,8 @@ function setMask(G: Gl, i: number, m: Mask | null, t: number) {
  * The frame with the grade on it, as a canvas to draw (the same canvas each time: draw it before the next call).
  * `t` is the clip's own time in ms (for masks that move and the grain). null when the GPU isn't there.
  */
-export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Grade, t: number, showKey = 0): CanvasImageSource | null {
-  if (gradeIsNeutral(g) && !showKey && !g.mask) return null;
+export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Grade, t: number, showKey = 0, split = -1): CanvasImageSource | null {
+  if (gradeIsNeutral(g) && !showKey && !(g.on && g.mask) && split < 0) return null;
   const G = setup();
   if (!G) return null;
   const { gl, u } = G;
@@ -418,6 +435,8 @@ export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Gr
   gl.uniform2f(u.res, w, h);
   gl.uniform1f(u.time, (t % 100000) / 1000);
   gl.uniform1i(u.logKind, LOG_CODE[g.log] ?? 0);
+  gl.uniform1f(u.compress, g.compress);
+  gl.uniform1f(u.cmpX, split);
   const m = gamutToRec709(g.log, g.logGamut);
   gl.uniformMatrix3fv(u.gamut, true, new Float32Array(m));
   const li = logInput(g.log, g.logRange);
@@ -469,10 +488,74 @@ export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Gr
 }
 
 /**
+ * What the preview shows (the export always shows the grade): «on», «off» (the picture before), or «split» (before on
+ * the left of `x`, after on the right). Kept here so the drawing reads it without passing it through everything.
+ */
+export const gradeView: { mode: "on" | "off" | "split"; x: number } = { mode: "on", x: 0.5 };
+
+const copies: HTMLCanvasElement[] = [];
+/** A frame copied out of the GPU canvas, so the next layer can read it (one per layer, reused). */
+function copy(i: number, src: CanvasImageSource, w: number, h: number) {
+  const c = (copies[i] ??= document.createElement("canvas"));
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  c.getContext("2d")!.drawImage(src, 0, 0, w, h);
+  return c;
+}
+
+/**
+ * The frame through every layer that is on, one after another (each reads what the last made). null when nothing
+ * changes it. `forExport` ignores the before/after view.
+ */
+export function gradeLayers(img: CanvasImageSource, sw: number, sh: number, layers: Grade[], t: number, forExport = false): { img: CanvasImageSource; width: number; height: number } | null {
+  const live = layers.filter((g) => g.on);
+  if (!live.length) return null;
+  if (!forExport && gradeView.mode === "off") return null;
+  const split = !forExport && gradeView.mode === "split" ? gradeView.x : -1;
+  // a key shown («اعرض الاختيار») shows that layer's key alone
+  const keyed = live.findIndex((g) => g.secondaries.some((s) => s.show));
+  const run = keyed >= 0 ? live.slice(0, keyed + 1) : live;
+  let cur: CanvasImageSource = img;
+  let w = sw;
+  let h = sh;
+  let changed = false;
+  for (let i = 0; i < run.length; i++) {
+    const last = i === run.length - 1;
+    const key = last && keyed >= 0 ? run[i].secondaries.findIndex((s) => s.show) + 1 : 0;
+    // the split compares with the very first picture: the last layer draws it from the original
+    const out = gradeFrame(cur, w, h, run[i], t, key, last && split >= 0 && run.length === 1 ? split : -1);
+    if (!out) continue;
+    changed = true;
+    const k = Math.min(1, MAX_SIDE / Math.max(w, h));
+    w = Math.max(1, Math.round(w * k));
+    h = Math.max(1, Math.round(h * k));
+    cur = last ? out : copy(i, out, w, h);
+  }
+  if (!changed) return null;
+  if (split >= 0 && run.length > 1) {
+    // several layers: the before/after line drawn here, over the original
+    const c = copy(run.length, cur, w, h);
+    const g = c.getContext("2d")!;
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, w * split, h);
+    g.clip();
+    g.drawImage(img, 0, 0, w, h);
+    g.restore();
+    g.fillStyle = "#fff";
+    g.fillRect(Math.round(w * split) - 1, 0, 2, h);
+    cur = c;
+  }
+  return { img: cur, width: w, height: h };
+}
+
+/**
  * The grade baked into a 3D LUT (its colour part: no windows, grain, vignette or halation), as RGB bytes
  * (size³ × 3, red fastest), to save as a .cube for Premiere, DaVinci or CapCut.
  */
-export function bakeLut(g: Grade, size = 33): Uint8Array | null {
+export function bakeLut(layers: Grade[], size = 33): Uint8Array | null {
   const G = setup();
   if (!G) return null;
   // the identity as a picture: size² wide, size tall (blue down the rows)
@@ -492,12 +575,18 @@ export function bakeLut(g: Grade, size = 33): Uint8Array | null {
         im.data[o + 3] = 255;
       }
   d.putImageData(im, 0, 0);
-  const flat: Grade = { ...g, mask: null, amount: 1, grain: { ...g.grain, amount: 0 }, vignette: { ...g.vignette, amount: 0 }, halation: { ...g.halation, amount: 0 }, sharpen: 0, secondaries: g.secondaries.map((s) => ({ ...s, mask: null, show: false })) };
-  const out = gradeFrame(c, w, size, flat, 0);
-  if (!out) return null;
-  const { gl } = G;
+  const flat = layers.map((g) => ({ ...g, mask: null, amount: 1, grain: { ...g.grain, amount: 0 }, vignette: { ...g.vignette, amount: 0 }, halation: { ...g.halation, amount: 0 }, sharpen: 0, secondaries: g.secondaries.map((s) => ({ ...s, mask: null, show: false })) }));
+  const done = gradeLayers(c, w, size, flat, 0, true);
+  if (!done) return null;
+  // the pixels: from the GPU canvas (bottom-up), or from a layer's copy when the last layer changed nothing
+  const onGpu = done.img === (G.canvas as unknown);
   const px = new Uint8Array(w * size * 4);
-  gl.readPixels(0, 0, w, size, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  if (onGpu) G.gl.readPixels(0, 0, w, size, G.gl.RGBA, G.gl.UNSIGNED_BYTE, px);
+  else {
+    const rows = (done.img as HTMLCanvasElement).getContext("2d")!.getImageData(0, 0, w, size).data;
+    // stored bottom-up like readPixels, so one loop reads both
+    for (let y = 0; y < size; y++) px.set(rows.subarray((size - 1 - y) * w * 4, (size - y) * w * 4), y * w * 4);
+  }
   const bytes = new Uint8Array(size * size * size * 3);
   for (let b = 0; b < size; b++)
     for (let gg = 0; gg < size; gg++)

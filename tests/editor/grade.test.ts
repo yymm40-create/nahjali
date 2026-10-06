@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { apply, applyAll } from "@/lib/editor/commands";
+import { emptyTimeline, readTimeline } from "@/lib/editor/model";
+import { lib, video } from "./helpers";
 import { applyLook, curveAt, decodeLog, filmic, srgbEncode, gamutToRec709, gradeIsNeutral, hueCurveAt, LOGS, LOOKS, logToLinear, maskAt, NEUTRAL_GRADE, parseCube, readGrade, sampleCurve, toCube, lutBytes, type LogId } from "@/lib/editor/grade";
 
 describe("camera logs", () => {
@@ -151,5 +154,45 @@ describe(".cube", () => {
   });
   it("refuses other files", () => {
     expect(() => parseCube("hello")).toThrow();
+  });
+});
+
+describe("grading layers", () => {
+  const assets = lib(video("a", 5000));
+  const start = () => applyAll(emptyTimeline("16:9"), [{ type: "add_clip", assetId: "a" }], assets).timeline;
+  const clipOf = (t: ReturnType<typeof start>) => t.tracks.find((x) => x.kind === "video")!.clips[0];
+
+  it("a change to layer 2 makes two layers, the first one untouched", () => {
+    let t = start();
+    const id = clipOf(t).id;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: { exposure: 0.5 } } }, assets).timeline;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: { layer: 1, saturation: 0.5, name: "البشرة" } } }, assets).timeline;
+    const g = clipOf(t).grades;
+    expect(g).toHaveLength(2);
+    expect(g[0].exposure).toBe(0.5);
+    expect(g[0].saturation).toBe(1);
+    expect(g[1].saturation).toBe(0.5);
+    expect(g[1].name).toBe("البشرة");
+  });
+  it("layers switch off, get replaced, and clear", () => {
+    let t = start();
+    const id = clipOf(t).id;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grades: [{ ...NEUTRAL_GRADE, temp: 0.3 }, { ...NEUTRAL_GRADE, on: false }] } }, assets).timeline;
+    expect(clipOf(t).grades.map((g) => g.on)).toEqual([true, false]);
+    expect(gradeIsNeutral(clipOf(t).grades[1])).toBe(true);
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: null } }, assets).timeline;
+    expect(clipOf(t).grades).toEqual([]);
+  });
+  it("a saved clip with the old single grade opens as layer 1", () => {
+    const t = start();
+    const raw = JSON.parse(JSON.stringify(t));
+    const c = raw.tracks.find((x: { kind: string }) => x.kind === "video").clips[0];
+    delete c.grades;
+    c.grade = { ...NEUTRAL_GRADE, log: "clog3", compress: 0.4 };
+    const read = readTimeline(raw);
+    const g = read.tracks.find((x) => x.kind === "video")!.clips[0].grades;
+    expect(g).toHaveLength(1);
+    expect(g[0].log).toBe("clog3");
+    expect(g[0].compress).toBe(0.4);
   });
 });

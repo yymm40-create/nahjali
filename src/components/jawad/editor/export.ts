@@ -20,7 +20,7 @@ import {
   type WrappedCanvas,
 } from "mediabunny";
 import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
-import { drawFrame, exportSize, layersAt, type Frame } from "./render";
+import { drawFrame, exportSize, layersAt, setExporting, type Frame } from "./render";
 import { stretch } from "./stretch";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
@@ -189,7 +189,13 @@ export async function exportVideo(
         }
         // drawFrame draws in the timeline's units; one scale maps them to the output size
         ctx.setTransform(width / tl.width, 0, 0, height / tl.height, 0, 0);
-        drawFrame(ctx, tl, ms, (c) => now.get(c.id) ?? null);
+        // (the grade always shows in the file, whatever the preview's before/after view)
+        setExporting(true);
+        try {
+          drawFrame(ctx, tl, ms, (c) => now.get(c.id) ?? null);
+        } finally {
+          setExporting(false);
+        }
         await video.add(frame / fps, 1 / fps);
         onProgress(frame / frames);
       }

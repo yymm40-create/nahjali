@@ -2,7 +2,7 @@
 // and plugins all send the same JSON, so whatever one can do, the others can too, and each is checked the same way.
 // Pure: `apply` never changes the timeline it gets.
 
-import { NEUTRAL_GRADE, readGrade, type Grade } from "./grade";
+import { MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
 import {
   clipEnd,
   clipLength,
@@ -58,8 +58,10 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   text?: Partial<TextStyle>;
   /** null = back to the original colours */
   color?: Partial<ColorGrade> | null;
-  /** «التلوين»: merged over the clip's grade (nested parts replaced whole); null = none */
-  grade?: Partial<Grade> | null;
+  /** «التلوين»: merged over one layer (`layer`, default the first; nested parts replaced whole); null = no grading */
+  grade?: (Partial<Grade> & { layer?: number }) | null;
+  /** the layers all at once (add, remove, reorder) */
+  grades?: Grade[];
   /** null = a plain cut */
   transition?: { kind: TransitionKind; ms?: number } | null;
   /** null = the whole picture as filmed */
@@ -73,7 +75,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, grade: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
+const CLIP_DEFAULTS = { keys: [], color: null, grades: [] as Grade[], transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -446,9 +448,18 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (next && !(next.preset in COLOR_PRESETS)) next.preset = "none";
         clip.color = next;
       }
-      if (p.grade !== undefined) {
+      if (p.grade !== undefined || p.grades !== undefined) {
         if (clip.text || track.kind === "audio") fail("التلوين للصور والفيديو فقط.");
-        clip.grade = p.grade === null ? null : readGrade({ ...NEUTRAL_GRADE, ...(clip.grade ?? {}), ...p.grade });
+        if (p.grades !== undefined) clip.grades = readGrades(p.grades);
+        if (p.grade === null) clip.grades = [];
+        else if (p.grade) {
+          const { layer = 0, ...patch } = p.grade;
+          const i = Math.max(0, Math.min(MAX_LAYERS - 1, Math.round(layer)));
+          const list = [...clip.grades];
+          while (list.length <= i) list.push({ ...NEUTRAL_GRADE, name: list.length ? "" : "" });
+          list[i] = readGrade({ ...NEUTRAL_GRADE, ...list[i], ...patch })!;
+          clip.grades = list;
+        }
       }
       if (p.bg !== undefined) {
         if (clip.text || track.kind !== "video") fail("عزل الشخص للصور والفيديو فقط.");
