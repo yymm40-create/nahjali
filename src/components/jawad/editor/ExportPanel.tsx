@@ -10,6 +10,8 @@ import { canExport, download, exportVideo, ExportError, type ExportResult } from
 import { exportSize } from "./render";
 import { sendInParts } from "./parts";
 import type { EditorAsset } from "./types";
+import { toSRT } from "./captions";
+import { packProject, saveFile } from "./package";
 
 type Phase = { k: "idle" } | { k: "running"; p: number } | { k: "done"; r: ExportResult; saved: boolean | null; purgeAt: string | null } | { k: "error"; m: string };
 
@@ -21,6 +23,7 @@ export default function ExportPanel({
   onClose,
   projectId,
   title,
+  kind,
   tl,
   assets,
   flush,
@@ -30,6 +33,7 @@ export default function ExportPanel({
   onClose: () => void;
   projectId: string;
   title: string;
+  kind: string;
   tl: Timeline;
   assets: EditorAsset[];
   flush: () => Promise<void>;
@@ -37,6 +41,20 @@ export default function ExportPanel({
 }) {
   const [quality, setQuality] = useState<720 | 1080>(1080);
   const [phase, setPhase] = useState<Phase>({ k: "idle" });
+  // «احفظ المشروع في جهازي»: what it is doing, or what went wrong
+  const [packing, setPacking] = useState<{ busy: boolean; text: string; bad?: boolean } | null>(null);
+  const srt = toSRT(tl);
+  const pack = async () => {
+    setPacking({ busy: true, text: "نجهّز المشروع…" });
+    try {
+      await flush();
+      const r = await packProject({ title: title || "مونتاج", kind, tl, assets }, (text) => setPacking({ busy: true, text }));
+      saveFile(r.blob, r.name);
+      setPacking({ busy: false, text: `نزل «\u2068${r.name}\u2069» على جهازك. افتحه في أي جهاز من «افتح مشروع محفوظ».` });
+    } catch (e) {
+      setPacking({ busy: false, text: e instanceof Error ? e.message : "تعذّر حفظ المشروع.", bad: true });
+    }
+  };
   const abort = useRef<AbortController | null>(null);
   const total = duration(tl);
   const heavy = total > 15 * 60_000 || (quality === 1080 && total > 8 * 60_000);
@@ -128,6 +146,19 @@ export default function ExportPanel({
             <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!total} onClick={start}>
               <Icon name="download" size={16} /> صدّر الحين
             </button>
+            <div className="space-y-2 rounded-xl border border-jw-line p-3">
+              <p className="text-sm font-bold">💾 المشروع نفسه في جهازك</p>
+              <p className="text-xs leading-5 text-jw-muted">ملف واحد فيه التايملاين وكل الفيديوهات والأصوات والصور والكابشن: تحتفظ فيه، تفتحه في جهاز ثاني، أو تاخذ ملفاته لبرنامج ثاني.</p>
+              <button type="button" className="jw-btn w-full" disabled={packing?.busy} onClick={pack}>
+                {packing?.busy ? <span className="jw-spinner" /> : <Icon name="download" size={16} />} {packing?.busy ? packing.text : "احفظ المشروع في جهازي"}
+              </button>
+              {srt && (
+                <button type="button" className="jw-btn jw-btn-quiet w-full" onClick={() => saveFile(new Blob([srt], { type: "application/x-subrip" }), `${title || "captions"}.srt`)}>
+                  <Icon name="download" size={16} /> الكابشن بروحه (SRT)
+                </button>
+              )}
+              {packing && !packing.busy && <p className={`text-xs ${packing.bad ? "text-jw-danger" : "text-jw-ok"}`}>{packing.text}</p>}
+            </div>
           </>
         ) : phase.k === "running" ? (
           <div className="space-y-3">
