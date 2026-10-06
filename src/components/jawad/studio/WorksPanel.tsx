@@ -303,7 +303,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
   };
   const [editing, setEditing] = useState(false);
   const [opening, setOpening] = useState(false);
-  // a video: cut out the pieces to fix in «الممنتج الذكي» (red track) and get them made again there (green track)
+  // a video: cut out the pieces to fix in «حيدر كات» (red track) and get them made again there (green track)
   const startEdit = async () => {
     if (j.outputKind !== "video") return setEditing(true);
     setOpening(true);
@@ -503,7 +503,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
           )}
           {editable && (
             <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" disabled={opening} onClick={startEdit}>
-              <Icon name="wand" size={14} /> {opening ? "يفتح الممنتج…" : "التعديل الذكي"}
+              <Icon name="wand" size={14} /> {opening ? "يفتح حيدر كات…" : "التعديل الذكي"}
             </button>
           )}
           {j.cancellable && (

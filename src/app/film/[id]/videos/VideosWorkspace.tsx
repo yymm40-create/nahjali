@@ -163,7 +163,7 @@ export default function VideosWorkspace({
     try {
       const { jobId, studioJobId } = await postJson<{ jobId: string | null; studioJobId?: string }>(`/api/film/projects/${projectId}/director`, body);
       if (studioJobId && studioPath) {
-        // «التعديل الذكي» in «الممنتج الذكي» (red/green tracks); else the video section with its own window ready
+        // «التعديل الذكي» in «حيدر كات» (red/green tracks); else the video section with its own window ready
         const href = await smartEditInEditor(studioJobId);
         router.push(href ?? `${studioPath}?edit=${studioJobId}`);
         return;

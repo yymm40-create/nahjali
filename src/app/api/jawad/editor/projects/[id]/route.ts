@@ -31,7 +31,7 @@ export const maxDuration = 300;
 type Ctx = { params: Promise<{ id: string }> };
 const noStore = { headers: { "Cache-Control": "no-store" } };
 
-/** «الممنتج الذكي» · a project: its timeline, version and library (with short-lived links). */
+/** «حيدر كات» · a project: its timeline, version and library (with short-lived links). */
 export const GET = handle(async (_req: Request, ctx: Ctx) => {
   const { user } = await requireStudentApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);

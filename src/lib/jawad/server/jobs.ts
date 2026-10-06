@@ -112,11 +112,30 @@ async function event(jobId: string, type: string, detail: Record<string, unknown
 }
 
 /** Ends a job exactly once (refunds held coins unless it succeeded). Returns false if it had already ended. */
+/**
+ * What really went wrong, in plain Arabic, from the provider's or Claude's own answer (the generic message stays when
+ * nothing is recognised). The provider's code goes along in brackets so it can be looked up.
+ */
+export function explainFailure(detail: string | undefined, fallback: string | undefined) {
+  const d = detail ?? "";
+  const code = /\b([A-Z][A-Za-z]+(?:\.[A-Z][A-Za-z]+)?)\b/.exec(d.replace(/^smart edit prompt: /, ""))?.[1];
+  const tag = (m: string) => (code && /Sensitive|Policy|Limit|Quota/.test(code) ? `${m} (${code})` : m);
+  if (/credit balance is too low/i.test(d)) return "رصيد Claude (Anthropic) عند المنصة خلص، فما قدر يكتب البرومبت المعدّل. أُعيدت لك نقودك. صاحب المنصة لازم يشحن رصيد Anthropic.";
+  if (/OutputVideoSensitiveContentDetected/.test(d) && /copyright/i.test(d)) return tag("رفض المزوّد الفيديو الناتج لأنه يشبه محتوى محمي بحقوق نشر (لاعب أو شخص مشهور، شعار، لبس فريق، شخصية معروفة). غيّر الملاحظة أو المراجع لتبعد عن هذا الشبه وجرّب. ما انخصم منك شي.");
+  if (/OutputAudioSensitiveContentDetected/.test(d) && /copyright/i.test(d)) return tag("رفض المزوّد الصوت الناتج لأنه يشبه موسيقى أو صوتًا محميًا بحقوق نشر. اطلب صوتًا عاديًا بدون موسيقى معروفة، أو أطفئ الصوت وجرّب. ما انخصم منك شي.");
+  if (/Output(Video|Audio)SensitiveContentDetected/.test(d)) return tag("رفض المزوّد النتيجة لأنها خالفت سياسة المحتوى عنده. غيّر الملاحظة وجرّب. ما انخصم منك شي.");
+  if (/InputImageSensitiveContentDetected/.test(d)) return tag("رفض المزوّد صورة المرجع أو لقطة القص (فيها شخص حقيقي أو محتوى حساس عنده). جرّب «كامل» أو جزءًا ثانيًا. ما انخصم منك شي.");
+  if (/InputTextSensitiveContentDetected/.test(d)) return tag("رفض المزوّد نص الطلب لأنه خالف سياسة المحتوى عنده. غيّر كلمات الملاحظة وجرّب. ما انخصم منك شي.");
+  if (/SensitiveContent|PolicyViolation/.test(d)) return tag("رفض المزوّد الطلب لأنه خالف سياسة المحتوى عنده. غيّر الملاحظة وجرّب. ما انخصم منك شي.");
+  if (/rate.?limit|RateLimit|429|overloaded|Quota/i.test(d)) return tag("المزوّد مشغول الحين أو وصل حده. جرّب بعد دقائق. ما انخصم منك شي.");
+  return fallback;
+}
+
 export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status: "succeeded" | "failed" | "cancelled", o: { message?: string; detail?: string; costUsd?: number | null; units?: Record<string, unknown> } = {}) {
   const { data, error } = await db().rpc("jawad_finish_job", {
     p_job: job.id,
     p_status: status,
-    p_error_message: o.message ?? null,
+    p_error_message: status === "failed" ? (explainFailure(o.detail, o.message) ?? null) : (o.message ?? null),
     p_error_detail: o.detail?.slice(0, 2000) ?? null,
     p_cost_usd: o.costUsd ?? null,
     p_units: o.units ?? null,

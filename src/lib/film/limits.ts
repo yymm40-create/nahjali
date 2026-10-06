@@ -12,15 +12,15 @@ export const LIMITS = {
   edits_director: { label: "تعديلات المخرج والفيديو", hint: "تشمل «اطلب تعديل» بعد الفيديو، لكل مشروع", default: 2, perUser: true },
   videos: { label: "فيديوهات التجربة المجانية", hint: "لكل مستخدم في فترة التجربة؛ بعد آخر فيديو تنتهي تجربته", default: 1, perUser: true },
   trial_users: { label: "عدد المستخدمين في التجربة", hint: "للموقع كله؛ بعدها يقفل صانع الفيلم على الكل إلا أنت", default: 6, perUser: false },
-  // «الممنتج الذكي»
-  editor_claude_daily: { label: "طلبات Claude في الممنتج الذكي", hint: "لكل شخص في اليوم", default: 40, perUser: true },
+  // «حيدر كات»
+  editor_claude_daily: { label: "طلبات Claude في حيدر كات", hint: "لكل شخص في اليوم", default: 40, perUser: true },
   editor_speech_minutes: { label: "دقائق الكابشن ومزامنة القصائد", hint: "دقائق صوت تُفرَّغ لكل شخص في اليوم", default: 120, perUser: true },
-  editor_price_claude: { label: "سعر طلب Claude في الممنتج (نقدة)", hint: "يُخصم بس إذا شغّلت «النقود الذكية مطلوبة»؛ ٠ = مجاني", default: 0, perUser: false },
-  editor_price_caption: { label: "سعر دقيقة الكابشن في الممنتج (نقدة)", hint: "لكل دقيقة صوت (تُقرّب للأعلى)، بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
-  editor_price_hook: { label: "سعر هوك بالصورة في الممنتج (نقدة)", hint: "صورة GPT Image 2 مفرّغة؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
-  editor_price_music: { label: "سعر دقيقة موسيقى في الممنتج (نقدة)", hint: "ElevenLabs Music؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
-  editor_price_sfx: { label: "سعر المؤثر الصوتي في الممنتج (نقدة)", hint: "ElevenLabs؛ مؤثر دخول وخروج نص الهوك؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
-  editor_price_stems: { label: "سعر دقيقة فصل الأصوات في الممنتج (نقدة)", hint: "كلام وموسيقى ومؤثرات؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_claude: { label: "سعر طلب Claude في حيدر كات (نقدة)", hint: "يُخصم بس إذا شغّلت «النقود الذكية مطلوبة»؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_caption: { label: "سعر دقيقة الكابشن في حيدر كات (نقدة)", hint: "لكل دقيقة صوت (تُقرّب للأعلى)، بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_hook: { label: "سعر هوك بالصورة في حيدر كات (نقدة)", hint: "صورة GPT Image 2 مفرّغة؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_music: { label: "سعر دقيقة موسيقى في حيدر كات (نقدة)", hint: "ElevenLabs Music؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_sfx: { label: "سعر المؤثر الصوتي في حيدر كات (نقدة)", hint: "ElevenLabs؛ مؤثر دخول وخروج نص الهوك؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_stems: { label: "سعر دقيقة فصل الأصوات في حيدر كات (نقدة)", hint: "كلام وموسيقى ومؤثرات؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
 } as const;
 export type LimitKey = keyof typeof LIMITS;
 

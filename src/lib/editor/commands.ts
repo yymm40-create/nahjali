@@ -1,4 +1,4 @@
-// «الممنتج الذكي» — every change to a timeline is one of these commands: the buttons, the keyboard, Claude (phase 5)
+// «حيدر كات» — every change to a timeline is one of these commands: the buttons, the keyboard, Claude (phase 5)
 // and plugins all send the same JSON, so whatever one can do, the others can too, and each is checked the same way.
 // Pure: `apply` never changes the timeline it gets.
 

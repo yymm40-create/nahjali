@@ -3,7 +3,7 @@ import { handle } from "@/lib/api";
 import { requireStudentApiUser } from "@/lib/jawad/server/access";
 import { createEditorProject, listEditorProjects } from "@/lib/editor/server";
 
-/** «الممنتج الذكي» · the person's edits (open to every signed-in person, like «الطالب الذكي»). */
+/** «حيدر كات» · the person's edits (open to every signed-in person, like «الطالب الذكي»). */
 export const GET = handle(async () => {
   const { user } = await requireStudentApiUser();
   return NextResponse.json({ projects: await listEditorProjects(user.id) }, { headers: { "Cache-Control": "no-store" } });

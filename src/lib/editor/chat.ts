@@ -1,10 +1,10 @@
-// «الممنتج الذكي»: Claude's conversation of an edit, kept with the project (it survives leaving and coming back, on
+// «حيدر كات»: Claude's conversation of an edit, kept with the project (it survives leaving and coming back, on
 // any device). A long one can be handed over: Claude writes what matters into a summary and a new conversation starts
 // from it. Server only.
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, type ClaudeTurn } from "@/lib/film/anthropic";
+import { callClaudeJson, claudeTrouble, type ClaudeTurn } from "@/lib/film/anthropic";
 import { charged, type Who } from "./pricing";
 import { stillOpen, type EditorProject } from "./server";
 
@@ -108,7 +108,7 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
     .slice(-60_000);
   const system =
     "You write a HANDOFF for a video-editing assistant that will continue this edit in a fresh conversation without seeing the old one. In Arabic (Gulf, plain), in short sections: هدف المونتاج · ذوق الشخص وقراراته (style, pace, fonts, colours, music, what they liked and refused) · اللي انسوّى · اللي باقي أو انطلب ولا تم · ملاحظات مهمة (ids or times only if still useful). Facts only, nothing invented.";
-  const r = await charged(who, "editor_price_claude", 1, "هاندوف محادثة Claude في الممنتج", () =>
+  const r = await charged(who, "editor_price_claude", 1, "هاندوف محادثة Claude في حيدر كات", () =>
     callClaudeJson<{ summary: string }>({
       system,
       turns: [{ role: "user", content: `${c.handoff ? `PREVIOUS HANDOFF:\n${c.handoff}\n\n` : ""}CONVERSATION:\n${transcript}` }],
@@ -118,7 +118,7 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
       fallback: true,
     }).catch((e) => {
       console.error("editor handoff", e);
-      throw new UserError("ما قدر Claude يكتب الهاندوف الحين؛ جرّب بعد شوي.", 502);
+      throw new UserError(claudeTrouble(e) ?? "ما قدر Claude يكتب الهاندوف الحين؛ جرّب بعد شوي.", 502);
     }),
   );
   const next = { messages: [], handoff: r.data.summary.trim().slice(0, 8000), chats: c.chats + 1 };

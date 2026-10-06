@@ -1,6 +1,6 @@
 "use client";
 
-// «الممنتج الذكي» — the timeline. Time runs left → right even in Arabic (like every editor), so this part is dir="ltr".
+// «حيدر كات» — the timeline. Time runs left → right even in Arabic (like every editor), so this part is dir="ltr".
 // Mouse: drag a clip to move it (to another track too), its edges to trim, the ruler to scrub; Ctrl+wheel zooms.
 // Touch (CapCut's way): a tap selects, a selected clip drags, its big handles trim, two fingers zoom, one finger scrolls.
 

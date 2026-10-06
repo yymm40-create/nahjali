@@ -1,11 +1,11 @@
-// «الممنتج الذكي» — Claude edits with the person: they say what they want («قص السكتات»، «خلّه ٣٠ ثانية»، «سوّ لي مونتاج
+// «حيدر كات» — Claude edits with the person: they say what they want («قص السكتات»، «خلّه ٣٠ ثانية»، «سوّ لي مونتاج
 // من الملفات») and Claude answers with the same commands the buttons send. Server only. Every command is checked on
 // the person's timeline before it is returned; a command that can't run goes back to Claude once to be corrected.
 // The page applies them as one change (one undo).
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, callClaudeSearch, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
+import { callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { checkCommands, context, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
@@ -61,7 +61,7 @@ const SCHEMA = {
   },
 };
 
-const SYSTEM = `You are «الممنتج الذكي», the editing assistant inside JAWAD AI's video editor. The person tells you what they want and you change their timeline with editing commands. Speak like a friendly Gulf Arabic editor, in short sentences (use the person's language if they write in another one).
+const SYSTEM = `You are «حيدر كات», the editing assistant inside JAWAD AI's video editor. The person tells you what they want and you change their timeline with editing commands. Speak like a friendly Gulf Arabic editor, in short sentences (use the person's language if they write in another one).
 
 THE TIMELINE (sent with every request as JSON): times are whole milliseconds. Each clip shows its source from "in" to "out" starting at "start" on the timeline; its length is (out-in)/speed. Tracks are drawn bottom to top; the first video track is the main one and, when "magnetic" is true, it has no gaps (clips follow each other in order). Audio tracks are heard only. Text tracks hold text and captions. "library" lists the project's media you can place. "quiet" lists the silent parts of clips that have sound (timeline ms). "speech" lists what is said, phrase by phrase, when it was transcribed.
 
@@ -196,10 +196,10 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     usd += claudeCost(r.usage);
     return r;
   };
-  const r = await charged(who, "editor_price_claude", 1, "طلب Claude في الممنتج", () =>
+  const r = await charged(who, "editor_price_claude", 1, "طلب Claude في حيدر كات", () =>
     ask(merged).catch((e) => {
       console.error("editor assistant", e);
-      throw new UserError("ما قدر Claude يرد الحين؛ جرّب بعد شوي.", 502);
+      throw new UserError(claudeTrouble(e) ?? "ما قدر Claude يرد الحين؛ جرّب بعد شوي.", 502);
     }),
   );
 
@@ -255,10 +255,10 @@ export async function designHook(who: Who, h: HookInputs): Promise<{ design: Hoo
   } catch (e) {
     console.error("hook research", e);
   }
-  const r = await charged(who, "editor_price_claude", 1, "تصميم نص الهوك في الممنتج", () =>
+  const r = await charged(who, "editor_price_claude", 1, "تصميم نص الهوك في حيدر كات", () =>
     callClaudeJson<HookDesign>({ system: DESIGN_SYSTEM, turns: [{ role: "user", content: designPrompt(h, research) }], schema: DESIGN_SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
       console.error("hook design", e);
-      throw new UserError("ما قدر Claude يصمم الهوك الحين؛ جرّب بعد شوي.", 502);
+      throw new UserError(claudeTrouble(e) ?? "ما قدر Claude يصمم الهوك الحين؛ جرّب بعد شوي.", 502);
     }),
   );
   usd += claudeCost(r.usage);

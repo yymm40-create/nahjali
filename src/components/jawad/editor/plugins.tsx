@@ -1,6 +1,6 @@
 "use client";
 
-// «الممنتج الذكي»'s plug-in point: a tool added here shows in «أساليب جاهزة» and changes the timeline only through the
+// «حيدر كات»'s plug-in point: a tool added here shows in «أساليب جاهزة» and changes the timeline only through the
 // editor's own commands, so every result is checked, saved, and undone with one tap like any other change.
 // A tool is one object in PLUGINS:
 //
