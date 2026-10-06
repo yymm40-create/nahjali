@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   clipEnd,
   clipLength,
+  CAPTION_STYLES,
   COLOR_PRESETS,
   findClip,
   formatTime,
@@ -14,6 +15,7 @@ import {
   TRANSITION_MS,
   TRANSITIONS,
   transformAt,
+  type CaptionStyle,
   type ColorPreset,
   type Ratio,
   type TextStyle,
@@ -201,6 +203,9 @@ export default function Inspector({
         <Icon name={text ? "type" : a?.kind === "audio" ? "music" : a?.kind === "image" ? "image" : "video"} size={16} />
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold" dir="auto">{text ? "نص" : (a?.name ?? "مقطع")}</h3>
         <span className="text-xs tabular-nums text-jw-muted" dir="ltr">{formatTime(clipLength(clip))}</span>
+        <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40" disabled={locked} onClick={() => run({ type: "duplicate", clipId: clip.id })} aria-label="تكرار" title="تكرار (Ctrl+D)">
+          <Icon name="copy" size={15} />
+        </button>
       </div>
       {track.locked && <p className="text-xs text-jw-warn">المسار مقفول؛ افتح القفل من رأس المسار لتعدّل.</p>}
       {tabs.length > 1 && (
@@ -216,6 +221,19 @@ export default function Inspector({
       {current === "basic" && (
         <div className="space-y-3">
           {text && <TextControls text={text} locked={locked} setText={(p, key) => set({ text: p }, `text:${key}`)} />}
+          {text && clip.words.length > 0 && <p className="text-[11px] text-jw-faint">كابشن بتوقيت الكلمات: صحّح أي كلمة بنفس عددها وتبقى متزامنة.</p>}
+          {text && track.clips.length > 1 && (
+            <div className="space-y-1.5 border-t border-jw-line pt-3">
+              <span className="text-xs text-jw-muted">شكل لكل جمل هذا المسار ({track.clips.length})</span>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(CAPTION_STYLES) as CaptionStyle[]).map((k) => (
+                  <button key={k} type="button" disabled={locked} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => run({ type: "style_track", trackId: track.id, text: CAPTION_STYLES[k].style })}>
+                    {CAPTION_STYLES[k].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {sound && <Slider label="الصوت" value={Math.round(clip.volume * 100)} min={0} max={200} step={5} disabled={locked} onChange={(v) => set({ volume: v / 100 }, "volume")} format={(v) => `${v}%`} />}
           {a && a.kind !== "image" && (
             <div className="space-y-1">

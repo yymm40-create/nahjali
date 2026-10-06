@@ -283,3 +283,38 @@ export async function elevenMusicWithReference(o: { prompt: string; lengthMs: nu
   const res = await call("/v1/music?output_format=mp3_44100_128", { method: "POST", body: JSON.stringify({ composition_plan: { chunks: plan.chunks }, model_id: o.model }), timeoutMs: 150_000 }, "music compose");
   return { audio: await audioOf(res, "music"), songId: res.headers.get("song-id") };
 }
+
+// ───────────────────────────── listening ─────────────────────────────
+
+export interface HeardWord {
+  text: string;
+  /** seconds from the start of the file */
+  start: number;
+  end: number;
+}
+
+/** Scribe v2: what is said in a recording, word by word with times (Arabic included). */
+export async function elevenTranscribe(o: { file: Blob; name: string; languageCode?: string | null }) {
+  const form = new FormData();
+  form.append("model_id", "scribe_v2");
+  form.append("file", o.file, o.name);
+  form.append("timestamps_granularity", "word");
+  form.append("tag_audio_events", "false");
+  if (o.languageCode) form.append("language_code", o.languageCode);
+  const res = await call("/v1/speech-to-text", { method: "POST", body: form }, "stt");
+  const j = (await res.json()) as { language_code?: string; words?: { text: string; type?: string; start?: number | null; end?: number | null }[] };
+  const words: HeardWord[] = (j.words ?? [])
+    .filter((w) => (w.type ?? "word") === "word" && w.start != null && w.end != null && w.text.trim())
+    .map((w) => ({ text: w.text.trim(), start: w.start!, end: w.end! }));
+  return { language: j.language_code ?? null, words };
+}
+
+/** Forced alignment: the exact text the person gives (a poem), timed word by word on the recording. */
+export async function elevenAlign(o: { file: Blob; name: string; text: string }) {
+  const form = new FormData();
+  form.append("file", o.file, o.name);
+  form.append("text", o.text);
+  const res = await call("/v1/forced-alignment", { method: "POST", body: form }, "align");
+  const j = (await res.json()) as { words?: { text: string; start: number; end: number }[] };
+  return (j.words ?? []).filter((w) => w.text.trim()).map((w) => ({ text: w.text.trim(), start: w.start, end: w.end }));
+}

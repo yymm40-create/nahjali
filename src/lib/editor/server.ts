@@ -221,13 +221,13 @@ export async function runCommands(p: EditorProject, cmds: Command[], actor: stri
 
 /** The project's change history, newest first. */
 export async function history(projectId: string) {
-  const { data } = await db().from("editor_ops").select("version,actor,label,created_at").eq("project_id", projectId).order("id", { ascending: false }).limit(50);
+  const { data } = await db().from("editor_ops").select("version,actor,label,created_at").eq("project_id", projectId).neq("actor", "speech").order("id", { ascending: false }).limit(50);
   return data ?? [];
 }
 
 // ---------- media ----------
 
-function stillOpen(p: EditorProject) {
+export function stillOpen(p: EditorProject) {
   if (p.purged_at) throw new UserError("انحذفت ملفات هذا المشروع بعد ٣ أيام من تصديره. ابدأ مشروعًا جديدًا.", 410);
 }
 
@@ -467,7 +467,9 @@ export async function deleteProject(p: EditorProject) {
 
 async function removeFiles(p: EditorProject) {
   const own = (await assetRows(p.id)).filter((r) => r.bucket === EDITOR_BUCKET).map((r) => r.path);
-  const paths = [...own, `${p.user_id}/${p.id}/export.mp4`];
+  // and any sound pieces left from captions (normally deleted right after use)
+  const { data: tmp } = await db().storage.from(EDITOR_BUCKET).list(`${p.user_id}/${p.id}/tmp`, { limit: 1000 });
+  const paths = [...own, `${p.user_id}/${p.id}/export.mp4`, ...(tmp ?? []).map((f) => `${p.user_id}/${p.id}/tmp/${f.name}`)];
   for (let i = 0; i < paths.length; i += 100) await db().storage.from(EDITOR_BUCKET).remove(paths.slice(i, i + 100));
 }
 

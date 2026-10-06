@@ -1,7 +1,7 @@
 // «الممنتج الذكي» — draws one frame of a timeline. The preview and the export both call this, so what people see while
 // editing is what they get in the file.
 
-import { clipEnd, colorFilter, transformAt, transitionAt, type Clip, type TextStyle, type Timeline, type Track, type Transform } from "@/lib/editor/model";
+import { clipEnd, colorFilter, transformAt, transitionAt, wordAt, type Clip, type TextStyle, type Timeline, type Track, type Transform } from "@/lib/editor/model";
 
 export interface Frame {
   img: CanvasImageSource;
@@ -101,7 +101,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: numbe
     }
     if (l.look.alpha <= 0) continue;
     const t = transformAt(l.clip, l.ms);
-    if (l.clip.text) drawText(ctx, l.clip, t, l.look, W, H);
+    if (l.clip.text) drawText(ctx, l.clip, t, l.look, W, H, l.ms);
     else {
       const f = frameOf(l.clip, l.ms);
       if (f && f.width && f.height) drawMedia(ctx, f, l.clip, t, l.look, W, H);
@@ -174,9 +174,14 @@ function textLayout(ctx: CanvasRenderingContext2D, s: TextStyle, scale: number, 
   return { size, lines, widths, lh, w: Math.max(0, ...widths) + size * 0.6, h: lines.length * lh };
 }
 
-function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look: Look, W: number, H: number) {
+const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look: Look, W: number, H: number, ms: number) {
   const s = clip.text!;
   if (!s.body.trim()) return;
+  const tokens = s.body.split(/\s+/).filter(Boolean);
+  // a caption with timed words lights the word being said
+  if (s.highlight && clip.words.length && clip.words.length === tokens.length) return drawCaption(ctx, clip, tokens, wordAt(clip, ms), t, look, W, H);
   ctx.save();
   place(ctx, t, look, W, H);
   const { size, lines, widths, lh } = textLayout(ctx, s, t.scale * look.scale, W, H);
@@ -206,6 +211,63 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
     const x = xOf(widths[i]);
     if (!s.box) ctx.strokeText(l, x, top + i * lh);
     ctx.fillText(l, x, top + i * lh);
+  });
+  ctx.restore();
+}
+
+/** Word by word (right to left for Arabic), the word being said in the highlight colour and a touch bigger. */
+function drawCaption(ctx: CanvasRenderingContext2D, clip: Clip, tokens: string[], active: number, t: Transform, look: Look, W: number, H: number) {
+  const s = clip.text!;
+  ctx.save();
+  place(ctx, t, look, W, H);
+  const size = Math.max(8, s.size * H * t.scale * look.scale);
+  const font = (k: number) => `${s.weight} ${size * k}px ${FONTS[s.font]}`;
+  ctx.font = font(1);
+  ctx.direction = "rtl";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  const space = ctx.measureText(" ").width;
+  const widths = tokens.map((w) => ctx.measureText(w).width);
+  // lines of whole words that fit 90 % of the frame
+  const lines: number[][] = [[]];
+  let lw = 0;
+  tokens.forEach((_, i) => {
+    const add = widths[i] + (lines[lines.length - 1].length ? space : 0);
+    if (lines[lines.length - 1].length && lw + add > W * 0.9) {
+      lines.push([i]);
+      lw = widths[i];
+    } else {
+      lines[lines.length - 1].push(i);
+      lw += add;
+    }
+  });
+  const lh = size * 1.35;
+  const top = -((lines.length - 1) * lh) / 2;
+  const rtl = ARABIC.test(s.body);
+  ctx.lineJoin = "round";
+  lines.forEach((line, li) => {
+    const total = line.reduce((m, i) => m + widths[i], 0) + space * (line.length - 1);
+    const y = top + li * lh;
+    if (s.box) {
+      ctx.fillStyle = s.box;
+      const pad = size * 0.3;
+      roundRect(ctx, -total / 2 - pad, y - lh / 2, total + pad * 2, lh, size * 0.2);
+    }
+    let x = rtl ? total / 2 : -total / 2;
+    for (const i of line) {
+      const w = widths[i];
+      const cx = rtl ? x - w / 2 : x + w / 2;
+      const on = i === active;
+      ctx.font = font(on ? 1.08 : 1);
+      if (!s.box) {
+        ctx.strokeStyle = "rgba(0,0,0,0.6)";
+        ctx.lineWidth = Math.max(2, size * 0.09);
+        ctx.strokeText(tokens[i], cx, y);
+      }
+      ctx.fillStyle = on ? s.highlight! : s.color;
+      ctx.fillText(tokens[i], cx, y);
+      x += rtl ? -(w + space) : w + space;
+    }
   });
   ctx.restore();
 }
