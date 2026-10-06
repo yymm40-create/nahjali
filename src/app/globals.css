@@ -154,3 +154,93 @@ body {
     animation: none !important;
   }
 }
+
+/* ---------- every press shows ---------- */
+/* buttons and button-like links sink a little under the finger (a canvas, the timeline and its clips keep still) */
+:where(button, [role="button"], a, summary, input[type="submit"], input[type="button"], label[for]) {
+  -webkit-tap-highlight-color: transparent;
+  transition-property: scale, filter, background-color, border-color, color, opacity, box-shadow;
+  transition-duration: 0.12s;
+}
+:where(button, [role="button"], a, summary, input[type="submit"], input[type="button"]):active:not(:disabled, [aria-disabled="true"], [data-no-press] *, [draggable="true"]) {
+  scale: 0.96;
+  filter: brightness(0.9);
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(button, [role="button"], a, summary):active {
+    scale: none;
+  }
+}
+
+/* going to another page: a bar across the top and «يحمّل…» until it is in */
+.nav-feedback {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 9999;
+  pointer-events: none;
+}
+.nav-feedback-bar {
+  height: 4px;
+  width: 100%;
+  transform-origin: right;
+  background: linear-gradient(to left, var(--jw-accent, var(--teal)), var(--jw-accent, var(--teal-2)));
+  box-shadow: 0 0 10px var(--jw-accent, var(--teal));
+  animation: nav-grow 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+}
+[dir="ltr"] .nav-feedback-bar {
+  transform-origin: left;
+}
+.nav-feedback[data-done] .nav-feedback-bar {
+  animation: none;
+  transform: scaleX(1);
+  opacity: 0;
+  transition: opacity 0.25s 0.05s;
+}
+.nav-feedback-pill {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  translate: -50% 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: rgb(0 0 0 / 0.72);
+  backdrop-filter: blur(6px);
+  animation: nav-pill 0.2s 0.15s ease-out both;
+}
+.nav-feedback[data-done] .nav-feedback-pill {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.nav-feedback-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-top-color: #fff;
+  animation: nav-spin 0.7s linear infinite;
+}
+@keyframes nav-grow {
+  from {
+    transform: scaleX(0.05);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
+@keyframes nav-pill {
+  from {
+    opacity: 0;
+    translate: -50% -6px;
+  }
+}
+@keyframes nav-spin {
+  to {
+    rotate: 360deg;
+  }
+}

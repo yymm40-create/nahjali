@@ -278,9 +278,19 @@ export default function AssistantPanel({
           </button>
         )}
         {onClose && (
-          <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} aria-label="إغلاق">
-            <Icon name="x" />
-          </button>
+          <>
+            {/* a phone: the conversation fills the screen, and this brings the timeline back */}
+            <span className="contents lg:hidden">
+              <button type="button" className="jw-btn jw-btn-primary !min-h-9 !px-3 text-xs" onClick={onClose} aria-label="صغّر المحادثة وارجع للتايملاين">
+                <Icon name="shrink" size={15} /> تصغير
+              </button>
+            </span>
+            <span className="hidden lg:contents">
+              <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} aria-label="إغلاق">
+                <Icon name="x" />
+              </button>
+            </span>
+          </>
         )}
       </div>
       <div className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">

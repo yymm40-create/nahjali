@@ -826,7 +826,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
-        <aside className={`${chat ? "fixed inset-0 z-50 flex" : "hidden"} jw-glass-lg relative flex-col bg-jw-surface lg:static lg:z-auto ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl`} style={wide ? { width: chatW } : undefined} aria-label="Claude">
+        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl`} style={wide ? { width: chatW } : undefined} aria-label="Claude">
           {/* its edge: drag to make the conversation wider or narrower (double-click: the usual width) */}
           <div
             role="separator"

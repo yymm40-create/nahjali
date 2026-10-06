@@ -503,3 +503,21 @@
     display: none;
   }
 }
+
+/* the editor's conversation on a phone: it rises over the whole screen */
+@media (max-width: 1023.98px) {
+  .jw-chat-full {
+    animation: jw-chat-up 0.22s ease-out;
+  }
+}
+@keyframes jw-chat-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jw-chat-full {
+    animation: none;
+  }
+}
