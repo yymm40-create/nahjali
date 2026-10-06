@@ -5,6 +5,8 @@
 // Tracks are drawn bottom to top in array order: the first video track is the main one (magnetic: no gaps), tracks
 // after it are drawn over it. Audio tracks are heard, not drawn. Time always runs left → right, even in Arabic.
 
+import { isFont } from "./fonts";
+
 export const EDITOR_VERSION = 1;
 
 export type AssetKind = "video" | "audio" | "image";
@@ -30,7 +32,8 @@ export interface TextStyle {
   box: string | null;
   weight: 400 | 700 | 900;
   align: "center" | "right" | "left";
-  font: "readex" | "naskh" | "kufi";
+  /** "readex" | "naskh" | "kufi" (the page's own) or a font id from fonts.ts */
+  font: string;
   /** captions: the word being said right now in this colour (null = plain text) */
   highlight: string | null;
 }
@@ -142,6 +145,199 @@ export interface SoundFx {
 export const NO_SOUND_FX: SoundFx = { clean: 0, enhance: false, effect: null, mix: 0.5, pitch: 0 };
 export const hasSoundFx = (c: { sound: SoundFx | null }) => !!c.sound && (c.sound.clean > 0 || c.sound.enhance || !!c.sound.effect || c.sound.pitch !== 0);
 
+/**
+ * Entrances and exits («دخول» / «خروج») for texts and pictures. Nothing animates letter by letter (that breaks the
+ * joined Arabic letters): «كتابة» reveals from the right, «كلمة كلمة» pops whole words, «مطّ» uses the kashida.
+ */
+export const ANIMS = {
+  fade: { label: "ظهور", icon: "◐", ms: 400 },
+  pop: { label: "نبضة", icon: "💥", ms: 380 },
+  punch: { label: "زووم قوي", icon: "⚡", ms: 280 },
+  blur: { label: "ضباب", icon: "🌫️", ms: 500 },
+  rise: { label: "صعود", icon: "⬆️", ms: 450 },
+  fromRight: { label: "من اليمين", icon: "⬅️", ms: 450 },
+  fromLeft: { label: "من اليسار", icon: "➡️", ms: 450 },
+  drop: { label: "سقوط", icon: "⬇️", ms: 600 },
+  spin: { label: "دوران", icon: "🌀", ms: 520 },
+  flip: { label: "قلب ثلاثي", icon: "🔄", ms: 450 },
+  glitch: { label: "قلتش", icon: "📺", ms: 320 },
+  shake: { label: "اهتزاز", icon: "🫨", ms: 420 },
+  wipe: { label: "كتابة", icon: "✍️", ms: 700 },
+  whip: { label: "سحبة", icon: "💨", ms: 280 },
+  flash: { label: "فلاش", icon: "✨", ms: 220 },
+  words: { label: "كلمة كلمة", icon: "🔤", ms: 900, only: "text" },
+  kashida: { label: "مطّ", icon: "〰️", ms: 650, only: "text" },
+  kenburns: { label: "كين بيرنز", icon: "🎞️", ms: 0, only: "media" },
+} as const satisfies Record<string, { label: string; icon: string; ms: number; only?: "text" | "media" }>;
+export type AnimKind = keyof typeof ANIMS;
+export interface Anim {
+  in: AnimKind | null;
+  out: AnimKind | null;
+  inMs: number;
+  outMs: number;
+}
+export const ANIM_MS = { min: 100, max: 3000 } as const;
+
+/** What an entrance or exit does to a clip at one moment (on top of its own look). */
+export interface AnimLook {
+  alpha: number;
+  /** shift, fractions of the frame */
+  dx: number;
+  dy: number;
+  scale: number;
+  rotate: number;
+  /** vertical squash (the 3D flip) */
+  squash: number;
+  /** blur, a fraction of the frame's height */
+  blur: number;
+  /** the share of the clip shown, from its right side («كتابة»); null = all */
+  show: number | null;
+  /** white over the clip 0–1 */
+  flash: number;
+  /** motion trail 0–1 («سحبة») */
+  smear: number;
+  /** torn slices 0–1 («قلتش»), with a seed per frame */
+  tear: number;
+  seed: number;
+  /** words appearing one by one 0–1 (null = all there) */
+  words: number | null;
+  /** kashida stretch 0–1 */
+  kashida: number;
+}
+export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, kashida: 0 };
+
+const outCubic = (p: number) => 1 - (1 - p) ** 3;
+const outExpo = (p: number) => (p >= 1 ? 1 : 1 - 2 ** (-10 * p));
+const outBack = (p: number) => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2;
+const spring = (p: number) => 1 - Math.exp(-6 * p) * Math.cos(12 * p);
+
+/** `p` runs from 0 (out of sight) to 1 (in place): an entrance plays it forwards, an exit backwards. */
+function animStep(k: AnimKind, p: number, l: AnimLook, ms: number, entering: boolean) {
+  const q = Math.min(1, Math.max(0, p));
+  switch (k) {
+    case "fade":
+      l.alpha *= outCubic(q);
+      break;
+    case "pop":
+      l.scale *= Math.max(0.001, outBack(q));
+      l.alpha *= Math.min(1, q * 3);
+      break;
+    case "punch":
+      l.scale *= 1 + 0.6 * (1 - outExpo(q));
+      l.alpha *= Math.min(1, q * 4);
+      if (entering) l.flash = Math.max(l.flash, Math.max(0, 1 - q * 3) * 0.8);
+      break;
+    case "blur": {
+      const e = outCubic(q);
+      l.blur += 0.02 * (1 - e);
+      l.scale *= 1 + 0.1 * (1 - e);
+      l.alpha *= e;
+      break;
+    }
+    case "rise":
+      l.dy += (entering ? 0.12 : -0.12) * (1 - outExpo(q));
+      l.alpha *= Math.min(1, q * 2);
+      break;
+    case "fromRight":
+      l.dx += (entering ? 0.6 : -0.6) * (1 - outExpo(q));
+      l.alpha *= Math.min(1, q * 2);
+      break;
+    case "fromLeft":
+      l.dx -= (entering ? 0.6 : -0.6) * (1 - outExpo(q));
+      l.alpha *= Math.min(1, q * 2);
+      break;
+    case "drop": {
+      const s = spring(q);
+      l.dy -= 0.12 * (1 - s);
+      l.rotate += -8 * (1 - s);
+      l.alpha *= Math.min(1, q * 3);
+      break;
+    }
+    case "spin":
+      l.rotate += -180 * (1 - outBack(q));
+      l.scale *= Math.max(0.001, outBack(q));
+      l.alpha *= Math.min(1, q * 2);
+      break;
+    case "flip":
+      l.squash *= Math.max(0.001, Math.sin((q * Math.PI) / 2));
+      break;
+    case "glitch": {
+      const frame = Math.floor(ms / 33);
+      l.tear = Math.max(l.tear, 1 - q);
+      l.seed = frame;
+      l.dx += (((frame * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.05 * (1 - q);
+      if (q < 1 && frame % 3 === 0) l.alpha *= 0.45;
+      break;
+    }
+    case "shake": {
+      const amp = 0.018 * (1 - q);
+      l.dx += amp * Math.sin((ms / 1000) * 2 * Math.PI * 31);
+      l.dy += amp * Math.cos((ms / 1000) * 2 * Math.PI * 27);
+      l.rotate += 2 * (1 - q) * Math.sin((ms / 1000) * 2 * Math.PI * 23);
+      break;
+    }
+    case "wipe":
+      l.show = Math.min(l.show ?? 1, outCubic(q));
+      break;
+    case "whip":
+      l.dx += (entering ? 0.8 : -0.8) * (1 - outExpo(q));
+      l.smear = Math.max(l.smear, 1 - q);
+      break;
+    case "flash":
+      l.flash = Math.max(l.flash, 1 - q);
+      break;
+    case "words":
+      l.words = Math.min(l.words ?? 1, q);
+      break;
+    case "kashida":
+      l.kashida = Math.max(l.kashida, 1 - outCubic(q));
+      break;
+    case "kenburns":
+      break;
+  }
+}
+
+/** A clip's entrance, exit and slow move («كين بيرنز») at timeline time `ms`. */
+export function animAt(c: Pick<Clip, "anim" | "start" | "in" | "out" | "speed">, ms: number): AnimLook {
+  const a = c.anim;
+  if (!a) return STILL;
+  const l = { ...STILL };
+  const len = clipLength(c);
+  const t = Math.min(len, Math.max(0, ms - c.start));
+  if (a.in === "kenburns") {
+    // the whole clip: a slow push in with a little drift
+    const p = len ? t / len : 0;
+    const e = 0.5 - 0.5 * Math.cos(Math.PI * p);
+    l.scale *= 1 + 0.15 * e;
+    l.dx += 0.025 * (e - 0.5);
+  } else if (a.in) {
+    const d = Math.min(a.inMs, len / 2);
+    if (t < d) animStep(a.in, t / d, l, t, true);
+  }
+  if (a.out && a.out !== "kenburns") {
+    const d = Math.min(a.outMs, len / 2);
+    if (t > len - d) animStep(a.out, (len - t) / d, l, t, false);
+  }
+  return l;
+}
+
+/** Arabic stretched with the kashida (ـ) between joined letters, `n` per joint. */
+export function kashida(body: string, n: number) {
+  if (n <= 0) return body;
+  // letters that join the next one (not ا د ذ ر ز و ة ى ء and the alif forms)
+  const joins = /[\u0628\u062A\u062B\u062C\u062D\u062E\u0633-\u063A\u0641-\u0647\u064A\u0626\u06A9\u06AF\u06CC\u067E\u0686]/;
+  const letter = /[\u0621-\u064A\u0671-\u06D3]/;
+  const fill = "\u0640".repeat(n);
+  let out = "";
+  const chars = [...body];
+  chars.forEach((ch, i) => {
+    out += ch;
+    const next = chars.slice(i + 1).find((x) => !/[\u064B-\u065F\u0670]/.test(x));
+    if (joins.test(ch) && next && letter.test(next)) out += fill;
+  });
+  return out;
+}
+
 /** A moment of a moving clip («نقطة حركة»): where it is at source time `t` (ms); between two points it glides. */
 export interface Key extends Transform {
   t: number;
@@ -178,6 +374,8 @@ export interface Clip {
   bg: Backdrop | null;
   /** media with sound: noise reduction, voice enhancer, effect, pitch (null = as recorded) */
   sound: SoundFx | null;
+  /** texts and pictures: how it comes in and goes out (null = it just appears) */
+  anim: Anim | null;
   /**
    * text only: this caption keeps its own look («منفصل»). The track's group changes skip it; when it joins again it
    * keeps what it has and later group changes reach it field by field.
@@ -417,7 +615,7 @@ function readText(v: unknown): TextStyle | null {
     box: o.box == null ? null : color(o.box, "#000000aa"),
     weight: pick<400 | 700 | 900>(Number(o.weight), [400, 700, 900], 700),
     align: pick(o.align, ["center", "right", "left"] as const, "center"),
-    font: pick(o.font, ["readex", "naskh", "kufi"] as const, "readex"),
+    font: isFont(o.font) ? o.font : "readex",
     highlight: o.highlight == null ? null : color(o.highlight, "#facc15"),
   };
 }
@@ -443,6 +641,24 @@ function readColor(v: unknown): ColorGrade | null {
     warmth: num(o.warmth, -1, 1, 0),
   };
 }
+
+export function readAnim(v: unknown, text: boolean): Anim | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const ok = (k: unknown): AnimKind | null => {
+    if (typeof k !== "string" || !(k in ANIMS)) return null;
+    const only = (ANIMS[k as AnimKind] as { only?: string }).only;
+    return !only || only === (text ? "text" : "media") ? (k as AnimKind) : null;
+  };
+  const a: Anim = {
+    in: ok(o.in),
+    out: o.out === "kenburns" ? null : ok(o.out),
+    inMs: int(o.inMs, ANIM_MS.min, ANIM_MS.max, a0(o.in)),
+    outMs: int(o.outMs, ANIM_MS.min, ANIM_MS.max, a0(o.out)),
+  };
+  return a.in || a.out ? a : null;
+}
+const a0 = (k: unknown) => (typeof k === "string" && k in ANIMS ? ANIMS[k as AnimKind].ms || 400 : 400);
 
 export function readSound(v: unknown): SoundFx | null {
   if (!v || typeof v !== "object") return null;
@@ -505,6 +721,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
           .filter((w) => w.w),
     own: kind === "text" && o.own === true,
     sound: kind === "text" ? null : readSound(o.sound),
+    anim: kind === "audio" ? null : readAnim(o.anim, kind === "text"),
     bg:
       kind === "video" && o.bg && typeof o.bg === "object"
         ? {

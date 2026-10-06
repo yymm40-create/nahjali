@@ -60,6 +60,7 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
 
 /** «✨ Claude»: say what you want; Claude edits the timeline (one change, undoable). */
 export default function AssistantPanel({
+  ask,
   projectId,
   tl,
   selected,
@@ -70,6 +71,8 @@ export default function AssistantPanel({
   onClose,
   readOnly,
 }: {
+  /** a request sent from a button (sent once per `n`) */
+  ask?: { text: string; n: number } | null;
   projectId: string;
   tl: Timeline;
   selected: string[];
@@ -86,6 +89,7 @@ export default function AssistantPanel({
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
 
+  const sent = useRef(0);
   const send = async (words = text) => {
     const message = words.trim();
     if (!message || busy || readOnly) return;
@@ -117,6 +121,16 @@ export default function AssistantPanel({
       setBusy(null);
     }
   };
+
+  useEffect(() => {
+    if (!ask || ask.n === sent.current || busy) return;
+    const t = setTimeout(() => {
+      // marked as sent only when it really goes (a render in between cancels the wait, not the request)
+      sent.current = ask.n;
+      void send(ask.text);
+    }, 0);
+    return () => clearTimeout(t);
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
