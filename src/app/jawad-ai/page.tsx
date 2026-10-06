@@ -18,6 +18,7 @@ const BLURB: Record<string, string> = {
   "studio:audio": "كلام منطوق بأصوات مختلفة ووصف أداء منفصل.",
   film: "من الفكرة إلى السيناريو والشيتات والمقاطع، خطوة بخطوة.",
   student: "ارفع مادتك الدراسية: ملخص، شرح، كتاب PDF، عرض PPTX، تسجيل صوتي واختبار.",
+  editor: "مونتاج من الجوال أو الكمبيوتر: قص وترتيب ونصوص، وتصدير 720p أو 1080p.",
 };
 
 // Each section's own colour (the same as its page, sections.css), so the home already shows the difference
@@ -27,6 +28,7 @@ const TINT: Record<string, string> = {
   "studio:audio": "#0f766e",
   film: "#e9b546",
   student: "#7c3aed",
+  editor: "#b8f53d",
 };
 
 /** A finished work's picture (or video poster) for the «آخر أعمالك» strip. */

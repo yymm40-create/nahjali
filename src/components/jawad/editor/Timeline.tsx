@@ -1,0 +1,548 @@
+"use client";
+
+// «الممنتج الذكي» — the timeline. Time runs left → right even in Arabic (like every editor), so this part is dir="ltr".
+// Mouse: drag a clip to move it (to another track too), its edges to trim, the ruler to scrub; Ctrl+wheel zooms.
+// Touch (CapCut's way): a tap selects, a selected clip drags, its big handles trim, two fingers zoom, one finger scrolls.
+
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { clipEnd, clipLength, duration, formatTime, mainTrack, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
+import type { Command } from "@/lib/editor/commands";
+import Icon from "../Icon";
+import type { EditorAsset } from "./types";
+
+export interface PlayerLike {
+  readonly ms: number;
+  readonly playing: boolean;
+  seek(ms: number): void;
+  subscribe(fn: (ms: number, playing: boolean) => void): () => void;
+}
+
+interface Props {
+  tl: TL;
+  assets: Map<string, EditorAsset>;
+  thumbs: Record<string, string | null>;
+  selected: string[];
+  onSelect: (ids: string[]) => void;
+  run: (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => void;
+  player: PlayerLike | null;
+  compact: boolean;
+  readOnly: boolean;
+  onEmpty: () => void;
+}
+
+type Mode = "move" | "start" | "end";
+interface Drag {
+  id: string;
+  mode: Mode;
+  pointer: number;
+  x0: number;
+  y0: number;
+  moved: boolean;
+  trackId: string;
+  start: number;
+  end: number;
+  /** the earliest start / latest end the clip's source allows */
+  lo: number;
+  hi: number;
+  ghostStart: number;
+  ghostEnd: number;
+  ghostTrack: string;
+}
+
+const MIN_PPS = 1;
+const MAX_PPS = 400;
+const RULER = 26;
+const SNAP_PX = 8;
+
+const kindOf = (c: Clip, assets: Map<string, EditorAsset>) => (c.text ? "text" : (assets.get(c.assetId ?? "")?.kind ?? "video"));
+const fits = (track: Track, c: Clip, assets: Map<string, EditorAsset>) => {
+  const k = kindOf(c, assets);
+  return track.kind === (k === "image" ? "video" : k);
+};
+
+/** Ruler steps that keep labels ~80px apart at any zoom. */
+function rulerStep(pps: number) {
+  const steps = [100, 200, 500, 1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000];
+  return steps.find((s) => (s * pps) / 1000 >= 80) ?? 600_000;
+}
+
+export default function Timeline({ tl, assets, thumbs, selected, onSelect, run, player, compact, readOnly, onEmpty }: Props) {
+  const HEAD = compact ? 40 : 144;
+  const scroller = useRef<HTMLDivElement>(null);
+  const playhead = useRef<HTMLDivElement>(null);
+  const rows = useRef(new Map<string, HTMLDivElement>());
+  const [pps, setPps] = useState(40);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+  const anchor = useRef<{ ms: number; x: number } | null>(null);
+  const fitted = useRef(false);
+  const total = duration(tl);
+  const main = mainTrack(tl);
+
+  // tracks as people expect them: the top layer first, the main track under the pictures, sound at the bottom
+  const ordered = useMemo(() => {
+    const visual = tl.tracks.filter((t) => t.kind !== "audio").reverse();
+    return [...visual, ...tl.tracks.filter((t) => t.kind === "audio")];
+  }, [tl.tracks]);
+  const height = (t: Track) => (t.id === main?.id ? (compact ? 52 : 60) : t.kind === "audio" ? (compact ? 34 : 38) : compact ? 38 : 44);
+
+  const lanePx = (ms: number) => (ms * pps) / 1000;
+  const contentW = HEAD + lanePx(total + 15_000) + 80;
+
+  // ---------- zoom ----------
+  const zoomTo = useCallback(
+    (next: number, at?: { ms: number; x: number }) => {
+      const el = scroller.current;
+      const z = Math.min(MAX_PPS, Math.max(MIN_PPS, next));
+      if (el) {
+        const x = at?.x ?? el.clientWidth / 2;
+        const ms = at?.ms ?? ((el.scrollLeft + x - HEAD) * 1000) / pps;
+        anchor.current = { ms, x };
+      }
+      setPps(z);
+    },
+    [pps, HEAD],
+  );
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const a = anchor.current;
+    if (!el || !a) return;
+    anchor.current = null;
+    el.scrollLeft = HEAD + (a.ms * pps) / 1000 - a.x;
+  }, [pps, HEAD]);
+  const fit = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const w = el.clientWidth - HEAD - 40;
+    anchor.current = { ms: 0, x: HEAD };
+    setPps(Math.min(MAX_PPS, Math.max(MIN_PPS, total ? (w * 1000) / total : 40)));
+  }, [total, HEAD]);
+  // the first time there is something on the timeline, show all of it
+  useEffect(() => {
+    if (fitted.current || !total) return;
+    fitted.current = true;
+    const t = setTimeout(fit, 0);
+    return () => clearTimeout(t);
+  }, [total, fit]);
+
+  // Ctrl/⌘ + wheel (and a trackpad pinch) zooms around the pointer; two fingers on a phone too
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const x = e.clientX - r.left;
+      zoomTo(pps * Math.exp(-e.deltaY * 0.01), { ms: ((el.scrollLeft + x - HEAD) * 1000) / pps, x });
+    };
+    let pinch: { d: number; pps: number; ms: number; x: number } | null = null;
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const start = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const r = el.getBoundingClientRect();
+      const x = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+      pinch = { d: dist(e.touches), pps, ms: ((el.scrollLeft + x - HEAD) * 1000) / pps, x };
+    };
+    const move = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      zoomTo(pinch.pps * (dist(e.touches) / pinch.d), { ms: pinch.ms, x: pinch.x });
+    };
+    const end = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinch = null;
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", end);
+    return () => {
+      el.removeEventListener("wheel", wheel);
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", end);
+    };
+  }, [pps, zoomTo, HEAD]);
+
+  // ---------- the playhead follows the player (drawn directly: 60 times a second without re-rendering) ----------
+  useEffect(() => {
+    if (!player) return;
+    const place = (ms: number, playing: boolean) => {
+      const x = HEAD + (ms * pps) / 1000;
+      if (playhead.current) playhead.current.style.transform = `translateX(${x}px)`;
+      const el = scroller.current;
+      // the playhead never leaves the view (playing, a jump to the start or end, a click in the library)
+      if (el && (x < el.scrollLeft + HEAD || x > el.scrollLeft + el.clientWidth - 24)) el.scrollLeft = x - HEAD - (el.clientWidth - HEAD) * (playing ? 0.15 : 0.4);
+    };
+    place(player.ms, false);
+    return player.subscribe(place);
+  }, [player, pps, HEAD]);
+
+  const msAt = (clientX: number) => {
+    const el = scroller.current!;
+    const r = el.getBoundingClientRect();
+    return Math.max(0, ((clientX - r.left + el.scrollLeft - HEAD) * 1000) / pps);
+  };
+
+  // ---------- scrubbing on the ruler ----------
+  const scrub = (e: React.PointerEvent) => {
+    if (!player) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    player.seek(Math.min(total, msAt(e.clientX)));
+  };
+  const scrubMove = (e: React.PointerEvent) => {
+    if (player && e.currentTarget.hasPointerCapture(e.pointerId)) player.seek(Math.min(total, msAt(e.clientX)));
+  };
+
+  // ---------- snapping ----------
+  const snapPoints = useMemo(() => {
+    const pts = [0];
+    for (const t of tl.tracks) for (const c of t.clips) pts.push(c.start, clipEnd(c));
+    return pts;
+  }, [tl.tracks]);
+  const snap = (ms: number, ignore: string) => {
+    const tol = (SNAP_PX * 1000) / pps;
+    const own = ignore ? findOwn(ignore) : null;
+    let best = ms;
+    let gap = tol;
+    for (const p of [...snapPoints, player?.ms ?? -1]) {
+      if (own && (p === own.start || p === clipEnd(own))) continue;
+      const d = Math.abs(p - ms);
+      if (d < gap) {
+        gap = d;
+        best = p;
+      }
+    }
+    return best;
+  };
+  const findOwn = (id: string) => {
+    for (const t of tl.tracks) for (const c of t.clips) if (c.id === id) return c;
+    return null;
+  };
+
+  // ---------- clips: select, move, trim ----------
+  const begin = (e: React.PointerEvent, track: Track, c: Clip, mode: Mode) => {
+    if (readOnly || e.button > 0) return;
+    e.stopPropagation();
+    const touch = e.pointerType === "touch";
+    const isSel = selected.includes(c.id);
+    // on a phone an unselected clip only gets selected (its touch scrolls the timeline)
+    if (touch && !isSel && mode === "move") return;
+    if (!isSel) onSelect(e.shiftKey || e.metaKey || e.ctrlKey ? [...selected, c.id] : [c.id]);
+    if (track.locked) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const a = c.assetId ? assets.get(c.assetId) : null;
+    const media = a && a.kind !== "image" && a.durationMs ? a.durationMs : null;
+    const d: Drag = {
+      id: c.id,
+      mode,
+      pointer: e.pointerId,
+      x0: e.clientX,
+      y0: e.clientY,
+      moved: false,
+      trackId: track.id,
+      start: c.start,
+      end: clipEnd(c),
+      lo: media != null ? Math.max(0, c.start - c.in / c.speed) : 0,
+      hi: media != null ? c.start + (media - c.in) / c.speed : Infinity,
+      ghostStart: c.start,
+      ghostEnd: clipEnd(c),
+      ghostTrack: track.id,
+    };
+    dragRef.current = d;
+    setDrag(d);
+  };
+
+  const onMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d || d.pointer !== e.pointerId) return;
+    const dx = e.clientX - d.x0;
+    if (!d.moved && Math.hypot(dx, e.clientY - d.y0) < 4) return;
+    const dms = (dx * 1000) / pps;
+    const next = { ...d, moved: true };
+    if (d.mode === "move") {
+      const len = d.end - d.start;
+      let s = Math.max(0, d.start + dms);
+      const sStart = snap(s, d.id);
+      const sEnd = snap(s + len, d.id);
+      if (sStart !== s) s = sStart;
+      else if (sEnd !== s + len) s = sEnd - len;
+      next.ghostStart = Math.max(0, Math.round(s));
+      next.ghostEnd = next.ghostStart + len;
+      // which track is under the finger; above the pictures (or under the sound) makes a new one
+      const clip = findOwn(d.id)!;
+      let target = d.trackId;
+      let found = false;
+      for (const t of ordered) {
+        const r = rows.current.get(t.id)?.getBoundingClientRect();
+        if (r && e.clientY >= r.top && e.clientY < r.bottom) {
+          found = true;
+          if (fits(t, clip, assets) && !t.locked) target = t.id;
+        }
+      }
+      if (!found) {
+        const first = rows.current.get(ordered[0]?.id ?? "")?.getBoundingClientRect();
+        const last = rows.current.get(ordered.at(-1)?.id ?? "")?.getBoundingClientRect();
+        const k = kindOf(clip, assets);
+        if (first && e.clientY < first.top && k !== "audio") target = "new";
+        if (last && e.clientY > last.bottom && k === "audio") target = "new";
+      }
+      next.ghostTrack = target;
+    } else if (d.mode === "start") {
+      const s = Math.min(d.end - 100, Math.max(d.lo, snap(d.start + dms, d.id)));
+      next.ghostStart = Math.round(s);
+    } else {
+      const en = Math.max(d.start + 100, Math.min(d.hi, snap(d.end + dms, d.id)));
+      next.ghostEnd = Math.round(en);
+    }
+    dragRef.current = next;
+    setDrag(next);
+  };
+
+  const onUp = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d || d.pointer !== e.pointerId) return;
+    dragRef.current = null;
+    setDrag(null);
+    // a plain click on one of several selected clips leaves only it selected
+    if (!d.moved) {
+      if (!(e.shiftKey || e.metaKey || e.ctrlKey) && selected.length > 1) onSelect([d.id]);
+      return;
+    }
+    if (d.mode === "move") {
+      if (d.ghostTrack === d.trackId && d.ghostStart === d.start) return;
+      run({ type: "move_clip", clipId: d.id, trackId: d.ghostTrack, start: d.ghostStart });
+    } else if (d.mode === "start") run({ type: "trim_clip", clipId: d.id, edge: "start", to: d.ghostStart });
+    else run({ type: "trim_clip", clipId: d.id, edge: "end", to: d.ghostEnd });
+  };
+
+  // a tap on a clip selects it (touch: the timeline may have scrolled instead, then nothing happens)
+  const tap = useRef<{ id: string; x: number; y: number } | null>(null);
+  const tapDown = (e: React.PointerEvent, c: Clip) => {
+    if (e.pointerType === "touch") tap.current = { id: c.id, x: e.clientX, y: e.clientY };
+  };
+  const tapUp = (e: React.PointerEvent) => {
+    const t = tap.current;
+    tap.current = null;
+    if (!t || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 8) return;
+    if (!selected.includes(t.id)) onSelect([t.id]);
+  };
+
+  // an empty spot: unselect and move the playhead there
+  const laneTap = useRef<{ x: number; y: number } | null>(null);
+  const laneDown = (e: React.PointerEvent) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.pointerType === "touch") laneTap.current = { x: e.clientX, y: e.clientY };
+    else {
+      onSelect([]);
+      player?.seek(Math.min(total, msAt(e.clientX)));
+    }
+  };
+  const laneUp = (e: React.PointerEvent) => {
+    const t = laneTap.current;
+    laneTap.current = null;
+    if (!t || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 8) return;
+    onSelect([]);
+    player?.seek(Math.min(total, msAt(e.clientX)));
+  };
+
+  // ---------- drawing ----------
+  const step = rulerStep(pps);
+  const ticks: number[] = [];
+  for (let ms = 0; ms <= total + 15_000; ms += step) ticks.push(ms);
+
+  const clipView = (track: Track, c: Clip, ghost = false) => {
+    const k = kindOf(c, assets);
+    const a = c.assetId ? assets.get(c.assetId) : null;
+    const sel = selected.includes(c.id);
+    const d = drag?.id === c.id ? drag : null;
+    const start = d && d.moved ? d.ghostStart : c.start;
+    const end = d && d.moved ? (d.mode === "move" ? d.ghostEnd : d.mode === "start" ? d.end : d.ghostEnd) : clipEnd(c);
+    const thumb = a ? thumbs[a.id] : null;
+    const tone = k === "audio" ? "bg-emerald-600/80" : k === "text" ? "bg-violet-600/85" : k === "image" ? "bg-sky-700/80" : "bg-zinc-700";
+    const missing = a && (a.status !== "ready" || !a.url);
+    const handle = compact ? 18 : 10;
+    return (
+      <div
+        key={c.id + (ghost ? "g" : "")}
+        role="button"
+        tabIndex={-1}
+        aria-label={c.text ? `نص: ${c.text.body}` : (a?.name ?? "مقطع")}
+        aria-pressed={sel}
+        className={`absolute top-1 bottom-1 overflow-hidden rounded-md text-[11px] text-white shadow ${tone} ${sel ? "z-10 ring-2 ring-jw-accent" : "ring-1 ring-black/40"} ${d?.moved && d.mode === "move" ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
+        style={{
+          left: lanePx(start),
+          width: Math.max(4, lanePx(end - start)),
+          touchAction: sel ? "none" : "pan-x pan-y",
+          cursor: readOnly || track.locked ? "default" : "grab",
+          backgroundImage: thumb && k !== "audio" ? `url(${thumb})` : k === "audio" ? "repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 2px, transparent 2px 5px)" : undefined,
+          backgroundSize: thumb ? "auto 100%" : k === "audio" ? "auto 60%" : undefined,
+          backgroundRepeat: k === "audio" ? "repeat-x" : "repeat-x",
+          backgroundPosition: k === "audio" ? "0 50%" : undefined,
+        }}
+        onPointerDown={(e) => {
+          tapDown(e, c);
+          begin(e, track, c, "move");
+        }}
+        onPointerMove={onMove}
+        onPointerUp={(e) => {
+          onUp(e);
+          tapUp(e);
+        }}
+        onPointerCancel={() => {
+          dragRef.current = null;
+          tap.current = null;
+          setDrag(null);
+        }}
+      >
+        <span className="pointer-events-none absolute inset-x-0 top-0 truncate bg-gradient-to-b from-black/60 to-transparent px-1.5 py-0.5 font-medium" dir="auto">
+          {c.text ? c.text.body : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
+        </span>
+        {!compact && lanePx(end - start) > 60 && (
+          <span className="pointer-events-none absolute bottom-0 left-1 text-[10px] text-white/80">{formatTime(clipLength(c))}</span>
+        )}
+        {sel && !readOnly && !track.locked && (
+          <>
+            <span
+              aria-label="قص البداية"
+              className="absolute inset-y-0 left-0 grid cursor-ew-resize place-items-center bg-jw-accent text-jw-on-accent"
+              style={{ width: handle, touchAction: "none" }}
+              onPointerDown={(e) => begin(e, track, c, "start")}
+              onPointerMove={onMove}
+              onPointerUp={onUp}
+            >
+              <span className="h-4 w-0.5 rounded bg-current" />
+            </span>
+            <span
+              aria-label="قص النهاية"
+              className="absolute inset-y-0 right-0 grid cursor-ew-resize place-items-center bg-jw-accent text-jw-on-accent"
+              style={{ width: handle, touchAction: "none" }}
+              onPointerDown={(e) => begin(e, track, c, "end")}
+              onPointerMove={onMove}
+              onPointerUp={onUp}
+            >
+              <span className="h-4 w-0.5 rounded bg-current" />
+            </span>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const moving = drag?.moved && drag.mode === "move" ? drag : null;
+
+  return (
+    <div dir="ltr" className="relative flex h-full min-h-0 flex-col bg-jw-bg-2">
+      <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }}>
+        <div className="relative" style={{ width: contentW, minHeight: "100%" }}>
+          {/* ruler */}
+          <div className="sticky top-0 z-20 flex" style={{ height: RULER }}>
+            <div className="sticky left-0 z-30 flex items-center gap-0.5 border-b border-e border-jw-line bg-jw-surface px-1" style={{ width: HEAD, minWidth: HEAD }}>
+              <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(pps / 1.6)} aria-label="تصغير" title="تصغير">
+                <Icon name="zoomOut" size={14} />
+              </button>
+              {!compact && (
+                <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={fit} aria-label="اعرض الكل" title="اعرض الكل">
+                  <Icon name="expand" size={13} />
+                </button>
+              )}
+              <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(pps * 1.6)} aria-label="تكبير" title="تكبير">
+                <Icon name="zoomIn" size={14} />
+              </button>
+            </div>
+            <div className="relative flex-1 cursor-col-resize border-b border-jw-line bg-jw-surface" style={{ touchAction: "none" }} onPointerDown={scrub} onPointerMove={scrubMove}>
+              {ticks.map((ms) => (
+                <span key={ms} className="absolute top-0 h-full border-l border-jw-line-strong ps-1 text-[10px] leading-[26px] text-jw-faint" style={{ left: lanePx(ms) }}>
+                  {formatTime(ms, step < 1000)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* tracks */}
+          {ordered.map((track) => {
+            const isMain = track.id === main?.id;
+            const target = moving && moving.ghostTrack === track.id && moving.trackId !== track.id;
+            return (
+              <div
+                key={track.id}
+                ref={(el) => {
+                  if (el) rows.current.set(track.id, el);
+                  else rows.current.delete(track.id);
+                }}
+                className={`flex border-b border-jw-line ${isMain ? "bg-jw-surface-2/40" : ""} ${target ? "bg-jw-accent/10" : ""}`}
+                style={{ height: height(track) }}
+              >
+                <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} />
+                <div className="relative flex-1" onPointerDown={laneDown} onPointerUp={laneUp}>
+                  {track.clips.map((c) => (moving?.id === c.id && moving.ghostTrack !== track.id ? null : clipView(track, c)))}
+                  {/* a clip being dragged here from another track */}
+                  {moving && moving.ghostTrack === track.id && moving.trackId !== track.id && (() => {
+                    const c = findOwn(moving.id);
+                    return c ? clipView(track, c, true) : null;
+                  })()}
+                  {track.hidden && <span className="pointer-events-none absolute inset-0 bg-black/40" />}
+                </div>
+              </div>
+            );
+          })}
+          {moving?.ghostTrack === "new" && (
+            <div className="pointer-events-none absolute inset-x-0 z-20 border-2 border-dashed border-jw-accent bg-jw-accent/10 text-center text-xs text-jw-accent" style={{ top: RULER, height: 30 }}>
+              اترك هنا: مسار جديد
+            </div>
+          )}
+
+          {/* playhead */}
+          <div ref={playhead} className="pointer-events-none absolute bottom-0 top-0 z-30 w-0" style={{ transform: `translateX(${HEAD}px)` }}>
+            <div className="absolute -left-[6px] top-0 h-3 w-3 rotate-45 rounded-sm bg-jw-accent" />
+            <div className="absolute -left-px top-0 h-full w-0.5 bg-jw-accent shadow-[0_0_6px_var(--jw-accent)]" />
+          </div>
+        </div>
+      </div>
+
+      {!total && !readOnly && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center p-4" dir="rtl">
+          <button type="button" className="jw-btn jw-btn-primary pointer-events-auto" onClick={onEmpty}>
+            <Icon name="upload" size={16} /> أضف فيديو أو صورة أو صوت لتبدأ
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrackHead({ track, isMain, width, compact, readOnly, run }: { track: Track; isMain: boolean; width: number; compact: boolean; readOnly: boolean; run: Props["run"] }) {
+  const toggle = (patch: Partial<Pick<Track, "muted" | "hidden" | "locked">>) => run({ type: "update_track", trackId: track.id, patch });
+  const btn = "grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-3";
+  const icon = track.kind === "audio" ? "music" : track.kind === "text" ? "type" : isMain ? "film" : "layers";
+  return (
+    <div className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted" style={{ width, minWidth: width }} dir="rtl">
+      {!compact && (
+        <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px]" title={track.name}>
+          <Icon name={icon} size={13} />
+          <span className="truncate">{isMain ? "الرئيسي" : track.name}</span>
+        </span>
+      )}
+      <div className={`flex ${compact ? "flex-col" : ""} items-center`}>
+        {track.kind !== "text" && (
+          <button type="button" disabled={readOnly} className={`${btn} ${track.muted ? "text-jw-danger" : ""}`} onClick={() => toggle({ muted: !track.muted })} aria-label={track.muted ? "شغّل الصوت" : "اكتم"} title={track.muted ? "شغّل الصوت" : "اكتم"}>
+            <Icon name={track.muted ? "volumeOff" : "volume"} size={13} />
+          </button>
+        )}
+        {track.kind !== "audio" && !compact && (
+          <button type="button" disabled={readOnly} className={`${btn} ${track.hidden ? "text-jw-warn" : ""}`} onClick={() => toggle({ hidden: !track.hidden })} aria-label={track.hidden ? "أظهر" : "أخفِ"} title={track.hidden ? "أظهر" : "أخفِ"}>
+            <Icon name={track.hidden ? "eyeOff" : "eye"} size={13} />
+          </button>
+        )}
+        <button type="button" disabled={readOnly} className={`${btn} ${track.locked ? "text-jw-accent" : ""}`} onClick={() => toggle({ locked: !track.locked })} aria-label={track.locked ? "افتح القفل" : "اقفل المسار"} title={track.locked ? "افتح القفل" : "اقفل المسار"}>
+          <Icon name={track.locked ? "lock" : "unlock"} size={13} />
+        </button>
+        {!isMain && !compact && !readOnly && track.clips.length === 0 && (
+          <button type="button" className={btn} onClick={() => run({ type: "remove_track", trackId: track.id })} aria-label="احذف المسار" title="احذف المسار">
+            <Icon name="x" size={13} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

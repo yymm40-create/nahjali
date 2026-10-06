@@ -161,3 +161,30 @@
   line-height: 1.75;
   color: var(--jw-ink);
 }
+
+/* ── «الممنتج الذكي» «غرفة المونتاج»: a dark edit suite, every panel close to black so the picture leads; electric
+   lime for what is selected and the playhead (the colour editors' eyes look for) ── */
+.jw [data-jw-section="editor"] {
+  --jw-bg: #0c0d0c;
+  --jw-bg-2: #101210;
+  --jw-surface: #151815;
+  --jw-surface-2: #1d211d;
+  --jw-surface-3: #272c27;
+  --jw-line: rgba(200, 255, 200, 0.08);
+  --jw-line-strong: rgba(200, 255, 200, 0.16);
+  --jw-ink: #eef3ec;
+  --jw-muted: #a5b0a2;
+  --jw-faint: #7f8a7c;
+  --jw-accent: #b8f53d;
+  --jw-on-accent: #121a03;
+  --jw-danger: #ff5d6c;
+  --jw-ok: #4ade80;
+  --jw-warn: #fbbf24;
+  --jw-radius: 12px;
+  color-scheme: dark;
+}
+.jw [data-jw-section="editor"]::before {
+  background:
+    linear-gradient(90deg, #b8f53d, #22d3ee, #a78bfa) top / 100% 3px no-repeat,
+    radial-gradient(1200px 400px at 50% -10%, rgba(184, 245, 61, 0.06), transparent 70%);
+}

@@ -44,6 +44,22 @@ export default async function Home() {
             <p className="text-sm font-bold text-white/90">ارفع دروسك وحوّلها إلى ملخصات وكتب وعروض وتسجيلات صوتية واختبارات.</p>
           </div>
         </Link>
+        {/* «الممنتج الذكي» (open to every visitor like «الطالب الذكي»; editing needs signing in) */}
+        <Link
+          href="/jawad-ai/editor"
+          className="relative flex items-center gap-4 overflow-hidden rounded-3xl bg-[#0c0d0c] p-4 text-[#eef3ec] shadow-[0_14px_34px_-14px_rgba(184,245,61,0.55)] ring-1 ring-[#b8f53d]/40 transition hover:-translate-y-0.5"
+        >
+          <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-[#b8f53d] text-4xl text-[#121a03]" aria-hidden>
+            ✂️
+          </span>
+          <div className="flex-1">
+            <h3 className="flex flex-wrap items-center gap-2 text-xl font-extrabold">
+              الممنتج الذكي
+              <span className="rounded-full bg-[#b8f53d]/20 px-2 py-0.5 text-xs font-bold text-[#b8f53d]">جديد ✨</span>
+            </h3>
+            <p className="text-sm font-bold text-[#a5b0a2]">مونتاج من جوالك أو كمبيوترك: قص وترتيب ونصوص، وتصدير 720p و1080p.</p>
+          </div>
+        </Link>
         {/* «الجواد الذكي!» | JAWAD AI: its own identity, also on this card */}
         <Link
           href="/jawad-ai"

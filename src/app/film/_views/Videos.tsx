@@ -95,6 +95,14 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         studioPath={studioPath}
         voicesOn={voicesReady()}
       />
+      <Link href={`${base}/${id}/edit`} className="card flex items-center gap-3 p-4 font-extrabold">
+        <span className="text-2xl" aria-hidden>✂️</span>
+        <span className="flex-1">
+          الخطوة الأخيرة: المونتاج
+          <span className="block text-xs font-bold text-muted">نركّب مقاطعك بترتيب المخرج في نسخة أولى، وتصدّر الفيلم كاملًا.</span>
+        </span>
+        <span aria-hidden>←</span>
+      </Link>
     </div>
   );
 }

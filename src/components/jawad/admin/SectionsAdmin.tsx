@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Icon from "../Icon";
 import { adminPost } from "./client";
+import { FIXED_IMPLEMENTATIONS, sectionPath } from "@config/jawad/sections";
 
 export interface AdminSection {
   id: string;
@@ -52,7 +53,7 @@ export default function SectionsAdmin({ sections, icons, implementations }: { se
           s={{ id: "", name: "", icon: "sparkles", implementation: "studio:image", sort: 100, enabled: false, builtIn: false, overridden: false }}
           isNew
           icons={icons}
-          implementations={implementations.filter((i) => i.key !== "film" && i.key !== "student")}
+          implementations={implementations.filter((i) => !FIXED_IMPLEMENTATIONS.includes(i.key))}
           busy={busy}
           run={run}
           onCancel={() => setAdding(false)}
@@ -107,7 +108,7 @@ function SectionRow({
         ) : (
           <div>
             <span className="jw-label">المسار</span>
-            <p className="truncate py-2 text-xs text-jw-muted" dir="ltr">{v.implementation === "film" ? "/jawad-ai/film" : v.implementation === "student" ? "/jawad-ai/student" : `/jawad-ai/${v.id}`}</p>
+            <p className="truncate py-2 text-xs text-jw-muted" dir="ltr">{sectionPath(v)}</p>
           </div>
         )}
       </div>

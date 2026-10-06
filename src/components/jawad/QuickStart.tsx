@@ -12,7 +12,7 @@ export interface QuickSection {
   implementation: string;
 }
 
-type Kind = "image" | "video" | "audio" | "film" | "student";
+type Kind = "image" | "video" | "audio" | "film" | "student" | "editor";
 
 const KIND_AR: Record<Kind, { label: string; icon: string; hint: string }> = {
   image: { label: "صورة", icon: "image", hint: "صف الصورة: مين؟ وين؟ أي لون؟" },
@@ -20,11 +20,13 @@ const KIND_AR: Record<Kind, { label: string; icon: string; hint: string }> = {
   audio: { label: "صوت", icon: "audio", hint: "اكتب الكلام اللي تبيه ينقال." },
   film: { label: "فيلم كامل", icon: "film", hint: "اكتب فكرة قصتك بأسطر قليلة، والفيلم يبدأ خطوة بخطوة." },
   student: { label: "مادة دراسية", icon: "book", hint: "ارفع درسك ونحوّله لملخص وكتاب وعرض واختبار." },
+  editor: { label: "مونتاج", icon: "scissors", hint: "ارفع مقاطعك وركّبها: قص وترتيب ونص، وصدّرها فيديو واحد." },
 };
 
 // Which section the words point to (the user can always change it with the chips)
 function guessKind(text: string): Kind {
   const t = text.toLowerCase();
+  if (/مونتاج|منتج|ممنتج|ركّب المقاطع|ركب المقاطع|قص المقطع|اقص|montage|edit my|video edit/.test(t)) return "editor";
   if (/فيلم|سيناريو|قصة طويلة|حلقة|مسلسل|movie|film/.test(t)) return "film";
   if (/درس|مادة|ملخص|اختبار|منهج|كتاب مدرسي|محاضرة|lesson|quiz|summar/.test(t)) return "student";
   if (/فيديو|مقطع|حركة|يمشي|يركض|يطير|كاميرا|لقطة|يتحرك|video|clip|camera|animate/.test(t)) return "video";
@@ -54,7 +56,7 @@ export default function QuickStart({ sections, userId, loginHref }: { sections: 
   const info = KIND_AR[kind];
 
   const target = (k: Kind) =>
-    k === "film" || k === "student" ? sections.find((s) => s.implementation === k) : sections.find((s) => s.output === k);
+    k === "film" || k === "student" || k === "editor" ? sections.find((s) => s.implementation === k) : sections.find((s) => s.output === k);
   const available = (Object.keys(KIND_AR) as Kind[]).filter((k) => target(k));
 
   function go(t = text, k = kind) {
@@ -72,7 +74,7 @@ export default function QuickStart({ sections, userId, loginHref }: { sections: 
       }
     }
     const idea = t.trim() ? `?idea=${encodeURIComponent(t.trim().slice(0, 500))}` : "";
-    router.push(sec.output ? sec.path : k === "film" ? `${sec.path}/new${idea}` : `${sec.path}${idea}`);
+    router.push(sec.output ? sec.path : k === "film" ? `${sec.path}/new${idea}` : k === "editor" ? sec.path : `${sec.path}${idea}`);
   }
 
   return (
