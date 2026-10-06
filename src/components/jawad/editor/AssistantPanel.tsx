@@ -60,6 +60,7 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
 
 /** «✨ Claude»: say what you want; Claude edits the timeline (one change, undoable). */
 export default function AssistantPanel({
+  ask,
   projectId,
   tl,
   selected,
@@ -70,6 +71,8 @@ export default function AssistantPanel({
   onClose,
   readOnly,
 }: {
+  /** a request sent from a button (sent once per `n`) */
+  ask?: { text: string; n: number } | null;
   projectId: string;
   tl: Timeline;
   selected: string[];
@@ -86,6 +89,7 @@ export default function AssistantPanel({
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
 
+  const sent = useRef(0);
   const send = async (words = text) => {
     const message = words.trim();
     if (!message || busy || readOnly) return;
@@ -118,11 +122,27 @@ export default function AssistantPanel({
     }
   };
 
+  useEffect(() => {
+    if (!ask || ask.n === sent.current || busy) return;
+    const t = setTimeout(() => {
+      // marked as sent only when it really goes (a render in between cancels the wait, not the request)
+      sent.current = ask.n;
+      void send(ask.text);
+    }, 0);
+    return () => clearTimeout(t);
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-jw-line px-3 py-2">
-        <Icon name="sparkles" size={16} className="text-jw-accent" />
-        <span className="flex-1 text-sm font-semibold">Claude يمنتج معك</span>
+      <div className="flex items-center gap-2.5 border-b border-jw-line px-3 py-2.5">
+        <span className="jw-orb h-9 w-9 shrink-0" data-busy={!!busy} aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold">Claude · مساعدك في المونتاج</span>
+          <span className="flex items-center gap-1 text-[11px] text-jw-muted" aria-live="polite">
+            <span className={`h-1.5 w-1.5 rounded-full ${busy ? "animate-pulse bg-jw-warn" : "bg-jw-ok"}`} />
+            {busy ? "يشتغل…" : "جاهز يخدمك"}
+          </span>
+        </span>
         {onClose && (
           <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} aria-label="إغلاق">
             <Icon name="x" />
@@ -132,7 +152,10 @@ export default function AssistantPanel({
       <div className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
         {!msgs.length && (
           <div className="space-y-3">
-            <p className="text-xs leading-6 text-jw-muted">قل وش تبي بكلامك، وClaude يعدّل التايملاين: يقص ويرتّب ويحط انتقالات ونصوص. كل اللي يسويه تقدر تتراجع عنه بضغطة.</p>
+            <div className="max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
+              هلا! أنا مساعدك في المونتاج 👋
+              <span className="mt-1 block text-xs leading-6 text-jw-muted">قل لي وش تبي بكلامك وأنا أعدّل التايملاين: أقص السكتات، أرتّب، أحط انتقالات ونصوص وكابشن، وأنظّف الصوت. كل اللي أسويه تتراجع عنه بضغطة.</span>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {QUICK.map((q) => (
                 <button key={q} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => send(q)}>

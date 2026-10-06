@@ -328,7 +328,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     setDrag(null);
     // a plain click on one of several selected clips leaves only it selected
     if (!d.moved) {
-      if (!(e.shiftKey || e.metaKey || e.ctrlKey) && selected.length > 1) onSelect([d.id]);
+      // a plain click leaves only this clip selected (and brings its settings up again)
+      if (!(e.shiftKey || e.metaKey || e.ctrlKey)) onSelect([d.id]);
       return;
     }
     if (d.mode === "move") {

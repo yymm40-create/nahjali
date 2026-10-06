@@ -8,6 +8,8 @@ import {
   COLOR_PRESETS,
   findClip,
   formatTime,
+  ANIM_MS,
+  ANIMS,
   hasSoundFx,
   NEUTRAL_COLOR,
   NO_SOUND_FX,
@@ -18,6 +20,8 @@ import {
   TRANSITION_MS,
   TRANSITIONS,
   transformAt,
+  type Anim,
+  type AnimKind,
   type CaptionStyle,
   type Clip,
   type ColorPreset,
@@ -33,13 +37,14 @@ import {
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
 import { soundFile } from "./audio";
+import FontPicker from "./FontPicker";
 import { clipSound } from "./voice";
 import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 
 export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => unknown;
-export type InspectorTab = "basic" | "motion" | "color" | "backdrop" | "transition" | "sound";
+export type InspectorTab = "basic" | "motion" | "anim" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -97,6 +102,8 @@ export default function Inspector({
   tab,
   onTab,
   flash,
+  rail = false,
+  projectView = false,
 }: {
   tl: Timeline;
   selected: string[];
@@ -107,16 +114,21 @@ export default function Inspector({
   tab: InspectorTab;
   onTab: (t: InspectorTab) => void;
   flash: (text: string, bad?: boolean) => void;
+  /** the sections are chosen from the side rail (no tabs here) */
+  rail?: boolean;
+  /** show the project's settings whatever is selected */
+  projectView?: boolean;
 }) {
   const playhead = usePlayhead(player);
   const [beatBusy, setBeatBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const found = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
-  if (!found) {
+  if (!found || projectView) {
     const ratio = ratioOf(tl);
     return (
       <div className="space-y-4 p-3">
+        {rail && !projectView && <p className="rounded-xl bg-jw-accent/10 p-2.5 text-xs leading-5 text-jw-ink">👆 اختر مقطعًا في التايملاين أو على المعاينة، وتطلع إعداداته هنا.</p>}
         <h3 className="text-sm font-semibold">المشروع</h3>
         {selected.length > 1 && <p className="text-xs text-jw-muted">محدد {selected.length} مقاطع: تقدر تحذفها أو تقصها مرة وحدة.</p>}
         <div className="space-y-1.5">
@@ -203,12 +215,15 @@ export default function Inspector({
   const tabs: [InspectorTab, string][] = [
     ["basic", text ? "النص" : "أساسي"],
     ...(visual ? ([["motion", "حركة"]] as [InspectorTab, string][]) : []),
+    ...(visual ? ([["anim", "دخول وخروج"]] as [InspectorTab, string][]) : []),
     ...(visual && !text ? ([["color", "ألوان"]] as [InspectorTab, string][]) : []),
     ...(visual && !text ? ([["backdrop", "الخلفية"]] as [InspectorTab, string][]) : []),
     ...(visual && joined ? ([["transition", "انتقال"]] as [InspectorTab, string][]) : []),
     ...(sound ? ([["sound", "صوت"]] as [InspectorTab, string][]) : []),
   ];
   const current = tabs.some(([k]) => k === tab) ? tab : "basic";
+  // from the rail: a section this clip doesn't have shows what it has instead, saying so
+  const missing = rail && current !== tab ? { motion: "الحركة", anim: "الدخول والخروج", color: "الألوان", backdrop: "الخلفية", transition: "الانتقال", sound: "الصوت", basic: "" }[tab] : "";
 
   // ---- motion: with motion points, a change goes into the point at the playhead
   const inClip = playhead >= clip.start && playhead < clipEnd(clip);
@@ -244,7 +259,8 @@ export default function Inspector({
         </button>
       </div>
       {track.locked && <p className="text-xs text-jw-warn">المسار مقفول؛ افتح القفل من رأس المسار لتعدّل.</p>}
-      {tabs.length > 1 && (
+      {missing && <p className="rounded-lg bg-jw-surface-2 p-2 text-[11px] text-jw-muted">قسم «{missing}» ما يناسب هذا المقطع{tab === "transition" ? " (يحتاج مقطع بعده ملاصق له)" : ""}؛ هذي إعداداته الأساسية.</p>}
+      {tabs.length > 1 && !rail && (
         <div className="jw-seg" role="tablist" aria-label="أقسام التعديل">
           {tabs.map(([k, label]) => (
             <button key={k} type="button" role="tab" aria-selected={current === k} onClick={() => onTab(k)}>
@@ -369,6 +385,8 @@ export default function Inspector({
           </button>
         </div>
       )}
+
+      {current === "anim" && <AnimControls clip={clip} track={track} together={together} locked={locked} run={run} />}
 
       {current === "color" && (
         <div className="space-y-3">
@@ -495,13 +513,7 @@ function TextControls({ text, locked, setText }: { text: TextStyle; locked: bool
         <input type="checkbox" disabled={locked} checked={!!text.box} onChange={(e) => setText({ box: e.target.checked ? "#000000b3" : null }, "box")} className="accent-[var(--jw-accent)]" />
         خلفية خلف الكلام
       </label>
-      <div className="jw-seg" role="radiogroup" aria-label="الخط">
-        {(["readex", "naskh", "kufi"] as const).map((f) => (
-          <button key={f} type="button" role="radio" aria-checked={text.font === f} disabled={locked} onClick={() => setText({ font: f }, "font")}>
-            {f === "readex" ? "حديث" : f === "naskh" ? "نسخ" : "كوفي"}
-          </button>
-        ))}
-      </div>
+      <FontPicker value={text.font} disabled={locked} onPick={(f) => setText({ font: f }, "font")} />
       <div className="jw-seg" role="radiogroup" aria-label="السماكة">
         {([400, 700, 900] as const).map((w) => (
           <button key={w} type="button" role="radio" aria-checked={text.weight === w} disabled={locked} onClick={() => setText({ weight: w }, "weight")}>
@@ -591,6 +603,83 @@ function SoundWork({ clip, track, url, locked, run }: { clip: Clip; track: Track
         )}
       </div>
       <p className="text-[10px] leading-4 text-jw-faint">يشتغل على جهازك مجانًا، والتصدير يطلع بنفس الصوت اللي تسمعه.</p>
+    </div>
+  );
+}
+
+/** «دخول وخروج»: how the clip comes in and goes out (texts of a group all together). */
+function AnimControls({ clip, track, together, locked, run }: { clip: Clip; track: Track; together: boolean; locked: boolean; run: Run }) {
+  const a = clip.anim;
+  const kind = clip.text ? "text" : "media";
+  const kinds = (Object.keys(ANIMS) as AnimKind[]).filter((k) => {
+    const only = (ANIMS[k] as { only?: string }).only;
+    return !only || only === kind;
+  });
+  // a group's texts change together; the others alone
+  const targets = together ? track.clips.filter((c) => !c.own).map((c) => c.id) : [clip.id];
+  const set = (p: Partial<Anim> | null, key: string) =>
+    run(
+      targets.map((id) => ({ type: "update_clip" as const, clipId: id, patch: { anim: p } })),
+      { label: p === null ? "شلت الدخول والخروج" : "غيّرت الدخول والخروج", coalesce: `${clip.id}:anim:${key}` },
+    );
+  const grid = (side: "in" | "out") => {
+    const cur = a?.[side] ?? null;
+    return (
+      <div className="space-y-1.5">
+        <span className="text-xs font-semibold">{side === "in" ? "⤵ الدخول" : "⤴ الخروج"}</span>
+        <div className="grid grid-cols-4 gap-1">
+          <button type="button" disabled={locked} aria-pressed={!cur} className={`rounded-lg border px-0.5 py-1.5 text-[10px] ${!cur ? "border-jw-accent bg-jw-accent/10" : "border-jw-line"}`} onClick={() => set({ [side]: null }, side)}>
+            <span className="block text-sm leading-none">∅</span>بدون
+          </button>
+          {kinds
+            .filter((k) => side === "in" || k !== "kenburns")
+            .map((k) => (
+              <button
+                key={k}
+                type="button"
+                disabled={locked}
+                aria-pressed={cur === k}
+                className={`rounded-lg border px-0.5 py-1.5 text-[10px] ${cur === k ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`}
+                onClick={() => set({ [side]: k, [side === "in" ? "inMs" : "outMs"]: ANIMS[k].ms || 400 }, side)}
+              >
+                <span className="block text-sm leading-none">{ANIMS[k].icon}</span>
+                {ANIMS[k].label}
+              </button>
+            ))}
+        </div>
+        {cur && cur !== "kenburns" && (
+          <Slider
+            label="المدة"
+            value={side === "in" ? a!.inMs : a!.outMs}
+            min={ANIM_MS.min}
+            max={ANIM_MS.max}
+            step={50}
+            disabled={locked}
+            onChange={(v) => set({ [side === "in" ? "inMs" : "outMs"]: v }, `${side}:ms`)}
+            format={(v) => `${(v / 1000).toFixed(2)} ث`}
+          />
+        )}
+      </div>
+    );
+  };
+  return (
+    <div className="space-y-4">
+      {together && <p className="rounded-lg bg-jw-accent/5 p-2 text-[11px] text-jw-muted">🔗 ينطبق على كل نصوص المسار ({targets.length}). افصل النص من «النص» لتعطيه حركة بروحه.</p>}
+      {grid("in")}
+      {grid("out")}
+      <p className="text-[10px] leading-4 text-jw-faint">ما فيه حركات حرف بحرف لأنها تقطّع الحروف العربية المتصلة؛ «كتابة» تكشف النص من اليمين، و«مطّ» تمدّ الكلمات بالكشيدة.</p>
+      <div className="flex gap-1.5">
+        {!clip.text && a && track.clips.length > 1 && (
+          <button type="button" className="jw-btn !min-h-8 flex-1 text-[11px]" disabled={locked} onClick={() => run(track.clips.filter((c) => c.id !== clip.id).map((c) => ({ type: "update_clip" as const, clipId: c.id, patch: { anim: { ...a } } })), { label: "نفس الدخول والخروج لكل المسار" })}>
+            طبّقه على كل المسار
+          </button>
+        )}
+        {a && (
+          <button type="button" className="jw-btn jw-btn-quiet !min-h-8 flex-1 text-[11px]" disabled={locked} onClick={() => set(null, "reset")}>
+            <Icon name="retry" size={13} /> بدون حركات
+          </button>
+        )}
+      </div>
     </div>
   );
 }

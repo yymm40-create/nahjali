@@ -9,6 +9,7 @@ import Icon from "../Icon";
 import AssistantPanel from "./AssistantPanel";
 import Guard from "./Guard";
 import { PluginTools } from "./plugins";
+import { loadFontsOf } from "./fontload";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
@@ -44,6 +45,21 @@ function useWide() {
   );
 }
 
+/** The left rail's sections (a computer). */
+const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint: string }[] = [
+  { id: "media", label: "الوسائط", icon: "folder", hint: "ملفاتك: ارفع، اسحب للتايملاين" },
+  { id: "edit", label: "تعديل", icon: "settings", tab: "basic", hint: "النص، الصوت، السرعة، الملاءمة" },
+  { id: "motion", label: "حركة", icon: "diamond", tab: "motion", hint: "المكان والحجم والدوران ونقاط الحركة (كي فريم)" },
+  { id: "anim", label: "دخول/خروج", icon: "wand", tab: "anim", hint: "حركات الدخول والخروج" },
+  { id: "color", label: "ألوان", icon: "palette", tab: "color", hint: "فلاتر وتصحيح ألوان" },
+  { id: "backdrop", label: "الخلفية", icon: "user", tab: "backdrop", hint: "عزل الشخص وتغيير خلفيته" },
+  { id: "sound", label: "الصوت", icon: "volume", tab: "sound", hint: "عزل الضوضاء، محسّن الصوت، المؤثرات" },
+  { id: "transition", label: "انتقال", icon: "frames", tab: "transition", hint: "الانتقال للمقطع اللي بعده" },
+  { id: "captions", label: "كابشن", icon: "type", hint: "كابشن تلقائي، مزامنة قصيدة، SRT" },
+  { id: "styles", label: "أساليب", icon: "sparkles", hint: "أساليب مونتاج جاهزة بضغطة" },
+  { id: "project", label: "المشروع", icon: "ratio", hint: "المقاس، الخلفية، المغناطيس" },
+];
+
 const SAVE_TEXT: Record<SaveState, string> = { saved: "محفوظ", dirty: "تعديلات…", saving: "نحفظ…", error: "ما انحفظ، نعيد…", conflict: "تغيّر من مكان ثاني" };
 
 export default function Editor({ project, initialAssets, exportUrl, backHref }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string }) {
@@ -59,13 +75,64 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const [sheet, setSheet] = useState<null | "library" | "inspector">(null);
   const [exporting, setExporting] = useState(false);
   const [captioning, setCaptioning] = useState(false);
-  const [assisting, setAssisting] = useState(false);
+  // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
+  const [assisting, setAssisting] = useState(true);
+  const [chat, setChat] = useState(false);
+  // the left side's section (a computer): the library, a clip's settings, the ready styles, the project
+  const [rail, setRail] = useState<"media" | "inspector" | "styles" | "project">("media");
+  // the whole editor's size (people pick it; kept on this device)
+  const [ui, setUi] = useState(1);
+  // a request for Claude from a button (a ready style): the panel opens and sends it
+  const [ask, setAsk] = useState<{ text: string; n: number } | null>(null);
   const [purgeAt, setPurgeAt] = useState(project.purgeAt);
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
   const [waves, setWaves] = useState<Record<string, string | null>>({});
   const [tab, setTab] = useState<InspectorTab>("basic");
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const v = Number(localStorage.getItem("jw-editor-ui"));
+        if (v >= 0.7 && v <= 1.4) setUi(v);
+      } catch {
+        /* private mode: the normal size */
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    // every size in the editor follows the page's base size, so the whole thing grows or shrinks together
+    const root = document.documentElement;
+    root.style.fontSize = ui === 1 ? "" : `${Math.round(ui * 100)}%`;
+    return () => {
+      root.style.fontSize = "";
+    };
+  }, [ui]);
+  const sizeUi = (d: number) => {
+    const v = Math.round(Math.min(1.4, Math.max(0.7, ui + d)) * 100) / 100;
+    setUi(v);
+    try {
+      localStorage.setItem("jw-editor-ui", String(v));
+    } catch {
+      /* not kept */
+    }
+  };
+  // one clip chosen, however (a tap, a new text, Claude): its settings show on the left
+  const [seen, setSeen] = useState(selected);
+  if (seen !== selected) {
+    setSeen(selected);
+    if (selected.length === 1 && rail !== "inspector") setRail("inspector");
+  }
+  // picking one clip shows its settings on the left
+  const pick = useCallback((ids: string[]) => {
+    setSelected(ids);
+    if (ids.length === 1) setRail("inspector");
+  }, []);
+  const openClaude = (on?: boolean) => {
+    setAssisting((v) => on ?? !v);
+    setChat((v) => on ?? !v);
+  };
 
   const tlRef = useRef(tl);
   const titleRef = useRef(title);
@@ -318,6 +385,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     setFonts({ readex: css.getPropertyValue("--font-readex").trim() || undefined, naskh: css.getPropertyValue("--font-naskh").trim() || undefined, kufi: css.getPropertyValue("--font-kufi").trim() || undefined });
     void Promise.all(Object.values(FONTS).map((f) => document.fonts.load(`700 48px ${f}`).catch(() => null))).then(() => player?.draw());
   }, [player]);
+  // catalogue fonts the texts use: fetched once, then the frame is drawn again with them
+  useEffect(() => {
+    let live = true;
+    void loadFontsOf(tl).then(() => live && player?.draw());
+    return () => {
+      live = false;
+    };
+  }, [tl, player]);
 
   // ---------- tools ----------
   const at = () => player?.ms ?? 0;
@@ -407,6 +482,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const total = duration(tl);
   const one = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
+  const pluginCtx = () => ({
+    projectId: project.id,
+    tl,
+    selected,
+    playhead: at(),
+    assets: assetMap,
+    infos: infos.current,
+    ask: (text: string) => {
+      openClaude(true);
+      setAsk((a) => ({ text, n: (a?.n ?? 0) + 1 }));
+    },
+  });
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
@@ -424,7 +511,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       }}
     >
       {/* top bar */}
-      <div className="flex items-center gap-2 border-b border-jw-line bg-jw-surface px-2 py-1.5">
+      <div className="jw-glass z-10 mx-2 mt-2 flex items-center gap-2 rounded-2xl px-2 py-1.5">
         <Link href={backHref} className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" aria-label="رجوع" title="رجوع">
           <Icon name="chevronRight" />
         </Link>
@@ -448,11 +535,24 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         <span className={`hidden shrink-0 text-[11px] sm:inline ${save === "error" || save === "conflict" ? "text-jw-danger" : "text-jw-faint"}`} aria-live="polite">
           {SAVE_TEXT[save]}
         </span>
-        <PluginTools ctx={() => ({ projectId: project.id, tl, selected, playhead: at(), assets: assetMap })} run={run} flash={flash} readOnly={readOnly} />
-        <button type="button" className={`jw-btn shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => setAssisting((v) => !v)} aria-pressed={assisting} title="قل لـ Claude وش تبي ويعدّل التايملاين">
-          <Icon name="sparkles" size={16} /> Claude
+        <PluginTools
+          ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} className="lg:hidden" />
+        {/* the whole editor's size */}
+        <div className="hidden items-center rounded-xl border border-jw-line bg-jw-surface-2 sm:flex" role="group" aria-label="حجم الواجهة">
+          <button type="button" className="grid h-8 w-8 place-items-center rounded-s-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui <= 0.7} onClick={() => sizeUi(-0.1)} aria-label="صغّر الواجهة" title="صغّر الواجهة">
+            <Icon name="zoomOut" size={15} />
+          </button>
+          <button type="button" className="min-w-11 text-[11px] tabular-nums text-jw-muted hover:text-jw-ink" onClick={() => sizeUi(1 - ui)} title="الحجم الطبيعي" dir="ltr">
+            {Math.round(ui * 100)}%
+          </button>
+          <button type="button" className="grid h-8 w-8 place-items-center rounded-e-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui >= 1.4} onClick={() => sizeUi(0.1)} aria-label="كبّر الواجهة" title="كبّر الواجهة">
+            <Icon name="zoomIn" size={15} />
+          </button>
+        </div>
+        <button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="مساعدك: قل له وش تبي ويعدّل التايملاين">
+          <span className="jw-orb h-4 w-4" aria-hidden /> Claude
         </button>
-        <button type="button" className="jw-btn jw-btn-primary shrink-0" disabled={readOnly || !total} onClick={() => setExporting(true)}>
+        <button type="button" className="jw-btn jw-btn-primary jw-3d shrink-0" disabled={readOnly || !total} onClick={() => setExporting(true)}>
           <Icon name="download" size={16} /> <span className="hidden sm:inline">صدّر</span>
         </button>
       </div>
@@ -482,11 +582,28 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         )
       )}
 
-      {/* library · preview · inspector (side panels on a computer, sheets on a phone) */}
-      <div className="flex min-h-0 flex-1">
+      {/* Claude (right) · the preview · the left side: a section and its rail (a computer); sheets on a phone */}
+      <div className="flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2">
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
+        {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
+        <aside className={`${chat ? "fixed inset-0 z-50 flex" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:static lg:z-auto ${assisting ? "lg:flex" : "lg:hidden"} lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl`} aria-label="Claude">
+          <Guard name="Claude"><AssistantPanel ask={ask} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
+        </aside>
+
+        <section className="relative flex min-w-0 flex-1 flex-col" aria-label="المعاينة">
+          <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
+            <canvas ref={canvas} width={tl.width} height={tl.height} className="jw-screen max-h-full max-w-full rounded-xl" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
+            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
+          </div>
+          {toast && (
+            <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>
+              {toast.text}
+            </div>
+          )}
+        </section>
+
         <aside
-          className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col border-jw-line bg-jw-surface lg:static lg:z-auto lg:flex lg:h-auto lg:w-72 lg:shrink-0 lg:rounded-none lg:border-e lg:shadow-none`}
+          className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${rail === "media" ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
           aria-label="الوسائط"
         >
           <SheetGrip onClose={() => setSheet(null)} title="الوسائط" />
@@ -507,37 +624,51 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
           />
         </aside>
 
-        <section className="relative flex min-w-0 flex-1 flex-col bg-black/40" aria-label="المعاينة">
-          <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
-            <canvas ref={canvas} width={tl.width} height={tl.height} className="max-h-full max-w-full rounded bg-black shadow-lg" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
-            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={setSelected} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
-          </div>
-          {toast && (
-            <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>
-              {toast.text}
-            </div>
-          )}
-        </section>
-
         <aside
-          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[65dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col border-jw-line bg-jw-surface lg:static lg:z-auto ${assisting ? "lg:hidden" : "lg:flex"} lg:h-auto lg:w-72 lg:shrink-0 lg:rounded-none lg:border-s lg:shadow-none`}
+          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[65dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${rail === "inspector" || rail === "project" ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
           aria-label="الإعدادات"
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} /></Guard>
+            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} /></Guard>
           </div>
         </aside>
-        {/* Claude: beside the preview on a computer, the whole screen on a phone */}
-        {assisting && (
-          <aside className="fixed inset-0 z-50 flex flex-col bg-jw-surface lg:static lg:z-auto lg:w-80 lg:shrink-0 lg:border-s lg:border-jw-line" aria-label="Claude">
-            <Guard name="Claude"><AssistantPanel projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => setAssisting(false)} readOnly={readOnly} /></Guard>
-          </aside>
-        )}
+
+        <aside className={`hidden jw-glass flex-col lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "styles" ? "lg:flex" : ""}`} aria-label="أساليب جاهزة">
+          <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
+            <PluginTools inline ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} />
+          </div>
+        </aside>
+
+        {/* the left rail: the editor's sections */}
+        <nav className="jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex" aria-label="أقسام المحرر">
+          {RAIL.map((r) => {
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.tab ? rail === "inspector" && tab === r.tab : false;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                aria-pressed={on}
+                title={r.hint}
+                onClick={() => {
+                  if (r.id === "captions") return setCaptioning(true);
+                  if (r.tab) {
+                    setTab(r.tab);
+                    setRail("inspector");
+                  } else setRail(r.id as "media" | "styles" | "project");
+                }}
+                className={`jw-3d flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight ${on ? "bg-gradient-to-br from-blue-600 to-sky-500 text-white" : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
+              >
+                <Icon name={r.icon} size={16} />
+                <span className="whitespace-nowrap">{r.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* transport and tools */}
-      <div className="flex items-center gap-1 border-y border-jw-line bg-jw-surface px-2 py-1" dir="rtl">
+      <div className="jw-glass mx-2 my-1 flex items-center gap-1 rounded-2xl px-2 py-1" dir="rtl">
         <div className="flex items-center gap-0.5">
           <button type="button" className={toolBtn} onClick={undo} disabled={!hist.past.length || readOnly} title="تراجع (Ctrl+Z)" aria-label="تراجع">
             <Icon name="undo" size={17} />
@@ -569,13 +700,20 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         </button>
       </div>
 
-      <div className="h-[34%] min-h-[150px] shrink-0 lg:h-[30%] lg:min-h-[200px]">
-        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={setSelected} run={run} player={player} compact={!wide} readOnly={readOnly} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
-          setSelected([id]);
+      <div className="jw-glass mx-2 mb-2 h-[34%] min-h-[150px] shrink-0 overflow-hidden rounded-2xl lg:h-[30%] lg:min-h-[200px]">
+        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+          pick([id]);
           setTab("transition");
           if (!wide) setSheet("inspector");
         }} /></Guard>
       </div>
+
+      {/* a phone: the assistant floats over the tools, one tap away */}
+      {!chat && !readOnly && (
+        <button type="button" onClick={() => openClaude(true)} className="jw-float fixed bottom-[calc(7.5rem+env(safe-area-inset-bottom))] end-3 z-30 grid h-14 w-14 place-items-center rounded-full lg:hidden" aria-label="افتح Claude مساعدك" title="Claude مساعدك">
+          <span className="jw-orb h-12 w-12" aria-hidden />
+        </button>
+      )}
 
       {/* the phone's tool bar */}
       <nav className="grid grid-cols-6 border-t border-jw-line bg-jw-surface pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="الأدوات">
@@ -658,7 +796,7 @@ function Transport({ player, total }: { player: Player | null; total: number }) 
       <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink" onClick={() => player?.seek(0)} aria-label="إلى البداية">
         <Icon name="skipBack" size={15} />
       </button>
-      <button type="button" className="grid h-10 w-10 place-items-center rounded-full bg-jw-ink text-jw-bg hover:opacity-90" onClick={() => player?.toggle()} aria-label={state.playing ? "إيقاف" : "تشغيل"} disabled={!total}>
+      <button type="button" className="jw-3d grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-sky-500 text-white hover:opacity-95" onClick={() => player?.toggle()} aria-label={state.playing ? "إيقاف" : "تشغيل"} disabled={!total}>
         <Icon name={state.playing ? "pause" : "play"} size={18} />
       </button>
       <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink" onClick={() => player?.seek(total)} aria-label="إلى النهاية">
