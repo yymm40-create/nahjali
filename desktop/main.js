@@ -1,4 +1,4 @@
-// «حيدرة كت» on the desktop (Mac and Windows): the editor in a window of its own. Files from the computer are not
+// «الجواد AI» on the desktop (Mac and Windows): JAWAD AI and its editor «حيدرة كت» in a window of their own. Files from the computer are not
 // uploaded: the program remembers where each one is and serves it to the editor from the disk (haidara-media://),
 // so a large video is on the timeline at once and the preview, the cuts and the export all run on the computer.
 // Only the timeline itself (a little text), the person's account and what is asked of حيدرة go over the internet.
@@ -11,12 +11,15 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 
 const SITE = new URL(process.env.HAIDARA_URL || "https://nahjali.vercel.app");
-const START = new URL("/jawad-ai/editor?app=1&desktop=1", SITE).toString();
+const START = new URL("/jawad-ai?desktop=1", SITE).toString();
 // the places sign-in passes through (Google, and the login service) stay inside the window
 const SIGN_IN = [/(^|\.)accounts\.google\.com$/, /(^|\.)google\.com$/, /(^|\.)gstatic\.com$/, /\.supabase\.co$/, /(^|\.)appleid\.apple\.com$/];
 
 process.env.HAIDARA_VERSION = app.getVersion();
-app.setName("حيدرة كت");
+// (the program was «حيدرة كت» before: its data folder keeps that name, so the sign-in and the computer's files that
+// were added stay after the update)
+app.setPath("userData", path.join(app.getPath("appData"), "حيدرة كت"));
+app.setName("الجواد AI");
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -141,7 +144,7 @@ function createWindow() {
     height: s.height || 900,
     minWidth: 960,
     minHeight: 600,
-    title: "حيدرة كت",
+    title: "الجواد AI",
     backgroundColor: "#0c0d0c",
     show: false,
     icon: path.join(__dirname, "build", "icon.png"),
@@ -197,6 +200,9 @@ function setupSession() {
   const ses = session.fromPartition("persist:haidara");
   ses.protocol.handle(SCHEME, serveMedia);
   // a file dropped or picked in the editor: kept where it is (only the site's own pages may ask)
+  ipcMain.on("app:version", (e) => {
+    e.returnValue = app.getVersion();
+  });
   ipcMain.handle("media:keep", (e, file) => {
     let origin = "";
     try {
@@ -219,7 +225,7 @@ function setupSession() {
     .split(" ")
     .filter((part) => /^[\x20-\x7e]+$/.test(part) && !/^(Electron|haidara-cut|HaidaraCut)\//i.test(part) && !part.startsWith(`${app.getName()}/`))
     .join(" ");
-  ses.setUserAgent(`${ua} HaidaraCut/${app.getVersion()}`);
+  ses.setUserAgent(`${ua} JawadAI/${app.getVersion()}`);
 
   // the microphone and camera (recording), notifications, full screen and the clipboard, for the site itself
   ses.setPermissionRequestHandler((wc, permission, done, details) => {
@@ -257,15 +263,15 @@ function setupMenu() {
     ...(mac
       ? [
           {
-            label: "حيدرة كت",
+            label: "الجواد AI",
             submenu: [
-              { role: "about", label: "عن حيدرة كت" },
+              { role: "about", label: "عن الجواد AI" },
               { type: "separator" },
-              { role: "hide", label: "إخفاء حيدرة كت" },
+              { role: "hide", label: "إخفاء الجواد AI" },
               { role: "hideOthers", label: "إخفاء البقية" },
               { role: "unhide", label: "إظهار الكل" },
               { type: "separator" },
-              { role: "quit", label: "إنهاء حيدرة كت" },
+              { role: "quit", label: "إنهاء الجواد AI" },
             ],
           },
         ]
@@ -273,8 +279,9 @@ function setupMenu() {
     {
       label: "ملف",
       submenu: [
-        { label: "مشاريعي", accelerator: "CmdOrCtrl+Shift+H", click: go("/jawad-ai/editor?app=1&desktop=1") },
-        { label: "الجواد الذكي", click: go("/jawad-ai") },
+        { label: "الرئيسية", accelerator: "CmdOrCtrl+Shift+H", click: go("/jawad-ai?desktop=1") },
+        { label: "حيدرة كت (المونتاج)", accelerator: "CmdOrCtrl+Shift+E", click: go("/jawad-ai/editor?app=1&desktop=1") },
+        { label: "مكتبتي", click: go("/jawad-ai/library") },
         { type: "separator" },
         mac ? { role: "close", label: "إغلاق النافذة" } : { role: "quit", label: "خروج" },
       ],
@@ -321,7 +328,7 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(() => {
-  app.setAboutPanelOptions?.({ applicationName: "حيدرة كت", applicationVersion: app.getVersion(), copyright: "© 2026 نهج علي" });
+  app.setAboutPanelOptions?.({ applicationName: "الجواد AI", applicationVersion: app.getVersion(), copyright: "© 2026 نهج علي" });
   setupSession();
   setupMenu();
   createWindow();
