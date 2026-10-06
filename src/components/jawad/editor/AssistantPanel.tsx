@@ -83,6 +83,10 @@ export default function AssistantPanel({
   onUndo,
   onClose,
   readOnly,
+  big,
+  onBig,
+  zoom,
+  onZoom,
 }: {
   /** a request sent from a button (sent once per `n`) */
   ask?: { text: string; n: number } | null;
@@ -101,6 +105,12 @@ export default function AssistantPanel({
   onUndo: () => void;
   onClose?: () => void;
   readOnly: boolean;
+  /** the conversation over the whole editor (a computer) */
+  big?: boolean;
+  onBig?: () => void;
+  /** its text size (1 = normal) */
+  zoom?: number;
+  onZoom?: (z: number) => void;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
@@ -276,6 +286,23 @@ export default function AssistantPanel({
           <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="حيدرة يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
             <Icon name="retry" size={13} /> محادثة جديدة
           </button>
+        )}
+        {onZoom && zoom != null && (
+          <span className="flex items-center rounded-full border border-jw-line" role="group" aria-label="حجم الكلام">
+            <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={zoom <= 0.85} onClick={() => onZoom(Math.round((zoom - 0.15) * 100) / 100)} aria-label="صغّر الكلام" title="صغّر الكلام">
+              <Icon name="zoomOut" size={15} />
+            </button>
+            <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={zoom >= 1.6} onClick={() => onZoom(Math.round((zoom + 0.15) * 100) / 100)} aria-label="كبّر الكلام" title="كبّر الكلام">
+              <Icon name="zoomIn" size={15} />
+            </button>
+          </span>
+        )}
+        {onBig && (
+          <span className="hidden lg:contents">
+            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${big ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onBig} aria-pressed={!!big} title={big ? "رجّع المحادثة لمكانها (Esc)" : "كبّر المحادثة على الشاشة كلها"}>
+              <Icon name={big ? "shrink" : "expand"} size={14} /> {big ? "تصغير" : "تكبير"}
+            </button>
+          </span>
         )}
         {onClose && (
           <>
