@@ -1,8 +1,9 @@
 // «الطالب الذكي» — Claude calls. Server only. Same model and price table as the rest of the site (lib/film/anthropic),
 // plus what the branch needs: PDF pages as documents, and Anthropic's web search tool for research.
 
-import { CLAUDE_MODEL, claudeCost, type ClaudeUsage } from "@/lib/film/anthropic";
+import { CLAUDE_MODEL, claudeCost, siteSystem, type ClaudeUsage } from "@/lib/film/anthropic";
 import { STUDENT } from "@config/jawad/student";
+import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 export type StudentPart =
   | { type: "text"; text: string }
@@ -50,7 +51,7 @@ export async function askJson<T>(o: {
   const body = await post(
     {
       max_tokens: o.maxTokens ?? 16000,
-      system: [{ type: "text", text: `${MATERIAL_RULE}\n\n${o.system}`, cache_control: { type: "ephemeral" } }],
+      system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`),
       messages: [{ role: "user", content: o.parts.map(toBlock) }],
       output_config: { effort: o.effort ?? "medium", format: { type: "json_schema", schema: o.schema } },
       fallbacks: "default",
@@ -89,7 +90,7 @@ export async function webResearch(o: { system: string; question: string }): Prom
   for (let round = 0; round < 5; round++) {
     const body = await post({
       max_tokens: 12000,
-      system: [{ type: "text", text: `${MATERIAL_RULE}\n\n${o.system}` }],
+      system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, false),
       messages,
       tools: [{ type: "web_search_20260209", name: "web_search", max_uses: STUDENT.maxSearches }],
     });
@@ -136,7 +137,10 @@ export async function webResearch(o: { system: string; question: string }): Prom
   return { paragraphs: paragraphs.map((p) => ({ ...p, text: p.text.trim() })).filter((p) => p.text), sources, searches, usd };
 }
 
-/** USD ceiling of one call: input tokens (≤ characters/2 for Arabic/Latin text, plus images/pages) and output tokens. */
+/**
+ * USD ceiling of one call: input tokens (≤ characters/2 for Arabic/Latin text, plus images/pages, plus the site
+ * knowledge every call carries) and output tokens.
+ */
 export function claudeCeilingUsd(inputChars: number, maxOut: number, extraInputTokens = 0) {
-  return ((inputChars / 2 + extraInputTokens + 3000) * 4 + maxOut * 20) / 1e6;
+  return ((inputChars / 2 + JAWAD_KNOWLEDGE.length / 2 + extraInputTokens + 3000) * 4 + maxOut * 20) / 1e6;
 }
