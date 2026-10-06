@@ -1,28 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { applyLook, curveAt, gamutToRec709, gradeIsNeutral, hueCurveAt, LOGS, LOOKS, logToLinear, maskAt, NEUTRAL_GRADE, parseCube, readGrade, sampleCurve, toCube, lutBytes, type LogId } from "@/lib/editor/grade";
+import { applyLook, curveAt, decodeLog, filmic, srgbEncode, gamutToRec709, gradeIsNeutral, hueCurveAt, LOGS, LOOKS, logToLinear, maskAt, NEUTRAL_GRADE, parseCube, readGrade, sampleCurve, toCube, lutBytes, type LogId } from "@/lib/editor/grade";
 
 describe("camera logs", () => {
-  // 18% grey lands where the makers' papers say (the encoded value of middle grey)
+  // 18% grey as the browser hands it over for a video-levels file (64 → 0, 940 → 1), per the makers' papers
+  const ire = (code10: number) => (code10 - 64) / 876;
   const grey: [LogId, number][] = [
-    ["slog3", 420 / 1023],
-    ["slog2", 347 / 1023],
-    ["vlog", 0.423],
-    ["logc3", 0.391],
-    ["logc4", 0.2783],
-    ["flog", 0.463],
-    ["flog2", 0.392],
-    ["bmd5", 0.383],
+    ["slog3", ire(420)],
+    ["slog2", ire(347)],
+    ["vlog", ire(433)],
+    ["logc3", ire(400)],
+    ["logc4", ire(0.2783 * 1023)],
+    ["flog", ire(470)],
+    ["flog2", ire(0.392 * 1023)],
+    ["bmd5", ire(0.383 * 1023)],
+    ["redlog3g10", ire(1023 / 3)],
+    ["nlog", ire(0.3628 * 1023)],
+    // Canon's papers give grey on video levels already (IRE/100)
+    ["clog3", 0.343],
+    ["clog2", 0.398],
+    ["clog", 0.3434],
     ["applelog", 0.488],
-    ["redlog3g10", 1 / 3],
-    ["clog3", 0.343 * (876 / 1023) + 64 / 1023],
-    ["clog2", 0.398 * (876 / 1023) + 64 / 1023],
   ];
-  for (const [id, code] of grey) {
-    it(`${id}: middle grey decodes to about 0.18`, () => {
-      expect(logToLinear(id, code)).toBeGreaterThan(0.15);
-      expect(logToLinear(id, code)).toBeLessThan(0.22);
+  for (const [id, v] of grey) {
+    it(`${id}: middle grey decodes to 0.18 from the browser's value`, () => {
+      expect(decodeLog(id, v, "video")).toBeGreaterThan(0.17);
+      expect(decodeLog(id, v, "video")).toBeLessThan(0.19);
     });
   }
+  it("a full-range file gives the same scene light", () => {
+    // the same grey stored as full code values
+    expect(decodeLog("slog3", 420 / 1023, "full")).toBeCloseTo(decodeLog("slog3", ire(420), "video"), 5);
+    expect(decodeLog("clog3", (0.343 * 876 + 64) / 1023, "full")).toBeCloseTo(decodeLog("clog3", 0.343, "video"), 5);
+  });
+  it("after the tone map grey shows at ~41% like DaVinci's CST, black stays black, white rolls off", () => {
+    expect(srgbEncode(filmic(0.18))).toBeGreaterThan(0.39);
+    expect(srgbEncode(filmic(0.18))).toBeLessThan(0.43);
+    expect(srgbEncode(filmic(0))).toBeLessThan(0.01);
+    expect(srgbEncode(filmic(1))).toBeLessThan(0.9);
+    expect(srgbEncode(filmic(8))).toBeGreaterThan(0.95);
+  });
   it("every log is monotone and black stays near zero", () => {
     for (const l of LOGS) {
       if (l.id === "none") continue;
@@ -41,6 +57,9 @@ describe("camera logs", () => {
       const w = [m[0] + m[1] + m[2], m[3] + m[4] + m[5], m[6] + m[7] + m[8]];
       for (const c of w) expect(c).toBeCloseTo(1, 3);
     }
+    expect(gamutToRec709("clog3", "rec709")).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    const r2020 = gamutToRec709("clog3", "rec2020");
+    expect(r2020[0]).toBeCloseTo(1.660491, 3);
     const m = gamutToRec709("slog3");
     expect(m[0]).toBeCloseTo(1.626947, 3);
     expect(m[4]).toBeCloseTo(1.417941, 3);
