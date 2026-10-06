@@ -6,7 +6,8 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { directorVersions, directorVideos } from "@/lib/film/director";
 import type { FilmProject } from "@/lib/film/types";
-import { createEditorProject, importAssets, requireEditorProject, runCommands, assetViews } from "./server";
+import { createEditorProject, importAssets, requireEditorProject, runCommands, assetInfo, assetViews } from "./server";
+import { firstCut } from "./first-cut";
 import { readTimeline } from "./model";
 
 const db = () => createAdminClient();
@@ -16,12 +17,15 @@ export async function filmCut(projectId: string) {
   const [versions, videos] = await Promise.all([directorVersions(projectId), directorVideos(projectId)]);
   const map = versions.filter((v) => v.kind === "dir_map" && v.status === "approved").at(-1)?.data.generation_map ?? [];
   const approved = versions.filter((v) => v.kind === "dir_generation" && v.status === "approved");
+  const planOf = (g: string) => approved.filter((v) => v.ref_key === g).at(-1)?.data;
   const ids = [...new Set([...map.map((g) => g.id), ...approved.map((v) => v.ref_key)])].filter((g) => approved.some((v) => v.ref_key === g));
   return ids.map((g) => {
     const chosen = videos.filter((x) => x.ref_key === g && x.status === "approved").at(-1) ?? videos.filter((x) => x.ref_key === g && x.status === "generated").at(-1);
     return {
       genId: g,
       name: map.find((m) => m.id === g)?.name ?? g,
+      plannedSec: Number(planOf(g)?.duration_sec ?? map.find((m) => m.id === g)?.duration_sec ?? 0) || null,
+      ratio: planOf(g)?.ratio ?? null,
       video: chosen?.storage_path ? { id: chosen.id, durationSec: Number(chosen.meta?.durationSec ?? 0) || null, approved: chosen.status === "approved" } : null,
       removed: !!chosen && !chosen.storage_path,
     };
@@ -35,7 +39,7 @@ export async function editorForFilm(filmProjectId: string) {
 
 /**
  * Opens the film's edit, bringing any newly chosen videos into its library. The first time it also makes «النسخة
- * الأولى»: the chosen videos one after another in the director's order.
+ * الأولى» (see first-cut.ts): the chosen videos in the director's order, cut to plan, with dissolves and the title.
  */
 export async function openFilmEdit(film: FilmProject, user: User) {
   let id = await editorForFilm(film.id);
@@ -55,9 +59,16 @@ export async function openFilmEdit(film: FilmProject, user: User) {
   // only the first time: afterwards the person's own edit is never rearranged (new videos wait in the library)
   if (fresh && main && !main.clips.length) {
     const assets = await assetViews(p.id);
-    const ordered = cut.map((c) => assets.find((a) => a.sourceId === c.video!.id)).filter((a) => !!a);
-    if (ordered.length) {
-      await runCommands(p, ordered.map((a) => ({ type: "add_clip" as const, assetId: a.id, trackId: main.id })), "film");
+    const shots = cut.flatMap((c) => {
+      const a = assets.find((x) => x.sourceId === c.video!.id);
+      return a ? [{ assetId: a.id, plannedMs: c.plannedSec ? c.plannedSec * 1000 : null }] : [];
+    });
+    // the film's shape: the ratio most of its scenes were made in
+    const ratios = cut.map((c) => c.ratio).filter((r): r is string => !!r);
+    const ratio = ratios.sort((x, y) => ratios.filter((r) => r === y).length - ratios.filter((r) => r === x).length)[0] ?? null;
+    const cmds = firstCut(timeline, shots, new Map(assets.map((a) => [a.id, assetInfo(a)])), { title: film.title, ratio });
+    if (cmds.length) {
+      await runCommands(p, cmds, "film");
       p = await requireEditorProject(id, user.id);
     }
   }

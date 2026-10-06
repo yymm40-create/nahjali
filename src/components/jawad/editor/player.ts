@@ -76,12 +76,16 @@ export class Player {
     }
     this.ms = Math.min(this.ms, duration(tl));
     // an edit while playing: the sound is scheduled again from here
-    if (this.playing) {
-      this.stopSound();
-      this.reanchor();
-      this.schedule();
+    try {
+      if (this.playing) {
+        this.stopSound();
+        this.reanchor();
+        this.schedule();
+      }
+      this.sync(true);
+    } catch (e) {
+      console.warn("editor update", e);
     }
-    this.sync(true);
     this.draw();
   }
 
@@ -215,7 +219,20 @@ export class Player {
           gain.gain.setValueAtTime(gainAt(track, c, from, this.spans), when);
           for (let t = from + 50; t < end; t += 50) gain.gain.linearRampToValueAtTime(gainAt(track, c, t, this.spans), when + (t - from) / 1000);
         } else gain.gain.value = c.volume;
-        src.start(when, Math.max(0, sourceTime(c, from) / 1000), ((end - from) / 1000) * c.speed);
+        // Safari refuses a start past the sound's end or a zero length (Chrome lets them pass): those clips stay quiet
+        const offset = Math.max(0, sourceTime(c, from) / 1000);
+        const length = ((end - from) / 1000) * c.speed;
+        if (!(offset < buf.duration && length > 0.001)) {
+          src.disconnect();
+          continue;
+        }
+        try {
+          src.start(when, offset, Math.min(length, buf.duration - offset));
+        } catch (e) {
+          console.warn("editor sound", e);
+          src.disconnect();
+          continue;
+        }
         src.onended = () => {
           if (this.nodes.get(c.id)?.src === src) this.nodes.delete(c.id);
         };
@@ -385,7 +402,12 @@ export class Player {
   }
 
   draw() {
-    drawFrame(this.ctx, this.tl, this.shown(), this.frameOf);
+    // one frame that can't be drawn (a picture the browser isn't ready to give) must never break the page
+    try {
+      drawFrame(this.ctx, this.tl, this.shown(), this.frameOf);
+    } catch (e) {
+      console.warn("editor draw", e);
+    }
   }
 
   /** A still of the current frame (for the project's cover). */

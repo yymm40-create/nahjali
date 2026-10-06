@@ -67,11 +67,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "speech_sign":
       return NextResponse.json(await signSpeechUpload(p, b));
     case "transcribe":
-      return NextResponse.json(await transcribe(p, owner, b));
+      return NextResponse.json(await transcribe(p, { id: user.id, email: user.email, owner }, b));
     case "align":
-      return NextResponse.json(await align(p, owner, b));
+      return NextResponse.json(await align(p, { id: user.id, email: user.email, owner }, b));
     case "assistant":
-      return NextResponse.json(await assist(p, owner, b));
+      return NextResponse.json(await assist(p, { id: user.id, email: user.email, owner }, b));
     case "history":
       return NextResponse.json({ history: await history(p.id) }, noStore);
   }

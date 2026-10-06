@@ -8,10 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, type ClaudeTurn } from "@/lib/film/anthropic";
 import { checkCommands, context, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
+import { charged, editorLimit, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
-
-/** Requests per person per day while everything is free (the owner has none). */
-export const ASSISTANT_DAILY = 40;
 
 const db = () => createAdminClient();
 
@@ -86,11 +84,12 @@ interface Answer {
 }
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, owner: boolean, b: { message?: unknown; history?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown }) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown }) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
-  if (!owner && (await usedToday(p)) >= ASSISTANT_DAILY) throw new UserError(`وصلت لحد طلبات Claude اليوم (${ASSISTANT_DAILY}). ترجع بكرة.`, 429);
+  const daily = await editorLimit("editor_claude_daily", who);
+  if (daily !== Infinity && (await usedToday(p)) >= daily) throw new UserError(`وصلت لحد طلبات Claude اليوم (${daily}). ترجع بكرة.`, 429);
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("Claude غير مفعّل على الخادم.", 503);
 
   const assets = await assetViews(p.id);
@@ -123,13 +122,12 @@ export async function assist(p: EditorProject, owner: boolean, b: { message?: un
     usd += claudeCost(r.usage);
     return r;
   };
-  let r;
-  try {
-    r = await ask(merged);
-  } catch (e) {
-    console.error("editor assistant", e);
-    throw new UserError("ما قدر Claude يرد الحين؛ جرّب بعد شوي.", 502);
-  }
+  const r = await charged(who, "editor_price_claude", 1, "طلب Claude في الممنتج", () =>
+    ask(merged).catch((e) => {
+      console.error("editor assistant", e);
+      throw new UserError("ما قدر Claude يرد الحين؛ جرّب بعد شوي.", 502);
+    }),
+  );
 
   const check = (raw: string[]) => checkCommands(tl, raw, infos);
 

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "render-template": "node design/render.mjs"
+    "render-template": "node design/render.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.61.3",
@@ -36,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
