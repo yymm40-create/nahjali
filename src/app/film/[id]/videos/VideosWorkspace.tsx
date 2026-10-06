@@ -104,7 +104,8 @@ export default function VideosWorkspace({
   );
   // Length of each video (4–15 s), starting from the director's plan; the price follows it
   const [seconds, setSeconds] = useState<Record<string, number>>(() => Object.fromEntries(generations.map((g) => [g.id, clampVideoSeconds(g.durationSec)])));
-  const secOf = (g: Generation) => seconds[g.id] ?? clampVideoSeconds(g.durationSec);
+  // (within the chosen Seedance's own limit: 30 s on 2.5, 15 s on 2.0)
+  const secOf = (g: Generation) => clampVideoSeconds(seconds[g.id] ?? g.durationSec, model);
   // Seedance version for every video: the director's choice by default (the most common one)
   const [model, setModel] = useState<VideoModel>(() =>
     generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
@@ -518,7 +519,7 @@ export default function VideosWorkspace({
                   id={`sec-${g.id}`}
                   type="range"
                   min={VIDEO_DURATION.min}
-                  max={VIDEO_DURATION.max}
+                  max={VIDEO_MODELS[model].maxSeconds}
                   step={1}
                   value={sec}
                   onChange={(e) => setSeconds({ ...seconds, [g.id]: Number(e.target.value) })}
@@ -528,7 +529,7 @@ export default function VideosWorkspace({
                 <div className="flex justify-between text-xs font-bold text-muted" dir="ltr">
                   <span>{VIDEO_DURATION.min}s</span>
                   {clampVideoSeconds(g.durationSec) !== sec && <span>المخرج خطّط {clampVideoSeconds(g.durationSec)}s</span>}
-                  <span>{VIDEO_DURATION.max}s</span>
+                  <span>{VIDEO_MODELS[model].maxSeconds}s</span>
                 </div>
                 {sec < clampVideoSeconds(g.durationSec) && (
                   <p className="text-xs font-bold text-red-500">⚠️ أقصر من خطة المخرج؛ ممكن الحوار أو الأحداث ما تلحق تكتمل.</p>

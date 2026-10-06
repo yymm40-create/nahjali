@@ -62,8 +62,10 @@ export const videoEstimateUsd = (model: VideoModel, resolution: VideoResolution,
 export const FILM_PUBLIC_TRIAL = { open: true, since: "2026-10-03T13:38:00Z" } as const;
 
 /** Video length the client can choose on the generation page (seconds). */
-export const VIDEO_DURATION = { min: 4, max: 15 } as const;
-export const clampVideoSeconds = (sec: number) => Math.min(Math.max(Math.round(sec || 10), VIDEO_DURATION.min), VIDEO_DURATION.max);
+// The longest is Seedance 2.5's 30 s; each model's own cap (VIDEO_MODELS[m].maxSeconds) applies on top
+export const VIDEO_DURATION = { min: 4, max: 30 } as const;
+export const clampVideoSeconds = (sec: number, model?: VideoModel) =>
+  Math.min(Math.max(Math.round(sec || 10), VIDEO_DURATION.min), model ? VIDEO_MODELS[model].maxSeconds : VIDEO_DURATION.max);
 
 /** Generated videos are kept on the site this many days; the client is asked to download them. */
 export const VIDEO_KEEP_DAYS = 7;
