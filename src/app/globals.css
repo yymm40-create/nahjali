@@ -249,3 +249,23 @@ body {
 html[data-native-app] .hide-in-app {
   display: none !important;
 }
+
+/* the home page's branches: a slow shine across */
+.home-shine {
+  background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.1) 45%, transparent 60%);
+  background-size: 250% 100%;
+  animation: home-shine 7s ease-in-out infinite;
+}
+@keyframes home-shine {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-shine {
+    animation: none;
+  }
+}

@@ -111,6 +111,22 @@ export default async function JawadHome() {
               </li>
             );
           })}
+          {/* «كتيب نهج علي»: one of the site's works, reached from here now (the home page has two branches) */}
+          <li>
+            <Link href="/booklet" className="jw-panel group relative flex h-full items-start gap-3 overflow-hidden p-4 transition-all hover:-translate-y-0.5 hover:border-jw-line-strong" style={{ borderTopColor: "#e3a90f", borderTopWidth: 3 }}>
+              <span className="pointer-events-none absolute -end-10 -top-10 size-28 rounded-full opacity-[0.12] blur-2xl transition-opacity group-hover:opacity-25" style={{ background: "#e3a90f" }} aria-hidden />
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl text-xl" style={{ background: "color-mix(in srgb, #e3a90f 16%, transparent)" }} aria-hidden>
+                📖
+              </span>
+              <span className="min-w-0 space-y-1">
+                <span className="flex items-center gap-1 font-semibold">
+                  كتيب نهج علي
+                  <Icon name="chevronLeft" size={14} className="text-jw-faint transition-transform group-hover:-translate-x-0.5" />
+                </span>
+                <span className="block text-sm text-jw-muted">صورة طفلك تصير شخصية كرتونية تتعلّم الصلاة والقرآن والعادات الطيبة، في كتيب ملوّن باسمه.</span>
+              </span>
+            </Link>
+          </li>
         </ul>
       </section>
 

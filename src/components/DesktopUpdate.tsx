@@ -31,7 +31,7 @@ export default function DesktopUpdate() {
   if (!show) return null;
   return (
     <div role="status" className="fixed inset-x-0 top-0 z-[9998] flex flex-wrap items-center justify-center gap-3 bg-blue-700 px-4 py-2 text-sm font-bold text-white shadow-lg" dir="rtl">
-      <span>✨ نسخة جديدة من البرنامج: «الجواد AI» بشعار جديد وتحسينات.</span>
+      <span>✨ نسخة جديدة من البرنامج: «الجواد AI» بواجهة جديدة وتحسينات.</span>
       <a href="/download" className="rounded-full bg-white px-3 py-1 text-blue-700">
         حمّل التحديث
       </a>

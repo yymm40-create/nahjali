@@ -15,4 +15,4 @@ export const DOWNLOADS = {
 };
 
 /** The desktop program's newest version: an older one shows «نسخة جديدة» inside it (DesktopUpdate). */
-export const DESKTOP_LATEST = "1.1.0";
+export const DESKTOP_LATEST = "1.2.0";
