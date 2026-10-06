@@ -16,7 +16,7 @@ function Tile({ id, label, icon, a, b, on, disabled, onPick }: { id: string; lab
     const ctx = el.getContext("2d")!;
     // a little timeline of two pictures touching, with this transition between them (1.2 s, looping)
     const tl: Timeline = { ...emptyTimeline("16:9"), width: el.width, height: el.height, background: "#0b1020" };
-    const mk = (cid: string, start: number, img: string): Clip => ({ id: cid, assetId: img, start, in: 0, out: 1600, speed: 1, volume: 1, fit: "cover", transform: { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 }, text: null, keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect", words: [], bg: null, own: false, sound: null, anim: null, fx: [], fix: null });
+    const mk = (cid: string, start: number, img: string): Clip => ({ id: cid, assetId: img, start, in: 0, out: 1600, speed: 1, volume: 1, fit: "cover", transform: { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 }, text: null, keys: [], color: null, grade: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect", words: [], bg: null, own: false, sound: null, anim: null, fx: [], fix: null });
     const A = { ...mk("a", 0, "a"), transition: { kind: id, ms: 1200 } };
     tl.tracks = [{ id: "v", kind: "video", name: "", muted: false, hidden: false, locked: false, duck: false, clips: [A, mk("b", 1600, "b")] }];
     const frame = (c: Clip) => {

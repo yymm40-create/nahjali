@@ -978,7 +978,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         {chatBig && <button type="button" aria-label="رجّع المحادثة لمكانها" className="fixed inset-0 z-[59] hidden bg-black/50 lg:block" onClick={() => setChatBig(false)} />}
 
         <section ref={stage} className={`relative flex min-w-0 flex-1 flex-col ${full ? "fixed inset-0 z-[70] bg-black" : ""}`} aria-label="المعاينة">
-          <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
+          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
             <canvas ref={canvas} width={tl.width} height={tl.height} className="jw-screen max-h-full max-w-full rounded-xl" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
             <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
             <button

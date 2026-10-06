@@ -4,6 +4,7 @@
 import { familyOf } from "./fontload";
 import { drawWithFx, fxPlan } from "./fx";
 import { transitionLook, type TrLook, type TrMask } from "@/lib/editor/transitions";
+import { gradeFrame } from "./grade-gl";
 import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx } from "@/lib/editor/model";
 
 export interface Frame {
@@ -289,6 +290,11 @@ function showFromRight(ctx: CanvasRenderingContext2D, look: Drawn, w: number, h:
 const jitter = (seed: number, i: number) => (((seed * 7919 + i * 104729) % 1000) / 1000) - 0.5;
 
 function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number) {
+  // «التلوين»: the frame graded on the GPU first (the picture then goes through everything else as usual)
+  if (clip.grade) {
+    const g = gradeFrame(f.img, f.width, f.height, clip.grade, Math.max(0, ms - clip.start), clip.grade.secondaries.findIndex((s) => s.show) + 1);
+    if (g) f = { ...f, img: g };
+  }
   const b = baseSize(clip.fit, f.width, f.height, W, H);
   const w = b.w * t.scale * look.scale;
   const h = b.h * t.scale * look.scale;

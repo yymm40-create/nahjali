@@ -2,6 +2,7 @@
 // and plugins all send the same JSON, so whatever one can do, the others can too, and each is checked the same way.
 // Pure: `apply` never changes the timeline it gets.
 
+import { NEUTRAL_GRADE, readGrade, type Grade } from "./grade";
 import {
   clipEnd,
   clipLength,
@@ -57,6 +58,8 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   text?: Partial<TextStyle>;
   /** null = back to the original colours */
   color?: Partial<ColorGrade> | null;
+  /** «التلوين»: merged over the clip's grade (nested parts replaced whole); null = none */
+  grade?: Partial<Grade> | null;
   /** null = a plain cut */
   transition?: { kind: TransitionKind; ms?: number } | null;
   /** null = the whole picture as filmed */
@@ -70,7 +73,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
+const CLIP_DEFAULTS = { keys: [], color: null, grade: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -442,6 +445,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         const next = p.color === null ? null : { ...(clip.color ?? NEUTRAL_COLOR), ...p.color };
         if (next && !(next.preset in COLOR_PRESETS)) next.preset = "none";
         clip.color = next;
+      }
+      if (p.grade !== undefined) {
+        if (clip.text || track.kind === "audio") fail("التلوين للصور والفيديو فقط.");
+        clip.grade = p.grade === null ? null : readGrade({ ...NEUTRAL_GRADE, ...(clip.grade ?? {}), ...p.grade });
       }
       if (p.bg !== undefined) {
         if (clip.text || track.kind !== "video") fail("عزل الشخص للصور والفيديو فقط.");
