@@ -44,9 +44,9 @@ export function falUrl(out: Record<string, unknown>, key: string): string | null
  * SAM-Audio: the sound described by `prompt` taken out of a recording (`target`), and everything else (`residual`).
  * Both as downloaded files.
  */
-export async function samSeparate(audioUrl: string, prompt: string) {
+export async function samSeparate(audioUrl: string, prompt: string, waitMs?: number) {
   // («balanced»: a song of a few minutes is done well within the request's time; long sound goes in 60 s chunks)
-  const out = await falRun<Record<string, unknown>>("fal-ai/sam-audio/separate", { audio_url: audioUrl, prompt, acceleration: "balanced" });
+  const out = await falRun<Record<string, unknown>>("fal-ai/sam-audio/separate", { audio_url: audioUrl, prompt, acceleration: "balanced" }, waitMs);
   const target = falUrl(out, "target") ?? falUrl(out, "target_audio") ?? falUrl(out, "audio");
   const residual = falUrl(out, "residual") ?? falUrl(out, "residual_audio");
   if (!target || !residual) throw new ProviderError("rejected", "ما رجع الفصل بنتيجة كاملة؛ جرّب مرة ثانية.", `sam-audio output keys: ${Object.keys(out).join(",")}`);
@@ -56,4 +56,22 @@ export async function samSeparate(audioUrl: string, prompt: string) {
     return { bytes: Buffer.from(await r.arrayBuffer()), mime: r.headers.get("content-type") ?? "audio/wav" };
   };
   return { target: await get(target), residual: await get(residual), residualUrl: residual };
+}
+
+/**
+ * Demucs: a song or a recording split into its singing/talking (`vocals`) and its music (drums, bass and the rest),
+ * as WAV links. Together the four play the recording back, so nothing is heard twice.
+ */
+export async function demucsSplit(audioUrl: string, waitMs = 150_000) {
+  const out = await falRun<Record<string, unknown>>("fal-ai/demucs", { audio_url: audioUrl, model: "htdemucs", stems: ["vocals", "drums", "bass", "other"], output_format: "wav" }, waitMs);
+  const urls = { vocals: falUrl(out, "vocals"), drums: falUrl(out, "drums"), bass: falUrl(out, "bass"), other: falUrl(out, "other") };
+  if (!urls.vocals || !urls.drums || !urls.bass || !urls.other) throw new ProviderError("rejected", "ما رجع الفصل بنتيجة كاملة؛ جرّب مرة ثانية.", `demucs output keys: ${Object.keys(out).join(",")}`);
+  return urls as Record<keyof typeof urls, string>;
+}
+
+/** A finished file of a model's output. */
+export async function falFile(u: string) {
+  const r = await fetch(u);
+  if (!r.ok) throw new ProviderError("rejected", "تعذّر تنزيل نتيجة الفصل.", `download ${r.status}`);
+  return Buffer.from(await r.arrayBuffer());
 }
