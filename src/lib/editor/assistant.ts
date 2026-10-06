@@ -64,6 +64,7 @@ COMMANDS: put each command in "commands" as a JSON object string. Available:
 - {"type":"add_clip","assetId":ID,"at":MS?,"trackId":ID or "new"?} – put library media on the timeline (pictures/videos go to the main track, inserted at "at" or at the end; sound to a free sound track at "at", default 0; "new" = a new track of its kind, e.g. a picture over the video).
 - {"type":"extract_audio","clipId":ID} – take a video clip's sound out onto a sound track, in sync (the video goes quiet); then that sound can be cut, faded or moved alone.
 - {"type":"add_track","kind":"video"|"audio"|"text"}
+- {"type":"lift_fix","clipId":ID} – «التعديل الذكي»: lift a video piece straight up onto the red track (role "fix"), same place, to be made again. To mark seconds A–B of a video: split at A and B, then lift the middle piece ("$N" ids work). Then {"type":"update_clip","clipId":ID,"patch":{"fix":{"note":TEXT,"mode":"parts"|"whole"}}} writes what to fix in it (parts = only that piece is made again, whole = the whole video). The person sends them from «اكتب التعديلات وأرسلها»; what is made lands on the green track (role "fixed") by itself.
 - {"type":"add_text","at":MS,"body":TEXT,"duration":MS?} – a title or text over the video.
 - {"type":"move_clip","clipId":ID,"trackId":ID or "new","start":MS}
 - {"type":"trim_clip","clipId":ID,"edge":"start"|"end","to":MS} – move one edge of a clip to timeline time "to".

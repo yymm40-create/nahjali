@@ -8,6 +8,7 @@ import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputV
 import SmartCoin from "@/components/SmartCoin";
 import Dialog from "../Dialog";
 import SmartEdit from "./SmartEdit";
+import { smartEditInEditor } from "../editor/smart-open";
 import SoundOnVideo from "./SoundOnVideo";
 import Icon from "../Icon";
 import LocalTime from "../LocalTime";
@@ -301,6 +302,16 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
     }
   };
   const [editing, setEditing] = useState(false);
+  const [opening, setOpening] = useState(false);
+  // a video: cut out the pieces to fix in «الممنتج الذكي» (red track) and get them made again there (green track)
+  const startEdit = async () => {
+    if (j.outputKind !== "video") return setEditing(true);
+    setOpening(true);
+    const href = await smartEditInEditor(j.id, j.outputs[0]?.id);
+    if (href) return window.location.assign(href);
+    setOpening(false);
+    setEditing(true);
+  };
   const editable = j.status === "succeeded" && j.outputs.length > 0 && (j.outputKind === "video" || j.outputKind === "image");
   // Opened with ?edit=<this job> (e.g. a film video sent here): «التعديل الذكي» opens by itself
   useEffect(() => {
@@ -485,8 +496,8 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
             </button>
           )}
           {editable && (
-            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setEditing(true)}>
-              <Icon name="wand" size={14} /> التعديل الذكي
+            <button type="button" className="jw-btn !min-h-8 !px-2 text-xs !border-jw-accent/50 text-jw-accent" disabled={opening} onClick={startEdit}>
+              <Icon name="wand" size={14} /> {opening ? "يفتح الممنتج…" : "التعديل الذكي"}
             </button>
           )}
           {j.cancellable && (

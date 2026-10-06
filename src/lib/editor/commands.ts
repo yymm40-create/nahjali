@@ -44,9 +44,15 @@ import {
   type Word,
   type CaptionStyle,
   CAPTION_STYLES,
+  FIX_TRACK,
+  readFix,
+  type Fix,
+  type TrackRole,
 } from "./model";
 
 export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn" | "fadeOut" | "shape" | "own">> & {
+  /** a red piece's note, kind of edit and job (merged) */
+  fix?: Partial<Fix>;
   transform?: Partial<Transform>;
   text?: Partial<TextStyle>;
   /** null = back to the original colours */
@@ -64,7 +70,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[] };
+const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -82,7 +88,8 @@ export type Command =
   | { type: "delete"; clipIds: string[]; ripple: boolean }
   | { type: "duplicate"; clipId: string }
   | { type: "update_clip"; clipId: string; patch: ClipPatch }
-  | { type: "add_track"; kind: TrackKind }
+  /** `role`: the red track of pieces to fix, or the green one of what was made («التعديل الذكي») */
+  | { type: "add_track"; kind: TrackKind; role?: TrackRole }
   | { type: "update_track"; trackId: string; patch: Partial<Pick<Track, "muted" | "hidden" | "locked" | "name" | "duck" | "color">> }
   /** a motion point at timeline time `at` with this look (one already there is replaced) */
   | { type: "set_key"; clipId: string; at: number; transform: Partial<Transform> }
@@ -106,7 +113,14 @@ export type Command =
    * Cuts timeline spans out of every track at once and closes them (silences, a part to drop, «خلّه ٣٠ ثانية»):
    * picture and sound stay in sync, and no clip id needs to be known.
    */
-  | { type: "remove_ranges"; ranges: [number, number][] };
+  | { type: "remove_ranges"; ranges: [number, number][] }
+  /** «التعديل الذكي»: a piece lifted straight up onto the red track, in the very same place (to be made again) */
+  | { type: "lift_fix"; clipId: string }
+  /**
+   * «التعديل الذكي»: what was made for a red piece, on the green track at the same place and of the same length.
+   * `offset` is where in the new video the piece's own first moment is (ms).
+   */
+  | { type: "place_fixed"; clipId: string; assetId: string; offset: number };
 
 export class CommandError extends Error {}
 
@@ -191,6 +205,21 @@ function newTrack(t: Timeline, kind: TrackKind): Track {
   return track;
 }
 
+/** The red (to fix) or green (made) track, made when missing: green always right above red, both above the rest. */
+function roleTrack(t: Timeline, role: TrackRole): Track {
+  const have = t.tracks.find((x) => x.role === role);
+  if (have) return have;
+  const track = newTrack(t, "video");
+  Object.assign(track, { name: FIX_TRACK[role].name, color: FIX_TRACK[role].color, role });
+  const green = t.tracks.find((x) => x.role === "fixed");
+  if (role === "fix" && green) {
+    t.tracks = t.tracks.filter((x) => x !== track);
+    t.tracks.splice(t.tracks.indexOf(green), 0, track);
+  }
+  return track;
+}
+const FRESH_FIX: Fix = { note: "", mode: "parts", job: null, from: null, state: "draft" };
+
 const free = (track: Track, from: number, to: number) => track.clips.every((c) => clipEnd(c) <= from || c.start >= to);
 const countClips = (t: Timeline) => t.tracks.reduce((n, x) => n + x.clips.length, 0);
 
@@ -251,6 +280,17 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const kind = from.kind === "audio" ? "audio" : trackFor(clip, assets);
       const to = cmd.trackId === "new" ? newTrack(t, kind) : editable(t, cmd.trackId);
       if (to.kind !== kind) fail(to.kind === "audio" ? "هذا المسار للصوت فقط." : to.kind === "text" ? "هذا المسار للنصوص فقط." : "هذا المسار للصور والفيديو.");
+      if (to.role === "fix") {
+        // a piece on the red track stays exactly where it was in time
+        if (from !== to && !free(to, clip.start, clipEnd(clip))) fail("فيه جزء ثاني بنفس المكان على المسار الأحمر.");
+        if (magnet(t, from)) t.magnetic = false;
+        clip.fix ??= { ...FRESH_FIX };
+        from.clips = from.clips.filter((c) => c.id !== clip.id);
+        to.clips = [...to.clips.filter((c) => c.id !== clip.id), clip].sort((a, b) => a.start - b.start);
+        if (from !== to) tidy(t, from);
+        return { timeline: t, label: "رفعت جزءًا للتعديل", select: [clip.id] };
+      }
+      clip.fix = null;
       from.clips = from.clips.filter((c) => c.id !== clip.id);
       if (from !== to) tidy(t, from);
       if (magnet(t, to)) insertMain(to, clip, cmd.start);
@@ -302,6 +342,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           if (at - c.start < LIMITS.minClipMs || clipEnd(c) - at < LIMITS.minClipMs) continue;
           const cut = Math.round(sourceTime(c, at));
           const right: Clip = { ...structuredClone(c), id: newId("c"), start: at, in: cut, fadeIn: 0 };
+          if (right.fix) right.fix = { ...right.fix, job: null, from: null, state: "draft" };
           if (c.words.length) {
             // a caption keeps each word on the side it is said; the text follows the words
             const rel = at - c.start;
@@ -387,6 +428,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (p.anim !== undefined) {
         if (track.kind === "audio") fail("الدخول والخروج للنصوص والصور والفيديو.");
         clip.anim = p.anim === null ? null : readAnim({ ...(clip.anim ?? {}), ...p.anim }, !!clip.text);
+      }
+      if (p.fix) {
+        if (track.role !== "fix") fail("الملاحظات للأجزاء اللي على المسار الأحمر.");
+        clip.fix = readFix({ ...(clip.fix ?? FRESH_FIX), ...p.fix });
       }
       if (p.own != null) {
         if (!clip.text) fail("الفصل للكابشن والنصوص فقط.");
@@ -597,6 +642,11 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
     }
 
     case "add_track": {
+      if (cmd.role === "fix" || cmd.role === "fixed") {
+        if (t.tracks.some((x) => x.role === cmd.role)) fail("المسار موجود من قبل.");
+        const track = roleTrack(t, cmd.role);
+        return { timeline: t, label: `أضفت مسار «${track.name}»`, select: [track.id] };
+      }
       const track = newTrack(t, cmd.kind);
       return { timeline: t, label: `أضفت مسار ${TRACK_NAME[cmd.kind]}`, select: [track.id] };
     }
@@ -639,6 +689,52 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (!/^#[0-9a-f]{6}$/i.test(cmd.color)) fail("لون غير صحيح.");
       t.background = cmd.color;
       return { timeline: t, label: "غيّرت لون الخلفية" };
+    }
+
+    case "lift_fix": {
+      const { track: from, clip } = owned(t, cmd.clipId);
+      const a = clip.assetId ? assets.get(clip.assetId) : null;
+      if (from.kind !== "video" || !a || a.kind !== "video") fail("ارفع جزءًا من فيديو.");
+      if (from.role === "fix") fail("هذا الجزء على المسار الأحمر من قبل.");
+      const red = roleTrack(t, "fix");
+      if (red.locked) fail(`المسار «${red.name}» مقفول؛ افتح القفل أول.`);
+      if (!free(red, clip.start, clipEnd(clip))) fail("فيه جزء ثاني بنفس المكان على المسار الأحمر.");
+      // the main track must not close the gap the piece leaves behind
+      if (magnet(t, from)) t.magnetic = false;
+      from.clips = from.clips.filter((c) => c.id !== clip.id);
+      tidy(t, from);
+      clip.fix = { ...FRESH_FIX };
+      clip.transition = null;
+      red.clips = [...red.clips, clip].sort((x, y) => x.start - y.start);
+      return { timeline: t, label: "رفعت جزءًا للمسار الأحمر", select: [clip.id] };
+    }
+
+    case "place_fixed": {
+      const { track: red, clip } = findClip(t, cmd.clipId) ?? fail("ما لقينا الجزء.");
+      if (red.role !== "fix") fail("هذا الجزء مو على المسار الأحمر.");
+      const a = assets.get(cmd.assetId) ?? fail("ما لقينا الملف.");
+      if (a.kind !== "video") fail("التعديل لازم يكون فيديو.");
+      const green = roleTrack(t, "fixed");
+      const len = clip.out - clip.in;
+      const max = a.durationMs ?? len;
+      const inMs = Math.round(Math.max(0, Math.min(Number(cmd.offset) || 0, max - LIMITS.minClipMs)));
+      const made: Clip = {
+        ...structuredClone(clip),
+        id: newId("c"),
+        assetId: a.id,
+        in: inMs,
+        out: Math.round(Math.min(max, inMs + len)),
+        fix: null,
+        transition: null,
+      };
+      const end = clipEnd(made);
+      // a newer result replaces what was made for the same place
+      green.clips = [...green.clips.filter((c) => clipEnd(c) <= made.start || c.start >= end), made].sort((x, y) => x.start - y.start);
+      clip.fix = { ...(clip.fix ?? FRESH_FIX), state: "done" };
+      // the original piece stays under it, quiet
+      red.muted = true;
+      if (countClips(t) > LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      return { timeline: t, label: "حطّيت التعديل على المسار الأخضر", select: [made.id] };
     }
 
     case "set_magnetic": {

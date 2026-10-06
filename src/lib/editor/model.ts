@@ -379,6 +379,37 @@ export interface Clip {
    * keeps what it has and later group changes reach it field by field.
    */
   own: boolean;
+  /** «التعديل الذكي»: a piece lifted onto the red track, with what to fix in it (null elsewhere) */
+  fix: Fix | null;
+}
+
+/** What to do with a piece on the red track: the note for Claude and how much of the video is made again. */
+export interface Fix {
+  note: string;
+  /** parts = only this piece (cut back in on its first/last frames); whole = the whole video made again */
+  mode: "parts" | "whole";
+  /** the JAWAD AI job making it (once sent) */
+  job: string | null;
+  /** where in the original video the made clip starts (ms): the green clip lines up from it */
+  from: number | null;
+  state: "draft" | "making" | "done" | "failed";
+}
+
+export const FIX_NOTE_MAX = 300;
+/** The two tracks of «التعديل الذكي»: red = pieces to fix, green = what was made in their place. */
+export const FIX_TRACK = { fix: { name: "للتعديل", color: "#ef4444" }, fixed: { name: "المعدّل", color: "#22c55e" } } as const;
+export type TrackRole = keyof typeof FIX_TRACK;
+
+export function readFix(v: unknown): Fix | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  return {
+    note: typeof o.note === "string" ? o.note.slice(0, FIX_NOTE_MAX) : "",
+    mode: o.mode === "whole" ? "whole" : "parts",
+    job: typeof o.job === "string" && /^[0-9a-f-]{36}$/i.test(o.job) ? o.job : null,
+    from: typeof o.from === "number" && Number.isFinite(o.from) && o.from >= 0 ? Math.round(Math.min(o.from, LIMITS.maxMs)) : null,
+    state: (["draft", "making", "done", "failed"] as const).find((x) => x === o.state) ?? "draft",
+  };
 }
 
 export interface Track {
@@ -392,6 +423,8 @@ export interface Track {
   duck: boolean;
   /** the colour the person gave the track (its clips wear it); none = the usual colour of its kind */
   color?: string | null;
+  /** «التعديل الذكي»: the red track of pieces to fix, or the green one of what was made */
+  role?: TrackRole | null;
   /** clips never overlap and are kept sorted by `start` */
   clips: Clip[];
 }
@@ -740,6 +773,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
           })
           .filter((w) => w.w),
     own: kind === "text" && o.own === true,
+    fix: kind === "video" ? readFix(o.fix) : null,
     sound: kind === "text" ? null : readSound(o.sound),
     anim: kind === "audio" ? null : readAnim(o.anim, kind === "text"),
     fx: kind === "video" ? readFx(o.fx) : [],
@@ -781,7 +815,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null): T
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed") ? t.role : null, clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);

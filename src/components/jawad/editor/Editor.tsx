@@ -8,6 +8,7 @@ import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
 import AssistantPanel from "./AssistantPanel";
 import Guard from "./Guard";
+import SmartFix from "./SmartFix";
 import { PluginTools } from "./plugins";
 import { familyOf, loadFont, loadFontsOf } from "./fontload";
 import { separateAsset } from "./make";
@@ -837,6 +838,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         </button>
       </div>
 
+      <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} /></Guard>
       <div className="jw-glass mx-2 mb-2 h-[34%] min-h-[150px] shrink-0 overflow-hidden rounded-2xl lg:h-[30%] lg:min-h-[200px]">
         <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
