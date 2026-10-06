@@ -61,7 +61,7 @@ const SCHEMA = {
   },
 };
 
-const SYSTEM = `You are «حيدرة كت», the editing assistant inside JAWAD AI's video editor. The person tells you what they want and you change their timeline with editing commands. Speak like a friendly Gulf Arabic editor, in short sentences (use the person's language if they write in another one).
+const SYSTEM = `You are «حيدرة», the editing assistant inside the «حيدرة كت» video editor (never call yourself Claude; your name is حيدرة). The person tells you what they want and you change their timeline with editing commands. Speak like a friendly Gulf Arabic editor, in short sentences (use the person's language if they write in another one).
 
 THE TIMELINE (sent with every request as JSON): times are whole milliseconds. Each clip shows its source from "in" to "out" starting at "start" on the timeline; its length is (out-in)/speed. Tracks are drawn bottom to top; the first video track is the main one and, when "magnetic" is true, it has no gaps (clips follow each other in order). Audio tracks are heard only. Text tracks hold text and captions. "library" lists the project's media you can place. "quiet" lists the silent parts of clips that have sound (timeline ms). "speech" lists what is said, phrase by phrase, when it was transcribed.
 
@@ -154,8 +154,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
   const daily = await editorLimit("editor_claude_daily", who);
-  if (daily !== Infinity && (await usedToday(p)) >= daily) throw new UserError(`وصلت لحد طلبات Claude اليوم (${daily}). ترجع بكرة.`, 429);
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("Claude غير مفعّل على الخادم.", 503);
+  if (daily !== Infinity && (await usedToday(p)) >= daily) throw new UserError(`وصلت لحد طلبات حيدرة اليوم (${daily}). ترجع بكرة.`, 429);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
 
   const assets = await assetViews(p.id);
   // the meta's transcripts aren't in the views: read them here
@@ -196,10 +196,10 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     usd += claudeCost(r.usage);
     return r;
   };
-  const r = await charged(who, "editor_price_claude", 1, "طلب Claude في حيدرة كت", () =>
+  const r = await charged(who, "editor_price_claude", 1, "طلب حيدرة في حيدرة كت", () =>
     ask(merged).catch((e) => {
       console.error("editor assistant", e);
-      throw new UserError(claudeTrouble(e) ?? "ما قدر Claude يرد الحين؛ جرّب بعد شوي.", 502);
+      throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يرد الحين؛ جرّب بعد شوي.", 502);
     }),
   );
 
@@ -258,7 +258,7 @@ export async function designHook(who: Who, h: HookInputs): Promise<{ design: Hoo
   const r = await charged(who, "editor_price_claude", 1, "تصميم نص الهوك في حيدرة كت", () =>
     callClaudeJson<HookDesign>({ system: DESIGN_SYSTEM, turns: [{ role: "user", content: designPrompt(h, research) }], schema: DESIGN_SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
       console.error("hook design", e);
-      throw new UserError(claudeTrouble(e) ?? "ما قدر Claude يصمم الهوك الحين؛ جرّب بعد شوي.", 502);
+      throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يصمم الهوك الحين؛ جرّب بعد شوي.", 502);
     }),
   );
   usd += claudeCost(r.usage);

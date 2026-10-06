@@ -19,7 +19,7 @@ const CHOICES: Record<"video" | "image", { mode: EditMode; title: string; text: 
   ],
   image: [
     { mode: "same", title: "عدّل نفس الصورة", text: "تُرسل صورتك نفسها للمولد مع تعديلاتك، ويبقى كل ما لم تطلب تغييره كما هو.", icon: "wand" },
-    { mode: "full", title: "أعد الصورة كاملة", text: "يكتب Claude برومبتًا جديدًا من برومبتك السابق وتعديلاتك، وتُصنع الصورة من جديد.", icon: "retry" },
+    { mode: "full", title: "أعد الصورة كاملة", text: "يكتب حيدرة برومبتًا جديدًا من برومبتك السابق وتعديلاتك، وتُصنع الصورة من جديد.", icon: "retry" },
   ],
 };
 
@@ -267,7 +267,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                       <span>المجموع</span>
                       <span dir="ltr" className="flex items-center gap-1 tabular-nums"><SmartCoin size={12} /> {quote.coins}</span>
                     </p>
-                    <p className="text-[11px] text-jw-faint">{kind === "video" ? "يكتب Claude البرومبت الجديد بمهارة «المخرج الخارق» من برومبتك السابق ولقطات المقطع وتعديلاتك." : "يكتب Claude البرومبت الجديد من برومبتك السابق والصورة وتعديلاتك."} إذا تعذّر التعديل تُعاد نقودك كاملة.</p>
+                    <p className="text-[11px] text-jw-faint">{kind === "video" ? "يكتب حيدرة البرومبت الجديد بمهارة «المخرج الخارق» من برومبتك السابق ولقطات المقطع وتعديلاتك." : "يكتب حيدرة البرومبت الجديد من برومبتك السابق والصورة وتعديلاتك."} إذا تعذّر التعديل تُعاد نقودك كاملة.</p>
                   </>
                 ) : (
                   <p className="text-jw-muted">{quoteError || (rangesOk ? "يحسب السعر…" : "حدّد الجزء أولًا.")}</p>

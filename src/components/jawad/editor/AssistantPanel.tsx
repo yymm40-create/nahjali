@@ -145,7 +145,7 @@ export default function AssistantPanel({
   const long = msgs.length >= LONG.messages || msgs.reduce((n, m) => n + m.text.length, 0) >= LONG.chars;
   const handOff = async () => {
     if (busy || !msgs.length) return;
-    setBusy("Claude يكتب الهاندوف ويبدأ محادثة جديدة…");
+    setBusy("حيدرة يكتب الهاندوف ويبدأ محادثة جديدة…");
     try {
       const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff });
       setMsgs([]);
@@ -170,7 +170,7 @@ export default function AssistantPanel({
     const key = `${c.id}:${c.in}:${c.out}:${c.start}`;
     let frames = seenFrames.current.get(key);
     if (!frames) {
-      setBusy("Claude يشوف المقطع المحدد…");
+      setBusy("حيدرة يشوف المقطع المحدد…");
       try {
         const n = a.kind === "image" ? 1 : Math.min(6, Math.max(2, Math.round((c.out - c.in) / 2000)));
         const src = await framesOf(a.url, a.kind, c.in, c.out, n);
@@ -194,7 +194,7 @@ export default function AssistantPanel({
       const quiet = await quietParts(tl, assets);
       // the clip the person chose: Claude looks at a few of its moments to know what is in it
       const look = await lookAt();
-      setBusy("Claude يشتغل على التايملاين…");
+      setBusy("حيدرة يشتغل على التايملاين…");
       const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         message,
@@ -208,7 +208,7 @@ export default function AssistantPanel({
       });
       let done = 0;
       if (r.commands.length) {
-        const applied = run(r.commands, { label: `Claude: ${message.slice(0, 40)}` });
+        const applied = run(r.commands, { label: `حيدرة: ${message.slice(0, 40)}` });
         done = applied ? r.commands.length : 0;
       }
       setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions }]);
@@ -266,14 +266,14 @@ export default function AssistantPanel({
       <div className="flex items-center gap-2.5 border-b border-jw-line px-3 py-2.5">
         <span className="jw-orb h-9 w-9 shrink-0" data-busy={!!busy} aria-hidden />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold">Claude · مساعدك في المونتاج</span>
+          <span className="block truncate text-sm font-bold">حيدرة · مساعدك في المونتاج</span>
           <span className="flex items-center gap-1 text-[11px] text-jw-muted" aria-live="polite">
             <span className={`h-1.5 w-1.5 rounded-full ${busy ? "animate-pulse bg-jw-warn" : "bg-jw-ok"}`} />
             {busy ? "يشتغل…" : "جاهز يخدمك"}
           </span>
         </span>
         {msgs.length > 0 && (
-          <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="Claude يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
+          <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="حيدرة يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
             <Icon name="retry" size={13} /> محادثة جديدة
           </button>
         )}
@@ -306,7 +306,7 @@ export default function AssistantPanel({
         {!msgs.length && chat.loaded && (
           <div className="space-y-3">
             <div className="max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
-              هلا! أنا مساعدك في المونتاج 👋
+              هلا! أنا حيدرة، مساعدك في المونتاج 👋
               <span className="mt-1 block text-xs leading-6 text-jw-muted">قل لي وش تبي بكلامك وأنا أعدّل التايملاين: أقص السكتات، أرتّب، أحط انتقالات ونصوص وكابشن، وأنظّف الصوت. كل اللي أسويه تتراجع عنه بضغطة.</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -346,7 +346,7 @@ export default function AssistantPanel({
         ))}
         {long && !busy && (
           <div className="rounded-xl border border-jw-warn/40 bg-jw-warn/10 p-2.5 text-xs">
-            المحادثة طوّلت. خلّ Claude يكتب هاندوف لكل اللي اتفقنا عليه ويبدأ محادثة جديدة منه — يتذكّر ذوقك وقراراتك ويرد أسرع.
+            المحادثة طوّلت. خلّ حيدرة يكتب هاندوف لكل اللي اتفقنا عليه ويبدأ محادثة جديدة منه — يتذكّر ذوقك وقراراتك ويرد أسرع.
             <button type="button" className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs" disabled={readOnly} onClick={handOff}>
               سوّ هاندوف وابدأ محادثة جديدة
             </button>
@@ -364,7 +364,7 @@ export default function AssistantPanel({
         const as = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
         return as && as.kind !== "audio" && f!.track.kind !== "audio" ? (
           <p className="flex items-center gap-1.5 border-t border-jw-line px-3 pt-1.5 text-[11px] text-jw-muted">
-            <Icon name="eye" size={13} className="text-jw-accent" /> Claude بيشوف المقطع المحدد «{as.name}» مع رسالتك
+            <Icon name="eye" size={13} className="text-jw-accent" /> حيدرة بيشوف المقطع المحدد «{as.name}» مع رسالتك
           </p>
         ) : null;
       })()}
