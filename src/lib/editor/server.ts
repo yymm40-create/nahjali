@@ -79,6 +79,8 @@ export interface AssetView {
   origin: AssetRow["origin"];
   /** the JAWAD AI result or film video it was brought in from */
   sourceId: string | null;
+  /** a JAWAD AI result: its job (for «التعديل الذكي») */
+  jobId: string | null;
   status: AssetRow["status"];
   url: string | null;
 }
@@ -165,6 +167,7 @@ const view = (r: AssetRow, url: string | null): AssetView => ({
   hasAudio: r.kind === "audio" || r.meta?.hasAudio !== false,
   origin: r.origin,
   sourceId: typeof r.meta?.sourceId === "string" ? r.meta.sourceId : null,
+  jobId: typeof r.meta?.jobId === "string" ? r.meta.jobId : null,
   status: url || r.status !== "ready" ? r.status : "missing",
   url,
 });
@@ -453,10 +456,10 @@ export async function importAssets(p: EditorProject, b: { items?: unknown }) {
   const rows: Record<string, unknown>[] = [];
   for (const it of items) {
     if (!isUuid(it.id)) continue;
-    let src: { bucket: "jawad" | "film"; path: string; kind: AssetKind; name: string } | null = null;
+    let src: { bucket: "jawad" | "film"; path: string; kind: AssetKind; name: string; jobId?: string } | null = null;
     if (it.source === "jawad") {
-      const { data } = await db().from("jawad_outputs").select("user_id,kind,storage_path").eq("id", it.id).maybeSingle();
-      if (data && data.user_id === p.user_id) src = { bucket: "jawad", path: data.storage_path, kind: data.kind, name: String(it.name ?? "من أعمالي") };
+      const { data } = await db().from("jawad_outputs").select("user_id,kind,storage_path,job_id").eq("id", it.id).maybeSingle();
+      if (data && data.user_id === p.user_id) src = { bucket: "jawad", path: data.storage_path, kind: data.kind, name: String(it.name ?? "من أعمالي"), jobId: data.job_id };
     } else if (it.source === "film") {
       const { data } = await db().from("film_assets").select("project_id,kind,storage_path,ref_key").eq("id", it.id).maybeSingle();
       if (data?.storage_path && ["video", "audio", "image"].includes(data.kind)) {
@@ -479,7 +482,8 @@ export async function importAssets(p: EditorProject, b: { items?: unknown }) {
       height: kind === "audio" ? null : clampInt(it.height, 16384),
       origin: it.source,
       status: "ready",
-      meta: { hasAudio: kind !== "image" && it.hasAudio !== false, sourceId: it.id },
+      // a JAWAD AI result keeps its job, so a piece of it can be made again («التعديل الذكي»)
+      meta: { hasAudio: kind !== "image" && it.hasAudio !== false, sourceId: it.id, ...(src.jobId ? { jobId: src.jobId } : {}) },
     });
   }
   if (!rows.length) throw new UserError("ما لقينا هذي الأعمال.", 404);

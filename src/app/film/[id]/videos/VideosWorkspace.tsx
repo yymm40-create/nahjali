@@ -25,6 +25,7 @@ import {
 import { useFilmBase } from "../../FilmBase";
 import EmotionPicker from "../../EmotionPicker";
 import RewindCard from "../RewindCard";
+import { smartEditInEditor } from "@/components/jawad/editor/smart-open";
 
 interface Generation {
   /** The director's understanding of the client's video notes, as options to choose from. */
@@ -162,8 +163,9 @@ export default function VideosWorkspace({
     try {
       const { jobId, studioJobId } = await postJson<{ jobId: string | null; studioJobId?: string }>(`/api/film/projects/${projectId}/director`, body);
       if (studioJobId && studioPath) {
-        // opens the video section with «التعديل الذكي» of this video ready
-        router.push(`${studioPath}?edit=${studioJobId}`);
+        // «التعديل الذكي» in «الممنتج الذكي» (red/green tracks); else the video section with its own window ready
+        const href = await smartEditInEditor(studioJobId);
+        router.push(href ?? `${studioPath}?edit=${studioJobId}`);
         return;
       }
       if (body.action === "use_studio_video") setPickFor(null);
