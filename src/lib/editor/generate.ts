@@ -9,7 +9,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { storage as files } from "@/lib/storage";
 import { openaiImage } from "@/lib/jawad/server/providers/openai";
 import { elevenIsolateVoice, elevenMusic, elevenSoundEffect } from "@/lib/jawad/server/providers/elevenlabs";
-import { falReady, samSeparate } from "@/lib/jawad/server/providers/fal";
+import { demucsSplit, falFile, falReady, samSeparate } from "@/lib/jawad/server/providers/fal";
+import { mixWavs, parseWav } from "./wav";
 import { ProviderError, providerUserId } from "@/lib/jawad/server/providers/common";
 import { charged, type Who } from "./pricing";
 import { assetViews, EDITOR_BUCKET, isUuid, stillOpen, type EditorProject } from "./server";
@@ -145,39 +146,53 @@ export async function makeSfx(p: EditorProject, who: Who, b: { prompt?: unknown;
 // ───────── talking, music and effects apart ─────────
 
 /**
- * A clip's sound (uploaded by the page as WAV to the project's temporary folder) split into its talking (ElevenLabs
- * voice isolation) and, when fal is set up, its music and its sound effects (SAM-Audio). Each part is a new file of
- * the same length.
+ * A clip's sound (uploaded by the page as WAV to the project's temporary folder) split into its talking/singing, its
+ * music and its sound effects, each a new file of the same length. With fal: Demucs takes the voice out (so the
+ * music has none of it), then SAM-Audio takes the effects out of what is left; the three play back the recording,
+ * nothing twice. Without fal: the talking only (ElevenLabs voice isolation).
  */
 export async function separate(p: EditorProject, who: Who, b: { path?: unknown; from?: unknown; to?: unknown; name?: unknown }) {
   stillOpen(p);
+  const started = Date.now();
   const prefix = `${p.user_id}/${p.id}/tmp/`;
   const path = b.path;
   if (typeof path !== "string" || !path.startsWith(prefix) || path.includes("..") || !isUuid(path.slice(prefix.length).replace(/\.(wav|webm)$/, ""))) throw new UserError("ملف صوت غير صحيح.", 400);
   const durationMs = Math.round(Math.max(0, Number(b.to) - Number(b.from)));
   if (!durationMs || durationMs > 10 * 60_000) throw new UserError("الفصل لمقاطع لين ١٠ دقايق؛ قصّ المقطع أول.", 400);
-  if (!process.env.ELEVENLABS_API_KEY) throw new UserError("فصل الأصوات غير مفعّل على الخادم.", 503);
+  const fal = falReady();
+  if (!fal && !process.env.ELEVENLABS_API_KEY) throw new UserError("فصل الأصوات غير مفعّل على الخادم.", 503);
   const name = String(b.name ?? "المقطع").slice(0, 60);
   try {
-    const dl = await storage().from(EDITOR_BUCKET).download(path);
-    if (dl.error || !dl.data) throw new UserError("ما وصل الصوت؛ جرّب مرة ثانية.", 409);
-    const file = Buffer.from(await dl.data.arrayBuffer());
-    const mime = path.endsWith(".wav") ? "audio/wav" : "audio/webm";
     const link = (await storage().from(EDITOR_BUCKET).createSignedUrl(path, 3600)).data?.signedUrl ?? null;
+    if (!link) throw new UserError("ما وصل الصوت؛ جرّب مرة ثانية.", 409);
     return await charged(who, "editor_price_stems", Math.ceil(durationMs / 60_000), "فصل الأصوات في حيدرة كت", async () => {
-      // the three at once (one after another, a song of a few minutes ran past the request's time): the talking from
-      // ElevenLabs, the music and the effects each taken out of the same recording by SAM-Audio
-      const fal = falReady() && link;
-      const [voice, music, effects] = await Promise.all([
-        elevenIsolateVoice({ file, mime, name: path.split("/").pop()! }).catch(providerError),
-        fal ? samSeparate(link, "music").catch(providerError) : null,
-        fal ? samSeparate(link, "sound effects").catch(providerError) : null,
-      ]);
-      const ext = (m: string) => (m.includes("mpeg") ? "mp3" : m.includes("ogg") ? "ogg" : "wav");
-      const made = [await addFile(p, { bytes: voice, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: `الكلام · ${name}`, durationMs, meta: { made: "stem", stem: "voice" } })];
-      if (music) made.push(await addFile(p, { bytes: music.target.bytes, mime: music.target.mime, ext: ext(music.target.mime), kind: "audio", name: `الموسيقى · ${name}`, durationMs, meta: { made: "stem", stem: "music" } }));
-      if (effects) made.push(await addFile(p, { bytes: effects.target.bytes, mime: effects.target.mime, ext: ext(effects.target.mime), kind: "audio", name: `المؤثرات · ${name}`, durationMs, meta: { made: "stem", stem: "effects" } }));
-      return { assets: made, full: made.length === 3 };
+      const wav = (bytes: Buffer, stem: string, label: string) =>
+        addFile(p, { bytes, mime: "audio/wav", ext: "wav", kind: "audio", name: `${label} · ${name}`, durationMs, meta: { made: "stem", stem } });
+
+      if (!fal) {
+        const dl = await storage().from(EDITOR_BUCKET).download(path);
+        if (dl.error || !dl.data) throw new UserError("ما وصل الصوت؛ جرّب مرة ثانية.", 409);
+        const file = Buffer.from(await dl.data.arrayBuffer());
+        const voice = await elevenIsolateVoice({ file, mime: path.endsWith(".wav") ? "audio/wav" : "audio/webm", name: path.split("/").pop()! }).catch(providerError);
+        return { assets: [await addFile(p, { bytes: voice, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: `الكلام · ${name}`, durationMs, meta: { made: "stem", stem: "voice" } })], full: false };
+      }
+
+      const parts = await demucsSplit(link).catch(providerError);
+      // the effects out of the music (no voice in it): as long as the request's time allows; without them, the music whole
+      const left = 270_000 - (Date.now() - started);
+      const [vocals, drums, bass, other, fx] = await Promise.all([
+        falFile(parts.vocals),
+        falFile(parts.drums),
+        falFile(parts.bass),
+        falFile(parts.other),
+        left > 30_000 ? samSeparate(parts.other, "sound effects", left - 15_000).catch(() => null) : null,
+      ]).catch(providerError);
+      const isWav = (x: Buffer) => x.subarray(0, 4).toString("ascii") === "RIFF";
+      const split = fx && isWav(fx.target.bytes) && isWav(fx.residual.bytes) ? fx : null;
+      const music = mixWavs([parseWav(drums), parseWav(bass), parseWav(split ? split.residual.bytes : other)]);
+      const made = [await wav(mixWavs([parseWav(vocals)]), "voice", "الكلام"), await wav(music, "music", "الموسيقى")];
+      if (split) made.push(await wav(mixWavs([parseWav(split.target.bytes)]), "effects", "المؤثرات"));
+      return { assets: made, full: !!split };
     });
   } finally {
     await storage().from(EDITOR_BUCKET).remove([path]);

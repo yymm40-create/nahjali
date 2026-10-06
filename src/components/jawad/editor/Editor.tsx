@@ -492,7 +492,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const r = await separateAsset(project.id, a, f.clip.in, f.clip.out, (text) => flash(text));
     addAssets(r.assets);
     run(placeStems(f.clip, r.assets.map((x) => x.id)), { label: "فصلت الكلام والموسيقى والمؤثرات" });
-    flash(r.full ? "انفصل الصوت: الكلام والموسيقى والمؤثرات كل واحد في مسار." : "فصلنا الكلام في مسار بروحه. فصل الموسيقى عن المؤثرات يحتاج تفعيل خدمة fal على الخادم.");
+    flash(r.full ? "انفصل الصوت: الكلام والموسيقى والمؤثرات كل واحد في مسار." : r.assets.length > 1 ? "انفصل الكلام عن الموسيقى، كل واحد في مسار (المؤثرات بقت مع الموسيقى)." : "فصلنا الكلام في مسار بروحه. فصل الموسيقى يحتاج تفعيل خدمة fal على الخادم.");
   };
   const dropAsset = (id: string, at: number, trackId: string | null) => {
     const a = assets.find((x) => x.id === id);
