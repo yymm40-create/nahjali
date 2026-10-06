@@ -8,6 +8,7 @@ import { PROJECT_KINDS, type ProjectKind } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
 import { leaveStartKit } from "./start-kit";
+import { useDesktop } from "./desktop";
 import type { EditorAsset, ImportItem, ProjectSummary } from "./types";
 
 const ago = (iso: string, now: number) => {
@@ -28,6 +29,7 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<number | null>(null);
   const [wizard, setWizard] = useState(false);
+  const onDesktop = useDesktop();
   useEffect(() => {
     const t = setTimeout(() => setNow(Date.now()), 0);
     return () => clearTimeout(t);
@@ -53,7 +55,14 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
           <Link href="/jawad-ai" className="jw-btn jw-btn-quiet text-xs" aria-label="رجوع للرئيسية">
             <span aria-hidden>→</span> الرئيسية
           </Link>
-          <InstallApp />
+          <span className="flex items-center gap-2">
+            {!onDesktop && (
+              <Link href="/jawad-ai/editor/desktop" className="jw-btn text-xs">
+                <Icon name="download" size={14} /> للكمبيوتر
+              </Link>
+            )}
+            <InstallApp />
+          </span>
         </nav>
 
         <header className="flex items-center gap-3">

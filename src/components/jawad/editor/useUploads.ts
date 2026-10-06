@@ -6,6 +6,7 @@ import { putWithProgress } from "../studio/upload";
 import { probe, shortName } from "./media";
 import { sendInParts, UploadGone, type PartsUpload } from "./parts";
 import type { EditorAsset } from "./types";
+import { desktop } from "./desktop";
 
 /** Where a dropped file goes once it is uploaded (none: the usual place). */
 export interface Placement {
@@ -76,6 +77,26 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: P
         try {
           const m = await probe(file);
           if (!m.playable) patch(key, { note: "متصفحك قد لا يعرض هذا الملف أثناء المونتاج (ترميز غير مدعوم)؛ جرّب Chrome." });
+          // the desktop program: the file stays on the computer (nothing uploaded)
+          const local = await desktop()?.keepLocal(file).catch(() => null);
+          if (local) {
+            const r = await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${projectId}`, {
+              action: "add_local",
+              localId: local.id,
+              kind: m.kind,
+              container: m.container,
+              bytes: file.size,
+              name: shortName(file.name),
+              durationMs: m.durationMs,
+              width: m.width,
+              height: m.height,
+              hasAudio: m.hasAudio,
+            });
+            done.current(r.asset, place);
+            if (m.playable) setItems((xs) => xs.filter((x) => x.key !== key));
+            else patch(key, { progress: 1 });
+            continue;
+          }
           const start = () =>
             postJson<Started>(`/api/jawad/editor/projects/${projectId}`, {
               action: "sign_upload",

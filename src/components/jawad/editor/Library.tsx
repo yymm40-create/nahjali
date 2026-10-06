@@ -7,6 +7,7 @@ import Icon from "../Icon";
 import { ASSET_DRAG } from "./Timeline";
 import type { EditorAsset, ImportItem } from "./types";
 import type { UploadItem } from "./useUploads";
+import { useDesktop } from "./desktop";
 
 const KIND_ICON = { video: "video", audio: "music", image: "image" } as const;
 
@@ -35,6 +36,7 @@ export default function Library({
   readOnly: boolean;
 }) {
   const [tab, setTab] = useState<"files" | "works">("files");
+  const onDesktop = useDesktop();
   const input = useRef<HTMLInputElement>(null);
 
   return (
@@ -66,9 +68,11 @@ export default function Library({
                 }}
               />
               <button type="button" className="jw-btn jw-btn-primary w-full" onClick={() => input.current?.click()}>
-                <Icon name="upload" size={16} /> ارفع من جهازك
+                <Icon name={onDesktop ? "plus" : "upload"} size={16} /> {onDesktop ? "أضف من جهازك" : "ارفع من جهازك"}
               </button>
-              <p className="text-center text-[11px] text-jw-faint">فيديو أو صوت أو صور، أكثر من ملف مرة وحدة. كل ملف ينزل في التايملاين بعد رفعه.</p>
+              <p className="text-center text-[11px] text-jw-faint">
+                {onDesktop ? "فيديو أو صوت أو صور، أو اسحبها من الفايندر. تبقى في جهازك بدون رفع، وتنزل في التايملاين على طول." : "فيديو أو صوت أو صور، أكثر من ملف مرة وحدة. كل ملف ينزل في التايملاين بعد رفعه."}
+              </p>
             </>
           )}
 

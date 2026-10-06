@@ -20,7 +20,8 @@ export default function InstallApp({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     navigator.serviceWorker?.register("/editor-sw.js", { scope: "/jawad-ai/" }).catch(() => {});
     const t = setTimeout(() => {
-      const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+      // (the desktop program is an app already)
+      const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true || "haidaraDesktop" in window;
       const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
       setState({ standalone, ios, ready: true });
     }, 0);
