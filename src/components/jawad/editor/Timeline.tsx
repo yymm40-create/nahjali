@@ -529,7 +529,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   const moving = drag?.moved && drag.mode === "move" ? drag : null;
 
   return (
-    <div dir="ltr" className="relative flex h-full min-h-0 flex-col bg-jw-bg-2">
+    <div dir="ltr" data-no-press className="relative flex h-full min-h-0 flex-col bg-jw-bg-2">
       <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
         <div className="relative" style={{ width: contentW, minHeight: "100%" }}>
           {/* ruler */}
