@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Clip } from "@/lib/editor/model";
 import { clipLength } from "@/lib/editor/model";
-import { applyLook, FLAT, LINE, LOGS, LOOKS, MAX_SECONDARIES, NEUTRAL_GRADE, NEW_MASK, NEW_SECONDARY, parseCube, toCube, type Curves, type Grade, type LogId, type Mask, type Pt, type Secondary, type Wheel } from "@/lib/editor/grade";
+import { applyLook, FLAT, LINE, LOGS, LOOKS, MAX_SECONDARIES, NEUTRAL_GRADE, NEW_MASK, NEW_SECONDARY, parseCube, toCube, type Curves, type Grade, type LogGamut, type LogId, type Mask, type Pt, type Secondary, type Wheel } from "@/lib/editor/grade";
 import Icon from "../Icon";
 import { bakeLut, gradeReady } from "./grade-gl";
 import type { Run } from "./Inspector";
@@ -398,7 +398,44 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player }: 
 
       {page === "log" && (
         <div className="space-y-2">
-          <p className="text-[11px] leading-5 text-jw-muted">صوّرت بلوج (صورة باهتة رمادية)؟ اختر كاميرتك وبضغطة وحدة يتفك اللوج: يرجع التباين والألوان الصحيحة (Rec.709) مع تون ماب سينمائي، وبعدها لوّن براحتك.</p>
+          <p className="text-[11px] leading-5 text-jw-muted">صوّرت بلوج (صورة باهتة رمادية)؟ اختر كاميرتك وبضغطة وحدة يتفك اللوج مثل «Color Space Transform» في دافنشي: الألوان الصحيحة (Rec.709)، الرمادي في مكانه، والأضواء تنطوي بنعومة بدون ما تحترق.</p>
+          {g.log !== "none" && (
+            <div className="space-y-2 rounded-lg border border-jw-accent/40 bg-jw-accent/5 p-2">
+              <p className="text-[11px] font-semibold">مساحة الألوان اللي صوّرت فيها</p>
+              <div className="jw-seg" role="radiogroup" aria-label="مساحة الألوان">
+                {(
+                  [
+                    ["camera", LOGS.find((l) => l.id === g.log)?.label.split("/")[1]?.trim() || "واسعة (الكاميرا)"],
+                    ["rec709", "BT.709"],
+                    ["rec2020", "BT.2020"],
+                  ] as [LogGamut, string][]
+                ).map(([k, label]) => (
+                  <button key={k} type="button" role="radio" aria-checked={g.logGamut === k} disabled={locked} onClick={() => set({ logGamut: k }, "logGamut")}>
+                    {k === "camera" && g.log.startsWith("clog") ? "Cinema Gamut" : label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] leading-5 text-jw-muted">
+                {g.log.startsWith("clog")
+                  ? "كانون: شوف في الكاميرا «Color Space» أو «Color Matrix» تحت إعداد C-Log. لو مكتوب BT.709 اختر BT.709، وإلا Cinema Gamut. لو الألوان طالعة مشعّة أو مشبّعة زيادة، غالبًا هذا هو السبب."
+                  : "إذا الكاميرا كانت مضبوطة على BT.709 أو BT.2020 اختره؛ وإلا خلّه على الأول. لو الألوان طلعت مشعّة زيادة، جرّب BT.709."}
+              </p>
+              <p className="pt-1 text-[11px] font-semibold">مستوى الإشارة في الملف</p>
+              <div className="jw-seg" role="radiogroup" aria-label="مستوى الإشارة">
+                {(
+                  [
+                    ["video", "فيديو (أغلب الكاميرات)"],
+                    ["full", "كامل (Full)"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button key={k} type="button" role="radio" aria-checked={g.logRange === k} disabled={locked} onClick={() => set({ logRange: k }, "logRange")}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-jw-faint">خلّه «فيديو» إلا إذا الصورة طلعت باهتة أو غامقة بشكل واضح بعد فك اللوج.</p>
+            </div>
+          )}
           <div className="space-y-1">
             {LOGS.map((l) => (
               <button key={l.id} type="button" disabled={locked} aria-pressed={g.log === l.id} className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-start text-[11px] ${g.log === l.id ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set({ log: l.id as LogId }, "log")}>

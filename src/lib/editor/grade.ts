@@ -107,6 +107,10 @@ export interface Grade {
   v: 1;
   /** the camera's log curve, undone first ("none": the picture as it is) */
   log: LogId;
+  /** the colours the camera recorded in: its own wide gamut, or Rec.709 / Rec.2020 (Canon, Sony, Panasonic let you pick) */
+  logGamut: LogGamut;
+  /** how the file stores its levels: video levels (almost every camera) or full */
+  logRange: "video" | "full";
   /** strength of the whole grade 0…1 */
   amount: number;
   /** where the primary grade applies (null: everywhere) */
@@ -153,6 +157,8 @@ export const NEUTRAL_CURVES: Curves = { master: LINE, r: LINE, g: LINE, b: LINE,
 export const NEUTRAL_GRADE: Grade = {
   v: 1,
   log: "none",
+  logGamut: "camera",
+  logRange: "video",
   amount: 1,
   mask: null,
   exposure: 0,
@@ -314,6 +320,8 @@ export function readGrade(v: unknown): Grade | null {
   return {
     v: 1,
     log: (LOGS.some((l) => l.id === o.log) ? o.log : "none") as LogId,
+    logGamut: (["camera", "rec709", "rec2020"] as const).includes(o.logGamut as LogGamut) ? (o.logGamut as LogGamut) : "camera",
+    logRange: o.logRange === "full" ? "full" : "video",
     amount: num(o.amount, 0, 1, 1),
     mask: readMask(o.mask),
     exposure: num(o.exposure, -5, 5, 0),
@@ -462,8 +470,8 @@ export const LOGS: LogSpec[] = [
   { id: "none", brand: "", label: "بدون (الصورة عادية)", hint: "فيديو عادي Rec.709 أو جوال", gamut: null },
   { id: "slog3", brand: "Sony", label: "S-Log3 / S-Gamut3.Cine", hint: "A7S III، FX3، FX6، FX30، A7 IV، ZV-E1", gamut: { r: [0.766, 0.275], g: [0.225, 0.8], b: [0.089, -0.087], w: D65 } },
   { id: "slog2", brand: "Sony", label: "S-Log2 / S-Gamut", hint: "A7S II، A7 III والأقدم", gamut: { r: [0.73, 0.28], g: [0.14, 0.855], b: [0.1, -0.05], w: D65 } },
-  { id: "clog3", brand: "Canon", label: "C-Log3 / Cinema Gamut", hint: "R5، R6 II، R5 C، C70، C300 III", gamut: { r: [0.74, 0.27], g: [0.17, 1.14], b: [0.08, -0.1], w: D65 } },
-  { id: "clog2", brand: "Canon", label: "C-Log2 / Cinema Gamut", hint: "C70، C300 III، R5 C", gamut: { r: [0.74, 0.27], g: [0.17, 1.14], b: [0.08, -0.1], w: D65 } },
+  { id: "clog3", brand: "Canon", label: "C-Log3", hint: "R5، R6 II، R7، R8، R5 C، C70، C300 III (اختر تحت Cinema Gamut أو BT.709 حسب إعداد الكاميرا)", gamut: { r: [0.74, 0.27], g: [0.17, 1.14], b: [0.08, -0.1], w: D65 } },
+  { id: "clog2", brand: "Canon", label: "C-Log2", hint: "C70، C300 III، R5 C", gamut: { r: [0.74, 0.27], g: [0.17, 1.14], b: [0.08, -0.1], w: D65 } },
   { id: "clog", brand: "Canon", label: "C-Log (الأصلي)", hint: "C100، C200، C300 الأول", gamut: { r: [0.74, 0.27], g: [0.17, 1.14], b: [0.08, -0.1], w: D65 } },
   { id: "vlog", brand: "Panasonic", label: "V-Log / V-Gamut", hint: "GH5، GH6، S5 II، S1H، BGH1", gamut: { r: [0.73, 0.28], g: [0.165, 0.84], b: [0.1, -0.03], w: D65 } },
   { id: "logc3", brand: "ARRI", label: "LogC3 (EI 800) / AWG3", hint: "ALEXA Mini، Amira، ALEXA LF", gamut: { r: [0.684, 0.313], g: [0.221, 0.848], b: [0.0861, -0.102], w: D65 } },
@@ -479,6 +487,40 @@ export const LOGS: LogSpec[] = [
   { id: "generic", brand: "", label: "لوج عام (كاميرا غير معروفة)", hint: "منحنى لوج متوسط لما ما تعرف الكاميرا", gamut: null },
 ];
 
+export type LogGamut = "camera" | "rec709" | "rec2020";
+
+/**
+ * Which values a log's published formula takes: «legal» ones are written on video levels (IRE/100: Canon, Apple Log,
+ * HLG), «code» ones on the 10-bit code value / 1023 (Sony, Panasonic, ARRI, Nikon, DJI, Fujifilm, Blackmagic, RED).
+ */
+const LEGAL_DOMAIN: LogId[] = ["clog", "clog2", "clog3", "applelog", "hlg", "generic", "none"];
+
+/**
+ * The browser's pixel value (0…1) → what the log's formula takes, as `x = v*scale + offset`. A video-levels file comes
+ * out of the browser already stretched (64 → 0, 940 → 1); a full-range file comes out as its code value.
+ */
+export function logInput(id: LogId, range: "video" | "full"): { scale: number; offset: number } {
+  const legal = LEGAL_DOMAIN.includes(id);
+  if (range === "video") return legal ? { scale: 1, offset: 0 } : { scale: 876 / 1023, offset: 64 / 1023 };
+  return legal ? { scale: 1023 / 876, offset: -64 / 876 } : { scale: 1, offset: 0 };
+}
+
+/** A browser pixel value of a log file as scene light (what the shader does per channel). */
+export const decodeLog = (id: LogId, v: number, range: "video" | "full" = "video") => {
+  const k = logInput(id, range);
+  return logToLinear(id, v * k.scale + k.offset);
+};
+
+/** Scene light pushed before the tone map: 18% grey lands at ~41% on screen, where DaVinci's CST puts it. */
+export const FILMIC_GAIN = 1.2;
+/** The ACES RRT+ODT fit (Stephen Hill), per channel, for grey (no gamut matrices): scene → display light. */
+export function filmic(x: number): number {
+  const v = Math.max(0, x * FILMIC_GAIN);
+  return Math.min(1, Math.max(0, (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081)));
+}
+/** Display light → the sRGB value the screen shows. */
+export const srgbEncode = (l: number) => (l <= 0.0031308 ? 12.92 * l : 1.055 * Math.pow(Math.max(0, l), 1 / 2.4) - 0.055);
+
 /** The log's value (0…1) as linear light (scene), the published formulas. The shader does the same. */
 export function logToLinear(id: LogId, x: number): number {
   switch (id) {
@@ -492,16 +534,17 @@ export function logToLinear(id: LogId, x: number): number {
       const k = (0.9 * 219) / 155;
       return y >= cut ? k * (Math.pow(10, (y - 0.616596 - 0.03) / 0.432699) - 0.037584) : (k * (y - cut)) / 3.53881278538813;
     }
+    // Canon (white paper 2018, v1.2): on video levels (IRE/100), 18% grey → 0.2 before the 0.9
     case "clog": {
-      return 0.9 * (x >= 0.0730597 ? (Math.pow(10, (x - 0.0730597) / 0.529136) - 1) / 10.1596 : -(Math.pow(10, (0.0730597 - x) / 0.529136) - 1) / 10.1596);
+      return 0.9 * (x >= 0.12512248 ? (Math.pow(10, (x - 0.12512248) / 0.45310179) - 1) / 10.1596 : -(Math.pow(10, (0.12512248 - x) / 0.45310179) - 1) / 10.1596);
     }
     case "clog2": {
-      return 0.9 * (x >= 0.092864125 ? (Math.pow(10, (x - 0.092864125) / 0.24136077) - 1) / 87.099375 : -(Math.pow(10, (0.092864125 - x) / 0.24136077) - 1) / 87.099375);
+      return 0.9 * (x >= 0.092864125 ? (Math.pow(10, (x - 0.092864125) / 0.24136077) - 1) / 87.09937546 : -(Math.pow(10, (0.092864125 - x) / 0.24136077) - 1) / 87.09937546);
     }
     case "clog3": {
-      if (x >= 0.097465473) return (0.9 * (Math.pow(10, (x - 0.069886632) / 0.42889912) - 1)) / 14.98325;
-      if (x < 0.069886632) return (-0.9 * (Math.pow(10, (0.069886632 - x) / 0.42889912) - 1)) / 14.98325;
-      return (0.9 * (x - 0.073059361)) / 2.3069815;
+      if (x > 0.15277891) return (0.9 * (Math.pow(10, (x - 0.12240537) / 0.36726845) - 1)) / 14.98325;
+      if (x < 0.097465473) return (-0.9 * (Math.pow(10, (0.12783901 - x) / 0.36726845) - 1)) / 14.98325;
+      return (0.9 * (x - 0.12512219)) / 1.9754798;
     }
     case "vlog": {
       return x < 0.181 ? (x - 0.125) / 5.6 : Math.pow(10, (x - 0.598206) / 0.241514) - 0.00873;
@@ -628,11 +671,17 @@ function rgbToXyz(g: NonNullable<LogSpec["gamut"]>): M3 {
 
 const REC709 = { r: [0.64, 0.33] as [number, number], g: [0.3, 0.6] as [number, number], b: [0.15, 0.06] as [number, number], w: D65 };
 
-/** The camera gamut → Rec.709 matrix (row-major, 9 numbers), identity for Rec.709 sources. */
-export function gamutToRec709(id: LogId): M3 {
-  const spec = LOGS.find((l) => l.id === id);
-  if (!spec?.gamut) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
-  return mulM(inv(rgbToXyz(REC709)), rgbToXyz(spec.gamut));
+const REC2020 = { r: [0.708, 0.292] as [number, number], g: [0.17, 0.797] as [number, number], b: [0.131, 0.046] as [number, number], w: D65 };
+
+/**
+ * The recorded gamut → Rec.709 matrix (row-major, 9 numbers). «camera»: the log's own wide gamut; a camera set to
+ * record Rec.709 needs none (applying the wide one again is what makes the colours glow); Rec.2020 its own.
+ */
+export function gamutToRec709(id: LogId, gamut: LogGamut = "camera"): M3 {
+  if (id === "none" || gamut === "rec709") return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const g = gamut === "rec2020" ? REC2020 : LOGS.find((l) => l.id === id)?.gamut;
+  if (!g) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  return mulM(inv(rgbToXyz(REC709)), rgbToXyz(g));
 }
 
 // ───────── .cube files ─────────

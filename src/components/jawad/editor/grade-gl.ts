@@ -6,7 +6,7 @@
 // sharpen, then the primary window and the overall amount. The result is drawn back onto the 2D canvas, so the
 // preview and the export see the same picture.
 
-import { gamutToRec709, gradeIsNeutral, lutBytes, maskAt, sampleCurve, type Grade, type LogId, type Mask, type Secondary } from "@/lib/editor/grade";
+import { gamutToRec709, gradeIsNeutral, logInput, lutBytes, maskAt, sampleCurve, type Grade, type LogId, type Mask, type Secondary } from "@/lib/editor/grade";
 
 const LOG_CODE: Record<LogId, number> = { none: 0, slog3: 1, slog2: 2, clog: 3, clog2: 4, clog3: 5, vlog: 6, logc3: 7, logc4: 8, nlog: 9, dlog: 10, flog: 11, flog2: 12, bmd5: 13, applelog: 14, redlog3g10: 15, hlg: 16, generic: 17 };
 const CURVE_N = 256;
@@ -24,7 +24,7 @@ precision highp float; precision highp sampler3D;
 in vec2 uv; out vec4 o;
 uniform sampler2D img; uniform sampler2D curves; uniform sampler3D lut; uniform sampler2D maskTex[5];
 uniform vec2 res; uniform float time;
-uniform int logKind; uniform mat3 gamut; uniform float exposure, temp, tint;
+uniform int logKind; uniform vec2 logIn; uniform mat3 gamut; uniform float exposure, temp, tint;
 uniform vec3 lift, gammaW, gain, offsetW; uniform float contrast, pivot, highlights, shadows, whites, blacks, saturation, vibrance;
 uniform float lutOn, lutAmount, lutSize; uniform vec4 split; uniform float splitBal;
 uniform vec3 halation; uniform vec2 grain; uniform vec4 vignette; uniform float sharpen, amount;
@@ -41,9 +41,9 @@ vec3 srgbEnc(vec3 c){ c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3
 float logLin(int k, float x){
   if (k == 1) { return x >= 171.2102946929/1023.0 ? pow(10.0, (x*1023.0 - 420.0)/261.5) * 0.19 - 0.01 : (x*1023.0 - 95.0) * 0.01125 / (171.2102946929 - 95.0); }
   if (k == 2) { float y = (x*1023.0 - 64.0)/876.0; float cut = 0.030001222851889303; float k = 0.9*219.0/155.0; return y >= cut ? k*(pow(10.0, (y - 0.616596 - 0.03)/0.432699) - 0.037584) : k*(y - cut)/3.53881278538813; }
-  if (k == 3) { return 0.9*(x >= 0.0730597 ? (pow(10.0, (x - 0.0730597)/0.529136) - 1.0)/10.1596 : -(pow(10.0, (0.0730597 - x)/0.529136) - 1.0)/10.1596); }
-  if (k == 4) { return 0.9*(x >= 0.092864125 ? (pow(10.0, (x - 0.092864125)/0.24136077) - 1.0)/87.099375 : -(pow(10.0, (0.092864125 - x)/0.24136077) - 1.0)/87.099375); }
-  if (k == 5) { if (x >= 0.097465473) return 0.9*(pow(10.0, (x - 0.069886632)/0.42889912) - 1.0)/14.98325; if (x < 0.069886632) return -0.9*(pow(10.0, (0.069886632 - x)/0.42889912) - 1.0)/14.98325; return 0.9*(x - 0.073059361)/2.3069815; }
+  if (k == 3) { return 0.9*(x >= 0.12512248 ? (pow(10.0, (x - 0.12512248)/0.45310179) - 1.0)/10.1596 : -(pow(10.0, (0.12512248 - x)/0.45310179) - 1.0)/10.1596); }
+  if (k == 4) { return 0.9*(x >= 0.092864125 ? (pow(10.0, (x - 0.092864125)/0.24136077) - 1.0)/87.09937546 : -(pow(10.0, (0.092864125 - x)/0.24136077) - 1.0)/87.09937546); }
+  if (k == 5) { if (x > 0.15277891) return 0.9*(pow(10.0, (x - 0.12240537)/0.36726845) - 1.0)/14.98325; if (x < 0.097465473) return -0.9*(pow(10.0, (0.12783901 - x)/0.36726845) - 1.0)/14.98325; return 0.9*(x - 0.12512219)/1.9754798; }
   if (k == 6) { return x < 0.181 ? (x - 0.125)/5.6 : pow(10.0, (x - 0.598206)/0.241514) - 0.00873; }
   if (k == 7) { return x > 5.367655*0.010591 + 0.092809 ? (pow(10.0, (x - 0.385537)/0.24719) - 0.052272)/5.555556 : (x - 0.092809)/5.367655; }
   if (k == 8) { float a = (262144.0 - 16.0)/117.45; float b = 928.0/1023.0; float c = 95.0/1023.0; float s = 7.0*log(2.0)*exp2(7.0 - 14.0*c/b)/(a*b); float t = (exp2(14.0*(-c/b) + 6.0) - 64.0)/a; return x < 0.0 ? x*s + t : (exp2(14.0*((x - c)/b) + 6.0) - 64.0)/a; }
@@ -58,8 +58,11 @@ float logLin(int k, float x){
   if (k == 17) { return 0.18*exp2((x - 0.4)*13.0) - 0.18*exp2(-5.2); }
   return x;
 }
-// filmic tone map (ACES fit), 0.18 lands near 0.18 after the gamma
-vec3 tonemap(vec3 x){ x *= 0.8; return clamp((x*(2.51*x + 0.03))/(x*(2.43*x + 0.59) + 0.14), 0.0, 1.0); }
+// filmic tone map: the ACES RRT+ODT fit (Stephen Hill), with its gamut matrices so hues hold and highlights roll off
+// to white instead of glowing; scene grey is pushed so it lands at ~41% on screen, as DaVinci's CST shows it
+const mat3 ACES_IN = transpose(mat3(0.59719, 0.35458, 0.04823, 0.07600, 0.90834, 0.01566, 0.02840, 0.13383, 0.83777));
+const mat3 ACES_OUT = transpose(mat3(1.60475, -0.53108, -0.07367, -0.10208, 1.10813, -0.00605, -0.00327, -0.07276, 1.07602));
+vec3 tonemap(vec3 x){ vec3 v = ACES_IN*(x*1.2); v = (v*(v + 0.0245786) - 0.000090537)/(v*(0.983729*v + 0.4329510) + 0.238081); return clamp(ACES_OUT*v, 0.0, 1.0); }
 
 vec3 rgb2hsv(vec3 c){ vec4 K = vec4(0.0, -1.0/3.0, 2.0/3.0, -1.0); vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g)); vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r)); float d = q.x - min(q.w, q.y); float e = 1.0e-10; return vec3(abs(q.z + (q.w - q.y)/(6.0*d + e)), d/(q.x + e), q.x); }
 vec3 hsv2rgb(vec3 c){ vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0); vec3 p = abs(fract(c.xxx + K.xyz)*6.0 - K.www); return c.z*mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y); }
@@ -88,7 +91,8 @@ float window(int i, vec2 p){
 
 vec3 primary(vec3 c){
   // linear light: the log undone, the gamut, exposure, warmth
-  vec3 lin = logKind == 0 ? srgbDec(c) : gamut * vec3(logLin(logKind, c.r), logLin(logKind, c.g), logLin(logKind, c.b));
+  vec3 x = c*logIn.x + logIn.y;
+  vec3 lin = logKind == 0 ? srgbDec(c) : gamut * vec3(logLin(logKind, x.r), logLin(logKind, x.g), logLin(logKind, x.b));
   lin = max(lin, 0.0) * exp2(exposure);
   lin *= vec3(1.0 + 0.22*temp - 0.08*tint, 1.0 - 0.06*abs(temp) + 0.14*tint, 1.0 - 0.22*temp - 0.08*tint);
   c = logKind == 0 ? srgbEnc(lin) : srgbEnc(tonemap(lin));
@@ -414,8 +418,10 @@ export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Gr
   gl.uniform2f(u.res, w, h);
   gl.uniform1f(u.time, (t % 100000) / 1000);
   gl.uniform1i(u.logKind, LOG_CODE[g.log] ?? 0);
-  const m = gamutToRec709(g.log);
+  const m = gamutToRec709(g.log, g.logGamut);
   gl.uniformMatrix3fv(u.gamut, true, new Float32Array(m));
+  const li = logInput(g.log, g.logRange);
+  gl.uniform2f(u.logIn, li.scale, li.offset);
   gl.uniform1f(u.exposure, g.exposure);
   gl.uniform1f(u.temp, g.temp);
   gl.uniform1f(u.tint, g.tint);
