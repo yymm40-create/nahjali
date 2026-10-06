@@ -7,6 +7,9 @@ import { decodeWhole } from "./audio";
 export const PEAK_RATE = 100; // values per second
 
 const cache = new Map<string, Promise<Uint8Array | null>>();
+// the average loudness (RMS) every 10 ms of the same files: what the waveform is drawn from. A mastered song peaks near
+// the top all the time, so drawn from its peaks it is one solid block; its RMS still rises and falls with the music
+const levels = new Map<string, Uint8Array>();
 let queue: Promise<unknown> = Promise.resolve();
 
 /** Loudness (0–255) every 10 ms of a file's sound; one file at a time so the page stays smooth. */
@@ -14,7 +17,14 @@ export function peaksOf(id: string, url: string | null): Promise<Uint8Array | nu
   if (!url) return Promise.resolve(null);
   let p = cache.get(id);
   if (!p) {
-    p = queue.then(() => decode(url)).catch(() => null);
+    p = queue
+      .then(() => decode(url))
+      .then((r) => {
+        if (!r) return null;
+        levels.set(id, r.rms);
+        return r.peaks;
+      })
+      .catch(() => null);
     queue = p;
     cache.set(id, p);
   }
@@ -27,22 +37,12 @@ async function decode(url: string) {
     const track = await input.getPrimaryAudioTrack().catch(() => null);
     if (!track || !(await track.canDecode().catch(() => false))) return fromWhole(url);
     const dur = await input.computeDuration();
-    const out = new Uint8Array(Math.max(1, Math.ceil(dur * PEAK_RATE)));
+    const acc = new Levels(Math.max(1, Math.ceil(dur * PEAK_RATE)));
     for await (const wb of new AudioBufferSink(track).buffers()) {
       const b = wb.buffer;
-      const per = b.sampleRate / PEAK_RATE;
-      const chs = Array.from({ length: Math.min(2, b.numberOfChannels) }, (_, i) => b.getChannelData(i));
-      const base = wb.timestamp * PEAK_RATE;
-      for (let i = 0; i < b.length; i += 4) {
-        const k = Math.floor(base + i / per);
-        if (k < 0 || k >= out.length) continue;
-        let v = 0;
-        for (const ch of chs) v = Math.max(v, Math.abs(ch[i]));
-        const q = Math.min(255, Math.round(v * 255));
-        if (q > out[k]) out[k] = q;
-      }
+      acc.add(b, wb.timestamp * PEAK_RATE);
     }
-    return out;
+    return acc.done();
   } finally {
     input.dispose();
   }
@@ -52,17 +52,40 @@ async function decode(url: string) {
 async function fromWhole(url: string) {
   const b = await decodeWhole(url).catch(() => null);
   if (!b) return null;
-  const out = new Uint8Array(Math.max(1, Math.ceil(b.duration * PEAK_RATE)));
-  const per = b.sampleRate / PEAK_RATE;
-  const chs = Array.from({ length: Math.min(2, b.numberOfChannels) }, (_, i) => b.getChannelData(i));
-  for (let i = 0; i < b.length; i += 4) {
-    const k = Math.floor(i / per);
-    let v = 0;
-    for (const ch of chs) v = Math.max(v, Math.abs(ch[i]));
-    const q = Math.min(255, Math.round(v * 255));
-    if (q > out[k]) out[k] = q;
+  const acc = new Levels(Math.max(1, Math.ceil(b.duration * PEAK_RATE)));
+  acc.add(b, 0);
+  return acc.done();
+}
+
+/** Peaks and RMS every 10 ms, filled from decoded pieces of sound. */
+class Levels {
+  peaks: Uint8Array;
+  sum: Float32Array;
+  n: Uint16Array;
+  constructor(len: number) {
+    this.peaks = new Uint8Array(len);
+    this.sum = new Float32Array(len);
+    this.n = new Uint16Array(len);
   }
-  return out;
+  add(b: AudioBuffer, base: number) {
+    const per = b.sampleRate / PEAK_RATE;
+    const chs = Array.from({ length: Math.min(2, b.numberOfChannels) }, (_, i) => b.getChannelData(i));
+    for (let i = 0; i < b.length; i += 4) {
+      const k = Math.floor(base + i / per);
+      if (k < 0 || k >= this.peaks.length) continue;
+      let v = 0;
+      for (const ch of chs) v = Math.max(v, Math.abs(ch[i]));
+      const q = Math.min(255, Math.round(v * 255));
+      if (q > this.peaks[k]) this.peaks[k] = q;
+      this.sum[k] += v * v;
+      if (this.n[k] < 65535) this.n[k]++;
+    }
+  }
+  done() {
+    const rms = new Uint8Array(this.peaks.length);
+    for (let k = 0; k < rms.length; k++) rms[k] = this.n[k] ? Math.min(255, Math.round(Math.sqrt(this.sum[k] / this.n[k]) * 255)) : 0;
+    return { peaks: this.peaks, rms };
+  }
 }
 
 const images = new Map<string, string>();
@@ -71,21 +94,34 @@ const images = new Map<string, string>();
 export function waveImage(id: string, peaks: Uint8Array, color = "rgba(255,255,255,0.75)") {
   const had = images.get(id);
   if (had) return had;
-  const w = Math.min(peaks.length, 8000);
+  // drawn from the loudness (RMS) when it is known, in decibels: a loud master and a quiet voice both fill the clip
+  // and both show where they rise and fall
+  const src = levels.get(id) ?? peaks;
+  const w = Math.min(src.length, 8000);
   const h = 48;
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   const g = c.getContext("2d")!;
   g.fillStyle = color;
-  const per = peaks.length / w;
+  const per = src.length / w;
+  const cols = new Float32Array(w);
   for (let x = 0; x < w; x++) {
     let v = 0;
     const k0 = Math.floor(x * per);
     const k1 = Math.max(k0 + 1, Math.floor((x + 1) * per));
-    for (let k = k0; k < k1; k++) v = Math.max(v, peaks[k] ?? 0);
-    // a gentle curve so quiet speech still shows
-    const bar = Math.max(1, Math.sqrt(v / 255) * h * 0.95);
+    for (let k = k0; k < k1; k++) v = Math.max(v, src[k] ?? 0);
+    cols[x] = v;
+  }
+  // the file's own range: from its quiet moments (10th percentile) to its loud ones (99.5th), at least 12 dB and at
+  // most 40 — a squeezed master still shows its beats and sections, a voice its words and pauses
+  const dbs = Array.from(cols, (v) => (v > 0 ? 20 * Math.log10(v / 255) : -90));
+  const sorted = [...dbs].sort((a, b) => a - b);
+  const hi = sorted[Math.floor(w * 0.995)] ?? 0;
+  const lo = Math.max(hi - 40, Math.min(hi - 12, sorted[Math.floor(w * 0.1)] ?? hi - 40));
+  for (let x = 0; x < w; x++) {
+    const k = Math.min(1, Math.max(0, (dbs[x] - lo) / (hi - lo)));
+    const bar = Math.max(1, (0.06 + 0.94 * k) * h * 0.95);
     g.fillRect(x, (h - bar) / 2, 1, bar);
   }
   const url = c.toDataURL("image/png");

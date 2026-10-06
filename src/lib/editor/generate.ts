@@ -162,15 +162,18 @@ export async function separate(p: EditorProject, who: Who, b: { path?: unknown; 
     const mime = path.endsWith(".wav") ? "audio/wav" : "audio/webm";
     const link = (await storage().from(EDITOR_BUCKET).createSignedUrl(path, 3600)).data?.signedUrl ?? null;
     return await charged(who, "editor_price_stems", Math.ceil(durationMs / 60_000), "فصل الأصوات في حيدرة كت", async () => {
-      const voice = await elevenIsolateVoice({ file, mime, name: path.split("/").pop()! }).catch(providerError);
+      // the three at once (one after another, a song of a few minutes ran past the request's time): the talking from
+      // ElevenLabs, the music and the effects each taken out of the same recording by SAM-Audio
+      const fal = falReady() && link;
+      const [voice, music, effects] = await Promise.all([
+        elevenIsolateVoice({ file, mime, name: path.split("/").pop()! }).catch(providerError),
+        fal ? samSeparate(link, "music").catch(providerError) : null,
+        fal ? samSeparate(link, "sound effects").catch(providerError) : null,
+      ]);
+      const ext = (m: string) => (m.includes("mpeg") ? "mp3" : m.includes("ogg") ? "ogg" : "wav");
       const made = [await addFile(p, { bytes: voice, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: `الكلام · ${name}`, durationMs, meta: { made: "stem", stem: "voice" } })];
-      if (falReady() && link) {
-        const music = await samSeparate(link, "music").catch(providerError);
-        const effects = await samSeparate(music.residualUrl, "speech").catch(providerError);
-        const ext = (m: string) => (m.includes("mpeg") ? "mp3" : m.includes("ogg") ? "ogg" : "wav");
-        made.push(await addFile(p, { bytes: music.target.bytes, mime: music.target.mime, ext: ext(music.target.mime), kind: "audio", name: `الموسيقى · ${name}`, durationMs, meta: { made: "stem", stem: "music" } }));
-        made.push(await addFile(p, { bytes: effects.residual.bytes, mime: effects.residual.mime, ext: ext(effects.residual.mime), kind: "audio", name: `المؤثرات · ${name}`, durationMs, meta: { made: "stem", stem: "effects" } }));
-      }
+      if (music) made.push(await addFile(p, { bytes: music.target.bytes, mime: music.target.mime, ext: ext(music.target.mime), kind: "audio", name: `الموسيقى · ${name}`, durationMs, meta: { made: "stem", stem: "music" } }));
+      if (effects) made.push(await addFile(p, { bytes: effects.target.bytes, mime: effects.target.mime, ext: ext(effects.target.mime), kind: "audio", name: `المؤثرات · ${name}`, durationMs, meta: { made: "stem", stem: "effects" } }));
       return { assets: made, full: made.length === 3 };
     });
   } finally {

@@ -233,7 +233,7 @@ function NewProject({ onClose }: { onClose: () => void }) {
 
           {source === "device" && (
             <div className="space-y-2 rounded-xl bg-jw-bg-2 p-2.5">
-              <input ref={fileInput} type="file" multiple accept="video/*,image/*,audio/*" className="hidden" onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])} />
+              <input ref={fileInput} type="file" multiple accept="video/*,image/*,audio/*,audio/wav,audio/x-wav,.wav,.mp3,.m4a" className="hidden" onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])} />
               <button type="button" className="jw-btn w-full text-xs" onClick={() => fileInput.current?.click()}>
                 <Icon name="plus" size={14} /> اختر فيديوهات أو صور
               </button>
