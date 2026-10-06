@@ -65,7 +65,7 @@ const MAIN: Chip[] = [
   { id: "edit", label: "تعديل", icon: "settings", go: { kind: "pick" } },
   { id: "audio", label: "صوت", icon: "music", go: "audio" },
   { id: "text", label: "نص", icon: "type", go: "text" },
-  { id: "claude", label: "Claude", icon: "orb", go: { kind: "claude" }, accent: true },
+  { id: "claude", label: "حيدرة", icon: "orb", go: { kind: "claude" }, accent: true },
   { id: "captions", label: "كابشن", icon: "sparkles", go: { kind: "captions" } },
   { id: "media", label: "الوسائط", icon: "folder", go: { kind: "library" } },
   { id: "project", label: "المقاس", icon: "ratio", go: { kind: "project" } },

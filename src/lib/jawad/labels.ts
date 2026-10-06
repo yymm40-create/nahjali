@@ -14,13 +14,13 @@ export function stageLabel(status: JobStatus, providerStatus?: string | null) {
     case "running": {
       if (providerStatus === "queued") return "في طابور المزوّد";
       // «الفصل الذكي»
-      if (providerStatus === "watching") return "Claude يشاهد الفيديو ويخطط الأصوات";
+      if (providerStatus === "watching") return "حيدرة يشاهد الفيديو ويخطط الأصوات";
       if (providerStatus === "isolating") return "يفصل الحوار من صوت الفيديو";
       const made = /^sounds (\d+)\/(\d+)$/.exec(providerStatus ?? "");
       if (made) return `يصنع الأصوات (${made[1]} من ${made[2]})`;
       if (providerStatus === "mixing") return "يجهّز المسارات على طول الفيديو";
       // «النطق الدقيق»
-      if (providerStatus === "diction") return "Claude يضبط نطق الكلمات";
+      if (providerStatus === "diction") return "حيدرة يضبط نطق الكلمات";
       return "التوليد";
     }
     case "saving":

@@ -852,7 +852,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </button>
         </div>
         <span className="hidden lg:contents"><button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="مساعدك: قل له وش تبي ويعدّل التايملاين">
-          <span className="jw-orb h-4 w-4" aria-hidden /> Claude
+          <span className="jw-orb h-4 w-4" aria-hidden /> حيدرة
         </button></span>
         <button type="button" className="jw-btn jw-btn-primary jw-3d shrink-0" disabled={readOnly || !total} onClick={() => setExporting(true)}>
           <Icon name="download" size={16} /> <span className="hidden sm:inline">صدّر</span>
@@ -888,18 +888,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
-        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl`} style={wide ? { width: chatW } : undefined} aria-label="Claude">
+        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl`} style={wide ? { width: chatW } : undefined} aria-label="حيدرة">
           {/* its edge: drag to make the conversation wider or narrower (double-click: the usual width) */}
           <div
             role="separator"
             aria-orientation="vertical"
-            aria-label="غيّر عرض محادثة Claude"
+            aria-label="غيّر عرض محادثة حيدرة"
             title="اسحب لتكبير المحادثة أو تصغيرها"
             className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${THEMES[theme].mirror ? "start-0" : "end-0"}`}
             onPointerDown={dragChat}
             onDoubleClick={() => setChatW(400)}
           />
-          <Guard name="Claude"><AssistantPanel ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
+          <Guard name="حيدرة"><AssistantPanel ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col" aria-label="المعاينة">
