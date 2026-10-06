@@ -8,13 +8,11 @@ import {
   clipEnd,
   clipLength,
   CAPTION_STYLES,
-  COLOR_PRESETS,
   findClip,
   formatTime,
   ANIM_MS,
   ANIMS,
   hasSoundFx,
-  NEUTRAL_COLOR,
   NO_SOUND_FX,
   SOUND_EFFECTS,
   RATIOS,
@@ -25,7 +23,6 @@ import {
   type AnimKind,
   type CaptionStyle,
   type Clip,
-  type ColorPreset,
   type SoundEffect,
   type SoundFx,
   type Track,
@@ -39,6 +36,7 @@ import Icon from "../Icon";
 import { soundFile } from "./audio";
 import FontPicker from "./FontPicker";
 import FxPanel from "./FxPanel";
+import GradePanel from "./GradePanel";
 import TransitionPanel from "./TransitionPanel";
 import { TR_CATS, TR_LIST, type TrCat } from "@/lib/editor/transitions";
 import { clipSound } from "./voice";
@@ -417,21 +415,21 @@ export default function Inspector({
 
       {current === "color" && (
         <div className="space-y-3">
-          <div className="grid grid-cols-4 gap-1.5">
-            {(Object.keys(COLOR_PRESETS) as ColorPreset[]).map((k) => (
-              <button key={k} type="button" disabled={locked} aria-pressed={(clip.color?.preset ?? "none") === k} className={`rounded-lg border px-1 py-2 text-[11px] ${(clip.color?.preset ?? "none") === k ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set({ color: { preset: k } }, "color:preset")}>
-                {COLOR_PRESETS[k].label}
-              </button>
-            ))}
-          </div>
-          {(["brightness", "contrast", "saturation"] as const).map((k) => (
-            <Slider key={k} label={k === "brightness" ? "الإضاءة" : k === "contrast" ? "التباين" : "التشبع"} value={Math.round((clip.color?.[k] ?? 1) * 100)} min={k === "saturation" ? 0 : 40} max={k === "saturation" ? 250 : 180} step={1} disabled={locked} onChange={(v) => set({ color: { [k]: v / 100 } }, `color:${k}`)} format={(v) => `${v}%`} />
-          ))}
-          <Slider ltr label="← بارد · دافئ →" value={Math.round((clip.color?.warmth ?? 0) * 100)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ color: { warmth: v / 100 } }, "color:warmth")} format={(v) => `${v}`} />
-          <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked || !clip.color} onClick={() => set({ color: null }, "color:reset")}>
-            <Icon name="retry" size={14} /> الألوان الأصلية
-          </button>
-          {clip.color && JSON.stringify(clip.color) !== JSON.stringify(NEUTRAL_COLOR) && <p className="text-[11px] text-jw-faint">المعاينة والتصدير بنفس الألوان.</p>}
+          <GradePanel clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} />
+          {clip.color && (
+            <details className="rounded-lg border border-jw-line p-2">
+              <summary className="cursor-pointer text-[11px] text-jw-muted">الألوان السريعة القديمة (هذا المقطع فيه منها)</summary>
+              <div className="mt-2 space-y-2">
+                {(["brightness", "contrast", "saturation"] as const).map((k) => (
+                  <Slider key={k} label={k === "brightness" ? "الإضاءة" : k === "contrast" ? "التباين" : "التشبع"} value={Math.round((clip.color?.[k] ?? 1) * 100)} min={k === "saturation" ? 0 : 40} max={k === "saturation" ? 250 : 180} step={1} disabled={locked} onChange={(v) => set({ color: { [k]: v / 100 } }, `color:${k}`)} format={(v) => `${v}%`} />
+                ))}
+                <Slider ltr label="← بارد · دافئ →" value={Math.round((clip.color?.warmth ?? 0) * 100)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ color: { warmth: v / 100 } }, "color:warmth")} format={(v) => `${v}`} />
+                <button type="button" className="jw-btn jw-btn-quiet w-full text-xs" disabled={locked} onClick={() => set({ color: null }, "color:reset")}>
+                  <Icon name="retry" size={14} /> شيل الألوان السريعة
+                </button>
+              </div>
+            </details>
+          )}
         </div>
       )}
 
