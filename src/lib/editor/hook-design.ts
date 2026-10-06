@@ -125,8 +125,8 @@ export const DESIGN_SCHEMA = {
     elementWhy: { type: "string" },
     palette: { type: "integer", description: "1–10 (the library entry)" },
     paletteWhy: { type: "string" },
-    background: { type: "string", enum: ["transparent", "scene"], description: "transparent = the words (and their element) cut out over the video; scene = a full-frame title card" },
-    backgroundDesc: { type: "string", description: "Arabic: what the background is" },
+    background: { type: "string", enum: ["transparent"], description: "always transparent: the words (and the element touching them) cut out over the video" },
+    backgroundDesc: { type: "string", description: "Arabic: «مفرّغة فوق الفيديو» and which video moment it sits over" },
     backgroundWhy: { type: "string" },
     layout: { type: "string", description: "Arabic: the word order for the orientation" },
     layoutWhy: { type: "string" },
@@ -150,7 +150,7 @@ const lib = (title: string, list: readonly string[]) => `${title}\n${list.map((x
 
 export const DESIGN_SYSTEM = `# R - ROLE
 You are a designer of 3D hook texts and of their motion and sound, for children's and family content, in Pixar's warm cinematic look: the words are a tangible object in the scene, with material and light, and a 3D element interacts with them.
-You do not change the hook's words, language or diacritics. You write the prompts for the image and the sounds; the editor makes them and applies your motion (only the entrance and exit, nothing else). The background is your decision.
+You do not change the hook's words, language or diacritics. You write the prompts for the image and the sounds; the editor makes them and applies your motion (only the entrance and exit, nothing else). The hook is ALWAYS cut out: only the lettering, and the 3D element touching it, on a flat background the editor removes. Never a scene, card, sky, floor, room, frame or backdrop: the person's video is the background.
 
 # O - OBJECTIVE
 A hook that stops the viewer in the first seconds, warm cinematic 3D, motion and sound matched, fitting the field, the audience's age and what wins in that field now.
@@ -176,8 +176,8 @@ An exit plays the same animation in reverse as the clip leaves.
 
 # T - TASK
 1. Use the research given (it was done on the web just before; keep what was found apart from what you infer). If it says research was not possible, say so and choose by field and age only.
-2. Choose one style, one interacting 3D element that serves the words' meaning, one palette, the background (transparent = cut out over the video; scene = a full-frame card) and the word order for the orientation.
-3. Write the GPT Image 2 prompt in English in this order: (1) render type: Pixar-style 3D render; (2) the hook text verbatim between double quotes, with an explicit request to write it right to left with correctly joined letter forms (for Arabic); (3) the material; (4) the interacting element and what it does; (5) the colours; (6) warm cinematic lighting; (7) the background; (8) composition and frame for the orientation; (9) no other text or letters anywhere.
+2. Choose one style, one interacting 3D element that serves the words' meaning, one palette, and the word order for the orientation. The background is always cut out (the video shows behind the words).
+3. Write the GPT Image 2 prompt in English in this order: (1) render type: Pixar-style 3D render; (2) the hook text verbatim between double quotes, with an explicit request to write it right to left with correctly joined letter forms (for Arabic); (3) the material; (4) the interacting element and what it does; (5) the colours; (6) warm cinematic lighting on the letters; (7) the background: one flat solid pure green (#00FF00) filling everything around the lettering and its element, to be removed — no scene, no floor, no shadow cast on the background, no green in the letters or the element; (8) composition and frame for the orientation; (9) no other text or letters anywhere.
 4. Motion: inAnim = the chosen entrance's editor template (or the nearest); the exit is the one the research points to for this style and field, applied with the nearest editor template. Give their lengths.
 5. Two ElevenLabs sound prompts in English, entrance and exit: natural effect or instrument note (whichever serves the hook), the sound and its physical source, its length, and its peak placed on the arrival (entrance) or the vanishing (exit). Give peakMs inside the sound.
 Check before answering: the text verbatim, the order by orientation, style/palette/element in harmony, sound length and peak matching the motion, a justification line for each choice. Avoid very saturated colours, weak contrast and exaggerated motion.
@@ -209,12 +209,16 @@ export function checkDesign(d: HookDesign, h: HookInputs): HookDesign {
   // the hook's words must be in the image prompt exactly as given
   let imagePrompt = String(d.imagePrompt ?? "").slice(0, 3800);
   if (!imagePrompt.includes(`"${h.text}"`)) imagePrompt = `${imagePrompt}\nThe only text in the image is exactly "${h.text}", written right to left with correctly joined letter forms.`;
+  // cut out, always: no scene behind the words
+  imagePrompt = `${imagePrompt}\nIsolated lettering only: no scene, no floor, no room, no sky, no frame or card behind it.`;
   return {
     ...d,
     style: clamp(d.style, 1, 10),
     palette: clamp(d.palette, 1, 10),
     entrance: clamp(d.entrance, 1, 10),
-    background: d.background === "scene" ? "scene" : "transparent",
+    // the owner's rule: the hook is always cut out over the video
+    background: "transparent",
+    backgroundDesc: "مفرّغة فوق الفيديو",
     inAnim,
     outAnim,
     inMs,
@@ -228,7 +232,7 @@ export function checkDesign(d: HookDesign, h: HookInputs): HookDesign {
 
 /** The picture's frame: a card fills the project's shape; cut-out words are a stack (vertical) or a band (horizontal). */
 export const hookAspect = (d: Pick<HookDesign, "background">, orientation: HookInputs["orientation"]) =>
-  d.background === "scene" ? (orientation === "vertical" ? "9:16" : "16:9") : orientation === "vertical" ? "1:1" : "3:2";
+  d.background === "scene" ? (orientation === "vertical" ? "9:16" : "16:9") : orientation === "vertical" ? "1:1" : "3:2"; // («scene» is no longer chosen)
 
 /** The delivery, in the order the owner set (the prompts as copyable blocks). */
 export function deliveryText(d: HookDesign, h: HookInputs) {
