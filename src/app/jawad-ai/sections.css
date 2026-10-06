@@ -162,29 +162,137 @@
   color: var(--jw-ink);
 }
 
-/* ── «الممنتج الذكي» «غرفة المونتاج»: a dark edit suite, every panel close to black so the picture leads; electric
-   lime for what is selected and the playhead (the colour editors' eyes look for) ── */
+/* ── «الممنتج الذكي»: a bright studio from the future — white glass panels floating over a pale blue field, one
+   electric blue for what is selected and the playhead, a little depth on what can be pressed. The picture itself
+   sits on a dark screen so its colours read true. ── */
 .jw [data-jw-section="editor"] {
-  --jw-bg: #0c0d0c;
-  --jw-bg-2: #101210;
-  --jw-surface: #151815;
-  --jw-surface-2: #1d211d;
-  --jw-surface-3: #272c27;
-  --jw-line: rgba(200, 255, 200, 0.08);
-  --jw-line-strong: rgba(200, 255, 200, 0.16);
-  --jw-ink: #eef3ec;
-  --jw-muted: #a5b0a2;
-  --jw-faint: #7f8a7c;
-  --jw-accent: #b8f53d;
-  --jw-on-accent: #121a03;
-  --jw-danger: #ff5d6c;
-  --jw-ok: #4ade80;
-  --jw-warn: #fbbf24;
-  --jw-radius: 12px;
-  color-scheme: dark;
+  --jw-bg: #eef3fc;
+  --jw-bg-2: #e7eefb;
+  --jw-surface: #ffffff;
+  --jw-surface-2: #f1f5fd;
+  --jw-surface-3: #e3eaf8;
+  --jw-line: rgba(37, 82, 190, 0.11);
+  --jw-line-strong: rgba(37, 82, 190, 0.22);
+  --jw-ink: #0b1a3a;
+  --jw-muted: #4a5b7d;
+  --jw-faint: #7787a5;
+  --jw-accent: #2563eb;
+  --jw-on-accent: #ffffff;
+  --jw-danger: #dc2626;
+  --jw-ok: #059669;
+  --jw-warn: #b45309;
+  --jw-radius: 14px;
+  --jw-glow: 0 0 0 1px rgba(37, 99, 235, 0.08), 0 12px 32px -14px rgba(37, 99, 235, 0.45), 0 2px 6px -2px rgba(15, 30, 80, 0.12);
+  color-scheme: light;
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(59, 130, 246, 0.16), transparent 70%),
+    radial-gradient(700px 400px at 0% 110%, rgba(14, 165, 233, 0.12), transparent 70%),
+    linear-gradient(rgba(37, 99, 235, 0.045) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, rgba(37, 99, 235, 0.045) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--jw-bg);
 }
 .jw [data-jw-section="editor"]::before {
-  background:
-    linear-gradient(90deg, #b8f53d, #22d3ee, #a78bfa) top / 100% 3px no-repeat,
-    radial-gradient(1200px 400px at 50% -10%, rgba(184, 245, 61, 0.06), transparent 70%);
+  background: linear-gradient(90deg, #2563eb, #0ea5e9, #6366f1) top / 100% 3px no-repeat;
+}
+
+/* glass panels that float over the field */
+.jw [data-jw-section="editor"] .jw-glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  box-shadow: var(--jw-glow);
+}
+/* glass on a computer; on a phone these panels cover the screen, solid */
+@media (min-width: 1024px) {
+  .jw [data-jw-section="editor"] .jw-glass-lg {
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid rgba(37, 99, 235, 0.12);
+    box-shadow: var(--jw-glow);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .jw [data-jw-section="editor"] .jw-glass-lg,
+  .jw [data-jw-section="editor"] .jw-glass {
+    background: #ffffff;
+    backdrop-filter: none;
+  }
+}
+
+/* what can be pressed has a little depth, and lifts towards the hand */
+.jw [data-jw-section="editor"] .jw-3d {
+  transform: perspective(600px) translateZ(0);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 -2px 0 rgba(37, 82, 190, 0.08) inset, 0 6px 14px -8px rgba(37, 99, 235, 0.55);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+.jw [data-jw-section="editor"] .jw-3d:hover:not(:disabled) {
+  transform: perspective(600px) rotateX(10deg) translateY(-2px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 12px 22px -10px rgba(37, 99, 235, 0.65);
+}
+.jw [data-jw-section="editor"] .jw-3d:active:not(:disabled) {
+  transform: perspective(600px) rotateX(0) translateY(1px);
+}
+.jw [data-jw-section="editor"] .jw-btn-primary {
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  box-shadow: 0 8px 20px -10px rgba(37, 99, 235, 0.9);
+}
+
+/* things that float, gently */
+@keyframes jw-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.jw [data-jw-section="editor"] .jw-float {
+  animation: jw-float 5s ease-in-out infinite;
+}
+
+/* the assistant's core: a small living sphere */
+@keyframes jw-orb-turn {
+  to { transform: rotate(360deg); }
+}
+@keyframes jw-orb-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.06); filter: brightness(1.12); }
+}
+.jw-orb {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0 8%, #93c5fd 22%, #2563eb 58%, #1e3a8a 100%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 8px 24px -6px rgba(37, 99, 235, 0.8), inset 0 -4px 10px rgba(30, 58, 138, 0.6);
+  animation: jw-orb-breathe 3.6s ease-in-out infinite;
+}
+.jw-orb::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, transparent 0 60%, rgba(14, 165, 233, 0.9) 75%, transparent 90%);
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%);
+  mask: radial-gradient(circle, transparent 62%, #000 64%);
+  animation: jw-orb-turn 2.8s linear infinite;
+}
+.jw-orb[data-busy="true"]::after {
+  animation-duration: 0.9s;
+}
+
+/* the picture's screen */
+.jw [data-jw-section="editor"] .jw-screen {
+  background: #050914;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25), 0 30px 60px -30px rgba(15, 30, 80, 0.55), 0 0 60px -20px rgba(37, 99, 235, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jw [data-jw-section="editor"] .jw-float,
+  .jw-orb,
+  .jw-orb::after {
+    animation: none;
+  }
+  .jw [data-jw-section="editor"] .jw-3d,
+  .jw [data-jw-section="editor"] .jw-3d:hover:not(:disabled) {
+    transform: none;
+  }
 }
