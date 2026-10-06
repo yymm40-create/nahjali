@@ -9,6 +9,7 @@ import Icon from "../Icon";
 import AssistantPanel from "./AssistantPanel";
 import Guard from "./Guard";
 import { PluginTools } from "./plugins";
+import { loadFontsOf } from "./fontload";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
@@ -60,6 +61,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const [exporting, setExporting] = useState(false);
   const [captioning, setCaptioning] = useState(false);
   const [assisting, setAssisting] = useState(false);
+  // a request for Claude from a button (a ready style): the panel opens and sends it
+  const [ask, setAsk] = useState<{ text: string; n: number } | null>(null);
   const [purgeAt, setPurgeAt] = useState(project.purgeAt);
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
   const [waves, setWaves] = useState<Record<string, string | null>>({});
@@ -318,6 +321,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     setFonts({ readex: css.getPropertyValue("--font-readex").trim() || undefined, naskh: css.getPropertyValue("--font-naskh").trim() || undefined, kufi: css.getPropertyValue("--font-kufi").trim() || undefined });
     void Promise.all(Object.values(FONTS).map((f) => document.fonts.load(`700 48px ${f}`).catch(() => null))).then(() => player?.draw());
   }, [player]);
+  // catalogue fonts the texts use: fetched once, then the frame is drawn again with them
+  useEffect(() => {
+    let live = true;
+    void loadFontsOf(tl).then(() => live && player?.draw());
+    return () => {
+      live = false;
+    };
+  }, [tl, player]);
 
   // ---------- tools ----------
   const at = () => player?.ms ?? 0;
@@ -448,7 +459,19 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         <span className={`hidden shrink-0 text-[11px] sm:inline ${save === "error" || save === "conflict" ? "text-jw-danger" : "text-jw-faint"}`} aria-live="polite">
           {SAVE_TEXT[save]}
         </span>
-        <PluginTools ctx={() => ({ projectId: project.id, tl, selected, playhead: at(), assets: assetMap })} run={run} flash={flash} readOnly={readOnly} />
+        <PluginTools
+          ctx={() => ({
+            projectId: project.id,
+            tl,
+            selected,
+            playhead: at(),
+            assets: assetMap,
+            infos: infos.current,
+            ask: (text) => {
+              setAssisting(true);
+              setAsk((a) => ({ text, n: (a?.n ?? 0) + 1 }));
+            },
+          })} run={run} flash={flash} readOnly={readOnly} />
         <button type="button" className={`jw-btn shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => setAssisting((v) => !v)} aria-pressed={assisting} title="قل لـ Claude وش تبي ويعدّل التايملاين">
           <Icon name="sparkles" size={16} /> Claude
         </button>
@@ -531,7 +554,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         {/* Claude: beside the preview on a computer, the whole screen on a phone */}
         {assisting && (
           <aside className="fixed inset-0 z-50 flex flex-col bg-jw-surface lg:static lg:z-auto lg:w-80 lg:shrink-0 lg:border-s lg:border-jw-line" aria-label="Claude">
-            <Guard name="Claude"><AssistantPanel projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => setAssisting(false)} readOnly={readOnly} /></Guard>
+            <Guard name="Claude"><AssistantPanel ask={ask} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => setAssisting(false)} readOnly={readOnly} /></Guard>
           </aside>
         )}
       </div>

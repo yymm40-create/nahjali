@@ -25,6 +25,7 @@ import { stretch } from "./stretch";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
 import { clipSound } from "./voice";
+import { loadFontsOf } from "./fontload";
 
 export interface ExportAsset {
   id: string;
@@ -63,6 +64,8 @@ export async function exportVideo(
   if (!total) throw new ExportError("التايملاين فاضي؛ أضف مقطعًا أول.");
   const { width, height } = exportSize(tl, quality);
   const fps = tl.fps;
+  // the texts' fonts are on the page before the first frame is drawn
+  await loadFontsOf(tl);
   const byId = new Map(assets.map((a) => [a.id, a]));
   for (const track of tl.tracks) {
     for (const c of track.clips) {
