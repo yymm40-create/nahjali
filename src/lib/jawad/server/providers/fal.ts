@@ -62,8 +62,11 @@ export async function samSeparate(audioUrl: string, prompt: string, waitMs?: num
  * Demucs: a song or a recording split into its singing/talking (`vocals`) and its music (drums, bass and the rest),
  * as WAV links. Together the four play the recording back, so nothing is heard twice.
  */
-export async function demucsSplit(audioUrl: string, waitMs = 150_000) {
-  const out = await falRun<Record<string, unknown>>("fal-ai/demucs", { audio_url: audioUrl, model: "htdemucs", stems: ["vocals", "drums", "bass", "other"], output_format: "wav" }, waitMs);
+export async function demucsSplit(audioUrl: string, quality: "normal" | "high" = "normal", waitMs = 150_000) {
+  // «جودة عالية»: the fine-tuned model, run twice over shifted copies and averaged, with wider overlap: cleaner edges
+  // between voice and music (and slower: a few minutes for a song)
+  const tune = quality === "high" ? { model: "htdemucs_ft", shifts: 2, overlap: 0.5 } : { model: "htdemucs", shifts: 1, overlap: 0.25 };
+  const out = await falRun<Record<string, unknown>>("fal-ai/demucs", { audio_url: audioUrl, ...tune, stems: ["vocals", "drums", "bass", "other"], output_format: "wav" }, waitMs);
   const urls = { vocals: falUrl(out, "vocals"), drums: falUrl(out, "drums"), bass: falUrl(out, "bass"), other: falUrl(out, "other") };
   if (!urls.vocals || !urls.drums || !urls.bass || !urls.other) throw new ProviderError("rejected", "ما رجع الفصل بنتيجة كاملة؛ جرّب مرة ثانية.", `demucs output keys: ${Object.keys(out).join(",")}`);
   return urls as Record<keyof typeof urls, string>;

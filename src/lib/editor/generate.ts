@@ -151,7 +151,7 @@ export async function makeSfx(p: EditorProject, who: Who, b: { prompt?: unknown;
  * music has none of it), then SAM-Audio takes the effects out of what is left; the three play back the recording,
  * nothing twice. Without fal: the talking only (ElevenLabs voice isolation).
  */
-export async function separate(p: EditorProject, who: Who, b: { path?: unknown; from?: unknown; to?: unknown; name?: unknown }) {
+export async function separate(p: EditorProject, who: Who, b: { path?: unknown; from?: unknown; to?: unknown; name?: unknown; quality?: unknown }) {
   stillOpen(p);
   const started = Date.now();
   const prefix = `${p.user_id}/${p.id}/tmp/`;
@@ -162,6 +162,7 @@ export async function separate(p: EditorProject, who: Who, b: { path?: unknown; 
   const fal = falReady();
   if (!fal && !process.env.ELEVENLABS_API_KEY) throw new UserError("فصل الأصوات غير مفعّل على الخادم.", 503);
   const name = String(b.name ?? "المقطع").slice(0, 60);
+  const high = b.quality === "high";
   try {
     const link = (await storage().from(EDITOR_BUCKET).createSignedUrl(path, 3600)).data?.signedUrl ?? null;
     if (!link) throw new UserError("ما وصل الصوت؛ جرّب مرة ثانية.", 409);
@@ -177,7 +178,8 @@ export async function separate(p: EditorProject, who: Who, b: { path?: unknown; 
         return { assets: [await addFile(p, { bytes: voice, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: `الكلام · ${name}`, durationMs, meta: { made: "stem", stem: "voice" } })], full: false };
       }
 
-      const parts = await demucsSplit(link).catch(providerError);
+      // the whole request has 300 s: the high quality may take most of it, the effects then come out of what is left
+      const parts = await demucsSplit(link, high ? "high" : "normal", high ? 250_000 : 150_000).catch(providerError);
       // the effects out of the music (no voice in it): as long as the request's time allows; without them, the music whole
       const left = 270_000 - (Date.now() - started);
       const [vocals, drums, bass, other, fx] = await Promise.all([

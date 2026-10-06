@@ -19,7 +19,23 @@ export const makeMusicAsset = (projectId: string, prompt: string, lengthMs: numb
  * (Sent like every other upload: storage only lets through the headers it was set up for, and a header of our own
  * made the browser stop the upload before it left.)
  */
-export async function separateAsset(projectId: string, a: EditorAsset, fromMs: number, toMs: number, onStep?: (text: string) => void) {
+export type StemQuality = "normal" | "high";
+const STEMS_KEY = "jw-editor-stems-quality";
+/** The separation quality the person picked (kept on this device). */
+export function stemQuality(): StemQuality {
+  try {
+    return localStorage.getItem(STEMS_KEY) === "high" ? "high" : "normal";
+  } catch {
+    return "normal";
+  }
+}
+export function setStemQuality(q: StemQuality) {
+  try {
+    localStorage.setItem(STEMS_KEY, q);
+  } catch {}
+}
+
+export async function separateAsset(projectId: string, a: EditorAsset, fromMs: number, toMs: number, onStep?: (text: string) => void, quality: StemQuality = "normal") {
   if (!a.url) throw new Error("الملف غير متاح.");
   onStep?.("نجهّز الصوت…");
   const wav = await soundFile(a.url, fromMs, toMs).catch(() => {
@@ -31,6 +47,6 @@ export async function separateAsset(projectId: string, a: EditorAsset, fromMs: n
   } catch {
     throw new Error("ما قدرنا نرفع الصوت؛ تأكد من الإنترنت وجرّب مرة ثانية.");
   }
-  onStep?.("نفصل الكلام والموسيقى والمؤثرات… (دقيقة أو دقيقتين)");
-  return postJson<{ assets: EditorAsset[]; full: boolean }>(url(projectId), { action: "separate", path: s.path, from: fromMs, to: toMs, name: a.name });
+  onStep?.(quality === "high" ? "نفصل بجودة عالية… (ياخذ وقت أطول، لين ٤ دقايق)" : "نفصل الكلام والموسيقى والمؤثرات… (دقيقة أو دقيقتين)");
+  return postJson<{ assets: EditorAsset[]; full: boolean }>(url(projectId), { action: "separate", path: s.path, from: fromMs, to: toMs, name: a.name, quality });
 }

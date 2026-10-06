@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { setStemQuality, stemQuality, type StemQuality } from "./make";
 import type { Sensitivity } from "@/lib/editor/scenes";
 import type { SceneProgress } from "./scene-detect";
 import {
@@ -134,6 +135,11 @@ export default function Inspector({
   const [beatBusy, setBeatBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [separating, setSeparating] = useState(false);
+  const [stemQ, setStemQ] = useState<StemQuality>("normal");
+  useEffect(() => {
+    const t = setTimeout(() => setStemQ(stemQuality()), 0);
+    return () => clearTimeout(t);
+  }, []);
   const found = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
   if (!found || projectView) {
@@ -483,9 +489,23 @@ export default function Inspector({
           )}
           {soundButtons}
           {onSeparate && (
-            <button type="button" className="jw-btn jw-3d w-full text-xs" disabled={locked || separating} onClick={() => { setSeparating(true); void onSeparate(clip.id).finally(() => setSeparating(false)); }} title="الكلام في مسار، والموسيقى في مسار، والمؤثرات الصوتية في مسار، متزامنة مع المقطع">
-              {separating ? <span className="jw-spinner" /> : "🎚️"} افصل الكلام والموسيقى والمؤثرات
-            </button>
+            <div className="space-y-1.5">
+              <div className="jw-seg" role="radiogroup" aria-label="جودة الفصل">
+                {(
+                  [
+                    ["normal", "جودة عادية", "أسرع (دقيقة أو دقيقتين)"],
+                    ["high", "جودة عالية", "أنظف فصل بين الصوت والموسيقى، أبطأ (لين ٤ دقايق)"],
+                  ] as const
+                ).map(([q, label, hint]) => (
+                  <button key={q} type="button" role="radio" aria-checked={stemQ === q} title={hint} onClick={() => { setStemQuality(q); setStemQ(q); }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="jw-btn jw-3d w-full text-xs" disabled={locked || separating} onClick={() => { setSeparating(true); void onSeparate(clip.id).finally(() => setSeparating(false)); }} title="الكلام في مسار، والموسيقى في مسار، والمؤثرات الصوتية في مسار، متزامنة مع المقطع">
+                {separating ? <span className="jw-spinner" /> : "🎚️"} افصل الكلام والموسيقى والمؤثرات
+              </button>
+            </div>
           )}
           <SoundWork clip={clip} track={track} url={a?.url ?? null} locked={locked} run={run} />
           {a?.kind === "audio" && (
