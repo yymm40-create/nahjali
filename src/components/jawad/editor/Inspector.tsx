@@ -238,6 +238,20 @@ export default function Inspector({
   const move = (p: Partial<Transform>, key: string) =>
     clip.keys.length ? run({ type: "set_key", clipId: clip.id, at, transform: p }, { coalesce: `${clip.id}:key:${key}:${Math.round(at)}` }) : set({ transform: p }, key);
 
+  // «طلّع الصوت» and «احفظ الصوت ملف»: on the clip's main settings and on its sound settings
+  const soundButtons = (
+            <div className="flex gap-1.5">
+              {!onSound && a?.kind === "video" && (
+                <button type="button" className="jw-btn !min-h-9 flex-1 text-xs" disabled={locked || clip.volume === 0} onClick={() => run({ type: "extract_audio", clipId: clip.id })} title="ينزل صوت الفيديو في مسار صوت تحته، متزامن معه، تعدّل عليه أو تقصّه بروحه">
+                  <Icon name="music" size={14} /> {clip.volume === 0 ? "الصوت مطلّع" : "طلّع الصوت"}
+                </button>
+              )}
+              <button type="button" className="jw-btn jw-btn-quiet !min-h-9 flex-1 text-xs" disabled={saving} onClick={saveSound} title="ينزّل صوت هذا الجزء ملف WAV على جهازك">
+                {saving ? <span className="jw-spinner" /> : <Icon name="download" size={14} />} احفظ الصوت ملف
+              </button>
+            </div>
+  );
+
   const beats = async () => {
     if (!a) return;
     setBeatBusy(true);
@@ -318,18 +332,7 @@ export default function Inspector({
               </div>
             </div>
           )}
-          {sound && (
-            <div className="flex gap-1.5">
-              {!onSound && a?.kind === "video" && (
-                <button type="button" className="jw-btn !min-h-9 flex-1 text-xs" disabled={locked || clip.volume === 0} onClick={() => run({ type: "extract_audio", clipId: clip.id })} title="ينزل صوت الفيديو في مسار صوت تحته، متزامن معه، تعدّل عليه أو تقصّه بروحه">
-                  <Icon name="music" size={14} /> {clip.volume === 0 ? "الصوت مطلّع" : "طلّع الصوت"}
-                </button>
-              )}
-              <button type="button" className="jw-btn jw-btn-quiet !min-h-9 flex-1 text-xs" disabled={saving} onClick={saveSound} title="ينزّل صوت هذا الجزء ملف WAV على جهازك">
-                {saving ? <span className="jw-spinner" /> : <Icon name="download" size={14} />} احفظ الصوت ملف
-              </button>
-            </div>
-          )}
+          {sound && soundButtons}
           {!text && a?.kind !== "audio" && !onSound && (
             <div className="jw-seg" role="radiogroup" aria-label="الملاءمة">
               <button type="button" role="radio" aria-checked={clip.fit === "cover"} disabled={locked} onClick={() => set({ fit: "cover" }, "fit")}>
@@ -489,6 +492,7 @@ export default function Inspector({
               </span>
             </label>
           )}
+          {soundButtons}
           <SoundWork clip={clip} track={track} url={a?.url ?? null} locked={locked} run={run} />
           {a?.kind === "audio" && (
             <button type="button" className="jw-btn w-full text-xs" disabled={locked || beatBusy} onClick={beats}>

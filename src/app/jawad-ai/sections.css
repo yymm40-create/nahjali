@@ -296,3 +296,202 @@
     transform: none;
   }
 }
+
+/* ── «الثيمات»: the editor in three more worlds. Each changes the colours, the shapes and (in Editor.tsx) where the
+   sections sit. ── */
+
+/* ☁️ «سماء» — for children (7–8): a sky full of clouds, soft toy-like buttons that pop up, big and round */
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] {
+  --jw-bg: #dff3ff;
+  --jw-bg-2: #d3edff;
+  --jw-surface: #ffffff;
+  --jw-surface-2: #f1f9ff;
+  --jw-surface-3: #e2f2ff;
+  --jw-line: rgba(40, 120, 200, 0.14);
+  --jw-line-strong: rgba(40, 120, 200, 0.26);
+  --jw-ink: #1f3a5f;
+  --jw-muted: #4c6c93;
+  --jw-faint: #7b9bc0;
+  --jw-accent: #ff7a59;
+  --jw-on-accent: #ffffff;
+  --jw-radius: 26px;
+  --jw-glow: 0 10px 0 rgba(120, 170, 220, 0.35), 0 18px 40px -16px rgba(40, 110, 190, 0.45);
+  background:
+    radial-gradient(120px 60px at 12% 18%, #fff 60%, transparent 62%),
+    radial-gradient(90px 50px at 17% 14%, #fff 60%, transparent 62%),
+    radial-gradient(160px 70px at 78% 12%, #fff 60%, transparent 62%),
+    radial-gradient(110px 55px at 84% 8%, #fff 60%, transparent 62%),
+    radial-gradient(140px 60px at 52% 92%, rgba(255, 255, 255, 0.8) 60%, transparent 62%),
+    linear-gradient(180deg, #8fd3ff 0%, #c9ecff 55%, #e9f8ff 100%);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-glass,
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-glass-lg {
+  background: #ffffff;
+  border: 3px solid #ffffff;
+  border-radius: 30px;
+  box-shadow: 0 8px 0 #bfe3ff, 0 20px 40px -18px rgba(30, 100, 180, 0.45);
+  backdrop-filter: none;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-3d {
+  border-radius: 9999px;
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.08), inset 0 4px 0 rgba(255, 255, 255, 0.9), 0 7px 0 #b9dcf7, 0 12px 18px -8px rgba(30, 100, 180, 0.4);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-3d:hover:not(:disabled) {
+  transform: translateY(-4px) scale(1.04);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-3d:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.08), 0 2px 0 #b9dcf7;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-btn {
+  border-radius: 9999px;
+  min-height: 2.75rem;
+  font-weight: 700;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-btn-primary,
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-rail-on,
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-play {
+  background: linear-gradient(180deg, #ff9a6b, #ff6a4d);
+  color: #fff;
+  box-shadow: inset 0 4px 0 rgba(255, 255, 255, 0.45), 0 7px 0 #d9502f, 0 14px 20px -10px rgba(217, 80, 47, 0.7);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-screen {
+  border: 8px solid #fff;
+  border-radius: 28px;
+  box-shadow: 0 10px 0 #bfe3ff, 0 30px 50px -20px rgba(30, 100, 180, 0.5);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-orb {
+  background: radial-gradient(circle at 35% 30%, #fff 0 10%, #ffd37a 28%, #ff9a3d 70%, #e8642c 100%);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-cloud-0 { background: #ffe6ef; }
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-cloud-1 { background: #e3f6ff; }
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-cloud-2 { background: #fff6d6; }
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-cloud-3 { background: #e6fbe9; }
+.jw [data-jw-section="editor"] [data-ed-theme="kids"] .jw-cloud-4 { background: #efe8ff; }
+
+/* 🎞️ «استوديو» — the cinema suite: dark, exact, dense; amber for the one thing that matters; nothing floats */
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] {
+  --jw-bg: #0f1012;
+  --jw-bg-2: #141518;
+  --jw-surface: #1b1c20;
+  --jw-surface-2: #222328;
+  --jw-surface-3: #2b2c32;
+  --jw-line: rgba(255, 255, 255, 0.07);
+  --jw-line-strong: rgba(255, 255, 255, 0.14);
+  --jw-ink: #e4e4e6;
+  --jw-muted: #9b9ca3;
+  --jw-faint: #6c6d74;
+  --jw-accent: #e8a23a;
+  --jw-on-accent: #17130b;
+  --jw-danger: #ff6b6b;
+  --jw-ok: #5fd08a;
+  --jw-warn: #f2c14e;
+  --jw-radius: 4px;
+  color-scheme: dark;
+  background: #0f1012;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-glass,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-glass-lg {
+  background: #1b1c20;
+  border: 1px solid #2a2b31;
+  border-radius: 4px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-3d,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-3d:hover:not(:disabled) {
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-btn,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-chip,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-input,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-textarea {
+  border-radius: 3px;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-btn-primary,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-rail-on,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-play {
+  background: #e8a23a;
+  color: #17130b;
+  box-shadow: none;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-screen {
+  border-radius: 0;
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px #2a2b31;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-orb {
+  background: radial-gradient(circle at 35% 30%, #fff3d6 0 8%, #e8a23a 45%, #6b4410 100%);
+  box-shadow: none;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-float,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-orb,
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .jw-orb::after {
+  animation: none;
+}
+.jw [data-jw-section="editor"] [data-ed-theme="cinema"] .tabular-nums {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* 🌿 «طبيعة» — a meadow under trees: greens and wood, leaf-shaped panels, the sections on the right */
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] {
+  --jw-bg: #eef4e4;
+  --jw-bg-2: #e2ecd3;
+  --jw-surface: #fbfaf2;
+  --jw-surface-2: #f0f2e2;
+  --jw-surface-3: #e2e8cf;
+  --jw-line: rgba(60, 90, 40, 0.14);
+  --jw-line-strong: rgba(60, 90, 40, 0.26);
+  --jw-ink: #22311a;
+  --jw-muted: #536645;
+  --jw-faint: #869774;
+  --jw-accent: #2f7d4a;
+  --jw-on-accent: #ffffff;
+  --jw-radius: 18px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='180' viewBox='0 0 600 180'%3E%3Cg fill='%233f7a3a' fill-opacity='.16'%3E%3Cpath d='M60 180V120l-14 0 28-60 28 60H88v60z'/%3E%3Ccircle cx='160' cy='95' r='42'/%3E%3Crect x='154' y='120' width='12' height='60'/%3E%3Cpath d='M300 180v-50h-18l36-80 36 80h-18v50z'/%3E%3Ccircle cx='440' cy='105' r='34'/%3E%3Crect x='435' y='125' width='10' height='55'/%3E%3Cpath d='M540 180v-40h-12l26-58 26 58h-12v40z'/%3E%3C/g%3E%3C/svg%3E") bottom / 600px 180px repeat-x,
+    radial-gradient(500px 260px at 90% 0%, rgba(255, 240, 180, 0.55), transparent 70%),
+    linear-gradient(180deg, #e6f2dc 0%, #eef4e4 45%, #dfe9c9 100%);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-glass,
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-glass-lg {
+  background: rgba(251, 250, 242, 0.92);
+  border: 1px solid rgba(120, 150, 80, 0.3);
+  border-radius: 28px 6px 28px 6px;
+  box-shadow: 0 10px 30px -16px rgba(40, 80, 30, 0.5);
+  backdrop-filter: blur(6px);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-3d {
+  border-radius: 16px 4px 16px 4px;
+  box-shadow: 0 4px 10px -6px rgba(40, 80, 30, 0.55);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-3d:hover:not(:disabled) {
+  transform: rotate(-2deg) translateY(-2px);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-btn-primary,
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-rail-on,
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-play {
+  background: linear-gradient(135deg, #2f7d4a, #6aa84f);
+  color: #fff;
+  box-shadow: 0 6px 16px -8px rgba(47, 125, 74, 0.9);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-screen {
+  border-radius: 20px 4px 20px 4px;
+  box-shadow: 0 0 0 4px #c9b48a, 0 24px 40px -20px rgba(40, 60, 20, 0.6);
+}
+.jw [data-jw-section="editor"] [data-ed-theme="nature"] .jw-orb {
+  background: radial-gradient(circle at 35% 30%, #f4ffe0 0 9%, #9ed36a 30%, #2f7d4a 70%, #1d4d2c 100%);
+  border-radius: 9999px 9999px 9999px 20%;
+}
+
+/* the default (blue) look's own active and play colours */
+.jw [data-jw-section="editor"] .jw-rail-on,
+.jw [data-jw-section="editor"] .jw-play {
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+}
+/* the text takes each look's own ink (it would otherwise keep the page's) */
+.jw [data-jw-section="editor"] [data-ed-theme] {
+  color: var(--jw-ink);
+}

@@ -9,7 +9,7 @@ import Icon from "../Icon";
 import AssistantPanel from "./AssistantPanel";
 import Guard from "./Guard";
 import { PluginTools } from "./plugins";
-import { loadFontsOf } from "./fontload";
+import { familyOf, loadFont, loadFontsOf } from "./fontload";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
@@ -44,6 +44,26 @@ function useWide() {
     () => true,
   );
 }
+
+/** The editor's looks: colours and shapes (sections.css) and where the sections sit. */
+const THEMES = {
+  future: { label: "مستقبلي", icon: "🔷", hint: "أبيض وأزرق، ألواح تطفو", rail: "side", mirror: false, scale: 1, font: null, swatch: ["#eef3fc", "#2563eb", "#ffffff", "#0ea5e9"] },
+  kids: { label: "سماء", icon: "☁️", hint: "للأطفال: غيوم وأزرار كبيرة ناعمة", rail: "clouds", mirror: false, scale: 1.12, font: "baloo-bhaijaan-2", swatch: ["#bfe7ff", "#ff7a59", "#ffffff", "#ffe6ef"] },
+  cinema: { label: "استوديو", icon: "🎞️", hint: "سينمائي احترافي داكن ودقيق", rail: "pages", mirror: false, scale: 0.92, font: "ibm-plex-sans-arabic", swatch: ["#0f1012", "#e8a23a", "#1b1c20", "#2b2c32"] },
+  nature: { label: "طبيعة", icon: "🌿", hint: "أخضر وأشجار، الأدوات يمين", rail: "side", mirror: true, scale: 1, font: "tajawal", swatch: ["#e6f2dc", "#2f7d4a", "#fbfaf2", "#c9b48a"] },
+} as const satisfies Record<string, { label: string; icon: string; hint: string; rail: "side" | "clouds" | "pages"; mirror: boolean; scale: number; font: string | null; swatch: string[] }>;
+type ThemeId = keyof typeof THEMES;
+const RAIL_NAV = {
+  side: "jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex",
+  clouds: "jw-scroll mx-2 mt-1 hidden gap-3 overflow-x-auto px-1 pb-3 pt-1 lg:flex",
+  pages: "jw-glass jw-scroll mx-2 mb-2 hidden gap-px overflow-x-auto p-0.5 lg:flex",
+  // (the phone keeps its own tool bar)
+} as const;
+const RAIL_ITEM = {
+  side: "flex-col gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight",
+  clouds: "min-w-[5.5rem] flex-col justify-center gap-1 rounded-full px-4 py-3 text-sm font-bold",
+  pages: "gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide",
+} as const;
 
 type ClipKind = "video" | "image" | "audio" | "text";
 /** What a clip is to the person: a text, a sound (a sound file, or a video's sound on a sound track), a picture, a video. */
@@ -103,6 +123,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const [rail, setRail] = useState<"media" | "inspector" | "styles" | "project">("media");
   // the whole editor's size (people pick it; kept on this device)
   const [ui, setUi] = useState(1);
+  // the look (kept on this device): colours, shapes and where the sections sit
+  const [theme, setTheme] = useState<ThemeId>("future");
+  const [picking, setPicking] = useState(false);
   // a request for Claude from a button (a ready style): the panel opens and sends it
   const [ask, setAsk] = useState<{ text: string; n: number } | null>(null);
   const [purgeAt, setPurgeAt] = useState(project.purgeAt);
@@ -116,6 +139,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       try {
         const v = Number(localStorage.getItem("jw-editor-ui"));
         if (v >= 0.7 && v <= 1.4) setUi(v);
+        const th = localStorage.getItem("jw-editor-theme");
+        if (th && th in THEMES) setTheme(th as ThemeId);
       } catch {
         /* private mode: the normal size */
       }
@@ -125,11 +150,25 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   useEffect(() => {
     // every size in the editor follows the page's base size, so the whole thing grows or shrinks together
     const root = document.documentElement;
-    root.style.fontSize = ui === 1 ? "" : `${Math.round(ui * 100)}%`;
+    const k = ui * THEMES[theme].scale;
+    root.style.fontSize = k === 1 ? "" : `${Math.round(k * 100)}%`;
     return () => {
       root.style.fontSize = "";
     };
-  }, [ui]);
+  }, [ui, theme]);
+  useEffect(() => {
+    const f = THEMES[theme].font;
+    if (f) void loadFont(f, 400).then(() => loadFont(f, 700));
+  }, [theme]);
+  const pickTheme = (th: ThemeId) => {
+    setTheme(th);
+    setPicking(false);
+    try {
+      localStorage.setItem("jw-editor-theme", th);
+    } catch {
+      /* not kept */
+    }
+  };
   const sizeUi = (d: number) => {
     const v = Math.round(Math.min(1.4, Math.max(0.7, ui + d)) * 100) / 100;
     setUi(v);
@@ -524,11 +563,41 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       setAsk((a) => ({ text, n: (a?.n ?? 0) + 1 }));
     },
   });
+  // the sections: a rail at the side, big clouds over the timeline (children), or page tabs at the bottom (cinema)
+  const railNav = (variant: "side" | "clouds" | "pages") => (
+    <nav className={RAIL_NAV[variant]} aria-label="أقسام المحرر">
+      {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
+            const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.tab ? rail === "inspector" && tab === r.tab : false;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                aria-pressed={on}
+                title={r.hint}
+                onClick={() => {
+                  if (r.id === "captions") return setCaptioning(true);
+                  if (r.tab) {
+                    setTab(r.tab);
+                    setRail("inspector");
+                  } else setRail(r.id as "media" | "styles" | "project");
+                }}
+                className={`jw-3d flex shrink-0 items-center ${RAIL_ITEM[variant]} ${on ? "jw-rail-on" : variant === "clouds" ? `jw-cloud-${i % 5} text-jw-ink` : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
+              >
+                <Icon name={r.icon} size={variant === "clouds" ? 26 : variant === "pages" ? 14 : 16} />
+                <span className="whitespace-nowrap">{label}</span>
+              </button>
+            );
+          })}
+    </nav>
+  );
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
     <div
       className="flex h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] min-h-[520px] flex-col overflow-hidden"
+      data-ed-theme={theme}
+      style={THEMES[theme].font ? { fontFamily: `"${familyOf(THEMES[theme].font!)}", var(--jw-font)` } : undefined}
       // files dropped anywhere else (the preview, the panels) go at the playhead
       onDragOver={(e) => {
         if (!readOnly && e.dataTransfer.types.includes("Files")) e.preventDefault();
@@ -567,6 +636,29 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         </span>
         <PluginTools
           ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} className="lg:hidden" />
+        {/* the look */}
+        <div className="relative shrink-0">
+          <button type="button" className="jw-btn jw-3d" onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="الثيم: شكل المحرر وترتيبه">
+            <Icon name="palette" size={16} /> <span className="hidden md:inline">{THEMES[theme].label}</span>
+          </button>
+          {picking && (
+            <div role="menu" aria-label="الثيمات" className="jw-glass absolute end-0 top-full z-50 mt-2 grid w-[22rem] max-w-[90vw] grid-cols-2 gap-2 rounded-2xl p-2">
+              {(Object.keys(THEMES) as ThemeId[]).map((k) => (
+                <button key={k} type="button" role="menuitemradio" aria-checked={theme === k} onClick={() => pickTheme(k)} className={`overflow-hidden rounded-xl border-2 text-start ${theme === k ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`}>
+                  <span className="flex h-14" style={{ background: THEMES[k].swatch[0] }}>
+                    {THEMES[k].swatch.slice(1).map((c) => (
+                      <span key={c} className="m-1.5 flex-1 rounded-lg" style={{ background: c }} />
+                    ))}
+                  </span>
+                  <span className="block bg-jw-surface px-2 py-1.5">
+                    <b className="block text-xs">{THEMES[k].icon} {THEMES[k].label}</b>
+                    <span className="block text-[10px] leading-4 text-jw-muted">{THEMES[k].hint}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {/* the whole editor's size */}
         <div className="hidden items-center rounded-xl border border-jw-line bg-jw-surface-2 sm:flex" role="group" aria-label="حجم الواجهة">
           <button type="button" className="grid h-8 w-8 place-items-center rounded-s-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui <= 0.7} onClick={() => sizeUi(-0.1)} aria-label="صغّر الواجهة" title="صغّر الواجهة">
@@ -613,7 +705,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       )}
 
       {/* Claude (right) · the preview · the left side: a section and its rail (a computer); sheets on a phone */}
-      <div className="flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2">
+      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
         <aside className={`${chat ? "fixed inset-0 z-50 flex" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:static lg:z-auto ${assisting ? "lg:flex" : "lg:hidden"} lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl`} aria-label="Claude">
@@ -670,33 +762,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
           </div>
         </aside>
 
-        {/* the left rail: the editor's sections */}
-        <nav className="jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex" aria-label="أقسام المحرر">
-          {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r) => {
-            const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.tab ? rail === "inspector" && tab === r.tab : false;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                aria-pressed={on}
-                title={r.hint}
-                onClick={() => {
-                  if (r.id === "captions") return setCaptioning(true);
-                  if (r.tab) {
-                    setTab(r.tab);
-                    setRail("inspector");
-                  } else setRail(r.id as "media" | "styles" | "project");
-                }}
-                className={`jw-3d flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight ${on ? "bg-gradient-to-br from-blue-600 to-sky-500 text-white" : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
-              >
-                <Icon name={r.icon} size={16} />
-                <span className="whitespace-nowrap">{label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        {/* the rail of sections at the side (the blue and nature looks) */}
+        {THEMES[theme].rail === "side" && railNav("side")}
       </div>
+
+      {THEMES[theme].rail === "clouds" && railNav("clouds")}
 
       {/* transport and tools */}
       <div className="jw-glass mx-2 my-1 flex items-center gap-1 rounded-2xl px-2 py-1" dir="rtl">
@@ -738,6 +808,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
           if (!wide) setSheet("inspector");
         }} /></Guard>
       </div>
+
+      {THEMES[theme].rail === "pages" && railNav("pages")}
 
       {/* a phone: the assistant floats over the tools, one tap away */}
       {!chat && !readOnly && (
@@ -827,7 +899,7 @@ function Transport({ player, total }: { player: Player | null; total: number }) 
       <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink" onClick={() => player?.seek(0)} aria-label="إلى البداية">
         <Icon name="skipBack" size={15} />
       </button>
-      <button type="button" className="jw-3d grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-sky-500 text-white hover:opacity-95" onClick={() => player?.toggle()} aria-label={state.playing ? "إيقاف" : "تشغيل"} disabled={!total}>
+      <button type="button" className="jw-3d jw-play grid h-11 w-11 place-items-center rounded-full hover:opacity-95" onClick={() => player?.toggle()} aria-label={state.playing ? "إيقاف" : "تشغيل"} disabled={!total}>
         <Icon name={state.playing ? "pause" : "play"} size={18} />
       </button>
       <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink" onClick={() => player?.seek(total)} aria-label="إلى النهاية">
