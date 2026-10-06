@@ -47,7 +47,7 @@ describe("lifting a piece onto the red track", () => {
   it("keeps the note, kind and job, and survives a save", () => {
     const t2 = apply(t, { type: "update_clip", clipId: piece.id, patch: { fix: { note: "الوجه يتغير", mode: "whole" } } }, assets).timeline;
     const back = readTimeline(JSON.parse(JSON.stringify(t2)));
-    expect(red(back).clips[0].fix).toEqual({ note: "الوجه يتغير", mode: "whole", job: null, from: null, state: "draft" });
+    expect(red(back).clips[0].fix).toEqual({ note: "الوجه يتغير", mode: "whole", job: null, from: null, state: "draft", error: null });
     expect(() => apply(t, { type: "update_clip", clipId: main(t).clips[0].id, patch: { fix: { note: "x" } } }, assets)).toThrow(/الأحمر/);
   });
 });

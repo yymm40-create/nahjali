@@ -22,6 +22,7 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Ma
 const POLL_MS = 10_000;
 const STATE: Record<Fix["state"], { text: string; cls: string }> = {
   draft: { text: "ينتظر ملاحظتك", cls: "bg-jw-bg-2 text-jw-muted" },
+  sending: { text: "يرسل…", cls: "bg-sky-500/15 text-sky-600" },
   making: { text: "يُصنع الآن…", cls: "bg-amber-500/15 text-amber-600" },
   done: { text: "جاهز على الأخضر ✓", cls: "bg-emerald-500/15 text-emerald-600" },
   failed: { text: "ما نجح؛ أعد المحاولة", cls: "bg-red-500/15 text-red-600" },
@@ -109,7 +110,51 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
     };
   }, [makingKey, check, readOnly]);
 
+  // ---------- sending, in the background (the window is already closed) ----------
+  const assetsRef = useRef(assets);
+  useEffect(() => {
+    assetsRef.current = assets;
+  }, [assets]);
+  const fixOf = (id: string) => (tlRef.current.tracks.find((t) => t.role === "fix")?.clips ?? []).find((c) => c.id === id) ?? null;
+  const sendInBackground = useCallback(
+    async (list: { id: string; note: string }[]) => {
+      if (!list.length) return;
+      for (const { id, note } of list) run({ type: "update_clip", clipId: id, patch: { fix: { note, state: "sending", error: null } } }, { coalesce: `fix-send-${id}` });
+      flash(list.length === 1 ? "انرسل الجزء للتعديل؛ تقدر تكمل شغلك." : `انرسلت ${list.length} أجزاء للتعديل؛ تقدر تكمل شغلك.`);
+      let failed = 0;
+      for (const { id, note } of list) {
+        const c = fixOf(id);
+        if (!c) continue;
+        try {
+          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}` });
+          run({ type: "update_clip", clipId: id, patch: { fix: { job: made.job, from: made.from, state: "making", error: null } } }, { label: "أرسلت جزءًا للتعديل" });
+        } catch (e) {
+          failed++;
+          run({ type: "update_clip", clipId: id, patch: { fix: { state: "failed", error: e instanceof Error ? e.message : "تعذّر الإرسال." } } }, { label: "ما انرسل جزء" });
+        }
+      }
+      if (failed) flash(failed === 1 ? "جزء ما انرسل؛ السبب مكتوب عليه." : `${failed} أجزاء ما انرسلت؛ السبب مكتوب عليها.`, true);
+    },
+    [projectId, run, onAssets, flash],
+  );
+  // a send cut short (the page was closed while sending): back to «أعد المحاولة»
+  const staleKey = pieces.filter((c) => c.fix?.state === "sending").map((c) => c.id).join(",");
+  const busyIds = useRef(new Set<string>());
+  useEffect(() => {
+    if (!staleKey || readOnly) return;
+    const t = setTimeout(() => {
+      for (const id of staleKey.split(",")) if (!busyIds.current.has(id)) run({ type: "update_clip", clipId: id, patch: { fix: { state: "failed", error: "انقطع الإرسال قبل ما يكمل؛ أعد المحاولة." } } });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [staleKey, readOnly, run]);
+  const send = (list: { id: string; note: string }[]) => {
+    for (const x of list) busyIds.current.add(x.id);
+    void sendInBackground(list).finally(() => list.forEach((x) => busyIds.current.delete(x.id)));
+  };
+
   if (readOnly || (!red && !(fromJawad && canLift))) return null;
+  const sending = pieces.filter((c) => c.fix?.state === "sending");
+  const failedPieces = pieces.filter((c) => c.fix?.state === "failed");
 
   const lift = () => sel && run({ type: "lift_fix", clipId: sel.clip.id });
   const cut = () => {
@@ -161,7 +206,27 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           )}
         </div>
       )}
-      {open && <FixDialog projectId={projectId} pieces={pieces} assets={assets} run={run} player={player} onAssets={onAssets} onClose={() => setOpen(false)} />}
+      {(sending.length > 0 || failedPieces.length > 0) && (
+        <div className={`mx-2 mb-1 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-1.5 text-xs ${failedPieces.length ? "border-red-500/40 bg-red-500/10" : "border-sky-400/50 bg-sky-400/10"}`} aria-live="polite">
+          {sending.length > 0 && (
+            <span className="flex items-center gap-1.5 font-semibold">
+              <span className="jw-spinner" /> يرسل {sending.length === 1 ? "جزء" : `${sending.length} أجزاء`} في الخلفية…
+            </span>
+          )}
+          {failedPieces.map((c) => (
+            <button key={c.id} type="button" className="rounded-full bg-red-500/15 px-2 py-0.5 text-start font-semibold text-red-700 hover:bg-red-500/25" onClick={() => player?.seek(c.start)} title="روح للجزء">
+              ✕ {formatTime(c.start)}: {c.fix?.error ?? "ما انرسل"}
+            </button>
+          ))}
+          <span className="flex-1" />
+          {failedPieces.length > 0 && !sending.length && (
+            <button type="button" className="jw-btn !min-h-8 !px-3 text-xs" onClick={() => send(failedPieces.filter((c) => (c.fix?.note ?? "").trim().length >= 3).map((c) => ({ id: c.id, note: c.fix!.note })))}>
+              <Icon name="retry" size={14} /> أعد المحاولة
+            </button>
+          )}
+        </div>
+      )}
+      {open && <FixDialog projectId={projectId} pieces={pieces} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -197,14 +262,56 @@ const askPrice = async (p: Extract<Plan, { ok: true }>): Promise<Quote> => {
   return res.ok ? { coins: r.coins, from: r.cut ? Math.round(r.cut.start * 1000) : p.mode === "whole" ? 0 : null } : { error: r.error ?? `تعذّر حساب السعر (${res.status}).` };
 };
 
-/** Every red piece: what to fix, «جزئي» or «كامل», its price; then one tap sends them all. */
-function FixDialog({ projectId, pieces, assets, run, player, onAssets, onClose }: { projectId: string; pieces: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onClose: () => void }) {
+/**
+ * Sends one piece to be made again. Everything it needs is fetched right now (the film video's job, the original,
+ * the price), so nothing waits on a window being open. Returns the job, or throws with the reason in plain Arabic.
+ */
+async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset: EditorAsset | undefined; onAssets: (l: EditorAsset[]) => void; key: string }) {
+  let a = ctx.asset;
+  if (a && !a.jobId && a.origin === "film") {
+    a = (await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${ctx.projectId}`, { action: "fix_link", assetId: a.id })).asset;
+    ctx.onAssets([a]);
+  }
+  const j = a?.jobId ? (await loadJobs([a.jobId]))[0] : undefined;
+  const p = planOf(c, a, j);
+  if (!p.ok) throw new Error(p.why);
+  const q = await askPrice(p);
+  if (!("coins" in q)) throw new Error(q.error);
+  const ranges = p.ranges.map((r) => ({ ...r, note: note.slice(0, EDIT_LIMITS.noteMax) }));
+  const partCut = p.mode === "parts" ? p.cut : null;
+  const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins };
+  try {
+    const times = frameTimes(p.videoSec, ranges, partCut);
+    const small = await grabFrames(p.out.url!, times, EDIT_LIMITS.frameWidth, 0.72);
+    send.frames = times.map((t, i) => ({ t, data: small[i] }));
+    if (partCut) {
+      // the cut frames become the new clip's first and last frames: full quality, kept under the request's size
+      const [first, last] = await grabFrames(p.out.url!, [partCut.start, partCut.end], 1920, 0.9, { by: "side" });
+      send.cutFrames = { first, last };
+    }
+  } catch {
+    throw new Error("تعذّر قراءة لقطات الفيديو في المتصفح؛ أعد المحاولة.");
+  }
+  const post = () => fetch("/api/jawad/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(send) }).catch(() => null);
+  let res = await post();
+  let r = res ? await res.json().catch(() => ({})) : {};
+  // a price that moved a little since the quote: take the new one (it is the real price of the same edit)
+  if (res?.status === 409 && r.code === "price_changed") {
+    send.expectedCoins = r.coins;
+    res = await post();
+    r = res ? await res.json().catch(() => ({})) : {};
+  }
+  if (res?.ok && r.job?.id) return { job: String(r.job.id), from: q.from ?? 0 };
+  throw new Error(r.error ?? (res ? `تعذّر الإرسال (${res.status}).` : "ما وصلنا للخادم؛ تأكد من النت وأعد المحاولة (ما يتكرر الخصم)."));
+}
+
+/** Every red piece: what to fix, «جزئي» or «كامل», its price; one tap saves the notes and sends them all in the background. */
+function FixDialog({ projectId, pieces, assets, run, player, onAssets, onSend, onClose }: { projectId: string; pieces: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string }[]) => void; onClose: () => void }) {
   const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, c.fix?.note ?? ""])));
   const [jobs, setJobs] = useState<Record<string, JobView>>({});
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
-  const [busy, setBusy] = useState<string | null>(null);
+  const busy = null as string | null;
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const keys = useRef<Record<string, string>>({});
   const assetOf = (c: Clip) => (c.assetId ? assets.get(c.assetId) : undefined);
 
   // film videos get their JAWAD AI job first (once), then every original is read
@@ -270,77 +377,11 @@ function FixDialog({ projectId, pieces, assets, run, player, onAssets, onClose }
   const priced = written.filter((c) => "coins" in (quotes[c.id] ?? {}));
   const total = priced.reduce((s, c) => s + (quotes[c.id] as { coins: number }).coins, 0);
 
-  /** Sends one piece: everything it needs is (re)checked right now, so a slow price never blocks the button. */
-  async function sendOne(c: Clip): Promise<string | null> {
-    const note = (notes[c.id] ?? "").trim();
-    let a = assetOf(c);
-    if (a && !a.jobId && a.origin === "film") {
-      setBusy("يجهّز فيديو الفيلم للتعديل…");
-      try {
-        a = (await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${projectId}`, { action: "fix_link", assetId: a.id })).asset;
-        onAssets([a]);
-      } catch (e) {
-        return e instanceof Error ? e.message : "تعذّر تجهيز الفيديو.";
-      }
-    }
-    let j = a?.jobId ? jobs[a.jobId] : undefined;
-    if (a?.jobId && !j) {
-      j = (await loadJobs([a.jobId]))[0];
-      if (j) setJobs((x) => ({ ...x, [j!.id]: j! }));
-    }
-    const p = planOf(c, a, j);
-    if (!p.ok) return p.why;
-    let q = quotes[c.id];
-    if (!q || !("coins" in q)) {
-      q = await askPrice(p);
-      setQuotes((x) => ({ ...x, [c.id]: q! }));
-      if (!("coins" in q)) return q.error;
-    }
-    const ranges = p.ranges.map((r) => ({ ...r, note: note.slice(0, EDIT_LIMITS.noteMax) }));
-    const partCut = p.mode === "parts" ? p.cut : null;
-    keys.current[c.id] ??= uid();
-    const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: keys.current[c.id], expectedCoins: q.coins };
-    try {
-      const times = frameTimes(p.videoSec, ranges, partCut);
-      const small = await grabFrames(p.out.url!, times, EDIT_LIMITS.frameWidth, 0.72);
-      send.frames = times.map((t, i) => ({ t, data: small[i] }));
-      if (partCut) {
-        // the cut frames become the new clip's first and last frames: full quality, but kept under the request's size
-        const [first, last] = await grabFrames(p.out.url!, [partCut.start, partCut.end], 1920, 0.9, { by: "side" });
-        send.cutFrames = { first, last };
-      }
-    } catch {
-      return "تعذّر قراءة لقطات الفيديو في المتصفح؛ جرّب مرة ثانية.";
-    }
-    const res = await fetch("/api/jawad/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(send) }).catch(() => null);
-    const r = res ? await res.json().catch(() => ({})) : {};
-    if (res?.ok && r.job?.id) {
-      delete keys.current[c.id];
-      run({ type: "update_clip", clipId: c.id, patch: { fix: { note, job: r.job.id, from: q.from ?? 0, state: "making" } } }, { label: "أرسلت جزءًا للتعديل" });
-      return null;
-    }
-    if (res?.status === 409 && r.code === "price_changed") {
-      setQuotes((x) => ({ ...x, [c.id]: { coins: r.coins, from: (q as { from: number | null }).from } }));
-      return `تغيّر السعر إلى ${r.coins} نقدة؛ اضغط «اصنع» مرة ثانية للتأكيد.`;
-    }
-    if (res) delete keys.current[c.id];
-    return r.error ?? (res ? `تعذّر الإرسال (${res.status}).` : "ما وصلنا للخادم؛ تأكد من النت وجرّب مرة ثانية (ما يتكرر الخصم).");
-  }
-
-  async function sendAll() {
+  /** One tap: the notes are kept, the window closes, the pieces go in the background (their state shows on them). */
+  function sendAll() {
     for (const c of open) saveNote(c);
-    setErrors({});
-    let sent = 0;
-    const failed: Record<string, string> = {};
-    for (const [i, c] of written.entries()) {
-      setBusy(`يجهّز ويرسل الجزء ${i + 1} من ${written.length}…`);
-      const why = await sendOne(c);
-      if (why) failed[c.id] = why;
-      else sent++;
-    }
-    setBusy(null);
-    setErrors(failed);
-    if (sent && !Object.keys(failed).length) onClose();
+    onSend(written.map((c) => ({ id: c.id, note: (notes[c.id] ?? "").trim() })));
+    onClose();
   }
 
   const failedList = Object.entries(errors);
@@ -390,7 +431,7 @@ function FixDialog({ projectId, pieces, assets, run, player, onAssets, onClose }
                   fix.note && <p className="text-xs text-jw-muted">«{fix.note}»</p>
                 )}
                 {editable && (!q ? <p className="text-[11px] text-jw-faint">يحسب السعر…</p> : "coins" in q ? <p className="text-[11px] text-jw-muted">السعر: {q.coins} نقدة</p> : <p className="text-xs font-semibold text-jw-danger">⚠ {q.error}</p>)}
-                {errors[c.id] && <p className="rounded-lg bg-jw-danger/10 p-2 text-xs font-semibold text-jw-danger">✕ ما انرسل: {errors[c.id]}</p>}
+                {(errors[c.id] || (fix.state === "failed" && fix.error)) && <p className="rounded-lg bg-jw-danger/10 p-2 text-xs font-semibold text-jw-danger">✕ ما انرسل: {errors[c.id] || fix.error}</p>}
               </li>
             );
           })}
@@ -404,7 +445,7 @@ function FixDialog({ projectId, pieces, assets, run, player, onAssets, onClose }
           <button type="button" className="jw-btn jw-btn-primary" disabled={!!busy || !written.length} onClick={sendAll}>
             <Icon name="wand" size={16} /> {busy ?? (written.length ? `اصنع ${written.length} ${written.length === 1 ? "تعديل" : "تعديلات"}${priced.length === written.length ? ` · ${total} نقدة` : ""}` : "اكتب ملاحظة (٣ أحرف أو أكثر) لكل جزء")}
           </button>
-          <span className="text-[11px] text-jw-faint">تقدر تكمل المونتاج وهو يصنع؛ كل جزء يوصل ينحط على الأخضر بنفسه، وتشوف حالته على الجزء الأحمر نفسه.</span>
+          <span className="text-[11px] text-jw-faint">تضغط مرة وحدة وترجع للتايم لاين؛ الإرسال يكمل في الخلفية، وكل جزء يوصل ينحط على الأخضر بنفسه.</span>
         </div>
       </div>
     </Dialog>

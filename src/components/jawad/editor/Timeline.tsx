@@ -491,8 +491,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         })}
         {/* «التعديل الذكي»: where a red piece is (waiting for its note, being made, made, failed) */}
         {c.fix && track.role === "fix" && (
-          <span className={`pointer-events-none absolute bottom-0.5 right-1 z-[1] flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] font-bold ${c.fix.state === "making" ? "animate-pulse bg-amber-400 text-black" : c.fix.state === "done" ? "bg-emerald-500 text-white" : c.fix.state === "failed" ? "bg-red-600 text-white" : "bg-black/60 text-white"}`}>
-            {c.fix.state === "making" ? "⏳ يُصنع" : c.fix.state === "done" ? "✓ على الأخضر" : c.fix.state === "failed" ? "✕ ما نجح" : c.fix.note ? "✎ جاهز للإرسال" : "✎ اكتب الملاحظة"}
+          <span className={`pointer-events-none absolute bottom-0.5 right-1 z-[1] flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] font-bold ${c.fix.state === "sending" ? "animate-pulse bg-sky-400 text-black" : c.fix.state === "making" ? "animate-pulse bg-amber-400 text-black" : c.fix.state === "done" ? "bg-emerald-500 text-white" : c.fix.state === "failed" ? "bg-red-600 text-white" : "bg-black/60 text-white"}`}>
+            {c.fix.state === "sending" ? "⏫ يرسل" : c.fix.state === "making" ? "⏳ يُصنع" : c.fix.state === "done" ? "✓ على الأخضر" : c.fix.state === "failed" ? "✕ ما نجح" : c.fix.note ? "✎ جاهز للإرسال" : "✎ اكتب الملاحظة"}
           </span>
         )}
         {(c.color || c.fadeIn > 0 || c.fadeOut > 0) && (
