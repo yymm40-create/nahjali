@@ -9,6 +9,7 @@ import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
 import { leaveStartKit } from "./start-kit";
 import { unpackProject } from "./package";
+import { forgetOpen, openProject } from "./open-project";
 import { useDesktop } from "./desktop";
 import type { EditorAsset, ImportItem, ProjectSummary } from "./types";
 
@@ -34,6 +35,16 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
   useEffect(() => {
     const t = setTimeout(() => setNow(Date.now()), 0);
     return () => clearTimeout(t);
+  }, []);
+
+  // a project left open (the person went to another section without leaving it): straight back into it
+  useEffect(() => {
+    const id = openProject();
+    if (!id) return;
+    if (projects?.some((p) => p.id === id)) router.replace(`/jawad-ai/editor/${id}`);
+    else forgetOpen();
+    // once, when «حيدرة كت» opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startNew = () => (loginHref ? router.push(loginHref) : setWizard(true));
