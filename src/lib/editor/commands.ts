@@ -602,7 +602,8 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
     }
 
     case "update_track": {
-      const track = t.tracks.find((x) => x.id === cmd.trackId) ?? fail("ما لقينا هذا المسار.");
+      // a track, or the track of a clip (a clip just made, as "$N")
+      const track = t.tracks.find((x) => x.id === cmd.trackId) ?? findClip(t, cmd.trackId)?.track ?? fail("ما لقينا هذا المسار.");
       const p = cmd.patch;
       if (p.muted != null) track.muted = !!p.muted;
       if (p.hidden != null) track.hidden = !!p.hidden;

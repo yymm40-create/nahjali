@@ -105,6 +105,7 @@ export default function Inspector({
   rail = false,
   projectView = false,
   thumbs,
+  onSeparate,
 }: {
   tl: Timeline;
   selected: string[];
@@ -121,10 +122,13 @@ export default function Inspector({
   projectView?: boolean;
   /** small pictures of the files (the effects' previews) */
   thumbs?: Record<string, string | null>;
+  /** splits a clip's sound into talking / music / effects tracks */
+  onSeparate?: (clipId: string) => Promise<void>;
 }) {
   const playhead = usePlayhead(player);
   const [beatBusy, setBeatBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [separating, setSeparating] = useState(false);
   const found = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
   if (!found || projectView) {
@@ -472,6 +476,11 @@ export default function Inspector({
             </label>
           )}
           {soundButtons}
+          {onSeparate && (
+            <button type="button" className="jw-btn jw-3d w-full text-xs" disabled={locked || separating} onClick={() => { setSeparating(true); void onSeparate(clip.id).finally(() => setSeparating(false)); }} title="الكلام في مسار، والموسيقى في مسار، والمؤثرات الصوتية في مسار، متزامنة مع المقطع">
+              {separating ? <span className="jw-spinner" /> : "🎚️"} افصل الكلام والموسيقى والمؤثرات
+            </button>
+          )}
           <SoundWork clip={clip} track={track} url={a?.url ?? null} locked={locked} run={run} />
           {a?.kind === "audio" && (
             <button type="button" className="jw-btn w-full text-xs" disabled={locked || beatBusy} onClick={beats}>

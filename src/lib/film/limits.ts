@@ -17,6 +17,9 @@ export const LIMITS = {
   editor_speech_minutes: { label: "دقائق الكابشن ومزامنة القصائد", hint: "دقائق صوت تُفرَّغ لكل شخص في اليوم", default: 120, perUser: true },
   editor_price_claude: { label: "سعر طلب Claude في الممنتج (نقدة)", hint: "يُخصم بس إذا شغّلت «النقود الذكية مطلوبة»؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_caption: { label: "سعر دقيقة الكابشن في الممنتج (نقدة)", hint: "لكل دقيقة صوت (تُقرّب للأعلى)، بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_hook: { label: "سعر هوك بالصورة في الممنتج (نقدة)", hint: "صورة GPT Image 2 مفرّغة؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_music: { label: "سعر دقيقة موسيقى في الممنتج (نقدة)", hint: "ElevenLabs Music؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_stems: { label: "سعر دقيقة فصل الأصوات في الممنتج (نقدة)", hint: "كلام وموسيقى ومؤثرات؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
 } as const;
 export type LimitKey = keyof typeof LIMITS;
 

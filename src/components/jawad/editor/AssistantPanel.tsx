@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
+import { makeHookAsset, makeMusicAsset } from "./make";
+import { placeHook, placeMusic } from "@/lib/editor/make";
+import type { MakeRequest } from "@/lib/editor/assistant";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
 import Icon from "../Icon";
@@ -19,7 +22,7 @@ interface Msg {
   error?: boolean;
 }
 
-const QUICK = ["قص السكتات الطويلة", "رتّب المقاطع وحط انتقالات ناعمة", "خلّه ٣٠ ثانية بأحلى اللقطات", "حط عنوان في البداية", "سوّ لي مونتاج كامل من الملفات", "خفّض الموسيقى وقت الكلام"];
+const QUICK = ["اصنع هوك كتابي بصورة في البداية", "حط موسيقى تناسب المقطع", "قص السكتات الطويلة", "رتّب المقاطع وحط انتقالات ناعمة", "خلّه ٣٠ ثانية بأحلى اللقطات", "حط عنوان في البداية", "سوّ لي مونتاج كامل من الملفات", "خفّض الموسيقى وقت الكلام"];
 
 /**
  * The silent parts of the clips that have sound (timeline ms), from the files' loudness: Claude uses them for
@@ -62,6 +65,8 @@ async function quietParts(tl: Timeline, assets: Map<string, EditorAsset>) {
 /** «✨ Claude»: say what you want; Claude edits the timeline (one change, undoable). */
 export default function AssistantPanel({
   ask,
+  onAssets,
+  onSeparate,
   projectId,
   tl,
   selected,
@@ -74,6 +79,10 @@ export default function AssistantPanel({
 }: {
   /** a request sent from a button (sent once per `n`) */
   ask?: { text: string; n: number } | null;
+  /** new library files (made for the edit) */
+  onAssets: (a: EditorAsset[]) => void;
+  /** splits a clip's sound into talking / music / effects tracks */
+  onSeparate: (clipId: string) => Promise<void>;
   projectId: string;
   tl: Timeline;
   selected: string[];
@@ -127,7 +136,7 @@ export default function AssistantPanel({
       // the clip the person chose: Claude looks at a few of its moments to know what is in it
       const look = await lookAt();
       setBusy("Claude يشتغل على التايملاين…");
-      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[] }>(`/api/jawad/editor/projects/${projectId}`, {
+      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         message,
         history,
@@ -143,6 +152,27 @@ export default function AssistantPanel({
         done = applied ? r.commands.length : 0;
       }
       setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions }]);
+      // what Claude asked to be made: made one by one, then placed (each its own undo)
+      for (const q of r.requests ?? []) {
+        try {
+          if (q.kind === "hook_image") {
+            setBusy(`نصمّم الهوك «${q.text}» بالصورة…`);
+            const a = await makeHookAsset(projectId, q.text, q.style);
+            onAssets([a]);
+            run(placeHook(a.id, q.at, q.lengthMs), { label: "هوك بالصورة" });
+          } else if (q.kind === "music") {
+            setBusy("نصنع الموسيقى…");
+            const a = await makeMusicAsset(projectId, q.prompt, q.lengthMs || 30_000);
+            onAssets([a]);
+            run(placeMusic(a.id, q.at), { label: "موسيقى" });
+          } else if (q.kind === "separate") {
+            setBusy("نفصل الكلام والموسيقى والمؤثرات…");
+            await onSeparate(q.clipId);
+          }
+        } catch (e) {
+          setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
+        }
+      }
     } catch (e) {
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
     } finally {
