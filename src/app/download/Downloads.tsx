@@ -24,6 +24,10 @@ interface Item {
   note: string;
   href: string | null;
   button: string;
+  /** how to install and open it the first time */
+  steps?: string[];
+  /** a fallback for the Terminal (with a copy button) */
+  command?: { intro: string; text: string };
 }
 
 const ITEMS: Item[] = [
@@ -50,18 +54,35 @@ const ITEMS: Item[] = [
     icon: "💻",
     title: "ماك",
     what: "برنامج حيدرة كت للمونتاج: اسحب الفيديو من جهازك وينزل على طول بدون رفع.",
-    note: "لأجهزة Apple silicon و Intel. أول فتح: اضغط «تم»، بعدين إعدادات النظام ← الخصوصية والأمان ← «افتح على أي حال».",
+    note: "لأجهزة Apple silicon (M1 وما بعده) وأجهزة Intel.",
     href: DOWNLOADS.mac,
     button: "حمّل للماك",
+    steps: [
+      "افتح الملف اللي نزل (Haidara-Cut-mac.dmg)، واسحب «حيدرة كت» لمجلد التطبيقات (Applications).",
+      "افتح «حيدرة كت» من مجلد التطبيقات.",
+      "أول مرة بيطلع لك «لم يُفتح HaidaraCut»: اضغط «تم». لا تضغط «نقل إلى سلة المهملات».",
+      "افتح إعدادات النظام ← الخصوصية والأمان، وانزل لتحت لين تشوف «تم حظر HaidaraCut».",
+      "اضغط «افتح على أي حال»، اكتب كلمة سر الماك، وبعدين «افتح».",
+      "خلاص! هذي مرة وحدة بس، وبعدها يفتح عادي كل مرة.",
+    ],
+    command: {
+      intro: "ما طلع لك زر «افتح على أي حال»؟ افتح برنامج Terminal (ابحث عنه بـ Cmd + مسافة)، والصق هذا السطر واضغط Enter، وبعدين افتح البرنامج:",
+      text: 'xattr -cr /Applications/*aidara*.app "/Applications/حيدرة كت.app" 2>/dev/null; echo تم',
+    },
   },
   {
     os: "windows",
     icon: "🪟",
     title: "ويندوز",
     what: "برنامج حيدرة كت للمونتاج: اسحب الفيديو من جهازك وينزل على طول بدون رفع.",
-    note: "ويندوز 10 و 11. لو طلعت «Windows protected your PC» اضغط More info ← Run anyway.",
+    note: "ويندوز 10 و 11.",
     href: DOWNLOADS.windows,
     button: "حمّل للويندوز",
+    steps: [
+      "شغّل الملف اللي نزل (Haidara-Cut-Setup.exe).",
+      "لو طلعت «Windows protected your PC»: اضغط More info، بعدين Run anyway.",
+      "كمّل التثبيت، وبتلقى «حيدرة كت» على سطح المكتب وفي قائمة ابدأ.",
+    ],
   },
 ];
 
@@ -107,6 +128,17 @@ export default function Downloads() {
                 <span className="btn btn-ghost w-full cursor-default opacity-60">{it.button}</span>
               )}
               <p className="text-sm font-bold text-muted">{it.note}</p>
+              {it.steps && (
+                <details className="rounded-2xl bg-surface-2 p-3" open={mine}>
+                  <summary className="cursor-pointer font-extrabold">طريقة التثبيت وأول فتح</summary>
+                  <ol className="mt-2 list-decimal space-y-1.5 ps-5 text-sm font-bold leading-7">
+                    {it.steps.map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ol>
+                  {it.command && <Command intro={it.command.intro} text={it.command.text} />}
+                </details>
+              )}
             </li>
           );
         })}
@@ -119,6 +151,36 @@ export default function Downloads() {
           افتح نهج علي
         </Link>
       </section>
+    </div>
+  );
+}
+
+/** A Terminal line with a copy button. */
+function Command({ intro, text }: { intro: string; text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-3 space-y-2 border-t border-line pt-3">
+      <p className="text-sm font-bold text-muted">{intro}</p>
+      <div className="flex items-stretch gap-2">
+        <code dir="ltr" className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-xl bg-ink px-3 py-2 text-xs text-page">
+          {text}
+        </code>
+        <button
+          type="button"
+          className="btn btn-ghost min-h-0 shrink-0 px-3 text-sm"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(text);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            } catch {
+              /* the person can select it */
+            }
+          }}
+        >
+          {copied ? "✓ تم النسخ" : "انسخ"}
+        </button>
+      </div>
     </div>
   );
 }
