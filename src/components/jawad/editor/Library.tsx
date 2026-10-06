@@ -58,7 +58,7 @@ export default function Library({
                 ref={input}
                 type="file"
                 multiple
-                accept="video/mp4,video/quicktime,video/webm,audio/*,image/png,image/jpeg,image/webp,.mov,.m4a,.flac,.ogg,.aac"
+                accept="video/mp4,video/quicktime,video/webm,audio/*,audio/wav,audio/x-wav,image/png,image/jpeg,image/webp,.mov,.m4a,.flac,.ogg,.aac,.wav,.mp3"
                 className="hidden"
                 onChange={(e) => {
                   if (e.target.files) onPick(e.target.files);

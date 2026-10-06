@@ -45,7 +45,8 @@ export function falUrl(out: Record<string, unknown>, key: string): string | null
  * Both as downloaded files.
  */
 export async function samSeparate(audioUrl: string, prompt: string) {
-  const out = await falRun<Record<string, unknown>>("fal-ai/sam-audio/separate", { audio_url: audioUrl, prompt, acceleration: "quality" });
+  // («balanced»: a song of a few minutes is done well within the request's time; long sound goes in 60 s chunks)
+  const out = await falRun<Record<string, unknown>>("fal-ai/sam-audio/separate", { audio_url: audioUrl, prompt, acceleration: "balanced" });
   const target = falUrl(out, "target") ?? falUrl(out, "target_audio") ?? falUrl(out, "audio");
   const residual = falUrl(out, "residual") ?? falUrl(out, "residual_audio");
   if (!target || !residual) throw new ProviderError("rejected", "ما رجع الفصل بنتيجة كاملة؛ جرّب مرة ثانية.", `sam-audio output keys: ${Object.keys(out).join(",")}`);
