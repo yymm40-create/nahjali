@@ -20,7 +20,7 @@ import { Player } from "./player";
 import { FONTS, setFonts } from "./render";
 import Timeline from "./Timeline";
 import type { EditorAsset, EditorProjectView } from "./types";
-import { useUploads } from "./useUploads";
+import { useUploads, type Placement } from "./useUploads";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 interface Step {
@@ -209,17 +209,46 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     for (const a of list) infos.current.set(a.id, info(a));
     setAssets((xs) => [...xs.filter((x) => !list.some((a) => a.id === x.id)), ...list]);
   }, []);
+  // files let go on the timeline land where they were dropped: one after another («line») or each on its own track
+  // one above the other («stack»); the line goes on from the end of the last one placed
+  const cursor = useRef<{ group: string; at: number } | null>(null);
+  const placeAsset = useCallback(
+    (a: EditorAsset, p?: Placement) => {
+      if (!p) return run({ type: "add_clip", assetId: a.id });
+      const want = a.kind === "audio" ? "audio" : "video";
+      const onTrack = p.trackId ? tlRef.current.tracks.find((x) => x.id === p.trackId && x.kind === want && !x.locked)?.id : undefined;
+      let at = p.at;
+      if (p.mode === "line" && cursor.current?.group === p.group) at = cursor.current.at;
+      const trackId = p.mode === "stack" && !p.first ? "new" : onTrack;
+      const r = run({ type: "add_clip", assetId: a.id, at, ...(trackId ? { trackId } : {}) });
+      const made = r?.select?.[0] ? findClip(r.timeline, r.select[0]) : null;
+      if (made && p.mode === "line") cursor.current = { group: p.group, at: clipEnd(made.clip) };
+      return r;
+    },
+    [run],
+  );
   const uploads = useUploads(
     project.id,
     useCallback(
-      (a: EditorAsset) => {
+      (a: EditorAsset, place?: Placement) => {
         addAssets([a]);
-        // each uploaded file goes on the timeline: pictures after what is there, sound from the start
-        run({ type: "add_clip", assetId: a.id });
+        // each uploaded file goes on the timeline: pictures after what is there (or where it was dropped), sound from the start
+        placeAsset(a, place);
       },
-      [addAssets, run],
+      [addAssets, placeAsset],
     ),
   );
+  const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
+  const dropFiles = (files: File[], at: number, trackId: string | null, mode?: "stack" | "line") => {
+    if (files.length > 1 && !mode) return setDropAsk({ files, at, trackId });
+    const group = Math.random().toString(36).slice(2);
+    uploads.add(files, files.map((_, i) => ({ at, trackId, mode: mode ?? "one", group, first: i === 0 })));
+    flash(files.length > 1 ? `نرفع ${files.length} ملفات وننزّلها في التايملاين…` : "نرفع الملف وننزّله في مكانه…");
+  };
+  const dropAsset = (id: string, at: number, trackId: string | null) => {
+    const a = assets.find((x) => x.id === id);
+    if (a) placeAsset(a, { at, trackId, mode: "one", group: "", first: true });
+  };
   const addToTimeline = (a: EditorAsset) => {
     const r = run({ type: "add_clip", assetId: a.id, at: player?.ms ?? 0 });
     // like CapCut: the playhead moves to the end of what was added, so the next one goes after it
@@ -251,17 +280,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     };
   }, [assets, thumbs]);
 
-  // what the sound looks like, under the sound clips
+  // what the sound looks like, under the sound clips (a video's sound taken out onto a sound track too)
+  const heard = useMemo(() => new Set(tl.tracks.flatMap((t) => (t.kind === "audio" ? t.clips.map((c) => c.assetId ?? "") : []))), [tl.tracks]);
   useEffect(() => {
     let live = true;
     for (const a of assets) {
-      if (a.id in waves || a.kind !== "audio" || !a.url) continue;
+      if (a.id in waves || a.kind === "image" || (a.kind === "video" && !heard.has(a.id)) || !a.url) continue;
       void peaksOf(a.id, a.url).then((p) => live && setWaves((w) => ({ ...w, [a.id]: p ? waveImage(a.id, p) : null })));
     }
     return () => {
       live = false;
     };
-  }, [assets, waves]);
+  }, [assets, waves, heard]);
 
   // ---------- the preview ----------
   const canvas = useCallback((el: HTMLCanvasElement | null) => {
@@ -380,7 +410,19 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
-    <div className="flex h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] min-h-[520px] flex-col overflow-hidden">
+    <div
+      className="flex h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] min-h-[520px] flex-col overflow-hidden"
+      // files dropped anywhere else (the preview, the panels) go at the playhead
+      onDragOver={(e) => {
+        if (!readOnly && e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (readOnly || !e.dataTransfer.files.length) return;
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer.files).filter((f) => /^(video|audio|image)\//.test(f.type) || /\.(mp4|mov|m4v|webm|mkv|mp3|m4a|aac|wav|ogg|opus|flac|png|jpe?g|webp|gif|heic|avif)$/i.test(f.name));
+        if (files.length) dropFiles(files, at(), null);
+      }}
+    >
       {/* top bar */}
       <div className="flex items-center gap-2 border-b border-jw-line bg-jw-surface px-2 py-1.5">
         <Link href={backHref} className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" aria-label="رجوع" title="رجوع">
@@ -528,7 +570,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       </div>
 
       <div className="h-[34%] min-h-[150px] shrink-0 lg:h-[30%] lg:min-h-[200px]">
-        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={setSelected} run={run} player={player} compact={!wide} readOnly={readOnly} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={setSelected} run={run} player={player} compact={!wide} readOnly={readOnly} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setSelected([id]);
           setTab("transition");
           if (!wide) setSheet("inspector");
@@ -556,6 +598,21 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
           <Icon name={one ? "settings" : "ratio"} size={19} /> {one ? "تعديل" : "المقاس"}
         </button>
       </nav>
+
+      {dropAsk && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" onClick={() => setDropAsk(null)}>
+          <div role="dialog" aria-modal="true" aria-label="كيف أرتّب الملفات؟" className="w-full max-w-sm space-y-3 rounded-2xl border border-jw-line bg-jw-surface p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="font-semibold">سحبت {dropAsk.files.length} ملفات. كيف أرتّبها؟</p>
+            <button type="button" autoFocus className="jw-btn jw-btn-primary w-full justify-start" onClick={() => { dropFiles(dropAsk.files, dropAsk.at, dropAsk.trackId, "stack"); setDropAsk(null); }}>
+              <Icon name="layers" size={16} /> فوق بعض: كل ملف في مسار، كلها تبدأ من نفس اللحظة
+            </button>
+            <button type="button" className="jw-btn w-full justify-start" onClick={() => { dropFiles(dropAsk.files, dropAsk.at, dropAsk.trackId, "line"); setDropAsk(null); }}>
+              <Icon name="film" size={16} /> ورا بعض: واحد بعد الثاني في نفس المسار
+            </button>
+            <button type="button" className="jw-btn jw-btn-quiet w-full" onClick={() => setDropAsk(null)}>إلغاء</button>
+          </div>
+        </div>
+      )}
 
       <CaptionsPanel open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
       <ExportPanel
