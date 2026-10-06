@@ -55,7 +55,30 @@
       "identity": "-"
     },
     "dmg": {
-      "title": "حيدرة كت"
+      "title": "حيدرة كت",
+      "window": {
+        "width": 560,
+        "height": 440
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 170
+        },
+        {
+          "x": 410,
+          "y": 170,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 280,
+          "y": 330,
+          "type": "file",
+          "path": "build/mac-guide.pdf",
+          "name": "اقرأني أول - طريقة الفتح.pdf"
+        }
+      ]
     },
     "win": {
       "target": [

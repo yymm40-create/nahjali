@@ -4,6 +4,8 @@ const RELEASES = "https://github.com/yymm40-create/nahjali/releases";
 
 export const DOWNLOADS = {
   mac: `${RELEASES}/latest/download/Haidara-Cut-mac.dmg`,
+  /** how to open it the first time (the Mac asks once, the program isn't signed by Apple yet) */
+  macGuide: "/downloads/haidara-cut-mac-guide.pdf",
   windows: `${RELEASES}/latest/download/Haidara-Cut-Setup.exe`,
   android: `${RELEASES}/download/android-latest/NahjAli.apk`,
   /** the App Store page, once the app is published there (null: «قريبًا») */
