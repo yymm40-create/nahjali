@@ -6,6 +6,7 @@
 // after it are drawn over it. Audio tracks are heard, not drawn. Time always runs left → right, even in Arabic.
 
 import { FX_BY_ID, FX_MAX } from "./effects";
+import { TR_LIST } from "./transitions";
 import { isFont } from "./fonts";
 
 export const EDITOR_VERSION = 1;
@@ -90,20 +91,14 @@ export function colorFilter(g: ColorGrade | null) {
 }
 
 /** How one picture gives way to the next on the same track (it happens around the cut; the length doesn't change). */
-export const TRANSITIONS = {
-  fade: { label: "تلاشي", icon: "◐" },
-  black: { label: "عبر الأسود", icon: "●" },
-  white: { label: "وميض أبيض", icon: "○" },
-  slide: { label: "انزلاق", icon: "⇠" },
-  zoom: { label: "تكبير", icon: "⤢" },
-  wipe: { label: "مسح", icon: "▧" },
-} as const;
-export type TransitionKind = keyof typeof TRANSITIONS;
+/** The 100 transitions (transitions.ts): an id → its name and icon. */
+export const TRANSITIONS: Record<string, { label: string; icon: string }> = Object.fromEntries(TR_LIST.map((t) => [t.id, { label: t.label, icon: t.icon }]));
+export type TransitionKind = string;
 export interface Transition {
   kind: TransitionKind;
   ms: number;
 }
-export const TRANSITION_MS = { min: 200, max: 2000, default: 600 } as const;
+export const TRANSITION_MS = { min: 100, max: 4000, default: 600 } as const;
 
 /**
  * The person kept, the background around them changed (MediaPipe in the browser): removed (what is under the clip

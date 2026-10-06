@@ -3,7 +3,8 @@
 
 import { familyOf } from "./fontload";
 import { drawWithFx, fxPlan } from "./fx";
-import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform } from "@/lib/editor/model";
+import { transitionLook, type TrLook, type TrMask } from "@/lib/editor/transitions";
+import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx } from "@/lib/editor/model";
 
 export interface Frame {
   img: CanvasImageSource;
@@ -25,18 +26,27 @@ export function setFonts(f: Partial<Record<string, string>>) {
 /** A text's CSS family: the page's own, or a catalogue font (fontload.ts) with the page's font for what it lacks. */
 export const familyFor = (font: string) => FONTS[font] ?? `"${familyOf(font)}", ${FONTS.readex}`;
 
-/** What a transition does to a clip on top of its own look: fade, shift (fractions of the frame), zoom, reveal. */
+/** What a transition does to a clip on top of its own look (transitions.ts): moved, scaled, turned, squashed, blurred,
+ * shown through a shape, with a passing effect. Shifts are fractions of the frame. */
 interface Look {
   alpha: number;
   dx: number;
+  dy: number;
   scale: number;
-  /** wipe: the share of the frame (from the right) where the clip shows */
+  sx: number;
+  sy: number;
+  rotate: number;
+  blur: number;
+  /** wipe (old saved projects): the share of the frame (from the right) where the clip shows */
   reveal: number | null;
+  mask: TrMask | null;
+  fx: ClipFx[];
 }
-const PLAIN: Look = { alpha: 1, dx: 0, scale: 1, reveal: null };
+const PLAIN: Look = { alpha: 1, dx: 0, dy: 0, scale: 1, sx: 1, sy: 1, rotate: 0, blur: 0, reveal: null, mask: null, fx: [] };
+const lookOf = (t: TrLook): Look => ({ ...PLAIN, ...t, mask: t.mask ?? null, fx: t.fx ?? [] });
 
 /** Everything that decides how one clip is drawn now: its transition and its entrance or exit. */
-type Drawn = AnimLook & { reveal: number | null };
+type Drawn = AnimLook & { reveal: number | null; mask: TrMask | null; squashX: number; tfx: ClipFx[] };
 
 export type Layer =
   | { track: Track; clip: Clip; /** the clip's own moment (held at its edge during a transition) */ ms: number; look: Look }
@@ -54,28 +64,11 @@ export function layersAt(tl: Timeline, ms: number): Layer[] {
     if (tr) {
       const { a, b, p } = tr;
       const at = (c: Clip) => Math.min(Math.max(ms, c.start), clipEnd(c) - 1);
-      const A = (look: Partial<Look>): Layer => ({ track, clip: a, ms: at(a), look: { ...PLAIN, ...look } });
-      const B = (look: Partial<Look>): Layer => ({ track, clip: b, ms: at(b), look: { ...PLAIN, ...look } });
-      switch (tr.kind) {
-        case "fade":
-          out.push(A({}), B({ alpha: p }));
-          break;
-        case "black":
-        case "white":
-          out.push(p < 0.5 ? A({}) : B({}), { solid: tr.kind === "black" ? "#000000" : "#ffffff", alpha: 1 - Math.abs(2 * p - 1) });
-          break;
-        case "slide": {
-          const e = p * p * (3 - 2 * p);
-          out.push(A({ dx: -e }), B({ dx: 1 - e }));
-          break;
-        }
-        case "zoom":
-          out.push(A({ scale: 1 + 0.6 * p, alpha: 1 - p }), B({ scale: 0.85 + 0.15 * p, alpha: p }));
-          break;
-        case "wipe":
-          out.push(A({}), B({ reveal: p }));
-          break;
-      }
+      const f = transitionLook(tr.kind, p);
+      const A: Layer = { track, clip: a, ms: at(a), look: lookOf(f.a) };
+      const B: Layer = { track, clip: b, ms: at(b), look: lookOf(f.b) };
+      out.push(...(f.bUnder ? [B, A] : [A, B]));
+      if (f.solid && f.solid.alpha > 0) out.push({ solid: f.solid.color, alpha: f.solid.alpha });
       continue;
     }
     for (const clip of track.clips) {
@@ -112,7 +105,21 @@ export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: numbe
     const t = transformAt(l.clip, l.ms);
     // the clip's own entrance or exit on top of the transition's look
     const m = animAt(l.clip, l.ms);
-    const look: Drawn = { ...m, alpha: l.look.alpha * m.alpha, dx: l.look.dx + m.dx, scale: l.look.scale * m.scale, reveal: l.look.reveal };
+    const L = l.look;
+    const look: Drawn = {
+      ...m,
+      alpha: L.alpha * m.alpha,
+      dx: L.dx + m.dx,
+      dy: L.dy + m.dy,
+      scale: L.scale * m.scale,
+      rotate: L.rotate + m.rotate,
+      squash: L.sy * m.squash,
+      squashX: L.sx,
+      blur: L.blur + m.blur,
+      reveal: L.reveal,
+      mask: L.mask,
+      tfx: L.fx,
+    };
     if (look.alpha <= 0.001 || look.show === 0 || look.words === 0) continue;
     if (l.clip.text) drawText(ctx, l.clip, t, look, W, H, l.ms);
     else {
@@ -135,10 +142,139 @@ function place(ctx: CanvasRenderingContext2D, t: Transform, look: Drawn, W: numb
     ctx.rect(W * (1 - look.reveal), 0, W * look.reveal, H);
     ctx.clip();
   }
+  // a transition's shape: the clip shows only inside it
+  if (look.mask) {
+    maskPath(ctx, look.mask, W, H);
+    ctx.clip();
+  }
   ctx.translate(t.x * W + look.dx * W, t.y * H + look.dy * H);
   const turn = t.rotate + look.rotate;
   if (turn) ctx.rotate((turn * Math.PI) / 180);
-  if (look.squash !== 1) ctx.scale(1, look.squash);
+  if (look.squash !== 1 || look.squashX !== 1) ctx.scale(look.squashX, look.squash);
+}
+
+/** A transition's shape on the frame (it grows with m.p from nothing to all of the frame). */
+function maskPath(ctx: CanvasRenderingContext2D, m: TrMask, W: number, H: number) {
+  const p = Math.min(1, Math.max(0, m.p));
+  const cx = W / 2;
+  const cy = H / 2;
+  const R = Math.hypot(W, H) / 2;
+  const n = Math.max(1, Math.round(m.n ?? 8));
+  ctx.beginPath();
+  const poly = (k: number, r: number, rot: number, inner = 0) => {
+    for (let i = 0; i < k * (inner ? 2 : 1); i++) {
+      const a = rot + (i / (k * (inner ? 2 : 1))) * Math.PI * 2;
+      const rr = inner && i % 2 ? r * inner : r;
+      ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+  };
+  switch (m.shape) {
+    case "linear": {
+      const a = m.angle ?? 0;
+      const ext = (W * Math.abs(Math.cos(a)) + H * Math.abs(Math.sin(a))) / 2;
+      const s = ext - 2 * ext * p;
+      const big = W + H;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(a);
+      ctx.rect(s, -big, big, 2 * big);
+      ctx.restore();
+      break;
+    }
+    case "circle":
+      ctx.arc(cx, cy, Math.max(0.01, p * R), 0, Math.PI * 2);
+      break;
+    case "ellipse":
+      ctx.ellipse(cx, cy, Math.max(0.01, p * W * 0.75), Math.max(0.01, p * H * 0.75), 0, 0, Math.PI * 2);
+      break;
+    case "diamond":
+      poly(4, p * (W + H) * 0.55, -Math.PI / 2);
+      break;
+    case "square": {
+      const h = (p * Math.max(W, H)) / 2;
+      ctx.rect(cx - h, cy - h, 2 * h, 2 * h);
+      break;
+    }
+    case "hexagon":
+      poly(6, p * R * 1.16, 0);
+      break;
+    case "triangle":
+      poly(3, p * R * 2.1, -Math.PI / 2);
+      break;
+    case "star":
+      poly(5, p * R * 2.2, -Math.PI / 2, 0.45);
+      break;
+    case "heart": {
+      const r = p * R * 1.5;
+      ctx.moveTo(cx, cy + r * 0.9);
+      ctx.bezierCurveTo(cx - r * 1.6, cy - r * 0.2, cx - r * 0.6, cy - r * 1.3, cx, cy - r * 0.4);
+      ctx.bezierCurveTo(cx + r * 0.6, cy - r * 1.3, cx + r * 1.6, cy - r * 0.2, cx, cy + r * 0.9);
+      break;
+    }
+    case "cross":
+      ctx.rect(0, cy - (p * H) / 2, W, p * H);
+      ctx.rect(cx - (p * W) / 2, 0, p * W, H);
+      break;
+    case "clock": {
+      const start = -Math.PI / 2;
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, R * 1.1, start, start + (m.rev ? -1 : 1) * p * Math.PI * 2, !!m.rev);
+      ctx.closePath();
+      break;
+    }
+    case "barn": {
+      const vertical = Math.abs(Math.sin(m.angle ?? 0)) > 0.5;
+      if (!m.rev) {
+        if (vertical) ctx.rect(0, cy - (p * H) / 2, W, p * H);
+        else ctx.rect(cx - (p * W) / 2, 0, p * W, H);
+      } else if (vertical) {
+        ctx.rect(0, 0, W, (p * H) / 2);
+        ctx.rect(0, H - (p * H) / 2, W, (p * H) / 2);
+      } else {
+        ctx.rect(0, 0, (p * W) / 2, H);
+        ctx.rect(W - (p * W) / 2, 0, (p * W) / 2, H);
+      }
+      break;
+    }
+    case "blinds":
+      for (let i = 0; i < n; i++) {
+        if (m.v) ctx.rect(W - ((i + 1) * W) / n, 0, (W / n) * p, H);
+        else ctx.rect(0, (i * H) / n, W, (H / n) * p);
+      }
+      break;
+    case "stagger":
+      for (let i = 0; i < n; i++) {
+        const q = Math.min(1, Math.max(0, p * 1.6 - (i / n) * 0.6));
+        if (m.v) ctx.rect((i * W) / n, 0, W / n, H * q);
+        else ctx.rect(W - W * q, (i * H) / n, W * q, H / n);
+      }
+      break;
+    case "checker":
+    case "dots":
+    case "mosaic": {
+      const cols = n;
+      const rows = Math.max(1, Math.round((n * H) / W));
+      const cw = W / cols;
+      const ch = H / rows;
+      for (let i = 0; i < cols; i++)
+        for (let j = 0; j < rows; j++) {
+          const x = i * cw;
+          const y = j * ch;
+          if (m.shape === "dots") {
+            ctx.moveTo(x + cw / 2, y + ch / 2);
+            ctx.arc(x + cw / 2, y + ch / 2, Math.max(0.01, p * Math.hypot(cw, ch) * 0.72), 0, Math.PI * 2);
+          } else if (m.shape === "mosaic") {
+            const th = (((i * 7919 + j * 104729) % 1000) / 1000) * 0.9;
+            if (p > th) ctx.rect(x, y, cw + 1, ch + 1);
+          } else {
+            const q = Math.min(1, Math.max(0, (i + j) % 2 ? p * 2 - 1 : p * 2));
+            ctx.rect(x + (cw * (1 - q)) / 2, y + (ch * (1 - q)) / 2, cw * q + 1, ch * q + 1);
+          }
+        }
+      break;
+    }
+  }
 }
 
 /** «كتابة»: only the clip's right part shows (`w` × `h` around the origin). */
@@ -181,9 +317,9 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
     }
     ctx.filter = filter || "none";
     ctx.drawImage(cutout(f, f.mask), -w / 2, -h / 2, w, h);
-  } else if (clip.fx.length) {
-    // «المؤثرات»: the clip's own effects, on its own time
-    const plan = fxPlan(clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
+  } else if (clip.fx.length || look.tfx.length) {
+    // «المؤثرات»: the clip's own effects (and a transition's passing one), on its own time
+    const plan = fxPlan(look.tfx.length ? [...clip.fx, ...look.tfx] : clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
     drawWithFx(ctx, { img: f.img, sw: f.width, sh: f.height }, w, h, plan, filter);
   } else {
     if (filter) ctx.filter = filter;
