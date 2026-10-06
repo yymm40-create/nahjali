@@ -40,19 +40,33 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
-      - name: Build
-        # (with the Developer ID certificate: signed as the team, hardened, then notarized by notarize.js; without it the
-        # Mac build stays signed ad hoc, as package.json says)
-        run: npx electron-builder ${{ matrix.target }} --publish never ${{ matrix.os == 'macos-latest' && secrets.MAC_CERT_P12_BASE64 != '' && format('-c.mac.identity={0} -c.mac.hardenedRuntime=true', secrets.APPLE_TEAM_ID) || '' }}
+      # Apple signing only when its secrets are all there and the certificate reads (a stray or half-filled secret used to
+      # stop the build); otherwise the Mac build is signed ad hoc, as package.json says
+      - name: Apple signing (when its secrets are complete)
+        if: matrix.os == 'macos-latest'
+        shell: bash
         env:
-          # With the Apple Developer account's secrets (Developer ID certificate + an app-specific password), the Mac
-          # build is signed and notarized by Apple and opens without any warning; without them it is signed ad hoc.
-          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          P12: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$P12" ] && [ -n "$P12_PASSWORD" ] && [ -n "$TEAM" ] && printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12" 2>/dev/null && [ -s "$RUNNER_TEMP/cert.p12" ]; then
+            echo "CSC_LINK=$RUNNER_TEMP/cert.p12" >> "$GITHUB_ENV"
+            echo "CSC_KEY_PASSWORD=$P12_PASSWORD" >> "$GITHUB_ENV"
+            echo "SIGN_ARGS=-c.mac.identity=$TEAM -c.mac.hardenedRuntime=true" >> "$GITHUB_ENV"
+            echo "Signing with the Developer ID certificate"
+          else
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "Apple signing secrets incomplete: the Mac build is signed ad hoc"
+          fi
+      - name: Build
+        shell: bash
+        run: npx electron-builder ${{ matrix.target }} --publish never $SIGN_ARGS
+        env:
+          # (notarize.js sends the signed Mac build to Apple when these are there too)
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CERT_P12_BASE64 != '' && 'true' || 'false' }}
       - uses: actions/upload-artifact@v4
         with:
           name: haidara-cut-${{ matrix.os }}
