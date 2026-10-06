@@ -1,250 +1,175 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth";
-import { loadAdminStats, riyadhDay } from "@/lib/admin-stats";
-import { STATUS_LABELS, type OrderStatus } from "@/lib/types";
-import { STYLES, type StyleKey } from "@config/styles";
-import { QUALITY_TIERS, type QualityKey } from "@config/pricing";
-import { isAdmin } from "@config/site";
-import AdminTools from "./AdminTools";
-import TrialLimit from "./TrialLimit";
+import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
+import { accessMode, SECTIONS_ACCESS, ACCESS_MODES, type AccessSection } from "@/lib/film/limits";
+import { coinsRequired } from "@/lib/coins";
 
 export const metadata = { title: "لوحة التحكم | نهج علي" };
-// Always fresh numbers
 export const dynamic = "force-dynamic";
 
-const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("ar-SA", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }) : "—";
-const pct = (n: number) => `${Math.round(n * 100)}٪`;
-const LABELS: Record<string, string> = {
-  ...Object.fromEntries(Object.entries(STYLES).map(([k, s]) => [k, s.label])),
-  ...Object.fromEntries(Object.entries(QUALITY_TIERS).map(([k, q]) => [k, q.label])),
-  boy: "ولد",
-  girl: "بنت",
-};
+const DAY = 24 * 3600_000;
+const timeNow = () => Date.now();
 
-export default async function AdminPage() {
-  const user = await requireUser("/admin");
-  if (!isAdmin(user.email)) notFound();
-  const s = await loadAdminStats();
-  const k = s.kpis;
+/** How many rows of a table (since a time, when given); null when it can't be read. */
+async function count(table: string, since?: string) {
+  let q = createAdminClient().from(table).select("*", { count: "exact", head: true });
+  if (since) q = q.gte("created_at", since);
+  const { count: n, error } = await q;
+  return error ? null : (n ?? 0);
+}
 
-  const tiles: [string, string, string?][] = [
-    ["سجّلوا في الموقع", String(k.signups)],
-    ["جرّبوا (سوّوا طلب)", String(k.triedUsers), k.signups ? `${pct(k.triedUsers / k.signups)} من المسجّلين` : undefined],
-    ["الطلبات", String(k.orders)],
-    ["كتيبات جاهزة", String(k.ready), `${pct(k.completion)} من الطلبات`],
-    ["متوسط التقييم", k.avgRating ? `${k.avgRating.toFixed(1)} ⭐` : "—", `${k.feedbackCount} تقييم`],
-    ["تكلفة التوليد", `$${k.costUsd.toFixed(2)}`, k.costPerBooklet ? `$${k.costPerBooklet.toFixed(2)} للكتيب` : undefined],
+const n = (v: number | null) => (v === null ? "—" : v.toLocaleString("en"));
+
+/** The dashboard's front: the whole site in one glance, each branch's numbers and where to manage it. */
+export default async function AdminHome() {
+  const now = timeNow();
+  const day = new Date(now - DAY).toISOString();
+  const week = new Date(now - 7 * DAY).toISOString();
+  const [users, orders, ordersWeek, jobsDay, jobsWeek, editorProjects, studentProjects, filmProjects, mahdiLogsWeek, mahdiAssistant, coinsOn, ...modes] = await Promise.all([
+    listAllUsers().catch(() => null),
+    count("orders"),
+    count("orders", week),
+    count("jawad_jobs", day),
+    count("jawad_jobs", week),
+    count("editor_projects"),
+    count("student_projects"),
+    count("film_projects"),
+    count("mahdi_logs", week),
+    count("mahdi_assistant_messages", week),
+    coinsRequired().catch(() => null),
+    ...(Object.keys(SECTIONS_ACCESS) as AccessSection[]).map((s) => accessMode(s).catch(() => null)),
+  ]);
+  const signupsWeek = users ? users.filter((u) => new Date(u.created_at).getTime() > now - 7 * DAY).length : null;
+  const activeWeek = users ? users.filter((u) => u.last_sign_in_at && new Date(u.last_sign_in_at).getTime() > now - 7 * DAY).length : null;
+  const sectionModes = (Object.keys(SECTIONS_ACCESS) as AccessSection[]).map((s, i) => ({ s, label: SECTIONS_ACCESS[s].label, mode: modes[i] }));
+
+  const tiles: [string, string, string][] = [
+    ["👥", "المستخدمون", n(users?.length ?? null)],
+    ["🆕", "سجّلوا هالأسبوع", n(signupsWeek)],
+    ["🟢", "دخلوا هالأسبوع", n(activeWeek)],
+    ["✨", "توليدات الجواد (٢٤ ساعة)", n(jobsDay)],
   ];
-  const funnelMax = Math.max(1, ...s.funnel.map((f) => f.value));
+
+  const branches: { icon: string; title: string; href: string; stats: [string, string][]; links: [string, string][] }[] = [
+    {
+      icon: "✨",
+      title: "الجواد AI",
+      href: "/jawad-ai/admin",
+      stats: [
+        ["توليدات هالأسبوع", n(jobsWeek)],
+        ["مشاريع حيدرة كت", n(editorProjects)],
+        ["مشاريع الطالب الذكي", n(studentProjects)],
+        ["مشاريع الأفلام", n(filmProjects)],
+      ],
+      links: [
+        ["الأقسام", "/jawad-ai/admin/sections"],
+        ["المولدات", "/jawad-ai/admin/generators"],
+        ["الأسعار", "/jawad-ai/admin/prices"],
+        ["الإعلانات", "/jawad-ai/admin/ads"],
+        ["المهام", "/jawad-ai/admin/jobs"],
+        ["الفيلم", "/admin/film"],
+      ],
+    },
+    {
+      icon: "📖",
+      title: "كتيب نهج علي",
+      href: "/admin/booklet",
+      stats: [
+        ["كل الطلبات", n(orders)],
+        ["طلبات هالأسبوع", n(ordersWeek)],
+      ],
+      links: [["الأرقام والطلبات", "/admin/booklet"]],
+    },
+    {
+      icon: "🌙",
+      title: "لأجل المهدي",
+      href: "/admin/mahdi",
+      stats: [
+        ["تسجيلات العادات (أسبوع)", n(mahdiLogsWeek)],
+        ["رسائل المساعد (أسبوع)", n(mahdiAssistant)],
+      ],
+      links: [
+        ["المحتوى والبلاغات", "/admin/mahdi"],
+        ["رسائل المساعد", "/admin/mahdi/assistant"],
+        ["الاستخدام", "/admin/mahdi/users"],
+      ],
+    },
+  ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="display text-4xl">لوحة التحكم</h1>
-        <p className="font-bold text-muted">أرقام الموقع الحية، تتحدث كل ما تفتح الصفحة.</p>
-        <Link href="/admin/film" className="btn btn-secondary mt-2 w-full">🎬 فرع الفيلم: المدعوين والحدود والصرف</Link>
-        <Link href="/admin/limits" className="btn btn-secondary mt-2 w-full">🎚️ التحكم بالموارد والمحاولات</Link>
-        <Link href="/admin/pricing" className="btn btn-secondary mt-2 w-full">🧮 حاسبة الأسعار والأرباح</Link>
-        <Link href="/admin/mahdi" className="btn btn-secondary mt-2 w-full">🌙 لأجل المهدي: التحديات والنصوص والبلاغات</Link>
-        <Link href="/admin/storage" className="btn btn-secondary mt-2 w-full">📦 نقل الملفات إلى R2</Link>
-        <Link href="/jawad-ai/admin" className="btn btn-secondary mt-2 w-full">✨ JAWAD AI: الشعار والإعلانات والمولدات والأسعار والمهام</Link>
+        <p className="font-bold text-muted">نهج علي كله في مكان واحد: الأرقام الحية، الفروع، والصلاحيات.</p>
       </header>
 
-      {/* KPI tiles */}
-      <section className="grid grid-cols-2 gap-3">
-        {tiles.map(([label, value, sub]) => (
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {tiles.map(([icon, label, value]) => (
           <div key={label} className="card p-4">
-            <p className="text-sm font-bold text-muted">{label}</p>
+            <p className="text-sm font-bold text-muted">
+              {icon} {label}
+            </p>
             <p className="display text-3xl">{value}</p>
-            {sub && <p className="text-xs font-bold text-muted">{sub}</p>}
           </div>
         ))}
       </section>
 
+      {/* who can open what, at a glance */}
       <section className="card space-y-3 p-4">
-        <h2 className="text-xl font-extrabold">كم شخص دخل الموقع</h2>
-        <div className="grid grid-cols-4 gap-2 text-center">
-          {(
-            [
-              ["اليوم", s.logins.today],
-              ["أمس", s.logins.yesterday],
-              ["٧ أيام", s.logins.week],
-              ["٣٠ يوم", s.logins.month],
-            ] as const
-          ).map(([label, v]) => (
-            <div key={label} className="rounded-xl bg-surface-2 p-2">
-              <p className="display text-2xl">{v}</p>
-              <p className="text-xs font-bold text-muted">{label}</p>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-extrabold">🔐 الوصول للأقسام</h2>
+          <Link href="/admin/limits" className="btn btn-ghost min-h-10 px-4 text-sm">
+            غيّر الوصول والحدود
+          </Link>
         </div>
-        <p className="text-xs font-bold text-muted">يُحسب حسب آخر تسجيل دخول لكل شخص (بتوقيت الرياض).</p>
-      </section>
-
-      <TrialLimit users={s.users.filter((u) => u.dailyTrials).map((u) => ({ email: u.email, daily: u.dailyTrials as number }))} />
-
-      <AdminTools emails={s.users.map((u) => u.email).filter(Boolean)} />
-
-      {/* Funnel: one hue, one series, labelled bars */}
-      <section className="card space-y-3 p-4">
-        <h2 className="text-xl font-extrabold">قمع التحويل (عدد الأشخاص)</h2>
-        {s.funnel.map((f, i) => (
-          <div key={f.label} title={`${f.label}: ${f.value}`} className="space-y-1">
-            <div className="flex justify-between text-sm font-bold">
-              <span>{f.label}</span>
-              <span>
-                {f.value}
-                {i > 0 && s.funnel[i - 1].value ? <span className="text-muted"> · {pct(f.value / s.funnel[i - 1].value)}</span> : null}
-              </span>
-            </div>
-            <div className="h-3 rounded bg-surface-2">
-              <div className="h-3 rounded bg-teal" style={{ width: `${(f.value / funnelMax) * 100}%` }} />
-            </div>
-          </div>
-        ))}
-      </section>
-
-      {/* Daily activity: two separate charts (no dual axis) */}
-      {(
-        [
-          ["طلبات آخر ١٤ يوم", s.dailyOrders],
-          ["تسجيلات جديدة آخر ١٤ يوم", s.dailySignups],
-        ] as const
-      ).map(([title, series]) => {
-        const max = Math.max(1, ...series.map((d) => d.value));
-        return (
-          <section key={title} className="card space-y-3 p-4">
-            <h2 className="text-xl font-extrabold">{title}</h2>
-            <div className="flex h-36 items-end gap-1" dir="ltr">
-              {series.map((d) => (
-                <div key={d.day} className="group flex flex-1 flex-col items-center justify-end gap-1" title={`${d.day}: ${d.value}`}>
-                  <span className="text-[10px] font-bold text-muted opacity-0 group-hover:opacity-100">{d.value}</span>
-                  <div className="w-full rounded-t bg-gold" style={{ height: `${(d.value / max) * 100}%`, minHeight: d.value ? 4 : 1 }} />
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-between text-xs font-bold text-muted" dir="ltr">
-              <span>{series[0].day.slice(5)}</span>
-              <span>اليوم</span>
-            </div>
-          </section>
-        );
-      })}
-
-      {/* Breakdowns */}
-      <section className="grid gap-3">
-        {(
-          [
-            ["الستايلات", s.styles],
-            ["ولد / بنت", s.genders],
-            ["الجودة", s.qualities],
-            ["حالة الطلبات", s.statuses],
-          ] as const
-        ).map(([title, rows]) => {
-          const max = Math.max(1, ...rows.map((r) => r[1]));
-          return (
-            <div key={title} className="card space-y-2 p-4">
-              <h2 className="text-lg font-extrabold">{title}</h2>
-              {rows.length === 0 && <p className="text-sm font-bold text-muted">ما فيه بيانات بعد</p>}
-              {rows.map(([key, value]) => {
-                const label = title === "حالة الطلبات" ? STATUS_LABELS[key as OrderStatus] : (LABELS[key as StyleKey | QualityKey] ?? key);
-                return (
-                  <div key={key} className="flex items-center gap-3 text-sm font-bold" title={`${label}: ${value}`}>
-                    <span className="w-28 shrink-0 truncate">{label}</span>
-                    <div className="h-2.5 flex-1 rounded bg-surface-2">
-                      <div className="h-2.5 rounded bg-teal" style={{ width: `${(value / max) * 100}%` }} />
-                    </div>
-                    <span className="w-8 text-end">{value}</span>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
-      </section>
-
-      {/* Feedback */}
-      <section className="card space-y-3 p-4">
-        <h2 className="text-xl font-extrabold">آراء المستخدمين ({s.feedback.length})</h2>
-        {s.feedback.length === 0 && <p className="font-bold text-muted">ما وصل أي رأي للحين.</p>}
-        <ul className="space-y-3">
-          {s.feedback.map((f) => (
-            <li key={f.id} className="rounded-2xl bg-surface-2 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold">
-                <span>{"⭐".repeat(f.rating)}</span>
-                <span className="text-muted" dir="ltr">{f.email}</span>
-              </div>
-              {f.message && <p className="mt-1 font-bold">{f.message}</p>}
-              <p className="mt-1 text-xs font-bold text-muted">{fmtDate(f.createdAt)}</p>
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {sectionModes.map(({ s, label, mode }) => (
+            <li key={s} className="rounded-2xl border border-line p-3">
+              <p className="font-extrabold">{label}</p>
+              <p className="text-sm font-bold text-muted">{mode ? ACCESS_MODES[mode].label : "—"}</p>
             </li>
           ))}
+          <li className="rounded-2xl border border-line p-3">
+            <p className="font-extrabold">💰 النقود الذكية</p>
+            <p className="text-sm font-bold text-muted">{coinsOn === null ? "—" : coinsOn ? "مطلوبة (يُخصم من الرصيد)" : "مو مطلوبة (مجاني)"}</p>
+          </li>
         </ul>
       </section>
 
-      {/* Users */}
-      <section className="card space-y-3 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-extrabold">المستخدمين ({s.users.length})</h2>
-          <a href="/admin/export" className="btn btn-ghost min-h-10 px-4 text-sm">⬇️ تصدير CSV</a>
-        </div>
-        <div className="-mx-4 overflow-x-auto px-4">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="text-muted">
-              <tr className="text-start">
-                <th className="py-2 text-start">الإيميل</th>
-                <th className="text-start">الاسم</th>
-                <th className="text-start">سجّل</th>
-                <th className="text-start">آخر طلب</th>
-                <th>طلبات</th>
-                <th>جاهزة</th>
-              </tr>
-            </thead>
-            <tbody className="font-bold">
-              {s.users.map((u) => (
-                <tr key={u.id} className="border-t border-line">
-                  <td className="py-2" dir="ltr">{u.email}</td>
-                  <td>{u.name || "—"}</td>
-                  <td className="whitespace-nowrap">{riyadhDay(u.createdAt)}</td>
-                  <td className="whitespace-nowrap">{u.lastOrderAt ? riyadhDay(u.lastOrderAt) : "—"}</td>
-                  <td className="text-center">{u.orders}</td>
-                  <td className="text-center">{u.ready}</td>
-                </tr>
+      <section className="grid gap-4 lg:grid-cols-3">
+        {branches.map((b) => (
+          <article key={b.title} className="card flex flex-col gap-3 p-4">
+            <Link href={b.href} className="flex items-center gap-2 text-xl font-extrabold hover:underline">
+              <span aria-hidden>{b.icon}</span> {b.title}
+            </Link>
+            <dl className="grid grid-cols-2 gap-2">
+              {b.stats.map(([k, v]) => (
+                <div key={k} className="rounded-2xl bg-surface-2 p-2.5">
+                  <dt className="text-xs font-bold text-muted">{k}</dt>
+                  <dd className="display text-2xl">{v}</dd>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </dl>
+            <div className="mt-auto flex flex-wrap gap-1.5">
+              {b.links.map(([label, href]) => (
+                <Link key={href} href={href} className="chip text-xs">
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </article>
+        ))}
       </section>
 
-      {/* Recent orders */}
-      <section className="card space-y-3 p-4">
-        <h2 className="text-xl font-extrabold">آخر الطلبات</h2>
-        <div className="-mx-4 overflow-x-auto px-4">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="text-muted">
-              <tr>
-                <th className="py-2 text-start">الطفل</th>
-                <th className="text-start">الستايل</th>
-                <th className="text-start">الحالة</th>
-                <th className="text-start">الإيميل</th>
-                <th className="text-start">الوقت</th>
-              </tr>
-            </thead>
-            <tbody className="font-bold">
-              {s.recentOrders.map((o) => (
-                <tr key={o.id} className="border-t border-line">
-                  <td className="py-2">{o.child_name ?? "—"}</td>
-                  <td>{LABELS[o.style] ?? o.style}</td>
-                  <td>{STATUS_LABELS[o.status]}</td>
-                  <td dir="ltr">{o.email}</td>
-                  <td className="whitespace-nowrap">{fmtDate(o.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <Link href="/admin/users" className="card flex items-center gap-4 p-5 transition hover:-translate-y-0.5">
+        <span className="text-4xl" aria-hidden>
+          👥
+        </span>
+        <span className="flex-1">
+          <b className="block text-xl">المستخدمون والصلاحيات</b>
+          <span className="font-bold text-muted">ابحث عن أي شخص: افتح له أو اقفل عليه أي قسم، نقود، المكتبة، الحدود، والمحاولات.</span>
+        </span>
+        <span aria-hidden className="text-2xl">←</span>
+      </Link>
     </div>
   );
 }

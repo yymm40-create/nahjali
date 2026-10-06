@@ -45,6 +45,7 @@ export default function AccountMenu({ name, email, owner }: { name: string; emai
           <Link href="/jawad-ai/coins" className={item}><Icon name="wallet" size={16} /> النقود الذكية</Link>
           <Link href="/jawad-ai/film" className={item}><Icon name="film" size={16} /> مشاريع أفلامي</Link>
           {owner && <Link href="/jawad-ai/admin" className={item}><Icon name="settings" size={16} /> إدارة JAWAD AI</Link>}
+          {owner && <Link href="/admin" className={item}><Icon name="settings" size={16} /> لوحة التحكم (كل الفروع)</Link>}
           <button
             type="button"
             className={`${item} text-start text-jw-muted`}
