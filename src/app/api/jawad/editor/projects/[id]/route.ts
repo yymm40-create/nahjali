@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handOff, loadChat } from "@/lib/editor/chat";
 import { handle, UserError } from "@/lib/api";
 import { requireStudentApiUser } from "@/lib/jawad/server/access";
 import type { Command } from "@/lib/editor/commands";
@@ -89,6 +90,10 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await separate(p, { id: user.id, email: user.email, owner }, b));
     case "assistant":
       return NextResponse.json(await assist(p, { id: user.id, email: user.email, owner }, b));
+    case "chat":
+      return NextResponse.json(await loadChat(p), noStore);
+    case "handoff":
+      return NextResponse.json(await handOff(p, { id: user.id, email: user.email, owner }, b));
     case "history":
       return NextResponse.json({ history: await history(p.id) }, noStore);
   }

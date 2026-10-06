@@ -11,6 +11,7 @@ import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
 import { FX_LIST } from "./effects";
 import { TR_LIST } from "./transitions";
+import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
 import { charged, editorLimit, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
 
@@ -137,7 +138,7 @@ interface Answer {
 }
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown }) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown }) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -152,12 +153,9 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const tl = readTimeline(b.timeline, new Set(assets.map((a) => a.id)));
   const infos = new Map(assets.map((a) => [a.id, assetInfo(a)]));
 
-  const history = (Array.isArray(b.history) ? b.history : [])
-    .slice(-8)
-    .filter((h): h is { role: "user" | "assistant"; text: string } => !!h && typeof h === "object" && ["user", "assistant"].includes((h as { role: string }).role) && typeof (h as { text: unknown }).text === "string")
-    .map((h): ClaudeTurn => ({ role: h.role, content: h.text.slice(0, 2000) }));
-  // the conversation must start with the person and alternate
-  while (history.length && history[0].role !== "user") history.shift();
+  // the edit's own conversation (kept with the project, with its handoff); before the migration, the page's
+  const chat = await loadChat(p);
+  const history = chat.stored ? chatTurns(chat) : chatTurns({ messages: readMessages(b.history), handoff: typeof b.handoff === "string" ? b.handoff.slice(0, 8000) : null });
   const turns: ClaudeTurn[] = [
     ...history,
     { role: "user", content: `TIMELINE:\n${JSON.stringify(context(tl, assets, transcripts, b))}\n\nREQUEST:\n${message}` },
@@ -210,8 +208,10 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   }
   const valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
   await db().from("editor_ops").insert({ project_id: p.id, version: p.version, actor: "claude", label: usd.toFixed(4) });
+  const reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "");
+  await appendChat(p, [{ role: "user", text: message }, { role: "assistant", text: reply, ...(valid.length ? { done: valid.length } : {}) }]);
   return {
-    reply: answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : ""),
+    reply,
     commands: valid,
     suggestions: (answer.suggestions ?? []).slice(0, 4),
     requests: (answer.requests ?? [])

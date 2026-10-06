@@ -6,6 +6,7 @@ import { framesOf } from "./media";
 import { makeHookAsset, makeMusicAsset } from "./make";
 import { placeHook, placeMusic } from "@/lib/editor/make";
 import type { MakeRequest } from "@/lib/editor/assistant";
+import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
 import Icon from "../Icon";
@@ -21,6 +22,10 @@ interface Msg {
   suggestions?: { prompt: string; why: string }[];
   error?: boolean;
 }
+
+/** From here a handoff is suggested (same as the server's CHAT_LONG). */
+const LONG = { messages: 40, chars: 24_000 };
+const localKey = (id: string) => `jw-editor-chat-${id}`;
 
 const QUICK = ["اصنع هوك كتابي بصورة في البداية", "حط موسيقى تناسب المقطع", "قص السكتات الطويلة", "رتّب المقاطع وحط انتقالات ناعمة", "خلّه ٣٠ ثانية بأحلى اللقطات", "حط عنوان في البداية", "سوّ لي مونتاج كامل من الملفات", "خفّض الموسيقى وقت الكلام"];
 
@@ -99,6 +104,56 @@ export default function AssistantPanel({
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
 
+  // ---------- the edit's conversation stays with the project (server; before the migration, this device) ----------
+  const [chat, setChat] = useState<{ loaded: boolean; stored: boolean; handoff: string | null; chats: number }>({ loaded: false, stored: false, handoff: null, chats: 1 });
+  const [showHandoff, setShowHandoff] = useState(false);
+  useEffect(() => {
+    let live = true;
+    postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "chat" })
+      .catch(() => ({ messages: [], handoff: null, chats: 1, stored: false }) as Chat)
+      .then((c) => {
+        if (!live) return;
+        let saved: { msgs: Msg[]; handoff: string | null; chats: number } = { msgs: c.messages, handoff: c.handoff, chats: c.chats };
+        if (!c.stored) {
+          try {
+            const raw = JSON.parse(localStorage.getItem(localKey(projectId)) ?? "null");
+            if (raw && Array.isArray(raw.msgs)) saved = { msgs: raw.msgs, handoff: raw.handoff ?? null, chats: Number(raw.chats) || 1 };
+          } catch {
+            /* nothing kept */
+          }
+        }
+        // anything said while it was loading stays after what was kept
+        setMsgs((now) => [...saved.msgs, ...now]);
+        setChat({ loaded: true, stored: c.stored, handoff: saved.handoff, chats: saved.chats });
+      });
+    return () => {
+      live = false;
+    };
+  }, [projectId]);
+  useEffect(() => {
+    if (!chat.loaded || chat.stored) return;
+    try {
+      localStorage.setItem(localKey(projectId), JSON.stringify({ msgs: msgs.filter((m) => !m.error).slice(-200).map((m) => ({ role: m.role, text: m.text, done: m.done })), handoff: chat.handoff, chats: chat.chats }));
+    } catch {
+      /* not kept */
+    }
+  }, [msgs, chat, projectId]);
+  const long = msgs.length >= LONG.messages || msgs.reduce((n, m) => n + m.text.length, 0) >= LONG.chars;
+  const handOff = async () => {
+    if (busy || !msgs.length) return;
+    setBusy("Claude يكتب الهاندوف ويبدأ محادثة جديدة…");
+    try {
+      const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff });
+      setMsgs([]);
+      setChat((x) => ({ ...x, handoff: c.handoff, chats: c.chats }));
+      setShowHandoff(true);
+    } catch (e) {
+      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const sent = useRef(0);
   // pictures of clips already looked at (kept while the clip's part stays the same)
   const seenFrames = useRef(new Map<string, { t: number; data: string }[]>());
@@ -140,6 +195,7 @@ export default function AssistantPanel({
         action: "assistant",
         message,
         history,
+        handoff: chat.handoff,
         timeline: tl,
         playhead: player?.ms ?? 0,
         selected,
@@ -201,6 +257,11 @@ export default function AssistantPanel({
             {busy ? "يشتغل…" : "جاهز يخدمك"}
           </span>
         </span>
+        {msgs.length > 0 && (
+          <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${long ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} disabled={!!busy || readOnly} onClick={handOff} title="Claude يلخّص المحادثة (هاندوف) ويبدأ محادثة جديدة منها">
+            <Icon name="retry" size={13} /> محادثة جديدة
+          </button>
+        )}
         {onClose && (
           <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={onClose} aria-label="إغلاق">
             <Icon name="x" />
@@ -208,7 +269,16 @@ export default function AssistantPanel({
         )}
       </div>
       <div className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
-        {!msgs.length && (
+        {chat.handoff && (
+          <div className="rounded-xl border border-jw-accent/30 bg-jw-accent/5 p-2.5 text-xs">
+            <button type="button" className="flex w-full items-center gap-1.5 font-semibold text-jw-accent" onClick={() => setShowHandoff((v) => !v)} aria-expanded={showHandoff}>
+              <Icon name="check" size={12} /> المحادثة {chat.chats} · تبدأ من هاندوف اللي قبلها
+              <span className="ms-auto text-jw-muted">{showHandoff ? "إخفاء" : "عرض"}</span>
+            </button>
+            {showHandoff && <p className="mt-2 whitespace-pre-wrap leading-6 text-jw-muted" dir="auto">{chat.handoff}</p>}
+          </div>
+        )}
+        {!msgs.length && chat.loaded && (
           <div className="space-y-3">
             <div className="max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
               هلا! أنا مساعدك في المونتاج 👋
@@ -249,6 +319,14 @@ export default function AssistantPanel({
             ) : null}
           </div>
         ))}
+        {long && !busy && (
+          <div className="rounded-xl border border-jw-warn/40 bg-jw-warn/10 p-2.5 text-xs">
+            المحادثة طوّلت. خلّ Claude يكتب هاندوف لكل اللي اتفقنا عليه ويبدأ محادثة جديدة منه — يتذكّر ذوقك وقراراتك ويرد أسرع.
+            <button type="button" className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs" disabled={readOnly} onClick={handOff}>
+              سوّ هاندوف وابدأ محادثة جديدة
+            </button>
+          </div>
+        )}
         {busy && (
           <p className="flex items-center gap-2 text-xs text-jw-muted">
             <span className="jw-spinner" /> {busy}
