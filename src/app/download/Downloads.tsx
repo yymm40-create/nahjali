@@ -28,6 +28,10 @@ interface Item {
   steps?: string[];
   /** a fallback for the Terminal (with a copy button) */
   command?: { intro: string; text: string };
+  /** what must be read before opening it, in red */
+  warning?: string[];
+  /** the instructions as a file */
+  guide?: string;
 }
 
 const ITEMS: Item[] = [
@@ -55,6 +59,12 @@ const ITEMS: Item[] = [
     title: "ماك",
     what: "برنامج حيدرة كت للمونتاج: اسحب الفيديو من جهازك وينزل على طول بدون رفع.",
     note: "لأجهزة Apple silicon (M1 وما بعده) وأجهزة Intel.",
+    warning: [
+      "أول مرة تفتحه بيطلع «لم يُفتح HaidaraCut». هذا طبيعي.",
+      "اضغط «تم». لا تضغط «نقل إلى سلة المهملات».",
+      "روح: إعدادات النظام ← الخصوصية والأمان ← انزل لتحت ← «افتح على أي حال» ← كلمة سر الماك ← «افتح».",
+    ],
+    guide: DOWNLOADS.macGuide,
     href: DOWNLOADS.mac,
     button: "حمّل للماك",
     steps: [
@@ -126,6 +136,21 @@ export default function Downloads() {
                 </a>
               ) : (
                 <span className="btn btn-ghost w-full cursor-default opacity-60">{it.button}</span>
+              )}
+              {it.warning && (
+                <div role="note" className="space-y-1.5 rounded-2xl border-2 border-red-600 bg-red-600/10 p-3 text-red-600">
+                  <p className="font-extrabold">⚠️ مهم قبل ما تفتحه</p>
+                  <ol className="list-decimal space-y-1 ps-5 text-sm font-bold leading-7">
+                    {it.warning.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {it.guide && (
+                <a href={it.guide} download="طريقة فتح حيدرة كت على الماك.pdf" className="btn btn-ghost w-full border-2 border-red-600 text-red-600">
+                  📄 حمّل ملف التعليمات (PDF)
+                </a>
               )}
               <p className="text-sm font-bold text-muted">{it.note}</p>
               {it.steps && (
