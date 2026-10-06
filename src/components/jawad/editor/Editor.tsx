@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import InstallApp from "./InstallApp";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apply, applyAll, CommandError, type Applied, type Command } from "@/lib/editor/commands";
 import { clipEnd, duration, findClip, formatTime, type AssetInfo, type Timeline as TL } from "@/lib/editor/model";
@@ -58,13 +59,13 @@ const THEMES = {
 type ThemeId = keyof typeof THEMES;
 const RAIL_NAV = {
   side: "jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex",
-  clouds: "jw-scroll mx-2 mt-1 hidden gap-3 overflow-x-auto px-1 pb-3 pt-1 lg:flex",
+  clouds: "jw-scroll mx-2 mt-1 hidden gap-2 overflow-x-auto px-1 pb-2 pt-1 lg:flex",
   pages: "jw-glass jw-scroll mx-2 mb-2 hidden gap-px overflow-x-auto p-0.5 lg:flex",
   // (the phone keeps its own tool bar)
 } as const;
 const RAIL_ITEM = {
   side: "flex-col gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight",
-  clouds: "min-w-[5.5rem] flex-col justify-center gap-1 rounded-full px-4 py-3 text-sm font-bold",
+  clouds: "min-w-[4.75rem] flex-col justify-center gap-0.5 rounded-full px-3 py-2 text-xs font-bold",
   pages: "gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide",
 } as const;
 
@@ -129,6 +130,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the look (kept on this device): colours, shapes and where the sections sit
   const [theme, setTheme] = useState<ThemeId>("future");
   const [picking, setPicking] = useState(false);
+  // «كبّر الشاشة»: the preview takes the room of the side panels (and of the timeline on a phone) until shrunk again
+  const [big, setBig] = useState(false);
+  // Claude's width on a computer (dragged by its edge; kept on this device)
+  const [chatW, setChatW] = useState(400);
   // the timeline's look, whatever the theme: «عادي» or «بريمير»
   const [tlLook, setTlLook] = useState<"classic" | "pro">("classic");
   // a request for Claude from a button (a ready style): the panel opens and sends it
@@ -147,6 +152,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (localStorage.getItem("jw-editor-tl") === "pro") setTlLook("pro");
         const th = localStorage.getItem("jw-editor-theme");
         if (th && th in THEMES) setTheme(th as ThemeId);
+        const w = Number(localStorage.getItem("jw-editor-chat-w"));
+        if (w >= 300 && w <= 900) setChatW(w);
       } catch {
         /* private mode: the normal size */
       }
@@ -156,12 +163,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   useEffect(() => {
     // every size in the editor follows the page's base size, so the whole thing grows or shrinks together
     const root = document.documentElement;
-    const k = ui * THEMES[theme].scale;
+    // (a phone keeps the normal size: the children's bigger look would push things off its narrow screen)
+    const k = ui * (wide ? THEMES[theme].scale : Math.min(1, THEMES[theme].scale));
     root.style.fontSize = k === 1 ? "" : `${Math.round(k * 100)}%`;
     return () => {
       root.style.fontSize = "";
     };
-  }, [ui, theme]);
+  }, [ui, theme, wide]);
   useEffect(() => {
     const f = THEMES[theme].font;
     if (f) void loadFont(f, 400).then(() => loadFont(f, 700));
@@ -212,6 +220,35 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     setSelected(ids);
     if (ids.length === 1) setRail("inspector");
   }, []);
+  useEffect(() => {
+    if (!big) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setBig(false);
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [big]);
+  // Claude's edge, dragged: wider toward the preview, narrower back
+  const dragChat = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = chatW;
+    const dir = THEMES[theme].mirror ? 1 : -1;
+    let w = startW;
+    const move = (ev: PointerEvent) => {
+      w = Math.round(Math.min(Math.max(300, window.innerWidth * 0.6), Math.max(300, startW + dir * (ev.clientX - startX))));
+      setChatW(w);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      try {
+        localStorage.setItem("jw-editor-chat-w", String(w));
+      } catch {
+        /* not kept */
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const openClaude = (on?: boolean) => {
     setAssisting((v) => on ?? !v);
     setChat((v) => on ?? !v);
@@ -609,7 +646,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 }}
                 className={`jw-3d flex shrink-0 items-center ${RAIL_ITEM[variant]} ${on ? "jw-rail-on" : variant === "clouds" ? `jw-cloud-${i % 5} text-jw-ink` : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
               >
-                <Icon name={r.icon} size={variant === "clouds" ? 26 : variant === "pages" ? 14 : 16} />
+                <Icon name={r.icon} size={variant === "clouds" ? 22 : variant === "pages" ? 14 : 16} />
                 <span className="whitespace-nowrap">{label}</span>
               </button>
             );
@@ -620,8 +657,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
   return (
     <div
-      className="flex h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] min-h-[520px] flex-col overflow-hidden"
+      className="flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px]"
       data-ed-theme={theme}
+      // a phone: the editor takes the whole screen (JAWAD AI's header steps aside, sections.css)
+      data-ed-full=""
       style={THEMES[theme].font ? { fontFamily: `"${familyOf(THEMES[theme].font!)}", var(--jw-font)` } : undefined}
       // files dropped anywhere else (the preview, the panels) go at the playhead
       onDragOver={(e) => {
@@ -681,6 +720,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   </span>
                 </button>
               ))}
+              <div className="col-span-2">
+                <InstallApp />
+              </div>
             </div>
           )}
         </div>
@@ -696,9 +738,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <Icon name="zoomIn" size={15} />
           </button>
         </div>
-        <button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="مساعدك: قل له وش تبي ويعدّل التايملاين">
+        <span className="hidden lg:contents"><button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="مساعدك: قل له وش تبي ويعدّل التايملاين">
           <span className="jw-orb h-4 w-4" aria-hidden /> Claude
-        </button>
+        </button></span>
         <button type="button" className="jw-btn jw-btn-primary jw-3d shrink-0" disabled={readOnly || !total} onClick={() => setExporting(true)}>
           <Icon name="download" size={16} /> <span className="hidden sm:inline">صدّر</span>
         </button>
@@ -733,7 +775,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
-        <aside className={`${chat ? "fixed inset-0 z-50 flex" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:static lg:z-auto ${assisting ? "lg:flex" : "lg:hidden"} lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl`} aria-label="Claude">
+        <aside className={`${chat ? "fixed inset-0 z-50 flex" : "hidden"} jw-glass-lg relative flex-col bg-jw-surface lg:static lg:z-auto ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl`} style={wide ? { width: chatW } : undefined} aria-label="Claude">
+          {/* its edge: drag to make the conversation wider or narrower (double-click: the usual width) */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="غيّر عرض محادثة Claude"
+            title="اسحب لتكبير المحادثة أو تصغيرها"
+            className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${THEMES[theme].mirror ? "start-0" : "end-0"}`}
+            onPointerDown={dragChat}
+            onDoubleClick={() => setChatW(400)}
+          />
           <Guard name="Claude"><AssistantPanel ask={ask} onAssets={addAssets} onSeparate={separateClip} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
         </aside>
 
@@ -741,6 +793,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
             <canvas ref={canvas} width={tl.width} height={tl.height} className="jw-screen max-h-full max-w-full rounded-xl" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
             <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
+            <button
+              type="button"
+              className="jw-glass jw-3d absolute end-3 top-3 z-20 flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold"
+              onClick={() => setBig((v) => !v)}
+              aria-label={big ? "صغّر الشاشة" : "كبّر الشاشة"}
+              title={big ? "رجّع الشاشة لحجمها (Esc)" : "كبّر الشاشة: تختفي الألواح الجانبية مؤقتًا"}
+            >
+              <Icon name={big ? "shrink" : "expand"} size={16} />
+              <span className="hidden sm:inline">{big ? "صغّر الشاشة" : "كبّر الشاشة"}</span>
+            </button>
           </div>
           {toast && (
             <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>
@@ -750,7 +812,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </section>
 
         <aside
-          className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${rail === "media" ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
+          className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
           aria-label="الوسائط"
         >
           <SheetGrip onClose={() => setSheet(null)} title="الوسائط" />
@@ -772,7 +834,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
 
         <aside
-          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[65dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${rail === "inspector" || rail === "project" ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
+          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[65dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
           aria-label="الإعدادات"
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
@@ -781,17 +843,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </div>
         </aside>
 
-        <aside className={`hidden jw-glass flex-col lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "styles" ? "lg:flex" : ""}`} aria-label="أساليب جاهزة">
+        <aside className={`hidden jw-glass flex-col lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "styles" && !big ? "lg:flex" : ""}`} aria-label="أساليب جاهزة">
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
             <PluginTools inline ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} />
           </div>
         </aside>
 
         {/* the rail of sections at the side (the blue and nature looks) */}
-        {THEMES[theme].rail === "side" && railNav("side")}
+        {THEMES[theme].rail === "side" && !big && railNav("side")}
       </div>
 
-      {THEMES[theme].rail === "clouds" && railNav("clouds")}
+      {THEMES[theme].rail === "clouds" && !big && railNav("clouds")}
 
       {/* transport and tools */}
       <div className="jw-glass mx-2 my-1 flex items-center gap-1 rounded-2xl px-2 py-1" dir="rtl">
@@ -838,8 +900,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </button>
       </div>
 
-      <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>
-      <div className="jw-glass mx-2 mb-2 h-[34%] min-h-[150px] shrink-0 overflow-hidden rounded-2xl lg:h-[30%] lg:min-h-[200px]">
+      {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
+      <div className={`jw-glass mx-2 mb-2 shrink-0 overflow-hidden rounded-2xl ${big ? "hidden lg:block lg:h-[16%] lg:min-h-[110px]" : "h-[34%] min-h-[150px] lg:h-[30%] lg:min-h-[200px]"}`}>
         <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
@@ -847,17 +909,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         }} /></Guard>
       </div>
 
-      {THEMES[theme].rail === "pages" && railNav("pages")}
+      {THEMES[theme].rail === "pages" && !big && railNav("pages")}
 
-      {/* a phone: the assistant floats over the tools, one tap away */}
-      {!chat && !readOnly && (
-        <button type="button" onClick={() => openClaude(true)} className="jw-float fixed bottom-[calc(7.5rem+env(safe-area-inset-bottom))] end-3 z-30 grid h-14 w-14 place-items-center rounded-full lg:hidden" aria-label="افتح Claude مساعدك" title="Claude مساعدك">
-          <span className="jw-orb h-12 w-12" aria-hidden />
-        </button>
-      )}
-
-      {/* the phone's tool bar */}
-      <nav className="grid grid-cols-6 border-t border-jw-line bg-jw-surface pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="الأدوات">
+      {/* the phone's tool bar: Claude in the middle, one tap away (nothing floats over the timeline) */}
+      <nav className="grid grid-cols-7 items-end border-t border-jw-line bg-jw-surface pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="الأدوات">
         <button type="button" className={toolBtn} onClick={() => setSheet("library")}>
           <Icon name="folder" size={19} /> الوسائط
         </button>
@@ -866,6 +921,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </button>
         <button type="button" className={toolBtn} onClick={() => remove(false)} disabled={readOnly || !selected.length}>
           <Icon name="trash" size={19} /> حذف
+        </button>
+        <button type="button" className="flex flex-col items-center gap-0.5 pb-1.5 text-[11px] font-semibold text-jw-accent disabled:opacity-40" onClick={() => openClaude(true)} disabled={readOnly} aria-label="افتح Claude مساعدك">
+          <span className="jw-orb -mt-6 h-12 w-12 ring-4 ring-jw-surface" aria-hidden />
+          Claude
         </button>
         <button type="button" className={toolBtn} onClick={addText} disabled={readOnly}>
           <Icon name="type" size={19} /> نص

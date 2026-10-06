@@ -1,4 +1,13 @@
+import type { Metadata, Viewport } from "next";
 import { Noto_Kufi_Arabic, Noto_Naskh_Arabic } from "next/font/google";
+
+// installable: «الممنتج الذكي» on the home screen, opening full-screen like an app
+export const metadata: Metadata = {
+  manifest: "/editor.webmanifest",
+  appleWebApp: { capable: true, title: "الممنتج", statusBarStyle: "black-translucent" },
+  icons: { apple: "/editor-app/apple-180.png" },
+};
+export const viewport: Viewport = { themeColor: "#0c0d0c", colorScheme: "dark", viewportFit: "cover" };
 
 // the text styles' fonts (drawn on the video by the canvas, so they are loaded with the page)
 const naskh = Noto_Naskh_Arabic({ variable: "--font-naskh", subsets: ["arabic"], weight: ["400", "700"] });

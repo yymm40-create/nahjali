@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import InstallApp from "./InstallApp";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PROJECT_KINDS, type ProjectKind } from "@/lib/editor/model";
@@ -55,6 +56,7 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 pb-16 pt-6">
       <SectionHint kind="editor" />
+      <InstallApp />
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 text-2xl font-bold">
           <Icon name="scissors" size={24} className="text-jw-accent" /> {name}
