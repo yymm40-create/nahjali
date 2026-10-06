@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import InstallApp from "./InstallApp";
+import { detectScenes } from "./scene-detect";
+import { takeStartKit } from "./start-kit";
+import { cutsOnTimeline } from "@/lib/editor/scenes";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apply, applyAll, CommandError, type Applied, type Command } from "@/lib/editor/commands";
 import { clipEnd, duration, findClip, formatTime, type AssetInfo, type Timeline as TL } from "@/lib/editor/model";
@@ -17,7 +20,7 @@ import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
-import Inspector, { type InspectorTab } from "./Inspector";
+import Inspector, { type SceneCutRun, type InspectorTab } from "./Inspector";
 import { peaksOf, waveImage } from "./peaks";
 import Library from "./Library";
 import { thumbnail } from "./media";
@@ -432,6 +435,54 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     uploads.add(files, files.map((_, i) => ({ at, trackId, mode: mode ?? "one", group, first: i === 0 })));
     flash(files.length > 1 ? `نرفع ${files.length} ملفات وننزّلها في التايملاين…` : "نرفع الملف وننزّله في مكانه…");
   };
+  // what the launcher's «مشروع جديد» brought: device files go up and onto the timeline one after another, works
+  // already in the library go on the timeline the same way
+  const kitTaken = useRef(false);
+  useEffect(() => {
+    if (kitTaken.current || readOnly) return;
+    kitTaken.current = true;
+    const k = takeStartKit(project.id);
+    if (!k) return;
+    const t = setTimeout(() => {
+      if (k.assets.length) {
+        addAssets(k.assets);
+        const group = `kit-${project.id}`;
+        k.assets.forEach((a, i) => placeAsset(a, { at: 0, trackId: null, mode: "line", group, first: i === 0 }));
+        if (!k.files.length) flash(`نزّلت ${k.assets.length} من أعمالك في التايملاين.`);
+      }
+      if (k.files.length) dropFiles(k.files, duration(tlRef.current), null, "line");
+    }, 0);
+    return () => clearTimeout(t);
+    // once, when the editor opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // «التقطيع الذكي»: the clip read in the browser, then cut at every change of shot (one undo)
+  const sceneCut: SceneCutRun = async (clipId, sensitivity, onProgress, signal) => {
+    const f = findClip(tlRef.current, clipId);
+    const a = f?.clip.assetId ? assets.find((x) => x.id === f.clip.assetId) : null;
+    if (!f || !a?.url || a.kind !== "video") {
+      flash("اختر مقطع فيديو.", true);
+      return 0;
+    }
+    let found: number[];
+    try {
+      found = await detectScenes(a.url, f.clip.in / 1000, f.clip.out / 1000, { sensitivity, onProgress, signal });
+    } catch (e) {
+      if ((e as Error)?.name !== "AbortError") flash(e instanceof Error && e.message ? `ما قدرت أقرأ المشاهد: ${e.message}` : "ما قدرت أقرأ المشاهد.", true);
+      return 0;
+    }
+    const now = findClip(tlRef.current, clipId);
+    if (!now) return 0;
+    const at = cutsOnTimeline(now.clip, found);
+    if (!at.length) {
+      flash("ما لقيت تغيّر مشهد واضح في هذا المقطع؛ جرّب «حساس».");
+      return 0;
+    }
+    if (run(at.map((ms, i) => ({ type: "split" as const, at: ms, clipIds: [i ? `$${i}` : clipId] })), { label: `تقطيع ذكي: ${at.length + 1} مشاهد` })) {
+      flash(`قطّعته ${at.length + 1} مشاهد ✂️ — كل مشهد صار مقطع لحاله.`);
+    }
+    return at.length;
+  };
   // a clip's sound split into talking, music and effects, each on its own track in step with it
   const separateClip = async (clipId: string) => {
     const f = findClip(tlRef.current, clipId);
@@ -786,7 +837,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             onPointerDown={dragChat}
             onDoubleClick={() => setChatW(400)}
           />
-          <Guard name="Claude"><AssistantPanel ask={ask} onAssets={addAssets} onSeparate={separateClip} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
+          <Guard name="Claude"><AssistantPanel ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col" aria-label="المعاينة">
@@ -839,7 +890,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 

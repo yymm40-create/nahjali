@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Sensitivity } from "@/lib/editor/scenes";
+import type { SceneProgress } from "./scene-detect";
 import {
   clipEnd,
   clipLength,
@@ -106,6 +108,7 @@ export default function Inspector({
   projectView = false,
   thumbs,
   onSeparate,
+  onSceneCut,
 }: {
   tl: Timeline;
   selected: string[];
@@ -124,6 +127,8 @@ export default function Inspector({
   thumbs?: Record<string, string | null>;
   /** splits a clip's sound into talking / music / effects tracks */
   onSeparate?: (clipId: string) => Promise<void>;
+  /** «التقطيع الذكي»: cuts a video clip where its shot changes; resolves with how many cuts were made */
+  onSceneCut?: SceneCutRun;
 }) {
   const playhead = usePlayhead(player);
   const [beatBusy, setBeatBusy] = useState(false);
@@ -297,6 +302,7 @@ export default function Inspector({
 
       {current === "basic" && (
         <div className="space-y-3">
+          {a?.kind === "video" && onSceneCut && <SceneCut clipId={clip.id} locked={locked} run={onSceneCut} />}
           {group && (
             <div className={`space-y-1.5 rounded-lg border p-2 text-[11px] leading-5 ${together ? "border-jw-accent/40 bg-jw-accent/5" : "border-jw-warn/50 bg-jw-warn/5"}`}>
               <p>
@@ -678,6 +684,60 @@ function AnimControls({ clip, track, together, locked, run }: { clip: Clip; trac
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+export type SceneCutRun = (clipId: string, sensitivity: Sensitivity, onProgress: (p: SceneProgress) => void, signal: AbortSignal) => Promise<number>;
+
+/** «التقطيع الذكي»: the clip cut wherever its camera or scene changes (found in the browser, one undo). */
+function SceneCut({ clipId, locked, run }: { clipId: string; locked: boolean; run: SceneCutRun }) {
+  const [level, setLevel] = useState<Sensitivity>("normal");
+  const [busy, setBusy] = useState<{ done: number; total: number; stop: AbortController } | null>(null);
+  const go = async () => {
+    const stop = new AbortController();
+    setBusy({ done: 0, total: 1, stop });
+    try {
+      await run(clipId, level, (p) => setBusy((b) => (b ? { ...b, ...p } : b)), stop.signal);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const levels: [Sensitivity, string][] = [
+    ["low", "تغيّرات واضحة"],
+    ["normal", "عادي"],
+    ["high", "حساس"],
+  ];
+  return (
+    <div className="space-y-2 rounded-xl border border-jw-accent/30 bg-jw-accent/5 p-2.5">
+      <p className="text-xs font-bold">✂️ التقطيع الذكي</p>
+      <p className="text-[11px] leading-5 text-jw-muted">يقطع المقطع عند كل تغيّر في المشهد أو الكاميرا، وكل مشهد يصير مقطع لحاله تقدر تحذفه أو ترتّبه.</p>
+      {busy ? (
+        <div className="space-y-1.5">
+          <div className="h-2 overflow-hidden rounded-full bg-jw-bg-2">
+            <div className="h-full rounded-full bg-jw-accent transition-all" style={{ width: `${Math.round((busy.done / Math.max(1, busy.total)) * 100)}%` }} />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-jw-muted">
+            <span>يقرأ المشاهد… {Math.round((busy.done / Math.max(1, busy.total)) * 100)}%</span>
+            <button type="button" className="underline" onClick={() => busy.stop.abort()}>
+              إلغاء
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="الحساسية">
+            {levels.map(([k, label]) => (
+              <button key={k} type="button" role="radio" aria-checked={level === k} onClick={() => setLevel(k)} className={`rounded-lg px-1 py-1 text-[11px] ${level === k ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="jw-btn jw-btn-primary w-full text-xs" disabled={locked} onClick={go}>
+            قطّع عند تغيّر المشهد
+          </button>
+        </>
+      )}
     </div>
   );
 }

@@ -73,6 +73,7 @@ export default function AssistantPanel({
   ask,
   onAssets,
   onSeparate,
+  onSceneCut,
   projectId,
   tl,
   selected,
@@ -89,6 +90,8 @@ export default function AssistantPanel({
   onAssets: (a: EditorAsset[]) => void;
   /** splits a clip's sound into talking / music / effects tracks */
   onSeparate: (clipId: string) => Promise<void>;
+  /** cuts a video clip at every change of shot */
+  onSceneCut: (clipId: string) => Promise<number>;
   projectId: string;
   tl: Timeline;
   selected: string[];
@@ -233,6 +236,9 @@ export default function AssistantPanel({
           } else if (q.kind === "separate") {
             setBusy("نفصل الكلام والموسيقى والمؤثرات…");
             await onSeparate(q.clipId);
+          } else if (q.kind === "scene_cut") {
+            setBusy("أقرأ المشاهد وأقطّع عند كل تغيّر…");
+            await onSceneCut(q.clipId);
           }
         } catch (e) {
           setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
