@@ -4,6 +4,7 @@
 
 import { clipEnd, duration, gainAt, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
 import { drawFrame, layersAt, type Frame } from "./render";
+import { Masker } from "./segment";
 
 export interface PlayerAsset {
   id: string;
@@ -34,6 +35,9 @@ export class Player {
   private listeners = new Set<(ms: number, playing: boolean) => void>();
   ms = 0;
   playing = false;
+  /** «عزل الشخص»: person masks, loaded the first time a clip asks for one */
+  private masker = new Masker(() => this.draw());
+  private maskAt = new Map<string, { t: number; mask: HTMLCanvasElement | null }>();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -222,14 +226,39 @@ export class Player {
   private frameOf = (clip: Clip): Frame | null => {
     const a = clip.assetId ? this.assets.get(clip.assetId) : null;
     if (!a) return null;
+    let f: Frame | null = null;
+    let t = 0;
     if (a.kind === "image") {
       const img = this.images.get(a.id);
-      return img?.complete && img.naturalWidth ? { img, width: img.naturalWidth, height: img.naturalHeight } : null;
+      f = img?.complete && img.naturalWidth ? { img, width: img.naturalWidth, height: img.naturalHeight } : null;
+    } else {
+      const m = this.media.get(clip.id);
+      if (m instanceof HTMLVideoElement && m.readyState >= 2) {
+        f = { img: m, width: m.videoWidth, height: m.videoHeight };
+        t = m.currentTime;
+      }
     }
-    const m = this.media.get(clip.id);
-    if (!(m instanceof HTMLVideoElement) || m.readyState < 2) return null;
-    return { img: m, width: m.videoWidth, height: m.videoHeight };
+    if (f && clip.bg) f.mask = this.mask(clip.id, f, t);
+    return f;
   };
+
+  /** The person mask of a clip's current frame (worked out again only when the frame changed). */
+  private mask(id: string, f: Frame, t: number) {
+    if (!this.masker.ready) {
+      void this.masker.load();
+      return null;
+    }
+    const had = this.maskAt.get(id);
+    if (had && had.t === t && had.mask) return had.mask;
+    let mask: HTMLCanvasElement | null = null;
+    try {
+      mask = this.masker.maskOf(id, f.img, f.width, f.height);
+    } catch {
+      mask = null;
+    }
+    this.maskAt.set(id, { t, mask });
+    return mask;
+  }
 
   draw() {
     drawFrame(this.ctx, this.tl, this.shown(), this.frameOf);

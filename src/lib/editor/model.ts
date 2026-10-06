@@ -101,6 +101,18 @@ export interface Transition {
 }
 export const TRANSITION_MS = { min: 200, max: 2000, default: 600 } as const;
 
+/**
+ * The person kept, the background around them changed (MediaPipe in the browser): removed (what is under the clip
+ * shows through), blurred, or one colour.
+ */
+export interface Backdrop {
+  mode: "remove" | "blur" | "color";
+  color: string;
+  /** blur strength 1–100 */
+  blur: number;
+}
+export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40 };
+
 /** A moment of a moving clip («نقطة حركة»): where it is at source time `t` (ms); between two points it glides. */
 export interface Key extends Transform {
   t: number;
@@ -133,6 +145,8 @@ export interface Clip {
   shape: "rect" | "rounded" | "circle";
   /** captions: when each word is said (text clips only) */
   words: Word[];
+  /** pictures only: the person cut out from their background */
+  bg: Backdrop | null;
 }
 
 export interface Track {
@@ -430,6 +444,14 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     fadeIn: int(o.fadeIn, 0, 60_000, 0),
     fadeOut: int(o.fadeOut, 0, 60_000, 0),
     shape: pick(o.shape, ["rect", "rounded", "circle"] as const, "rect"),
+    bg:
+      kind === "video" && o.bg && typeof o.bg === "object"
+        ? {
+            mode: pick((o.bg as Record<string, unknown>).mode, ["remove", "blur", "color"] as const, "blur"),
+            color: color((o.bg as Record<string, unknown>).color, DEFAULT_BACKDROP.color),
+            blur: int((o.bg as Record<string, unknown>).blur, 1, 100, DEFAULT_BACKDROP.blur),
+          }
+        : null,
     words: kind !== "text" || !Array.isArray(o.words)
       ? []
       : o.words

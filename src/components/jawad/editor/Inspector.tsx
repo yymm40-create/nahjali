@@ -30,7 +30,7 @@ import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 
 export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => void;
-export type InspectorTab = "basic" | "motion" | "color" | "transition" | "sound";
+export type InspectorTab = "basic" | "motion" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -169,6 +169,7 @@ export default function Inspector({
     ["basic", text ? "النص" : "أساسي"],
     ...(visual ? ([["motion", "حركة"]] as [InspectorTab, string][]) : []),
     ...(visual && !text ? ([["color", "ألوان"]] as [InspectorTab, string][]) : []),
+    ...(visual && !text ? ([["backdrop", "الخلفية"]] as [InspectorTab, string][]) : []),
     ...(visual && joined ? ([["transition", "انتقال"]] as [InspectorTab, string][]) : []),
     ...(sound ? ([["sound", "صوت"]] as [InspectorTab, string][]) : []),
   ];
@@ -325,6 +326,42 @@ export default function Inspector({
             <Icon name="retry" size={14} /> الألوان الأصلية
           </button>
           {clip.color && JSON.stringify(clip.color) !== JSON.stringify(NEUTRAL_COLOR) && <p className="text-[11px] text-jw-faint">المعاينة والتصدير بنفس الألوان.</p>}
+        </div>
+      )}
+
+      {current === "backdrop" && (
+        <div className="space-y-3">
+          <p className="text-xs leading-6 text-jw-muted">نلقى الشخص في الصورة ونغيّر اللي وراه. يشتغل على جهازك مجانًا (أول مرة يتحمّل نموذج صغير).</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(
+              [
+                [null, "الأصلية"],
+                ["blur", "غبّش الخلفية"],
+                ["remove", "شيل الخلفية"],
+                ["color", "لون بدلها"],
+              ] as const
+            ).map(([mode, label]) => {
+              const on = mode === null ? !clip.bg : clip.bg?.mode === mode;
+              return (
+                <button key={label} type="button" disabled={locked} aria-pressed={on} className={`rounded-lg border px-2 py-2 text-xs ${on ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set({ bg: mode === null ? null : { mode } }, "bg:mode")}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {clip.bg?.mode === "blur" && <Slider label="قوة التغبيش" value={clip.bg.blur} min={1} max={100} step={1} disabled={locked} onChange={(v) => set({ bg: { blur: v } }, "bg:blur")} />}
+          {clip.bg?.mode === "color" && (
+            <label className="flex items-center justify-between gap-2 text-xs text-jw-muted">
+              لون الخلفية
+              <input type="color" disabled={locked} value={clip.bg.color} onChange={(e) => set({ bg: { color: e.target.value } }, "bg:color")} className="h-8 w-12 cursor-pointer rounded border border-jw-line bg-transparent" />
+            </label>
+          )}
+          {clip.bg?.mode === "remove" && (
+            <p className="rounded-lg bg-jw-surface-2 p-2 text-[11px] leading-5 text-jw-muted">
+              مكان الخلفية يصير شفاف، فيبان اللي تحت هذا المقطع في التايملاين. لتحط صورة أو فيديو خلف الشخص: حط هذا المقطع في مسار فوق (اسحبه للأعلى) والخلفية الجديدة في الرئيسي تحته.
+            </p>
+          )}
+          {clip.bg && <p className="text-[11px] text-jw-faint">يناسب لقطات الشخص الواحد من الأمام (مثل السيلفي والبودكاست).</p>}
         </div>
       )}
 

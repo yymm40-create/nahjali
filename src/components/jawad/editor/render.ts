@@ -7,6 +7,8 @@ export interface Frame {
   img: CanvasImageSource;
   width: number;
   height: number;
+  /** where the person is (white), for a clip whose background is changed */
+  mask?: CanvasImageSource | null;
 }
 
 /** CSS font families for the text styles (set once from the page's loaded fonts). */
@@ -140,10 +142,45 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
     ctx.clip();
   }
   const filter = colorFilter(clip.color);
-  if (filter) ctx.filter = filter;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(f.img, -w / 2, -h / 2, w, h);
+  if (clip.bg && f.mask) {
+    // the background first (blurred, a colour, or nothing), then the person cut out on top
+    if (clip.bg.mode === "blur") {
+      ctx.filter = `${filter} blur(${((clip.bg.blur / 100) * Math.max(w, h) * 0.03).toFixed(1)}px)`;
+      ctx.drawImage(f.img, -w / 2, -h / 2, w, h);
+    } else if (clip.bg.mode === "color") {
+      ctx.fillStyle = clip.bg.color;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+    }
+    ctx.filter = filter || "none";
+    ctx.drawImage(cutout(f, f.mask), -w / 2, -h / 2, w, h);
+  } else {
+    if (filter) ctx.filter = filter;
+    ctx.drawImage(f.img, -w / 2, -h / 2, w, h);
+  }
   ctx.restore();
+}
+
+let scratch: HTMLCanvasElement | null = null;
+/** The picture with everything but the person made transparent (at up to 1280 px; drawn back at the clip's size). */
+function cutout(f: Frame, mask: CanvasImageSource) {
+  scratch ??= document.createElement("canvas");
+  const k = Math.min(1, 1280 / Math.max(f.width, f.height));
+  const w = Math.max(1, Math.round(f.width * k));
+  const h = Math.max(1, Math.round(f.height * k));
+  if (scratch.width !== w || scratch.height !== h) {
+    scratch.width = w;
+    scratch.height = h;
+  }
+  const c = scratch.getContext("2d")!;
+  c.globalCompositeOperation = "source-over";
+  c.clearRect(0, 0, w, h);
+  c.drawImage(f.img, 0, 0, w, h);
+  c.globalCompositeOperation = "destination-in";
+  c.imageSmoothingQuality = "high";
+  c.drawImage(mask, 0, 0, w, h);
+  c.globalCompositeOperation = "source-over";
+  return scratch;
 }
 
 /** Splits a text into lines that fit `max` pixels (words kept whole; a very long word gets its own line). */

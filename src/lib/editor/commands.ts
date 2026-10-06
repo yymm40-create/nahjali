@@ -31,6 +31,8 @@ import {
   type TrackKind,
   type Transform,
   type TransitionKind,
+  type Backdrop,
+  DEFAULT_BACKDROP,
   type Word,
   type CaptionStyle,
   CAPTION_STYLES,
@@ -43,10 +45,12 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   color?: Partial<ColorGrade> | null;
   /** null = a plain cut */
   transition?: { kind: TransitionKind; ms?: number } | null;
+  /** null = the whole picture as filmed */
+  bg?: Partial<Backdrop> | null;
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [] };
+const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null };
 
 export type Command =
   | { type: "add_clip"; assetId: string; trackId?: string; at?: number }
@@ -350,6 +354,18 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (next && !(next.preset in COLOR_PRESETS)) next.preset = "none";
         clip.color = next;
       }
+      if (p.bg !== undefined) {
+        if (clip.text || track.kind !== "video") fail("عزل الشخص للصور والفيديو فقط.");
+        if (p.bg === null) clip.bg = null;
+        else {
+          const next = { ...(clip.bg ?? DEFAULT_BACKDROP), ...p.bg };
+          clip.bg = {
+            mode: next.mode === "remove" || next.mode === "color" ? next.mode : "blur",
+            color: /^#[0-9a-f]{6}$/i.test(next.color) ? next.color : DEFAULT_BACKDROP.color,
+            blur: Math.round(Math.min(100, Math.max(1, Number(next.blur) || DEFAULT_BACKDROP.blur))),
+          };
+        }
+      }
       if (p.transition !== undefined) {
         if (track.kind === "audio") fail("الانتقالات للصور والفيديو والنص.");
         if (p.transition && !(p.transition.kind in TRANSITIONS)) fail("انتقال غير معروف.");
@@ -379,6 +395,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
             ? "غيّرت السرعة"
             : p.color !== undefined
               ? "غيّرت الألوان"
+              : p.bg !== undefined
+                ? p.bg
+                  ? "غيّرت الخلفية"
+                  : "رجّعت الخلفية الأصلية"
               : p.transition !== undefined
                 ? p.transition
                   ? `انتقال ${TRANSITIONS[p.transition.kind].label}`
