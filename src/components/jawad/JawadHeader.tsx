@@ -8,7 +8,7 @@ import CoinBalance from "./CoinBalance";
 import LoginLink from "./LoginLink";
 import SectionsBar from "./SectionsBar";
 
-/** JAWAD AI's compact header: the identity (back to JAWAD AI's home only), the balance and the account; then the sections bar. */
+/** JAWAD AI's compact header: the identity (back to JAWAD AI's home), a way back to نهج علي's home, the balance and the account; then the sections bar. */
 /** `preview`: JAWAD AI is still in development for this visitor — identity and account only, no sections or balance. */
 export default function JawadHeader({ rt, user, owner, balance, username, preview = false }: { rt: Runtime; user: User | null; owner: boolean; balance: number | null; username: string | null; preview?: boolean }) {
   const sections = rt.sections.filter((s) => s.enabled || owner).map((s) => ({ id: s.id, name: s.name, icon: s.icon, path: s.path, hidden: !s.enabled }));
@@ -24,6 +24,11 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
             </span>
           </Link>
           <div className="flex items-center gap-2">
+            {/* back to نهج علي's home (its two branches) */}
+            <Link href="/" className="jw-btn jw-btn-quiet h-9 min-h-9 gap-1.5 px-2.5 text-xs" aria-label="الرجوع لصفحة نهج علي الرئيسية" title="نهج علي: الصفحة الرئيسية">
+              <Image src="/brand/logo.png" alt="" width={22} height={25} className="h-6 w-auto" />
+              <span className="hidden sm:inline">نهج علي</span>
+            </Link>
             {user ? (
               <>
                 {!preview && <CoinBalance initial={balance} unlimited={owner} />}

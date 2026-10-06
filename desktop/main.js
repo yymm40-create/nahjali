@@ -11,7 +11,8 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 
 const SITE = new URL(process.env.HAIDARA_URL || "https://nahjali.vercel.app");
-const START = new URL("/jawad-ai?desktop=1", SITE).toString();
+// (it opens on نهج علي's home, with its two branches: «الجواد للذكاء الاصطناعي» and «لأجل المهدي»)
+const START = new URL("/?desktop=1", SITE).toString();
 // the places sign-in passes through (Google, and the login service) stay inside the window
 const SIGN_IN = [/(^|\.)accounts\.google\.com$/, /(^|\.)google\.com$/, /(^|\.)gstatic\.com$/, /\.supabase\.co$/, /(^|\.)appleid\.apple\.com$/];
 
@@ -279,7 +280,9 @@ function setupMenu() {
     {
       label: "ملف",
       submenu: [
-        { label: "الرئيسية", accelerator: "CmdOrCtrl+Shift+H", click: go("/jawad-ai?desktop=1") },
+        { label: "الرئيسية", accelerator: "CmdOrCtrl+Shift+H", click: go("/?desktop=1") },
+        { label: "الجواد AI", click: go("/jawad-ai") },
+        { label: "لأجل المهدي", click: go("/mahdi") },
         { label: "حيدرة كت (المونتاج)", accelerator: "CmdOrCtrl+Shift+E", click: go("/jawad-ai/editor?app=1&desktop=1") },
         { label: "مكتبتي", click: go("/jawad-ai/library") },
         { type: "separator" },
