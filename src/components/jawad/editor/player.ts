@@ -1,8 +1,9 @@
-// «الممنتج الذكي» — the live preview. The sound plays through one Web Audio context: every clip's sound is decoded once
-// and scheduled sample-exact, with its volume, fades and ducking, and that context's clock is the preview's clock (no
-// stutter, no element fighting another; on iPhone one tap unlocks it). The pictures come from muted <video> elements
-// (hardware decoding, cheap on phones) that follow that clock, drawn on one canvas with the same drawFrame the export
-// uses. Only clips near the playhead hold an element, so long projects stay light.
+// «الممنتج الذكي» — the live preview. Sound files (and clips with worked sound) play through one Web Audio context:
+// decoded once and scheduled sample-exact, with their volume, fades and ducking, and that context's clock is the
+// preview's clock (on iPhone one tap unlocks it). Videos play their own sound from their <video> element (with the
+// same volume, fades and ducking), so picture and sound never drift and a big file isn't downloaded twice. The
+// pictures follow the clock, drawn on one canvas with the same drawFrame the export uses. Only clips near the playhead
+// hold an element, so long projects stay light.
 
 import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
 import { drawFrame, layersAt, type Frame } from "./render";
@@ -22,7 +23,9 @@ export interface PlayerAsset {
 const AHEAD_MS = 2500;
 const KEEP_MS = 6000;
 /** The most the preview lets a playing picture drift from the sound before it is put back on time. */
-const DRIFT_S = 0.35;
+const DRIFT_S = 0.5;
+/** Past this the picture is nudged (played slightly faster or slower) back onto the sound. */
+const NUDGE_S = 0.04;
 /** How far ahead clips' sound is scheduled. */
 const SCHEDULE_MS = 3000;
 /** Longer files keep playing their sound from their element (decoding hours of sound would fill the memory). */
@@ -214,13 +217,28 @@ export class Player {
     return null;
   }
 
-  /** Does this clip's sound come from Web Audio (else from its element)? */
+  /**
+   * Does this clip's sound come from Web Audio (else from its element)? Only once its decoded sound is ready and the
+   * sound clock runs: until then (a big file still loading, a browser that keeps the context asleep) the element
+   * plays it, so the sound is never missing.
+   */
   private webSound(clip: Clip, a: PlayerAsset) {
-    if (!this.ac || !a.hasAudio || a.kind === "image") return false;
-    const s = this.sounds.get(a.id);
-    if (s === "failed") return false;
+    if (!this.ac || this.ac.state !== "running" || !a.hasAudio || a.kind === "image") return false;
+    // a video's own sound plays from its element (the picture and the sound of one stream never drift apart, and the
+    // whole file isn't downloaded a second time while it streams: that is what made big videos stutter); Web Audio
+    // takes sound files, clips whose sound is worked (noise reduction, effects) and clips turned up past 100%
+    if (a.kind === "video" && !hasSoundFx(clip) && clip.volume <= 1) return false;
     const len = a.durationMs ?? 0;
-    return !(len && len > DECODE_MAX_MS) && clip.out - clip.in <= DECODE_MAX_MS;
+    if ((len && len > DECODE_MAX_MS) || clip.out - clip.in > DECODE_MAX_MS) return false;
+    return !!this.bufferOf(clip, a);
+  }
+
+  /** The sound Web Audio plays for a clip: its worked sound when it has effects and that is ready, else the file's. */
+  private bufferOf(clip: Clip, a: PlayerAsset) {
+    const worked = hasSoundFx(clip) ? this.workedOf(clip, a) : null;
+    if (worked) return { buf: worked.buf, worked };
+    const buf = this.soundOf(a);
+    return buf ? { buf, worked: null } : null;
   }
 
   /** Every clip heard in the next few seconds gets its sound scheduled once (volume, fades and ducking as ramps). */
@@ -236,9 +254,7 @@ export class Player {
         if (end <= ms || c.start > ms + SCHEDULE_MS) continue;
         const a = this.assets.get(c.assetId);
         if (!a?.url || !this.webSound(c, a)) continue;
-        const worked = hasSoundFx(c) ? this.workedOf(c, a) : null;
-        const buf = worked?.buf ?? this.soundOf(a);
-        if (!buf) continue;
+        const { buf, worked } = this.bufferOf(c, a)!;
         // from where the clip is now (or its start, if it is still to come)
         let from = Math.max(ms, c.start);
         let when = this.anchor.ctx + (from - this.anchor.ms) / 1000;
@@ -354,12 +370,18 @@ export class Player {
         const gain = on && !this.webSound(clip, a) ? gainAt(track, clip, ms, this.spans) : 0;
         m.muted = track.muted || gain <= 0;
         m.volume = Math.min(1, Math.max(0, gain));
-        if (Math.abs(m.playbackRate - clip.speed) > 0.001) m.playbackRate = clip.speed;
         const at = (on ? sourceTime(clip, ms) : held.has(clip.id) ? sourceTime(clip, held.get(clip.id)!) : clip.in) / 1000;
+        let rate = clip.speed;
         if (on && this.playing) {
-          if (hard || Math.abs(m.currentTime - at) > DRIFT_S * clip.speed) seekTo(m, at);
+          // a picture a little behind or ahead catches up by playing a touch faster or slower (a jump only when far off:
+          // jumping every few seconds is what made the preview stutter)
+          const off = m.currentTime - at;
+          if (hard || Math.abs(off) > DRIFT_S * clip.speed) seekTo(m, at);
+          else if (Math.abs(off) > NUDGE_S) rate = clip.speed * (1 - Math.max(-0.03, Math.min(0.03, off * 0.5)));
           if (m.paused) m.play().catch(() => {});
-        } else {
+        }
+        if (Math.abs(m.playbackRate - rate) > 0.001) m.playbackRate = rate;
+        if (!(on && this.playing)) {
           if (!m.paused) m.pause();
           if (Math.abs(m.currentTime - at) > 0.02) seekTo(m, at);
         }
