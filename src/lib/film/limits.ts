@@ -12,6 +12,11 @@ export const LIMITS = {
   edits_director: { label: "تعديلات المخرج والفيديو", hint: "تشمل «اطلب تعديل» بعد الفيديو، لكل مشروع", default: 2, perUser: true },
   videos: { label: "فيديوهات التجربة المجانية", hint: "لكل مستخدم في فترة التجربة؛ بعد آخر فيديو تنتهي تجربته", default: 1, perUser: true },
   trial_users: { label: "عدد المستخدمين في التجربة", hint: "للموقع كله؛ بعدها يقفل صانع الفيلم على الكل إلا أنت", default: 6, perUser: false },
+  // «الممنتج الذكي»
+  editor_claude_daily: { label: "طلبات Claude في الممنتج الذكي", hint: "لكل شخص في اليوم", default: 40, perUser: true },
+  editor_speech_minutes: { label: "دقائق الكابشن ومزامنة القصائد", hint: "دقائق صوت تُفرَّغ لكل شخص في اليوم", default: 120, perUser: true },
+  editor_price_claude: { label: "سعر طلب Claude في الممنتج (نقدة)", hint: "يُخصم بس إذا شغّلت «النقود الذكية مطلوبة»؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_caption: { label: "سعر دقيقة الكابشن في الممنتج (نقدة)", hint: "لكل دقيقة صوت (تُقرّب للأعلى)، بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
 } as const;
 export type LimitKey = keyof typeof LIMITS;
 

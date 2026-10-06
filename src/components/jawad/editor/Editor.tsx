@@ -7,6 +7,8 @@ import { clipEnd, duration, findClip, formatTime, type AssetInfo, type Timeline 
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
 import AssistantPanel from "./AssistantPanel";
+import Guard from "./Guard";
+import { PluginTools } from "./plugins";
 import CaptionsPanel from "./CaptionsPanel";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
@@ -311,6 +313,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
     keys.current = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      // Safari sends key events without a key (autofill, dictation)
+      if (typeof e.key !== "string" || e.isComposing) return;
       const mod = e.ctrlKey || e.metaKey;
       const fps = tlRef.current.fps;
       if (e.code === "Space") {
@@ -402,6 +406,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         <span className={`hidden shrink-0 text-[11px] sm:inline ${save === "error" || save === "conflict" ? "text-jw-danger" : "text-jw-faint"}`} aria-live="polite">
           {SAVE_TEXT[save]}
         </span>
+        <PluginTools ctx={() => ({ projectId: project.id, tl, selected, playhead: at(), assets: assetMap })} run={run} flash={flash} readOnly={readOnly} />
         <button type="button" className={`jw-btn shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => setAssisting((v) => !v)} aria-pressed={assisting} title="قل لـ Claude وش تبي ويعدّل التايملاين">
           <Icon name="sparkles" size={16} /> Claude
         </button>
@@ -463,7 +468,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         <section className="relative flex min-w-0 flex-1 flex-col bg-black/40" aria-label="المعاينة">
           <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
             <canvas ref={canvas} width={tl.width} height={tl.height} className="max-h-full max-w-full rounded bg-black shadow-lg" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
-            <Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={setSelected} assets={assetMap} run={run} readOnly={readOnly} player={player} />
+            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={setSelected} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
           </div>
           {toast && (
             <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>
@@ -478,13 +483,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} />
+            <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} /></Guard>
           </div>
         </aside>
         {/* Claude: beside the preview on a computer, the whole screen on a phone */}
         {assisting && (
           <aside className="fixed inset-0 z-50 flex flex-col bg-jw-surface lg:static lg:z-auto lg:w-80 lg:shrink-0 lg:border-s lg:border-jw-line" aria-label="Claude">
-            <AssistantPanel projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => setAssisting(false)} readOnly={readOnly} />
+            <Guard name="Claude"><AssistantPanel projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => setAssisting(false)} readOnly={readOnly} /></Guard>
           </aside>
         )}
       </div>
@@ -523,11 +528,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref }: 
       </div>
 
       <div className="h-[34%] min-h-[150px] shrink-0 lg:h-[30%] lg:min-h-[200px]">
-        <Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={setSelected} run={run} player={player} compact={!wide} readOnly={readOnly} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={setSelected} run={run} player={player} compact={!wide} readOnly={readOnly} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setSelected([id]);
           setTab("transition");
           if (!wide) setSheet("inspector");
-        }} />
+        }} /></Guard>
       </div>
 
       {/* the phone's tool bar */}

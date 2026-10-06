@@ -8,10 +8,9 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { elevenAlign, elevenTranscribe } from "@/lib/jawad/server/providers/elevenlabs";
+import { charged, editorLimit, type Who } from "./pricing";
 import { EDITOR_BUCKET, isUuid, stillOpen, type AssetRow, type EditorProject } from "./server";
 
-/** Minutes of listening per person per day while everything is free (the owner has none). */
-export const SPEECH_DAILY_MINUTES = 120;
 const LANGS = ["ar", "en", "fr", "ur", "fa", "tr"];
 const TMP_TYPES: Record<string, { ext: string; mime: string }> = { webm: { ext: "webm", mime: "audio/webm" }, wav: { ext: "wav", mime: "audio/wav" } };
 
@@ -70,11 +69,12 @@ async function takePiece(p: EditorProject, path: unknown) {
   return { file: dl.data, name: path.slice(prefix.length) };
 }
 
-async function checkAllowance(p: EditorProject, owner: boolean, minutes: number) {
-  if (owner) return;
+async function checkAllowance(p: EditorProject, who: Who, minutes: number) {
+  const limit = await editorLimit("editor_speech_minutes", who);
+  if (limit === Infinity) return;
   const used = await minutesToday(p);
-  if (used + minutes > SPEECH_DAILY_MINUTES) {
-    throw new UserError(`وصلت لحد التفريغ اليومي (${SPEECH_DAILY_MINUTES} دقيقة). باقي لك ${Math.max(0, Math.floor(SPEECH_DAILY_MINUTES - used))} دقيقة اليوم.`, 429);
+  if (used + minutes > limit) {
+    throw new UserError(`وصلت لحد التفريغ اليومي (${limit} دقيقة). باقي لك ${Math.max(0, Math.floor(limit - used))} دقيقة اليوم.`, 429);
   }
 }
 
@@ -95,7 +95,7 @@ const providerError = (err: unknown): never => {
  * What is said in an asset between `from` and `to` (source ms). Asked again, the kept transcript comes back; else
  * `{ need: "audio" }` until the browser has uploaded the piece (`path`).
  */
-export async function transcribe(p: EditorProject, owner: boolean, b: { assetId?: unknown; from?: unknown; to?: unknown; language?: unknown; path?: unknown }) {
+export async function transcribe(p: EditorProject, who: Who, b: { assetId?: unknown; from?: unknown; to?: unknown; language?: unknown; path?: unknown }) {
   stillOpen(p);
   const row = await asset(p, b.assetId);
   const { from, to } = range(b, row);
@@ -105,9 +105,9 @@ export async function transcribe(p: EditorProject, owner: boolean, b: { assetId?
   if (kept) return { words: kept, cached: true };
   if (!b.path) return { need: "audio" as const };
   const minutes = (to - from) / 60_000;
-  await checkAllowance(p, owner, minutes);
+  await checkAllowance(p, who, minutes);
   const piece = await takePiece(p, b.path);
-  const heard = await elevenTranscribe({ file: piece.file, name: piece.name, languageCode: lang }).catch(providerError);
+  const heard = await charged(who, "editor_price_caption", Math.ceil(minutes), "كابشن في الممنتج", () => elevenTranscribe({ file: piece.file, name: piece.name, languageCode: lang }).catch(providerError));
   const words: SpokenWord[] = heard.words.map((w) => ({ s: from + Math.round(w.start * 1000), e: from + Math.round(w.end * 1000), w: w.text })).filter((w) => w.s < to);
   await logUse(p, minutes);
   // keep the latest few transcripts with the file
@@ -118,16 +118,16 @@ export async function transcribe(p: EditorProject, owner: boolean, b: { assetId?
 }
 
 /** The given text (verses, one per line) timed word by word on the asset's recitation between `from` and `to`. */
-export async function align(p: EditorProject, owner: boolean, b: { assetId?: unknown; from?: unknown; to?: unknown; text?: unknown; path?: unknown }) {
+export async function align(p: EditorProject, who: Who, b: { assetId?: unknown; from?: unknown; to?: unknown; text?: unknown; path?: unknown }) {
   stillOpen(p);
   const row = await asset(p, b.assetId);
   const { from, to } = range(b, row);
   const text = String(b.text ?? "").trim().slice(0, 20_000);
   if (!text) throw new UserError("اكتب الأبيات أول.", 400);
   const minutes = (to - from) / 60_000;
-  await checkAllowance(p, owner, minutes);
+  await checkAllowance(p, who, minutes);
   const piece = await takePiece(p, b.path);
-  const words = await elevenAlign({ file: piece.file, name: piece.name, text }).catch(providerError);
+  const words = await charged(who, "editor_price_caption", Math.ceil(minutes), "مزامنة قصيدة في الممنتج", () => elevenAlign({ file: piece.file, name: piece.name, text }).catch(providerError));
   await logUse(p, minutes);
   return { words: words.map((w) => ({ s: from + Math.round(w.start * 1000), e: from + Math.round(w.end * 1000), w: w.text })) };
 }
