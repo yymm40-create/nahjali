@@ -623,6 +623,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         remove(e.shiftKey);
+      } else if (mod && e.key.toLowerCase() === "a") {
+        // all the clips (of the unlocked tracks), to move or delete together
+        e.preventDefault();
+        setSelected(tlRef.current.tracks.filter((t) => !t.locked).flatMap((t) => t.clips.map((c) => c.id)));
       } else if (e.key === "Escape") setSelected([]);
       else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
