@@ -2,6 +2,7 @@
 // the session), drawn as the timeline's waveforms and used to find the beat of a song.
 
 import { ALL_FORMATS, AudioBufferSink, Input, UrlSource } from "mediabunny";
+import { decodeWhole } from "./audio";
 
 export const PEAK_RATE = 100; // values per second
 
@@ -23,8 +24,8 @@ export function peaksOf(id: string, url: string | null): Promise<Uint8Array | nu
 async function decode(url: string) {
   const input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
   try {
-    const track = await input.getPrimaryAudioTrack();
-    if (!track || !(await track.canDecode())) return null;
+    const track = await input.getPrimaryAudioTrack().catch(() => null);
+    if (!track || !(await track.canDecode().catch(() => false))) return fromWhole(url);
     const dur = await input.computeDuration();
     const out = new Uint8Array(Math.max(1, Math.ceil(dur * PEAK_RATE)));
     for await (const wb of new AudioBufferSink(track).buffers()) {
@@ -45,6 +46,23 @@ async function decode(url: string) {
   } finally {
     input.dispose();
   }
+}
+
+/** The same from the Web Audio API (browsers whose WebCodecs can't read this sound). */
+async function fromWhole(url: string) {
+  const b = await decodeWhole(url).catch(() => null);
+  if (!b) return null;
+  const out = new Uint8Array(Math.max(1, Math.ceil(b.duration * PEAK_RATE)));
+  const per = b.sampleRate / PEAK_RATE;
+  const chs = Array.from({ length: Math.min(2, b.numberOfChannels) }, (_, i) => b.getChannelData(i));
+  for (let i = 0; i < b.length; i += 4) {
+    const k = Math.floor(i / per);
+    let v = 0;
+    for (const ch of chs) v = Math.max(v, Math.abs(ch[i]));
+    const q = Math.min(255, Math.round(v * 255));
+    if (q > out[k]) out[k] = q;
+  }
+  return out;
 }
 
 const images = new Map<string, string>();

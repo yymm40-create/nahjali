@@ -23,6 +23,7 @@ import { clipEnd, duration, gainAt, sourceTime, voiceSpans, type Clip, type Time
 import { drawFrame, exportSize, layersAt, type Frame } from "./render";
 import { stretch } from "./stretch";
 import { Masker } from "./segment";
+import { decodeWhole } from "./audio";
 
 export interface ExportAsset {
   id: string;
@@ -215,8 +216,11 @@ export async function exportVideo(
       const e = Math.min(to, clipEnd(c));
       if (e <= s) continue;
       const a = byId.get(c.assetId!)!;
-      const track = await input(a).getPrimaryAudioTrack();
-      if (!track || !(await track.canDecode())) continue;
+      const track = await input(a).getPrimaryAudioTrack().catch(() => null);
+      // WebCodecs when the browser reads this sound; else the whole file through the Web Audio API (Safari + AAC)
+      const fast = track ? await track.canDecode().catch(() => false) : false;
+      const whole = fast ? null : await decodeWhole(a.url!).catch(() => null);
+      if (!fast && !whole) continue;
       const gain = mix.createGain();
       gain.connect(mix.destination);
       // loudness every 20 ms across this piece (fades and ducking are smooth ramps)
@@ -224,11 +228,26 @@ export async function exportVideo(
       for (let t = s + 20; t <= e; t += 20) gain.gain.linearRampToValueAtTime(gainAt(tr, c, Math.min(t, e - 1), spans), (t - from) / 1000);
       const src0 = sourceTime(c, s) / 1000;
       const src1 = sourceTime(c, e) / 1000;
-      if (c.speed !== 1) {
-        await stretched(mix, gain, track, c, s, e, from, src0, src1);
+      if (whole) {
+        if (c.speed !== 1) {
+          const sr = whole.sampleRate;
+          const a0 = Math.max(0, Math.floor((src0 - 0.05) * sr));
+          const a1 = Math.min(whole.length, Math.ceil((src1 + 0.1) * sr));
+          const chs = Array.from({ length: Math.min(2, whole.numberOfChannels) }, (_, ch) => whole.getChannelData(ch).subarray(a0, a1));
+          place(mix, gain, chs, sr, Math.round((src0 * sr) - a0), c.speed, s, e, from);
+        } else {
+          const node = mix.createBufferSource();
+          node.buffer = whole;
+          node.connect(gain);
+          node.start((s - from) / 1000, src0, src1 - src0);
+        }
         continue;
       }
-      for await (const wb of new AudioBufferSink(track).buffers(src0, src1)) {
+      if (c.speed !== 1) {
+        await stretched(mix, gain, track!, c, s, e, from, src0, src1);
+        continue;
+      }
+      for await (const wb of new AudioBufferSink(track!).buffers(src0, src1)) {
         const node = mix.createBufferSource();
         node.buffer = wb.buffer;
         node.playbackRate.value = c.speed;
@@ -263,9 +282,14 @@ export async function exportVideo(
       }
       return arr;
     });
+    place(mix, gain, input, sr, Math.max(0, Math.round((src0 - t0) * sr)), c.speed, s, e, from);
+  }
+
+  /** Stretches `channels` from sample `at` to the piece [s, e) and plays it there (pitch kept). */
+  function place(mix: OfflineAudioContext, gain: GainNode, channels: Float32Array[], sr: number, at: number, speed: number, s: number, e: number, from: number) {
     const outLen = Math.max(1, Math.round(((e - s) / 1000) * sr));
-    const out = stretch(input, Math.max(0, Math.round((src0 - t0) * sr)), c.speed, outLen);
-    const buf = mix.createBuffer(chs, outLen, sr);
+    const out = stretch(channels, at, speed, outLen);
+    const buf = mix.createBuffer(out.length, outLen, sr);
     out.forEach((d, ch) => buf.copyToChannel(d as Float32Array<ArrayBuffer>, ch));
     const node = mix.createBufferSource();
     node.buffer = buf;
