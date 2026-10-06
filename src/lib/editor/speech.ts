@@ -1,4 +1,4 @@
-// «حيدر كات» — captions: what is said in a clip (ElevenLabs Scribe v2) and a poem's verses timed on its recitation
+// «حيدرة كت» — captions: what is said in a clip (ElevenLabs Scribe v2) and a poem's verses timed on its recitation
 // (ElevenLabs Forced Alignment). Server only. The browser cuts out just the clip's sound, compressed, and uploads it
 // to the project's own storage; it is sent on from here and deleted. A transcript is kept with its file, so asking
 // again (another look, an undo) costs nothing.
@@ -108,7 +108,7 @@ export async function transcribe(p: EditorProject, who: Who, b: { assetId?: unkn
   const minutes = (to - from) / 60_000;
   await checkAllowance(p, who, minutes);
   const piece = await takePiece(p, b.path);
-  const heard = await charged(who, "editor_price_caption", Math.ceil(minutes), "كابشن في حيدر كات", () => elevenTranscribe({ file: piece.file, name: piece.name, languageCode: lang }).catch(providerError));
+  const heard = await charged(who, "editor_price_caption", Math.ceil(minutes), "كابشن في حيدرة كت", () => elevenTranscribe({ file: piece.file, name: piece.name, languageCode: lang }).catch(providerError));
   const words: SpokenWord[] = heard.words.map((w) => ({ s: from + Math.round(w.start * 1000), e: from + Math.round(w.end * 1000), w: w.text })).filter((w) => w.s < to);
   await logUse(p, minutes);
   // keep the latest few transcripts with the file
@@ -128,7 +128,7 @@ export async function align(p: EditorProject, who: Who, b: { assetId?: unknown; 
   const minutes = (to - from) / 60_000;
   await checkAllowance(p, who, minutes);
   const piece = await takePiece(p, b.path);
-  const words = await charged(who, "editor_price_caption", Math.ceil(minutes), "مزامنة قصيدة في حيدر كات", () => elevenAlign({ file: piece.file, name: piece.name, text }).catch(providerError));
+  const words = await charged(who, "editor_price_caption", Math.ceil(minutes), "مزامنة قصيدة في حيدرة كت", () => elevenAlign({ file: piece.file, name: piece.name, text }).catch(providerError));
   await logUse(p, minutes);
   return { words: words.map((w) => ({ s: from + Math.round(w.start * 1000), e: from + Math.round(w.end * 1000), w: w.text })) };
 }

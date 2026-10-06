@@ -1,4 +1,4 @@
-// «حيدر كات» — what Claude (or a button) can make for the edit and drop on the timeline: a written hook as a
+// «حيدرة كت» — what Claude (or a button) can make for the edit and drop on the timeline: a written hook as a
 // picture (GPT Image 2, its background taken out), music (ElevenLabs), and a clip's sound split into its talking,
 // music and sound effects. Every result is a new file in the project's library. Server only.
 
@@ -92,7 +92,7 @@ export async function makeHook(p: EditorProject, who: Who, b: { text?: unknown; 
       b.prompt.trim().slice(0, 3800),
       scene ? "" : "Background: one flat solid pure green colour (#00FF00) filling the whole image around the lettering and its element, perfectly even, no gradient, no texture, no shadow cast on the background, and no green anywhere in the lettering or the element.",
     ].filter(Boolean).join("\n");
-    const out = await charged(who, "editor_price_hook", 1, "نص الهوك بالصورة في حيدر كات", () =>
+    const out = await charged(who, "editor_price_hook", 1, "نص الهوك بالصورة في حيدرة كت", () =>
       openaiImage({ model: "gpt-image-2-2026-04-21", prompt: designed, aspect, resolution: "std", quality: "high", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError),
     );
     const png = scene ? await sharp(out.images[0]).png().toBuffer({ resolveWithObject: true }).then((r) => ({ bytes: r.data, width: r.info.width, height: r.info.height })) : await keyOutGreen(out.images[0]);
@@ -104,7 +104,7 @@ export async function makeHook(p: EditorProject, who: Who, b: { text?: unknown; 
     `Style: ${style}. Big, punchy, eye-catching, centred, fills most of the width.`,
     "Background: one flat solid pure green colour (#00FF00) filling the whole image, perfectly even, no gradient, no texture, no shadow or glow on the background, and no green anywhere in the lettering.",
   ].join("\n");
-  const img = await charged(who, "editor_price_hook", 1, "هوك بالصورة في حيدر كات", () =>
+  const img = await charged(who, "editor_price_hook", 1, "هوك بالصورة في حيدرة كت", () =>
     openaiImage({ model: "gpt-image-2-2026-04-21", prompt, aspect: "3:2", resolution: "std", quality: "medium", count: 1, references: [], user: providerUserId(p.user_id) }).catch(providerError),
   );
   const cut = await keyOutGreen(img.images[0]);
@@ -119,7 +119,7 @@ export async function makeMusic(p: EditorProject, who: Who, b: { prompt?: unknow
   if (!prompt) throw new UserError("وصف الموسيقى اللي تبيها.", 400);
   if (!process.env.ELEVENLABS_API_KEY) throw new UserError("صناعة الموسيقى غير مفعّلة على الخادم.", 503);
   const lengthMs = Math.round(Math.min(300_000, Math.max(10_000, Number(b.lengthMs) || 30_000)));
-  const music = await charged(who, "editor_price_music", Math.ceil(lengthMs / 60_000), "موسيقى في حيدر كات", () =>
+  const music = await charged(who, "editor_price_music", Math.ceil(lengthMs / 60_000), "موسيقى في حيدرة كت", () =>
     elevenMusic({ prompt, lengthMs, instrumental: true, model: "music_v2_5" }).catch(providerError),
   );
   return addFile(p, { bytes: music.audio, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: `موسيقى: ${prompt.slice(0, 40)}`, durationMs: lengthMs, meta: { made: "music" } });
@@ -133,7 +133,7 @@ export async function makeSfx(p: EditorProject, who: Who, b: { prompt?: unknown;
   if (!prompt) throw new UserError("وصف المؤثر الصوتي.", 400);
   if (!process.env.ELEVENLABS_API_KEY) throw new UserError("صناعة المؤثرات غير مفعّلة على الخادم.", 503);
   const seconds = Math.min(5, Math.max(0.5, Math.round((Number(b.seconds) || 1) * 10) / 10));
-  const audio = await charged(who, "editor_price_sfx", 1, "مؤثر صوتي في حيدر كات", () =>
+  const audio = await charged(who, "editor_price_sfx", 1, "مؤثر صوتي في حيدرة كت", () =>
     elevenSoundEffect({ text: prompt, seconds, loop: false, influence: 0.6 }).catch(providerError),
   );
   return addFile(p, { bytes: audio, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: String(b.name ?? `مؤثر: ${prompt.slice(0, 30)}`).slice(0, 80), durationMs: Math.round(seconds * 1000), meta: { made: "sfx" } });
@@ -161,7 +161,7 @@ export async function separate(p: EditorProject, who: Who, b: { path?: unknown; 
     const file = Buffer.from(await dl.data.arrayBuffer());
     const mime = path.endsWith(".wav") ? "audio/wav" : "audio/webm";
     const link = (await storage().from(EDITOR_BUCKET).createSignedUrl(path, 3600)).data?.signedUrl ?? null;
-    return await charged(who, "editor_price_stems", Math.ceil(durationMs / 60_000), "فصل الأصوات في حيدر كات", async () => {
+    return await charged(who, "editor_price_stems", Math.ceil(durationMs / 60_000), "فصل الأصوات في حيدرة كت", async () => {
       const voice = await elevenIsolateVoice({ file, mime, name: path.split("/").pop()! }).catch(providerError);
       const made = [await addFile(p, { bytes: voice, mime: "audio/mpeg", ext: "mp3", kind: "audio", name: `الكلام · ${name}`, durationMs, meta: { made: "stem", stem: "voice" } })];
       if (falReady() && link) {

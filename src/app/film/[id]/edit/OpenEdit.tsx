@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 
-/** «ركّب النسخة الأولى» (or, once made, «افتح المونتاج»): opens the film's edit in «حيدر كات». */
+/** «ركّب النسخة الأولى» (or, once made, «افتح المونتاج»): opens the film's edit in «حيدرة كت». */
 export default function OpenEdit({ filmId, exists, disabled }: { filmId: string; exists: boolean; disabled: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

@@ -1,4 +1,4 @@
-// fal.ai — models run on fal's queue (submit, then poll until done). Used by «حيدر كات» for separating music and
+// fal.ai — models run on fal's queue (submit, then poll until done). Used by «حيدرة كت» for separating music and
 // sound effects (Meta's SAM-Audio). Server only; needs FAL_KEY.
 
 import { ProviderError, rejectedMessage } from "./common";

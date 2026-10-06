@@ -6,7 +6,7 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { exportLink, projectState, requireEditorProject } from "@/lib/editor/server";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "حيدر كات" };
+export const metadata = { title: "حيدرة كت" };
 
 /** One edit. Only its owner can open it. */
 export default async function EditorProjectPage({ params }: { params: Promise<{ id: string }> }) {

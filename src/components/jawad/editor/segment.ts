@@ -1,4 +1,4 @@
-// «حيدر كات» — the person in a picture, found by MediaPipe's selfie segmenter (Apache-2.0) right in the browser:
+// «حيدرة كت» — the person in a picture, found by MediaPipe's selfie segmenter (Apache-2.0) right in the browser:
 // nothing is uploaded and nothing is paid. Its engine (~11 MB) and model (~250 KB) load the first time someone uses
 // «عزل الشخص», then the browser keeps them.
 

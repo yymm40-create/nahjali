@@ -1,4 +1,4 @@
-// «حيدر كات» — the catalogue's fonts, fetched the first time a text uses them (or the picker shows them) and
+// «حيدرة كت» — the catalogue's fonts, fetched the first time a text uses them (or the picker shows them) and
 // added to the page under their own name, so the preview's canvas and the export draw with them.
 
 import { FONT_BY_ID, fontFile } from "@/lib/editor/fonts";

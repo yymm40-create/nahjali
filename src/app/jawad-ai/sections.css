@@ -162,7 +162,7 @@
   color: var(--jw-ink);
 }
 
-/* ── «حيدر كات»: a bright studio from the future — white glass panels floating over a pale blue field, one
+/* ── «حيدرة كت»: a bright studio from the future — white glass panels floating over a pale blue field, one
    electric blue for what is selected and the playhead, a little depth on what can be pressed. The picture itself
    sits on a dark screen so its colours read true. ── */
 .jw [data-jw-section="editor"] {
@@ -496,7 +496,7 @@
   color: var(--jw-ink);
 }
 
-/* «حيدر كات» on a phone: the edit takes the whole screen (JAWAD AI's header and sections bar step aside; the
+/* «حيدرة كت» on a phone: the edit takes the whole screen (JAWAD AI's header and sections bar step aside; the
    editor's own back button leads out) */
 @media (max-width: 1023.98px) {
   .jw:has([data-ed-full]) > header {

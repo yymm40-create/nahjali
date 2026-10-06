@@ -1,4 +1,4 @@
-// «حيدر كات» — a large file (100 MB up to about 5 TB) goes straight to storage in parts, four at a time.
+// «حيدرة كت» — a large file (100 MB up to about 5 TB) goes straight to storage in parts, four at a time.
 // A part that fails is sent again; a cut connection waits for the internet to come back; and after a reload
 // the same file picks up from the parts already stored (see useUploads).
 import { postJson } from "@/lib/fetch";

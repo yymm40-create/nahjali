@@ -1,6 +1,6 @@
 "use client";
 
-// «حيدر كات» — the preview's touch layer. A tap picks the clip under the finger (nothing there: play/pause).
+// «حيدرة كت» — the preview's touch layer. A tap picks the clip under the finger (nothing there: play/pause).
 // The selected clip gets a box: drag it to move, a corner to resize, the knob on top to turn; two fingers resize and
 // turn at once. It snaps to the middle of the frame (a guide line shows) and to straight angles. With motion points,
 // the change goes into the point at the playhead.
