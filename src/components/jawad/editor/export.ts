@@ -22,6 +22,7 @@ import {
 import { clipEnd, duration, gainAt, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
 import { drawFrame, exportSize, layersAt, type Frame } from "./render";
 import { stretch } from "./stretch";
+import { Masker } from "./segment";
 
 export interface ExportAsset {
   id: string;
@@ -140,6 +141,13 @@ export async function exportVideo(
     return s.cur;
   }
 
+  // «عزل الشخص»: the segmenter must be ready before the first frame
+  const masker = new Masker();
+  if (visual.some((c) => c.bg)) {
+    await masker.load();
+    if (!masker.ready) throw new ExportError("تعذّر تحميل أداة عزل الشخص (تحتاج إنترنت أول مرة). جرّب مرة ثانية.");
+  }
+
   const frames = Math.ceil((total * fps) / 1000);
   let frame = 0;
   try {
@@ -166,10 +174,13 @@ export async function exportVideo(
         for (const l of layersAt(tl, ms)) {
           if (!("clip" in l) || l.clip.text || !l.clip.assetId) continue;
           const a = byId.get(l.clip.assetId)!;
+          let f: Frame | null;
           if (a.kind === "image") {
             const b = images.get(a.id)!;
-            now.set(l.clip.id, { img: b, width: b.width, height: b.height });
-          } else now.set(l.clip.id, await frameAt(l.clip, a, l.ms));
+            f = { img: b, width: b.width, height: b.height };
+          } else f = await frameAt(l.clip, a, l.ms);
+          if (f && l.clip.bg) f = { ...f, mask: masker.maskOf(l.clip.id, f.img, f.width, f.height) };
+          now.set(l.clip.id, f);
         }
         // drawFrame draws in the timeline's units; one scale maps them to the output size
         ctx.setTransform(width / tl.width, 0, 0, height / tl.height, 0, 0);
