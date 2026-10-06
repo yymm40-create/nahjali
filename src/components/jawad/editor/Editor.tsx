@@ -4,10 +4,11 @@ import Link from "next/link";
 import InstallApp from "./InstallApp";
 import { detectScenes } from "./scene-detect";
 import { takeStartKit } from "./start-kit";
+import PhoneTools, { type ClipKindOf, type PhoneAction } from "./PhoneTools";
 import { cutsOnTimeline } from "@/lib/editor/scenes";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apply, applyAll, CommandError, type Applied, type Command } from "@/lib/editor/commands";
-import { clipEnd, duration, findClip, formatTime, type AssetInfo, type Timeline as TL } from "@/lib/editor/model";
+import { clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
 import AssistantPanel from "./AssistantPanel";
@@ -704,6 +705,67 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           })}
     </nav>
   );
+  const oneAsset = one?.clip.assetId ? assetMap.get(one.clip.assetId) : null;
+  const oneKind: ClipKindOf | null = one ? (one.clip.text ? "text" : (oneAsset?.kind ?? "video")) : null;
+  // the clip under the playhead (the main track first), for a tool pressed with nothing selected
+  const underPlayhead = () => {
+    const ms = at();
+    const hit = (clips: Clip[]) => clips.find((c) => ms >= c.start && ms < clipEnd(c))?.id ?? null;
+    const m = mainTrack(tlRef.current);
+    return (m && hit(m.clips)) ?? hit(tlRef.current.tracks.flatMap((t) => t.clips));
+  };
+  const phoneAct = (a: PhoneAction) => {
+    const target = () => {
+      const id = selected[0] ?? underPlayhead();
+      if (!id) flash("حرّك التايملاين لمقطع أول، أو اضغط عليه.", true);
+      return id;
+    };
+    switch (a.kind) {
+      case "library":
+        return setSheet("library");
+      case "split":
+        return split();
+      case "delete":
+        return remove(false);
+      case "duplicate":
+        return duplicate();
+      case "text":
+        return addText();
+      case "captions":
+        return setCaptioning(true);
+      case "claude":
+        return openClaude(true);
+      case "ask":
+        openClaude(true);
+        return setAsk((q) => ({ text: a.text, n: (q?.n ?? 0) + 1 }));
+      case "tab":
+        setTab(a.tab);
+        return setSheet("inspector");
+      case "project":
+        setSelected([]);
+        return setSheet("inspector");
+      case "deselect":
+        return setSelected([]);
+      case "pick": {
+        const id = target();
+        if (id) pick([id]);
+        return;
+      }
+      case "extract": {
+        const id = target();
+        if (id) run({ type: "extract_audio", clipId: id });
+        return;
+      }
+      case "separate": {
+        const id = target();
+        if (id) void separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true));
+        return;
+      }
+      case "sceneCut":
+        setTab("basic");
+        return setSheet("inspector");
+    }
+  };
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
@@ -885,7 +947,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
 
         <aside
-          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[65dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
+          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[58dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
           aria-label="الإعدادات"
         >
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
@@ -952,7 +1014,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       </div>
 
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
-      <div className={`jw-glass mx-2 mb-2 shrink-0 overflow-hidden rounded-2xl ${big ? "hidden lg:block lg:h-[16%] lg:min-h-[110px]" : "h-[34%] min-h-[150px] lg:h-[30%] lg:min-h-[200px]"}`}>
+      <div className={`jw-glass mx-2 mb-2 shrink-0 overflow-hidden rounded-2xl ${big ? "hidden lg:block lg:h-[16%] lg:min-h-[110px]" : "h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`}>
         <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
@@ -962,31 +1024,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
       {THEMES[theme].rail === "pages" && !big && railNav("pages")}
 
-      {/* the phone's tool bar: Claude in the middle, one tap away (nothing floats over the timeline) */}
-      <nav className="grid grid-cols-7 items-end border-t border-jw-line bg-jw-surface pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="الأدوات">
-        <button type="button" className={toolBtn} onClick={() => setSheet("library")}>
-          <Icon name="folder" size={19} /> الوسائط
-        </button>
-        <button type="button" className={toolBtn} onClick={split} disabled={readOnly || !total}>
-          <Icon name="scissors" size={19} /> قص
-        </button>
-        <button type="button" className={toolBtn} onClick={() => remove(false)} disabled={readOnly || !selected.length}>
-          <Icon name="trash" size={19} /> حذف
-        </button>
-        <button type="button" className="flex flex-col items-center gap-0.5 pb-1.5 text-[11px] font-semibold text-jw-accent disabled:opacity-40" onClick={() => openClaude(true)} disabled={readOnly} aria-label="افتح Claude مساعدك">
-          <span className="jw-orb -mt-6 h-12 w-12 ring-4 ring-jw-surface" aria-hidden />
-          Claude
-        </button>
-        <button type="button" className={toolBtn} onClick={addText} disabled={readOnly}>
-          <Icon name="type" size={19} /> نص
-        </button>
-        <button type="button" className={`${toolBtn} text-jw-accent`} onClick={() => setCaptioning(true)} disabled={readOnly}>
-          <Icon name="sparkles" size={19} /> كابشن
-        </button>
-        <button type="button" className={`${toolBtn} ${one ? "text-jw-accent" : ""}`} onClick={() => setSheet("inspector")}>
-          <Icon name={one ? "settings" : "ratio"} size={19} /> {one ? "تعديل" : "المقاس"}
-        </button>
-      </nav>
+      {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
+      <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
 
       {dropAsk && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" onClick={() => setDropAsk(null)}>

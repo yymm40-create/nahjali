@@ -521,3 +521,19 @@
     animation: none;
   }
 }
+
+/* the phone's tool rows slide in (CapCut's way) */
+.jw-phone-row {
+  animation: jw-row-in 0.18s ease-out;
+}
+@keyframes jw-row-in {
+  from {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jw-phone-row {
+    animation: none;
+  }
+}
