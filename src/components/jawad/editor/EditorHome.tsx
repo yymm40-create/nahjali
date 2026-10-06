@@ -18,7 +18,7 @@ const ago = (iso: string, now: number) => {
   return `قبل ${Math.round(h / 24)} يوم`;
 };
 
-/** «حيدر كات»'s front page: what kind of video, then straight into the editor; the person's edits under it. */
+/** «حيدرة كت»'s front page: what kind of video, then straight into the editor; the person's edits under it. */
 export default function EditorHome({ name, projects: initial, loginHref }: { name: string; projects: ProjectSummary[] | null; loginHref: string | null }) {
   const router = useRouter();
   const [projects, setProjects] = useState(initial);
@@ -85,7 +85,7 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
       </section>
 
       {projects === null ? (
-        <p className="error-box text-sm">قاعدة بيانات حيدر كات غير جاهزة بعد (ملف 0030).</p>
+        <p className="error-box text-sm">قاعدة بيانات حيدرة كت غير جاهزة بعد (ملف 0030).</p>
       ) : (
         projects.length > 0 && (
           <section aria-labelledby="ed-mine" className="space-y-3">

@@ -1,4 +1,4 @@
-// «حيدر كات» — sound a browser's WebCodecs can't read (Safari on iPhone and AAC, for one) is decoded whole by the
+// «حيدرة كت» — sound a browser's WebCodecs can't read (Safari on iPhone and AAC, for one) is decoded whole by the
 // Web Audio API instead, which every browser can. Kept per file for the session (a few files at most).
 
 const cache = new Map<string, Promise<AudioBuffer>>();
@@ -19,7 +19,7 @@ export function decodeWhole(url: string): Promise<AudioBuffer> {
   let p = cache.get(url);
   if (!p) {
     p = (async () => {
-      if (((await sizeOf(url)) ?? 0) > WHOLE_MAX) throw new Error("صوت هذا الملف ما يُقرأ في هذا المتصفح لأن الملف كبير جدًا؛ افتح حيدر كات في Chrome.");
+      if (((await sizeOf(url)) ?? 0) > WHOLE_MAX) throw new Error("صوت هذا الملف ما يُقرأ في هذا المتصفح لأن الملف كبير جدًا؛ افتح حيدرة كت في Chrome.");
       const r = await fetch(url);
       if (!r.ok) throw new Error("تعذّر تحميل الملف.");
       const data = await r.arrayBuffer();

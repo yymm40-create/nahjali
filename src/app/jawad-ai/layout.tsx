@@ -35,7 +35,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
   const allowed = await jawadVisibleTo(user);
   const path = h.get(JAWAD_PATH_HEADER) ?? "";
   // (the dashboard keeps its own owner check: a plain JAWAD 404 for everyone else)
-  // «الطالب الذكي» and «حيدر كات» are open to every visitor (making something needs signing in), even while the rest is closed
+  // «الطالب الذكي» and «حيدرة كت» are open to every visitor (making something needs signing in), even while the rest is closed
   const open = (p: string) => path === `${JAWAD.base}/${p}` || path.startsWith(`${JAWAD.base}/${p}/`);
   const student = open("student") || open("editor");
   const preview = !allowed && !student && path !== `${JAWAD.base}/login` && path !== `${JAWAD.base}/username` && !path.startsWith(`${JAWAD.base}/admin`);

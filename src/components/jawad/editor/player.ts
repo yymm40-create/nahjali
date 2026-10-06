@@ -1,4 +1,4 @@
-// «حيدر كات» — the live preview. Sound files (and clips with worked sound) play through one Web Audio context:
+// «حيدرة كت» — the live preview. Sound files (and clips with worked sound) play through one Web Audio context:
 // decoded once and scheduled sample-exact, with their volume, fades and ducking, and that context's clock is the
 // preview's clock (on iPhone one tap unlocks it). Videos play their own sound from their <video> element (with the
 // same volume, fades and ducking), so picture and sound never drift and a big file isn't downloaded twice. The

@@ -1,4 +1,4 @@
-// «حيدر كات» — the pure part of the Claude assistant: what Claude is shown of the project, and the check that
+// «حيدرة كت» — the pure part of the Claude assistant: what Claude is shown of the project, and the check that
 // every command it sends can run (and which one can't). No server imports, so it can be tested on its own.
 
 import { applyAll, CommandError, type Command } from "./commands";

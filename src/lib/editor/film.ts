@@ -1,4 +1,4 @@
-// «حيدر كات» as the film maker's step after «الأصوات»: one edit per film project, with the film's approved
+// «حيدرة كت» as the film maker's step after «الأصوات»: one edit per film project, with the film's approved
 // videos in the director's order. Server only.
 
 import type { User } from "@supabase/supabase-js";

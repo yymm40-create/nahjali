@@ -1,4 +1,4 @@
-// «حيدر كات» — what the sound of a file looks like: loudness every 10 ms (decoded once in the browser, kept for
+// «حيدرة كت» — what the sound of a file looks like: loudness every 10 ms (decoded once in the browser, kept for
 // the session), drawn as the timeline's waveforms and used to find the beat of a song.
 
 import { ALL_FORMATS, AudioBufferSink, Input, UrlSource } from "mediabunny";

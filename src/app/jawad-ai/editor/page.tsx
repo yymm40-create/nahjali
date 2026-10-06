@@ -5,9 +5,9 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { listEditorProjects } from "@/lib/editor/server";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "حيدر كات" };
+export const metadata = { title: "حيدرة كت" };
 
-/** «حيدر كات»: the person's edits and a new one. Open to every visitor; editing asks to sign in first. */
+/** «حيدرة كت»: the person's edits and a new one. Open to every visitor; editing asks to sign in first. */
 export default async function EditorPage() {
   const [{ user, owner }, rt] = await Promise.all([jawadSession(), loadRuntime()]);
   const section = rt.sections.find((s) => s.implementation === "editor");

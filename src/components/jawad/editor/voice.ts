@@ -1,4 +1,4 @@
-// «حيدر كات» — a clip's sound work, done once in this browser and kept for the preview and the export alike:
+// «حيدرة كت» — a clip's sound work, done once in this browser and kept for the preview and the export alike:
 // noise taken out (RNNoise, on the device), the voice's pitch moved without changing its length, then the voice
 // enhancer and the effect as Web Audio nodes rendered offline (so an echo or a hall rings the same everywhere).
 

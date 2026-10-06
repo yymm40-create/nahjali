@@ -4,7 +4,7 @@ import { requireFilmUser, requireProject } from "@/lib/film/access";
 import { editorForFilm, filmCut } from "@/lib/editor/film";
 import OpenEdit from "../[id]/edit/OpenEdit";
 
-/** «المونتاج»: the film's chosen videos in the director's order, then «حيدر كات» puts them together. */
+/** «المونتاج»: the film's chosen videos in the director's order, then «حيدرة كت» puts them together. */
 export default async function EditView({ id, base }: { id: string; base: string }) {
   const { user, allowed } = await requireFilmUser(`${base}/${id}/edit`);
   if (!allowed) redirect(base);
@@ -19,7 +19,7 @@ export default async function EditView({ id, base }: { id: string; base: string 
         <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">✂️ المونتاج</h1>
         <p className="text-sm font-bold text-muted">
-          آخر خطوة: «حيدر كات» يركّب مقاطع فيلمك بترتيب المخرج (بأصواتها) في نسخة أولى، وبعدها تقص وترتّب وتضيف نصوصًا وتصدّر الفيلم كاملًا بدقة 720p أو 1080p.
+          آخر خطوة: «حيدرة كت» يركّب مقاطع فيلمك بترتيب المخرج (بأصواتها) في نسخة أولى، وبعدها تقص وترتّب وتضيف نصوصًا وتصدّر الفيلم كاملًا بدقة 720p أو 1080p.
         </p>
       </header>
 
@@ -40,7 +40,7 @@ export default async function EditView({ id, base }: { id: string; base: string 
         ) : (
           <p className="text-sm text-muted">ما فيه توليدات معتمدة بعد.</p>
         )}
-        {ready.length < cut.length && ready.length > 0 && <p className="text-xs font-bold text-muted">المقاطع اللي ما تولّدت تقدر تضيفها بعدين من «من أعمالي» داخل حيدر كات.</p>}
+        {ready.length < cut.length && ready.length > 0 && <p className="text-xs font-bold text-muted">المقاطع اللي ما تولّدت تقدر تضيفها بعدين من «من أعمالي» داخل حيدرة كت.</p>}
         <OpenEdit filmId={id} exists={!!editId} disabled={!ready.length} />
         <p className="text-xs text-muted">بعد تصدير الفيلم بـ٣ أيام تنحذف ملفات المونتاج، والفيديوهات اللي في المونتاج ما تنحذف قبلها.</p>
       </section>

@@ -1,6 +1,6 @@
 "use client";
 
-// «التعديل الذكي» inside «حيدر كات»: cut the pieces that didn't work, lift each one straight up onto the red
+// «التعديل الذكي» inside «حيدرة كت»: cut the pieces that didn't work, lift each one straight up onto the red
 // track (same place), write what to fix in each and pick «جزئي» or «كامل»; what JAWAD AI makes comes back on the green
 // track over it, at the same place and length. Then the edit goes on as usual (arrange, export).
 

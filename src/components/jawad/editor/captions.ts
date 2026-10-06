@@ -1,4 +1,4 @@
-// «حيدر كات» — the browser side of captions: the clip's sound cut out and compressed (only what is heard is sent),
+// «حيدرة كت» — the browser side of captions: the clip's sound cut out and compressed (only what is heard is sent),
 // spoken words grouped into short phrases on the timeline, poem verses kept one per caption, and SRT files in and out.
 
 import { ALL_FORMATS, AudioBufferSink, AudioBufferSource, BufferTarget, canEncodeAudio, Input, Output, UrlSource, WebMOutputFormat } from "mediabunny";
