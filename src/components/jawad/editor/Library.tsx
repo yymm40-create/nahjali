@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatTime } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon from "../Icon";
+import { ASSET_DRAG } from "./Timeline";
 import type { EditorAsset, ImportItem } from "./types";
 import type { UploadItem } from "./useUploads";
 
@@ -102,7 +103,12 @@ export default function Library({
                     disabled={readOnly || a.status !== "ready"}
                     className="block w-full overflow-hidden rounded-lg border border-jw-line bg-jw-surface-2 text-start transition hover:border-jw-accent disabled:opacity-50"
                     onClick={() => onAdd(a)}
-                    title="أضفه للتايملاين عند مؤشر الوقت"
+                    draggable={!readOnly && a.status === "ready"}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(ASSET_DRAG, a.id);
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    title="أضفه للتايملاين عند مؤشر الوقت، أو اسحبه للمكان اللي تبيه"
                   >
                     <span className="relative block aspect-video bg-black/40">
                       {thumbs[a.id] ? (

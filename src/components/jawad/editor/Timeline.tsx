@@ -32,7 +32,15 @@ interface Props {
   waves: Record<string, string | null>;
   /** a cut's transition button: opens the outgoing clip's «انتقال» */
   onTransition: (clipId: string) => void;
+  /** files dragged in from the computer (Finder, Explorer) and let go at a moment, over a track (or none) */
+  onDropFiles: (files: File[], at: number, trackId: string | null) => void;
+  /** a file dragged from the project's library */
+  onDropAsset: (assetId: string, at: number, trackId: string | null) => void;
 }
+
+/** What the library puts on a drag (the asset's id). */
+export const ASSET_DRAG = "application/x-jawad-asset";
+const MEDIA_FILE = /\.(mp4|mov|m4v|webm|mkv|mp3|m4a|aac|wav|ogg|opus|flac|png|jpe?g|webp|gif|heic|avif)$/i;
 
 type Mode = "move" | "start" | "end";
 interface Drag {
@@ -58,9 +66,10 @@ const MAX_PPS = 400;
 const RULER = 26;
 const SNAP_PX = 8;
 
-const kindOf = (c: Clip, assets: Map<string, EditorAsset>) => (c.text ? "text" : (assets.get(c.assetId ?? "")?.kind ?? "video"));
-const fits = (track: Track, c: Clip, assets: Map<string, EditorAsset>) => {
-  const k = kindOf(c, assets);
+/** A clip on a sound track is sound, even when it comes from a video (its sound taken out). */
+const kindOf = (c: Clip, assets: Map<string, EditorAsset>, onSound = false) => (c.text ? "text" : onSound ? "audio" : (assets.get(c.assetId ?? "")?.kind ?? "video"));
+const fits = (track: Track, c: Clip, assets: Map<string, EditorAsset>, onSound: boolean) => {
+  const k = kindOf(c, assets, onSound);
   return track.kind === (k === "image" ? "video" : k);
 };
 
@@ -70,7 +79,13 @@ function rulerStep(pps: number) {
   return steps.find((s) => (s * pps) / 1000 >= 80) ?? 600_000;
 }
 
-export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition }: Props) {
+const TRACK_KINDS: { kind: Track["kind"]; label: string; icon: "layers" | "music" | "type" }[] = [
+  { kind: "video", label: "فيديو وصور", icon: "layers" },
+  { kind: "audio", label: "صوت", icon: "music" },
+  { kind: "text", label: "نص وكابشن", icon: "type" },
+];
+
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset }: Props) {
   const HEAD = compact ? 40 : 144;
   const scroller = useRef<HTMLDivElement>(null);
   const playhead = useRef<HTMLDivElement>(null);
@@ -277,19 +292,20 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       next.ghostEnd = next.ghostStart + len;
       // which track is under the finger; above the pictures (or under the sound) makes a new one
       const clip = findOwn(d.id)!;
+      const onSound = tl.tracks.find((t) => t.id === d.trackId)?.kind === "audio";
       let target = d.trackId;
       let found = false;
       for (const t of ordered) {
         const r = rows.current.get(t.id)?.getBoundingClientRect();
         if (r && e.clientY >= r.top && e.clientY < r.bottom) {
           found = true;
-          if (fits(t, clip, assets) && !t.locked) target = t.id;
+          if (fits(t, clip, assets, onSound) && !t.locked) target = t.id;
         }
       }
       if (!found) {
         const first = rows.current.get(ordered[0]?.id ?? "")?.getBoundingClientRect();
         const last = rows.current.get(ordered.at(-1)?.id ?? "")?.getBoundingClientRect();
-        const k = kindOf(clip, assets);
+        const k = kindOf(clip, assets, onSound);
         if (first && e.clientY < first.top && k !== "audio") target = "new";
         if (last && e.clientY > last.bottom && k === "audio") target = "new";
       }
@@ -352,13 +368,47 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     player?.seek(Math.min(total, msAt(e.clientX)));
   };
 
+  // ---------- files dropped from the computer or the library ----------
+  const [dropAt, setDropAt] = useState<{ ms: number; trackId: string | null } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const carries = (e: React.DragEvent) => !readOnly && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(ASSET_DRAG));
+  const dropPoint = (e: React.DragEvent) => {
+    let trackId: string | null = null;
+    for (const t of ordered) {
+      const r = rows.current.get(t.id)?.getBoundingClientRect();
+      if (r && e.clientY >= r.top && e.clientY < r.bottom) trackId = t.id;
+    }
+    return { ms: Math.round(snap(msAt(e.clientX), "")), trackId };
+  };
+  const dragOver = (e: React.DragEvent) => {
+    if (!carries(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    const p = dropPoint(e);
+    if (p.ms !== dropAt?.ms || p.trackId !== dropAt?.trackId) setDropAt(p);
+  };
+  const dragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropAt(null);
+  };
+  const drop = (e: React.DragEvent) => {
+    if (!carries(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDropAt(null);
+    const p = dropPoint(e);
+    const id = e.dataTransfer.getData(ASSET_DRAG);
+    if (id) return onDropAsset(id, p.ms, p.trackId);
+    const files = Array.from(e.dataTransfer.files).filter((f) => /^(video|audio|image)\//.test(f.type) || MEDIA_FILE.test(f.name));
+    if (files.length) onDropFiles(files, p.ms, p.trackId);
+  };
+
   // ---------- drawing ----------
   const step = rulerStep(pps);
   const ticks: number[] = [];
   for (let ms = 0; ms <= total + 15_000; ms += step) ticks.push(ms);
 
   const clipView = (track: Track, c: Clip, ghost = false) => {
-    const k = kindOf(c, assets);
+    const k = kindOf(c, assets, track.kind === "audio");
     const a = c.assetId ? assets.get(c.assetId) : null;
     const sel = selected.includes(c.id);
     const d = drag?.id === c.id ? drag : null;
@@ -452,7 +502,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
 
   return (
     <div dir="ltr" className="relative flex h-full min-h-0 flex-col bg-jw-bg-2">
-      <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }}>
+      <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
         <div className="relative" style={{ width: contentW, minHeight: "100%" }}>
           {/* ruler */}
           <div className="sticky top-0 z-20 flex" style={{ height: RULER }}>
@@ -468,6 +518,30 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
               <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(pps * 1.6)} aria-label="تكبير" title="تكبير">
                 <Icon name="zoomIn" size={14} />
               </button>
+              {!readOnly && (
+                <button type="button" className={`grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-2 hover:text-jw-ink ${adding ? "bg-jw-accent/15 text-jw-accent" : "text-jw-muted"}`} onClick={() => setAdding((v) => !v)} aria-label="أضف مسار" title="أضف مسار" aria-expanded={adding}>
+                  <Icon name="plus" size={14} />
+                </button>
+              )}
+              {adding && (
+                <div className="absolute left-1 top-full z-40 mt-1 w-44 space-y-0.5 rounded-xl border border-jw-line bg-jw-surface p-1.5 shadow-xl" dir="rtl" role="menu" aria-label="نوع المسار الجديد">
+                  <p className="px-1.5 pb-1 text-[11px] text-jw-muted">وش نوع المسار الجديد؟</p>
+                  {TRACK_KINDS.map((k) => (
+                    <button
+                      key={k.kind}
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-xs hover:bg-jw-surface-2"
+                      onClick={() => {
+                        setAdding(false);
+                        run({ type: "add_track", kind: k.kind });
+                      }}
+                    >
+                      <Icon name={k.icon} size={14} /> {k.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="relative flex-1 cursor-col-resize border-b border-jw-line bg-jw-surface" style={{ touchAction: "none" }} onPointerDown={scrub} onPointerMove={scrubMove}>
               {ticks.map((ms) => (
@@ -489,11 +563,12 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
             return (
               <div
                 key={track.id}
+                data-track={track.kind}
                 ref={(el) => {
                   if (el) rows.current.set(track.id, el);
                   else rows.current.delete(track.id);
                 }}
-                className={`flex border-b border-jw-line ${isMain ? "bg-jw-surface-2/40" : ""} ${target ? "bg-jw-accent/10" : ""}`}
+                className={`flex border-b border-jw-line ${isMain ? "bg-jw-surface-2/40" : ""} ${target || dropAt?.trackId === track.id ? "bg-jw-accent/10" : ""}`}
                 style={{ height: height(track) }}
               >
                 <TrackHead track={track} isMain={isMain} width={HEAD} compact={compact} readOnly={readOnly} run={run} />
@@ -531,6 +606,13 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
               </div>
             );
           })}
+          {dropAt && (
+            <div className="pointer-events-none absolute bottom-0 z-30 w-0.5 bg-jw-accent shadow-[0_0_10px_var(--jw-accent)]" style={{ top: RULER, left: HEAD + lanePx(dropAt.ms) }}>
+              <span className="absolute -top-0.5 left-1 whitespace-nowrap rounded bg-jw-accent px-1.5 py-0.5 text-[10px] text-jw-on-accent" dir="rtl">
+                اترك هنا · {formatTime(dropAt.ms)}
+              </span>
+            </div>
+          )}
           {moving?.ghostTrack === "new" && (
             <div className="pointer-events-none absolute inset-x-0 z-20 border-2 border-dashed border-jw-accent bg-jw-accent/10 text-center text-xs text-jw-accent" style={{ top: RULER, height: 30 }}>
               اترك هنا: مسار جديد

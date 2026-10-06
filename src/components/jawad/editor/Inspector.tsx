@@ -25,6 +25,7 @@ import {
 } from "@/lib/editor/model";
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
+import { soundFile } from "./audio";
 import { detectBeats, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
@@ -101,6 +102,7 @@ export default function Inspector({
 }) {
   const playhead = usePlayhead(player);
   const [beatBusy, setBeatBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const found = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
   if (!found) {
@@ -161,8 +163,33 @@ export default function Inspector({
   const locked = readOnly || track.locked;
   const set = (patch: ClipPatch, key: string) => run({ type: "update_clip", clipId: clip.id, patch }, { coalesce: `${clip.id}:${key}` });
   const text = clip.text;
-  const visual = !!text || (a ? a.kind !== "audio" : false);
+  // a video's sound taken out onto a sound track is only sound
+  const onSound = track.kind === "audio";
+  const visual = !!text || (a ? a.kind !== "audio" && !onSound : false);
   const sound = !!a && a.kind !== "image" && a.hasAudio;
+  // the texts of one track change together (captions); one set apart («own») changes alone
+  const group = !!text && track.clips.length > 1;
+  const together = group && !clip.own;
+  const setText = (p: Partial<TextStyle>, key: string) =>
+    together && !("body" in p) ? run({ type: "style_track", trackId: track.id, text: p }, { coalesce: `${track.id}:group:${key}` }) : set({ text: p }, `text:${key}`);
+  const saveSound = async () => {
+    if (!a?.url) return;
+    setSaving(true);
+    try {
+      const blob = await soundFile(a.url, clip.in, clip.out);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${(a.name || "sound").replace(/\.[^.]+$/, "")}-audio.wav`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+    } catch {
+      flash("ما قدرنا نقرأ صوت هذا الملف في متصفحك.", true);
+    } finally {
+      setSaving(false);
+    }
+  };
   const next = track.clips[index + 1];
   const joined = !!next && next.start === clipEnd(clip);
   const tabs: [InspectorTab, string][] = [
@@ -201,7 +228,7 @@ export default function Inspector({
   return (
     <div className="space-y-3 p-3">
       <div className="flex items-center gap-2">
-        <Icon name={text ? "type" : a?.kind === "audio" ? "music" : a?.kind === "image" ? "image" : "video"} size={16} />
+        <Icon name={text ? "type" : a?.kind === "audio" || onSound ? "music" : a?.kind === "image" ? "image" : "video"} size={16} />
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold" dir="auto">{text ? "نص" : (a?.name ?? "مقطع")}</h3>
         <span className="text-xs tabular-nums text-jw-muted" dir="ltr">{formatTime(clipLength(clip))}</span>
         <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40" disabled={locked} onClick={() => run({ type: "duplicate", clipId: clip.id })} aria-label="تكرار" title="تكرار (Ctrl+D)">
@@ -221,7 +248,21 @@ export default function Inspector({
 
       {current === "basic" && (
         <div className="space-y-3">
-          {text && <TextControls text={text} locked={locked} setText={(p, key) => set({ text: p }, `text:${key}`)} />}
+          {group && (
+            <div className={`space-y-1.5 rounded-lg border p-2 text-[11px] leading-5 ${together ? "border-jw-accent/40 bg-jw-accent/5" : "border-jw-warn/50 bg-jw-warn/5"}`}>
+              <p>
+                {together ? (
+                  <>🔗 <b>تعديل جماعي:</b> الحجم والخط واللون والمكان تتغير لكل نصوص هذا المسار ({track.clips.filter((c) => !c.own).length}). الكلام نفسه لهذا النص بس.</>
+                ) : (
+                  <>✂️ <b>منفصل:</b> تعديلاتك على هذا النص بروحه. لما ترجّعه للمجموعة يحتفظ بشكله، والتعديلات الجماعية الجاية توصله.</>
+                )}
+              </p>
+              <button type="button" disabled={locked} className="jw-btn !min-h-8 w-full text-xs" onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { own: together } }, { label: together ? "فصلت نصًا عن المجموعة" : "رجّعت نصًا للمجموعة" })}>
+                {together ? "افصل هذا النص وعدّله بروحه" : "رجّعه للتعديل الجماعي"}
+              </button>
+            </div>
+          )}
+          {text && <TextControls text={text} locked={locked} setText={setText} />}
           {text && clip.words.length > 0 && <p className="text-[11px] text-jw-faint">كابشن بتوقيت الكلمات: صحّح أي كلمة بنفس عددها وتبقى متزامنة.</p>}
           {text && track.clips.length > 1 && (
             <div className="space-y-1.5 border-t border-jw-line pt-3">
@@ -248,7 +289,19 @@ export default function Inspector({
               </div>
             </div>
           )}
-          {!text && a?.kind !== "audio" && (
+          {sound && (
+            <div className="flex gap-1.5">
+              {!onSound && a?.kind === "video" && (
+                <button type="button" className="jw-btn !min-h-9 flex-1 text-xs" disabled={locked || clip.volume === 0} onClick={() => run({ type: "extract_audio", clipId: clip.id })} title="ينزل صوت الفيديو في مسار صوت تحته، متزامن معه، تعدّل عليه أو تقصّه بروحه">
+                  <Icon name="music" size={14} /> {clip.volume === 0 ? "الصوت مطلّع" : "طلّع الصوت"}
+                </button>
+              )}
+              <button type="button" className="jw-btn jw-btn-quiet !min-h-9 flex-1 text-xs" disabled={saving} onClick={saveSound} title="ينزّل صوت هذا الجزء ملف WAV على جهازك">
+                {saving ? <span className="jw-spinner" /> : <Icon name="download" size={14} />} احفظ الصوت ملف
+              </button>
+            </div>
+          )}
+          {!text && a?.kind !== "audio" && !onSound && (
             <div className="jw-seg" role="radiogroup" aria-label="الملاءمة">
               <button type="button" role="radio" aria-checked={clip.fit === "cover"} disabled={locked} onClick={() => set({ fit: "cover" }, "fit")}>
                 املأ الإطار
@@ -285,7 +338,7 @@ export default function Inspector({
           )}
           <Slider label="التكبير" value={Math.round(t.scale * 100)} min={10} max={400} step={1} disabled={locked} onChange={(v) => move({ scale: v / 100 }, "scale")} format={(v) => `${v}%`} />
           <Slider ltr label="← يسار · يمين →" value={Math.round(t.x * 100)} min={-50} max={150} step={1} disabled={locked} onChange={(v) => move({ x: v / 100 }, "x")} format={(v) => `${v}%`} />
-          <Slider label="فوق ↕ تحت" value={Math.round(t.y * 100)} min={-50} max={150} step={1} disabled={locked} onChange={(v) => move({ y: v / 100 }, "y")} format={(v) => `${v}%`} />
+          <Slider label={together && !clip.keys.length ? "فوق ↕ تحت (لكل نصوص المسار)" : "فوق ↕ تحت"} value={Math.round(t.y * 100)} min={-50} max={150} step={1} disabled={locked} onChange={(v) => (together && !clip.keys.length ? run({ type: "style_track", trackId: track.id, text: {}, y: v / 100 }, { coalesce: `${track.id}:group:y` }) : move({ y: v / 100 }, "y"))} format={(v) => `${v}%`} />
           <Slider label="الدوران" value={Math.round(t.rotate)} min={-180} max={180} step={1} disabled={locked} onChange={(v) => move({ rotate: v }, "rotate")} format={(v) => `${v}°`} />
           <Slider label="الشفافية" value={Math.round(t.opacity * 100)} min={0} max={100} step={1} disabled={locked} onChange={(v) => move({ opacity: v / 100 }, "opacity")} format={(v) => `${v}%`} />
           <div className="space-y-1.5 rounded-lg border border-jw-line p-2">

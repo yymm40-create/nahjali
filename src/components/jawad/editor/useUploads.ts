@@ -6,6 +6,17 @@ import { putWithProgress } from "../studio/upload";
 import { probe, shortName } from "./media";
 import type { EditorAsset } from "./types";
 
+/** Where a dropped file goes once it is uploaded (none: the usual place). */
+export interface Placement {
+  at: number;
+  trackId: string | null;
+  /** one: just here · stack: each file on its own track, one above the other · line: one after another */
+  mode: "one" | "stack" | "line";
+  /** the files dropped together share it */
+  group: string;
+  first: boolean;
+}
+
 export interface UploadItem {
   key: string;
   name: string;
@@ -18,9 +29,9 @@ export interface UploadItem {
  * Files from the device, one after another: read in the browser, sent straight to storage with a one-time link, then
  * checked by the server. Each finished file goes to `onDone` (the editor puts it on the timeline).
  */
-export function useUploads(projectId: string, onDone: (a: EditorAsset) => void) {
+export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: Placement) => void) {
   const [items, setItems] = useState<UploadItem[]>([]);
-  const queue = useRef<{ key: string; file: File }[]>([]);
+  const queue = useRef<{ key: string; file: File; place?: Placement }[]>([]);
   const busy = useRef(false);
   const done = useRef(onDone);
   useEffect(() => {
@@ -34,7 +45,7 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset) => void) 
     busy.current = true;
     try {
       for (let job = queue.current.shift(); job; job = queue.current.shift()) {
-        const { key, file } = job;
+        const { key, file, place } = job;
         try {
           const m = await probe(file);
           if (!m.playable) patch(key, { note: "متصفحك قد لا يعرض هذا الملف أثناء المونتاج (ترميز غير مدعوم)؛ جرّب Chrome." });
@@ -61,7 +72,7 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset) => void) 
             height: m.height,
             hasAudio: m.hasAudio,
           });
-          done.current(r.asset);
+          done.current(r.asset, place);
           // finished: it leaves the list, unless there is something to tell about it
           if (m.playable) setItems((xs) => xs.filter((x) => x.key !== key));
           else patch(key, { progress: 1 });
@@ -75,10 +86,10 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset) => void) 
   }, [projectId]);
 
   const add = useCallback(
-    (files: FileList | File[]) => {
+    (files: FileList | File[], places?: Placement[]) => {
       const list = Array.from(files);
       if (!list.length) return;
-      const made = list.map((file) => ({ key: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 7)}`, file }));
+      const made = list.map((file, i) => ({ key: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 7)}`, file, place: places?.[i] }));
       setItems((xs) => [...xs, ...made.map(({ key, file }) => ({ key, name: file.name, progress: 0, error: null, note: null }))]);
       queue.current.push(...made);
       void next();

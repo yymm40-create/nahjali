@@ -32,3 +32,36 @@ export async function sliceMono(buf: AudioBuffer, from: number, to: number, rate
   node.start(0, Math.max(0, from), Math.max(0, to - from));
   return ctx.startRendering();
 }
+
+/** A WAV file (16-bit, the file's own channels up to two) of `[fromMs, toMs)` of a file's sound: «احفظ الصوت». */
+export async function soundFile(url: string, fromMs: number, toMs: number) {
+  const buf = await decodeWhole(url);
+  const rate = buf.sampleRate;
+  const a = Math.max(0, Math.floor((fromMs / 1000) * rate));
+  const b = Math.min(buf.length, Math.ceil((toMs / 1000) * rate));
+  const n = Math.max(0, b - a);
+  const chans = Array.from({ length: Math.min(2, buf.numberOfChannels) }, (_, i) => buf.getChannelData(i));
+  const ch = chans.length;
+  const v = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const text = (at: number, s: string) => [...s].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  v.setUint32(4, 36 + n * ch * 2, true);
+  text(8, "WAVEfmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, ch, true);
+  v.setUint32(24, rate, true);
+  v.setUint32(28, rate * ch * 2, true);
+  v.setUint16(32, ch * 2, true);
+  v.setUint16(34, 16, true);
+  text(36, "data");
+  v.setUint32(40, n * ch * 2, true);
+  let o = 44;
+  for (let i = a; i < b; i++)
+    for (const d of chans) {
+      const x = Math.max(-1, Math.min(1, d[i]));
+      v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+      o += 2;
+    }
+  return new Blob([v.buffer], { type: "audio/wav" });
+}

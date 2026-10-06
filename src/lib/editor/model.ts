@@ -147,6 +147,11 @@ export interface Clip {
   words: Word[];
   /** pictures only: the person cut out from their background */
   bg: Backdrop | null;
+  /**
+   * text only: this caption keeps its own look («منفصل»). The track's group changes skip it; when it joins again it
+   * keeps what it has and later group changes reach it field by field.
+   */
+  own: boolean;
 }
 
 export interface Track {
@@ -454,6 +459,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
             return { s: s0, e: int(w.e, s0, LIMITS.maxMs, s0), w: str(w.w, 60, "") };
           })
           .filter((w) => w.w),
+    own: kind === "text" && o.own === true,
     bg:
       kind === "video" && o.bg && typeof o.bg === "object"
         ? {

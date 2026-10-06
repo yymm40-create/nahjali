@@ -38,7 +38,7 @@ import {
   CAPTION_STYLES,
 } from "./model";
 
-export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn" | "fadeOut" | "shape">> & {
+export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn" | "fadeOut" | "shape" | "own">> & {
   transform?: Partial<Transform>;
   text?: Partial<TextStyle>;
   /** null = back to the original colours */
@@ -50,10 +50,13 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null };
+const CLIP_DEFAULTS = { keys: [], color: null, transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false };
 
 export type Command =
+  /** `trackId: "new"` puts it on a new track of its kind */
   | { type: "add_clip"; assetId: string; trackId?: string; at?: number }
+  /** a video's sound on its own sound track, in step with it (the video goes quiet) */
+  | { type: "extract_audio"; clipId: string }
   | { type: "add_text"; at: number; body?: string; duration?: number }
   /** `trackId: "new"` puts it on a new track of its kind (above the pictures, or a new sound track) */
   | { type: "move_clip"; clipId: string; trackId: string; start: number }
@@ -75,8 +78,8 @@ export type Command =
   | { type: "set_markers"; markers: number[]; mode: "add" | "replace" | "clear" }
   /** a caption track: one text clip per phrase (words timed from each clip's start), in one look */
   | { type: "add_captions"; items: { start: number; end: number; body: string; words?: Word[] }[]; style: CaptionStyle; name?: string }
-  /** one look for every text clip of a track (re-styling captions) */
-  | { type: "style_track"; trackId: string; text: Partial<TextStyle>; y?: number }
+  /** one look for every text clip of a track (re-styling captions); captions set apart («own») keep theirs unless `all` */
+  | { type: "style_track"; trackId: string; text: Partial<TextStyle>; y?: number; all?: boolean }
   /** the same transition at every cut of a track */
   | { type: "transition_all"; trackId?: string; kind: TransitionKind | null; ms?: number }
   | { type: "remove_track"; trackId: string }
@@ -187,7 +190,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const kind = KIND_TRACK[a.kind];
       const len = a.kind === "image" ? STILL_MS : Math.max(LIMITS.minClipMs, a.durationMs ?? 5000);
       const c: Clip = { id: newId("c"), assetId: a.id, start: 0, in: 0, out: len, speed: 1, volume: 1, fit: "cover", transform: { ...DEFAULT_TRANSFORM }, text: null, ...CLIP_DEFAULTS, keys: [] };
-      let track = cmd.trackId ? editable(t, cmd.trackId) : null;
+      let track = cmd.trackId === "new" ? newTrack(t, kind) : cmd.trackId ? editable(t, cmd.trackId) : null;
       if (track && track.kind !== kind) fail(kind === "audio" ? "الصوت يروح في مسار صوت." : "الصور والفيديو تروح في مسار صورة.");
       const main = mainTrack(t)!;
       if (!track) {
@@ -230,8 +233,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
 
     case "move_clip": {
       const { track: from, clip } = owned(t, cmd.clipId);
-      const to = cmd.trackId === "new" ? newTrack(t, trackFor(clip, assets)) : editable(t, cmd.trackId);
-      if (to.kind !== trackFor(clip, assets)) fail(to.kind === "audio" ? "هذا المسار للصوت فقط." : to.kind === "text" ? "هذا المسار للنصوص فقط." : "هذا المسار للصور والفيديو.");
+      // a video's sound taken out (on a sound track) moves as sound
+      const kind = from.kind === "audio" ? "audio" : trackFor(clip, assets);
+      const to = cmd.trackId === "new" ? newTrack(t, kind) : editable(t, cmd.trackId);
+      if (to.kind !== kind) fail(to.kind === "audio" ? "هذا المسار للصوت فقط." : to.kind === "text" ? "هذا المسار للنصوص فقط." : "هذا المسار للصور والفيديو.");
       from.clips = from.clips.filter((c) => c.id !== clip.id);
       if (from !== to) tidy(t, from);
       if (magnet(t, to)) insertMain(to, clip, cmd.start);
@@ -353,6 +358,10 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (p.fadeIn != null) clip.fadeIn = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeIn) || 0)));
       if (p.fadeOut != null) clip.fadeOut = Math.round(Math.min(clipLength(clip), Math.max(0, Number(p.fadeOut) || 0)));
       if (p.shape) clip.shape = p.shape === "circle" ? "circle" : p.shape === "rounded" ? "rounded" : "rect";
+      if (p.own != null) {
+        if (!clip.text) fail("الفصل للكابشن والنصوص فقط.");
+        clip.own = !!p.own;
+      }
       if (p.color !== undefined) {
         if (clip.text || track.kind === "audio") fail("الألوان للصور والفيديو فقط.");
         const next = p.color === null ? null : { ...(clip.color ?? NEUTRAL_COLOR), ...p.color };
@@ -507,7 +516,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const clean = { ...cmd.text };
       delete clean.body;
       for (const c of track.clips) {
-        if (!c.text) continue;
+        if (!c.text || (c.own && !cmd.all)) continue;
         c.text = { ...c.text, ...clean };
         if (cmd.y != null && Number.isFinite(cmd.y)) c.transform = { ...c.transform, y: cmd.y };
       }
@@ -526,6 +535,32 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       }
       if (!n) fail("ما فيه مقاطع متلاصقة في هذا المسار.");
       return { timeline: t, label: cmd.kind ? `انتقال ${TRANSITIONS[cmd.kind].label} لكل القصات` : "شلت كل الانتقالات" };
+    }
+
+    case "extract_audio": {
+      const { track, clip } = owned(t, cmd.clipId);
+      const a = clip.assetId ? assets.get(clip.assetId) : null;
+      if (!a || a.kind !== "video" || track.kind === "audio") fail("اختر مقطع فيديو أول.");
+      if (a!.hasAudio === false) fail("هذا الفيديو ما فيه صوت.");
+      if (clip.volume === 0) fail("صوت هذا المقطع مطلّع أو مكتوم من قبل.");
+      if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      const end = clipEnd(clip);
+      const sound: Clip = {
+        ...structuredClone(clip),
+        id: newId("c"),
+        transform: { ...DEFAULT_TRANSFORM },
+        keys: [],
+        color: null,
+        transition: null,
+        bg: null,
+        shape: "rect",
+      };
+      const dest = t.tracks.find((x) => x.kind === "audio" && !x.locked && free(x, clip.start, end)) ?? newTrack(t, "audio");
+      dest.clips = [...dest.clips, sound].sort((x, y) => x.start - y.start);
+      clip.volume = 0;
+      clip.fadeIn = 0;
+      clip.fadeOut = 0;
+      return { timeline: t, label: "طلّعت الصوت من الفيديو", select: [sound.id] };
     }
 
     case "add_track": {
