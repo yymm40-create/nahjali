@@ -1,0 +1,77 @@
+# «حيدرة كت» for the desktop: builds the Mac (.dmg, Apple silicon and Intel in one) and Windows (.exe) programs from
+# desktop/ and publishes them as a release. The site's download page links to the latest release's files by their
+# fixed names, so a new build reaches everyone without changing the site.
+name: Desktop app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac
+          - os: windows-latest
+            target: --win
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - name: Build
+        run: npx electron-builder ${{ matrix.target }} --publish never
+        env:
+          # no Apple / Microsoft certificate yet: the Mac build is signed ad hoc
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: haidara-cut-${{ matrix.os }}
+          path: |
+            desktop/dist/Haidara-Cut-mac.dmg
+            desktop/dist/Haidara-Cut-Setup.exe
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Version
+        id: v
+        run: echo "tag=desktop-v1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: "حيدرة كت للكمبيوتر · ${{ steps.v.outputs.tag }}"
+          make_latest: "true"
+          body: |
+            برنامج حيدرة كت للكمبيوتر.
+            - ماك: Haidara-Cut-mac.dmg (أجهزة Apple silicon و Intel)
+            - ويندوز: Haidara-Cut-Setup.exe
+          files: |
+            out/Haidara-Cut-mac.dmg
+            out/Haidara-Cut-Setup.exe

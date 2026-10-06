@@ -5,3 +5,4 @@ design/*/preview
 .env*
 !.env.example
 *.pdf
+desktop

@@ -5,6 +5,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireStudentApiUser } from "@/lib/jawad/server/access";
 import type { Command } from "@/lib/editor/commands";
 import {
+  addLocalAsset,
   confirmAsset,
   deleteAsset,
   deleteProject,
@@ -46,7 +47,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-/** `{ action, … }`: upload (sign/confirm), delete_asset, import, export_sign, exported, commands, history. */
+/** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const { user, owner } = await requireStudentApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
@@ -61,6 +62,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await uploadedParts(p, b), noStore);
     case "upload_complete":
       return NextResponse.json(await completeUpload(p, b));
+    case "add_local":
+      return NextResponse.json({ asset: await addLocalAsset(p, b) });
     case "confirm_upload":
       return NextResponse.json({ asset: await confirmAsset(p, b) });
     case "delete_asset":

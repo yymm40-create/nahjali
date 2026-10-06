@@ -1,0 +1,92 @@
+{
+  "name": "haidara-cut",
+  "productName": "حيدرة كت",
+  "version": "1.0.0",
+  "description": "حيدرة كت: مونتاج الفيديو مع مساعدك حيدرة",
+  "author": "نهج علي",
+  "homepage": "https://nahjali.vercel.app/jawad-ai/editor",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "app.nahjali.haidaracut",
+    "productName": "حيدرة كت",
+    "executableName": "HaidaraCut",
+    "copyright": "© 2026 نهج علي",
+    "files": [
+      "main.js",
+      "preload.js",
+      "offline.html",
+      "build/icon.png"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.video",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "حيدرة كت يستخدم المايك لتسجيل صوتك في المونتاج.",
+        "NSCameraUsageDescription": "حيدرة كت يستخدم الكاميرا للتسجيل في المونتاج."
+      },
+      "artifactName": "Haidara-Cut-mac.${ext}"
+    },
+    "dmg": {
+      "title": "حيدرة كت"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "Haidara-Cut-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "حيدرة كت",
+      "installerLanguages": [
+        "ar_SA",
+        "en_US"
+      ],
+      "language": "1025"
+    },
+    "linux": {
+      "target": "dir",
+      "icon": "build/icon.png"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yymm40-create/nahjali.git"
+  }
+}

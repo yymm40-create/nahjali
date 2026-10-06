@@ -5,6 +5,7 @@ import { duration, formatTime, type Timeline } from "@/lib/editor/model";
 import { postJson } from "@/lib/fetch";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+import { desktop } from "./desktop";
 import { canExport, download, exportVideo, ExportError, type ExportResult } from "./export";
 import { exportSize } from "./render";
 import { sendInParts } from "./parts";
@@ -69,18 +70,21 @@ export default function ExportPanel({
       setPhase({ k: "done", r, saved: null, purgeAt: null });
       // a copy with the project (deleted with it after 3 days); if it can't be stored → just not kept
       let saved = false;
-      try {
-        const s = await postJson<{ signedUrl?: string; multipart?: { uploadId: string; partSize: number } }>(`/api/jawad/editor/projects/${projectId}`, { action: "export_sign", bytes: r.blob.size });
-        if (s.multipart) {
-          // a long video: in parts, like large uploads
-          await sendInParts(projectId, { id: "export", ...s.multipart }, r.blob, () => {});
-          saved = true;
-        } else {
-          const put = await fetch(s.signedUrl!, { method: "PUT", headers: { "content-type": "video/mp4" }, body: r.blob });
-          saved = put.ok;
+      // (the desktop program keeps everything on the computer: no copy goes up)
+      if (!desktop()) {
+        try {
+          const s = await postJson<{ signedUrl?: string; multipart?: { uploadId: string; partSize: number } }>(`/api/jawad/editor/projects/${projectId}`, { action: "export_sign", bytes: r.blob.size });
+          if (s.multipart) {
+            // a long video: in parts, like large uploads
+            await sendInParts(projectId, { id: "export", ...s.multipart }, r.blob, () => {});
+            saved = true;
+          } else {
+            const put = await fetch(s.signedUrl!, { method: "PUT", headers: { "content-type": "video/mp4" }, body: r.blob });
+            saved = put.ok;
+          }
+        } catch {
+          saved = false;
         }
-      } catch {
-        saved = false;
       }
       const m = await postJson<{ purgeAt: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "exported", saved });
       setPhase({ k: "done", r, saved, purgeAt: m.purgeAt });

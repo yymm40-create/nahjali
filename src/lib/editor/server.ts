@@ -148,7 +148,7 @@ async function assetRows(projectId: string) {
 async function sign(rows: AssetRow[]) {
   const out = new Map<string, string>();
   for (const bucket of ["editor", "jawad", "film"] as const) {
-    const list = rows.filter((r) => r.bucket === bucket && r.status === "ready");
+    const list = rows.filter((r) => r.bucket === bucket && r.status === "ready" && !r.meta?.local);
     if (!list.length) continue;
     const { data } = await storage.from(bucket).createSignedUrls(list.map((r) => r.path), LINK_SECONDS);
     (data ?? []).forEach((d, i) => d.signedUrl && out.set(list[i].id, d.signedUrl));
@@ -156,7 +156,12 @@ async function sign(rows: AssetRow[]) {
   return out;
 }
 
-const view = (r: AssetRow, url: string | null): AssetView => ({
+/** A file the desktop program keeps on the person's computer: served by the program itself (desktop/main.js). */
+const localUrl = (r: AssetRow) => (r.meta?.local && typeof r.meta.localId === "string" ? `haidara-media://file/${r.meta.localId}` : null);
+
+const view = (r: AssetRow, signed: string | null): AssetView => {
+  const url = localUrl(r) ?? signed;
+  return {
   id: r.id,
   kind: r.kind,
   name: r.name,
@@ -172,7 +177,8 @@ const view = (r: AssetRow, url: string | null): AssetView => ({
   outputId: typeof r.meta?.outputId === "string" ? r.meta.outputId : r.origin === "jawad" && typeof r.meta?.sourceId === "string" ? r.meta.sourceId : null,
   status: url || r.status !== "ready" ? r.status : "missing",
   url,
-});
+  };
+};
 
 export async function assetViews(projectId: string) {
   const rows = (await assetRows(projectId)).filter((r) => r.status !== "pending");
@@ -248,6 +254,51 @@ export function stillOpen(p: EditorProject) {
  * Step 1 of an upload: a pending record and a one-time URL, or for a large file a multi-part upload
  * (`multipart`: the browser asks for the parts' links, sends them, then joins them with completeUpload).
  */
+/**
+ * The desktop program: a file stays on the person's computer and only its description is kept here (what the
+ * timeline needs: kind, length, pixels). Its link points into the program, which serves the file from the disk.
+ */
+export async function addLocalAsset(p: EditorProject, b: { localId?: unknown; kind?: unknown; container?: unknown; bytes?: unknown; name?: unknown; durationMs?: unknown; width?: unknown; height?: unknown; hasAudio?: unknown }) {
+  stillOpen(p);
+  if (!isUuid(b.localId)) throw new UserError("ملف غير صحيح.", 400);
+  const kind = b.kind as AssetKind;
+  if (!["video", "audio", "image"].includes(kind)) throw new UserError("نوع الملف غير مقبول.", 400);
+  let type: { mime: string; ext: string };
+  try {
+    type = storedType(String(b.container ?? "") as Parameters<typeof storedType>[0], kind);
+  } catch {
+    throw new UserError("نوع الملف غير مقبول.", 400);
+  }
+  if (!type || !EDITOR_MIMES.has(type.mime)) throw new UserError("نوع الملف غير مقبول.", 400);
+  const durationMs = kind === "image" ? null : clampInt(b.durationMs, 24 * 3600_000);
+  if (kind !== "image" && !durationMs) throw new UserError("تعذّر قراءة مدة الملف؛ قد يكون تالفًا أو بترميز ما يدعمه البرنامج.", 400);
+  const { count } = await db().from("editor_assets").select("id", { count: "exact", head: true }).eq("project_id", p.id);
+  if ((count ?? 0) >= MAX_ASSETS) throw new UserError("مكتبة هذا المشروع ممتلئة؛ احذف ملفات ما تحتاجها.", 429);
+  const { data, error } = await db()
+    .from("editor_assets")
+    .insert({
+      project_id: p.id,
+      user_id: p.user_id,
+      kind,
+      // (nothing is stored under this path: the rows of every kind share the table's columns)
+      bucket: EDITOR_BUCKET,
+      path: `${p.user_id}/${p.id}/local/${b.localId}`,
+      name: String(b.name ?? "").slice(0, 200),
+      mime: type.mime,
+      bytes: Math.max(0, Math.round(Number(b.bytes) || 0)),
+      duration_ms: durationMs,
+      width: kind === "audio" ? null : clampInt(b.width, 16384),
+      height: kind === "audio" ? null : clampInt(b.height, 16384),
+      origin: "upload",
+      status: "ready",
+      meta: { local: true, localId: b.localId, hasAudio: kind !== "image" && b.hasAudio !== false },
+    })
+    .select("*")
+    .single();
+  if (error || !data) throw new UserError(NOT_READY, 503);
+  return view(data as AssetRow, null);
+}
+
 export async function signAssetUpload(p: EditorProject, b: { kind?: unknown; container?: unknown; bytes?: unknown; name?: unknown }) {
   stillOpen(p);
   const kind = b.kind as AssetKind;
