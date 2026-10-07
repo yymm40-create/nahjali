@@ -107,6 +107,7 @@ export default function Inspector({
   projectView = false,
   thumbs,
   onSeparate,
+  projectId,
   onSceneCut,
 }: {
   tl: Timeline;
@@ -126,6 +127,8 @@ export default function Inspector({
   thumbs?: Record<string, string | null>;
   /** splits a clip's sound into talking / music / effects tracks */
   onSeparate?: (clipId: string) => Promise<void>;
+  /** the project (for «ماسك ذكي») */
+  projectId?: string;
   /** «التقطيع الذكي»: cuts a video clip where its shot changes; resolves with how many cuts were made */
   onSceneCut?: SceneCutRun;
 }) {
@@ -464,7 +467,7 @@ export default function Inspector({
 
       {current === "color" && (
         <div className="space-y-3">
-          <GradePanel clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} />
+          <GradePanel clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} projectId={projectId ?? null} media={a?.url && (a.kind === "video" || a.kind === "image") ? { url: a.url, kind: a.kind } : null} />
           {clip.color && (
             <details className="rounded-lg border border-jw-line p-2">
               <summary className="cursor-pointer text-[11px] text-jw-muted">الألوان السريعة القديمة (هذا المقطع فيه منها)</summary>

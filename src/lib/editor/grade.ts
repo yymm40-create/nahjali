@@ -60,6 +60,11 @@ export interface Mask {
   points: Pt[];
   /** the centre moving with the clip's own time (ms from its start) */
   keys: { t: number; x: number; y: number }[];
+  /**
+   * «ماسك ذكي» (path): the subject's outline at moments of the clip (ms from its start), each with the same number of
+   * corners, so the outline changes shape between them (the subject tracked). Empty: `points` as drawn.
+   */
+  shapes: { t: number; points: Pt[] }[];
 }
 
 export interface Qualifier {
@@ -199,7 +204,7 @@ export const NEUTRAL_GRADE: Grade = {
 
 export const NEUTRAL_QUALIFIER: Qualifier = { hue: 0.08, hueWidth: 0.08, hueSoft: 0.06, satLo: 0.1, satHi: 1, lumLo: 0, lumHi: 1, soft: 0.1, invert: false, grow: 0, blur: 0.1 };
 export const NEW_SECONDARY: Secondary = { on: true, name: "", key: NEUTRAL_QUALIFIER, mask: null, hue: 0, sat: 1, lum: 0, temp: 0, contrast: 1, show: false };
-export const NEW_MASK: Mask = { kind: "ellipse", x: 0.5, y: 0.5, w: 0.6, h: 0.6, rotate: 0, feather: 0.3, round: 0.2, invert: false, points: [], keys: [] };
+export const NEW_MASK: Mask = { kind: "ellipse", x: 0.5, y: 0.5, w: 0.6, h: 0.6, rotate: 0, feather: 0.3, round: 0.2, invert: false, points: [], keys: [], shapes: [] };
 export const MAX_SECONDARIES = 4;
 /** grading layers on one clip, run one after another (like nodes in series) */
 export const MAX_LAYERS = 4;
@@ -270,9 +275,30 @@ export function readMask(v: unknown): Mask | null {
           .map((k) => ({ t: num(k.t, 0, 1e8, NaN), x: num(k.x, -1, 2, 0.5), y: num(k.y, -1, 2, 0.5) }))
           .filter((k) => !Number.isNaN(k.t))
           .sort((a, b) => a.t - b.t)
-          .slice(0, 200)
+          .slice(0, MAX_MASK_KEYS)
       : [],
+    shapes: kind === "path" && Array.isArray(o.shapes) ? readShapes(o.shapes) : [],
   };
+}
+
+/** Points along a moving mask: a key every 0.1 s for a 3-minute clip. */
+export const MAX_MASK_KEYS = 1800;
+/** Outlines of a tracked subject, and the corners of each. */
+export const MAX_SHAPES = 600;
+export const SHAPE_POINTS = 48;
+
+function readShapes(v: unknown[]): Mask["shapes"] {
+  const out: Mask["shapes"] = [];
+  for (const x of v.slice(0, MAX_SHAPES)) {
+    const o = obj(x);
+    const t = num(o.t, 0, 1e8, NaN);
+    if (Number.isNaN(t) || !Array.isArray(o.points)) continue;
+    const points = (o.points as unknown[]).slice(0, 64).map(obj).map((p) => ({ x: num(p.x, -1, 2, 0.5), y: num(p.y, -1, 2, 0.5) }));
+    if (points.length >= 3) out.push({ t, points });
+  }
+  out.sort((a, b) => a.t - b.t);
+  // every outline must have the same corners as the first (they are blended into each other)
+  return out.filter((s) => s.points.length === out[0].points.length);
 }
 
 function readQualifier(v: unknown, d: Qualifier): Qualifier {
@@ -841,6 +867,20 @@ export function applyLook(g: Grade, look: Look): Grade {
 }
 
 // ───────── masks over time ─────────
+
+/** A tracked outline at the clip's own time: blended between the two outlines around it. */
+export function shapeAt(m: Mask, t: number): Pt[] {
+  const k = m.shapes;
+  if (!k.length) return m.points;
+  if (t <= k[0].t) return k[0].points;
+  if (t >= k[k.length - 1].t) return k[k.length - 1].points;
+  let i = 0;
+  while (k[i + 1].t < t) i++;
+  const a = k[i],
+    b = k[i + 1];
+  const f = (t - a.t) / Math.max(1, b.t - a.t);
+  return a.points.map((p, j) => ({ x: p.x + (b.points[j].x - p.x) * f, y: p.y + (b.points[j].y - p.y) * f }));
+}
 
 /** The mask's centre at the clip's own time (its points moving between keys). */
 export function maskAt(m: Mask, t: number): { x: number; y: number } {
