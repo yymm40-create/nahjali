@@ -199,8 +199,11 @@ interface Answer {
   suggestions: { prompt: string; why: string }[];
 }
 
+/** The person is talking (the reply is read aloud): a short spoken answer, the steps done as usual. */
+const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
+
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown }) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown }) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -220,7 +223,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const history = chat.stored ? chatTurns(chat) : chatTurns({ messages: readMessages(b.history), handoff: typeof b.handoff === "string" ? b.handoff.slice(0, 8000) : null });
   const turns: ClaudeTurn[] = [
     ...history,
-    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}` },
+    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${b.spoken === true ? SPOKEN : ""}` },
   ];
   const merged = turns.reduce<ClaudeTurn[]>((m, t) => {
     const last = m[m.length - 1];

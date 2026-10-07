@@ -7,7 +7,8 @@ import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
-import { elevenAlign, elevenTranscribe } from "@/lib/jawad/server/providers/elevenlabs";
+import { elevenAlign, elevenSpeech, elevenTranscribe } from "@/lib/jawad/server/providers/elevenlabs";
+import { ELEVEN_DEFAULT_VOICE } from "@config/jawad/generators";
 import { charged, editorLimit, type Who } from "./pricing";
 import { EDITOR_BUCKET, isUuid, stillOpen, type AssetRow, type EditorProject } from "./server";
 
@@ -131,4 +132,48 @@ export async function align(p: EditorProject, who: Who, b: { assetId?: unknown; 
   const words = await charged(who, "editor_price_caption", Math.ceil(minutes), "مزامنة قصيدة في حيدرة كت", () => elevenAlign({ file: piece.file, name: piece.name, text }).catch(providerError));
   await logUse(p, minutes);
   return { words: words.map((w) => ({ s: from + Math.round(w.start * 1000), e: from + Math.round(w.end * 1000), w: w.text })) };
+}
+
+// ───────────────────────────── talking with حيدرة ─────────────────────────────
+
+/** A spoken message is short: up to two minutes, sent with the request (no upload). */
+const VOICE_MAX_BYTES = 3_000_000;
+const VOICE_TYPES: Record<string, string> = { "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav" };
+
+/** What the person said to حيدرة (ElevenLabs Scribe): `{ audio: base64, mime, seconds }` → `{ text }`. */
+export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; mime?: unknown; seconds?: unknown }) {
+  stillOpen(p);
+  const mime = String(b.mime ?? "").split(";")[0];
+  const ext = VOICE_TYPES[mime];
+  if (!ext || typeof b.audio !== "string") throw new UserError("صيغة التسجيل غير مقبولة.", 400);
+  const buf = Buffer.from(b.audio, "base64");
+  if (!buf.length) throw new UserError("ما وصل صوت.", 400);
+  if (buf.length > VOICE_MAX_BYTES) throw new UserError("التسجيل طويل؛ خلّه أقل من دقيقتين.", 400);
+  const minutes = Math.min(2, Math.max(0.05, Number(b.seconds) / 60 || 0.5));
+  await checkAllowance(p, who, minutes);
+  const heard = await charged(who, "editor_price_caption", Math.ceil(minutes), "رسالة صوتية لحيدرة", () =>
+    elevenTranscribe({ file: new Blob([new Uint8Array(buf)], { type: mime }), name: `voice.${ext}` }).catch(providerError),
+  );
+  await logUse(p, minutes);
+  return { text: heard.words.map((w) => w.text).join(" ").replace(/\s+([،,.؟?!:])/g, "$1").trim() };
+}
+
+/** حيدرة's reply said aloud (ElevenLabs v4): `{ text }` → `{ audio: base64 mp3 }`. Markdown, code and links are left out. */
+export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown }) {
+  stillOpen(p);
+  const spoken = String(b.text ?? "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[*_`#>|]/g, "")
+    // emoji, with the invisible marks that build them (variation selectors, joiners, skin tones)
+    .replace(/[\p{Extended_Pictographic}\u{FE0E}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 700);
+  if (!spoken) throw new UserError("ما فيه كلام أقرأه.", 400);
+  const voiceId = (process.env.EDITOR_VOICE_ID || ELEVEN_DEFAULT_VOICE).replace(/^p:/, "");
+  const audio = await charged(who, "editor_price_voice", 1, "رد حيدرة بالصوت", () =>
+    elevenSpeech({ voiceId, text: spoken, model: "eleven_v4", stability: 0.5, ...(/[\u0600-\u06FF]/.test(spoken) ? { languageCode: "ar" } : {}) }).catch(providerError),
+  );
+  return { audio: Buffer.from(audio).toString("base64"), mime: "audio/mpeg" };
 }

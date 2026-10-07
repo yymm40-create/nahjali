@@ -24,7 +24,7 @@ precision highp float; precision highp sampler3D;
 in vec2 uv; out vec4 o;
 uniform sampler2D img; uniform sampler2D curves; uniform sampler3D lut; uniform sampler2D maskTex[5];
 uniform vec2 res; uniform float time;
-uniform int logKind; uniform vec2 logIn; uniform mat3 gamut; uniform float compress; uniform float cmpX; uniform float exposure, temp, tint;
+uniform int logKind; uniform vec2 logIn; uniform mat3 gamut; uniform float compress; uniform float cmpX; uniform float cmpDir; uniform float exposure, temp, tint;
 uniform vec3 lift, gammaW, gain, offsetW; uniform float contrast, pivot, highlights, shadows, whites, blacks, saturation, vibrance;
 uniform float lutOn, lutAmount, lutSize; uniform vec4 split; uniform float splitBal;
 uniform vec3 halation; uniform vec2 grain; uniform vec4 vignette; uniform float sharpen, amount;
@@ -223,7 +223,8 @@ void main(){
   float w = window(0, uv)*amount;
   vec3 outc = mix(src, c, w);
   // «قبل / بعد»: the original on one side of the line, the grade on the other
-  if (cmpX >= 0.0) { outc = uv.x < cmpX ? src : outc; if (abs(uv.x - cmpX) < 1.2/res.x) outc = vec3(1.0); }
+  // cmpDir 0: a vertical line (before on the left) · 1: a horizontal line (before on top; uv.y runs down)
+  if (cmpX >= 0.0) { float cv = cmpDir > 0.5 ? uv.y : uv.x; float span = cmpDir > 0.5 ? res.y : res.x; outc = cv < cmpX ? src : outc; if (abs(cv - cmpX) < 1.2/span) outc = vec3(1.0); }
   o = vec4(outc, 1.0);
 }`;
 
@@ -442,6 +443,7 @@ export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Gr
   gl.uniform1i(u.logKind, LOG_CODE[g.log] ?? 0);
   gl.uniform1f(u.compress, g.compress);
   gl.uniform1f(u.cmpX, split);
+  gl.uniform1f(u.cmpDir, gradeView.dir === "h" ? 1 : 0);
   const m = gamutToRec709(g.log, g.logGamut);
   gl.uniformMatrix3fv(u.gamut, true, new Float32Array(m));
   const li = logInput(g.log, g.logRange);
@@ -493,10 +495,11 @@ export function gradeFrame(img: CanvasImageSource, sw: number, sh: number, g: Gr
 }
 
 /**
- * What the preview shows (the export always shows the grade): «on», «off» (the picture before), or «split» (before on
- * the left of `x`, after on the right). Kept here so the drawing reads it without passing it through everything.
+ * What the preview shows (the export always shows the grade): «on», «off» (the picture before), or «split» (before
+ * and after on either side of a line at `x` of the width, or of the height when `dir` is "h": before on the left, or
+ * on top). Kept here so the drawing reads it without passing it through everything.
  */
-export const gradeView: { mode: "on" | "off" | "split"; x: number } = { mode: "on", x: 0.5 };
+export const gradeView: { mode: "on" | "off" | "split"; x: number; dir: "v" | "h" } = { mode: "on", x: 0.5, dir: "v" };
 export const setGradeView = (mode: "on" | "off" | "split", x?: number) => {
   gradeView.mode = mode;
   if (x != null) gradeView.x = x;
@@ -547,14 +550,17 @@ export function gradeLayers(img: CanvasImageSource, sw: number, sh: number, laye
     // several layers: the before/after line drawn here, over the original
     const c = copy(run.length, cur, w, h);
     const g = c.getContext("2d")!;
+    const across = gradeView.dir === "h";
     g.save();
     g.beginPath();
-    g.rect(0, 0, w * split, h);
+    if (across) g.rect(0, 0, w, h * split);
+    else g.rect(0, 0, w * split, h);
     g.clip();
     g.drawImage(img, 0, 0, w, h);
     g.restore();
     g.fillStyle = "#fff";
-    g.fillRect(Math.round(w * split) - 1, 0, 2, h);
+    if (across) g.fillRect(0, Math.round(h * split) - 1, w, 2);
+    else g.fillRect(Math.round(w * split) - 1, 0, 2, h);
     cur = c;
   }
   return { img: cur, width: w, height: h };

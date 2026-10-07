@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
 import { diagReport, previewShot } from "./diag";
@@ -20,6 +20,7 @@ import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
 import Icon from "../Icon";
+import { canTalk, hear, hush, record, say, type RecordingHandle } from "./talk";
 import type { Run } from "./Inspector";
 import { PEAK_RATE, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
@@ -240,9 +241,11 @@ export default function AssistantPanel({
       if (round === MAX_CHECKS) setMsgs((m) => [...m, { role: "assistant", text: c.verdict, done: steps }]);
     }
   };
-  const send = async (words = text) => {
+  /** Sends a request; resolves with حيدرة's reply (null when nothing was answered). `spoken`: said by voice. */
+  const send = async (words = text, spoken = false): Promise<string | null> => {
     const message = words.trim();
-    if (!message || busy || readOnly) return;
+    if (!message || busy || readOnly) return null;
+    let reply: string | null = null;
     setText("");
     const history = msgs.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
     setMsgs((m) => [...m, { role: "user", text: diag && diagOn ? `🩺 ${message}` : message }]);
@@ -252,12 +255,13 @@ export default function AssistantPanel({
         const report = await diagReport(diag());
         const r = await postJson<{ reply: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() });
         setMsgs((m) => [...m, { role: "assistant", text: r.reply }]);
+        reply = r.reply;
       } catch (e) {
         setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
       } finally {
         setBusy(null);
       }
-      return;
+      return reply;
     }
     try {
       setBusy("نسمع الصوت ونلقى السكتات…");
@@ -275,7 +279,9 @@ export default function AssistantPanel({
         selected,
         quiet,
         look,
+        spoken,
       });
+      reply = r.reply;
       let done = 0;
       let now = tl;
       if (r.commands.length) {
@@ -357,6 +363,86 @@ export default function AssistantPanel({
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
     } finally {
       setBusy(null);
+    }
+    return reply;
+  };
+
+  // ───────── talking with حيدرة ─────────
+  const [recording, setRecording] = useState(false);
+  const [talk, setTalk] = useState<null | "listening" | "hearing" | "thinking" | "speaking">(null);
+  const [level, setLevel] = useState(0);
+  // the microphone buttons only where the browser can record (decided in the browser, never on the server)
+  const talkable = useSyncExternalStore(noSubscribe, canTalk, () => false);
+  const recRef = useRef<RecordingHandle | null>(null);
+  const talkRef = useRef(false);
+  // the voice turns run for minutes: they always send with the latest timeline, selection and conversation
+  const sendRef = useRef(send);
+  useEffect(() => {
+    sendRef.current = send;
+  });
+  const voiceError = (e: unknown) => setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
+  useEffect(
+    () => () => {
+      talkRef.current = false;
+      recRef.current?.cancel();
+      hush();
+    },
+    [],
+  );
+  /** 🎤 a voice message: press to talk, press again to send. */
+  const voiceMessage = async () => {
+    if (recRef.current) return recRef.current.stop();
+    try {
+      const h = await record({ onLevel: setLevel });
+      recRef.current = h;
+      setRecording(true);
+      const r = await h.done;
+      recRef.current = null;
+      setRecording(false);
+      if (!r) return;
+      setBusy("أكتب كلامك…");
+      const said = await hear(projectId, r).finally(() => setBusy(null));
+      if (said) await sendRef.current(said);
+    } catch (e) {
+      recRef.current = null;
+      setRecording(false);
+      voiceError(e);
+    }
+  };
+  /** 🎧 a conversation: حيدرة listens, does it, answers aloud, and listens again — until it is turned off. */
+  const conversation = async () => {
+    if (talkRef.current) {
+      talkRef.current = false;
+      recRef.current?.cancel();
+      hush();
+      setTalk(null);
+      return;
+    }
+    talkRef.current = true;
+    try {
+      while (talkRef.current) {
+        setTalk("listening");
+        const h = await record({ untilQuiet: true, onLevel: setLevel });
+        recRef.current = h;
+        const r = await h.done;
+        recRef.current = null;
+        if (!talkRef.current) break;
+        if (!r) continue;
+        setTalk("hearing");
+        const said = await hear(projectId, r);
+        if (!said || !talkRef.current) continue;
+        setTalk("thinking");
+        const answer = await sendRef.current(said, true);
+        if (!answer || !talkRef.current) continue;
+        setTalk("speaking");
+        await say(projectId, answer);
+      }
+    } catch (e) {
+      voiceError(e);
+    } finally {
+      talkRef.current = false;
+      recRef.current = null;
+      setTalk(null);
     }
   };
 
@@ -520,6 +606,31 @@ export default function AssistantPanel({
           </p>
         ) : null;
       })()}
+      {(talk || recording) && (
+        <div className="flex items-center gap-2 border-t border-jw-line bg-jw-accent/10 px-3 py-2 text-xs" role="status" aria-live="polite">
+          <span className="flex h-4 w-10 items-end gap-0.5" aria-hidden>
+            {[0.5, 1, 0.7, 0.9].map((k, i) => (
+              <span key={i} className="w-1.5 rounded-full bg-jw-accent transition-all" style={{ height: `${Math.max(15, Math.min(100, level * 100 * k))}%` }} />
+            ))}
+          </span>
+          <span className="flex-1 font-semibold">
+            {recording
+              ? "أسجّل… اضغط 🎤 مرة ثانية لما تخلص"
+              : talk === "listening"
+                ? "🎧 أسمعك… تكلّم، وأفهم لحالي لما تسكت"
+                : talk === "hearing"
+                  ? "أكتب كلامك…"
+                  : talk === "thinking"
+                    ? "حيدرة يشتغل…"
+                    : "🔊 حيدرة يتكلم…"}
+          </span>
+          {talk === "speaking" && (
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-7 !px-2 text-[11px]" onClick={hush}>
+              قاطعه
+            </button>
+          )}
+        </div>
+      )}
       <form
         className="flex items-end gap-2 border-t border-jw-line p-2"
         onSubmit={(e) => {
@@ -542,6 +653,32 @@ export default function AssistantPanel({
             }
           }}
         />
+        {talkable && (
+          <>
+            <button
+              type="button"
+              className={`jw-btn jw-btn-icon shrink-0 ${recording ? "!border-jw-danger bg-jw-danger/15 text-jw-danger" : "jw-btn-quiet"}`}
+              disabled={readOnly || !!talk || (!!busy && !recording)}
+              onClick={() => void voiceMessage()}
+              aria-pressed={recording}
+              aria-label={recording ? "أرسل التسجيل" : "سجّل رسالة صوتية"}
+              title="🎤 رسالة صوتية: اضغط وتكلّم، واضغط مرة ثانية للإرسال"
+            >
+              <Icon name="mic" />
+            </button>
+            <button
+              type="button"
+              className={`jw-btn jw-btn-icon shrink-0 ${talk ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`}
+              disabled={readOnly || recording || (!!busy && !talk)}
+              onClick={() => void conversation()}
+              aria-pressed={!!talk}
+              aria-label={talk ? "أنهِ المكالمة" : "كلّم حيدرة بالصوت"}
+              title="🎧 كلّم حيدرة: تتكلم ويرد عليك بصوته وينفذ طلبك، لين توقفه"
+            >
+              {talk ? <Icon name="stop" /> : <span aria-hidden>🎧</span>}
+            </button>
+          </>
+        )}
         {diag && (
           <button type="button" className={`jw-btn jw-btn-icon shrink-0 ${diagOn ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`} onClick={() => setDiagOn((v) => !v)} aria-pressed={diagOn} aria-label="تشخيص" title="🩺 تشخيص (لك بس): حيدرة يفحص السجل والملفات والجهاز ويقول وش المشكلة، ويكتب رسالة للمطوّر">
             🩺
@@ -554,6 +691,8 @@ export default function AssistantPanel({
     </div>
   );
 }
+
+const noSubscribe = () => () => {};
 
 /** A reply as written: **bold**, and ```blocks``` (the designer's prompts) shown as copyable English blocks. */
 function MsgText({ text }: { text: string }) {

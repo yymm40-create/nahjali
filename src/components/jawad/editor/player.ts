@@ -7,6 +7,7 @@
 
 import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
 import { drawFrame, layersAt, type Frame } from "./render";
+import { gradeView } from "./grade-gl";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
 import { clipSound, soundKey } from "./voice";
@@ -467,6 +468,24 @@ export class Player {
       drawFrame(this.ctx, this.tl, this.shown(), this.frameOf);
     } catch (e) {
       console.warn("editor draw", e);
+    }
+  }
+
+  /**
+   * «احفظ الفريم»: the frame under the playhead at the project's full size, as the export makes it (the grade always
+   * on, whatever the before/after view of «التلوين» shows). PNG, lossless.
+   */
+  async frameBlob(): Promise<Blob | null> {
+    const was = gradeView.mode;
+    gradeView.mode = "on";
+    try {
+      this.draw();
+      return await new Promise<Blob | null>((ok) => this.canvas.toBlob(ok, "image/png"));
+    } catch {
+      return null;
+    } finally {
+      gradeView.mode = was;
+      this.draw();
     }
   }
 
