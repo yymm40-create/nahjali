@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { api, postJson } from "@/lib/fetch";
+import NotesDrag from "./NotesDrag";
 
 /** The thing that was under the click, in a few words (for the dashboard: what the note is about). */
 function describe(el: Element | null) {
@@ -22,7 +23,7 @@ type Spot = { x: number; y: number; vx: number; vy: number; target: string };
 type Shown = { id: string; name: string; note: string; x: number | null; y: number | null; vx: number | null; target: string; viewport: string };
 
 /**
- * «الملاحظ حسن»: a small icon on every page. A signed-in person presses it and writes their name and a note for the
+ * «الملاحظ حسن»: a floating button on every page (drag it anywhere). A signed-in person presses it and writes their name and a note for the
  * site's development straight away (pointing at an exact spot is optional); it goes to the dashboard's «الملاحظات» with where it was left.
  * An owner opening a note's link (?note=…) sees its pin on the page.
  */
@@ -100,18 +101,7 @@ export default function NotesPin() {
   return (
     <div dir="rtl" className="notes-pin">
       {/* the icon */}
-      {mode === "off" && (
-        <button
-          type="button"
-          onClick={start}
-          title="الملاحظ حسن: حط ملاحظتك على أي مكان في الصفحة"
-          aria-label="الملاحظ حسن: حط ملاحظة"
-          className="fixed bottom-4 left-4 z-[90] flex items-center gap-2 rounded-full border-2 border-white/60 bg-amber-400 px-4 py-2.5 text-base font-extrabold text-slate-900 shadow-xl transition hover:scale-105"
-          style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
-        >
-          <span className="text-2xl" aria-hidden>📝</span> الملاحظ حسن
-        </button>
-      )}
+      {mode === "off" && <NotesDrag onTap={start} />}
 
       {/* choosing the spot */}
       {mode === "pick" && (

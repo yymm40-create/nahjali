@@ -1,6 +1,9 @@
 "use client";
 
-// The feeling of a spoken line: one tap, or your own word. It is sent between [ ] (Eleven v4 audio tags).
+import { MINIMAX_FEELINGS } from "@config/jawad/feelings";
+
+// The feeling of a spoken line: one tap, or your own word. ElevenLabs takes it between [ ] (Eleven v4 audio tags);
+// a MiniMax voice has its own list (an emotion, or a sound written in the line like (laughs)).
 const FEELINGS = [
   ["", "بدون"],
   ["calm", "هادئ"],
@@ -16,7 +19,19 @@ const FEELINGS = [
   ["serious", "جدّي"],
 ] as const;
 
-export default function EmotionPicker({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+export default function EmotionPicker({ value, onChange, disabled, provider = "elevenlabs" }: { value: string; onChange: (v: string) => void; disabled?: boolean; provider?: "elevenlabs" | "minimax" }) {
+  if (provider === "minimax") {
+    return (
+      <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="المشاعر">
+        <span className="text-xs font-bold text-muted">المشاعر (MiniMax):</span>
+        {MINIMAX_FEELINGS.map(([v, label]) => (
+          <button key={v || "none"} type="button" role="radio" aria-checked={value === v} disabled={disabled} onClick={() => onChange(v)} className={`chip text-xs ${value === v ? "bg-gold text-on-gold" : ""}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="المشاعر">
       <span className="text-xs font-bold text-muted">المشاعر [ ]:</span>
