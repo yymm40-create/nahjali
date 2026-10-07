@@ -1,4 +1,5 @@
 // Price, attempts and safety limits. Edit freely.
+import { isFreeGuest } from "./site";
 
 export type QualityKey = "low" | "medium" | "high";
 
@@ -28,7 +29,7 @@ export const dailyTrialLimit = (user: { app_metadata?: Record<string, unknown> }
 /** Owner/test accounts: no free-trial limits (they need to test freely). */
 export const UNLIMITED_TRIAL_EMAILS = ["yymm40@gmail.com"];
 export const hasUnlimitedTrials = (email: string | undefined | null) =>
-  Boolean(email && UNLIMITED_TRIAL_EMAILS.includes(email.toLowerCase()));
+  Boolean(email && (UNLIMITED_TRIAL_EMAILS.includes(email.toLowerCase()) || isFreeGuest(email)));
 
 /** How many times a customer may generate their base character. */
 export const ATTEMPTS_ALLOWED = 3;

@@ -4,7 +4,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isAdmin, isUnlimited } from "@config/site";
+import { isUnlimited } from "@config/site";
 
 export const LIMITS = {
   edits_screenwriter: { label: "تعديلات السيناريست", hint: "طلبات «تعديل» و«توجيه» في محادثة السيناريست، لكل مشروع", default: 2, perUser: true },
@@ -109,7 +109,7 @@ export async function emailAccess(section: AccessSection, email?: string | null,
 
 /** «كتيب نهج علي»: may this user open it? The owner always can. */
 export async function bookletOpenFor(email?: string | null) {
-  if (isAdmin(email)) return true;
+  if (isUnlimited(email)) return true;
   const rows = await limitRows();
   const own = await emailAccess("booklet", email, rows);
   if (own !== undefined) return own;
