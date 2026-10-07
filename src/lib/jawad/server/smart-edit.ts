@@ -55,6 +55,8 @@ export interface EditBody {
   frames?: unknown;
   /** Video, «الأجزاء»: the full-size frames at the start and the end of the cut (they become the first/last frames). */
   cutFrames?: unknown;
+  /** Video, «الأجزاء»: the sound in the seconds right before and after the cut (short WAVs), so the sound carries on. */
+  cutSounds?: unknown;
   expectedCoins?: unknown;
   /** The generator to make the edit with (another one of the same kind may be picked; default: the original's). */
   generatorId?: unknown;
@@ -90,6 +92,15 @@ const PART_REFS_MAX = 9;
 /** The cut's pictures: the last two frames before it (one when it starts at 0) and the frame it lands on. */
 function cutMeta<T>(cut: { start: number }, make: (role: RefRole, name: string) => T): T[] {
   return [...(cut.start >= PREV_GAP ? [make("reference", "prev1")] : []), make("reference", "prev2"), make("reference", "end")];
+}
+
+/** A short WAV of the sound around a cut, sent by the page (or null: none, or not a WAV of a sensible size). */
+function readSound(data: unknown): Buffer | null {
+  if (typeof data !== "string") return null;
+  const m = /^data:audio\/wav;base64,([A-Za-z0-9+/=]+)$/.exec(data);
+  if (!m) return null;
+  const bytes = Buffer.from(m[1], "base64");
+  return bytes.length > 44 && bytes.length <= 1_500_000 && bytes.toString("ascii", 0, 4) === "RIFF" ? bytes : null;
 }
 
 /** The price lines of the edit itself (on top of the generation). Null when the owner switched one off. */
@@ -248,6 +259,22 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
     const found = await refsFor(user.id, ups.map((u) => ({ uploadId: u.id, role: "reference" as RefRole })));
     const own = meta.slice(cutMeta(cut!, (role, name) => outMeta(role, name)).length);
     meta = [...named(found.meta, shots.map((s) => s[1])), ...own].slice(0, PART_REFS_MAX);
+    // the sound right before and after the cut, so voices, effects and music carry on (when the clip has sound)
+    if (settings.audio !== false) {
+      const snd = (b.cutSounds ?? {}) as { before?: unknown; after?: unknown };
+      const sounds: { uploadId: string; role: RefRole }[] = [];
+      const soundNames: string[] = [];
+      for (const [data, name] of [[snd.before, "sound_before"], [snd.after, "sound_after"]] as const) {
+        const bytes = readSound(data);
+        if (!bytes) continue;
+        const up = await uploadFromBuffer(user.id, new Uint8Array(bytes), `${name}.wav`).catch(() => null);
+        if (up?.status === "ready") {
+          sounds.push({ uploadId: up.id, role: "reference" });
+          soundNames.push(name);
+        }
+      }
+      if (sounds.length) meta = [...meta, ...named((await refsFor(user.id, sounds)).meta, soundNames)];
+    }
   } else if (mode === "same") {
     const up = await uploadFromOutput(user.id, out.id);
     if (up.status !== "ready") throw new UserError(up.error ?? "تعذّر تجهيز الصورة.", 400);
@@ -382,7 +409,7 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
       const task =
         edit.mode === "parts"
           ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip, cut in so that nobody can see the joins.
-CONTINUITY (the most important thing): ${names.includes("prev1") ? `@prev1 and @prev2 are the LAST TWO FRAMES of the original before the cut (${PREV_GAP} s apart, at ${(edit.cut!.start - PREV_GAP).toFixed(1)} s and ${edit.cut!.start.toFixed(1)} s): together they show where everything is and which way and how fast it moves.` : `@prev2 is the original's frame at ${edit.cut!.start.toFixed(1)} s, right where the cut starts.`} The new clip's very first moment is the instant right after @prev2: identical framing, camera position and lens, the same people in the same places and poses, the same light, and every motion carrying on in the same direction at the same speed. It ends exactly on @end (the original's frame at ${edit.cut!.end.toFixed(1)} s), matching it in framing, positions and poses. Say this plainly at the start of the prompt (the first moment continues from @prev2; the last moment matches @end); the other references are the original's characters and places.${partFill(edit)}`
+CONTINUITY (the most important thing): ${names.includes("prev1") ? `@prev1 and @prev2 are the LAST TWO FRAMES of the original before the cut (${PREV_GAP} s apart, at ${(edit.cut!.start - PREV_GAP).toFixed(1)} s and ${edit.cut!.start.toFixed(1)} s): together they show where everything is and which way and how fast it moves.` : `@prev2 is the original's frame at ${edit.cut!.start.toFixed(1)} s, right where the cut starts.`} The new clip's very first moment is the instant right after @prev2: identical framing, camera position and lens, the same people in the same places and poses, the same light, and every motion carrying on in the same direction at the same speed. It ends exactly on @end (the original's frame at ${edit.cut!.end.toFixed(1)} s), matching it in framing, positions and poses. @prev1/@prev2 are NOT the new clip's first frame and must not appear in it as a still: they only tell what comes right before. Say this plainly at the start of the prompt (the first moment continues from @prev2; the last moment matches @end).${names.some((n) => n.startsWith("sound_")) ? ` SOUND CONTINUITY: ${names.includes("sound_before") ? "@sound_before is the original's sound in the seconds right before the cut" : ""}${names.includes("sound_before") && names.includes("sound_after") ? " and " : ""}${names.includes("sound_after") ? "@sound_after the sound right after it" : ""}: the new clip's sound continues it seamlessly — the same voices (timbre, pitch, pace) with any line in progress finishing naturally, the same ambience and sound effects, and the same music (tempo, key, instruments, level) running straight through both joins, no new music or sudden silence.` : ""} The other references are the original's characters and places.${partFill(edit)}`
           : "Mode: the WHOLE clip is made again as a fresh generation, with the same settings and references (the old video is not sent to the generator).";
       const parts: ClaudePart[] = [
         { type: "text", text: settingsText(def, s, job.mode, meta) },

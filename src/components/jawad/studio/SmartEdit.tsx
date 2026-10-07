@@ -7,7 +7,7 @@ import type { JobView, OutputView } from "@/lib/jawad/labels";
 import { cutRange, EDIT_LIMITS, frameTimes, type EditMode, type EditRange } from "@/lib/jawad/smart-edit";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
-import { grabFrames } from "./frames";
+import { grabFrames, grabSounds } from "./frames";
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const fmt = (s: number) => (Number.isFinite(s) ? s.toFixed(1) : "—");
@@ -113,6 +113,9 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
           const prev = Math.max(0, cut.start - 0.2);
           const [prev1, prev2, last] = await grabFrames(out.url, [prev, cut.start, cut.end], null, 0.92);
           send.cutFrames = { prev1, prev2, last };
+          // and the sound around the cut (voices, effects, music carry on)
+          const [before, after] = await grabSounds(out.url, [{ from: cut.start - 2.5, to: cut.start }, { from: cut.end, to: cut.end + 2.5 }]);
+          send.cutSounds = { before, after };
         }
       }
     } catch {
