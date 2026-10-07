@@ -83,6 +83,15 @@ export async function readFrame(data: unknown, maxBytes: number, maxSide: number
   return bytes;
 }
 
+/** «جزء»: seconds between the two frames before the cut (the motion the new piece carries on). */
+const PREV_GAP = 0.2;
+/** Seedance 2.0 takes 9 pictures at most. */
+const PART_REFS_MAX = 9;
+/** The cut's pictures: the last two frames before it (one when it starts at 0) and the frame it lands on. */
+function cutMeta<T>(cut: { start: number }, make: (role: RefRole, name: string) => T): T[] {
+  return [...(cut.start >= PREV_GAP ? [make("reference", "prev1")] : []), make("reference", "prev2"), make("reference", "end")];
+}
+
 /** The price lines of the edit itself (on top of the generation). Null when the owner switched one off. */
 function editLines(def: GeneratorDef, table: Record<string, number | null>) {
   const video = def.output === "video";
@@ -176,12 +185,14 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   if (mode === "whole" || mode === "full") {
     meta = await sourceRefs();
   } else if (mode === "parts") {
-    refStyle = "frames";
+    // The new piece continues straight out of the original: the generator gets the last two frames before the cut
+    // (where things are and how they move), the frame it must land on, and the original's own references. Seedance
+    // takes these only as references (first/last frames can't be mixed with other pictures).
+    refStyle = "references";
     settings.duration = cut!.seconds;
-    // With first/last frames the shape follows the first frame (the original's own frame, so the same shape)
-    settings.ratio = "adaptive";
+    const own = await sourceRefs();
     // Priced with the original's size; the real frames are checked before the job is made
-    meta = [outMeta("first_frame", "image1", randomUUID()), outMeta("last_frame", "image2", randomUUID())];
+    meta = [...cutMeta(cut!, (role, name) => outMeta(role, name, randomUUID())), ...own].slice(0, PART_REFS_MAX);
   } else {
     refStyle = "references";
     meta = [outMeta("reference", "result")];
@@ -223,12 +234,20 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   }
   // «الأجزاء»: the frames at both cuts become the new clip's first and last frames (checked like any upload)
   if (mode === "parts") {
-    const c = (b.cutFrames ?? {}) as { first?: unknown; last?: unknown };
-    const firstUp = await uploadFromBuffer(user.id, new Uint8Array(await readFrame(c.first, 6_000_000, 6000)), `cut-${cut!.start}s.jpg`);
-    const lastUp = await uploadFromBuffer(user.id, new Uint8Array(await readFrame(c.last, 6_000_000, 6000)), `cut-${cut!.end}s.jpg`);
-    if (firstUp.status !== "ready" || lastUp.status !== "ready") throw new UserError(firstUp.error ?? lastUp.error ?? "تعذّر تجهيز لقطات القص.", 400);
-    const found = await refsFor(user.id, [{ uploadId: firstUp.id, role: "first_frame" }, { uploadId: lastUp.id, role: "last_frame" }]);
-    meta = named(found.meta, ["image1", "image2"]);
+    const c = (b.cutFrames ?? {}) as { prev1?: unknown; prev2?: unknown; first?: unknown; last?: unknown };
+    const prev2 = c.prev2 ?? c.first;
+    const shots: [unknown, string, string][] = [
+      ...(cut!.start >= PREV_GAP && c.prev1 ? ([[c.prev1, "prev1", `cut-${(cut!.start - PREV_GAP).toFixed(1)}s.jpg`]] as [unknown, string, string][]) : []),
+      [prev2, "prev2", `cut-${cut!.start}s.jpg`],
+      [c.last, "end", `cut-${cut!.end}s.jpg`],
+    ];
+    const ups = [];
+    for (const [data, , file] of shots) ups.push(await uploadFromBuffer(user.id, new Uint8Array(await readFrame(data, 6_000_000, 6000)), file));
+    const bad = ups.find((u) => u.status !== "ready");
+    if (bad) throw new UserError(bad.error ?? "تعذّر تجهيز لقطات القص.", 400);
+    const found = await refsFor(user.id, ups.map((u) => ({ uploadId: u.id, role: "reference" as RefRole })));
+    const own = meta.slice(cutMeta(cut!, (role, name) => outMeta(role, name)).length);
+    meta = [...named(found.meta, shots.map((s) => s[1])), ...own].slice(0, PART_REFS_MAX);
   } else if (mode === "same") {
     const up = await uploadFromOutput(user.id, out.id);
     if (up.status !== "ready") throw new UserError(up.error ?? "تعذّر تجهيز الصورة.", 400);
@@ -362,7 +381,8 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
       const s = job.inputs.settings;
       const task =
         edit.mode === "parts"
-          ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip that starts exactly at @${names[0]} (the original frame at ${edit.cut!.start.toFixed(1)} s) and ends exactly at @${names[1]} (the original frame at ${edit.cut!.end.toFixed(1)} s).${partFill(edit)}`
+          ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip, cut in so that nobody can see the joins.
+CONTINUITY (the most important thing): ${names.includes("prev1") ? `@prev1 and @prev2 are the LAST TWO FRAMES of the original before the cut (${PREV_GAP} s apart, at ${(edit.cut!.start - PREV_GAP).toFixed(1)} s and ${edit.cut!.start.toFixed(1)} s): together they show where everything is and which way and how fast it moves.` : `@prev2 is the original's frame at ${edit.cut!.start.toFixed(1)} s, right where the cut starts.`} The new clip's very first moment is the instant right after @prev2: identical framing, camera position and lens, the same people in the same places and poses, the same light, and every motion carrying on in the same direction at the same speed. It ends exactly on @end (the original's frame at ${edit.cut!.end.toFixed(1)} s), matching it in framing, positions and poses. Say this plainly at the start of the prompt (the first moment continues from @prev2; the last moment matches @end); the other references are the original's characters and places.${partFill(edit)}`
           : "Mode: the WHOLE clip is made again as a fresh generation, with the same settings and references (the old video is not sent to the generator).";
       const parts: ClaudePart[] = [
         { type: "text", text: settingsText(def, s, job.mode, meta) },
