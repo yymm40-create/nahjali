@@ -7,6 +7,7 @@
 //   run   ─► runJob calls prepareEdit first: Claude writes the corrected prompt (the Super Director for videos), then
 //            the job is sent like any other. If Claude fails, the job fails and every coin comes back.
 
+import { tellSajjad } from "@/lib/film/sajjad";
 import { after } from "next/server";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
@@ -251,7 +252,8 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
       mode: final.e.mode.id,
       output_kind: def.output,
       prompt: "",
-      inputs: { settings: final.e.settings, instructions: "", refStyle, origin, edit },
+      // a film's clip stays tied to its film through every edit (so it can go back to it, and سجاد hears of it)
+      inputs: { settings: final.e.settings, instructions: "", refStyle, origin, edit, ...(source.inputs.film ? { film: source.inputs.film } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: final.coins,
       price_breakdown: final.lines,
@@ -271,6 +273,11 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   const row = (data as { job_id: string; created: boolean; balance: number | null }[])[0];
   const { data: job } = await db().from("jawad_jobs").select("*").eq("id", row.job_id).single();
   if (row.created) after(() => runJob(row.job_id));
+  const film = source.inputs.film;
+  if (row.created && film?.projectId) {
+    const asked = [notes, ...ranges.map((r) => `${r.from}–${r.to} ث: ${r.note}`)].filter(Boolean).join(" · ");
+    after(() => tellSajjad(film.projectId, `بدأ «تعديل ذكي» على ${film.genId ?? "مقطع"} (${mode === "parts" ? "جزء منه" : "كامل"} من جديد، بنفس المراجع): ${asked || "—"}`));
+  }
   return { kind: row.created ? "created" : "existing", job: job as JobRow, balance: row.balance };
 }
 
@@ -282,7 +289,7 @@ The user made an image with the PREVIOUS PROMPT and settings given in the messag
 
 When the mode is SAME (edit the same image): the generator receives @result as its input image. Write an edit prompt that states exactly what to change (where in the image and how) and says clearly that everything else must stay exactly as it is: composition, framing, people and their faces, poses, hands, clothing, every piece of text, colors, lighting, style and image quality. Refer to the input image only as @result.
 
-When the mode is FULL (make the image again): the generator does NOT receive @result; it receives only the references listed in the message (if any). Write a complete new prompt that keeps everything that was right in the previous prompt and result and fixes what the user asked, precisely enough that the same mistakes cannot happen again. Refer to references only by their @name, exactly as given; never mention @result.
+When the mode is FULL (make the image again): a FRESH GENERATION. The generator does NOT receive @result; it receives only the references listed in the message (if any). Write a complete, standalone prompt from the previous prompt's ideas with the user's change built in as simply how the image is. Write only what should be there, positively: never mention the previous image, a mistake, a fix or a change, and never describe the unwanted result, not even to forbid it (naming it brings it back). Refer to references only by their @name, exactly as given; never mention @result.
 
 Rules:
 - Write in English (the generator follows it best), except text that must appear in the image: keep it exactly in its language and spelling, inside double quotes.
@@ -338,21 +345,21 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
       const task =
         edit.mode === "parts"
           ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip that starts exactly at @${names[0]} (the original frame at ${edit.cut!.start.toFixed(1)} s) and ends exactly at @${names[1]} (the original frame at ${edit.cut!.end.toFixed(1)} s).`
-          : "Mode: the WHOLE clip is regenerated with the same settings and references.";
+          : "Mode: the WHOLE clip is made again as a fresh generation, with the same settings and references (the old video is not sent to the generator).";
       const parts: ClaudePart[] = [
         { type: "text", text: settingsText(def, s, job.mode, meta) },
-        { type: "text", text: `${task}\n\nPREVIOUS PROMPT (the original video was made with it):\n<<<\n${previous}\n>>>\n\nOriginal video: ${((Number(out?.duration_ms) || Number(source.inputs.settings.duration) * 1000) / 1000).toFixed(1)} s, settings ${JSON.stringify(source.inputs.settings)}.` },
+        { type: "text", text: `${task}\n\nPREVIOUS PROMPT (the ideas to keep; the old video was made with it):\n<<<\n${previous}\n>>>\n\nOriginal video: ${((Number(out?.duration_ms) || Number(source.inputs.settings.duration) * 1000) / 1000).toFixed(1)} s, settings ${JSON.stringify(source.inputs.settings)}.` },
       ];
       const frameUrls = await signed(edit.frames.map((f) => f.path));
       edit.frames.forEach((f, i) => {
-        if (frameUrls[i]) parts.push({ type: "text", text: `Frame of the original video at ${f.t.toFixed(1)} s:` }, { type: "image", url: frameUrls[i]! });
+        if (frameUrls[i]) parts.push({ type: "text", text: `Frame of the old video at ${f.t.toFixed(1)} s (for your understanding only):` }, { type: "image", url: frameUrls[i]! });
       });
       const refUrls = await signed(found.rows.filter((r) => r.kind === "image").slice(0, 8).map((r) => r.storage_path));
       found.rows.filter((r) => r.kind === "image").slice(0, 8).forEach((r, i) => {
         const m = meta[found.rows.indexOf(r)];
         if (refUrls[i]) parts.push({ type: "text", text: `@${m.name}:` }, { type: "image", url: refUrls[i]! });
       });
-      parts.push({ type: "text", text: `The user's notes:\n${asked}` });
+      parts.push({ type: "text", text: `What the user wants different (build it into the new prompt as simply how the shot is; never mention the old video or what was wrong):\n${asked}` });
       const r = await directorRun(EDIT_TASK, parts, names);
       prompt = r.prompt;
       usd = r.usd;

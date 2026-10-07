@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { FilmEpisode, FilmSeries } from "@/lib/film/series";
 import { assetInfo, assetViews, createEditorProject, importAssets, requireEditorProject, runCommands } from "./server";
 import { firstCut } from "./first-cut";
+import { appendChat } from "./chat";
 import { readTimeline } from "./model";
 import { SCENE_KEY } from "./film";
 
@@ -65,5 +66,7 @@ export async function assembleEpisode(series: FilmSeries, ep: FilmEpisode, userI
       p = await requireEditorProject(id, userId);
     }
   }
+  // سجاد hands حيدرة the episode (he reads it fresh at every answer)
+  if (!had) await appendChat(p, [{ role: "assistant", text: `📨 سجاد سلّمني كل تفاصيل الحلقة ${ep.number}: المسلسل وشخصياته، وكل مشهد بقصته ومقاطعه وحواراته. ركّبت المشاهد المحفوظة بالترتيب؛ قول لي وش تبي وأضيف المؤثرات والموسيقى على روح القصة.` }]).catch(() => {});
   return { id: p.id, waiting: scenes.filter((s) => !s.videoId).map((s) => ({ number: s.number, title: s.title })) };
 }
