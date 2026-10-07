@@ -55,36 +55,42 @@ export default async function FilmHomeView({ base }: { base: string }) {
     <div className="space-y-8">
       <header className="space-y-2 text-center">
         <p className="text-sm font-extrabold tracking-wide text-muted">🎞️ استوديو الجواد</p>
-        <h1 className="display text-4xl">صناعة فيلم من الصفر</h1>
+        <h1 className="display text-4xl">فيلم أو مسلسل، من الصفر</h1>
         <p className="font-bold text-muted">تبدأ بفكرتك، والموقع يمشي معك مرحلة مرحلة، وأنت اللي تعتمد كل خطوة.</p>
       </header>
 
-      {/* the choices, as big cards to swipe between */}
-      <section className="space-y-2" aria-label="مشاريعي">
-        <h2 className="display text-2xl">مشاريعي ({projects.length})</h2>
-        <div className="film-swipe">
-          <Link href={`${base}/new`} className="film-option" data-tone="gold">
-            <span className="film-option-icon" aria-hidden>🎬</span>
-            <span className="film-option-step">جديد</span>
-            <h3>ابدأ مشروع فيلم ✨</h3>
-            <p>اكتب فكرتك بسطرين، والسيناريست يبدأ معك.</p>
-          </Link>
-          <Link href={`${base}/series`} className="film-option" data-tone="light">
-            <span className="film-option-icon" aria-hidden>📺</span>
-            <span className="film-option-step">المسلسل الذكي</span>
-            <h3>مسلسل: حلقات ومشاهد</h3>
-            <p>كل مشهد يمرّ بنفس المراحل، وتركّب الحلقة من مشاهدها. لحالك أو مع فريقك.</p>
-          </Link>
-          {projects.map((p, i) => (
-            <Link key={p.id} href={`${base}/${p.id}`} className="film-option" style={{ animationDelay: `${Math.min(i, 6) * 0.06}s` }}>
-              <span className="film-option-icon" aria-hidden>{FILM_STAGES.find((s) => s.key === p.stage)?.icon ?? "🎞️"}</span>
-              <span className="film-option-step">{stageLabel(p.stage)}</span>
-              <h3 className="line-clamp-2">{p.title}</h3>
-              <p>آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
-            </Link>
-          ))}
-        </div>
+      {/* the two branches, side by side: a film, or a series (episodes → scenes, alone or with a team) */}
+      <section className="grid grid-cols-2 gap-3" aria-label="وش تبي تصنع؟">
+        <Link href={`${base}/new`} className="film-option !min-h-[230px] !w-auto" data-tone="gold">
+          <span className="film-option-icon" aria-hidden>🎬</span>
+          <span className="film-option-step">جديد</span>
+          <h3>فيلم سينمائي</h3>
+          <p>فكرتك بسطرين، والسيناريست يبدأ معك.</p>
+        </Link>
+        <Link href={`${base}/series`} className="film-option !min-h-[230px] !w-auto">
+          <span className="film-option-icon" aria-hidden>📺</span>
+          <span className="film-option-step">مع سجاد</span>
+          <h3>المسلسل الذكي</h3>
+          <p>حلقات ومشاهد، شخصيات وبيئات، لحالك أو مع فريقك.</p>
+        </Link>
       </section>
+
+      {/* the person's films, as big cards to swipe between */}
+      {projects.length > 0 && (
+        <section className="space-y-2" aria-label="أفلامي">
+          <h2 className="display text-2xl">أفلامي ({projects.length})</h2>
+          <div className="film-swipe">
+            {projects.map((p, i) => (
+              <Link key={p.id} href={`${base}/${p.id}`} className="film-option" style={{ animationDelay: `${Math.min(i, 6) * 0.06}s` }}>
+                <span className="film-option-icon" aria-hidden>{FILM_STAGES.find((s) => s.key === p.stage)?.icon ?? "🎞️"}</span>
+                <span className="film-option-step">{stageLabel(p.stage)}</span>
+                <h3 className="line-clamp-2">{p.title}</h3>
+                <p>آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-2" aria-label="كيف يمشي المشروع">
         <h2 className="display text-2xl">كيف يمشي المشروع؟</h2>

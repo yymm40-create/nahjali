@@ -11,6 +11,7 @@ import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
 import { GRADE_CHECK, GRADE_COMMANDS, GRADING_KNOW_HOW, gradeBrief, MAX_CHECKS } from "./assistant-guide";
 import { readScope, scopeLine } from "./scopes";
+import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading-library";
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { FX_LIST } from "./effects";
 import { TR_LIST } from "./transitions";
@@ -122,6 +123,8 @@ RULES:
 
 ${GRADING_KNOW_HOW}
 
+${GRADING_LESSONS}
+
 TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
 ${KNOW_HOW}`;
@@ -203,7 +206,7 @@ interface Answer {
 const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown }) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown }, origin: string | null = null) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -242,6 +245,15 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       ...lookParts(look),
     ];
     last.content = parts;
+  }
+  // a colour request: the library's cases most like this clip (its scope as the person sees it now) and these words
+  if (aboutColour(message)) {
+    const seen = look?.frames.find((f) => f.graded && f.scope)?.scope ?? look?.frames.find((f) => f.scope)?.scope ?? null;
+    const cases = await caseParts(nearestCases(seen, message), origin);
+    if (cases.length) {
+      const last = merged[merged.length - 1];
+      last.content = [...(typeof last.content === "string" ? [{ type: "text", text: last.content } as ClaudePart] : last.content), ...cases];
+    }
   }
 
   let usd = 0;
@@ -343,7 +355,7 @@ const CHECK_SCHEMA = {
  * «يشيك التلوين»: Claude sees the clip after its colour change (pictures and scopes) and either approves it or sends
  * the corrections (checked like any of its commands). The page applies them and asks again, up to MAX_CHECKS rounds.
  */
-export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unknown; round?: unknown; request?: unknown; timeline?: unknown; look?: unknown }) {
+export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unknown; round?: unknown; request?: unknown; timeline?: unknown; look?: unknown }, origin: string | null = null) {
   stillOpen(p);
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
   const assets = await assetViews(p.id);
@@ -360,8 +372,11 @@ export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unkno
     `WHAT THE PERSON ASKED: ${String(b.request ?? "").slice(0, 1000)}`,
     `THE CLIP ${clip.id}: grading layers now ${JSON.stringify(clip.grades.map(gradeBrief))}`,
   ].join("\n\n");
+  // the library's two cases most like the result as it is now (to judge it by experience, not only by numbers)
+  const after = look.frames.find((f) => f.graded && f.scope)?.scope ?? null;
+  const cases = await caseParts(nearestCases(after, String(b.request ?? ""), 2), origin);
   const r = await charged(who, "editor_price_claude", 1, "حيدرة يشيك التلوين في حيدرة كت", () =>
-    callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look)] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
+    callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
       console.error("grade check", e);
       throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يشيك الحين.", 502);
     }),
