@@ -48,7 +48,8 @@ export default async function FilmHomeView({ base }: { base: string }) {
   // Read through RLS: the user only ever sees their own projects
   const supabase = await createClient();
   const { data } = await supabase.from("film_projects").select("*").order("updated_at", { ascending: false });
-  const projects = (data ?? []) as FilmProject[];
+  // a series' scenes live in their series («المسلسل الذكي»)
+  const projects = ((data ?? []) as FilmProject[]).filter((p) => !p.series_id);
 
   return (
     <div className="space-y-8">
@@ -67,6 +68,12 @@ export default async function FilmHomeView({ base }: { base: string }) {
             <span className="film-option-step">جديد</span>
             <h3>ابدأ مشروع فيلم ✨</h3>
             <p>اكتب فكرتك بسطرين، والسيناريست يبدأ معك.</p>
+          </Link>
+          <Link href={`${base}/series`} className="film-option" data-tone="light">
+            <span className="film-option-icon" aria-hidden>📺</span>
+            <span className="film-option-step">المسلسل الذكي</span>
+            <h3>مسلسل: حلقات ومشاهد</h3>
+            <p>كل مشهد يمرّ بنفس المراحل، وتركّب الحلقة من مشاهدها. لحالك أو مع فريقك.</p>
           </Link>
           {projects.map((p, i) => (
             <Link key={p.id} href={`${base}/${p.id}`} className="film-option" style={{ animationDelay: `${Math.min(i, 6) * 0.06}s` }}>

@@ -82,6 +82,8 @@ export async function filmTrialState(user: Who): Promise<"open" | "done" | "full
 export async function canUseFilm(user: Who) {
   if (!user.email) return false;
   if (isAdmin(user.email) || isFreeGuest(user.email)) return true;
+  // «المسلسل الذكي»: someone a series' owner added to their team works on its scenes (on the owner's coins)
+  if (await inAnyTeam(user.id)) return true;
   // The owner's choices on /admin/limits: a decision for this email first, then the mode for everyone
   const own = await emailAccess("film", user.email);
   if (own !== undefined) return own;
@@ -122,16 +124,45 @@ async function loadProject(projectId: string) {
   return (data as FilmProject) ?? null;
 }
 
-/** API: loads a project and verifies the user owns it (the owner's admin role gives no extra access here). */
+/** Whether this person was added to the team of any series in team mode. */
+async function inAnyTeam(userId: string) {
+  const db = createAdminClient();
+  const { data } = await db.from("film_series_members").select("series_id").eq("user_id", userId).limit(50);
+  const ids = (data ?? []).map((r) => r.series_id as string);
+  if (!ids.length) return false;
+  const { count } = await db.from("film_series").select("id", { count: "exact", head: true }).in("id", ids).eq("mode", "team");
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Whether this person works in a series as a team member: the series is in team mode and its owner added them.
+ * (In individual mode only the owner works on it.)
+ */
+export async function isSeriesTeamMember(seriesId: string | null | undefined, userId: string) {
+  if (!seriesId) return false;
+  const db = createAdminClient();
+  const [{ data: s }, { data: m }] = await Promise.all([
+    db.from("film_series").select("mode").eq("id", seriesId).maybeSingle(),
+    db.from("film_series_members").select("user_id").eq("series_id", seriesId).eq("user_id", userId).maybeSingle(),
+  ]);
+  return s?.mode === "team" && Boolean(m);
+}
+
+/** The project's owner, or (for a scene of a series in team mode) one of the people its owner added. */
+export async function canOpenProject(project: FilmProject, userId: string) {
+  return project.user_id === userId || isSeriesTeamMember(project.series_id, userId);
+}
+
+/** API: loads a project and verifies the user may work on it (the owner's admin role gives no extra access here). */
 export async function getOwnedProject(projectId: string, userId: string) {
   const project = await loadProject(projectId);
-  if (!project || project.user_id !== userId) throw new UserError(FILM_MESSAGES.notFound, 404);
+  if (!project || !(await canOpenProject(project, userId))) throw new UserError(FILM_MESSAGES.notFound, 404);
   return project;
 }
 
 /** Pages: same check, 404 otherwise. */
 export async function requireProject(projectId: string, userId: string) {
   const project = await loadProject(projectId);
-  if (!project || project.user_id !== userId) notFound();
+  if (!project || !(await canOpenProject(project, userId))) notFound();
   return project;
 }

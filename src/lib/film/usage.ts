@@ -49,6 +49,16 @@ export interface StartJobInput {
   assetId?: string | null;
 }
 
+/** Who pays for a project's operations: its owner (a team member working on the owner's scene uses the owner's coins). */
+export async function payerOf(projectId: string, actor: { id: string; email?: string | null }): Promise<{ id: string; email?: string | null }> {
+  const db = createAdminClient();
+  const { data } = await db.from("film_projects").select("user_id").eq("id", projectId).maybeSingle();
+  const owner = data?.user_id as string | undefined;
+  if (!owner || owner === actor.id) return actor;
+  const { data: u } = await db.auth.admin.getUserById(owner);
+  return { id: owner, email: u.user?.email ?? null };
+}
+
 /**
  * Creates a job and reserves its estimated cost. If a job with this key already exists it is returned
  * as is (created: false) and nothing new is reserved.
@@ -83,8 +93,10 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   }
 
   const job = data as FilmJob;
+  // «المسلسل الذكي» in team mode: a scene's paid steps are charged to its owner (the series' owner), whoever presses
+  const payer = await payerOf(input.projectId, input.user);
   const { error: e2 } = await db.from("film_usage").insert({
-    user_id: input.user.id,
+    user_id: payer.id,
     project_id: input.projectId,
     job_id: job.id,
     service: input.service,
@@ -100,7 +112,7 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   }
   // «النقود الذكية»: hold the operation's coins (when coins are required); a short balance cancels the job
   try {
-    await reserveCoins(input.user, job.id, input.estimateUsd, COIN_LABELS[input.operation] ?? input.operation);
+    await reserveCoins(payer, job.id, input.estimateUsd, COIN_LABELS[input.operation] ?? input.operation);
   } catch (e) {
     await failJob(job.id, e);
     throw e;
