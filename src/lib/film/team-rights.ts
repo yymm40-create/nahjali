@@ -2,6 +2,7 @@
 
 /** The steps a member can be given. */
 export const TEAM_STAGES = [
+  { key: "bible", label: "وصف المسلسل والشخصيات والبيئات والخطة", icon: "📖" },
   { key: "screenwriter", label: "السيناريست", icon: "✍️" },
   { key: "sheets", label: "صانع الشيت", icon: "🎨" },
   { key: "director", label: "المخرج والتوليد والأصوات", icon: "🎥" },

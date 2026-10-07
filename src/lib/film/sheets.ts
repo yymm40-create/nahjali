@@ -479,7 +479,8 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
   const clean: Record<string, MapChoice> = {};
   const lines: string[] = [];
   for (const item of map) {
-    const choice: MapChoice = item.id === MASTER_ID ? "make" : (choices[item.id] ?? "make");
+    // the master is made — unless a series' scene takes its series' style picture as it is
+    const choice: MapChoice = item.id === MASTER_ID ? (choices[item.id] === "as_is" && project.series_id ? "as_is" : "make") : (choices[item.id] ?? "make");
     clean[item.id] = choice;
     if (choice === "make") continue;
     const active = assets.filter((a) => a.kind === "upload" && a.ref_key === item.id && a.status !== "rejected");
@@ -800,4 +801,24 @@ async function understandEdit(project: FilmProject, user: { id: string; email?: 
     await failJob(job.id, e);
     throw new UserError("ما قدرت أفهم التعديل الحين؛ جرّب مرة ثانية.", 502);
   }
+}
+
+/**
+ * A series' scene takes a character, a place or the style from its series as its sheet, as it is: the series' picture
+ * is copied in as this sheet's ready picture (chosen «📚 من المسلسل» on the map).
+ */
+export async function takeSeriesCast(project: FilmProject, sheetId: string, castId: unknown) {
+  if (!project.series_id) throw new UserError("هذا مو مشهد من مسلسل.", 400);
+  if (!/^[A-Z]{3}-\d{2}$/.test(sheetId)) throw new UserError("طلب غير صحيح.", 400);
+  const { data: c } = await db().from("film_series_cast").select("id,name,storage_path,status").eq("id", String(castId)).eq("series_id", project.series_id).maybeSingle();
+  if (!c?.storage_path || c.status !== "ready") throw new UserError("صورتها في المسلسل مو جاهزة بعد.", 409);
+  const name = `upload-${sheetId}-${Date.now()}.png`;
+  const path = `${projectDir(project)}/sheets/${name}`;
+  const copied = await storage.from(FILM_BUCKET).copy(c.storage_path, path);
+  if (copied.error) throw new UserError("ما قدرنا ننسخ الصورة؛ جرّب مرة ثانية.", 502);
+  await db().from("film_assets").update({ status: "rejected" }).eq("project_id", project.id).eq("kind", "upload").eq("ref_key", sheetId);
+  const { error } = await db().from("film_assets").insert({
+    project_id: project.id, kind: "upload", ref_key: sheetId, storage_path: path, file_name: name, mime: "image/png", status: "uploaded", meta: { series_cast: c.id, series_name: c.name },
+  });
+  if (error) throw error;
 }

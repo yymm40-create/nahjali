@@ -2,27 +2,40 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import "@/app/jawad-ai/film/film-theme.css";
 import { requireFilmUser } from "@/lib/film/access";
-import { episodesOf, membersOf, openSeries, scenesOf, teamWallet } from "@/lib/film/series";
+import { canEditBible, episodesOf, membersOf, openSeries, scenesOf, teamWallet, usernames } from "@/lib/film/series";
+import { castLinks, castOf } from "@/lib/film/series-cast";
+import SeriesGround from "../series/SeriesGround";
+import SajjadPanel from "../SajjadPanel";
 import { memberRights } from "@/lib/film/team";
 import TeamWallet from "../series/TeamWallet";
 import { FILM_STAGES } from "@config/film";
 import SeriesBoard from "../series/SeriesBoard";
 import SeriesTeam from "../series/SeriesTeam";
 
-/** One series: its episodes, each with its scenes (small squares on top, the scenes' cards below), and its team. */
+/**
+ * One series: its groundwork (description, look, characters, places), its episodes with their scenes (small squares on
+ * top, the scenes' cards below, who does each), its team and coins — and سجاد, the consultant, a tap away.
+ */
 export default async function SeriesView({ id, base }: { id: string; base: string }) {
   const { user, allowed } = await requireFilmUser(`${base}/series/${id}`);
   if (!allowed) redirect(base);
   const open = await openSeries(id, user.id);
   if (!open) notFound();
   const { series, owner } = open;
-  const [episodes, scenes, members, wallet, mine] = await Promise.all([
+  const [episodes, scenes, allMembers, wallet, mine, cast, canEdit, ownerName] = await Promise.all([
     episodesOf(series.id),
     scenesOf(series.id),
-    owner ? membersOf(series.id) : Promise.resolve([]),
+    membersOf(series.id),
     teamWallet(series.id),
     owner ? Promise.resolve(null) : memberRights(series.id, user.id),
+    castOf(series.id),
+    canEditBible(series, user.id),
+    usernames([series.user_id]).then((m) => m.get(series.user_id) ?? null),
   ]);
+  const members = owner ? allMembers : [];
+  const links = await castLinks(cast);
+  // the people scenes can be given to: the leader and the team
+  const team = series.mode === "team" ? [{ userId: series.user_id, username: ownerName, leader: true }, ...allMembers.map((m) => ({ userId: m.userId, username: m.username, leader: false }))] : [];
   const stage = (k: string) => FILM_STAGES.find((s) => s.key === k);
 
   return (
@@ -40,9 +53,20 @@ export default async function SeriesView({ id, base }: { id: string; base: strin
       {/* the team's own coins (in individual mode only while something is left in it, to take it back) */}
       {(series.mode === "team" || wallet.balance > 0) && <TeamWallet seriesId={series.id} owner={owner} balance={wallet.balance} ledger={wallet.ledger} />}
 
+      <SeriesGround
+        seriesId={series.id}
+        canEdit={canEdit}
+        about={series.about}
+        bible={series.bible ?? ""}
+        style={series.style ?? ""}
+        cast={cast.map((c) => ({ id: c.id, kind: c.kind, name: c.name, description: c.description, status: c.status, error: c.error, url: links[c.id] ?? null }))}
+      />
+
       <SeriesBoard
         seriesId={series.id}
         owner={owner}
+        canAssign={canEdit}
+        team={team}
         episodes={episodes.map((e) => ({
           id: e.id,
           number: e.number,
@@ -52,6 +76,9 @@ export default async function SeriesView({ id, base }: { id: string; base: strin
       />
 
       <SeriesTeam seriesId={series.id} owner={owner} mode={series.mode} members={members} mine={mine} />
+
+      {/* سجاد: the consultant, a tap away */}
+      <SajjadPanel kind="series" id={series.id} />
     </div>
   );
 }

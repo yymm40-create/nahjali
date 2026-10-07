@@ -46,12 +46,25 @@ interface Props {
   styles: StyleCard[];
   /** Edits left in this stage (the owner's limits); null = no limit. */
   editsLeft: number | null;
+  /** a series' scene: its series' ready characters, places and style */
+  seriesCast?: SeriesCast[];
+}
+
+type SeriesCast = { id: string; kind: "style" | "character" | "place"; name: string; url: string };
+
+/** The series' picture standing for a map item: the style for the master, else the same name (or one containing the other). */
+function castFor(m: MapItem, cast: SeriesCast[]) {
+  if (m.id === MASTER) return cast.find((c) => c.kind === "style") ?? null;
+  const kind = m.kind === "character" ? "character" : "place";
+  const n = (s: string) => s.replace(/[\s«»"'()]/g, "");
+  const same = cast.filter((c) => c.kind === kind);
+  return same.find((c) => n(c.name) === n(m.name)) ?? same.find((c) => n(m.name).includes(n(c.name)) || n(c.name).includes(n(m.name))) ?? null;
 }
 
 const MASTER = "STY-00";
 const TEST = "STYLE-TEST";
 
-export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft }: Props) {
+export default function SheetsWorkspace({ projectId, stage, versions, assets, job, imagesRunning, styles, editsLeft, seriesCast = [] }: Props) {
   const router = useRouter();
   const filmBase = useFilmBase();
   const [writing, setWriting] = useState(job?.status === "running");
@@ -212,6 +225,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             locked={understanding.status !== "awaiting_approval"}
             savedChoices={choices}
             assets={assets}
+            seriesCast={seriesCast}
             busy={busy || writing}
             onRefresh={refresh}
             onRemove={(assetId) => send({ action: "remove_upload", assetId })}
@@ -345,10 +359,11 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
 
 /** Per map item: generate it, or use the user's own picture (as is / as a reference for a new sheet). */
 function MapChoices({
-  projectId, map, locked, savedChoices, assets, busy, onRefresh, onRemove, onApprove, onSend, warning,
+  projectId, map, locked, savedChoices, assets, seriesCast, busy, onRefresh, onRemove, onApprove, onSend, warning,
 }: {
   projectId: string;
   map: MapItem[];
+  seriesCast: SeriesCast[];
   locked: boolean;
   savedChoices: Record<string, MapChoice>;
   assets: Asset[];
@@ -366,6 +381,37 @@ function MapChoices({
   const input = useRef<HTMLInputElement>(null);
   const uploadsOf = (id: string) => assets.filter((a) => a.kind === "upload" && a.ref_key === id && a.status !== "rejected");
   const missing = map.filter((m) => (choices[m.id] ?? "make") !== "make" && uploadsOf(m.id).length === 0);
+
+  // a series' scene: take the series' own picture for an item, as it is
+  async function takeFromSeries(items: { sheetId: string; castId: string }[]) {
+    setError("");
+    try {
+      for (const it of items) {
+        setUploading(it.sheetId);
+        await postJson(`/api/film/projects/${projectId}/sheets`, { action: "use_series_cast", sheetId: it.sheetId, castId: it.castId });
+      }
+      setChoices((c) => ({ ...c, ...Object.fromEntries(items.map((it) => [it.sheetId, "as_is" as MapChoice])) }));
+      onRefresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUploading("");
+    }
+  }
+  // the series' characters, places and style already made are taken by themselves the first time the map shows
+  const auto = useRef(false);
+  useEffect(() => {
+    if (locked || auto.current || !seriesCast.length) return;
+    auto.current = true;
+    const items = map.flatMap((m) => {
+      const c = castFor(m, seriesCast);
+      return c && !savedChoices[m.id] && !assets.some((a) => a.kind === "upload" && a.ref_key === m.id && a.status !== "rejected") ? [{ sheetId: m.id, castId: c.id }] : [];
+    });
+    if (items.length) {
+      const t = setTimeout(() => void takeFromSeries(items), 0);
+      return () => clearTimeout(t);
+    }
+  });
 
   async function upload(files: File[]) {
     const sheetId = fileFor.current;
@@ -406,8 +452,13 @@ function MapChoices({
           <div key={m.id} className="space-y-2 rounded-2xl border border-line p-3">
             <p className="font-extrabold">{m.id} · {m.name}</p>
             <p className="text-sm font-bold text-muted">{m.coverage}</p>
-            {m.id === "STY-00" ? (
+            {m.id === "STY-00" && !castFor(m, seriesCast) ? (
               <p className="text-xs font-bold text-muted">الماستر يتصنع دائمًا؛ هو مرجع الستايل لكل الفيلم.</p>
+            ) : m.id === "STY-00" && !locked ? (
+              <div className="flex flex-wrap gap-2 text-sm font-bold">
+                <button className={`chip ${c === "as_is" ? "bg-gold text-on-gold" : ""}`} disabled={!!uploading} onClick={() => takeFromSeries([{ sheetId: m.id, castId: castFor(m, seriesCast)!.id }])}>📚 ستايل المسلسل (كما هو)</button>
+                <button className={`chip ${c === "make" ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: "make" })}>🎨 اصنع ماستر جديد</button>
+              </div>
             ) : locked ? (
               <span className="chip">{c === "make" ? "🎨 نصنعه" : c === "as_is" ? "📤 صورتك كما هي" : c === "reference" ? "🖼️ شيت من صورتك" : "🔄 نحوّل الشخصية الواقعية إلى كرتون"}</span>
             ) : (
@@ -415,6 +466,11 @@ function MapChoices({
                 {([["make", "🎨 اصنعه لي"], ["as_is", "📤 عندي جاهز (كما هو)"], ["reference", "🖼️ عندي صورة، اصنع منها شيت"], ["convert", "🔄 حوّل شخصية واقعية إلى كرتون (حتى ٤ صور)"]] as const).map(([k, label]) => (
                   <button key={k} className={`chip ${c === k ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: k })}>{label}</button>
                 ))}
+                {castFor(m, seriesCast) && (
+                  <button className="chip border-2 border-[#1f63f0]" disabled={!!uploading} onClick={() => takeFromSeries([{ sheetId: m.id, castId: castFor(m, seriesCast)!.id }])}>
+                    📚 من المسلسل: {castFor(m, seriesCast)!.name}
+                  </button>
+                )}
               </div>
             )}
             {c !== "make" && (
@@ -428,6 +484,7 @@ function MapChoices({
                     )}
                   </div>
                 ))}
+                {shown.some((u) => u.meta?.series_cast) && <span className="chip text-xs">📚 من شخصيات المسلسل</span>}
                 {!locked && (c !== "convert" || ups.length < MAX_REFERENCE_UPLOADS) && (
                   <button className="btn btn-ghost min-h-10 px-3 text-sm" disabled={Boolean(uploading)} onClick={() => { fileFor.current = m.id; input.current?.click(); }}>
                     {uploading === m.id ? "نرفع…" : c === "convert" ? `أضف صور (${ups.length}/${MAX_REFERENCE_UPLOADS})` : ups.length ? "غيّر الصورة" : "ارفع الصورة"}
