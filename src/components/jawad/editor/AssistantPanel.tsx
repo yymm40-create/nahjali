@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
+import { gradeLayers } from "./grade-gl";
+import type { Grade } from "@/lib/editor/grade";
 import { makeHookAsset, makeMusicAsset, makeSfxAsset } from "./make";
 import { placeHookDesign, placeMusic } from "@/lib/editor/make";
 import { hookAspect } from "@/lib/editor/hook-design";
@@ -191,7 +193,9 @@ export default function AssistantPanel({
         return null;
       }
     }
-    return { clipId: c.id, frames };
+    // graded clips: the same moments after its colour grading too (what the person sees), to judge the grade
+    const graded = c.grades.some((g) => g.on) ? await gradedFrames(frames.slice(0, 4), c.grades, (t) => Math.max(0, (t - c.start) * c.speed)).catch(() => []) : [];
+    return { clipId: c.id, frames: [...frames.slice(0, graded.length ? 4 : 8), ...graded] };
   };
   const send = async (words = text) => {
     const message = words.trim();
@@ -467,4 +471,22 @@ function CodeBlock({ code }: { code: string }) {
       </pre>
     </div>
   );
+}
+
+/** Pictures of a clip (JPEG, base64) passed through its grading layers, as the export draws them. */
+async function gradedFrames(frames: { t: number; data: string }[], layers: Grade[], own: (t: number) => number) {
+  const out: { t: number; data: string; graded: true }[] = [];
+  for (const f of frames) {
+    const img = new Image();
+    img.src = `data:image/jpeg;base64,${f.data}`;
+    await img.decode();
+    const g = gradeLayers(img, img.naturalWidth, img.naturalHeight, layers, own(f.t), true);
+    if (!g) continue;
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    c.getContext("2d")!.drawImage(g.img, 0, 0, c.width, c.height);
+    out.push({ t: f.t, data: c.toDataURL("image/jpeg", 0.72).split(",")[1], graded: true });
+  }
+  return out;
 }

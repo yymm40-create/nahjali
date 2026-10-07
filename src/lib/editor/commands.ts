@@ -2,7 +2,7 @@
 // and plugins all send the same JSON, so whatever one can do, the others can too, and each is checked the same way.
 // Pure: `apply` never changes the timeline it gets.
 
-import { MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
+import { applyLook, LOOKS, MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
 import {
   clipEnd,
   clipLength,
@@ -66,7 +66,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   color?: Partial<ColorGrade> | null;
   /** «القص» (crop): how much of each side is hidden, 0…0.45; null = the whole picture */
   crop?: Partial<Crop> | null;
-  /** «التلوين»: merged over one layer (`layer`, default the first; nested parts replaced whole); null = no grading */
+  /** «التلوين»: merged over one layer (`layer`, default the first; wheels, curves and the film parts field by field; a new `look` applied); null = no grading */
   grade?: (Partial<Grade> & { layer?: number }) | null;
   /** the layers all at once (add, remove, reorder) */
   grades?: Grade[];
@@ -516,7 +516,18 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           const i = Math.max(0, Math.min(MAX_LAYERS - 1, Math.round(layer)));
           const list = [...clip.grades];
           while (list.length <= i) list.push({ ...NEUTRAL_GRADE, name: list.length ? "" : "" });
-          list[i] = readGrade({ ...NEUTRAL_GRADE, ...list[i], ...patch })!;
+          // the nested parts merge field by field (Claude sends only what changes); a look is applied, not just named
+          const cur = list[i];
+          let base: Grade = cur;
+          const look = typeof patch.look === "string" && patch.look !== cur.look ? LOOKS.find((l) => l.id === patch.look) : undefined;
+          if (look) base = applyLook(cur, look);
+          const merged: Record<string, unknown> = { ...NEUTRAL_GRADE, ...base, ...patch };
+          for (const k of ["lift", "gamma", "gain", "offset", "curves", "split", "halation", "grain", "vignette"] as const) {
+            const v = patch[k];
+            if (v && typeof v === "object" && !Array.isArray(v)) merged[k] = { ...base[k], ...v };
+          }
+          if (look) merged.look = look.id;
+          list[i] = readGrade(merged)!;
           clip.grades = list;
         }
       }
