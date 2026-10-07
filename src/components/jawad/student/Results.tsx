@@ -14,6 +14,7 @@ import { ErrorLine, PaidButton } from "./ui";
 const FILE_LABEL: Record<string, string> = {
   pdf: "PDF",
   pptx: "PPTX",
+  docx: "Word DOCX (قابل للتعديل)",
   txt: "نص TXT",
   trial_pdf: "النسخة التجريبية PDF",
   trial_pptx: "النسخة التجريبية PPTX",

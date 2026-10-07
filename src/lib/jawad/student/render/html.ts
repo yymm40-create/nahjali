@@ -3,6 +3,7 @@
 
 import { STYLES, type Design } from "@config/jawad/student";
 import type { Block, Doc, Question, SlidePlan } from "../model";
+import { frontPages } from "../pages";
 import { designCss, styleFor } from "./css";
 
 export interface RenderOpts {
@@ -12,6 +13,10 @@ export interface RenderOpts {
   sources?: { url: string; title: string; accessedAt: string }[];
   page?: "A4" | "A5";
   trial?: boolean;
+  /** the page count the student asked for: chapters flow on (no page per chapter), cover and contents only when it has room */
+  pages?: number;
+  /** type scale that lands the document on `pages` (1 = normal) */
+  scale?: number;
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -81,35 +86,58 @@ function sourcesHtml(o: RenderOpts) {
 const trialMark = (o: RenderOpts) =>
   o.trial ? `<div style="position:fixed;top:40%;left:0;right:0;text-align:center;font-size:64px;font-weight:800;color:rgba(200,30,30,.13);transform:rotate(-24deg);pointer-events:none;z-index:9">نسخة تجريبية</div>` : "";
 
-/** A book / reading booklet: cover, contents, chapters (an opener each), research sources. */
+/**
+ * A book / reading booklet: cover, contents, chapters (an opener each), research sources. One clear type scale (the
+ * title, the subtitle, chapter titles, sub-headings, body), wide margins and a thin frame on every page (unless the
+ * student turned it off). With a page count, chapters flow on and the cover / contents appear only when there is room.
+ */
 export function docHtml(doc: Doc, design: Design, o: RenderOpts) {
   const main = design.main;
   const cover = styleFor(design, "cover");
   const story = styleFor(design, "story");
   const size = o.page ?? "A4";
+  const fixed = (o.pages ?? 0) > 0;
+  const front = fixed ? frontPages(o.pages!, doc.chapters.length) : { cover: true, toc: doc.chapters.length > 1 };
+  const k = o.scale ?? 1;
   const css = `${designCss(design, o.fontFaces)}
-@page{size:${size};margin:18mm 16mm 20mm}
-@page :first{margin:0}
+@page{size:${size};margin:${size === "A4" ? "20mm 18mm 22mm" : "15mm 13mm 17mm"}}
+${front.cover ? "@page :first{margin:0}" : ""}
 .page-bg{position:fixed;inset:-30mm;z-index:-1}
-.cover{height:${size === "A4" ? "297mm" : "210mm"};display:flex;flex-direction:column;justify-content:center;padding:25mm;break-after:page}
-.cover h1{font-size:2.6em}
-.cover p{font-size:1.15em;color:var(--muted)}
+.cover{height:${size === "A4" ? "297mm" : "210mm"};display:flex;flex-direction:column;justify-content:center;padding:25mm;break-after:page;position:relative;z-index:1}
+.cover h1{font-size:2.7em;line-height:1.3;margin:0 0 .35em}
+.cover p{font-size:1.25em;color:var(--muted);margin:0}
+.doc-head{margin:0 0 1.4em;padding-bottom:.6em;border-bottom:1.5pt solid var(--accent)}
+.doc-head h1{font-size:2.1em;line-height:1.3;margin:0 0 .2em;color:var(--accent)}
+.doc-head p{font-size:1.15em;color:var(--muted);margin:0}
 .toc{break-after:page}
-.toc h2{color:var(--accent)}
+.toc h2{color:var(--accent);font-size:1.7em}
 .toc ol{line-height:2.2;font-size:1.05em}
-.chapter-open{padding:14mm 10mm;margin:0 -6mm 8mm;border-radius:6px}
-.chapter-open .num{font-size:.9em;color:var(--muted)}
-.chapter{break-before:page}
-body{font-size:${size === "A4" ? "12.5pt" : "11pt"}}`;
+.chapter-open{padding:${fixed ? "4mm 6mm" : "12mm 9mm"};margin:0 0 ${fixed ? "5mm" : "8mm"};border-radius:6px;break-after:avoid}
+.chapter-open .num{font-size:.85em;color:var(--muted);letter-spacing:.02em}
+${fixed ? ".chapter-open .num{font-size:.85em !important;line-height:1.4 !important;letter-spacing:.02em !important}" : ""}
+.chapter-open h2{font-size:${fixed ? "1.6em" : "1.85em"};line-height:1.35;margin:0}
+.chapter{${fixed ? "margin-top:1.6em" : "break-before:page"}}
+.chapter:first-of-type{margin-top:0}
+.blk-h{font-size:1.3em;line-height:1.4;margin:1.3em 0 .45em;break-after:avoid}
+.blk h4{font-size:1.08em;margin:0 0 .4em;break-after:avoid}
+.blk-p{line-height:1.95;text-align:justify;orphans:3;widows:3}
+main{position:relative;z-index:1}
+/* the page frame is drawn on the printed PDF (render/server.ts: framePdf), exactly at the page's edges */
+body{font-size:calc(${size === "A4" ? "12.5pt" : "11pt"} * ${k})}`;
+  const head = doc.subtitle ? `<p>${rich(doc.subtitle)}</p>` : "";
   const body = [
     `<div class="page-bg s-${main}"></div>`,
     trialMark(o),
-    `<section class="cover s-${cover}"><h1>${rich(doc.title)}</h1>${doc.subtitle ? `<p>${rich(doc.subtitle)}</p>` : ""}</section>`,
-    doc.chapters.length > 1 ? `<section class="toc s-${main}"><h2>المحتويات</h2><ol>${doc.chapters.map((c) => `<li>${rich(c.title)}</li>`).join("")}</ol></section>` : "",
+    front.cover ? `<section class="cover s-${cover}"><h1>${rich(doc.title)}</h1>${head}</section>` : "",
+    `<main>`,
+    front.cover ? "" : `<header class="doc-head s-${main}"><h1>${rich(doc.title)}</h1>${head}</header>`,
+    front.toc ? `<section class="toc s-${main}"><h2>المحتويات</h2><ol>${doc.chapters.map((c) => `<li>${rich(c.title)}</li>`).join("")}</ol></section>` : "",
     ...doc.chapters.map(
-      (c, i) => `<section class="chapter s-${main}"><div class="chapter-open s-${story}"><div class="num">الفصل ${i + 1}</div><h2>${rich(c.title)}</h2></div>${c.blocks.map((b) => blockHtml(b, design, o)).join("\n")}</section>`,
+      (c, i) =>
+        `<section class="chapter s-${main}"><div class="chapter-open s-${story}">${doc.chapters.length > 1 ? `<div class="num">الفصل ${i + 1}</div>` : ""}<h2>${rich(c.title)}</h2></div>${c.blocks.map((b) => blockHtml(b, design, o)).join("\n")}</section>`,
     ),
     sourcesHtml(o),
+    `</main>`,
   ].join("\n");
   return page(css, body, doc.title);
 }

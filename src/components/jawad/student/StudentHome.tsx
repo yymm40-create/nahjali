@@ -42,6 +42,7 @@ export default function StudentHome({
   const [mode, setMode] = useState<SourceMode>("files");
   const [focus, setFocus] = useState("");
   const [where, setWhere] = useState("");
+  const [auto, setAuto] = useState(true);
   const { busy, error, run } = useAsync();
 
   // stays "busy" until the next page opens, so the button never looks like it did nothing
@@ -70,13 +71,15 @@ export default function StudentHome({
         title: title.trim() || focus.trim().slice(0, 80) || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`,
         level: level === "آخر" ? other : level,
         audience,
-        brief: { purpose, purposeNote: purposeNote.trim(), mode, focus: focus.trim(), where: where.trim() },
+        brief: { purpose, purposeNote: purposeNote.trim(), mode, focus: focus.trim(), where: where.trim(), auto },
       });
       // «صادق يبحث لي»: no material page — the research starts now, and the page carries on by itself to the outputs
       // (a refusal — not enough coins — is shown on the next page, where it can be started again)
       if (mode === "research") await post(`/api/jawad/student/projects/${r.id}`, { action: "research_material", focus: focus.trim() || title.trim(), where: where.trim(), confirm: true, key: newKey() }).catch(() => null);
       setGoing(true);
-      router.push(`${STUDENT.base}/${r.id}${mode === "research" ? "?go=research" : ""}`);
+      // the query keeps both choices even before SQL 0035 (no brief saved)
+      const q = [mode === "research" ? "go=research" : "", auto ? "" : "auto=0"].filter(Boolean).join("&");
+      router.push(`${STUDENT.base}/${r.id}${q ? `?${q}` : ""}`);
     });
   };
 
@@ -251,6 +254,7 @@ export default function StudentHome({
             </div>
           )}
         </div>
+        <AutoSwitch on={auto} onChange={setAuto} />
         <ErrorLine error={error} />
         <div className="text-center">
           <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-10 !text-base" onClick={create} disabled={busy || going || left === 0}>
@@ -299,5 +303,26 @@ export default function StudentHome({
       </section>
       )}
     </div>
+  );
+}
+
+/** «صادق يكمل تلقائيًا»: on, he reads, understands and makes everything by himself; off, the student moves each step. */
+export function AutoSwitch({ on, onChange, compact = false }: { on: boolean; onChange: (on: boolean) => void; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      className={`flex w-full items-center gap-3 rounded-2xl border bg-white text-start transition-all ${compact ? "p-2 !w-auto" : "p-3"} ${on ? "border-violet-200" : "border-jw-line"}`}
+    >
+      <span className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${on ? "bg-violet-600" : "bg-jw-surface-3"}`} aria-hidden>
+        <span className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-all ${on ? "right-0.5" : "right-5"}`} />
+      </span>
+      <span className="min-w-0">
+        <b className="block text-sm">🤖 {STUDENT_ASSISTANT.name} يكمل الخطوات تلقائيًا: {on ? "شغّال" : "طافي"}</b>
+        {!compact && <span className="block text-[11px] text-jw-muted">{on ? "يقرأ ويفهم ويصنع لحاله، وأنت تشوف النتيجة." : "أنت تنتقل كل خطوة بنفسك: تراجع الفهم وخطة كل ناتج وتعتمدها قبل التصنيع."}</span>}
+      </span>
+    </button>
   );
 }

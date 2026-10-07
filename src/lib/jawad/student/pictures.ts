@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
-import { defaultDesign, fontById, styleById, type Design } from "@config/jawad/student";
+import { defaultDesign, fontById, pagesOf as askedPages, styleById, type Design } from "@config/jawad/student";
 import { GPT_IMAGE_2_SIZES, gptImage2OutputTokens } from "@config/jawad/generators";
 import { providerUserId } from "@/lib/jawad/server/providers/common";
 import { openaiImage } from "@/lib/jawad/server/providers/openai";
@@ -49,6 +49,33 @@ function blockLines(b: Block): string[] {
   return out;
 }
 
+/**
+ * Exactly `n` pages (the student's page count): the whole text in order, about the same words on each page, a chapter's
+ * title as the heading of the page it starts on (or the page's own chapter).
+ */
+function paginateTo(sections: { title: string; lines: string[] }[], n: number): PicturePage[] {
+  const items = sections.flatMap((sec, k) => [
+    ...(k > 0 || sections.length > 1 ? [{ title: sec.title, line: `## ${sec.title}` }] : []),
+    ...sec.lines.flatMap((line) => (words(line) > 40 ? (line.match(/[^.!?؟]+[.!?؟]*\s*/g) ?? [line]) : [line]).map((x) => ({ title: sec.title, line: x.trim() }))),
+  ]).filter((x) => x.line);
+  const total = items.reduce((a, x) => a + words(x.line), 0);
+  const pages: PicturePage[] = Array.from({ length: n }, () => ({ title: "", lines: [], rendered: null }));
+  let acc = 0;
+  for (const it of items) {
+    // the page this line falls on by its middle word, so every page gets its share
+    const w = words(it.line);
+    const at = Math.min(n - 1, Math.floor(((acc + w / 2) / Math.max(1, total)) * n));
+    acc += w;
+    const pg = pages[at];
+    if (!pg.title) pg.title = it.title;
+    if (it.line.startsWith("## ") && it.line.slice(3) === pg.title && !pg.lines.length) continue;
+    pg.lines.push(it.line);
+  }
+  // a page left empty (very short text): it carries the title page's heading only
+  for (const pg of pages) if (!pg.title) pg.title = sections[0]?.title ?? "";
+  return pages;
+}
+
 /** Cuts lines into pages of about WORDS_PER_PAGE words (a long line is split at sentence ends). */
 function paginate(sections: { title: string; lines: string[] }[]): PicturePage[] {
   const pages: PicturePage[] = [];
@@ -87,7 +114,9 @@ export function pagesOf(o: Output): PicturePage[] {
     return [...paginate([{ title: "الأسئلة", lines: ask }]), ...paginate([{ title: "الإجابات", lines: ans }])];
   }
   const d = o.content as Doc;
-  return paginate(d.chapters.map((c) => ({ title: c.title, lines: c.blocks.flatMap(blockLines) })));
+  const sections = d.chapters.map((c) => ({ title: c.title, lines: c.blocks.flatMap(blockLines) }));
+  const n = askedPages(o.settings);
+  return n ? paginateTo(sections, n) : paginate(sections);
 }
 
 const designOf = (o: Output): Design => (o.settings.design as Design) ?? defaultDesign(o.kind === "quiz" ? "bento" : "notebook");

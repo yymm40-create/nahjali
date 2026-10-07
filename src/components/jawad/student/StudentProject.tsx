@@ -11,6 +11,7 @@ import ResearchRun from "./ResearchRun";
 import SourcesStep from "./SourcesStep";
 import { useAutopilot } from "./autopilot";
 import { STEP_LOOK } from "./look";
+import { AutoSwitch } from "./StudentHome";
 import { ErrorLine } from "./ui";
 import UnderstandingStep from "./UnderstandingStep";
 
@@ -42,9 +43,14 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   // «صادق يبحث لي» (the first page's choice; `?go=research` when the brief couldn't be saved): no upload page and no
   // approval of the understanding — research, reading and understanding run by themselves up to the outputs
   const fromHome = useSyncExternalStore(noSubscribe, () => window.location.search.includes("go=research"), () => false);
+  // «صادق يكمل تلقائيًا» (the first page's switch, changed here any time): off, nothing moves on by itself
+  const offFromHome = useSyncExternalStore(noSubscribe, () => window.location.search.includes("auto=0"), () => false);
+  const [autoSet, setAutoSet] = useState<boolean | null>(null);
+  const autoOn = autoSet ?? (project.brief.auto && !offFromHome);
   const [filesInstead, setFilesInstead] = useState(false);
   const researchMode = project.brief.mode === "research" || fromHome || p.state.sources.some((s) => isResearchSource(s.name));
-  const researching = researchMode && !filesInstead && ["sources", "review", "understanding"].includes(project.stage);
+  // with صادق off, a researched material goes the usual way (the text, then the understanding to approve)
+  const researching = autoOn && researchMode && !filesInstead && ["sources", "review", "understanding"].includes(project.stage);
   const written = p.state.sources.some((s) => s.kind === "text" && isResearchSource(s.name));
   const searching = p.state.jobs.some((j) => j.kind === "research" && (j.status === "queued" || j.status === "running"));
   // started once for each point it can start from (the research running, then written); a stop is not restarted alone
@@ -57,15 +63,15 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
     start("all");
   }, [researching, auto.mode, written, searching, project.stage, start]);
   useEffect(() => {
-    if (project.stage === "scope" && !auto.mode) start("step");
-  }, [project.stage, auto.mode, start]);
+    if (autoOn && project.stage === "scope" && !auto.mode) start("step");
+  }, [autoOn, project.stage, auto.mode, start]);
   // a material left half-read (the page was closed): reading goes on when it is opened again
   const resumed = useRef(false);
   useEffect(() => {
     if (resumed.current || auto.mode) return;
     resumed.current = true;
-    if (project.stage === "review" && !researching) start("material");
-  }, [project.stage, auto.mode, start, researching]);
+    if (autoOn && project.stage === "review" && !researching) start("material");
+  }, [autoOn, project.stage, auto.mode, start, researching]);
   // a new step opens at the top of the steps bar, smoothly
   const navRef = useRef<HTMLElement>(null);
   const firstView = useRef(true);
@@ -80,7 +86,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   const HINT: Record<StepId, string> = {
     sources: project.brief.mode === "research" ? "خلّ صادق يبحث ويكتب مادتك، أو أضف ملفاتك، ثم «تابع»." : "أضف صورك أو ملفات PDF أو نصك، ثم «تابع».",
     understanding: "اقرأ كيف فهم صادق مادتك، واعتمده أو صحّحه.",
-    outputs: "اختر نواتجك، أجب الأسئلة القصيرة، واضغط «ابدأ».",
+    outputs: autoOn ? "اختر نواتجك، أجب الأسئلة القصيرة، واضغط «ابدأ»." : "اختر نواتجك واضغط «ابدأ»، وبعدها افتح كل ناتج: راجع خطته واعتمدها قبل التصنيع.",
   };
   const purpose = PURPOSES.find((x) => x.id === project.brief.purpose);
   const vi = STEPS.findIndex((s) => s.id === view);
@@ -101,6 +107,15 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <AutoSwitch
+            compact
+            on={autoOn}
+            onChange={(on) => {
+              setAutoSet(on);
+              if (!on) auto.stop();
+              p.act({ action: "auto", on }).catch(() => null);
+            }}
+          />
           {p.state.balance !== null && <span className="jw-chip !px-3 !py-1 !text-sm">🪙 {p.state.balance}</span>}
           <button
             type="button"
@@ -166,7 +181,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
         view === "sources" && <SourcesStep p={p} onContinue={() => start("material")} />
       )}
       {view === "understanding" && !researching && <UnderstandingStep p={p} />}
-      {view === "outputs" && <OutputsStep p={p} onStart={() => start("all")} researching={project.stage === "scope"} working={Boolean(auto.mode)} />}
+      {view === "outputs" && <OutputsStep p={p} autoOn={autoOn} onStart={() => start("all")} onCreated={() => autoOn && start("all")} onResearch={() => start("step")} researching={project.stage === "scope"} working={Boolean(auto.mode)} />}
       </div>
     </div>
   );

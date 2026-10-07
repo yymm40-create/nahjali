@@ -60,12 +60,91 @@ export async function htmlToPdf(html: string, o: { numbered?: boolean; slides?: 
       preferCSSPageSize: true,
       displayHeaderFooter: Boolean(o.numbered),
       headerTemplate: "<span></span>",
-      footerTemplate: o.numbered ? `<div style="width:100%;text-align:center;font-size:9px;color:#777;font-family:sans-serif"><span class="pageNumber"></span></div>` : "<span></span>",
+      footerTemplate: o.numbered ? FOOTER : "<span></span>",
       timeout: 240_000,
     });
     // A PDF that came out empty is a failure, never "done"
     if (pdf.length < 1000) throw new Error("empty PDF");
     return { pdf: Buffer.from(pdf), fit };
+  } finally {
+    await b.close();
+  }
+}
+
+const FOOTER = `<div style="width:100%;text-align:center;font-size:9px;color:#777;font-family:sans-serif"><span class="pageNumber"></span></div>`;
+
+/**
+ * A thin double frame drawn on every page of a printed PDF (the cover, when it has one, stays without): drawn on the
+ * file itself so it sits exactly at the same place on each page, whatever the content does.
+ */
+export async function framePdf(pdf: Buffer, o: { color: string; size: "A4" | "A5"; skipFirst: boolean }) {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const doc = await PDFDocument.load(pdf, { ignoreEncryption: true });
+  const n = parseInt(o.color.replace("#", "").slice(0, 6), 16);
+  const color = rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+  const mm = 72 / 25.4;
+  const side = (o.size === "A4" ? 10 : 7) * mm;
+  const top = (o.size === "A4" ? 10 : 7) * mm;
+  // the page number sits under the frame, in the bottom margin
+  const bottom = (o.size === "A4" ? 13 : 10) * mm;
+  doc.getPages().forEach((page, i) => {
+    if (o.skipFirst && i === 0) return;
+    const { width, height } = page.getSize();
+    page.drawRectangle({ x: side, y: bottom, width: width - 2 * side, height: height - top - bottom, borderColor: color, borderWidth: 0.9, opacity: 0, borderOpacity: 0.85 });
+    const g = 2.6;
+    page.drawRectangle({ x: side + g, y: bottom + g, width: width - 2 * side - 2 * g, height: height - top - bottom - 2 * g, borderColor: color, borderWidth: 0.35, opacity: 0, borderOpacity: 0.45 });
+  });
+  return Buffer.from(await doc.save());
+}
+
+/** Pages of a PDF. */
+export async function pdfPageCount(pdf: Buffer) {
+  const { PDFDocument } = await import("pdf-lib");
+  return (await PDFDocument.load(pdf, { ignoreEncryption: true })).getPageCount();
+}
+
+/**
+ * A document printed to exactly `want` pages when the type can get it there: the type scale is bisected between
+ * FIT_SCALE.min and .max (one browser, a few prints). Returns the closest print and how many pages it has.
+ */
+export async function fitPdf(make: (scale: number) => string, want: number, o: { numbered?: boolean } = {}) {
+  const { FIT_SCALE, nextScale } = await import("../pages");
+  const b = await browser();
+  try {
+    const page = await b.newPage();
+    const print = async (scale: number) => {
+      await page.setContent(make(scale), { waitUntil: "load", timeout: 120_000 });
+      await page.evaluate("document.fonts.ready");
+      const pdf = Buffer.from(
+        await page.pdf({ printBackground: true, preferCSSPageSize: true, displayHeaderFooter: Boolean(o.numbered), headerTemplate: "<span></span>", footerTemplate: o.numbered ? FOOTER : "<span></span>", timeout: 240_000 }),
+      );
+      if (pdf.length < 1000) throw new Error("empty PDF");
+      return { pdf, pages: await pdfPageCount(pdf), scale };
+    };
+    let best = await print(1);
+    const better = (x: typeof best) => {
+      const d = Math.abs(x.pages - want) - Math.abs(best.pages - want);
+      // as close as the best, and nearer the normal size
+      if (d < 0 || (d === 0 && Math.abs(x.scale - 1) < Math.abs(best.scale - 1))) best = x;
+    };
+    if (best.pages === want) return best;
+    // too many pages: smaller type (down to min); too few: bigger (up to max)
+    let lo = best.pages > want ? FIT_SCALE.min : 1;
+    let hi = best.pages > want ? 1 : FIT_SCALE.max;
+    // the limit first: if even it misses, there is nothing to bisect
+    const edge = await print(best.pages > want ? lo : hi);
+    better(edge);
+    if ((best.pages > want && edge.pages > want) || (best.pages < want && edge.pages < want)) return best;
+    for (let i = 0; i < 6; i++) {
+      const mid = nextScale(lo, hi);
+      if (mid === null) break;
+      const r = await print(mid);
+      better(r);
+      if (r.pages === want) return r;
+      if (r.pages > want) hi = mid;
+      else lo = mid;
+    }
+    return best;
   } finally {
     await b.close();
   }

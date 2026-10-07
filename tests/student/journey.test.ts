@@ -19,8 +19,8 @@ describe("where Claude researches («وين يبحث»)", () => {
 
 describe("the first page's brief", () => {
   it("reads what was stored, and falls back for old materials", () => {
-    expect(readBrief(undefined)).toEqual({ purpose: "exam", purposeNote: "", mode: "files", focus: "", where: "" });
-    expect(readBrief({ purpose: "teach", mode: "research", focus: "الخلية", purposeNote: "لطلاب صفي" })).toEqual({ purpose: "teach", purposeNote: "لطلاب صفي", mode: "research", focus: "الخلية", where: "" });
+    expect(readBrief(undefined)).toEqual({ purpose: "exam", purposeNote: "", mode: "files", focus: "", where: "", auto: true });
+    expect(readBrief({ purpose: "teach", mode: "research", focus: "الخلية", purposeNote: "لطلاب صفي" })).toEqual({ purpose: "teach", purposeNote: "لطلاب صفي", mode: "research", focus: "الخلية", where: "", auto: true });
     expect(readBrief({ purpose: "hack", mode: "x" })).toMatchObject({ purpose: "exam", mode: "files" });
   });
   it("tells the writer the purpose", () => {
@@ -69,7 +69,7 @@ describe("the design is Claude's choice", () => {
     const picks = [{ kind: "book", style: "editorial", heading: "messiri", body: "markazi", accent: "amiri", custom: "", colors: { bg: "#ffffff", paper: "#ffffff", ink: "#000000", muted: "#555555", accent: "#aa0000", accent2: "#000000", line: "#dddddd" }, texture: "none", note: "ألوان هادئة" }];
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ picks }) }], usage: { input_tokens: 1, output_tokens: 1 } }))));
     const r = await pickDesigns(project, ["book", "audio"], "الخلية", "ألوان هادئة");
-    expect(r.designs.book).toEqual({ main: "editorial", roles: {}, fonts: { heading: "messiri", body: "markazi", accent: "amiri" }, custom: null });
+    expect(r.designs.book).toEqual({ main: "editorial", roles: {}, fonts: { heading: "messiri", body: "markazi", accent: "amiri" }, custom: null, frame: true });
     expect(r.designs.audio).toBeUndefined();
     expect(r.notes).toEqual({ book: "ألوان هادئة", audio: "ألوان هادئة" });
   });

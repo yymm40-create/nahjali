@@ -18,6 +18,7 @@
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "aws4fetch": "^1.0.20",
+    "docx": "^9.9.0",
     "harfbuzzjs": "^1.6.2",
     "mediabunny": "^1.61.3",
     "next": "16.3.8",

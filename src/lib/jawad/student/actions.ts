@@ -6,7 +6,7 @@ import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
 import { isUnlimited } from "@config/site";
-import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, researchPlaces, type Brief, type Design } from "@config/jawad/student";
+import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
@@ -109,6 +109,7 @@ function cleanBrief(v: unknown): Brief {
     mode: SOURCE_MODES.some((x) => x.id === b.mode) ? b.mode : "files",
     focus: text(b.focus, 2000),
     where: text(b.where, 2000),
+    auto: b.auto !== false,
   });
 }
 
@@ -376,6 +377,13 @@ export async function projectAction(user: User, id: string, b: Body) {
       await touch(p.id);
       return { ok: true };
     }
+    case "auto": {
+      // «صادق يكمل تلقائيًا» on or off (before SQL 0035 there is no brief to keep it in: the page keeps it for now)
+      const brief = { ...readBrief(p.brief), auto: b.on !== false };
+      const { error } = await db.from("student_projects").update({ brief }).eq("id", p.id);
+      if (error) console.error("student auto", error.message);
+      return { ok: true };
+    }
     case "start": {
       // The one «ابدأ» of the outputs page: every chosen output with the student's answers, the design picked by
       // Claude (never asked), and the special request passed to each. The page then runs them all (autopilot).
@@ -384,9 +392,11 @@ export async function projectAction(user: User, id: string, b: Body) {
       const list = wanted.filter((w, i) => OUTPUT_KINDS.some((o) => o.kind === w.kind) && wanted.findIndex((x) => x.kind === w.kind) === i);
       if (!list.length) throw new UserError("اختر ناتجًا واحدًا على الأقل.");
       const special = text(b.special, 3000);
+      // the design step: what the student wants it to look like (empty when they skipped it and left it to صادق)
+      const wish = readWish(b.design);
       const kinds = list.map((w) => String(w.kind));
       const u = await latestVersion<Understanding>(p.id, "understanding");
-      const { designs, notes } = await pickDesigns(p, kinds, u?.content.topic ?? p.title, special);
+      const { designs, notes } = await pickDesigns(p, kinds, u?.content.topic ?? p.title, special, wish);
       const existing = await outputs(p.id);
       const rows = list.map((w, i) => {
         const kind = String(w.kind) as Output["kind"];
@@ -467,7 +477,7 @@ function cleanDesign(v: unknown): Design | undefined {
     d.custom && typeof d.custom === "object" && d.custom.colors && Object.values(d.custom.colors).every(hexOk)
       ? { description: text(d.custom.description, 3000), colors: d.custom.colors, texture: (["none", "paper", "lines", "grid"].includes(d.custom.texture) ? d.custom.texture : "none") as "none", radius: Math.max(0, Math.min(24, Number(d.custom.radius) || 0)), notes: text(d.custom.notes, 3000) }
       : null;
-  return { main: d.main, roles, fonts: { heading: font(d.fonts?.heading, "readex"), body: font(d.fonts?.body, "plex"), accent: font(d.fonts?.accent, "amiri") }, custom };
+  return { main: d.main, roles, fonts: { heading: font(d.fonts?.heading, "readex"), body: font(d.fonts?.body, "plex"), accent: font(d.fonts?.accent, "amiri") }, custom, frame: d.frame !== false };
 }
 
 function cleanSettings(kind: Output["kind"], s: Body) {

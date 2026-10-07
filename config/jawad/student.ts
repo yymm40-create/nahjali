@@ -50,16 +50,18 @@ export interface Brief {
   focus: string;
   /** research: where to look (links or sites to keep to); empty = reliable sources anywhere */
   where: string;
+  /** «صادق» goes on through the steps by himself (on unless the student turned it off on the first page) */
+  auto: boolean;
 }
 
-export const emptyBrief = (): Brief => ({ purpose: "exam", purposeNote: "", mode: "files", focus: "", where: "" });
+export const emptyBrief = (): Brief => ({ purpose: "exam", purposeNote: "", mode: "files", focus: "", where: "", auto: true });
 
 /** A stored brief, checked (older materials have none). */
 export function readBrief(v: unknown): Brief {
   const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const purpose = PURPOSES.some((x) => x.id === b.purpose) ? (b.purpose as PurposeId) : "exam";
   const mode = SOURCE_MODES.some((x) => x.id === b.mode) ? (b.mode as SourceMode) : "files";
-  return { purpose, purposeNote: String(b.purposeNote ?? "").slice(0, 1000), mode, focus: String(b.focus ?? "").slice(0, 2000), where: String(b.where ?? "").slice(0, 2000) };
+  return { purpose, purposeNote: String(b.purposeNote ?? "").slice(0, 1000), mode, focus: String(b.focus ?? "").slice(0, 2000), where: String(b.where ?? "").slice(0, 2000), auto: b.auto !== false };
 }
 
 /** The links in «وين يبحث» (https only) and their sites. */
@@ -264,6 +266,8 @@ export interface Design {
   roles: Partial<Record<StyleRole, StyleId>>;
   fonts: FontPair;
   custom?: { description: string; colors: StyleDef["colors"]; texture: "none" | "paper" | "lines" | "grid"; radius: number; notes: string } | null;
+  /** a thin frame around every page (PDF and Word); on unless the student turned it off */
+  frame?: boolean;
 }
 
 export const defaultDesign = (main: StyleId = "notebook"): Design => ({ main, roles: {}, fonts: { ...styleById(main).pair }, custom: null });
@@ -274,3 +278,51 @@ export const STUDENT_ASSISTANT = { name: "صادق", icon: "🧑‍🎓" } as co
 /** The written source a research becomes is named «بحث صادق: …» (older projects: «بحث كلاود: …»). */
 export const RESEARCH_PREFIX = "بحث صادق";
 export const isResearchSource = (name: string) => name.startsWith(RESEARCH_PREFIX) || name.startsWith("بحث كلاود");
+
+// ───────────────────────────── the student's own choices for a file ─────────────────────────────
+
+/** Outputs with a design (style, fonts): the design step is shown when one of them is chosen. */
+export const DESIGNED_KINDS: string[] = ["summary", "explain", "book", "slides", "quiz"];
+
+/** Written outputs made as pages (PDF, and Word when asked): they take a page count, a file format and a design. */
+export const PAGED_KINDS = ["summary", "explain", "book"] as const;
+export const isPaged = (k: string) => (PAGED_KINDS as readonly string[]).includes(k);
+
+/** The page count the student asked for (0 = as the material needs). Kept exactly in the PDF. */
+export const MAX_PAGES = 300;
+export const pagesOf = (s: Record<string, unknown>) => Math.max(0, Math.min(MAX_PAGES, Math.round(Number(s.pages) || 0)));
+
+/** The file types of a written output: PDF, Word (DOCX, editable) or both. */
+export const FORMATS = [
+  { id: "pdf", label: "PDF" },
+  { id: "docx", label: "Word (DOCX) قابل للتعديل" },
+  { id: "both", label: "الاثنين" },
+] as const;
+export type FormatId = (typeof FORMATS)[number]["id"];
+export const formatOf = (s: Record<string, unknown>): FormatId => (FORMATS.some((f) => f.id === s.format) ? (s.format as FormatId) : "pdf");
+export const wantsDocx = (s: Record<string, unknown>) => formatOf(s) !== "pdf";
+
+/**
+ * What the student said about the design (the design step; empty when skipped): a style of the branch, their own
+ * ideas, fonts and whether pages have a frame. It always comes before Sadiq's own taste.
+ */
+export interface DesignWish {
+  style: StyleId | "";
+  ideas: string;
+  heading: string;
+  body: string;
+  frame: boolean;
+}
+export const emptyWish = (): DesignWish => ({ style: "", ideas: "", heading: "", body: "", frame: true });
+export function readWish(v: unknown): DesignWish {
+  const w = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const font = (x: unknown) => (FONTS.some((f) => f.id === x) ? String(x) : "");
+  return {
+    style: STYLES.some((s) => s.id === w.style) ? (w.style as StyleId) : "",
+    ideas: String(w.ideas ?? "").slice(0, 3000),
+    heading: font(w.heading),
+    body: font(w.body),
+    frame: w.frame !== false,
+  };
+}
+export const wishGiven = (w: DesignWish) => Boolean(w.style || w.ideas.trim() || w.heading || w.body);

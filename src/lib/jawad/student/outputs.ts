@@ -2,7 +2,7 @@
 // Each handler does one step per call (a chapter, a few questions, one audio part, one image, one render) and keeps
 // what it made, so a stopped run continues where it was and a failed part is made again alone.
 
-import { defaultDesign, outputName, STUDENT, type Design } from "@config/jawad/student";
+import { defaultDesign, isPaged, outputName, pagesOf, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
 import { ELEVEN_PRICE } from "@config/jawad/generators";
 import { providerUserId } from "@/lib/jawad/server/providers/common";
 import { elevenSpeech } from "@/lib/jawad/server/providers/elevenlabs";
@@ -15,8 +15,11 @@ import { allChars, allText, basedOn, levelLine, loadCtx, researchText, scopeRule
 import { getFile, getOutput, joinText, putFile, saveOutput, sdb, sources, type Output } from "./db";
 import type { Handler, Job, StepResult } from "./jobs";
 import { BLOCK_TYPES, docText, emptyImage, type AudioPlan, type Block, type Chapter, type Doc, type DocPlan, type Question, type QuizPlan, type SlidePlan } from "./model";
+import { docDocx } from "./render/docx";
 import { docHtml, quizHtml, transcriptHtml } from "./render/html";
-import { designFonts, fontFacesData, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
+import { colorsOf } from "./render/css";
+import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
+import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 
 /** Slides made as pictures with GPT Image 2 (the student's choice), and at which quality. */
@@ -54,6 +57,19 @@ const BLOCKS_SCHEMA = { type: "object", properties: { blocks: { type: "array", i
 
 const BLOCK_GUIDE = `Blocks (field "t"): h = sub-heading (text) · p = paragraph (text; **bold** and ==highlight== allowed sparingly) · list = bullet list (items[].text, optional items[].title) · note = a short margin note / tip · term = a term (title) and its definition (text) · quote = exact words from the material (text) and where (title) · addition = your own addition (only if allowed) · research = from the research (text + sources) · cards = parallel units (items: title + text) · steps = ordered steps (items) · compare = a table (rows[0] is the header row) · question = a review question · scene = a short scene / case (title + text).
 Unused fields: empty string / empty array.`;
+
+/** The student's own words about an output always win (the owner's rule): over the defaults, the density and taste. */
+const STUDENT_FIRST = `The student's own requests (the setting "extra", their requests, and "The student now asks") come FIRST: follow them literally and in full, over every default here and over your own preferences (length, order, focus, tone, what to include or leave out). The only limit: never invent facts the material doesn't support.`;
+
+const pageSize = (o: Output): PageSize => (o.settings.page === "A5" ? "A5" : "A4");
+
+/** Words each chapter should have when the student asked for a page count (weighted by the material it covers). */
+function chapterWords(c: Ctx, o: Output, plan: DocPlan) {
+  const pages = pagesOf(o.settings);
+  if (!pages || !isPaged(o.kind) || (o.kind === "book" && o.settings.writing === "verbatim")) return null;
+  const k = Number(o.settings._wordScale) || 1;
+  return wordBudget(pages, pageSize(o), plan.chapters.map((ch) => segChars(c, ch.segments) || 1)).chapters.map((w) => Math.max(40, Math.round(w * k)));
+}
 
 const DENSITY: Record<string, string> = {
   high: "very detailed: keep every idea, explain fully, many examples from the material",
@@ -105,7 +121,9 @@ export async function estimate(userId: string, o: Output, action: string, chapte
     return chapter >= 0 && chapter < p.chapters.length ? chapterUsd(chapter) : p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0);
   }
   const done = (o.content as Doc | null)?.chapters?.length ?? 0;
-  return p.chapters.reduce((s, _, i) => s + (i < done ? 0 : chapterUsd(i)), 0) + imgs(p.chapters);
+  // a page count may need the chapters written once more to land on it: held, and given back when not needed
+  const refit = pagesOf(o.settings) && !verbatim ? p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0) : 0;
+  return p.chapters.reduce((s, _, i) => s + (i < done ? 0 : chapterUsd(i)), 0) + imgs(p.chapters) + refit;
 }
 
 const segChars = (c: Ctx, ids: string[]) => ids.reduce((s, id) => s + (c.seg.get(id)?.text.length ?? 0), 0);
@@ -211,8 +229,12 @@ async function planStep(job: Job): Promise<StepResult> {
         : o.kind === "explain"
           ? "a NEW EXPLANATION: re-present the concepts in language suited to the level, unpack the terms"
           : `a READING BOOK / BOOKLET (${o.settings.writing === "summary" ? "a summary book" : "an explanatory book"})`;
+    const pages = pagesOf(o.settings);
+    const pagesLine = pages
+      ? `\nPAGE COUNT (the student's, kept exactly): the finished file is EXACTLY ${pages} page${pages > 1 ? "s" : ""} (${pageSize(o)}), about ${wordBudget(pages, pageSize(o), [1]).total} words of body text in all${frontPages(pages, 2).cover ? ", plus a cover" : ", with the title at the top of the first page (no cover)"}. Plan at most ${maxChapters(pages)} chapter${maxChapters(pages) > 1 ? "s" : ""}, sized for that length: choose what matters most when the material is longer than the pages, and go deeper when it is shorter.`
+      : "";
     const r = await askJson<{ title: string; subtitle: string; chapters: { title: string; purpose: string; segments: string[]; imageIdea: string }[] }>({
-      system: `You plan ${what} of the student's material, in Arabic. Return a title, a subtitle and ordered chapters; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). Density: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.\n${scopeRules(c)}`,
+      system: `You plan ${what} of the student's material, in Arabic. Return a title (the document's main title), a subtitle (one line under it saying what it is and for whom) and ordered chapters with clear, short titles; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). Density: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.${pagesLine}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
       parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
       schema: DOC_PLAN_SCHEMA,
     });
@@ -220,7 +242,7 @@ async function planStep(job: Job): Promise<StepResult> {
     const plan: DocPlan = {
       title: r.data.title,
       subtitle: r.data.subtitle,
-      chapters: r.data.chapters.map((ch) => ({ title: ch.title, purpose: ch.purpose, segments: ch.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: ch.imageIdea } })),
+      chapters: r.data.chapters.slice(0, pages ? maxChapters(pages) : undefined).map((ch) => ({ title: ch.title, purpose: ch.purpose, segments: ch.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: pages && pages < 3 ? "" : ch.imageIdea } })),
     };
     await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });
     return { done: true, usd: r.usd, stage: "الخطة جاهزة" };
@@ -229,11 +251,19 @@ async function planStep(job: Job): Promise<StepResult> {
   if (o.kind === "slides") {
     const s = o.settings;
     const notes = s.notesMode === "notes" ? "Keep the slide text short and put the explanation in the speaker notes." : s.notesMode === "both" ? "Text on the slide and a fuller explanation in the speaker notes." : "Put the explanation on the slides; speaker notes may stay short.";
-    const r = await askJson<SlidePlan & { slides: (SlidePlan["slides"][number] & { visual: string })[] }>({
-      system: `You write the complete SLIDE MAP of a presentation from the student's material, in Arabic. For every slide: title, the idea, the layout (title = opening slide, section = a part divider, bullets, cards = 2–6 parallel units written "label: text", compare = a table written as rows "cell | cell | cell" with the header row first, quote = exact words from the material, image = a visual with a few points), the final text lines of the slide, the proposed visual, speaker notes, and how it relates to the slides before and after. Slide count: ${Number(s.count) > 0 ? `about ${Number(s.count)}` : "as the material needs"}. Density: ${DENSITY[String(s.density ?? "medium")] ?? DENSITY.medium} — when there is more to say, use MORE slides, never more words per slide than fit (at most ~7 lines). ${notes}\n${scopeRules(c)}\nAdditions and research go on their own slides or lines that say so ("إضافة:" / "من البحث:").`,
-      parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
+    const want = Number(s.count) > 0 ? Math.round(Number(s.count)) : 0;
+    const ask = (again: string) => askJson<SlidePlan & { slides: (SlidePlan["slides"][number] & { visual: string })[] }>({
+      system: `You write the complete SLIDE MAP of a presentation from the student's material, in Arabic. For every slide: title, the idea, the layout (title = opening slide, section = a part divider, bullets, cards = 2–6 parallel units written "label: text", compare = a table written as rows "cell | cell | cell" with the header row first, quote = exact words from the material, image = a visual with a few points), the final text lines of the slide, the proposed visual, speaker notes, and how it relates to the slides before and after. Slide count: ${Number(s.count) > 0 ? `EXACTLY ${Number(s.count)} slides (the student's number, kept literally: no more, no fewer)` : "as the material needs"}. Density: ${DENSITY[String(s.density ?? "medium")] ?? DENSITY.medium} — ${Number(s.count) > 0 ? "fit the material into that number: choose and merge, never more words per slide than fit (at most ~7 lines)" : "when there is more to say, use MORE slides, never more words per slide than fit (at most ~7 lines)"}. ${notes}\n${STUDENT_FIRST}\n${scopeRules(c)}\nAdditions and research go on their own slides or lines that say so ("إضافة:" / "من البحث:").`,
+      parts: [{ type: "text", text: `${base}${again}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
       schema: SLIDE_SCHEMA,
     });
+    let r = await ask("");
+    // the student's number of slides, kept literally: asked once more when the map came out with another count
+    if (want && r.data.slides.length !== want) {
+      const first = r;
+      r = await ask(`\nYour first map had ${first.data.slides.length} slides; the student asked for EXACTLY ${want}. Return exactly ${want} slides.`);
+      r = { ...r, usd: r.usd + first.usd };
+    }
     const valid = new Set(c.seg.keys());
     const plan: SlidePlan = { title: r.data.title, subtitle: r.data.subtitle, slides: r.data.slides.map((sl) => ({ ...sl, segments: sl.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: sl.visual } })) };
     await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, files: {}, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });
@@ -244,7 +274,7 @@ async function planStep(job: Job): Promise<StepResult> {
     const s = o.settings;
     const types = (s.types as string[]) ?? ["mcq"];
     const r = await askJson<QuizPlan>({
-      system: `You plan a QUIZ on the student's material: distribute exactly ${Number(s.count) || 10} questions over the material's topics and the question types the student chose (${types.join(", ")}${s.customType ? `; "custom" = ${String(s.customType)}` : ""}). Use only the chosen types (others 0). Difficulty: ${String(s.difficulty ?? "medium")}${s.difficultyNote ? ` (${String(s.difficultyNote)})` : ""}. Each row: a topic (in Arabic) from the material, the segment ids it covers, and the count per type. ${c.project.allow_additions ? "Questions may go slightly beyond the material where additions are allowed." : "Only topics the material covers."}`,
+      system: `You plan a QUIZ on the student's material: distribute exactly ${Number(s.count) || 10} questions over the material's topics and the question types the student chose (${types.join(", ")}${s.customType ? `; "custom" = ${String(s.customType)}` : ""}). Use only the chosen types (others 0). Difficulty: ${String(s.difficulty ?? "medium")}${s.difficultyNote ? ` (${String(s.difficultyNote)})` : ""}. Each row: a topic (in Arabic) from the material, the segment ids it covers, and the count per type. ${c.project.allow_additions ? "Questions may go slightly beyond the material where additions are allowed." : "Only topics the material covers."}\n${STUDENT_FIRST}`,
       parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}` }],
       schema: QUIZ_PLAN_SCHEMA,
       maxTokens: 8000,
@@ -305,7 +335,7 @@ async function audioPrepStep(job: Job, o: Output, c: Ctx): Promise<StepResult> {
 
 // ───────────────────────────── writing chapters ─────────────────────────────
 
-async function writeChapter(c: Ctx, o: Output, plan: DocPlan, i: number, revise?: { note: string; current: Chapter; kind: string }) {
+async function writeChapter(c: Ctx, o: Output, plan: DocPlan, i: number, revise?: { note: string; current: Chapter; kind: string }, words?: number) {
   const ch = plan.chapters[i];
   if (o.kind === "book" && o.settings.writing === "verbatim" && !revise) {
     // The approved text as is: headings marked "# " become headings, the rest paragraphs. Nothing dropped.
@@ -324,7 +354,7 @@ async function writeChapter(c: Ctx, o: Output, plan: DocPlan, i: number, revise?
   }
   const kind = o.kind === "summary" ? "a summary chapter" : o.kind === "explain" ? "an explanation chapter (simpler, terms unpacked, examples from the material)" : `a chapter of a reading book (${o.settings.writing === "summary" ? "summary book" : "explanatory book"})`;
   const r = await askJson<{ blocks: Block[] }>({
-    system: `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists.\n${scopeRules(c)}`,
+    system: `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists. Structure: the chapter's title is given; inside it use "h" sub-headings for its parts (short, clear), then the body under each.${words ? `\nLENGTH (the student asked for a fixed page count, kept exactly): this chapter is about ${words} words in all (within 10%) — count them; ${words < 150 ? "keep it to the essentials, few blocks" : "spread them over its parts"}.` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
     parts: [
       {
         type: "text",
@@ -392,27 +422,45 @@ async function imageData(paths: string[]) {
 
 const filePath = (o: Output, name: string) => `${o.user_id}/${o.project_id}/out/${o.id}/${Date.now()}-${name}`;
 
-async function renderDoc(o: Output, c: Ctx, doc: Doc, plan: DocPlan, trial: boolean) {
-  const design = designOf(o);
-  // pictures go at the start of their chapter
-  const withImages: Doc = {
+/** The document with each chapter's picture at its start. */
+function withImages(doc: Doc, plan: DocPlan): Doc {
+  return {
     ...doc,
     chapters: doc.chapters.map((ch, i) => {
       const img = plan.chapters[i]?.image;
       return img?.path ? { ...ch, blocks: [{ t: "image", title: img.path, text: img.mode === "generate" ? "صورة توضيحية (ليست توثيقًا)" : "", items: [], rows: [], sources: [], segments: [] } as Block, ...ch.blocks] } : ch;
     }),
   };
+}
+
+/** The PDF; with a page count, printed to land on it. Returns the file and its pages. */
+async function renderDoc(o: Output, c: Ctx, doc: Doc, plan: DocPlan, trial: boolean) {
+  const design = designOf(o);
   const { out } = await imageData(plan.chapters.map((ch) => ch.image.path));
-  const html = docHtml(withImages, design, {
-    fontFaces: await fontFacesData(designFonts(design)),
-    images: out,
-    sources: c.research?.sources ?? [],
-    page: o.settings.page === "A5" ? "A5" : "A4",
-    trial,
-  });
-  const { pdf } = await htmlToPdf(html, { numbered: o.settings.numbered !== false });
+  const pages = trial ? 0 : pagesOf(o.settings);
+  const opts = { fontFaces: await fontFacesData(designFonts(design)), images: out, sources: c.research?.sources ?? [], page: pageSize(o), trial, pages };
+  const full = withImages(doc, plan);
+  const numbered = o.settings.numbered !== false;
+  const r = pages ? await fitPdf((scale) => docHtml(full, design, { ...opts, scale }), pages, { numbered }) : { ...(await htmlToPdf(docHtml(full, design, opts), { numbered })), pages: 0 };
+  const cover = pages ? frontPages(pages, full.chapters.length).cover : true;
+  const pdf = design.frame !== false ? await framePdf(r.pdf, { color: colorsOf(design, design.main).accent, size: pageSize(o), skipFirst: cover }) : r.pdf;
   const path = filePath(o, trial ? "trial.pdf" : "book.pdf");
   await putFile(path, pdf, "application/pdf");
+  return { path, pages: r.pages };
+}
+
+/** The same document as an editable Word file. */
+async function renderDocx(o: Output, c: Ctx, doc: Doc, plan: DocPlan) {
+  const paths = plan.chapters.map((ch) => ch.image.path).filter(Boolean);
+  const images: Record<string, Buffer> = {};
+  for (const p of paths) {
+    try {
+      images[p] = await getFile(p);
+    } catch {}
+  }
+  const buf = await docDocx(withImages(doc, plan), designOf(o), { page: pageSize(o), pages: pagesOf(o.settings), images, sources: c.research?.sources ?? [] });
+  const path = filePath(o, "document.docx");
+  await putFile(path, buf, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   return path;
 }
 
@@ -487,7 +535,7 @@ async function trialStep(job: Job): Promise<StepResult> {
     return { done: false, usd: img.usd, stage: "صورة الفصل الأول" };
   }
   const sample: Doc = { ...doc, chapters: [{ ...doc.chapters[0], blocks: doc.chapters[0].blocks.slice(0, 10) }] };
-  const path = await renderDoc(o, c, sample, { ...plan, chapters: plan.chapters.slice(0, 1) }, true);
+  const { path } = await renderDoc(o, c, sample, { ...plan, chapters: plan.chapters.slice(0, 1) }, true);
   await saveOutput(o.id, { status: "trial_review", files: { ...o.files, trial_pdf: path } }, { kind: "trial", snapshot: { files: [path] }, userId: o.user_id });
   return { done: true, stage: "النسخة التجريبية جاهزة" };
 }
@@ -524,7 +572,7 @@ async function quizStep(job: Job, o: Output, c: Ctx): Promise<StepResult> {
     const wanted = Object.entries(row.counts).filter(([, n]) => n > 0);
     const s = o.settings;
     const r = await askJson<{ questions: Question[] }>({
-      system: `You write quiz questions in Arabic from the student's material. Write exactly: ${wanted.map(([t, n]) => `${n} × ${t}`).join(", ")} (types: mcq = multiple choice with 4 options, tf = true/false with options ["صح","خطأ"], short = short answer, essay = essay, long = long answer${s.customType ? `, custom = ${String(s.customType)}` : ""}). Difficulty: ${String(s.difficulty ?? "medium")}${s.difficultyNote ? ` (${String(s.difficultyNote)})` : ""}. Every question has the correct answer and an explanation that points to the material, and lists the segment ids it is based on. ${c.project.allow_additions ? "You may go slightly beyond the material (additions allowed)." : "Ask only about what the material says."} No two questions ask the same thing.${requestsText(o)}`,
+      system: `You write quiz questions in Arabic from the student's material. Write exactly: ${wanted.map(([t, n]) => `${n} × ${t}`).join(", ")} (types: mcq = multiple choice with 4 options, tf = true/false with options ["صح","خطأ"], short = short answer, essay = essay, long = long answer${s.customType ? `, custom = ${String(s.customType)}` : ""}). Difficulty: ${String(s.difficulty ?? "medium")}${s.difficultyNote ? ` (${String(s.difficultyNote)})` : ""}. Every question has the correct answer and an explanation that points to the material, and lists the segment ids it is based on. ${c.project.allow_additions ? "You may go slightly beyond the material (additions allowed)." : "Ask only about what the material says."} No two questions ask the same thing.${requestsText(o)}\n${STUDENT_FIRST}`,
       parts: [{ type: "text", text: `Topic: ${row.topic}\nAlready asked (do not repeat): ${content.questions.map((q) => q.question).join(" | ") || "none"}\n\nMATERIAL:\n${segText(c, row.segments.length ? row.segments : [...c.seg.keys()])}\n${researchText(c)}` }],
       schema: QUESTIONS_SCHEMA,
       maxTokens: 12000,
@@ -661,16 +709,24 @@ async function finalStep(job: Job): Promise<StepResult> {
   const plan = o.plan as DocPlan;
   const doc = (o.content as Doc | null) ?? { title: plan.title, subtitle: plan.subtitle, chapters: [] };
   const revise = job.kind === "revise" ? { note: String(job.input.note ?? ""), chapter: Number(job.input.chapter ?? -1), kind: String(job.input.requestKind ?? "edit") } : null;
-  const todo = revise
-    ? (revise.chapter >= 0 ? [revise.chapter] : plan.chapters.map((_, i) => i)).filter((i) => !((job.progress.revised as number[] | undefined) ?? []).includes(i))
-    : plan.chapters.map((_, i) => i).filter((i) => !doc.chapters[i]);
+  const words = chapterWords(c, o, plan);
+  // a page count missed by the type alone: every chapter is rewritten to its new length (progress.refit)
+  const refit = job.progress.refit as { n: number; done: number[] } | undefined;
+  const todo = refit
+    ? plan.chapters.map((_, i) => i).filter((i) => !refit.done.includes(i))
+    : revise
+      ? (revise.chapter >= 0 ? [revise.chapter] : plan.chapters.map((_, i) => i)).filter((i) => !((job.progress.revised as number[] | undefined) ?? []).includes(i))
+      : plan.chapters.map((_, i) => i).filter((i) => !doc.chapters[i]);
   if (todo.length) {
     const i = todo[0];
-    const r = await writeChapter(c, o, plan, i, revise && doc.chapters[i] ? { note: revise.note, current: doc.chapters[i], kind: revise.kind } : undefined);
+    const w = words?.[i];
+    const resize = refit && doc.chapters[i] && w ? { note: `غيّر طول هذا الفصل إلى حوالي ${w} كلمة (الآن ${countWords(docText({ title: "", subtitle: "", chapters: [doc.chapters[i]] }))}) ليطلع الملف بعدد الصفحات المطلوب بالضبط. حافظ على الأفكار والترتيب: اختصر أو وسّع الشرح فقط.`, current: doc.chapters[i], kind: "edit" } : undefined;
+    const r = await writeChapter(c, o, plan, i, resize ?? (revise && doc.chapters[i] ? { note: revise.note, current: doc.chapters[i], kind: revise.kind } : undefined), w);
     doc.chapters[i] = r.chapter;
     await saveOutput(o.id, { content: doc });
+    if (refit) return { done: false, usd: r.usd, stage: `ضبط عدد الصفحات: الفصل ${i + 1} من ${plan.chapters.length}`, progress: { ...job.progress, refit: { ...refit, done: [...refit.done, i] } } };
     const revised = [...((job.progress.revised as number[] | undefined) ?? []), i];
-    return { done: false, usd: r.usd, stage: `${revise ? "تعديل" : "كتابة"} الفصل ${i + 1} من ${plan.chapters.length}`, progress: { revised } };
+    return { done: false, usd: r.usd, stage: `${revise ? "تعديل" : "كتابة"} الفصل ${i + 1} من ${plan.chapters.length}`, progress: { ...job.progress, revised } };
   }
   if (o.kind === "book") {
     const img = await nextImage(o, c, plan.chapters);
@@ -679,9 +735,22 @@ async function finalStep(job: Job): Promise<StepResult> {
       return { done: false, usd: img.usd, stage: `صورة الفصل ${img.k + 1}` };
     }
   }
-  const path = await renderDoc(o, c, doc, plan, false);
-  await saveOutput(o.id, { status: "review", files: { ...o.files, pdf: path } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
-  return { done: true, stage: `${outputName(o.kind)} جاهز` };
+  const want = pagesOf(o.settings);
+  const pdf = await renderDoc(o, c, doc, plan, false);
+  if (want && pdf.pages !== want && words && !revise) {
+    // the type at its limit still misses the count: the chapters are written again, shorter or longer (twice at most)
+    const n = ((job.progress.refit as { n: number } | undefined)?.n ?? 0) + 1;
+    if (n <= MAX_REFITS) {
+      const k = (Number(o.settings._wordScale) || 1) * refitRatio(want, pdf.pages, frontPages(want, plan.chapters.length).count);
+      await saveOutput(o.id, { settings: { ...o.settings, _wordScale: Math.round(k * 1000) / 1000 } });
+      return { done: false, stage: `الملف طلع ${pdf.pages} صفحة بدل ${want}: يعيد ضبط الطول`, progress: { ...job.progress, refit: { n, done: [] } } };
+    }
+  }
+  const files: Record<string, string> = { ...o.files, pdf: pdf.path };
+  if (wantsDocx(o.settings)) files.docx = await renderDocx(o, c, doc, plan);
+  else delete files.docx;
+  await saveOutput(o.id, { status: "review", files, content: { ...doc, pages: pdf.pages || undefined } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
+  return { done: true, stage: want && pdf.pages !== want ? `${outputName(o.kind)} جاهز (${pdf.pages} صفحة؛ أقرب ما وصل له من ${want})` : `${outputName(o.kind)} جاهز` };
 }
 
 async function transcriptStep(o: Output): Promise<StepResult> {

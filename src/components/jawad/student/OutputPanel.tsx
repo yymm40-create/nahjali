@@ -162,6 +162,13 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
       {["review", "done"].includes(o.status) && !mine && (
         <div className="space-y-4">
           <FileLinks o={o} />
+          {(() => {
+            // the page count the student asked for, and what the PDF came out at
+            const want = Number(o.settings.pages) || 0;
+            const got = Number((o.content as { pages?: number } | null)?.pages) || 0;
+            if (!want || !got) return null;
+            return <p className={`text-sm ${got === want ? "text-jw-ok" : "text-jw-warn"}`}>{got === want ? `✓ ${got.toLocaleString("ar")} صفحة بالضبط مثل ما طلبت` : `طلع ${got.toLocaleString("ar")} صفحة (طلبت ${want.toLocaleString("ar")}) — هذا أقرب ما وصل له بدون ما يحذف من المادة. اطلب تعديل لو تبيه أقصر أو أطول.`}</p>;
+          })()}
           {o.kind === "book" && <PdfFrame o={o} name="pdf" />}
           {o.kind === "slides" && (
             <>

@@ -69,7 +69,8 @@ const BASE = `
 .blk-scene b{font-family:var(--fh);display:block;color:var(--accent)}
 .sources{font-size:.8em;color:var(--muted);direction:rtl}
 .sources a{color:var(--accent);word-break:break-all}
-mark{background:linear-gradient(transparent 40%,color-mix(in srgb,var(--accent2) 65%,transparent) 40%);color:inherit;padding:0 .1em}
+mark{background:linear-gradient(transparent 40%,color-mix(in srgb,#ffe066 78%,var(--accent) 22%) 40%);color:inherit;padding:0 .1em}
+.s-cinematic mark{color:#15181e}
 `;
 
 const STYLE_CSS: Record<StyleId, string> = {
