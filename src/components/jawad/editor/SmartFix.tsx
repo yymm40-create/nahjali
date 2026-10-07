@@ -13,7 +13,7 @@ import { fixCut, fixedOffset, pieceRange } from "@/lib/editor/smart-fix";
 import { stageLabel, type JobView, type OutputView } from "@/lib/jawad/labels";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
-import { grabFrames } from "../studio/frames";
+import { grabFrames, grabSounds } from "../studio/frames";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
@@ -295,6 +295,9 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
       // quality, kept under the request's size
       const [prev1, prev2, last] = await grabFrames(p.out.url!, [Math.max(0, partCut.start - 0.2), partCut.start, partCut.end], 1920, 0.9, { by: "side" });
       send.cutFrames = { prev1, prev2, last };
+      // and the sound around the cut (voices, effects, music carry on)
+      const [before, after] = await grabSounds(p.out.url!, [{ from: partCut.start - 2.5, to: partCut.start }, { from: partCut.end, to: partCut.end + 2.5 }]);
+      send.cutSounds = { before, after };
     }
   } catch {
     throw new Error("تعذّر قراءة لقطات الفيديو في المتصفح؛ أعد المحاولة.");
