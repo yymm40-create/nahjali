@@ -7,6 +7,7 @@ import { isAdmin, isFreeGuest } from "@config/site";
 import { FILM_PUBLIC_TRIAL } from "@config/film";
 import { accessMode, emailAccess, getLimit } from "./limits";
 import type { FilmProject } from "./types";
+import { assertTeamStage, type TeamStage } from "./team";
 
 export const FILM_MESSAGES = {
   noAccess: "صانع الفيلم مقفل حاليًا.",
@@ -154,9 +155,11 @@ export async function canOpenProject(project: FilmProject, userId: string) {
 }
 
 /** API: loads a project and verifies the user may work on it (the owner's admin role gives no extra access here). */
-export async function getOwnedProject(projectId: string, userId: string) {
+export async function getOwnedProject(projectId: string, userId: string, stage?: TeamStage | "all") {
   const project = await loadProject(projectId);
   if (!project || !(await canOpenProject(project, userId))) throw new UserError(FILM_MESSAGES.notFound, 404);
+  // a team member works only on the steps the series' owner gave them
+  if (stage) await assertTeamStage(project, userId, stage);
   return project;
 }
 

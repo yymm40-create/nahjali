@@ -9,6 +9,8 @@ import { cleanUsername } from "@/lib/username-rules";
 import { FILM_LIMITS } from "@config/film";
 import { projectFields } from "./validate";
 import { isSeriesTeamMember } from "./access";
+import { isTeamStage, TEAM_STAGES, type TeamStage } from "./team";
+import { teamCoinBalance } from "@/lib/coins";
 import type { FilmProject } from "./types";
 
 const db = () => createAdminClient();
@@ -118,12 +120,64 @@ export async function scenesOf(seriesId: string): Promise<Map<string, SceneSumma
   return out;
 }
 
-export async function membersOf(seriesId: string): Promise<{ userId: string; username: string | null }[]> {
-  const { data } = await db().from("film_series_members").select("user_id,added_at").eq("series_id", seriesId).order("added_at", { ascending: true });
-  const ids = (data ?? []).map((r) => r.user_id as string);
-  if (!ids.length) return [];
-  const { data: names } = await db().from("site_usernames").select("user_id,username").in("user_id", ids);
-  return ids.map((userId) => ({ userId, username: (names ?? []).find((n) => n.user_id === userId)?.username ?? null }));
+export interface SeriesMember {
+  userId: string;
+  username: string | null;
+  /** the steps the owner gave them (null: all) */
+  stages: TeamStage[] | null;
+  /** attempts the owner gave them (null: no limit), and how many they used */
+  maxAttempts: number | null;
+  usedAttempts: number;
+}
+
+export async function membersOf(seriesId: string): Promise<SeriesMember[]> {
+  const { data } = await db().from("film_series_members").select("*").eq("series_id", seriesId).order("added_at", { ascending: true });
+  const rows = (data ?? []) as { user_id: string; stages?: string[] | null; max_attempts?: number | null; used_attempts?: number }[];
+  if (!rows.length) return [];
+  const names = await usernames(rows.map((r) => r.user_id));
+  return rows.map((r) => ({
+    userId: r.user_id,
+    username: names.get(r.user_id) ?? null,
+    stages: Array.isArray(r.stages) ? r.stages.filter(isTeamStage) : null,
+    maxAttempts: r.max_attempts ?? null,
+    usedAttempts: r.used_attempts ?? 0,
+  }));
+}
+
+/** @usernames of these accounts. */
+export async function usernames(ids: string[]) {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  const { data } = await db().from("site_usernames").select("user_id,username").in("user_id", [...new Set(ids)]);
+  for (const r of data ?? []) out.set(r.user_id as string, r.username as string);
+  return out;
+}
+
+/**
+ * The owner sets what a member may do: the steps (all of them = no limit on steps), the number of attempts (empty = no
+ * limit), and can start their count again.
+ */
+export async function setMemberRights(series: FilmSeries, b: { userId?: unknown; stages?: unknown; maxAttempts?: unknown; reset?: unknown }) {
+  const stages = Array.isArray(b.stages) ? [...new Set(b.stages.filter(isTeamStage))] : null;
+  const raw = b.maxAttempts;
+  const max = raw === null || raw === "" || raw === undefined ? null : Number(raw);
+  if (max !== null && (!Number.isInteger(max) || max < 0 || max > 100000)) throw new UserError("عدد المحاولات لازم يكون رقم صحيح (أو فاضي = بلا حد).", 400);
+  const patch: Record<string, unknown> = { stages: stages && stages.length === TEAM_STAGES.length ? null : stages, max_attempts: max };
+  if (b.reset === true) patch.used_attempts = 0;
+  const { data, error } = await db().from("film_series_members").update(patch).eq("series_id", series.id).eq("user_id", String(b.userId)).select("user_id");
+  if (error) throw new UserError("الصلاحيات تحتاج تجهيز قاعدة البيانات أول (ملف 0033).", 503);
+  if (!data?.length) throw new UserError("هذا الشخص مو في الفريق.", 404);
+}
+
+/** The team's wallet: its balance and its latest movements, with who made each. */
+export async function teamWallet(seriesId: string) {
+  const [balance, { data }] = await Promise.all([
+    teamCoinBalance(seriesId).catch(() => 0),
+    db().from("team_coin_ledger").select("id,user_id,delta,reason,label,created_at").eq("series_id", seriesId).order("created_at", { ascending: false }).limit(30),
+  ]);
+  const rows = (data ?? []) as { id: string; user_id: string | null; delta: number; reason: string; label: string; created_at: string }[];
+  const names = await usernames(rows.flatMap((r) => (r.user_id ? [r.user_id] : [])));
+  return { balance, ledger: rows.map((r) => ({ ...r, username: r.user_id ? (names.get(r.user_id) ?? null) : null })) };
 }
 
 export async function addEpisode(series: FilmSeries, title: unknown) {

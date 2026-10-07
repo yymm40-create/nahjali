@@ -8,7 +8,7 @@ import { projectFields } from "@/lib/film/validate";
 export const PATCH = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
   const { id } = await params;
-  await getOwnedProject(id, user.id);
+  await getOwnedProject(id, user.id, "screenwriter");
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const fields = projectFields(body, { requireTitle: false });

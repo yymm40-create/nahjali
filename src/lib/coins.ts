@@ -51,6 +51,7 @@ async function reserved(jobId: string) {
 
 /** On success: the held coins become the real charge (the difference is given back, or taken). */
 export async function settleCoins(jobId: string, costUsd: number) {
+  await settleTeamCoins(jobId, costUsd);
   const r = await reserved(jobId);
   if (!r || r.held <= 0) return;
   const diff = r.held - coinsFor(costUsd);
@@ -59,9 +60,90 @@ export async function settleCoins(jobId: string, costUsd: number) {
 
 /** On failure: every held coin goes back (failed operations cost nothing). */
 export async function refundCoins(jobId: string) {
+  await refundTeamCoins(jobId);
   const r = await reserved(jobId);
   if (r && r.held > 0) await adjust(r.userId, r.held, "refund", jobId, r.label, true);
 }
+
+// ───────────── «نقود الفريق الذكي»: a team series' own wallet (migration 0033) ─────────────
+
+async function adjustTeam(seriesId: string, userId: string | null, delta: number, reason: string, ref: string, label: string, allowNegative = false) {
+  const { data, error } = await db().rpc("adjust_team_coins", {
+    p_series: seriesId, p_user: userId, p_delta: delta, p_reason: reason, p_ref: ref, p_label: label, p_allow_negative: allowNegative,
+  });
+  if (error) throw new UserError("«نقود الفريق الذكي» تحتاج تجهيز قاعدة البيانات أول (ملف 0033).", 503);
+  return data as number | null;
+}
+
+/** The team's balance (0 before anything was put in). */
+export async function teamCoinBalance(seriesId: string): Promise<number> {
+  const { data } = await db().from("team_coin_wallets").select("balance").eq("series_id", seriesId).maybeSingle();
+  return (data?.balance as number | undefined) ?? 0;
+}
+
+const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذكي» ما يكفي: هذي العملية تحتاج تقريبًا ${coins} نقدة فريق. اطلب من صاحب المسلسل يشحن رصيد الفريق.`;
+
+/** A team series' paid job: holds its estimated coins from the team's wallet (`who` pressed it). */
+export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string) {
+  if (!(await coinsRequired())) return;
+  const coins = coinsFor(estimateUsd);
+  if ((await adjustTeam(seriesId, who.id, -coins, "reserve", jobId, label)) === null) throw new UserError(SHORT_TEAM(coins), 402);
+}
+
+/** A fixed price in coins taken from the team's wallet (the editor's prices, a «اصنع لي» generation). */
+export async function holdTeamCoins(seriesId: string, who: { id: string }, coins: number, ref: string, label: string) {
+  if (coins <= 0) return;
+  if ((await adjustTeam(seriesId, who.id, -coins, "reserve", ref, label)) === null) throw new UserError(SHORT_TEAM(coins), 402);
+}
+
+async function teamReserved(ref: string) {
+  const { data, error } = await db().from("team_coin_ledger").select("series_id,user_id,delta,label").eq("ref", ref);
+  if (error) return null;
+  const rows = (data ?? []) as { series_id: string; user_id: string | null; delta: number; label: string }[];
+  return rows.length ? { seriesId: rows[0].series_id, userId: rows[0].user_id, label: rows[0].label, held: -rows.reduce((s, r) => s + r.delta, 0) } : null;
+}
+
+async function settleTeamCoins(ref: string, costUsd: number) {
+  const r = await teamReserved(ref);
+  if (!r || r.held <= 0) return;
+  const diff = r.held - coinsFor(costUsd);
+  if (diff !== 0) await adjustTeam(r.seriesId, r.userId, diff, "settle", ref, r.label, true);
+}
+
+/** Gives back what the team's wallet holds for this job (failed ones cost nothing). Returns who it was held for. */
+export async function refundTeamCoins(ref: string) {
+  const r = await teamReserved(ref);
+  if (r && r.held > 0) await adjustTeam(r.seriesId, r.userId, r.held, "refund", ref, r.label, true);
+  return r;
+}
+
+/** The series' owner moves coins from their own «النقود الذكية» into the team's wallet. */
+export async function fundTeam(owner: { id: string; email?: string | null }, seriesId: string, coins: number) {
+  if (!Number.isInteger(coins) || coins <= 0 || coins > 100000) throw new UserError("اكتب عدد نقود صحيح.", 400);
+  const ref = `team-fund:${seriesId}:${crypto.randomUUID()}`;
+  // the site's owner (unlimited) fills the team without taking from a balance
+  if (!isUnlimited(owner.email)) {
+    const left = await adjust(owner.id, -coins, "reserve", ref, "تحويل إلى نقود الفريق الذكي");
+    if (left === null) throw new UserError(`رصيدك من النقود الذكية ما يكفي لتحويل ${coins} نقدة.`, 402);
+  }
+  try {
+    return await adjustTeam(seriesId, owner.id, coins, "fund", ref, "تحويل من صاحب المسلسل", true);
+  } catch (e) {
+    if (!isUnlimited(owner.email)) await adjust(owner.id, coins, "refund", ref, "تحويل إلى نقود الفريق الذكي", true);
+    throw e;
+  }
+}
+
+/** The series' owner takes coins back from the team's wallet into their own. */
+export async function withdrawTeam(owner: { id: string; email?: string | null }, seriesId: string, coins: number) {
+  if (!Number.isInteger(coins) || coins <= 0 || coins > 100000) throw new UserError("اكتب عدد نقود صحيح.", 400);
+  const ref = `team-withdraw:${seriesId}:${crypto.randomUUID()}`;
+  if ((await adjustTeam(seriesId, owner.id, -coins, "withdraw", ref, "رجعت لمحفظة صاحب المسلسل")) === null) throw new UserError("رصيد الفريق أقل من هذا العدد.", 400);
+  if (!isUnlimited(owner.email)) await adjust(owner.id, coins, "refund", ref, "رجوع من نقود الفريق الذكي", true);
+}
+
+/** The site's owner adds (or takes back) team coins. */
+export const grantTeamCoins = (seriesId: string, amount: number, note: string) => adjustTeam(seriesId, null, amount, "grant", note, note, true);
 
 /**
  * A fixed price in coins (from a price table the owner can edit), taken before an operation that is not a job: the

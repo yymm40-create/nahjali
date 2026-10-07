@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { grantCoins } from "@/lib/coins";
+import { grantCoins, grantTeamCoins } from "@/lib/coins";
 import { isAdmin } from "@config/site";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -11,12 +11,13 @@ const NO_TABLES = "جداول النقود الذكية ما انضافت للح
  * Owner only — «النقود الذكية»:
  *   { action: "required", on }               paid film operations need coins (on) or are free (off)
  *   { action: "grant", email, amount, note }  add (or take back, negative) coins for one user
+ *   { action: "team_grant", series, amount, note }  «نقود الفريق الذكي» for a series (its link or id)
  *   { action: "library", email, months }      «المكتبة» for one user: add months (1–12) from today or from its end, or stop it (0)
  */
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
   if (!isAdmin(user.email)) throw new UserError("غير مسموح.", 404);
-  const body = (await req.json().catch(() => ({}))) as { action?: string; on?: boolean; email?: string; amount?: unknown; note?: string; months?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; on?: boolean; email?: string; amount?: unknown; note?: string; months?: unknown; series?: unknown };
   const db = createAdminClient();
 
   if (body.action === "required") {
@@ -61,6 +62,17 @@ export const POST = handle(async (req: Request) => {
     const balance = await grantCoins(target, amount, String(body.note ?? "").slice(0, 120) || "من صاحب الموقع").catch(() => {
       throw new UserError(NO_TABLES, 500);
     });
+    return NextResponse.json({ ok: true, balance });
+  }
+
+  if (body.action === "team_grant") {
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 100000) throw new UserError("اكتب عدد صحيح (موجب للإضافة، سالب للسحب).", 400);
+    const id = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(String(body.series ?? ""))?.[0];
+    if (!id) throw new UserError("الصق رابط المسلسل أو رقمه.", 400);
+    const { data: s } = await db.from("film_series").select("id").eq("id", id).maybeSingle();
+    if (!s) throw new UserError("ما لقينا هذا المسلسل.", 404);
+    const balance = await grantTeamCoins(id, amount, String(body.note ?? "").slice(0, 120) || "من صاحب الموقع");
     return NextResponse.json({ ok: true, balance });
   }
 

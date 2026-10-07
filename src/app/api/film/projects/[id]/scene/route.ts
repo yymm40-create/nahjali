@@ -10,7 +10,7 @@ export const maxDuration = 120;
 export const POST = handle(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
   const { id } = await params;
-  const project = await getOwnedProject(id, user.id);
+  const project = await getOwnedProject(id, user.id, "montage");
   await saveSuccessfulScene(project);
   return NextResponse.json({ ok: true });
 });

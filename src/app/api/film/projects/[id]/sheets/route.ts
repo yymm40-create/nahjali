@@ -12,7 +12,7 @@ type Body = SheetAction | { action: "upload_url"; sheetId: string; mime: string 
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
   const { id } = await params;
-  const project = await getOwnedProject(id, user.id);
+  const project = await getOwnedProject(id, user.id, "sheets");
   const body = (await req.json().catch(() => ({}))) as Body;
   if (body.action === "upload_url") return NextResponse.json(await sheetUploadUrl(project, body.sheetId, body.mime));
   if (body.action === "upload_confirm") {

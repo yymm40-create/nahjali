@@ -1,3 +1,4 @@
+import UiSounds from "@/components/UiSounds";
 import type { Metadata, Viewport } from "next";
 import { Baloo_Bhaijaan_2, Lalezar } from "next/font/google";
 import Link from "next/link";
@@ -37,6 +38,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <NavFeedback />
+        <UiSounds />
         <NativeAppBridge />
         <DesktopUpdate />
         <SiteChrome

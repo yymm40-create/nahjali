@@ -3,6 +3,7 @@
 // (the owner's prices); the job is then made by JAWAD AI's job system (its checks, its coins, its refunds), the result
 // lands in «أعمالي» and the page brings it into the project and places it. Server only.
 
+import { giveAttempt, takeAttempt } from "@/lib/film/team";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generatorById } from "@config/jawad/generators";
@@ -163,11 +164,22 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
 }
 
 /** Starts a plan (the page's click, or straight away when it costs nothing): JAWAD AI checks and charges it. */
-export async function startMake(user: { id: string; email?: string | null }, owner: boolean, b: { key?: unknown; plan?: unknown }, origin: string) {
+export async function startMake(user: { id: string; email?: string | null }, owner: boolean, b: { key?: unknown; plan?: unknown }, origin: string, team: string | null = null) {
   const p = (b.plan ?? {}) as Partial<MakePlan>;
   if (!p.generatorId || !p.sectionId || typeof p.prompt !== "string") throw new UserError("طلب غير صحيح.", 400);
-  if (!(await canUseJawad(user))) throw new UserError("صناعة الصور والفيديو من «الجواد AI»، وهي مقفلة لحسابك الحين.", 403);
-  const r = await createJob(user, owner, { idempotencyKey: b.key, sectionId: p.sectionId, generatorId: p.generatorId, refStyle: "none", settings: p.settings, prompt: p.prompt, instructions: "", refs: [], expectedCoins: p.coins }, origin);
+  // in a team series' edit the team's wallet pays, so a member doesn't need JAWAD AI open for their own account
+  if (!team && !(await canUseJawad(user))) throw new UserError("صناعة الصور والفيديو من «الجواد AI»، وهي مقفلة لحسابك الحين.", 403);
+  // a team member uses one of the attempts the series' owner gave them (given back if it fails)
+  const series = team ? (await createAdminClient().from("film_series").select("user_id").eq("id", team).maybeSingle()).data : null;
+  const took = series ? await takeAttempt(team!, series.user_id as string, user.id) : false;
+  let r: Awaited<ReturnType<typeof createJob>>;
+  try {
+    r = await createJob(user, owner, { idempotencyKey: b.key, sectionId: p.sectionId, generatorId: p.generatorId, refStyle: "none", settings: p.settings, prompt: p.prompt, instructions: "", refs: [], expectedCoins: p.coins }, origin, { team });
+  } catch (e) {
+    if (took) await giveAttempt(team!, user.id).catch(() => {});
+    throw e;
+  }
+  if (took && r.kind !== "created") await giveAttempt(team!, user.id).catch(() => {});
   if (r.kind === "issues") throw new UserError(r.issues[0]?.message ?? "الطلب غير صالح.", 422);
   if (r.kind === "price_changed") throw new UserError(`تغيّر السعر إلى ${r.coins} نقدة؛ اطلبه من حيدرة مرة ثانية.`, 409);
   const [job] = await jobViews([r.job]);

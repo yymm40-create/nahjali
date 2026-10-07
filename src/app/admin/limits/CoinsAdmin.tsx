@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import TeamCoin from "@/components/TeamCoin";
+import { TEAM_COIN } from "@config/coins";
 import { postJson } from "@/lib/fetch";
 import SmartCoin from "@/components/SmartCoin";
 
@@ -14,6 +16,8 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
   const [amount, setAmount] = useState("100");
   const [note, setNote] = useState("");
   const [libEmail, setLibEmail] = useState("");
+  const [series, setSeries] = useState("");
+  const [teamAmount, setTeamAmount] = useState("500");
   const [libMonths, setLibMonths] = useState(1);
 
   async function send(body: Record<string, unknown>, done?: string) {
@@ -59,6 +63,18 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
         <button className="btn btn-primary w-full" disabled={busy || !email.trim() || !Number(amount)} onClick={() => window.confirm(`${Number(amount) < 0 ? "تسحب" : "تضيف"} ${Math.abs(Number(amount))} نقدة ${Number(amount) < 0 ? "من" : "لـ"} ${email.trim()}؟`) && send({ action: "grant", email, amount: Number(amount), note }, "تم ✅")}>
           نفّذ
         </button>
+      </div>
+
+      <div className="space-y-2 rounded-2xl bg-surface-2 p-3">
+        <p className="flex items-center gap-2 font-extrabold"><TeamCoin size={26} alive /> {TEAM_COIN.name} لمسلسل</p>
+        <p className="text-xs font-bold text-muted">رصيد فريق «المسلسل الذكي»: كل شي ينصنع داخل المسلسل ينقص منه. الصق رابط المسلسل (من صاحبه) أو رقمه.</p>
+        <input className="field" dir="ltr" placeholder="https://…/film/series/…" value={series} onChange={(e) => setSeries(e.target.value)} />
+        <div className="flex gap-2">
+          <input className="field w-28 text-center" dir="ltr" inputMode="numeric" value={teamAmount} onChange={(e) => setTeamAmount(e.target.value.replace(/[^\d-]/g, ""))} />
+          <button className="btn btn-primary flex-1" disabled={busy || !series.trim() || !Number(teamAmount)} onClick={() => window.confirm(`${Number(teamAmount) < 0 ? "تسحب" : "تضيف"} ${Math.abs(Number(teamAmount))} نقدة فريق؟`) && send({ action: "team_grant", series, amount: Number(teamAmount), note }, "تم ✅")}>
+            نفّذ
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2 rounded-2xl bg-surface-2 p-3">

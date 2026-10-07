@@ -14,6 +14,7 @@ import {
   markExported,
   projectState,
   requireEditorProject,
+  editorTeamSeries,
   runCommands,
   saveTimeline,
   signAssetUpload,
@@ -55,6 +56,8 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const { user, owner } = await requireStudentApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
+  // a team series' edit: what is made in it is paid from its «نقود الفريق الذكي»
+  const who = { id: user.id, email: user.email, owner, team: (await editorTeamSeries(p))?.id ?? null };
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   switch (b.action) {
     case "sign_upload":
@@ -87,37 +90,37 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "speech_sign":
       return NextResponse.json(await signSpeechUpload(p, b));
     case "transcribe":
-      return NextResponse.json(await transcribe(p, { id: user.id, email: user.email, owner }, b));
+      return NextResponse.json(await transcribe(p, who, b));
     case "align":
-      return NextResponse.json(await align(p, { id: user.id, email: user.email, owner }, b));
+      return NextResponse.json(await align(p, who, b));
     case "make_hook":
-      return NextResponse.json({ asset: await makeHook(p, { id: user.id, email: user.email, owner }, b) });
+      return NextResponse.json({ asset: await makeHook(p, who, b) });
     case "make_sfx":
-      return NextResponse.json({ asset: await makeSfx(p, { id: user.id, email: user.email, owner }, b) });
+      return NextResponse.json({ asset: await makeSfx(p, who, b) });
     case "make_music":
-      return NextResponse.json({ asset: await makeMusic(p, { id: user.id, email: user.email, owner }, b) });
+      return NextResponse.json({ asset: await makeMusic(p, who, b) });
     case "separate":
-      return NextResponse.json(await separate(p, { id: user.id, email: user.email, owner }, b));
+      return NextResponse.json(await separate(p, who, b));
     // «اصنع لي…» from حيدرة: a priced plan started as a JAWAD AI job
     case "make_start":
-      return NextResponse.json(await startMake(user, owner, b, new URL(req.url).origin));
+      return NextResponse.json(await startMake(user, owner, b, new URL(req.url).origin, who.team));
     // «ماسك ذكي»: what to select, found in a few moments of a clip
     case "smart_mask":
-      return NextResponse.json(await smartMask(p, { id: user.id, email: user.email, owner }, b));
+      return NextResponse.json(await smartMask(p, who, b));
     case "diagnose":
       // the site's owner only (a free guest is «unlimited» too, but never sees the site's insides)
       return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
     // حيدرة checks a colour change it made (pictures and scopes), and corrects it until it is right
     case "grade_check":
-      return NextResponse.json(await gradeCheck(p, { id: user.id, email: user.email, owner }, b));
+      return NextResponse.json(await gradeCheck(p, who, b));
     case "assistant":
-      return NextResponse.json(await assist(p, { id: user.id, email: user.email, owner }, b));
+      return NextResponse.json(await assist(p, who, b));
     case "fix_link":
       return NextResponse.json({ asset: await linkForFix(p, user, b) });
     case "chat":
       return NextResponse.json(await loadChat(p), noStore);
     case "handoff":
-      return NextResponse.json(await handOff(p, { id: user.id, email: user.email, owner }, b));
+      return NextResponse.json(await handOff(p, who, b));
     case "history":
       return NextResponse.json({ history: await history(p.id) }, noStore);
   }
