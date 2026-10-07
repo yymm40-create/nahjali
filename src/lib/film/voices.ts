@@ -14,6 +14,7 @@ import { elevenPremadeVoices, elevenSpeech } from "@/lib/jawad/server/providers/
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { audioDurationMs, resolveVoice } from "@/lib/jawad/server/voices";
 import { MINIMAX_PRICE, MINIMAX_READY_VOICES, minimaxReady, minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
+import { minimaxFeeling } from "@config/jawad/feelings";
 import { prepareSpeech } from "@/lib/jawad/server/diction";
 import { directorVersions } from "./director";
 import { isAdmin } from "@config/site";
@@ -30,10 +31,11 @@ const FALLBACK_MODEL = "eleven_v3";
  * Speaks a line; a 4xx about the model or the language flag (never billed) is tried once more the other way.
  * Anything else is reported as it is.
  */
-async function speak(o: { voiceId: string; text: string; languageCode?: string; provider?: "elevenlabs" | "minimax" }) {
-  // a voice copied in MiniMax speaks through MiniMax (the feeling in [ ] is ElevenLabs' way: taken out here)
+async function speak(o: { voiceId: string; text: string; languageCode?: string; provider?: "elevenlabs" | "minimax"; feeling?: string }) {
+  // a MiniMax voice speaks through MiniMax, with the feeling in MiniMax's way: an emotion, and sounds like (laughs)
   if (o.provider === "minimax") {
-    const r = await minimaxSpeech({ voiceId: o.voiceId, text: o.text.replace(/^\s*\[[^\]]*\]\s*/, ""), model: "hd", ...(o.languageCode === "ar" ? { languageBoost: "Arabic" } : {}) });
+    const f = minimaxFeeling(o.feeling ?? "", o.text);
+    const r = await minimaxSpeech({ voiceId: o.voiceId, text: f.text, model: "hd", ...(f.emotion ? { emotion: f.emotion } : {}), ...(o.languageCode === "ar" ? { languageBoost: "Arabic" } : {}) });
     return { audio: r.audio, model: "minimax-speech-2.8-hd" };
   }
   try {
@@ -105,11 +107,14 @@ export async function lineAudios(projectId: string) {
 /** The voices to choose from: the person's library, then ElevenLabs' ready voices. */
 export async function castChoices(userId: string) {
   const { data } = await db().from("jawad_voices").select("id, name, origin, provider").eq("user_id", userId).order("created_at", { ascending: false });
-  const mine = (data ?? []).map((r) => ({ value: `v:${r.id}`, name: `${r.name as string}${(r as { provider?: string }).provider === "minimax" ? " · MiniMax" : ""}`, group: "mine" as const }));
+  const mine = (data ?? []).map((r) => {
+    const provider = (r as { provider?: string }).provider === "minimax" ? ("minimax" as const) : ("elevenlabs" as const);
+    return { value: `v:${r.id}`, name: `${r.name as string}${provider === "minimax" ? " · MiniMax" : ""}`, group: "mine" as const, provider };
+  });
   const ready = await elevenPremadeVoices()
-    .then((l) => l.map((v) => ({ value: `p:${v.voiceId}`, name: `${v.name}${v.labels.gender ? ` · ${v.labels.gender === "male" ? "رجل" : v.labels.gender === "female" ? "امرأة" : v.labels.gender}` : ""}`, group: "ready" as const })))
+    .then((l) => l.map((v) => ({ value: `p:${v.voiceId}`, name: `${v.name}${v.labels.gender ? ` · ${v.labels.gender === "male" ? "رجل" : v.labels.gender === "female" ? "امرأة" : v.labels.gender}` : ""}`, group: "ready" as const, provider: "elevenlabs" as const })))
     .catch(() => []);
-  const minimax = minimaxReady() ? MINIMAX_READY_VOICES.map((v) => ({ value: `x:${v.id}`, name: `${v.name} · ${v.gender === "male" ? "رجل" : "امرأة"} · MiniMax`, group: "minimax" as const })) : [];
+  const minimax = minimaxReady() ? MINIMAX_READY_VOICES.map((v) => ({ value: `x:${v.id}`, name: `${v.name} · ${v.gender === "male" ? "رجل" : "امرأة"} · MiniMax`, group: "minimax" as const, provider: "minimax" as const })) : [];
   return [...mine, ...ready, ...minimax];
 }
 
@@ -128,6 +133,8 @@ export async function setCast(project: FilmProject, userId: string, speaker: unk
 /** Speaks one line with its speaker's voice (Eleven v4) and keeps it with the project. */
 /** The feeling asked for, as Eleven v4 reads it: one short word or phrase between [ ] (e.g. [whispers], [excited]). */
 export const cleanEmotion = (v: unknown) => String(v ?? "").replace(/[\[\]\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+/** ElevenLabs reads a feeling between [ ]; a MiniMax sound like "(laughs)" isn't a word for it. */
+const elevenFeeling = (e: string) => e.replace(/[()]/g, "").trim();
 
 export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown, emotionRaw?: unknown) {
   const emotion = cleanEmotion(emotionRaw);
@@ -156,8 +163,8 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       return { text: line.line, languageCode: arabic ? "ar" : undefined, fixes: [], usd: 0 };
     });
     // the feeling goes first, between [ ], where Eleven v4 takes it as a direction (it is never read aloud)
-    const withFeeling = emotion && !spoken.text.trimStart().startsWith("[") ? `[${emotion}] ${spoken.text}` : spoken.text;
-    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: withFeeling, languageCode: spoken.languageCode, provider: resolved.provider });
+    const withFeeling = emotion && !spoken.text.trimStart().startsWith("[") ? `[${elevenFeeling(emotion)}] ${spoken.text}` : spoken.text;
+    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: resolved.provider === "minimax" ? spoken.text : withFeeling, languageCode: spoken.languageCode, provider: resolved.provider, feeling: emotion });
     const path = `${projectDir(project)}/voices/${line.genId}-${line.index}-${Date.now()}.mp3`;
     const up = await storage.from(FILM_BUCKET).upload(path, audio, { contentType: "audio/mpeg", upsert: false });
     if (up.error) throw new Error(`storage: ${up.error.message}`);

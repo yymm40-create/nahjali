@@ -11,6 +11,7 @@ interface Choice {
   value: string;
   name: string;
   group: "mine" | "ready" | "minimax";
+  provider?: "elevenlabs" | "minimax";
 }
 interface Audio {
   key: string;
@@ -139,7 +140,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
               return (
                 <li key={l.key} className="space-y-2 rounded-2xl border border-line p-3" data-line={l.key}>
                   <p className="text-sm"><span className="font-extrabold">{l.speaker}:</span> <span dir="rtl">{l.line}</span></p>
-                  <EmotionPicker value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(busy)} />
+                  <EmotionPicker provider={s?.voices.find((v) => v.value === s?.cast[l.speaker])?.provider ?? "elevenlabs"} value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(busy)} />
                   {a?.url && <audio controls preload="none" src={a.url} className="w-full" />}
                   {stale && <p className="text-xs font-bold text-muted">تغيّرت الجملة بعد توليد صوتها؛ ولّدها من جديد.</p>}
                   <button type="button" className="btn btn-secondary min-h-10 px-4 text-sm" disabled={Boolean(busy) || !s?.cast[l.speaker]} onClick={() => speak([l.key])}>

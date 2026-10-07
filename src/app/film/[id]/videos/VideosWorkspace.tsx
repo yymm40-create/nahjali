@@ -50,7 +50,7 @@ interface VoiceState {
   ready: boolean;
   cast: Record<string, string>;
   audios: { key: string; url: string; text: string }[];
-  voices: { value: string; name: string; group: "mine" | "ready" | "minimax" }[];
+  voices: { value: string; name: string; group: "mine" | "ready" | "minimax"; provider?: "elevenlabs" | "minimax" }[];
 }
 interface Video {
   id: string;
@@ -596,7 +596,7 @@ export default function VideosWorkspace({
                     return (
                       <li key={l.key} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-2 text-sm">
                         <span className="flex-1"><b>{l.speaker}:</b> {l.line}</span>
-                        <div className="w-full"><EmotionPicker value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(speaking)} /></div>
+                        <div className="w-full"><EmotionPicker provider={voice?.voices.find((v) => v.value === voice?.cast[l.speaker])?.provider ?? "elevenlabs"} value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(speaking)} /></div>
                         {a?.url && ok && <audio controls preload="none" src={a.url} className="h-8 w-40" />}
                         <button
                           type="button"
