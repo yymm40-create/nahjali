@@ -10,17 +10,20 @@ import OutputsStep from "./OutputsStep";
 import ResearchRun from "./ResearchRun";
 import SourcesStep from "./SourcesStep";
 import { useAutopilot } from "./autopilot";
+import BriefStep from "./BriefStep";
 import { STEP_LOOK } from "./look";
 import { AutoSwitch } from "./StudentHome";
 import { ErrorLine } from "./ui";
 import UnderstandingStep from "./UnderstandingStep";
 
-// Three steps the student sees. The text review and the source rules happen by themselves: the text is read and
-// approved by the assistant, and the research the first page asked for runs after the understanding.
+// The steps the student sees: «الطلب» (the first page, open any time to go back and change it), then three. The text
+// review and the source rules happen by themselves: the text is read and approved by the assistant, and the research
+// the first page asked for runs after the understanding. Every step reached can be opened again («رجوع»).
 const STEPS = [
-  { id: "sources", label: "المادة" },
-  { id: "understanding", label: "الفهم" },
-  { id: "outputs", label: "النواتج" },
+  { id: "brief", label: "الطلب", emoji: "🎯" },
+  { id: "sources", label: "المادة", emoji: STEP_LOOK[0].emoji },
+  { id: "understanding", label: "الفهم", emoji: STEP_LOOK[1].emoji },
+  { id: "outputs", label: "النواتج", emoji: STEP_LOOK[2].emoji },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
 const stepOf = (stage: ProjectState["project"]["stage"]): StepId => (stage === "review" ? "sources" : stage === "scope" ? "outputs" : stage);
@@ -84,6 +87,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   }, [view]);
 
   const HINT: Record<StepId, string> = {
+    brief: "غيّر طلبك متى ما تبي، وصادق يمشي عليه في اللي جاي.",
     sources: project.brief.mode === "research" ? "خلّ صادق يبحث ويكتب مادتك، أو أضف ملفاتك، ثم «تابع»." : "أضف صورك أو ملفات PDF أو نصك، ثم «تابع».",
     understanding: "اقرأ كيف فهم صادق مادتك، واعتمده أو صحّحه.",
     outputs: autoOn ? "اختر نواتجك، أجب الأسئلة القصيرة، واضغط «ابدأ»." : "اختر نواتجك واضغط «ابدأ»، وبعدها افتح كل ناتج: راجع خطته واعتمدها قبل التصنيع.",
@@ -150,7 +154,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
               disabled={i > reached}
               onClick={() => setView(s.id)}
             >
-              <span className="dot text-lg">{i < reached ? <Icon name="check" size={18} /> : <span aria-hidden>{STEP_LOOK[i].emoji}</span>}</span>
+              <span className="dot text-lg">{i < reached ? <Icon name="check" size={18} /> : <span aria-hidden>{s.emoji}</span>}</span>
               <span className="text-center leading-tight">{s.label}</span>
             </button>
           ))}
@@ -175,7 +179,8 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
       <ErrorLine error={p.error} />
 
       <div key={view} className="st-rise">
-      {researching && view !== "outputs" ? (
+      {view === "brief" && <BriefStep p={p} />}
+      {view === "brief" ? null : researching && view !== "outputs" ? (
         <ResearchRun p={p} working={auto.doing} error={auto.error} onGo={() => start("all")} onFiles={() => setFilesInstead(true)} />
       ) : (
         view === "sources" && <SourcesStep p={p} onContinue={() => start("material")} />
@@ -183,6 +188,22 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
       {view === "understanding" && !researching && <UnderstandingStep p={p} />}
       {view === "outputs" && <OutputsStep p={p} autoOn={autoOn} onStart={() => start("all")} onCreated={() => autoOn && start("all")} onResearch={() => start("step")} researching={project.stage === "scope"} working={Boolean(auto.mode)} />}
       </div>
+
+      {/* back to any step before (and forward again up to where the material is) */}
+      <nav aria-label="التنقل بين الخطوات" className="flex flex-wrap items-center justify-between gap-2">
+        {vi > 0 ? (
+          <button type="button" className="jw-btn" onClick={() => setView(STEPS[vi - 1].id)}>
+            → رجوع: {STEPS[vi - 1].label}
+          </button>
+        ) : (
+          <span />
+        )}
+        {vi < reached && (
+          <button type="button" className="jw-btn" onClick={() => setView(STEPS[vi + 1].id)}>
+            التالي: {STEPS[vi + 1].label} ←
+          </button>
+        )}
+      </nav>
     </div>
   );
 }
