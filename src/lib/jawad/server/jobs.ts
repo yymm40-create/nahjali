@@ -8,6 +8,7 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { can, permForGenerator } from "@/lib/access";
 import { PERMS } from "@config/access";
 import { holdTeamCoins, refundTeamCoins } from "@/lib/coins";
@@ -397,6 +398,18 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   }
 
   if (def.provider.id === "elevenlabs") return runEleven(job, def, refs);
+  if (def.provider.id === "minimax") {
+    const voice = await resolveVoice(job.user_id, String(s.voice));
+    if (!voice.ok) throw new ProviderError("rejected", voice.reason, `voice ${String(s.voice)}`);
+    if (voice.provider !== "minimax") throw new ProviderError("rejected", "هذا الصوت من ElevenLabs؛ اختر صوت MiniMax أو صوتًا نسخته في MiniMax.", `voice provider ${voice.provider}`);
+    const arabic = /[\u0600-\u06FF]/.test(job.prompt);
+    const emotion = String(s.emotion ?? "auto");
+    const r = await minimaxSpeech({ voiceId: voice.voiceId, text: job.prompt, model: "hd", speed: Number(s.speed) || 1, ...(emotion !== "auto" ? { emotion } : {}), ...(arabic ? { languageBoost: "Arabic" } : {}) });
+    await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+    await saveOutput(job, 0, r.audio, "audio/mpeg", "mp3", { durationMs: r.durationMs ?? undefined });
+    await finishJob(job, "succeeded", { costUsd: (job.prompt.length / 1000) * MINIMAX_PRICE.hdPerKChars, units: { characters: job.prompt.length } });
+    return;
+  }
 
   if (def.output === "audio") {
     const format = String(s.format);

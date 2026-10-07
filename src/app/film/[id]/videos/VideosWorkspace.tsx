@@ -50,7 +50,7 @@ interface VoiceState {
   ready: boolean;
   cast: Record<string, string>;
   audios: { key: string; url: string; text: string }[];
-  voices: { value: string; name: string; group: "mine" | "ready" }[];
+  voices: { value: string; name: string; group: "mine" | "ready" | "minimax" }[];
 }
 interface Video {
   id: string;
@@ -584,6 +584,7 @@ export default function VideosWorkspace({
                       <option value="" disabled>اختر صوتًا…</option>
                       {voice.voices.some((v) => v.group === "mine") && <optgroup label="أصواتي">{voice.voices.filter((v) => v.group === "mine").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>}
                       <optgroup label="أصوات ElevenLabs الجاهزة">{voice.voices.filter((v) => v.group === "ready").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>
+                      {voice.voices.some((v) => v.group === "minimax") && <optgroup label="أصوات MiniMax الجاهزة">{voice.voices.filter((v) => v.group === "minimax").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>}
                     </select>
                     <VoiceDesigner projectId={projectId} speaker={sp} disabled={Boolean(speaking)} onCast={async (value) => { await castVoice(sp, value); setVoice(await api<VoiceState>(voicesUrl)); }} />
                   </div>

@@ -6,7 +6,7 @@ import Icon from "../Icon";
 import VoicePicker from "./VoicePicker";
 
 /** The output options this generator really supports in this mode (nothing shared by default between generators). */
-export default function OutputSettings({ ev, values, onChange, voiceCoins }: { ev: Evaluation; values: Settings; onChange: (key: string, v: SettingValue) => void; voiceCoins?: { design: number | null; clone: number | null } }) {
+export default function OutputSettings({ ev, values, onChange, voiceCoins, voiceProvider }: { ev: Evaluation; values: Settings; onChange: (key: string, v: SettingValue) => void; voiceCoins?: { design: number | null; clone: number | null; cloneMinimax?: number | null }; voiceProvider?: "elevenlabs" | "minimax" }) {
   const shown = ev.options.filter((o) => !o.hidden);
   if (!shown.length) return null;
   return (
@@ -14,7 +14,7 @@ export default function OutputSettings({ ev, values, onChange, voiceCoins }: { e
       {shown.map((o) =>
         o.kind === "choice" && o.picker === "voice" ? (
           <div key={o.key}>
-            <VoicePicker value={String(values[o.key] ?? o.default)} onChange={(v) => onChange(o.key, v)} coins={voiceCoins ?? { design: null, clone: null }} />
+            <VoicePicker value={String(values[o.key] ?? o.default)} onChange={(v) => onChange(o.key, v)} coins={voiceCoins ?? { design: null, clone: null }} provider={voiceProvider} />
             {ev.issues.find((i) => i.field === o.key) && <p className="mt-1.5 text-xs text-jw-danger" role="alert">{ev.issues.find((i) => i.field === o.key)!.message}</p>}
           </div>
         ) : (

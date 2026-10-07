@@ -10,7 +10,7 @@ import VoiceDesigner from "../../VoiceDesigner";
 interface Choice {
   value: string;
   name: string;
-  group: "mine" | "ready";
+  group: "mine" | "ready" | "minimax";
 }
 interface Audio {
   key: string;
@@ -99,6 +99,11 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
                   <optgroup label="أصوات ElevenLabs الجاهزة">
                     {s.voices.filter((v) => v.group === "ready").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}
                   </optgroup>
+                  {s.voices.some((v) => v.group === "minimax") && (
+                    <optgroup label="أصوات MiniMax الجاهزة">
+                      {s.voices.filter((v) => v.group === "minimax").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 <VoiceDesigner projectId={projectId} speaker={sp} disabled={Boolean(busy)} onCast={async (value) => { await cast(sp, value); await load(); }} />
               </li>

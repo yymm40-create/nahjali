@@ -10,7 +10,8 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { holdCoins, releaseCoins } from "@/lib/coins";
-import { generatorById, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
+import { generatorById, MINIMAX_CLONE_KEY, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
+import { MINIMAX_READY_VOICES, minimaxCloneVoice, minimaxReady } from "./providers/minimax";
 import { JAWAD_VOICE_LIMIT } from "@config/jawad/brand";
 import { probe, sniff } from "../media";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
@@ -31,9 +32,12 @@ const FALLBACK_VOICES = [
   ["XrExE9yKIg1WjnnlVkGX", "Matilda", "female"],
 ].map(([voiceId, name, gender]) => ({ voiceId, name, category: "premade", labels: { gender } as Record<string, string>, previewUrl: null as string | null }));
 const V4 = "elevenlabs-eleven-v4";
+const MINIMAX_ID = "minimax-speech-2-8";
 const LABEL = "JAWAD AI · مكتبة الأصوات";
 /** How a reference recording shapes a designed voice: prompt_strength near 0 follows the recording, near 1 the words. */
 const REF_STRENGTH = { inspire: 0.7, learn: 0.25 } as const;
+
+export type VoiceProvider = "elevenlabs" | "minimax";
 
 export interface VoiceView {
   id: string;
@@ -43,11 +47,14 @@ export interface VoiceView {
   origin: "design" | "clone" | "ready";
   previewUrl: string | null;
   labels?: Record<string, string>;
+  /** where the voice lives (speech must go to the same provider) */
+  provider: VoiceProvider;
 }
 
 interface VoiceRow {
   id: string;
   user_id: string;
+  provider: VoiceProvider;
   provider_voice_id: string;
   name: string;
   description: string;
@@ -75,34 +82,42 @@ async function signed(paths: (string | null)[]) {
 }
 
 /** The person's own voices, then ElevenLabs' ready voices (when the key works). */
-export async function listVoices(userId: string, owner: boolean): Promise<{ mine: VoiceView[]; ready: VoiceView[]; readyError: string | null; limit: number; migrated: boolean; library: { active: boolean; migrated: boolean } }> {
+export async function listVoices(userId: string, owner: boolean): Promise<{ mine: VoiceView[]; ready: VoiceView[]; minimax: VoiceView[]; readyError: string | null; limit: number; migrated: boolean; library: { active: boolean; migrated: boolean }; providers: Record<VoiceProvider, boolean> }> {
   await gate(owner);
   const lib = await libraryAccess(userId, owner);
   const { data, error } = await db().from("jawad_voices").select("*").eq("user_id", userId).order("created_at", { ascending: false });
   const rows = (data ?? []) as VoiceRow[];
   const links = await signed(rows.map((r) => r.preview_path));
-  const mine = rows.map((r) => ({ id: r.id, value: `v:${r.id}`, name: r.name, description: r.description, origin: r.origin, previewUrl: r.preview_path ? links.get(r.preview_path) ?? null : null }));
+  const mine = rows.map((r) => ({ id: r.id, value: `v:${r.id}`, name: r.name, description: r.description, origin: r.origin, previewUrl: r.preview_path ? links.get(r.preview_path) ?? null : null, provider: (r.provider ?? "elevenlabs") as VoiceProvider }));
   let ready: VoiceView[] = [];
   let readyError: string | null = null;
   try {
     const list = await elevenPremadeVoices().catch(() => [] as Awaited<ReturnType<typeof elevenPremadeVoices>>);
-    ready = (list.length ? list : FALLBACK_VOICES).map((v) => ({ id: v.voiceId, value: `p:${v.voiceId}`, name: v.name, description: [v.labels.gender, v.labels.accent, v.labels.age, v.labels.descriptive ?? v.labels.description].filter(Boolean).join(" · "), origin: "ready" as const, previewUrl: v.previewUrl, labels: v.labels }));
+    ready = (list.length ? list : FALLBACK_VOICES).map((v) => ({ id: v.voiceId, value: `p:${v.voiceId}`, name: v.name, description: [v.labels.gender, v.labels.accent, v.labels.age, v.labels.descriptive ?? v.labels.description].filter(Boolean).join(" · "), origin: "ready" as const, previewUrl: v.previewUrl, labels: v.labels, provider: "elevenlabs" as const }));
   } catch (e) {
     readyError = e instanceof ProviderError ? e.userMessage : "تعذّر جلب أصوات ElevenLabs الجاهزة.";
   }
-  return { mine, ready, readyError, limit: JAWAD_VOICE_LIMIT, migrated: !missing(error), library: { active: lib.active, migrated: lib.migrated } };
+  // MiniMax's ready voices (a fixed list; no key needed to list them)
+  const minimax: VoiceView[] = minimaxReady() ? MINIMAX_READY_VOICES.map((v) => ({ id: v.id, value: `x:${v.id}`, name: v.name, description: v.gender === "male" ? "رجل" : "امرأة", origin: "ready" as const, previewUrl: null, provider: "minimax" as const })) : [];
+  return { mine, ready, minimax, readyError, limit: JAWAD_VOICE_LIMIT, migrated: !missing(error), library: { active: lib.active, migrated: lib.migrated }, providers: { elevenlabs: true, minimax: minimaxReady() } };
 }
 
 /** The ElevenLabs voice id behind a request's voice, checked: one of the ready voices, or one of the person's own. */
-export async function resolveVoice(userId: string, value: string): Promise<{ ok: true; voiceId: string } | { ok: false; reason: string }> {
+export async function resolveVoice(userId: string, value: string): Promise<{ ok: true; voiceId: string; provider: VoiceProvider } | { ok: false; reason: string }> {
   if (value.startsWith("v:")) {
     const id = value.slice(2);
     if (!isUuid(id)) return { ok: false, reason: "الصوت غير صحيح." };
-    const { data, error } = await db().from("jawad_voices").select("provider_voice_id").eq("id", id).eq("user_id", userId).maybeSingle();
+    const { data, error } = await db().from("jawad_voices").select("provider,provider_voice_id").eq("id", id).eq("user_id", userId).maybeSingle();
     if (missing(error)) return { ok: false, reason: "مكتبة الأصوات قيد التجهيز." };
     // A saved voice is part of «المكتبة»: used while the add-on runs (the owner always)
     if (data && !(await libraryOpenFor(userId))) return { ok: false, reason: "صوتك محفوظ في «المكتبة»، وهي مقفلة الآن. فعّل اشتراك المكتبة لتستخدمه، أو اختر صوتًا جاهزًا." };
-    return data ? { ok: true, voiceId: data.provider_voice_id as string } : { ok: false, reason: "هذا الصوت لم يعد في مكتبتك. اختر صوتًا آخر." };
+    return data ? { ok: true, voiceId: data.provider_voice_id as string, provider: ((data.provider as VoiceProvider | null) ?? "elevenlabs") } : { ok: false, reason: "هذا الصوت لم يعد في مكتبتك. اختر صوتًا آخر." };
+  }
+  if (value.startsWith("x:")) {
+    // one of MiniMax's ready voices
+    const id = value.slice(2);
+    if (!MINIMAX_READY_VOICES.some((v) => v.id === id)) return { ok: false, reason: "هذا الصوت غير متاح. اختر صوتًا آخر." };
+    return { ok: true, voiceId: id, provider: "minimax" };
   }
   if (value.startsWith("p:")) {
     // A ready voice: sent as is (a key without permission to read the voice list must not block speech);
@@ -111,7 +126,7 @@ export async function resolveVoice(userId: string, value: string): Promise<{ ok:
     if (!/^[A-Za-z0-9]{16,32}$/.test(id)) return { ok: false, reason: "الصوت غير صحيح." };
     const list = await elevenPremadeVoices().catch(() => null);
     if (list && list.length && !list.some((v) => v.voiceId === id) && !FALLBACK_VOICES.some((v) => v.voiceId === id)) return { ok: false, reason: "هذا الصوت غير متاح. اختر صوتًا آخر." };
-    return { ok: true, voiceId: id };
+    return { ok: true, voiceId: id, provider: "elevenlabs" };
   }
   return { ok: false, reason: "اختر صوتًا." };
 }
@@ -228,7 +243,8 @@ export async function saveDesigned(user: { id: string }, owner: boolean, b: { dr
 }
 
 /** «يستخدمه نفسه»: a voice copied from a recording the person has the right to use. */
-export async function cloneVoice(user: { id: string }, owner: boolean, b: { key?: unknown; uploadId?: unknown; name?: unknown; consent?: unknown; removeNoise?: unknown }): Promise<VoiceView> {
+export async function cloneVoice(user: { id: string }, owner: boolean, b: { key?: unknown; uploadId?: unknown; name?: unknown; consent?: unknown; removeNoise?: unknown; provider?: unknown }): Promise<VoiceView> {
+  if (b.provider === "minimax") return cloneMinimax(user, owner, b);
   const prices = await gate(owner);
   await requireLibrary(user.id, owner);
   const key = String(b.key ?? "");
@@ -258,7 +274,8 @@ export async function cloneVoice(user: { id: string }, owner: boolean, b: { key?
   }
 }
 
-async function insertVoice(userId: string, v: { voiceId: string; name: string; description: string; origin: "design" | "clone"; sample: string; coins: number; copy?: boolean }): Promise<VoiceView> {
+async function insertVoice(userId: string, v: { voiceId: string; name: string; description: string; origin: "design" | "clone"; sample: string; coins: number; copy?: boolean; provider?: VoiceProvider }): Promise<VoiceView> {
+  const provider: VoiceProvider = v.provider ?? "elevenlabs";
   let preview = v.sample;
   if (v.copy !== false) {
     // The kept sample, apart from the draft (drafts can be cleared)
@@ -267,17 +284,56 @@ async function insertVoice(userId: string, v: { voiceId: string; name: string; d
   }
   const { data, error } = await db()
     .from("jawad_voices")
-    .insert({ user_id: userId, provider_voice_id: v.voiceId, name: v.name, description: v.description, origin: v.origin, preview_path: preview, price_coins: v.coins })
+    .insert({ user_id: userId, provider, provider_voice_id: v.voiceId, name: v.name, description: v.description, origin: v.origin, preview_path: preview, price_coins: v.coins })
     .select("*")
     .single();
   if (error) {
-    await elevenDeleteVoice(v.voiceId).catch(() => null);
+    if (provider === "elevenlabs") await elevenDeleteVoice(v.voiceId).catch(() => null);
     if (missing(error)) throw notReady();
     throw error;
   }
   const r = data as VoiceRow;
   const links = await signed([r.preview_path]);
-  return { id: r.id, value: `v:${r.id}`, name: r.name, description: r.description, origin: r.origin, previewUrl: r.preview_path ? links.get(r.preview_path) ?? null : null };
+  return { id: r.id, value: `v:${r.id}`, name: r.name, description: r.description, origin: r.origin, previewUrl: r.preview_path ? links.get(r.preview_path) ?? null : null, provider };
+}
+
+/** «بصمة صوتك» at MiniMax: no slot limit there; the recording (10 s or more) is sent by a short-lived link. */
+async function cloneMinimax(user: { id: string }, owner: boolean, b: { key?: unknown; uploadId?: unknown; name?: unknown; consent?: unknown; removeNoise?: unknown }): Promise<VoiceView> {
+  if (!minimaxReady()) throw new UserError("MiniMax غير مفعّل على الخادم (FAL_KEY).", 503);
+  await requireLibrary(user.id, owner);
+  const key = String(b.key ?? "");
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
+  if (b.consent !== true) throw new UserError("أكّد أن الصوت صوتك أو أن لديك إذن صاحبه.", 400);
+  const name = cleanName(b.name);
+  if (!name) throw new UserError("سمِّ الصوت.", 400);
+  const rt = await loadRuntime();
+  const table = rt.prices[MINIMAX_ID] ?? {};
+  const coins = owner ? 0 : table[MINIMAX_CLONE_KEY] == null ? null : Math.ceil(table[MINIMAX_CLONE_KEY]! / 100 - 1e-9);
+  if (coins === null) throw new UserError("سعر نسخ الأصوات (MiniMax) لم يُحدد بعد.", 400);
+  if (!isUuid(b.uploadId)) throw new UserError("الملف الصوتي غير صحيح.", 400);
+  const { rows } = await refsFor(user.id, [{ uploadId: b.uploadId, role: "reference" }]);
+  const r = rows[0];
+  if (r.kind !== "audio" || r.status !== "ready") throw new UserError("اختر تسجيلًا صوتيًا (MP3 أو WAV) اكتمل رفعه.", 400);
+  if ((r.duration_ms ?? 0) < 10_000) throw new UserError("MiniMax يحتاج تسجيل ١٠ ثوانٍ على الأقل.", 400);
+  if ((r.duration_ms ?? 0) > 300_000) throw new UserError("التسجيل أطول من ٥ دقائق؛ قصّه ثم ارفعه.", 400);
+  const link = (await storage.from(JAWAD_BUCKET).createSignedUrl(r.storage_path, 1800)).data?.signedUrl;
+  if (!link) throw new UserError("تعذّر قراءة التسجيل.", 500);
+  const ref = `voice-clone:${user.id}:${key}`;
+  const seen = await db().from("smart_coin_ledger").select("id").eq("ref", ref).limit(1);
+  if (seen.data?.length) throw new UserError("هذا الطلب نُفّذ من قبل.", 409);
+  await holdCoins(user.id, coins, ref, LABEL);
+  try {
+    // spoken at once in Arabic: the voice is then used (MiniMax keeps it) and the sample is what the person hears
+    const made = await minimaxCloneVoice({ audioUrl: link, previewText: "مرحبًا، هذا صوتي بعد نسخه. أتمنى أن يعجبك، وبإمكانك الآن استخدامه في أي نص تريده.", removeNoise: b.removeNoise === true });
+    const path = `${user.id}/voices/mm-${Date.now()}.mp3`;
+    const sample = made.preview ?? (await storage.from(JAWAD_BUCKET).download(r.storage_path).then((d) => (d.data ? Buffer.from(d.data as unknown as ArrayBuffer) : null)).catch(() => null));
+    if (sample) await storage.from(JAWAD_BUCKET).upload(path, sample, { contentType: "audio/mpeg", upsert: true });
+    return await insertVoice(user.id, { voiceId: made.voiceId, name, description: "", origin: "clone", sample: path, coins, copy: false, provider: "minimax" });
+  } catch (e) {
+    await releaseCoins(user.id, coins, ref, LABEL);
+    if (e instanceof UserError) throw e;
+    throw new UserError(e instanceof ProviderError ? e.userMessage : "تعذّر نسخ الصوت الآن. أُعيدت لك نقودك.", 502);
+  }
 }
 
 export async function renameVoice(userId: string, id: unknown, name: unknown) {
@@ -294,7 +350,8 @@ export async function deleteVoice(userId: string, id: unknown) {
   if (!data) throw new UserError("ما لقينا هذا الصوت.", 404);
   const r = data as VoiceRow;
   try {
-    await elevenDeleteVoice(r.provider_voice_id);
+    // (a MiniMax voice has no slot to free: dropped from the library only)
+    if ((r.provider ?? "elevenlabs") === "elevenlabs") await elevenDeleteVoice(r.provider_voice_id);
   } catch (e) {
     throw new UserError(e instanceof ProviderError ? e.userMessage : "تعذّر حذف الصوت الآن.", 502);
   }
