@@ -25,6 +25,7 @@ import {
 import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist } from "@/lib/editor/assistant";
+import { diagnose } from "@/lib/editor/diagnose";
 
 // listening to a long clip can take a while
 export const maxDuration = 300;
@@ -94,6 +95,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json({ asset: await makeMusic(p, { id: user.id, email: user.email, owner }, b) });
     case "separate":
       return NextResponse.json(await separate(p, { id: user.id, email: user.email, owner }, b));
+    case "diagnose":
+      return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner }, b));
     case "assistant":
       return NextResponse.json(await assist(p, { id: user.id, email: user.email, owner }, b));
     case "fix_link":
