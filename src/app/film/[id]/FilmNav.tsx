@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { FILM_STAGES, type FilmStage } from "@config/film";
 import { useFilmBase } from "../FilmBase";
+import "@/app/jawad-ai/film/film-theme.css";
 
 /** The sections of a film project, in order; `reached` is the project stage from which a section opens. */
 const SECTIONS: { key: string; label: string; icon: string; path: string; reached: FilmStage; ready: boolean }[] = [
@@ -22,30 +24,37 @@ const order = (s: FilmStage) => FILM_STAGES.findIndex((x) => x.key === s);
 export default function FilmNav({ projectId, stage, videosOpen }: { projectId: string; stage: FilmStage; videosOpen: boolean }) {
   const pathname = usePathname();
   const base = `${useFilmBase()}/${projectId}`;
+  // the section open now slides into view
+  const row = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    row.current?.querySelector("[data-active]")?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [pathname]);
   return (
-    <nav aria-label="أقسام المشروع" className="card p-2">
-      <ol className="grid grid-cols-7 gap-1 text-center">
-        {SECTIONS.map((s) => {
+    <nav aria-label="أقسام المشروع" className="film-steps">
+      <ol className="film-swipe" ref={row}>
+        {SECTIONS.map((s, i) => {
           const href = base + s.path;
           // The generation page opens once the director has an approved generation
           const open = s.ready && order(stage) >= order(s.reached) && (!["videos", "voices", "edit"].includes(s.key) || videosOpen);
           const active = pathname === href;
           const done = order(stage) > order(s.reached) || (s.key === "story" && order(stage) > 0);
-          const tile = (
+          const body = (
             <>
-              <span className={`relative grid h-11 place-items-center rounded-2xl text-xl ${active ? "bg-gold text-on-gold" : open ? (done ? "bg-teal text-white" : "bg-surface-2") : "bg-surface-2 opacity-40"}`}>
-                {s.icon}
-                {!open && <span className="absolute -end-1 -top-1 text-xs" aria-hidden>🔒</span>}
-              </span>
-              <span className={`block text-[11px] font-extrabold ${active ? "text-ink" : "text-muted"}`}>{s.label}</span>
+              <span className="film-option-icon" aria-hidden>{s.icon}</span>
+              <span className="film-option-step">{!open ? "🔒" : done ? "✓" : i + 1}</span>
+              <h3>{s.label}</h3>
             </>
           );
           return (
-            <li key={s.key}>
+            <li key={s.key} data-active={active || undefined}>
               {open ? (
-                <Link href={href} aria-current={active ? "page" : undefined} className="block space-y-1">{tile}</Link>
+                <Link href={href} aria-current={active ? "page" : undefined} className="film-option" data-tone={active ? "gold" : done ? undefined : "light"} data-active={active}>
+                  {body}
+                </Link>
               ) : (
-                <span aria-disabled className="block cursor-not-allowed space-y-1" title={s.ready ? "توصل له بعد ما تخلص اللي قبله" : "قريبًا"}>{tile}</span>
+                <span aria-disabled="true" className="film-option" data-tone="light" title={s.ready ? "توصل له بعد ما تخلص اللي قبله" : "قريبًا"}>
+                  {body}
+                </span>
               )}
             </li>
           );

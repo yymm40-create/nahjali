@@ -1,0 +1,283 @@
+/* «الفيلم السينمائي» — a bright studio in the JAWAD logo's colours: deep navy for the words, electric blue for what is
+   chosen and alive, the logo's gold for the main buttons, on white and the palest blue (black only in small touches:
+   the reels' hubs, the clapper's stripes). Film reels turn slowly in the background, a strip of film runs across,
+   a spotlight falls from above; cards rise in smoothly, choices are big cards to swipe between. */
+
+.jw [data-jw-section="film"] {
+  --jw-bg: #f4f7ff;
+  --jw-bg-2: #eaf0ff;
+  --jw-surface: #ffffff;
+  --jw-surface-2: #eef3ff;
+  --jw-surface-3: #dfe8ff;
+  --jw-line: rgba(15, 42, 110, 0.12);
+  --jw-line-strong: rgba(15, 42, 110, 0.24);
+  --jw-ink: #0b1d47;
+  --jw-muted: #44557f;
+  --jw-faint: #7584ab;
+  --jw-accent: #1f63f0;
+  --jw-on-accent: #ffffff;
+  --jw-radius: 18px;
+  --film-navy: #0b1d47;
+  --film-blue: #1f63f0;
+  --film-glow: #3b8cff;
+  --film-gold: #e2a72c;
+  --film-gold-2: #f6cf6e;
+  --line: var(--jw-line);
+  /* the site's widgets inside: gold main buttons (the logo's gold), blue for what is approved/chosen */
+  --gold: var(--film-gold);
+  --gold-2: var(--film-gold-2);
+  --on-gold: var(--film-navy);
+  --teal: #1f63f0;
+  --teal-2: #164bc0;
+  color-scheme: light;
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  background:
+    radial-gradient(70% 45% at 50% -5%, rgba(59, 140, 255, 0.18), transparent 70%),
+    radial-gradient(40% 30% at 100% 30%, rgba(226, 167, 44, 0.1), transparent 70%),
+    radial-gradient(45% 35% at 0% 80%, rgba(31, 99, 240, 0.08), transparent 70%),
+    var(--jw-bg);
+  color: var(--jw-ink);
+}
+
+/* ── the cards: white glass with a thin gold edge on top, a soft blue shadow; they rise in ── */
+.jw [data-jw-section="film"] .card {
+  background: color-mix(in srgb, #ffffff 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--jw-line);
+  border-top: 2px solid color-mix(in srgb, var(--film-gold) 55%, transparent);
+  border-radius: var(--jw-radius);
+  box-shadow: 0 1px 0 #fff inset, 0 14px 34px -18px rgba(15, 42, 110, 0.35);
+  animation: film-rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+}
+.jw [data-jw-section="film"] a.card:hover,
+.jw [data-jw-section="film"] .film-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 1px 0 #fff inset, 0 22px 40px -18px rgba(15, 42, 110, 0.45);
+}
+.jw [data-jw-section="film"] .space-y-4 > .card:nth-child(2),
+.jw [data-jw-section="film"] .space-y-5 > .card:nth-child(2) { animation-delay: 0.05s; }
+.jw [data-jw-section="film"] .space-y-4 > .card:nth-child(3),
+.jw [data-jw-section="film"] .space-y-5 > .card:nth-child(3) { animation-delay: 0.1s; }
+.jw [data-jw-section="film"] .space-y-4 > .card:nth-child(n + 4),
+.jw [data-jw-section="film"] .space-y-5 > .card:nth-child(n + 4) { animation-delay: 0.15s; }
+
+@keyframes film-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── buttons: the gold main button glows a little and presses in ── */
+.jw [data-jw-section="film"] .btn {
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.jw [data-jw-section="film"] .btn:active:not(:disabled) { transform: scale(0.97); }
+.jw [data-jw-section="film"] .btn-primary {
+  background: linear-gradient(180deg, var(--film-gold-2), var(--film-gold));
+  color: var(--film-navy);
+  box-shadow: 0 8px 22px -10px rgba(226, 167, 44, 0.75), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+.jw [data-jw-section="film"] .btn-secondary {
+  background: linear-gradient(180deg, #2f74ff, var(--film-blue));
+  color: #fff;
+  box-shadow: 0 8px 22px -12px rgba(31, 99, 240, 0.8);
+}
+.jw [data-jw-section="film"] .display {
+  color: var(--film-navy);
+  letter-spacing: -0.01em;
+}
+.jw [data-jw-section="film"] .chip {
+  background: var(--jw-surface-2);
+  color: var(--film-navy);
+}
+
+/* ── big option cards in a swipe row ── */
+.film-swipe {
+  display: flex;
+  gap: 0.9rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 1rem;
+  margin-inline: -1rem;
+  padding: 0.4rem 1rem 1rem;
+  scrollbar-width: none;
+}
+.film-swipe::-webkit-scrollbar { display: none; }
+.film-swipe > * {
+  scroll-snap-align: center;
+  flex: 0 0 auto;
+}
+.film-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  width: min(78vw, 300px);
+  min-height: 330px;
+  padding: 1.25rem;
+  border-radius: 26px;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(120% 70% at 85% 0%, rgba(59, 140, 255, 0.55), transparent 60%),
+    linear-gradient(160deg, #163a8f, var(--film-navy) 70%);
+  box-shadow: 0 24px 50px -24px rgba(11, 29, 71, 0.75);
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease;
+  animation: film-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.film-option:hover { transform: translateY(-6px) rotate(-0.4deg); box-shadow: 0 30px 60px -24px rgba(11, 29, 71, 0.85); }
+.film-option:active { transform: scale(0.98); }
+.film-option[data-tone="gold"] {
+  color: var(--film-navy);
+  background:
+    radial-gradient(110% 70% at 15% 0%, rgba(255, 255, 255, 0.65), transparent 60%),
+    linear-gradient(160deg, var(--film-gold-2), var(--film-gold));
+}
+.film-option[data-tone="light"] {
+  color: var(--film-navy);
+  background:
+    radial-gradient(110% 70% at 85% 0%, rgba(59, 140, 255, 0.22), transparent 60%),
+    linear-gradient(160deg, #ffffff, #e6eeff);
+  border: 1px solid var(--jw-line);
+}
+.film-option[aria-disabled="true"] { filter: grayscale(0.6); opacity: 0.6; }
+.film-option .film-option-icon {
+  position: absolute;
+  inset-block-start: 1.1rem;
+  inset-inline-start: 1.1rem;
+  font-size: 3.4rem;
+  line-height: 1;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.25));
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.film-option:hover .film-option-icon { transform: scale(1.08) rotate(-4deg); }
+.film-option .film-option-step {
+  position: absolute;
+  inset-block-start: 1rem;
+  inset-inline-end: 1.1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+}
+/* a film strip's holes along the card's edge */
+.film-option::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  height: 12px;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.35) 0 10px, transparent 10px 20px) center / 100% 5px no-repeat, rgba(0, 0, 0, 0.18);
+  opacity: 0.8;
+}
+.film-option h3 { font-size: 1.5rem; font-weight: 800; line-height: 1.3; }
+.film-option p { font-size: 0.9rem; opacity: 0.85; line-height: 1.6; }
+.film-option[data-active="true"] { outline: 3px solid var(--film-gold); outline-offset: 3px; }
+
+/* the steps of a project: smaller swipe cards */
+.film-steps .film-option {
+  width: min(42vw, 150px);
+  min-height: 150px;
+  padding: 0.9rem;
+  border-radius: 20px;
+}
+.film-steps .film-option .film-option-icon { font-size: 2.3rem; inset-block-start: 0.8rem; inset-inline-start: 0.8rem; }
+.film-steps .film-option h3 { font-size: 1rem; }
+.film-steps .film-option .film-option-step { font-size: 0.65rem; top: 0.7rem; }
+
+/* ── the background: reels, a strip of film, a spotlight, a clapper ── */
+.film-decor {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.film-decor .reel {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  opacity: 0.13;
+  animation: film-spin 60s linear infinite;
+}
+.film-decor .reel.a { inset-block-start: -60px; inset-inline-end: -70px; }
+.film-decor .reel.b { inset-block-end: -80px; inset-inline-start: -90px; width: 320px; height: 320px; animation-duration: 90s; animation-direction: reverse; opacity: 0.1; }
+.film-decor .strip {
+  position: absolute;
+  inset-inline: -10%;
+  inset-block-start: 38%;
+  height: 120px;
+  opacity: 0.09;
+  transform: rotate(-8deg);
+}
+.film-decor .strip-holes {
+  animation: film-roll 22s linear infinite;
+}
+.film-decor .clap {
+  position: absolute;
+  inset-block-start: 14%;
+  inset-inline-start: 6%;
+  width: 70px;
+  opacity: 0.12;
+  animation: film-float 7s ease-in-out infinite;
+}
+.film-decor .spot {
+  position: absolute;
+  inset-block-start: -10%;
+  inset-inline-start: 30%;
+  width: 40%;
+  height: 80%;
+  background: conic-gradient(from 180deg at 50% 0%, transparent 160deg, rgba(59, 140, 255, 0.1) 175deg, rgba(255, 255, 255, 0.25) 180deg, rgba(59, 140, 255, 0.1) 185deg, transparent 200deg);
+  filter: blur(6px);
+  animation: film-sway 12s ease-in-out infinite;
+}
+
+@keyframes film-spin { to { transform: rotate(360deg); } }
+@keyframes film-roll { to { transform: translateX(-120px); } }
+@keyframes film-float { 50% { transform: translateY(-10px) rotate(-4deg); } }
+@keyframes film-sway { 50% { transform: rotate(6deg); } }
+
+/* the sound switch */
+.film-sound {
+  position: fixed;
+  inset-block-end: 1rem;
+  inset-inline-start: 1rem;
+  z-index: 40;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 1px solid var(--jw-line);
+  box-shadow: 0 8px 20px -10px rgba(11, 29, 71, 0.5);
+  font-size: 1.1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jw [data-jw-section="film"] .card,
+  .film-option,
+  .film-decor * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* the whole JAWAD page around the film section turns to the film's light studio (not only its column) */
+.jw:has([data-jw-section="film"]) {
+  --jw-bg: #f4f7ff;
+  background:
+    radial-gradient(70% 45% at 50% -5%, rgba(59, 140, 255, 0.16), transparent 70%),
+    radial-gradient(40% 30% at 100% 30%, rgba(226, 167, 44, 0.08), transparent 70%),
+    #f4f7ff;
+}
+html:has([data-jw-section="film"]),
+html:has([data-jw-section="film"]) body {
+  background: #f4f7ff;
+  color-scheme: light;
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "@/app/jawad-ai/film/film-theme.css";
 import { createClient } from "@/lib/supabase/server";
 import { filmTrialApplies, filmTrialState, requireFilmUser } from "@/lib/film/access";
 import { accessMode } from "@/lib/film/limits";
@@ -51,39 +52,45 @@ export default async function FilmHomeView({ base }: { base: string }) {
 
   return (
     <div className="space-y-8">
-      <header className="space-y-2">
+      <header className="space-y-2 text-center">
+        <p className="text-sm font-extrabold tracking-wide text-muted">🎞️ استوديو الجواد</p>
         <h1 className="display text-4xl">صناعة فيلم من الصفر</h1>
         <p className="font-bold text-muted">تبدأ بفكرتك، والموقع يمشي معك مرحلة مرحلة، وأنت اللي تعتمد كل خطوة.</p>
-        <Link href={`${base}/new`} className="btn btn-primary w-full text-xl">ابدأ مشروع فيلم ✨</Link>
       </header>
 
-      <section className="space-y-3">
+      {/* the choices, as big cards to swipe between */}
+      <section className="space-y-2" aria-label="مشاريعي">
         <h2 className="display text-2xl">مشاريعي ({projects.length})</h2>
-        {projects.length === 0 && <p className="card p-5 font-bold text-muted">ما عندك مشاريع للحين.</p>}
-        {projects.map((p) => (
-          <Link key={p.id} href={`${base}/${p.id}`} className="card flex items-center justify-between gap-3 p-4">
-            <div className="min-w-0">
-              <h3 className="truncate text-lg font-extrabold">{p.title}</h3>
-              <p className="text-sm font-bold text-muted">آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
-            </div>
-            <span className="chip shrink-0">{stageLabel(p.stage)}</span>
+        <div className="film-swipe">
+          <Link href={`${base}/new`} className="film-option" data-tone="gold">
+            <span className="film-option-icon" aria-hidden>🎬</span>
+            <span className="film-option-step">جديد</span>
+            <h3>ابدأ مشروع فيلم ✨</h3>
+            <p>اكتب فكرتك بسطرين، والسيناريست يبدأ معك.</p>
           </Link>
-        ))}
+          {projects.map((p, i) => (
+            <Link key={p.id} href={`${base}/${p.id}`} className="film-option" style={{ animationDelay: `${Math.min(i, 6) * 0.06}s` }}>
+              <span className="film-option-icon" aria-hidden>{FILM_STAGES.find((s) => s.key === p.stage)?.icon ?? "🎞️"}</span>
+              <span className="film-option-step">{stageLabel(p.stage)}</span>
+              <h3 className="line-clamp-2">{p.title}</h3>
+              <p>آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
+            </Link>
+          ))}
+        </div>
       </section>
 
-      <section className="space-y-3">
+      <section className="space-y-2" aria-label="كيف يمشي المشروع">
         <h2 className="display text-2xl">كيف يمشي المشروع؟</h2>
-        <ol className="space-y-3">
+        <div className="film-swipe">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="card flex items-center gap-4 p-4">
-              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-surface-2 text-2xl">{s.icon}</span>
-              <div>
-                <h3 className="font-extrabold"><span className="text-gold">{i + 1}.</span> {s.title}</h3>
-                <p className="text-sm font-bold text-muted">{s.text}</p>
-              </div>
-            </li>
+            <div key={s.title} className="film-option" data-tone="light" style={{ animationDelay: `${i * 0.07}s` }}>
+              <span className="film-option-icon" aria-hidden>{s.icon}</span>
+              <span className="film-option-step">{i + 1}</span>
+              <h3>{s.title}</h3>
+              <p>{s.text}</p>
+            </div>
           ))}
-        </ol>
+        </div>
       </section>
     </div>
   );
