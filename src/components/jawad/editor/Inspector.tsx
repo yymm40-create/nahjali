@@ -200,6 +200,31 @@ export default function Inspector({
   const { clip, track, index } = found;
   const a = clip.assetId ? assets.get(clip.assetId) : null;
   const locked = readOnly || track.locked;
+  // «Nest»: a timeline used as one clip — open it, its sound, and a grade over all its pictures
+  if (clip.seq) {
+    const name = tl.seqs?.find((x) => x.id === clip.seq)?.name ?? "تسلسل";
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 rounded-xl border border-teal-600/40 bg-teal-600/10 p-2.5">
+          <span className="text-2xl" aria-hidden>🎞</span>
+          <span className="min-w-0 flex-1">
+            <b className="block truncate text-sm">{name}</b>
+            <span className="text-[11px] text-jw-muted">تسلسل متداخل (Nest) · {formatTime(clipLength(clip))}</span>
+          </span>
+          <button type="button" className="jw-btn !min-h-8 text-xs" onClick={() => run({ type: "seq_open", id: clip.seq! })} disabled={readOnly}>
+            افتحه
+          </button>
+        </div>
+        <Slider label="الصوت" value={Math.round(clip.volume * 100)} min={0} max={200} step={1} disabled={locked} onChange={(v) => run({ type: "update_clip", clipId: clip.id, patch: { volume: v / 100 } }, { coalesce: `${clip.id}:volume` })} format={(v) => `${v}%`} />
+        {track.kind === "video" && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold">التلوين (فوق كل صوره)</p>
+            <GradePanel clip={clip} thumb={null} locked={locked} run={run} flash={flash} player={player} />
+          </div>
+        )}
+      </div>
+    );
+  }
   const set = (patch: ClipPatch, key: string) => run({ type: "update_clip", clipId: clip.id, patch }, { coalesce: `${clip.id}:${key}` });
   const text = clip.text;
   // a video's sound taken out onto a sound track is only sound

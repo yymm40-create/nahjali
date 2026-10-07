@@ -31,6 +31,7 @@ import {
   type Track,
   type TrackKind,
   type Sequence,
+  seqLength,
   MAX_SEQS,
   FIRST_SEQ,
   type Transform,
@@ -82,7 +83,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], crop: null, color: null, grades: [] as Grade[], transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
+const CLIP_DEFAULTS = { keys: [], seq: null as string | null, crop: null, color: null, grades: [] as Grade[], transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -117,6 +118,8 @@ export type Command =
   | { type: "seq_rename"; id: string; name: string }
   | { type: "seq_duplicate"; id: string }
   | { type: "seq_delete"; id: string }
+  /** «Nest»: the clips moved into a new timeline, which takes their place here as one clip */
+  | { type: "nest"; clipIds: string[]; name?: string }
   /** a caption track: one text clip per phrase (words timed from each clip's start), in one look */
   | { type: "add_captions"; items: { start: number; end: number; body: string; words?: Word[] }[]; style: CaptionStyle; name?: string }
   /** one look for every text clip of a track (re-styling captions); captions set apart («own») keep theirs unless `all` */
@@ -166,7 +169,9 @@ const trackFor = (c: Clip, assets: Map<string, AssetInfo>): TrackKind => {
   return k === "text" ? "text" : KIND_TRACK[k];
 };
 /** The longest a clip may run (its source, at its speed); stills and text have no end. */
+let nestLength: (id: string) => number = () => 0;
 const sourceMax = (c: Clip, assets: Map<string, AssetInfo>) => {
+  if (c.seq) return nestLength(c.seq) || Infinity;
   const a = c.assetId ? assets.get(c.assetId) : null;
   return a && a.kind !== "image" && a.durationMs ? a.durationMs : Infinity;
 };
@@ -257,6 +262,8 @@ const countClips = (t: Timeline) => t.tracks.reduce((n, x) => n + x.clips.length
 /** Applies one command; throws CommandError with an Arabic message when it can't. */
 export function apply(timeline: Timeline, cmd: Command, assets: Map<string, AssetInfo>): Applied {
   const t = structuredClone(timeline);
+  // a nested timeline's length bounds its clip, like a file's length does
+  nestLength = (id) => seqLength(t, id);
   switch (cmd.type) {
     case "add_clip": {
       const a = assets.get(cmd.assetId) ?? fail("هذا الملف مو في مكتبة المشروع.");
@@ -596,6 +603,33 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const { clip } = owned(t, cmd.clipId);
       clip.keys = [];
       return { timeline: t, label: "شلت الحركة", select: [clip.id] };
+    }
+
+    case "nest": {
+      const ids = new Set(cmd.clipIds ?? []);
+      const picked = t.tracks.map((tr) => ({ tr, clips: tr.clips.filter((c) => ids.has(c.id)) })).filter((x) => x.clips.length);
+      if (!picked.length) fail("اختر المقاطع اللي تبي تدمجها أول.");
+      if (picked.some((x) => x.tr.locked)) fail("أحد المسارات مقفول؛ افتح القفل أول.");
+      if (picked.some((x) => x.tr.role)) fail("مقاطع المسار الأحمر والأخضر ما تندمج.");
+      const seqs = seqsOf(t);
+      if (seqs.length >= MAX_SEQS) fail(`أكثر شي ${MAX_SEQS} تسلسل في المشروع.`);
+      const lo = Math.min(...picked.flatMap((x) => x.clips.map((c) => c.start)));
+      const hi = Math.max(...picked.flatMap((x) => x.clips.map((c) => clipEnd(c))));
+      // inside: the same tracks (kinds and order), the clips from 0, gaps kept
+      const inner: Track[] = picked.map(({ tr, clips }) => ({ ...structuredClone(tr), id: newId("t"), role: null, clips: clips.map((c) => ({ ...structuredClone(c), start: c.start - lo })) }));
+      if (!inner.some((x) => x.kind === "video")) inner.unshift({ id: newId("t"), kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
+      for (const { tr } of picked) {
+        tr.clips = tr.clips.filter((c) => !ids.has(c.id));
+        tidy(t, tr);
+      }
+      const at = picked.find((x) => x.tr.kind === "video")?.tr ?? picked[0].tr;
+      const id = newId("s");
+      const name = (cmd.name ?? "").trim().slice(0, 40) || `متداخل ${seqs.length}`;
+      const n: Clip = { id: newId("c"), assetId: null, start: lo, in: 0, out: Math.max(LIMITS.minClipMs, hi - lo), speed: 1, volume: 1, fit: "cover", transform: { ...DEFAULT_TRANSFORM }, text: null, ...CLIP_DEFAULTS, seq: id, keys: [] };
+      if (magnet(t, at)) insertMain(at, n, lo);
+      else place(at, n);
+      t.seqs = [...seqs, { id, name, tl: { v: t.v, width: t.width, height: t.height, fps: t.fps, background: t.background, magnetic: false, markers: [], tracks: inner } }];
+      return { timeline: t, label: `دمجت ${ids.size} في «${name}» (Nest)`, select: [n.id] };
     }
 
     case "seq_new": {

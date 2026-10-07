@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { duration, formatTime, type Timeline } from "@/lib/editor/model";
+import { duration, flatten, formatTime, type Timeline } from "@/lib/editor/model";
 import { postJson } from "@/lib/fetch";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
@@ -73,7 +73,7 @@ export default function ExportPanel({
       await flush();
       let last = 0;
       const r = await exportVideo(
-        tl,
+        flatten(tl),
         assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio })),
         quality,
         (p) => {

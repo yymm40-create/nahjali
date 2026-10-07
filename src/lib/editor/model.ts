@@ -342,8 +342,10 @@ export interface Key extends Transform {
 
 export interface Clip {
   id: string;
-  /** the media file (null for a text clip) */
+  /** the media file (null for a text clip and a nested timeline) */
   assetId: string | null;
+  /** «Nest»: another of the project's timelines used here as one clip (its in/out are that timeline's own time) */
+  seq: string | null;
   start: number;
   in: number;
   out: number;
@@ -467,6 +469,76 @@ export const FIRST_SEQ = "s1";
 
 /** Every track of every timeline of the project (for «is this file used anywhere»). */
 export const allTracks = (tl: Timeline): Track[] => [...tl.tracks, ...(tl.seqs ?? []).flatMap((s) => s.tl?.tracks ?? [])];
+
+/** How long a timeline runs: its last clip's end. */
+const runOf = (t: Timeline) => t.tracks.reduce((m, tr) => tr.clips.reduce((n, c) => Math.max(n, c.start + (c.out - c.in) / (c.speed || 1)), m), 0);
+
+/** A timeline's content by id (the open one is `tl` itself, its list taken off). */
+function contents(tl: Timeline) {
+  const map = new Map<string, Timeline>();
+  for (const x of tl.seqs ?? []) map.set(x.id, x.tl ?? { ...tl, seqs: undefined });
+  return map;
+}
+
+/** How long one of the project's timelines runs (0 when it isn't there). */
+export function seqLength(tl: Timeline, id: string) {
+  const c = contents(tl).get(id);
+  return c ? runOf(c) : 0;
+}
+
+/**
+ * The timeline as it plays: every nested timeline («Nest») opened into the clips it holds, at their place in time,
+ * cut to the nest's in/out; its pictures stacked right above the nest's track, its sound added. The nest's volume
+ * multiplies theirs and its grading goes over each of their pictures. Up to 3 levels deep; a loop is ignored. The
+ * player and the export use this, so a nest plays and exports like any clips.
+ */
+export function flatten(tl: Timeline): Timeline {
+  if (!tl.tracks.some((t) => t.clips.some((c) => c.seq))) return tl;
+  const map = contents(tl);
+  const open = (t: Timeline, depth: number, stack: string[]): Timeline => {
+    const pictures: Track[] = [];
+    const sounds: Track[] = [];
+    for (const tr of t.tracks) {
+      (tr.kind === "audio" ? sounds : pictures).push({ ...tr, clips: tr.clips.filter((c) => !c.seq) });
+      for (const n of tr.clips) {
+        if (!n.seq || depth >= 3 || stack.includes(n.seq)) continue;
+        const inner0 = map.get(n.seq);
+        if (!inner0) continue;
+        const inner = open(inner0, depth + 1, [...stack, n.seq]);
+        const shift = n.start - n.in;
+        for (const it of inner.tracks) {
+          const clips: Clip[] = [];
+          for (const c of it.clips) {
+            const sp = c.speed || 1;
+            const s0 = c.start;
+            const e0 = c.start + (c.out - c.in) / sp;
+            const a = Math.max(s0, n.in);
+            const b = Math.min(e0, n.out);
+            if (b - a < 1) continue;
+            clips.push({
+              ...c,
+              id: `${n.id}~${c.id}`,
+              start: Math.round(a + shift),
+              in: Math.round(c.in + (a - s0) * sp),
+              out: Math.round(c.in + (b - s0) * sp),
+              volume: Math.min(2, c.volume * n.volume),
+              grades: [...c.grades, ...n.grades],
+              fadeIn: a > s0 ? 0 : c.fadeIn,
+              fadeOut: b < e0 ? 0 : c.fadeOut,
+              transition: b < e0 ? null : c.transition,
+            });
+          }
+          if (!clips.length) continue;
+          const made: Track = { ...it, id: `${tr.id}~${n.id}~${it.id}`, role: null, muted: it.muted || tr.muted, hidden: it.hidden || tr.hidden, clips };
+          (it.kind === "audio" ? sounds : pictures).push(made);
+        }
+      }
+    }
+    return { ...t, tracks: [...pictures, ...sounds] };
+  };
+  const out = open({ ...tl, seqs: undefined }, 0, [tl.seqs?.find((x) => !x.tl)?.id ?? FIRST_SEQ]);
+  return { ...out, seqs: tl.seqs };
+}
 
 /** What the timeline needs to know about a media file. */
 export interface AssetInfo {
@@ -770,14 +842,16 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   const text = kind === "text" ? readText(o.text) : null;
-  const assetId = kind === "text" ? null : str(o.assetId, 64) || null;
-  if (kind === "text" ? !text : !assetId || (assets && !assets.has(assetId))) return null;
+  const seq = kind === "text" ? null : str(o.seq, 40, "") || null;
+  const assetId = kind === "text" || seq ? null : str(o.assetId, 64) || null;
+  if (kind === "text" ? !text : !seq && (!assetId || (assets && !assets.has(assetId)))) return null;
   const tr = (o.transform ?? {}) as Record<string, unknown>;
   const inMs = int(o.in, 0, LIMITS.maxMs, 0);
   const out = int(o.out, inMs + LIMITS.minClipMs, LIMITS.maxMs, inMs + STILL_MS);
   return {
     id: id(o.id, "c"),
     assetId,
+    seq,
     start: int(o.start, 0, LIMITS.maxMs, 0),
     in: inMs,
     out,
@@ -883,6 +957,15 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
     }
     if (!open) seqs.unshift({ id: newId("s"), name: "تسلسل 1", tl: null });
     if (seqs.length > 1) out.seqs = seqs;
+  }
+  // a nested timeline must be one of the project's, and not the timeline it sits in
+  if (nested === 0) {
+    const ids = new Set((out.seqs ?? []).map((x) => x.id));
+    const keep = (t: Timeline, self: string | undefined) => {
+      for (const tr of t.tracks) tr.clips = tr.clips.filter((c) => !c.seq || (ids.has(c.seq) && c.seq !== self));
+    };
+    keep(out, out.seqs?.find((x) => !x.tl)?.id ?? FIRST_SEQ);
+    for (const x of out.seqs ?? []) if (x.tl) keep(x.tl, x.id);
   }
   return out;
 }
