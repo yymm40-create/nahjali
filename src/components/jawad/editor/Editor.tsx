@@ -97,10 +97,10 @@ function kindOfClip(tl: TL, assets: EditorAsset[], id: string): ClipKind | null 
 }
 /** The sections each kind of clip has, and the one that opens first. */
 const TABS_OF: Record<ClipKind, InspectorTab[]> = {
-  video: ["basic", "fx", "motion", "anim", "color", "backdrop", "sound", "transition"],
-  image: ["basic", "fx", "motion", "anim", "color", "backdrop", "transition"],
+  video: ["basic", "fx", "motion", "opacity", "anim", "color", "backdrop", "sound", "transition"],
+  image: ["basic", "fx", "motion", "opacity", "anim", "color", "backdrop", "transition"],
   audio: ["sound", "basic"],
-  text: ["basic", "motion", "anim", "transition"],
+  text: ["basic", "motion", "opacity", "anim", "transition"],
 };
 const MAIN_TAB: Record<ClipKind, InspectorTab> = { video: "basic", image: "basic", audio: "sound", text: "basic" };
 const EDIT_LABEL: Record<ClipKind, string> = { video: "الفيديو", image: "الصورة", audio: "السرعة", text: "الكتابة" };
@@ -111,6 +111,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
   { id: "edit", label: "تعديل", icon: "settings", tab: "basic", hint: "النص، الصوت، السرعة، الملاءمة" },
   { id: "fx", label: "مؤثرات", icon: "burst", tab: "fx", hint: "١٠٠ مؤثر على المقطع: تلفزيون قديم، قلتش، ضوء، مطر، مرايا…" },
   { id: "motion", label: "حركة", icon: "diamond", tab: "motion", hint: "المكان والحجم والدوران ونقاط الحركة (كي فريم)" },
+  { id: "opacity", label: "شفافية", icon: "layers", tab: "opacity", hint: "الشفافية، أوضاع الدمج، الكي (شاشة خضراء ولوما)" },
   { id: "anim", label: "دخول/خروج", icon: "wand", tab: "anim", hint: "حركات الدخول والخروج" },
   { id: "color", label: "ألوان", icon: "palette", tab: "color", hint: "فلاتر وتصحيح ألوان" },
   { id: "backdrop", label: "الخلفية", icon: "user", tab: "backdrop", hint: "عزل الشخص وتغيير خلفيته" },
@@ -841,6 +842,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (k === "fx" && picture) patch.fx = src.fx;
         if (k === "crop" && picture) patch.crop = src.crop;
         if (k === "bg" && picture) patch.bg = src.bg;
+        if (k === "key" && picture) patch.key = src.key;
+        if (k === "blend" && f.track.kind !== "audio") patch.blend = src.blend;
         if (k === "transform" && f.track.kind !== "audio") patch.transform = src.transform;
         if (k === "anim" && f.track.kind !== "audio") patch.anim = src.anim;
         if (k === "sound" && a && a.kind !== "image" && a.hasAudio) patch.sound = src.sound;

@@ -45,6 +45,11 @@ import {
   TRACK_COLORS,
   NO_SOUND_FX,
   NO_CROP,
+  BLEND_MODES,
+  NEW_KEY,
+  readKey,
+  type BlendMode,
+  type Keyer,
   type Crop,
   readSound,
   DEFAULT_BACKDROP,
@@ -66,6 +71,10 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   color?: Partial<ColorGrade> | null;
   /** «القص» (crop): how much of each side is hidden, 0…0.45; null = the whole picture */
   crop?: Partial<Crop> | null;
+  /** «الشفافية»: the blend mode */
+  blend?: BlendMode;
+  /** «الكي»: merged over the clip's key (a new one starts from a green screen); null = none */
+  key?: Partial<Keyer> | null;
   /** «التلوين»: merged over one layer (`layer`, default the first; wheels, curves and the film parts field by field; a new `look` applied); null = no grading */
   grade?: (Partial<Grade> & { layer?: number }) | null;
   /** the layers all at once (add, remove, reorder) */
@@ -83,7 +92,7 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
 };
 
 /** What every new clip starts with (besides its media and timing). */
-const CLIP_DEFAULTS = { keys: [], seq: null as string | null, crop: null, color: null, grades: [] as Grade[], transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
+const CLIP_DEFAULTS = { keys: [], seq: null as string | null, crop: null, blend: "normal" as BlendMode, key: null as Keyer | null, color: null, grades: [] as Grade[], transition: null, fadeIn: 0, fadeOut: 0, shape: "rect" as const, words: [], bg: null, own: false, sound: null, anim: null, fx: [] as ClipFx[], fix: null };
 
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
@@ -506,6 +515,15 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         const k = (v: number) => Math.min(0.45, Math.max(0, Number(v) || 0));
         const next = { l: k(c.l), t: k(c.t), r: k(c.r), b: k(c.b) };
         clip.crop = p.crop === null || (!next.l && !next.t && !next.r && !next.b) ? null : next;
+      }
+      if (p.blend !== undefined) {
+        if (track.kind === "audio") fail("الشفافية للصور والفيديو والنصوص.");
+        if (!(p.blend in BLEND_MODES)) fail("وضع دمج غير معروف.");
+        clip.blend = p.blend;
+      }
+      if (p.key !== undefined) {
+        if (clip.text || track.kind === "audio") fail("الكي للصور والفيديو فقط.");
+        clip.key = p.key === null ? null : readKey({ ...(clip.key ?? NEW_KEY), ...p.key });
       }
       if (p.grade !== undefined || p.grades !== undefined) {
         if (clip.text || track.kind === "audio") fail("التلوين للصور والفيديو فقط.");

@@ -25,6 +25,8 @@ export const ATTRS = {
   fx: "المؤثرات",
   transform: "الحركة والحجم",
   crop: "القص",
+  blend: "وضع الدمج",
+  key: "الكي",
   anim: "الدخول والخروج",
   sound: "الصوت",
   bg: "الخلفية",

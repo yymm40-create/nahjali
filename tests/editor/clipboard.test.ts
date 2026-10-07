@@ -51,3 +51,28 @@ describe("crop", () => {
     expect(() => apply(t, { type: "update_clip", clipId: c.id, patch: { crop: { l: 0.2 } } }, assets)).toThrow();
   });
 });
+
+describe("«الشفافية»", () => {
+  it("blend modes and keys are set, merged, read back and refused on sound", async () => {
+    const { applyAll, apply } = await import("@/lib/editor/commands");
+    const { emptyTimeline, readTimeline, NEW_KEY } = await import("@/lib/editor/model");
+    const { lib, video, sound } = await import("./helpers");
+    const assets = lib(video("v", 4000), sound("s", 4000));
+    let t = applyAll(emptyTimeline("16:9"), [{ type: "add_clip", assetId: "v" }, { type: "add_clip", assetId: "s" }], assets).timeline;
+    const v = t.tracks.find((x) => x.kind === "video")!.clips[0];
+    const s = t.tracks.find((x) => x.kind === "audio")!.clips[0];
+    expect(v.blend).toBe("normal");
+    t = apply(t, { type: "update_clip", clipId: v.id, patch: { blend: "screen", key: { tolerance: 0.5 } } }, assets).timeline;
+    t = apply(t, { type: "update_clip", clipId: v.id, patch: { key: { color: "#0047BB" } } }, assets).timeline;
+    const c = t.tracks.find((x) => x.kind === "video")!.clips[0];
+    expect(c.blend).toBe("screen");
+    expect(c.key).toEqual({ ...NEW_KEY, tolerance: 0.5, color: "#0047bb" });
+    const back = readTimeline(JSON.parse(JSON.stringify(t))).tracks.find((x) => x.kind === "video")!.clips[0];
+    expect(back.key?.color).toBe("#0047bb");
+    expect(back.blend).toBe("screen");
+    expect(() => apply(t, { type: "update_clip", clipId: v.id, patch: { blend: "nope" as never } }, assets)).toThrow();
+    expect(() => apply(t, { type: "update_clip", clipId: s.id, patch: { key: {} } }, assets)).toThrow();
+    t = apply(t, { type: "update_clip", clipId: v.id, patch: { key: null } }, assets).timeline;
+    expect(t.tracks.find((x) => x.kind === "video")!.clips[0].key).toBeNull();
+  });
+});
