@@ -203,15 +203,18 @@ const mimeOf = (path: string, kind: string) => {
   return map[ext] ?? "";
 };
 
-/** Each clip pointed at the file's new id (clips of a file that didn't come are left out). */
+/** Each clip pointed at the file's new id (clips of a file that didn't come are left out), in every timeline. */
 export function remapTimeline(tl: Timeline, ids: Map<string, string>): Timeline {
-  return {
-    ...tl,
-    tracks: tl.tracks.map((t) => ({
-      ...t,
-      clips: t.clips.filter((c) => !c.assetId || ids.has(c.assetId)).map((c) => (c.assetId ? { ...c, assetId: ids.get(c.assetId)! } : c)),
+  const one = (t: Timeline): Timeline => ({
+    ...t,
+    tracks: t.tracks.map((tr) => ({
+      ...tr,
+      clips: tr.clips.filter((c) => !c.assetId || ids.has(c.assetId)).map((c) => (c.assetId ? { ...c, assetId: ids.get(c.assetId)! } : c)),
     })),
-  };
+  });
+  const out = one(tl);
+  if (tl.seqs) out.seqs = tl.seqs.map((s) => ({ ...s, tl: s.tl ? one(s.tl) : null }));
+  return out;
 }
 
 /** A file onto the device (the phone app turns it into its save / share sheet). */

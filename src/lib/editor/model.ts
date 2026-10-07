@@ -448,7 +448,25 @@ export interface Timeline {
   /** beat marks (timeline ms) the cuts snap to */
   markers: number[];
   tracks: Track[];
+  /**
+   * The project's timelines («تسلسلات»), in their order. The one being edited has `tl: null` (it is this object);
+   * absent or empty = a project with one timeline.
+   */
+  seqs?: Sequence[];
 }
+
+/** One of a project's timelines; `tl` is null for the one open now (its content is the Timeline itself). */
+export interface Sequence {
+  id: string;
+  name: string;
+  tl: Timeline | null;
+}
+export const MAX_SEQS = 20;
+/** the id a one-timeline project's timeline goes by */
+export const FIRST_SEQ = "s1";
+
+/** Every track of every timeline of the project (for «is this file used anywhere»). */
+export const allTracks = (tl: Timeline): Track[] => [...tl.tracks, ...(tl.seqs ?? []).flatMap((s) => s.tl?.tracks ?? [])];
 
 /** What the timeline needs to know about a media file. */
 export interface AssetInfo {
@@ -816,7 +834,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
  * A stored or received document made safe: unknown fields dropped, numbers clamped, clips on media that isn't in the
  * project (when `assets` is given) removed, overlaps resolved. Never throws.
  */
-export function readTimeline(raw: unknown, assets: Set<string> | null = null): Timeline {
+export function readTimeline(raw: unknown, assets: Set<string> | null = null, nested = 0): Timeline {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const tracksIn = Array.isArray(o.tracks) ? o.tracks.slice(0, LIMITS.tracks) : [];
   let clips = 0;
@@ -847,6 +865,25 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null): T
   const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic: o.magnetic !== false, markers: readMarkers(o.markers), tracks };
   const main = mainTrack(out);
   if (main && out.magnetic) main.clips = pack(main.clips);
+  // the other timelines (one level: theirs are dropped), exactly one of them the open one
+  if (nested === 0 && Array.isArray(o.seqs) && o.seqs.length) {
+    const seqs: Sequence[] = [];
+    const ids = new Set<string>();
+    let open = false;
+    for (const raw of o.seqs.slice(0, MAX_SEQS)) {
+      const q = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+      let id = str(q.id, 40, "") || newId("s");
+      while (ids.has(id)) id = newId("s");
+      ids.add(id);
+      const name = str(q.name, 40, "") || `تسلسل ${seqs.length + 1}`;
+      if (q.tl == null && !open) {
+        open = true;
+        seqs.push({ id, name, tl: null });
+      } else if (q.tl && typeof q.tl === "object") seqs.push({ id, name, tl: readTimeline(q.tl, assets, 1) });
+    }
+    if (!open) seqs.unshift({ id: newId("s"), name: "تسلسل 1", tl: null });
+    if (seqs.length > 1) out.seqs = seqs;
+  }
   return out;
 }
 

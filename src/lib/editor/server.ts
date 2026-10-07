@@ -9,7 +9,7 @@ import { FILM_BUCKET } from "@/lib/film/types";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { applyAll, CommandError, type Command } from "./commands";
 import { editorSniff, EDITOR_MIMES, KIND_AR, storedType } from "./media";
-import { emptyTimeline, isProjectKind, PROJECT_KINDS, readTimeline, type AssetInfo, type AssetKind, type ProjectKind, type Timeline } from "./model";
+import { allTracks, emptyTimeline, isProjectKind, PROJECT_KINDS, readTimeline, type AssetInfo, type AssetKind, type ProjectKind, type Timeline } from "./model";
 
 import { storage } from "@/lib/storage";
 export const EDITOR_BUCKET = "editor";
@@ -442,8 +442,8 @@ export async function deleteAsset(p: EditorProject, id: unknown) {
   const { data } = await db().from("editor_assets").select("*").eq("id", id).eq("project_id", p.id).maybeSingle();
   const row = data as AssetRow | null;
   if (!row) return;
-  const used = readTimeline(p.timeline).tracks.some((t) => t.clips.some((c) => c.assetId === row.id));
-  if (used) throw new UserError("هذا الملف مستخدم في التايملاين؛ احذف مقاطعه أول.", 409);
+  const used = allTracks(readTimeline(p.timeline)).some((t) => t.clips.some((c) => c.assetId === row.id));
+  if (used) throw new UserError("هذا الملف مستخدم في أحد التسلسلات؛ احذف مقاطعه أول.", 409);
   // only our own copies are deleted; a work from JAWAD AI or the film maker stays where it was
   if (row.bucket === EDITOR_BUCKET) await storage.from(EDITOR_BUCKET).remove([row.path]);
   await db().from("editor_assets").delete().eq("id", row.id);
