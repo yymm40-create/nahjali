@@ -6,8 +6,8 @@ import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
 import { isUnlimited } from "@config/site";
-import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, type Brief, type Design } from "@config/jawad/student";
-import { claudeCeilingUsd } from "./claude";
+import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, researchPlaces, type Brief, type Design } from "@config/jawad/student";
+import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
@@ -108,6 +108,7 @@ function cleanBrief(v: unknown): Brief {
     purposeNote: text(b.purposeNote, 1000),
     mode: SOURCE_MODES.some((x) => x.id === b.mode) ? b.mode : "files",
     focus: text(b.focus, 2000),
+    where: text(b.where, 2000),
   });
 }
 
@@ -343,7 +344,10 @@ export async function projectAction(user: User, id: string, b: Body) {
     }
     case "research_material": {
       // «كلاود يبحث لي»: the research becomes the material (a written source), before anything is read
-      return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling(), input: { asMaterial: true, focus: text(b.focus, 2000) }, stage: "كلاود يبحث ويكتب مادتك" });
+      // `where`: links or sites to keep to (from the first page, sent again here so it works before SQL 0035)
+      const where = text(b.where, 2000) || readBrief(p.brief).where;
+      const reads = researchPlaces(where).links.length > 0;
+      return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling() + (reads ? fetchCeilingUsd() : 0), input: { asMaterial: true, focus: text(b.focus, 2000), where }, stage: "كلاود يبحث ويكتب مادتك" });
     }
     case "research_approve": {
       const r = await latestVersion(p.id, "research");
