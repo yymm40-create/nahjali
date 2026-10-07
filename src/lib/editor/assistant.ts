@@ -35,9 +35,12 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer"],
+        required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer", "captionStyle", "poem", "then"],
         properties: {
-          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask"] },
+          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions"] },
+          captionStyle: { type: "string", enum: ["karaoke", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up). Else empty." },
+          poem: { type: "string", description: "captions: a poem's verses (one per line, exactly as the person gave them) to time on its recitation in clipId. Else empty." },
+          then: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "captions: commands to run once the captions exist — \"$CAPTIONS\" is the new caption track's id, and a command whose clipId is \"$EACH\" runs on every caption. Else empty." },
           track: { type: "boolean", description: "smart_mask: follow the subject through the clip (a moving subject in a video). Else false." },
           layer: { type: "number", description: "smart_mask: the grading layer (0…3) whose window it becomes. Else 0." },
           makeKind: { type: "string", enum: ["image", "video", "speech", "sfx", "music", ""], description: "make: what to make. Else empty." },
@@ -49,7 +52,7 @@ const SCHEMA = {
           place: { type: "string", enum: ["over", "main", "audio", "library", ""], description: "make: where the result goes — over (a new track above the video, at \"at\"), main (into the main track at \"at\"), audio (a new sound track at \"at\"), library (only added to the files). Else empty." },
           name: { type: "string", description: "make: a short Arabic name for the file. Else empty." },
           text: { type: "string", description: "hook_design: the hook text exactly as the person gave it (never reworded, diacritics kept). Else empty." },
-          lang: { type: "string", description: "hook_design: the hook's language (e.g. العربية). Else empty." },
+          lang: { type: "string", description: "hook_design: the hook's language (e.g. العربية). captions: \"ar\", \"en\" or \"\" (find it). Else empty." },
           domain: { type: "string", description: "hook_design: the field or project (Arabic). Else empty." },
           age: { type: "string", description: "hook_design: the audience age group. Else empty." },
           style: { type: "string", description: "Leave empty." },
@@ -106,7 +109,8 @@ RULES:
 - Times must be inside the clips you touch. Work from the end of the timeline backwards when an earlier change would shift later times, or prefer remove_ranges.
 - Silences: remove the "quiet" spans longer than about 0.7 s, keeping about 0.15 s of air on each side.
 - A full edit from the library: order the media sensibly (story, then energy), trim long clips to their best part, keep the main track magnetic, add soft transitions, a title at the start when it fits, and duck music under speech.
-- Captions need the «كابشن» button (speech is transcribed there); say so if they are asked for and no "speech" is available. Exporting is the «صدّر» button.
+- CAPTIONS — do them yourself, never send the person to a button: {"kind":"captions","lang":"ar","captionStyle":...,"clipId":"" (or one clip to caption only it),"poem":"" (or the verses to time on clipId's recitation),"then":[...]}. The page listens to the clips, writes the captions on a new caption track, then runs your "then" commands on it — so one answer does the whole job the person asked for: e.g. «سوّ كابشن وحط لهم دخولية وخروج واختر خط مناسب» → captions with then [{"type":"style_track","trackId":"$CAPTIONS","text":{"font":"<a font id that fits the video's mood>","weight":900,"size":0.06},"y":0.72}, {"type":"update_clip","clipId":"$EACH","patch":{"anim":{"in":"pop","out":"fade","inMs":250,"outMs":200}}}]. Pick fonts, colours, sizes and animations that suit the content (a religious recitation: naskh/amiri, calm fade; a fast reel: bold kufi/cairo, pop or punch; words «words» for word-by-word). Say in the reply what you chose and why, briefly. Exporting is the «صدّر» button (the person presses it).
+- DO THE WHOLE JOB: when a request has several steps (make something, then place, style, animate, colour, mix it), do them all in this one answer — commands first, then requests, and the requests' own follow-ups — instead of telling the person what to press next.
 - «نص الهوك» (a hook text: whenever the person asks for a hook, a hook text or a title hook): it is designed as one piece — the picture of the words (GPT Image 2), its entrance and exit, and two sound effects — by the hook designer, from {"kind":"hook_design","text":...,"lang":...,"domain":...,"age":...,"at":0}. It needs five inputs: the hook text (exactly as given — you never write or change it), its language, the orientation (the project's shape: you know it, never ask), the field or project, and the audience age. If any is missing, ask ONE short grouped question for the missing ones only (mention reference pictures are optional) and send no request. Once they are all there, send the request and reply only that the design is on its way (the designer's delivery follows).
 - MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost). Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
 - MAKING ANYTHING with JAWAD AI's generators → {"kind":"make","makeKind":...,"prompt":...,"place":...,"at":...}: any picture (GPT Image 2: a B-roll shot, a background, a thumbnail, an illustration, a poster, a picture with Arabic writing — quote the Arabic text exactly in «» inside the English prompt), any video shot (Seedance: 4–15 s; describe subject, action, setting, camera move, lighting, style in English), any voice reading a text (speech: the exact words, with diacritics where the pronunciation matters; "voice" picks who reads), any sound effect (English description), any music (English description; withSound true = with singing). Prompts are rich and specific like a professional's. Where it goes: pictures/videos usually "over" at the moment they illustrate (or "main" to insert a shot), sounds "audio" at the moment they belong. Use it whenever the person asks to make/create/generate something (not for the hook text, which has its own designer, and use "music" above for music made to the video's length). It costs coins (the price is shown to the person before it starts) and a video takes a few minutes; it arrives on the timeline by itself. Up to 3 per answer.
@@ -155,7 +159,11 @@ function lookParts(look: NonNullable<ReturnType<typeof readLook>>): ClaudePart[]
 }
 
 export interface MakeRequest {
-  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask";
+  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions";
+  /** captions: the starting look, a poem to time, and the commands run on the new captions */
+  captionStyle?: string;
+  poem?: string;
+  then?: string[];
   /** smart_mask: follow the subject; the grading layer it becomes the window of */
   track?: boolean;
   layer?: number;
@@ -262,7 +270,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   }
   const valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
   const requests = (answer.requests ?? [])
-    .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     .slice(0, 4);
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
   let reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "");

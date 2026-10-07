@@ -91,3 +91,23 @@ export function placeMade(kind: "image" | "video" | "speech" | "sfx" | "music", 
   }
   return cmds;
 }
+
+/**
+ * «حيدرة» on the captions it just made: its follow-up commands with "$CAPTIONS" as the new caption track and a
+ * command on clipId "$EACH" repeated for every caption. Unreadable commands are left out.
+ */
+export function expandThen(raw: string[], trackId: string, clipIds: string[]): Command[] {
+  const out: Command[] = [];
+  for (const s of raw.slice(0, 30)) {
+    let c: Record<string, unknown>;
+    try {
+      c = JSON.parse(s.replaceAll('"$CAPTIONS"', JSON.stringify(trackId)));
+    } catch {
+      continue;
+    }
+    if (!c || typeof c !== "object" || typeof c.type !== "string") continue;
+    if (c.clipId === "$EACH") for (const id of clipIds) out.push({ ...c, clipId: id } as Command);
+    else out.push(c as Command);
+  }
+  return out;
+}

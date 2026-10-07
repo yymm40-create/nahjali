@@ -41,3 +41,27 @@ describe("«اصنع لي…» placing", () => {
     expect(placeMade("speech", "m", "library", 0)).toEqual([]);
   });
 });
+
+describe("captions by «حيدرة»", () => {
+  it("its follow-ups land on the new caption track and on every caption", async () => {
+    const { expandThen } = await import("@/lib/editor/make");
+    const cmds = expandThen(
+      [
+        '{"type":"style_track","trackId":"$CAPTIONS","text":{"font":"cairo"},"y":0.7}',
+        '{"type":"update_clip","clipId":"$EACH","patch":{"anim":{"in":"pop","out":"fade"}}}',
+        "not json",
+      ],
+      "t9",
+      ["c1", "c2"],
+    );
+    expect(cmds).toHaveLength(3);
+    expect(cmds[0]).toMatchObject({ type: "style_track", trackId: "t9" });
+    expect(cmds.slice(1).map((c) => (c as { clipId: string }).clipId)).toEqual(["c1", "c2"]);
+    // and they really run on captions
+    const t0 = applyAll(emptyTimeline("9:16"), [{ type: "add_captions", items: [{ start: 0, end: 900, body: "السلام" }, { start: 1000, end: 2000, body: "عليكم" }], style: "karaoke" }], lib()).timeline;
+    const tr = t0.tracks.find((x) => x.kind === "text")!;
+    const t1 = applyAll(t0, expandThen(['{"type":"style_track","trackId":"$CAPTIONS","text":{"font":"cairo"}}', '{"type":"update_clip","clipId":"$EACH","patch":{"anim":{"in":"pop","out":"fade","inMs":250,"outMs":200}}}'], tr.id, tr.clips.map((c) => c.id)), lib()).timeline;
+    const cl = t1.tracks.find((x) => x.id === tr.id)!.clips;
+    expect(cl.every((c) => c.text?.font === "cairo" && c.anim?.in === "pop")).toBe(true);
+  });
+});
