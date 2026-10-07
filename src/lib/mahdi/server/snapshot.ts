@@ -2,7 +2,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HISTORY_DAYS } from "@config/mahdi";
 import { addDays, todayIn } from "../engine";
-import type { Challenge, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
+import type { Challenge, DayTask, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
 import { DEFAULT_GOALS, loadReading, loadUsername } from "./reading";
 import { habitsFromRows, projectFromRow, shrineFromRow, type HabitRow, type LogRow, type ProjectRow, type ShrineRow, type VersionRow } from "./rows";
 
@@ -48,7 +48,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
   const today = todayIn(profile.timeZone);
   const logsFrom = addDays(today, -HISTORY_DAYS);
 
-  const [shrines, phrases, extra, reading, username, projects, habits, versions, logs] = await Promise.all([
+  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs] = await Promise.all([
     getShrines(),
     supabase
       .from("mahdi_phrases")
@@ -59,6 +59,8 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     // Reading and usernames arrive with migration 0010; until it runs, the app works without them
     loadReading(supabase, profile.userId).catch(() => ({ library: [], sessions: [], goals: DEFAULT_GOALS })),
     loadUsername(supabase, profile.userId).catch(() => null),
+    // «مهام اليوم» arrive with migration 0036; until it runs, the app works without them
+    loadTasks(supabase, today).catch(() => null),
     selectAll<ProjectRow>((a, b) => supabase.from("mahdi_projects").select("*").order("sort_order").order("created_at").range(a, b)),
     selectAll<HabitRow>((a, b) => supabase.from("mahdi_habits").select("*").order("sort_order").order("created_at").range(a, b)),
     selectAll<VersionRow>((a, b) =>
@@ -86,7 +88,27 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     logs: byHabit,
     logsFrom,
     today,
+    tasks: tasks ?? [],
+    tasksReady: tasks !== null,
   };
+}
+
+export interface TaskRow {
+  id: string;
+  task_date: string;
+  title: string;
+  at_time: string | null;
+  habit_id: string | null;
+  sort_order: number;
+  done_at: string | null;
+}
+export const taskFromRow = (r: TaskRow): DayTask => ({ id: r.id, date: r.task_date, title: r.title, at: r.at_time ? r.at_time.slice(0, 5) : null, habitId: r.habit_id, sortOrder: r.sort_order, doneAt: r.done_at });
+
+/** One day's tasks (through RLS: the user's own), timed ones first by time, then in the order they were added. */
+export async function loadTasks(supabase: SupabaseClient, date: string): Promise<DayTask[]> {
+  const { data, error } = await supabase.from("mahdi_day_tasks").select("id,task_date,title,at_time,habit_id,sort_order,done_at").eq("task_date", date).order("sort_order").order("created_at").limit(200);
+  if (error) throw error;
+  return (data as TaskRow[]).map(taskFromRow);
 }
 
 const DEFAULT_NOTIFICATIONS: NotificationSettings = { mode: "off", times: ["20:00"], quietStart: "23:00", quietEnd: "07:00", habitReminders: true };

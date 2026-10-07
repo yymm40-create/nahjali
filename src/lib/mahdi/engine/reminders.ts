@@ -64,3 +64,25 @@ export function alreadySent(lastSent: string | null, ago: number, now: Date = ne
   return new Date(lastSent).getTime() >= slotAt;
 }
 
+
+// ───────────────────────────── «مهام اليوم» ─────────────────────────────
+
+/** A follow-up for a timed task still open, this long after its time. */
+export const TASK_FOLLOW_UP_MIN = 60;
+
+/** Minutes into the user's day (which starts at 6:00): 02:00 comes after 23:00 of the same day. */
+const dayMinute = (m: number) => (m < 6 * 60 ? m + 24 * 60 : m);
+
+/**
+ * Which reminder a timed, still-open task of today needs now: "at" (its time has come), "late" (an hour after, still
+ * open) or null. `notified`: 0 nothing sent yet, 1 the first sent, 2 both.
+ */
+export function taskReminderDue(atTime: string, notified: number, nowMin: number): "at" | "late" | null {
+  const at = toMinutes(atTime);
+  if (at === null || notified >= 2) return null;
+  const now = dayMinute(nowMin);
+  const due = dayMinute(at);
+  if (now < due) return null;
+  if (notified === 0) return now - due >= TASK_FOLLOW_UP_MIN ? "late" : "at";
+  return now - due >= TASK_FOLLOW_UP_MIN ? "late" : null;
+}
