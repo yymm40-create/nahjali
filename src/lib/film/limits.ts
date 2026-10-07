@@ -16,6 +16,7 @@ export const LIMITS = {
   editor_claude_daily: { label: "طلبات Claude في حيدرة كت", hint: "لكل شخص في اليوم", default: 40, perUser: true },
   editor_speech_minutes: { label: "دقائق الكابشن ومزامنة القصائد", hint: "دقائق صوت تُفرَّغ لكل شخص في اليوم", default: 120, perUser: true },
   editor_price_claude: { label: "سعر طلب Claude في حيدرة كت (نقدة)", hint: "يُخصم بس إذا شغّلت «النقود الذكية مطلوبة»؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_voice: { label: "سعر رد حيدرة بالصوت في حيدرة كت (نقدة)", hint: "لكل رد ينقرأ بصوت حيدرة (ElevenLabs)؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_caption: { label: "سعر دقيقة الكابشن في حيدرة كت (نقدة)", hint: "لكل دقيقة صوت (تُقرّب للأعلى)، بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_hook: { label: "سعر هوك بالصورة في حيدرة كت (نقدة)", hint: "صورة GPT Image 2 مفرّغة؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_music: { label: "سعر دقيقة موسيقى في حيدرة كت (نقدة)", hint: "ElevenLabs Music؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },

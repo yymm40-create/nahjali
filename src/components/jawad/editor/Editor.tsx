@@ -1517,7 +1517,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             </div>
           )}
         </div>
-        <Transport player={player} total={total} />
+        <Transport player={player} total={total} name={title} />
         <div className="hidden items-center rounded-lg border border-jw-line p-0.5 text-[11px] lg:flex" role="radiogroup" aria-label="شكل التايملاين">
           {(
             [
@@ -1596,8 +1596,27 @@ function SheetGrip({ onClose, title }: { onClose: () => void; title: string }) {
 }
 
 /** Play/pause and the time (they follow the player without re-rendering the editor). */
-function Transport({ player, total }: { player: Player | null; total: number }) {
+function Transport({ player, total, name }: { player: Player | null; total: number; name: string }) {
   const [state, setState] = useState({ ms: 0, playing: false });
+  const [saving, setSaving] = useState(false);
+  // «احفظ الفريم»: the frame where the video is stopped, as a PNG at the project's size
+  const saveFrame = async () => {
+    if (!player || saving) return;
+    if (player.playing) player.toggle();
+    setSaving(true);
+    try {
+      const blob = await player.frameBlob();
+      if (!blob) return alert("ما قدرت أحفظ هذا الفريم. جرّب مرة ثانية.");
+      const stamp = formatTime(player.ms).replace(/[:.]/g, "-");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(name || "frame").replace(/[\\/:*?"<>|]/g, "").slice(0, 60)}-${stamp}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } finally {
+      setSaving(false);
+    }
+  };
   useEffect(() => {
     if (!player) return;
     let last = 0;
@@ -1622,6 +1641,9 @@ function Transport({ player, total }: { player: Player | null; total: number }) 
       <span className="ms-1 text-xs tabular-nums text-jw-muted">
         <b className="text-jw-ink">{formatTime(state.ms)}</b> / {formatTime(total)}
       </span>
+      <button type="button" className="ms-1 grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" onClick={saveFrame} disabled={!total || saving} aria-label="احفظ الفريم صورة" title="احفظ الفريم صورة (PNG)">
+        <Icon name="camera" size={15} />
+      </button>
     </div>
   );
 }

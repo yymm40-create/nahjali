@@ -23,7 +23,7 @@ import {
   uploadedParts,
   completeUpload,
 } from "@/lib/editor/server";
-import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
+import { align, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist, gradeCheck } from "@/lib/editor/assistant";
 import { diagnose } from "@/lib/editor/diagnose";
@@ -93,6 +93,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await transcribe(p, who, b));
     case "align":
       return NextResponse.json(await align(p, who, b));
+    // talking with حيدرة: what was said → text, and the reply → sound
+    case "voice_in":
+      return NextResponse.json(await voiceIn(p, who, b));
+    case "voice_out":
+      return NextResponse.json(await voiceOut(p, who, b));
     case "make_hook":
       return NextResponse.json({ asset: await makeHook(p, who, b) });
     case "make_sfx":

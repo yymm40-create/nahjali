@@ -446,6 +446,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
   const [big, setBig] = useState<null | "wheels" | "curves">(null);
   const [view, setView] = useState(gradeView.mode);
   const [splitX, setSplitX] = useState(gradeView.x);
+  const [splitDir, setSplitDir] = useState(gradeView.dir);
   const [open, setOpen] = useState<SectionId[]>(["log", "basic"]);
   const [ms, setMs] = useState(0);
   useEffect(() => {
@@ -599,6 +600,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
         </div>
         <div className="flex items-center gap-1.5">
           <Seg label="قبل وبعد" value={view} onChange={showView} options={[["on", "بعد"], ["off", "قبل"], ["split", "قسمة"]]} />
+          {view === "split" && <Seg label="اتجاه القسمة" value={splitDir} onChange={(d) => { gradeView.dir = d; setSplitDir(d); redraw(); }} options={[["v", "⇆ يمين ويسار"], ["h", "⇅ فوق وتحت"]]} />}
           {view === "split" && <input type="range" dir="ltr" aria-label="مكان القسمة" className="min-w-0 flex-1 accent-[var(--jw-accent)]" min={5} max={95} value={Math.round(splitX * 100)} onChange={(e) => { gradeView.x = Number(e.target.value) / 100; setSplitX(gradeView.x); redraw(); }} />}
         </div>
         {layers[L] && (
