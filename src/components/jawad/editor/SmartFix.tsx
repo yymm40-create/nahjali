@@ -8,12 +8,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generatorById } from "@config/jawad/generators";
 import { postJson } from "@/lib/fetch";
 import { clipLength, findClip, FIX_NOTE_MAX, formatTime, type Clip, type Fix, type Timeline as TL } from "@/lib/editor/model";
-import { EDIT_LIMITS, frameTimes, type EditRange } from "@/lib/jawad/smart-edit";
+import { CONTINUITY, continuityRanges, EDIT_LIMITS, frameTimes, type ContinuityRange, type EditRange } from "@/lib/jawad/smart-edit";
 import { fixCut, fixedOffset, pieceRange } from "@/lib/editor/smart-fix";
 import { stageLabel, type JobView, type OutputView } from "@/lib/jawad/labels";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { grabFrames, grabSounds } from "../studio/frames";
+import { uploadContinuity } from "../studio/continuity";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
@@ -128,7 +129,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
         const c = fixOf(id);
         if (!c) continue;
         try {
-          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}` });
+          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current) });
           run({ type: "update_clip", clipId: id, patch: { fix: { job: made.job, from: made.from, state: "making", error: null } } }, { label: "أرسلت جزءًا للتعديل" });
         } catch (e) {
           failed++;
@@ -163,6 +164,9 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   const failedPieces = pieces.filter((c) => c.fix?.state === "failed");
 
   const lift = () => sel && run({ type: "lift_fix", clipId: sel.clip.id });
+  // a copy on the yellow track: the seconds sent with the red piece next to it, so it carries on what's there
+  const toYellow = () => sel && run({ type: "copy_cont", clipId: sel.clip.id });
+  const yellowCount = yellowOf(tl).length;
   const cut = () => {
     if (!sel || !player) return;
     run({ type: "split", at: Math.round(player.ms), clipIds: [sel.clip.id] });
@@ -176,7 +180,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           <Icon name="wand" size={14} /> التعديل الذكي
         </span>
         <span className="text-jw-muted">
-          {red && !pieces.length ? "قص الجزء اللي ما عجبك ✂ ثم ارفعه ⬆ للمسار الأحمر — يبقى بنفس مكانه." : `${counts.all} على الأحمر${counts.making ? ` · ${counts.making} يُصنع` : ""}${counts.done ? ` · ${counts.done} على الأخضر` : ""}`}
+          {red && !pieces.length ? "قص الجزء اللي ما عجبك ✂ ثم ارفعه ⬆ للمسار الأحمر — يبقى بنفس مكانه. والثواني اللي قبله (وبعده) انسخها 🟡 للأصفر عشان يكمّل منها." : `${counts.all} على الأحمر${yellowCount ? ` · ${yellowCount} على الأصفر` : " · بدون أصفر: ٣ ث قبل وبعد تلقائيًا"}${counts.making ? ` · ${counts.making} يُصنع` : ""}${counts.done ? ` · ${counts.done} على الأخضر` : ""}`}
         </span>
         <span className="flex-1" />
         {canLift && (
@@ -187,6 +191,11 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
             <button type="button" className="jw-btn !min-h-8 !border-red-500/60 !px-2 text-xs text-red-600" onClick={lift} title="يرفعه للمسار الأحمر بدون ما يتحرك يمين أو يسار">
               <Icon name="chevronUp" size={14} /> ارفع للأحمر
             </button>
+            {sel && sel.track.role !== "cont" && sel.clip.out - sel.clip.in >= 2000 && (
+              <button type="button" className="jw-btn !min-h-8 !border-yellow-500/70 !px-2 text-xs text-yellow-700" onClick={toYellow} title="ينسخه للمسار الأصفر: ثواني ترسل ويّا الجزء الأحمر عشان يكمّل نفس الحركة والصوت (ثانيتين أو أكثر)">
+                🟡 للاستمرارية
+              </button>
+            )}
           </>
         )}
         {pieces.length > 0 && (
@@ -232,15 +241,26 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           )}
         </div>
       )}
-      {open && <FixDialog projectId={projectId} pieces={pieces} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} onClose={() => setOpen(false)} />}
+      {open && <FixDialog projectId={projectId} pieces={pieces} yellow={yellowOf(tl)} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-type Plan = { ok: false; why: string } | { ok: true; job: JobView; out: OutputView; mode: "parts" | "whole"; cut: { start: number; end: number; seconds: number }; videoSec: number; ranges: EditRange[] };
+type Plan = { ok: false; why: string } | { ok: true; job: JobView; out: OutputView; mode: "parts" | "whole"; cut: { start: number; end: number; seconds: number }; videoSec: number; ranges: EditRange[]; continuity: ContinuityRange[] | null };
+
+/**
+ * The continuity references of a piece: the yellow track's copies of the same video (each before or after the piece,
+ * in that video's own seconds), or else the seconds right around the cut.
+ */
+function continuityOf(c: Clip, yellow: Clip[], cut: { start: number; end: number }, videoSec: number): ContinuityRange[] {
+  const mine = yellow.filter((y) => y.assetId === c.assetId).sort((x, y) => x.start - y.start);
+  if (!mine.length) return continuityRanges(cut, videoSec);
+  return mine.slice(0, CONTINUITY.max).map((y) => ({ at: y.start < c.start ? ("before" as const) : ("after" as const), from: Math.round(y.in / 100) / 10, to: Math.round(Math.min(y.out, videoSec * 1000) / 100) / 10 }));
+}
+const yellowOf = (tl: TL) => tl.tracks.find((t) => t.role === "cont")?.clips ?? [];
 
 /** What a piece needs to be sent: its original job and result, and the part to make (or why it can't). */
-function planOf(c: Clip, a: EditorAsset | undefined, j: JobView | undefined): Plan {
+function planOf(c: Clip, a: EditorAsset | undefined, j: JobView | undefined, yellow: Clip[] = []): Plan {
   if (!a?.jobId || !a.outputId) return { ok: false, why: "هذا الجزء مو من فيديو صنعته في «الجواد الذكي!» أو صانع الفيلم؛ ما يقدر يتعاد." };
   if (!j) return { ok: false, why: "ما قدرنا نقرأ الفيديو الأصلي؛ جرّب مرة ثانية." };
   const out = j.outputs.find((o) => o.id === a.outputId) ?? j.outputs.find((o) => o.kind === "video");
@@ -252,7 +272,7 @@ function planOf(c: Clip, a: EditorAsset | undefined, j: JobView | undefined): Pl
   const cut = fixCut(c, mode, videoSec, dur?.min ?? 4, dur?.max ?? 15);
   if (!cut) return { ok: false, why: mode === "parts" ? `الجزء أطول من أطول مقطع يولّده ${def?.name ?? "المولد"} (${dur?.max ?? 15} ث)، أو الفيديو أقصر من ${dur?.min ?? 4} ث؛ اختر «كامل» أو قصّ الجزء أصغر.` : "تعذّر." };
   const r = pieceRange(c);
-  return { ok: true, job: j, out, mode, cut, videoSec, ranges: [{ from: r.from, to: Math.min(r.to, videoSec), note: "" }] };
+  return { ok: true, job: j, out, mode, cut, videoSec, ranges: [{ from: r.from, to: Math.min(r.to, videoSec), note: "" }], continuity: mode === "parts" ? continuityOf(c, yellow, cut, videoSec) : null };
 }
 
 const loadJobs = async (ids: string[]) => {
@@ -261,7 +281,7 @@ const loadJobs = async (ids: string[]) => {
   return (r?.jobs ?? []) as JobView[];
 };
 const askPrice = async (p: Extract<Plan, { ok: true }>): Promise<Quote> => {
-  const body = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: "", ranges: p.ranges, quote: true };
+  const body = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: "", ranges: p.ranges, ...(p.continuity ? { continuity: p.continuity } : {}), quote: true };
   const res = await fetch("/api/jawad/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
   const r = res ? await res.json().catch(() => ({})) : {};
   if (!res) return { error: "ما وصلنا للخادم؛ تأكد من النت وجرّب مرة ثانية." };
@@ -272,29 +292,29 @@ const askPrice = async (p: Extract<Plan, { ok: true }>): Promise<Quote> => {
  * Sends one piece to be made again. Everything it needs is fetched right now (the film video's job, the original,
  * the price), so nothing waits on a window being open. Returns the job, or throws with the reason in plain Arabic.
  */
-async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset: EditorAsset | undefined; onAssets: (l: EditorAsset[]) => void; key: string }) {
+async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset: EditorAsset | undefined; onAssets: (l: EditorAsset[]) => void; key: string; yellow: Clip[] }) {
   let a = ctx.asset;
   if (a && !a.jobId && a.origin === "film") {
     a = (await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${ctx.projectId}`, { action: "fix_link", assetId: a.id })).asset;
     ctx.onAssets([a]);
   }
   const j = a?.jobId ? (await loadJobs([a.jobId]))[0] : undefined;
-  const p = planOf(c, a, j);
+  const p = planOf(c, a, j, ctx.yellow);
   if (!p.ok) throw new Error(p.why);
   const q = await askPrice(p);
   if (!("coins" in q)) throw new Error(q.error);
   const ranges = p.ranges.map((r) => ({ ...r, note: note.slice(0, EDIT_LIMITS.noteMax) }));
   const partCut = p.mode === "parts" ? p.cut : null;
-  const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins };
+  const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins, ...(p.continuity ? { continuity: p.continuity } : {}) };
   try {
     const times = frameTimes(p.videoSec, ranges, partCut);
     const small = await grabFrames(p.out.url!, times, EDIT_LIMITS.frameWidth, 0.72);
     send.frames = times.map((t, i) => ({ t, data: small[i] }));
     if (partCut) {
-      // the last two frames before the cut (the motion the new piece carries on) and the frame it lands on: full
-      // quality, kept under the request's size
-      const [prev1, prev2, last] = await grabFrames(p.out.url!, [Math.max(0, partCut.start - 0.2), partCut.start, partCut.end], 1920, 0.9, { by: "side" });
-      send.cutFrames = { prev1, prev2, last };
+      // the video itself around the piece (the yellow track, or the seconds around the cut), cut here and uploaded
+      const ids: string[] = [];
+      for (const r of p.continuity ?? []) ids.push(await uploadContinuity(p.out.url!, r, `continuity-${r.at}`));
+      send.continuityUploads = ids;
       // and the sound around the cut (voices, effects, music carry on)
       const [before, after] = await grabSounds(p.out.url!, [{ from: partCut.start - 2.5, to: partCut.start }, { from: partCut.end, to: partCut.end + 2.5 }]);
       send.cutSounds = { before, after };
@@ -316,7 +336,7 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
 }
 
 /** Every red piece: what to fix, «جزئي» or «كامل», its price; one tap saves the notes and sends them all in the background. */
-function FixDialog({ projectId, pieces, assets, run, player, onAssets, onSend, onClose }: { projectId: string; pieces: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string }[]) => void; onClose: () => void }) {
+function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, onSend, onClose }: { projectId: string; pieces: Clip[]; yellow: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string }[]) => void; onClose: () => void }) {
   const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, c.fix?.note ?? ""])));
   const [jobs, setJobs] = useState<Record<string, JobView>>({});
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -358,7 +378,7 @@ function FixDialog({ projectId, pieces, assets, run, player, onAssets, onSend, o
 
   // ---------- prices (again when a piece's kind or length changes) ----------
   const open = pieces.filter((c) => c.fix && (c.fix.state === "draft" || c.fix.state === "failed"));
-  const quoteKey = open.map((c) => `${c.id}:${c.fix!.mode}:${c.in}:${c.out}:${assetOf(c)?.jobId ?? ""}`).join("|") + `#${Object.keys(jobs).length}`;
+  const quoteKey = open.map((c) => `${c.id}:${c.fix!.mode}:${c.in}:${c.out}:${assetOf(c)?.jobId ?? ""}`).join("|") + `#${Object.keys(jobs).length}#${yellow.map((y) => `${y.assetId}:${y.in}:${y.out}:${y.start}`).join(",")}`;
   useEffect(() => {
     let live = true;
     const t = setTimeout(async () => {
@@ -366,7 +386,7 @@ function FixDialog({ projectId, pieces, assets, run, player, onAssets, onSend, o
         const a = assetOf(c);
         if (!a?.jobId && a?.origin === "film") continue; // being linked
         if (a?.jobId && !jobs[a.jobId]) continue; // being read
-        const p = planOf(c, a, a?.jobId ? jobs[a.jobId] : undefined);
+        const p = planOf(c, a, a?.jobId ? jobs[a.jobId] : undefined, yellow);
         const q: Quote = p.ok ? await askPrice(p) : { error: p.why };
         if (!live) return;
         setQuotes((x) => ({ ...x, [c.id]: q }));

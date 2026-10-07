@@ -22,8 +22,8 @@ type Spot = { x: number; y: number; vx: number; vy: number; target: string };
 type Shown = { id: string; name: string; note: string; x: number | null; y: number | null; vx: number | null; target: string; viewport: string };
 
 /**
- * «الملاحظ حسن»: a small icon on every page. A signed-in person presses it, clicks the exact spot, and leaves their
- * name and a note for the site's development; it goes to the dashboard's «الملاحظات» with where it was left.
+ * «الملاحظ حسن»: a small icon on every page. A signed-in person presses it and writes their name and a note for the
+ * site's development straight away (pointing at an exact spot is optional); it goes to the dashboard's «الملاحظات» with where it was left.
  * An owner opening a note's link (?note=…) sees its pin on the page.
  */
 export default function NotesPin() {
@@ -61,7 +61,9 @@ export default function NotesPin() {
     const me = await api<{ signedIn: boolean; name: string }>("/api/notes").catch(() => ({ signedIn: false, name: "" }));
     if (!me.signedIn) return setMode("login");
     if (!name) setName(me.name);
-    setMode("pick");
+    // straight to the note (the page and where they are on it are kept); a spot is optional
+    setSpot({ x: Math.round(window.scrollX + window.innerWidth / 2), y: Math.round(window.scrollY + window.innerHeight / 2), vx: -1, vy: -1, target: "" });
+    setMode("form");
   }
   function pick(e: React.MouseEvent<HTMLDivElement>) {
     const layer = e.currentTarget;
@@ -76,7 +78,9 @@ export default function NotesPin() {
     setBusy(true);
     setError("");
     try {
-      await postJson("/api/notes", { name, note, path: window.location.pathname + window.location.search, ...spot, viewport: `${window.innerWidth}×${window.innerHeight}` });
+      // without a chosen spot: only where they were on the page (the screen's middle), no point on the screen
+      const placed = spot.vx >= 0;
+      await postJson("/api/notes", { name, note, path: window.location.pathname + window.location.search, ...spot, ...(placed ? {} : { vx: null, vy: null, target: "" }), viewport: `${window.innerWidth}×${window.innerHeight}` });
       setNote("");
       setMode("sent");
       setTimeout(() => setMode("off"), 2200);
@@ -89,7 +93,7 @@ export default function NotesPin() {
 
   const login = path.startsWith("/jawad-ai") ? `/jawad-ai/login?next=${encodeURIComponent(path)}` : `/login?next=${encodeURIComponent(path)}`;
   // the form opens next to the spot, kept inside the window
-  const formPos = spot
+  const formPos = spot && spot.vx >= 0
     ? { left: Math.min(Math.max(8, spot.vx - 150), (typeof window === "undefined" ? 400 : window.innerWidth) - 308), top: Math.min(spot.vy + 18, (typeof window === "undefined" ? 600 : window.innerHeight) - 300) }
     : undefined;
 
@@ -102,10 +106,10 @@ export default function NotesPin() {
           onClick={start}
           title="الملاحظ حسن: حط ملاحظتك على أي مكان في الصفحة"
           aria-label="الملاحظ حسن: حط ملاحظة"
-          className="fixed bottom-4 left-4 z-[90] grid size-11 place-items-center rounded-full border border-white/50 bg-amber-400 text-xl shadow-lg transition hover:scale-110"
+          className="fixed bottom-4 left-4 z-[90] flex items-center gap-2 rounded-full border-2 border-white/60 bg-amber-400 px-4 py-2.5 text-base font-extrabold text-slate-900 shadow-xl transition hover:scale-105"
           style={{ bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
         >
-          📝
+          <span className="text-2xl" aria-hidden>📝</span> الملاحظ حسن
         </button>
       )}
 
@@ -122,11 +126,13 @@ export default function NotesPin() {
       {mode === "form" && spot && (
         <>
           <div className="fixed inset-0 z-[95] bg-black/20" onClick={() => setMode("off")} />
-          <span className="pointer-events-none fixed z-[96] -translate-x-1/2 -translate-y-full text-3xl drop-shadow" style={{ left: spot.vx, top: spot.vy }} aria-hidden>
-            📍
-          </span>
+          {spot.vx >= 0 && (
+            <span className="pointer-events-none fixed z-[96] -translate-x-1/2 -translate-y-full text-3xl drop-shadow" style={{ left: spot.vx, top: spot.vy }} aria-hidden>
+              📍
+            </span>
+          )}
           <form
-            className="fixed z-[97] w-[300px] space-y-2 rounded-2xl bg-white p-3 text-slate-900 shadow-2xl"
+            className={`fixed z-[97] w-[320px] max-w-[calc(100vw-1rem)] space-y-2 rounded-2xl bg-white p-3 text-slate-900 shadow-2xl ${formPos ? "" : "bottom-4 left-2 sm:left-4"}`}
             style={formPos}
             onSubmit={(e) => {
               e.preventDefault();
@@ -136,6 +142,9 @@ export default function NotesPin() {
             <p className="font-extrabold">📝 الملاحظ حسن</p>
             <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold" placeholder="اسمك" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="اسمك" />
             <textarea autoFocus className="h-24 w-full resize-none rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="ملاحظتك للتطوير: وش تبي يتغير هنا؟" value={note} onChange={(e) => setNote(e.target.value)} maxLength={4000} aria-label="ملاحظتك" />
+            <button type="button" className="text-xs font-bold text-amber-700 underline" onClick={() => setMode("pick")}>
+              {spot.vx >= 0 ? "📍 غيّر المكان" : "📍 حدد مكان معيّن في الصفحة (اختياري)"}
+            </button>
             {error && <p className="text-xs font-bold text-red-600">{error}</p>}
             <div className="flex gap-2">
               <button className="flex-1 rounded-xl bg-amber-500 py-2 font-extrabold text-white disabled:opacity-50" disabled={busy || !note.trim() || !name.trim()}>

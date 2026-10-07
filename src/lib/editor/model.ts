@@ -409,8 +409,11 @@ export interface Fix {
 }
 
 export const FIX_NOTE_MAX = 300;
-/** The two tracks of «التعديل الذكي»: red = pieces to fix, green = what was made in their place. */
-export const FIX_TRACK = { fix: { name: "للتعديل", color: "#ef4444" }, fixed: { name: "المعدّل", color: "#22c55e" } } as const;
+/**
+ * The tracks of «التعديل الذكي»: red = pieces to make again, green = what was made in their place, yellow = copies of
+ * the seconds around a piece sent with it as continuity references (hidden and quiet: never in the export).
+ */
+export const FIX_TRACK = { fix: { name: "للتعديل", color: "#ef4444" }, fixed: { name: "المعدّل", color: "#22c55e" }, cont: { name: "للاستمرارية", color: "#eab308" } } as const;
 export type TrackRole = keyof typeof FIX_TRACK;
 
 export function readFix(v: unknown): Fix | null {
@@ -999,7 +1002,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed") ? t.role : null, clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);

@@ -6,6 +6,7 @@ import MenuDetails from "./MenuDetails";
 import SmartCoin from "./SmartCoin";
 import { coinBalance } from "@/lib/coins";
 import ThemeSwitcher from "./ThemeSwitcher";
+import { SoundToggle } from "./UiSounds";
 import { isAdmin } from "@config/site";
 import { can } from "@/lib/access";
 import { SECTIONS } from "@config/sections";
@@ -29,6 +30,7 @@ export default async function Header() {
           <span className="display gold-text text-2xl">نهج علي</span>
         </Link>
         <div className="flex items-center gap-2">
+          <SoundToggle />
           {user && coins !== null && (
             <Link
               href="/coins"
