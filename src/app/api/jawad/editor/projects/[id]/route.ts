@@ -24,7 +24,7 @@ import {
 } from "@/lib/editor/server";
 import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
-import { assist } from "@/lib/editor/assistant";
+import { assist, gradeCheck } from "@/lib/editor/assistant";
 import { diagnose } from "@/lib/editor/diagnose";
 import { isAdmin } from "@config/site";
 import { startMake } from "@/lib/editor/make-any";
@@ -107,6 +107,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "diagnose":
       // the site's owner only (a free guest is «unlimited» too, but never sees the site's insides)
       return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
+    // حيدرة checks a colour change it made (pictures and scopes), and corrects it until it is right
+    case "grade_check":
+      return NextResponse.json(await gradeCheck(p, { id: user.id, email: user.email, owner }, b));
     case "assistant":
       return NextResponse.json(await assist(p, { id: user.id, email: user.email, owner }, b));
     case "fix_link":

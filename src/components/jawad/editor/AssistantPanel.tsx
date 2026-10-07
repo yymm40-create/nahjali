@@ -6,6 +6,7 @@ import { framesOf } from "./media";
 import { diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
+import { scopeOf, type Scope } from "@/lib/editor/scopes";
 import { makeHookAsset, makeMusicAsset, makeSfxAsset } from "./make";
 import { startMaking } from "./making";
 import { smartWindow } from "./track";
@@ -13,6 +14,7 @@ import type { MakePlan } from "@/lib/editor/make-any";
 import { placeHookDesign, placeMusic } from "@/lib/editor/make";
 import { hookAspect } from "@/lib/editor/hook-design";
 import type { MakeRequest } from "@/lib/editor/assistant";
+import { MAX_CHECKS } from "@/lib/editor/assistant-guide";
 import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
@@ -188,30 +190,54 @@ export default function AssistantPanel({
 
   const sent = useRef(0);
   // pictures of clips already looked at (kept while the clip's part stays the same)
-  const seenFrames = useRef(new Map<string, { t: number; data: string }[]>());
-  const lookAt = async () => {
-    if (selected.length !== 1) return null;
-    const f = findClip(tl, selected[0]);
+  const seenFrames = useRef(new Map<string, { t: number; data: string; scope: Scope | null }[]>());
+  /** A clip seen: a few moments as filmed and, when graded, the same after its grading (in `at`, the timeline now), each with its scope. */
+  const lookAtClip = async (at: Timeline, clipId: string) => {
+    const f = findClip(at, clipId);
     const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
     if (!f || !a?.url || a.kind === "audio" || f.track.kind === "audio") return null;
     const c = f.clip;
     const key = `${c.id}:${c.in}:${c.out}:${c.start}`;
     let frames = seenFrames.current.get(key);
     if (!frames) {
-      setBusy("حيدرة يشوف المقطع المحدد…");
       try {
         const n = a.kind === "image" ? 1 : Math.min(6, Math.max(2, Math.round((c.out - c.in) / 2000)));
         const src = await framesOf(a.url, a.kind, c.in, c.out, n);
         // the moments on the timeline (what the person sees)
-        frames = src.map((x) => ({ t: Math.round(c.start + (x.t - c.in) / c.speed), data: x.data }));
+        frames = await Promise.all(src.map(async (x) => ({ t: Math.round(c.start + (x.t - c.in) / c.speed), data: x.data, scope: await scopeOfJpeg(x.data) })));
         seenFrames.current.set(key, frames);
       } catch {
         return null;
       }
     }
     // graded clips: the same moments after its colour grading too (what the person sees), to judge the grade
-    const graded = c.grades.some((g) => g.on) ? await gradedFrames(frames.slice(0, 4), c.grades, (t) => Math.max(0, (t - c.start) * c.speed)).catch(() => []) : [];
+    const graded = c.grades.some((g) => g.on) ? await gradedFrames(frames.slice(0, 4), c.grades, (t) => Math.max(0, t - c.start)).catch(() => []) : [];
     return { clipId: c.id, frames: [...frames.slice(0, graded.length ? 4 : 8), ...graded] };
+  };
+  const lookAt = async () => {
+    if (selected.length !== 1) return null;
+    if (!seenFrames.current.size) setBusy("حيدرة يشوف المقطع المحدد…");
+    return lookAtClip(tl, selected[0]);
+  };
+  /** «يشيك التلوين»: rounds of look → judge → correct, the result told only when حيدرة is satisfied (or out of rounds). */
+  const checkColour = async (clipId: string, request: string, start: Timeline) => {
+    let at = start;
+    let steps = 0;
+    for (let round = 1; round <= MAX_CHECKS; round++) {
+      setBusy(round === 1 ? "حيدرة يشيك نتيجة التلوين (الصورة والسكوبات)…" : `حيدرة يعيد يشيك بعد التعديل (جولة ${round})…`);
+      const look = await lookAtClip(at, clipId);
+      if (!look) return;
+      const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", clipId, round, request, timeline: at, look });
+      if (c.ok || !c.commands.length) {
+        setMsgs((m) => [...m, { role: "assistant", text: `✅ ${c.verdict}`, done: steps || undefined }]);
+        return;
+      }
+      const applied = run(c.commands, { label: `حيدرة يضبط التلوين (${round})` });
+      if (!applied) return;
+      at = (applied as { timeline: Timeline }).timeline;
+      steps += c.commands.length;
+      if (round === MAX_CHECKS) setMsgs((m) => [...m, { role: "assistant", text: c.verdict, done: steps }]);
+    }
   };
   const send = async (words = text) => {
     const message = words.trim();
@@ -238,7 +264,7 @@ export default function AssistantPanel({
       // the clip the person chose: Claude looks at a few of its moments to know what is in it
       const look = await lookAt();
       setBusy("حيدرة يشتغل على التايملاين…");
-      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[] }>(`/api/jawad/editor/projects/${projectId}`, {
+      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[]; checkClipId?: string | null }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         message,
         history,
@@ -250,11 +276,15 @@ export default function AssistantPanel({
         look,
       });
       let done = 0;
+      let now = tl;
       if (r.commands.length) {
         const applied = run(r.commands, { label: `حيدرة: ${message.slice(0, 40)}` });
         done = applied ? r.commands.length : 0;
+        if (applied) now = (applied as { timeline: Timeline }).timeline;
       }
       setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions }]);
+      // a colour change: حيدرة looks at the result (pictures and scopes) and corrects it until it is right
+      if (r.checkClipId && done) await checkColour(r.checkClipId, message, now);
       // what Claude asked to be made: made one by one, then placed (each its own undo)
       for (const q of r.requests ?? []) {
         try {
@@ -555,8 +585,29 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 /** Pictures of a clip (JPEG, base64) passed through its grading layers, as the export draws them. */
+/** A JPEG's scope (the numbers a colourist reads). */
+async function scopeOfJpeg(data: string): Promise<Scope | null> {
+  try {
+    const img = new Image();
+    img.src = `data:image/jpeg;base64,${data}`;
+    await img.decode();
+    return scopeOfCanvas(img, img.naturalWidth, img.naturalHeight);
+  } catch {
+    return null;
+  }
+}
+function scopeOfCanvas(src: CanvasImageSource, w: number, h: number) {
+  const k = Math.min(1, 320 / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w * k));
+  c.height = Math.max(1, Math.round(h * k));
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(src, 0, 0, c.width, c.height);
+  return scopeOf(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+}
+
 async function gradedFrames(frames: { t: number; data: string }[], layers: Grade[], own: (t: number) => number) {
-  const out: { t: number; data: string; graded: true }[] = [];
+  const out: { t: number; data: string; graded: true; scope: Scope }[] = [];
   for (const f of frames) {
     const img = new Image();
     img.src = `data:image/jpeg;base64,${f.data}`;
@@ -567,7 +618,7 @@ async function gradedFrames(frames: { t: number; data: string }[], layers: Grade
     c.width = img.naturalWidth;
     c.height = img.naturalHeight;
     c.getContext("2d")!.drawImage(g.img, 0, 0, c.width, c.height);
-    out.push({ t: f.t, data: c.toDataURL("image/jpeg", 0.72).split(",")[1], graded: true });
+    out.push({ t: f.t, data: c.toDataURL("image/jpeg", 0.72).split(",")[1], graded: true, scope: scopeOfCanvas(c, c.width, c.height) });
   }
   return out;
 }

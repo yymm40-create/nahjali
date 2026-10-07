@@ -9,7 +9,8 @@ import { callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, type Claud
 import { checkCommands, context, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
-import { GRADE_COMMANDS, GRADING_KNOW_HOW } from "./assistant-guide";
+import { GRADE_CHECK, GRADE_COMMANDS, GRADING_KNOW_HOW, gradeBrief, MAX_CHECKS } from "./assistant-guide";
+import { readScope, scopeLine } from "./scopes";
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { FX_LIST } from "./effects";
 import { TR_LIST } from "./transitions";
@@ -23,8 +24,9 @@ const db = () => createAdminClient();
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "commands", "suggestions", "requests"],
+  required: ["reply", "commands", "suggestions", "requests", "checkClipId"],
   properties: {
+    checkClipId: { type: "string", description: "The clip whose colour you changed (the page grades it and sends you the result to check). Empty when no colour changed." },
     reply: { type: "string", description: "Short answer to the person, in their language (Arabic by default)." },
     commands: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." } },
     requests: {
@@ -138,10 +140,18 @@ function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
   if (typeof o.clipId !== "string" || !tl.tracks.some((t) => t.clips.some((c) => c.id === o.clipId)) || !Array.isArray(o.frames)) return null;
   const frames = o.frames
     .slice(0, 8)
-    .filter((f): f is { t: number; data: string; graded?: boolean } => !!f && typeof f === "object" && typeof (f as { data?: unknown }).data === "string" && Number.isFinite((f as { t?: unknown }).t))
+    .filter((f): f is { t: number; data: string; graded?: boolean; scope?: unknown } => !!f && typeof f === "object" && typeof (f as { data?: unknown }).data === "string" && Number.isFinite((f as { t?: unknown }).t))
     .filter((f) => f.data.length < 400_000 && /^[A-Za-z0-9+/]+=*$/.test(f.data))
-    .map((f) => ({ t: f.t, data: f.data, graded: f.graded === true }));
+    .map((f) => ({ t: f.t, data: f.data, graded: f.graded === true, scope: readScope(f.scope) }));
   return frames.length ? { clipId: o.clipId, frames } : null;
+}
+
+/** The pictures of a clip for Claude: a line on each (when, as filmed or graded, its scope), then the picture. */
+function lookParts(look: NonNullable<ReturnType<typeof readLook>>): ClaudePart[] {
+  return look.frames.flatMap((f): ClaudePart[] => [
+    { type: "text", text: `${(f.t / 1000).toFixed(1)}s ${f.graded ? "AFTER its grading" : "as filmed"}${f.scope ? ` — scope: ${scopeLine(f.scope)}` : ""}` },
+    { type: "image64", data: f.data, mediaType: "image/jpeg" },
+  ]);
 }
 
 export interface MakeRequest {
@@ -174,6 +184,7 @@ export interface MakeRequest {
 }
 
 interface Answer {
+  checkClipId?: string;
   reply: string;
   commands: string[];
   requests?: MakeRequest[];
@@ -216,8 +227,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     const last = merged[merged.length - 1];
     const parts: ClaudePart[] = [
       { type: "text", text: last.content as string },
-      { type: "text", text: `THE SELECTED CLIP (${look.clipId}) — what it shows, at these timeline moments: ${look.frames.map((f) => `${(f.t / 1000).toFixed(1)}s${f.graded ? " (after its colour grading)" : " (as filmed)"}`).join(", ")}. Use it to understand the clip (people, places, actions, text on screen, mood, and its colour and exposure: compare as filmed with after the grading) when the request is about it.` },
-      ...look.frames.map((f): ClaudePart => ({ type: "image64", data: f.data, mediaType: "image/jpeg" })),
+      { type: "text", text: `THE SELECTED CLIP (${look.clipId}) — a few of its moments, each with its scope (read the numbers like a colourist reads the waveform and vectorscope). Use them to understand the clip (people, places, actions, text on screen, mood, and its colour and exposure: compare as filmed with after the grading) when the request is about it.` },
+      ...lookParts(look),
     ];
     last.content = parts;
   }
@@ -276,6 +287,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     commands: valid,
     suggestions: (answer.suggestions ?? []).slice(0, 4),
     requests: requests.filter((r) => (r.kind !== "hook_design" || r.design) && (r.kind !== "make" || r.plan)),
+    // the colour changed: the page checks the result with حيدرة before it is called done
+    checkClipId: answer.checkClipId && valid.length && tl.tracks.some((t) => t.clips.some((c) => c.id === answer.checkClipId)) ? answer.checkClipId : null,
   };
 }
 
@@ -301,4 +314,51 @@ export async function designHook(who: Who, h: HookInputs): Promise<{ design: Hoo
   );
   usd += claudeCost(r.usage);
   return { design: checkDesign(r.data, h), usd };
+}
+
+const CHECK_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["ok", "verdict", "commands"],
+  properties: {
+    ok: { type: "boolean", description: "true when the result is right (no more changes)." },
+    verdict: { type: "string", description: "To the person, Gulf Arabic, short." },
+    commands: { type: "array", items: { type: "string", description: "One corrective editing command as a JSON object string." } },
+  },
+};
+
+
+/**
+ * «يشيك التلوين»: Claude sees the clip after its colour change (pictures and scopes) and either approves it or sends
+ * the corrections (checked like any of its commands). The page applies them and asks again, up to MAX_CHECKS rounds.
+ */
+export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unknown; round?: unknown; request?: unknown; timeline?: unknown; look?: unknown }) {
+  stillOpen(p);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  const assets = await assetViews(p.id);
+  const tl = readTimeline(b.timeline, new Set(assets.map((a) => a.id)));
+  const clip = tl.tracks.flatMap((t) => t.clips).find((c) => c.id === b.clipId);
+  const look = readLook(b.look, tl);
+  if (!clip || !look) throw new UserError("ما لقيت المقطع اللي أشيكه.", 400);
+  const round = Math.max(1, Math.min(MAX_CHECKS, Math.round(Number(b.round) || 1)));
+  const last = round >= MAX_CHECKS;
+  const infos = new Map(assets.map((a) => [a.id, assetInfo(a)]));
+  const text = [
+    GRADE_CHECK,
+    `ROUND ${round} of ${MAX_CHECKS}${last ? " (the last: if it still isn't right, make your best final correction and say honestly what remains)" : ""}.`,
+    `WHAT THE PERSON ASKED: ${String(b.request ?? "").slice(0, 1000)}`,
+    `THE CLIP ${clip.id}: grading layers now ${JSON.stringify(clip.grades.map(gradeBrief))}`,
+  ].join("\n\n");
+  const r = await charged(who, "editor_price_claude", 1, "حيدرة يشيك التلوين في حيدرة كت", () =>
+    callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look)] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
+      console.error("grade check", e);
+      throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يشيك الحين.", 502);
+    }),
+  );
+  const result = checkCommands(tl, r.data.commands ?? [], infos);
+  const commands = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
+  const ok = r.data.ok || !commands.length;
+  await db().from("editor_ops").insert({ project_id: p.id, version: p.version, actor: "claude", label: claudeCost(r.usage).toFixed(4) });
+  if (ok || last) await appendChat(p, [{ role: "assistant", text: r.data.verdict }]);
+  return { ok, verdict: r.data.verdict, commands: ok ? [] : commands };
 }
