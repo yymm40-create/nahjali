@@ -159,6 +159,27 @@ export async function elevenCloneVoice(o: { name: string; description: string; f
   return body.voice_id;
 }
 
+/** The account's voice slots: how many are taken and how many the plan has (ElevenLabs decides the number). */
+export async function elevenSlots(): Promise<{ used: number; limit: number; tier: string }> {
+  const res = await call("/v1/user/subscription", { method: "GET", timeoutMs: 20_000 }, "subscription");
+  const b = (await res.json()) as { voice_slots_used?: number; voice_limit?: number; tier?: string };
+  return { used: Number(b.voice_slots_used ?? 0), limit: Number(b.voice_limit ?? 0), tier: String(b.tier ?? "") };
+}
+
+/** The account's own voices (designed, cloned…: each takes a slot), newest first. */
+export async function elevenOwnVoices(): Promise<{ voiceId: string; name: string; category: string; createdAt: string | null }[]> {
+  const out: { voiceId: string; name: string; category: string; createdAt: string | null }[] = [];
+  let token = "";
+  for (let i = 0; i < 10; i++) {
+    const res = await call(`/v2/voices?page_size=100&voice_type=personal${token ? `&next_page_token=${encodeURIComponent(token)}` : ""}`, { method: "GET", timeoutMs: 20_000 }, "voices");
+    const b = (await res.json()) as { voices?: { voice_id: string; name: string; category?: string; created_at_unix?: number }[]; has_more?: boolean; next_page_token?: string };
+    for (const v of b.voices ?? []) out.push({ voiceId: v.voice_id, name: v.name, category: v.category ?? "", createdAt: v.created_at_unix ? new Date(v.created_at_unix * 1000).toISOString() : null });
+    if (!b.has_more || !b.next_page_token) break;
+    token = b.next_page_token;
+  }
+  return out;
+}
+
 /** Frees the voice's slot in the account (a voice already gone counts as deleted). */
 export async function elevenDeleteVoice(voiceId: string) {
   try {

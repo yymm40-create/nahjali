@@ -214,7 +214,7 @@ export async function saveDesigned(user: { id: string }, owner: boolean, b: { dr
   if (!d || d.status !== "ready") throw new UserError("هذا التصميم غير متاح؛ صمّم الصوت من جديد.", 404);
   const p = (d.previews as { generatedVoiceId: string; path: string }[])[Number(b.index)];
   if (!p) throw new UserError("اختر إحدى العينات.", 400);
-  if ((await countVoices(user.id)) >= JAWAD_VOICE_LIMIT) throw new UserError(`مكتبتك فيها ${JAWAD_VOICE_LIMIT} أصوات (الحد). احذف صوتًا لتضيف غيره.`, 409);
+  if (!owner && (await countVoices(user.id)) >= JAWAD_VOICE_LIMIT) throw new UserError(`مكتبتك فيها ${JAWAD_VOICE_LIMIT} أصوات (الحد). احذف صوتًا لتضيف غيره.`, 409);
 
   let voiceId: string;
   try {
@@ -236,7 +236,7 @@ export async function cloneVoice(user: { id: string }, owner: boolean, b: { key?
   if (b.consent !== true) throw new UserError("أكّد أن الصوت صوتك أو أن لديك إذن صاحبه.", 400);
   const name = cleanName(b.name);
   if (!name) throw new UserError("سمِّ الصوت.", 400);
-  if ((await countVoices(user.id)) >= JAWAD_VOICE_LIMIT) throw new UserError(`مكتبتك فيها ${JAWAD_VOICE_LIMIT} أصوات (الحد). احذف صوتًا لتضيف غيره.`, 409);
+  if (!owner && (await countVoices(user.id)) >= JAWAD_VOICE_LIMIT) throw new UserError(`مكتبتك فيها ${JAWAD_VOICE_LIMIT} أصوات (الحد). احذف صوتًا لتضيف غيره.`, 409);
   const coins = owner ? 0 : prices[VOICE_CLONE_KEY] == null ? null : Math.ceil(prices[VOICE_CLONE_KEY]! / 100 - 1e-9);
   if (coins === null) throw new UserError("سعر نسخ الأصوات لم يُحدد بعد.", 400);
   const rec = await recording(user.id, b.uploadId, 180_000);

@@ -25,6 +25,7 @@ export const cleanAccent = (c: unknown) => (typeof c === "string" && /^#[0-9a-f]
 
 /**
  * Voices a person can keep in their library. Every saved voice takes one of the site's ElevenLabs voice slots (their
- * number depends on the ElevenLabs plan), so keep this × the number of users within the plan.
+ * number depends on the ElevenLabs plan), so keep this × the number of users within the plan. Those «السماح» lets in
+ * (and the owners) have no limit here: only the plan's slots (see /jawad-ai/admin/voices).
  */
 export const JAWAD_VOICE_LIMIT = 10;
