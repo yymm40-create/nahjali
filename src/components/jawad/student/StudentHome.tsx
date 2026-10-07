@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
-import { LEVELS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, type PurposeId, type SourceMode } from "@config/jawad/student";
+import { LEVELS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, type PurposeId, type SourceMode, STUDENT_ASSISTANT } from "@config/jawad/student";
 import { newKey, post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
@@ -12,9 +12,9 @@ import { ErrorLine, useAsync } from "./ui";
 const STAGE_INDEX: Record<string, number> = { sources: 0, review: 0, understanding: 1, scope: 2, outputs: 2 };
 
 const HOW = [
-  { emoji: "🎯", grad: "linear-gradient(135deg,#f59e0b,#f97316)", title: "قل لنا طلبك", text: "اسم المادة، لمن، ووش الغرض — أو خلّ كلاود يبحث لك." },
-  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "أضف مادتك", text: "صور أو PDF أو نص، ويقرؤها المساعد بنفسه." },
-  { emoji: "🧠", grad: STEP_LOOK[1].grad, title: "اعتمد الفهم", text: "المساعد يقول لك وش فهم، وأنت تعتمد." },
+  { emoji: "🎯", grad: "linear-gradient(135deg,#f59e0b,#f97316)", title: "قل لنا طلبك", text: "اسم المادة، لمن، ووش الغرض — أو خلّ صادق يبحث لك." },
+  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "أضف مادتك", text: "صور أو PDF أو نص، ويقرؤها صادق بنفسه." },
+  { emoji: "🧠", grad: STEP_LOOK[1].grad, title: "اعتمد الفهم", text: "صادق يقول لك وش فهم، وأنت تعتمد." },
   { emoji: "✨", grad: STEP_LOOK[2].grad, title: "اختر وابدأ", text: "اختر نواتجك وأجب أسئلة قصيرة، والباقي عليه." },
 ];
 
@@ -65,14 +65,14 @@ export default function StudentHome({
     }
     return run(async () => {
       if (purpose === "other" && !purposeNote.trim()) throw new Error("اكتب غرضك من المادة.");
-      if (mode === "research" && !title.trim() && !focus.trim()) throw new Error("اكتب اسم المادة أو المعلومات اللي تبي كلاود يبحث عنها.");
+      if (mode === "research" && !title.trim() && !focus.trim()) throw new Error("اكتب اسم المادة أو المعلومات اللي تبي صادق يبحث عنها.");
       const r = await post<{ id: string }>("/api/jawad/student/projects", {
         title: title.trim() || focus.trim().slice(0, 80) || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`,
         level: level === "آخر" ? other : level,
         audience,
         brief: { purpose, purposeNote: purposeNote.trim(), mode, focus: focus.trim(), where: where.trim() },
       });
-      // «كلاود يبحث لي»: no material page — the research starts now, and the page carries on by itself to the outputs
+      // «صادق يبحث لي»: no material page — the research starts now, and the page carries on by itself to the outputs
       // (a refusal — not enough coins — is shown on the next page, where it can be started again)
       if (mode === "research") await post(`/api/jawad/student/projects/${r.id}`, { action: "research_material", focus: focus.trim() || title.trim(), where: where.trim(), confirm: true, key: newKey() }).catch(() => null);
       setGoing(true);
@@ -91,7 +91,11 @@ export default function StudentHome({
             <br />
             واصنع من مادتك أي شيء
           </h1>
-          <p className="max-w-xl text-lg text-jw-muted">ارفع دروسك، ويحوّلها المساعد إلى ملخصات وكتب مصممة وعروض تقديمية وتسجيلات صوتية واختبارات — وأنت تعتمد كل خطوة.</p>
+          <p className="max-w-xl text-lg text-jw-muted">ارفع دروسك، ويحوّلها صادق إلى ملخصات وكتب مصممة وعروض تقديمية وتسجيلات صوتية واختبارات — وأنت تعتمد كل خطوة.</p>
+          {/* «صادق»: the section's assistant, by name */}
+          <p className="inline-flex items-center gap-2 rounded-full border border-jw-line bg-jw-surface px-4 py-1.5 text-sm font-bold">
+            <span aria-hidden>{STUDENT_ASSISTANT.icon}</span> معك {STUDENT_ASSISTANT.name}، مساعدك الذكي: يقرأ ويفهم ويبحث ويصنع
+          </p>
           <div className="flex flex-wrap gap-3">
             <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-7 !text-base" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
               <Icon name="plus" size={18} /> ابدأ مادة جديدة
@@ -189,7 +193,7 @@ export default function StudentHome({
           <h2 id="new-material" className="text-2xl font-bold">
             مادة جديدة
           </h2>
-          <p className="text-sm text-jw-muted">قل لنا طلبك بضغطات قليلة، والمساعد يكمل.</p>
+          <p className="text-sm text-jw-muted">قل لنا طلبك بضغطات قليلة، وصادق يكمل.</p>
           {left !== null && <p className={`text-xs font-bold ${left ? "text-jw-accent" : "text-jw-danger"}`}>{left ? `متبقٍّ لك ${left === 1 ? "مادة واحدة" : "مادتان"} من ٢ — اكتب اسمًا واضحًا قبل «ابدأ»` : "استخدمت المادتين المتاحتين لحسابك."}</p>}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -204,7 +208,7 @@ export default function StudentHome({
         </div>
         <div className="space-y-2">
           <span className="jw-label">المستوى التعليمي</span>
-          <p className="text-center text-xs text-jw-muted">💡 اختر صفّك، فيكتب المساعد بكلمات تناسب عمرك.</p>
+          <p className="text-center text-xs text-jw-muted">💡 اختر صفّك، فيكتب صادق بكلمات تناسب عمرك.</p>
           <div className="jw-seg justify-center" role="radiogroup" aria-label="المستوى التعليمي">
             {[...LEVELS, "آخر"].map((l) => (
               <button key={l} type="button" role="radio" aria-checked={level === l} onClick={() => setLevel(l)}>
@@ -224,7 +228,7 @@ export default function StudentHome({
               </button>
             ))}
           </div>
-          <input className="jw-input" value={purposeNote} onChange={(e) => setPurposeNote(e.target.value)} placeholder={purpose === "other" ? "اكتب غرضك" : "تفاصيل تبي المساعد يعرفها (اختياري)"} aria-label="تفاصيل الغرض" />
+          <input className="jw-input" value={purposeNote} onChange={(e) => setPurposeNote(e.target.value)} placeholder={purpose === "other" ? "اكتب غرضك" : "تفاصيل تبي صادق يعرفها (اختياري)"} aria-label="تفاصيل الغرض" />
         </div>
         <div className="space-y-2">
           <span className="jw-label">من وين المعلومات؟</span>
@@ -237,13 +241,13 @@ export default function StudentHome({
             ))}
           </div>
           {mode !== "files" && (
-            <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبي كلاود يبحث عنها؟ مثال: دورة حياة الخلية بمنهج الصف الثاني متوسط، مع أمثلة" aria-label="ما يبحث عنه كلاود" />
+            <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبي صادق يبحث عنها؟ مثال: دورة حياة الخلية بمنهج الصف الثاني متوسط، مع أمثلة" aria-label="ما يبحث عنه صادق" />
           )}
           {mode === "research" && (
             <div className="space-y-1">
               <span className="text-sm font-semibold">وين يبحث؟ (اختياري)</span>
-              <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => setWhere(e.target.value)} placeholder="الصق رابط موقع أو أكثر، أو اكتب المصدر (مثل: منهج وزارة التربية). يلتزم فيها كلاود ولا يبحث في غيرها." aria-label="وين يبحث كلاود" />
-              <p className="text-[11px] text-jw-faint">بعد «ابدأ» يبحث كلاود ويكتب المادة ويفهمها لحاله، وتوصل على طول لاختيار النواتج. البحث يُخصم بسعره الفعلي.</p>
+              <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => setWhere(e.target.value)} placeholder="الصق رابط موقع أو أكثر، أو اكتب المصدر (مثل: منهج وزارة التربية). يلتزم فيها صادق ولا يبحث في غيرها." aria-label="وين يبحث صادق" />
+              <p className="text-[11px] text-jw-faint">بعد «ابدأ» يبحث صادق ويكتب المادة ويفهمها لحاله، وتوصل على طول لاختيار النواتج. البحث يُخصم بسعره الفعلي.</p>
             </div>
           )}
         </div>

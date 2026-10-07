@@ -117,8 +117,8 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
               disabled={planDirty}
               onApprove={() => act({ action: "plan_approve" })}
               editHint="اكتب التعديل الذي تريده على الخطة (أو عدّلها يدويًا أعلاه):"
-              onEdit={(note) => <PaidButton label="أرسل التعديل" what="يعيد المساعد الخطة مع تعديلك." disabled={running} run={(b) => act({ action: "plan", note, kind: "edit", ...b })} />}
-              onOther={(note) => <PaidButton label="أرسل الطلب" what="يعيد المساعد الخطة مع طلبك الجديد." disabled={running} run={(b) => act({ action: "plan", note, kind: "other", ...b })} />}
+              onEdit={(note) => <PaidButton label="أرسل التعديل" what="يعيد صادق الخطة مع تعديلك." disabled={running} run={(b) => act({ action: "plan", note, kind: "edit", ...b })} />}
+              onOther={(note) => <PaidButton label="أرسل الطلب" what="يعيد صادق الخطة مع طلبك الجديد." disabled={running} run={(b) => act({ action: "plan", note, kind: "other", ...b })} />}
             />
           )}
         </div>
@@ -195,7 +195,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
             <Gate
               next={outputs.some((x) => x.dependsOn === o.id) ? "يُعتمد الناتج، ويبدأ ما يعتمد عليه (مثل الصوت الذي يقرؤه)." : "يُعتمد الناتج ويبقى في المادة."}
               onApprove={() => act({ action: "approve" })}
-              editHint={o.kind === "slides" || o.kind === "audio" ? "ما الذي تريد تعديله؟ (يعدّل المساعد الخطة لتعتمدها من جديد)" : "ما الذي تريد تعديله؟ يُعدَّل موضعيًا دون إعادة اختراع المحتوى."}
+              editHint={o.kind === "slides" || o.kind === "audio" ? "ما الذي تريد تعديله؟ (يعدّل صادق الخطة لتعتمدها من جديد)" : "ما الذي تريد تعديله؟ يُعدَّل موضعيًا دون إعادة اختراع المحتوى."}
               onEdit={(note) => <RequestButton o={o} note={note} kind="edit" act={act} running={running} />}
               onOther={(note) => <RequestButton o={o} note={note} kind="other" act={act} running={running} />}
             />

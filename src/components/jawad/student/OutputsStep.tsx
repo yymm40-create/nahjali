@@ -69,7 +69,7 @@ function MethodChoice({ what, value, quality, perUnit, free, onChange }: { what:
       <span className="text-sm font-semibold">كيف تنصنع {what === "slide" ? "الشرائح" : "الصفحات"}؟</span>
       <div className="grid gap-2 sm:grid-cols-2">
         <button type="button" aria-pressed={!value} onClick={() => onChange(false, quality)} className={`rounded-2xl border bg-white p-3 text-start ${!value ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
-          <b className="block">🧩 كلاود يصممها</b>
+          <b className="block">🧩 صادق يصممها</b>
           <span className="block text-xs text-jw-muted">
             {what === "slide" ? "ملف PPTX تقدر تعدّل نصه بنفسك + PDF." : "PDF بخط عربي حقيقي، نصه قابل للنسخ والبحث."} بدون أخطاء في الكلمات. الأرخص: بدون تكلفة إضافية.
           </span>
@@ -167,7 +167,7 @@ function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; s: S; s
       );
     }
     default:
-      return <p className="text-sm text-jw-muted">ما يحتاج أسئلة: المادة كاملة كما قرأها المساعد، PDF ونص.</p>;
+      return <p className="text-sm text-jw-muted">ما يحتاج أسئلة: المادة كاملة كما قرأها صادق، PDF ونص.</p>;
   }
 }
 
@@ -236,7 +236,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
           <span className="font-bold">تبي تصميم خاص أو طلب زيادة؟ (اختياري)</span>
           <textarea className="jw-textarea" rows={3} value={special} onChange={(e) => setSpecial(e.target.value)} placeholder="مثال: ألوان هادئة، أمثلة من الحياة اليومية، ركّز على الفصل الثاني…" />
         </label>
-        <p className="text-xs text-jw-faint">الخطوط والتصميم يختارها المساعد لك حسب مادتك وعمرك وغرضك. كل خطوة مدفوعة تنخصم بسعرها وقت تنفيذها، وترجع لك إذا فشلت.</p>
+        <p className="text-xs text-jw-faint">الخطوط والتصميم يختارها صادق لك حسب مادتك وعمرك وغرضك. كل خطوة مدفوعة تنخصم بسعرها وقت تنفيذها، وترجع لك إذا فشلت.</p>
         <ErrorLine error={error} />
         <div className="flex flex-wrap gap-2">
           <button
@@ -274,7 +274,7 @@ export default function OutputsStep({ p, onStart, researching, working }: { p: P
         <span className="text-4xl" aria-hidden>
           🔎
         </span>
-        <h2 className="text-lg font-bold">كلاود يبحث في الويب ليكمل مادتك</h2>
+        <h2 className="text-lg font-bold">صادق يبحث في الويب ليكمل مادتك</h2>
         <p className="text-sm text-jw-muted">دقائق قليلة، وبعدها تختار نواتجك.</p>
         <JobStatus job={job} />
       </section>
@@ -291,7 +291,7 @@ export default function OutputsStep({ p, onStart, researching, working }: { p: P
     <div className="space-y-4">
       <section className="jw-panel space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold">{allDone ? "جاهز ✅ — نزّل ملفاتك" : "المساعد يصنع نواتجك…"}</h2>
+          <h2 className="text-lg font-bold">{allDone ? "جاهز ✅ — نزّل ملفاتك" : "صادق يصنع نواتجك…"}</h2>
           <div className="flex gap-2">
             {stuck && (
               <button type="button" className="jw-btn jw-btn-primary" onClick={onStart}>

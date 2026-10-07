@@ -1,6 +1,6 @@
 "use client";
 
-// «الطالب الذكي» — «تخطَّ ودع المساعد يقرر»: the next step is chosen and approved automatically, with sensible
+// «الطالب الذكي» — «تخطَّ ودع صادق يقرر»: the next step is chosen and approved automatically, with sensible
 // choices for every setting (the level, the material, a style picked at random), until the student stops it.
 // For one step, or for the whole way. Paid steps are charged at their price as they run.
 
@@ -126,14 +126,14 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
     if (!next) {
       // say why it stopped (a child would think the button did nothing)
       const failed = state.outputs.find((o) => o.status === "failed");
-      if (["sources", "review"].includes(state.project.stage) && !state.sources.some((x) => x.status === "ready")) setError("أضف مادتك أولًا (صور أو PDF أو نص)، وبعدها اضغط المساعد مرة ثانية.");
-      else if (failed) setError(`تعثّر «${failed.title}». افتحه واضغط «أعد المحاولة»، وبعدها شغّل المساعد مرة ثانية.`);
+      if (["sources", "review"].includes(state.project.stage) && !state.sources.some((x) => x.status === "ready")) setError("أضف مادتك أولًا (صور أو PDF أو نص)، وبعدها اضغط صادق مرة ثانية.");
+      else if (failed) setError(`تعثّر «${failed.title}». افتحه واضغط «أعد المحاولة»، وبعدها شغّل صادق مرة ثانية.`);
       stop();
       return;
     }
     last.current = last.current.label === next.label ? { label: next.label, n: last.current.n + 1 } : { label: next.label, n: 1 };
     if (last.current.n > 2) {
-      setError(`توقف المساعد عند «${next.label}»: الخطوة لم تكتمل. راجعها ثم أعد التشغيل.`);
+      setError(`توقف صادق عند «${next.label}»: الخطوة لم تكتمل. راجعها ثم أعد التشغيل.`);
       stop();
       return;
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { isResearchSource } from "@config/jawad/student";
 import { useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { putWithProgress } from "@/components/jawad/studio/upload";
@@ -42,17 +43,17 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
   const job = jobs.find((j) => (j.kind === "extract" || j.kind === "research" || j.kind === "media") && j.status !== "succeeded");
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
   const ready = sources.some((s) => s.status === "ready");
-  const researched = sources.some((s) => s.kind === "text" && s.name.startsWith("بحث كلاود"));
+  const researched = sources.some((s) => s.kind === "text" && isResearchSource(s.name));
   // the research is paid once confirmed; then the reading goes on by itself
   const research = (
     <div className="jw-panel space-y-3 p-4">
-      <h2 className="font-semibold">🔎 كلاود يبحث ويكتب مادتك</h2>
+      <h2 className="font-semibold">🔎 صادق يبحث ويكتب مادتك</h2>
       <p className="text-sm text-jw-muted">يبحث في مصادر موثوقة (مناهج، موسوعات، جامعات) ويكتب المعلومات لمستواك وغرضك، مع ذكر المصادر.</p>
-      <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبيها؟" aria-label="ما يبحث عنه كلاود" />
-      {researched && <p className="text-sm text-jw-ok">✓ كتب كلاود المادة من البحث. تقدر تبحث عن شي ثاني أو تتابع.</p>}
+      <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبيها؟" aria-label="ما يبحث عنه صادق" />
+      {researched && <p className="text-sm text-jw-ok">✓ كتب صادق المادة من البحث. تقدر تبحث عن شي ثاني أو تتابع.</p>}
       <PaidButton
         label={researched ? "ابحث عن شي إضافي" : "ابحث واكتب مادتي"}
-        what="بحث في الويب وكتابة المادة بمصادرها (Claude)."
+        what="بحث في الويب وكتابة المادة بمصادرها."
         disabled={running || !focus.trim()}
         run={async (b) => {
           const r = await p.act({ action: "research_material", focus, ...b });
@@ -236,13 +237,13 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
 
         <div className="jw-panel space-y-3 p-4">
           <h2 className="font-semibold">الخطوة الجاية</h2>
-          <p className="text-sm text-jw-muted">يقرأ المساعد كل شي أضفته (الصور وصفحات PDF حرفيًا)، ويفهم المادة، وبعدها يعرض عليك فهمه تعتمده.</p>
+          <p className="text-sm text-jw-muted">يقرأ صادق كل شي أضفته (الصور وصفحات PDF حرفيًا)، ويفهم المادة، وبعدها يعرض عليك فهمه تعتمده.</p>
           <JobStatus job={job} />
           <div className={running || busy || !ready ? "" : "st-attention rounded-xl"}>
             {pending.length > 0 ? (
               <PaidButton
                 label="تابع — اقرأ وافهم مادتي"
-                what={`قراءة ${pending.length} مدخل (الصور وصفحات PDF عبر Claude)، ثم فهم المادة.`}
+                what={`قراءة ${pending.length} مدخل (الصور وصفحات PDF يقرؤها صادق)، ثم فهم المادة.`}
                 disabled={running}
                 run={async (b) => {
                   const r = await p.act({ action: "extract", ...b });

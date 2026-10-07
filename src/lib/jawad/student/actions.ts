@@ -343,11 +343,11 @@ export async function projectAction(user: User, id: string, b: Body) {
       return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling(), input: { focus: text(b.focus, 2000) }, stage: "البحث في الويب" });
     }
     case "research_material": {
-      // «كلاود يبحث لي»: the research becomes the material (a written source), before anything is read
+      // «صادق يبحث لي»: the research becomes the material (a written source), before anything is read
       // `where`: links or sites to keep to (from the first page, sent again here so it works before SQL 0035)
       const where = text(b.where, 2000) || readBrief(p.brief).where;
       const reads = researchPlaces(where).links.length > 0;
-      return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling() + (reads ? fetchCeilingUsd() : 0), input: { asMaterial: true, focus: text(b.focus, 2000), where }, stage: "كلاود يبحث ويكتب مادتك" });
+      return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling() + (reads ? fetchCeilingUsd() : 0), input: { asMaterial: true, focus: text(b.focus, 2000), where }, stage: "صادق يبحث ويكتب مادتك" });
     }
     case "research_approve": {
       const r = await latestVersion(p.id, "research");

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Icon from "@/components/jawad/Icon";
-import { STUDENT } from "@config/jawad/student";
+import { STUDENT, isResearchSource } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
 import { PURPOSES } from "@config/jawad/student";
 import OutputsStep from "./OutputsStep";
@@ -39,13 +39,13 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   }
   // «ملفاتي + بحث»: once the understanding is approved, the research runs by itself
   const { start } = auto;
-  // «كلاود يبحث لي» (the first page's choice; `?go=research` when the brief couldn't be saved): no upload page and no
+  // «صادق يبحث لي» (the first page's choice; `?go=research` when the brief couldn't be saved): no upload page and no
   // approval of the understanding — research, reading and understanding run by themselves up to the outputs
   const fromHome = useSyncExternalStore(noSubscribe, () => window.location.search.includes("go=research"), () => false);
   const [filesInstead, setFilesInstead] = useState(false);
-  const researchMode = project.brief.mode === "research" || fromHome || p.state.sources.some((s) => s.name.startsWith("بحث كلاود"));
+  const researchMode = project.brief.mode === "research" || fromHome || p.state.sources.some((s) => isResearchSource(s.name));
   const researching = researchMode && !filesInstead && ["sources", "review", "understanding"].includes(project.stage);
-  const written = p.state.sources.some((s) => s.kind === "text" && s.name.startsWith("بحث كلاود"));
+  const written = p.state.sources.some((s) => s.kind === "text" && isResearchSource(s.name));
   const searching = p.state.jobs.some((j) => j.kind === "research" && (j.status === "queued" || j.status === "running"));
   // started once for each point it can start from (the research running, then written); a stop is not restarted alone
   const autoKey = useRef("");
@@ -78,8 +78,8 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   }, [view]);
 
   const HINT: Record<StepId, string> = {
-    sources: project.brief.mode === "research" ? "خلّ كلاود يبحث ويكتب مادتك، أو أضف ملفاتك، ثم «تابع»." : "أضف صورك أو ملفات PDF أو نصك، ثم «تابع».",
-    understanding: "اقرأ كيف فهم المساعد مادتك، واعتمده أو صحّحه.",
+    sources: project.brief.mode === "research" ? "خلّ صادق يبحث ويكتب مادتك، أو أضف ملفاتك، ثم «تابع»." : "أضف صورك أو ملفات PDF أو نصك، ثم «تابع».",
+    understanding: "اقرأ كيف فهم صادق مادتك، واعتمده أو صحّحه.",
     outputs: "اختر نواتجك، أجب الأسئلة القصيرة، واضغط «ابدأ».",
   };
   const purpose = PURPOSES.find((x) => x.id === project.brief.purpose);
@@ -144,7 +144,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
         {auto.mode ? (
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl p-3 text-white" style={{ background: "var(--st-grad)" }} role="status" aria-live="polite">
             <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden />
-            <span className="font-semibold">🤖 المساعد يكمل {auto.mode.scope === "step" ? "هذه الخطوة" : "كل الخطوات"} تلقائيًا{auto.doing ? `: ${auto.doing}` : ""}</span>
+            <span className="font-semibold">🤖 صادق يكمل {auto.mode.scope === "step" ? "هذه الخطوة" : "كل الخطوات"} تلقائيًا{auto.doing ? `: ${auto.doing}` : ""}</span>
             <button type="button" className="rounded-full bg-white px-4 py-1 text-sm font-bold text-pink-600" onClick={auto.stop}>
               أوقف
             </button>
