@@ -120,33 +120,8 @@
 }
 
 /* ── الفيلم «السينما»: a dark theatre, warm gold, a film strip on top ── */
-.jw [data-jw-section="film"] {
-  --jw-bg: #0e0a07;
-  --jw-bg-2: #130e0a;
-  --jw-surface: #1a1410;
-  --jw-surface-2: #241c16;
-  --jw-surface-3: #30261e;
-  --jw-line: rgba(233, 181, 70, 0.1);
-  --jw-line-strong: rgba(233, 181, 70, 0.22);
-  --jw-ink: #f6ead8;
-  --jw-muted: #c4b39b;
-  --jw-faint: #9a8970;
-  --jw-accent: #e9b546;
-  --jw-on-accent: #1a1206;
-  --jw-radius: 10px;
-  --jw-sec-shadow: inset 0 1px 0 rgba(233, 181, 70, 0.12), 0 18px 40px -20px #000;
-  --teal: #2f9e8f;
-  color-scheme: dark;
-}
-.jw [data-jw-section="film"]::before {
-  background:
-    repeating-linear-gradient(90deg, #0e0a07 0 10px, transparent 10px 22px) 0 4px / 100% 6px no-repeat,
-    linear-gradient(#2a2018, #2a2018) top / 100% 14px no-repeat,
-    radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.55));
-}
-.jw [data-jw-section="film"] .card {
-  box-shadow: var(--jw-sec-shadow);
-}
+/* «الفيلم السينمائي»: its own look lives in src/app/jawad-ai/film/film-theme.css (the JAWAD logo's navy, electric
+   blue and gold on white, with film reels and a strip in the background). */
 
 /* ── the first-time hint of each section ── */
 .jw-hint {
