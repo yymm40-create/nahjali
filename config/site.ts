@@ -26,18 +26,17 @@ export const mayActOn = (actor: string | undefined | null, target: string | unde
 export const ABOVE_YOU = "هذا حساب الرئيس؛ ما يتغير إلا منه.";
 
 /**
- * Guests the owner lets into JAWAD AI with everything free (no coins, no limits) until a set time; after it they are
- * like everyone else again. They do not get the dashboard.
+ * Guests the owner lets into the whole site with everything free (no coins, no limits), until a set time (after it they
+ * are like everyone else again) or, without one, for good. They do not get the dashboard.
  */
-export const FREE_GUESTS: { email: string; until: string }[] = [
+export const FREE_GUESTS: { email: string; until?: string }[] = [
   // the owner's guest, until tomorrow 12:00 noon (Saudi time)
   { email: "emanalialali91@gmail.com", until: "2026-10-06T12:00:00+03:00" },
-  // the owner's guest: the whole site free and unlimited for 24 hours from when it goes live (Vercel's daily deploy
-  // limit holds it until 8 Oct, ~3 pm Saudi time)
-  { email: "hassanirno44@gmail.com", until: "2026-10-09T15:15:00+03:00" },
+  // the owner's guest: the whole site free and unlimited, with no end
+  { email: "hassanirno44@gmail.com" },
 ];
 export const isFreeGuest = (email: string | undefined | null) =>
-  Boolean(email && FREE_GUESTS.some((g) => g.email === email.toLowerCase() && Date.now() < new Date(g.until).getTime()));
+  Boolean(email && FREE_GUESTS.some((g) => g.email === email.toLowerCase() && (!g.until || Date.now() < new Date(g.until).getTime())));
 /** Makes things without paying: the owner, or a free guest while their time lasts. */
 export const isUnlimited = (email: string | undefined | null) => isAdmin(email) || isFreeGuest(email);
 
