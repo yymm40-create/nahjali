@@ -7,6 +7,24 @@ import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, JobStatus, PaidButton, useAsync } from "./ui";
 
 const KIND = { text: "نص مكتوب", image: "صورة", pdf: "PDF" } as const;
+const isMedia = (f: File) => /^(video|audio)\//.test(f.type) || /\.(mp4|mov|webm|mkv|mp3|m4a|wav|ogg|aac|flac)$/i.test(f.name);
+
+/** How long a video or recording is (seconds), read by the browser; 0 when it can't tell. */
+function lengthOf(f: File) {
+  return new Promise<number>((ok) => {
+    const el = document.createElement(f.type.startsWith("audio") ? "audio" : "video");
+    const url = URL.createObjectURL(f);
+    const done = (v: number) => {
+      URL.revokeObjectURL(url);
+      ok(Number.isFinite(v) && v > 0 ? v : 0);
+    };
+    el.preload = "metadata";
+    el.onloadedmetadata = () => done(el.duration);
+    el.onerror = () => done(0);
+    setTimeout(() => done(0), 8000);
+    el.src = url;
+  });
+}
 
 /** «المادة»: files, pasted text, or Claude's research — then one press reads and understands it all (`onContinue`). */
 export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onContinue: () => void }) {
@@ -15,10 +33,13 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
   const [focus, setFocus] = useState(brief.focus || project.title);
   const [text, setText] = useState("");
   const [uploads, setUploads] = useState<{ name: string; progress: number; error?: string }[]>([]);
+  // videos / recordings uploaded and waiting to be written (their price is shown before)
+  const [media, setMedia] = useState<{ path: string; name: string; seconds: number }[]>([]);
+  const [link, setLink] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const { busy, error, run } = useAsync();
-  const job = jobs.find((j) => (j.kind === "extract" || j.kind === "research") && j.status !== "succeeded");
+  const job = jobs.find((j) => (j.kind === "extract" || j.kind === "research" || j.kind === "media") && j.status !== "succeeded");
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
   const ready = sources.some((s) => s.status === "ready");
   const researched = sources.some((s) => s.kind === "text" && s.name.startsWith("بحث كلاود"));
@@ -49,6 +70,15 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
     // one after the other, in the order chosen, so the material keeps its order
     for (const [i, f] of list.entries()) {
       try {
+        if (isMedia(f)) {
+          const mime = f.type || "video/mp4";
+          const seconds = await lengthOf(f);
+          const r = (await p.act({ action: "media_file", name: f.name, mime, bytes: f.size })) as { path: string; signedUrl: string };
+          await putWithProgress(r.signedUrl, f, mime, (x) => setUploads((u) => u.map((y, k) => (k === i ? { ...y, progress: x } : y))));
+          setUploads((u) => u.map((y, k) => (k === i ? { ...y, progress: 1 } : y)));
+          setMedia((m) => [...m, { path: r.path, name: f.name.replace(/\.[^.]+$/, ""), seconds }]);
+          continue;
+        }
         const mime = f.type || (f.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "");
         const r = (await p.act({ action: "source_file", name: f.name, mime, bytes: f.size })) as { sourceId: string; signedUrl: string };
         await putWithProgress(r.signedUrl, f, mime, (x) => setUploads((u) => u.map((y, k) => (k === i ? { ...y, progress: x } : y))));
@@ -98,8 +128,8 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
             📤
           </span>
           <b className="text-lg">اسحب ملفاتك هنا أو اضغط للاختيار</b>
-          <span className="text-sm text-jw-muted">صور أو ملفات PDF — عدة ملفات مرة وحدة، بالترتيب الذي تختاره</span>
-          <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple className="hidden" onChange={(e) => upload(e.target.files)} />
+          <span className="text-sm text-jw-muted">صور أو PDF، أو فيديو وتسجيل صوتي (يُفرَّغ كلامه نصًا) — عدة ملفات مرة وحدة</span>
+          <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp,video/*,audio/*" multiple className="hidden" onChange={(e) => upload(e.target.files)} />
         </div>
         {uploads.length > 0 && (
           <ul className="jw-panel space-y-2 p-4 text-sm">
@@ -118,6 +148,44 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
             ))}
           </ul>
         )}
+
+        {media.length > 0 && (
+          <ul className="jw-panel space-y-2 p-4">
+            {media.map((m) => (
+              <li key={m.path} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1 truncate">🎬 {m.name}</span>
+                <PaidButton
+                  label="فرّغ الكلام"
+                  what={`تفريغ كلام «${m.name}» نصًا بـ ElevenLabs، ويصير هو مادتك.`}
+                  disabled={running}
+                  run={async (b) => {
+                    const r = await p.act({ action: "media_transcribe", path: m.path, name: m.name, seconds: Math.round(m.seconds), ...b });
+                    if (b.confirm) setMedia((x) => x.filter((y) => y.path !== m.path));
+                    return r;
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="jw-panel space-y-3 p-4">
+          <b className="block">▶️ أو رابط فيديو (يوتيوب، تيك توك…)</b>
+          <p className="text-xs text-jw-muted">يسمعه ElevenLabs ويكتب كلامه كامل مع الأوقات. يُحجز مبلغ ٣ ساعات ويُخصم بس طول المقطع الفعلي. استخدم مقاطع لك حق استخدامها.</p>
+          <div className="flex flex-wrap gap-2">
+            <input className="jw-input min-w-0 flex-1" dir="ltr" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" aria-label="رابط الفيديو" />
+            <PaidButton
+              label="فرّغ الرابط"
+              what="تفريغ كلام الفيديو نصًا بـ ElevenLabs، ويصير هو مادتك."
+              disabled={running || !/^https:\/\/\S+\.\S+/.test(link.trim())}
+              run={async (b) => {
+                const r = await p.act({ action: "media_transcribe", url: link.trim(), ...b });
+                if (b.confirm) setLink("");
+                return r;
+              }}
+            />
+          </div>
+        </div>
 
         <details className="jw-panel p-4">
           <summary className="cursor-pointer font-semibold">✍️ أو الصق نصًا مكتوبًا</summary>
