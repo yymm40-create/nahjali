@@ -8,6 +8,7 @@ import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
 import { makeHookAsset, makeMusicAsset, makeSfxAsset } from "./make";
 import { startMaking } from "./making";
+import { smartWindow } from "./track";
 import type { MakePlan } from "@/lib/editor/make-any";
 import { placeHookDesign, placeMusic } from "@/lib/editor/make";
 import { hookAspect } from "@/lib/editor/hook-design";
@@ -125,6 +126,11 @@ export default function AssistantPanel({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  // the timeline as it is now (what was made arrives after Claude's own steps were applied)
+  const tlRef = useRef(tl);
+  useEffect(() => {
+    tlRef.current = tl;
+  }, [tl]);
   // «🩺 تشخيص»: the next message asks حيدرة to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
   const end = useRef<HTMLDivElement>(null);
@@ -278,6 +284,18 @@ export default function AssistantPanel({
               setMsgs((m) => [...m, { role: "assistant", text: `بدأت أصنع «${plan.name}» بـ ${plan.generatorName}${plan.kind === "video" ? " (الفيديو ياخذ كم دقيقة)" : ""}؛ ينحط على التايملاين لحاله أول ما يخلص.` }]);
             } else {
               setMsgs((m) => [...m, { role: "assistant", text: `جاهز أصنع «${plan.name}» بـ ${plan.generatorName}.`, plans: [{ plan, state: "ask" }] }]);
+            }
+          } else if (q.kind === "smart_mask") {
+            // the subject's exact outline (followed through the clip), as a grading layer's window
+            const f = findClip(tl, q.clipId);
+            const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+            if (f && a?.url && (a.kind === "video" || a.kind === "image")) {
+              const layer = Math.max(0, Math.min(3, Math.round(q.layer ?? 0)));
+              const mask = await smartWindow({ projectId, url: a.url, kind: a.kind, clip: f.clip, words: q.prompt, atT: Math.max(0, (player?.ms ?? f.clip.start) - f.clip.start), track: !!q.track && a.kind === "video", near: null, onStep: setBusy });
+              // the clip as it is now (the commands may have added the layer)
+              const now = findClip(tlRef.current, q.clipId)?.clip;
+              const invert = now?.grades[layer]?.mask?.invert ?? false;
+              run([{ type: "update_clip", clipId: q.clipId, patch: { grade: { layer, mask: { ...mask, invert } } } }], { label: `ماسك ذكي: ${q.prompt.slice(0, 30)}` });
             }
           } else if (q.kind === "separate") {
             setBusy("نفصل الكلام والموسيقى والمؤثرات…");

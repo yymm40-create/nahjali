@@ -183,15 +183,60 @@ const hueY = (p: Pt[], x: number) => Math.min(1, Math.max(0, hueCurveAt(p, x)));
 
 // ───────── a mask (window) editor ─────────
 
-function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip }: { mask: Mask | null; onChange: (m: Mask | null) => void; thumb: string | null; disabled: boolean; clipT: number; inClip: boolean }) {
+/** What the mask editor can ask of the clip's media («ماسك ذكي», «تتبّع»), when it has a picture or a video. */
+export interface MaskTools {
+  video: boolean;
+  smart: (words: string, track: boolean, near: Pt | null, onStep: (t: string) => void, signal: AbortSignal) => Promise<Mask>;
+  track: (m: Mask, fromT: number, onStep: (f: number) => void, signal: AbortSignal) => Promise<Mask["keys"]>;
+  flash: (text: string, bad?: boolean) => void;
+}
+
+function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip, tools }: { mask: Mask | null; onChange: (m: Mask | null) => void; thumb: string | null; disabled: boolean; clipT: number; inClip: boolean; tools?: MaskTools | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const m = mask;
+  const [words, setWords] = useState("");
+  const [follow, setFollow] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const stop = useRef<AbortController | null>(null);
+  const work = async (what: (s: AbortSignal) => Promise<void>) => {
+    const ac = new AbortController();
+    stop.current = ac;
+    try {
+      await what(ac.signal);
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) tools?.flash(e instanceof Error ? e.message : "تعذّر.", true);
+    } finally {
+      setBusy(null);
+      stop.current = null;
+    }
+  };
+  const smart = () =>
+    tools &&
+    words.trim() &&
+    work(async (signal) => {
+      setBusy("…");
+      const near = m ? (m.kind === "path" && m.points.length ? { x: m.x, y: m.y } : posAt(m, clipT)) : null;
+      const got = await tools.smart(words.trim(), follow && tools.video, near, setBusy, signal);
+      onChange({ ...got, invert: m?.invert ?? false });
+      tools.flash(got.shapes.length ? `حدّدت «${words.trim()}» وتتبّعته في ${got.shapes.length} لقطة ✓` : `حدّدت «${words.trim()}» ✓`);
+    });
+  const trackIt = () =>
+    tools &&
+    m &&
+    work(async (signal) => {
+      setBusy("أتتبّع 0٪");
+      const keys = await tools.track(m, Math.max(0, clipT), (f) => setBusy(`أتتبّع ${Math.round(f * 100)}٪`), signal);
+      // the points before the playhead stay; from it on, the tracked ones
+      onChange({ ...m, keys: [...m.keys.filter((k) => k.t < clipT - 1), ...keys] });
+      tools.flash(`تتبّعت الماسك (${keys.length} نقطة) ✓`);
+    });
   const set = (p: Partial<Mask>) => m && onChange({ ...m, ...p });
   const dragCenter = (e: React.PointerEvent) => {
     if (!m || disabled) return;
     const el = ref.current!;
     const r = el.getBoundingClientRect();
     if (m.kind === "path") {
+      if (m.shapes.length) return;
       // a click adds a corner
       const p = { x: +((e.clientX - r.left) / r.width).toFixed(3), y: +((e.clientY - r.top) / r.height).toFixed(3) };
       set({ points: [...m.points, p] });
@@ -216,8 +261,36 @@ function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip }: { mask: 
   };
   const keyHere = m?.keys.some((k) => Math.abs(k.t - clipT) < 40) ?? false;
   const pos = m ? (m.keys.length ? posAt(m, clipT) : { x: m.x, y: m.y }) : { x: 0.5, y: 0.5 };
+  // a tracked outline is drawn where the subject is at the playhead (no centre to move it by)
+  const tracked = !!m && m.kind === "path" && m.shapes.length > 0;
+  const pts = m ? (tracked ? shapeAt(m, clipT) : m.points) : [];
+  const off = tracked || !m ? { x: 0, y: 0 } : { x: pos.x - m.x, y: pos.y - m.y };
   return (
     <div className="space-y-2">
+      {tools && (
+        <div className="space-y-1.5 rounded-lg border border-jw-accent/30 bg-jw-accent/5 p-2">
+          <p className="text-[11px] font-semibold text-jw-accent">✨ ماسك ذكي: اكتب وش تبي تحدد، والذكاء يرسمه على حدوده بالضبط</p>
+          <div className="flex gap-1.5">
+            <input className="jw-input min-w-0 flex-1 !py-1 text-xs" dir="auto" value={words} disabled={disabled || !!busy} placeholder="مثلًا: الوجه، السماء، الشخص اللي يمين" onChange={(e) => setWords(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void smart()} aria-label="وش تبي تحدد؟" />
+            <button type="button" className="jw-btn jw-btn-primary !min-h-8 !px-3 text-xs" disabled={disabled || !!busy || !words.trim()} onClick={() => void smart()}>
+              حدّد
+            </button>
+          </div>
+          {tools.video && (
+            <label className="flex items-center gap-1.5 text-[11px]">
+              <input type="checkbox" checked={follow} disabled={disabled || !!busy} onChange={(e) => setFollow(e.target.checked)} /> يتتبّعه طول المقطع (يتغيّر شكله معه)
+            </label>
+          )}
+        </div>
+      )}
+      {busy && (
+        <p className="flex items-center gap-2 text-[11px] text-jw-muted" aria-live="polite">
+          <span className="jw-spinner !h-3 !w-3" /> {busy}
+          <button type="button" className="ms-auto underline" onClick={() => stop.current?.abort()}>
+            وقّف
+          </button>
+        </p>
+      )}
       <div className="jw-seg" role="radiogroup" aria-label="شكل الماسك">
         {(
           [
@@ -228,7 +301,7 @@ function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip }: { mask: 
             ["path", "رسم"],
           ] as [Mask["kind"] | null, string][]
         ).map(([k, label]) => (
-          <button key={label} type="button" role="radio" aria-checked={(m?.kind ?? null) === k} disabled={disabled} onClick={() => onChange(k ? { ...(m ?? NEW_MASK), kind: k, points: k === "path" ? (m?.points ?? []) : [], ...(k === "linear" ? { w: 0.4, h: 0 } : {}) } : null)}>
+          <button key={label} type="button" role="radio" aria-checked={(m?.kind ?? null) === k} disabled={disabled} onClick={() => onChange(k ? { ...(m ?? NEW_MASK), kind: k, points: k === "path" ? (m?.points ?? []) : [], shapes: k === "path" ? (m?.shapes ?? []) : [], ...(k === "linear" ? { w: 0.4, h: 0 } : {}) } : null)}>
             {label}
           </button>
         ))}
@@ -247,11 +320,11 @@ function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip }: { mask: 
                     {m.kind === "rect" && <rect x={-m.w * 50} y={-m.h * 50} width={m.w * 100} height={m.h * 100} rx={m.round * Math.min(m.w, m.h) * 50} />}
                     {m.kind === "linear" && <rect x="0" y="-200" width="400" height="400" />}
                   </g>
-                  {m.kind === "path" && m.points.length >= 3 && <polygon fill={m.invert ? "black" : "white"} points={m.points.map((p) => `${(p.x + pos.x - m.x) * 100},${(p.y + pos.y - m.y) * 100}`).join(" ")} />}
+                  {m.kind === "path" && pts.length >= 3 && <polygon fill={m.invert ? "black" : "white"} points={pts.map((p) => `${(p.x + off.x) * 100},${(p.y + off.y) * 100}`).join(" ")} />}
                 </mask>
               </defs>
               <rect width="100" height="100" fill="var(--jw-accent)" fillOpacity="0.35" mask="url(#mk)" />
-              {m.kind === "path" && m.points.map((p, i) => <circle key={i} cx={(p.x + pos.x - m.x) * 100} cy={(p.y + pos.y - m.y) * 100} r="1.6" fill="#fff" stroke="var(--jw-accent)" strokeWidth="0.6" />)}
+              {m.kind === "path" && !tracked && pts.length <= 64 && pts.map((p, i) => <circle key={i} cx={(p.x + off.x) * 100} cy={(p.y + off.y) * 100} r={pts.length > 20 ? 0.8 : 1.6} fill="#fff" stroke="var(--jw-accent)" strokeWidth="0.6" />)}
               {m.kind !== "path" && <circle cx={pos.x * 100} cy={pos.y * 100} r="1.8" fill="#fff" stroke="var(--jw-accent)" strokeWidth="0.6" />}
             </svg>
           </div>
@@ -287,13 +360,27 @@ function MaskEditor({ mask, onChange, thumb, disabled, clipT, inClip }: { mask: 
                 </button>
               )}
             </div>
+            {tools?.video && (m.kind === "ellipse" || m.kind === "rect") && (
+              <button type="button" className="jw-btn !min-h-7 w-full text-[11px]" disabled={disabled || !!busy || !inClip} onClick={() => void trackIt()} title="حط الماسك على الشي، وحيدرة كت يلحقه من هنا لآخر المقطع">
+                🎯 تتبّع الماسك من هنا لآخر المقطع
+              </button>
+            )}
+            {tracked && (
+              <div className="flex items-center gap-1.5 text-[11px] text-jw-muted">
+                <span className="flex-1">✨ شكل متتبّع في {m.shapes.length} لقطة</span>
+                <button type="button" className="jw-btn jw-btn-quiet !min-h-7 text-[11px]" disabled={disabled} onClick={() => set({ points: pts, shapes: [] })}>
+                  ثبّته على هالشكل
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
     </div>
   );
 }
-import { maskAt as posAt } from "@/lib/editor/grade";
+import { maskAt as posAt, shapeAt } from "@/lib/editor/grade";
+import { smartWindow, trackWindow } from "./track";
 
 // ───────── the panel ─────────
 
@@ -349,7 +436,7 @@ const curveBg = (k: keyof Curves) => (k.startsWith("hue") ? HUE_BG : k === "r" ?
 const flatCurve = (k: keyof Curves) => k.startsWith("hue") || k === "lumSat" || k === "satSat";
 const isOff = (g: Grade, keys: (keyof Grade)[]) => keys.every((k) => JSON.stringify(g[k]) === JSON.stringify(NEUTRAL_GRADE[k]));
 
-export default function GradePanel({ clip, thumb, locked, run, flash, player }: { clip: Clip; thumb: string | null; locked: boolean; run: Run; flash: (m: string, bad?: boolean) => void; player: PlayerLike | null }) {
+export default function GradePanel({ clip, thumb, locked, run, flash, player, media = null, projectId = null }: { clip: Clip; thumb: string | null; locked: boolean; run: Run; flash: (m: string, bad?: boolean) => void; player: PlayerLike | null; /** the clip's picture or video (for «ماسك ذكي» and «تتبّع») */ media?: { url: string; kind: "video" | "image" } | null; projectId?: string | null }) {
   const layers = clip.grades;
   const [li, setLi] = useState(0);
   const L = Math.min(li, Math.max(0, layers.length - 1));
@@ -407,6 +494,15 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player }: 
       return next;
     });
   const clipT = ms - clip.start;
+  const tools: MaskTools | null =
+    media && projectId
+      ? {
+          video: media.kind === "video",
+          flash,
+          smart: (words, track, near, onStep, signal) => smartWindow({ projectId, url: media.url, kind: media.kind, clip, words, atT: clipT, track, near, onStep, signal }),
+          track: (m, fromT, onStep, signal) => trackWindow(media.url, clip, m, fromT, onStep, signal),
+        }
+      : null;
   const inClip = clipT >= 0 && clipT <= clipLength(clip);
   const set = (patch: Partial<Grade>, key: string) => run({ type: "update_clip", clipId: clip.id, patch: { grade: { ...patch, layer: L } } }, { coalesce: `${clip.id}:grade:${L}:${key}` });
   const setLayers = (list: Grade[]) => run({ type: "update_clip", clipId: clip.id, patch: { grades: list } });
@@ -639,7 +735,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player }: 
               <details className="rounded-lg border border-jw-line p-1.5">
                 <summary className="cursor-pointer text-[11px] text-jw-muted">ماسك خاص بهذا الثانوي</summary>
                 <div className="pt-2">
-                  <MaskEditor mask={S.mask} thumb={thumb} disabled={D} clipT={clipT} inClip={inClip} onChange={(m) => setSec2({ mask: m }, "mask")} />
+                  <MaskEditor mask={S.mask} thumb={thumb} disabled={D} clipT={clipT} inClip={inClip} tools={tools} onChange={(m) => setSec2({ mask: m }, "mask")} />
                 </div>
               </details>
             </div>
@@ -647,7 +743,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player }: 
         </Section>
 
         <Section id="mask" title="ماسك (Power Window)" hint="التلوين يطبّق جوا الشكل بس (أو برّاه)، ويتحرك مع الوقت" open={open.includes("mask")} onToggle={toggle} badge={!!g.mask} onReset={() => resetKeys(["mask"])}>
-          <MaskEditor mask={g.mask} thumb={thumb} disabled={D} clipT={clipT} inClip={inClip} onChange={(m) => set({ mask: m }, "mask")} />
+          <MaskEditor mask={g.mask} thumb={thumb} disabled={D} clipT={clipT} inClip={inClip} tools={tools} onChange={(m) => set({ mask: m }, "mask")} />
         </Section>
 
         <Section id="film" title="فيلم والإطار" hint="هالة، حبيبات، زوايا، وقوة الطبقة" open={open.includes("film")} onToggle={toggle} badge={!isOff(g, ["halation", "grain", "vignette"])} onReset={() => resetKeys(["halation", "grain", "vignette", "pivot", "amount"])}>

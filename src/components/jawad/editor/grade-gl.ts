@@ -6,7 +6,7 @@
 // sharpen, then the primary window and the overall amount. The result is drawn back onto the 2D canvas, so the
 // preview and the export see the same picture.
 
-import { gamutToRec709, gradeIsNeutral, logInput, lutBytes, maskAt, sampleCurve, type Grade, type LogId, type Mask, type Secondary } from "@/lib/editor/grade";
+import { gamutToRec709, gradeIsNeutral, logInput, lutBytes, maskAt, sampleCurve, shapeAt, type Grade, type LogId, type Mask, type Pt, type Secondary } from "@/lib/editor/grade";
 
 const LOG_CODE: Record<LogId, number> = { none: 0, slog3: 1, slog2: 2, clog: 3, clog2: 4, clog3: 5, vlog: 6, logc3: 7, logc4: 8, nlog: 9, dlog: 10, flog: 11, flog2: 12, bmd5: 13, applelog: 14, redlog3g10: 15, hlg: 16, generic: 17 };
 const CURVE_N = 256;
@@ -321,7 +321,7 @@ export const gradeReady = () => !!setup() && !failed;
 
 // a mask drawn as a path: rasterized with a soft edge (a blur), kept per mask
 let maskCanvas: HTMLCanvasElement | null = null;
-function pathMask(m: Mask, cx: number, cy: number): HTMLCanvasElement {
+function pathMask(m: Mask, pts: Pt[], cx: number, cy: number): HTMLCanvasElement {
   const S = 512;
   const c = (maskCanvas ??= document.createElement("canvas"));
   c.width = S;
@@ -330,14 +330,14 @@ function pathMask(m: Mask, cx: number, cy: number): HTMLCanvasElement {
   g.clearRect(0, 0, S, S);
   g.fillStyle = "#000";
   g.fillRect(0, 0, S, S);
-  if (m.points.length >= 3) {
+  if (pts.length >= 3) {
     g.save();
     g.filter = m.feather > 0 ? `blur(${(m.feather * 40).toFixed(1)}px)` : "none";
     g.fillStyle = "#fff";
     g.beginPath();
     const dx = cx - m.x;
     const dy = cy - m.y;
-    m.points.forEach((p, i) => (i ? g.lineTo((p.x + dx) * S, (p.y + dy) * S) : g.moveTo((p.x + dx) * S, (p.y + dy) * S)));
+    pts.forEach((p, i) => (i ? g.lineTo((p.x + dx) * S, (p.y + dy) * S) : g.moveTo((p.x + dx) * S, (p.y + dy) * S)));
     g.closePath();
     g.fill();
     g.restore();
@@ -361,12 +361,17 @@ function setMask(G: Gl, i: number, m: Mask | null, t: number) {
   }
   gl.uniform1f(u[`maskInv[${i}]`] ?? u.maskInv, m.invert ? 1 : 0);
   if (m.kind === "path") {
-    const key = `${JSON.stringify(m.points)}|${m.feather}|${x.toFixed(4)}|${y.toFixed(4)}`;
+    // a tracked outline is where the subject is (no centre to move it by)
+    const tracked = m.shapes.length > 0;
+    const pts = tracked ? shapeAt(m, t) : m.points;
+    const cx = tracked ? m.x : x;
+    const cy = tracked ? m.y : y;
+    const key = `${JSON.stringify(pts)}|${m.feather}|${cx.toFixed(4)}|${cy.toFixed(4)}`;
     if (G.maskKeys[i] !== key) {
       G.maskKeys[i] = key;
       gl.activeTexture(gl.TEXTURE3 + i);
       gl.bindTexture(gl.TEXTURE_2D, G.masks[i]);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pathMask(m, x, y));
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pathMask(m, pts, cx, cy));
     }
   }
 }

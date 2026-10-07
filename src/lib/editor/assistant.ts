@@ -33,9 +33,11 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name"],
+        required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer"],
         properties: {
-          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make"] },
+          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask"] },
+          track: { type: "boolean", description: "smart_mask: follow the subject through the clip (a moving subject in a video). Else false." },
+          layer: { type: "number", description: "smart_mask: the grading layer (0…3) whose window it becomes. Else 0." },
           makeKind: { type: "string", enum: ["image", "video", "speech", "sfx", "music", ""], description: "make: what to make. Else empty." },
           aspect: { type: "string", description: "make image/video: \"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\" (video also \"4:3\", \"3:4\", \"21:9\"); empty = the project's shape." },
           seconds: { type: "number", description: "make video (4–15), sfx (1–30), music (10–300): length in seconds. Else 0." },
@@ -52,7 +54,7 @@ const SCHEMA = {
           prompt: { type: "string", description: "music: English description (genre, mood, instruments, tempo). make: the generator's prompt (image/video/sfx/music: detailed English; speech: the exact words to be spoken, in their language). Else empty." },
           at: { type: "number", description: "timeline ms where it goes (hook/music/make), usually 0 or the playhead" },
           lengthMs: { type: "number", description: "music: length in ms (usually the video's length). Else 0." },
-          clipId: { type: "string", description: "separate: the clip whose sound to split. Else empty." },
+          clipId: { type: "string", description: "separate: the clip whose sound to split; scene_cut / smart_mask: the clip. Else empty." },
         },
       },
     },
@@ -106,6 +108,7 @@ RULES:
 - «نص الهوك» (a hook text: whenever the person asks for a hook, a hook text or a title hook): it is designed as one piece — the picture of the words (GPT Image 2), its entrance and exit, and two sound effects — by the hook designer, from {"kind":"hook_design","text":...,"lang":...,"domain":...,"age":...,"at":0}. It needs five inputs: the hook text (exactly as given — you never write or change it), its language, the orientation (the project's shape: you know it, never ask), the field or project, and the audience age. If any is missing, ask ONE short grouped question for the missing ones only (mention reference pictures are optional) and send no request. Once they are all there, send the request and reply only that the design is on its way (the designer's delivery follows).
 - MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost). Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
 - MAKING ANYTHING with JAWAD AI's generators → {"kind":"make","makeKind":...,"prompt":...,"place":...,"at":...}: any picture (GPT Image 2: a B-roll shot, a background, a thumbnail, an illustration, a poster, a picture with Arabic writing — quote the Arabic text exactly in «» inside the English prompt), any video shot (Seedance: 4–15 s; describe subject, action, setting, camera move, lighting, style in English), any voice reading a text (speech: the exact words, with diacritics where the pronunciation matters; "voice" picks who reads), any sound effect (English description), any music (English description; withSound true = with singing). Prompts are rich and specific like a professional's. Where it goes: pictures/videos usually "over" at the moment they illustrate (or "main" to insert a shot), sounds "audio" at the moment they belong. Use it whenever the person asks to make/create/generate something (not for the hook text, which has its own designer, and use "music" above for music made to the video's length). It costs coins (the price is shown to the person before it starts) and a video takes a few minutes; it arrives on the timeline by itself. Up to 3 per answer.
+- A PRECISE WINDOW («ماسك ذكي», by SAM 3: the subject's exact outline, following its shape as it moves) → {"kind":"smart_mask","clipId":...,"prompt":"<what to select as a short English noun phrase: face, sky, person on the right, white robe>","track":true for a moving subject in a video,"layer":N}. Use it whenever a grade or fix must touch exactly one thing (brighten a face, darken the sky, warm a robe, cool the background with invert): in the same answer put that layer's grade change in "commands" (e.g. {"type":"update_clip","clipId":...,"patch":{"grade":{"layer":1,"name":"الوجه","exposure":0.3}}}; for "everything except it" add "mask":{"kind":"ellipse","invert":true} there and the precise outline keeps the invert). The outline replaces that layer's window when it arrives. A rough ellipse/rect with "keys" stays fine for soft, broad areas.
 - If something is missing that only a new shot could fix (e.g. an opening view), offer to make it (make) or add a suggestion with a clear English generation prompt.
 - When something doesn't work or looks wrong («ليش ما يطلع الصوت؟», «ليش الصورة مشعة؟»), find the reason in what you see (a muted or hidden track, a clip past its file, a wrong log or gamut, a file still uploading) and fix it or explain; the site's owner also has «🩺 تشخيص» next to the send button, which reads the browser's error log, the files and the server for a deep check.
 - If the request is unclear or impossible, ask or explain in "reply" with no commands. Never pretend a change was made.
@@ -142,7 +145,10 @@ function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
 }
 
 export interface MakeRequest {
-  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make";
+  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask";
+  /** smart_mask: follow the subject; the grading layer it becomes the window of */
+  track?: boolean;
+  layer?: number;
   makeKind?: MakeKind | "";
   aspect?: string;
   seconds?: number;
@@ -245,7 +251,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   }
   const valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
   const requests = (answer.requests ?? [])
-    .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || ((r.kind === "separate" || r.kind === "scene_cut") && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     .slice(0, 4);
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
   let reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "");
