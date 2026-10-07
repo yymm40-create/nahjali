@@ -3,7 +3,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isAdmin } from "@config/site";
+import { isUnlimited } from "@config/site";
 import { LIBRARY_ADDON } from "@config/coins";
 
 const db = () => createAdminClient();
@@ -31,7 +31,7 @@ export async function libraryOpenFor(userId: string) {
   const a = await libraryAccess(userId, false);
   if (a.active) return true;
   const { data } = await db().auth.admin.getUserById(userId);
-  return isAdmin(data.user?.email);
+  return isUnlimited(data.user?.email);
 }
 
 export const LOCKED_MESSAGE = `«${LIBRARY_ADDON.name}» إضافة باشتراك ${LIBRARY_ADDON.monthlySar} ريال شهريًا: تحفظ فيها أصواتك وشخصياتك وأماكنك وتستخدمها متى ما تبي.`;
