@@ -19,8 +19,9 @@ export const isAdmin = (email: string | undefined | null) => Boolean(email && AD
 export const FREE_GUESTS: { email: string; until: string }[] = [
   // the owner's guest, until tomorrow 12:00 noon (Saudi time)
   { email: "emanalialali91@gmail.com", until: "2026-10-06T12:00:00+03:00" },
-  // the owner's guest: the whole site free and unlimited for 24 hours (from 7 Oct 2026, 3 pm Saudi time)
-  { email: "hassanirno44@gmail.com", until: "2026-10-08T15:00:00+03:00" },
+  // the owner's guest: the whole site free and unlimited for 24 hours from when it goes live (Vercel's daily deploy
+  // limit holds it until 8 Oct, ~3 pm Saudi time)
+  { email: "hassanirno44@gmail.com", until: "2026-10-09T15:15:00+03:00" },
 ];
 export const isFreeGuest = (email: string | undefined | null) =>
   Boolean(email && FREE_GUESTS.some((g) => g.email === email.toLowerCase() && Date.now() < new Date(g.until).getTime()));
