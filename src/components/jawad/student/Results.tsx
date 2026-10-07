@@ -77,7 +77,7 @@ function BlockView({ b, research }: { b: Block; research: Research | null }) {
     case "addition":
       return (
         <div className="rounded-lg border border-dashed border-jw-warn p-3">
-          <span className="text-xs font-bold text-jw-warn">إضافة من المساعد — ليست من المادة</span>
+          <span className="text-xs font-bold text-jw-warn">إضافة من صادق — ليست من المادة</span>
           <p className={base}>{b.text}</p>
         </div>
       );
@@ -414,7 +414,7 @@ export function QuizPlay({ o }: { o: OutputView }) {
             <PaidButton
               label={`اختبار جديد يركّز على أخطائي (${wrong.length})`}
               primary={false}
-              what="يكتب المساعد أسئلة جديدة عن النقاط التي أخطأت فيها، بدل الأسئلة الحالية."
+              what="يكتب صادق أسئلة جديدة عن النقاط التي أخطأت فيها، بدل الأسئلة الحالية."
               run={async (b) => {
                 const r = await post(`/api/jawad/student/outputs/${o.id}`, { action: "request", kind: "other", note: `اختبار جديد يركّز على ما أخطأت فيه، وهو: ${wrong.map((q) => q.question).join(" | ").slice(0, 3000)}`, ...b });
                 window.dispatchEvent(new Event("st-refresh"));

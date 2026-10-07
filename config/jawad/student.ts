@@ -36,8 +36,8 @@ export type PurposeId = (typeof PURPOSES)[number]["id"];
 /** Where the information comes from. */
 export const SOURCE_MODES = [
   { id: "files", label: "من ملفاتي", hint: "أرفع صور أو PDF أو أكتب نصًا" },
-  { id: "research", label: "كلاود يبحث لي", hint: "بدون ملفات: يبحث في مصادر موثوقة" },
-  { id: "both", label: "ملفاتي + بحث", hint: "مادتي، ويكملها كلاود بالبحث" },
+  { id: "research", label: "صادق يبحث لي", hint: "بدون ملفات: يبحث في مصادر موثوقة" },
+  { id: "both", label: "ملفاتي + بحث", hint: "مادتي، ويكملها صادق بالبحث" },
 ] as const;
 export type SourceMode = (typeof SOURCE_MODES)[number]["id"];
 
@@ -267,3 +267,10 @@ export interface Design {
 }
 
 export const defaultDesign = (main: StyleId = "notebook"): Design => ({ main, roles: {}, fonts: { ...styleById(main).pair }, custom: null });
+
+/** «صادق»: the assistant of «الطالب الذكي» (he reads, understands, researches, plans and makes everything). */
+export const STUDENT_ASSISTANT = { name: "صادق", icon: "🧑‍🎓" } as const;
+
+/** The written source a research becomes is named «بحث صادق: …» (older projects: «بحث كلاود: …»). */
+export const RESEARCH_PREFIX = "بحث صادق";
+export const isResearchSource = (name: string) => name.startsWith(RESEARCH_PREFIX) || name.startsWith("بحث كلاود");

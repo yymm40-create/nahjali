@@ -1,5 +1,5 @@
 // «الطالب الذكي» — the settings the assistant chooses when the student doesn't (shared by the server, which
-// pre-fills every new output with them, and by «تخطَّ ودع المساعد يقرر» in the browser). No server imports here.
+// pre-fills every new output with them, and by «تخطَّ ودع صادق يقرر» in the browser). No server imports here.
 
 import { STYLES, defaultDesign, type StyleId } from "@config/jawad/student";
 

@@ -20,11 +20,11 @@ export default function UnderstandingStep({ p }: { p: ProjectHook }) {
       <JobStatus job={job && job.status !== "succeeded" ? job : undefined} />
       {!current ? (
         <div className="jw-panel space-y-3 p-4">
-          <h2 className="font-semibold">فهم المساعد للمادة</h2>
+          <h2 className="font-semibold">فهم صادق للمادة</h2>
           <p className="text-sm text-jw-muted">
-            يقرأ المساعد النص المعتمد كاملًا على أجزاء، ويكتب ملاحظة لكل جزء حتى لا يتجاوز شيئًا، ثم يجمعها في فهم واحد: موضوع المادة، بنيتها، أجزاؤها، المواضع الملتبسة، وما لا يستطيع تأكيده. لا تُقترح النواتج قبل أن تعتمد هذا الفهم.
+            يقرأ صادق النص المعتمد كاملًا على أجزاء، ويكتب ملاحظة لكل جزء حتى لا يتجاوز شيئًا، ثم يجمعها في فهم واحد: موضوع المادة، بنيتها، أجزاؤها، المواضع الملتبسة، وما لا يستطيع تأكيده. لا تُقترح النواتج قبل أن تعتمد هذا الفهم.
           </p>
-          <PaidButton label="اعرض فهم المساعد" what="قراءة المادة كاملة وبناء الفهم (Claude)." disabled={running} run={(b) => p.act({ action: "understand", ...b })} />
+          <PaidButton label="اعرض فهم صادق" what="قراءة المادة كاملة وبناء الفهم." disabled={running} run={(b) => p.act({ action: "understand", ...b })} />
         </div>
       ) : (
         <>
@@ -65,7 +65,7 @@ export default function UnderstandingStep({ p }: { p: ProjectHook }) {
             )}
             {current.content.unsure.length > 0 && (
               <section>
-                <h3 className="mb-1 font-semibold">ما لا يستطيع المساعد تأكيده</h3>
+                <h3 className="mb-1 font-semibold">ما لا يستطيع صادق تأكيده</h3>
                 <ul className="list-inside list-disc space-y-1 text-sm">
                   {current.content.unsure.map((u, i) => (
                     <li key={i}>{u}</li>
@@ -80,12 +80,12 @@ export default function UnderstandingStep({ p }: { p: ProjectHook }) {
           </article>
 
           <Gate
-            next={project.brief.mode === "both" ? "يبحث كلاود في الويب ليكمل مادتك، ثم تختار نواتجك." : "تختار نواتجك بعدها مباشرة."}
+            next={project.brief.mode === "both" ? "يبحث صادق في الويب ليكمل مادتك، ثم تختار نواتجك." : "تختار نواتجك بعدها مباشرة."}
             approveLabel={current.approved ? "متابعة" : "اعتمد الفهم"}
             onApprove={() => p.act({ action: "understanding_approve" })}
-            editHint="ما الذي فهمه المساعد خطأ أو ناقصًا؟"
-            onEdit={(note) => <PaidButton label="أرسل التعديل" what="يعيد المساعد بناء الفهم مع ملاحظتك (بدون إعادة قراءة المادة)." disabled={running} run={(b) => p.act({ action: "understand", note, kind: "edit", ...b })} />}
-            onOther={(note) => <PaidButton label="أرسل الطلب" what="يعيد المساعد بناء الفهم مع طلبك الجديد." disabled={running} run={(b) => p.act({ action: "understand", note, kind: "other", ...b })} />}
+            editHint="ما الذي فهمه صادق خطأ أو ناقصًا؟"
+            onEdit={(note) => <PaidButton label="أرسل التعديل" what="يعيد صادق بناء الفهم مع ملاحظتك (بدون إعادة قراءة المادة)." disabled={running} run={(b) => p.act({ action: "understand", note, kind: "edit", ...b })} />}
+            onOther={(note) => <PaidButton label="أرسل الطلب" what="يعيد صادق بناء الفهم مع طلبك الجديد." disabled={running} run={(b) => p.act({ action: "understand", note, kind: "other", ...b })} />}
           />
         </>
       )}

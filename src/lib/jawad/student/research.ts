@@ -1,6 +1,7 @@
 // «الطالب الذكي» — web research about the material's topic (only when the student asked for it), with Anthropic's web
 // search tool. Every paragraph keeps the sources the API cited for it; the research never changes the approved text.
 
+import { RESEARCH_PREFIX } from "@config/jawad/student";
 import { STUDENT, briefLine, readBrief, researchPlaces } from "@config/jawad/student";
 import { claudeCeilingUsd, webResearch, type ResearchParagraph, type ResearchSource } from "./claude";
 import { addVersion, getProject, sdb, sources, touch, versionOf } from "./db";
@@ -18,7 +19,7 @@ export interface Research {
 export const researchCeiling = () => claudeCeilingUsd(60_000, 12000) * 2 + STUDENT.maxSearches * STUDENT.webSearchUsd;
 
 /**
- * «كلاود يبحث لي»: no files — the research IS the material. It becomes a written source («بحث كلاود») with its sources
+ * «كلاود يبحث لي»: no files — the research IS the material. It becomes a written source («بحث صادق») with its sources
  * listed, and goes through the same reading and understanding as anything the student types.
  */
 async function asMaterial(job: Job) {
@@ -46,7 +47,7 @@ async function asMaterial(job: Job) {
   const ord = (await sources(project.id)).length;
   const { error } = await sdb()
     .from("student_sources")
-    .insert({ project_id: project.id, user_id: job.user_id, ord, kind: "text", name: `بحث كلاود: ${(focus || project.title).slice(0, 120)}`, body, mime: "text/plain", bytes: Buffer.byteLength(body), pages: 1, status: "ready" });
+    .insert({ project_id: project.id, user_id: job.user_id, ord, kind: "text", name: `${RESEARCH_PREFIX}: ${(focus || project.title).slice(0, 120)}`, body, mime: "text/plain", bytes: Buffer.byteLength(body), pages: 1, status: "ready" });
   if (error) throw error;
   await touch(project.id);
   return { done: true, usd: r.usd, stage: r.sources.length ? `كتب المادة من ${r.sources.length} مصدرًا` : "لم يُعثر على مصادر" };
