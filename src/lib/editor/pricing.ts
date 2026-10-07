@@ -1,4 +1,4 @@
-// «حيدرة كت»'s limits and prices, set by the owner from /admin/limits (film_limits). Everything is free while
+// «حيدرة كت»'s prices, set by the owner from /admin/limits (film_limits). Everything is free while
 // the prices are 0 or «النقود الذكية مطلوبة» is off; a price is held before the paid call and given back if it fails.
 
 import { coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
@@ -10,11 +10,6 @@ export interface Who {
   owner: boolean;
   /** an edit of a team series («المسلسل الذكي»): its «نقود الفريق الذكي» pays */
   team?: string | null;
-}
-
-/** One of the editor's daily limits for this person (the owner has none). */
-export async function editorLimit(key: Extract<LimitKey, `editor_${string}_daily` | "editor_speech_minutes">, who: Who) {
-  return who.owner ? Infinity : getLimit(key, who.email);
 }
 
 /**

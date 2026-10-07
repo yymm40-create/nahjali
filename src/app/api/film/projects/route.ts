@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { filmTrialApplies, filmTrialUsers, requireFilmApiUser } from "@/lib/film/access";
+import { requireFilmApiUser } from "@/lib/film/access";
 import { projectFields } from "@/lib/film/validate";
 import { FILM_LIMITS } from "@config/film";
 
@@ -25,10 +25,5 @@ export const POST = handle(async (req: Request) => {
     .select("id")
     .single();
   if (error) throw error;
-  // Public trial: two people starting at the same moment can't both take the last place
-  if ((await filmTrialApplies(user)) && !(await filmTrialUsers()).includes(user.id)) {
-    await db.from("film_projects").delete().eq("id", data.id);
-    throw new UserError("اكتمل عدد المجرّبين في الفترة المجانية.", 403);
-  }
   return NextResponse.json({ id: data.id });
 });

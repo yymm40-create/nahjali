@@ -5,7 +5,7 @@ import { UserError } from "@/lib/api";
 import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
-import { isUnlimited } from "@config/site";
+import { unlimitedFor } from "@/lib/access";
 import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
@@ -36,7 +36,7 @@ const NOT_NOW = "هذه الخطوة غير متاحة الآن.";
  * «GPT Image 2 or Claude» (Claude's pages cost nothing on top of the writing).
  */
 async function drawPrices(user: User) {
-  const free = isUnlimited(user.email) || !(await coinsRequired());
+  const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
   const c = (usd: number) => (free ? 0 : coinsFor(usd));
   return { free, page: { high: c(pageUsd("high")), medium: c(pageUsd("medium")) }, slide: { high: c(slideImageUsd("high")), medium: c(slideImageUsd("medium")) } };
 }
@@ -120,7 +120,7 @@ export const materialsMade = (user: { app_metadata?: Record<string, unknown> }) 
 
 export async function createProject(user: User & { app_metadata?: Record<string, unknown> }, b: Body) {
   const made = materialsMade(user);
-  const limited = !isUnlimited(user.email);
+  const limited = !(await unlimitedFor(user.email));
   if (limited && made >= MATERIALS_PER_PERSON) throw new UserError(`لكل حساب ${MATERIALS_PER_PERSON} مادتان فقط في «الطالب الذكي»، واستخدمتهما.`, 403);
   const row = { user_id: user.id, title: text(b.title, 200) || "مادة جديدة", level: text(b.level, 120), audience: text(b.audience, 300) };
   const brief = cleanBrief(b.brief);
@@ -137,7 +137,7 @@ export async function createProject(user: User & { app_metadata?: Record<string,
 /** Quote first (nothing runs), then run with the same key once the student confirmed. */
 async function paid(user: User, b: Body, o: { projectId: string; outputId?: string; kind: string; usd: number; input?: Record<string, unknown>; stage?: string; started?: () => Promise<void> }) {
   // nothing is charged (the owner, a free guest, or while coins are switched off): no price to agree to
-  const free = isUnlimited(user.email) || !(await coinsRequired());
+  const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
   const coins = o.usd > 0 && !free ? coinsFor(o.usd) : 0;
   if (!b.confirm) return { quote: coins, balance: await coinBalance(user.id) };
   const key = checkKey(b.key);

@@ -5,7 +5,6 @@ import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import { riyadhDayStart, riyadhMonthStart, rowCost } from "@/lib/film/usage";
 import { isAdmin } from "@config/site";
 import { FILM_STAGES } from "@config/film";
-import FilmAdminTools from "./FilmAdminTools";
 
 export const metadata = { title: "فرع الفيلم | لوحة التحكم" };
 export const dynamic = "force-dynamic";
@@ -23,8 +22,7 @@ export default async function FilmAdminPage() {
   if (!isAdmin(user.email)) notFound();
   const db = createAdminClient();
 
-  const [invited, usage, projects, jobs, storage] = await Promise.all([
-    db.from("film_allowed_emails").select("email,created_at").order("created_at"),
+  const [usage, projects, jobs, storage] = await Promise.all([
     db.from("film_usage").select("user_id,service,state,estimated_cost_usd,actual_cost_usd,created_at").gte("created_at", riyadhMonthStart().toISOString()),
     db.from("film_projects").select("id", { count: "exact", head: true }),
     db.from("film_jobs").select("status"),
@@ -117,7 +115,6 @@ export default async function FilmAdminPage() {
         </ul>
       </section>
 
-      <FilmAdminTools invited={(invited.data ?? []).map((r) => r.email)} />
     </div>
   );
 }

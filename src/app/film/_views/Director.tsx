@@ -2,7 +2,6 @@ import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
-import { editsLeft } from "@/lib/film/limits";
 import { checkVideos, directorVersions, directorVideos, referenceLibrary, superDirectorOn } from "@/lib/film/director";
 import { latestJob } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
@@ -44,7 +43,7 @@ export default async function DirectorView({ id, base }: { id: string; base: str
         </p>
       </header>
       <DirectorWorkspace
-        editsLeft={await editsLeft(id, "director", user.email)}
+        editsLeft={null}
         projectId={id}
         stage={project.stage}
         versions={versions}

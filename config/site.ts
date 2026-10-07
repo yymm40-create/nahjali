@@ -8,7 +8,6 @@ export const CONTACT_EMAIL = "yymm40@gmail.com";
 /** Date shown as "last updated" on the legal pages. */
 export const LEGAL_UPDATED = "١ أكتوبر ٢٠٢٦";
 
-/** Accounts that can open the owner's dashboard (/admin). */
 /** «الرئيس»: the site's owner, above everyone. */
 export const OWNER_EMAILS = ["yymm40@gmail.com"];
 /**
@@ -26,24 +25,8 @@ export const mayActOn = (actor: string | undefined | null, target: string | unde
 export const ABOVE_YOU = "هذا حساب الرئيس؛ ما يتغير إلا منه.";
 
 /**
- * Guests the owner lets into the whole site with everything free (no coins, no limits), until a set time (after it they
- * are like everyone else again) or, without one, for good. They do not get the dashboard.
- */
-export const FREE_GUESTS: { email: string; until?: string }[] = [
-  // the owner's guest, until tomorrow 12:00 noon (Saudi time)
-  { email: "emanalialali91@gmail.com", until: "2026-10-06T12:00:00+03:00" },
-  // the owner's guest: the whole site free and unlimited, with no end
-  { email: "hassanirno44@gmail.com" },
-];
-export const isFreeGuest = (email: string | undefined | null) =>
-  Boolean(email && FREE_GUESTS.some((g) => g.email === email.toLowerCase() && (!g.until || Date.now() < new Date(g.until).getTime())));
-/** Makes things without paying: the owner, or a free guest while their time lasts. */
-export const isUnlimited = (email: string | undefined | null) => isAdmin(email) || isFreeGuest(email);
-
-/**
- * «كتيب نهج علي»'s pages and API. Who may open them (closed / given emails / everyone; closed by default, the
- * owner always) is set on /admin/limits — see bookletOpenFor in src/lib/film/limits.ts, used by src/proxy.ts.
- * While it isn't open for everyone, it stays listed and marked «تحت التطوير».
+ * «كتيب نهج علي»'s pages and API: for those «السماح» (/admin/access, src/lib/access.ts) lets in, checked in
+ * src/proxy.ts; everyone else sees «تحت التطوير».
  */
 export const BOOKLET_PATHS = ["/booklet", "/new", "/order", "/my-booklets", "/api/orders", "/api/feedback"];
 

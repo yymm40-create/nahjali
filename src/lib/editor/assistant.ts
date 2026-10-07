@@ -17,7 +17,7 @@ import { FX_LIST } from "./effects";
 import { TR_LIST } from "./transitions";
 import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
 import { checkDesign, deliveryText, DESIGN_SCHEMA, DESIGN_SYSTEM, designPrompt, RESEARCH_SYSTEM, researchPrompt, type HookDesign, type HookInputs } from "./hook-design";
-import { charged, editorLimit, type Who } from "./pricing";
+import { charged, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
 
 const db = () => createAdminClient();
@@ -129,17 +129,6 @@ TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
 ${KNOW_HOW}`;
 
-/** What Claude sees of the project (compact). */
-async function usedToday(p: EditorProject) {
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
-  const { data: projects } = await db().from("editor_projects").select("id").eq("user_id", p.user_id);
-  const ids = (projects ?? []).map((x) => x.id as string);
-  if (!ids.length) return 0;
-  const { count } = await db().from("editor_ops").select("id", { count: "exact", head: true }).in("project_id", ids).eq("actor", "claude").gte("created_at", since.toISOString());
-  return count ?? 0;
-}
-
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
 function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
   if (!v || typeof v !== "object") return null;
@@ -210,8 +199,6 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
-  const daily = await editorLimit("editor_claude_daily", who);
-  if (daily !== Infinity && (await usedToday(p)) >= daily) throw new UserError(`وصلت لحد طلبات حيدرة اليوم (${daily}). ترجع بكرة.`, 429);
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
 
   const assets = await assetViews(p.id);

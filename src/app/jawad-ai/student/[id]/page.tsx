@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { can } from "@/lib/access";
+import SectionClosed from "@/components/jawad/SectionClosed";
 import StudentProject from "@/components/jawad/student/StudentProject";
 import { UserError } from "@/lib/api";
 import { requireJawadUser } from "@/lib/jawad/server/access";
@@ -16,6 +18,7 @@ export default async function StudentProjectPage({ params }: { params: Promise<{
   const [{ user, owner }, rt] = await Promise.all([requireJawadUser(`${STUDENT.base}/${id}`), loadRuntime()]);
   const section = rt.sections.find((s) => s.implementation === "student");
   if (!section || (!section.enabled && !owner)) notFound();
+  if (!(await can(user.email, "student"))) return <SectionClosed icon="🎒" name={section.name} />;
   const state = await projectState(user, id).catch((e) => {
     if (e instanceof UserError) return null;
     throw e;
