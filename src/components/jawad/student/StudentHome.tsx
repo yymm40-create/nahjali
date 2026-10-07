@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { LEVELS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, type PurposeId, type SourceMode } from "@config/jawad/student";
-import { post } from "./client";
+import { newKey, post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
 
@@ -41,6 +41,7 @@ export default function StudentHome({
   const [purposeNote, setPurposeNote] = useState("");
   const [mode, setMode] = useState<SourceMode>("files");
   const [focus, setFocus] = useState("");
+  const [where, setWhere] = useState("");
   const { busy, error, run } = useAsync();
 
   // stays "busy" until the next page opens, so the button never looks like it did nothing
@@ -69,10 +70,13 @@ export default function StudentHome({
         title: title.trim() || focus.trim().slice(0, 80) || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`,
         level: level === "آخر" ? other : level,
         audience,
-        brief: { purpose, purposeNote: purposeNote.trim(), mode, focus: focus.trim() },
+        brief: { purpose, purposeNote: purposeNote.trim(), mode, focus: focus.trim(), where: where.trim() },
       });
+      // «كلاود يبحث لي»: no material page — the research starts now, and the page carries on by itself to the outputs
+      // (a refusal — not enough coins — is shown on the next page, where it can be started again)
+      if (mode === "research") await post(`/api/jawad/student/projects/${r.id}`, { action: "research_material", focus: focus.trim() || title.trim(), where: where.trim(), confirm: true, key: newKey() }).catch(() => null);
       setGoing(true);
-      router.push(`${STUDENT.base}/${r.id}`);
+      router.push(`${STUDENT.base}/${r.id}${mode === "research" ? "?go=research" : ""}`);
     });
   };
 
@@ -234,6 +238,13 @@ export default function StudentHome({
           </div>
           {mode !== "files" && (
             <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبي كلاود يبحث عنها؟ مثال: دورة حياة الخلية بمنهج الصف الثاني متوسط، مع أمثلة" aria-label="ما يبحث عنه كلاود" />
+          )}
+          {mode === "research" && (
+            <div className="space-y-1">
+              <span className="text-sm font-semibold">وين يبحث؟ (اختياري)</span>
+              <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => setWhere(e.target.value)} placeholder="الصق رابط موقع أو أكثر، أو اكتب المصدر (مثل: منهج وزارة التربية). يلتزم فيها كلاود ولا يبحث في غيرها." aria-label="وين يبحث كلاود" />
+              <p className="text-[11px] text-jw-faint">بعد «ابدأ» يبحث كلاود ويكتب المادة ويفهمها لحاله، وتوصل على طول لاختيار النواتج. البحث يُخصم بسعره الفعلي.</p>
+            </div>
           )}
         </div>
         <ErrorLine error={error} />

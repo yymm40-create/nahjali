@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Icon from "@/components/jawad/Icon";
 import { STUDENT } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
 import { PURPOSES } from "@config/jawad/student";
 import OutputsStep from "./OutputsStep";
+import ResearchRun from "./ResearchRun";
 import SourcesStep from "./SourcesStep";
 import { useAutopilot } from "./autopilot";
 import { STEP_LOOK } from "./look";
@@ -38,6 +39,23 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   }
   // «ملفاتي + بحث»: once the understanding is approved, the research runs by itself
   const { start } = auto;
+  // «كلاود يبحث لي» (the first page's choice; `?go=research` when the brief couldn't be saved): no upload page and no
+  // approval of the understanding — research, reading and understanding run by themselves up to the outputs
+  const fromHome = useSyncExternalStore(noSubscribe, () => window.location.search.includes("go=research"), () => false);
+  const [filesInstead, setFilesInstead] = useState(false);
+  const researchMode = project.brief.mode === "research" || fromHome || p.state.sources.some((s) => s.name.startsWith("بحث كلاود"));
+  const researching = researchMode && !filesInstead && ["sources", "review", "understanding"].includes(project.stage);
+  const written = p.state.sources.some((s) => s.kind === "text" && s.name.startsWith("بحث كلاود"));
+  const searching = p.state.jobs.some((j) => j.kind === "research" && (j.status === "queued" || j.status === "running"));
+  // started once for each point it can start from (the research running, then written); a stop is not restarted alone
+  const autoKey = useRef("");
+  useEffect(() => {
+    if (!researching || auto.mode || !(written || searching)) return;
+    const key = `${project.stage}:${written}`;
+    if (autoKey.current === key) return;
+    autoKey.current = key;
+    start("all");
+  }, [researching, auto.mode, written, searching, project.stage, start]);
   useEffect(() => {
     if (project.stage === "scope" && !auto.mode) start("step");
   }, [project.stage, auto.mode, start]);
@@ -46,8 +64,8 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   useEffect(() => {
     if (resumed.current || auto.mode) return;
     resumed.current = true;
-    if (project.stage === "review") start("material");
-  }, [project.stage, auto.mode, start]);
+    if (project.stage === "review" && !researching) start("material");
+  }, [project.stage, auto.mode, start, researching]);
   // a new step opens at the top of the steps bar, smoothly
   const navRef = useRef<HTMLElement>(null);
   const firstView = useRef(true);
@@ -142,8 +160,12 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
       <ErrorLine error={p.error} />
 
       <div key={view} className="st-rise">
-      {view === "sources" && <SourcesStep p={p} onContinue={() => start("material")} />}
-      {view === "understanding" && <UnderstandingStep p={p} />}
+      {researching && view !== "outputs" ? (
+        <ResearchRun p={p} working={auto.doing} error={auto.error} onGo={() => start("all")} onFiles={() => setFilesInstead(true)} />
+      ) : (
+        view === "sources" && <SourcesStep p={p} onContinue={() => start("material")} />
+      )}
+      {view === "understanding" && !researching && <UnderstandingStep p={p} />}
       {view === "outputs" && <OutputsStep p={p} onStart={() => start("all")} researching={project.stage === "scope"} working={Boolean(auto.mode)} />}
       </div>
     </div>
@@ -151,3 +173,5 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
 }
 
 export type ProjectHook = ReturnType<typeof useProject>;
+
+const noSubscribe = () => () => {};

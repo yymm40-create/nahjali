@@ -48,16 +48,35 @@ export interface Brief {
   mode: SourceMode;
   /** research: what to look for */
   focus: string;
+  /** research: where to look (links or sites to keep to); empty = reliable sources anywhere */
+  where: string;
 }
 
-export const emptyBrief = (): Brief => ({ purpose: "exam", purposeNote: "", mode: "files", focus: "" });
+export const emptyBrief = (): Brief => ({ purpose: "exam", purposeNote: "", mode: "files", focus: "", where: "" });
 
 /** A stored brief, checked (older materials have none). */
 export function readBrief(v: unknown): Brief {
   const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const purpose = PURPOSES.some((x) => x.id === b.purpose) ? (b.purpose as PurposeId) : "exam";
   const mode = SOURCE_MODES.some((x) => x.id === b.mode) ? (b.mode as SourceMode) : "files";
-  return { purpose, purposeNote: String(b.purposeNote ?? "").slice(0, 1000), mode, focus: String(b.focus ?? "").slice(0, 2000) };
+  return { purpose, purposeNote: String(b.purposeNote ?? "").slice(0, 1000), mode, focus: String(b.focus ?? "").slice(0, 2000), where: String(b.where ?? "").slice(0, 2000) };
+}
+
+/** The links in «وين يبحث» (https only) and their sites. */
+export function researchPlaces(where: string) {
+  const links = [...new Set((where.match(/https?:\/\/[^\s,،]+/g) ?? []).map((u) => u.replace(/[).،,]+$/, "")))].slice(0, 10);
+  const sites = [
+    ...new Set(
+      links.flatMap((u) => {
+        try {
+          return [new URL(u).hostname.replace(/^www\./, "")];
+        } catch {
+          return [];
+        }
+      }),
+    ),
+  ];
+  return { links, sites };
 }
 
 /** The brief as one line for the writer (Claude). */

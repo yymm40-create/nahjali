@@ -1,14 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { briefLine, readBrief } from "@config/jawad/student";
+import { briefLine, readBrief, researchPlaces } from "@config/jawad/student";
 import { nextAuto } from "@/components/jawad/student/autopilot";
 import type { OutputView, ProjectState } from "@/components/jawad/student/client";
 import { pickDesigns } from "@/lib/jawad/student/design-pick";
 import type { Project } from "@/lib/jawad/student/db";
 
+describe("where Claude researches («وين يبحث»)", () => {
+  it("finds the links and their sites in what the student wrote", () => {
+    expect(researchPlaces("ابحث هنا https://www.moe.edu.kw/curriculum/science، وهنا https://ar.wikipedia.org/wiki/خلية.")).toEqual({
+      links: ["https://www.moe.edu.kw/curriculum/science", "https://ar.wikipedia.org/wiki/خلية"],
+      sites: ["moe.edu.kw", "ar.wikipedia.org"],
+    });
+  });
+  it("has no links when only a source is named", () => {
+    expect(researchPlaces("منهج وزارة التربية")).toEqual({ links: [], sites: [] });
+  });
+});
+
 describe("the first page's brief", () => {
   it("reads what was stored, and falls back for old materials", () => {
-    expect(readBrief(undefined)).toEqual({ purpose: "exam", purposeNote: "", mode: "files", focus: "" });
-    expect(readBrief({ purpose: "teach", mode: "research", focus: "الخلية", purposeNote: "لطلاب صفي" })).toEqual({ purpose: "teach", purposeNote: "لطلاب صفي", mode: "research", focus: "الخلية" });
+    expect(readBrief(undefined)).toEqual({ purpose: "exam", purposeNote: "", mode: "files", focus: "", where: "" });
+    expect(readBrief({ purpose: "teach", mode: "research", focus: "الخلية", purposeNote: "لطلاب صفي" })).toEqual({ purpose: "teach", purposeNote: "لطلاب صفي", mode: "research", focus: "الخلية", where: "" });
     expect(readBrief({ purpose: "hack", mode: "x" })).toMatchObject({ purpose: "exam", mode: "files" });
   });
   it("tells the writer the purpose", () => {

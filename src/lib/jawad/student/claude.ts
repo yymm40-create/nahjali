@@ -76,12 +76,25 @@ export interface ResearchParagraph {
   cites: number[];
 }
 
+/** Pages read in full for one research (links the student gave), and the most of each that is read (tokens). */
+export const FETCH_PAGES = 3;
+export const FETCH_TOKENS = 25_000;
+/** What reading those pages can add to a research's cost (input tokens at Opus 5.5's $4 per million). */
+export const fetchCeilingUsd = () => (FETCH_PAGES * FETCH_TOKENS * 4 * 2) / 1e6;
+
 /**
  * Real web research with Anthropic's web search tool: the answer's paragraphs with their cited sources, and every
  * source the searches returned (url, title, page age, when we read it). Nothing here is made up: a paragraph's
  * sources are the citations the API attached to it.
  */
-export async function webResearch(o: { system: string; question: string }): Promise<{ paragraphs: ResearchParagraph[]; sources: ResearchSource[]; searches: number; usd: number }> {
+export async function webResearch(o: {
+  system: string;
+  question: string;
+  /** search only these sites (hostnames) */
+  allowedDomains?: string[];
+  /** also read pages whose links are in the question (Anthropic's web fetch) */
+  fetch?: boolean;
+}): Promise<{ paragraphs: ResearchParagraph[]; sources: ResearchSource[]; searches: number; usd: number }> {
   const messages: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: o.question }] }];
   const content: Record<string, unknown>[] = [];
   let usd = 0;
@@ -92,7 +105,10 @@ export async function webResearch(o: { system: string; question: string }): Prom
       max_tokens: 12000,
       system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, false),
       messages,
-      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: STUDENT.maxSearches }],
+      tools: [
+        { type: "web_search_20260209", name: "web_search", max_uses: STUDENT.maxSearches, ...(o.allowedDomains?.length ? { allowed_domains: o.allowedDomains.slice(0, 20) } : {}) },
+        ...(o.fetch ? [{ type: "web_fetch_20260209", name: "web_fetch", max_uses: FETCH_PAGES, max_content_tokens: FETCH_TOKENS, citations: { enabled: true } }] : []),
+      ],
     });
     usd += claudeCost(body.usage);
     const n = body.usage.server_tool_use?.web_search_requests ?? 0;
@@ -116,6 +132,9 @@ export async function webResearch(o: { system: string; question: string }): Prom
         if (r.type === "web_search_result") indexOf(r.url, r.title, r.page_age ?? null);
       }
     }
+    // a page read in full (a link the student gave)
+    const fetched = b.type === "web_fetch_tool_result" ? (b.content as { type?: string; url?: string; content?: { title?: string } } | undefined) : undefined;
+    if (fetched?.type === "web_fetch_result" && fetched.url) indexOf(fetched.url, fetched.content?.title ?? "", null);
   }
   const paragraphs: ResearchParagraph[] = [];
   let cur: ResearchParagraph = { text: "", cites: [] };
