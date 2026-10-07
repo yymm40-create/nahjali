@@ -196,3 +196,46 @@ describe("grading layers", () => {
     expect(g[0].compress).toBe(0.4);
   });
 });
+
+describe("grading by «حيدرة»", () => {
+  const assets = lib(video("a", 5000));
+  const start = () => applyAll(emptyTimeline("16:9"), [{ type: "add_clip", assetId: "a" }], assets).timeline;
+  const clipOf = (t: ReturnType<typeof start>) => t.tracks.find((x) => x.kind === "video")!.clips[0];
+
+  it("wheels and curves merge field by field", () => {
+    let t = start();
+    const id = clipOf(t).id;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: { gain: { rgb: [0.04, 0.01, -0.04], y: 0 }, curves: { ...NEUTRAL_GRADE.curves, r: [{ x: 0, y: 0.05 }, { x: 1, y: 1 }] } } } }, assets).timeline;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: { gain: { y: 0.1 } as never, curves: { master: [{ x: 0, y: 0 }, { x: 0.25, y: 0.22 }, { x: 1, y: 1 }] } as never } } }, assets).timeline;
+    const g = clipOf(t).grades[0];
+    expect(g.gain.rgb).toEqual([0.04, 0.01, -0.04]);
+    expect(g.gain.y).toBe(0.1);
+    expect(g.curves.r[0].y).toBe(0.05);
+    expect(g.curves.master).toHaveLength(3);
+  });
+  it("a look by its id is applied, keeping the log, then the rest of the patch on top", () => {
+    let t = start();
+    const id = clipOf(t).id;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: { log: "clog3", exposure: 0.3 } } }, assets).timeline;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: { look: "teal-orange", amount: 0.6 } } }, assets).timeline;
+    const g = clipOf(t).grades[0];
+    expect(g.look).toBe("teal-orange");
+    expect(g.log).toBe("clog3");
+    expect(g.amount).toBe(0.6);
+    expect(g.split.shadowSat).toBeGreaterThan(0);
+  });
+  it("Claude is shown the grade, the crop and the timelines", async () => {
+    const { context } = await import("@/lib/editor/assistant-core");
+    let t = start();
+    const id = clipOf(t).id;
+    t = apply(t, { type: "update_clip", clipId: id, patch: { grade: { temp: 0.2, name: "أساسي" }, crop: { l: 0.1 } } }, assets).timeline;
+    t = apply(t, { type: "seq_new", name: "نسخة قصيرة" }, assets).timeline;
+    t = apply(t, { type: "seq_open", id: t.seqs![0].id }, assets).timeline;
+    const ctx = context(t, [], new Map(), {});
+    const c = ctx.tracks.flatMap((x) => x.clips).find((x) => x.id === id)!;
+    expect(c.grades).toEqual([{ name: "أساسي", temp: 0.2 }]);
+    expect(c.crop?.l).toBe(0.1);
+    expect(ctx.sequences).toHaveLength(2);
+    expect(ctx.sequences!.filter((s) => "open" in s)).toHaveLength(1);
+  });
+});

@@ -2,6 +2,7 @@
 // every command it sends can run (and which one can't). No server imports, so it can be tested on its own.
 
 import { applyAll, CommandError, type Command } from "./commands";
+import { gradeBrief } from "./assistant-guide";
 import { clipEnd, clipLength, duration, ratioOf, type AssetInfo, type Timeline } from "./model";
 
 export type Spoken = { s: number; e: number; w: string }[];
@@ -45,6 +46,7 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
     playheadMs: Number(extra.playhead) || 0,
     selected: Array.isArray(extra.selected) ? extra.selected.slice(0, 50) : [],
     magnetic: tl.magnetic,
+    ...(tl.seqs?.length ? { sequences: tl.seqs.map((x) => ({ id: x.id, name: x.name, ...(x.tl ? {} : { open: true }) })) } : {}),
     tracks: tl.tracks.map((t) => ({
       id: t.id,
       kind: t.kind,
@@ -67,6 +69,12 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
         ...(c.color ? { color: c.color.preset } : {}),
         ...(c.bg ? { bg: c.bg.mode } : {}),
         ...(c.keys.length ? { motionPoints: c.keys.length } : {}),
+        ...(c.grades.length ? { grades: c.grades.map(gradeBrief) } : {}),
+        ...(c.crop ? { crop: c.crop } : {}),
+        ...(c.seq ? { nest: c.seq } : {}),
+        ...(c.fx.length ? { fx: c.fx } : {}),
+        ...(c.anim ? { anim: c.anim } : {}),
+        ...(c.sound ? { sound: c.sound } : {}),
       })),
     })),
     library: assets.filter((a) => a.status === "ready").map((a) => ({ id: a.id, kind: a.kind, name: a.name, durationMs: a.durationMs, ...(a.kind === "video" ? { hasSound: a.hasAudio, size: a.width && a.height ? `${a.width}x${a.height}` : undefined } : {}) })),
