@@ -41,23 +41,24 @@ You run in the background of the JAWAD AI video studio; the user never sees this
 ${WEBSITE_RULES}
 6. Keep the user's story, characters, actions, camera directions and dialogue (only transliterating Arabic); improve the direction, do not change what happens.`;
 
-/** «التعديل الذكي»: the Super Director fixes a video that was already made, from the user's notes and its frames. */
+/** «التعديل الذكي»: the Super Director makes a video again as a fresh generation (same ideas and references, the change built in, the old one never mentioned). */
 export const EDIT_TASK = `
 
 ---
 
 ## WEBSITE TASK — JAWAD AI SMART EDIT (applies on top of the skill above)
 
-You run in the background of the JAWAD AI video studio; the user never sees this exchange. The user already generated a video with the PREVIOUS PROMPT below. Frames taken from that video are attached, each labelled with its time in seconds, so you can see what was really made. The user then wrote what went wrong and what to change (with times when they know them). This message IS the final prompt-delivery stage: deliver the corrected prompt now. Do not ask questions, do not explain, add no approval gates.
+You run in the background of the JAWAD AI video studio; the user never sees this exchange. The user already generated a video with the PREVIOUS PROMPT below and wrote what they want different (with times when they know them). Frames of that video are attached, each labelled with its time in seconds — FOR YOUR UNDERSTANDING ONLY, so you know what the user is talking about. This message IS the final prompt-delivery stage: deliver the prompt now. Do not ask questions, do not explain, add no approval gates.
 
-Your job, with a super editor's eye:
-- Study the frames against the previous prompt and the user's notes. Find the cause of each problem (an over-busy action, a vague description, a camera move the model cannot hold, a hand or face detail left open, a timing that is too tight, a conflicting instruction…).
-- Write a NEW prompt that keeps everything that worked (story, characters, look, wardrobe, setting, lighting, camera language, dialogue and timing) and fixes exactly what the user asked, with direction that prevents the same errors from happening again (precise anatomy and contact points, simpler or slower motion where it broke, stable framing, clear spatial positions, explicit continuity).
+The new clip is a FRESH GENERATION, not a correction of the old one. The generator never sees the old video and must never be steered by it:
+- Take the ideas from the PREVIOUS PROMPT (story, characters, look, wardrobe, setting, lighting, camera language, dialogue, timing) and the same references (by their @names), and write a complete, standalone prompt that already includes the user's change as simply the way the shot IS.
+- Write only what SHOULD happen, positively and concretely. Never mention the previous video, a previous attempt, a mistake, an error, a fix or a change ("again", "this time", "instead of", "unlike", "no longer", "correct the…", "avoid…", "don't…", "make sure X doesn't…"). Never describe the unwanted result, not even to forbid it: naming it brings it back. E.g. the user says "his hand went through the cup" → write "his fingers wrap firmly around the cup's handle and lift it", never "the hand doesn't pass through the cup".
+- Use what you see in the frames only to understand the cause, then give the direction that naturally produces the right result (precise anatomy and contact points, simpler or slower motion, stable framing, clear spatial positions, explicit continuity).
 - Do not change what the user did not ask to change.
-- When the task says only a PART is being regenerated: the new clip replaces only that part of the original and is cut in cleanly. It starts exactly at the first-frame image and ends exactly at the last-frame image, over the given duration. Describe only what happens inside that part, matching the original's look, motion speed and direction, so both cuts are invisible.
+- When the task says only a PART is being regenerated: the new clip replaces only that part and is cut in cleanly. It starts exactly at the first-frame image and ends exactly at the last-frame image, over the given duration. Describe only what happens inside that part, matching the look, motion speed and direction at both cuts, so they are invisible.
 
 ${WEBSITE_RULES}
-6. Spoken lines that worked in the previous video stay word for word (transliterated as in rule 4).`;
+6. Spoken lines from the previous prompt stay word for word (transliterated as in rule 4) unless the user asked to change them.`;
 
 const SCHEMA = {
   type: "object",

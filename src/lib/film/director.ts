@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { tellSajjad } from "./sajjad";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { filmPathsInUse } from "@/lib/editor/server";
@@ -372,6 +373,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
         mime: String(file.metadata?.mimetype ?? "video/mp4"), bytes: size, status: "approved", meta: { uploaded: true, edited: true },
       });
       if (error) throw error;
+      await tellSajjad(project.id, `${input.genId} رجع للفيلم بنسخة معدّلة رفعها الشخص بنفسه (مكان القديمة).`);
       await maybeFinish(project, versions, await directorVideos(project.id));
       return { jobId: null };
     }
@@ -455,6 +457,15 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
       const assetId = await studioVideoToFilm(project, user, input.genId, v.id, String(input.jobId ?? ""));
+      // what was changed goes to سجاد
+      const { data: made } = await db().from("jawad_jobs").select("inputs").eq("id", String(input.jobId ?? "")).maybeSingle();
+      const edit = (made?.inputs as { edit?: { mode?: string; notes?: string; ranges?: { from: number; to: number; note: string }[] } } | undefined)?.edit;
+      await tellSajjad(
+        project.id,
+        edit
+          ? `${input.genId} رجع للفيلم بعد «التعديل الذكي» (${edit.mode === "parts" ? "جزء منه انصنع من جديد" : "انصنع كامل من جديد"}). المطلوب كان: ${[edit.notes, ...(edit.ranges ?? []).map((r) => `${r.from}–${r.to} ث: ${r.note}`)].filter(Boolean).join(" · ") || "—"}`
+          : `${input.genId} صار فيديو جديد مصنوع في قسم الفيديو بدل القديم.`,
+      );
       const videos = await directorVideos(project.id);
       const older = videos.filter((x) => x.ref_key === input.genId && x.id !== assetId && x.status === "approved").map((x) => x.id);
       if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);

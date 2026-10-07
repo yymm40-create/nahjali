@@ -112,6 +112,8 @@ Speak Gulf Arabic (warm, clear, short paragraphs; no lecturing). You KNOW the wh
 
 Your notes ("remember"): every time the person decides or tells you a fact about the work (a name, an age, a relationship, a rule of the world, a choice), add it as one short Arabic line. Don't repeat notes you already have.
 
+«حيدرة» is the studio's editor (in «حيدرة كت»): you hand him each scene for its montage, and his reports come to you as messages starting «📨 وصلني من حيدرة» (what was made again or changed in a clip). Take them into account like your own notes.
+
 Asking: when you need information, ask at most 4 questions at a time in "questions", each with 2–5 short suggested answers in "options" (the person can also write their own). Never demand everything at once: they can come back any time and continue.`;
 
 const SERIES_EDITOR = `This person MAY develop the series (they are its leader or the leader gave them the right). You can:
@@ -470,4 +472,82 @@ export async function confirmScene(series: FilmSeries, userId: string, b: { epis
   const { error } = await db().from("film_projects").update(patch).eq("id", sceneId);
   if (error) throw error;
   return { id: sceneId };
+}
+
+// ───────────── «سجاد» ⇄ «حيدرة» ─────────────
+
+/**
+ * What سجاد hands حيدرة when the clips go to the montage: everything about the scene (story, screenplay, sheets,
+ * each clip as the director planned it with its dialogue and the person's montage notes, what came back edited) and
+ * his own notes. Read fresh every time حيدرة answers in the film's (or the episode's) edit.
+ */
+export async function sajjadBrief(target: { filmProjectId?: string | null; episodeId?: string | null }): Promise<string | null> {
+  try {
+    if (target.filmProjectId) {
+      const { data } = await db().from("film_projects").select("*").eq("id", target.filmProjectId).maybeSingle();
+      const project = data as FilmProject | null;
+      if (!project) return null;
+      const series = project.series_id ? ((await db().from("film_series").select("*").eq("id", project.series_id).maybeSingle()).data as FilmSeries | null) : null;
+      const [context, clips, chat] = await Promise.all([filmContext(project, series), clipsText(project.id), loadChat(`film:${project.id}`).catch(() => ({ messages: [], memory: [] as string[] }))]);
+      return [context, clips, chat.memory.length ? `## ملاحظات سجاد\n${chat.memory.map((m) => `- ${m}`).join("\n")}` : ""].filter(Boolean).join("\n\n").slice(0, 40_000);
+    }
+    if (target.episodeId) {
+      const { data: ep } = await db().from("film_episodes").select("id,series_id,number,title").eq("id", target.episodeId).maybeSingle();
+      if (!ep) return null;
+      const { data: s } = await db().from("film_series").select("*").eq("id", ep.series_id).maybeSingle();
+      if (!s) return null;
+      const series = s as FilmSeries;
+      const { data: scenes } = await db().from("film_projects").select("id,title,scene_number,story").eq("episode_id", ep.id).order("scene_number", { ascending: true });
+      const lines = [`# الحلقة ${ep.number}${ep.title ? ` «${ep.title}»` : ""} من مسلسل «${series.title}»`, await seriesContext(series, { full: false }), "## مشاهد الحلقة"];
+      for (const sc of (scenes ?? []) as { id: string; title: string; scene_number: number | null; story: string }[]) {
+        lines.push(`### المشهد ${sc.scene_number ?? "؟"} «${sc.title}»`, cut(sc.story ?? "", 1200), await clipsText(sc.id));
+      }
+      const chat = await loadChat(`series:${series.id}`).catch(() => ({ messages: [], memory: [] as string[] }));
+      if (chat.memory.length) lines.push("## ملاحظات سجاد", chat.memory.map((m) => `- ${m}`).join("\n"));
+      return lines.join("\n").slice(0, 40_000);
+    }
+  } catch (e) {
+    console.error("sajjad brief", e);
+  }
+  return null;
+}
+
+/** Each clip as the director planned it: its name, length, what happens (his analysis), the dialogue and notes. */
+async function clipsText(projectId: string) {
+  const [{ data: vs }, { data: assets }] = await Promise.all([
+    db().from("film_versions").select("kind,status,ref_key,body,data,version").eq("project_id", projectId).in("kind", ["dir_map", "dir_generation"]).order("version", { ascending: true }),
+    db().from("film_assets").select("ref_key,status,meta").eq("project_id", projectId).eq("kind", "video"),
+  ]);
+  const rows = (vs ?? []) as { kind: string; status: string; ref_key: string; body: string; data: Record<string, unknown> }[];
+  const map = (rows.filter((r) => r.kind === "dir_map" && r.status === "approved").at(-1)?.data.generation_map as { id: string; name: string }[] | undefined) ?? [];
+  if (!map.length) return "";
+  const out = ["## المقاطع (بترتيب المخرج)"];
+  for (const g of map) {
+    const v = rows.filter((r) => r.kind === "dir_generation" && r.ref_key === g.id && r.status === "approved").at(-1);
+    const vids = ((assets ?? []) as { ref_key: string; status: string; meta: Record<string, unknown> | null }[]).filter((a) => a.ref_key === g.id && a.status === "approved");
+    const note = vids.map((a) => (typeof a.meta?.montage_note === "string" ? a.meta.montage_note : "")).filter(Boolean).join(" / ");
+    const edited = vids.some((a) => a.meta?.edited || a.meta?.source === "jawad");
+    const dialogue = (v?.data.dialogue_ar as { speaker: string; line: string }[] | undefined) ?? [];
+    // the analysis without the hidden prompt block
+    const analysis = (v?.body ?? "").replace(/```[\s\S]*?```/g, "").trim();
+    out.push(
+      `### ${g.id} · ${g.name}${v?.data.duration_sec ? ` · ${v.data.duration_sec} ث` : ""}${edited ? " · (رجع معدّل)" : ""}`,
+      analysis ? cut(analysis, 1500) : "",
+      dialogue.length ? `الحوار: ${dialogue.map((d) => `${d.speaker}: «${d.line}»`).join(" · ")}` : "",
+      note ? `ملاحظة الشخص للمونتاج: ${note}` : "",
+    );
+  }
+  return out.filter(Boolean).join("\n");
+}
+
+/** حيدرة (or «التعديل الذكي») tells سجاد what happened to a clip of this film: it shows in سجاد's chat and he remembers it. */
+export async function tellSajjad(filmProjectId: string, text: string) {
+  try {
+    const key = `film:${filmProjectId}`;
+    const { messages, memory } = await loadChat(key);
+    const line = text.trim().slice(0, 1500);
+    await saveChat(key, [...messages, { role: "sajjad", text: `📨 وصلني من حيدرة: ${line}`, at: new Date().toISOString() }], [...memory, `من حيدرة: ${line.slice(0, 300)}`]);
+  } catch (e) {
+    console.error("tell sajjad", e);
+  }
 }
