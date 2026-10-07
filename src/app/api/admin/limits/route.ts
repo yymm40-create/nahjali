@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ACCESS_MODES, LIMITS, SECTIONS_ACCESS, type AccessMode, type AccessSection, type LimitKey } from "@/lib/film/limits";
-import { isAdmin } from "@config/site";
+import { ABOVE_YOU, isAdmin, mayActOn } from "@config/site";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,6 +19,7 @@ export const POST = handle(async (req: Request) => {
   const db = createAdminClient();
   const target = body.scope === "all" ? "" : String(body.target ?? "").trim().toLowerCase();
   if (body.scope !== "all" && (!EMAIL_RE.test(target) || target.length > 254)) throw new UserError("اكتب إيميل صحيح.", 400);
+  if (!mayActOn(user.email, target)) throw new UserError(ABOVE_YOU, 403);
 
   if (body.action === "remove_email") {
     const { error } = await db.from("film_limits").delete().eq("scope", "email").eq("target", target);

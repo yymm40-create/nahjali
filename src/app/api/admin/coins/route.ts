@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins, grantTeamCoins } from "@/lib/coins";
-import { isAdmin } from "@config/site";
+import { ABOVE_YOU, isAdmin, mayActOn } from "@config/site";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NO_TABLES = "جداول النقود الذكية ما انضافت للحين: شغّل ملف SQL رقم 0015 في Supabase.";
@@ -30,6 +30,7 @@ export const POST = handle(async (req: Request) => {
   async function userByEmail(raw: unknown) {
     const email = String(raw ?? "").trim().toLowerCase();
     if (!EMAIL_RE.test(email)) throw new UserError("اكتب إيميل صحيح.", 400);
+    if (!mayActOn(user.email, email)) throw new UserError(ABOVE_YOU, 403);
     for (let page = 1; page <= 20; page++) {
       const { data, error } = await db.auth.admin.listUsers({ page, perPage: 1000 });
       if (error) throw error;
