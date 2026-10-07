@@ -62,7 +62,7 @@ const fmtDate = (iso: string) => new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-
  * «مكتبتي» (the «المكتبة» add-on): the person's own voices, characters and places. Each is made from scratch (a
  * description) or from their own (their voice, their picture), kept, and mentioned by «@name» in any prompt.
  */
-export default function LibraryPage({ owner, voiceCoins, voicesOn }: { owner: boolean; voiceCoins: { design: number | null; clone: number | null }; voicesOn: boolean }) {
+export default function LibraryPage({ owner, voiceCoins, voicesOn }: { owner: boolean; voiceCoins: { design: number | null; clone: number | null; cloneMinimax?: number | null }; voicesOn: boolean }) {
   const [tab, setTab] = useState<Tab>("character");
   const [access, setAccess] = useState<Access | null>(null);
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -160,7 +160,7 @@ export default function LibraryPage({ owner, voiceCoins, voicesOn }: { owner: bo
                       <Play url={v.previewUrl} label={v.name} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold">{v.name}</span>
-                        <span className="block text-[11px] text-jw-faint">{v.origin === "design" ? "مصمّم من الوصف" : "بصمة صوت"}</span>
+                        <span className="block text-[11px] text-jw-faint">{v.origin === "design" ? "مصمّم من الوصف" : "بصمة صوت"}{v.provider === "minimax" ? " · MiniMax" : ""}</span>
                       </span>
                       <DeleteButton label={v.name} onDelete={async () => (await api("/api/jawad/voices", { action: "delete", id: v.id })).body.error ?? null} onDone={load} />
                     </li>
@@ -169,7 +169,7 @@ export default function LibraryPage({ owner, voiceCoins, voicesOn }: { owner: bo
               ) : (
                 <p className="text-sm text-jw-muted">ما عندك أصوات محفوظة بعد.</p>
               )}
-              {voices && <p className="text-[11px] text-jw-faint">الأصوات تُختار في «Eleven v4» وفي أصوات صانع الأفلام. الحد {voices.limit} أصوات.</p>}
+              {voices && <p className="text-[11px] text-jw-faint">الأصوات تُختار في «Eleven v4» و«MiniMax Speech 2.8» وفي أصوات صانع الأفلام؛ كل صوت يتكلم عند المزوّد اللي انحفظ فيه. أصوات MiniMax بلا حد في العدد.</p>}
             </>
           )}
         </section>

@@ -494,6 +494,8 @@ export const VOICE_CLONE_KEY = "voice:clone";
  * George is in ElevenLabs' own examples and in every account's default voices.
  */
 export const ELEVEN_VOICE = /^(p:[A-Za-z0-9]{16,32}|v:[0-9a-f-]{36})$/;
+/** Any voice the film maker's cast may take: ElevenLabs' or MiniMax's. */
+export const ANY_VOICE = /^(p:[A-Za-z0-9]{16,32}|x:[A-Za-z0-9_-]{2,64}|v:[0-9a-f-]{36})$/;
 export const ELEVEN_DEFAULT_VOICE = "p:JBFqnCBsd6RMkjVDRZzb";
 const AUDIO_REF = { mimes: ["audio/mpeg", "audio/wav"], maxBytes: 15 * MB };
 const elSources = (extra: { label: string; url: string }[]) => [
@@ -817,7 +819,82 @@ function total(lines: { label: string; centi: number }[], usd: number | null): P
   return { ok: true, coins: coinsOf(centi), lines, usdCeiling: usd };
 }
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, seedance("2.5"), seedance("2.0"), miniTts, elevenV4, elevenSfx, elevenMusic, smartSplit];
+
+// ───────────────────────────── MiniMax · Speech 2.8 (through fal.ai) ─────────────────────────────
+// Checked on 2026-10-07 against fal's OpenAPI schema for fal-ai/minimax/speech-2.8-hd and the voice-clone page.
+
+/** A MiniMax voice: one of its ready voices («x:<id>») or one copied into the person's library («v:<uuid>»). */
+export const MINIMAX_VOICE = /^(x:[A-Za-z0-9_-]{2,64}|v:[0-9a-f-]{36})$/;
+export const MINIMAX_DEFAULT_VOICE = "x:Deep_Voice_Man";
+/** fal's published prices: $100 per million characters (HD); a copied voice $1.5 once. */
+export const MINIMAX_PRICE = { hdPerKChars: 0.1, cloneUsd: 1.5 };
+export const MINIMAX_CLONE_KEY = "voice:clone";
+
+const mmMode: ModeDef = { id: "text_to_speech", label: "نص إلى كلام", refStyle: "none", refs: {}, promptRequired: true };
+const minimaxSpeech: GeneratorDef = {
+  id: "minimax-speech-2-8",
+  name: "MiniMax Speech 2.8",
+  output: "audio",
+  defaultSection: "audio",
+  provider: { id: "minimax", label: "MiniMax (fal.ai)" },
+  model: { id: "speech-2.8-hd", family: "MiniMax Speech 2.8", version: "hd" },
+  api: { name: "fal.ai queue · fal-ai/minimax/speech-2.8-hd", endpoint: "POST https://queue.fal.run/fal-ai/minimax/speech-2.8-hd", tracking: "async", progress: "none", cancel: "none" },
+  modes: [mmMode],
+  options: [
+    { key: "voice", label: "الصوت", kind: "choice", ltr: true, default: MINIMAX_DEFAULT_VOICE, values: [{ value: MINIMAX_DEFAULT_VOICE, label: "Deep Voice Man" }], accepts: MINIMAX_VOICE, picker: "voice" },
+    {
+      key: "emotion", label: "الشعور", kind: "choice", default: "auto",
+      values: [
+        { value: "auto", label: "تلقائي" },
+        { value: "happy", label: "سعيد" },
+        { value: "sad", label: "حزين" },
+        { value: "angry", label: "غاضب" },
+        { value: "fearful", label: "خائف" },
+        { value: "surprised", label: "متفاجئ" },
+        { value: "disgusted", label: "مشمئز" },
+        { value: "neutral", label: "محايد" },
+      ],
+    },
+    {
+      key: "speed", label: "السرعة", kind: "choice", default: "1",
+      values: [
+        { value: "0.8", label: "أبطأ" },
+        { value: "1", label: "عادية" },
+        { value: "1.2", label: "أسرع" },
+      ],
+    },
+  ],
+  files: {},
+  prompt: { label: "النص المنطوق", placeholder: "اكتب الكلام كما سيُنطق… للوقفة اكتب <#1#> (ثانية)، وللضحك (laughs).", max: 5000, arabic: true },
+  priceKeys: [
+    { key: "chars:1k", label: "كل ١٠٠٠ حرف", defaultCenti: centiFor(MINIMAX_PRICE.hdPerKChars), basis: `سعر fal المنشور لـ Speech 2.8 HD: $${MINIMAX_PRICE.hdPerKChars} لكل ١٠٠٠ حرف` },
+    { key: MINIMAX_CLONE_KEY, label: "نسخ صوت من تسجيل (للمرة)", defaultCenti: centiFor(MINIMAX_PRICE.cloneUsd), basis: `سعر fal المنشور: $${MINIMAX_PRICE.cloneUsd} لكل صوت منسوخ (بلا حد لعدد الأصوات)` },
+  ],
+  modeFor: () => mmMode,
+  rules: () => ({ options: opt(minimaxSpeech.options), issues: [], notes: ["يتكلم ٤٠ لغة منها العربية (language_boost: Arabic). الأصوات المنسوخة هنا بلا حد في العدد، على عكس ElevenLabs."] }),
+  price(d, _mode, table) {
+    const per = table["chars:1k"];
+    if (per == null) return { ok: false, reason: "سعر الكلام لم يُحدد بعد." };
+    const k = Math.max(1, Math.ceil(d.prompt.length / 1000));
+    return total([{ label: `${k} × ١٠٠٠ حرف`, centi: k * per }], minimaxSpeech.costUsd(d, mmMode));
+  },
+  costUsd: (d) => (Math.max(1, d.prompt.length) / 1000) * MINIMAX_PRICE.hdPerKChars,
+  sources: [
+    { label: "fal.ai — MiniMax Speech 2.8 HD (schema: prompt, voice_setting, language_boost, output_format)", url: "https://fal.ai/models/fal-ai/minimax/speech-2.8-hd/api", checked: "2026-10-07" },
+    { label: "fal.ai — MiniMax Voice Cloning ($1.5 per clone; audio ≥ 10 s; kept when used within 7 days)", url: "https://fal.ai/models/fal-ai/minimax/voice-clone", checked: "2026-10-07" },
+    { label: "MiniMax — pay-as-you-go pricing (speech-2.8-hd $100/M chars, rapid clone $1.5)", url: "https://platform.minimax.io/docs/guides/pricing-paygo", checked: "2026-10-07" },
+  ],
+  verification: [
+    { item: "النموذج", status: "verified", note: "speech-2.8-hd عبر fal.ai؛ النص حتى 5,000 حرف." },
+    { item: "الأصوات", status: "verified", note: "أصوات MiniMax الجاهزة (قائمة ثابتة)، أو صوت منسوخ من تسجيل ١٠ ثوانٍ فأكثر محفوظ في مكتبة الشخص." },
+    { item: "خانات الأصوات", status: "unverified", note: "لا حد منشور لعدد الأصوات المنسوخة في حساب MiniMax؛ الصوت يُحذف إن لم يُستخدم خلال ٧ أيام من نسخه (نستخدمه فور النسخ)." },
+    { item: "العربية", status: "unverified", note: "مدعومة ضمن ٤٠ لغة (language_boost: Arabic)؛ جودتها تُجرَّب بالأذن." },
+    { item: "السعر", status: "verified", note: `$${MINIMAX_PRICE.hdPerKChars} لكل ١٠٠٠ حرف، و$${MINIMAX_PRICE.cloneUsd} للصوت المنسوخ.` },
+  ],
+  notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا يُنسخ صوت شخص إلا بإذنه."],
+};
+
+export const GENERATORS: GeneratorDef[] = [gptImage2, seedance("2.5"), seedance("2.0"), miniTts, elevenV4, minimaxSpeech, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

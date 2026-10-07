@@ -2,6 +2,7 @@
 // Each handler does one step per call (a chapter, a few questions, one audio part, one image, one render) and keeps
 // what it made, so a stopped run continues where it was and a failed part is made again alone.
 
+import { minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
 import { defaultDesign, isPaged, outputName, pagesOf, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
 import { ELEVEN_PRICE } from "@config/jawad/generators";
 import { providerUserId } from "@/lib/jawad/server/providers/common";
@@ -624,7 +625,7 @@ async function audioStep(job: Job, o: Output): Promise<StepResult> {
     const voice = await resolveVoice(o.user_id, String(o.settings.voice ?? "p:JBFqnCBsd6RMkjVDRZzb"));
     if (!voice.ok) throw new UserError(voice.reason, 400);
     try {
-      const mp3 = await elevenSpeech({ voiceId: voice.voiceId, text: next.text, model: "eleven_v4", languageCode: "ar" });
+      const mp3 = voice.provider === "minimax" ? (await minimaxSpeech({ voiceId: voice.voiceId, text: next.text, model: "hd", languageBoost: "Arabic" })).audio : await elevenSpeech({ voiceId: voice.voiceId, text: next.text, model: "eleven_v4", languageCode: "ar" });
       const check = checkMp3(mp3);
       if (!check.ok) throw new Error("audio part failed the MP3 check");
       const path = `${o.user_id}/${o.project_id}/audio/${o.id}/r${run}-${String(next.idx).padStart(4, "0")}.mp3`;

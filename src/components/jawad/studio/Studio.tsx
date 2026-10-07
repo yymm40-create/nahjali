@@ -4,7 +4,7 @@ import SectionHint from "@/components/jawad/SectionHint";
 import PromptHelpers from "./PromptHelpers";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
+import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, MINIMAX_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
 import { needsFrames, sfxFrameTimes, SMART_SPLIT_MODE, VIDEO_SFX } from "@config/jawad/smart-split";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
@@ -71,9 +71,10 @@ async function call<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; 
 const postJson = <T,>(url: string, data: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 
 /** What designing or copying a voice costs this person (the owner pays nothing). */
-const voiceCoins = (table: Record<string, number | null>, owner: boolean) => {
-  const c = (k: string) => (owner ? 0 : table[k] == null ? null : coinsOf(table[k]!));
-  return { design: c(VOICE_DESIGN_KEY), clone: c(VOICE_CLONE_KEY) };
+const MINIMAX_ID = "minimax-speech-2-8";
+const voiceCoins = (table: Record<string, number | null>, owner: boolean, minimaxTable?: Record<string, number | null>) => {
+  const c = (t: Record<string, number | null>, k: string) => (owner ? 0 : t[k] == null ? null : coinsOf(t[k]!));
+  return { design: c(table, VOICE_DESIGN_KEY), clone: c(table, VOICE_CLONE_KEY), ...(minimaxTable ? { cloneMinimax: c(minimaxTable, MINIMAX_CLONE_KEY) } : {}) };
 };
 
 /** The file side of a reference, from the server's view (its name and role stay the user's). */
@@ -887,7 +888,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
               ev={ev}
               values={ev.settings}
               onChange={setSetting}
-              voiceCoins={def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, owner) : undefined}
+              voiceCoins={def?.provider.id === "minimax" ? voiceCoins({}, owner, prices[def.id] ?? {}) : def && def.priceKeys.some((k) => k.key === VOICE_DESIGN_KEY) ? voiceCoins(prices[def.id] ?? {}, owner, prices[MINIMAX_ID]) : undefined}
+              voiceProvider={def?.provider.id === "minimax" ? "minimax" : "elevenlabs"}
             />
           </div>
 

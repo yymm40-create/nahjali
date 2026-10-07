@@ -15,10 +15,14 @@ export interface Voice {
   description: string;
   origin: "design" | "clone" | "ready";
   previewUrl: string | null;
+  provider?: "elevenlabs" | "minimax";
 }
 interface Library {
   mine: Voice[];
   ready: Voice[];
+  /** MiniMax's ready voices (when its key is set) */
+  minimax?: Voice[];
+  providers?: { elevenlabs: boolean; minimax: boolean };
   readyError: string | null;
   limit: number;
   migrated: boolean;
@@ -75,11 +79,12 @@ export function Play({ url, label }: { url: string | null; label: string }) {
  * The voice of Eleven v4: the person's own voices (designed or copied), then ElevenLabs' ready voices. «صمّم صوتًا»
  * and «من تسجيل» open the voice studio; a saved voice is chosen at once.
  */
-export default function VoicePicker({ value, onChange, coins }: { value: string; onChange: (v: string) => void; coins: { design: number | null; clone: number | null } }) {
+export default function VoicePicker({ value, onChange, coins, provider = "elevenlabs" }: { value: string; onChange: (v: string) => void; coins: { design: number | null; clone: number | null; cloneMinimax?: number | null }; provider?: "elevenlabs" | "minimax" }) {
   const [lib, setLib] = useState<Library | null>(null);
   const [error, setError] = useState("");
   const [studio, setStudio] = useState<"design" | "clone" | null>(null);
   const [showReady, setShowReady] = useState(false);
+  const [showMinimax, setShowMinimax] = useState(provider === "minimax");
 
   const load = useCallback(() => {
     fetch("/api/jawad/voices", { cache: "no-store" })
@@ -95,8 +100,11 @@ export default function VoicePicker({ value, onChange, coins }: { value: string;
     load();
   }, [load]);
 
-  const all = [...(lib?.mine ?? []), ...(lib?.ready ?? [])];
+  const all = [...(lib?.mine ?? []), ...(lib?.ready ?? []), ...(lib?.minimax ?? [])];
   const current = all.find((v) => v.value === value);
+  // a generator speaks only its provider's voices
+  const mine = (lib?.mine ?? []).filter((v) => (v.provider ?? "elevenlabs") === provider);
+  const minimaxOnly = provider === "minimax";
 
   return (
     <div className="space-y-2">
@@ -105,11 +113,11 @@ export default function VoicePicker({ value, onChange, coins }: { value: string;
       {!lib && !error && <p className="jw-skeleton h-16 rounded-xl" aria-busy="true" />}
       {lib && (
         <div role="radiogroup" aria-labelledby="jw-voice-label" className="space-y-2">
-          {current && !lib.mine.some((v) => v.value === value) && !showReady && <Row v={current} on onPick={onChange} />}
-          {lib.mine.length > 0 && (
+          {current && !mine.some((v) => v.value === value) && !showReady && !showMinimax && <Row v={current} on onPick={onChange} />}
+          {mine.length > 0 && (
             <>
-              <p className="text-[11px] font-semibold text-jw-faint">أصواتي ({lib.mine.length}/{lib.limit}){lib.library.active ? "" : " · مقفلة"}</p>
-              {lib.mine.map((v) => (
+              <p className="text-[11px] font-semibold text-jw-faint">أصواتي{minimaxOnly ? " في MiniMax" : ` (${mine.length}/${lib.limit})`}{lib.library.active ? "" : " · مقفلة"}</p>
+              {mine.map((v) => (
                 <Row key={v.id} v={v} on={v.value === value} onPick={onChange} onDeleted={load} mine locked={!lib.library.active} />
               ))}
             </>
@@ -117,28 +125,49 @@ export default function VoicePicker({ value, onChange, coins }: { value: string;
           {!lib.migrated || !lib.library.migrated ? (
             <p className="rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-2 text-[11px] text-jw-warn">«صمّم صوتك الخاص» يحتاج ملف قاعدة البيانات 0025 في Supabase (SQL Editor ← Run).</p>
           ) : lib.library.active ? (
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" className="jw-btn" onClick={() => setStudio("design")}>
-                <Icon name="wand" size={16} /> صمّم صوتًا
-              </button>
+            <div className={`grid gap-2 ${minimaxOnly ? "" : "grid-cols-2"}`}>
+              {!minimaxOnly && (
+                <button type="button" className="jw-btn" onClick={() => setStudio("design")}>
+                  <Icon name="wand" size={16} /> صمّم صوتًا
+                </button>
+              )}
               <button type="button" className="jw-btn" onClick={() => setStudio("clone")}>
-                <Icon name="mic" size={16} /> بصمة صوتك
+                <Icon name="mic" size={16} /> بصمة صوتك{minimaxOnly ? " (MiniMax، بلا حد)" : ""}
               </button>
             </div>
           ) : (
             <LibraryLock what="صمّم صوتك الخاص من الوصف، أو احفظ بصمة صوتك أنت" />
           )}
-          <button type="button" className="jw-btn jw-btn-quiet w-full justify-between" aria-expanded={showReady} onClick={() => setShowReady(!showReady)}>
-            <span>أصوات ElevenLabs الجاهزة {lib.ready.length ? `(${lib.ready.length})` : ""}</span>
-            <Icon name="chevronDown" size={16} className={showReady ? "rotate-180" : ""} />
-          </button>
-          {showReady && (
-            <div className="jw-scroll max-h-72 space-y-1.5 overflow-y-auto pe-1">
-              {lib.readyError && <p className="text-xs text-jw-danger">{lib.readyError}</p>}
-              {lib.ready.map((v) => (
-                <Row key={v.id} v={v} on={v.value === value} onPick={onChange} />
-              ))}
-            </div>
+          {!minimaxOnly && (
+            <>
+              <button type="button" className="jw-btn jw-btn-quiet w-full justify-between" aria-expanded={showReady} onClick={() => setShowReady(!showReady)}>
+                <span>أصوات ElevenLabs الجاهزة {lib.ready.length ? `(${lib.ready.length})` : ""}</span>
+                <Icon name="chevronDown" size={16} className={showReady ? "rotate-180" : ""} />
+              </button>
+              {showReady && (
+                <div className="jw-scroll max-h-72 space-y-1.5 overflow-y-auto pe-1">
+                  {lib.readyError && <p className="text-xs text-jw-danger">{lib.readyError}</p>}
+                  {lib.ready.map((v) => (
+                    <Row key={v.id} v={v} on={v.value === value} onPick={onChange} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {minimaxOnly && (lib.minimax?.length ?? 0) > 0 && (
+            <>
+              <button type="button" className="jw-btn jw-btn-quiet w-full justify-between" aria-expanded={showMinimax} onClick={() => setShowMinimax(!showMinimax)}>
+                <span>أصوات MiniMax الجاهزة ({lib.minimax!.length})</span>
+                <Icon name="chevronDown" size={16} className={showMinimax ? "rotate-180" : ""} />
+              </button>
+              {showMinimax && (
+                <div className="jw-scroll max-h-72 space-y-1.5 overflow-y-auto pe-1">
+                  {lib.minimax!.map((v) => (
+                    <Row key={v.id} v={v} on={v.value === value} onPick={onChange} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -146,6 +175,7 @@ export default function VoicePicker({ value, onChange, coins }: { value: string;
         <VoiceStudio
         mode={studio}
         coins={coins}
+        provider={provider}
         onClose={() => setStudio(null)}
         onSaved={(v) => {
           setStudio(null);
@@ -181,7 +211,7 @@ function Row({ v, on, onPick, mine = false, locked = false, onDeleted }: { v: Vo
         <span className="block truncate text-sm font-semibold">{v.name}</span>
         {(v.description || v.origin !== "ready") && (
           <span className="block truncate text-[11px] text-jw-faint" dir="auto">
-            {v.origin === "design" ? "مصمّم بالوصف" : v.origin === "clone" ? "منسوخ من تسجيل" : v.description}
+            {v.origin === "design" ? "مصمّم بالوصف" : v.origin === "clone" ? `منسوخ من تسجيل${v.provider === "minimax" ? " · MiniMax" : ""}` : v.description}
           </span>
         )}
       </button>
@@ -374,8 +404,11 @@ function RecordingField({ label, hint, value, onChange, maxSec }: { label: strin
  * The voice studio: «صمّم بالوصف» (three previews from a description, optionally leaning on a reference recording:
  * «يستوحي منه» or «يتعلّم منه»), or «من تسجيل» (the very voice of a recording, with the owner of the voice's consent).
  */
-export function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" | "clone"; coins: { design: number | null; clone: number | null }; onClose: () => void; onSaved: (v: Voice) => void }) {
-  const [tab, setTab] = useState<"design" | "clone">(mode);
+export function VoiceStudio({ mode, coins, provider = "elevenlabs", onClose, onSaved }: { mode: "design" | "clone"; coins: { design: number | null; clone: number | null; cloneMinimax?: number | null }; provider?: "elevenlabs" | "minimax"; onClose: () => void; onSaved: (v: Voice) => void }) {
+  const [tab, setTab] = useState<"design" | "clone">(provider === "minimax" ? "clone" : mode);
+  // where «بصمة صوتك» is kept: ElevenLabs (a slot in the site's account) or MiniMax (no slot limit)
+  const [where, setWhere] = useState<"elevenlabs" | "minimax">(provider);
+  const minimaxOn = coins.cloneMinimax !== undefined;
   const [description, setDescription] = useState("");
   const [text, setText] = useState("");
   const [reference, setReference] = useState<{ id: string; name: string; sec: number } | null>(null);
@@ -418,7 +451,7 @@ export function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" 
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ voice: Voice }>({ action: "clone", key: uid(), uploadId: reference.id, name, consent, removeNoise: noise });
+      const r = await post<{ voice: Voice }>({ action: "clone", key: uid(), uploadId: reference.id, name, consent, removeNoise: noise, provider: where });
       onSaved(r.voice);
     } catch (e) {
       setError((e as Error).message);
@@ -431,7 +464,8 @@ export function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" 
   const t = text.trim().length;
   const designWhy =
     coins.design === null ? "سعر التصميم لم يُحدد بعد في لوحة الإدارة." : d < 20 ? `صف الصوت في ٢٠ حرفًا على الأقل (الآن ${d}): الجنس، العمر، اللهجة، النبرة، الإيقاع.` : t > 0 && t < 100 ? `نص العينات ١٠٠ حرف على الأقل (الآن ${t})، أو اتركه فارغًا.` : null;
-  const cloneWhy = coins.clone === null ? "سعر الحفظ لم يُحدد بعد في لوحة الإدارة." : !reference ? "سجّل بصوتك أو ارفع تسجيلًا أولًا." : !name.trim() ? "سمِّ الصوت." : !consent ? "أكّد أن الصوت صوتك أو أن صاحبه أذن لك." : null;
+  const clonePrice = where === "minimax" ? (coins.cloneMinimax ?? null) : coins.clone;
+  const cloneWhy = clonePrice === null ? "سعر الحفظ لم يُحدد بعد في لوحة الإدارة." : !reference ? "سجّل بصوتك أو ارفع تسجيلًا أولًا." : where === "minimax" && reference.sec < 10 ? "MiniMax يحتاج تسجيل ١٠ ثوانٍ على الأقل." : !name.trim() ? "سمِّ الصوت." : !consent ? "أكّد أن الصوت صوتك أو أن صاحبه أذن لك." : null;
 
   const price = (n: number | null) =>
     n === null ? "السعر غير محدد بعد" : n === 0 ? "" : (
@@ -444,7 +478,7 @@ export function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" 
     <Dialog open onClose={onClose} title="استوديو الأصوات">
       <div className="space-y-4 p-4">
         <div className="jw-seg" role="tablist" aria-label="طريقة الصوت">
-          <button type="button" role="tab" aria-selected={shown === "design"} onClick={() => setTab("design")}>
+          <button type="button" role="tab" aria-selected={shown === "design"} disabled={provider === "minimax"} onClick={() => setTab("design")}>
             <Icon name="wand" size={15} /> صمّم بالوصف
           </button>
           <button type="button" role="tab" aria-selected={shown === "clone"} onClick={() => setTab("clone")}>
@@ -513,6 +547,16 @@ export function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" 
           )
         ) : (
           <div className="space-y-3">
+            {minimaxOn && provider !== "minimax" && (
+              <div className="jw-seg" role="radiogroup" aria-label="وين ينحفظ الصوت">
+                <button type="button" role="radio" aria-checked={where === "elevenlabs"} onClick={() => setWhere("elevenlabs")}>
+                  ElevenLabs <span className="text-[10px] text-jw-faint">خانة في الحساب</span>
+                </button>
+                <button type="button" role="radio" aria-checked={where === "minimax"} onClick={() => setWhere("minimax")}>
+                  MiniMax <span className="text-[10px] text-jw-faint">بلا حد · ١٠ ث فأكثر</span>
+                </button>
+              </div>
+            )}
             <RecordingField label="بصمة صوتك" hint="سجّل بصوتك الطبيعي في مكان هادئ (من ٣٠ ثانية إلى دقيقتين أفضل): اقرأ أي نص بنبرتك المعتادة. أو ارفع تسجيلًا نظيفًا لصوت واحد بلا موسيقى." value={reference} onChange={setReference} maxSec={170} />
             <label className="block">
               <span className="jw-label">اسم الصوت</span>
@@ -527,13 +571,13 @@ export function VoiceStudio({ mode, coins, onClose, onSaved }: { mode: "design" 
               <span>أقرّ أن هذا الصوت صوتي، أو أن صاحبه أذن لي صراحةً باستخدامه. نسخ صوت أحد دون إذنه ممنوع.</span>
             </label>
             <button type="button" className="jw-btn jw-btn-primary w-full" disabled={busy || Boolean(cloneWhy)} aria-describedby="jw-clone-why" onClick={clone}>
-              <Icon name="mic" size={16} /> {busy ? "يحفظ صوتك…" : <>احفظ صوتي في مكتبتي {price(coins.clone)}</>}
+              <Icon name="mic" size={16} /> {busy ? "يحفظ صوتك…" : <>احفظ صوتي في مكتبتي{where === "minimax" ? " (MiniMax)" : ""} {price(clonePrice)}</>}
             </button>
             {cloneWhy && !busy && <p id="jw-clone-why" className="text-[11px] text-jw-muted">{cloneWhy}</p>}
           </div>
         )}
         {error && <p className="text-sm text-jw-danger" role="alert">{error}</p>}
-        <p className="text-[11px] text-jw-faint">الأصوات تولّدها ElevenLabs وتُحفظ في مكتبتك لتختارها في الكلام وفي صانع الأفلام. أخبر مستمعيك أن الصوت مولّد بالذكاء الاصطناعي.</p>
+        <p className="text-[11px] text-jw-faint">الأصوات تُحفظ في مكتبتك لتختارها في الكلام وفي صانع الأفلام؛ كل صوت يتكلم عند المزوّد اللي انحفظ فيه (ElevenLabs أو MiniMax). أخبر مستمعيك أن الصوت مولّد بالذكاء الاصطناعي.</p>
       </div>
     </Dialog>
   );

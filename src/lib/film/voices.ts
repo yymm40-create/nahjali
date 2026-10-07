@@ -6,13 +6,14 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DICTION_USD_PER_K, ELEVEN_PRICE, ELEVEN_VOICE } from "@config/jawad/generators";
+import { ANY_VOICE, DICTION_USD_PER_K, ELEVEN_PRICE } from "@config/jawad/generators";
 import { mostlyArabic } from "@config/jawad/diction";
 import { keyConfigured } from "@/lib/jawad/server/runtime";
 import { generatorById } from "@config/jawad/generators";
 import { elevenPremadeVoices, elevenSpeech } from "@/lib/jawad/server/providers/elevenlabs";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { audioDurationMs, resolveVoice } from "@/lib/jawad/server/voices";
+import { MINIMAX_PRICE, MINIMAX_READY_VOICES, minimaxReady, minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
 import { prepareSpeech } from "@/lib/jawad/server/diction";
 import { directorVersions } from "./director";
 import { isAdmin } from "@config/site";
@@ -29,7 +30,12 @@ const FALLBACK_MODEL = "eleven_v3";
  * Speaks a line; a 4xx about the model or the language flag (never billed) is tried once more the other way.
  * Anything else is reported as it is.
  */
-async function speak(o: { voiceId: string; text: string; languageCode?: string }) {
+async function speak(o: { voiceId: string; text: string; languageCode?: string; provider?: "elevenlabs" | "minimax" }) {
+  // a voice copied in MiniMax speaks through MiniMax (the feeling in [ ] is ElevenLabs' way: taken out here)
+  if (o.provider === "minimax") {
+    const r = await minimaxSpeech({ voiceId: o.voiceId, text: o.text.replace(/^\s*\[[^\]]*\]\s*/, ""), model: "hd", ...(o.languageCode === "ar" ? { languageBoost: "Arabic" } : {}) });
+    return { audio: r.audio, model: "minimax-speech-2.8-hd" };
+  }
   try {
     return { audio: await elevenSpeech({ ...o, model: MODEL, stability: 0.5 }), model: MODEL };
   } catch (e) {
@@ -98,18 +104,19 @@ export async function lineAudios(projectId: string) {
 
 /** The voices to choose from: the person's library, then ElevenLabs' ready voices. */
 export async function castChoices(userId: string) {
-  const { data } = await db().from("jawad_voices").select("id, name, origin").eq("user_id", userId).order("created_at", { ascending: false });
-  const mine = (data ?? []).map((r) => ({ value: `v:${r.id}`, name: r.name as string, group: "mine" as const }));
+  const { data } = await db().from("jawad_voices").select("id, name, origin, provider").eq("user_id", userId).order("created_at", { ascending: false });
+  const mine = (data ?? []).map((r) => ({ value: `v:${r.id}`, name: `${r.name as string}${(r as { provider?: string }).provider === "minimax" ? " · MiniMax" : ""}`, group: "mine" as const }));
   const ready = await elevenPremadeVoices()
     .then((l) => l.map((v) => ({ value: `p:${v.voiceId}`, name: `${v.name}${v.labels.gender ? ` · ${v.labels.gender === "male" ? "رجل" : v.labels.gender === "female" ? "امرأة" : v.labels.gender}` : ""}`, group: "ready" as const })))
     .catch(() => []);
-  return [...mine, ...ready];
+  const minimax = minimaxReady() ? MINIMAX_READY_VOICES.map((v) => ({ value: `x:${v.id}`, name: `${v.name} · ${v.gender === "male" ? "رجل" : "امرأة"} · MiniMax`, group: "minimax" as const })) : [];
+  return [...mine, ...ready, ...minimax];
 }
 
 export async function setCast(project: FilmProject, userId: string, speaker: unknown, voice: unknown) {
   const s = typeof speaker === "string" ? speaker.trim() : "";
   const v = typeof voice === "string" ? voice : "";
-  if (!ELEVEN_VOICE.test(v)) throw new UserError("اختر صوتًا.", 400);
+  if (!ANY_VOICE.test(v)) throw new UserError("اختر صوتًا.", 400);
   const lines = await voiceLines(project.id);
   if (!lines.some((l) => l.speaker === s)) throw new UserError("هذه الشخصية ليست في جمل الفيلم.", 400);
   const ok = await resolveVoice(userId, v);
@@ -150,7 +157,7 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
     });
     // the feeling goes first, between [ ], where Eleven v4 takes it as a direction (it is never read aloud)
     const withFeeling = emotion && !spoken.text.trimStart().startsWith("[") ? `[${emotion}] ${spoken.text}` : spoken.text;
-    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: withFeeling, languageCode: spoken.languageCode });
+    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: withFeeling, languageCode: spoken.languageCode, provider: resolved.provider });
     const path = `${projectDir(project)}/voices/${line.genId}-${line.index}-${Date.now()}.mp3`;
     const up = await storage.from(FILM_BUCKET).upload(path, audio, { contentType: "audio/mpeg", upsert: false });
     if (up.error) throw new Error(`storage: ${up.error.message}`);
@@ -166,7 +173,7 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       meta: { speaker: line.speaker, text: line.line, voice, ...(emotion ? { emotion } : {}), durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
     });
     if (error) throw error;
-    await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * ELEVEN_PRICE.v4PerKChars + spoken.usd, units: spoken.text.length });
+    await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * (resolved.provider === "minimax" ? MINIMAX_PRICE.hdPerKChars : ELEVEN_PRICE.v4PerKChars) + spoken.usd, units: spoken.text.length });
     return { jobId: job.id, status: "succeeded" };
   } catch (e) {
     console.error("film voice line failed", line.key, e);
