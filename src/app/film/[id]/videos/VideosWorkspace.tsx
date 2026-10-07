@@ -62,6 +62,10 @@ interface Video {
   createdAt: string;
   url: string;
   download: string;
+  /** «ملاحظة للمونتاج» on this take */
+  note: string;
+  /** the person's own edited version, uploaded */
+  edited: boolean;
 }
 
 const RESOLUTIONS = Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[];
@@ -293,6 +297,87 @@ export default function VideosWorkspace({
     }
   }
 
+  // one take: the video, its actions, its montage note, its notes to the director
+  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const saveNote = (v: Video) => {
+    const text = noteDraft[v.id];
+    if (text === undefined || text === v.note) return;
+    void postJson(`/api/film/projects/${projectId}/director`, { action: "montage_note", assetId: v.id, text }).then(() => refresh()).catch((e: Error) => setError(e.message));
+  };
+  const renderTake = (v: Video, g: Generation, small = false) => (
+              <figure key={v.id} className={`space-y-2 rounded-2xl border p-2 ${small && v.status === "rejected" ? "opacity-60" : ""} ${v.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
+                {v.status === "generating" ? (
+                  <div className="grid aspect-video place-items-center rounded-xl bg-surface-2"><Spinner /><p className="text-sm font-bold">نولّد الفيديو… (من دقيقتين إلى ١٠ دقائق، تقدر تسكّر الصفحة)</p></div>
+                ) : v.status === "failed" ? (
+                  <p className="error-box">فشل التوليد: {v.error}. ما انحسبت تكلفة.</p>
+                ) : v.removed ? (
+                  <p className="rounded-xl bg-surface-2 p-4 text-sm font-bold text-muted">انحذف هذا الفيديو من الموقع بعد {VIDEO_KEEP_DAYS} أيام.</p>
+                ) : (
+                  <video src={v.url} controls playsInline className="w-full rounded-xl" aria-label={g.id} />
+                )}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`chip ${statusChip(v.status)}`}>
+                    {STATUS_LABELS[v.status] ?? v.status}
+                    {v.resolution ? ` · ${v.resolution}` : ""}
+                    {v.ratio ? ` · ${v.ratio === "9:16" ? "طولي" : "عرضي"}` : ""}
+                    {v.url && !v.removed ? ` · يبقى ${daysLeft(v.createdAt)} يوم` : ""}
+                  </span>
+                  {!busy && (
+                    <div className="flex flex-wrap gap-2">
+                      {v.download && !v.removed && (
+                        <a className="btn btn-secondary min-h-10 px-4 text-sm" href={v.download}>⬇️ حمّل</a>
+                      )}
+                      {v.status === "generated" && !v.removed && (
+                        <>
+                          <button className="btn btn-primary min-h-10 px-4 text-sm" onClick={() => send({ action: "approve_video", assetId: v.id })}>اعتمد ✅</button>
+                          {!writing && editsLeft !== 0 && (
+                            <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => setFeedbackFor(feedbackFor === v.id ? null : v.id)}>
+                              ✏️ اطلب تعديل{editsLeft !== null ? ` (باقي ${editsLeft})` : ""}
+                            </button>
+                          )}
+                          <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => send({ action: "reject_video", assetId: v.id })}>ارفضه</button>
+                        </>
+                      )}
+                      {studioPath && v.url && !v.removed && ["generated", "approved"].includes(v.status) && (
+                        <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => send({ action: "send_to_studio", assetId: v.id })}>
+                          🪄 التعديل الذكي
+                        </button>
+                      )}
+                      {v.status === "approved" && (
+                        <button
+                          className="btn btn-ghost min-h-10 px-4 text-sm"
+                          onClick={() => window.confirm("تبي تتراجع عن اعتماد هذا الفيديو؟ بعدها تقدر تولّد نسخة ثانية.") && send({ action: "unapprove_video", assetId: v.id })}
+                        >
+                          ↩️ تراجع عن الاعتماد
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {feedbackFor === v.id && !busy && (
+                  <div className="space-y-2">
+                    <textarea
+                      className="field min-h-24"
+                      value={feedback}
+                      onChange={(e) => setFeedback(e.target.value.slice(0, 4000))}
+                      placeholder="وش تبي يتغيّر في هذا الفيديو؟ اكتب بكلامك، والمخرج يرد عليك بفهمه وخيارات قبل ما يعدّل."
+                    />
+                    <button className="btn btn-secondary w-full" disabled={!feedback.trim()} onClick={() => send({ action: "video_feedback", assetId: v.id, text: feedback })}>
+                      أرسل التعديلات للمخرج
+                    </button>
+                  </div>
+                )}
+                {/* «ملاحظة للمونتاج»: what to cut or fix in this take at the montage (not a new generation) */}
+                {v.url && !v.removed && ["generated", "approved"].includes(v.status) && (
+                  <label className="block space-y-1">
+                    <span className="text-xs font-extrabold text-muted">📝 ملاحظة للمونتاج: وش ما عجبك ومن وين لوين؟ (فاضية = عاجبتك)</span>
+                    <textarea className="field min-h-14 text-sm" maxLength={1000} value={noteDraft[v.id] ?? v.note} placeholder="مثلًا: من ثانية ٣ لـ٥ اليد تتشوّه، احذفها" onChange={(e) => setNoteDraft({ ...noteDraft, [v.id]: e.target.value })} onBlur={() => saveNote(v)} />
+                  </label>
+                )}
+                {v.edited && <p className="text-xs font-bold text-teal">📤 نسختك المعدّلة</p>}
+              </figure>
+  );
+
   return (
     <EditsLeftContext value={editsLeft}>
     <div className="space-y-4">
@@ -382,13 +467,18 @@ export default function VideosWorkspace({
       )}
       {notice && <p className="card p-3 text-sm font-bold">{notice}</p>}
 
+      {generations.length > 1 && <p className="text-sm font-bold text-muted">اسحب يمين ويسار بين اللقطات 👈👉</p>}
+      <div className="-mx-4 flex snap-x snap-mandatory items-start gap-3 overflow-x-auto px-4 pb-3">
       {generations.map((g) => {
         const mine = videos.filter((v) => v.ref_key === g.id && v.status !== "rejected");
+        // the take shown: the approved one, else the newest; every other attempt (rejected too) folded under it
+        const main = mine.find((v) => v.status === "approved") ?? mine.at(-1);
+        const attempts = videos.filter((v) => v.ref_key === g.id && v.id !== main?.id).reverse();
         const generating = mine.some((v) => v.status === "generating");
         const sec = secOf(g);
         const cost = videoEstimateUsd(model, resolution, sec);
         return (
-          <article key={g.id} className="card space-y-3 p-5">
+          <article key={g.id} className="card w-[90%] max-w-[560px] shrink-0 snap-center space-y-3 p-4">
             <header className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-extrabold">{g.id}{g.name ? ` · ${g.name}` : ""}</h2>
               <div className="flex flex-wrap gap-1 text-xs font-bold">
@@ -400,71 +490,13 @@ export default function VideosWorkspace({
               <p className="rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">⚠️ المراجع ممتلئة: هذا التوليد فيه {g.refs} صور مرجعية و{VIDEO_MODELS[model].label} يقبل {VIDEO_MODELS[model].maxImages} بس؛ الزايد ما ينرسل. اطلب من المخرج يقلّلها، أو اختر نسخة تقبل أكثر.</p>
             )}
 
-            {mine.map((v) => (
-              <figure key={v.id} className={`space-y-2 rounded-2xl border p-2 ${v.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
-                {v.status === "generating" ? (
-                  <div className="grid aspect-video place-items-center rounded-xl bg-surface-2"><Spinner /><p className="text-sm font-bold">نولّد الفيديو… (من دقيقتين إلى ١٠ دقائق، تقدر تسكّر الصفحة)</p></div>
-                ) : v.status === "failed" ? (
-                  <p className="error-box">فشل التوليد: {v.error}. ما انحسبت تكلفة.</p>
-                ) : v.removed ? (
-                  <p className="rounded-xl bg-surface-2 p-4 text-sm font-bold text-muted">انحذف هذا الفيديو من الموقع بعد {VIDEO_KEEP_DAYS} أيام.</p>
-                ) : (
-                  <video src={v.url} controls playsInline className="w-full rounded-xl" aria-label={g.id} />
-                )}
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className={`chip ${statusChip(v.status)}`}>
-                    {STATUS_LABELS[v.status] ?? v.status}
-                    {v.resolution ? ` · ${v.resolution}` : ""}
-                    {v.ratio ? ` · ${v.ratio === "9:16" ? "طولي" : "عرضي"}` : ""}
-                    {v.url && !v.removed ? ` · يبقى ${daysLeft(v.createdAt)} يوم` : ""}
-                  </span>
-                  {!busy && (
-                    <div className="flex flex-wrap gap-2">
-                      {v.download && !v.removed && (
-                        <a className="btn btn-secondary min-h-10 px-4 text-sm" href={v.download}>⬇️ حمّل</a>
-                      )}
-                      {v.status === "generated" && !v.removed && (
-                        <>
-                          <button className="btn btn-primary min-h-10 px-4 text-sm" onClick={() => send({ action: "approve_video", assetId: v.id })}>اعتمد ✅</button>
-                          {!writing && editsLeft !== 0 && (
-                            <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => setFeedbackFor(feedbackFor === v.id ? null : v.id)}>
-                              ✏️ اطلب تعديل{editsLeft !== null ? ` (باقي ${editsLeft})` : ""}
-                            </button>
-                          )}
-                          <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => send({ action: "reject_video", assetId: v.id })}>ارفضه</button>
-                        </>
-                      )}
-                      {studioPath && v.url && !v.removed && ["generated", "approved"].includes(v.status) && (
-                        <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => send({ action: "send_to_studio", assetId: v.id })}>
-                          🪄 التعديل الذكي
-                        </button>
-                      )}
-                      {v.status === "approved" && (
-                        <button
-                          className="btn btn-ghost min-h-10 px-4 text-sm"
-                          onClick={() => window.confirm("تبي تتراجع عن اعتماد هذا الفيديو؟ بعدها تقدر تولّد نسخة ثانية.") && send({ action: "unapprove_video", assetId: v.id })}
-                        >
-                          ↩️ تراجع عن الاعتماد
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {feedbackFor === v.id && !busy && (
-                  <div className="space-y-2">
-                    <textarea
-                      className="field min-h-24"
-                      value={feedback}
-                      onChange={(e) => setFeedback(e.target.value.slice(0, 4000))}
-                      placeholder="وش تبي يتغيّر في هذا الفيديو؟ اكتب بكلامك، والمخرج يرد عليك بفهمه وخيارات قبل ما يعدّل."
-                    />
-                    <button className="btn btn-secondary w-full" disabled={!feedback.trim()} onClick={() => send({ action: "video_feedback", assetId: v.id, text: feedback })}>
-                      أرسل التعديلات للمخرج
-                    </button>
-                  </div>
-                )}
-              </figure>
-            ))}
+            {main && renderTake(main, g)}
+            {attempts.length > 0 && (
+              <details className="rounded-2xl border border-line p-2 text-sm">
+                <summary className="cursor-pointer font-extrabold text-muted">المحاولات الثانية ({attempts.length})</summary>
+                <div className="mt-2 space-y-2">{attempts.map((v) => renderTake(v, g, true))}</div>
+              </details>
+            )}
 
             {/* A video made in the video section (or edited there with «التعديل الذكي») can be this generation's video */}
             {studioPath && (
@@ -631,6 +663,7 @@ export default function VideosWorkspace({
           </article>
         );
       })}
+      </div>
 
       {writing && (
         <div className="card flex items-center gap-3 p-5" role="status">

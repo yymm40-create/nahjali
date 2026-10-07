@@ -116,6 +116,20 @@ class Bucket {
     }
   }
 
+  /** A server-side copy of one of this bucket's files into another bucket (e.g. a finished montage kept by the film). */
+  async copyTo(bucket: string, from: string, to: string): Promise<Result<{ path: string }>> {
+    try {
+      if (!(await r2.copyObject(this.key(from), `${bucket}/${clean(to)}`))) {
+        const old = (await legacyOn()) ? await legacyDb().from(this.bucket).download(clean(from)) : null;
+        if (!old?.data) return fail(new Error("Object not found"), "404");
+        await r2.putObject(`${bucket}/${clean(to)}`, old.data, old.data.type || undefined);
+      }
+      return ok({ path: clean(to) });
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
   /** One folder's files, like Supabase: `search` keeps the names that start with it. */
   async list(dir = "", opts: ListOptions = {}): Promise<Result<FileObject[]>> {
     try {

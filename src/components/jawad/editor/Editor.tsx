@@ -425,6 +425,20 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     setChat((v) => on ?? !v);
   };
 
+  // Arrived with a request for حيدرة (…?haydara=…, e.g. the film's «قص وعدّل بحسب ملاحظاتي»): sent once, then the
+  // address is cleaned so a reload doesn't send it again
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const q = new URLSearchParams(window.location.search).get("haydara");
+      if (!q?.trim()) return;
+      window.history.replaceState(null, "", window.location.pathname);
+      setAssisting(true);
+      setChat(true);
+      setAsk((a) => ({ text: q.slice(0, 2000), n: (a?.n ?? 0) + 1 }));
+    }, 800);
+    return () => clearTimeout(t);
+  }, []);
+
   const tlRef = useRef(tl);
   const titleRef = useRef(title);
   const labelRef = useRef("");
