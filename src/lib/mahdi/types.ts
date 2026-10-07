@@ -83,6 +83,21 @@ export interface Snapshot {
   logsFrom: ISODate;
   /** The user's "today" when the snapshot was made. */
   today: ISODate;
+  /** «مهام اليوم»: today's tasks; `tasksReady` is false until SQL 0036 runs. */
+  tasks: DayTask[];
+  tasksReady: boolean;
+}
+
+/** A task for one day only (not a habit): a checklist item, optionally at a time, optionally filling a habit. */
+export interface DayTask {
+  id: string;
+  date: ISODate;
+  title: string;
+  /** «HH:MM», or null */
+  at: string | null;
+  habitId: string | null;
+  sortOrder: number;
+  doneAt: string | null;
 }
 
 /** One logged value sent to the server ("set this day's total to value"). */
