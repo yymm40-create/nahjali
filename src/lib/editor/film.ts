@@ -5,8 +5,9 @@ import type { User } from "@supabase/supabase-js";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { directorVersions, directorVideos } from "@/lib/film/director";
-import type { FilmProject } from "@/lib/film/types";
-import { createEditorProject, importAssets, requireEditorProject, runCommands, assetInfo, assetViews } from "./server";
+import { FILM_BUCKET, projectDir, type FilmProject } from "@/lib/film/types";
+import { storage } from "@/lib/storage";
+import { createEditorProject, importAssets, requireEditorProject, runCommands, assetInfo, assetViews, EDITOR_BUCKET } from "./server";
 import { firstCut } from "./first-cut";
 import { readTimeline } from "./model";
 
@@ -26,7 +27,7 @@ export async function filmCut(projectId: string) {
       name: map.find((m) => m.id === g)?.name ?? g,
       plannedSec: Number(planOf(g)?.duration_sec ?? map.find((m) => m.id === g)?.duration_sec ?? 0) || null,
       ratio: planOf(g)?.ratio ?? null,
-      video: chosen?.storage_path ? { id: chosen.id, durationSec: Number(chosen.meta?.durationSec ?? 0) || null, approved: chosen.status === "approved" } : null,
+      video: chosen?.storage_path ? { id: chosen.id, durationSec: Number(chosen.meta?.durationSec ?? 0) || null, approved: chosen.status === "approved", note: typeof chosen.meta?.montage_note === "string" ? (chosen.meta.montage_note as string) : "" } : null,
       removed: !!chosen && !chosen.storage_path,
     };
   });
@@ -74,3 +75,35 @@ export async function openFilmEdit(film: FilmProject, user: User) {
   }
   return p.id;
 }
+
+/**
+ * «المشهد الناجح»: the film's exported montage kept by the film itself (the editor's own export is removed after three
+ * days): copied into the film's files as its approved scene. Returns how many scenes the film now keeps.
+ */
+export async function saveSuccessfulScene(film: FilmProject) {
+  const id = await editorForFilm(film.id);
+  if (!id) throw new UserError("ما فيه مونتاج لهذا الفيلم بعد.", 409);
+  const { data: ed } = await db().from("editor_projects").select("export_path,purged_at,title").eq("id", id).single();
+  if (!ed?.export_path || ed.purged_at) throw new UserError("صدّر المونتاج أول من «صدّر» داخل حيدرة كت، وبعدها احفظه هنا.", 409);
+  const path = `${projectDir(film)}/scene/scene-${Date.now()}.mp4`;
+  const copied = await storage.from(EDITOR_BUCKET).copyTo(FILM_BUCKET, ed.export_path, path);
+  if (copied.error) throw new UserError("ما قدرنا ننسخ المونتاج؛ جرّب مرة ثانية.", 502);
+  const info = await storage.from(FILM_BUCKET).info(path).catch(() => null);
+  await db().from("film_assets").update({ status: "rejected" }).eq("project_id", film.id).eq("kind", "video").eq("ref_key", SCENE_KEY).eq("status", "approved");
+  const { error } = await db().from("film_assets").insert({
+    project_id: film.id, kind: "video", ref_key: SCENE_KEY, storage_path: path, file_name: `${film.title}.mp4`, mime: "video/mp4",
+    bytes: Number((info as { size?: number } | null)?.size ?? 0) || null, status: "approved", meta: { scene: true, from_edit: id },
+  });
+  if (error) throw error;
+}
+
+/** The film's saved successful scene (signed link), if any. */
+export async function successfulScene(filmId: string) {
+  const { data } = await db().from("film_assets").select("id,storage_path,created_at").eq("project_id", filmId).eq("kind", "video").eq("ref_key", SCENE_KEY).eq("status", "approved").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!data?.storage_path) return null;
+  const url = (await storage.from(FILM_BUCKET).createSignedUrl(data.storage_path, 3600)).data?.signedUrl ?? null;
+  return url ? { id: data.id as string, url, savedAt: data.created_at as string } : null;
+}
+
+/** «المشهد الناجح» is kept as the film's video with this key. */
+export const SCENE_KEY = "SCENE";

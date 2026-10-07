@@ -172,6 +172,8 @@ export type DirectorAction =
   | { action: "send_to_studio"; assetId: string }
   | { action: "use_studio_video"; genId: string; jobId: string }
   | { action: "upload_video_url"; genId: string; mime: string }
+  // «ملاحظة للمونتاج»: what the person didn't like in a take, and where (for the montage, not a new generation)
+  | { action: "montage_note"; assetId: string; text: string }
   | { action: "upload_video_confirm"; genId: string; path: string };
 
 /** The client's choices on the generation page (each wins over the director's plan). */
@@ -335,6 +337,14 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const c = readChoice(input);
       const started = await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
       return { jobId: null, warning: started.warning };
+    }
+
+    case "montage_note": {
+      const a = (await directorVideos(project.id)).find((x) => x.id === input.assetId);
+      if (!a) throw new UserError("ما لقينا الفيديو.", 404);
+      const text = String(input.text ?? "").trim().slice(0, 1000);
+      await db().from("film_assets").update({ meta: { ...(a.meta ?? {}), montage_note: text || undefined } }).eq("id", a.id);
+      return { jobId: null };
     }
 
     case "upload_video_url": {
@@ -644,6 +654,8 @@ export async function purgeOldVideos(project: FilmProject) {
     .select("id,storage_path,meta")
     .eq("project_id", project.id)
     .eq("kind", "video")
+    // «المشهد الناجح» is kept: it is the film's finished scene, not a take
+    .neq("ref_key", "SCENE")
     .not("storage_path", "is", null)
     .lt("created_at", cutoff);
   const found = (data ?? []) as Pick<FilmAsset, "id" | "storage_path" | "meta">[];

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
-import { editorForFilm, filmCut } from "@/lib/editor/film";
+import { editorForFilm, filmCut, successfulScene } from "@/lib/editor/film";
 import OpenEdit from "../[id]/edit/OpenEdit";
+import SaveScene from "../[id]/edit/SaveScene";
 
 /** «المونتاج»: the film's chosen videos in the director's order, then «حيدرة كت» puts them together. */
 export default async function EditView({ id, base }: { id: string; base: string }) {
@@ -11,7 +12,7 @@ export default async function EditView({ id, base }: { id: string; base: string 
   const project = await requireProject(id, user.id);
   if (project.stage === "screenwriter") redirect(`${base}/${id}/script`);
   if (project.stage === "sheets") redirect(`${base}/${id}/sheets`);
-  const [cut, editId] = await Promise.all([filmCut(id), editorForFilm(id).catch(() => null)]);
+  const [cut, editId, scene] = await Promise.all([filmCut(id), editorForFilm(id).catch(() => null), successfulScene(id).catch(() => null)]);
   const ready = cut.filter((c) => c.video);
   return (
     <div className="space-y-5">
@@ -41,8 +42,15 @@ export default async function EditView({ id, base }: { id: string; base: string 
           <p className="text-sm text-muted">ما فيه توليدات معتمدة بعد.</p>
         )}
         {ready.length < cut.length && ready.length > 0 && <p className="text-xs font-bold text-muted">المقاطع اللي ما تولّدت تقدر تضيفها بعدين من «من أعمالي» داخل حيدرة كت.</p>}
-        <OpenEdit filmId={id} exists={!!editId} disabled={!ready.length} />
+        <OpenEdit filmId={id} exists={!!editId} disabled={!ready.length} filmTitle={project.title} cut={cut.map((c) => ({ genId: c.genId, name: c.name, videoId: c.video?.id ?? null, note: c.video?.note ?? "" }))} />
         <p className="text-xs text-muted">بعد تصدير الفيلم بـ٣ أيام تنحذف ملفات المونتاج، والفيديوهات اللي في المونتاج ما تنحذف قبلها.</p>
+      </section>
+
+      <section className="card space-y-3 p-4">
+        <h2 className="font-extrabold">🏆 المشهد الناجح</h2>
+        <p className="text-sm font-bold text-muted">خلصت المونتاج وصدّرته من «صدّر» داخل حيدرة كت؟ احفظه هنا: يبقى محفوظ في الموقع (ما ينحذف مثل ملفات المونتاج)، ومنه تنبني حلقات «المسلسل الذكي».</p>
+        {scene && <video src={scene.url} controls playsInline className="w-full rounded-xl bg-black" />}
+        <SaveScene filmId={id} saved={!!scene} disabled={!editId} />
       </section>
     </div>
   );
