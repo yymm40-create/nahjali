@@ -96,3 +96,34 @@ describe("what is made for a piece", () => {
     expect(fixCut({ in: 0, out: 1000 }, "parts", 3, 4, 15)).toBeNull();
   });
 });
+
+describe("the yellow track (continuity)", () => {
+  const t0 = cutUp();
+  const before = main(t0).clips[0];
+  const r = apply(t0, { type: "copy_cont", clipId: before.id }, assets);
+  const yellow = r.timeline.tracks.find((x) => x.role === "cont")!;
+
+  it("copies the seconds straight up, the main track untouched, hidden and quiet", () => {
+    expect(yellow.clips.map((c) => [c.start, c.in, c.out])).toEqual([[0, 0, 3000]]);
+    expect(yellow).toMatchObject({ name: FIX_TRACK.cont.name, color: "#eab308", hidden: true, muted: true });
+    expect(main(r.timeline).clips).toHaveLength(3);
+  });
+
+  it("refuses less than 2 s, and survives reading back", () => {
+    const piece = main(t0).clips[1];
+    const short = applyAll(t0, [{ type: "split", at: 4000 }], assets).timeline;
+    expect(() => apply(short, { type: "copy_cont", clipId: main(short).clips[1].id }, assets)).toThrow();
+    void piece;
+    expect(readTimeline(JSON.parse(JSON.stringify(r.timeline)), new Set(["v", "new", "redo"])).tracks.some((x) => x.role === "cont")).toBe(true);
+  });
+});
+
+describe("continuity ranges around a cut", () => {
+  it("takes up to 3 s before and after, each only when 2 s fit", async () => {
+    const { continuityRanges, readContinuity } = await import("@/lib/jawad/smart-edit");
+    expect(continuityRanges({ start: 5, end: 9 }, 10)).toEqual([{ at: "before", from: 2, to: 5 }]);
+    expect(continuityRanges({ start: 1, end: 5 }, 10)).toEqual([{ at: "after", from: 5, to: 8 }]);
+    expect(readContinuity([{ at: "before", from: 0, to: 1 }], 10)).toBeNull();
+    expect(readContinuity([{ at: "after", from: 6, to: 9 }], 10)).toEqual([{ at: "after", from: 6, to: 9 }]);
+  });
+});

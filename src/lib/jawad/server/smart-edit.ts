@@ -19,7 +19,7 @@ import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefMeta, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
 import { defaultRefName, findMentions, promptForModel, sameName } from "../mentions";
-import { cutRange, EDIT_LIMITS, IMAGE_EDIT_MODES, VIDEO_EDIT_MODES, type EditMode, type EditRange } from "../smart-edit";
+import { CONTINUITY, continuityRanges, cutRange, EDIT_LIMITS, IMAGE_EDIT_MODES, readContinuity, VIDEO_EDIT_MODES, type ContinuityRange, type EditMode, type EditRange } from "../smart-edit";
 import { directorRun, EDIT_TASK, settingsText } from "./director";
 import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { isUuid, refsFor, uploadFromBuffer, uploadFromOutput } from "./uploads";
@@ -37,6 +37,8 @@ export interface EditInputs {
   notes: string;
   ranges: EditRange[];
   cut: { start: number; end: number; seconds: number } | null;
+  /** «الأجزاء»: the seconds of the video sent as continuity references (named before/after…), in order. */
+  continuity?: ContinuityRange[];
   /** Frames of the original video (stored copies), with their time in seconds. */
   frames: { t: number; path: string }[];
   /** Set once the corrected prompt is written. */
@@ -53,10 +55,12 @@ export interface EditBody {
   ranges?: unknown;
   /** Video: small JPEG frames for Claude, `{ t, data: "data:image/jpeg;base64,…" }`. */
   frames?: unknown;
-  /** Video, «الأجزاء»: the full-size frames at the start and the end of the cut (they become the first/last frames). */
-  cutFrames?: unknown;
   /** Video, «الأجزاء»: the sound in the seconds right before and after the cut (short WAVs), so the sound carries on. */
   cutSounds?: unknown;
+  /** Video, «الأجزاء»: the seconds of the video kept as continuity references (the editor's yellow track); default: around the cut. */
+  continuity?: unknown;
+  /** …and their uploads (cut in the browser), in the same order, when the edit is made. */
+  continuityUploads?: unknown;
   expectedCoins?: unknown;
   /** The generator to make the edit with (another one of the same kind may be picked; default: the original's). */
   generatorId?: unknown;
@@ -85,14 +89,12 @@ export async function readFrame(data: unknown, maxBytes: number, maxSide: number
   return bytes;
 }
 
-/** «جزء»: seconds between the two frames before the cut (the motion the new piece carries on). */
-const PREV_GAP = 0.2;
-/** Seedance 2.0 takes 9 pictures at most. */
-const PART_REFS_MAX = 9;
-/** The cut's pictures: the last two frames before it (one when it starts at 0) and the frame it lands on. */
-function cutMeta<T>(cut: { start: number }, make: (role: RefRole, name: string) => T): T[] {
-  return [...(cut.start >= PREV_GAP ? [make("reference", "prev1")] : []), make("reference", "prev2"), make("reference", "end")];
-}
+/** Seedance 2.0 takes 9 pictures and 3 videos at most. */
+const PART_REFS_MAX = 12;
+const contName = (r: ContinuityRange, i: number, all: ContinuityRange[]) => {
+  const same = all.filter((x) => x.at === r.at);
+  return same.length > 1 ? `${r.at}${same.indexOf(r) + 1}` : r.at;
+};
 
 /** A short WAV of the sound around a cut, sent by the page (or null: none, or not a WAV of a sensible size). */
 function readSound(data: unknown): Buffer | null {
@@ -170,6 +172,10 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
     cut = cutRange(ranges[0].from, ranges[0].to, videoSec, durationOpt?.min ?? 4, durationOpt?.max ?? 15);
     if (!cut) throw new UserError(`المقطع أقصر من أقل مدة يولّدها ${def.name}؛ اختر «أعد المقطع كاملًا».`, 400);
   }
+  // the seconds kept for continuity: the yellow track's (from the editor), or around the cut
+  const sent = mode === "parts" && b.continuity !== undefined ? readContinuity(b.continuity, videoSec) : null;
+  if (mode === "parts" && b.continuity !== undefined && !sent) throw new UserError("مقاطع الاستمرارية (الأصفر): كل واحد ثانيتين أو أكثر، ٣ على الأكثر، ومجموعها ١٥ ث.", 400);
+  const cont: ContinuityRange[] = mode === "parts" ? (sent ?? continuityRanges(cut!, videoSec)) : [];
 
   // The new job: same generator and settings; its references depend on the kind of edit
   const settings: Settings = { ...(source.inputs.settings ?? {}) };
@@ -196,14 +202,16 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   if (mode === "whole" || mode === "full") {
     meta = await sourceRefs();
   } else if (mode === "parts") {
-    // The new piece continues straight out of the original: the generator gets the last two frames before the cut
-    // (where things are and how they move), the frame it must land on, and the original's own references. Seedance
-    // takes these only as references (first/last frames can't be mixed with other pictures).
+    // The new piece carries on the video itself: seconds of it right before (and after) the cut go as video
+    // references — motion, camera, light and sound — with the original's own references. No still frames.
     refStyle = "references";
     settings.duration = cut!.seconds;
     const own = await sourceRefs();
-    // Priced with the original's size; the real frames are checked before the job is made
-    meta = [...cutMeta(cut!, (role, name) => outMeta(role, name, randomUUID())), ...own].slice(0, PART_REFS_MAX);
+    // Priced with the pieces' lengths; the real pieces are checked before the job is made
+    meta = [
+      ...cont.map((r, i): RefMeta & { name: string } => ({ id: randomUUID(), kind: "video", role: "reference", mime: "video/mp4", bytes: 1, width: out.width, height: out.height, durationMs: Math.round((r.to - r.from) * 1000), fps: 24, status: "ready", name: contName(r, i, cont) })),
+      ...own,
+    ].slice(0, PART_REFS_MAX);
   } else {
     refStyle = "references";
     meta = [outMeta("reference", "result")];
@@ -245,20 +253,16 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   }
   // «الأجزاء»: the frames at both cuts become the new clip's first and last frames (checked like any upload)
   if (mode === "parts") {
-    const c = (b.cutFrames ?? {}) as { prev1?: unknown; prev2?: unknown; first?: unknown; last?: unknown };
-    const prev2 = c.prev2 ?? c.first;
-    const shots: [unknown, string, string][] = [
-      ...(cut!.start >= PREV_GAP && c.prev1 ? ([[c.prev1, "prev1", `cut-${(cut!.start - PREV_GAP).toFixed(1)}s.jpg`]] as [unknown, string, string][]) : []),
-      [prev2, "prev2", `cut-${cut!.start}s.jpg`],
-      [c.last, "end", `cut-${cut!.end}s.jpg`],
-    ];
-    const ups = [];
-    for (const [data, , file] of shots) ups.push(await uploadFromBuffer(user.id, new Uint8Array(await readFrame(data, 6_000_000, 6000)), file));
-    const bad = ups.find((u) => u.status !== "ready");
-    if (bad) throw new UserError(bad.error ?? "تعذّر تجهيز لقطات القص.", 400);
-    const found = await refsFor(user.id, ups.map((u) => ({ uploadId: u.id, role: "reference" as RefRole })));
-    const own = meta.slice(cutMeta(cut!, (role, name) => outMeta(role, name)).length);
-    meta = [...named(found.meta, shots.map((s) => s[1])), ...own].slice(0, PART_REFS_MAX);
+    // the continuity pieces, cut in the browser and uploaded: each one a video of this user, about as long as asked
+    const ids = Array.isArray(b.continuityUploads) ? b.continuityUploads.slice(0, CONTINUITY.max + 1) : [];
+    if (ids.length !== cont.length || !ids.every(isUuid)) throw new UserError("تعذّر تجهيز مقاطع الاستمرارية؛ جرّب مرة ثانية.", 400);
+    const own = meta.slice(cont.length);
+    const found = cont.length ? await refsFor(user.id, ids.map((id) => ({ uploadId: id as string, role: "reference" as RefRole }))) : { meta: [] };
+    found.meta.forEach((m, i) => {
+      const want = (cont[i].to - cont[i].from) * 1000;
+      if (m.kind !== "video" || Math.abs((m.durationMs ?? 0) - want) > 1500) throw new UserError("أحد مقاطع الاستمرارية ما وصل صح؛ جرّب مرة ثانية.", 400);
+    });
+    meta = [...named(found.meta, cont.map((r, i) => contName(r, i, cont))), ...own].slice(0, PART_REFS_MAX);
     // the sound right before and after the cut, so voices, effects and music carry on (when the clip has sound)
     if (settings.audio !== false) {
       const snd = (b.cutSounds ?? {}) as { before?: unknown; after?: unknown };
@@ -285,7 +289,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   if (final.issues) return { kind: "issues", issues: final.issues };
   if (final.coins !== first.coins) return { kind: "price_changed", coins: final.coins!, lines: final.lines! };
 
-  const edit: EditInputs = { sourceJobId: source.id, outputId: String(out.id), mode, notes, ranges, cut, frames };
+  const edit: EditInputs = { sourceJobId: source.id, outputId: String(out.id), mode, notes, ranges, cut, frames, ...(cont.length ? { continuity: cont } : {}) };
   const charge = !owner && final.coins! > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
     p_job: {
@@ -362,6 +366,19 @@ function imagePromptProblems(prompt: string, names: string[], mode: EditMode) {
   return problems;
 }
 
+/** What the continuity videos are, for the prompt writer. */
+function continuityText(edit: EditInputs) {
+  const cont = edit.continuity ?? [];
+  if (!cont.length) return "keep the original's framing, camera, positions, light and motion so both joins are invisible.";
+  const lines = cont.map((r, i) => {
+    const name = contName(r, i, cont);
+    return r.at === "before"
+      ? `@${name} is the original video itself from ${r.from.toFixed(1)} s to ${r.to.toFixed(1)} s, right BEFORE the cut: the new clip continues straight out of its last moment — identical framing, camera position and lens, the same people in the same places, the same light, every motion carrying on in the same direction at the same speed, and its sound (voices, effects, music) running on.`
+      : `@${name} is the original video itself from ${r.from.toFixed(1)} s to ${r.to.toFixed(1)} s, right AFTER the cut: the new clip ends flowing into its first moment — same framing, positions, poses and sound.`;
+  });
+  return `${lines.join(" ")} These videos are references for continuity only: never copy, replay or include their content in the new clip — it is only the new part in between. Say this plainly at the start of the prompt.`;
+}
+
 /**
  * The generator's shortest clip is longer than what the person marked (e.g. 2 s marked, 4 s made): which seconds are
  * the change and which only carry the same moment on, so the whole clip is filled with the same idea.
@@ -409,7 +426,7 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
       const task =
         edit.mode === "parts"
           ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip, cut in so that nobody can see the joins.
-CONTINUITY (the most important thing): ${names.includes("prev1") ? `@prev1 and @prev2 are the LAST TWO FRAMES of the original before the cut (${PREV_GAP} s apart, at ${(edit.cut!.start - PREV_GAP).toFixed(1)} s and ${edit.cut!.start.toFixed(1)} s): together they show where everything is and which way and how fast it moves.` : `@prev2 is the original's frame at ${edit.cut!.start.toFixed(1)} s, right where the cut starts.`} The new clip's very first moment is the instant right after @prev2: identical framing, camera position and lens, the same people in the same places and poses, the same light, and every motion carrying on in the same direction at the same speed. It ends exactly on @end (the original's frame at ${edit.cut!.end.toFixed(1)} s), matching it in framing, positions and poses. @prev1/@prev2 are NOT the new clip's first frame and must not appear in it as a still: they only tell what comes right before. Say this plainly at the start of the prompt (the first moment continues from @prev2; the last moment matches @end).${names.some((n) => n.startsWith("sound_")) ? ` SOUND CONTINUITY: ${names.includes("sound_before") ? "@sound_before is the original's sound in the seconds right before the cut" : ""}${names.includes("sound_before") && names.includes("sound_after") ? " and " : ""}${names.includes("sound_after") ? "@sound_after the sound right after it" : ""}: the new clip's sound continues it seamlessly — the same voices (timbre, pitch, pace) with any line in progress finishing naturally, the same ambience and sound effects, and the same music (tempo, key, instruments, level) running straight through both joins, no new music or sudden silence.` : ""} The other references are the original's characters and places.${partFill(edit)}`
+CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) => n.startsWith("sound_")) ? ` SOUND CONTINUITY: ${names.includes("sound_before") ? "@sound_before is the original's sound in the seconds right before the cut" : ""}${names.includes("sound_before") && names.includes("sound_after") ? " and " : ""}${names.includes("sound_after") ? "@sound_after the sound right after it" : ""}: the new clip's sound continues it seamlessly — the same voices (timbre, pitch, pace) with any line in progress finishing naturally, the same ambience and sound effects, and the same music (tempo, key, instruments, level) running straight through both joins, no new music or sudden silence.` : ""} The other references are the original's characters and places.${partFill(edit)}`
           : "Mode: the WHOLE clip is made again as a fresh generation, with the same settings and references (the old video is not sent to the generator).";
       const parts: ClaudePart[] = [
         { type: "text", text: settingsText(def, s, job.mode, meta) },
