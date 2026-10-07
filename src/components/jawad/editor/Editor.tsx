@@ -14,7 +14,7 @@ import ContextMenu, { type MenuItem } from "./ContextMenu";
 import SequenceTabs from "./SequenceTabs";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
 import { setGradeView } from "./grade-gl";
-import { allTracks, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
+import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
@@ -632,7 +632,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   }, []);
   const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio, durationMs: a.durationMs })), [assets]);
   useEffect(() => {
-    player?.update(tl, playerAssets);
+    // nested timelines («Nest») opened into their clips, so they play like any others
+    player?.update(flatten(tl), playerAssets);
   }, [player, tl, playerAssets]);
 
   // the text styles' fonts (loaded by the page) for the canvas
@@ -732,6 +733,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         items: [{ label: "كل السمات", onClick: () => pasteAttrs(Object.keys(ATTRS) as Attr[], ids) }, ...(Object.entries(ATTRS) as [Attr, string][]).map(([k, label]) => ({ label, onClick: () => pasteAttrs([k], ids) }))],
       },
       { label: "تكرار", keys: "Ctrl+D", onClick: () => run({ type: "duplicate", clipId: m.clipId! }), disabled: !can || ids.length > 1, sep: true },
+      { label: ids.length > 1 ? `دمج ${ids.length} في تسلسل (Nest)` : "دمج في تسلسل (Nest)", onClick: () => run({ type: "nest", clipIds: ids }), disabled: !can },
+      ...(f?.clip.seq ? [{ label: "افتح التسلسل المتداخل", onClick: () => run({ type: "seq_open", id: f.clip.seq! }) }] : []),
       { label: "تقسيم عند المؤشر", keys: "S", onClick: split, disabled: !can },
       ...(video ? [{ label: "فصل صوت الفيديو لمسار", onClick: () => run({ type: "extract_audio", clipId: m.clipId! }), disabled: !can }] : []),
       ...(a && a.kind !== "image" && a.hasAudio ? [{ label: "فصل الكلام والموسيقى والمؤثرات", onClick: () => void separateClip(m.clipId!).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true)), disabled: !can }] : []),
@@ -997,6 +1000,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return setSelected(tlRef.current.tracks.filter((t) => !t.locked).flatMap((t) => t.clips.map((c) => c.id)));
       case "full":
         return toggleFull();
+      case "nest":
+        if (selected.length) run({ type: "nest", clipIds: selected });
+        return;
       case "export":
         return setExporting(true);
     }
@@ -1020,6 +1026,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     { id: "compare", label: "قبل/بعد", icon: "eye", pressed: cmp, title: "اعرض الصورة قبل التلوين" },
     { id: "selectAll", label: "تحديد الكل", icon: "grid", title: "تحديد الكل (Ctrl+A)" },
     { id: "full", label: "ملء الشاشة", icon: "frames", title: "الفيديو على الشاشة كاملة" },
+    { id: "nest", label: "Nest", icon: "layers", disabled: readOnly || !some, title: "دمج المقاطع المحددة في تسلسل متداخل" },
     { id: "export", label: "تصدير", icon: "download", title: "صدّر الفيديو" },
   ];
 

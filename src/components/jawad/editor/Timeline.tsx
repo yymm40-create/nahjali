@@ -575,7 +575,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const wave = a && k === "audio" ? waves[a.id] : null;
     // the whole file's waveform, stretched so this clip shows its own part of it
     const fullPx = a?.durationMs ? lanePx(a.durationMs / c.speed) : 0;
-    const tone = pro ? "" : k === "audio" ? "bg-emerald-600/80" : k === "text" ? "bg-violet-600/85" : k === "image" ? "bg-sky-700/80" : "bg-zinc-700";
+    // «Nest»: a timeline used as one clip
+    const nestName = c.seq ? (tl.seqs?.find((x) => x.id === c.seq)?.name ?? "تسلسل") : null;
+    const tone = c.seq ? "bg-teal-700/90" : pro ? "" : k === "audio" ? "bg-emerald-600/80" : k === "text" ? "bg-violet-600/85" : k === "image" ? "bg-sky-700/80" : "bg-zinc-700";
     // the track's own colour (if the person gave it one): the clip's fill on «بريمير», a tint on «عادي»
     const paint = track.color ?? (pro ? PRO_TONE[k as keyof typeof PRO_TONE] ?? PRO_TONE.video : null);
     const missing = a && (a.status !== "ready" || !a.url);
@@ -585,7 +587,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         key={c.id + (ghost ? "g" : "")}
         role="button"
         tabIndex={-1}
-        aria-label={c.text ? `نص: ${c.text.body}` : (a?.name ?? "مقطع")}
+        aria-label={c.text ? `نص: ${c.text.body}` : nestName ? `متداخل: ${nestName}` : (a?.name ?? "مقطع")}
         aria-pressed={sel}
         className={`absolute top-1 bottom-1 overflow-hidden text-[11px] text-white ${pro ? "rounded-[3px] border border-black/50" : "rounded-md shadow"} ${tone} ${sel ? (pro ? "z-10 outline outline-2 outline-white" : "z-10 ring-2 ring-jw-accent") : pro ? "" : "ring-1 ring-black/40"} ${(d?.moved && d.mode === "move") || along ? "opacity-80" : ""} ${missing ? "outline-2 outline-dashed outline-jw-danger" : ""}`}
         style={{
@@ -604,6 +606,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
           tapDown(e, c);
           begin(e, track, c, "move");
         }}
+        onDoubleClick={() => c.seq && !readOnly && run({ type: "seq_open", id: c.seq })}
         onContextMenu={(e) => {
           if (!onMenu || ghost) return;
           e.preventDefault();
@@ -624,7 +627,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       >
         {!pro && track.color && <span className="pointer-events-none absolute inset-0 border-s-4" style={{ borderColor: track.color, background: `${track.color}33` }} />}
         <span className={`pointer-events-none absolute inset-x-0 top-0 truncate px-1.5 py-0.5 font-medium ${pro ? "h-[14px] bg-black/35 py-0 text-[10px] leading-[14px]" : "bg-gradient-to-b from-black/60 to-transparent"}`} dir="auto">
-          {c.text ? c.text.body : compact ? formatTime(clipLength(c)) : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
+          {c.text ? c.text.body : nestName ? `🎞 ${nestName}` : compact ? formatTime(clipLength(c)) : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
         </span>
         {!compact && lanePx(end - start) > 60 && (
           <span className="pointer-events-none absolute bottom-0 left-1 text-[10px] text-white/80">{formatTime(clipLength(c))}</span>
