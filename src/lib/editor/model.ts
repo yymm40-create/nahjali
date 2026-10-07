@@ -371,6 +371,10 @@ export interface Clip {
   shape: "rect" | "rounded" | "circle";
   /** «القص» (crop): the share of each side hidden (the picture keeps its size and place) */
   crop: Crop | null;
+  /** «الشفافية»: how the clip mixes with what is under it (Premiere's blend modes; "normal" = over it) */
+  blend: BlendMode;
+  /** «الكي» (keying): a colour (green screen) or the dark/bright parts made see-through */
+  key: Keyer | null;
   /** captions: when each word is said (text clips only) */
   words: Word[];
   /** pictures only: the person cut out from their background */
@@ -764,6 +768,68 @@ function readTransform(tr: Record<string, unknown>): Transform {
   };
 }
 
+/** Premiere's blend modes (the ones a browser canvas draws), by family. */
+export const BLEND_MODES = {
+  normal: "عادي",
+  // darken
+  darken: "تغميق",
+  multiply: "ضرب (Multiply)",
+  "color-burn": "حرق اللون",
+  // lighten
+  lighten: "تفتيح",
+  screen: "شاشة (Screen)",
+  "color-dodge": "مراوغة اللون",
+  add: "إضافة (Linear Dodge)",
+  // contrast
+  overlay: "تراكب (Overlay)",
+  "soft-light": "ضوء ناعم",
+  "hard-light": "ضوء قوي",
+  // inversion
+  difference: "فرق",
+  exclusion: "استبعاد",
+  // component
+  hue: "تدرّج اللون",
+  saturation: "التشبع",
+  color: "اللون",
+  luminosity: "الإضاءة",
+} as const;
+export type BlendMode = keyof typeof BLEND_MODES;
+
+/**
+ * A key: «كروما» takes out a colour (green or blue screen, any colour picked): `tolerance` how far from it still goes,
+ * `soft` the soft edge, `spill` the colour's glow taken off the edges, `choke` shrinks the matte. «لوما» takes out the
+ * dark parts (or the bright ones, `invert`): below `low` gone, above `high` kept, `soft` between. `show` = the matte.
+ */
+export interface Keyer {
+  kind: "chroma" | "luma";
+  color: string;
+  tolerance: number;
+  soft: number;
+  spill: number;
+  choke: number;
+  low: number;
+  high: number;
+  invert: boolean;
+  show: boolean;
+}
+export const NEW_KEY: Keyer = { kind: "chroma", color: "#00ff00", tolerance: 0.3, soft: 0.15, spill: 0.6, choke: 0, low: 0.1, high: 0.35, invert: false, show: false };
+export function readKey(v: unknown): Keyer | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  return {
+    kind: o.kind === "luma" ? "luma" : "chroma",
+    color: typeof o.color === "string" && /^#[0-9a-f]{6}$/i.test(o.color) ? o.color.toLowerCase() : NEW_KEY.color,
+    tolerance: num(o.tolerance, 0, 1, NEW_KEY.tolerance),
+    soft: num(o.soft, 0, 1, NEW_KEY.soft),
+    spill: num(o.spill, 0, 1, NEW_KEY.spill),
+    choke: num(o.choke, 0, 1, 0),
+    low: num(o.low, 0, 1, NEW_KEY.low),
+    high: num(o.high, 0, 1, NEW_KEY.high),
+    invert: o.invert === true,
+    show: o.show === true,
+  };
+}
+
 export interface Crop {
   l: number;
   t: number;
@@ -878,6 +944,8 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     fadeOut: int(o.fadeOut, 0, 60_000, 0),
     shape: pick(o.shape, ["rect", "rounded", "circle"] as const, "rect"),
     crop: kind === "audio" || kind === "text" ? null : readCrop(o.crop),
+    blend: kind === "audio" ? "normal" : pick(o.blend, Object.keys(BLEND_MODES) as BlendMode[], "normal"),
+    key: kind === "audio" || kind === "text" ? null : readKey(o.key),
     words: kind !== "text" || !Array.isArray(o.words)
       ? []
       : o.words

@@ -37,6 +37,7 @@ import { soundFile } from "./audio";
 import FontPicker from "./FontPicker";
 import FxPanel from "./FxPanel";
 import GradePanel from "./GradePanel";
+import OpacityPanel from "./OpacityPanel";
 import TransitionPanel from "./TransitionPanel";
 import { TR_CATS, TR_LIST, type TrCat } from "@/lib/editor/transitions";
 import { clipSound } from "./voice";
@@ -45,7 +46,7 @@ import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 
 export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => unknown;
-export type InspectorTab = "basic" | "motion" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
+export type InspectorTab = "basic" | "motion" | "opacity" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -262,6 +263,7 @@ export default function Inspector({
   const tabs: [InspectorTab, string][] = [
     ["basic", text ? "النص" : "أساسي"],
     ...(visual ? ([["motion", "حركة"]] as [InspectorTab, string][]) : []),
+    ...(visual ? ([["opacity", "الشفافية"]] as [InspectorTab, string][]) : []),
     ...(visual ? ([["anim", "دخول وخروج"]] as [InspectorTab, string][]) : []),
     ...(visual && !text ? ([["fx", "مؤثرات"]] as [InspectorTab, string][]) : []),
     ...(visual && !text ? ([["color", "ألوان"]] as [InspectorTab, string][]) : []),
@@ -271,7 +273,7 @@ export default function Inspector({
   ];
   const current = tabs.some(([k]) => k === tab) ? tab : "basic";
   // from the rail: a section this clip doesn't have shows what it has instead, saying so
-  const missing = rail && current !== tab ? { motion: "الحركة", anim: "الدخول والخروج", fx: "المؤثرات", color: "الألوان", backdrop: "الخلفية", transition: "الانتقال", sound: "الصوت", basic: "" }[tab] : "";
+  const missing = rail && current !== tab ? { motion: "الحركة", opacity: "الشفافية", anim: "الدخول والخروج", fx: "المؤثرات", color: "الألوان", backdrop: "الخلفية", transition: "الانتقال", sound: "الصوت", basic: "" }[tab] : "";
 
   // ---- motion: with motion points, a change goes into the point at the playhead
   const inClip = playhead >= clip.start && playhead < clipEnd(clip);
@@ -485,6 +487,7 @@ export default function Inspector({
         </div>
       )}
 
+      {current === "opacity" && <OpacityPanel clip={clip} opacity={t.opacity} locked={locked} set={set} onOpacity={(v) => move({ opacity: v }, "opacity")} media={!text} />}
       {current === "backdrop" && (
         <div className="space-y-3">
           <p className="text-xs leading-6 text-jw-muted">نلقى الشخص في الصورة ونغيّر اللي وراه. يشتغل على جهازك مجانًا (أول مرة يتحمّل نموذج صغير).</p>

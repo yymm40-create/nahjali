@@ -53,6 +53,7 @@ function clipChips(kind: ClipKindOf, hasAudio: boolean): Chip[] {
     ...(visual && media ? [{ id: "color", label: "ألوان", icon: "palette", go: { kind: "tab", tab: "color" } } as Chip] : []),
     ...(visual ? [{ id: "transition", label: "انتقال", icon: "frames", go: { kind: "tab", tab: "transition" } } as Chip] : []),
     ...(visual ? [{ id: "motion", label: "موضع", icon: "diamond", go: { kind: "tab", tab: "motion" } } as Chip] : []),
+    ...(visual ? [{ id: "opacity", label: "شفافية", icon: "layers", go: { kind: "tab", tab: "opacity" } } as Chip] : []),
     ...(visual && media ? [{ id: "backdrop", label: "الخلفية", icon: "user", go: { kind: "tab", tab: "backdrop" } } as Chip] : []),
     ...(kind === "video" ? [{ id: "scene", label: "تقطيع ذكي", icon: "sparkles", go: { kind: "sceneCut" }, accent: true } as Chip] : []),
     ...(hasAudio ? [{ id: "extract", label: "استخراج الصوت", icon: "music", go: { kind: "extract" } } as Chip] : []),

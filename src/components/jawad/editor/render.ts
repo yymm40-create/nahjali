@@ -5,13 +5,14 @@ import { familyOf } from "./fontload";
 import { drawWithFx, fxPlan } from "./fx";
 import { transitionLook, type TrLook, type TrMask } from "@/lib/editor/transitions";
 import { gradeLayers } from "./grade-gl";
+import { keyFrame } from "./key-gl";
 
 /** set while the export draws: the grade always shows (no before/after view) */
 let exporting = false;
 export const setExporting = (on: boolean) => {
   exporting = on;
 };
-import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx } from "@/lib/editor/model";
+import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode } from "@/lib/editor/model";
 
 export interface Frame {
   img: CanvasImageSource;
@@ -128,12 +129,21 @@ export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: numbe
       tfx: L.fx,
     };
     if (look.alpha <= 0.001 || look.show === 0 || look.words === 0) continue;
-    if (l.clip.text) drawText(ctx, l.clip, t, look, W, H, l.ms);
-    else {
+    if (l.clip.text) {
+      ctx.save();
+      blendWith(ctx, l.clip.blend);
+      drawText(ctx, l.clip, t, look, W, H, l.ms);
+      ctx.restore();
+    } else {
       const f = frameOf(l.clip, l.ms);
       if (f && f.width && f.height) drawMedia(ctx, f, l.clip, t, look, W, H, l.ms);
     }
   }
+}
+
+/** «الشفافية»: how the clip mixes with what is under it (Premiere's Linear Dodge is the canvas's "lighter"). */
+function blendWith(ctx: CanvasRenderingContext2D, mode: BlendMode | undefined) {
+  if (mode && mode !== "normal") ctx.globalCompositeOperation = mode === "add" ? "lighter" : mode;
 }
 
 /** The picture's size on the frame before its own scale (cover fills, contain shows it all). */
@@ -301,10 +311,16 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
     const g = gradeLayers(f.img, f.width, f.height, clip.grades, Math.max(0, ms - clip.start), exporting);
     if (g) f = { ...f, img: g.img };
   }
+  // «الكي»: the green screen (or the dark/bright parts) made see-through, after the grade (a log keys better decoded)
+  if (clip.key) {
+    const k = keyFrame(f.img, f.width, f.height, clip.key);
+    if (k) f = { ...f, img: k };
+  }
   const b = baseSize(clip.fit, f.width, f.height, W, H);
   const w = b.w * t.scale * look.scale;
   const h = b.h * t.scale * look.scale;
   ctx.save();
+  blendWith(ctx, clip.blend);
   place(ctx, t, look, W, H);
   showFromRight(ctx, look, w, h);
   // «القص»: the hidden sides cut away (the picture keeps its size and place, like Premiere's Crop)
