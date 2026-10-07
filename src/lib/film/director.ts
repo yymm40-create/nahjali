@@ -170,7 +170,9 @@ export type DirectorAction =
   | { action: "reject_video"; assetId: string }
   // the film ⇄ the video section: send a film video there (for «التعديل الذكي»), or take a video from there
   | { action: "send_to_studio"; assetId: string }
-  | { action: "use_studio_video"; genId: string; jobId: string };
+  | { action: "use_studio_video"; genId: string; jobId: string }
+  | { action: "upload_video_url"; genId: string; mime: string }
+  | { action: "upload_video_confirm"; genId: string; path: string };
 
 /** The client's choices on the generation page (each wins over the director's plan). */
 type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel; useVoices?: boolean };
@@ -183,7 +185,7 @@ const readChoice = (c: VideoChoice) => ({
   model: c.model && c.model in VIDEO_MODELS ? c.model : undefined,
 });
 
-export async function directorAction(project: FilmProject, user: User, input: DirectorAction): Promise<{ jobId: string | null; studioJobId?: string }> {
+export async function directorAction(project: FilmProject, user: User, input: DirectorAction): Promise<{ jobId: string | null; studioJobId?: string; warning?: string; upload?: { path: string; token: string } }> {
   if (project.stage === "screenwriter" || project.stage === "sheets") throw new UserError("اعتمد كل صور الشيتات أول.", 409);
   const versions = await directorVersions(project.id);
   const convo = await latestJob(project.id, STAGE);
@@ -331,7 +333,40 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
       const c = readChoice(input);
-      await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
+      const started = await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
+      return { jobId: null, warning: started.warning };
+    }
+
+    case "upload_video_url": {
+      // «ارفع الفيديو المعدّل»: the person's own edit of this generation (after «التعديل الذكي» or their own program)
+      const ext = ({ "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm" } as Record<string, string>)[String(input.mime)];
+      if (!ext || !/^GEN-\d{2,3}$/.test(String(input.genId))) throw new UserError("فيديو MP4 أو MOV أو WEBM فقط.", 400);
+      const path = `${projectDir(project)}/director/edited-${input.genId}-${Date.now()}.${ext}`;
+      const { data, error } = await storage.from(FILM_BUCKET).createSignedUploadUrl(path);
+      if (error) throw error;
+      return { jobId: null, upload: { path: data.path, token: data.token } };
+    }
+
+    case "upload_video_confirm": {
+      const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
+      if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
+      const dir = `${projectDir(project)}/director`;
+      const path = String(input.path ?? "");
+      if (!path.startsWith(`${dir}/edited-${input.genId}-`) || path.includes("..")) throw new UserError("ملف غير صحيح.", 400);
+      const name = path.slice(dir.length + 1);
+      const { data: list } = await storage.from(FILM_BUCKET).list(dir, { search: name });
+      const file = list?.find((f) => f.name === name);
+      const size = Number(file?.metadata?.size ?? 0);
+      if (!file || size <= 0 || size > 2 * 1024 * 1024 * 1024) throw new UserError("ما وصل الفيديو أو حجمه أكبر من ٢ جيجا.", 400);
+      const videos = await directorVideos(project.id);
+      const older = videos.filter((x) => x.ref_key === input.genId && x.status === "approved").map((x) => x.id);
+      if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
+      const { error } = await db().from("film_assets").insert({
+        project_id: project.id, kind: "video", ref_key: input.genId, version_id: v.id, storage_path: path, file_name: name,
+        mime: String(file.metadata?.mimetype ?? "video/mp4"), bytes: size, status: "approved", meta: { uploaded: true, edited: true },
+      });
+      if (error) throw error;
+      await maybeFinish(project, versions, await directorVideos(project.id));
       return { jobId: null };
     }
 
@@ -358,9 +393,9 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       readyForVideo(v, lib);
       await setApproved(v, versions);
       const c = readChoice(input);
-      await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
+      const started = await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
       const id = await addUserMessage(project.id, "اعتمد");
-      return { jobId: await queueReply(project, user, id) };
+      return { jobId: await queueReply(project, user, id), warning: started.warning };
     }
 
     case "approve_video": {
@@ -393,7 +428,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const lib = await referenceLibrary(project.id);
       let refs: FilmAsset[] = [];
       try {
-        refs = videoRefs(v, lib);
+        refs = videoRefs(v, lib).refs;
       } catch {
         refs = [];
       }
@@ -461,28 +496,34 @@ async function maybeFinish(project: FilmProject, versions: DirectorVersion[], vi
 }
 
 /** The reference images of a generation, in <<<image_n>>> order. Throws if one is not in the library. */
-function videoRefs(v: DirectorVersion, lib: Record<string, FilmAsset>) {
+function videoRefs(v: DirectorVersion, lib: Record<string, FilmAsset>, chosen?: VideoModel) {
   const names = (v.data.references ?? []).map((r) => (r.name.startsWith("@") ? r.name : `@${r.name}`).trim());
   const missing = names.filter((n) => !lib[n]);
   if (missing.length) throw new UserError(`مراجع غير موجودة في المكتبة: ${missing.join("، ")}. اطلب من المخرج يصححها.`, 409);
-  const model = v.data.video_model ?? "seedance-2.5";
-  return names.slice(0, VIDEO_MODELS[model].maxImages).map((n) => lib[n]);
+  const model = chosen ?? v.data.video_model ?? "seedance-2.5";
+  const max = VIDEO_MODELS[model].maxImages;
+  return { refs: names.slice(0, max).map((n) => lib[n]), dropped: names.slice(max), max, model };
 }
 
+/** «المراجع ممتلئة»: what is said when a generation has more references than the model takes. */
+export const refsFullWarning = (o: { dropped: string[]; max: number; model: VideoModel }) =>
+  o.dropped.length ? `⚠️ المراجع ممتلئة: ${VIDEO_MODELS[o.model].label} يقبل ${o.max} صور مرجعية بس، فما انرسل: ${o.dropped.join("، ")}. اطلب من المخرج يقلّلها أو يدمجها لو تبيها كلها.` : undefined;
+
 /** The prompt and references a generation sends to Seedance; throws a clear message if it cannot be sent. */
-function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>) {
+function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>, chosen?: VideoModel) {
   const prompt = videoPrompt(v.data.prompt ?? "");
   if (!prompt) throw new UserError("برومبت هذا التوليد فاضي.", 409);
   if (ARABIC.test(prompt)) throw new UserError("البرومبت فيه حروف عربية؛ اطلب من المخرج يكتب الحوار بحروف لاتينية.", 409);
-  return { prompt, refs: videoRefs(v, lib) };
+  const r = videoRefs(v, lib, chosen);
+  return { prompt, refs: r.refs, warning: refsFullWarning(r) };
 }
 
 /** Creates the video asset + paid job, and sends the generation to Seedance in the background. */
 async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel, useVoices = false) {
-  const ready = readyForVideo(v, lib);
+  const model: VideoModel = chosenModel || v.data.video_model || project.video_model || "seedance-2.5";
+  const ready = readyForVideo(v, lib, model);
   const { refs } = ready;
   let prompt = ready.prompt;
-  const model: VideoModel = chosenModel || v.data.video_model || project.video_model || "seedance-2.5";
   let durationSec = Math.min(seconds ?? clampVideoSeconds(v.data.duration_sec ?? 10), VIDEO_MODELS[model].maxSeconds);
   // The spoken lines, made first, ride along as reference audio; the video is at least as long as they are
   let voiceTrack: string | null = null;
@@ -493,7 +534,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     durationSec = Math.min(VIDEO_MODELS[model].maxSeconds, Math.max(durationSec, Math.ceil(t.seconds) + 1));
   }
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
-  if ((count ?? 0) >= 3) throw new UserError("فيه فيديوهات تتولد الحين، انتظرها تخلص.", 409);
+  if ((count ?? 0) >= MAX_VIDEOS_AT_ONCE) throw new UserError(`فيه ${MAX_VIDEOS_AT_ONCE} فيديوهات تتولد الحين، انتظر واحد يخلص.`, 409);
   // Public trial: one free video per trial user; their trial ends once it is made (the owner has no limit)
   const trial = await filmTrialApplies(user);
   // (only in a project started during the trial, by one of its users)
@@ -524,7 +565,11 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     throw e;
   });
   after(() => submitVideo(project, job.id, asset.id, { prompt, refs, ...meta, voiceTrack }));
+  return { warning: ready.warning };
 }
+
+/** Videos made at the same time in one project. */
+export const MAX_VIDEOS_AT_ONCE = 4;
 
 async function submitVideo(
   project: FilmProject,

@@ -103,6 +103,27 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
   useEffect(() => {
     if (!wasDone.current && allApproved) router.push(`${filmBase}/${projectId}/videos`);
   }, [allApproved, projectId, router, filmBase]);
+  // After the directing questions: see each generation's visual analysis before making, or make directly (the map
+  // and every generation then approved in the background, straight to the generation page). Kept on this device.
+  const modeKey = `film-direct-${projectId}`;
+  const [mode, setModeState] = useState<"show" | "direct" | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const v = localStorage.getItem(modeKey);
+        if (v === "show" || v === "direct") setModeState(v);
+      } catch {}
+    }, 0);
+    return () => clearTimeout(t);
+  }, [modeKey]);
+  const setMode = (m: "show" | "direct") => {
+    setModeState(m);
+    try {
+      localStorage.setItem(modeKey, m);
+    } catch {}
+  };
+  const answered = questions.some((q) => q.status === "approved");
+  const direct = mode === "direct";
   // The director starts by itself and its understanding is approved in the background: the person meets its questions
   const autoStart = stage === "director" && !failed;
   const startedOnce = useRef(false);
@@ -117,6 +138,19 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
     if (understanding?.status === "awaiting_approval" && approvedOnce.current !== understanding.id) {
       approvedOnce.current = understanding.id;
       const t = setTimeout(() => void send({ action: "approve", versionId: understanding.id }), 0);
+      return () => clearTimeout(t);
+    }
+    if (!direct) return;
+    // «اصنع مباشرة»: the map, then each generation as it arrives, approved here; a note asks for the next one
+    const waiting = [mapV, ...ordered.map((gid) => versions.filter((x) => x.kind === "dir_generation" && x.ref_key === gid).at(-1))].find((x) => x?.status === "awaiting_approval" && approvedOnce.current !== x.id);
+    if (waiting) {
+      approvedOnce.current = waiting.id;
+      const t = setTimeout(() => void send({ action: "approve", versionId: waiting.id }), 0);
+      return () => clearTimeout(t);
+    }
+    if (note && note.created_at === current?.created_at && map.some((g) => !genIds.includes(g.id)) && approvedOnce.current !== note.id) {
+      approvedOnce.current = note.id;
+      const t = setTimeout(() => void send({ action: "continue" }), 0);
       return () => clearTimeout(t);
     }
   });
@@ -219,6 +253,19 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
         </StepCard>
       )).filter((_, i, all) => i === all.length - 1 || questions[i].status === "approved")}
 
+      {answered && mode === null && (
+        <section className="card space-y-3 border-2 border-gold p-5">
+          <p className="text-lg font-extrabold">🎬 قبل التصنيع: تبي تشوف التحليل البصري لكل لقطة؟</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button className="btn btn-secondary min-h-14" onClick={() => setMode("show")}>🔍 اعرض لي التحليل قبل كل توليد</button>
+            <button className="btn btn-primary min-h-14" onClick={() => setMode("direct")}>⚡ اصنع مباشرة (ينتقل للتوليد لحاله)</button>
+          </div>
+        </section>
+      )}
+      {direct && !allApproved && (writing || mapV) && (
+        <p className="card flex items-center gap-2 p-4 text-sm font-bold"><Spinner /> المخرج يجهّز اللقطات ويعتمدها لك، وبعدها ننقلك للتوليد…</p>
+      )}
+
       {/* 3. Generation map */}
       {mapV && (
         <StepCard
@@ -254,6 +301,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
             v={v}
             current={current?.id === v.id}
             busy={busy || writing}
+            hideBody={direct}
             onApprove={v.status === "awaiting_approval" ? () => send({ action: "approve", versionId: v.id }) : undefined}
             approveLabel="اعتمد وكمّل ✅"
             onSend={revise(v)}
