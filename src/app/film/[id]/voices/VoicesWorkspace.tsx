@@ -105,7 +105,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
                     </optgroup>
                   )}
                 </select>
-                <VoiceDesigner projectId={projectId} speaker={sp} disabled={Boolean(busy)} onCast={async (value) => { await cast(sp, value); await load(); }} />
+                <VoiceDesigner projectId={projectId} speaker={sp} minimaxOn={s.voices.some((v) => v.group === "minimax")} disabled={Boolean(busy)} onCast={async (value) => { await cast(sp, value); await load(); }} />
               </li>
             ))}
           </ul>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
-import { cloneVoice, deleteVoice, designVoice, listVoices, renameVoice, saveDesigned } from "@/lib/jawad/server/voices";
+import { cloneVoice, deleteVoice, designMinimax, designVoice, listVoices, renameVoice, saveDesigned } from "@/lib/jawad/server/voices";
 
 // Designing three previews or copying a voice takes a few seconds to a minute at ElevenLabs
 export const maxDuration = 120;
@@ -23,6 +23,9 @@ export const POST = handle(async (req: Request) => {
   switch (b.action) {
     case "design":
       return NextResponse.json({ draft: await designVoice(user, owner, b) });
+    // MiniMax: one voice from the description, kept at once (no slot limit)
+    case "design_minimax":
+      return NextResponse.json({ voice: await designMinimax(user, owner, b) });
     case "save":
       return NextResponse.json({ voice: await saveDesigned(user, owner, b) });
     case "clone":

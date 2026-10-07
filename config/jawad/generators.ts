@@ -829,6 +829,9 @@ export const MINIMAX_DEFAULT_VOICE = "x:Deep_Voice_Man";
 /** fal's published prices: $100 per million characters (HD); a copied voice $1.5 once. */
 export const MINIMAX_PRICE = { hdPerKChars: 0.1, cloneUsd: 1.5 };
 export const MINIMAX_CLONE_KEY = "voice:clone";
+export const MINIMAX_DESIGN_KEY = "voice:design";
+/** fal: $3 per designed voice + $0.03 per 1,000 preview characters (a preview of ≤ 500). */
+export const MINIMAX_DESIGN_USD = 3 + (500 / 1000) * 0.03;
 
 const mmMode: ModeDef = { id: "text_to_speech", label: "نص إلى كلام", refStyle: "none", refs: {}, promptRequired: true };
 const minimaxSpeech: GeneratorDef = {
@@ -869,6 +872,7 @@ const minimaxSpeech: GeneratorDef = {
   priceKeys: [
     { key: "chars:1k", label: "كل ١٠٠٠ حرف", defaultCenti: centiFor(MINIMAX_PRICE.hdPerKChars), basis: `سعر fal المنشور لـ Speech 2.8 HD: $${MINIMAX_PRICE.hdPerKChars} لكل ١٠٠٠ حرف` },
     { key: MINIMAX_CLONE_KEY, label: "نسخ صوت من تسجيل (للمرة)", defaultCenti: centiFor(MINIMAX_PRICE.cloneUsd), basis: `سعر fal المنشور: $${MINIMAX_PRICE.cloneUsd} لكل صوت منسوخ (بلا حد لعدد الأصوات)` },
+    { key: MINIMAX_DESIGN_KEY, label: "تصميم صوت بالوصف (صوت واحد)", defaultCenti: centiFor(MINIMAX_DESIGN_USD), basis: "سعر fal المنشور: $3 لكل صوت مصمّم + $0.03 لكل ١٠٠٠ حرف من العينة (بلا حد لعدد الأصوات)" },
   ],
   modeFor: () => mmMode,
   rules: () => ({ options: opt(minimaxSpeech.options), issues: [], notes: ["يتكلم ٤٠ لغة منها العربية (language_boost: Arabic). الأصوات المنسوخة هنا بلا حد في العدد، على عكس ElevenLabs."] }),
@@ -882,6 +886,7 @@ const minimaxSpeech: GeneratorDef = {
   sources: [
     { label: "fal.ai — MiniMax Speech 2.8 HD (schema: prompt, voice_setting, language_boost, output_format)", url: "https://fal.ai/models/fal-ai/minimax/speech-2.8-hd/api", checked: "2026-10-07" },
     { label: "fal.ai — MiniMax Voice Cloning ($1.5 per clone; audio ≥ 10 s; kept when used within 7 days)", url: "https://fal.ai/models/fal-ai/minimax/voice-clone", checked: "2026-10-07" },
+    { label: "fal.ai — MiniMax Voice Design ($3 per voice; prompt + preview_text ≤ 500; returns custom_voice_id)", url: "https://fal.ai/models/fal-ai/minimax/voice-design", checked: "2026-10-07" },
     { label: "MiniMax — pay-as-you-go pricing (speech-2.8-hd $100/M chars, rapid clone $1.5)", url: "https://platform.minimax.io/docs/guides/pricing-paygo", checked: "2026-10-07" },
   ],
   verification: [

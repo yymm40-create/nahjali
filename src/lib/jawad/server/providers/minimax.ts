@@ -72,3 +72,14 @@ export async function minimaxCloneVoice(o: { audioUrl: string; previewText: stri
   const previewUrl = falUrl(out, "audio");
   return { voiceId, preview: previewUrl ? await falFile(previewUrl).catch(() => null) : null };
 }
+
+/** A voice designed from a description (one voice, kept in MiniMax's account, no slot limit), with its spoken preview. */
+export async function minimaxDesignVoice(o: { prompt: string; previewText: string }) {
+  const out = await falRun<Record<string, unknown>>("fal-ai/minimax/voice-design", { prompt: o.prompt.slice(0, 2000), preview_text: o.previewText.slice(0, 500) }, 240_000).catch((e) => {
+    throw e instanceof ProviderError ? new ProviderError(e.outcome, "تعذّر تصميم الصوت عند MiniMax الآن. أُعيدت لك نقودك؛ جرّب مرة ثانية.", e.detail) : e;
+  });
+  const voiceId = String(out.custom_voice_id ?? "");
+  if (!voiceId) throw new ProviderError("rejected", "ما رجع MiniMax بمعرّف الصوت.", `minimax design keys: ${Object.keys(out).join(",")}`);
+  const previewUrl = falUrl(out, "audio");
+  return { voiceId, preview: previewUrl ? await falFile(previewUrl).catch(() => null) : null };
+}
