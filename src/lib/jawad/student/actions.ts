@@ -20,6 +20,7 @@ import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
 import { autoSettings } from "./defaults";
 import { pickDesigns } from "./design-pick";
+import { LINK_CEILING_HOURS, MEDIA_MAX_BYTES, MEDIA_TYPES, SCRIBE_USD_PER_HOUR, mediaLink, mediaUsd } from "./media";
 
 import { storage } from "@/lib/storage";
 type User = { id: string; email?: string | null };
@@ -189,6 +190,28 @@ export async function projectAction(user: User, id: string, b: Body) {
       const { data: up, error: e2 } = await storage.from(STUDENT.bucket).createSignedUploadUrl(path);
       if (e2) throw e2;
       return { sourceId: data.id, signedUrl: up.signedUrl };
+    }
+    case "media_file": {
+      // a video or a recording to be written (ElevenLabs reads it from our storage, then it is deleted)
+      const mime = String(b.mime ?? "").split(";")[0];
+      const ext = MEDIA_TYPES[mime];
+      if (!ext) throw new UserError("الفيديو أو الصوت لازم يكون MP4 أو MOV أو WEBM أو MP3 أو M4A أو WAV.");
+      if (!(Number(b.bytes) > 0) || Number(b.bytes) > MEDIA_MAX_BYTES) throw new UserError("حجم الملف لازم يكون أقل من ٢ جيجا.");
+      const path = `${user.id}/${p.id}/media/${crypto.randomUUID()}.${ext}`;
+      const { data: up, error: e2 } = await storage.from(STUDENT.bucket).createSignedUploadUrl(path);
+      if (e2) throw e2;
+      return { path, signedUrl: up.signedUrl };
+    }
+    case "media_transcribe": {
+      // what is said in an uploaded file (its length known) or a link (YouTube, TikTok…: held for up to 3 hours, the
+      // real length charged); the transcript becomes the material
+      const path = typeof b.path === "string" && b.path.startsWith(`${user.id}/${p.id}/media/`) && !b.path.includes("..") ? b.path : null;
+      const url = path ? null : mediaLink(b.url);
+      if (!path && !url) throw new UserError("الصق رابطًا صحيحًا يبدأ بـ https، أو ارفع الملف.");
+      const secs = Number(b.seconds);
+      const usd = path && secs > 0 ? mediaUsd(secs) : LINK_CEILING_HOURS * SCRIBE_USD_PER_HOUR;
+      const name = text(b.name, 200) || (url ? await linkTitle(url) : "") || "مقطع";
+      return paid(user, b, { projectId: p.id, kind: "media", usd, input: { path, url, name, seconds: secs > 0 ? secs : null }, stage: "تفريغ الكلام" });
     }
     case "source_confirm": {
       const s = (await sources(p.id)).find((x) => x.id === b.sourceId);
@@ -403,6 +426,17 @@ export async function projectAction(user: User, id: string, b: Body) {
     }
   }
   throw new UserError("طلب غير معروف.");
+}
+
+/** A YouTube video's title (YouTube's public oEmbed), to name the transcript; empty when it can't be read. */
+async function linkTitle(url: string) {
+  if (!/(^|\.)(youtube\.com|youtu\.be)$/.test(new URL(url).hostname)) return "";
+  try {
+    const r = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(5000) });
+    return r.ok ? String(((await r.json()) as { title?: string }).title ?? "").slice(0, 200) : "";
+  } catch {
+    return "";
+  }
 }
 
 async function reject(id: string, message: string): Promise<never> {

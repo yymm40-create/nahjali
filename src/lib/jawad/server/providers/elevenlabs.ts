@@ -309,6 +309,64 @@ export async function elevenTranscribe(o: { file: Blob; name: string; languageCo
   return { language: j.language_code ?? null, words };
 }
 
+export interface Heard {
+  language: string | null;
+  text: string;
+  words: HeardWord[];
+}
+
+const heardOf = (j: { language_code?: string; text?: string; words?: { text: string; type?: string; start?: number | null; end?: number | null }[] }): Heard => ({
+  language: j.language_code ?? null,
+  text: String(j.text ?? ""),
+  words: (j.words ?? [])
+    .filter((w) => (w.type ?? "word") === "word" && w.start != null && w.end != null && w.text.trim())
+    .map((w) => ({ text: w.text.trim(), start: w.start!, end: w.end! })),
+});
+
+/**
+ * What is said in a video or sound ElevenLabs fetches itself (`source_url`): a YouTube or TikTok link, or a signed
+ * link to a file in our storage (under 2 GB). It runs in the background when ElevenLabs allows it (`{ id }`, read
+ * later with elevenTranscript); otherwise the whole result is waited for (`{ heard }`).
+ */
+export async function elevenTranscribeUrl(o: { url: string; languageCode?: string | null }): Promise<{ id: string } | { heard: Heard }> {
+  const form = (background: boolean) => {
+    const f = new FormData();
+    f.append("model_id", "scribe_v2");
+    f.append("source_url", o.url);
+    f.append("timestamps_granularity", "word");
+    f.append("tag_audio_events", "false");
+    if (o.languageCode) f.append("language_code", o.languageCode);
+    if (background) f.append("webhook", "true");
+    return f;
+  };
+  try {
+    const res = await call("/v1/speech-to-text", { method: "POST", body: form(true), timeoutMs: 60_000 }, "stt-url");
+    const j = (await res.json()) as { transcription_id?: string | null; text?: string; words?: [] };
+    if (j.transcription_id) return { id: j.transcription_id };
+    if (j.words || j.text) return { heard: heardOf(j) };
+  } catch (e) {
+    // no speech-to-text webhook in the account: the same request, waited for
+    if (!(e instanceof ProviderError) || !/webhook/i.test(e.detail)) throw e;
+  }
+  const res = await call("/v1/speech-to-text", { method: "POST", body: form(false), timeoutMs: 290_000 }, "stt-url");
+  return { heard: heardOf(await res.json()) };
+}
+
+/** A background transcription: the result, or null while ElevenLabs is still working on it. */
+export async function elevenTranscript(id: string): Promise<Heard | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/v1/speech-to-text/transcripts/${encodeURIComponent(id)}`, { headers: { "xi-api-key": apiKey() }, signal: AbortSignal.timeout(60_000) });
+  } catch {
+    return null;
+  }
+  if ([404, 409, 425, 202].includes(res.status)) return null;
+  if (!res.ok) await fail(res, "stt-get");
+  const j = (await res.json()) as Parameters<typeof heardOf>[0] & { status?: string };
+  if (j.status && !/complete|done|success/i.test(j.status)) return null;
+  return j.words || j.text ? heardOf(j) : null;
+}
+
 /** Forced alignment: the exact text the person gives (a poem), timed word by word on the recording. */
 export async function elevenAlign(o: { file: Blob; name: string; text: string }) {
   const form = new FormData();
