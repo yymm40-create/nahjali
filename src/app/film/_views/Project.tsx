@@ -1,3 +1,4 @@
+import { credits } from "@/lib/film/credits";
 import RewindCard from "../[id]/RewindCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -79,7 +80,7 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
 
       <section className="card space-y-2 p-4">
         <h2 className="text-lg font-extrabold">تكلفة المشروع إلى الآن</h2>
-        <p className="display text-3xl" dir="ltr">${cost.total.toFixed(2)}</p>
+        <p className="display text-3xl">{credits(cost.total)}</p>
         <p className="text-sm font-bold text-muted">كل عملية توليد تنحسب هنا بتكلفتها الفعلية، والعمليات اللي تفشل ما تنحسب.</p>
       </section>
     </div>

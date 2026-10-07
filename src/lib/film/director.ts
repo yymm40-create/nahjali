@@ -682,6 +682,8 @@ export async function runDirectorReply(projectId: string, jobId: string) {
         duration_sec: isGen ? r.duration_sec : undefined,
         ratio: isGen ? r.ratio || "16:9" : undefined,
         generate_audio: isGen ? r.generate_audio : undefined,
+        // what this reply cost (shown on its card, in coins)
+        cost_usd: claudeCost(result.usage),
       },
       // A note (e.g. "the generation set is complete") needs no approval
       status: kind === "dir_note" ? "approved" : "awaiting_approval",

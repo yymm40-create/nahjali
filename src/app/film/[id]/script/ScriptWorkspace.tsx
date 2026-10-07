@@ -1,5 +1,6 @@
 "use client";
 
+import { credits, creditsRange } from "@/lib/film/credits";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useTransition } from "react";
@@ -23,7 +24,7 @@ interface Props {
   editsLeft: number | null;
 }
 
-const COST_HINT = "كل رد من السيناريست يكلف تقريبًا من $0.05 إلى $0.60";
+const COST_HINT = `كل رد من السيناريست ${creditsRange(0.05, 0.6)}`;
 
 const chipClass = (s: string) =>
   s === "approved" ? "bg-teal text-white" : s === "awaiting_approval" ? "bg-gold text-on-gold" : "";
@@ -126,6 +127,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
               </h2>
               <div className="flex gap-1">
                 {v.stale && <span className="chip bg-red-500 text-white">قد تكون قديمة</span>}
+                {typeof (v.data as { cost_usd?: unknown }).cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد">{credits((v.data as { cost_usd: number }).cost_usd)}</span>}
                 <span className={`chip ${chipClass(v.status)}`}>
                   {v.kind === "questions" && v.status === "approved" ? "تمت الإجابة" : STATUS_LABELS[v.status]}
                 </span>

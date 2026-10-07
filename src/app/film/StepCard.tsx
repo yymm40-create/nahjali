@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Markdown from "@/components/Markdown";
 import ActionBar, { type SendMode } from "./ActionBar";
 import { STATUS_LABELS } from "@config/film";
+import { credits } from "@/lib/film/credits";
 
 export const statusChip = (s: string) =>
   s === "approved" ? "bg-teal text-white" : s === "awaiting_approval" || s === "generated" ? "bg-gold text-on-gold" : s === "failed" ? "bg-red-500 text-white" : "";
@@ -13,7 +14,7 @@ export interface StepVersion {
   version: number;
   status: string;
   body: string;
-  data: { notes?: string; suggestion?: string };
+  data: { notes?: string; suggestion?: string; cost_usd?: number };
 }
 
 /**
@@ -51,7 +52,10 @@ export default function StepCard({
     <article className={`card space-y-3 p-5 ${pending ? "border-2 border-gold" : ""}`}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-extrabold">{title} <span className="text-sm text-muted">· النسخة {v.version}</span></h2>
-        <span className={`chip ${statusChip(v.status)}`}>{STATUS_LABELS[v.status]}</span>
+        <span className="flex items-center gap-1.5">
+          {typeof v.data.cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد">{credits(v.data.cost_usd)}</span>}
+          <span className={`chip ${statusChip(v.status)}`}>{STATUS_LABELS[v.status]}</span>
+        </span>
       </header>
       {!hideBody && (
         <details open={pending || current}>

@@ -1,3 +1,4 @@
+import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
@@ -35,8 +36,8 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">🎨 صانع الشيت</h1>
         <p className="text-sm font-bold text-muted">
-          الفهم وخريطة الشيتات ← أسئلة التصميم ← اختبار الستايل ← الماستر ← شيت لكل شخصية ومكان، وبعدها ينتقل تلقائيًا للمخرج.
-          النصوص <span dir="ltr">${(cost.byService.anthropic ?? 0).toFixed(2)}</span> · الصور <span dir="ltr">${(cost.byService.openai_image ?? 0).toFixed(2)}</span>
+          خريطة الشيتات ← أسئلة التصميم ← اختبار الستايل ← الماستر (الستايل والألوان فقط) ← شيت لكل شخصية ومكان، وبعدها ينتقل تلقائيًا للمخرج.
+          النصوص <span>{credits(cost.byService.anthropic ?? 0)}</span> · الصور <span>{credits(cost.byService.openai_image ?? 0)}</span>
         </p>
       </header>
       <SheetsWorkspace

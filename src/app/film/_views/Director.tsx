@@ -1,3 +1,4 @@
+import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
@@ -39,7 +40,7 @@ export default async function DirectorView({ id, base }: { id: string; base: str
         <h1 className="display text-4xl">🎥 المخرج السينمائي</h1>
         <p className="text-sm font-bold text-muted">
           الفهم ← أسئلة الإخراج ← خريطة التوليدات ← تحليل وبرومبت لكل توليد، والاعتماد يولّد الفيديو.
-          النصوص <span dir="ltr">${(cost.byService.anthropic ?? 0).toFixed(2)}</span> · الفيديو <span dir="ltr">${(cost.byService.seedance ?? 0).toFixed(2)}</span>
+          النصوص <span>{credits(cost.byService.anthropic ?? 0)}</span> · الفيديو <span>{credits(cost.byService.seedance ?? 0)}</span>
         </p>
       </header>
       <DirectorWorkspace

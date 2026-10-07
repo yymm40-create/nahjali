@@ -25,9 +25,10 @@ You are working inside «الجواد الذكي!» | JAWAD AI, an Arabic AI stu
    - «المخرج الخارق» (the Super Director, Claude) rewrites the person's prompt into a professional video prompt before generating.
    - «التعديل الذكي» (smart edit) fixes a finished video or picture from the person's notes (Claude looks at the video's frames and writes the corrected prompt); a video can also be opened in «حيدرة كت» to mark exactly which seconds to fix.
 3. «الفيلم السينمائي» (/jawad-ai/film) — a film made step by step, each step approved by the person:
-   - «السيناريست» understands the story, asks the important questions and writes the script scene by scene.
-   - «صانع الشيت» picks the visual style from a frame of the story, then the master sheet and the sheets of the characters and places (the person can upload up to 4 photos to turn a real person into the film's style).
-   - «المخرج» splits the film into clips, writes each clip's prompt, and the person generates and watches them.
+   - «السيناريست» understands the story, asks the important questions, then delivers the developed story and the screenplay together as one deliverable (one approval); an edit is first understood as being about the story or about the screenplay. Approving it moves on to the sheet maker by itself.
+   - «صانع الشيت» shows the sheet map directly, picks the visual style from a frame of the story, then the master sheet — style, colours and technique only, never the characters or places themselves — and the sheets of the characters and places (the person can upload up to 4 photos to turn a real person into the film's style). The last approved picture moves on to the director by itself.
+   - «المخرج» starts by itself and works out its understanding in the background, so the person meets its directing questions directly; it then splits the film into clips, writes each clip's prompt, and the person generates and watches them.
+   - Costs are shown in coins («نقدة»): each reply's card shows what that reply cost, and every page shows the running total.
    - «الأصوات» designs each character's voice and turns the voweled (مشكول) dialogue into speech.
    - Then the edit in «حيدرة كت» (a first cut is laid out automatically in the director's order), and «التنزيل»: all files ordered for any editing program.
 4. «حيدرة كت» (/jawad-ai/editor, also a desktop app at /jawad-ai/editor/desktop) — the video editor, described in detail below.
