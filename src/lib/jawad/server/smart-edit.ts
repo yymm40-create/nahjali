@@ -317,6 +317,24 @@ function imagePromptProblems(prompt: string, names: string[], mode: EditMode) {
 }
 
 /**
+ * The generator's shortest clip is longer than what the person marked (e.g. 2 s marked, 4 s made): which seconds are
+ * the change and which only carry the same moment on, so the whole clip is filled with the same idea.
+ */
+function partFill(edit: EditInputs) {
+  const r = edit.ranges[0];
+  if (!r || !edit.cut) return "";
+  const marked = r.to - r.from;
+  if (edit.cut.seconds - marked < 0.5) return "";
+  const before = Math.max(0, r.from - edit.cut.start);
+  const after = Math.max(0, edit.cut.end - r.to);
+  return `\n\nTIMING — the generator's shortest clip is ${edit.cut.seconds} s, longer than the ${marked.toFixed(1)} s the user marked. Fill the whole ${edit.cut.seconds} s with ONE continuous moment of the same idea:
+- 0.0–${before.toFixed(1)} s of the new clip (= ${edit.cut.start.toFixed(1)}–${r.from.toFixed(1)} s of the original): the same action, pace and camera as in the original at those seconds, flowing out of the first frame.
+- ${before.toFixed(1)}–${(before + marked).toFixed(1)} s (= the marked ${r.from.toFixed(1)}–${r.to.toFixed(1)} s): the part the user wants different, written as simply how it happens.
+- ${(before + marked).toFixed(1)}–${edit.cut.seconds.toFixed(1)} s (= ${r.to.toFixed(1)}–${edit.cut.end.toFixed(1)} s of the original, ${after.toFixed(1)} s): the same action carries on as in the original and lands exactly on the last frame.
+Describe it as one natural, unhurried beat at the original's speed: no added events, no slow-motion or frozen padding, no new cuts.`;
+}
+
+/**
  * Before an edit job is sent: Claude writes the corrected prompt from the user's notes, the previous prompt and what
  * was really made. Videos use the Super Director with the editing task; images a focused prompt writer.
  */
@@ -344,7 +362,7 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
       const s = job.inputs.settings;
       const task =
         edit.mode === "parts"
-          ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip that starts exactly at @${names[0]} (the original frame at ${edit.cut!.start.toFixed(1)} s) and ends exactly at @${names[1]} (the original frame at ${edit.cut!.end.toFixed(1)} s).`
+          ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip that starts exactly at @${names[0]} (the original frame at ${edit.cut!.start.toFixed(1)} s) and ends exactly at @${names[1]} (the original frame at ${edit.cut!.end.toFixed(1)} s).${partFill(edit)}`
           : "Mode: the WHOLE clip is made again as a fresh generation, with the same settings and references (the old video is not sent to the generator).";
       const parts: ClaudePart[] = [
         { type: "text", text: settingsText(def, s, job.mode, meta) },
