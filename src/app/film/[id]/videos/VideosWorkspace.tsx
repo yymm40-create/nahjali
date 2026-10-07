@@ -1,5 +1,6 @@
 "use client";
 
+import VoiceDesigner from "../../VoiceDesigner";
 import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -584,6 +585,7 @@ export default function VideosWorkspace({
                       {voice.voices.some((v) => v.group === "mine") && <optgroup label="أصواتي">{voice.voices.filter((v) => v.group === "mine").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>}
                       <optgroup label="أصوات ElevenLabs الجاهزة">{voice.voices.filter((v) => v.group === "ready").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>
                     </select>
+                    <VoiceDesigner projectId={projectId} speaker={sp} disabled={Boolean(speaking)} onCast={async (value) => { await castVoice(sp, value); setVoice(await api<VoiceState>(voicesUrl)); }} />
                   </div>
                 ))}
                 <ol className="space-y-1">
@@ -608,14 +610,14 @@ export default function VideosWorkspace({
                     );
                   })}
                 </ol>
-                {voice && !allSpoken(g) && (
+                {voice && (
                   <button
                     type="button"
-                    className="btn btn-primary min-h-10 w-full text-sm"
+                    className={`btn min-h-10 w-full text-sm ${allSpoken(g) ? "btn-ghost" : "btn-primary"}`}
                     disabled={Boolean(speaking) || g.lines.some((l) => !voice.cast[l.speaker])}
-                    onClick={() => speakLines(g.lines.filter((l) => !spokenOf(g, l.key)).map((l) => l.key))}
+                    onClick={() => speakLines(allSpoken(g) ? g.lines.map((l) => l.key) : g.lines.filter((l) => !spokenOf(g, l.key)).map((l) => l.key))}
                   >
-                    {speaking ? "يولّد الأصوات…" : `🎙️ ولّد أصوات هذا المقطع (${g.lines.filter((l) => !spokenOf(g, l.key)).length})`}
+                    {speaking ? "يولّد الأصوات…" : allSpoken(g) ? `🔁 ولّد أصوات هذا المقطع كلها من جديد (${g.lines.length})` : `🎙️ ولّد أصوات هذا المقطع (${g.lines.filter((l) => !spokenOf(g, l.key)).length})`}
                   </button>
                 )}
                 {!voice && !voiceError && <Spinner />}

@@ -174,3 +174,43 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
     throw new UserError(voiceFailure(e, user.email), 502);
   }
 }
+
+const DESCRIBE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["description", "sample"],
+  properties: {
+    description: { type: "string", description: "The voice, in English, 120–600 characters, for ElevenLabs voice design." },
+    sample: { type: "string", description: "A sample text in Arabic said by this character, 120–400 characters (the speaker's own lines when long enough)." },
+  },
+} as const;
+
+/**
+ * «✨ صوت جديد بالوصف»: the AI writes the voice of one speaker from the film (who they are in the sheets and the
+ * screenplay, and how they speak in their lines), as ElevenLabs' voice design reads it best. The person can edit it.
+ */
+export async function describeVoice(project: FilmProject, speaker: unknown, hint: unknown) {
+  const s = typeof speaker === "string" ? speaker.trim().slice(0, 80) : "";
+  const lines = (await voiceLines(project.id)).filter((l) => l.speaker === s);
+  if (!lines.length) throw new UserError("هذه الشخصية ليست في جمل الفيلم.", 400);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("الذكاء الاصطناعي غير مفعّل على الخادم.", 503);
+  const { data: vs } = await db().from("film_versions").select("kind,status,body").eq("project_id", project.id).in("kind", ["sheet_understanding", "screenplay"]).order("version", { ascending: true });
+  const rows = (vs ?? []) as { kind: string; status: string; body: string }[];
+  const last = (k: string) => (rows.filter((r) => r.kind === k && r.status === "approved").at(-1) ?? rows.filter((r) => r.kind === k).at(-1))?.body ?? "";
+  const wish = typeof hint === "string" ? hint.trim().slice(0, 600) : "";
+  const { callClaudeJson } = await import("./anthropic");
+  const r = await callClaudeJson<{ description: string; sample: string }>({
+    system:
+      "You write a voice for ElevenLabs voice design, for one character of an Arabic film. From what the film says about the character (age, gender, build, personality, role, mood) and how they speak in their lines, describe the voice in English in 120–600 characters: gender, age, accent (Gulf/Khaleeji Arabic unless the film says otherwise), pitch, texture, pace, energy and emotion, recording quality (clean, close, studio). Concrete, no names of real people. Follow the person's wish when given. Also give an Arabic sample text of 120–400 characters in the character's own voice (their lines joined if long enough, else in the same spirit).",
+    turns: [{ role: "user", content: `CHARACTER: ${s}\n\nTHEIR LINES:\n${lines.map((l) => `- ${l.line}`).join("\n")}\n\nTHE FILM'S CHARACTERS (sheets):\n${last("sheet_understanding").slice(0, 6000)}\n\nSCREENPLAY:\n${last("screenplay").slice(0, 8000)}${wish ? `\n\nTHE PERSON'S WISH FOR THIS VOICE:\n${wish}` : ""}` }],
+    schema: DESCRIBE_SCHEMA,
+    maxTokens: 2000,
+    effort: "low",
+    fallback: true,
+  }).catch((e) => {
+    console.error("film describe voice", e);
+    throw new UserError("ما قدر الذكاء الاصطناعي يكتب الوصف الحين؛ اكتبه بنفسك أو جرّب بعد شوي.", 502);
+  });
+  const pad = (t: string) => (t.length >= 100 ? t : `${t} ${lines.map((l) => l.line).join(" ")}`.slice(0, 1000));
+  return { description: r.data.description.trim().slice(0, 1000), sample: pad(r.data.sample.trim()).slice(0, 1000) };
+}
