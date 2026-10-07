@@ -19,6 +19,8 @@ export interface Project {
   research_version: number;
   allow_additions: boolean | null;
   web_search: boolean | null;
+  /** the first page's answers (config/jawad/student readBrief); absent until SQL 0035 runs */
+  brief?: unknown;
   last_activity_at: string;
   created_at: string;
 }

@@ -1,6 +1,7 @@
 // «الطالب الذكي» — what every output is built on: the approved text, the approved understanding, the approved research
 // (if the student asked for it) and the two source rules. Server only.
 
+import { briefLine, readBrief } from "@config/jawad/student";
 import { getProject, versionOf, type Output, type Project, type TextVersion } from "./db";
 import type { Research } from "./research";
 import type { Understanding } from "./understand";
@@ -59,4 +60,4 @@ export const understandingText = (c: Ctx) =>
   `Topic: ${c.understanding.topic}\nKind: ${c.understanding.materialType}\nOverview: ${c.understanding.overview}\nSections:\n${c.understanding.sections.map((s) => `- ${s.title}: ${s.about} [segments: ${s.segments.join(", ")}]`).join("\n")}`;
 
 export const levelLine = (c: Ctx, o: Output) =>
-  `Student level: ${c.project.level || "unspecified"}. Audience: ${String(o.settings.audience ?? "") || c.project.audience || "the student"}.`;
+  `Student level: ${c.project.level || "unspecified"}. Audience: ${String(o.settings.audience ?? "") || c.project.audience || "the student"}. ${briefLine(readBrief(c.project.brief))}`;

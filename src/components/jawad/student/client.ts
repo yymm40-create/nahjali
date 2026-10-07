@@ -3,7 +3,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Design } from "@config/jawad/student";
+import type { Brief, Design } from "@config/jawad/student";
 
 export interface JobView {
   id: string;
@@ -80,8 +80,11 @@ export interface ProjectState {
     research_version: number;
     allow_additions: boolean | null;
     web_search: boolean | null;
+    brief: Brief;
     expiresAt: string;
   };
+  /** coins for one page / slide drawn by GPT Image 2 (free: nothing is charged) */
+  prices: { free: boolean; page: { high: number; medium: number }; slide: { high: number; medium: number } };
   sources: { id: string; ord: number; kind: "text" | "image" | "pdf"; name: string; mime: string; bytes: number; pages: number; pagesDone: number; status: string; body: string | null }[];
   segments: SegmentView[];
   coverage: { missing: string[]; duplicate: string[]; total: number; approved: number; complete: boolean };

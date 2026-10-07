@@ -8,6 +8,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { autoSettings } from "@/lib/jawad/student/defaults";
 import { newKey, post, type OutputView, type ProjectState } from "./client";
 
+/** Written outputs that can also be drawn as pages by GPT Image 2 (lib/jawad/student/pictures.ts). */
+export const PICTURE_KINDS: string[] = ["summary", "explain", "transcript", "book", "quiz"];
+
 export interface AutoAction {
   label: string;
   run: () => Promise<unknown>;
@@ -46,11 +49,20 @@ export function nextAuto(s: ProjectState): AutoAction | null {
       // the assistant's choice: explanations and examples allowed (marked as additions), no paid web search
       return { label: "تحديد حدود المصدر", run: () => projectAct({ action: "scope", allowAdditions: true, webSearch: false }) };
     case "outputs": {
-      // nothing chosen yet: the assistant picks a summary and a quiz
-      if (!s.outputs.length) return { label: "اختيار النواتج", run: () => projectAct({ action: "outputs_add", kinds: ["summary", "quiz"] }) };
+      // nothing chosen yet: the student chooses (the outputs page)
+      if (!s.outputs.length) return null;
       for (const o of [...s.outputs].sort((a, b) => a.ord - b.ord)) {
+        // pages drawn by GPT Image 2, when that was the student's choice: after the written output is done
+        const draw = String(o.settings.pictures ?? "");
+        if (o.status === "done" && (draw === "high" || draw === "medium") && PICTURE_KINDS.includes(o.kind) && !o.files.includes("pictures_pdf")) {
+          return { label: `${o.title}: رسم الصفحات بـ GPT Image 2`, run: () => outPaid(o.id, { action: "pictures", quality: draw }) };
+        }
         if (o.status === "done" || o.status === "waiting") continue;
-        if (o.status === "failed") return null;
+        // a failed output is tried again from where it stopped (twice at most: see the repeat guard below)
+        if (o.status === "failed") {
+          if (o.kind === "transcript" || (o.plan && o.planApproved)) return { label: `${o.title}: إعادة التصنيع`, run: () => outPaid(o.id, { action: "final" }) };
+          return { label: `${o.title}: إعادة إعداد الخطة`, run: () => outPaid(o.id, { action: "plan" }) };
+        }
         if (["planning", "running", "trial_running"].includes(o.status)) return null;
         if (o.kind === "transcript") {
           if (o.status === "settings") return { label: `${o.title}: إنشاء`, run: () => outPaid(o.id, { action: "final" }) };
@@ -72,10 +84,11 @@ export function nextAuto(s: ProjectState): AutoAction | null {
 
 /**
  * Runs the next action whenever nothing is running. `scope`: "step" stops when the project leaves the stage it started
- * in; "all" goes on to the end. Stops by itself on any error, or when the student is needed.
+ * in; "material" reads what was added and understands it, then stops for the student to approve the understanding;
+ * "all" goes on to the end. Stops by itself on any error, or when the student is needed.
  */
 export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => Promise<void>) {
-  const [mode, setMode] = useState<null | { scope: "step" | "all"; stage: string }>(null);
+  const [mode, setMode] = useState<null | { scope: "step" | "material" | "all"; stage: string }>(null);
   const [doing, setDoing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const acting = useRef(false);
@@ -88,7 +101,7 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
     setDoing(null);
   }, []);
   const start = useCallback(
-    (scope: "step" | "all") => {
+    (scope: "step" | "material" | "all") => {
       setError(null);
       last.current = { label: "", n: 0 };
       setMode({ scope, stage: state.project.stage });
@@ -105,6 +118,11 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
       return;
     }
     const next = nextAuto(state);
+    // «المادة»: up to the understanding, which the student approves
+    if (mode.scope === "material" && next && (!["sources", "review", "understanding"].includes(state.project.stage) || next.label === "اعتماد الفهم")) {
+      stop();
+      return;
+    }
     if (!next) {
       // say why it stopped (a child would think the button did nothing)
       const failed = state.outputs.find((o) => o.status === "failed");
