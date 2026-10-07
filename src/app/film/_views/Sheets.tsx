@@ -8,6 +8,7 @@ import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
 import { FILM_STYLES } from "@config/film-styles";
 import SheetsWorkspace from "../[id]/sheets/SheetsWorkspace";
+import { castLinks, castOf } from "@/lib/film/series-cast";
 
 
 import { storage } from "@/lib/storage";
@@ -24,6 +25,9 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
     runningImageJobs(id),
     projectCost(id),
   ]);
+  // a series' scene: its series' ready characters, places and style, to take as they are on the map
+  const series = project.series_id ? (await castOf(project.series_id)).filter((c) => c.status === "ready") : [];
+  const seriesLinks = series.length ? await castLinks(series) : {};
   // Short-lived links: every picture stays private
   const paths = assets.filter((a) => a.storage_path).map((a) => a.storage_path!);
   const signed = paths.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(paths, 3600)).data ?? []) : [];
@@ -48,6 +52,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         assets={assets.map((a) => ({ id: a.id, kind: a.kind, ref_key: a.ref_key, status: a.status, error: a.error, meta: a.meta, url: a.storage_path ? (url[a.storage_path] ?? "") : "", created_at: a.created_at, version_id: a.version_id ?? null }))}
         job={job ? { status: job.status, error: job.error } : null}
         imagesRunning={imageJobs.length}
+        seriesCast={series.map((c) => ({ id: c.id, kind: c.kind, name: c.name, url: seriesLinks[c.id] ?? "" }))}
         styles={FILM_STYLES.map(({ id, group, name, description, feel, bestFor }) => ({ id, group, name, description, feel, bestFor }))}
       />
     </div>

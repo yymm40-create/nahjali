@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { useFilmBase } from "../FilmBase";
+import ScenePrep from "./ScenePrep";
 
-type Scene = { id: string; title: string; number: number; stage: string; icon: string; stageLabel: string; saved: boolean };
+type Scene = { id: string; title: string; number: number; stage: string; icon: string; stageLabel: string; saved: boolean; assignedTo: string | null; prepared: boolean };
+type Mate = { userId: string; username: string | null; leader: boolean };
 type Episode = { id: string; number: number; title: string; scenes: Scene[] };
 
 /**
@@ -14,7 +16,7 @@ type Episode = { id: string; number: number; title: string; scenes: Scene[] };
  * cards below (order with ↑ ↓), and «ركّب الحلقة»: the scenes' saved montages in order in «حيدرة كت», where حيدرة adds
  * the sound effects and music.
  */
-export default function SeriesBoard({ seriesId, owner, episodes }: { seriesId: string; owner: boolean; episodes: Episode[] }) {
+export default function SeriesBoard({ seriesId, owner, canAssign, team, episodes }: { seriesId: string; owner: boolean; canAssign: boolean; team: Mate[]; episodes: Episode[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -33,10 +35,10 @@ export default function SeriesBoard({ seriesId, owner, episodes }: { seriesId: s
   return (
     <div className="space-y-6">
       {episodes.map((ep) => (
-        <EpisodeBlock key={ep.id} seriesId={seriesId} ep={ep} busy={busy} send={send} />
+        <EpisodeBlock key={ep.id} seriesId={seriesId} ep={ep} busy={busy} send={send} canAssign={canAssign} team={team} />
       ))}
       {error && <p className="error-box">{error}</p>}
-      {owner && (
+      {(owner || canAssign) && (
         <button type="button" className="btn btn-secondary w-full" disabled={busy} onClick={() => send({ action: "add_episode" })}>
           ➕ حلقة جديدة (الحلقة {(episodes.at(-1)?.number ?? 0) + 1})
         </button>
@@ -45,27 +47,15 @@ export default function SeriesBoard({ seriesId, owner, episodes }: { seriesId: s
   );
 }
 
-function EpisodeBlock({ seriesId, ep, busy, send }: { seriesId: string; ep: Episode; busy: boolean; send: (b: Record<string, unknown>) => Promise<void> }) {
+function EpisodeBlock({ seriesId, ep, busy, send, canAssign, team }: { seriesId: string; ep: Episode; busy: boolean; send: (b: Record<string, unknown>) => Promise<void>; canAssign: boolean; team: Mate[] }) {
   const router = useRouter();
   const base = useFilmBase();
-  const [adding, setAdding] = useState(false);
-  const [title, setTitle] = useState("");
-  const [story, setStory] = useState("");
+  // «+» (a new scene) or a scene of the plan, prepared with سجاد
+  const [prep, setPrep] = useState<{ sceneId?: string; title?: string } | null>(null);
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
   const saved = ep.scenes.filter((s) => s.saved).length;
-
-  const addScene = async () => {
-    setWorking("scene");
-    setError("");
-    try {
-      const { id } = await postJson<{ id: string }>(`/api/film/series/${seriesId}`, { action: "add_scene", episodeId: ep.id, title, story });
-      router.push(`${base}/${id}`);
-    } catch (e) {
-      setError((e as Error).message);
-      setWorking("");
-    }
-  };
+  const nameOf = (id: string | null) => (id ? (team.find((m) => m.userId === id)?.username ?? "؟") : null);
   const assemble = async () => {
     setWorking("assemble");
     setError("");
@@ -109,23 +99,13 @@ function EpisodeBlock({ seriesId, ep, busy, send }: { seriesId: string; ep: Epis
           </li>
         ))}
         <li className="shrink-0">
-          <button type="button" className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-dashed border-[#1f63f0] text-2xl font-extrabold text-[#1f63f0]" onClick={() => setAdding(true)} aria-label="أضف مشهد">
+          <button type="button" className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-dashed border-[#1f63f0] text-2xl font-extrabold text-[#1f63f0]" onClick={() => setPrep({})} aria-label="أضف مشهد">
             +
           </button>
         </li>
       </ol>
 
-      {adding && (
-        <div className="space-y-2 rounded-2xl border-2 border-gold p-3">
-          <p className="font-extrabold">مشهد جديد (المشهد {(ep.scenes.at(-1)?.number ?? 0) + 1})</p>
-          <input className="field" placeholder="عنوان المشهد" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-          <textarea className="field min-h-24 text-sm" placeholder="وش يصير في هذا المشهد؟ (السيناريست يبدأ منه، ويعرف عن المسلسل كله)" maxLength={20000} value={story} onChange={(e) => setStory(e.target.value)} />
-          <div className="flex gap-2">
-            <button type="button" className="btn btn-primary min-h-11 flex-1" disabled={!!working || busy} onClick={addScene}>{working === "scene" ? "نجهّز…" : "أنشئ المشهد وابدأ ✍️"}</button>
-            <button type="button" className="btn btn-ghost min-h-11" onClick={() => setAdding(false)}>إلغاء</button>
-          </div>
-        </div>
-      )}
+      {prep && <ScenePrep key={prep.sceneId ?? "new"} seriesId={seriesId} episodeId={ep.id} sceneId={prep.sceneId} initialTitle={prep.title} canAddCast={canAssign} onClose={() => setPrep(null)} />}
 
       {ep.scenes.length > 0 ? (
         <div className="grid gap-2 sm:grid-cols-2">
@@ -135,7 +115,21 @@ function EpisodeBlock({ seriesId, ep, busy, send }: { seriesId: string; ep: Epis
               <Link href={`${base}/${s.id}`} className="min-w-0 flex-1">
                 <p className="truncate font-extrabold">{s.number}. {s.title}</p>
                 <p className="text-xs font-bold text-muted">{s.saved ? "🏆 المشهد الناجح محفوظ" : `في مرحلة: ${s.stageLabel}`}</p>
+                {nameOf(s.assignedTo) && !canAssign && <p className="text-xs font-extrabold text-[#1f63f0]">👤 <bdi dir="ltr">@{nameOf(s.assignedTo)}</bdi></p>}
               </Link>
+              {canAssign && team.length > 0 && (
+                <select className="field !h-9 !w-28 !px-2 !py-0 text-xs" value={s.assignedTo ?? ""} aria-label="مين يسويه" disabled={busy} onChange={(e) => send({ action: "assign_scene", sceneId: s.id, userId: e.target.value })}>
+                  <option value="">👤 لأحد؟</option>
+                  {team.map((m) => (
+                    <option key={m.userId} value={m.userId}>@{m.username ?? "؟"}{m.leader ? " (القائد)" : ""}</option>
+                  ))}
+                </select>
+              )}
+              {!s.prepared && s.stage === "screenwriter" && (
+                <button type="button" className="rounded-full bg-[#e2a72c]/25 px-2 py-1 text-[11px] font-extrabold" onClick={() => setPrep({ sceneId: s.id, title: s.title })} title="سجاد يفهم المشهد ويحدد شخصياته وبيئاته">
+                  🧑‍🏫 جهّزه
+                </button>
+              )}
               <span className="flex flex-col">
                 <button type="button" className="px-2 text-sm disabled:opacity-30" disabled={busy || i === 0} onClick={() => send({ action: "move_scene", sceneId: s.id, by: -1 })} aria-label="قدّمه">▲</button>
                 <button type="button" className="px-2 text-sm disabled:opacity-30" disabled={busy || i === ep.scenes.length - 1} onClick={() => send({ action: "move_scene", sceneId: s.id, by: 1 })} aria-label="أخّره">▼</button>

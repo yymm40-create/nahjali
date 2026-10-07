@@ -26,8 +26,20 @@ export interface FilmSeries {
   title: string;
   about: string;
   mode: SeriesMode;
+  /** the description developed with سجاد (migration 0034) */
+  bible?: string;
+  /** the series' look, in words */
+  style?: string;
+  /** a plan سجاد proposed, waiting for «طبّق الخطة» */
+  pending_plan?: SeriesPlan | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Episodes with their scenes and who does each (by @username), as سجاد proposes them. */
+export interface SeriesPlan {
+  note: string;
+  episodes: { number: number; title: string; summary: string; scenes: { title: string; brief: string; assignee: string }[] }[];
 }
 
 export interface FilmEpisode {
@@ -46,6 +58,10 @@ export interface SceneSummary {
   /** its montage is saved as «المشهد الناجح» (it goes into the episode) */
   saved: boolean;
   updatedAt: string;
+  /** who on the team it is given to */
+  assignedTo: string | null;
+  /** سجاد prepared it (its characters and places from the series) */
+  prepared: boolean;
 }
 
 /** The series this person may open: their own, and those they were added to (team mode only). */
@@ -103,8 +119,8 @@ export async function episodesOf(seriesId: string) {
 
 /** Each episode's scenes in order, with their step and whether their montage is saved. */
 export async function scenesOf(seriesId: string): Promise<Map<string, SceneSummary[]>> {
-  const { data } = await db().from("film_projects").select("id,title,stage,scene_number,episode_id,updated_at").eq("series_id", seriesId).order("scene_number", { ascending: true });
-  const rows = (data ?? []) as { id: string; title: string; stage: FilmProject["stage"]; scene_number: number | null; episode_id: string | null; updated_at: string }[];
+  const { data } = await db().from("film_projects").select("*").eq("series_id", seriesId).order("scene_number", { ascending: true });
+  const rows = (data ?? []) as { id: string; title: string; stage: FilmProject["stage"]; scene_number: number | null; episode_id: string | null; updated_at: string; assigned_to?: string | null; series_cast?: unknown }[];
   const saved = new Set<string>();
   if (rows.length) {
     const { data: sc } = await db().from("film_assets").select("project_id").in("project_id", rows.map((r) => r.id)).eq("kind", "video").eq("ref_key", "SCENE").eq("status", "approved");
@@ -114,7 +130,7 @@ export async function scenesOf(seriesId: string): Promise<Map<string, SceneSumma
   for (const r of rows) {
     if (!r.episode_id) continue;
     const list = out.get(r.episode_id) ?? [];
-    list.push({ id: r.id, title: r.title, number: r.scene_number ?? list.length + 1, stage: r.stage, saved: saved.has(r.id), updatedAt: r.updated_at });
+    list.push({ id: r.id, title: r.title, number: r.scene_number ?? list.length + 1, stage: r.stage, saved: saved.has(r.id), updatedAt: r.updated_at, assignedTo: r.assigned_to ?? null, prepared: !!r.series_cast });
     out.set(r.episode_id, list);
   }
   return out;
@@ -273,6 +289,23 @@ export async function removeMember(series: FilmSeries, userId: unknown) {
 /** A member leaves a team they were added to. */
 export async function leaveSeries(series: FilmSeries, userId: string) {
   await db().from("film_series_members").delete().eq("series_id", series.id).eq("user_id", userId);
+}
+
+/** Whether this person may change the series' description, look, characters, places and plan: its owner, or a member the owner gave «📖». */
+export async function canEditBible(series: Pick<FilmSeries, "id" | "user_id">, userId: string) {
+  if (series.user_id === userId) return true;
+  const { data } = await db().from("film_series_members").select("stages").eq("series_id", series.id).eq("user_id", userId).maybeSingle();
+  if (!data) return false;
+  return !Array.isArray(data.stages) || (data.stages as string[]).includes("bible");
+}
+
+/** Gives a scene to someone on the team (its leader or a member), or to nobody. */
+export async function setSceneAssignee(series: FilmSeries, sceneId: unknown, userId: unknown) {
+  const who = typeof userId === "string" && userId ? userId : null;
+  if (who && who !== series.user_id && !(await membersOf(series.id)).some((m) => m.userId === who)) throw new UserError("هذا الشخص مو في الفريق.", 400);
+  const { data, error } = await db().from("film_projects").update({ assigned_to: who }).eq("id", String(sceneId)).eq("series_id", series.id).select("id");
+  if (error) throw new UserError("توزيع المشاهد يحتاج تجهيز قاعدة البيانات أول (ملف 0034).", 503);
+  if (!data?.length) throw new UserError("ما لقينا المشهد.", 404);
 }
 
 export async function requireEpisode(series: FilmSeries, episodeId: unknown) {

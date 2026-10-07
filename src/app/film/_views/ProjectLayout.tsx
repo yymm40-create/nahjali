@@ -6,6 +6,7 @@ import { teamCoinBalance } from "@/lib/coins";
 import { memberRights } from "@/lib/film/team";
 import { rightsText } from "@/lib/film/team-rights";
 import FilmNav from "../[id]/FilmNav";
+import SajjadPanel from "../SajjadPanel";
 
 /** Every page of a film project shows the sections bar on top. */
 export default async function ProjectLayoutView({ id, base, children }: { id: string; base: string; children: React.ReactNode }) {
@@ -52,6 +53,8 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
       )}
       <FilmNav projectId={id} stage={project.stage} videosOpen={Boolean(count)} />
       {children}
+      {/* سجاد: the consultant, who knows this film (and its series) */}
+      <SajjadPanel kind="film" id={id} />
     </div>
   );
 }

@@ -86,6 +86,7 @@ export async function teamPayment(projectId: string, actorId: string, operation:
   if (!series) return null;
   const stage = OPERATION_STAGE[operation];
   if (stage) await assertTeamStage(data as Pick<FilmProject, "user_id" | "series_id">, actorId, stage);
-  const took = await takeAttempt(series.id, series.ownerId, actorId);
+  // asking سجاد is not an attempt (attempts are what gets made)
+  const took = operation === "sajjad" ? false : await takeAttempt(series.id, series.ownerId, actorId);
   return { ...series, took };
 }

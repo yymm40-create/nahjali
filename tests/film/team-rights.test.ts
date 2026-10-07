@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { isTeamStage, rightsText, TEAM_STAGES } from "@/lib/film/team-rights";
 
 describe("«المسلسل الذكي»: a team member's rights", () => {
-  it("knows its four steps", () => {
-    expect(TEAM_STAGES.map((s) => s.key)).toEqual(["screenwriter", "sheets", "director", "montage"]);
+  it("knows its five steps", () => {
+    expect(TEAM_STAGES.map((s) => s.key)).toEqual(["bible", "screenwriter", "sheets", "director", "montage"]);
     expect(isTeamStage("sheets")).toBe(true);
     expect(isTeamStage("voices")).toBe(false);
   });
