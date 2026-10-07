@@ -11,7 +11,8 @@ import { makeHookAsset, makeMusicAsset, makeSfxAsset } from "./make";
 import { startMaking } from "./making";
 import { smartWindow } from "./track";
 import type { MakePlan } from "@/lib/editor/make-any";
-import { placeHookDesign, placeMusic } from "@/lib/editor/make";
+import { expandThen, placeHookDesign, placeMusic } from "@/lib/editor/make";
+import { captionSources, poemCaptions, spokenCaptions } from "./captions-make";
 import { hookAspect } from "@/lib/editor/hook-design";
 import type { MakeRequest } from "@/lib/editor/assistant";
 import { MAX_CHECKS } from "@/lib/editor/assistant-guide";
@@ -327,6 +328,20 @@ export default function AssistantPanel({
               const invert = now?.grades[layer]?.mask?.invert ?? false;
               run([{ type: "update_clip", clipId: q.clipId, patch: { grade: { layer, mask: { ...mask, invert } } } }], { label: `ماسك ذكي: ${q.prompt.slice(0, 30)}` });
             }
+          } else if (q.kind === "captions") {
+            // listened to and written here, then حيدرة's own follow-ups (font, place, entrance…) on the new captions
+            const now = tlRef.current;
+            const all = captionSources(now, assets);
+            const sources = q.clipId ? all.filter((x) => x.clip.id === q.clipId) : all;
+            if (!sources.length) throw new Error("ما فيه مقاطع فيها كلام أكتبه.");
+            const items = q.poem?.trim() ? await poemCaptions(projectId, sources[0], q.poem, setBusy) : (await spokenCaptions(projectId, now, sources, q.lang ?? "ar", setBusy)).items;
+            const before = new Set(now.tracks.map((t) => t.id));
+            const style = (["karaoke", "classic", "box", "neon", "poem"] as const).find((k) => k === q.captionStyle) ?? (q.poem?.trim() ? "poem" : "karaoke");
+            const made = run({ type: "add_captions", items, style, name: q.poem?.trim() ? "الأبيات" : "كابشن" }, { label: `كابشن من حيدرة (${items.length})` }) as { timeline: Timeline } | null;
+            const track = made?.timeline.tracks.find((t) => t.kind === "text" && !before.has(t.id));
+            const more = track ? expandThen(q.then ?? [], track.id, track.clips.map((c) => c.id)) : [];
+            // all together (one undo); if one of them can't run, the others still do, one by one
+            if (track && more.length && !run(more, { label: "حيدرة يكمّل على الكابشن" })) for (const c of more) run(c, { label: "حيدرة يكمّل على الكابشن" });
           } else if (q.kind === "separate") {
             setBusy("نفصل الكلام والموسيقى والمؤثرات…");
             await onSeparate(q.clipId);

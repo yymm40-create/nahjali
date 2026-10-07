@@ -1,12 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { CAPTION_STYLES, clipLength, formatTime, type CaptionStyle, type Clip, type Timeline } from "@/lib/editor/model";
-import { postJson } from "@/lib/fetch";
+import { CAPTION_STYLES, clipLength, formatTime, type CaptionStyle, type Timeline } from "@/lib/editor/model";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
-import { putWithProgress } from "../studio/upload";
-import { extractSound, onTimeline, parseSRT, phrases, toSRT, verses, type SpokenWord } from "./captions";
+import { parseSRT, toSRT } from "./captions";
+import { captionSources, poemCaptions, spokenCaptions } from "./captions-make";
 import type { Run } from "./Inspector";
 import type { EditorAsset } from "./types";
 
@@ -30,48 +29,18 @@ export default function CaptionsPanel({ open, onClose, projectId, tl, assets, ru
   const srtInput = useRef<HTMLInputElement>(null);
 
   // clips we can hear (their sound is what gets written)
-  const sources: { clip: Clip; asset: EditorAsset }[] = tl.tracks.flatMap((t) =>
-    t.muted || t.kind === "text"
-      ? []
-      : t.clips.flatMap((c) => {
-          const a = c.assetId ? assets.get(c.assetId) : null;
-          return a && a.kind !== "image" && a.hasAudio && a.url && c.volume > 0 ? [{ clip: c, asset: a }] : [];
-        }),
-  );
+  const sources = captionSources(tl, assets);
   const chosen = sources.filter((s) => !skip.includes(s.clip.id));
   const minutes = chosen.reduce((m, s) => m + (s.clip.out - s.clip.in) / 60_000, 0);
   const poemSource = sources.find((s) => s.clip.id === poemClip) ?? sources[0];
   const hasText = tl.tracks.some((t) => t.kind === "text" && t.clips.some((c) => c.text?.body.trim()));
 
-  /** The clip's sound, uploaded for one use; returns its path. */
-  const upload = async (s: { clip: Clip; asset: EditorAsset }, label: string) => {
-    setBusy(`${label}: نجهّز الصوت…`);
-    const { blob, format } = await extractSound(s.asset.url!, s.clip.in, s.clip.out, (p) => setBusy(`${label}: نجهّز الصوت ${Math.round(p * 100)}٪`));
-    const sign = await postJson<{ path: string; mime: string; signedUrl: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "speech_sign", format });
-    await putWithProgress(sign.signedUrl, new File([blob], `sound.${format}`, { type: sign.mime }), sign.mime, (p) => setBusy(`${label}: نرفع الصوت ${Math.round(p * 100)}٪`));
-    return sign.path;
-  };
-
   const auto = async () => {
     setError(null);
-    const heard: SpokenWord[] = [];
     try {
-      for (const [i, s] of chosen.entries()) {
-        const label = chosen.length > 1 ? `المقطع ${i + 1} من ${chosen.length}` : "المقطع";
-        const ask = (path?: string) =>
-          postJson<{ words?: SpokenWord[]; need?: "audio" }>(`/api/jawad/editor/projects/${projectId}`, { action: "transcribe", assetId: s.asset.id, from: s.clip.in, to: s.clip.out, language: lang, path });
-        let r = await ask();
-        if (r.need) {
-          const path = await upload(s, label);
-          setBusy(`${label}: نسمع ونكتب…`);
-          r = await ask(path);
-        }
-        heard.push(...onTimeline(s.clip, r.words ?? []));
-      }
-      if (!heard.length) throw new Error("ما سمعنا كلامًا واضحًا في المقاطع المختارة.");
-      const items = phrases(heard, tl.height > tl.width ? 4 : 7);
+      const { items, words } = await spokenCaptions(projectId, tl, chosen, lang, setBusy);
       run({ type: "add_captions", items, style }, { label: `كابشن تلقائي (${items.length} جملة)` });
-      flash(`كتبنا ${heard.length} كلمة في ${items.length} جملة. تقدر تعدّل أي جملة بالضغط عليها.`);
+      flash(`كتبنا ${words} كلمة في ${items.length} جملة. تقدر تعدّل أي جملة بالضغط عليها.`);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذّر.");
@@ -84,12 +53,7 @@ export default function CaptionsPanel({ open, onClose, projectId, tl, assets, ru
     if (!poemSource) return;
     setError(null);
     try {
-      const path = await upload(poemSource, "القصيدة");
-      setBusy("نطابق الأبيات على الإلقاء…");
-      const r = await postJson<{ words: SpokenWord[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "align", assetId: poemSource.asset.id, from: poemSource.clip.in, to: poemSource.clip.out, text: poem.trim(), path });
-      const timed = onTimeline(poemSource.clip, r.words);
-      const items = verses(poem, timed) ?? phrases(timed, 8);
-      if (!items.length) throw new Error("ما قدرنا نطابق الأبيات؛ تأكد إنها نفس الكلام المقروء.");
+      const items = await poemCaptions(projectId, poemSource, poem, setBusy);
       run({ type: "add_captions", items, style: style === "karaoke" ? "poem" : style, name: "الأبيات" }, { label: `أبيات القصيدة (${items.length})` });
       flash(`زامنّا ${items.length} بيت على الإلقاء.`);
       onClose();
