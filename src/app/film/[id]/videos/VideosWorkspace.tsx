@@ -586,7 +586,7 @@ export default function VideosWorkspace({
                       <optgroup label="أصوات ElevenLabs الجاهزة">{voice.voices.filter((v) => v.group === "ready").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>
                       {voice.voices.some((v) => v.group === "minimax") && <optgroup label="أصوات MiniMax الجاهزة">{voice.voices.filter((v) => v.group === "minimax").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}</optgroup>}
                     </select>
-                    <VoiceDesigner projectId={projectId} speaker={sp} disabled={Boolean(speaking)} onCast={async (value) => { await castVoice(sp, value); setVoice(await api<VoiceState>(voicesUrl)); }} />
+                    <VoiceDesigner projectId={projectId} speaker={sp} minimaxOn={voice.voices.some((v) => v.group === "minimax")} disabled={Boolean(speaking)} onCast={async (value) => { await castVoice(sp, value); setVoice(await api<VoiceState>(voicesUrl)); }} />
                   </div>
                 ))}
                 <ol className="space-y-1">

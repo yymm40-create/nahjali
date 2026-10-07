@@ -10,8 +10,8 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { holdCoins, releaseCoins } from "@/lib/coins";
-import { generatorById, MINIMAX_CLONE_KEY, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
-import { MINIMAX_READY_VOICES, minimaxCloneVoice, minimaxReady } from "./providers/minimax";
+import { generatorById, MINIMAX_CLONE_KEY, MINIMAX_DESIGN_KEY, VOICE_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
+import { MINIMAX_READY_VOICES, minimaxCloneVoice, minimaxDesignVoice, minimaxReady } from "./providers/minimax";
 import { JAWAD_VOICE_LIMIT } from "@config/jawad/brand";
 import { probe, sniff } from "../media";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
@@ -276,7 +276,7 @@ export async function cloneVoice(user: { id: string }, owner: boolean, b: { key?
 
 async function insertVoice(userId: string, v: { voiceId: string; name: string; description: string; origin: "design" | "clone"; sample: string; coins: number; copy?: boolean; provider?: VoiceProvider }): Promise<VoiceView> {
   const provider: VoiceProvider = v.provider ?? "elevenlabs";
-  let preview = v.sample;
+  let preview: string | null = v.sample || null;
   if (v.copy !== false) {
     // The kept sample, apart from the draft (drafts can be cleared)
     preview = `${userId}/voices/${v.voiceId}.mp3`;
@@ -295,6 +295,39 @@ async function insertVoice(userId: string, v: { voiceId: string; name: string; d
   const r = data as VoiceRow;
   const links = await signed([r.preview_path]);
   return { id: r.id, value: `v:${r.id}`, name: r.name, description: r.description, origin: r.origin, previewUrl: r.preview_path ? links.get(r.preview_path) ?? null : null, provider };
+}
+
+/**
+ * «صمّم بالوصف» at MiniMax: one voice from the description, kept at once in the person's library (no slot limit),
+ * with its spoken sample. If they don't like it they design another (and may delete this one).
+ */
+export async function designMinimax(user: { id: string }, owner: boolean, b: { key?: unknown; description?: unknown; text?: unknown; name?: unknown }): Promise<VoiceView> {
+  if (!minimaxReady()) throw new UserError("MiniMax غير مفعّل على الخادم (FAL_KEY).", 503);
+  await requireLibrary(user.id, owner);
+  const key = String(b.key ?? "");
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
+  const description = typeof b.description === "string" ? b.description.trim() : "";
+  if (description.length < 20 || description.length > 1000) throw new UserError("صف الصوت في ٢٠ إلى ١٠٠٠ حرف (الجنس، العمر، اللهجة، النبرة، الإيقاع…).", 400);
+  const name = cleanName(b.name) || "صوت مصمّم";
+  const sample = (typeof b.text === "string" && b.text.trim() ? b.text.trim() : "مرحبًا، هذا صوتي الجديد. أتمنى أن يعجبك، وبإمكانك الآن استخدامه في أي نص تريده.").slice(0, 500);
+  const rt = await loadRuntime();
+  const table = rt.prices[MINIMAX_ID] ?? {};
+  const coins = owner ? 0 : table[MINIMAX_DESIGN_KEY] == null ? null : Math.ceil(table[MINIMAX_DESIGN_KEY]! / 100 - 1e-9);
+  if (coins === null) throw new UserError("سعر تصميم الأصوات (MiniMax) لم يُحدد بعد.", 400);
+  const ref = `voice-design-mm:${user.id}:${key}`;
+  const seen = await db().from("smart_coin_ledger").select("id").eq("ref", ref).limit(1);
+  if (seen.data?.length) throw new UserError("هذا الطلب نُفّذ من قبل.", 409);
+  await holdCoins(user.id, coins, ref, LABEL);
+  try {
+    const made = await minimaxDesignVoice({ prompt: description, previewText: sample });
+    const path = `${user.id}/voices/mm-design-${Date.now()}.mp3`;
+    if (made.preview) await storage.from(JAWAD_BUCKET).upload(path, made.preview, { contentType: "audio/mpeg", upsert: true });
+    return await insertVoice(user.id, { voiceId: made.voiceId, name, description, origin: "design", sample: made.preview ? path : "", coins, copy: false, provider: "minimax" });
+  } catch (e) {
+    await releaseCoins(user.id, coins, ref, LABEL);
+    if (e instanceof UserError) throw e;
+    throw new UserError(e instanceof ProviderError ? e.userMessage : "تعذّر تصميم الصوت الآن. أُعيدت لك نقودك.", 502);
+  }
 }
 
 /** «بصمة صوتك» at MiniMax: no slot limit there; the recording (10 s or more) is sent by a short-lived link. */
