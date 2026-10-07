@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { apply, applyAll, CommandError, type Applied, type ClipPatch, type Command } from "@/lib/editor/commands";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
 import SequenceTabs from "./SequenceTabs";
+import { DEFAULT_LAYOUT, firstRect, onScreen, PANELS, readLayout, saveLayout, type Layout, type PanelId } from "./layout";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
 import { setGradeView } from "./grade-gl";
 import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
@@ -156,8 +157,122 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       localStorage.setItem("jw-editor-chat-zoom", String(z));
     } catch {}
   };
+  // «واجهتي»: panels' order, the settings panel's width, and panels floating as windows (a computer)
+  const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  // the window last grabbed sits over the others
+  const [front, setFront] = useState<PanelId | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setLayout(readLayout()), 0);
+    return () => clearTimeout(t);
+  }, []);
+  const putLayout = (next: Layout) => {
+    setLayout(next);
+    saveLayout(next);
+  };
+  const floatToggle = (id: PanelId) => {
+    setFront(id);
+    const float = { ...layout.float };
+    if (float[id]) delete float[id];
+    else float[id] = firstRect(id, Object.keys(float).length);
+    putLayout({ ...layout, float });
+  };
+  const moveDocked = (id: PanelId, by: -1 | 1) => {
+    const o = [...layout.order];
+    const i = o.indexOf(id);
+    const j = i + by;
+    if (j < 0 || j >= o.length) return;
+    [o[i], o[j]] = [o[j], o[i]];
+    putLayout({ ...layout, order: o });
+  };
+  /** a floating window dragged by its bar */
+  const dragWindow = (id: PanelId, e: React.PointerEvent) => {
+    const r = layout.float[id];
+    if (!r || e.button > 0) return;
+    e.preventDefault();
+    setFront(id);
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let last = r;
+    const move = (ev: PointerEvent) => {
+      last = onScreen({ ...r, x: r.x + ev.clientX - sx, y: r.y + ev.clientY - sy });
+      setLayout((l) => ({ ...l, float: { ...l.float, [id]: last } }));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setLayout((l) => {
+        const next = { ...l, float: { ...l.float, [id]: last } };
+        saveLayout(next);
+        return next;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  /** a floating window's size, kept when its corner is dragged (a ref callback per panel, made once) */
+  const watchSize = (id: PanelId) => {
+    let ro: ResizeObserver | null = null;
+    return (el: HTMLElement | null) => {
+      ro?.disconnect();
+      ro = null;
+      if (!el) return;
+      let t = 0;
+      ro = new ResizeObserver(() => {
+        clearTimeout(t);
+        t = window.setTimeout(() => {
+          setLayout((l) => {
+            const r = l.float[id];
+            if (!r) return l;
+            const w = Math.round(el.offsetWidth);
+            const h = Math.round(el.offsetHeight);
+            if (Math.abs(w - r.w) < 2 && Math.abs(h - r.h) < 2) return l;
+            const next = { ...l, float: { ...l.float, [id]: { ...r, w, h } } };
+            saveLayout(next);
+            return next;
+          });
+        }, 250);
+      });
+      ro.observe(el);
+    };
+  };
+  const [sizeChat] = useState(() => watchSize("chat"));
+  const [sizePanel] = useState(() => watchSize("panel"));
+  const [sizePreview] = useState(() => watchSize("preview"));
+  /** the settings / library panel's edge dragged wider or narrower */
+  const dragPanel = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const sx = e.clientX;
+    const w0 = layout.panelW;
+    // the panel grows toward the middle: which way that is depends on its side
+    const dir = (layout.order.indexOf("panel") > layout.order.indexOf("preview") ? 1 : -1) * (THEMES[theme].mirror ? -1 : 1);
+    let w = w0;
+    const move = (ev: PointerEvent) => {
+      w = Math.min(720, Math.max(260, w0 + (ev.clientX - sx) * dir));
+      setLayout((l) => ({ ...l, panelW: w }));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setLayout((l) => {
+        const next = { ...l, panelW: w };
+        saveLayout(next);
+        return next;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   // the preview on the whole screen
   const stage = useRef<HTMLElement>(null);
+  const stageRef = useCallback(
+    (el: HTMLElement | null) => {
+      stage.current = el;
+      sizePreview(el);
+    },
+    [sizePreview],
+  );
   const [full, setFull] = useState(false);
   const toggleFull = () => {
     const el = stage.current;
@@ -851,7 +966,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   });
   // the sections: a rail at the side, big clouds over the timeline (children), or page tabs at the bottom (cinema)
   const railNav = (variant: "side" | "clouds" | "pages") => (
-    <nav className={RAIL_NAV[variant]} aria-label="أقسام المحرر">
+    <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
             const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.tab ? rail === "inspector" && tab === r.tab : false;
@@ -1030,6 +1145,31 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     { id: "export", label: "تصدير", icon: "download", title: "صدّر الفيديو" },
   ];
 
+  // «واجهتي» while drawing: where each panel sits, and the floating windows
+  const floated = (id: PanelId) => (wide && !(id === "preview" && full) && !(id === "chat" && chatBig) ? layout.float[id] : undefined);
+  const placeStyle = (id: PanelId, docked?: React.CSSProperties): React.CSSProperties | undefined => {
+    if (!wide) return undefined;
+    const r = floated(id);
+    const order = layout.order.indexOf(id) + 1;
+    return r ? { left: r.x, top: r.y, width: r.w, height: r.h, order } : { ...docked, order };
+  };
+  const floatCls = (id: PanelId) => (floated(id) ? `lg:!fixed ${front === id ? "lg:!z-[57]" : "lg:!z-[56]"} lg:!m-0 lg:!flex lg:flex-col lg:overflow-hidden lg:rounded-2xl lg:border lg:border-jw-line lg:!bg-jw-surface lg:shadow-2xl lg:[resize:both]` : "");
+  const floatBar = (id: PanelId) =>
+    floated(id) ? (
+      <div className="hidden shrink-0 cursor-move select-none items-center gap-2 border-b border-jw-line bg-jw-surface-2 px-2 py-1 text-[11px] font-semibold lg:flex" onPointerDown={(e) => dragWindow(id, e)} title="اسحبها لأي مكان؛ كبّرها من زاويتها">
+        <Icon name="grid" size={12} />
+        <span className="flex-1">{PANELS[id]}</span>
+        <button type="button" className="rounded px-1.5 py-0.5 text-jw-muted hover:bg-jw-surface hover:text-jw-ink" onPointerDown={(e) => e.stopPropagation()} onClick={() => floatToggle(id)}>
+          رجّعها مكانها
+        </button>
+      </div>
+    ) : null;
+  // the settings panel's edge that faces the picture: drag to make it wider
+  const panelAfter = layout.order.indexOf("panel") > layout.order.indexOf("preview");
+  const panelEdge = !floated("panel") && wide ? (
+    <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== THEMES[theme].mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
+  ) : null;
+
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
@@ -1051,7 +1191,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       }}
     >
       {/* top bar */}
-      <div className="jw-glass z-10 mx-2 mt-2 flex items-center gap-2 rounded-2xl px-2 py-1.5">
+      <div className="jw-glass relative z-30 mx-2 mt-2 flex items-center gap-2 rounded-2xl px-2 py-1.5">
         <Link href={backHref} onClick={forgetOpen} className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" aria-label="اطلع من المشروع" title="اطلع من المشروع">
           <Icon name="chevronRight" />
         </Link>
@@ -1100,6 +1240,35 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
               <div className="col-span-2">
                 <InstallApp />
               </div>
+            </div>
+          )}
+        </div>
+        {/* «واجهتي»: where the panels sit, and which float as windows */}
+        <div className="relative hidden lg:block">
+          <button type="button" className={`jw-btn jw-3d !min-h-9 shrink-0 text-xs ${layoutOpen ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setLayoutOpen((v) => !v)} aria-expanded={layoutOpen} title="رتّب واجهتك: أماكن اللوحات، ونوافذ تطفو">
+            <Icon name="grid" size={15} /> واجهتي
+          </button>
+          {layoutOpen && (
+            <div role="menu" aria-label="واجهتي" className="absolute end-0 top-full z-50 mt-2 w-80 space-y-2 rounded-2xl border border-jw-line bg-jw-surface p-3 shadow-2xl">
+              <p className="text-[11px] text-jw-muted">رتّب اللوحات من اليمين لليسار، أو طلّع أي وحدة نافذة تسحبها لأي مكان وتكبّرها من زاويتها.</p>
+              {layout.order.map((id, i) => (
+                <div key={id} className="flex items-center gap-1.5 rounded-xl border border-jw-line p-1.5">
+                  <span className="flex-1 text-xs font-semibold">{PANELS[id]}</span>
+                  <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-30" disabled={i === 0 || !!layout.float[id]} onClick={() => moveDocked(id, -1)} aria-label={`حرّك ${PANELS[id]} يمين`} title="يمين">
+                    <Icon name="chevronRight" size={14} />
+                  </button>
+                  <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-30" disabled={i === layout.order.length - 1 || !!layout.float[id]} onClick={() => moveDocked(id, 1)} aria-label={`حرّك ${PANELS[id]} يسار`} title="يسار">
+                    <Icon name="chevronLeft" size={14} />
+                  </button>
+                  <button type="button" role="menuitemcheckbox" aria-checked={!!layout.float[id]} className={`rounded-lg px-2 py-1 text-[11px] ${layout.float[id] ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted hover:text-jw-ink"}`} onClick={() => floatToggle(id)}>
+                    {layout.float[id] ? "نافذة ✓" : "نافذة"}
+                  </button>
+                </div>
+              ))}
+              <p className="text-[11px] text-jw-faint">عرض لوحة الإعدادات: اسحب حافتها. الحجم كله: من أزرار − و + جنب.</p>
+              <button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => putLayout(DEFAULT_LAYOUT)}>
+                رجّع الواجهة الأصلية
+              </button>
             </div>
           )}
         </div>
@@ -1152,7 +1321,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
-        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl ${chatBig ? "lg:!fixed lg:inset-4 lg:!z-[60] lg:!my-0 lg:flex lg:!bg-jw-surface lg:shadow-2xl lg:backdrop-blur-none" : ""}`} style={wide && !chatBig ? { width: chatW } : undefined} aria-label="حيدرة">
+        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl ${chatBig ? "lg:!fixed lg:inset-4 lg:!z-[60] lg:!my-0 lg:flex lg:!bg-jw-surface lg:shadow-2xl lg:backdrop-blur-none" : ""} ${floatCls("chat")}`} style={chatBig ? undefined : placeStyle("chat", { width: chatW })} ref={sizeChat} aria-label="حيدرة">
+          {floatBar("chat")}
           {/* its edge: drag to make the conversation wider or narrower (double-click: the usual width) */}
           <div
             role="separator"
@@ -1169,7 +1339,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
         {chatBig && <button type="button" aria-label="رجّع المحادثة لمكانها" className="fixed inset-0 z-[59] hidden bg-black/50 lg:block" onClick={() => setChatBig(false)} />}
 
-        <section ref={stage} className={`relative flex min-w-0 flex-1 flex-col ${full ? "fixed inset-0 z-[70] bg-black" : ""}`} aria-label="المعاينة">
+        <section ref={stageRef} className={`relative flex min-w-0 flex-1 flex-col ${full ? "fixed inset-0 z-[70] bg-black" : ""} ${floatCls("preview")}`} style={full ? undefined : placeStyle("preview")} aria-label="المعاينة">
+          {floatBar("preview")}
           <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
             <canvas ref={canvas} width={tl.width} height={tl.height} className="jw-screen max-h-full max-w-full rounded-xl" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
             <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
@@ -1204,9 +1375,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </section>
 
         <aside
-          className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
+          className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "media" ? floatCls("panel") : ""}`}
+          style={placeStyle("panel", { width: layout.panelW })}
+          ref={rail === "media" ? sizePanel : undefined}
           aria-label="الوسائط"
         >
+          {rail === "media" && floatBar("panel")}
+          {panelEdge}
           <SheetGrip onClose={() => setSheet(null)} title="الوسائط" />
           <Library
             projectId={project.id}
@@ -1226,16 +1401,22 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
 
         <aside
-          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[58dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:static lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl`}
+          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[58dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "inspector" || rail === "project" ? floatCls("panel") : ""}`}
+          style={placeStyle("panel", { width: layout.panelW })}
+          ref={rail === "inspector" || rail === "project" ? sizePanel : undefined}
           aria-label="الإعدادات"
         >
+          {(rail === "inspector" || rail === "project") && floatBar("panel")}
+          {panelEdge}
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
             <Guard name="الإعدادات"><Inspector tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 
-        <aside className={`hidden jw-glass flex-col lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "styles" && !big ? "lg:flex" : ""}`} aria-label="أساليب جاهزة">
+        <aside className={`relative hidden jw-glass flex-col lg:my-2 lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "styles" && !big ? "lg:flex" : ""} ${rail === "styles" ? floatCls("panel") : ""}`} style={placeStyle("panel", { width: layout.panelW })} ref={rail === "styles" ? sizePanel : undefined} aria-label="أساليب جاهزة">
+          {rail === "styles" && floatBar("panel")}
+          {panelEdge}
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
             <PluginTools inline ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} />
           </div>
