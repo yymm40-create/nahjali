@@ -42,6 +42,8 @@ export default async function VideosView({ id, base }: { id: string; base: strin
       durationSec: v.data.duration_sec ?? 10,
       ratio: v.data.ratio ?? "16:9",
       audio: v.data.generate_audio ?? true,
+      // how many reference pictures the director attached (each model takes only so many)
+      refs: (v.data.references ?? []).length,
       // «الأصوات قبل الفيديو»: this shot's spoken lines, and whether each one's audio is made
       lines: spoken.filter((l) => l.genId === g).map((l) => ({ key: l.key, speaker: l.speaker, line: l.line, spoken: l.spoken })),
       questions: q?.status === "awaiting_approval" ? { id: q.id, body: q.body, items: q.data.questions ?? [] } : null,

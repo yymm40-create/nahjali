@@ -39,6 +39,8 @@ interface Generation {
   durationSec: number;
   ratio: string;
   audio: boolean;
+  /** reference pictures the director attached */
+  refs: number;
   /** This shot's spoken lines and whether each one's audio is made («الأصوات قبل الفيديو»). */
   lines: { key: string; speaker: string; line: string; spoken: boolean }[];
 }
@@ -63,6 +65,8 @@ interface Video {
 }
 
 const RESOLUTIONS = Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[];
+/** Videos made at the same time (the server's MAX_VIDEOS_AT_ONCE). */
+const MAX_AT_ONCE = 4;
 const usd = (n: number) => credits(n);
 
 /** Days left before a video file is removed from the site. */
@@ -123,6 +127,7 @@ export default function VideosWorkspace({
   const refresh = useCallback(() => startRefresh(() => router.refresh()), [router]);
   const busy = sending || refreshing;
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   // Poll while videos are generated (the poll also saves finished videos)
   useEffect(() => {
@@ -162,7 +167,8 @@ export default function VideosWorkspace({
     setBusy(true);
     setError("");
     try {
-      const { jobId, studioJobId } = await postJson<{ jobId: string | null; studioJobId?: string }>(`/api/film/projects/${projectId}/director`, body);
+      const { jobId, studioJobId, warning } = await postJson<{ jobId: string | null; studioJobId?: string; warning?: string }>(`/api/film/projects/${projectId}/director`, body);
+      if (warning) setNotice(warning);
       if (studioJobId && studioPath) {
         // «التعديل الذكي» in «حيدرة كت» (red/green tracks); else the video section with its own window ready
         const href = await smartEditInEditor(studioJobId);
@@ -230,6 +236,61 @@ export default function VideosWorkspace({
     }
     setSpeaking(null);
     refresh();
+  }
+
+  /**
+   * One video: its spoken lines are made first when it has some (a voice is given to any speaker still without one,
+   * the voices differing between speakers), then the video is sent with them as reference audio.
+   */
+  async function generate(g: Generation) {
+    let useVoices = false;
+    if (sendVoices(g) && voice) {
+      const cast = { ...voice.cast };
+      const free = voice.voices.filter((v) => v.group === "ready" && !Object.values(cast).includes(v.value));
+      for (const sp of [...new Set(g.lines.map((l) => l.speaker))]) {
+        if (cast[sp]) continue;
+        const pick = free.shift();
+        if (!pick) break;
+        cast[sp] = pick.value;
+        await castVoice(sp, pick.value);
+      }
+      const missing = g.lines.filter((l) => !spokenOf(g, l.key)).map((l) => l.key);
+      if (missing.length) await speakLines(missing);
+      useVoices = true;
+    }
+    const sec = secOf(g);
+    await send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices });
+  }
+  const runningNow = videos.filter((v) => v.status === "generating").length;
+  const notStarted = generations.filter((g) => !videos.some((v) => v.ref_key === g.id && v.status !== "rejected" && v.status !== "failed") && !g.questions && !g.revision);
+  const [startingAll, setStartingAll] = useState(false);
+  async function startAll() {
+    setStartingAll(true);
+    try {
+      for (const g of notStarted.slice(0, Math.max(0, MAX_AT_ONCE - runningNow))) await generate(g);
+    } finally {
+      setStartingAll(false);
+    }
+  }
+
+  // «ارفع الفيديو المعدّل»: the person's own finished edit of a generation (e.g. after «التعديل الذكي»)
+  const [uploading, setUploading] = useState<string | null>(null);
+  async function uploadEdited(g: Generation, file: File) {
+    setError("");
+    setUploading(g.id);
+    try {
+      const mime = file.type || (file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4");
+      const { upload } = await postJson<{ upload: { path: string; token: string } }>(`/api/film/projects/${projectId}/director`, { action: "upload_video_url", genId: g.id, mime });
+      const put = await fetch(upload.token, { method: "PUT", headers: { "content-type": mime }, body: file }).catch(() => null);
+      if (!put?.ok) throw new Error("تعذّر رفع الفيديو؛ تأكد من الإنترنت وجرّب.");
+      await postJson(`/api/film/projects/${projectId}/director`, { action: "upload_video_confirm", genId: g.id, path: upload.path });
+      setNotice(`✅ اعتمدنا فيديوك المعدّل لـ ${g.id}`);
+      refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUploading(null);
+    }
   }
 
   return (
@@ -311,6 +372,16 @@ export default function VideosWorkspace({
         <p className="text-xs font-bold text-muted">السعر التقريبي يطلع عند شريط المدة تحت كل توليد، والتكلفة الحقيقية تنحسب بعد التوليد. الفيديو اللي يفشل ما ينحسب.</p>
       </section>
 
+      {notStarted.length > 1 && (
+        <section className="card flex flex-wrap items-center justify-between gap-2 p-4">
+          <p className="font-extrabold">🎬 {notStarted.length} توليدات ما بدأت · يتولد {MAX_AT_ONCE} في نفس الوقت</p>
+          <button className="btn btn-primary min-h-11 px-5" disabled={busy || startingAll || runningNow >= MAX_AT_ONCE} onClick={() => void startAll()}>
+            {startingAll ? "نبدأ…" : `▶️ ابدأ ${Math.min(notStarted.length, Math.max(0, MAX_AT_ONCE - runningNow))} مع بعض`}
+          </button>
+        </section>
+      )}
+      {notice && <p className="card p-3 text-sm font-bold">{notice}</p>}
+
       {generations.map((g) => {
         const mine = videos.filter((v) => v.ref_key === g.id && v.status !== "rejected");
         const generating = mine.some((v) => v.status === "generating");
@@ -325,6 +396,9 @@ export default function VideosWorkspace({
                 <span className="chip">{g.audio ? "🔊 بصوت" : "🔇 بدون صوت"}</span>
               </div>
             </header>
+            {g.refs > VIDEO_MODELS[model].maxImages && (
+              <p className="rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">⚠️ المراجع ممتلئة: هذا التوليد فيه {g.refs} صور مرجعية و{VIDEO_MODELS[model].label} يقبل {VIDEO_MODELS[model].maxImages} بس؛ الزايد ما ينرسل. اطلب من المخرج يقلّلها، أو اختر نسخة تقبل أكثر.</p>
+            )}
 
             {mine.map((v) => (
               <figure key={v.id} className={`space-y-2 rounded-2xl border p-2 ${v.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
@@ -427,6 +501,11 @@ export default function VideosWorkspace({
                 )}
               </div>
             )}
+
+            <label className={`btn btn-ghost min-h-10 w-full cursor-pointer text-sm ${uploading ? "pointer-events-none opacity-60" : ""}`}>
+              {uploading === g.id ? "نرفع الفيديو…" : "📤 ارفع الفيديو المعدّل من جهازك (بعد المونتاج أو التعديل الذكي)"}
+              <input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden disabled={Boolean(uploading)} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void uploadEdited(g, f); }} />
+            </label>
 
             {/* Notes on a video → the director's understanding as options → the revised generation → a new video */}
             {g.questions && (
@@ -542,9 +621,9 @@ export default function VideosWorkspace({
             {!generating && !busy && !g.questions && !g.revision && (
               <button
                 className={`btn w-full ${mine.length ? "btn-ghost" : "btn-primary"}`}
-                disabled={sendVoices(g) && !allSpoken(g)}
-                title={sendVoices(g) && !allSpoken(g) ? "ولّد أصوات المقطع أول، أو أطفئ «ترسل مع الفيديو»" : undefined}
-                onClick={() => send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices: sendVoices(g) })}
+                disabled={Boolean(speaking) || startingAll || runningNow >= MAX_AT_ONCE}
+                title={runningNow >= MAX_AT_ONCE ? `فيه ${MAX_AT_ONCE} فيديوهات تتولد؛ انتظر واحد يخلص` : sendVoices(g) && !allSpoken(g) ? "نولّد أصوات المقطع أول تلقائيًا، وبعدها الفيديو" : undefined}
+                onClick={() => void generate(g)}
               >
                 {mine.length ? "🔁 ولّد نسخة ثانية" : "🎬 ولّد الفيديو"}{sendVoices(g) ? " 🎙️ بالأصوات" : ""} · {ratio === "9:16" ? "طولي" : "عرضي"} · {VIDEO_MODELS[model].label} · {VIDEO_RESOLUTIONS[resolution].label}
               </button>
