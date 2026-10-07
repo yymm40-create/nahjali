@@ -105,6 +105,21 @@ function readSound(data: unknown): Buffer | null {
   return bytes.length > 44 && bytes.length <= 1_500_000 && bytes.toString("ascii", 0, 4) === "RIFF" ? bytes : null;
 }
 
+/**
+ * The size of a piece cut from the original video, as the generator's rules read it. A video that came from the film
+ * maker has no stored size: the original's resolution and ratio give it (always inside the generator's own limits).
+ */
+function placeholderDims(out: { width?: number | null; height?: number | null }, source: JobRow): { width: number; height: number } {
+  if (out.width && out.height) return { width: out.width, height: out.height };
+  const s = source.inputs.settings ?? {};
+  const short = { "480p": 480, "720p": 720, "1080p": 1080, "4k": 2160 }[String(s.resolution)] ?? 720;
+  const [a, b] = String(s.ratio ?? "16:9").split(":").map(Number);
+  const ratio = a > 0 && b > 0 ? a / b : 16 / 9;
+  // the short side is the resolution; the long side follows the ratio (never below the generator's pixel floor)
+  const long = Math.max(short, Math.round(short * Math.max(ratio, 1 / ratio)));
+  return ratio >= 1 ? { width: long, height: short } : { width: short, height: long };
+}
+
 /** The price lines of the edit itself (on top of the generation). Null when the owner switched one off. */
 function editLines(def: GeneratorDef, table: Record<string, number | null>) {
   const video = def.output === "video";
@@ -209,7 +224,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
     const own = await sourceRefs();
     // Priced with the pieces' lengths; the real pieces are checked before the job is made
     meta = [
-      ...cont.map((r, i): RefMeta & { name: string } => ({ id: randomUUID(), kind: "video", role: "reference", mime: "video/mp4", bytes: 1, width: out.width, height: out.height, durationMs: Math.round((r.to - r.from) * 1000), fps: 24, status: "ready", name: contName(r, i, cont) })),
+      ...cont.map((r, i): RefMeta & { name: string } => ({ id: randomUUID(), kind: "video", role: "reference", mime: "video/mp4", bytes: 1, ...placeholderDims(out, source), durationMs: Math.round((r.to - r.from) * 1000), fps: 24, status: "ready", name: contName(r, i, cont) })),
       ...own,
     ].slice(0, PART_REFS_MAX);
   } else {
@@ -262,7 +277,9 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
       const want = (cont[i].to - cont[i].from) * 1000;
       if (m.kind !== "video" || Math.abs((m.durationMs ?? 0) - want) > 1500) throw new UserError("أحد مقاطع الاستمرارية ما وصل صح؛ جرّب مرة ثانية.", 400);
     });
-    meta = [...named(found.meta, cont.map((r, i) => contName(r, i, cont))), ...own].slice(0, PART_REFS_MAX);
+    // cut from this generator's own video: its size and frame rate are the generator's, whatever the browser's probe says
+    const trusted = found.meta.map((m) => ({ ...m, ...placeholderDims(out, source), fps: 24 }));
+    meta = [...named(trusted, cont.map((r, i) => contName(r, i, cont))), ...own].slice(0, PART_REFS_MAX);
     // the sound right before and after the cut, so voices, effects and music carry on (when the clip has sound)
     if (settings.audio !== false) {
       const snd = (b.cutSounds ?? {}) as { before?: unknown; after?: unknown };
