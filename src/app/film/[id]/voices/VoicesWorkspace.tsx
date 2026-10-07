@@ -5,6 +5,7 @@ import { api, postJson } from "@/lib/fetch";
 import Spinner from "@/components/Spinner";
 import type { VoiceLine } from "@/lib/film/voices";
 import EmotionPicker from "../../EmotionPicker";
+import VoiceDesigner from "../../VoiceDesigner";
 
 interface Choice {
   value: string;
@@ -99,6 +100,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
                     {s.voices.filter((v) => v.group === "ready").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}
                   </optgroup>
                 </select>
+                <VoiceDesigner projectId={projectId} speaker={sp} disabled={Boolean(busy)} onCast={async (value) => { await cast(sp, value); await load(); }} />
               </li>
             ))}
           </ul>
