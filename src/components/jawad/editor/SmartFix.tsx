@@ -291,9 +291,10 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
     const small = await grabFrames(p.out.url!, times, EDIT_LIMITS.frameWidth, 0.72);
     send.frames = times.map((t, i) => ({ t, data: small[i] }));
     if (partCut) {
-      // the cut frames become the new clip's first and last frames: full quality, kept under the request's size
-      const [first, last] = await grabFrames(p.out.url!, [partCut.start, partCut.end], 1920, 0.9, { by: "side" });
-      send.cutFrames = { first, last };
+      // the last two frames before the cut (the motion the new piece carries on) and the frame it lands on: full
+      // quality, kept under the request's size
+      const [prev1, prev2, last] = await grabFrames(p.out.url!, [Math.max(0, partCut.start - 0.2), partCut.start, partCut.end], 1920, 0.9, { by: "side" });
+      send.cutFrames = { prev1, prev2, last };
     }
   } catch {
     throw new Error("تعذّر قراءة لقطات الفيديو في المتصفح؛ أعد المحاولة.");

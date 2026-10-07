@@ -14,8 +14,8 @@ const fmt = (s: number) => (Number.isFinite(s) ? s.toFixed(1) : "—");
 
 const CHOICES: Record<"video" | "image", { mode: EditMode; title: string; text: string; icon: string }[]> = {
   video: [
-    { mode: "whole", title: "أعد المقطع كاملًا", text: "يكتب «المخرج الخارق» برومبتًا جديدًا يصلح الأخطاء ويحافظ على ما نجح، ثم يولَّد المقطع كله من جديد بنفس الإعدادات والمراجع.", icon: "retry" },
-    { mode: "parts", title: "أعد الجزء الذي لم ينجح فقط", text: "يولَّد الجزء المحدد وحده، ويبدأ وينتهي بنفس لقطتي الأصل عند نقطتي القص، لتركّبه مكانه بقصّ نظيف.", icon: "frames" },
+    { mode: "whole", title: "أعد المقطع كاملًا", text: "يكتب «المخرج الخارق» برومبتًا جديدًا بنفس الأفكار وتعديلك فيه، ويُصنع المقطع كله من جديد بنفس الإعدادات والمراجع.", icon: "retry" },
+    { mode: "parts", title: "أعد الجزء الذي لم ينجح فقط", text: "يولَّد الجزء المحدد وحده: يكمّل من آخر لقطتين قبل القص بنفس الحركة والاتجاه، وينتهي على لقطة الأصل بعد القص، لتركّبه مكانه بقصّ نظيف.", icon: "frames" },
   ],
   image: [
     { mode: "same", title: "عدّل نفس الصورة", text: "تُرسل صورتك نفسها للمولد مع تعديلاتك، ويبقى كل ما لم تطلب تغييره كما هو.", icon: "wand" },
@@ -109,8 +109,10 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
         const small = await grabFrames(out.url, times, EDIT_LIMITS.frameWidth, 0.72);
         send.frames = times.map((t, i) => ({ t, data: small[i] }));
         if (mode === "parts" && cut) {
-          const [first, last] = await grabFrames(out.url, [cut.start, cut.end], null, 0.92);
-          send.cutFrames = { first, last };
+          // the last two frames before the cut (the motion it carries on) and the frame it lands on
+          const prev = Math.max(0, cut.start - 0.2);
+          const [prev1, prev2, last] = await grabFrames(out.url, [prev, cut.start, cut.end], null, 0.92);
+          send.cutFrames = { prev1, prev2, last };
         }
       }
     } catch {
@@ -215,7 +217,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                   {mode === "parts" &&
                     (cut ? (
                       <p className="rounded-lg bg-jw-accent-soft px-2.5 py-2 text-xs">
-                        يُعاد الجزء من <b dir="ltr">{fmt(cut.start)}</b> إلى <b dir="ltr">{fmt(cut.end)}</b> ثانية ({cut.seconds} ث{cut.seconds > (part ? part.to - part.from : 0) + 0.05 ? ` — أقل مدة يولّدها ${def?.name ?? "المولد"} ${durOpt?.min ?? 4} ث` : ""})، ويبدأ وينتهي بنفس لقطتي الأصل؛ ركّبه مكان هذا الجزء.
+                        يُعاد الجزء من <b dir="ltr">{fmt(cut.start)}</b> إلى <b dir="ltr">{fmt(cut.end)}</b> ثانية ({cut.seconds} ث{cut.seconds > (part ? part.to - part.from : 0) + 0.05 ? ` — أقل مدة يولّدها ${def?.name ?? "المولد"} ${durOpt?.min ?? 4} ث` : ""})، ويكمّل من آخر لقطتين قبل القص بنفس الحركة وينتهي على لقطة الأصل؛ ركّبه مكان هذا الجزء.
                       </p>
                     ) : (
                       <p className="text-xs text-jw-danger">حدّد جزءًا صحيحًا داخل مدة المقطع ({fmt(videoSec)} ث).</p>
