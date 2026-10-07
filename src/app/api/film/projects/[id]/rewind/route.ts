@@ -15,7 +15,7 @@ export const GET = handle(async (_req: Request, { params }: { params: Promise<{ 
 /** `{ to: "screenwriter" | "sheets" | "director", mode: "fork" | "reset" }`: a new project up to that point, or this one rewound. */
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
-  const project = await getOwnedProject((await params).id, user.id);
+  const project = await getOwnedProject((await params).id, user.id, "all");
   const b = (await req.json().catch(() => ({}))) as { to?: unknown; mode?: unknown };
   if (b.mode === "fork") return NextResponse.json(await forkProject(project, b.to));
   if (b.mode === "reset") return NextResponse.json(await resetProject(project, b.to));

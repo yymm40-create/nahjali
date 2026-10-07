@@ -10,7 +10,7 @@ export const maxDuration = 300;
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
   const { id } = await params;
-  const project = await getOwnedProject(id, user.id);
+  const project = await getOwnedProject(id, user.id, "screenwriter");
   const body = (await req.json().catch(() => ({}))) as ScriptAction;
   const jobId = await scriptAction(project, user, body);
   return NextResponse.json({ jobId });

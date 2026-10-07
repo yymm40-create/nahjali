@@ -12,6 +12,15 @@ export const SMART_COIN = {
 } as const;
 
 /** The cost to us behind one coin, in USD (0.25 SAR ÷ 2 ÷ 3.75 ≈ $0.033). */
+/**
+ * «نقود الفريق الذكي»: the coins of a series in team mode («المسلسل الذكي»), its own wallet apart from each person's
+ * «النقود الذكية» (same value: one team coin = one smart coin). Everything made inside the team's series is paid from it.
+ */
+export const TEAM_COIN = {
+  name: "نقود الفريق الذكي",
+  one: "نقدة فريق",
+} as const;
+
 export const COIN_COST_USD = SMART_COIN.priceSar / (1 + SMART_COIN.markup) / SMART_COIN.usdToSar;
 
 /** Coins for an operation that costs us `usd` (never less than 1). */

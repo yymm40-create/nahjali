@@ -8,6 +8,8 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { holdTeamCoins, refundTeamCoins } from "@/lib/coins";
+import { giveAttempt } from "@/lib/film/team";
 import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { UserError } from "@/lib/api";
@@ -142,6 +144,11 @@ export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status
     p_label: coinLabel(generatorById(job.generator_id)),
   });
   if (error) throw error;
+  // a team series' generation that didn't succeed: the team's coins and the member's attempt go back
+  if (data && status !== "succeeded") {
+    const held = await refundTeamCoins(job.id).catch(() => null);
+    if (held?.userId) await giveAttempt(held.seriesId, held.userId).catch(() => {});
+  }
   return Boolean(data);
 }
 
@@ -172,7 +179,7 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string } } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
@@ -248,7 +255,9 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // What the model reads: each «@name» written the way it numbers references (the user's prompt is kept as written)
   const modelPrompt = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
 
-  const charge = !owner && e.price.coins > 0;
+  // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
+  const teamPays = !owner && !!server.team && e.price.coins > 0;
+  const charge = !owner && !server.team && e.price.coins > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
     p_job: {
       user_id: user.id,
@@ -281,6 +290,14 @@ export async function createJob(user: { id: string; email?: string | null }, own
   }
   const row = (data as { job_id: string; created: boolean; balance: number | null }[])[0];
   const { data: job } = await db().from("jawad_jobs").select("*").eq("id", row.job_id).single();
+  if (row.created && teamPays) {
+    try {
+      await holdTeamCoins(server.team!, user, e.price.coins, row.job_id, coinLabel(def));
+    } catch (err) {
+      await finishJob(job as JobRow, "cancelled", { message: "رصيد نقود الفريق الذكي ما يكفي." }).catch(() => {});
+      throw err;
+    }
+  }
   if (row.created) after(() => runJob(row.job_id));
   return { kind: row.created ? "created" : "existing", job: job as JobRow, balance: row.balance };
 }

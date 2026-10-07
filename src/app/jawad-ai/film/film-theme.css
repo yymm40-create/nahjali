@@ -281,3 +281,32 @@ html:has([data-jw-section="film"]) body {
   background: #f4f7ff;
   color-scheme: light;
 }
+
+/* «نقود الفريق الذكي»: its own epic look — crimson to royal purple with molten gold, never blue */
+.team-wallet {
+  background:
+    radial-gradient(90% 70% at 100% 0%, rgba(255, 122, 89, 0.55), transparent 60%),
+    radial-gradient(70% 60% at 0% 100%, rgba(246, 196, 69, 0.35), transparent 60%),
+    linear-gradient(135deg, #be123c, #7c1d6f 45%, #4c1d95);
+  box-shadow: 0 26px 50px -24px rgba(124, 29, 111, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(253, 230, 138, 0.45);
+  animation: film-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.team-wallet::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: conic-gradient(from 0deg, transparent 0 70%, rgba(253, 230, 138, 0.18) 80%, transparent 90%);
+  animation: team-sweep 7s linear infinite;
+  pointer-events: none;
+}
+.team-wallet > * { position: relative; }
+.team-coin-float { display: inline-block; animation: team-float 3.6s ease-in-out infinite; }
+@keyframes team-sweep { to { transform: rotate(1turn); } }
+@keyframes team-float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-7px) rotate(4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-wallet::before, .team-coin-float { animation: none; }
+}

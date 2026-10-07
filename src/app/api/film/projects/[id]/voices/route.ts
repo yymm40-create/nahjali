@@ -16,7 +16,7 @@ export const GET = handle(async (_req: Request, { params }: { params: Promise<{ 
 /** `{ action: "cast", speaker, voice }` · `{ action: "speak", key, idempotencyKey }` (one line, charged). */
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
-  const project = await getOwnedProject((await params).id, user.id);
+  const project = await getOwnedProject((await params).id, user.id, "director");
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   if (b.action === "cast") {
     await setCast(project, user.id, b.speaker, b.voice);

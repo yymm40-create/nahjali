@@ -7,6 +7,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FILM_BUCKET } from "@/lib/film/types";
 import { isSeriesTeamMember } from "@/lib/film/access";
+import { memberRights } from "@/lib/film/team";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { applyAll, CommandError, type Command } from "./commands";
 import { editorSniff, EDITOR_MIMES, KIND_AR, storedType } from "./media";
@@ -142,8 +143,8 @@ export async function requireEditorProject(id: unknown, userId: string) {
   return data as EditorProject;
 }
 
-/** «المسلسل الذكي» in team mode: the people the series' owner added also work on its scenes' and episodes' edits. */
-async function seriesTeamEdit(p: EditorProject, userId: string) {
+/** The series in team mode a scene's or an episode's edit belongs to (its «نقود الفريق الذكي» pays what is made in it). */
+export async function editorTeamSeries(p: Pick<EditorProject, "film_project_id" | "episode_id">): Promise<{ id: string } | null> {
   let seriesId: string | null = null;
   if (p.film_project_id) {
     const { data } = await db().from("film_projects").select("series_id").eq("id", p.film_project_id).maybeSingle();
@@ -152,7 +153,20 @@ async function seriesTeamEdit(p: EditorProject, userId: string) {
     const { data } = await db().from("film_episodes").select("series_id").eq("id", p.episode_id).maybeSingle();
     seriesId = (data?.series_id as string | null) ?? null;
   }
-  return isSeriesTeamMember(seriesId, userId);
+  if (!seriesId) return null;
+  const { data } = await db().from("film_series").select("mode").eq("id", seriesId).maybeSingle();
+  return data?.mode === "team" ? { id: seriesId } : null;
+}
+
+/**
+ * «المسلسل الذكي» in team mode: the people the series' owner added also work on its scenes' and episodes' edits, when
+ * the owner gave them the montage.
+ */
+async function seriesTeamEdit(p: EditorProject, userId: string) {
+  const series = await editorTeamSeries(p);
+  if (!series || !(await isSeriesTeamMember(series.id, userId))) return false;
+  const rights = await memberRights(series.id, userId);
+  return !rights?.stages || rights.stages.includes("montage");
 }
 
 async function assetRows(projectId: string) {

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { refundCoins, reserveCoins, settleCoins } from "@/lib/coins";
+import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins } from "@/lib/coins";
+import { giveAttempt, teamPayment, teamSeriesOf } from "./team";
 
 /** What a coin movement says in the user's history. */
 const COIN_LABELS: Record<string, string> = {
@@ -68,6 +69,8 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   const existing = await db.from("film_jobs").select("*").eq("idempotency_key", input.idempotencyKey).maybeSingle();
   if (existing.data) return { job: existing.data as FilmJob, created: false };
 
+  // «المسلسل الذكي» in team mode: the member must have this step and an attempt left; the team's wallet pays
+  const team = await teamPayment(input.projectId, input.user.id, input.operation);
   const { data, error } = await db
     .from("film_jobs")
     .insert({
@@ -85,6 +88,7 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
     .single();
   if (error) {
     // Another request inserted the same key a moment ago
+    if (team?.took) await giveAttempt(team.id, input.user.id);
     if (error.code === "23505") {
       const again = await db.from("film_jobs").select("*").eq("idempotency_key", input.idempotencyKey).single();
       return { job: again.data as FilmJob, created: false };
@@ -93,7 +97,7 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   }
 
   const job = data as FilmJob;
-  // «المسلسل الذكي» in team mode: a scene's paid steps are charged to its owner (the series' owner), whoever presses
+  // a scene's usage counts for its owner (the series' owner), whoever presses
   const payer = await payerOf(input.projectId, input.user);
   const { error: e2 } = await db.from("film_usage").insert({
     user_id: payer.id,
@@ -108,11 +112,14 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   });
   if (e2) {
     await db.from("film_jobs").update({ status: "failed", error: "usage reservation failed", finished_at: new Date().toISOString() }).eq("id", job.id);
+    if (team?.took) await giveAttempt(team.id, input.user.id);
     throw e2;
   }
   // «النقود الذكية»: hold the operation's coins (when coins are required); a short balance cancels the job
   try {
-    await reserveCoins(payer, job.id, input.estimateUsd, COIN_LABELS[input.operation] ?? input.operation);
+    const label = COIN_LABELS[input.operation] ?? input.operation;
+    if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label);
+    else await reserveCoins(payer, job.id, input.estimateUsd, label);
   } catch (e) {
     await failJob(job.id, e);
     throw e;
@@ -143,6 +150,13 @@ export async function succeedJob(jobId: string, actual: { costUsd: number; units
 export async function failJob(jobId: string, error: unknown, providerCostUsd?: number) {
   await refundCoins(jobId).catch((e) => console.error("coin refund failed", e));
   const db = createAdminClient();
+  // a team member's failed attempt is given back
+  const { data: j } = await db.from("film_jobs").select("project_id,user_id,status").eq("id", jobId).maybeSingle();
+  if (j && j.status !== "failed") {
+    const { data: fp } = await db.from("film_projects").select("user_id,series_id").eq("id", j.project_id).maybeSingle();
+    const series = fp ? await teamSeriesOf(fp).catch(() => null) : null;
+    if (series && j.user_id !== series.ownerId) await giveAttempt(series.id, j.user_id as string).catch(() => {});
+  }
   const now = new Date().toISOString();
   const message = String(
     error instanceof Error ? error.message : typeof error === "object" && error && "message" in error ? (error as { message: unknown }).message : error,
