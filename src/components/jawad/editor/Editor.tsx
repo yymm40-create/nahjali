@@ -38,6 +38,7 @@ import Timeline from "./Timeline";
 import type { EditorAsset, EditorProjectView } from "./types";
 import { useUploads, type Placement } from "./useUploads";
 import { diagNote, startDiag } from "./diag";
+import { useMaking } from "./making";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 interface Step {
@@ -751,6 +752,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       setCanvasEl(null);
     };
   }, []);
+  // «اصنع لي…»: what حيدرة started making with JAWAD AI, placed when it is ready
+  const making = useMaking({ projectId: project.id, run, onAssets: addAssets, flash, readOnly });
   /** «🩺 تشخيص»: the editor's state as it stands (read when a diagnosis is asked for, never while drawing) */
   const diagApp = () => ({
     save,
@@ -1269,6 +1272,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             </div>
           )}
         </div>
+        {making.length > 0 && (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-jw-accent/40 bg-jw-accent/10 px-2.5 py-1 text-[11px] font-semibold text-jw-accent" title={making.map((m) => m.name).join("، ")} aria-live="polite">
+            <span className="jw-spinner !h-3 !w-3" /> حيدرة يصنع {making.length === 1 ? `«${making[0].name.slice(0, 24)}»` : `${making.length} أشياء`}
+          </span>
+        )}
         {/* «واجهتي»: where the panels sit, and which float as windows */}
         <div className="relative hidden lg:block">
           <button type="button" className={`jw-btn jw-3d !min-h-9 shrink-0 text-xs ${layoutOpen ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setLayoutOpen((v) => !v)} aria-expanded={layoutOpen} title="رتّب واجهتك: أماكن اللوحات، ونوافذ تطفو">
