@@ -851,7 +851,7 @@ const minimaxSpeech: GeneratorDef = {
         { value: "angry", label: "غاضب" },
         { value: "fearful", label: "خائف" },
         { value: "surprised", label: "متفاجئ" },
-        { value: "calm", label: "هادئ" },
+        { value: "disgusted", label: "مشمئز" },
         { value: "neutral", label: "محايد" },
       ],
     },
