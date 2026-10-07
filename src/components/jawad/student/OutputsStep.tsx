@@ -1,12 +1,14 @@
 "use client";
 
-// «الطالب الذكي» — «النواتج»: what to make (a few taps), short questions with choices for each, one box for anything
-// special, then «ابدأ»: everything is planned, made and approved by the assistant (the page's autopilot), and the files
-// appear here to download. The design and fonts are never asked: Claude picks them (design-pick.ts).
+// «الطالب الذكي» — «النواتج»: what to make (a few taps), short questions with choices for each (the page count and the
+// file type among them, kept exactly), the design step (the student's style, ideas, fonts and page frame — or «تخطَّ»
+// and صادق picks: design-pick.ts), one box for special requests (they come first), then «ابدأ»: with صادق on,
+// everything is planned, made and approved by him (the page's autopilot); off, the student opens each output.
 
 import { useState } from "react";
 import Icon from "@/components/jawad/Icon";
-import { OUTPUT_KINDS, OUTPUT_STATUS, type OutputKind } from "@config/jawad/student";
+import { DESIGNED_KINDS, FONTS, FORMATS, MAX_PAGES, OUTPUT_KINDS, OUTPUT_STATUS, STYLES, emptyWish, isPaged, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { fontFacesUrl } from "./client";
 import { PICTURE_KINDS } from "./autopilot";
 import { KIND_LOOK, Tile } from "./look";
 import OutputPanel from "./OutputPanel";
@@ -31,9 +33,9 @@ function defaults(kind: OutputKind, level: string): S {
   switch (kind) {
     case "summary":
     case "explain":
-      return { density: young ? "low" : "medium", pictures: "" };
+      return { density: young ? "low" : "medium", pages: 0, page: "A4", format: "pdf", pictures: "" };
     case "book":
-      return { writing: "explain", page: "A4", density: "medium", pictures: "" };
+      return { writing: "explain", page: "A4", pages: 0, density: "medium", format: "pdf", pictures: "" };
     case "slides":
       return { count: 0, aspect: "16:9", notesMode: "both", render: "editable", imageQuality: "high" };
     case "audio":
@@ -56,6 +58,30 @@ function Choice<T extends string | number>({ label, value, options, onChange }: 
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** A number from a few chips, or any other number typed (0 = «حسب المادة»). */
+function Count({ label, value, options, max, unit, onChange }: { label: string; value: number; options: number[]; max: number; unit: string; onChange: (n: number) => void }) {
+  const [typing, setTyping] = useState(() => value > 0 && !options.includes(value));
+  return (
+    <div className="space-y-1">
+      <span className="text-sm font-semibold">{label}</span>
+      <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label={label}>
+        {[0, ...options].map((n) => (
+          <button key={n} type="button" role="radio" aria-checked={!typing && value === n} onClick={() => { setTyping(false); onChange(n); }} className={`rounded-full border px-3 py-1.5 text-sm transition-all ${!typing && value === n ? "border-transparent bg-violet-600 text-white" : "border-jw-line bg-white hover:border-violet-300"}`}>
+            {n === 0 ? "حسب المادة" : n.toLocaleString("ar")}
+          </button>
+        ))}
+        <button type="button" role="radio" aria-checked={typing} onClick={() => setTyping(true)} className={`rounded-full border px-3 py-1.5 text-sm ${typing ? "border-transparent bg-violet-600 text-white" : "border-jw-line bg-white"}`}>
+          عدد آخر
+        </button>
+        {typing && (
+          <input type="number" inputMode="numeric" min={1} max={max} className="jw-input !w-24 !py-1.5" value={value || ""} onChange={(e) => onChange(Math.max(0, Math.min(max, Math.round(Number(e.target.value) || 0))))} aria-label={`${label} (رقم)`} placeholder={unit} />
+        )}
+      </div>
+      {value > 0 && <p className="text-[11px] text-jw-faint">يلتزم صادق بالعدد بالضبط: {value.toLocaleString("ar")} {unit}.</p>}
     </div>
   );
 }
@@ -99,12 +125,21 @@ function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; s: S; s
   const pages = PICTURE_KINDS.includes(kind) && (
     <MethodChoice what="page" value={Boolean(s.pictures)} quality={String(s.pictures || "high")} perUnit={prices.page} free={prices.free} onChange={(draw, q) => set({ pictures: draw ? q : "" })} />
   );
+  // the written files: how many pages (kept exactly), the paper size and the file type (PDF / Word)
+  const paged = isPaged(kind) && (
+    <>
+      {!(kind === "book" && s.writing === "verbatim") && <Count label="كم صفحة تبي؟" value={Number(s.pages) || 0} options={[1, 2, 5, 10, 20]} max={MAX_PAGES} unit="صفحة" onChange={(n) => set({ pages: n })} />}
+      <Choice label="المقاس" value={String(s.page)} options={[{ id: "A4", label: "A4" }, { id: "A5", label: "A5 (صغير)" }]} onChange={(page) => set({ page })} />
+      <Choice label="صيغة الملف" value={String(s.format ?? "pdf")} options={FORMATS.map((f) => ({ id: f.id, label: f.label }))} onChange={(format) => set({ format })} />
+    </>
+  );
   switch (kind) {
     case "summary":
     case "explain":
       return (
         <>
           {density}
+          {paged}
           {pages}
         </>
       );
@@ -112,15 +147,15 @@ function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; s: S; s
       return (
         <>
           <Choice label="نوع الكتاب" value={String(s.writing)} options={[{ id: "explain", label: "كتاب شرح" }, { id: "summary", label: "كتاب ملخص" }, { id: "verbatim", label: "النص كامل كما هو" }]} onChange={(writing) => set({ writing })} />
-          <Choice label="المقاس" value={String(s.page)} options={[{ id: "A4", label: "A4" }, { id: "A5", label: "A5 (صغير)" }]} onChange={(page) => set({ page })} />
           {s.writing !== "verbatim" && density}
+          {paged}
           {pages}
         </>
       );
     case "slides":
       return (
         <>
-          <Choice label="كم شريحة؟" value={Number(s.count)} options={[{ id: 0, label: "حسب المادة" }, { id: 8, label: "٨" }, { id: 12, label: "١٢" }, { id: 20, label: "٢٠" }]} onChange={(count) => set({ count })} />
+          <Count label="كم شريحة؟" value={Number(s.count) || 0} options={[8, 12, 20]} max={200} unit="شريحة" onChange={(count) => set({ count })} />
           <Choice label="الشرح وين؟" value={String(s.notesMode)} options={[{ id: "slide", label: "على الشريحة" }, { id: "notes", label: "في ملاحظات المحاضر" }, { id: "both", label: "الاثنين" }]} onChange={(notesMode) => set({ notesMode })} />
           <Choice label="الشكل" value={String(s.aspect)} options={[{ id: "16:9", label: "عريض 16:9" }, { id: "4:3", label: "4:3" }]} onChange={(aspect) => set({ aspect })} />
           <MethodChoice what="slide" value={s.render === "image"} quality={String(s.imageQuality || "high")} perUnit={prices.slide} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q })} />
@@ -171,10 +206,72 @@ function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; s: S; s
   }
 }
 
+/** «التصميم»: the student decides how it looks (a style, their ideas, fonts, a page frame), or skips and صادق picks. */
+function DesignStep({ wish, set }: { wish: DesignWish; set: (w: DesignWish) => void }) {
+  const [fonts, setFonts] = useState(Boolean(wish.heading || wish.body));
+  const patch = (x: Partial<DesignWish>) => set({ ...wish, ...x });
+  return (
+    <div className="space-y-4">
+      <style>{fontFacesUrl(FONTS)}</style>
+      <div className="space-y-2">
+        <span className="text-sm font-semibold">الأسلوب</span>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="الأسلوب">
+          <button type="button" role="radio" aria-checked={!wish.style} onClick={() => patch({ style: "" })} className={`rounded-2xl border bg-white p-3 text-start ${!wish.style ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
+            <b className="block">🧑‍🎓 صادق يختار</b>
+            <span className="block text-xs text-jw-muted">يختار الأنسب لمادتك وعمرك، ويطبّق أفكارك اللي تكتبها تحت.</span>
+          </button>
+          {STYLES.map((st) => (
+            <button key={st.id} type="button" role="radio" aria-checked={wish.style === st.id} onClick={() => patch({ style: st.id })} className={`overflow-hidden rounded-2xl border text-start ${wish.style === st.id ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`} style={{ background: st.colors.paper, color: st.colors.ink }}>
+              <span className="flex h-3" aria-hidden>
+                {[st.colors.accent, st.colors.accent2, st.colors.line, st.colors.bg].map((c) => (
+                  <span key={c} className="flex-1" style={{ background: c }} />
+                ))}
+              </span>
+              <span className="block p-3">
+                <b className="block" style={{ color: st.colors.accent }}>{st.name}</b>
+                <span className="block text-xs" style={{ color: st.colors.muted }}>{st.suits}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="block space-y-1">
+        <span className="text-sm font-semibold">أفكارك للتصميم (اختياري) — يطبّقها صادق كما هي</span>
+        <textarea className="jw-textarea" rows={3} value={wish.ideas} onChange={(e) => patch({ ideas: e.target.value })} placeholder="مثال: ألوان كحلي وذهبي، عناوين كبيرة، جدول في كل فصل، صورة في بداية كل فصل، شكل رسمي للتقديم…" />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" role="switch" aria-checked={wish.frame} onClick={() => patch({ frame: !wish.frame })} className={`rounded-full border px-3 py-1.5 text-sm ${wish.frame ? "border-transparent bg-violet-600 text-white" : "border-jw-line bg-white"}`}>
+          {wish.frame ? "✓ " : ""}إطار حول كل صفحة
+        </button>
+        <button type="button" aria-expanded={fonts} onClick={() => { if (fonts) patch({ heading: "", body: "" }); setFonts(!fonts); }} className={`rounded-full border px-3 py-1.5 text-sm ${fonts ? "border-transparent bg-violet-600 text-white" : "border-jw-line bg-white"}`}>
+          {fonts ? "✓ " : ""}أختار الخطوط بنفسي
+        </button>
+      </div>
+      {fonts && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([["heading", "خط العناوين"], ["body", "خط المتن"]] as const).map(([k, label]) => (
+            <div key={k} className="space-y-1">
+              <span className="text-sm font-semibold">{label}</span>
+              <div className="flex flex-wrap gap-2">
+                {FONTS.map((f) => (
+                  <button key={f.id} type="button" aria-pressed={wish[k] === f.id} onClick={() => patch({ [k]: wish[k] === f.id ? "" : f.id })} title={f.role} className={`rounded-xl border px-3 py-1.5 text-base ${wish[k] === f.id ? "border-transparent bg-violet-600 text-white" : "border-jw-line bg-white"}`} style={{ fontFamily: `"${f.family}"` }}>
+                    {k === "heading" ? "عنوان" : "متن"} · {f.label.replace(/ \(.+\)$/, "")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void; onCancel?: () => void }) {
   const { project, prices, outputs } = p.state;
   const have = outputs.map((o) => o.kind);
-  const [phase, setPhase] = useState<"pick" | "ask">("pick");
+  const [phase, setPhase] = useState<"pick" | "ask" | "design">("pick");
+  const [wish, setWish] = useState<DesignWish>(emptyWish);
   const [pick, setPick] = useState<OutputKind[]>(() => (SUGGEST[project.brief.purpose] ?? ["summary"]).filter((k) => !have.includes(k)));
   const [answers, setAnswers] = useState<Record<string, S>>({});
   const [special, setSpecial] = useState("");
@@ -220,6 +317,50 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
     );
   }
 
+  // the design step only when something designed was chosen (not a recording or a transcript alone)
+  const designed = pick.some((k) => DESIGNED_KINDS.includes(k));
+  const begin = (skipDesign: boolean) =>
+    run(async () => {
+      await p.act({ action: "start", outputs: pick.map((k) => ({ kind: k, settings: of(k) })), special, design: skipDesign ? emptyWish() : wish });
+      onStart();
+    });
+  const startButtons = (skipDesign: boolean) => (
+    <>
+      <ErrorLine error={error} />
+      <p className="text-xs text-jw-faint">طلباتك لها الأولوية على اختيارات صادق. كل خطوة مدفوعة تنخصم بسعرها وقت تنفيذها، وترجع لك إذا فشلت.</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-8" disabled={busy} onClick={() => begin(skipDesign)}>
+          {busy ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : <Icon name="sparkles" size={18} />} ابدأ
+        </button>
+        <button type="button" className="jw-btn" disabled={busy} onClick={() => setPhase(phase === "design" ? "ask" : "pick")}>
+          رجوع
+        </button>
+      </div>
+    </>
+  );
+
+  if (phase === "design") {
+    return (
+      <section className="jw-panel space-y-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold">🎨 التصميم: كيف تبيه يطلع؟</h2>
+            <p className="text-sm text-jw-muted">أنت تحدد الشكل النهائي، وصادق يلتزم فيه. أو تخطّ وخلّه يختار.</p>
+          </div>
+          <button type="button" className="jw-btn" disabled={busy} onClick={() => begin(true)}>
+            تخطَّ — خلّ صادق يختار
+          </button>
+        </div>
+        <DesignStep wish={wish} set={setWish} />
+        <label className="block space-y-1">
+          <span className="font-bold">طلبات خاصة على المحتوى (اختياري) — لها الأولوية</span>
+          <textarea className="jw-textarea" rows={3} value={special} onChange={(e) => setSpecial(e.target.value)} placeholder="مثال: أمثلة من الحياة اليومية، ركّز على الفصل الثاني، لا تكتب مقدمة…" />
+        </label>
+        {startButtons(false)}
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-4">
       {pick.map((k) => (
@@ -232,36 +373,30 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
         </div>
       ))}
       <div className="jw-panel space-y-3 p-4">
-        <label className="block space-y-1">
-          <span className="font-bold">تبي تصميم خاص أو طلب زيادة؟ (اختياري)</span>
-          <textarea className="jw-textarea" rows={3} value={special} onChange={(e) => setSpecial(e.target.value)} placeholder="مثال: ألوان هادئة، أمثلة من الحياة اليومية، ركّز على الفصل الثاني…" />
-        </label>
-        <p className="text-xs text-jw-faint">الخطوط والتصميم يختارها صادق لك حسب مادتك وعمرك وغرضك. كل خطوة مدفوعة تنخصم بسعرها وقت تنفيذها، وترجع لك إذا فشلت.</p>
-        <ErrorLine error={error} />
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="jw-btn jw-btn-primary !min-h-12 !px-8"
-            disabled={busy}
-            onClick={() =>
-              run(async () => {
-                await p.act({ action: "start", outputs: pick.map((k) => ({ kind: k, settings: of(k) })), special });
-                onStart();
-              })
-            }
-          >
-            {busy ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : <Icon name="sparkles" size={18} />} ابدأ
-          </button>
-          <button type="button" className="jw-btn" disabled={busy} onClick={() => setPhase("pick")}>
-            رجوع
-          </button>
-        </div>
+        {designed ? (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-8" onClick={() => setPhase("design")}>
+              التالي: التصميم 🎨
+            </button>
+            <button type="button" className="jw-btn" onClick={() => setPhase("pick")}>
+              رجوع
+            </button>
+          </div>
+        ) : (
+          <>
+            <label className="block space-y-1">
+              <span className="font-bold">طلبات خاصة (اختياري) — لها الأولوية</span>
+              <textarea className="jw-textarea" rows={3} value={special} onChange={(e) => setSpecial(e.target.value)} placeholder="مثال: اقرأ ببطء، ركّز على الفصل الثاني…" />
+            </label>
+            {startButtons(true)}
+          </>
+        )}
       </div>
     </section>
   );
 }
 
-export default function OutputsStep({ p, onStart, researching, working }: { p: ProjectHook; onStart: () => void; researching: boolean; working: boolean }) {
+export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch, researching, working }: { p: ProjectHook; autoOn: boolean; onStart: () => void; onCreated: () => void; onResearch: () => void; researching: boolean; working: boolean }) {
   const { outputs, jobs } = p.state;
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
@@ -277,10 +412,15 @@ export default function OutputsStep({ p, onStart, researching, working }: { p: P
         <h2 className="text-lg font-bold">صادق يبحث في الويب ليكمل مادتك</h2>
         <p className="text-sm text-jw-muted">دقائق قليلة، وبعدها تختار نواتجك.</p>
         <JobStatus job={job} />
+        {!working && !jobs.some((j) => j.kind === "research" && (j.status === "queued" || j.status === "running")) && (
+          <button type="button" className="jw-btn jw-btn-primary mx-auto" onClick={onResearch}>
+            <Icon name="sparkles" size={16} /> كمّل البحث
+          </button>
+        )}
       </section>
     );
   }
-  if (!outputs.length || adding) return <Wizard p={p} onCancel={outputs.length ? () => setAdding(false) : undefined} onStart={() => { setAdding(false); onStart(); }} />;
+  if (!outputs.length || adding) return <Wizard p={p} onCancel={outputs.length ? () => setAdding(false) : undefined} onStart={() => { setAdding(false); onCreated(); }} />;
 
   const sorted = [...outputs].sort((a, b) => a.ord - b.ord);
   const selected = sorted.find((o) => o.id === open) ?? null;
@@ -291,7 +431,7 @@ export default function OutputsStep({ p, onStart, researching, working }: { p: P
     <div className="space-y-4">
       <section className="jw-panel space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold">{allDone ? "جاهز ✅ — نزّل ملفاتك" : "صادق يصنع نواتجك…"}</h2>
+          <h2 className="text-lg font-bold">{allDone ? "جاهز ✅ — نزّل ملفاتك" : working || running ? "صادق يصنع نواتجك…" : autoOn ? "نواتجك" : "افتح كل ناتج: راجع خطته واعتمدها، وبعدها يتصنع"}</h2>
           <div className="flex gap-2">
             {stuck && (
               <button type="button" className="jw-btn jw-btn-primary" onClick={onStart}>
