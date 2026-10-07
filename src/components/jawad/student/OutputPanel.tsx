@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
-import { DENSITIES, OUTPUT_STATUS, QUESTION_TYPES } from "@config/jawad/student";
+import { DENSITIES, DESIGNED_KINDS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
 import { AudioPlanEditor, DocPlanEditor, QuizPlanEditor, SlideMapEditor } from "./PlanEditors";
+import { defaults, DesignStep, Questions } from "./Questions";
 import { AudioResult, DocView, FileLinks, PdfFrame, QuizPlay, SlidesFonts, TranscriptView } from "./Results";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, Gate, JobStatus, PaidButton, Seg, useAsync } from "./ui";
@@ -16,8 +17,71 @@ const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
 const stable = (v: unknown): string =>
   Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as S)[k])}`).join(",")}}` : JSON.stringify(v) ?? "null";
 
+/** The design an output was made with, as the design step's answers (so going back starts from what it is now). */
+function wishOf(d: unknown): DesignWish {
+  const x = d as Design | undefined;
+  if (!x?.main) return emptyWish();
+  return { style: x.main, ideas: x.custom?.description ?? "", heading: x.fonts?.heading ?? "", body: x.fonts?.body ?? "", frame: x.frame !== false };
+}
+
+/**
+ * «ارجع وغيّر»: back to an output's questions and design (also once it is made). Saving plans and makes it again from
+ * the start with the new answers; its files stay until the new ones are ready.
+ */
+function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDone: () => void; onClose: () => void }) {
+  const kind = o.kind as OutputKind;
+  const [s, setS] = useState<S>(() => ({ ...defaults(kind, p.state.project.level), ...o.settings }));
+  const [wish, setWish] = useState<DesignWish>(() => wishOf(o.settings.design));
+  const [extra, setExtra] = useState(str(o.settings.extra));
+  const { busy, error, run } = useAsync();
+  const designed = DESIGNED_KINDS.includes(o.kind);
+  return (
+    <div className="space-y-4 rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
+      <h3 className="font-bold">↩ ارجع وغيّر «{o.title}»</h3>
+      <Questions kind={kind} s={s} set={(patch) => setS({ ...s, ...patch })} chosen={p.state.outputs.map((x) => x.kind as OutputKind)} prices={p.state.prices} />
+      {designed && (
+        <div className="space-y-2">
+          <b className="block">🎨 التصميم</b>
+          <DesignStep wish={wish} set={setWish} />
+        </div>
+      )}
+      <label className="block space-y-1">
+        <span className="text-sm font-semibold">طلبات خاصة (لها الأولوية)</span>
+        <textarea className="jw-textarea" rows={2} value={extra} onChange={(e) => setExtra(e.target.value)} />
+      </label>
+      <ErrorLine error={error} />
+      <p className="text-xs text-jw-faint">ينصنع من جديد بإعداداتك الجديدة، ويُخصم بسعره. ملفاتك الحالية تبقى لين تجهز الجديدة.</p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="jw-btn jw-btn-primary"
+          disabled={busy}
+          onClick={() =>
+            run(async () => {
+              const { design: _d, ...rest } = s;
+              void _d;
+              // a recording reads another output: the question names its kind, the server wants that output
+              if (o.kind === "audio" && rest.source !== "text" && rest.source !== "custom") {
+                const dep = p.state.outputs.find((x) => x.kind === rest.source || x.id === rest.source);
+                rest.source = dep ? dep.id : "text";
+              }
+              await p.actOutput(o.id, { action: "settings", settings: { ...rest, extra }, ...(designed ? { design: wish } : {}) });
+              onDone();
+            })
+          }
+        >
+          <Icon name="sparkles" size={16} /> احفظ وأعد الصنع
+        </button>
+        <button type="button" className="jw-btn" disabled={busy} onClick={onClose}>
+          إلغاء
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** One output, from its settings to its approved files. */
-export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView }) {
+export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onRemade?: () => void }) {
   const { jobs, segments, sources, outputs, research } = p.state;
   const job = jobs.find((j) => j.outputId === o.id);
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
@@ -46,6 +110,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
   const designed = o.kind === "book" || o.kind === "slides";
   const editingSettings = ["settings", "waiting", "plan_review", "ready", "trial_offer", "trial_review", "failed"].includes(o.status) && !mine;
   const researchContent = research?.approved ? research.content : null;
+  const [back, setBack] = useState(false);
 
   return (
     <section className="jw-panel min-w-0 space-y-4 p-4" aria-labelledby={`o-${o.id}`}>
@@ -61,6 +126,13 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
           تغيّر النص أو الفهم أو حدود المصدر بعد بناء هذا الناتج. أعد إعداد الخطة واعتمدها قبل استخدامه أو إعادة توليده.
         </p>
       )}
+      {o.kind !== "transcript" && !mine && !running && (back ? (
+        <Remake p={p} o={o} onClose={() => setBack(false)} onDone={() => { setBack(false); onRemade?.(); }} />
+      ) : (
+        <button type="button" className="jw-btn" onClick={() => setBack(true)}>
+          ↩ ارجع وغيّر الأسئلة والتصميم
+        </button>
+      ))}
       {o.status === "waiting" && <p className="text-sm text-jw-warn">هذا الصوت يقرأ ناتجًا آخر: يبدأ بعد اعتماد ذلك الناتج.</p>}
       <ErrorLine error={o.error && o.status !== "done" ? o.error : null} />
       {mine && <JobStatus job={job} />}

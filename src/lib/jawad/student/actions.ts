@@ -164,7 +164,17 @@ export async function projectAction(user: User, id: string, b: Body) {
   const db = sdb();
   switch (b.action) {
     case "meta": {
+      // «الطلب» edited again (the student went back to the first page): the name, level, audience and purpose; the
+      // research focus and places too. The source mode and the switch stay as they are. Outputs made before keep
+      // their text until the student makes them again.
       await touch(p.id, { title: text(b.title, 200) || p.title, level: text(b.level, 120), audience: text(b.audience, 300) } as Partial<Project>);
+      if (b.brief && typeof b.brief === "object") {
+        const old = readBrief(p.brief);
+        const given = cleanBrief({ ...old, ...(b.brief as Body) });
+        const brief = { ...given, mode: old.mode, auto: old.auto };
+        const { error } = await db.from("student_projects").update({ brief }).eq("id", p.id);
+        if (error) console.error("student brief edit", error.message);
+      }
       return { ok: true };
     }
     case "source_text": {
@@ -574,7 +584,16 @@ export async function outputAction(user: User, id: string, b: Body) {
           return { ok: true };
         }
       }
-      await saveOutput(o.id, { settings: { ...o.settings, ...settings, _styleDraft: o.settings._styleDraft }, depends_on: null, status: "settings", plan_approved: false, error: null });
+      // back to the questions and the design of an output (also one already made): the new design is picked with the
+      // student's wishes first, and the output is planned and made again from the start (its old files stay until then)
+      if (b.design && typeof b.design === "object") {
+        const u = await latestVersion<Understanding>(p.id, "understanding");
+        const { designs } = await pickDesigns(p, [o.kind], u?.content.topic ?? p.title, text(settings.extra, 2000), readWish(b.design));
+        if (designs[o.kind]) settings.design = designs[o.kind];
+      }
+      const { _wordScale: _drop, ...kept } = o.settings;
+      void _drop;
+      await saveOutput(o.id, { settings: { ...kept, ...settings, _styleDraft: o.settings._styleDraft }, depends_on: null, status: "settings", plan_approved: false, approved: false, error: null });
       return { ok: true };
     }
     case "plan": {
