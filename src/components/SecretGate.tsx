@@ -32,6 +32,8 @@ export default function SecretGate() {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
+  // signed in without access: a bar on top of every page to enter the code, always there
+  const [bar, setBar] = useState(false);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -57,13 +59,18 @@ export default function SecretGate() {
     const t = setTimeout(() => {
       if (fromLink || (!skip && (read(PENDING) || !read(ASKED)))) show();
     }, 900);
+    if (!skip)
+      fetch("/api/access/code", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((s: { signedIn: boolean; open: boolean }) => setBar(s.signedIn && !s.open))
+        .catch(() => {});
+    else setTimeout(() => setBar(false), 0);
     return () => {
       clearTimeout(t);
       window.removeEventListener("secret:open", onOpen);
     };
   }, [path]);
 
-  if (!open) return null;
   const close = () => {
     write(ASKED, "1");
     write(PENDING, null);
@@ -88,7 +95,28 @@ export default function SecretGate() {
   const here = typeof window === "undefined" ? "/" : window.location.pathname;
   const login = here.startsWith("/jawad-ai") ? `/jawad-ai/login?next=${encodeURIComponent(here)}` : `/login?next=${encodeURIComponent(here)}`;
 
+  const topBar = bar && (
+    <form
+      dir="rtl"
+      className="relative z-[60] flex flex-wrap items-center justify-center gap-2 bg-slate-900 px-3 py-2 text-sm text-white"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (code.trim()) send();
+      }}
+    >
+      <span className="font-extrabold">🗝️ ادخل الكود السري</span>
+      <input className="w-36 rounded-xl border-0 bg-white px-3 py-1.5 text-center font-bold text-slate-900 outline-none" dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} maxLength={64} aria-label="الكود السري" />
+      <button className="rounded-xl bg-sky-500 px-4 py-1.5 font-extrabold text-white disabled:opacity-50" disabled={busy || !code.trim()}>
+        {busy ? "لحظة…" : "افتح"}
+      </button>
+      {error && !open && <span className="w-full text-center text-xs font-bold text-red-300">{error}</span>}
+    </form>
+  );
+  if (!open) return topBar || null;
+
   return (
+    <>
+    {topBar}
     <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="secret-title" dir="rtl">
       <div className="w-full max-w-sm space-y-4 rounded-3xl bg-white p-6 text-center text-slate-900 shadow-2xl">
         <p className="text-5xl" aria-hidden>🗝️</p>
@@ -121,5 +149,6 @@ export default function SecretGate() {
         </button>
       </div>
     </div>
+    </>
   );
 }
