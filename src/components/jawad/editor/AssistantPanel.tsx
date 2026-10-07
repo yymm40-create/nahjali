@@ -7,6 +7,8 @@ import { diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
 import { makeHookAsset, makeMusicAsset, makeSfxAsset } from "./make";
+import { startMaking } from "./making";
+import type { MakePlan } from "@/lib/editor/make-any";
 import { placeHookDesign, placeMusic } from "@/lib/editor/make";
 import { hookAspect } from "@/lib/editor/hook-design";
 import type { MakeRequest } from "@/lib/editor/assistant";
@@ -24,6 +26,8 @@ interface Msg {
   text: string;
   done?: number;
   suggestions?: { prompt: string; why: string }[];
+  /** «اصنع لي…» that cost coins: shown with their price, started by a tap */
+  plans?: { plan: MakePlan; state: "ask" | "started" | "failed" }[];
   error?: boolean;
 }
 
@@ -266,6 +270,15 @@ export default function AssistantPanel({
             const a = await makeMusicAsset(projectId, q.prompt, q.lengthMs || 30_000);
             onAssets([a]);
             run(placeMusic(a.id, q.at), { label: "موسيقى" });
+          } else if (q.kind === "make" && q.plan) {
+            const plan = q.plan;
+            if (plan.free) {
+              setBusy(`أبدأ أصنع «${plan.name}»…`);
+              await startMaking(projectId, plan);
+              setMsgs((m) => [...m, { role: "assistant", text: `بدأت أصنع «${plan.name}» بـ ${plan.generatorName}${plan.kind === "video" ? " (الفيديو ياخذ كم دقيقة)" : ""}؛ ينحط على التايملاين لحاله أول ما يخلص.` }]);
+            } else {
+              setMsgs((m) => [...m, { role: "assistant", text: `جاهز أصنع «${plan.name}» بـ ${plan.generatorName}.`, plans: [{ plan, state: "ask" }] }]);
+            }
           } else if (q.kind === "separate") {
             setBusy("نفصل الكلام والموسيقى والمؤثرات…");
             await onSeparate(q.clipId);
@@ -392,6 +405,32 @@ export default function AssistantPanel({
                 ))}
               </div>
             ) : null}
+            {m.plans?.map((x, k) => (
+              <div key={k} className="mt-2 rounded-lg border border-jw-line p-2 text-xs">
+                <p className="text-jw-muted" dir="auto">{x.plan.prompt.slice(0, 200)}</p>
+                {x.state === "ask" ? (
+                  <button
+                    type="button"
+                    className="jw-btn jw-btn-primary mt-2 !min-h-8 w-full text-xs"
+                    disabled={readOnly || !!busy}
+                    onClick={async () => {
+                      const mark = (state: "started" | "failed") => setMsgs((all) => all.map((mm, j) => (j === i ? { ...mm, plans: mm.plans?.map((pp, kk) => (kk === k ? { ...pp, state } : pp)) } : mm)));
+                      try {
+                        await startMaking(projectId, x.plan);
+                        mark("started");
+                      } catch (e) {
+                        mark("failed");
+                        setMsgs((all) => [...all, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
+                      }
+                    }}
+                  >
+                    اصنعه ({x.plan.coins} نقدة)
+                  </button>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-jw-ok">{x.state === "started" ? "بدأ الصنع ✓ ينحط على التايملاين لحاله" : "ما بدأ"}</p>
+                )}
+              </div>
+            ))}
           </div>
         ))}
         {long && !busy && (

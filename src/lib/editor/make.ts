@@ -69,3 +69,25 @@ export function placeHookDesign(
   if (ids.sfxOut) sound(ids.sfxOut, end, d.sfxOut);
   return cmds;
 }
+
+/**
+ * Something «حيدرة» made with JAWAD AI («اصنع لي…»), once it is in the library: a picture or video over the video
+ * (a new track) or into the main track, a sound on a new sound track (music a little lower, ducking under talking).
+ */
+export function placeMade(kind: "image" | "video" | "speech" | "sfx" | "music", assetId: string, place: "over" | "main" | "audio" | "library", at: number): Command[] {
+  if (place === "library") return [];
+  const start = Math.max(0, Math.round(at));
+  if (kind === "image" || kind === "video") {
+    if (place === "main") return [{ type: "add_clip", assetId, at: start }];
+    const cmds: Command[] = [{ type: "add_clip", assetId, trackId: "new", at: start }];
+    if (kind === "image") cmds.push({ type: "trim_clip", clipId: "$1", edge: "end", to: start + 4000 });
+    cmds.push({ type: "update_clip", clipId: "$1", patch: { fit: "cover" } });
+    return cmds;
+  }
+  const cmds: Command[] = [{ type: "add_clip", assetId, trackId: "new", at: start }];
+  if (kind === "music") {
+    cmds.push({ type: "update_clip", clipId: "$1", patch: { volume: 0.6, fadeIn: 800, fadeOut: 2000 } });
+    cmds.push({ type: "update_track", trackId: "$1", patch: { duck: true } });
+  }
+  return cmds;
+}

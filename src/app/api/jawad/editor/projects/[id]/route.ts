@@ -26,6 +26,8 @@ import { align, signSpeechUpload, transcribe } from "@/lib/editor/speech";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist } from "@/lib/editor/assistant";
 import { diagnose } from "@/lib/editor/diagnose";
+import { isAdmin } from "@config/site";
+import { startMake } from "@/lib/editor/make-any";
 
 // listening to a long clip can take a while
 export const maxDuration = 300;
@@ -95,8 +97,12 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json({ asset: await makeMusic(p, { id: user.id, email: user.email, owner }, b) });
     case "separate":
       return NextResponse.json(await separate(p, { id: user.id, email: user.email, owner }, b));
+    // «اصنع لي…» from حيدرة: a priced plan started as a JAWAD AI job
+    case "make_start":
+      return NextResponse.json(await startMake(user, owner, b, new URL(req.url).origin));
     case "diagnose":
-      return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner }, b));
+      // the site's owner only (a free guest is «unlimited» too, but never sees the site's insides)
+      return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
     case "assistant":
       return NextResponse.json(await assist(p, { id: user.id, email: user.email, owner }, b));
     case "fix_link":
