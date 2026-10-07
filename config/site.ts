@@ -9,8 +9,21 @@ export const CONTACT_EMAIL = "yymm40@gmail.com";
 export const LEGAL_UPDATED = "١ أكتوبر ٢٠٢٦";
 
 /** Accounts that can open the owner's dashboard (/admin). */
-export const ADMIN_EMAILS = ["yymm40@gmail.com"];
+/** «الرئيس»: the site's owner, above everyone. */
+export const OWNER_EMAILS = ["yymm40@gmail.com"];
+/**
+ * «رئيس مشارك»: everything the owner can do (every section free and unlimited, the dashboard, access and permissions,
+ * prices, coins), except anything aimed at the owner's own account — the owner stays above them.
+ */
+export const CO_OWNER_EMAILS = ["narjiszahra912@gmail.com"];
+export const ADMIN_EMAILS = [...OWNER_EMAILS, ...CO_OWNER_EMAILS];
+/** The site's owners: «الرئيس» and the «رئيس مشارك». */
 export const isAdmin = (email: string | undefined | null) => Boolean(email && ADMIN_EMAILS.includes(email.toLowerCase()));
+export const isOwner = (email: string | undefined | null) => Boolean(email && OWNER_EMAILS.includes(email.toLowerCase()));
+export const isCoOwner = (email: string | undefined | null) => Boolean(email && CO_OWNER_EMAILS.includes(email.toLowerCase()));
+/** May this admin change things for that account? Anyone but the owner's account, which only the owner may touch. */
+export const mayActOn = (actor: string | undefined | null, target: string | undefined | null) => isOwner(actor) || !isOwner(target);
+export const ABOVE_YOU = "هذا حساب الرئيس؛ ما يتغير إلا منه.";
 
 /**
  * Guests the owner lets into JAWAD AI with everything free (no coins, no limits) until a set time; after it they are

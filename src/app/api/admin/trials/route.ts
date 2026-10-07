@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
-import { isAdmin } from "@config/site";
+import { ABOVE_YOU, isAdmin, mayActOn } from "@config/site";
 
 /** Owner-only: set a custom daily free-trial limit for one email. { email, daily } (daily = 0 → back to default) */
 export const POST = handle(async (req: Request) => {
@@ -11,6 +11,7 @@ export const POST = handle(async (req: Request) => {
   const email = (body.email ?? "").trim().toLowerCase();
   const daily = Math.floor(Number(body.daily));
   if (!email) throw new UserError("اكتب الإيميل.", 400);
+  if (!mayActOn(me.email, email)) throw new UserError(ABOVE_YOU, 403);
   if (!(daily >= 0 && daily <= 100)) throw new UserError("العدد لازم بين ٠ و ١٠٠.", 400);
 
   const db = createAdminClient();
