@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
+import { unlimitedFor } from "@/lib/access";
 import { requireOrder, requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listTemplates } from "@/lib/templates";
 import { stepPath } from "@/lib/types";
-import { DEFAULT_QUALITY, DEV_PAYMENT_ENABLED, FREE_TRIAL, dailyTrialLimit, hasUnlimitedTrials, QUALITY_TIERS } from "@config/pricing";
+import { DEFAULT_QUALITY, DEV_PAYMENT_ENABLED, FREE_TRIAL, FREE_TRIAL_MAX_ORDERS, QUALITY_TIERS } from "@config/pricing";
 import { DEFAULT_STYLE, STYLES } from "@config/styles";
 import NewOrder from "./NewOrder";
 
@@ -19,13 +20,13 @@ export default async function NewPage({ searchParams }: PageProps<"/new">) {
   }
 
   let trialsLeft: number | null = null;
-  if (FREE_TRIAL && !hasUnlimitedTrials(user.email)) {
+  if (FREE_TRIAL && !(await unlimitedFor(user.email))) {
     const { count } = await createAdminClient()
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
       .eq("is_trial", true);
-    trialsLeft = Math.max(0, dailyTrialLimit(user) - (count ?? 0));
+    trialsLeft = Math.max(0, FREE_TRIAL_MAX_ORDERS - (count ?? 0));
   }
 
   const templates = await listTemplates();

@@ -2,7 +2,6 @@ import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
-import { editsLeft } from "@/lib/film/limits";
 import { latestJob, runningImageJobs, sheetAssets, sheetVersions } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
@@ -45,7 +44,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         </p>
       </header>
       <SheetsWorkspace
-        editsLeft={await editsLeft(id, "sheets", user.email)}
+        editsLeft={null}
         projectId={id}
         stage={project.stage}
         versions={versions}

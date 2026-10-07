@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { accessMode, limitRows, LIMITS, SECTIONS_ACCESS, ACCESS_MODES, type AccessSection, type LimitKey } from "@/lib/film/limits";
+import { isPerm, type Perm } from "@config/access";
 import { coinsRequired } from "@/lib/coins";
-import { dailyTrialLimit } from "@config/pricing";
 import { isAdmin } from "@config/site";
 import UserPermissions from "./UserPermissions";
 
@@ -27,10 +26,9 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
     const { count: n, error: e } = await db.from(table).select("*", { count: "exact", head: true }).eq(col, id);
     return e ? null : (n ?? 0);
   };
-  const [rows, wallet, invited, coinsOn, usage, ...modes] = await Promise.all([
-    limitRows(),
+  const [perms, wallet, coinsOn, usage] = await Promise.all([
+    db.from("site_access").select("perms").eq("email", email).maybeSingle().then((r) => (r.data ? ((r.data.perms as string[]) ?? []).filter(isPerm) : null) as Perm[] | null),
     db.from("smart_coin_wallets").select("balance,library_until").eq("user_id", id).maybeSingle().then((r) => r.data as { balance: number; library_until: string | null } | null),
-    db.from("film_allowed_emails").select("email").eq("email", email).maybeSingle().then((r) => !!r.data),
     coinsRequired().catch(() => false),
     Promise.all([
       count("jawad_jobs"),
@@ -40,24 +38,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
       count("orders"),
       count("mahdi_logs"),
     ]),
-    ...(Object.keys(SECTIONS_ACCESS) as AccessSection[]).map((s) => accessMode(s).catch(() => SECTIONS_ACCESS[s].default)),
   ]);
-  const own = rows.filter((r) => r.scope === "email" && r.target === email);
-  const all = rows.filter((r) => r.scope === "all");
-  const sections = (Object.keys(SECTIONS_ACCESS) as AccessSection[]).map((s, i) => {
-    const r = own.find((x) => x.key === `allow_${s}`);
-    return { key: s, label: SECTIONS_ACCESS[s].label, siteMode: ACCESS_MODES[modes[i]].label, value: (r === undefined ? null : r.value > 0 ? 1 : 0) as 0 | 1 | null };
-  });
-  const limits = (Object.keys(LIMITS) as LimitKey[])
-    .filter((k) => LIMITS[k].perUser)
-    .map((k) => ({
-      key: k,
-      label: LIMITS[k].label,
-      hint: LIMITS[k].hint,
-      site: all.find((r) => r.key === k)?.value ?? LIMITS[k].default,
-      own: own.find((r) => r.key === k)?.value ?? null,
-    }));
-  const custom = Number(u.app_metadata?.daily_trials) || null;
   const owner = isAdmin(email);
   const [jobs, editor, student, film, orders, mahdi] = usage;
   const name = String(u.user_metadata?.full_name ?? u.user_metadata?.name ?? "") || email.split("@")[0];
@@ -110,14 +91,10 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
       ) : (
         <UserPermissions
           email={email}
-          sections={sections}
-          limits={limits}
+          perms={perms}
           balance={wallet?.balance ?? 0}
           libraryUntil={runningUntil(wallet?.library_until)}
           coinsOn={coinsOn}
-          filmInvited={invited}
-          trials={{ custom, effective: dailyTrialLimit(u) }}
-          overrides={own.length}
         />
       )}
     </div>

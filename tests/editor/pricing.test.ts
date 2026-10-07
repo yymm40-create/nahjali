@@ -13,25 +13,18 @@ vi.mock("@/lib/coins", () => ({
   },
 }));
 vi.mock("@/lib/film/limits", () => ({
-  getLimit: async (key: string) => limits.values[key] ?? ({ editor_claude_daily: 40, editor_speech_minutes: 120 } as Record<string, number>)[key] ?? 0,
+  getLimit: async (key: string) => limits.values[key] ?? 0,
 }));
 
-const { charged, editorLimit } = await import("@/lib/editor/pricing");
+const { charged } = await import("@/lib/editor/pricing");
 const person = { id: "u", email: "a@b.c", owner: false };
 
-describe("the editor's limits and prices (/admin/limits)", () => {
+describe("the editor's prices (/admin/limits)", () => {
   beforeEach(() => {
     coins.required = false;
     coins.held = [];
     coins.released = [];
     limits.values = {};
-  });
-
-  it("uses the owner's daily limits, and the owner has none", async () => {
-    expect(await editorLimit("editor_claude_daily", person)).toBe(40);
-    limits.values.editor_claude_daily = 5;
-    expect(await editorLimit("editor_claude_daily", person)).toBe(5);
-    expect(await editorLimit("editor_claude_daily", { ...person, owner: true })).toBe(Infinity);
   });
 
   it("is free while coins aren't required, even with a price", async () => {

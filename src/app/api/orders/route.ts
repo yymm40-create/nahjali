@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { unlimitedFor } from "@/lib/access";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTemplate } from "@/lib/templates";
@@ -7,8 +8,7 @@ import { isStyle } from "@config/styles";
 import {
   ATTEMPTS_ALLOWED,
   FREE_TRIAL,
-  dailyTrialLimit,
-  hasUnlimitedTrials,
+  FREE_TRIAL_MAX_ORDERS,
   isQuality,
   QUALITY_TIERS,
 } from "@config/pricing";
@@ -43,13 +43,13 @@ export const POST = handle(async (req: Request) => {
   if (parentMessage.length > 140) throw new UserError("رسالة الأهل طويلة (١٤٠ حرف كحد أقصى).", 400);
 
   const db = createAdminClient();
-  if (FREE_TRIAL && !hasUnlimitedTrials(user.email)) {
+  if (FREE_TRIAL && !(await unlimitedFor(user.email))) {
     const { count } = await db
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
       .eq("is_trial", true);
-    const limit = dailyTrialLimit(user);
+    const limit = FREE_TRIAL_MAX_ORDERS;
     if ((count ?? 0) >= limit) {
       throw new UserError(`استخدمت التجربة المجانية المتاحة لحسابك (${limit}).`, 403);
     }
@@ -74,9 +74,9 @@ export const POST = handle(async (req: Request) => {
     .single();
   if (error) throw error;
   // Counted again after saving: several orders sent at the same moment can't all pass the check above
-  if (FREE_TRIAL && !hasUnlimitedTrials(user.email)) {
+  if (FREE_TRIAL && !(await unlimitedFor(user.email))) {
     const { count } = await db.from("orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("is_trial", true);
-    const limit = dailyTrialLimit(user);
+    const limit = FREE_TRIAL_MAX_ORDERS;
     if ((count ?? 0) > limit) {
       await db.from("orders").delete().eq("id", data.id);
       throw new UserError(`استخدمت التجربة المجانية المتاحة لحسابك (${limit}).`, 403);

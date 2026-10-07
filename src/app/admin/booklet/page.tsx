@@ -6,7 +6,6 @@ import { STYLES, type StyleKey } from "@config/styles";
 import { QUALITY_TIERS, type QualityKey } from "@config/pricing";
 import { isAdmin } from "@config/site";
 import AdminTools from "./AdminTools";
-import TrialLimit from "./TrialLimit";
 
 export const metadata = { title: "كتيب نهج علي · لوحة التحكم" };
 // Always fresh numbers
@@ -76,7 +75,6 @@ export default async function AdminPage() {
         <p className="text-xs font-bold text-muted">يُحسب حسب آخر تسجيل دخول لكل شخص (بتوقيت الرياض).</p>
       </section>
 
-      <TrialLimit users={s.users.filter((u) => u.dailyTrials).map((u) => ({ email: u.email, daily: u.dailyTrials as number }))} />
 
       <AdminTools emails={s.users.map((u) => u.email).filter(Boolean)} />
 

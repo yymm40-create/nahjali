@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { elevenAlign, elevenSpeech, elevenTranscribe } from "@/lib/jawad/server/providers/elevenlabs";
 import { ELEVEN_DEFAULT_VOICE } from "@config/jawad/generators";
-import { charged, editorLimit, type Who } from "./pricing";
+import { charged, type Who } from "./pricing";
 import { EDITOR_BUCKET, isUuid, stillOpen, type AssetRow, type EditorProject } from "./server";
 
 import { storage } from "@/lib/storage";
@@ -33,16 +33,6 @@ export async function signSpeechUpload(p: EditorProject, b: { format?: unknown }
   const signed = await storage.from(EDITOR_BUCKET).createSignedUploadUrl(path);
   if (signed.error) throw signed.error;
   return { path, mime: t.mime, signedUrl: signed.data.signedUrl };
-}
-
-async function minutesToday(p: EditorProject) {
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
-  const { data: projects } = await db().from("editor_projects").select("id").eq("user_id", p.user_id);
-  const ids = (projects ?? []).map((x) => x.id as string);
-  if (!ids.length) return 0;
-  const { data } = await db().from("editor_ops").select("label").in("project_id", ids).eq("actor", "speech").gte("created_at", since.toISOString());
-  return (data ?? []).reduce((m, r) => m + (Number(r.label) || 0), 0);
 }
 
 async function asset(p: EditorProject, id: unknown) {
@@ -69,15 +59,6 @@ async function takePiece(p: EditorProject, path: unknown) {
   await storage.from(EDITOR_BUCKET).remove([path]);
   if (dl.error || !dl.data) throw new UserError("ما وصل الصوت؛ جرّب مرة ثانية.", 409);
   return { file: dl.data, name: path.slice(prefix.length) };
-}
-
-async function checkAllowance(p: EditorProject, who: Who, minutes: number) {
-  const limit = await editorLimit("editor_speech_minutes", who);
-  if (limit === Infinity) return;
-  const used = await minutesToday(p);
-  if (used + minutes > limit) {
-    throw new UserError(`وصلت لحد التفريغ اليومي (${limit} دقيقة). باقي لك ${Math.max(0, Math.floor(limit - used))} دقيقة اليوم.`, 429);
-  }
 }
 
 /** Listening time is counted in the project's history (actor «speech», the minutes as its label). */
@@ -107,7 +88,6 @@ export async function transcribe(p: EditorProject, who: Who, b: { assetId?: unkn
   if (kept) return { words: kept, cached: true };
   if (!b.path) return { need: "audio" as const };
   const minutes = (to - from) / 60_000;
-  await checkAllowance(p, who, minutes);
   const piece = await takePiece(p, b.path);
   const heard = await charged(who, "editor_price_caption", Math.ceil(minutes), "كابشن في حيدرة كت", () => elevenTranscribe({ file: piece.file, name: piece.name, languageCode: lang }).catch(providerError));
   const words: SpokenWord[] = heard.words.map((w) => ({ s: from + Math.round(w.start * 1000), e: from + Math.round(w.end * 1000), w: w.text })).filter((w) => w.s < to);
@@ -127,7 +107,6 @@ export async function align(p: EditorProject, who: Who, b: { assetId?: unknown; 
   const text = String(b.text ?? "").trim().slice(0, 20_000);
   if (!text) throw new UserError("اكتب الأبيات أول.", 400);
   const minutes = (to - from) / 60_000;
-  await checkAllowance(p, who, minutes);
   const piece = await takePiece(p, b.path);
   const words = await charged(who, "editor_price_caption", Math.ceil(minutes), "مزامنة قصيدة في حيدرة كت", () => elevenAlign({ file: piece.file, name: piece.name, text }).catch(providerError));
   await logUse(p, minutes);
@@ -150,7 +129,6 @@ export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; 
   if (!buf.length) throw new UserError("ما وصل صوت.", 400);
   if (buf.length > VOICE_MAX_BYTES) throw new UserError("التسجيل طويل؛ خلّه أقل من دقيقتين.", 400);
   const minutes = Math.min(2, Math.max(0.05, Number(b.seconds) / 60 || 0.5));
-  await checkAllowance(p, who, minutes);
   const heard = await charged(who, "editor_price_caption", Math.ceil(minutes), "رسالة صوتية لحيدرة", () =>
     elevenTranscribe({ file: new Blob([new Uint8Array(buf)], { type: mime }), name: `voice.${ext}` }).catch(providerError),
   );

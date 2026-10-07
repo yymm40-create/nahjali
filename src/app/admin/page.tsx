@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { isCoOwner } from "@config/site";
 import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
-import { accessMode, SECTIONS_ACCESS, ACCESS_MODES, type AccessSection } from "@/lib/film/limits";
+import { accessList } from "@/lib/access";
 import { coinsRequired } from "@/lib/coins";
 
 export const metadata = { title: "لوحة التحكم | نهج علي" };
@@ -27,7 +27,7 @@ export default async function AdminHome() {
   const now = timeNow();
   const day = new Date(now - DAY).toISOString();
   const week = new Date(now - 7 * DAY).toISOString();
-  const [users, orders, ordersWeek, jobsDay, jobsWeek, editorProjects, studentProjects, filmProjects, mahdiLogsWeek, mahdiAssistant, coinsOn, ...modes] = await Promise.all([
+  const [users, orders, ordersWeek, jobsDay, jobsWeek, editorProjects, studentProjects, filmProjects, mahdiLogsWeek, mahdiAssistant, coinsOn, allowed] = await Promise.all([
     listAllUsers().catch(() => null),
     count("orders"),
     count("orders", week),
@@ -39,11 +39,10 @@ export default async function AdminHome() {
     count("mahdi_logs", week),
     count("mahdi_assistant_messages", week),
     coinsRequired().catch(() => null),
-    ...(Object.keys(SECTIONS_ACCESS) as AccessSection[]).map((s) => accessMode(s).catch(() => null)),
+    accessList(),
   ]);
   const signupsWeek = users ? users.filter((u) => new Date(u.created_at).getTime() > now - 7 * DAY).length : null;
   const activeWeek = users ? users.filter((u) => u.last_sign_in_at && new Date(u.last_sign_in_at).getTime() > now - 7 * DAY).length : null;
-  const sectionModes = (Object.keys(SECTIONS_ACCESS) as AccessSection[]).map((s, i) => ({ s, label: SECTIONS_ACCESS[s].label, mode: modes[i] }));
 
   const tiles: [string, string, string][] = [
     ["👥", "المستخدمون", n(users?.length ?? null)],
@@ -120,18 +119,20 @@ export default async function AdminHome() {
       {/* who can open what, at a glance */}
       <section className="card space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-extrabold">🔐 الوصول للأقسام</h2>
-          <Link href="/admin/limits" className="btn btn-ghost min-h-10 px-4 text-sm">
-            غيّر الوصول والحدود
+          <h2 className="text-xl font-extrabold">🔐 السماح</h2>
+          <Link href="/admin/access" className="btn btn-ghost min-h-10 px-4 text-sm">
+            افتح قائمة السماح
           </Link>
         </div>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {sectionModes.map(({ s, label, mode }) => (
-            <li key={s} className="rounded-2xl border border-line p-3">
-              <p className="font-extrabold">{label}</p>
-              <p className="text-sm font-bold text-muted">{mode ? ACCESS_MODES[mode].label : "—"}</p>
-            </li>
-          ))}
+          <li className="rounded-2xl border border-line p-3">
+            <p className="font-extrabold">🌐 الموقع</p>
+            <p className="text-sm font-bold text-muted">مقفل إلا «لأجل المهدي» (مفتوح للكل)</p>
+          </li>
+          <li className="rounded-2xl border border-line p-3">
+            <p className="font-extrabold">✅ المسموح لهم</p>
+            <p className="text-sm font-bold text-muted">{allowed.length} إيميل + أصحاب الموقع</p>
+          </li>
           <li className="rounded-2xl border border-line p-3">
             <p className="font-extrabold">💰 النقود الذكية</p>
             <p className="text-sm font-bold text-muted">{coinsOn === null ? "—" : coinsOn ? "مطلوبة (يُخصم من الرصيد)" : "مو مطلوبة (مجاني)"}</p>

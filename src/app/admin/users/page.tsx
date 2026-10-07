@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
-import { SECTIONS_ACCESS, type AccessSection } from "@/lib/film/limits";
+import { accessList } from "@/lib/access";
+import { PERMS } from "@config/access";
 import { isAdmin } from "@config/site";
 
 export const metadata = { title: "المستخدمون والصلاحيات · لوحة التحكم" };
@@ -17,9 +18,8 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const filter = sp.filter ?? "all";
   const page = Math.max(1, Number(sp.page) || 1);
   const db = createAdminClient();
-  const [all, { data: limitRows }] = await Promise.all([listAllUsers(), db.from("film_limits").select("target,key,value").eq("scope", "email")]);
-  const overrides = new Map<string, { key: string; value: number }[]>();
-  for (const r of (limitRows ?? []) as { target: string; key: string; value: number }[]) overrides.set(r.target, [...(overrides.get(r.target) ?? []), r]);
+  const [all, allowed] = await Promise.all([listAllUsers(), accessList()]);
+  const overrides = new Map(allowed.map((r) => [r.email, r.perms]));
 
   let list = all
     .map((u) => ({ id: u.id, email: (u.email ?? "").toLowerCase(), name: String(u.user_metadata?.full_name ?? u.user_metadata?.name ?? ""), created: u.created_at, last: u.last_sign_in_at ?? null }))
@@ -44,7 +44,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         <input name="q" defaultValue={q} placeholder="ابحث بالإيميل أو الاسم" className="field min-w-0 flex-1" dir="auto" />
         <select name="filter" defaultValue={filter} className="field w-auto">
           <option value="all">الكل</option>
-          <option value="custom">اللي لهم صلاحيات خاصة</option>
+          <option value="custom">اللي في قائمة السماح</option>
           <option value="active">دخلوا هالأسبوع</option>
         </select>
         <button className="btn btn-primary min-h-12 px-5">ابحث</button>
@@ -65,8 +65,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           <tbody>
             {shown.map((u) => {
               const w = wallet.get(u.id);
-              const own = overrides.get(u.email) ?? [];
-              const allow = own.filter((r) => r.key.startsWith("allow_"));
+              const own = overrides.get(u.email);
               const library = w?.library_until && new Date(w.library_until).getTime() > timeNow();
               return (
                 <tr key={u.id} className="border-b border-line/60 last:border-0 hover:bg-surface-2/60">
@@ -87,15 +86,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
-                      {allow.map((r) => {
-                        const s = r.key.slice(6) as AccessSection;
-                        return (
-                          <span key={r.key} className={`chip text-xs ${r.value ? "bg-teal text-white" : "bg-red-600 text-white"}`}>
-                            {r.value ? "✓" : "⛔"} {SECTIONS_ACCESS[s]?.label ?? s}
-                          </span>
-                        );
-                      })}
-                      {own.length - allow.length > 0 && <span className="chip text-xs">🎚️ {own.length - allow.length} حد خاص</span>}
+                      {own ? (
+                        <span className="chip bg-teal text-xs text-white" title={PERMS.filter((x) => own.includes(x.key)).map((x) => x.label).join(" · ")}>
+                          ✓ مسموح · {own.length}/{PERMS.length}
+                        </span>
+                      ) : (
+                        <span className="chip text-xs opacity-70">مقفل</span>
+                      )}
                     </div>
                   </td>
                   <td className="p-3 text-end">

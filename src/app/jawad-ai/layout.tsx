@@ -31,14 +31,11 @@ export const viewport: Viewport = { themeColor: "#0b0c0f", colorScheme: "dark" }
  */
 export default async function JawadLayout({ children }: { children: React.ReactNode }) {
   const [rt, { user, owner }, h] = await Promise.all([loadRuntime(), jawadSession(), headers()]);
-  // In development: only the owner (and emails invited on /admin/limits) see the platform; the sign-in page stays open
+  // In development: only those «السماح» lets in (and the owners) see the platform; the sign-in page stays open
   const allowed = await jawadVisibleTo(user);
   const path = h.get(JAWAD_PATH_HEADER) ?? "";
   // (the dashboard keeps its own owner check: a plain JAWAD 404 for everyone else)
-  // «الطالب الذكي» and «حيدرة كت» are open to every visitor (making something needs signing in), even while the rest is closed
-  const open = (p: string) => path === `${JAWAD.base}/${p}` || path.startsWith(`${JAWAD.base}/${p}/`);
-  const student = open("student") || open("editor");
-  const preview = !allowed && !student && path !== `${JAWAD.base}/login` && path !== `${JAWAD.base}/username` && !path.startsWith(`${JAWAD.base}/admin`);
+  const preview = !allowed && path !== `${JAWAD.base}/login` && path !== `${JAWAD.base}/username` && !path.startsWith(`${JAWAD.base}/admin`);
   const [balance, username] = user && !preview
     ? await Promise.all([coinBalance(user.id), getUsername(await createClient(), user.id).catch(() => null)])
     : [null, null];
@@ -47,7 +44,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       <a href="#jw-main" className="sr-only z-50 rounded-lg bg-jw-accent px-3 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
         تخطَّ إلى المحتوى
       </a>
-      <JawadHeader rt={rt} user={user} owner={owner} balance={balance} username={username} preview={!allowed && !student} />
+      <JawadHeader rt={rt} user={user} owner={owner} balance={balance} username={username} preview={!allowed} />
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
     </div>
   );

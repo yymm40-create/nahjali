@@ -1,15 +1,16 @@
 import Image from "next/image";
 import { JAWAD } from "@config/jawad/brand";
 import Icon from "./Icon";
+import SecretButton from "@/components/SecretButton";
 
 const COMING = [
   { icon: "image", title: "صناعة الصور", text: "تكتب وصفًا بالعربي أو الإنجليزي، أو ترفع صورًا مرجعية، ويصنع لك صورًا بالنسبة والدقة التي تختارها." },
   { icon: "video", title: "صناعة الفيديو", text: "فيديو من النص، أو من صورة البداية والنهاية، أو من مراجع متعددة، بالأفقي أو العمودي ومع صوت متزامن." },
-  { icon: "film", title: "الفيلم السينمائي خطوة بخطوة", text: "من الفكرة إلى السيناريو والشخصيات والمشاهد والمقاطع، بمراحل واضحة توافق على كل واحدة منها." },
+  { icon: "film", title: "صانع الأفلام الذكي خطوة بخطوة", text: "من الفكرة إلى السيناريو والشخصيات والمشاهد والمقاطع، بمراحل واضحة توافق على كل واحدة منها." },
   { icon: "audio", title: "صناعة الصوت", text: "كلام منطوق بأصوات مختلفة، وتكتب وصف الأداء منفصلًا: هادئ، حماسي، بطيء…" },
 ] as const;
 
-/** What everyone except the owner (and invited emails) sees while JAWAD AI is being built. */
+/** What everyone «السماح» hasn't let in sees while JAWAD AI is being built. */
 export default function InDevelopment({ logoUrl, customLogo }: { logoUrl: string; customLogo: boolean }) {
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 pb-16 pt-10">
@@ -24,6 +25,7 @@ export default function InDevelopment({ logoUrl, customLogo }: { logoUrl: string
         <p className="max-w-xl text-jw-muted">
           منصة ذكاء اصطناعي لصناعة الصور والفيديو والصوت والأفلام، نجهّزها ونختبرها الآن قبل فتحها للجميع. تابعنا، ونعلن عنها هنا أول ما تجهز.
         </p>
+        <SecretButton className="jw-btn" />
       </section>
 
       <details className="jw-panel group p-5" open>

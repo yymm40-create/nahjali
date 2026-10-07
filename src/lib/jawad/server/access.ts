@@ -1,14 +1,14 @@
 // «الجواد الذكي!» | JAWAD AI — who is signed in and whether they may use the platform. Server only.
-// Reuses the site's Supabase sign-in; who may enter is set on /admin/limits (section "✨ JAWAD AI", closed by default:
-// the owner only, everyone else sees «قيد التطوير»).
+// Reuses the site's Supabase sign-in; who may enter is the dashboard's one list (/admin/limits → «السماح»): everyone
+// else sees «قيد التطوير».
 
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiUser, UserError } from "@/lib/api";
-import { accessMode, emailAccess, limitRows } from "@/lib/film/limits";
-import { isAdmin, isFreeGuest, isUnlimited } from "@config/site";
+import { can, unlimitedFor, type Perm } from "@/lib/access";
+import { isAdmin } from "@config/site";
 import { JAWAD } from "@config/jawad/brand";
 
 export const JAWAD_MESSAGES = {
@@ -25,20 +25,13 @@ export const jawadSession = cache(async (): Promise<{ user: User | null; owner: 
   return { user, owner: isAdmin(user?.email) };
 });
 
-/** May this person use JAWAD AI? The owner always may. */
+/** May this person use any part of JAWAD AI? (each section checks its own permission too: see src/lib/access.ts) */
 export async function canUseJawad(user: { email?: string | null } | null) {
-  if (!user?.email) return false;
-  if (isAdmin(user.email) || isFreeGuest(user.email)) return true;
-  const rows = await limitRows();
-  const own = await emailAccess("jawad", user.email, rows);
-  if (own !== undefined) return own;
-  return (await accessMode("jawad", rows)) === "open";
+  return unlimitedFor(user?.email);
 }
 
-/** Should this visitor see the platform (rather than «قيد التطوير»)? Signed-out visitors see it only when it's open to all. */
-export async function jawadVisibleTo(user: { email?: string | null } | null) {
-  return user?.email ? canUseJawad(user) : (await accessMode("jawad")) === "open";
-}
+/** Should this visitor see the platform (rather than «قيد التطوير»)? Only those the dashboard's list lets in. */
+export const jawadVisibleTo = canUseJawad;
 
 /** Where to sign in without leaving JAWAD AI, coming back to `next` afterwards. */
 export const jawadLogin = (next: string) => `${JAWAD.base}/login?next=${encodeURIComponent(next)}`;
@@ -60,19 +53,25 @@ export async function requireJawadOwnerPage(next: string) {
   return user;
 }
 
-/** API: the signed-in user allowed to use JAWAD AI, else 401/403. */
+/** API: the signed-in user allowed to use JAWAD AI, else 401/403. Everyone let in makes for free, without limits. */
 export async function requireJawadApiUser() {
   const user = await requireApiUser();
   if (!(await canUseJawad(user))) throw new UserError(JAWAD_MESSAGES.closed, 403);
-  // a free guest makes everything without coins, like the owner (but never gets the dashboard)
-  return { user, owner: isUnlimited(user.email) };
+  return { user, owner: true };
 }
 
-/** API for «الطالب الذكي»: open to every signed-in person (the rest of JAWAD AI may still be closed). */
-export async function requireStudentApiUser() {
+/** API for one section: the signed-in user it is open to (the dashboard's list), else 401/403. */
+export async function requirePermApiUser(perm: Perm, closed: string = JAWAD_MESSAGES.closed) {
   const user = await requireApiUser();
-  return { user, owner: isUnlimited(user.email) };
+  if (!(await can(user.email, perm))) throw new UserError(closed, 403);
+  return { user, owner: true };
 }
+
+/** API for «الطالب الذكي» (with the images and voices it makes). */
+export const requireStudentApiUser = () => requirePermApiUser("student", "«الطالب الذكي» مقفل لحسابك حاليًا.");
+
+/** API for «حيدرة كت». */
+export const requireEditorApiUser = () => requirePermApiUser("editor", "«حيدرة كت» مقفل لحسابك حاليًا.");
 
 /** API: the owner only (404 for everyone else, like the rest of the dashboard). */
 export async function requireJawadOwner() {

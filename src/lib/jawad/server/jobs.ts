@@ -8,6 +8,8 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { can, permForGenerator } from "@/lib/access";
+import { PERMS } from "@config/access";
 import { holdTeamCoins, refundTeamCoins } from "@/lib/coins";
 import { giveAttempt } from "@/lib/film/team";
 import { after } from "next/server";
@@ -179,11 +181,14 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
   if (!def) throw new UserError("المولد غير معروف.", 400);
+  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرة» makes with its own right
+  const perm = server.via === "editor" ? "editor_ai" : permForGenerator(def);
+  if (!(await can(user.email, perm))) throw new UserError(`${PERMS.find((x) => x.key === perm)!.label.replace(/^\S+\s/, "")} مقفلة لحسابك حاليًا.`, 403);
 
   // The same click again: the job it already made (no new check, no new charge)
   const existing = await db().from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key).maybeSingle();

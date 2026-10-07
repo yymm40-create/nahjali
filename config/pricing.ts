@@ -1,5 +1,4 @@
 // Price, attempts and safety limits. Edit freely.
-import { isFreeGuest } from "./site";
 
 export type QualityKey = "low" | "medium" | "high";
 
@@ -17,19 +16,10 @@ export const DEFAULT_QUALITY: QualityKey = "medium";
 
 /**
  * Free trial mode: no payment step, orders are free and the UI says "جرّب مجانًا".
- * Each account can make at most FREE_TRIAL_MAX_ORDERS free orders in total (image generation costs real money). No daily limit.
+ * Each account can make at most FREE_TRIAL_MAX_ORDERS free orders in total; those «السماح» lets into the booklet have no limit.
  */
 export const FREE_TRIAL = true;
 export const FREE_TRIAL_MAX_ORDERS = 1;
-/** Per-account total limit: the owner can raise it for one email from /admin (stored in app_metadata.daily_trials). */
-export const dailyTrialLimit = (user: { app_metadata?: Record<string, unknown> } | null | undefined) => {
-  const n = Number(user?.app_metadata?.daily_trials);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : FREE_TRIAL_MAX_ORDERS;
-};
-/** Owner/test accounts: no free-trial limits (they need to test freely). */
-export const UNLIMITED_TRIAL_EMAILS = ["yymm40@gmail.com"];
-export const hasUnlimitedTrials = (email: string | undefined | null) =>
-  Boolean(email && (UNLIMITED_TRIAL_EMAILS.includes(email.toLowerCase()) || isFreeGuest(email)));
 
 /** How many times a customer may generate their base character. */
 export const ATTEMPTS_ALLOWED = 3;

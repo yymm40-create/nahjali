@@ -12,7 +12,7 @@ import { evaluate } from "@/lib/jawad/engine";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { createJob } from "@/lib/jawad/server/jobs";
 import { jobViews } from "@/lib/jawad/server/works";
-import { canUseJawad } from "@/lib/jawad/server/access";
+import { can } from "@/lib/access";
 import { listVoices } from "@/lib/jawad/server/voices";
 import type { Who } from "./pricing";
 
@@ -133,7 +133,7 @@ export async function ownVoiceNames(userId: string) {
 export async function planMake(who: Who & { email?: string | null }, s: MakeSpec, projectRatio: number): Promise<{ plan: MakePlan } | { error: string }> {
   if (!MAKE_KINDS.includes(s.makeKind)) return { error: "نوع غير معروف." };
   if (!s.prompt.trim()) return { error: "ما وصل وصف اللي أصنعه." };
-  if (!(await canUseJawad({ email: who.email ?? null }))) return { error: "صناعة الصور والفيديو من «الجواد AI»، وهي مقفلة لحسابك الحين." };
+  if (!(await can(who.email, "editor_ai"))) return { error: "حيدرة (الذكاء الاصطناعي) مقفل لحسابك الحين." };
   const rt = await loadRuntime();
   if (!rt.migrated) return { error: "منصة الجواد AI قيد التجهيز." };
   const rg = CHOICES[s.makeKind].map((id) => rt.generators.find((g) => g.id === id)).find((g) => g && (g.live || (who.owner && g.keyConfigured)));
@@ -167,14 +167,12 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
 export async function startMake(user: { id: string; email?: string | null }, owner: boolean, b: { key?: unknown; plan?: unknown }, origin: string, team: string | null = null) {
   const p = (b.plan ?? {}) as Partial<MakePlan>;
   if (!p.generatorId || !p.sectionId || typeof p.prompt !== "string") throw new UserError("طلب غير صحيح.", 400);
-  // in a team series' edit the team's wallet pays, so a member doesn't need JAWAD AI open for their own account
-  if (!team && !(await canUseJawad(user))) throw new UserError("صناعة الصور والفيديو من «الجواد AI»، وهي مقفلة لحسابك الحين.", 403);
   // a team member uses one of the attempts the series' owner gave them (given back if it fails)
   const series = team ? (await createAdminClient().from("film_series").select("user_id").eq("id", team).maybeSingle()).data : null;
   const took = series ? await takeAttempt(team!, series.user_id as string, user.id) : false;
   let r: Awaited<ReturnType<typeof createJob>>;
   try {
-    r = await createJob(user, owner, { idempotencyKey: b.key, sectionId: p.sectionId, generatorId: p.generatorId, refStyle: "none", settings: p.settings, prompt: p.prompt, instructions: "", refs: [], expectedCoins: p.coins }, origin, { team });
+    r = await createJob(user, owner, { idempotencyKey: b.key, sectionId: p.sectionId, generatorId: p.generatorId, refStyle: "none", settings: p.settings, prompt: p.prompt, instructions: "", refs: [], expectedCoins: p.coins }, origin, { team, via: "editor" });
   } catch (e) {
     if (took) await giveAttempt(team!, user.id).catch(() => {});
     throw e;
