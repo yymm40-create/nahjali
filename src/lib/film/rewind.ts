@@ -9,6 +9,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FILM_LIMITS, FILM_STAGES, type FilmStage } from "@config/film";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
+import { nextSceneNumber } from "./series";
 
 import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
@@ -122,9 +123,13 @@ export async function forkProject(project: FilmProject, toRaw: unknown) {
   };
 
   const title = `${project.title.replace(/ \(من هنا \d+\)$/, "")} (من هنا ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })})`.slice(0, 80);
+  // a scene of a series stays in its episode, as the episode's next scene
+  const scene = project.episode_id
+    ? { series_id: project.series_id, episode_id: project.episode_id, scene_number: await nextSceneNumber(project.episode_id) }
+    : {};
   const { data: created, error } = await db()
     .from("film_projects")
-    .insert({ user_id: project.user_id, title, story: project.story, fixed_facts: project.fixed_facts, target_duration_sec: project.target_duration_sec, stage: to, video_model: project.video_model })
+    .insert({ user_id: project.user_id, title, story: project.story, fixed_facts: project.fixed_facts, target_duration_sec: project.target_duration_sec, stage: to, video_model: project.video_model, ...scene })
     .select("*")
     .single();
   if (error) throw error;

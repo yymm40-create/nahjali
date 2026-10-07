@@ -9,7 +9,7 @@ import { FILM_BUCKET, projectDir, type FilmProject } from "@/lib/film/types";
 import { storage } from "@/lib/storage";
 import { createEditorProject, importAssets, requireEditorProject, runCommands, assetInfo, assetViews, EDITOR_BUCKET } from "./server";
 import { firstCut } from "./first-cut";
-import { readTimeline } from "./model";
+import { duration, readTimeline } from "./model";
 
 const db = () => createAdminClient();
 
@@ -45,7 +45,8 @@ export async function editorForFilm(filmProjectId: string) {
 export async function openFilmEdit(film: FilmProject, user: User) {
   let id = await editorForFilm(film.id);
   const fresh = !id;
-  if (!id) id = await createEditorProject(user.id, { title: film.title, kind: "horizontal" }, film.id);
+  // made in the film owner's name (a team member's scene stays the series owner's, like its files)
+  if (!id) id = await createEditorProject(film.user_id, { title: film.title, kind: "horizontal" }, film.id);
   let p = await requireEditorProject(id, user.id);
   const cut = (await filmCut(film.id)).filter((c) => c.video);
   if (!cut.length) throw new UserError("ما فيه فيديوهات محفوظة لهذا الفيلم بعد. ولّدها من صفحة «التوليد».", 409);
@@ -83,7 +84,7 @@ export async function openFilmEdit(film: FilmProject, user: User) {
 export async function saveSuccessfulScene(film: FilmProject) {
   const id = await editorForFilm(film.id);
   if (!id) throw new UserError("ما فيه مونتاج لهذا الفيلم بعد.", 409);
-  const { data: ed } = await db().from("editor_projects").select("export_path,purged_at,title").eq("id", id).single();
+  const { data: ed } = await db().from("editor_projects").select("export_path,purged_at,title,timeline").eq("id", id).single();
   if (!ed?.export_path || ed.purged_at) throw new UserError("صدّر المونتاج أول من «صدّر» داخل حيدرة كت، وبعدها احفظه هنا.", 409);
   const path = `${projectDir(film)}/scene/scene-${Date.now()}.mp4`;
   const copied = await storage.from(EDITOR_BUCKET).copyTo(FILM_BUCKET, ed.export_path, path);
@@ -92,7 +93,7 @@ export async function saveSuccessfulScene(film: FilmProject) {
   await db().from("film_assets").update({ status: "rejected" }).eq("project_id", film.id).eq("kind", "video").eq("ref_key", SCENE_KEY).eq("status", "approved");
   const { error } = await db().from("film_assets").insert({
     project_id: film.id, kind: "video", ref_key: SCENE_KEY, storage_path: path, file_name: `${film.title}.mp4`, mime: "video/mp4",
-    bytes: Number((info as { size?: number } | null)?.size ?? 0) || null, status: "approved", meta: { scene: true, from_edit: id },
+    bytes: Number((info as { size?: number } | null)?.size ?? 0) || null, status: "approved", meta: { scene: true, from_edit: id, durationSec: Math.round(duration(readTimeline(ed.timeline)) / 100) / 10 || null },
   });
   if (error) throw error;
 }

@@ -12,8 +12,10 @@ export const POST = handle(async (req: Request) => {
   const fields = projectFields(body, { requireTitle: true });
 
   const db = createAdminClient();
-  const { count } = await db.from("film_projects").select("id", { count: "exact", head: true }).eq("user_id", user.id);
-  if ((count ?? 0) >= FILM_LIMITS.maxProjectsPerUser) {
+  // a series' scenes have their own limits (lib/film/series.ts)
+  const { data: mine } = await db.from("film_projects").select("*").eq("user_id", user.id).limit(500);
+  const count = (mine ?? []).filter((p) => !p.series_id).length;
+  if (count >= FILM_LIMITS.maxProjectsPerUser) {
     throw new UserError(`وصلت للحد الأقصى للمشاريع (${FILM_LIMITS.maxProjectsPerUser}).`, 403);
   }
 

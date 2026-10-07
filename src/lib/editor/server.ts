@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FILM_BUCKET } from "@/lib/film/types";
+import { isSeriesTeamMember } from "@/lib/film/access";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { applyAll, CommandError, type Command } from "./commands";
 import { editorSniff, EDITOR_MIMES, KIND_AR, storedType } from "./media";
@@ -39,6 +40,8 @@ export interface EditorProject {
   timeline: Timeline;
   version: number;
   film_project_id: string | null;
+  /** «المسلسل الذكي»: the episode this edit assembles */
+  episode_id?: string | null;
   export_path: string | null;
   exported_at: string | null;
   purge_at: string | null;
@@ -116,7 +119,7 @@ export async function listEditorProjects(userId: string): Promise<ProjectSummary
   return ((data ?? []) as EditorProject[]).map(summary);
 }
 
-export async function createEditorProject(userId: string, b: { title?: unknown; kind?: unknown }, filmProjectId: string | null = null) {
+export async function createEditorProject(userId: string, b: { title?: unknown; kind?: unknown }, filmProjectId: string | null = null, episodeId: string | null = null) {
   const kind: ProjectKind = isProjectKind(b.kind) ? b.kind : "reel";
   const { count, error: e } = await db().from("editor_projects").select("id", { count: "exact", head: true }).eq("user_id", userId);
   if (e) throw new UserError(NOT_READY, 503);
@@ -124,7 +127,7 @@ export async function createEditorProject(userId: string, b: { title?: unknown; 
   const title = String(b.title ?? "").trim().slice(0, 120) || `${PROJECT_KINDS[kind].label} جديد`;
   const { data, error } = await db()
     .from("editor_projects")
-    .insert({ user_id: userId, title, kind, timeline: emptyTimeline(PROJECT_KINDS[kind].ratio), film_project_id: filmProjectId })
+    .insert({ user_id: userId, title, kind, timeline: emptyTimeline(PROJECT_KINDS[kind].ratio), film_project_id: filmProjectId, ...(episodeId ? { episode_id: episodeId } : {}) })
     .select("id")
     .single();
   if (error) throw new UserError(NOT_READY, 503);
@@ -135,8 +138,21 @@ export async function requireEditorProject(id: unknown, userId: string) {
   if (!isUuid(id)) throw new UserError("ما لقينا هذا المشروع.", 404);
   const { data, error } = await db().from("editor_projects").select("*").eq("id", id).maybeSingle();
   if (error) throw new UserError(NOT_READY, 503);
-  if (!data || data.user_id !== userId) throw new UserError("ما لقينا هذا المشروع.", 404);
+  if (!data || (data.user_id !== userId && !(await seriesTeamEdit(data as EditorProject, userId)))) throw new UserError("ما لقينا هذا المشروع.", 404);
   return data as EditorProject;
+}
+
+/** «المسلسل الذكي» in team mode: the people the series' owner added also work on its scenes' and episodes' edits. */
+async function seriesTeamEdit(p: EditorProject, userId: string) {
+  let seriesId: string | null = null;
+  if (p.film_project_id) {
+    const { data } = await db().from("film_projects").select("series_id").eq("id", p.film_project_id).maybeSingle();
+    seriesId = (data?.series_id as string | null) ?? null;
+  } else if (p.episode_id) {
+    const { data } = await db().from("film_episodes").select("series_id").eq("id", p.episode_id).maybeSingle();
+    seriesId = (data?.series_id as string | null) ?? null;
+  }
+  return isSeriesTeamMember(seriesId, userId);
 }
 
 async function assetRows(projectId: string) {
