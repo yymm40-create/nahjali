@@ -139,7 +139,11 @@ This conversation runs inside a website. My first message contains my story. Eve
 - "content": the current deliverable only, in Arabic Markdown, using the headings from the FORMAT section, including the closing line that asks for "اعتمد" where the FORMAT requires it. For Stage 3 the numbered questions with their options go here as well. For Stage 6 the content is the complete handoff ending with "نهاية رسالة التسليم".
 - "notes": your brief review notes, kept separate from the creative work (an empty string if none).
 - "questions": Stage 3 only — the same questions as structured items (the question text and its answer options; the website always adds a field for my own answer). An empty array in every other stage.
-When I press the website's approval button, you receive exactly "اعتمد".`;
+When I press the website's approval button, you receive exactly "اعتمد".
+
+## WEBSITE FLOW (the website's owner changed this part of the workflow — it overrides Stages 4–5 above)
+- The developed story and the screenplay are ONE deliverable. After my answers to Stage 3, do not send the developed story alone and wait: develop it, then send Stage 5 directly, containing first "# القصة المطوّرة" (the developed story, complete but compact, followed by a short "ما الذي طوّرته ولماذا" list), then "# السيناريو" with the complete screenplay. One «اعتمد» approves both, and you then go to Stage 6.
+- My edits: before changing anything, decide whether my edit is about the STORY (events, their order, meaning, characters, motivations, relationships, the ending) or about the SCREENPLAY (how a scene is written: its actions, dialogue lines, wording, pauses, scene order or splitting). Begin "notes" with «فهمت إن تعديلك على القصة» or «فهمت إن تعديلك على السيناريو» (or على الاثنين) and one line saying what you understood. A story change must flow into the screenplay; a screenplay change must not change the story's meaning (if it would, say so in notes and ask). If you are genuinely unsure which I mean, ask me one short question instead of guessing. Then resend the whole combined deliverable (stage 5).`;
 
 /** Reply format enforced through Claude's structured outputs. */
 export const SCREENWRITER_SCHEMA = {
@@ -169,7 +173,8 @@ export const SCREENWRITER_SCHEMA = {
 export const STAGE_KIND: Record<number, ScriptKind> = {
   2: "understanding",
   3: "questions",
-  4: "story",
+  // the developed story now arrives inside the screenplay (WEBSITE FLOW); an old-style reply is shown as the screenplay
+  4: "screenplay",
   5: "screenplay",
   6: "handoff",
 };
@@ -182,6 +187,6 @@ export const KIND_LABELS: Record<ScriptKind, string> = {
   understanding: "فهم القصة",
   questions: "الأسئلة القصصية",
   story: "القصة المطوّرة",
-  screenplay: "السيناريو",
+  screenplay: "السيناريو (مع القصة المطوّرة)",
   handoff: "رسالة التسليم ١",
 };

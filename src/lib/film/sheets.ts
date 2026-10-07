@@ -643,6 +643,8 @@ export async function runSheetReply(projectId: string, jobId: string) {
         sheet_map: kind === "sheet_understanding" ? r.sheet_map : undefined,
         prompt: r.prompt || undefined,
         references: r.references?.length ? r.references : undefined,
+        // what this reply cost (shown on its card, in coins)
+        cost_usd: claudeCost(result.usage),
       },
       // The handoff is passed on in the background and never shown as a step
       status: isHandoff || kind === "style_test" ? "approved" : "awaiting_approval",
@@ -707,7 +709,7 @@ async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<Re
     if (old.length) await client.from("film_versions").update({ status: "superseded" }).in("id", old);
     const { error } = await client.from("film_versions").insert({
       project_id: projectId, stage: STAGE, kind: "sheet_prompt", ref_key: item.id, version: (same.at(-1)?.version ?? 0) + 1, body: r.content,
-      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined },
+      data: { notes: r.notes, suggestion: r.suggestion?.trim() || undefined, prompt: r.prompt || undefined, references: r.references?.length ? r.references : undefined, cost_usd: claudeCost(result.usage) },
       status: "awaiting_approval", created_by: "assistant",
     });
     if (error) throw error;

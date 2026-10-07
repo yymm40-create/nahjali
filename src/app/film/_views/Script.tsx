@@ -1,3 +1,4 @@
+import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
@@ -21,8 +22,8 @@ export default async function ScriptView({ id, base }: { id: string; base: strin
         <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">✍️ السيناريست</h1>
         <p className="text-sm font-bold text-muted">
-          يمشي على برومبت «السيناريست الذكي» من الدورة: الفهم ← الأسئلة ← القصة المطوّرة ← السيناريو، وبعدها ينتقل تلقائيًا لصانع الشيت.
-          تكلفة النصوص إلى الآن: <span dir="ltr">${scriptCost.toFixed(2)}</span>
+          يمشي على برومبت «السيناريست الذكي» من الدورة: الفهم ← الأسئلة ← السيناريو (مع القصة المطوّرة فيه)، وبعدها ينتقل تلقائيًا لصانع الشيت.
+          تكلفة النصوص إلى الآن: <span>{credits(scriptCost)}</span>
         </p>
       </header>
       <ScriptWorkspace

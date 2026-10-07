@@ -1,5 +1,6 @@
 "use client";
 
+import { credits, creditsRange } from "@/lib/film/credits";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode, useCallback, useTransition } from "react";
@@ -12,7 +13,7 @@ import StepCard, { statusChip as chip } from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
-const SHEET_COST = "تقريبًا $0.40";
+const SHEET_COST = `تقريبًا ${credits(0.4)}`;
 import { STATUS_LABELS } from "@config/film";
 import { useFilmBase } from "../../FilmBase";
 
@@ -188,13 +189,13 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start" })}>
             {busy ? "نرسل…" : "ابدأ مع صانع الشيت"}
           </button>
-          <p className="text-xs font-bold text-muted">كل رد تقريبًا من $0.05 إلى $0.80</p>
+          <p className="text-xs font-bold text-muted">كل رد {creditsRange(0.05, 0.8)}</p>
         </div>
       )}
 
       {/* 1. Understanding + sheet map with the user's choice per item */}
       {understanding && (
-        <StepCard title="الفهم وخريطة الشيتات" v={understanding} current={current?.id === understanding.id} busy={busy || writing} onSend={revise(understanding)} noActions>
+        <StepCard title="خريطة الشيتات" v={understanding} current={current?.id === understanding.id} busy={busy || writing} onSend={revise(understanding)} noActions hideBody>
           <MapChoices
             projectId={projectId}
             map={map}
@@ -256,7 +257,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <p className="text-sm font-extrabold">⚡ اصنعهم كلهم مع بعض</p>
           {waitingPrompts.length > 1 && (
             <button className="btn btn-primary w-full" disabled={busy || writing} onClick={() => send({ action: "approve_all_prompts" })}>
-              {busy ? "نرسل…" : `✅ اعتمد كل البرومبتات (${waitingPrompts.length}) وولّد صورها مرة وحدة · تقريبًا $${(waitingPrompts.length * 0.4).toFixed(2)}`}
+              {busy ? "نرسل…" : `✅ اعتمد كل البرومبتات (${waitingPrompts.length}) وولّد صورها مرة وحدة · تقريبًا ${credits(waitingPrompts.length * 0.4)}`}
             </button>
           )}
           {readyImages.length > 1 && (
@@ -289,7 +290,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             warning={v.status === "approved" ? `هذا البرومبت معتمد. بعد التعديل يوصلك برومبت جديد، ولما تعتمده تتولد صورة جديدة (${SHEET_COST}).${affects(sid)}` : undefined}
           >
             {sid === MASTER && v.status === "awaiting_approval" && (
-              <p className="rounded-2xl bg-surface-2 p-3 text-sm font-bold">💡 هذا «الماستر»: شكل الرسم لكل الفيلم. اعتمده أول، وبعد ما تعتمد صورته نكتب كل الشيتات الباقية مع بعض.</p>
+              <p className="rounded-2xl bg-surface-2 p-3 text-sm font-bold">💡 هذا «الماستر»: لوحة الستايل والألوان وطريقة الرسم لكل الفيلم (بدون شخصيات ولا أماكن، عشان ما تنسخ منه). اعتمده أول، وبعد ما تعتمد صورته نكتب كل الشيتات الباقية مع بعض.</p>
             )}
             {(v.status === "approved" || imgs.some((i) => i.status !== "rejected")) && (
               <SheetImages
@@ -531,7 +532,7 @@ function StyleTest({
             </div>
           ))}
           <button className="btn btn-primary sticky bottom-3 w-full" disabled={busy || picked.length === 0} onClick={() => { onTest(picked); setPicked([]); }}>
-            ولّد صور الاختبار ({picked.length}) · تقريبًا ${(picked.length * 0.06).toFixed(2)}
+            ولّد صور الاختبار ({picked.length}) · تقريبًا {credits(picked.length * 0.06)}
           </button>
         </div>
       )}

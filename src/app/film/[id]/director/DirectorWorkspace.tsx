@@ -1,5 +1,6 @@
 "use client";
 
+import { creditsRange } from "@/lib/film/credits";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useTransition } from "react";
@@ -102,6 +103,23 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
   useEffect(() => {
     if (!wasDone.current && allApproved) router.push(`${filmBase}/${projectId}/videos`);
   }, [allApproved, projectId, router, filmBase]);
+  // The director starts by itself and its understanding is approved in the background: the person meets its questions
+  const autoStart = stage === "director" && !failed;
+  const startedOnce = useRef(false);
+  const approvedOnce = useRef<string | null>(null);
+  useEffect(() => {
+    if (busy || writing) return;
+    if (!started && autoStart && !startedOnce.current) {
+      startedOnce.current = true;
+      const t = setTimeout(() => void send({ action: "start", superDirector: true }), 0);
+      return () => clearTimeout(t);
+    }
+    if (understanding?.status === "awaiting_approval" && approvedOnce.current !== understanding.id) {
+      approvedOnce.current = understanding.id;
+      const t = setTimeout(() => void send({ action: "approve", versionId: understanding.id }), 0);
+      return () => clearTimeout(t);
+    }
+  });
   const affects = (id: string) => {
     const later = laterThan(id);
     return later.length ? ` التوليدات المعتمدة بعده (${later.join("، ")}) ممكن تتأثر بالاستمرارية، والمخرج يوضح وش يحتاج تحديث.` : "";
@@ -126,7 +144,11 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
         </section>
       )}
 
-      {!started ? (
+      {!started && autoStart ? (
+        <div className="card flex items-center justify-center gap-3 p-6 font-bold">
+          <Spinner /> المخرج يقرأ السيناريو والشيتات والصور المعتمدة ويجهّز أسئلته…
+        </div>
+      ) : !started ? (
         <div className="card space-y-4 p-6">
           <p className="text-center text-5xl">🎥</p>
           <p className="text-center font-bold">المخرج يستلم السيناريو والشيتات والصور المعتمدة، ويعرض فهمه أول.</p>
@@ -141,7 +163,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
           <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start", superDirector: useSuper })}>
             {busy ? "نرسل…" : "ابدأ مع المخرج"}
           </button>
-          <p className="text-center text-xs font-bold text-muted">كل رد تقريبًا من $0.05 إلى $1</p>
+          <p className="text-center text-xs font-bold text-muted">كل رد {creditsRange(0.05, 1)}</p>
         </div>
       ) : (
         <section className="card flex flex-wrap items-center justify-between gap-2 p-4">
@@ -163,17 +185,12 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
         </section>
       )}
 
-      {/* 1. Understanding */}
-      {understanding && (
-        <StepCard
-          title="فهم المخرج"
-          v={understanding}
-          current={current?.id === understanding.id}
-          busy={busy || writing}
-          onApprove={understanding.status === "awaiting_approval" ? () => send({ action: "approve", versionId: understanding.id }) : undefined}
-          onSend={revise(understanding)}
-          warning={understanding.status === "approved" ? "الفهم معتمد. تعديله ممكن يغيّر الأسئلة والخريطة والتوليدات بعده، والمخرج يوضح وش يتأثر." : undefined}
-        />
+      {/* 1. Understanding: worked out in the background (approved by the page itself), kept here folded */}
+      {understanding && understanding.status === "approved" && (
+        <details className="card p-4 text-sm">
+          <summary className="cursor-pointer font-extrabold text-muted">فهم المخرج (اشتغل في الخلفية) — اعرضه أو عدّل عليه</summary>
+          <Markdown text={understanding.body} hideCode />
+        </details>
       )}
 
       {/* 2. Directing questions and conflict choices */}

@@ -1,5 +1,6 @@
 "use client";
 
+import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useTransition } from "react";
@@ -62,7 +63,7 @@ interface Video {
 }
 
 const RESOLUTIONS = Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[];
-const usd = (n: number) => `$${n.toFixed(2)}`;
+const usd = (n: number) => credits(n);
 
 /** Days left before a video file is removed from the site. */
 const daysLeft = (createdAt: string) => Math.max(0, Math.ceil(VIDEO_KEEP_DAYS - (Date.now() - new Date(createdAt).getTime()) / 86_400_000));

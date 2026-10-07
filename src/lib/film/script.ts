@@ -272,7 +272,7 @@ export async function runScriptJob(projectId: string, jobId: string) {
       kind,
       version: (same.at(-1)?.version ?? 0) + 1,
       body: reply.content,
-      data: { notes: reply.notes, questions: kind === "questions" ? reply.questions : undefined },
+      data: { notes: reply.notes, questions: kind === "questions" ? reply.questions : undefined, cost_usd: claudeCost(usage) },
       status: isHandoff ? "approved" : "awaiting_approval",
       approved_at: isHandoff ? new Date().toISOString() : null,
       created_by: "assistant",
