@@ -8,15 +8,39 @@ import { ErrorLine, JobStatus, PaidButton, useAsync } from "./ui";
 
 const KIND = { text: "نص مكتوب", image: "صورة", pdf: "PDF" } as const;
 
-export default function SourcesStep({ p }: { p: ProjectHook }) {
-  const { sources, jobs, project, segments } = p.state;
+/** «المادة»: files, pasted text, or Claude's research — then one press reads and understands it all (`onContinue`). */
+export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onContinue: () => void }) {
+  const { sources, jobs, project } = p.state;
+  const brief = project.brief;
+  const [focus, setFocus] = useState(brief.focus || project.title);
   const [text, setText] = useState("");
   const [uploads, setUploads] = useState<{ name: string; progress: number; error?: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const { busy, error, run } = useAsync();
-  const job = jobs.find((j) => j.kind === "extract");
+  const job = jobs.find((j) => (j.kind === "extract" || j.kind === "research") && j.status !== "succeeded");
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
+  const ready = sources.some((s) => s.status === "ready");
+  const researched = sources.some((s) => s.kind === "text" && s.name.startsWith("بحث كلاود"));
+  // the research is paid once confirmed; then the reading goes on by itself
+  const research = (
+    <div className="jw-panel space-y-3 p-4">
+      <h2 className="font-semibold">🔎 كلاود يبحث ويكتب مادتك</h2>
+      <p className="text-sm text-jw-muted">يبحث في مصادر موثوقة (مناهج، موسوعات، جامعات) ويكتب المعلومات لمستواك وغرضك، مع ذكر المصادر.</p>
+      <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبيها؟" aria-label="ما يبحث عنه كلاود" />
+      {researched && <p className="text-sm text-jw-ok">✓ كتب كلاود المادة من البحث. تقدر تبحث عن شي ثاني أو تتابع.</p>}
+      <PaidButton
+        label={researched ? "ابحث عن شي إضافي" : "ابحث واكتب مادتي"}
+        what="بحث في الويب وكتابة المادة بمصادرها (Claude)."
+        disabled={running || !focus.trim()}
+        run={async (b) => {
+          const r = await p.act({ action: "research_material", focus, ...b });
+          if (b.confirm) onContinue();
+          return r;
+        }}
+      />
+    </div>
+  );
 
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -51,6 +75,8 @@ export default function SourcesStep({ p }: { p: ProjectHook }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
       <section className="space-y-4">
+        {brief.mode === "research" && research}
+        {brief.mode === "research" && <p className="text-center text-xs text-jw-faint">وتقدر تضيف ملفاتك أيضًا (اختياري):</p>}
         <div
           role="button"
           tabIndex={0}
@@ -141,20 +167,27 @@ export default function SourcesStep({ p }: { p: ProjectHook }) {
         </div>
 
         <div className="jw-panel space-y-3 p-4">
-          <h2 className="font-semibold">استخراج النص</h2>
-          <p className="text-sm text-jw-muted">
-            النص المكتوب يُحفظ كما هو. الصور وصفحات PDF يقرؤها المساعد حرفيًا صفحة صفحة، ويعلّم الكلمات غير المقروءة بـ ⟦؟⟧ بدل تخمينها. القراءة الآلية ليست دقيقة 100٪، لذلك ستراجع النص كاملًا بعدها.
-          </p>
-          <JobStatus job={job && (job.status !== "succeeded" ? job : undefined)} />
-          {pending.length > 0 ? (
-            <div className={running || busy ? "" : "st-attention rounded-xl"}>
-              <PaidButton label={segments.length ? "أكمل الاستخراج" : "استخرج النص"} what={`قراءة ${pending.length} مدخل (الصور وصفحات PDF عبر Claude).`} disabled={running} run={(b) => p.act({ action: "extract", ...b })} />
-            </div>
-          ) : sources.length > 0 && segments.length > 0 ? (
-            <p className="text-sm text-jw-ok">
-              <Icon name="check" size={14} className="inline" /> استُخرج كل شيء. انتقل إلى «مراجعة النص».
-            </p>
-          ) : null}
+          <h2 className="font-semibold">الخطوة الجاية</h2>
+          <p className="text-sm text-jw-muted">يقرأ المساعد كل شي أضفته (الصور وصفحات PDF حرفيًا)، ويفهم المادة، وبعدها يعرض عليك فهمه تعتمده.</p>
+          <JobStatus job={job} />
+          <div className={running || busy || !ready ? "" : "st-attention rounded-xl"}>
+            {pending.length > 0 ? (
+              <PaidButton
+                label="تابع — اقرأ وافهم مادتي"
+                what={`قراءة ${pending.length} مدخل (الصور وصفحات PDF عبر Claude)، ثم فهم المادة.`}
+                disabled={running}
+                run={async (b) => {
+                  const r = await p.act({ action: "extract", ...b });
+                  if (b.confirm) onContinue();
+                  return r;
+                }}
+              />
+            ) : (
+              <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!ready || running} onClick={onContinue}>
+                <Icon name="sparkles" size={16} /> تابع — افهم مادتي
+              </button>
+            )}
+          </div>
         </div>
       </aside>
     </div>

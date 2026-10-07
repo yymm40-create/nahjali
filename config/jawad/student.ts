@@ -20,6 +20,53 @@ export const STUDENT = {
 
 export const LEVELS = ["ابتدائي", "متوسط", "ثانوي", "جامعي", "دراسات عليا"] as const;
 
+// ───────────────────────────── the brief (the first page) ─────────────────────────────
+
+/** What the material is for: chosen with one tap, or written («أخرى»). */
+export const PURPOSES = [
+  { id: "exam", label: "مراجعة للاختبار", hint: "أهم ما يُسأل عنه، مختصر ومركّز" },
+  { id: "understand", label: "فهم وشرح", hint: "شرح أسهل مع أمثلة" },
+  { id: "research", label: "بحث أو تقرير", hint: "موضوع مكتوب بمصادر" },
+  { id: "teach", label: "تحضير درس أو شرح لغيري", hint: "للمعلم أو لشرح المادة لزملاء" },
+  { id: "present", label: "عرض أو مشروع", hint: "عرض تقديمي أو مشروع للصف" },
+  { id: "other", label: "أخرى", hint: "اكتب غرضك" },
+] as const;
+export type PurposeId = (typeof PURPOSES)[number]["id"];
+
+/** Where the information comes from. */
+export const SOURCE_MODES = [
+  { id: "files", label: "من ملفاتي", hint: "أرفع صور أو PDF أو أكتب نصًا" },
+  { id: "research", label: "كلاود يبحث لي", hint: "بدون ملفات: يبحث في مصادر موثوقة" },
+  { id: "both", label: "ملفاتي + بحث", hint: "مادتي، ويكملها كلاود بالبحث" },
+] as const;
+export type SourceMode = (typeof SOURCE_MODES)[number]["id"];
+
+export interface Brief {
+  purpose: PurposeId;
+  /** «أخرى», or details of the purpose */
+  purposeNote: string;
+  mode: SourceMode;
+  /** research: what to look for */
+  focus: string;
+}
+
+export const emptyBrief = (): Brief => ({ purpose: "exam", purposeNote: "", mode: "files", focus: "" });
+
+/** A stored brief, checked (older materials have none). */
+export function readBrief(v: unknown): Brief {
+  const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const purpose = PURPOSES.some((x) => x.id === b.purpose) ? (b.purpose as PurposeId) : "exam";
+  const mode = SOURCE_MODES.some((x) => x.id === b.mode) ? (b.mode as SourceMode) : "files";
+  return { purpose, purposeNote: String(b.purposeNote ?? "").slice(0, 1000), mode, focus: String(b.focus ?? "").slice(0, 2000) };
+}
+
+/** The brief as one line for the writer (Claude). */
+export function briefLine(b: Brief) {
+  const p = PURPOSES.find((x) => x.id === b.purpose)!;
+  const purpose = b.purpose === "other" ? b.purposeNote || "unspecified" : `${p.label}${b.purposeNote ? ` (${b.purposeNote})` : ""}`;
+  return `What the student wants this material for: ${purpose}.`;
+}
+
 export type OutputKind = "summary" | "explain" | "transcript" | "book" | "slides" | "audio" | "quiz";
 
 export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] = [

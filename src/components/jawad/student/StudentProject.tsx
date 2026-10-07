@@ -5,36 +5,49 @@ import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { STUDENT } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
+import { PURPOSES } from "@config/jawad/student";
 import OutputsStep from "./OutputsStep";
-import ReviewStep from "./ReviewStep";
-import ScopeStep from "./ScopeStep";
 import SourcesStep from "./SourcesStep";
 import { useAutopilot } from "./autopilot";
 import { STEP_LOOK } from "./look";
 import { ErrorLine } from "./ui";
 import UnderstandingStep from "./UnderstandingStep";
 
+// Three steps the student sees. The text review and the source rules happen by themselves: the text is read and
+// approved by the assistant, and the research the first page asked for runs after the understanding.
 const STEPS = [
   { id: "sources", label: "المادة" },
-  { id: "review", label: "مراجعة النص" },
   { id: "understanding", label: "الفهم" },
-  { id: "scope", label: "حدود المصدر" },
   { id: "outputs", label: "النواتج" },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
+const stepOf = (stage: ProjectState["project"]["stage"]): StepId => (stage === "review" ? "sources" : stage === "scope" ? "outputs" : stage);
 
 export default function StudentProject({ initial }: { initial: ProjectState }) {
   const p = useProject(initial);
   const auto = useAutopilot(p.state, p.busy, p.refresh);
   const { project } = p.state;
-  const reached = STEPS.findIndex((s) => s.id === project.stage);
-  const [view, setView] = useState<StepId>(project.stage);
+  const step = stepOf(project.stage);
+  const reached = STEPS.findIndex((s) => s.id === step);
+  const [view, setView] = useState<StepId>(step);
   // when the project moves on (an approval), follow it
   const [lastStage, setLastStage] = useState(project.stage);
   if (lastStage !== project.stage) {
     setLastStage(project.stage);
-    setView(project.stage);
+    setView(step);
   }
+  // «ملفاتي + بحث»: once the understanding is approved, the research runs by itself
+  const { start } = auto;
+  useEffect(() => {
+    if (project.stage === "scope" && !auto.mode) start("step");
+  }, [project.stage, auto.mode, start]);
+  // a material left half-read (the page was closed): reading goes on when it is opened again
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || auto.mode) return;
+    resumed.current = true;
+    if (project.stage === "review") start("material");
+  }, [project.stage, auto.mode, start]);
   // a new step opens at the top of the steps bar, smoothly
   const navRef = useRef<HTMLElement>(null);
   const firstView = useRef(true);
@@ -47,12 +60,11 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   }, [view]);
 
   const HINT: Record<StepId, string> = {
-    sources: "أضف نصك أو ارفع الصور وملفات PDF، ثم استخرج النص.",
-    review: "راجع النص المستخرج وصحّح ما يلزم، ثم اعتمده.",
-    understanding: "اقرأ كيف فهم المساعد مادتك، واعتمد الفهم أو عدّله.",
-    scope: "حدّد: هل يضيف المساعد من معرفته؟ وهل يبحث في الويب؟",
-    outputs: "اختر ما تريد صنعه من مادتك، وكل ناتج له خطواته.",
+    sources: project.brief.mode === "research" ? "خلّ كلاود يبحث ويكتب مادتك، أو أضف ملفاتك، ثم «تابع»." : "أضف صورك أو ملفات PDF أو نصك، ثم «تابع».",
+    understanding: "اقرأ كيف فهم المساعد مادتك، واعتمده أو صحّحه.",
+    outputs: "اختر نواتجك، أجب الأسئلة القصيرة، واضغط «ابدأ».",
   };
+  const purpose = PURPOSES.find((x) => x.id === project.brief.purpose);
   const vi = STEPS.findIndex((s) => s.id === view);
 
   return (
@@ -65,7 +77,8 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold">{project.title || "مادة"}</h1>
             <p className="text-xs text-jw-faint">
-              {project.level ? `${project.level} · ` : ""}تُحذف {new Date(project.expiresAt).toLocaleDateString("ar")} إن لم تُستخدم
+              {project.level ? `${project.level} · ` : ""}
+              {purpose ? `${purpose.id === "other" ? project.brief.purposeNote || purpose.label : purpose.label} · ` : ""}تُحذف {new Date(project.expiresAt).toLocaleDateString("ar")} إن لم تُستخدم
             </p>
           </div>
         </div>
@@ -118,17 +131,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
               أوقف
             </button>
           </div>
-        ) : (
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <button type="button" className="jw-btn" onClick={() => auto.start("step")}>
-              ⚡ تخطَّ هذه الخطوة — دع المساعد يقرر
-            </button>
-            <button type="button" className="jw-btn" onClick={() => auto.start("all")}>
-              🤖 دع المساعد يكمل كل الخطوات
-            </button>
-            <span className="w-full text-center text-[11px] text-jw-faint">يختار المساعد الإعدادات ويعتمد بدلًا عنك، والخطوات المدفوعة تُخصم بسعرها. تقدر توقفه في أي وقت.</span>
-          </div>
-        )}
+        ) : null}
         {auto.error && (
           <div className="mt-3">
             <ErrorLine error={auto.error} />
@@ -139,11 +142,9 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
       <ErrorLine error={p.error} />
 
       <div key={view} className="st-rise">
-      {view === "sources" && <SourcesStep p={p} />}
-      {view === "review" && <ReviewStep p={p} />}
+      {view === "sources" && <SourcesStep p={p} onContinue={() => start("material")} />}
       {view === "understanding" && <UnderstandingStep p={p} />}
-      {view === "scope" && <ScopeStep p={p} />}
-      {view === "outputs" && <OutputsStep p={p} />}
+      {view === "outputs" && <OutputsStep p={p} onStart={() => start("all")} researching={project.stage === "scope"} working={Boolean(auto.mode)} />}
       </div>
     </div>
   );

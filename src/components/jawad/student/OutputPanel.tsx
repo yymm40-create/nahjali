@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
-import { DENSITIES, OUTPUT_STATUS, QUESTION_TYPES, type Design } from "@config/jawad/student";
+import { DENSITIES, OUTPUT_STATUS, QUESTION_TYPES } from "@config/jawad/student";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
-import DesignPicker, { DesignPreview } from "./DesignPicker";
 import { AudioPlanEditor, DocPlanEditor, QuizPlanEditor, SlideMapEditor } from "./PlanEditors";
 import { AudioResult, DocView, FileLinks, PdfFrame, QuizPlay, SlidesFonts, TranscriptView } from "./Results";
 import type { ProjectHook } from "./StudentProject";
@@ -44,7 +43,6 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
   const planDirty = JSON.stringify(plan) !== JSON.stringify(o.plan);
   const labels = new Map(segments.map((s) => [s.sid, s.label]));
   const images = sources.filter((s) => s.kind === "image" && s.status === "ready").map((s, i) => ({ id: s.id, name: s.name || `صورة ${i + 1}` }));
-  const sample = segments.find((s) => s.text.length > 80)?.text.slice(0, 260) ?? "";
   const designed = o.kind === "book" || o.kind === "slides";
   const editingSettings = ["settings", "waiting", "plan_review", "ready", "trial_offer", "trial_review", "failed"].includes(o.status) && !mine;
   const researchContent = research?.approved ? research.content : null;
@@ -74,15 +72,7 @@ export default function OutputPanel({ p, o }: { p: ProjectHook; o: OutputView })
           <summary className="cursor-pointer font-semibold">الإعدادات {settingsDirty && <span className="text-xs text-jw-warn">(غير محفوظة)</span>}</summary>
           <div className="space-y-3 pt-2">
             <KindSettings o={o} s={settings} set={set} outputs={outputs} />
-            {(designed || o.kind === "summary" || o.kind === "explain" || o.kind === "quiz") && (
-              <details open={designed} className="rounded-lg border border-jw-line p-3">
-                <summary className="cursor-pointer font-semibold">التصميم والخطوط{!designed ? " (لملف PDF)" : ""}</summary>
-                <div className="pt-3">
-                  <DesignPicker value={settings.design as Design | undefined} onChange={(design) => set({ design })} kind={o.kind === "slides" ? "slides" : designed ? "book" : "doc"} sample={sample} />
-                  {designed && <CustomStyle o={o} act={act} running={running} onUse={(design) => set({ design })} sample={sample} />}
-                </div>
-              </details>
-            )}
+            {/* the design and fonts are Claude's choice (design-pick.ts), never asked */}
             <ErrorLine error={error} />
             <button type="button" className="jw-btn jw-btn-primary" disabled={!settingsDirty || busy} onClick={() => run(() => act({ action: "settings", settings }))}>
               <Icon name="check" size={16} /> احفظ الإعدادات
@@ -262,35 +252,6 @@ function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: s
         </select>
       )}
       <PaidButton label="أرسل" what={pictures && chapter >= 0 ? "تُرسم هذه الشريحة من جديد مع طلبك، وبقية الشرائح كما هي." : doc && chapter >= 0 ? "تعديل هذا الفصل فقط، وبقية الناتج كما هي." : "تعديل الناتج حسب طلبك."} disabled={running} run={(b) => act({ action: "request", note, kind, chapter, ...b })} />
-    </div>
-  );
-}
-
-function CustomStyle({ o, act, running, onUse, sample }: { o: OutputView; act: (b: S) => Promise<unknown>; running: boolean; onUse: (d: Design) => void; sample: string }) {
-  const [desc, setDesc] = useState("");
-  const draft = o.settings._styleDraft as Design | null | undefined;
-  return (
-    <div className="mt-4 space-y-2 border-t border-jw-line pt-3">
-      <h4 className="text-sm font-semibold">أو صف أسلوبك الخاص</h4>
-      <textarea className="jw-textarea text-sm" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="مثال: ألوان هادئة كحلي وبيج، طابع أكاديمي، بطاقات قليلة، مساحات واسعة، خط عناوين قوي" />
-      {desc.trim().length >= 10 && <PaidButton label="حلّل وصفي" primary={false} what="يحلل المساعد وصفك إلى ألوان وخطوط وبنية وخامات وكثافة لتعتمده." disabled={running} run={(b) => act({ action: "style_analyze", description: desc, ...b })} />}
-      {draft?.custom && (
-        <div className="space-y-2 rounded-lg bg-jw-surface-2 p-3">
-          <p className="text-sm">{draft.custom.notes}</p>
-          <div className="flex gap-1" aria-hidden>
-            {Object.values(draft.custom.colors).map((c, i) => (
-              <span key={i} className="size-5 rounded-full border border-black/10" style={{ background: c }} />
-            ))}
-          </div>
-          <DesignPreview design={draft} sample={sample} height={240} />
-          <div className="flex gap-2">
-            <button type="button" className="jw-btn jw-btn-primary" onClick={() => onUse(draft)}>
-              اعتمد هذا الفهم لأسلوبي
-            </button>
-          </div>
-          <p className="text-xs text-jw-faint">بعد اعتماده احفظ الإعدادات. للتعديل غيّر الوصف وحلّله من جديد.</p>
-        </div>
-      )}
     </div>
   );
 }

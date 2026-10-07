@@ -4,18 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
-import { LEVELS, OUTPUT_KINDS, STUDENT } from "@config/jawad/student";
+import { LEVELS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, type PurposeId, type SourceMode } from "@config/jawad/student";
 import { post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
 
-const STAGE_INDEX: Record<string, number> = { sources: 0, review: 1, understanding: 2, scope: 3, outputs: 4 };
+const STAGE_INDEX: Record<string, number> = { sources: 0, review: 0, understanding: 1, scope: 2, outputs: 2 };
 
 const HOW = [
-  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "ارفع مادتك", text: "نص، صور، أو ملفات PDF — بالترتيب الذي تريده." },
-  { emoji: "🔍", grad: STEP_LOOK[1].grad, title: "راجع النص", text: "النص المستخرج كاملًا، صفحة صفحة أو كلها مرة وحدة." },
-  { emoji: "🧠", grad: STEP_LOOK[2].grad, title: "اعتمد الفهم", text: "المساعد يشرح لك كيف فهم مادتك قبل أي شيء." },
-  { emoji: "✨", grad: STEP_LOOK[4].grad, title: "اختر نواتجك", text: "ملخص، كتاب، عرض، صوت، اختبار… أو كلها." },
+  { emoji: "🎯", grad: "linear-gradient(135deg,#f59e0b,#f97316)", title: "قل لنا طلبك", text: "اسم المادة، لمن، ووش الغرض — أو خلّ كلاود يبحث لك." },
+  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "أضف مادتك", text: "صور أو PDF أو نص، ويقرؤها المساعد بنفسه." },
+  { emoji: "🧠", grad: STEP_LOOK[1].grad, title: "اعتمد الفهم", text: "المساعد يقول لك وش فهم، وأنت تعتمد." },
+  { emoji: "✨", grad: STEP_LOOK[2].grad, title: "اختر وابدأ", text: "اختر نواتجك وأجب أسئلة قصيرة، والباقي عليه." },
 ];
 
 export default function StudentHome({
@@ -37,6 +37,10 @@ export default function StudentHome({
   const [level, setLevel] = useState<string>("ثانوي");
   const [other, setOther] = useState("");
   const [audience, setAudience] = useState("");
+  const [purpose, setPurpose] = useState<PurposeId>("exam");
+  const [purposeNote, setPurposeNote] = useState("");
+  const [mode, setMode] = useState<SourceMode>("files");
+  const [focus, setFocus] = useState("");
   const { busy, error, run } = useAsync();
 
   // stays "busy" until the next page opens, so the button never looks like it did nothing
@@ -59,7 +63,14 @@ export default function StudentHome({
       return;
     }
     return run(async () => {
-      const r = await post<{ id: string }>("/api/jawad/student/projects", { title: title.trim() || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`, level: level === "آخر" ? other : level, audience });
+      if (purpose === "other" && !purposeNote.trim()) throw new Error("اكتب غرضك من المادة.");
+      if (mode === "research" && !title.trim() && !focus.trim()) throw new Error("اكتب اسم المادة أو المعلومات اللي تبي كلاود يبحث عنها.");
+      const r = await post<{ id: string }>("/api/jawad/student/projects", {
+        title: title.trim() || focus.trim().slice(0, 80) || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`,
+        level: level === "آخر" ? other : level,
+        audience,
+        brief: { purpose, purposeNote: purposeNote.trim(), mode, focus: focus.trim() },
+      });
       setGoing(true);
       router.push(`${STUDENT.base}/${r.id}`);
     });
@@ -174,17 +185,17 @@ export default function StudentHome({
           <h2 id="new-material" className="text-2xl font-bold">
             مادة جديدة
           </h2>
-          <p className="text-sm text-jw-muted">ثلاث معلومات فقط، ثم ترفع مادتك.</p>
+          <p className="text-sm text-jw-muted">قل لنا طلبك بضغطات قليلة، والمساعد يكمل.</p>
           {left !== null && <p className={`text-xs font-bold ${left ? "text-jw-accent" : "text-jw-danger"}`}>{left ? `متبقٍّ لك ${left === 1 ? "مادة واحدة" : "مادتان"} من ٢ — اكتب اسمًا واضحًا قبل «ابدأ»` : "استخدمت المادتين المتاحتين لحسابك."}</p>}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="jw-label" htmlFor="st-title">اسم المادة</label>
-            <input id="st-title" className="jw-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: الفصل الثالث — الخلية" />
+            <label className="jw-label" htmlFor="st-title">اسم المادة أو الموضوع</label>
+            <input id="st-title" className="jw-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: علوم — الفصل الثالث: الخلية" />
           </div>
           <div>
             <label className="jw-label" htmlFor="st-aud">لمن؟ (اختياري)</label>
-            <input id="st-aud" className="jw-input" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="لي للمراجعة، أو لزملائي" />
+            <input id="st-aud" className="jw-input" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="لي، لطلاب صفي، لأولياء الأمور…" />
           </div>
         </div>
         <div className="space-y-2">
@@ -198,6 +209,32 @@ export default function StudentHome({
             ))}
           </div>
           {level === "آخر" && <input className="jw-input" value={other} onChange={(e) => setOther(e.target.value)} placeholder="اكتب المستوى والتخصص" aria-label="المستوى والتخصص" />}
+        </div>
+        <div className="space-y-2">
+          <span className="jw-label">وش غرضك منها؟</span>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="الغرض">
+            {PURPOSES.map((x) => (
+              <button key={x.id} type="button" role="radio" aria-checked={purpose === x.id} onClick={() => setPurpose(x.id)} className={`rounded-2xl border p-3 text-start transition-all ${purpose === x.id ? "border-transparent bg-white ring-4 ring-violet-300" : "border-jw-line bg-white hover:-translate-y-0.5"}`}>
+                <b className="block text-sm">{x.label}</b>
+                <span className="block text-[11px] text-jw-muted">{x.hint}</span>
+              </button>
+            ))}
+          </div>
+          <input className="jw-input" value={purposeNote} onChange={(e) => setPurposeNote(e.target.value)} placeholder={purpose === "other" ? "اكتب غرضك" : "تفاصيل تبي المساعد يعرفها (اختياري)"} aria-label="تفاصيل الغرض" />
+        </div>
+        <div className="space-y-2">
+          <span className="jw-label">من وين المعلومات؟</span>
+          <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="مصدر المعلومات">
+            {SOURCE_MODES.map((x) => (
+              <button key={x.id} type="button" role="radio" aria-checked={mode === x.id} onClick={() => setMode(x.id)} className={`rounded-2xl border p-3 text-start transition-all ${mode === x.id ? "border-transparent bg-white ring-4 ring-violet-300" : "border-jw-line bg-white hover:-translate-y-0.5"}`}>
+                <b className="block text-sm">{x.label}</b>
+                <span className="block text-[11px] text-jw-muted">{x.hint}</span>
+              </button>
+            ))}
+          </div>
+          {mode !== "files" && (
+            <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبي كلاود يبحث عنها؟ مثال: دورة حياة الخلية بمنهج الصف الثاني متوسط، مع أمثلة" aria-label="ما يبحث عنه كلاود" />
+          )}
         </div>
         <ErrorLine error={error} />
         <div className="text-center">
@@ -233,7 +270,7 @@ export default function StudentHome({
                     </div>
                     <div className="space-y-1">
                       <div className="h-2 overflow-hidden rounded-full bg-jw-surface-3">
-                        <div className="h-full rounded-full" style={{ width: `${((i + 1) / 5) * 100}%`, background: "var(--st-grad)" }} />
+                        <div className="h-full rounded-full" style={{ width: `${((i + 1) / 3) * 100}%`, background: "var(--st-grad)" }} />
                       </div>
                       <span className="text-xs text-jw-muted">المرحلة: {STEP_LOOK[i].label}</span>
                     </div>

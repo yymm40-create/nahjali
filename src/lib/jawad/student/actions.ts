@@ -6,7 +6,7 @@ import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
 import { isUnlimited } from "@config/site";
-import { FONTS, OUTPUT_KINDS, STUDENT, STYLES, STYLE_ROLES, type Design } from "@config/jawad/student";
+import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, type Brief, type Design } from "@config/jawad/student";
 import { claudeCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
@@ -15,9 +15,11 @@ import { checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "./model";
 import { estimate } from "./outputs";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
+import { slideImageUsd } from "./slide-images";
 import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
 import { autoSettings } from "./defaults";
+import { pickDesigns } from "./design-pick";
 
 import { storage } from "@/lib/storage";
 type User = { id: string; email?: string | null };
@@ -28,10 +30,20 @@ const NOT_NOW = "هذه الخطوة غير متاحة الآن.";
 
 // ───────────────────────────── state ─────────────────────────────
 
+/**
+ * What one page / slide drawn by GPT Image 2 costs this person, in coins (0 when nothing is charged), for the choice
+ * «GPT Image 2 or Claude» (Claude's pages cost nothing on top of the writing).
+ */
+async function drawPrices(user: User) {
+  const free = isUnlimited(user.email) || !(await coinsRequired());
+  const c = (usd: number) => (free ? 0 : coinsFor(usd));
+  return { free, page: { high: c(pageUsd("high")), medium: c(pageUsd("medium")) }, slide: { high: c(slideImageUsd("high")), medium: c(slideImageUsd("medium")) } };
+}
+
 export async function projectState(user: User, id: string) {
   const p = await getProject(user.id, id);
   await advanceJobs({ projectId: p.id });
-  const [srcs, segs, cov, textV, und, research, outs, jobs, balance] = await Promise.all([
+  const [srcs, segs, cov, textV, und, research, outs, jobs, balance, prices] = await Promise.all([
     sources(p.id),
     segments(p.id),
     coverage(p.id),
@@ -41,9 +53,11 @@ export async function projectState(user: User, id: string) {
     outputs(p.id),
     projectJobs(p.id),
     coinBalance(user.id),
+    drawPrices(user),
   ]);
   return {
-    project: { ...p, expiresAt: new Date(new Date(p.last_activity_at).getTime() + STUDENT.keepDays * 86400_000).toISOString() },
+    prices,
+    project: { ...p, brief: readBrief(p.brief), expiresAt: new Date(new Date(p.last_activity_at).getTime() + STUDENT.keepDays * 86400_000).toISOString() },
     sources: srcs.map((s) => ({ id: s.id, ord: s.ord, kind: s.kind, name: s.name, mime: s.mime, bytes: s.bytes, pages: s.pages, pagesDone: s.pages_done, status: s.status, body: s.kind === "text" ? s.body : null })),
     segments: segs.map((s) => ({ id: s.id, sid: s.id.slice(0, 8), sourceId: s.source_id, page: s.page, part: s.part, label: s.label, raw: s.raw_text, text: s.text, uncertain: s.uncertain, status: s.status })),
     coverage: cov,
@@ -85,6 +99,17 @@ export async function listProjects(userId: string) {
   }));
 }
 
+/** The first page's answers, checked. */
+function cleanBrief(v: unknown): Brief {
+  const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return readBrief({
+    purpose: PURPOSES.some((x) => x.id === b.purpose) ? b.purpose : "exam",
+    purposeNote: text(b.purposeNote, 1000),
+    mode: SOURCE_MODES.some((x) => x.id === b.mode) ? b.mode : "files",
+    focus: text(b.focus, 2000),
+  });
+}
+
 /** Materials each person may make in «الطالب الذكي» (the owner's choice); the owner and free guests have no limit. */
 export const MATERIALS_PER_PERSON = 2;
 /** How many materials this person has made so far (kept on the account, so deleting one does not give it back). */
@@ -94,12 +119,12 @@ export async function createProject(user: User & { app_metadata?: Record<string,
   const made = materialsMade(user);
   const limited = !isUnlimited(user.email);
   if (limited && made >= MATERIALS_PER_PERSON) throw new UserError(`لكل حساب ${MATERIALS_PER_PERSON} مادتان فقط في «الطالب الذكي»، واستخدمتهما.`, 403);
-  const { data, error } = await sdb()
-    .from("student_projects")
-    .insert({ user_id: user.id, title: text(b.title, 200) || "مادة جديدة", level: text(b.level, 120), audience: text(b.audience, 300) })
-    .select("id")
-    .single();
-  if (error) throw error.code === "42P01" ? new UserError("قسم «الطالب الذكي» قيد التجهيز: شغّل ملف SQL رقم 0026.", 503) : error;
+  const row = { user_id: user.id, title: text(b.title, 200) || "مادة جديدة", level: text(b.level, 120), audience: text(b.audience, 300) };
+  const brief = cleanBrief(b.brief);
+  let { data, error } = await sdb().from("student_projects").insert({ ...row, brief }).select("id").single();
+  // before SQL 0035 (no «brief» column) the material is made without it
+  if (error?.code === "42703" || error?.code === "PGRST204") ({ data, error } = await sdb().from("student_projects").insert(row).select("id").single());
+  if (error || !data) throw error?.code === "42P01" ? new UserError("قسم «الطالب الذكي» قيد التجهيز: شغّل ملف SQL رقم 0026.", 503) : (error ?? new Error("no project"));
   if (limited) await sdb().auth.admin.updateUserById(user.id, { app_metadata: { ...(user.app_metadata ?? {}), student_made: made + 1 } });
   return data.id as string;
 }
@@ -265,12 +290,14 @@ export async function projectAction(user: User, id: string, b: Body) {
       const u = await latestVersion<Understanding>(p.id, "understanding");
       if (!u || u.content.basedOnText !== p.text_version) throw new UserError(NOT_NOW);
       await db.from("student_versions").update({ approved: true }).eq("id", u.id);
-      // the scope questions were answered before (a revised understanding): straight back to the outputs
-      // Not answered before: the assistant's defaults (explanations allowed and marked, no paid web search), so the
-      // outputs open right away; the student can still change both from «حدود المصدر» in the stepper
+      // The source rules are set once, from the first page: explanations allowed (and marked as additions), and the
+      // web research only for «ملفاتي + بحث», which then runs next (stage «scope», done by the assistant). A revised
+      // understanding keeps the rules it had.
       const firstTime = p.allow_additions === null;
-      const next = { ...p, understanding_version: u.version, stage: "outputs" as const, ...(firstTime ? { allow_additions: true, web_search: false } : {}) };
-      await touch(p.id, { understanding_version: u.version, stage: "outputs", ...(firstTime ? { allow_additions: true, web_search: false } : {}) });
+      const research = firstTime ? readBrief(p.brief).mode === "both" : Boolean(p.web_search);
+      const stage = research && !p.research_version ? ("scope" as const) : ("outputs" as const);
+      const next = { ...p, understanding_version: u.version, stage, ...(firstTime ? { allow_additions: true, web_search: research } : {}) };
+      await touch(p.id, { understanding_version: u.version, stage, ...(firstTime ? { allow_additions: true, web_search: research } : {}) });
       await markStale(next);
       return { ok: true };
     }
@@ -290,6 +317,10 @@ export async function projectAction(user: User, id: string, b: Body) {
     case "research": {
       if (!p.web_search || !p.understanding_version) throw new UserError(NOT_NOW);
       return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling(), input: { focus: text(b.focus, 2000) }, stage: "البحث في الويب" });
+    }
+    case "research_material": {
+      // «كلاود يبحث لي»: the research becomes the material (a written source), before anything is read
+      return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling(), input: { asMaterial: true, focus: text(b.focus, 2000) }, stage: "كلاود يبحث ويكتب مادتك" });
     }
     case "research_approve": {
       const r = await latestVersion(p.id, "research");
@@ -315,6 +346,40 @@ export async function projectAction(user: User, id: string, b: Body) {
         settings: autoSettings(k, p.level),
       }));
       await db.from("student_outputs").insert(rows);
+      await touch(p.id);
+      return { ok: true };
+    }
+    case "start": {
+      // The one «ابدأ» of the outputs page: every chosen output with the student's answers, the design picked by
+      // Claude (never asked), and the special request passed to each. The page then runs them all (autopilot).
+      if (p.stage !== "outputs") throw new UserError("اعتمد الفهم أولًا.");
+      const wanted = (Array.isArray(b.outputs) ? b.outputs : []).slice(0, OUTPUT_KINDS.length) as { kind?: unknown; settings?: unknown }[];
+      const list = wanted.filter((w, i) => OUTPUT_KINDS.some((o) => o.kind === w.kind) && wanted.findIndex((x) => x.kind === w.kind) === i);
+      if (!list.length) throw new UserError("اختر ناتجًا واحدًا على الأقل.");
+      const special = text(b.special, 3000);
+      const kinds = list.map((w) => String(w.kind));
+      const u = await latestVersion<Understanding>(p.id, "understanding");
+      const { designs, notes } = await pickDesigns(p, kinds, u?.content.topic ?? p.title, special);
+      const existing = await outputs(p.id);
+      const rows = list.map((w, i) => {
+        const kind = String(w.kind) as Output["kind"];
+        const given = (w.settings && typeof w.settings === "object" ? w.settings : {}) as Body;
+        const extra = [text(given.extra, 2000), notes[kind] ?? ""].filter(Boolean).join("\n");
+        const settings = cleanSettings(kind, { ...autoSettings(kind, p.level), ...given, ...(designs[kind] ? { design: designs[kind] } : {}), ...(extra ? { extra } : {}) });
+        if (kind === "audio") settings.source = "text";
+        return { project_id: p.id, user_id: user.id, kind, ord: existing.length + i, title: OUTPUT_KINDS.find((o) => o.kind === kind)!.name, status: "settings", settings };
+      });
+      const { data: made, error } = await db.from("student_outputs").insert(rows).select("id,kind");
+      if (error) throw error;
+      // a recording of the summary / explanation / book made here: it waits for that text
+      const audio = list.find((w) => w.kind === "audio");
+      const reads = String((audio?.settings as Body | undefined)?.source ?? "");
+      const dep = (made ?? []).find((m) => m.kind === reads && ["summary", "explain", "book"].includes(reads));
+      const rec = (made ?? []).find((m) => m.kind === "audio");
+      if (dep && rec) {
+        const r = rows.find((x) => x.kind === "audio")!;
+        await saveOutput(rec.id as string, { settings: { ...r.settings, source: dep.id }, depends_on: dep.id as string, status: "waiting" });
+      }
       await touch(p.id);
       return { ok: true };
     }

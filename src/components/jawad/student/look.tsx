@@ -12,9 +12,7 @@ export const KIND_LOOK: Record<string, { emoji: string; grad: string }> = {
 
 export const STEP_LOOK = [
   { emoji: "📤", label: "المادة", grad: "linear-gradient(135deg,#0ea5e9,#6366f1)" },
-  { emoji: "🔍", label: "مراجعة النص", grad: "linear-gradient(135deg,#a855f7,#7c3aed)" },
   { emoji: "🧠", label: "الفهم", grad: "linear-gradient(135deg,#ec4899,#db2777)" },
-  { emoji: "🧭", label: "حدود المصدر", grad: "linear-gradient(135deg,#f59e0b,#f97316)" },
   { emoji: "✨", label: "النواتج", grad: "linear-gradient(135deg,#10b981,#0ea5e9)" },
 ] as const;
 

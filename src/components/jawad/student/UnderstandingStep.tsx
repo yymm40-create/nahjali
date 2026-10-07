@@ -80,7 +80,7 @@ export default function UnderstandingStep({ p }: { p: ProjectHook }) {
           </article>
 
           <Gate
-            next="ينتقل إلى سؤالي حدود المصدر: الإضافة من معرفة المساعد، والبحث الخارجي."
+            next={project.brief.mode === "both" ? "يبحث كلاود في الويب ليكمل مادتك، ثم تختار نواتجك." : "تختار نواتجك بعدها مباشرة."}
             approveLabel={current.approved ? "متابعة" : "اعتمد الفهم"}
             onApprove={() => p.act({ action: "understanding_approve" })}
             editHint="ما الذي فهمه المساعد خطأ أو ناقصًا؟"
