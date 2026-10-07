@@ -117,9 +117,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await diagnose(p, { id: user.id, email: user.email, owner: isAdmin(user.email) }, b));
     // حيدرة checks a colour change it made (pictures and scopes), and corrects it until it is right
     case "grade_check":
-      return NextResponse.json(await gradeCheck(p, who, b));
+      return NextResponse.json(await gradeCheck(p, who, b, new URL(req.url).origin));
     case "assistant":
-      return NextResponse.json(await assist(p, who, b));
+      return NextResponse.json(await assist(p, who, b, new URL(req.url).origin));
     case "fix_link":
       return NextResponse.json({ asset: await linkForFix(p, user, b) });
     case "chat":
