@@ -9,12 +9,12 @@ import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import ActionBar, { EditsLeftContext, type SendMode } from "../../ActionBar";
-import StepCard, { statusChip as chip } from "../../StepCard";
+import StepCard from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
+import SheetCards from "./SheetCards";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
 const SHEET_COST = `تقريبًا ${credits(0.4)}`;
-import { STATUS_LABELS } from "@config/film";
 import { useFilmBase } from "../../FilmBase";
 
 interface Asset {
@@ -26,6 +26,7 @@ interface Asset {
   meta: Record<string, unknown>;
   url: string;
   created_at: string;
+  version_id: string | null;
 }
 interface StyleCard {
   id: string;
@@ -136,6 +137,25 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   const noPrompt = mapVersion?.status === "approved" ? map.filter((m) => m.id !== MASTER && choices[m.id] !== "as_is" && !promptIds.includes(m.id)) : [];
   const allApproved = stage === "sheets" && map.length > 0 && mapVersion?.status === "approved" && map.every((m) => approvedIds.has(m.id));
 
+  // «الصور مباشرة»: a sheet's description that arrives is drawn straight away, five pictures at a time (and always
+  // after the person's own edit of that sheet), so the person sees pictures, not texts
+  const [autoMake, setAutoMake] = useState(true);
+  const autoAfterEdit = useRef(new Set<string>());
+  const autoSent = useRef(new Set<string>());
+  useEffect(() => {
+    if (busy || writing) return;
+    const drawing = assets.filter((a) => a.kind === "image" && a.status === "generating").length;
+    if (drawing >= 5) return;
+    const next = orderedSheets
+      .map((sid) => latestOf("sheet_prompt", sid))
+      .find((v) => v && v.status === "awaiting_approval" && !autoSent.current.has(v.id) && (autoMake || autoAfterEdit.current.has(v.ref_key)));
+    if (!next) return;
+    autoSent.current.add(next.id);
+    autoAfterEdit.current.delete(next.ref_key);
+    const t = setTimeout(() => void send({ action: "approve", versionId: next.id, count: 1 }), 0);
+    return () => clearTimeout(t);
+  });
+
   // Arrived from the screenwriter (…/sheets?start=1): the sheet maker starts by itself, no second press
   const autoStarted = useRef(false);
   useEffect(() => {
@@ -159,16 +179,6 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   });
   const revise = (v: SheetVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
   const backToSheets = stage === "director" ? " والمشروع انتقل للمخرج، فبيرجع لصانع الشيت لين تعتمد صورة جديدة." : "";
-  // Sheets whose approved picture used this sheet as a reference (the master is every sheet's style reference)
-  const dependents = (sid: string) =>
-    orderedSheets.filter((id) => id !== sid && assets.some((a) => a.kind === "image" && a.ref_key === id && a.status === "approved") &&
-      (sid === MASTER || versions.some((v) => v.kind === "sheet_prompt" && v.ref_key === id && v.status === "approved" && v.data.references?.some((r) => r.sheet_id === sid))));
-  const nameOf = (id: string) => map.find((m) => m.id === id)?.name ?? id;
-  const affects = (sid: string) => {
-    const d = dependents(sid);
-    return d.length ? ` الصور المعتمدة اللي انبنت عليه (${d.map(nameOf).join("، ")}) تظل مثل ما هي، ولو تبيها تتبع التغيير أعد توليدها.` : "";
-  };
-
   return (
     <EditsLeftContext value={editsLeft}>
     <div className="space-y-4">
@@ -273,41 +283,23 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <p className="text-xs font-bold text-muted">تبي تعدّل وحدة بس؟ عدّلها في بطاقتها تحت، وبعدين اضغط الزر هنا للباقي.</p>
         </section>
       )}
-      {orderedSheets.map((sid) => {
-        const v = latestOf("sheet_prompt", sid)!;
-        const item = map.find((m) => m.id === sid);
-        const imgs = assets.filter((a) => a.kind === "image" && a.ref_key === sid);
-        return (
-          <StepCard
-            key={sid}
-            title={`${sid} · ${sid === MASTER ? "الماستر" : (item?.name ?? "")}`}
-            v={v}
-            current={current?.id === v.id}
-            busy={busy || writing}
-            onApprove={v.status === "awaiting_approval" ? () => send({ action: "approve", versionId: v.id }) : undefined}
-            approveLabel={`اعتمد وولّد الصورة ✅ · ${SHEET_COST}`}
-            onSend={revise(v)}
-            warning={v.status === "approved" ? `هذا البرومبت معتمد. بعد التعديل يوصلك برومبت جديد، ولما تعتمده تتولد صورة جديدة (${SHEET_COST}).${affects(sid)}` : undefined}
-          >
-            {sid === MASTER && v.status === "awaiting_approval" && (
-              <p className="rounded-2xl bg-surface-2 p-3 text-sm font-bold">💡 هذا «الماستر»: لوحة الستايل والألوان وطريقة الرسم لكل الفيلم (بدون شخصيات ولا أماكن، عشان ما تنسخ منه). اعتمده أول، وبعد ما تعتمد صورته نكتب كل الشيتات الباقية مع بعض.</p>
-            )}
-            {(v.status === "approved" || imgs.some((i) => i.status !== "rejected")) && (
-              <SheetImages
-                sheetId={sid}
-                images={imgs}
-                canGenerate={v.status === "approved"}
-                busy={busy}
-                onGenerate={() => send({ action: "generate_image", sheetId: sid })}
-                onApprove={(id) => send({ action: "approve_image", assetId: id })}
-                onReject={(id) => send({ action: "reject_image", assetId: id })}
-                onUnapprove={(id) => send({ action: "unapprove_image", assetId: id })}
-                unapproveWarning={`تبي تتراجع عن اعتماد هذي الصورة؟ بعدها تقدر تولّد صورة ثانية أو ترسل تعديل.${affects(sid)}${backToSheets}`}
-              />
-            )}
-          </StepCard>
-        );
-      })}
+      {orderedSheets.includes(MASTER) && !masterApproved && (
+        <p className="rounded-2xl bg-surface-2 p-3 text-sm font-bold">💡 «الماستر»: لوحة الستايل والألوان وطريقة الرسم لكل الفيلم (بدون شخصيات ولا أماكن، عشان ما تنسخ منه). اعتمد صورته أول، وبعدها تنكتب كل الشيتات الباقية مع بعض.</p>
+      )}
+      {orderedSheets.length > 0 && (
+        <label className="flex items-center gap-2 text-sm font-bold">
+          <input type="checkbox" className="size-5" checked={autoMake} onChange={(e) => setAutoMake(e.target.checked)} /> ولّد الصور أول ما توصل أوصافها (٥ في نفس الوقت) · كل صورة {SHEET_COST}
+        </label>
+      )}
+      <SheetCards
+        projectId={projectId}
+        items={orderedSheets.map((sid) => ({ id: sid, title: `${sid} · ${sid === MASTER ? "الماستر" : (map.find((m) => m.id === sid)?.name ?? "")}` }))}
+        versions={versions}
+        assets={assets}
+        busy={busy || writing}
+        send={send}
+        onEdit={(sid) => autoAfterEdit.current.add(sid)}
+      />
 
       {/* Items the user supplied "as is" need no prompt */}
       {map.filter((m) => choices[m.id] === "as_is").length > 0 && (
@@ -538,59 +530,6 @@ function StyleTest({
       )}
       {actions}
     </article>
-  );
-}
-
-function SheetImages({
-  sheetId, images, canGenerate, busy, onGenerate, onApprove, onReject, onUnapprove, unapproveWarning,
-}: {
-  sheetId: string;
-  images: Asset[];
-  /** Only with an approved prompt (a new prompt waiting for approval still shows the pictures made before). */
-  canGenerate: boolean;
-  busy: boolean;
-  onGenerate: () => void;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-  onUnapprove: (id: string) => void;
-  unapproveWarning: string;
-}) {
-  const shown = images.filter((i) => i.status !== "rejected");
-  const generating = images.some((i) => i.status === "generating");
-  const approved = images.some((i) => i.status === "approved");
-  return (
-    <div className="space-y-3">
-      {shown.some((i) => i.status === "generated") && <p className="text-sm font-bold text-muted">💡 عجبتك الصورة؟ اعتمدها. ما عجبتك؟ ولّد نسخة ثانية أو اكتب تعديل.</p>}
-      {shown.map((img) => (
-        <figure key={img.id} className={`space-y-2 rounded-2xl border p-2 ${img.status === "approved" ? "border-2 border-teal" : "border-line"}`}>
-          {img.status === "generating" ? (
-            <div className="grid aspect-video place-items-center rounded-xl bg-surface-2"><Spinner /><p className="text-sm font-bold">نولّد الصورة… (دقيقة إلى دقيقتين)</p></div>
-          ) : img.status === "failed" ? (
-            <p className="error-box">فشل التوليد: {img.error}. ما انحسبت تكلفة.</p>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-            <a href={img.url} target="_blank" rel="noopener"><img src={img.url} alt={sheetId} className="w-full rounded-xl" /></a>
-          )}
-          <div className="flex items-center justify-between gap-2">
-            <span className={`chip ${chip(img.status)}`}>{STATUS_LABELS[img.status] ?? img.status}{typeof img.meta.at_name === "string" ? ` · ${img.meta.at_name}` : ""}</span>
-            {img.status === "generated" && !busy && (
-              <div className="flex gap-2">
-                <button className="btn btn-primary min-h-10 px-4 text-sm" onClick={() => onApprove(img.id)}>اعتمد الصورة ✅</button>
-                <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => onReject(img.id)}>ارفضها</button>
-              </div>
-            )}
-            {img.status === "approved" && !busy && (
-              <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => window.confirm(unapproveWarning) && onUnapprove(img.id)}>↩️ تراجع عن الاعتماد</button>
-            )}
-          </div>
-        </figure>
-      ))}
-      {canGenerate && !generating && !busy && (
-        <button className={`btn w-full ${approved ? "btn-ghost" : "btn-secondary"}`} onClick={onGenerate}>
-          {shown.length ? "🔁 ولّد نسخة ثانية" : "🖼️ ولّد الصورة"} · {SHEET_COST}
-        </button>
-      )}
-    </div>
   );
 }
 

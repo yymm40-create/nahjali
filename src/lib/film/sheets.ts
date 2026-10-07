@@ -168,14 +168,16 @@ async function queueReply(project: FilmProject, user: { id: string; email?: stri
 
 export type SheetAction =
   | { action: "start" }
-  | { action: "approve"; versionId: string; choices?: Record<string, MapChoice> }
+  | { action: "approve"; versionId: string; choices?: Record<string, MapChoice>; count?: number }
   | { action: "answers"; versionId: string; answers: string[] }
   | { action: "revise"; text: string; versionId?: string; mode?: "edit" | "direct" }
   | { action: "retry" }
   | { action: "finish" }
   | { action: "test_styles"; styleIds: string[] }
   | { action: "choose_style"; styleId: string }
-  | { action: "generate_image"; sheetId: string }
+  | { action: "generate_image"; sheetId: string; count?: number }
+  // «تأكد من فهمي»: how the sheet maker understood an edit, before anything is written or drawn
+  | { action: "understand_edit"; sheetId: string; text: string }
   | { action: "write_all" }
   | { action: "approve_all_prompts" }
   | { action: "approve_all_images" }
@@ -186,7 +188,11 @@ export type SheetAction =
   | { action: "remove_upload"; assetId: string };
 
 /** jobId: a reply being written now · images: pictures started by this action (the page follows them) · warning: done, but something to know. */
-export type SheetResult = { jobId: string | null; images?: number; warning?: string };
+export type SheetResult = { jobId: string | null; images?: number; warning?: string; understanding?: string };
+
+/** Pictures one press may start for a sheet (attempts side by side). */
+export const MAX_ATTEMPTS_AT_ONCE = 5;
+const attemptsOf = (n: unknown) => Math.max(1, Math.min(MAX_ATTEMPTS_AT_ONCE, Math.round(Number(n) || 1)));
 
 export async function sheetAction(project: FilmProject, user: { id: string; email?: string | null }, input: SheetAction): Promise<SheetResult> {
   if (project.stage === "screenwriter") throw new UserError("اعتمد السيناريو أول.", 409);
@@ -198,12 +204,16 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
   };
   // A picture that can't start (coins, too many at once) never undoes the approval before it: the page keeps its
   // «ولّد الصورة» button to try again
-  const tryImage = async (v: SheetVersion) => {
+  const tryImage = async (v: SheetVersion, count = 1) => {
+    let images = 0;
     try {
-      await generateSheet(project, user, v, assets);
-      return { images: 1 };
+      for (let i = 0; i < count; i++) {
+        await generateSheet(project, user, v, assets);
+        images++;
+      }
+      return { images };
     } catch (e) {
-      if (e instanceof UserError) return { images: 0, warning: `انعتمد، لكن الصورة ما بدأت: ${e.message}` };
+      if (e instanceof UserError) return { images, warning: `${images ? `بدأت ${images} صور، والباقي` : "انعتمد، لكن الصورة"} ما بدأت: ${e.message}` };
       throw e;
     }
   };
@@ -239,7 +249,7 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       await setApproved(v, versions);
       // Approving a prompt starts its picture right away.
       // The master needs its picture first; the course moves on only after the master image is accepted
-      const pic = await tryImage({ ...v, status: "approved" });
+      const pic = await tryImage({ ...v, status: "approved" }, attemptsOf(input.count));
       if (v.ref_key === MASTER_ID) return { jobId: null, ...pic };
       // One by one (older projects): "اعتمد" asks for the next sheet. Written all at once: nothing more to ask for
       const others = versions.some((x) => x.kind === "sheet_prompt" && x.ref_key !== MASTER_ID && x.ref_key !== v.ref_key && x.status === "awaiting_approval");
@@ -332,8 +342,18 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (!prompt?.data.prompt) throw new UserError("اعتمد برومبت هذا الشيت أول.", 409);
       // A second press while its picture is still being made would pay for another one
       if (assets.some((a) => a.kind === "image" && a.ref_key === input.sheetId && a.status === "generating")) throw new UserError("صورته تتولد الحين، انتظرها.", 409);
-      await generateSheet(project, user, prompt, assets);
-      return { jobId: null, images: 1 };
+      const r = await tryImage(prompt, attemptsOf(input.count));
+      if (!r.images) throw new UserError(r.warning?.replace(/^انعتمد، لكن الصورة ما بدأت: /, "") ?? "ما بدأت الصورة.", 409);
+      return { jobId: null, ...r };
+    }
+
+    case "understand_edit": {
+      const text = String(input.text ?? "").trim();
+      if (!text || text.length > 4000) throw new UserError("اكتب التعديل (٤٠٠٠ حرف كحد أقصى).", 400);
+      const prompt = latest(versions, "sheet_prompt", input.sheetId);
+      const item = approvedMap(versions).map.find((m) => m.id === input.sheetId);
+      if (!prompt) throw new UserError("ما لقيت هذا الشيت.", 404);
+      return { jobId: null, understanding: await understandEdit(project, user, { id: input.sheetId, name: item?.name ?? input.sheetId, prompt: prompt.data.prompt ?? prompt.body, text }) };
     }
 
     case "write_all": {
@@ -388,7 +408,8 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
 
     case "approve_image": {
       const a = assets.find((x) => x.id === input.assetId);
-      if (!a || a.kind !== "image" || a.status !== "generated" || a.ref_key === STYLE_TEST_ID) throw new UserError("هذي الصورة ما تنعتمد.", 409);
+      // a rejected attempt can be taken back too (it stays under its sheet for that)
+      if (!a || a.kind !== "image" || (a.status !== "generated" && !(a.status === "rejected" && a.storage_path)) || a.ref_key === STYLE_TEST_ID) throw new UserError("هذي الصورة ما تنعتمد.", 409);
       // The master's approval asks for every other sheet's prompt, so it waits for a reply being written now
       if (a.ref_key === MASTER_ID) busy();
       const { map } = approvedMap(versions);
@@ -755,4 +776,28 @@ export async function confirmSheetUpload(project: FilmProject, sheetId: string, 
     mime: String(file.metadata?.mimetype ?? ""), bytes: size, status: "uploaded", meta: {},
   });
   if (error) throw error;
+}
+
+const UNDERSTAND_SCHEMA = { type: "object", additionalProperties: false, required: ["understanding"], properties: { understanding: { type: "string" } } } as const;
+
+/**
+ * «تأكد من فهمي»: the edit restated in two or three short Arabic lines (what changes in the sheet, what stays), from the
+ * sheet's current prompt — nothing written to the conversation, nothing drawn. Charged as a small reply.
+ */
+async function understandEdit(project: FilmProject, user: { id: string; email?: string | null }, o: { id: string; name: string; prompt: string; text: string }) {
+  const { job } = await startJob({ projectId: project.id, user, service: "anthropic", operation: STAGE, idempotencyKey: `understand:${crypto.randomUUID()}`, estimateUsd: 0.05, units: 0, unit: "tokens" });
+  try {
+    const r = await callClaudeJson<{ understanding: string }>({
+      system: "You are the sheet maker of an Arabic film studio. The person wants to change one character or environment sheet. Restate in Gulf Arabic, in 2–3 short lines, exactly what you understood will change in the picture and what stays the same. Do not write a prompt, do not ask anything else, do not judge.",
+      turns: [{ role: "user", content: `الشيت: ${o.id} · ${o.name}\n\nوصفه الحالي (برومبت إنجليزي):\n${o.prompt.slice(0, 6000)}\n\nتعديلي:\n${o.text}` }],
+      schema: UNDERSTAND_SCHEMA,
+      maxTokens: 1200,
+      effort: "low",
+    });
+    await succeedJob(job.id, { costUsd: claudeCost(r.usage), units: totalTokens(r.usage) });
+    return r.data.understanding.trim();
+  } catch (e) {
+    await failJob(job.id, e);
+    throw new UserError("ما قدرت أفهم التعديل الحين؛ جرّب مرة ثانية.", 502);
+  }
 }
