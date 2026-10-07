@@ -23,5 +23,5 @@ export default async function EditorProjectPage({ params }: { params: Promise<{ 
   const backHref = p.film_project_id ? `/jawad-ai/film/${p.film_project_id}/edit` : "/jawad-ai/editor";
   // the videos page, where «التعديل الذكي» jobs are listed while they are made
   const studio = rt.sections.find((s) => s.output === "video" && (s.enabled || owner));
-  return <Editor project={JSON.parse(JSON.stringify(state.project))} initialAssets={state.assets} exportUrl={exportUrl} backHref={backHref} studioPath={studio?.path ?? null} />;
+  return <Editor project={JSON.parse(JSON.stringify(state.project))} initialAssets={state.assets} exportUrl={exportUrl} backHref={backHref} studioPath={studio?.path ?? null} owner={owner} />;
 }

@@ -14,7 +14,7 @@ import ContextMenu, { type MenuItem } from "./ContextMenu";
 import SequenceTabs from "./SequenceTabs";
 import { DEFAULT_LAYOUT, firstRect, onScreen, PANELS, readLayout, saveLayout, type Layout, type PanelId } from "./layout";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
-import { setGradeView } from "./grade-gl";
+import { gradeView, setGradeView } from "./grade-gl";
 import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
@@ -37,6 +37,7 @@ import { FONTS, setFonts } from "./render";
 import Timeline from "./Timeline";
 import type { EditorAsset, EditorProjectView } from "./types";
 import { useUploads, type Placement } from "./useUploads";
+import { diagNote, startDiag } from "./diag";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 interface Step {
@@ -121,7 +122,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
 
 const SAVE_TEXT: Record<SaveState, string> = { saved: "محفوظ", dirty: "تعديلات…", saving: "نحفظ…", error: "ما انحفظ، نعيد…", conflict: "تغيّر من مكان ثاني" };
 
-export default function Editor({ project, initialAssets, exportUrl, backHref, studioPath = null }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string; studioPath?: string | null }) {
+export default function Editor({ project, initialAssets, exportUrl, backHref, studioPath = null, owner = false }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string; studioPath?: string | null; /** the site's owner: «🩺 تشخيص» in حيدرة */ owner?: boolean }) {
   const readOnly = project.purged;
   const wide = useWide();
   const [tl, setTl] = useState(project.timeline);
@@ -160,6 +161,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // «واجهتي»: panels' order, the settings panel's width, and panels floating as windows (a computer)
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [layoutOpen, setLayoutOpen] = useState(false);
+  // «🩺 تشخيص»: the owner's browser keeps a record of what goes wrong while the editor is open
+  useEffect(() => {
+    if (owner) startDiag();
+  }, [owner]);
   // the window last grabbed sits over the others
   const [front, setFront] = useState<PanelId | null>(null);
   useEffect(() => {
@@ -430,6 +435,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const flash = useCallback((text: string, bad = false) => {
+    if (bad) diagNote(`shown to the person: ${text}`);
     clearTimeout(toastTimer.current);
     setToast({ text, bad });
     toastTimer.current = setTimeout(() => setToast(null), bad ? 6000 : 2500);
@@ -745,6 +751,26 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       setCanvasEl(null);
     };
   }, []);
+  /** «🩺 تشخيص»: the editor's state as it stands (read when a diagnosis is asked for, never while drawing) */
+  const diagApp = () => ({
+    save,
+    version: versionRef.current,
+    unsaved: dirty.current,
+    readOnly,
+    wide,
+    theme,
+    uiZoom: ui,
+    layout,
+    gradeView: { ...gradeView },
+    playheadMs: player?.ms ?? null,
+    playing: player?.playing ?? null,
+    selected,
+    openTimeline: tl.seqs?.find((x) => !x.tl)?.name ?? null,
+    timelines: tl.seqs?.length ?? 1,
+    size: `${tl.width}x${tl.height}@${tl.fps}`,
+    tracks: tl.tracks.map((t) => ({ kind: t.kind, name: t.name, clips: t.clips.length, ...(t.muted ? { muted: true } : {}), ...(t.hidden ? { hidden: true } : {}) })),
+    files: assets.map((a) => ({ id: a.id, kind: a.kind, name: a.name, mime: a.mime, mb: Math.round(a.bytes / 1e5) / 10, status: a.status, hasUrl: !!a.url, origin: a.origin, size: a.width ? `${a.width}x${a.height}` : null, durationMs: a.durationMs })),
+  });
   const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio, durationMs: a.durationMs })), [assets]);
   useEffect(() => {
     // nested timelines («Nest») opened into their clips, so they play like any others
@@ -1334,7 +1360,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             onDoubleClick={() => setChatW(400)}
           />
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-          <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} /></Guard>
+          <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
           </div>
         </aside>
         {chatBig && <button type="button" aria-label="رجّع المحادثة لمكانها" className="fixed inset-0 z-[59] hidden bg-black/50 lg:block" onClick={() => setChatBig(false)} />}

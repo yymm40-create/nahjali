@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
+import { diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
 import { makeHookAsset, makeMusicAsset, makeSfxAsset } from "./make";
@@ -89,6 +90,7 @@ export default function AssistantPanel({
   onBig,
   zoom,
   onZoom,
+  diag,
 }: {
   /** a request sent from a button (sent once per `n`) */
   ask?: { text: string; n: number } | null;
@@ -113,10 +115,14 @@ export default function AssistantPanel({
   /** its text size (1 = normal) */
   zoom?: number;
   onZoom?: (z: number) => void;
+  /** the site's owner: «🩺 تشخيص» (the editor's state, read when asked) */
+  diag?: () => Record<string, unknown>;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  // «🩺 تشخيص»: the next message asks حيدرة to find what went wrong (the owner only)
+  const [diagOn, setDiagOn] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [msgs, busy]);
 
@@ -202,7 +208,20 @@ export default function AssistantPanel({
     if (!message || busy || readOnly) return;
     setText("");
     const history = msgs.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
-    setMsgs((m) => [...m, { role: "user", text: message }]);
+    setMsgs((m) => [...m, { role: "user", text: diag && diagOn ? `🩺 ${message}` : message }]);
+    if (diag && diagOn) {
+      try {
+        setBusy("حيدرة يفحص المحرر والملفات والسجل…");
+        const report = await diagReport(diag());
+        const r = await postJson<{ reply: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() });
+        setMsgs((m) => [...m, { role: "assistant", text: r.reply }]);
+      } catch (e) {
+        setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
     try {
       setBusy("نسمع الصوت ونلقى السكتات…");
       const quiet = await quietParts(tl, assets);
@@ -412,7 +431,7 @@ export default function AssistantPanel({
           dir="auto"
           value={text}
           disabled={readOnly}
-          placeholder="مثلًا: قص السكتات وحط كابشن"
+          placeholder={diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "مثلًا: قص السكتات وحط كابشن"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -421,6 +440,11 @@ export default function AssistantPanel({
             }
           }}
         />
+        {diag && (
+          <button type="button" className={`jw-btn jw-btn-icon shrink-0 ${diagOn ? "!border-jw-accent bg-jw-accent/15 text-jw-accent" : "jw-btn-quiet"}`} onClick={() => setDiagOn((v) => !v)} aria-pressed={diagOn} aria-label="تشخيص" title="🩺 تشخيص (لك بس): حيدرة يفحص السجل والملفات والجهاز ويقول وش المشكلة، ويكتب رسالة للمطوّر">
+            🩺
+          </button>
+        )}
         <button type="submit" className="jw-btn jw-btn-primary jw-btn-icon shrink-0" disabled={!text.trim() || !!busy || readOnly} aria-label="أرسل">
           <Icon name="chevronLeft" />
         </button>
