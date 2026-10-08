@@ -65,7 +65,7 @@ export async function buildVoiceTrack(project: FilmProject, genId: string, model
 
 /** What the prompt tells the model about the attached dialogue (English, like the rest of the prompt). */
 export const voiceTrackNote = (t: { seconds: number; speakers: string[]; lines: string[] }) =>
-  `\n\nDIALOGUE AUDIO: the attached reference audio is the complete, final spoken dialogue of this shot (${t.speakers.join(", ")}; ${Math.ceil(t.seconds)} s), in order. Lip-sync the speaking characters to it exactly and keep it as the only speech in the shot: do not generate, replace, translate or add any other voice or words. Ambient sound and music may be added softly under it.`;
+  `\n\nDIALOGUE AUDIO: the attached reference audio is the complete, final spoken dialogue of this shot (${t.speakers.join(", ")}; ${Math.ceil(t.seconds)} s), in order. Lip-sync the speaking characters to it exactly and keep it as the only speech in the shot: do not generate, replace, translate or add any other voice or words. Ambient sound and music may be added softly under it. No subtitles or written text on screen.`;
 
 // ───────────── «الحوار من جهازي»: the person's own recording of a shot's dialogue ─────────────
 

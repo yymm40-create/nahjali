@@ -628,7 +628,7 @@ ${
 - The screenwriter's handoff carries «قرارات الإخراج» (the generations' length policy — every generation a full 30 s, or a map of shorter ones —, the total running time, dialogue with the video or later, camera delegated or directed): these ARE my answers to Stage 4. Do not ask them again. After the understanding is approved, go straight to the conflict review and the generation map (Stage 5–6) in the same reply; ask a question only about a material conflict or something the handoff truly does not settle. Follow the length policy exactly: «كل توليد ٣٠ ثانية» means every generation is 30 s on Seedance 2.5 (fill it with the story's action and pauses, never with invented events).
 - The video generator is Seedance through BytePlus ModelArk (facts in my first message). Prefer Seedance 2.5; Seedance 2.0 is acceptable when I choose it or it serves the generation better.
 - Reference images: in "references", list the @names of the approved images this generation needs, in order. The website attaches them in that order, so the first is <<<image_1>>>, the second <<<image_2>>>, and so on. In the prompt, refer to them only by those labels, never by @name.
-- SPOKEN ARABIC (strict website rule): in the final video prompt, every spoken Arabic line (dialogue or voice-over) is written in Latin letters as a faithful transliteration of the same Arabic words — the prompt must contain NO Arabic script at all. Put the same lines in fully diacritized Arabic script in "dialogue_ar" (outside the prompt); the website keeps them for the voices.
+- SPOKEN ARABIC (website rule, from the owner): never transliterate Arabic into Latin letters. In the final video prompt, every spoken Arabic line (dialogue or voice-over) is written in Arabic script, fully diacritized except the last letter of each word, inside double quotes in the Audio part, exactly as in "dialogue_ar" (the same words, the same diacritics). Do not instruct the model to "say" or "pronounce" a word: the lines are written as they are, and the website attaches the spoken lines as a reference audio the characters lip-sync to (and may remove the quoted lines from the prompt when the person chooses to rely on the audio only). Never ask for subtitles or any written text on screen.
 - If you want to propose a change to what you just delivered, put it in "suggestion" as a short Arabic text and keep it OUT of "content". I decide whether to apply it or to approve and continue.
 - After a video is generated I may send notes on it ("ملاحظاتي على فيديو GEN-XX بعد توليده"). Reply FIRST with your understanding of the requested changes as questions with options in "questions" (one per change or decision, with "gen_id" set to that generation), and wait for my answers. After my answers, deliver the complete revised generation (analysis and prompt) with the same GEN ID; the website then generates the video again when I approve it. The revised prompt is a FRESH GENERATION from the same references and ideas: a complete, standalone prompt with the change built in as simply how the shot is. It never mentions the earlier video, an attempt, a mistake, a fix or a change ("again", "this time", "instead of", "avoid", "don't"…), and never describes the unwanted result, not even to forbid it — naming it brings it back; write only what should happen, positively and concretely.
 - Do not judge generated videos and never ask me to check them. I can always take back an approval, regenerate, or send an edit or a new direction at any step. Apply it to the latest state and continue from there.
@@ -639,7 +639,7 @@ Every reply you send must be ONE JSON object that matches the provided schema:
 - "suggestion": a proposed change to this deliverable, in short Arabic, or an empty string.
 - "notes": brief review notes, kept separate (an empty string if none).
 - "questions": the directing questions (Stage 4) or the conflict choices (Stage 5) as structured items. An empty array otherwise.
-- "generation_map": Stage 6 only — every generation with its ID (GEN-01…), short Arabic name and proposed duration in seconds. An empty array otherwise.
+- "generation_map": Stage 6 only — every generation with its ID (GEN-01…), short Arabic name, proposed duration in seconds, "summary" (one or two Arabic lines: what will be made in it — the action, the place, the camera's idea) and "characters" (each character in it with a few Arabic words of how they look and what they do there, e.g. «عبدالله: ثوب أبيض، يمشي نحو الباب»). An empty array otherwise.
 - "gen_id": the generation this reply delivers (Stages 7–8), e.g. "GEN-01". An empty string otherwise.
 - "prompt": the complete final video prompt of that generation, exactly as it will be sent${superDirector ? " (the EN/ZH JSON array required by the Super Director, as a string)" : ""}. An empty string otherwise.
 - "references": Stages 7–8 only — the @names of the reference images for this generation, in <<<image_n>>> order, each with its role. An empty array otherwise.
@@ -674,8 +674,8 @@ export const DIRECTOR_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "name", "duration_sec"],
-        properties: { id: { type: "string" }, name: { type: "string" }, duration_sec: { type: "integer" } },
+        required: ["id", "name", "duration_sec", "summary", "characters"],
+        properties: { id: { type: "string" }, name: { type: "string" }, duration_sec: { type: "integer" }, summary: { type: "string" }, characters: { type: "array", items: { type: "string" } } },
       },
     },
     gen_id: { type: "string" },

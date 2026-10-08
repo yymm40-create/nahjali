@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
-import { castChoices, describeVoice, lineAudios, setCast, speakLine, voiceCast, voiceLines, voicesReady } from "@/lib/film/voices";
+import { castChoices, describeVoice, editLine, lineAudios, setCast, speakLine, voiceCast, voiceLines, voicesReady } from "@/lib/film/voices";
 import { ownTracks } from "@/lib/film/voice-track";
 
 export const maxDuration = 120;
@@ -27,5 +27,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   // «✨ صوت جديد بالوصف»: the AI writes the voice of one speaker (designed and saved with JAWAD AI's voices)
   if (b.action === "describe") return NextResponse.json(await describeVoice(project, b.speaker, b.hint));
   if (b.action === "speak") return NextResponse.json(await speakLine(project, user, b.key, b.idempotencyKey, b.emotion));
+  // «عدّل النص»: a line's words or diacritics corrected before it is spoken
+  if (b.action === "edit_line") return NextResponse.json(await editLine(project, b.key, b.text));
   throw new UserError("طلب غير صحيح.", 400);
 });
