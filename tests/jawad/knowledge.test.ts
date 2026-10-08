@@ -11,7 +11,7 @@ describe("site knowledge for Claude", () => {
   it("names every built-in section and where it opens", () => {
     for (const s of DEFAULT_SECTIONS) {
       expect(JAWAD_KNOWLEDGE, s.name).toContain(`«${s.name}»`);
-      expect(JAWAD_KNOWLEDGE, s.id).toContain(`/jawad-ai/${["film", "student", "editor", "islamic", "games"].includes(s.implementation) ? s.implementation : s.id}`);
+      expect(JAWAD_KNOWLEDGE, s.id).toContain(`/jawad-ai/${["film", "student", "editor", "islamic", "games", "content"].includes(s.implementation) ? s.implementation : s.id}`);
     }
   });
 
