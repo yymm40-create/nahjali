@@ -8,6 +8,8 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { elevenAlign, elevenSpeech, elevenTranscribe } from "@/lib/jawad/server/providers/elevenlabs";
+import { MINIMAX_READY_VOICES, minimaxReady, minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
+import { openaiSpeech } from "@/lib/jawad/server/providers/openai";
 import { ELEVEN_DEFAULT_VOICE } from "@config/jawad/generators";
 import { charged, type Who } from "./pricing";
 import { EDITOR_BUCKET, isUuid, stillOpen, type AssetRow, type EditorProject } from "./server";
@@ -136,8 +138,15 @@ export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; 
   return { text: heard.words.map((w) => w.text).join(" ").replace(/\s+([،,.؟?!:])/g, "$1").trim() };
 }
 
-/** حيدرة's reply said aloud (ElevenLabs v4): `{ text }` → `{ audio: base64 mp3 }`. Markdown, code and links are left out. */
-export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown }) {
+/** Who speaks حيدرة's replies: a provider, or one of the person's own voices («v:<id>», a voiceprint included). */
+export type ReplyVoice = "auto" | "openai" | "minimax" | "elevenlabs" | `v:${string}`;
+
+/**
+ * حيدرة's reply said aloud: `{ text, voice? }` → `{ audio: base64 mp3, by }`. Claude writes the words but has no voice
+ * of its own, so a speech provider reads them: the one chosen (or the person's own voice where it lives), then the
+ * others in turn if it fails — never only ElevenLabs. Markdown, code and links are left out.
+ */
+export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown; voice?: unknown }) {
   stillOpen(p);
   const spoken = String(b.text ?? "")
     .replace(/```[\s\S]*?```/g, " ")
@@ -149,9 +158,43 @@ export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown }
     .trim()
     .slice(0, 700);
   if (!spoken) throw new UserError("ما فيه كلام أقرأه.", 400);
-  const voiceId = (process.env.EDITOR_VOICE_ID || ELEVEN_DEFAULT_VOICE).replace(/^p:/, "");
-  const audio = await charged(who, "editor_price_voice", 1, "رد حيدرة بالصوت", () =>
-    elevenSpeech({ voiceId, text: spoken, model: "eleven_v4", stability: 0.5, ...(/[\u0600-\u06FF]/.test(spoken) ? { languageCode: "ar" } : {}) }).catch(providerError),
-  );
-  return { audio: Buffer.from(audio).toString("base64"), mime: "audio/mpeg" };
+  const arabic = /[\u0600-\u06FF]/.test(spoken);
+  const want = typeof b.voice === "string" ? b.voice : "auto";
+  // the person's own voice (a voiceprint or a designed one): spoken where it lives
+  let own: { provider: string; id: string } | null = null;
+  if (/^v:/.test(want) && isUuid(want.slice(2))) {
+    const { data } = await createAdminClient().from("jawad_voices").select("provider,provider_voice_id").eq("id", want.slice(2)).eq("user_id", p.user_id).maybeSingle();
+    if (data) own = { provider: String(data.provider ?? "elevenlabs"), id: String(data.provider_voice_id) };
+  }
+  const readers: Record<string, () => Promise<Buffer>> = {
+    openai: async () => {
+      if (!process.env.OPENAI_API_KEY) throw new Error("no OpenAI key");
+      return openaiSpeech({ model: "gpt-4o-mini-tts", input: spoken, voice: "marin", format: "mp3", instructions: arabic ? "Speak natural, warm Gulf Arabic, friendly and clear, at a relaxed conversational pace." : "Speak naturally and warmly." });
+    },
+    minimax: async () => {
+      if (!minimaxReady()) throw new Error("no MiniMax");
+      const id = own?.provider === "minimax" ? own.id : MINIMAX_READY_VOICES[0].id;
+      return (await minimaxSpeech({ voiceId: id, text: spoken, ...(arabic ? { languageBoost: "Arabic" } : {}) })).audio;
+    },
+    elevenlabs: async () => {
+      const voiceId = own?.provider === "elevenlabs" ? own.id : (process.env.EDITOR_VOICE_ID || ELEVEN_DEFAULT_VOICE).replace(/^p:/, "");
+      return Buffer.from(await elevenSpeech({ voiceId, text: spoken, model: "eleven_v4", stability: 0.5, ...(arabic ? { languageCode: "ar" } : {}) }));
+    },
+  };
+  const first = own ? own.provider : want === "auto" || !(want in readers) ? "openai" : want;
+  const order = [first, ...["openai", "minimax", "elevenlabs"].filter((x) => x !== first)];
+  const audio = await charged(who, "editor_price_voice", 1, "رد حيدرة بالصوت", async () => {
+    let last: unknown = null;
+    for (const name of order) {
+      try {
+        return { buf: await readers[name](), by: name };
+      } catch (e) {
+        last = e;
+        console.warn("haydara voice", name, e instanceof Error ? e.message : e);
+      }
+    }
+    if (last instanceof ProviderError) providerError(last);
+    throw new UserError("ما قدرت أقرأ الرد بصوت الحين (ولا مزوّد صوت رد). الرد مكتوب فوق.", 502);
+  });
+  return { audio: Buffer.from(audio.buf).toString("base64"), mime: "audio/mpeg", by: audio.by };
 }

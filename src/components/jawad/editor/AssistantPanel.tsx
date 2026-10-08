@@ -20,7 +20,9 @@ import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
 import Icon from "../Icon";
-import { canTalk, hear, hush, record, say, type RecordingHandle } from "./talk";
+import { blobBase64, canTalk, hear, hush, record, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
+import { useUploads } from "./useUploads";
+import { extractSound } from "./captions";
 import type { Run } from "./Inspector";
 import { PEAK_RATE, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
@@ -130,6 +132,16 @@ export default function AssistantPanel({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  // «📎 مراجع»: files attached to the next message (uploaded to the library, seen by حيدرة with the message)
+  const [pending, setPending] = useState<EditorAsset[]>([]);
+  const refUploads = useUploads(projectId, (a) => {
+    onAssets([a]);
+    setPending((x) => (x.some((y) => y.id === a.id) ? x : [...x, a].slice(-6)));
+  });
+  const fileRef = useRef<HTMLInputElement>(null);
+  // who reads حيدرة's spoken replies (this device): any provider, or one of the person's own voices
+  const [voicePick, setVoicePick] = useState("auto");
+  useEffect(() => setVoicePick(replyVoice()), []);
   // the timeline as it is now (what was made arrives after Claude's own steps were applied)
   const tlRef = useRef(tl);
   useEffect(() => {
@@ -244,26 +256,73 @@ export default function AssistantPanel({
   /** Sends a request; resolves with حيدرة's reply (null when nothing was answered). `spoken`: said by voice. */
   // one request at a time: a second Enter (or a click) before the page shows «busy» used to send it twice
   const sendingRef = useRef(false);
+  // «⏹️ وقّف»: the request in flight is dropped (nothing it answers is applied or made)
+  const abortRef = useRef<AbortController | null>(null);
+  // a request that continues by itself once this one is done (the captions written → the motion on the words)
+  const followUp = useRef<string | null>(null);
+  const [canStop, setCanStop] = useState(false);
+  // the person's own voices made here (a voiceprint): offered for حيدرة's spoken replies
+  const [ownVoices, setOwnVoices] = useState<{ value: string; name: string }[]>([]);
+  const stop = () => {
+    abortRef.current?.abort();
+    talkRef.current = false;
+    recRef.current?.cancel();
+    hush();
+  };
+  /** «بصمة صوتك»: the person's voice from a clip (or the microphone) → a voice of their library, with their consent. */
+  const takeVoiceprint = async (clipId: string, name: string, provider: "minimax" | "elevenlabs") => {
+    let source: Blob | null = null;
+    const f = clipId ? findClip(tlRef.current, clipId) : null;
+    const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+    if (f && a?.url && a.kind !== "image") {
+      setBusy("أطلّع صوتك من المقطع…");
+      source = (await extractSound(a.url, f.clip.in, Math.min(f.clip.out, f.clip.in + 120_000))).blob;
+    } else {
+      setMsgs((m) => [...m, { role: "assistant", text: "🎙️ تكلّم بصوتك الطبيعي ٣٠–٦٠ ثانية (اقرأ أي فقرة)، واضغط 🎤 لما تخلص." }]);
+      setBusy(null);
+      const h = await record({ onLevel: setLevel });
+      recRef.current = h;
+      setRecording(true);
+      const r = await h.done;
+      recRef.current = null;
+      setRecording(false);
+      source = r?.blob ?? null;
+    }
+    if (!source) throw new Error("ما وصلني تسجيل للبصمة.");
+    const { wav, seconds } = await wavOf(source);
+    if (!window.confirm(`أؤكد إن الصوت في هذا التسجيل (${Math.round(seconds)} ث) صوتي، أو عندي إذن صاحبه أنسخه.`)) throw new Error("ما أخذت البصمة (ما تأكدنا من الإذن).");
+    setBusy("آخذ بصمة صوتك…");
+    const r = await postJson<{ voice: { name: string; value: string } }>(`/api/jawad/editor/projects/${projectId}`, { action: "voiceprint", audio: await blobBase64(wav), seconds, name, consent: true, provider });
+    setOwnVoices((x) => [...x.filter((v) => v.value !== r.voice.value), { value: r.voice.value, name: r.voice.name }]);
+    setMsgs((m) => [...m, { role: "assistant", text: `✅ صار عندك صوت «${r.voice.name}» في مكتبتك. قل لي «اقرأ هالنص بصوت ${r.voice.name}»، أو اختره لردودي من 🔊 وقت المكالمة.` }]);
+  };
   const send = async (words = text, spoken = false): Promise<string | null> => {
-    const message = words.trim();
+    const message = words.trim() || (pending.length ? "شوف المراجع اللي أرفقتها" : "");
     if (!message || busy || readOnly || sendingRef.current) return null;
     sendingRef.current = true;
+    abortRef.current = new AbortController();
+    setCanStop(true);
     try {
-      return await sendNow(message, spoken);
+      return await sendNow(message, spoken, abortRef.current.signal);
     } finally {
       sendingRef.current = false;
+      abortRef.current = null;
+      setCanStop(false);
+      const next = followUp.current;
+      followUp.current = null;
+      if (next) setTimeout(() => void sendRef.current(next), 400);
     }
   };
-  const sendNow = async (message: string, spoken: boolean): Promise<string | null> => {
+  const sendNow = async (message: string, spoken: boolean, signal: AbortSignal): Promise<string | null> => {
     let reply: string | null = null;
     setText("");
     const history = msgs.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
-    setMsgs((m) => [...m, { role: "user", text: diag && diagOn ? `🩺 ${message}` : message }]);
+    setMsgs((m) => [...m, { role: "user", text: `${diag && diagOn ? `🩺 ${message}` : message}${pending.length ? `\n📎 ${pending.map((a) => a.name).join("، ")}` : ""}` }]);
     if (diag && diagOn) {
       try {
         setBusy("حيدرة يفحص المحرر والملفات والسجل…");
         const report = await diagReport(diag());
-        const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() });
+        const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() }, signal);
         // what he diagnosed in the timeline, he fixes now
         if (r.commands?.length) run(r.commands, { label: "حيدرة يعالج" });
         setMsgs((m) => [...m, { role: "assistant", text: r.reply }]);
@@ -280,6 +339,14 @@ export default function AssistantPanel({
       const quiet = await quietParts(tl, assets);
       // the clip the person chose: Claude looks at a few of its moments to know what is in it
       const look = await lookAt();
+      if (signal.aborted) throw Object.assign(new Error("⏹️ وقّفت الطلب."), { name: "AbortError" });
+      // the attached videos: a few of their moments, so حيدرة sees what is in them (pictures go as they are)
+      const refLooks: { id: string; frames: { t: number; data: string }[] }[] = [];
+      for (const a of pending.filter((x) => x.kind === "video" && x.url)) {
+        setBusy(`حيدرة يشوف المرجع «${a.name}»…`);
+        const frames = await framesOf(a.url!, "video", 0, a.durationMs ?? 3000, 3).catch(() => []);
+        if (frames.length) refLooks.push({ id: a.id, frames: frames.map((f) => ({ t: f.t, data: f.data })) });
+      }
       setBusy("حيدرة يشتغل على التايملاين…");
       const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
@@ -292,7 +359,10 @@ export default function AssistantPanel({
         quiet,
         look,
         spoken,
-      });
+        refs: pending.map((a) => a.id),
+        refLooks,
+      }, signal);
+      setPending([]);
       reply = r.reply;
       let done = 0;
       let now = tl;
@@ -308,6 +378,7 @@ export default function AssistantPanel({
       if (r.checkClipId && done) await checkColour(r.checkClipId, message, now);
       // what Claude asked to be made: made one by one, then placed (each its own undo)
       for (const q of r.requests ?? []) {
+        if (signal.aborted) break;
         try {
           if (q.kind === "hook_design" && q.design) {
             // «نص الهوك»: the picture, then the two sounds, then everything placed and timed (one undo)
@@ -362,6 +433,17 @@ export default function AssistantPanel({
             const more = track ? expandThen(q.then ?? [], track.id, track.clips.map((c) => c.id)) : [];
             // all together (one undo); if one of them can't run, the others still do, one by one
             if (track && more.length && !run(more, { label: "حيدرة يكمّل على الكابشن" })) for (const c of more) run(c, { label: "حيدرة يكمّل على الكابشن" });
+          } else if (q.kind === "talk_motion") {
+            // the words with their times first (the captions of the talking video), then حيدرة is asked again by itself
+            const now = tlRef.current;
+            const f = findClip(now, q.clipId);
+            const sources = captionSources(now, assets).filter((x) => !f?.clip.assetId || x.clip.assetId === f.clip.assetId);
+            if (!sources.length) throw new Error("ما لقيت كلام في المقطع أركّب عليه الموشن.");
+            const items = (await spokenCaptions(projectId, now, sources, "ar", setBusy)).items;
+            run({ type: "add_captions", items, style: "karaoke", name: "كابشن" }, { label: `كابشن (${items.length})` });
+            followUp.current = "كمّل: الحين كلامي مكتوب بتوقيته — ركّب الموشن على كلامي (talk) بأسلوب ماجد.";
+          } else if (q.kind === "voiceprint") {
+            await takeVoiceprint(q.clipId, q.name || q.text || "صوتي", q.voice === "elevenlabs" ? "elevenlabs" : "minimax");
           } else if (q.kind === "separate") {
             setBusy("نفصل الكلام والموسيقى والمؤثرات…");
             await onSeparate(q.clipId);
@@ -413,10 +495,11 @@ export default function AssistantPanel({
       const r = await h.done;
       recRef.current = null;
       setRecording(false);
-      if (!r) return;
+      if (!r) return voiceError(new Error("ما وصلني صوت من المايك (التسجيل قصير أو المايك صامت). تأكد إن المايك الصحيح مختار، وسجّل ثانيتين على الأقل."));
       setBusy("أكتب كلامك…");
       const said = await hear(projectId, r).finally(() => setBusy(null));
       if (said) await sendRef.current(said);
+      else voiceError(new Error("سجّلت بس ما فهمت كلام في التسجيل. قرّب من المايك وجرّب مرة ثانية."));
     } catch (e) {
       recRef.current = null;
       setRecording(false);
@@ -444,7 +527,11 @@ export default function AssistantPanel({
         if (!r) continue;
         setTalk("hearing");
         const said = await hear(projectId, r);
-        if (!said || !talkRef.current) continue;
+        if (!talkRef.current) break;
+        if (!said) {
+          voiceError(new Error("ما فهمت كلام في آخر تسجيل؛ أسمعك من جديد."));
+          continue;
+        }
         setTalk("thinking");
         const answer = await sendRef.current(said, true);
         if (!answer || !talkRef.current) continue;
@@ -643,6 +730,52 @@ export default function AssistantPanel({
               قاطعه
             </button>
           )}
+          <select
+            className="jw-select !min-h-7 !py-0 text-[11px]"
+            value={voicePick}
+            aria-label="صوت ردود حيدرة"
+            title="🔊 مين يقرأ ردود حيدرة (كلاود يكتب الرد، ومزوّد الصوت يقرأه)"
+            onChange={(e) => {
+              setVoicePick(e.target.value);
+              try {
+                localStorage.setItem(REPLY_VOICE_KEY, e.target.value);
+              } catch {
+                /* this time only */
+              }
+            }}
+          >
+            <option value="auto">🔊 تلقائي</option>
+            <option value="openai">OpenAI</option>
+            <option value="minimax">MiniMax</option>
+            <option value="elevenlabs">ElevenLabs</option>
+            {[...ownVoices, ...(voicePick.startsWith("v:") && !ownVoices.some((v) => v.value === voicePick) ? [{ value: voicePick, name: "صوتي" }] : [])].map((v) => (
+              <option key={v.value} value={v.value}>
+                🧬 {v.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {(pending.length > 0 || refUploads.items.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-jw-line px-2 pt-2 text-[11px]">
+          {pending.map((a) => (
+            <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-jw-accent/15 px-2 py-1 font-semibold">
+              📎 {a.kind === "image" ? "🖼️" : a.kind === "video" ? "🎬" : "🎵"} {a.name.slice(0, 24)}
+              <button type="button" className="text-jw-muted" aria-label={`شيل ${a.name}`} onClick={() => setPending((x) => x.filter((y) => y.id !== a.id))}>
+                ✕
+              </button>
+            </span>
+          ))}
+          {refUploads.items.map((u) => (
+            <span key={u.key} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${u.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-line/40"}`}>
+              {u.error ? `⚠️ ${u.name.slice(0, 18)}: ${u.error}` : `⏫ ${u.name.slice(0, 18)} ${Math.round(u.progress * 100)}٪`}
+              {u.error && (
+                <button type="button" aria-label="أخفِ" onClick={() => refUploads.dismiss(u.key)}>
+                  ✕
+                </button>
+              )}
+            </span>
+          ))}
         </div>
       )}
       <form
@@ -652,6 +785,20 @@ export default function AssistantPanel({
           void send();
         }}
       >
+        <input
+          ref={fileRef}
+          type="file"
+          hidden
+          multiple
+          accept="image/*,video/*,audio/*"
+          onChange={(e) => {
+            if (e.target.files?.length) refUploads.add(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" disabled={readOnly} onClick={() => fileRef.current?.click()} aria-label="أرفق مراجع" title="📎 أرفق صور أو فيديو أو صوت مع رسالتك: حيدرة يشوفها ويستخدمها">
+          📎
+        </button>
         <textarea
           className="jw-textarea max-h-32 min-h-11 flex-1 resize-none text-sm"
           rows={1}
@@ -698,9 +845,15 @@ export default function AssistantPanel({
             🩺
           </button>
         )}
-        <button type="submit" className="jw-btn jw-btn-primary jw-btn-icon shrink-0" disabled={!text.trim() || !!busy || readOnly} aria-label="أرسل">
-          <Icon name="chevronLeft" />
-        </button>
+        {busy && canStop ? (
+          <button type="button" className="jw-btn jw-btn-icon shrink-0 !border-jw-danger bg-jw-danger/15 text-jw-danger" onClick={stop} aria-label="وقّف الطلب" title="⏹️ وقّف الطلب: ما ينفّذ شي من رده">
+            <Icon name="stop" />
+          </button>
+        ) : (
+          <button type="submit" className="jw-btn jw-btn-primary jw-btn-icon shrink-0" disabled={(!text.trim() && !pending.length) || !!busy || readOnly} aria-label="أرسل">
+            <Icon name="chevronLeft" />
+          </button>
+        )}
       </form>
     </div>
   );
