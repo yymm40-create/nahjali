@@ -189,7 +189,7 @@ export function settingsText(def: GeneratorDef, s: Settings, modeId: string, met
  * Asks the Super Director (the skill + a website task) for an EN/ZH prompt, once more if the answer breaks a
  * website rule. Throws when it fails twice.
  */
-export async function directorRun(task: string, parts: ClaudePart[], names: string[]): Promise<{ prompt: string; usd: number; attempts: number }> {
+export async function directorRun(task: string, parts: ClaudePart[], names: string[], extra?: (prompt: string) => string[]): Promise<{ prompt: string; usd: number; attempts: number }> {
   let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
   const usage: ClaudeUsage[] = [];
   let last: DirectorOutput | null = null;
@@ -199,6 +199,8 @@ export async function directorRun(task: string, parts: ClaudePart[], names: stri
     usage.push(r.usage);
     last = r.data;
     left = directorProblems(r.data, names);
+    // the caller's own checks (e.g. the smart edit's locks), once the website's rules hold
+    if (!left.length && extra && r.data.en && r.data.zh) left = extra(directorPrompt(r.data));
     if (!left.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
     // Once more, with what to fix
     turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];

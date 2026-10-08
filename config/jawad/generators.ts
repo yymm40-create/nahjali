@@ -20,9 +20,11 @@ export const EDIT_FEE_KEY = "edit:fee";
 export const EDIT_CLAUDE_KEY = "edit:claude";
 /**
  * Claude Opus 5.5 writing a corrected video prompt, one answer at its ceiling: the Super Director skill (~10,000 tokens
- * at the cache-write rate $5/M) + up to 16 frames and the texts (~8,000 tokens × $4/M) + up to 6,000 output tokens × $20/M.
+ * at the cache-write rate $5/M) + up to 16 frames and the texts (~8,000 tokens × $4/M) + up to 6,000 output tokens × $20/M;
+ * and before it, the original's locks (the previous prompt, سجاد's brief of a film and 3 frames: ~8,000 tokens × $5/M
+ * + ~1,500 output tokens × $20/M).
  */
-export const EDIT_CLAUDE_USD = (10_000 * 5 + 8_000 * 4 + 6_000 * 20) / 1e6;
+export const EDIT_CLAUDE_USD = (10_000 * 5 + 8_000 * 4 + 6_000 * 20 + 8_000 * 5 + 1_500 * 20) / 1e6;
 const MB = 1024 * 1024;
 
 /** Hundredths of a coin for a provider cost (rounded up), on the site's coin price (config/coins.ts). */
