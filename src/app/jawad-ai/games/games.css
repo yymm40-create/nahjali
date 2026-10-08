@@ -1,0 +1,497 @@
+/* «صانع الألعاب الذكي» — the stage: a dark arcade floor in perspective, floating dice and cubes, a die that rolls while
+   «قنبر» thinks, cards that tilt under the pointer. Pure CSS (the page only sets --mx/--my for the parallax). */
+
+.gm {
+  --gm-cyan: #22d3ee;
+  --gm-pink: #f472b6;
+  --gm-lime: #a3e635;
+  --gm-amber: #fbbf24;
+  --gm-violet: #a78bfa;
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px));
+  overflow: hidden;
+  background:
+    radial-gradient(60% 50% at 80% 0%, color-mix(in srgb, var(--gm-violet) 28%, transparent), transparent 70%),
+    radial-gradient(50% 45% at 10% 100%, color-mix(in srgb, var(--gm-cyan) 22%, transparent), transparent 70%),
+    #07070d;
+  --mx: 0;
+  --my: 0;
+}
+
+/* the floor: a grid receding to the horizon, sliding towards you */
+.gm::before {
+  content: "";
+  position: absolute;
+  inset: auto -20% -10% -20%;
+  height: 62%;
+  z-index: -2;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--gm-cyan) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--gm-cyan) 40%, transparent) 1px, transparent 1px);
+  background-size: 64px 64px;
+  transform: perspective(520px) rotateX(62deg);
+  transform-origin: 50% 100%;
+  mask-image: linear-gradient(to top, #000 10%, transparent 90%);
+  animation: gm-floor 3.2s linear infinite;
+}
+@keyframes gm-floor {
+  to {
+    background-position: 0 64px, 64px 0;
+  }
+}
+
+/* sparks */
+.gm::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(1.5px 1.5px at 20% 30%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 70% 20%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 40% 70%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 85% 60%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 10% 80%, #fff 50%, transparent 51%);
+  opacity: 0.45;
+  animation: gm-twinkle 4s ease-in-out infinite alternate;
+}
+@keyframes gm-twinkle {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 0.6;
+  }
+}
+
+/* ─────────── 3D dice and cubes ─────────── */
+.gm-scene {
+  perspective: 700px;
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.gm-float {
+  position: absolute;
+  transform-style: preserve-3d;
+  transform: translate3d(calc(var(--mx) * var(--depth, 20px)), calc(var(--my) * var(--depth, 20px)), 0);
+  transition: transform 0.25s ease-out;
+}
+.gm-cube {
+  --s: 56px;
+  width: var(--s);
+  height: var(--s);
+  position: relative;
+  transform-style: preserve-3d;
+  animation: gm-spin var(--t, 18s) linear infinite;
+}
+@keyframes gm-spin {
+  from {
+    transform: rotateX(-25deg) rotateY(0deg);
+  }
+  to {
+    transform: rotateX(335deg) rotateY(360deg);
+  }
+}
+.gm-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 14%;
+  border: 1.5px solid color-mix(in srgb, var(--c, var(--gm-cyan)) 80%, #fff);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c, var(--gm-cyan)) 38%, #0b0b14), color-mix(in srgb, var(--c, var(--gm-cyan)) 10%, #0b0b14));
+  box-shadow: inset 0 0 18px color-mix(in srgb, var(--c, var(--gm-cyan)) 45%, transparent), 0 0 18px color-mix(in srgb, var(--c, var(--gm-cyan)) 30%, transparent);
+  backface-visibility: visible;
+}
+.gm-face > i {
+  position: absolute;
+  width: 14%;
+  height: 14%;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px #fff;
+  transform: translate(-50%, -50%);
+}
+.gm-face.f1 { transform: translateZ(calc(var(--s) / 2)); }
+.gm-face.f2 { transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
+.gm-face.f3 { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
+.gm-face.f4 { transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
+.gm-face.f5 { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
+.gm-face.f6 { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
+
+/* «قنبر»'s own die: it rolls while he thinks */
+.gm-die {
+  --s: 46px;
+  animation-duration: 14s;
+}
+.gm-die.rolling {
+  animation: gm-roll 0.9s cubic-bezier(0.3, 0.7, 0.4, 1) infinite;
+}
+@keyframes gm-roll {
+  0% { transform: translateY(0) rotateX(0) rotateY(0) rotateZ(0); }
+  35% { transform: translateY(-14px) rotateX(180deg) rotateY(120deg) rotateZ(40deg); }
+  70% { transform: translateY(0) rotateX(300deg) rotateY(250deg) rotateZ(10deg); }
+  100% { transform: translateY(0) rotateX(360deg) rotateY(360deg) rotateZ(0); }
+}
+
+/* ─────────── the layout ─────────── */
+.gm-wrap {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 14px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px 14px 20px;
+  grid-template-columns: minmax(0, 1fr);
+  height: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px));
+}
+@media (min-width: 900px) {
+  .gm-wrap {
+    grid-template-columns: 250px minmax(0, 1fr);
+    padding: 20px 20px 24px;
+  }
+}
+
+.gm-glass {
+  background: color-mix(in srgb, #0d0d18 72%, transparent);
+  backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--gm-violet) 35%, transparent);
+  border-radius: 22px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gm-cyan) 8%, transparent), 0 18px 50px -18px #000, inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
+}
+
+.gm-side {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  min-height: 0;
+}
+.gm-side.open {
+  display: flex;
+  position: fixed;
+  inset: calc(var(--jw-header-h, 56px) + 8px) 8px 8px 8px;
+  z-index: 40;
+}
+@media (min-width: 900px) {
+  .gm-side {
+    display: flex;
+  }
+  .gm-side.open {
+    position: static;
+    inset: auto;
+  }
+  .gm-burger {
+    display: none !important;
+  }
+}
+.gm-chats {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gm-chat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  color: #cbd5e1;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: start;
+  background: transparent;
+  transition: transform 0.18s, border-color 0.18s, background 0.18s;
+}
+.gm-chat-item:hover {
+  transform: translateX(-3px);
+  background: color-mix(in srgb, var(--gm-violet) 14%, transparent);
+}
+.gm-chat-item[aria-current="true"] {
+  border-color: color-mix(in srgb, var(--gm-cyan) 60%, transparent);
+  background: color-mix(in srgb, var(--gm-cyan) 12%, transparent);
+  color: #fff;
+}
+
+.gm-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.gm-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--gm-violet) 25%, transparent);
+}
+.gm-head .gm-scene-die {
+  perspective: 300px;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+}
+.gm-title {
+  font-weight: 800;
+  font-size: 18px;
+  background: linear-gradient(90deg, var(--gm-cyan), var(--gm-pink), var(--gm-amber));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  background-size: 200% 100%;
+  animation: gm-shine 6s linear infinite;
+}
+@keyframes gm-shine {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.gm-feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  perspective: 1000px;
+  scroll-behavior: smooth;
+}
+
+/* a message pops up out of the floor */
+.gm-msg {
+  max-width: min(92%, 760px);
+  padding: 12px 15px;
+  border-radius: 20px;
+  line-height: 1.9;
+  font-size: 15px;
+  animation: gm-pop 0.45s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  transform-origin: 50% 100%;
+}
+@keyframes gm-pop {
+  from {
+    opacity: 0;
+    transform: translateY(24px) rotateX(-28deg) scale(0.94);
+  }
+}
+.gm-msg.user {
+  align-self: flex-start; /* the start side (right in Arabic) */
+  background: linear-gradient(135deg, color-mix(in srgb, var(--gm-violet) 60%, #1b1236), color-mix(in srgb, var(--gm-pink) 45%, #1b1236));
+  border: 1px solid color-mix(in srgb, var(--gm-pink) 55%, transparent);
+  box-shadow: 0 10px 26px -10px color-mix(in srgb, var(--gm-pink) 55%, transparent), inset 0 1px 0 #ffffff26;
+  color: #fff;
+  transform: perspective(900px) rotateY(2deg);
+}
+.gm-msg.bot {
+  align-self: flex-end;
+  background: color-mix(in srgb, #12121f 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gm-cyan) 40%, transparent);
+  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--gm-cyan) 55%, transparent), inset 0 1px 0 #ffffff14;
+  color: #e5eaf5;
+  transition: transform 0.3s, box-shadow 0.3s;
+  transform: perspective(900px) rotateY(-2deg);
+}
+.gm-msg.bot:hover {
+  transform: perspective(900px) rotateY(0) translateZ(10px);
+  box-shadow: 0 16px 38px -12px color-mix(in srgb, var(--gm-cyan) 75%, transparent), inset 0 1px 0 #ffffff1f;
+}
+.gm-msg.err {
+  border-color: #f87171;
+  color: #fecaca;
+}
+.gm-msg h3,
+.gm-msg h4,
+.gm-msg h5 {
+  margin: 14px 0 4px;
+  font-weight: 800;
+  color: var(--gm-amber);
+}
+.gm-msg h3 { font-size: 18px; }
+.gm-msg h4 { font-size: 16px; }
+.gm-msg h5 { font-size: 15px; }
+.gm-msg p { margin: 6px 0; }
+.gm-msg ul,
+.gm-msg ol { margin: 6px 0; padding-inline-start: 24px; }
+.gm-msg ul { list-style: none; }
+.gm-msg ul > li::before {
+  content: "◆";
+  color: var(--gm-lime);
+  margin-inline-end: 8px;
+  font-size: 10px;
+}
+.gm-msg ol { list-style: none; counter-reset: q; }
+.gm-msg ol > li { counter-increment: q; }
+.gm-msg ol > li::before {
+  content: counter(q);
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-inline-end: 8px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--gm-cyan), var(--gm-violet));
+  color: #04040a;
+  font-weight: 800;
+  font-size: 12px;
+}
+.gm-msg hr { border: 0; border-top: 1px dashed color-mix(in srgb, var(--gm-violet) 50%, transparent); margin: 12px 0; }
+.gm-msg code { background: #ffffff14; padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+.gm-msg b { color: #fff; }
+.gm-actions { display: flex; gap: 6px; margin-top: 8px; }
+.gm-mini {
+  border: 1px solid color-mix(in srgb, var(--gm-cyan) 40%, transparent);
+  background: transparent;
+  color: var(--gm-cyan);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.gm-mini:hover { background: color-mix(in srgb, var(--gm-cyan) 18%, transparent); transform: translateY(-2px); }
+
+/* «قنبر يفكر» */
+.gm-think {
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+.gm-dots span {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: var(--gm-cyan);
+  animation: gm-bounce 1s ease-in-out infinite;
+}
+.gm-dots span:nth-child(2) { animation-delay: 0.15s; background: var(--gm-pink); }
+.gm-dots span:nth-child(3) { animation-delay: 0.3s; background: var(--gm-amber); }
+@keyframes gm-bounce {
+  50% { transform: translateY(-8px); }
+}
+
+/* the cards to start from: tilt in 3D under the pointer */
+.gm-start {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  perspective: 900px;
+  margin-top: 6px;
+}
+.gm-card {
+  --c: var(--gm-cyan);
+  position: relative;
+  padding: 16px 14px;
+  border-radius: 20px;
+  text-align: start;
+  color: #fff;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--c) 60%, transparent);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--c) 30%, #0c0c18), #0c0c18 70%);
+  box-shadow: 0 14px 30px -16px var(--c), inset 0 1px 0 #ffffff1f;
+  transform-style: preserve-3d;
+  transition: transform 0.25s ease-out, box-shadow 0.25s;
+  animation: gm-pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+.gm-card:hover,
+.gm-card:focus-visible {
+  transform: rotateX(8deg) rotateY(-10deg) translateZ(22px);
+  box-shadow: 0 26px 44px -18px var(--c), inset 0 1px 0 #ffffff33;
+  outline: none;
+}
+.gm-card .ic {
+  display: inline-block;
+  font-size: 30px;
+  transform: translateZ(30px);
+  filter: drop-shadow(0 6px 8px #000a);
+  transition: transform 0.25s;
+}
+.gm-card:hover .ic { transform: translateZ(46px) rotate(-8deg) scale(1.12); }
+.gm-card b { display: block; margin-top: 6px; font-size: 15px; transform: translateZ(18px); }
+.gm-card small { display: block; margin-top: 2px; color: #b8c0d4; font-size: 12px; line-height: 1.6; transform: translateZ(10px); }
+
+/* the box to write in */
+.gm-compose {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--gm-violet) 25%, transparent);
+}
+.gm-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  max-height: 160px;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  color: #fff;
+  background: #0a0a14;
+  border: 1px solid color-mix(in srgb, var(--gm-violet) 45%, transparent);
+  font-size: 15px;
+  line-height: 1.7;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.gm-input:focus {
+  outline: none;
+  border-color: var(--gm-cyan);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gm-cyan) 25%, transparent), 0 0 22px -4px var(--gm-cyan);
+}
+.gm-send {
+  height: 48px;
+  min-width: 96px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 16px;
+  font-weight: 800;
+  color: #07070d;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--gm-lime), var(--gm-cyan));
+  box-shadow: 0 6px 0 color-mix(in srgb, var(--gm-cyan) 55%, #000), 0 12px 24px -8px var(--gm-cyan);
+  transition: transform 0.12s, box-shadow 0.12s, filter 0.2s;
+}
+.gm-send:hover:not(:disabled) { filter: brightness(1.1); }
+.gm-send:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--gm-cyan) 55%, #000), 0 4px 10px -4px var(--gm-cyan);
+}
+.gm-send:disabled { opacity: 0.45; cursor: not-allowed; }
+.gm-btn {
+  border: 1px solid color-mix(in srgb, var(--gm-violet) 55%, transparent);
+  background: color-mix(in srgb, var(--gm-violet) 18%, transparent);
+  color: #fff;
+  padding: 9px 14px;
+  border-radius: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.gm-btn:hover { background: color-mix(in srgb, var(--gm-violet) 32%, transparent); transform: translateY(-2px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .gm::before,
+  .gm::after,
+  .gm-cube,
+  .gm-die.rolling,
+  .gm-title,
+  .gm-dots span,
+  .gm-msg,
+  .gm-card {
+    animation: none !important;
+  }
+  .gm-card:hover,
+  .gm-card:focus-visible,
+  .gm-msg.bot:hover {
+    transform: none;
+  }
+}
