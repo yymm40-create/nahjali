@@ -32,6 +32,8 @@ export interface FilmSeries {
   style?: string;
   /** a plan سجاد proposed, waiting for «طبّق الخطة» */
   pending_plan?: SeriesPlan | null;
+  /** «بحث سجاد»: the start's answer and the findings (lib/film/research.ts; migration 0037) */
+  research?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -94,18 +96,22 @@ export async function requireSeries(id: unknown, userId: string, ownerOnly = fal
 
 const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\p{Cc}\p{Cf}]/gu, (c) => (c === "\n" ? c : " ")).trim().slice(0, max) : "");
 
-export async function createSeries(userId: string, b: { title?: unknown; about?: unknown; mode?: unknown }) {
+export async function createSeries(userId: string, b: { title?: unknown; about?: unknown; mode?: unknown; research?: unknown }) {
   const title = cleanText(b.title, 200).replace(/\s+/g, " ");
   if (!title) throw new UserError("اكتب اسم المسلسل.", 400);
   if (title.length > FILM_LIMITS.titleMax) throw new UserError(`الاسم طويل (${FILM_LIMITS.titleMax} حرف كحد أقصى).`, 400);
   const { count, error: e } = await db().from("film_series").select("id", { count: "exact", head: true }).eq("user_id", userId);
   if (e) throw new UserError(NOT_READY, 503);
   if ((count ?? 0) >= SERIES_LIMITS.seriesPerUser) throw new UserError(`وصلت للحد الأقصى للمسلسلات (${SERIES_LIMITS.seriesPerUser}).`, 403);
-  const { data, error } = await db()
-    .from("film_series")
-    .insert({ user_id: userId, title, about: cleanText(b.about, SERIES_LIMITS.aboutMax), mode: b.mode === "team" ? "team" : "solo" })
-    .select("*")
-    .single();
+  // «هل تبيني أبحث لتطوير القصة؟» is kept with the series (without migration 0037 the series is made without it)
+  const research = b.research === "yes" || b.research === "no" ? { asked: b.research, items: [] } : null;
+  const row: Record<string, unknown> = { user_id: userId, title, about: cleanText(b.about, SERIES_LIMITS.aboutMax), mode: b.mode === "team" ? "team" : "solo", ...(research ? { research } : {}) };
+  let made = await db().from("film_series").insert(row).select("*").single();
+  if (made.error && research) {
+    delete row.research;
+    made = await db().from("film_series").insert(row).select("*").single();
+  }
+  const { data, error } = made;
   if (error) throw new UserError(NOT_READY, 503);
   const series = data as FilmSeries;
   await addEpisode(series, "");

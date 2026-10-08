@@ -5,12 +5,14 @@ import { useEffect, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
 import { useFilmBase } from "../FilmBase";
+import ResearchChoice from "../ResearchChoice";
 
 /** The first screen of a film: title + the user's own story. Saved as soon as it is created. */
 export default function NewProject() {
   const router = useRouter();
   const filmBase = useFilmBase();
   const [values, setValues] = useState<FieldValues>({ title: "", story: "", fixedFacts: "", targetDurationSec: "" });
+  const [research, setResearch] = useState<"yes" | "no" | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -27,8 +29,9 @@ export default function NewProject() {
     setBusy(true);
     setError("");
     try {
-      const { id } = await postJson<{ id: string }>("/api/film/projects", values);
-      router.push(`${filmBase}/${id}`);
+      const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, research });
+      // «نعم»: سجاد opens on the project's page and asks for the scope
+      router.push(`${filmBase}/${id}${research === "yes" ? "?research=1" : ""}`);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -42,8 +45,10 @@ export default function NewProject() {
         <p className="font-bold text-muted">اكتب فكرتك بكلماتك ولو بأسطر قليلة. السيناريست بيبدأ منها، وما يغيّر قصتك بدون ما يسألك.</p>
       </header>
       <ProjectFields values={values} onChange={setValues} />
+      <ResearchChoice value={research} onChange={setResearch} />
       {error && <p className="error-box">{error}</p>}
-      <button className="btn btn-primary w-full text-xl" onClick={create} disabled={busy || !values.title.trim()}>
+      {!research && values.title.trim() && <p className="text-center text-sm font-bold text-muted">اختر أول: تبيني أبحث لتطوير القصة أو لا؟</p>}
+      <button className="btn btn-primary w-full text-xl" onClick={create} disabled={busy || !values.title.trim() || !research}>
         {busy ? "نجهّز المشروع…" : "أنشئ المشروع"}
       </button>
     </div>
