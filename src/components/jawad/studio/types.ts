@@ -21,6 +21,22 @@ export interface StudioProps {
   initialWorks: { items: WorkItem[]; next: string | null } | null;
 }
 
+/** A stored upload as the server returns it (with a short-lived link). */
+export interface UploadView {
+  id: string;
+  kind: RefKind;
+  fileName: string;
+  mime: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  fps: number | null;
+  status: "pending" | "ready" | "rejected";
+  error: string | null;
+  url: string | null;
+}
+
 /** One reference in the strip: uploading, being checked on the server, ready, or refused. */
 export interface RefItem {
   localId: string;

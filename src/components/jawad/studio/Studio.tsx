@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, MINIMAX_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
+import type { AssistantDraft, AssistantSet, ThumbnailSide } from "@config/jawad/assistant";
 import { needsFrames, sfxFrameTimes, SMART_SPLIT_MODE, VIDEO_SFX } from "@config/jawad/smart-split";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
 import { cleanRefName, defaultRefName, findMentions, renameMentions, sameName } from "@/lib/jawad/mentions";
@@ -20,27 +21,14 @@ import { grabFrames } from "./frames";
 import { GeneratorCard, GeneratorPicker } from "./GeneratorCard";
 import OutputSettings from "./OutputSettings";
 import DirectorBoost from "./DirectorBoost";
+import AssistantChat from "./AssistantChat";
+import ThumbnailComposer from "./ThumbnailComposer";
 import PromptBox from "./PromptBox";
 import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
-import { refMeta, type Draft, type RefItem, type StudioProps } from "./types";
-
-interface UploadView {
-  id: string;
-  kind: RefKind;
-  fileName: string;
-  mime: string;
-  bytes: number;
-  width: number | null;
-  height: number | null;
-  durationMs: number | null;
-  fps: number | null;
-  status: "pending" | "ready" | "rejected";
-  error: string | null;
-  url: string | null;
-}
+import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
 
 /** The person is on another tab: the title changes until they come back, and a system notification when allowed. */
 function notifyDone(count: number, anyFailed: boolean) {
@@ -180,6 +168,9 @@ export default function Studio({ section, generators, prices: initialPrices, use
   const [confirm, setConfirm] = useState<{ coins: number; was: number } | null>(null);
   // «مكتبتي»: the person's characters and places, mentioned by «@name» (null until loaded)
   const [library, setLibrary] = useState<{ items: LibraryItem[]; active: boolean } | null>(null);
+  // «جواد»: the chat assistant, and the thumbnail maker it can open
+  const [chatOpen, setChatOpen] = useState(false);
+  const [composer, setComposer] = useState<{ person: string; side: ThumbnailSide } | null>(null);
   const pendingKey = useRef<string | null>(null);
   // what the pending key was made for: a changed request gets a new key (else the server returns the old job)
   const pendingSig = useRef("");
@@ -788,6 +779,54 @@ export default function Studio({ section, generators, prices: initialPrices, use
     if (r.ok) setItems((cur) => cur.map((it) => (it.id === j.id ? r.body.jobs[0] ?? it : it)));
   }
 
+  // ── «جواد»: fills the form (never generates) ──
+  function assistantDraft(): AssistantDraft {
+    return {
+      generatorId: def?.id ?? draft.generatorId,
+      prompt: draft.prompt,
+      instructions: draft.instructions,
+      settings: ev?.settings ?? settings,
+      refStyle,
+      refs: draft.refs.filter((r) => r.uploadId && r.status === "ready").map((r) => ({ uploadId: r.uploadId!, name: r.name, kind: r.kind, role: r.role, width: r.width, height: r.height, durationMs: r.durationMs })),
+    };
+  }
+  function applyAssistant(set: AssistantSet, views: UploadView[]): string[] {
+    setDraft((d) => {
+      const gid = set.generatorId && generators.some((g) => g.id === set.generatorId) ? set.generatorId : d.generatorId;
+      const nd = generatorById(gid);
+      const supports = (st: RefStyle) => Boolean(nd?.modes.some((m) => m.refStyle === st));
+      const was: RefStyle = d.refStyle[d.generatorId] ?? defaultStyle(d.generatorId);
+      let style: RefStyle = set.refStyle ?? (gid !== d.generatorId ? (d.refs.length && supports(was) ? was : d.refStyle[gid] ?? defaultStyle(gid)) : was);
+      if (style !== "none" && !supports(style)) style = defaultStyle(gid);
+      let refs = d.refs.filter((r) => !set.removeRefs?.some((n) => sameName(n, r.name)));
+      let prompt = set.prompt ?? d.prompt;
+      for (const e of set.editRefs ?? []) {
+        refs = refs.map((r) => (sameName(r.name, e.name) ? { ...r, name: e.newName ?? r.name, role: e.role ?? r.role } : r));
+        if (e.newName && set.prompt === undefined) prompt = renameMentions(prompt, e.name, e.newName);
+      }
+      for (const a of set.addRefs ?? []) {
+        const v = views[a.attachment - 1];
+        if (v && !refs.some((r) => r.uploadId === v.id)) refs = [...refs, fromView(v, a.role, a.name)];
+      }
+      if (style !== was && style === "frames") refs = withRoles(refs, style);
+      const base = { ...(nd ? defaultSettings(nd) : {}), ...(d.settings[gid] ?? {}) };
+      return {
+        ...d,
+        generatorId: gid,
+        prompt,
+        instructions: set.instructions ?? d.instructions,
+        refStyle: { ...d.refStyle, [gid]: style },
+        settings: set.settings ? { ...d.settings, [gid]: { ...base, ...set.settings } } : d.settings,
+        refs,
+      };
+    });
+    setTouched(true);
+    setNotice("");
+    return [];
+  }
+  const composerPersons = draft.refs.flatMap((r) => (r.kind === "image" && r.status === "ready" && r.url ? [{ name: r.name, url: r.url }] : []));
+  const composerResults = items.flatMap((it) => (it.type === "job" && it.status === "succeeded" ? it.outputs.filter((o) => o.kind === "image" && o.url).map((o) => ({ id: o.id, url: o.url! })) : [])).slice(0, 8);
+
   const canUseAsRef = (o: OutputView) => (!ev ? "" : ev.refKinds[o.kind]?.allowed ? null : ev.refKinds[o.kind]?.reason ?? "غير مدعوم هنا");
   const openCount = openIds.length + items.filter((i) => i.id.startsWith("temp-")).length;
 
@@ -952,6 +991,35 @@ export default function Studio({ section, generators, prices: initialPrices, use
           />
         </div>
       </div>
+
+      {user && allowed && (
+        <AssistantChat
+          open={chatOpen}
+          onOpen={() => setChatOpen(true)}
+          onClose={() => setChatOpen(false)}
+          section={section}
+          getDraft={assistantDraft}
+          onApply={applyAssistant}
+          generatorName={(id) => generators.find((g) => g.id === id)?.name ?? id}
+          onThumbnail={(t) => setComposer(t)}
+          canAttach={section.output !== "audio"}
+          storage={`${user.id}:${section.id}`}
+        />
+      )}
+      {composer && (
+        <ThumbnailComposer
+          key={`${composer.person}:${composer.side}`}
+          open
+          onClose={() => setComposer(null)}
+          persons={composerPersons}
+          results={composerResults}
+          initial={composer}
+          onKeep={(v) => {
+            setDraft((d) => ({ ...d, refs: [...d.refs, fromView(v, "reference", nextName("image", d.refs))] }));
+            setNotice("أضفت الصورة المركّبة كمرجع.");
+          }}
+        />
+      )}
 
       <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={generators} current={gen.id} onPick={switchGenerator} owner={owner} />
 

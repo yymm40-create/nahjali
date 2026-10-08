@@ -62,3 +62,18 @@ export function putWithProgress(signedUrl: string, file: File, mime: string, onP
     xhr.send(file);
   });
 }
+
+/** An image (a picture the person made in the browser, or chose) stored as a checked reference of theirs. */
+export async function uploadImage(file: File): Promise<import("./types").UploadView> {
+  const probe = await probeFile(file, "image");
+  const post = async <T,>(url: string, data: unknown) => {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), cache: "no-store" });
+    return { ok: res.ok, body: (await res.json().catch(() => ({}))) as T & { error?: string } };
+  };
+  const signed = await post<{ id: string; signedUrl: string }>("/api/jawad/uploads", { kind: "image", mime: probe.mime, bytes: file.size, fileName: file.name });
+  if (!signed.ok) throw new Error(signed.body.error ?? "تعذّر بدء الرفع.");
+  await putWithProgress(signed.body.signedUrl, file, probe.mime, () => {});
+  const conf = await post<{ upload: import("./types").UploadView }>("/api/jawad/uploads/confirm", { id: signed.body.id });
+  if (!conf.ok || conf.body.upload?.status !== "ready") throw new Error(conf.body.error ?? conf.body.upload?.error ?? "تعذّر فحص الصورة.");
+  return conf.body.upload;
+}
