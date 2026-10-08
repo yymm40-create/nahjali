@@ -8,6 +8,8 @@
 import type { Command } from "./commands";
 import { allTracks, clipEnd, type Timeline } from "./model";
 import { beatTransition, pieceArt, type Anchors } from "./motion-art";
+import { lookOf, readLook, type MotionLook } from "./motion-styles";
+import { TR_BY_ID } from "./transitions";
 
 // ───────────── palettes (from the motion skill: five named looks, every pair checked for contrast) ─────────────
 
@@ -153,6 +155,10 @@ export interface Storyboard {
   colors?: { bg?: string; text?: string; accent?: string; second?: string };
   /** "arabic" keeps ٠١٢ (only when the person asks); default: Western digits */
   digits?: "western" | "arabic";
+  /** a named motion skill («مهارات الموشن», motion-styles.ts): its pace, entrances, transitions, sounds… */
+  style?: string;
+  /** what the person asked to change in the look (wins over the skill) */
+  look?: Partial<MotionLook>;
   beats: Beat[];
 }
 
@@ -199,7 +205,10 @@ export function readStoryboard(raw: unknown): Storyboard | null {
   const colors = col ? Object.fromEntries(["bg", "text", "accent", "second"].filter((k) => typeof col[k] === "string" && HEX.test(col[k] as string)).map((k) => [k, col[k] as string])) : undefined;
   return {
     palette: clean(s.palette, 20), head: clean(s.head, 30) || undefined, body: clean(s.body, 30) || undefined, at: Number.isFinite(Number(s.at)) ? Math.max(0, Math.round(Number(s.at))) : 0,
-    ...(colors?.bg ? { colors } : {}), ...(arabic ? { digits: "arabic" as const } : {}), beats,
+    ...(colors?.bg ? { colors } : {}), ...(arabic ? { digits: "arabic" as const } : {}),
+    ...(typeof s.style === "string" && s.style.trim() ? { style: s.style.trim().slice(0, 40) } : {}),
+    ...(s.look && typeof s.look === "object" ? { look: readLook(s.look, new Set(TR_BY_ID.keys())) } : {}),
+    beats,
   };
 }
 
@@ -247,10 +256,12 @@ function sizes(f: Frame) {
 const FLOOR: Record<Role, number> = { head: 0.04, sub: 0.03, cap: 0.026, value: 0.06, item: 0.03, bar: 0.02, pill: 0.028, quote: 0.034 };
 
 /** How long a beat stays: its words read twice at the Arabic pace, between 2.5 and 8 s (or as asked). */
-export function beatMs(b: Beat) {
+export function beatMs(b: Beat, pace: MotionLook["pace"] = "normal") {
   if (b.seconds) return Math.round(b.seconds * 1000);
   const words = [b.title, b.text, b.value, b.label, b.by, b.handle, ...(b.items ?? []), ...(b.kind === "kinetic" ? (b.words ?? []) : []), b.left?.title, b.left?.text, b.right?.title, b.right?.text].join(" ").split(/\s+/).filter(Boolean).length;
-  return Math.round(Math.min(8, Math.max(2.5, words * 0.42 + 1.4)) * 1000);
+  const read = words * 0.42 + 1.4;
+  // a fast piece moves on sooner (never under 1.8 s), a calm one lets each beat breathe
+  return Math.round((pace === "fast" ? Math.min(6, Math.max(1.8, read * 0.78)) : pace === "calm" ? Math.min(9, Math.max(3.2, read * 1.2)) : Math.min(8, Math.max(2.5, read))) * 1000);
 }
 
 interface Spec {
@@ -351,18 +362,27 @@ export const IN = {
   whip: { in: "whip", out: "whip", inMs: 260, outMs: 180 },
   settle: { in: "settle", out: "fade", inMs: 280, outMs: 160 },
   punch: { in: "punch", out: "fade", inMs: 300, outMs: 160 },
+  blur: { in: "blur", out: "fade", inMs: 320, outMs: 160 },
+  glitch: { in: "glitch", out: "fade", inMs: 260, outMs: 160 },
+  flash: { in: "flash", out: "fade", inMs: 220, outMs: 160 },
+  wipe: { in: "wipe", out: "fade", inMs: 600, outMs: 160 },
 };
+type Anim = (typeof IN)[keyof typeof IN];
+/** An entrance at the piece's pace: quicker when fast, softer when calm (exits stay faster than entrances). */
+const paced = (a: Anim, pace: MotionLook["pace"]): Anim =>
+  pace === "fast" ? { ...a, inMs: Math.round(a.inMs * 0.85), outMs: Math.min(Math.round(a.outMs * 0.85), Math.round(a.inMs * 0.85)) } : pace === "calm" ? { ...a, inMs: Math.min(450, Math.round(a.inMs * 1.3)) } : a;
 /** Texts that enter together follow each other by this much (majed-video: 30–80 ms). */
 export const STAGGER_MS = 60;
 /** The headline's entrance for beat `bi` (the art leads by TEXT_LEAD ms, so the words land on it). */
-const headIn = (bi: number) => (bi % 2 === 0 ? IN.whip : IN.rise);
+const headInOf = (bi: number, look?: MotionLook) => (!look || look.entrance === "mixed" ? (bi % 2 === 0 ? IN.whip : IN.rise) : IN[look.entrance]);
 const TEXT_LEAD = 80;
 
 /** The texts of one beat, in reading order, with their roles, colours, fonts and entrances. */
-function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arabicDigits = false): Spec[] {
+function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arabicDigits = false, look?: MotionLook): Spec[] {
   const specs: Spec[] = [];
+  const headIn = (i: number) => headInOf(i, look);
   const add = (s: Omit<Spec, "maxLines" | "delay"> & { maxLines?: number; delay?: number }) => {
-    if (s.body.replace(/[«»—\-●.:\s]/g, "")) specs.push({ maxLines: 2, delay: TEXT_LEAD + specs.length * STAGGER_MS, ...s, body: arabicDigits ? s.body : westernDigits(s.body) });
+    if (s.body.replace(/[«»—\-●.:\s]/g, "")) specs.push({ maxLines: 2, delay: TEXT_LEAD + specs.length * STAGGER_MS, ...s, anim: paced(s.anim, look?.pace ?? "normal"), body: arabicDigits ? s.body : westernDigits(s.body) });
   };
   switch (b.kind) {
     case "title":
@@ -417,19 +437,21 @@ export interface BeatTime {
 }
 
 /** The storyboard as placed texts (the layout the commands write), with where each beat's words sit for the art. */
-export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[]; anchors: Anchors[]; times: BeatTime[] } {
+export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[]; anchors: Anchors[]; times: BeatTime[]; look: ReturnType<typeof lookOf> } {
   const f = frameOf(W, H);
   const base = sizes(f);
-  const pal = brandPalette(sb.colors) ?? paletteOf(sb.palette);
+  // the named skill's look, under what the person asked for (their palette, fonts and look win)
+  const look = lookOf(sb.style, sb.look);
+  const pal = brandPalette(sb.colors) ?? paletteOf(sb.palette || look.palette);
   const ad = sb.digits === "arabic";
-  const head = sb.head || "cairo";
-  const body = sb.body || "tajawal";
+  const head = sb.head || look.head || "cairo";
+  const body = sb.body || look.body || "tajawal";
   // a beat too full for one screen becomes two (and so on), before anything is placed
   const queue = [...sb.beats];
   const beats: Beat[] = [];
   while (queue.length && beats.length < 48) {
     const b = queue.shift()!;
-    if (layBeat(specsOf(b, pal, head, body, 0, ad), f, base)) {
+    if (layBeat(specsOf(b, pal, head, body, 0, ad, look), f, base)) {
       beats.push(b);
       continue;
     }
@@ -448,8 +470,8 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
   const times: BeatTime[] = [];
   let t = sb.at ?? 0;
   beats.forEach((b, bi) => {
-    const dur = beatMs(b);
-    const laid = layBeat(specsOf(b, pal, head, body, bi, ad), f, base);
+    const dur = beatMs(b, look.pace);
+    const laid = layBeat(specsOf(b, pal, head, body, bi, ad, look), f, base);
     times.push({ start: t, end: t + dur });
     if (!laid) {
       anchors.push({ top: f.top, bottom: 1 - f.bottom });
@@ -500,7 +522,7 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
     });
     t += dur;
   });
-  return { placed, palette: pal, endMs: t, beats, anchors, times };
+  return { placed, palette: pal, endMs: t, beats, anchors, times, look };
 }
 
 // ───────────── sounds: one short effect per arrival, five kinds, never the same on every beat ─────────────
@@ -519,7 +541,8 @@ export interface SfxCue {
   kind: SfxKind;
   at: number;
 }
-function cuesOf(beats: Beat[], times: BeatTime[]): SfxCue[] {
+function cuesOf(beats: Beat[], times: BeatTime[], sfx: MotionLook["sfx"] = "full"): SfxCue[] {
+  if (sfx === "none") return [];
   const out: SfxCue[] = [];
   beats.forEach((b, i) => {
     const t = times[i].start;
@@ -536,7 +559,8 @@ function cuesOf(beats: Beat[], times: BeatTime[]): SfxCue[] {
         out.push({ kind: i % 2 === 0 ? "whoosh" : "pop", at: t + TEXT_LEAD });
     }
   });
-  return capCues(out);
+  // «soft»: only the moments that matter (the number's hit, the quote's and the ending's shimmer)
+  return capCues(sfx === "soft" ? out.filter((c) => c.kind === "hit" || c.kind === "shimmer") : out);
 }
 
 /** At most this many sound events in any minute (majed-video: sound only on the moments that mean something). */
@@ -556,7 +580,7 @@ export function capCues(cues: SfxCue[], perMinute = SFX_PER_MINUTE): SfxCue[] {
 /** Everything the engine decided for a piece: the texts, the art to draw, and the sounds to make and place. */
 export function motionPlan(sb: Storyboard, W: number, H: number) {
   const laid = layoutMotion(sb, W, H);
-  return { ...laid, art: pieceArt(laid.beats, laid.palette, laid.anchors, W, H), cues: cuesOf(laid.beats, laid.times) };
+  return { ...laid, art: pieceArt(laid.beats, laid.palette, laid.anchors, W, H, laid.look), cues: cuesOf(laid.beats, laid.times, laid.look.sfx) };
 }
 
 /** The decoration's entrance by the beat's kind: shapes pop, bands and rails whip in. */
@@ -570,7 +594,7 @@ const artIn = (b: Beat) => (b.kind === "title" || b.kind === "points" || b.kind 
  * these in the same answer (so "$N" points at the right one).
  */
 export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, art?: Map<string, string>): { commands: Command[]; endMs: number; palette: Palette } {
-  const { placed, palette, endMs, beats, times } = layoutMotion(sb, W, H);
+  const { placed, palette, endMs, beats, times, look } = layoutMotion(sb, W, H);
   const out: Command[] = [{ type: "set_background", color: palette.bg }];
   const ref = () => `$${base + out.length}`;
   if (art?.size) {
@@ -584,9 +608,9 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, a
         const r = ref();
         if (bgTrack === "new") bgTrack = r;
         out.push({ type: "trim_clip", clipId: r, edge: "end", to: end });
-        out.push({ type: "update_clip", clipId: r, patch: { fit: "cover", transition: i < beats.length - 1 ? (beatTransition(i + 1) as { kind: string; ms: number }) : null } });
+        out.push({ type: "update_clip", clipId: r, patch: { fit: "cover", transition: i < beats.length - 1 ? (beatTransition(i + 1, look.transitions) as { kind: string; ms: number } | null) : null } });
       }
-      const deco = art.get(`art-${i}`);
+      const deco = look.decor ? art.get(`art-${i}`) : undefined;
       if (deco) {
         out.push({ type: "add_clip", assetId: deco, trackId: artTrack, at: start });
         const r = ref();
@@ -595,8 +619,8 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, a
         const a = artIn(b);
         out.push({ type: "update_clip", clipId: r, patch: { fit: "cover", anim: { in: a.in, out: "fade", inMs: a.inMs, outMs: 160 } as never } });
         // nothing still: the decoration turns and grows a touch over its beat
-        out.push({ type: "set_key", clipId: r, at: start, transform: { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 } });
-        out.push({ type: "set_key", clipId: r, at: end - 1, transform: { x: 0.5, y: 0.5, scale: 1.05, rotate: i % 2 === 0 ? 2 : -2, opacity: 1 } });
+        if (look.drift) out.push({ type: "set_key", clipId: r, at: start, transform: { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 } });
+        if (look.drift) out.push({ type: "set_key", clipId: r, at: end - 1, transform: { x: 0.5, y: 0.5, scale: 1.05, rotate: i % 2 === 0 ? 2 : -2, opacity: 1 } });
       }
     });
   }
@@ -613,7 +637,7 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, a
       },
     });
     // nothing fully still: the headline and the big number drift in slowly over their beat
-    if (p.role === "head" || p.role === "value") {
+    if (look.drift && (p.role === "head" || p.role === "value")) {
       out.push({ type: "set_key", clipId: r, at: p.start, transform: { x: p.x, y: p.y, scale: 1, rotate: 0, opacity: 1 } });
       out.push({ type: "set_key", clipId: r, at: p.end - 1, transform: { x: p.x, y: p.y, scale: 1.04, rotate: 0, opacity: 1 } });
     }
