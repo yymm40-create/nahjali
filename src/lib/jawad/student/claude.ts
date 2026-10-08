@@ -4,6 +4,7 @@
 import { CLAUDE_MODEL, claudeCost, siteSystem, type ClaudeUsage } from "@/lib/film/anthropic";
 import { STUDENT } from "@config/jawad/student";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { fitImages } from "@/lib/claude-images";
 
 export type StudentPart =
   | { type: "text"; text: string }
@@ -25,6 +26,8 @@ export const MATERIAL_RULE =
 async function post(body: Record<string, unknown>, beta?: string) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  // pictures by link are fetched and made to fit Claude's limits
+  if (Array.isArray(body.messages)) body = { ...body, messages: await fitImages(body.messages as { content: unknown }[]) };
   const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: {
