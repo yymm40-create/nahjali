@@ -3,7 +3,7 @@ import { applyAll } from "@/lib/editor/commands";
 import { animAt, emptyTimeline, type Ratio } from "@/lib/editor/model";
 import { MAJED_SKILL } from "@/lib/editor/majed";
 import { MOTION_SKILL } from "@/lib/editor/motion";
-import { BOUNCY, brandPalette, contrast, IN, layoutMotion, lintMotion, lintPlaced, motionCommands, PALETTES, readStoryboard, STAGGER_MS, storyboardNumbers, westernDigits } from "@/lib/editor/motion-build";
+import { BOUNCY, brandPalette, capCues, motionPlan, SFX_PER_MINUTE, contrast, IN, layoutMotion, lintMotion, lintPlaced, motionCommands, PALETTES, readStoryboard, STAGGER_MS, storyboardNumbers, westernDigits } from "@/lib/editor/motion-build";
 
 // 100 pieces in «أسلوب ماجد الزعابي»: written as حيدرة writes them (a JSON string, Eastern digits, brand colours
 // that don't always read, kinetic hooks), then held to Majed's rules on top of the layout check.
@@ -118,6 +118,13 @@ describe("the rules themselves", () => {
     ], new Map()).timeline;
     const kinds = lintMotion(out).map((x) => x.kind);
     for (const k of ["bounce", "slow_entrance", "slow_exit", "short_hold"]) expect(kinds).toContain(k);
+  });
+  it("at most 15 sound effects in any minute, the number's hit kept first", () => {
+    const sb = readStoryboard({ beats: Array.from({ length: 24 }, (_, i) => (i % 4 === 1 ? { kind: "stat", value: `${i}0%`, label: "نسبة", seconds: 2.5 } : { kind: "statement", text: "جملة قصيرة هنا", seconds: 2.5 })) })!;
+    const { cues } = motionPlan(sb, 1080, 1920);
+    for (const a of cues) expect(cues.filter((b) => b.at >= a.at && b.at < a.at + 60_000).length).toBeLessThanOrEqual(SFX_PER_MINUTE);
+    expect(cues.filter((c) => c.kind === "hit").length).toBe(6);
+    expect(capCues([{ kind: "swish", at: 0 }, { kind: "hit", at: 10 }], 1)).toEqual([{ kind: "hit", at: 10 }]);
   });
   it("Western digits, unless asked", () => {
     expect(westernDigits("٧٠٪ من ١٠٠")).toBe("70٪ من 100");
