@@ -5,7 +5,7 @@ import { api, postJson } from "@/lib/fetch";
 
 interface Game { id: string; name: string; genre: string; players: string; notes: string; status: "approved" | "draft" }
 interface Run { id: string; label: string; mode: "quick" | "deep"; total: number; done: number; failed: number; passed: number; errors: number; avg: number; usd: number; byKind: Record<string, { n: number; avg: number }>; fixes: string[] }
-interface Data { persona: { text: string; edited: boolean }; games: Game[]; count: number; runs: Run[]; estimate: { quick: number; deep: number } }
+interface Data { visibility: "owner" | "codes" | "all"; persona: { text: string; edited: boolean }; games: Game[]; count: number; runs: Run[]; estimate: { quick: number; deep: number } }
 interface Worst { idx: number; scenario: { kind: string; message: string }; transcript: { role: string; text: string }[]; verdict: { score: number; bad: string; fix: string } | null; error: string | null }
 
 const KIND: Record<string, string> = { research: "بحث", develop: "تطوير", ideate: "أفكار", trap: "فخاخ" };
@@ -80,6 +80,17 @@ export default function GamesAdmin() {
   return (
     <div className="space-y-6">
       {(err || msg) && <p className={`text-sm font-bold ${err ? "text-red-600" : "text-teal"}`}>{err ?? msg}</p>}
+
+      <section className="card space-y-3 p-4">
+        <h2 className="text-xl font-extrabold">👁️ مين يشوف القسم؟</h2>
+        <div className="flex flex-wrap gap-2">
+          {([["owner", "أنا بس"], ["codes", "اللي عندهم صلاحية «صانع الألعاب» (إيميل أو كود)"], ["all", "كل اللي يدخلون الموقع"]] as const).map(([v, t]) => (
+            <button key={v} aria-pressed={d.visibility === v} className={`rounded-full border px-4 py-2 text-sm font-bold ${d.visibility === v ? "border-teal bg-teal/15 text-teal" : "border-line text-muted"}`} onClick={() => act({ action: "visibility", value: v }, "انحفظ")}>
+              {d.visibility === v ? "✓ " : ""}{t}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">🧠 قالب «قنبر» {d.persona.edited ? "(معدّل)" : "(الافتراضي)"}</h2>

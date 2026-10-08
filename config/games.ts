@@ -18,7 +18,12 @@ export const GAMES = {
 export const GAMES_KV = {
   /** the persona's full text; absent = the default below */
   persona: "persona",
+  /** who may open the section: "owner" | "codes" | "all" (absent = "owner") */
+  visibility: "visibility",
 } as const;
+
+/** Who sees «صانع الألعاب الذكي»: only the owner; those holding the «games» permission (a code or the email list); or everyone the site lets in. */
+export type GamesVisibility = "owner" | "codes" | "all";
 
 /**
  * Added after the persona on every conversation: what the platform itself requires, whatever the persona's text says
