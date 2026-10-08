@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { FILM_STAGES, type FilmStage } from "@config/film";
 import { useFilmBase } from "../FilmBase";
 import "@/app/jawad-ai/film/film-theme.css";
+import StepWhy from "../StepWhy";
 
 /** The sections of a film project, in order; `reached` is the project stage from which a section opens. */
 const SECTIONS: { key: string; label: string; icon: string; path: string; reached: FilmStage; ready: boolean }[] = [
@@ -60,6 +61,11 @@ export default function FilmNav({ projectId, stage, videosOpen }: { projectId: s
           );
         })}
       </ol>
+      {/* «ليش هالخطوة؟»: the explainer of the section open now */}
+      {(() => {
+        const here = SECTIONS.find((s) => pathname === base + s.path);
+        return here ? <StepWhy step={here.key} /> : null;
+      })()}
     </nav>
   );
 }

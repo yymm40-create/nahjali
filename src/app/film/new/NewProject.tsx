@@ -6,6 +6,7 @@ import { postJson } from "@/lib/fetch";
 import ProjectFields, { type FieldValues } from "../ProjectFields";
 import { useFilmBase } from "../FilmBase";
 import ResearchChoice from "../ResearchChoice";
+import StepWhy from "../StepWhy";
 
 /** The first screen of a film: title + the user's own story. Saved as soon as it is created. */
 export default function NewProject() {
@@ -44,6 +45,7 @@ export default function NewProject() {
         <h1 className="display text-4xl">مشروع فيلم جديد</h1>
         <p className="font-bold text-muted">اكتب فكرتك بكلماتك ولو بأسطر قليلة. السيناريست بيبدأ منها، وما يغيّر قصتك بدون ما يسألك.</p>
       </header>
+      <StepWhy step="new" sajjad={false} />
       <ProjectFields values={values} onChange={setValues} />
       <ResearchChoice value={research} onChange={setResearch} />
       {error && <p className="error-box">{error}</p>}

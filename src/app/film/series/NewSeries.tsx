@@ -5,6 +5,7 @@ import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { useFilmBase } from "../FilmBase";
 import ResearchChoice from "../ResearchChoice";
+import StepWhy from "../StepWhy";
 
 /** The gold card that opens into a short form: the series' name, what it is about, alone or with a team. */
 export default function NewSeries() {
@@ -44,6 +45,7 @@ export default function NewSeries() {
   return (
     <div className="film-option space-y-2" data-tone="light" style={{ justifyContent: "flex-start", width: "min(86vw, 360px)" }}>
       <h3>مسلسل جديد</h3>
+      <StepWhy step="newSeries" sajjad={false} />
       <input className="field" placeholder="اسم المسلسل" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       <textarea className="field min-h-24 text-sm" placeholder="عن وش المسلسل؟ عالمه وشخصياته الأساسية (يروح مع كل مشهد للسيناريست)" maxLength={4000} value={about} onChange={(e) => setAbout(e.target.value)} />
       <div className="grid grid-cols-2 gap-2">
