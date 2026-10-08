@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
-import { diagReport, previewShot } from "./diag";
+import { diagNote, diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
 import { scopeOf, type Scope } from "@/lib/editor/scopes";
@@ -20,7 +20,7 @@ import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
 import Icon from "../Icon";
-import { blobBase64, canTalk, hear, hush, record, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
+import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
 import { extractSound } from "./captions";
 import type { Run } from "./Inspector";
@@ -131,7 +131,14 @@ export default function AssistantPanel({
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusyState] = useState<string | null>(null);
+  // the latest «busy», for code that runs between renders (a voice message's send used to see the old one and drop
+  // the words silently: it read «أكتب كلامك…» from the render before the transcript arrived)
+  const busyRef = useRef<string | null>(null);
+  const setBusy = (v: string | null) => {
+    busyRef.current = v;
+    setBusyState(v);
+  };
   // «📎 مراجع»: files attached to the next message (uploaded to the library, seen by حيدرة with the message)
   const [pending, setPending] = useState<EditorAsset[]>([]);
   const refUploads = useUploads(projectId, (a) => {
@@ -298,7 +305,11 @@ export default function AssistantPanel({
   };
   const send = async (words = text, spoken = false): Promise<string | null> => {
     const message = words.trim() || (pending.length ? "شوف المراجع اللي أرفقتها" : "");
-    if (!message || busy || readOnly || sendingRef.current) return null;
+    if (!message || readOnly) return null;
+    if (busyRef.current || sendingRef.current) {
+      diagNote(`حيدرة: طلب ما انرسل لأن طلب ثاني شغّال («${message.slice(0, 40)}»)`, "note");
+      return null;
+    }
     sendingRef.current = true;
     abortRef.current = new AbortController();
     setCanStop(true);
@@ -495,14 +506,27 @@ export default function AssistantPanel({
       const r = await h.done;
       recRef.current = null;
       setRecording(false);
-      if (!r) return voiceError(new Error("ما وصلني صوت من المايك (التسجيل قصير أو المايك صامت). تأكد إن المايك الصحيح مختار، وسجّل ثانيتين على الأقل."));
+      if (!r) {
+        diagNote("🎤 رسالة صوتية: ما فيه تسجيل (أقصر من 0.6 ث أو انلغى)", "note");
+        return voiceError(new Error("ما وصلني صوت من المايك (التسجيل قصير أو المايك صامت). تأكد إن المايك الصحيح مختار، وسجّل ثانيتين على الأقل."));
+      }
+      diagNote(`🎤 رسالة صوتية: ${r.seconds.toFixed(1)} ث · ${Math.round(r.blob.size / 1024)} KB · ${r.mime} · أعلى مستوى ${r.peak.toFixed(3)}${r.meter ? "" : " (المقياس ما اشتغل)"}`);
+      if (r.meter && r.peak < SILENT_PEAK) {
+        diagNote("🎤 رسالة صوتية: المايك صامت — ما انرسل شي", "note");
+        return voiceError(new Error("التسجيل صامت تمامًا — المايك ما التقط صوت. اختر المايك الصحيح من إعدادات الجهاز (على الماك: إعدادات النظام ← الصوت ← الإدخال) أو من أيقونة المايك في شريط عنوان Chrome، وجرّب مرة ثانية."));
+      }
       setBusy("أكتب كلامك…");
       const said = await hear(projectId, r).finally(() => setBusy(null));
-      if (said) await sendRef.current(said);
-      else voiceError(new Error("سجّلت بس ما فهمت كلام في التسجيل. قرّب من المايك وجرّب مرة ثانية."));
+      diagNote(`🎤 رسالة صوتية: انكتب ${said.length} حرف${said ? ` «${said.slice(0, 60)}»` : ""}`);
+      if (!said) return voiceError(new Error("سجّلت بس ما فهمت كلام في التسجيل. قرّب من المايك وجرّب مرة ثانية."));
+      // the words go into the conversation even if something stops them being sent (so they are never lost)
+      const answer = await sendRef.current(said);
+      if (answer === null && !sendingRef.current) setText(said);
     } catch (e) {
       recRef.current = null;
       setRecording(false);
+      setBusy(null);
+      diagNote(`🎤 رسالة صوتية: ${e instanceof Error ? e.message : String(e)}`, "error");
       voiceError(e);
     }
   };
