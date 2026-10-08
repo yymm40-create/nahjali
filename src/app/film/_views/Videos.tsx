@@ -9,6 +9,8 @@ import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
 import { can } from "@/lib/access";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { dialogueSource, startingMode } from "@/lib/film/dialogue-source";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import VideosWorkspace from "../[id]/videos/VideosWorkspace";
 
@@ -23,7 +25,16 @@ export default async function VideosView({ id, base }: { id: string; base: strin
 
   await purgeOldVideos(project);
   const videosRunning = await checkVideos(project);
-  const [versions, videos, cost, job, spoken] = await Promise.all([directorVersions(id), directorVideos(id), projectCost(id), latestJob(id, "director"), voiceReadiness(id).catch(() => [])]);
+  const [versions, videos, cost, job, spoken, handoff] = await Promise.all([
+    directorVersions(id),
+    directorVideos(id),
+    projectCost(id),
+    latestJob(id, "director"),
+    voiceReadiness(id).catch(() => []),
+    // «مصدر الحوار»: the person's answer to the screenwriter's question, every shot starts on it
+    createAdminClient().from("film_versions").select("body").eq("project_id", id).eq("stage", "screenwriter").eq("kind", "handoff").eq("status", "approved").order("version", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const source = dialogueSource((handoff.data as { body?: string } | null)?.body);
   const map = versions.filter((v) => v.kind === "dir_map" && v.status === "approved").at(-1)?.data.generation_map ?? [];
   const approved = versions.filter((v) => v.kind === "dir_generation" && v.status === "approved");
   if (!approved.length) redirect(`${base}/${id}/director`);
@@ -97,6 +108,8 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         editsLeft={null}
         studioPath={studioPath}
         voicesOn={voicesReady()}
+        dialogueStart={startingMode(source, voicesReady())}
+        dialogueSource={source}
       />
       <Link href={`${base}/${id}/edit`} className="card flex items-center gap-3 p-4 font-extrabold">
         <span className="text-2xl" aria-hidden>✂️</span>

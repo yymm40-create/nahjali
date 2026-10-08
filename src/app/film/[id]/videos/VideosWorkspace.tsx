@@ -90,10 +90,13 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, dialogueStart, dialogueSource = null,
 }: {
   /** ElevenLabs is configured on the server: the voices block is shown. */
   voicesOn?: boolean;
+  /** The dialogue mode every shot starts on: the person's «مصدر الحوار» answer to the screenwriter. */
+  dialogueStart?: "make" | "upload" | "none";
+  dialogueSource?: "make" | "upload" | "self" | "later" | null;
   /** JAWAD AI's video section (when this user may use it): «التعديل الذكي» there, and its videos can be chosen here */
   studioPath?: string | null;
   projectId: string;
@@ -217,7 +220,7 @@ export default function VideosWorkspace({
   // («من جهازي»: e.g. made in their own ElevenLabs account), or none
   type Dialogue = "make" | "upload" | "none";
   const [dialog, setDialog] = useState<Record<string, Dialogue>>({});
-  const modeOf = (g: Generation): Dialogue => dialog[g.id] ?? (voicesOn ? "make" : "none");
+  const modeOf = (g: Generation): Dialogue => dialog[g.id] ?? dialogueStart ?? (voicesOn ? "make" : "none");
   const trackOf = (g: Generation) => voice?.tracks?.find((t) => t.genId === g.id) ?? null;
   const sendVoices = (g: Generation) => g.lines.length > 0 && modeOf(g) !== "none";
   const [trackBusy, setTrackBusy] = useState<string | null>(null);
@@ -630,7 +633,7 @@ export default function VideosWorkspace({
                 {/* every generation asks: the dialogue made here, from your device, or none */}
                 <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="مصدر الحوار">
                   {([
-                    ["make", "🎙️ أصنعه هنا", voicesOn ? "بأصوات JAWAD (ElevenLabs / MiniMax)" : "الأصوات غير مفعّلة على الخادم"],
+                    ["make", "🎙️ تتولّد هنا", voicesOn ? "بأصوات JAWAD (ElevenLabs / MiniMax)" : "الأصوات غير مفعّلة على الخادم"],
                     ["upload", "📁 من جهازي", "ملف MP3 أو WAV سويته بنفسك (مثلًا من حسابك في ElevenLabs)"],
                     ["none", "🔇 بدون", "الفيديو يتولد بلا حوار مرجعي"],
                   ] as const).map(([m, label, hint]) => (
@@ -639,6 +642,9 @@ export default function VideosWorkspace({
                     </button>
                   ))}
                 </div>
+                {dialogueSource && !dialog[g.id] && <p className="text-xs font-bold text-muted">حسب جوابك للسيناريست: {{ make: "الفويسات تتولّد هنا", upload: "من جهازك", self: "الفيديو يولّد الكلام بنفسه", later: "الحوار يُضاف في المونتاج" }[dialogueSource]} — تقدر تغيّره لهذا المقطع.</p>}
+                {modeOf(g) === "make" && voicesOn && <p className="text-xs font-bold text-muted">الفويسات تتولّد هنا بأصوات الجواد وتنحط <b>أصوات مرجعية</b> مع الفيديو، والشفايف تتحرك عليها.</p>}
+                {modeOf(g) === "upload" && <p className="text-xs font-bold text-muted">ملفك ينحط <b>صوت مرجعي</b> مع الفيديو، والشفايف تتحرك عليه.</p>}
                 {modeOf(g) === "none" && <p className="text-xs font-bold text-muted">الفيديو يتولد بدون حوار مرجعي؛ Seedance قد يولّد كلامًا من عنده حسب البرومبت.</p>}
                 {modeOf(g) === "upload" && (
                   <div className="space-y-2">
