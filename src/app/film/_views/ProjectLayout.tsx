@@ -7,6 +7,8 @@ import { memberRights } from "@/lib/film/team";
 import { rightsText } from "@/lib/film/team-rights";
 import FilmNav from "../[id]/FilmNav";
 import SajjadPanel from "../SajjadPanel";
+import ContinuityAlerts from "../series/ContinuityAlerts";
+import { openAlerts, readWatch } from "@/lib/film/watch";
 
 /** Every page of a film project shows the sections bar on top. */
 export default async function ProjectLayoutView({ id, base, children }: { id: string; base: string; children: React.ReactNode }) {
@@ -22,10 +24,12 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
     .eq("status", "approved");
   // a scene of «المسلسل الذكي»: the way back to its series and episode
   let scene: { href: string; text: string; team: { balance: number; rights: string | null } | null } | null = null;
+  // this scene's open continuity alerts from سجاد
+  let alerts: ReturnType<typeof openAlerts> = [];
   if (project.series_id && project.episode_id) {
     const db = createAdminClient();
     const [{ data: s }, { data: e }] = await Promise.all([
-      db.from("film_series").select("title,mode").eq("id", project.series_id).maybeSingle(),
+      db.from("film_series").select("title,mode,watch").eq("id", project.series_id).maybeSingle(),
       db.from("film_episodes").select("number").eq("id", project.episode_id).maybeSingle(),
     ]);
     // a team series: what is made here comes out of «نقود الفريق الذكي», and a member sees what they may do
@@ -35,6 +39,7 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
       team = { balance, rights: r ? rightsText(r) : null };
     }
     if (s) scene = { href: `${base}/series/${project.series_id}`, text: `📺 ${s.title} · الحلقة ${e?.number ?? "؟"} · المشهد ${project.scene_number ?? "؟"}`, team };
+    if (s) alerts = openAlerts(readWatch(s.watch), project.id);
   }
   return (
     <div className="space-y-5">
@@ -52,6 +57,9 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
         </div>
       )}
       <FilmNav projectId={id} stage={project.stage} videosOpen={Boolean(count)} />
+      {project.series_id && (alerts.length > 0 || project.stage !== "screenwriter") && (
+        <ContinuityAlerts seriesId={project.series_id} sceneId={id} sceneKind="film" canAct alerts={alerts.map((a) => ({ ...a }))} />
+      )}
       {children}
       {/* سجاد: the consultant, who knows this film (and its series) */}
       <SajjadPanel kind="film" id={id} />

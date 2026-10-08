@@ -5,6 +5,7 @@ import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anth
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
 import { readResearch, researchText } from "./research";
+import { watchAfterScreenplay } from "./watch";
 import {
   APP_INTEGRATION,
   KIND_ORDER,
@@ -135,6 +136,8 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
       if (v.kind === "handoff") {
         // The approved handoff unlocks the sheet maker
         await db().from("film_projects").update({ stage: "sheets" }).eq("id", project.id);
+        // a scene of a series: سجاد checks its continuity with the scenes around it
+        after(() => watchAfterScreenplay(project.id));
         return null;
       }
       userText = "اعتمد";
@@ -281,7 +284,10 @@ export async function runScriptJob(projectId: string, jobId: string) {
     if (error) throw error;
     // The reply joins the conversation only once its deliverable is stored, so a failure stays retryable
     await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: result.raw });
-    if (isHandoff) await client.from("film_projects").update({ stage: "sheets" }).eq("id", projectId);
+    if (isHandoff) {
+      await client.from("film_projects").update({ stage: "sheets" }).eq("id", projectId);
+      after(() => watchAfterScreenplay(projectId));
+    }
 
     await succeedJob(jobId, { costUsd: claudeCost(usage), units: totalTokens(usage) });
   } catch (err) {
