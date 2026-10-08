@@ -2,7 +2,7 @@
 // school, and their biographies — through the site's JSON API (the pages are drawn in the browser).
 
 import { htmlToText } from "../text";
-import { getJson, type ReadDoc, type Reader, type ReadStep } from "./types";
+import { getJson, unreachable, type ReadDoc, type Reader, type ReadStep } from "./types";
 
 const API = "https://dashboard.aqaed.net/api/v1";
 const PER_PAGE = 40;
@@ -61,14 +61,15 @@ export const aqaed: Reader = {
     while (ai < ARCHIVES.length && Date.now() < deadline) {
       const arc = ARCHIVES[ai];
       const r = await getJson<{ data?: Record<string, unknown>[]; meta?: { last_page?: number } }>(`${API}/${arc.path}/${PER_PAGE}?page=${page}`);
-      const items = r?.data ?? [];
+      if (!r) unreachable("واجهة مركز الأبحاث (dashboard.aqaed.net)");
+      const items = r.data ?? [];
       for (const x of items) {
         const id = Number(x.id);
         if (!id) continue;
         const d = arc.doc(x);
         if (d) docs.push({ url: arc.page(id), kind: arc.kind, title: d.title, text: d.text, meta: { site: "aqaed", ...d.meta } });
       }
-      const last = Number(r?.meta?.last_page ?? 0);
+      const last = Number(r.meta?.last_page ?? 0);
       if (!items.length || (last && page >= last)) {
         ai++;
         page = 1;

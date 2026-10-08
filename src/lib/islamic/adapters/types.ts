@@ -23,15 +23,27 @@ export interface Reader {
 
 export const UA = "JawadAI-IslamicLibrary/1.0 (+https://nahjali.com)";
 
-/** GET with a timeout; the body as text, or null when the site refused or failed. */
+/** Why the last fetch gave nothing (a status, or the failure), for the dashboard: a site that refuses us says so here. */
+export const fetchLog = { last: "" };
+
+/** GET with a timeout; the body as text, or null when the site refused or failed (the reason kept in fetchLog). */
 export async function get(url: string, accept = "text/html,application/json"): Promise<string | null> {
   try {
     const r = await fetch(url, { headers: { "user-agent": UA, accept, "accept-language": "ar" }, signal: AbortSignal.timeout(30_000), redirect: "follow" });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      fetchLog.last = `HTTP ${r.status} من ${new URL(url).hostname}`;
+      return null;
+    }
     return await r.text();
-  } catch {
+  } catch (e) {
+    fetchLog.last = `${e instanceof Error ? e.message : String(e)} (${new URL(url).hostname})`;
     return null;
   }
+}
+
+/** A site that gives nothing at all for a whole batch: the run stops and says why (the cursor never runs ahead). */
+export function unreachable(what: string): never {
+  throw new Error(`تعذّر الوصول إلى ${what}: ${fetchLog.last || "لا رد"}`);
 }
 
 export async function getJson<T>(url: string): Promise<T | null> {

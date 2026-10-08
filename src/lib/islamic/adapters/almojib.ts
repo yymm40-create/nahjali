@@ -2,7 +2,7 @@
 // through the site's own JSON API — the pages themselves are drawn in the browser and hold no text.
 
 import { ISLAMIC } from "@config/islamic";
-import { getJson, pool, type ReadDoc, type Reader, type ReadStep } from "./types";
+import { getJson, pool, unreachable, type ReadDoc, type Reader, type ReadStep } from "./types";
 
 const API = "https://api.almojib.com/api";
 const PER_PAGE = 40;
@@ -27,8 +27,9 @@ export const almojib: Reader = {
     let done = false;
     while (Date.now() < deadline) {
       const list = await getJson<{ outcome?: { data?: Listed[]; meta?: { last_page?: number } } }>(`${API}/faq/question/recommended?page=${page}&per_page=${PER_PAGE}`);
-      const items = list?.outcome?.data ?? [];
-      if (list?.outcome?.meta?.last_page) last = Number(list.outcome.meta.last_page);
+      if (!list) unreachable("واجهة المجيب (api.almojib.com)");
+      const items = list.outcome?.data ?? [];
+      if (list.outcome?.meta?.last_page) last = Number(list.outcome.meta.last_page);
       if (!items.length) {
         done = true;
         break;

@@ -3,7 +3,7 @@
 
 import { ISLAMIC } from "@config/islamic";
 import { mainText, pageTitle } from "../text";
-import { get, pool, sitemapUrls, type ReadDoc, type Reader, type ReadStep } from "./types";
+import { get, pool, sitemapUrls, unreachable, type ReadDoc, type Reader, type ReadStep } from "./types";
 
 /** The sitemaps read, in this order (their Arabic entries only): the hadith chapters — by far the largest — last. */
 const MAPS = ["duas", "surahs", "commentary-0", "commentary-1", "commentary-2", "chapters"];
@@ -18,7 +18,8 @@ export const thaqalayn: Reader = {
     const docs: ReadDoc[] = [];
     while (map < MAPS.length && Date.now() < deadline) {
       const xml = await get(`https://thaqalayn.com/sitemap/${MAPS[map]}.xml`, "application/xml,text/xml");
-      // a sitemap that isn't there (commentary-1…) is simply skipped
+      // a sitemap that isn't there (commentary-1…) is simply skipped; the main ones missing means the site refuses us
+      if (!xml && (MAPS[map] === "duas" || MAPS[map] === "chapters")) unreachable("خريطة موقع الثقلين");
       const urls = xml ? sitemapUrls(xml).filter((u) => u.includes("/ar/")) : [];
       if (at >= urls.length) {
         map++;
@@ -34,7 +35,9 @@ export const thaqalayn: Reader = {
         const title = pageTitle(html).replace(/\s*\|\s*الثقلين\s*$/, "");
         return { url, kind: kindOf(url), title, text, meta: { site: "thaqalayn", licence: "CC BY 4.0" } } as ReadDoc;
       });
-      docs.push(...read.filter((d): d is ReadDoc => d !== null));
+      const got = read.filter((d): d is ReadDoc => d !== null);
+      if (batch.length >= 8 && !got.length) unreachable("صفحات الثقلين");
+      docs.push(...got);
       at += batch.length;
     }
     const done = map >= MAPS.length;
