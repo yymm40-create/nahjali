@@ -11,6 +11,7 @@ export const SECTION_IMPLEMENTATIONS = {
   film: { label: "صناعة الفيلم بالخطوات (المسار القائم)", output: null },
   student: { label: "الطالب الذكي (مواد دراسية إلى ملخصات وكتب وعروض وصوت واختبارات)", output: null },
   editor: { label: "حيدرة كت (مونتاج الفيديو: قص وترتيب ونصوص وتصدير)", output: null },
+  islamic: { label: "الذكاء الإسلامي (أسئلة تُجاب من مكتبة المصادر التي يغذّيها المالك)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
 export const isImplementation = (s: string): s is SectionImplementation => s in SECTION_IMPLEMENTATIONS;
@@ -35,13 +36,15 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "editor", name: "حيدرة كت", icon: "scissors", implementation: "editor", sort: 35, enabled: true },
   { id: "audio", name: "صناعة الصوت", icon: "audio", implementation: "studio:audio", sort: 40, enabled: true },
   { id: "student", name: "الطالب الذكي", icon: "book", implementation: "student", sort: 50, enabled: true },
+  // in its private trial: the page itself opens for the owner only (src/app/jawad-ai/islamic)
+  { id: "islamic", name: "الذكاء الإسلامي", icon: "sparkles", implementation: "islamic", sort: 60, enabled: false },
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["admin", "login", "username", "coins", "api", "works", "film", "student", "editor"];
+export const RESERVED_SECTION_IDS = ["admin", "login", "username", "coins", "api", "works", "film", "student", "editor", "islamic"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic"];
 
 /** Where a section opens. The film maker, «الطالب الذكي» and «حيدرة كت» keep their own pages; studio sections open at /jawad-ai/<id>. */
 export const sectionPath = (s: { id: string; implementation: string }) =>
