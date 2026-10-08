@@ -9,6 +9,7 @@ import { editCast, generateCast, removeCast, upsertCast } from "@/lib/film/serie
 import { applyPlan, confirmScene, dropPlan, sceneUnderstand } from "@/lib/film/sajjad";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assembleEpisode } from "@/lib/editor/episode";
+import { setAlert, watchScene } from "@/lib/film/watch";
 
 export const maxDuration = 60;
 
@@ -48,6 +49,12 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
       return NextResponse.json({ ok: true });
     case "cast_generate":
       await generateCast(series, user, b.castId);
+      return NextResponse.json({ ok: true });
+    // «رقابة الاستمرارية»: سجاد checks one scene now; an alert is marked done / dismissed / open again
+    case "watch_scene":
+      return NextResponse.json({ alerts: await watchScene(series, String(b.sceneId ?? ""), user) });
+    case "alert_status":
+      await setAlert(series, b.alertId, b.status);
       return NextResponse.json({ ok: true });
     case "apply_plan":
       return NextResponse.json(await applyPlan(series, user.id));

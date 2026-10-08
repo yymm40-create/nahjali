@@ -34,6 +34,8 @@ export interface FilmSeries {
   pending_plan?: SeriesPlan | null;
   /** «بحث سجاد»: the start's answer and the findings (lib/film/research.ts; migration 0037) */
   research?: unknown;
+  /** «رقابة الاستمرارية»: سجاد's alerts between scenes (lib/film/watch.ts; migration 0038) */
+  watch?: unknown;
   created_at: string;
   updated_at: string;
 }

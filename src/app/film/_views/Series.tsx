@@ -6,6 +6,8 @@ import { canEditBible, episodesOf, membersOf, openSeries, scenesOf, teamWallet, 
 import { castLinks, castOf } from "@/lib/film/series-cast";
 import SeriesGround from "../series/SeriesGround";
 import SajjadPanel from "../SajjadPanel";
+import ContinuityAlerts from "../series/ContinuityAlerts";
+import { openAlerts, readWatch } from "@/lib/film/watch";
 import { memberRights } from "@/lib/film/team";
 import TeamWallet from "../series/TeamWallet";
 import { FILM_STAGES } from "@config/film";
@@ -60,6 +62,15 @@ export default async function SeriesView({ id, base }: { id: string; base: strin
         bible={series.bible ?? ""}
         style={series.style ?? ""}
         cast={cast.map((c) => ({ id: c.id, kind: c.kind, name: c.name, description: c.description, status: c.status, error: c.error, url: links[c.id] ?? null }))}
+      />
+
+      {/* «رقابة الاستمرارية»: سجاد's open alerts between the scenes, and «🔍 افحص» any scene */}
+      <ContinuityAlerts
+        seriesId={series.id}
+        sceneKind="series"
+        canAct={canEdit}
+        alerts={openAlerts(readWatch(series.watch)).map((a) => ({ ...a }))}
+        scenes={episodes.flatMap((e) => (scenes.get(e.id) ?? []).map((s) => ({ id: s.id, label: `الحلقة ${e.number} · المشهد ${s.number} «${s.title}»` })))}
       />
 
       <SeriesBoard
