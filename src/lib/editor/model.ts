@@ -149,6 +149,7 @@ export const hasSoundFx = (c: { sound: SoundFx | null }) => !!c.sound && (c.soun
 export const ANIMS = {
   fade: { label: "ظهور", icon: "◐", ms: 400 },
   pop: { label: "نبضة", icon: "💥", ms: 380 },
+  settle: { label: "استقرار", icon: "🎯", ms: 280 },
   punch: { label: "زووم قوي", icon: "⚡", ms: 280 },
   blur: { label: "ضباب", icon: "🌫️", ms: 500 },
   rise: { label: "صعود", icon: "⬆️", ms: 450 },
@@ -219,6 +220,13 @@ function animStep(k: AnimKind, p: number, l: AnimLook, ms: number, entering: boo
       l.scale *= Math.max(0.001, outBack(q));
       l.alpha *= Math.min(1, q * 3);
       break;
+    case "settle": {
+      // from 0.94 with the fade, a strong ease-out and no overshoot (majed-video's rule: never bounce, never from zero)
+      const e = 1 - (1 - q) ** 4;
+      l.scale *= 0.94 + 0.06 * e;
+      l.alpha *= Math.min(1, q * 2.5);
+      break;
+    }
     case "punch":
       l.scale *= 1 + 0.6 * (1 - outExpo(q));
       l.alpha *= Math.min(1, q * 4);

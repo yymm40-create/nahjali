@@ -15,7 +15,8 @@ import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { TR_LIST } from "./transitions";
 import { MOTION_SKILL } from "./motion";
-import { lintMotion, motionCommands, readStoryboard } from "./motion-build";
+import { MAJED_SKILL } from "./majed";
+import { lintMotion, motionCommands, readStoryboard, storyboardNumbers } from "./motion-build";
 import { applyAll } from "./commands";
 import { COMMANDS_GUIDE } from "./assistant-commands";
 import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
@@ -95,7 +96,7 @@ RULES:
 - Times must be inside the clips you touch. Work from the end of the timeline backwards when an earlier change would shift later times, or prefer remove_ranges.
 - Silences: remove the "quiet" spans longer than about 0.7 s, keeping about 0.15 s of air on each side.
 - A full edit from the library: order the media sensibly (story, then energy), trim long clips to their best part, keep the main track magnetic, add soft transitions, a title at the start when it fits, and duck music under speech.
-- CAPTIONS — do them yourself, never send the person to a button: {"kind":"captions","lang":"ar","captionStyle":...,"clipId":"" (or one clip to caption only it),"poem":"" (or the verses to time on clipId's recitation),"then":[...]}. The page listens to the clips, writes the captions on a new caption track, then runs your "then" commands on it — so one answer does the whole job the person asked for: e.g. «سوّ كابشن وحط لهم دخولية وخروج واختر خط مناسب» → captions with then [{"type":"style_track","trackId":"$CAPTIONS","text":{"font":"<a font id that fits the video's mood>","weight":900,"size":0.06},"y":0.72}, {"type":"update_clip","clipId":"$EACH","patch":{"anim":{"in":"pop","out":"fade","inMs":250,"outMs":200}}}]. Pick fonts, colours, sizes and animations that suit the content (a religious recitation: naskh/amiri, calm fade; a fast reel: bold kufi/cairo, pop or punch; words «words» for word-by-word). Say in the reply what you chose and why, briefly. Exporting is the «صدّر» button (the person presses it).
+- CAPTIONS — do them yourself, never send the person to a button: {"kind":"captions","lang":"ar","captionStyle":...,"clipId":"" (or one clip to caption only it),"poem":"" (or the verses to time on clipId's recitation),"then":[...]}. The page listens to the clips, writes the captions on a new caption track, then runs your "then" commands on it — so one answer does the whole job the person asked for: e.g. «سوّ كابشن وحط لهم دخولية وخروج واختر خط مناسب» → captions with then [{"type":"style_track","trackId":"$CAPTIONS","text":{"font":"<a font id that fits the video's mood>","weight":900,"size":0.06},"y":0.72}, {"type":"update_clip","clipId":"$EACH","patch":{"anim":{"in":"settle","out":"fade","inMs":220,"outMs":160}}}]. Pick fonts, colours, sizes and animations that suit the content (a religious recitation: naskh/amiri, calm fade; a fast reel: bold kufi/cairo, settle or punch (pop bounces: only when asked); words «words» for word-by-word). Say in the reply what you chose and why, briefly. Exporting is the «صدّر» button (the person presses it).
 - DO THE WHOLE JOB: when a request has several steps (make something, then place, style, animate, colour, mix it), do them all in this one answer — commands first, then requests, and the requests' own follow-ups — instead of telling the person what to press next.
 - «نص الهوك» (a hook text: whenever the person asks for a hook, a hook text or a title hook): it is designed as one piece — the picture of the words (GPT Image 2), its entrance and exit, and two sound effects — by the hook designer, from {"kind":"hook_design","text":...,"lang":...,"domain":...,"age":...,"at":0}. It needs five inputs: the hook text (exactly as given — you never write or change it), its language, the orientation (the project's shape: you know it, never ask), the field or project, and the audience age. If any is missing, ask ONE short grouped question for the missing ones only (mention reference pictures are optional) and send no request. Once they are all there, send the request and reply only that the design is on its way (the designer's delivery follows).
 - MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost). Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
@@ -115,7 +116,9 @@ TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
 ${KNOW_HOW}
 
-${MOTION_SKILL}`;
+${MOTION_SKILL}
+
+${MAJED_SKILL}`;
 
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
 function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
@@ -277,6 +280,10 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     if (!all.error) {
       valid = all.cmds;
       motionNote = `\n\n🎬 رتّبت ${sb.beats.length} لقطات بلوحة «${built.palette.ar}» (${Math.round((built.endMs - (sb.at ?? 0)) / 1000)} ث): كل نص بمقاسه ومكانه وتوقيته بدون تداخل، وكل شي قابل للتعديل.`;
+      // «قائمة الحقائق»: the numbers that will be on screen, shown to the person (the ones not in their words marked)
+      const said = [message, ...history.filter((h) => h.role === "user").map((h) => (typeof h.content === "string" ? h.content : ""))].join("\n");
+      const facts = storyboardNumbers(sb, said);
+      if (facts.all.length) motionNote += `\n🔢 الأرقام اللي بتطلع على الشاشة: ${facts.all.join("، ")}${facts.unsourced.length ? ` — ⚠️ ما لقيت ${facts.unsourced.join("، ")} في كلامك، تأكد منها` : ""}. صح؟`;
     } else motionNote = `\n\n(ما قدرت أبني الموشن: ${all.error.message})`;
   } else if (answer.motion?.trim()) motionNote = "\n\n(الستوري بورد ما انقرأ؛ اطلبها مرة ثانية.)";
   // the texts this answer placed by hand: checked like the engine's (overlaps, long lines, contrast, safe area)
