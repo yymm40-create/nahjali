@@ -155,6 +155,8 @@ export function previewShot(): string | null {
 /** Everything gathered for one diagnosis. */
 export async function diagReport(app: Record<string, unknown>) {
   return {
+    // the build this open page runs (it can be older than the server's when the page stayed open through a deploy)
+    pageBuild: process.env.NEXT_PUBLIC_BUILD ?? "dev",
     openForSec: started ? Math.round((performance.now() - started) / 1000) : 0,
     device: await device(),
     app,
