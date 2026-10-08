@@ -36,5 +36,27 @@ export function directorProblems(out: DirectorOutput, names: readonly string[]):
   return p;
 }
 
+/**
+ * The last answer after the retries, repaired where a machine can do it safely, instead of failing the whole edit:
+ * the skill's <<<image_n>>> labels become the references' @names (in the order they are sent), and an @name that is
+ * not a reference loses its «@». What remains (a prompt over the owner's length guide, Arabic in a spoken line) is
+ * accepted: the generator reads long prompts and Arabic, and a working edit beats a refusal. Only an empty prompt is
+ * hopeless (null).
+ */
+export function salvageDirector(out: DirectorOutput, names: readonly string[]): DirectorOutput | null {
+  const fix = (t: unknown) => {
+    let text = typeof t === "string" ? t.trim() : "";
+    text = text.replace(/<<<\s*(image|video|audio)_(\d+)\s*>>>/gi, (m, _k, n) => (names[Number(n) - 1] ? `@${names[Number(n) - 1]}` : ""));
+    for (const m of findMentions(text).reverse()) {
+      if (looksLikeRef(m.name) && !names.some((n) => sameName(n, m.name))) text = text.slice(0, m.start) + m.name + text.slice(m.end);
+    }
+    return text;
+  };
+  const en = fix(out.en);
+  const zh = fix(out.zh);
+  if (!en && !zh) return null;
+  return { en: en || zh, zh: zh || en };
+}
+
 /** The prompt put in the studio's prompt box: English, then Chinese. */
 export const directorPrompt = (out: DirectorOutput) => `${out.en.trim()}\n\n${out.zh.trim()}`;
