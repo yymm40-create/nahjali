@@ -6,6 +6,19 @@ import { api, postJson } from "@/lib/fetch";
 
 type Msg = { role: "user" | "sajjad"; text: string; at: string; username?: string | null; questions?: { question: string; options: string[] }[]; changes?: string[] };
 type Plan = { note: string; episodes: { number: number; title: string; summary: string; scenes: { title: string; brief: string; assignee: string }[] }[] };
+type Finding = { id: string; title: string; text: string; sources: string[]; status: "pending" | "approved" | "dropped"; scope: string };
+type Research = { asked?: "yes" | "no"; items: Finding[] };
+
+/** The opening when the person said yes to research at the start: سجاد asks for the scope (no cost until they send). */
+const RESEARCH_HELLO = "قلت لي تبيني أبحث لتطوير القصة 🔎 حدّد لي نطاق البحث: وش أبحث عنه بالضبط؟ (الزمن والمكان، أحداث حقيقية، عادات، كيف يصير شي معيّن…) أو اكتب «ابحث» وأنا أختار النطاق من القصة. النتائج تجيك كروت، تعتمد اللي يعجبك وتحذف الباقي.";
+
+const host = (s: string) => {
+  try {
+    return new URL(s).hostname.replace(/^www\./, "");
+  } catch {
+    return s.slice(0, 40);
+  }
+};
 
 /** Opens سجاد from anywhere on the page, optionally with a message ready to send. */
 export function openSajjad(text?: string) {
@@ -25,6 +38,8 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
   const [messages, setMessages] = useState<Msg[]>([]);
   const [canEdit, setCanEdit] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [research, setResearch] = useState<Research>({ items: [] });
+  const [canDecide, setCanDecide] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -38,18 +53,34 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
       if (t) setText(t);
     };
     window.addEventListener("sajjad:open", on);
+    // just made with «نعم، ابحث»: سجاد opens by himself and asks for the scope
+    const wantsResearch = new URLSearchParams(window.location.search).get("research") === "1";
+    if (wantsResearch) {
+      window.history.replaceState(null, "", window.location.pathname);
+      const t = setTimeout(() => {
+        setOpen(true);
+        setText("ابحث لي عن: ");
+      }, 0);
+      return () => {
+        clearTimeout(t);
+        window.removeEventListener("sajjad:open", on);
+      };
+    }
     return () => window.removeEventListener("sajjad:open", on);
   }, []);
 
   useEffect(() => {
     if (!open || loaded) return;
     let live = true;
-    api<{ messages: Msg[]; canEdit: boolean; plan: Plan | null }>(`/api/film/sajjad?kind=${kind}&id=${id}`)
+    api<{ messages: Msg[]; canEdit: boolean; plan: Plan | null; research?: Research; canDecide?: boolean }>(`/api/film/sajjad?kind=${kind}&id=${id}`)
       .then((r) => {
         if (!live) return;
-        setMessages(r.messages);
+        const first = !r.messages.length && r.research?.asked === "yes";
+        setMessages(first ? [{ role: "sajjad", text: RESEARCH_HELLO, at: new Date().toISOString() }] : r.messages);
         setCanEdit(r.canEdit);
         setPlan(r.plan);
+        setResearch(r.research ?? { items: [] });
+        setCanDecide(Boolean(r.canDecide));
         setLoaded(true);
       })
       .catch((e) => live && setError((e as Error).message));
@@ -71,9 +102,10 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
     setText("");
     setAnswers({});
     try {
-      const r = await postJson<{ message: Msg; changes: string[]; plan: Plan | null }>("/api/film/sajjad", { kind, id, text: body });
+      const r = await postJson<{ message: Msg; changes: string[]; plan: Plan | null; research: Research | null }>("/api/film/sajjad", { kind, id, text: body });
       setMessages((m) => [...m, r.message]);
       if (r.plan) setPlan(r.plan);
+      if (r.research) setResearch(r.research);
       if (r.changes.length) router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -97,6 +129,22 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
       setBusy(false);
     }
   };
+  // «اعتمد» / «احذف» on سجاد's findings: the approved ones enter the work (the screenwriter reads them)
+  const decide = async (approve: string[], drop: string[]) => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await postJson<{ research: Research }>("/api/film/sajjad", { kind, id, action: "research", approve, drop });
+      setResearch(r.research);
+      if (approve.length) router.refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pending = research.items.filter((f) => f.status === "pending");
+  const approved = research.items.filter((f) => f.status === "approved").length;
   const last = messages.at(-1);
   const questions = last?.role === "sajjad" ? (last.questions ?? []) : [];
   const answerAll = () => send(questions.map((q, i) => `${q.question}\n← ${answers[i]?.trim() || "(ما قررت بعد)"}`).join("\n\n"));
@@ -162,6 +210,41 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
                 </div>
               )}
 
+              {pending.length > 0 && (
+                <div className="space-y-2 rounded-2xl border-2 border-[#16a34a] bg-white p-3 text-sm" aria-label="نتائج بحث سجاد">
+                  <p className="font-black">🔎 نتائج البحث ({pending.length})</p>
+                  <p className="text-xs font-bold text-muted">{canDecide ? "اعتمد اللي يفيد القصة وهو يدخل في الشغل (السيناريست يقراه)، واحذف الباقي." : "اعتمادها لقائد المسلسل أو اللي عنده صلاحية «📖»."}</p>
+                  {pending.map((f) => (
+                    <article key={f.id} className="space-y-1 rounded-xl bg-[#f0fdf4] p-2">
+                      <p className="font-extrabold">{f.title}</p>
+                      <p className="whitespace-pre-wrap text-xs font-bold leading-6">{f.text}</p>
+                      {f.sources.length > 0 && (
+                        <p className="truncate text-[11px] font-bold text-muted" dir="ltr">
+                          {f.sources.slice(0, 3).map((s, i) => (
+                            <a key={s} href={s} target="_blank" rel="noreferrer" className="underline">
+                              {i ? " · " : ""}{host(s)}
+                            </a>
+                          ))}
+                        </p>
+                      )}
+                      {canDecide && (
+                        <div className="flex gap-2 pt-1">
+                          <button type="button" className="btn btn-primary min-h-9 flex-1 text-xs" disabled={busy} onClick={() => decide([f.id], [])}>اعتمده ✅</button>
+                          <button type="button" className="btn btn-ghost min-h-9 px-3 text-xs" disabled={busy} onClick={() => decide([], [f.id])}>احذفه</button>
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                  {canDecide && pending.length > 1 && (
+                    <div className="flex gap-2">
+                      <button type="button" className="btn btn-secondary min-h-9 flex-1 text-xs" disabled={busy} onClick={() => decide(pending.map((f) => f.id), [])}>اعتمد الكل</button>
+                      <button type="button" className="btn btn-ghost min-h-9 px-3 text-xs" disabled={busy} onClick={() => decide([], pending.map((f) => f.id))}>احذف الكل</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {approved > 0 && !pending.length && loaded && <p className="text-center text-[11px] font-extrabold text-[#16a34a]">✅ {approved} نتائج بحث معتمدة داخلة في الشغل</p>}
+
               {plan && canEdit && (
                 <div className="space-y-2 rounded-2xl border-2 border-[#1f63f0] bg-white p-3 text-sm">
                   <p className="font-black">📋 الخطة المقترحة</p>
@@ -200,7 +283,7 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
                 className="field min-h-12 flex-1 resize-none text-sm"
                 rows={2}
                 maxLength={6000}
-                placeholder={kind === "series" && canEdit ? "اكتب وصف المسلسل، أو اسأل، أو اطلب: «اقترح الشخصيات» «رتّب الحلقات والمشاهد ووزّع الشغل»" : "اسأل سجاد أي شي عن الشغل…"}
+                placeholder={kind === "series" && canEdit ? "اكتب وصف المسلسل، أو اسأل، أو اطلب: «اقترح الشخصيات» «ابحث لي عن…» «رتّب الحلقات والمشاهد ووزّع الشغل»" : "اسأل سجاد أي شي عن الشغل، أو «ابحث لي عن…»"}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {

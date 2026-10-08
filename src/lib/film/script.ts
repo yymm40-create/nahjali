@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
+import { readResearch, researchText } from "./research";
 import {
   APP_INTEGRATION,
   KIND_ORDER,
@@ -53,6 +54,9 @@ export function storyMessage(p: FilmProject) {
   const parts = [`عنوان المشروع: ${p.title}`, "", p.story];
   if (p.fixed_facts) parts.push("", "أشياء ثابتة لا تتغير:", p.fixed_facts);
   if (p.target_duration_sec) parts.push("", `مدة تقريبية: ${p.target_duration_sec} ثانية`);
+  // what سجاد found and the person approved
+  const research = researchText(readResearch(p.research));
+  if (research) parts.push("", research);
   return parts.join("\n");
 }
 

@@ -13,6 +13,8 @@ export interface FilmProject {
   series_id?: string | null;
   episode_id?: string | null;
   scene_number?: number | null;
+  /** «بحث سجاد»: the start's answer and the findings (lib/film/research.ts; migration 0037) */
+  research?: unknown;
   created_at: string;
   updated_at: string;
 }
