@@ -242,9 +242,19 @@ export default function AssistantPanel({
     }
   };
   /** Sends a request; resolves with حيدرة's reply (null when nothing was answered). `spoken`: said by voice. */
+  // one request at a time: a second Enter (or a click) before the page shows «busy» used to send it twice
+  const sendingRef = useRef(false);
   const send = async (words = text, spoken = false): Promise<string | null> => {
     const message = words.trim();
-    if (!message || busy || readOnly) return null;
+    if (!message || busy || readOnly || sendingRef.current) return null;
+    sendingRef.current = true;
+    try {
+      return await sendNow(message, spoken);
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+  const sendNow = async (message: string, spoken: boolean): Promise<string | null> => {
     let reply: string | null = null;
     setText("");
     const history = msgs.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
@@ -649,7 +659,7 @@ export default function AssistantPanel({
           placeholder={diag && diagOn ? "🩺 وش صار؟ مثلًا: ليش التصدير وقف؟" : "مثلًا: قص السكتات وحط كابشن"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void send();
             }
