@@ -130,6 +130,30 @@ export async function setCast(project: FilmProject, userId: string, speaker: unk
   if (error) throw error;
 }
 
+/**
+ * «عدّل النص»: the person corrects a line's words or diacritics before it is spoken. The line is changed in the
+ * approved generation itself (so the voice, the video's prompt and the montage all read the same words); its old
+ * audio no longer matches and is made again.
+ */
+export async function editLine(project: FilmProject, key: unknown, text: unknown) {
+  const line = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 1000);
+  if (line.length < 1) throw new UserError("اكتب الجملة.", 400);
+  const m = /^(GEN-\d{2,3}):(\d{1,3})$/.exec(String(key ?? ""));
+  if (!m) throw new UserError("طلب غير صحيح.", 400);
+  const versions = await directorVersions(project.id);
+  const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === m[1] && x.status === "approved").at(-1);
+  const list = [...(v?.data.dialogue_ar ?? [])].filter((d) => d.line?.trim());
+  const i = Number(m[2]);
+  if (!v || !list[i]) throw new UserError("ما لقينا هذه الجملة؛ ربما تغيّر التوليد.", 404);
+  const old = list[i].line.trim();
+  list[i] = { ...list[i], line };
+  // the same words in the video's prompt follow the change
+  const prompt = typeof v.data.prompt === "string" ? v.data.prompt.split(old).join(line) : v.data.prompt;
+  const { error } = await db().from("film_versions").update({ data: { ...v.data, dialogue_ar: list, prompt } }).eq("id", v.id);
+  if (error) throw error;
+  return { key: `${m[1]}:${i}`, line };
+}
+
 /** Speaks one line with its speaker's voice (Eleven v4) and keeps it with the project. */
 /** The feeling asked for, as Eleven v4 reads it: one short word or phrase between [ ] (e.g. [whispers], [excited]). */
 export const cleanEmotion = (v: unknown) => String(v ?? "").replace(/[\[\]\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);

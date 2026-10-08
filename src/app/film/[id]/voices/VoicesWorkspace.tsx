@@ -37,6 +37,22 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [feel, setFeel] = useState<Record<string, string>>({});
+  // «عدّل النص»: a line being corrected (its words or diacritics) before it is spoken
+  const [editing, setEditing] = useState<{ key: string; text: string } | null>(null);
+  async function saveLine() {
+    if (!editing) return;
+    setBusy(editing.key);
+    setError("");
+    try {
+      await postJson(url, { action: "edit_line", key: editing.key, text: editing.text });
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   const load = useCallback(() => api<State>(url).then(setS).catch((e: Error) => setError(e.message)), [url]);
   useEffect(() => {
@@ -139,7 +155,21 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
               const stale = a && a.text !== l.line;
               return (
                 <li key={l.key} className="space-y-2 rounded-2xl border border-line p-3" data-line={l.key}>
-                  <p className="text-sm"><span className="font-extrabold">{l.speaker}:</span> <span dir="rtl">{l.line}</span></p>
+                  {editing?.key === l.key ? (
+                    <div className="space-y-2">
+                      <textarea className="field min-h-20 text-base leading-8" dir="rtl" value={editing.text} maxLength={1000} onChange={(e) => setEditing({ key: l.key, text: e.target.value })} />
+                      <p className="text-xs font-bold text-muted">صحّح الكلمات أو الحركات كما تبي تنقال (آخر حرف بدون حركة). يتعدّل في البرومبت وصوته ينصنع من جديد.</p>
+                      <div className="flex gap-2">
+                        <button type="button" className="btn btn-primary min-h-9 flex-1 text-sm" disabled={Boolean(busy) || !editing.text.trim()} onClick={() => void saveLine()}>احفظ ✅</button>
+                        <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => setEditing(null)}>إلغاء</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm">
+                      <span className="font-extrabold">{l.speaker}:</span> <span dir="rtl" className="text-base leading-8">{l.line}</span>{" "}
+                      <button type="button" className="text-xs font-extrabold text-muted underline" disabled={Boolean(busy)} onClick={() => setEditing({ key: l.key, text: l.line })}>✏️ عدّل النص</button>
+                    </p>
+                  )}
                   <EmotionPicker provider={s?.voices.find((v) => v.value === s?.cast[l.speaker])?.provider ?? "elevenlabs"} value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(busy)} />
                   {a?.url && <audio controls preload="none" src={a.url} className="w-full" />}
                   {stale && <p className="text-xs font-bold text-muted">تغيّرت الجملة بعد توليد صوتها؛ ولّدها من جديد.</p>}

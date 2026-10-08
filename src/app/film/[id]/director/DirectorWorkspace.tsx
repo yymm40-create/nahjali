@@ -279,14 +279,27 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
           warning={mapV.status === "approved" ? "الخريطة معتمدة. تعديلها ممكن يضيف أو يحذف توليدات أو يغيّر مددها؛ اللي اعتمدته يظل محفوظ، والمخرج يوضح وش يتأثر." : undefined}
         >
           {(mapV.data.generation_map ?? []).length > 0 && (
-            <ul className="space-y-1 text-sm font-bold">
-              {(mapV.data.generation_map ?? []).map((g) => (
-                <li key={g.id} className="flex justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2">
-                  <span>{g.id} · {g.name}</span>
-                  <span dir="ltr">{g.duration_sec}s</span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <p className="text-sm font-bold text-muted">
+                {(mapV.data.generation_map ?? []).length} توليدات · المجموع <span dir="ltr">{(mapV.data.generation_map ?? []).reduce((n, g) => n + (g.duration_sec || 0), 0)}s</span>
+              </p>
+              <ol className="grid gap-2 sm:grid-cols-2">
+                {(mapV.data.generation_map ?? []).map((g) => (
+                  <li key={g.id} className="space-y-1.5 rounded-2xl border border-line bg-surface-2 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-extrabold">🎬 {g.id} · {g.name}</p>
+                      <span className="chip text-xs" dir="ltr">{g.duration_sec}s</span>
+                    </div>
+                    {g.summary && <p className="font-bold leading-6">{g.summary}</p>}
+                    {(g.characters ?? []).length > 0 && (
+                      <ul className="space-y-0.5 text-xs font-bold text-muted">
+                        {(g.characters ?? []).map((c, i) => <li key={i}>🧑 {c}</li>)}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
         </StepCard>
       )}

@@ -111,6 +111,8 @@ export default function VideosWorkspace({
   const router = useRouter();
   const filmBase = useFilmBase();
   const [resolution, setResolution] = useState<VideoResolution>(DEFAULT_VIDEO_RESOLUTION);
+  // «اكتب الكلام العربي في البرومبت»: on = the lines are written in the prompt too; off = from the voices only
+  const [arabicInPrompt, setArabicInPrompt] = useState(true);
   // Orientation for every video: the director's choice by default (the most common one in the approved generations)
   const [ratio, setRatio] = useState<"16:9" | "9:16">(() =>
     generations.filter((g) => g.ratio === "9:16").length > generations.length / 2 ? "9:16" : "16:9",
@@ -254,7 +256,7 @@ export default function VideosWorkspace({
   const allSpoken = (g: Generation) => g.lines.every((l) => spokenOf(g, l.key));
   /** the shot's dialogue is ready to ride with the video: all its lines spoken, or the person's own file there */
   const dialogueReady = (g: Generation) => (modeOf(g) === "upload" ? Boolean(trackOf(g)) : allSpoken(g));
-  const voiceChoice = (g: Generation) => ({ useVoices: sendVoices(g) && dialogueReady(g), voiceSource: modeOf(g) === "upload" ? ("upload" as const) : ("make" as const) });
+  const voiceChoice = (g: Generation) => ({ useVoices: sendVoices(g) && dialogueReady(g), voiceSource: modeOf(g) === "upload" ? ("upload" as const) : ("make" as const), arabicInPrompt });
   async function castVoice(speaker: string, value: string) {
     setVoiceError("");
     setVoice((x) => (x ? { ...x, cast: { ...x.cast, [speaker]: value } } : x));
@@ -307,7 +309,7 @@ export default function VideosWorkspace({
       useVoices = true;
     }
     const sec = secOf(g);
-    await send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices, voiceSource: voiceChoice(g).voiceSource });
+    await send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices, voiceSource: voiceChoice(g).voiceSource, arabicInPrompt });
   }
   const runningNow = videos.filter((v) => v.status === "generating").length;
   const notStarted = generations.filter((g) => !videos.some((v) => v.ref_key === g.id && v.status !== "rejected" && v.status !== "failed") && !g.questions && !g.revision);
@@ -483,6 +485,16 @@ export default function VideosWorkspace({
       </section>
 
       <section className="card space-y-3 p-4">
+        {generations.some((g) => g.lines.length > 0) && (
+          <div className="space-y-1.5 rounded-2xl bg-surface-2 p-3">
+            <p className="text-sm font-extrabold">الحوار العربي في البرومبت؟</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" aria-pressed={arabicInPrompt} className={`btn min-h-10 px-2 text-xs ${arabicInPrompt ? "btn-secondary" : "btn-ghost"}`} onClick={() => setArabicInPrompt(true)}>✍️ نكتبه بالعربي المشكول + الصوت مرجع</button>
+              <button type="button" aria-pressed={!arabicInPrompt} className={`btn min-h-10 px-2 text-xs ${!arabicInPrompt ? "btn-secondary" : "btn-ghost"}`} onClick={() => setArabicInPrompt(false)}>🎙️ من الصوت فقط (ما نكتبه)</button>
+            </div>
+            <p className="text-xs font-bold text-muted">جرّب الجهتين: الكلام مكتوب في البرومبت يساعد النموذج يفهم مين يتكلم، وبدونه يعتمد على ملف الصوت المرفق بس. ما ينكتب شي على الشاشة في الحالتين.</p>
+          </div>
+        )}
         <h2 className="text-lg font-extrabold">جودة الفيديو</h2>
         <div className="grid grid-cols-3 gap-2">
           {RESOLUTIONS.map((r) => (

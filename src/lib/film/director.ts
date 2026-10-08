@@ -43,7 +43,7 @@ interface Reply {
   suggestion: string;
   notes: string;
   questions: { question: string; options: string[] }[];
-  generation_map: { id: string; name: string; duration_sec: number }[];
+  generation_map: { id: string; name: string; duration_sec: number; summary?: string; characters?: string[] }[];
   gen_id: string;
   prompt: string;
   references: { name: string; role: string }[];
@@ -181,12 +181,14 @@ export type DirectorAction =
   | { action: "remove_voice_upload"; genId: string };
 
 /** The client's choices on the generation page (each wins over the director's plan). */
-type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel; useVoices?: boolean; voiceSource?: "make" | "upload" };
+type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel; useVoices?: boolean; voiceSource?: "make" | "upload"; arabicInPrompt?: boolean };
 const readChoice = (c: VideoChoice) => ({
   // «الأصوات قبل الفيديو»: the generation's spoken lines go with the request as reference audio — made here, or the
   // person's own recording («من جهازي»)
   useVoices: c.useVoices === true,
   voiceSource: c.voiceSource === "upload" ? ("upload" as const) : ("make" as const),
+  // «اكتب الكلام العربي في البرومبت»: on by default; off = the dialogue comes from the attached voices only
+  arabicInPrompt: c.arabicInPrompt !== false,
   resolution: VIDEO_OPEN_RESOLUTIONS.includes(c.resolution) ? c.resolution : DEFAULT_VIDEO_RESOLUTION,
   ratio: c.ratio === "9:16" || c.ratio === "16:9" ? c.ratio : undefined,
   seconds: c.durationSec ? clampVideoSeconds(Number(c.durationSec)) : undefined,
@@ -339,7 +341,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
       const c = readChoice(input);
-      const started = await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices, c.voiceSource);
+      const started = await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices, c.voiceSource, c.arabicInPrompt);
       return { jobId: null, warning: started.warning };
     }
 
@@ -449,7 +451,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       readyForVideo(v, lib);
       await setApproved(v, versions);
       const c = readChoice(input);
-      const started = await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model, c.useVoices, c.voiceSource);
+      const started = await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model, c.useVoices, c.voiceSource, c.arabicInPrompt);
       const id = await addUserMessage(project.id, "اعتمد");
       return { jobId: await queueReply(project, user, id), warning: started.warning };
     }
@@ -574,19 +576,27 @@ function videoRefs(v: DirectorVersion, lib: Record<string, FilmAsset>, chosen?: 
 export const refsFullWarning = (o: { dropped: string[]; max: number; model: VideoModel }) =>
   o.dropped.length ? `⚠️ المراجع ممتلئة: ${VIDEO_MODELS[o.model].label} يقبل ${o.max} صور مرجعية بس، فما انرسل: ${o.dropped.join("، ")}. اطلب من المخرج يقلّلها أو يدمجها لو تبيها كلها.` : undefined;
 
+/** «الحوار من الصوت فقط»: every quoted line written in Arabic is replaced by a pointer to the attached dialogue audio. */
+export function withoutSpokenArabic(prompt: string) {
+  return prompt.replace(/"[^"\n]*"|“[^”\n]*”|«[^»\n]*»/gu, (q) => (ARABIC.test(q) ? "(the line spoken in the attached dialogue audio)" : q));
+}
+
 /** The prompt and references a generation sends to Seedance; throws a clear message if it cannot be sent. */
 function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>, chosen?: VideoModel) {
   const prompt = videoPrompt(v.data.prompt ?? "");
   if (!prompt) throw new UserError("برومبت هذا التوليد فاضي.", 409);
-  if (ARABIC.test(prompt)) throw new UserError("البرومبت فيه حروف عربية؛ اطلب من المخرج يكتب الحوار بحروف لاتينية.", 409);
+  // the spoken lines are written in Arabic (diacritized); Seedance 2.0 reads only a few languages
+  if (ARABIC.test(prompt) && (chosen ?? v.data.video_model) === "seedance-2.0") throw new UserError("الحوار مكتوب بالعربي، وSeedance 2.0 ما يدعم العربي رسميًا؛ اختر Seedance 2.5، أو «الحوار من الصوت فقط».", 409);
   const r = videoRefs(v, lib, chosen);
   return { prompt, refs: r.refs, warning: refsFullWarning(r) };
 }
 
 /** Creates the video asset + paid job, and sends the generation to Seedance in the background. */
-async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel, useVoices = false, voiceSource: "make" | "upload" = "make") {
+async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel, useVoices = false, voiceSource: "make" | "upload" = "make", arabicInPrompt = true) {
   const model: VideoModel = chosenModel || v.data.video_model || project.video_model || "seedance-2.5";
-  const ready = readyForVideo(v, lib, model);
+  // the dialogue from the voices only: the quoted Arabic lines leave the prompt (checked before the language rule)
+  const own = !arabicInPrompt && useVoices ? { ...v, data: { ...v.data, prompt: withoutSpokenArabic(videoPrompt(v.data.prompt ?? "")) } } : v;
+  const ready = readyForVideo(own, lib, model);
   const { refs } = ready;
   let prompt = ready.prompt;
   let durationSec = Math.min(seconds ?? clampVideoSeconds(v.data.duration_sec ?? 10), VIDEO_MODELS[model].maxSeconds);
