@@ -25,6 +25,7 @@ describe("«الذكاء الإسلامي» · text", () => {
     expect(w).not.toContain("ما");
     expect(w).not.toContain("في");
     expect(tsQuery(["فقار", "روايات", "ذو"])).toBe("فقار:* | روايات:* | ذو");
+    expect(tsQuery(["فقار", "روايات"], true)).toBe("فقار:* & روايات:*");
   });
 
   it("cuts long text into overlapping pieces at sentence ends", () => {

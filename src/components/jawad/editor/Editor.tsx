@@ -756,9 +756,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   }, [assets, waves, heard]);
 
   // ---------- the preview ----------
+  const flashRef = useRef(flash);
+  useEffect(() => {
+    flashRef.current = flash;
+  }, [flash]);
   const canvas = useCallback((el: HTMLCanvasElement | null) => {
     if (!el) return;
     const p = new Player(el, tlRef.current);
+    // the latest flash (the player is made once; a ref keeps it from being made again)
+    p.onTrouble = (m) => flashRef.current(m, true);
     setPlayer(p);
     setCanvasEl(el);
     return () => {
@@ -789,7 +795,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     tracks: tl.tracks.map((t) => ({ kind: t.kind, name: t.name, clips: t.clips.length, ...(t.muted ? { muted: true } : {}), ...(t.hidden ? { hidden: true } : {}) })),
     files: assets.map((a) => ({ id: a.id, kind: a.kind, name: a.name, mime: a.mime, mb: Math.round(a.bytes / 1e5) / 10, status: a.status, hasUrl: !!a.url, origin: a.origin, size: a.width ? `${a.width}x${a.height}` : null, durationMs: a.durationMs })),
   });
-  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio, durationMs: a.durationMs })), [assets]);
+  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio, durationMs: a.durationMs, name: a.name, width: a.width, height: a.height })), [assets]);
   useEffect(() => {
     // nested timelines («Nest») opened into their clips, so they play like any others
     player?.update(flatten(tl), playerAssets);

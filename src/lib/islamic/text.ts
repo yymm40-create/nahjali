@@ -76,8 +76,8 @@ export function queryWords(question: string, max = 8): string[] {
 }
 
 /** A tsquery over the words: any of them matches; words of four letters or more also match as prefixes. */
-export function tsQuery(words: string[]): string {
-  return words.map((w) => (w.length >= 4 ? `${w}:*` : w)).join(" | ");
+export function tsQuery(words: string[], all = false): string {
+  return words.map((w) => (w.length >= 4 ? `${w}:*` : w)).join(all ? " & " : " | ");
 }
 
 /** Cuts a text into pieces of about `size` characters at paragraph or sentence ends, each starting a little before the last ended. */
