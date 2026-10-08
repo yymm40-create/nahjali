@@ -9,7 +9,7 @@ describe("حيدرة's motion-graphics skill", () => {
     for (const q of MOTION_QUESTIONS) expect(MOTION_SKILL).toContain(q.ar);
   });
   it("speaks only in the editor's own means, with the templates and RTL rules", () => {
-    for (const word of ["set_key", "set_background", "make speech", "make sfx", "fromRight", "duck", "Title card", "Lower third", "Outro / CTA", "RTL", "████"]) expect(MOTION_SKILL).toContain(word);
+    for (const word of ["make speech", "make sfx", "duck", "RTL", "layout engine", "\"kind\":\"stat\"", "majlis", "diacritized"]) expect(MOTION_SKILL).toContain(word);
     // nothing animates letter by letter in Arabic
     expect(MOTION_SKILL).toMatch(/never letter animation/);
   });
