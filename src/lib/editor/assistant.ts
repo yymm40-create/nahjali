@@ -15,6 +15,8 @@ import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { TR_LIST } from "./transitions";
 import { MOTION_SKILL } from "./motion";
+import { lintMotion, motionCommands, readStoryboard } from "./motion-build";
+import { applyAll } from "./commands";
 import { COMMANDS_GUIDE } from "./assistant-commands";
 import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
 import { sajjadBrief } from "@/lib/film/sajjad";
@@ -27,8 +29,9 @@ const db = () => createAdminClient();
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "commands", "suggestions", "requests", "checkClipId"],
+  required: ["reply", "commands", "suggestions", "requests", "checkClipId", "motion"],
   properties: {
+    motion: { type: "string", description: "MOTION GRAPHICS only: the storyboard as a JSON object string (see MOTION GRAPHICS — the layout engine places every text). Else empty." },
     checkClipId: { type: "string", description: "The clip whose colour you changed (the page grades it and sends you the result to check). Empty when no colour changed." },
     reply: { type: "string", description: "Short answer to the person, in their language (Arabic by default)." },
     commands: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." } },
@@ -170,6 +173,7 @@ export interface MakeRequest {
 
 interface Answer {
   checkClipId?: string;
+  motion?: string;
   reply: string;
   commands: string[];
   requests?: MakeRequest[];
@@ -263,14 +267,54 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       /* keep the first answer's valid part */
     }
   }
-  const valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
+  let valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
+  // «موشن جرافيكس»: the storyboard laid out by the engine (sizes, places, timing, colours measured), after his commands
+  let motionNote = "";
+  const sb = answer.motion?.trim() ? readStoryboard(answer.motion) : null;
+  if (sb) {
+    const built = motionCommands(sb, tl.width, tl.height, valid.length);
+    const all = checkCommands(tl, [...valid, ...built.commands].map((c) => JSON.stringify(c)), infos);
+    if (!all.error) {
+      valid = all.cmds;
+      motionNote = `\n\n🎬 رتّبت ${sb.beats.length} لقطات بلوحة «${built.palette.ar}» (${Math.round((built.endMs - (sb.at ?? 0)) / 1000)} ث): كل نص بمقاسه ومكانه وتوقيته بدون تداخل، وكل شي قابل للتعديل.`;
+    } else motionNote = `\n\n(ما قدرت أبني الموشن: ${all.error.message})`;
+  } else if (answer.motion?.trim()) motionNote = "\n\n(الستوري بورد ما انقرأ؛ اطلبها مرة ثانية.)";
+  // the texts this answer placed by hand: checked like the engine's (overlaps, long lines, contrast, safe area)
+  if (!sb && valid.some((c) => c.type === "add_text" || (c.type === "update_clip" && c.patch.text))) {
+    try {
+      const after = applyAll(tl, valid, infos).timeline;
+      const before = new Set(tl.tracks.flatMap((t) => t.clips.map((c) => c.id)));
+      const fresh = new Set(after.tracks.flatMap((t) => t.clips.filter((c) => c.text && !before.has(c.id)).map((c) => c.id)));
+      const issues = fresh.size ? lintMotion(after, fresh) : [];
+      if (issues.length) {
+        const again = await ask([...merged, { role: "assistant", content: r.raw }, { role: "user", content: `The texts you placed have layout problems (measured on the frame):\n- ${issues.slice(0, 12).map((x) => x.text).join("\n- ")}\nSend the whole corrected answer (for a motion-graphics piece, use "motion" with a storyboard instead of placing texts by hand).` }]).catch(() => null);
+        if (again) {
+          const fixed = check(again.data.commands ?? []);
+          const sb2 = again.data.motion?.trim() ? readStoryboard(again.data.motion) : null;
+          if (sb2) {
+            const built = motionCommands(sb2, tl.width, tl.height, 0);
+            const all = checkCommands(tl, built.commands.map((c) => JSON.stringify(c)), infos);
+            if (!all.error) {
+              valid = all.cmds;
+              answer = { ...again.data, reply: again.data.reply };
+            }
+          } else if (!fixed.error) {
+            valid = fixed.cmds;
+            answer = again.data;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("motion lint", e);
+    }
+  }
   const requests = (answer.requests ?? [])
     .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     .slice(0, 4);
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
-  let reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "");
+  let reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "") + motionNote;
   // «اصنع لي…»: each priced now with JAWAD AI's prices (the page shows the price and starts it)
   for (const r of requests.filter((x) => x.kind === "make").slice(0, 3)) {
     const planned = await planMake(who, { ...(r as unknown as MakeSpec), makeKind: r.makeKind as MakeKind, place: (r.place || "over") as MakePlace }, tl.width / tl.height);
