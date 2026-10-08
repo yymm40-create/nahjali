@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUsername } from "@/lib/username";
 import { headers } from "next/headers";
 import { gamesAllowed, getVisibility } from "@/lib/games/access";
+import { contentAllowed, getVisibility as contentVisibility } from "@/lib/content/access";
 import { jawadSession, jawadVisibleTo } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import InDevelopment from "@/components/jawad/InDevelopment";
@@ -41,9 +42,19 @@ export default async function JawadLayout({ children }: { children: React.ReactN
     ? await Promise.all([coinBalance(user.id), getUsername(await createClient(), user.id).catch(() => null)])
     : [null, null];
   // «صانع الألعاب» shows in the bar by the owner's switch (/admin/games); the owner sees it hidden while it is "owner" only
-  const gamesOk = user ? await gamesAllowed(user.email) : false;
-  const gamesVis = owner ? await getVisibility() : "all";
-  const bar = { ...rt, sections: rt.sections.filter((s) => s.implementation !== "games" || gamesOk).map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s)) };
+  // (and «صانع المحتوى» the same way, by its switch in /admin/content)
+  const [gamesOk, gamesVis, contentOk, contentVis] = await Promise.all([
+    user ? gamesAllowed(user.email) : false,
+    owner ? getVisibility() : "all",
+    user ? contentAllowed(user.email) : false,
+    owner ? contentVisibility() : "all",
+  ]);
+  const bar = {
+    ...rt,
+    sections: rt.sections
+      .filter((s) => (s.implementation !== "games" || gamesOk) && (s.implementation !== "content" || contentOk))
+      .map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s.implementation === "content" ? { ...s, enabled: contentVis !== "owner" } : s)),
+  };
   return (
     <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }} suppressHydrationWarning>
       {/* «عرض الديسكتوب» remembered on this device: applied before the first paint (LayoutToggle) */}

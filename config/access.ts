@@ -12,7 +12,8 @@ export const PERMS = [
   { key: "editor_ai", label: "🤖 حيدرة (الذكاء الاصطناعي)", hint: "المحادثة مع حيدرة وكل ما يصنعه (كابشن، تلوين، صناعة…)" },
   { key: "student", label: "🎓 الطالب الذكي", hint: "بكل ما فيه (صوره وأصواته معه)" },
   { key: "booklet", label: "📖 كتيب نهج علي", hint: "بلا حد للتجارب" },
-  { key: "games", label: "🎮 صانع الألعاب الذكي", hint: "قنبر: محادثة تصميم الألعاب. للمالك وحده؛ ما يدخل في «الكود السري» الشامل، وينفتح بإيميل أو بكود تحدد له هذي الصلاحية بالاسم" },
+  { key: "games", label: "🎮 صانع الألعاب الذكي", hint: "قنبر: محادثة تصميم الألعاب. يدخل في «الكود السري» الشامل، وينفتح بإيميل أو بكود؛ ومفتاحه الثلاثي في /admin/games" },
+  { key: "content", label: "✍️ صانع المحتوى", hint: "محمد باقر: كاروسيل بـ GPT Image 2، سكربتات الريلز، وتسليم الريلز والموشن لحيدرة. يدخل في «الكود السري» الشامل؛ ومفتاحه الثلاثي في /admin/content" },
 ] as const;
 
 export type Perm = (typeof PERMS)[number]["key"];
@@ -22,8 +23,9 @@ export const isPerm = (v: unknown): v is Perm => typeof v === "string" && (ALL_P
 /**
  * Sections that only open by name: «الكود السري» (the one that opens everything), and the owner's «اختر الكل»,
  * never include them. Whoever has them gets exactly them, and no free use of the paid generators.
+ * (None at the moment: the owner put «صانع الألعاب» and «صانع المحتوى» inside the all-opening code.)
  */
-export const NAMED_ONLY: Perm[] = ["games"];
+export const NAMED_ONLY: Perm[] = [];
 /** What the all-opening secret code opens (everything but the named-only sections). */
 export const OPEN_PERMS: Perm[] = ALL_PERMS.filter((p) => !NAMED_ONLY.includes(p));
 /** Free, unlimited use of the paid generators goes with any section except the named-only ones. */

@@ -37,15 +37,18 @@ describe("«الأكواد»: each code stands alone", () => {
   });
 });
 
-describe("«صانع الألعاب» opens by name only", () => {
-  it("the all-opening code and «اختر الكل» leave it out; the owner has it", () => {
-    expect(NAMED_ONLY).toEqual(["games"]);
-    expect(OPEN_PERMS).not.toContain("games");
-    expect(OPEN_PERMS.length).toBe(ALL_PERMS.length - 1);
+describe("what the all-opening code gives", () => {
+  it("everything, «صانع الألعاب» and «صانع المحتوى» included", () => {
+    // the owner put «صانع الألعاب» and «صانع المحتوى» inside the all-opening code: nothing opens by name only now
+    expect(NAMED_ONLY).toEqual([]);
+    expect(OPEN_PERMS).toContain("games");
+    expect(OPEN_PERMS).toContain("content");
+    expect(OPEN_PERMS.length).toBe(ALL_PERMS.length);
     expect(ALL_PERMS).toContain("games");
   });
-  it("having only the games section is no free use of the paid generators", () => {
-    expect(hasUnlimited(new Set(["games"]))).toBe(false);
+  it("any open section is free use of the paid generators (nothing is named-only now)", () => {
+    expect(hasUnlimited(new Set([]))).toBe(false);
+    expect(hasUnlimited(new Set(["games"]))).toBe(true);
     expect(hasUnlimited(new Set(["games", "image"]))).toBe(true);
     expect(hasUnlimited(new Set())).toBe(false);
   });

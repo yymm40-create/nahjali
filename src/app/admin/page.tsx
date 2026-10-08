@@ -69,6 +69,8 @@ export default async function AdminHome() {
         ["الإعلانات", "/jawad-ai/admin/ads"],
         ["المهام", "/jawad-ai/admin/jobs"],
         ["الفيلم", "/admin/film"],
+        ["صانع الألعاب", "/admin/games"],
+        ["صانع المحتوى", "/admin/content"],
       ],
     },
     {
