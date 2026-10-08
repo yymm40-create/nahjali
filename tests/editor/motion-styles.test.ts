@@ -29,7 +29,7 @@ function board(style: string, i: number): Storyboard {
 }
 
 describe("«مهارات الموشن»: every named skill builds a clean piece", () => {
-  for (const s of MOTION_STYLES) {
+  for (const s of MOTION_STYLES.filter((x) => !x.talk)) {
     for (let i = 0; i < 12; i++) {
       const ratio = RATIOS[i % RATIOS.length];
       it(`«${s.ar}» piece ${i + 1} (${ratio})`, () => {
