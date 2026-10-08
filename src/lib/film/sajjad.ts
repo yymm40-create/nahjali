@@ -14,6 +14,7 @@ import { addEpisode, addScene, canEditBible, episodesOf, membersOf, openSeries, 
 import { castOf, upsertCast } from "./series-cast";
 import { seriesPaid } from "./series-pay";
 import { getOwnedProject } from "./access";
+import { rewindSummary, REWIND_POINTS, type RewindPoint } from "./rewind";
 import { failJob, startJob, succeedJob } from "./usage";
 import { rightsText } from "./team-rights";
 import { FILM_STAGES } from "@config/film";
@@ -34,6 +35,24 @@ export interface SajjadMessage {
   username?: string | null;
   questions?: { question: string; options: string[] }[];
   changes?: string[];
+  /** «تدخّل سجاد»: what he proposes to change in the work, waiting for «طبّق» (then `applied`) */
+  pending?: SajjadAction[];
+  applied?: string[];
+}
+
+/** One intervention on a film (or a scene): what it is, what it does, and what it will delete or change. */
+export interface SajjadAction {
+  kind: "rewind" | "revise_script" | "revise_sheets" | "revise_director" | "fixed_facts";
+  /** rewind: the step to go back to */
+  to?: RewindPoint;
+  /** the text: the revision for the screenwriter / sheet maker / director, or the rule to add */
+  text?: string;
+  /** a scene of the series (when asked from the series' page) */
+  sceneId?: string;
+  /** what will happen, in the person's words (computed from the real work, not by سجاد) */
+  effect: string;
+  /** why it can't be applied as it is */
+  blocked?: string;
 }
 
 type Scope = { kind: "series"; series: FilmSeries; canEdit: boolean } | { kind: "film"; project: FilmProject; series: FilmSeries | null };
@@ -96,8 +115,10 @@ async function filmContext(project: FilmProject, series: FilmSeries | null) {
   const screenplay = latest("screenplay");
   const sheetMap = (latest("sheet_understanding")?.data.sheet_map as { id: string; name: string }[] | undefined) ?? [];
   const dirMap = (latest("dir_map")?.data.generation_map as { id: string; name: string }[] | undefined) ?? [];
+  const sum = await rewindSummary(project).catch(() => null);
   const lines = [
     `# ${series ? `مشهد ${project.scene_number ?? "؟"} من مسلسل «${series.title}»` : "فيلم"}: «${project.title}» · المرحلة الحالية: ${stageLabel(project.stage)}`,
+    `## وين إحنا الحين\nالمرحلة: ${stageLabel(project.stage)} (${FILM_STAGES.map((st) => (st.key === project.stage ? `[${st.label}]` : st.label)).join(" → ")})${sum ? ` · صور الشيتات: ${sum.pictures} · فيديوهات: ${sum.videos} · أصوات: ${sum.voices}` : ""} · السيناريو ${screenplay ? (screenplay.status === "approved" ? "معتمد" : "مكتوب وما انعتمد") : "ما انكتب"} · خريطة الشيتات: ${sheetMap.length} · مقاطع المخرج: ${dirMap.length}`,
     "## القصة كما كتبها صاحبها",
     project.story || "(فاضية)",
   ];
@@ -111,6 +132,9 @@ async function filmContext(project: FilmProject, series: FilmSeries | null) {
   return lines.join("\n");
 }
 
+/** The short film's (and a scene's) journey, so سجاد knows how the work is made and what going back costs. */
+const JOURNEY = `THE JOURNEY of a film / a scene («المشهد القصير», the same for every scene of a series), step by step: 1 السيناريست — from the person's story writes the merged story+screenplay, asks questions, the person approves it. 2 صانع الشيت — a sheet map (the master style sheet, then every character, place and prop), each a prompt then pictures made or uploaded, approved one by one. 3 المخرج — a generation map (the shots: GEN-01, GEN-02…), each shot's prompt, dialogue and references, then the videos (Seedance), approved takes; voices («الأصوات») for the dialogue; 4 the montage in حيدرة كت, then «المشهد الناجح» / the download. The work can go back («ارجع لنقطة»): to السيناريست deletes the sheets' pictures, the director's work, the videos and voices; to صانع الشيت deletes the director's work, the videos and voices; to المخرج deletes the videos and voices (the director's prompts stay). CONTEXT says the current stage and what exists.`;
+
 const PERSONA = `You are «سجاد» (Sajjad), the consultant and story partner of the people making this work in JAWAD AI's film studio («الفيلم السينمائي» / «المسلسل الذكي»). You are a person-like assistant named سجاد: never say you are Claude, an AI model or anything else — if asked who you are, you are سجاد, the studio's consultant.
 
 Speak Gulf Arabic (warm, clear, short paragraphs; no lecturing). You KNOW the whole work from CONTEXT below and from YOUR NOTES: answer precisely from them (names, who does what, what each scene is about, what's decided and what isn't). When something isn't decided yet, say so plainly and suggest options. Never invent facts as if they were decided.
@@ -120,6 +144,8 @@ Your notes ("remember"): every time the person decides or tells you a fact about
 «حيدرة» is the studio's editor (in «حيدرة كت»): you hand him each scene for its montage, and his reports come to you as messages starting «📨 وصلني من حيدرة» (what was made again or changed in a clip). Take them into account like your own notes.
 
 Asking: when you need information, ask at most 4 questions at a time in "questions", each with 2–5 short suggested answers in "options" (the person can also write their own). Never demand everything at once: they can come back any time and continue.
+
+${JOURNEY}
 
 Research ("research"): you can search the web to develop the story (real events, places, eras, customs, how things really work, science, names…). Do it ONLY when the person asks you to research (or says yes to your offer), and ONLY within the scope they set: put the scope in "research" as one clear Arabic paragraph of what to look for (their words plus what the story needs), and in "reply" say briefly that you are searching for it now. When they ask you to research but the scope is not clear enough, ask for it in "questions" first and leave "research" "". Otherwise "research" is "". The findings come back as cards the person approves or drops by hand; only the approved ones enter the work (CONTEXT shows them under «بحث معتمد») — never treat a pending finding as decided.`;
 
@@ -131,16 +157,19 @@ const SERIES_EDITOR = `This person MAY develop the series (they are its leader o
 
 const SERIES_VIEWER = `This person may ASK you anything, but may not change the series' description, look, characters, places or plan (only its leader, or whom the leader gave the right). If they ask for such a change, tell them kindly who can do it, and you may suggest it in words. Return "" for bible and style, [] for cast, and {"note":"","episodes":[]} for plan.`;
 
-const FILM_ONLY = `Here you are the consultant of one film (or one scene of a series): answer, explain, advise, and help them think about their story, screenplay, characters and shots. You change nothing yourself. Return "" for bible and style, [] for cast, and {"note":"","episodes":[]} for plan.`;
+const FILM_ONLY = `Here you are the consultant of one film (or one scene of a series): answer, explain, advise, and help them think about their story, screenplay, characters and shots. Return "" for bible and style, [] for cast, and {"note":"","episodes":[]} for plan.
+
+INTERVENING («تدخّل مباشر»): when the person asks you to change the work itself — change the story or a character or an event, rewrite part of the screenplay, change a sheet, redo the director's plan or a shot, add a rule that must hold, or go back a step — don't just advise: propose the intervention in "actions" (1–3, in order), and in "reply" say plainly what you will do and what will be lost or change because of it. Kinds: {"kind":"rewind","to":"screenwriter"|"sheets"|"director"} goes back to that step (what comes after it is deleted; needed before a revision of an earlier step than the current one); {"kind":"revise_script","text":…} sends the screenwriter a new direction (at the screenwriter step; the text is the direction, complete and in Arabic, as if the person wrote it); {"kind":"revise_sheets","text":…} the same for the sheet maker; {"kind":"revise_director","text":…} the same for the director (the plan or a shot, name it, e.g. GEN-03); {"kind":"fixed_facts","text":…} adds a rule to «أشياء ثابتة» that every step must keep. The page computes exactly what each action deletes or changes and shows it; nothing happens until the person presses «طبّق». Only propose when they ask for a change (or clearly want one); answering a question is not an intervention. For a scene of a series asked from the series' page, add "sceneId". Otherwise "actions" is [].`;
 
 const str = { type: "string" } as const;
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "questions", "remember", "research", "bible", "style", "cast", "plan"],
+  required: ["reply", "questions", "remember", "research", "actions", "bible", "style", "cast", "plan"],
   properties: {
     reply: str,
     research: str,
+    actions: { type: "array", items: { type: "object", additionalProperties: false, required: ["kind", "to", "text", "sceneId"], properties: { kind: { type: "string", enum: ["rewind", "revise_script", "revise_sheets", "revise_director", "fixed_facts"] }, to: { type: "string", enum: ["screenwriter", "sheets", "director", ""] }, text: str, sceneId: str } } },
     questions: { type: "array", items: { type: "object", additionalProperties: false, required: ["question", "options"], properties: { question: str, options: { type: "array", items: str } } } },
     remember: { type: "array", items: str },
     bible: str,
@@ -176,6 +205,7 @@ interface Reply {
   questions: { question: string; options: string[] }[];
   remember: string[];
   research: string;
+  actions: { kind: SajjadAction["kind"]; to: string; text: string; sceneId: string }[];
   bible: string;
   style: string;
   cast: { kind: "character" | "place"; name: string; description: string }[];
@@ -316,6 +346,9 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   }
   const d = r.data;
   const changes = scope.kind === "series" && scope.canEdit ? await applySeries(scope.series, d) : [];
+  // «تدخّل»: his proposed changes to the work, with what each will really delete or change; they wait for «طبّق»
+  const pending = await proposeActions(scope, user.id, d.actions ?? []);
+  if (pending.length) changes.push(`🛠️ اقترح ${pending.length} تدخّل ينتظر «طبّق»`);
   if (r.found) {
     await saveResearch(scope, r.found);
     const n = pendingFindings(r.found).length;
@@ -325,12 +358,154 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   const next: SajjadMessage[] = [
     ...messages,
     { role: "user", text, at: now, userId: user.id, username: me },
-    { role: "sajjad", text: d.reply.trim(), at: now, questions: d.questions.slice(0, 4).map((q) => ({ question: q.question, options: q.options.slice(0, 5) })), ...(changes.length ? { changes } : {}) },
+    { role: "sajjad", text: d.reply.trim(), at: now, questions: d.questions.slice(0, 4).map((q) => ({ question: q.question, options: q.options.slice(0, 5) })), ...(changes.length ? { changes } : {}), ...(pending.length ? { pending } : {}) },
   ];
   const known = new Set(memory);
   const notes = [...memory, ...d.remember.map((m) => m.trim()).filter((m) => m && !known.has(m))];
   await saveChat(key, next, notes);
   return { message: next.at(-1)!, changes, plan: scope.kind === "series" && scope.canEdit && d.plan.episodes.length ? d.plan : null, research: r.found };
+}
+
+// ───────────── «تدخّل سجاد»: the work itself changed, after the person sees what it costs ─────────────
+
+const STAGE_OF: Record<Exclude<SajjadAction["kind"], "rewind" | "fixed_facts">, RewindPoint> = { revise_script: "screenwriter", revise_sheets: "sheets", revise_director: "director" };
+const rankOf = (s: string) => FILM_STAGES.findIndex((x) => x.key === s);
+
+/** The project an action is about: the film itself, or one scene of the series. */
+async function actionProject(scope: Scope, userId: string, sceneId?: string) {
+  if (scope.kind === "film") return scope.project;
+  if (!sceneId) return null;
+  const { data } = await db().from("film_projects").select("id,series_id").eq("id", sceneId).eq("series_id", scope.series.id).maybeSingle();
+  return data ? getOwnedProject(sceneId, userId, "all").catch(() => null) : null;
+}
+
+/** What each proposed action will really delete or change, from the work as it is now (never from سجاد's guess). */
+async function proposeActions(scope: Scope, userId: string, raw: Reply["actions"]): Promise<SajjadAction[]> {
+  const out: SajjadAction[] = [];
+  let stage: string | null = null;
+  let sum: Awaited<ReturnType<typeof rewindSummary>> | null = null;
+  let project: FilmProject | null = null;
+  for (const a of raw.slice(0, 3)) {
+    const text = String(a.text ?? "").trim().slice(0, 4000);
+    const sceneId = scope.kind === "series" ? String(a.sceneId ?? "").trim() || undefined : undefined;
+    if (!project || (sceneId && project.id !== sceneId)) {
+      project = await actionProject(scope, userId, sceneId);
+      stage = project?.stage ?? null;
+      sum = project ? await rewindSummary(project).catch(() => null) : null;
+    }
+    const base: SajjadAction = { kind: a.kind, ...(text ? { text } : {}), ...(sceneId ? { sceneId } : {}), effect: "" };
+    if (!project || !stage) {
+      out.push({ ...base, effect: "", blocked: scope.kind === "series" ? "حدّد أي مشهد من المسلسل (sceneId)." : "ما لقينا العمل." });
+      continue;
+    }
+    if (a.kind === "rewind") {
+      const to = (REWIND_POINTS as readonly string[]).includes(a.to) ? (a.to as RewindPoint) : null;
+      if (!to) {
+        out.push({ ...base, effect: "", blocked: "نقطة الرجوع غير واضحة." });
+        continue;
+      }
+      if (rankOf(stage) <= rankOf(to)) {
+        out.push({ ...base, to, effect: `إحنا أصلًا عند ${stageLabel(to)} أو قبلها؛ ما فيه شي ينرجع.`, blocked: "ما فيه رجوع لازم" });
+        continue;
+      }
+      const lost: string[] = [];
+      if (to === "screenwriter" && sum?.pictures) lost.push(`${sum.pictures} صورة شيت`);
+      if ((to === "screenwriter" || to === "sheets") && rankOf(stage) > rankOf("sheets")) lost.push("شغل المخرج كله (خريطة المقاطع وبرومبتاتها)");
+      if (sum?.videos) lost.push(`${sum.videos} فيديو`);
+      if (sum?.voices) lost.push(`${sum.voices} صوت`);
+      out.push({ ...base, to, effect: `يرجع العمل إلى ${stageLabel(to)}. ينحذف: ${lost.length ? lost.join("، ") : "لا شي"}. يبقى: ${to === "screenwriter" ? "القصة والسيناريو" : to === "sheets" ? "القصة والسيناريو وخريطة الشيتات وصورها" : "كل شي حتى برومبتات المخرج"}.` });
+      stage = to;
+      continue;
+    }
+    if (a.kind === "fixed_facts") {
+      if (!text) {
+        out.push({ ...base, effect: "", blocked: "القاعدة فاضية." });
+        continue;
+      }
+      out.push({ ...base, effect: `تُضاف إلى «أشياء ثابتة» ويلتزم بها السيناريست وصانع الشيت والمخرج من الآن: «${cut(text, 120)}». ما ينحذف شي.` });
+      continue;
+    }
+    const need = STAGE_OF[a.kind];
+    if (!text) {
+      out.push({ ...base, effect: "", blocked: "نص التعديل فاضي." });
+      continue;
+    }
+    if (stage !== need) {
+      const back = rankOf(stage) > rankOf(need);
+      out.push({ ...base, effect: "", blocked: back ? `العمل عند ${stageLabel(stage)}؛ لازم رجوع إلى ${stageLabel(need)} أول (أضف rewind قبله).` : `العمل لسه ما وصل ${stageLabel(need)}.` });
+      continue;
+    }
+    const who = need === "screenwriter" ? "السيناريست يكتب نسخة جديدة من القصة والسيناريو تنتظر اعتمادك (الحالية تصير قديمة، وكل ما اعتُمد بعدها يُعلَّم أنه قد يحتاج تحديث)" : need === "sheets" ? "صانع الشيت يرد بتعديل الشيتات المطلوبة؛ الصور المعتمدة الثانية تبقى" : "المخرج يعيد كتابة الخطة أو المقطع المذكور؛ الفيديوهات الجاهزة تبقى لكن المقطع المعدّل يحتاج توليدًا جديدًا";
+    out.push({ ...base, effect: `${who}. التوجيه: «${cut(text, 160)}».` });
+  }
+  return out;
+}
+
+/** «طبّق»: the last proposal is carried out, in order (a blocked action is skipped and said so). */
+export async function applySajjad(kind: unknown, id: unknown, user: { id: string; email?: string | null }) {
+  const scope = await resolveScope(kind, id, user.id);
+  const key = scopeKey(scope);
+  const { messages, memory } = await loadChat(key);
+  const i = messages.findLastIndex((m) => m.role === "sajjad" && m.pending?.length);
+  const msg = i >= 0 ? messages[i] : null;
+  if (!msg?.pending) throw new UserError("ما فيه تدخّل ينتظر التطبيق.", 409);
+  const done: string[] = [];
+  const { resetProject } = await import("./rewind");
+  for (const a of msg.pending) {
+    if (a.blocked) {
+      done.push(`⏭️ تخطّيت ${a.kind}: ${a.blocked}`);
+      continue;
+    }
+    const project = await actionProject(scope, user.id, a.sceneId);
+    if (!project) {
+      done.push(`⏭️ تخطّيت ${a.kind}: ما لقينا العمل.`);
+      continue;
+    }
+    try {
+      if (a.kind === "rewind") {
+        await resetProject(project, a.to);
+        done.push(`↩️ رجّعت العمل إلى ${stageLabel(a.to!)}`);
+      } else if (a.kind === "fixed_facts") {
+        const facts = [project.fixed_facts, a.text].filter(Boolean).join("\n").slice(0, 5000);
+        await db().from("film_projects").update({ fixed_facts: facts }).eq("id", project.id);
+        done.push(`📌 أضفت قاعدة ثابتة: ${cut(a.text ?? "", 80)}`);
+      } else {
+        const fresh = await getOwnedProject(project.id, user.id, "all");
+        if (a.kind === "revise_script") {
+          const { scriptAction } = await import("./script");
+          await scriptAction(fresh, user, { action: "revise", text: a.text ?? "", mode: "direct" });
+          done.push("✍️ وجّهت السيناريست؛ نسخته الجديدة تنتظر اعتمادك");
+        } else if (a.kind === "revise_sheets") {
+          const { sheetAction } = await import("./sheets");
+          await sheetAction(fresh, user, { action: "revise", text: a.text ?? "", mode: "direct" });
+          done.push("🎨 وجّهت صانع الشيت؛ رده في صفحته");
+        } else {
+          const { directorAction } = await import("./director");
+          await directorAction(fresh, user, { action: "revise", text: a.text ?? "", mode: "direct" });
+          done.push("🎥 وجّهت المخرج؛ رده في صفحته");
+        }
+      }
+    } catch (e) {
+      done.push(`❌ ${a.kind}: ${e instanceof UserError ? e.message : "تعذّر"}`);
+      if (!(e instanceof UserError)) console.error("sajjad apply", e);
+    }
+  }
+  const { pending: _p, ...rest } = msg;
+  void _p;
+  const next = [...messages];
+  next[i] = { ...rest, applied: done };
+  next.push({ role: "sajjad", text: `طبّقت تدخّلي:\n${done.join("\n")}`, at: new Date().toISOString(), changes: done.filter((d) => !d.startsWith("⏭️") && !d.startsWith("❌")) });
+  await saveChat(key, next, [...memory, ...done.filter((d) => d.startsWith("↩️") || d.startsWith("📌")).map((d) => `تدخّل: ${d}`)]);
+  return { message: next.at(-1)!, done };
+}
+
+/** «لا»: the proposal is dropped. */
+export async function dropSajjad(kind: unknown, id: unknown, userId: string) {
+  const scope = await resolveScope(kind, id, userId);
+  const key = scopeKey(scope);
+  const { messages, memory } = await loadChat(key);
+  const next = messages.map((m) => (m.pending ? { ...m, pending: undefined, applied: ["ما طُبّق"] } : m));
+  await saveChat(key, next, memory);
 }
 
 /** What سجاد decided with an allowed person, written into the series. Returns the changes, in words. */
