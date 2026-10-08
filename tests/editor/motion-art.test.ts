@@ -95,13 +95,17 @@ describe("«موشن جرافيكس» art: drawn by the engine, no generator", (
     expect(commands.some((c) => c.type === "add_text")).toBe(true);
   });
 
-  it("cues five different sounds, at most two a beat, with a swish into every beat but the first", () => {
+  it("cues five different sounds, at most two a beat, swishes only between beats, at most 15 a minute", () => {
     const tl = emptyTimeline("9:16");
     const plan = motionPlan(board(0), tl.width, tl.height);
     const kinds = new Set(plan.cues.map((c) => c.kind));
     expect(kinds.size).toBe(5);
     for (const k of kinds) expect(SFX[k].seconds).toBeLessThanOrEqual(1.2);
-    expect(plan.cues.filter((c) => c.kind === "swish").length).toBe(plan.beats.length - 1);
+    // a swish only into a beat (never the first), thinned with the rest to 15 a minute (majed-video)
+    const swishes = plan.cues.filter((c) => c.kind === "swish");
+    expect(swishes.length).toBeLessThanOrEqual(plan.beats.length - 1);
+    for (const c of swishes) expect(plan.times.slice(1).some((t) => c.at === Math.max(0, t.start - 120))).toBe(true);
+    for (const a of plan.cues) expect(plan.cues.filter((b) => b.at >= a.at && b.at < a.at + 60_000).length).toBeLessThanOrEqual(15);
     for (const [i, t] of plan.times.entries()) expect(plan.cues.filter((c) => c.at >= t.start - 120 && c.at < t.end - 120).length).toBeLessThanOrEqual(i ? 3 : 2);
     // the headline's entrance alternates beat to beat
     const heads = plan.placed.filter((p) => p.role === "head");

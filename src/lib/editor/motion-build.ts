@@ -32,6 +32,39 @@ export const PALETTES: Palette[] = [
 ];
 export const paletteOf = (id: unknown) => PALETTES.find((p) => p.id === id || p.ar === id) ?? PALETTES[0];
 
+const HEX = /^#[0-9a-f]{6}$/i;
+const rgbOf = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const hexOf = (c: number[]) => `#${c.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("")}`;
+/** `c` pushed towards white or black (whichever reads on `bg`) until it reaches the contrast asked. */
+function readable(c: string, bg: string, need: number) {
+  if (contrast(c, bg) >= need) return c;
+  const to = contrast("#ffffff", bg) >= contrast("#111111", bg) ? [255, 255, 255] : [17, 17, 17];
+  const from = rgbOf(c);
+  for (let k = 0.1; k <= 1.0001; k += 0.1) {
+    const m = hexOf(from.map((v, i) => v + (to[i] - v) * k));
+    if (contrast(m, bg) >= need) return m;
+  }
+  return hexOf(to);
+}
+
+/**
+ * «على هويتك» (majed-video: the colours come from the person's identity only): a palette from the brand's own colours —
+ * the background as given, the text and accents kept where they read and nudged lighter/darker where they don't
+ * (text ≥ 7, accents ≥ 4.5, like the named palettes).
+ */
+export function brandPalette(c: { bg?: string; text?: string; accent?: string; second?: string } | null | undefined): Palette | null {
+  if (!c || !HEX.test(c.bg ?? "")) return null;
+  const bg = c.bg!.toLowerCase();
+  const text = readable(HEX.test(c.text ?? "") ? c.text! : contrast("#ffffff", bg) >= contrast("#111111", bg) ? "#ffffff" : "#111111", bg, 7);
+  const accent = readable(HEX.test(c.accent ?? "") ? c.accent! : text, bg, 4.5);
+  const second = readable(HEX.test(c.second ?? "") ? c.second! : hexOf(rgbOf(text).map((v, i) => v * 0.75 + rgbOf(bg)[i] * 0.25)), bg, 4.5);
+  const pillText = contrast(bg, accent) >= contrast(text, accent) ? bg : text;
+  return { id: "brand", ar: "ألوان هويتك", bg, text, accent, second, pill: accent, pillText: readable(pillText, accent, 4.5) };
+}
+
+/** Eastern Arabic (٠–٩) and Persian digits as Western ones (majed-video: Western digits always, unless asked). */
+export const westernDigits = (t: string) => t.replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+
 /** WCAG contrast ratio of two #rrggbb colours. */
 export function contrast(a: string, b: string) {
   const lum = (h: string) => {
@@ -91,7 +124,7 @@ const LINE = 1.35;
 
 // ───────────── the storyboard ─────────────
 
-export type BeatKind = "title" | "points" | "stat" | "quote" | "steps" | "compare" | "statement" | "outro";
+export type BeatKind = "title" | "points" | "stat" | "quote" | "steps" | "compare" | "statement" | "outro" | "kinetic";
 export interface Beat {
   kind: BeatKind;
   title?: string;
@@ -103,6 +136,9 @@ export interface Beat {
   left?: { title?: string; text?: string };
   right?: { title?: string; text?: string };
   handle?: string;
+  /** «kinetic»: 2–6 words, each its own line, entering one after another; `hot` = the word in the highlight pill */
+  words?: string[];
+  hot?: number;
   /** how long it stays (seconds); default: from its words */
   seconds?: number;
 }
@@ -113,10 +149,13 @@ export interface Storyboard {
   body?: string;
   /** where the piece starts (ms) */
   at?: number;
+  /** the brand's own colours (instead of a named palette) */
+  colors?: { bg?: string; text?: string; accent?: string; second?: string };
+  /** "arabic" keeps ٠١٢ (only when the person asks); default: Western digits */
+  digits?: "western" | "arabic";
   beats: Beat[];
 }
 
-const clean = (v: unknown, max = 160) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 /** A storyboard from حيدرة's JSON (anything malformed dropped, at most 24 beats). */
 export function readStoryboard(raw: unknown): Storyboard | null {
@@ -130,7 +169,10 @@ export function readStoryboard(raw: unknown): Storyboard | null {
   }
   if (!o || typeof o !== "object") return null;
   const s = o as Record<string, unknown>;
-  const kinds: BeatKind[] = ["title", "points", "stat", "quote", "steps", "compare", "statement", "outro"];
+  const kinds: BeatKind[] = ["title", "points", "stat", "quote", "steps", "compare", "statement", "outro", "kinetic"];
+  const arabic = s.digits === "arabic";
+  const digits = (t: string) => (arabic ? t : westernDigits(t));
+  const clean = (v: unknown, max = 160) => (typeof v === "string" ? digits(v.replace(/\s+/g, " ").trim()).slice(0, max) : "");
   const beats = (Array.isArray(s.beats) ? s.beats : [])
     .filter((b): b is Record<string, unknown> => !!b && typeof b === "object" && kinds.includes((b as { kind?: BeatKind }).kind as BeatKind))
     .slice(0, 24)
@@ -139,7 +181,7 @@ export function readStoryboard(raw: unknown): Storyboard | null {
       return {
         kind: b.kind as BeatKind,
         title: clean(b.title, 70),
-        text: clean(b.text, 170),
+        text: b.kind === "kinetic" ? "" : clean(b.text, 170),
         items: (Array.isArray(b.items) ? b.items : []).map((x) => clean(x, 60)).filter(Boolean).slice(0, 5),
         value: clean(b.value, 14),
         label: clean(b.label, 60),
@@ -147,12 +189,18 @@ export function readStoryboard(raw: unknown): Storyboard | null {
         left: side(b.left),
         right: side(b.right),
         handle: clean(b.handle, 40),
+        ...(b.kind === "kinetic" ? { words: (Array.isArray(b.words) ? b.words : String(b.text ?? "").split(/\s+/)).map((x) => clean(x, 24)).filter(Boolean).slice(0, 6), hot: Number.isInteger(b.hot) ? Number(b.hot) : undefined } : {}),
         seconds: Number.isFinite(Number(b.seconds)) && Number(b.seconds) > 0 ? Math.min(12, Math.max(1.5, Number(b.seconds))) : undefined,
       };
     })
-    .filter((b) => b.title || b.text || b.items?.length || b.value || b.left || b.right);
+    .filter((b) => (b.kind === "kinetic" ? (b.words?.length ?? 0) > 0 : b.title || b.text || b.items?.length || b.value || b.left || b.right));
   if (!beats.length) return null;
-  return { palette: clean(s.palette, 20), head: clean(s.head, 30) || undefined, body: clean(s.body, 30) || undefined, at: Number.isFinite(Number(s.at)) ? Math.max(0, Math.round(Number(s.at))) : 0, beats };
+  const col = s.colors && typeof s.colors === "object" ? (s.colors as Record<string, unknown>) : null;
+  const colors = col ? Object.fromEntries(["bg", "text", "accent", "second"].filter((k) => typeof col[k] === "string" && HEX.test(col[k] as string)).map((k) => [k, col[k] as string])) : undefined;
+  return {
+    palette: clean(s.palette, 20), head: clean(s.head, 30) || undefined, body: clean(s.body, 30) || undefined, at: Number.isFinite(Number(s.at)) ? Math.max(0, Math.round(Number(s.at))) : 0,
+    ...(colors?.bg ? { colors } : {}), ...(arabic ? { digits: "arabic" as const } : {}), beats,
+  };
 }
 
 // ───────────── layout ─────────────
@@ -201,7 +249,7 @@ const FLOOR: Record<Role, number> = { head: 0.04, sub: 0.03, cap: 0.026, value: 
 /** How long a beat stays: its words read twice at the Arabic pace, between 2.5 and 8 s (or as asked). */
 export function beatMs(b: Beat) {
   if (b.seconds) return Math.round(b.seconds * 1000);
-  const words = [b.title, b.text, b.value, b.label, b.by, b.handle, ...(b.items ?? []), b.left?.title, b.left?.text, b.right?.title, b.right?.text].join(" ").split(/\s+/).filter(Boolean).length;
+  const words = [b.title, b.text, b.value, b.label, b.by, b.handle, ...(b.items ?? []), ...(b.kind === "kinetic" ? (b.words ?? []) : []), b.left?.title, b.left?.text, b.right?.title, b.right?.text].join(" ").split(/\s+/).filter(Boolean).length;
   return Math.round(Math.min(8, Math.max(2.5, words * 0.42 + 1.4)) * 1000);
 }
 
@@ -234,7 +282,9 @@ function layBeat(specs: Spec[], f: Frame, base: ReturnType<typeof sizes>) {
     // past a role's floor the beat holds too much: it is split into two beats instead (see splitBeat)
     if (specs.some((s) => base[s.role] * scale < FLOOR[s.role])) return null;
     const blocks = specs.map((s) => {
-      const size = base[s.role] * scale;
+      // the big number fits its own width first, so a long number never drags the other texts below their floor
+      const own = s.role === "value" ? Math.min(1, (0.98 * colW(s.col) * f.W) / ((emWidth(s.body, s.font, s.weight) + 0.15) * base.value * f.H)) : 1;
+      const size = base[s.role] * scale * own;
       // ems that fit the column: column width (px) / font size (px)
       const maxEm = (colW(s.col) * f.W) / (size * f.H);
       const lines = s.role === "bar" ? [s.body] : wrapEm(s.body, maxEm, s.font, s.weight);
@@ -257,6 +307,12 @@ function layBeat(specs: Spec[], f: Frame, base: ReturnType<typeof sizes>) {
 
 /** A beat that holds too much for one screen, as two (half the list each; or the words cut at a sentence/the middle). */
 export function splitBeat(b: Beat): [Beat, Beat] | null {
+  if (b.kind === "kinetic" && (b.words?.length ?? 0) > 2) {
+    const w = b.words!;
+    const h = Math.ceil(w.length / 2);
+    const hot = b.hot ?? -1;
+    return [{ ...b, words: w.slice(0, h), hot: hot < h ? hot : undefined, seconds: undefined }, { ...b, words: w.slice(h), hot: hot >= h ? hot - h : undefined, seconds: undefined }];
+  }
   const items = b.items ?? [];
   if ((b.kind === "points" || b.kind === "steps") && items.length > 1) {
     const h = Math.ceil(items.length / 2);
@@ -281,27 +337,32 @@ export function splitBeat(b: Beat): [Beat, Beat] | null {
 }
 
 /**
- * Entrances with energy: short (240–320 ms), eased with the editor's own overshoots, exits always faster (160 ms). The
- * headline alternates beat to beat (a whip from the right, then a rise), so no two beats arrive the same way.
+/**
+ * Entrances: short (240–320 ms) with a strong ease-out and exits always faster (160 ms); the headline alternates beat
+ * to beat (a whip from the right, then a rise), so no two beats arrive the same way. Majed Alzaabi's rules (majed-video):
+ * never a bounce and never from zero — numbers punch in (from big, no overshoot), the handle «settles» in from 0.94 —
+ * and texts that enter together follow each other 30–80 ms apart.
  */
-const IN = {
+export const IN = {
   rise: { in: "rise", out: "fade", inMs: 260, outMs: 160 },
   fade: { in: "fade", out: "fade", inMs: 240, outMs: 160 },
   right: { in: "fromRight", out: "fade", inMs: 260, outMs: 160 },
   left: { in: "fromLeft", out: "fade", inMs: 260, outMs: 160 },
   whip: { in: "whip", out: "whip", inMs: 260, outMs: 180 },
-  pop: { in: "pop", out: "fade", inMs: 320, outMs: 160 },
+  settle: { in: "settle", out: "fade", inMs: 280, outMs: 160 },
   punch: { in: "punch", out: "fade", inMs: 300, outMs: 160 },
 };
+/** Texts that enter together follow each other by this much (majed-video: 30–80 ms). */
+export const STAGGER_MS = 60;
 /** The headline's entrance for beat `bi` (the art leads by TEXT_LEAD ms, so the words land on it). */
 const headIn = (bi: number) => (bi % 2 === 0 ? IN.whip : IN.rise);
 const TEXT_LEAD = 80;
 
 /** The texts of one beat, in reading order, with their roles, colours, fonts and entrances. */
-function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0): Spec[] {
+function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arabicDigits = false): Spec[] {
   const specs: Spec[] = [];
   const add = (s: Omit<Spec, "maxLines" | "delay"> & { maxLines?: number; delay?: number }) => {
-    if (s.body.replace(/[«»—\-●.:\s]/g, "")) specs.push({ maxLines: 2, delay: TEXT_LEAD + specs.length * 100, ...s });
+    if (s.body.replace(/[«»—\-●.:\s]/g, "")) specs.push({ maxLines: 2, delay: TEXT_LEAD + specs.length * STAGGER_MS, ...s, body: arabicDigits ? s.body : westernDigits(s.body) });
   };
   switch (b.kind) {
     case "title":
@@ -319,7 +380,7 @@ function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0): Spe
     case "points":
     case "steps": {
       add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
-      const nums = ["١", "٢", "٣", "٤", "٥"];
+      const nums = arabicDigits ? ["١", "٢", "٣", "٤", "٥"] : ["1", "2", "3", "4", "5"];
       (b.items ?? []).forEach((it, i) => add({ role: "item", body: `${b.kind === "steps" ? `${nums[i] ?? i + 1}.` : "●"} ${it}`, color: i === 0 ? pal.accent : pal.text, weight: 700, font: body, list: true, delay: TEXT_LEAD + 360 + i * 340, anim: IN.right }));
       break;
     }
@@ -329,15 +390,22 @@ function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0): Spe
       break;
     case "compare":
       add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
-      add({ role: "sub", body: b.right?.title ?? "", color: pal.accent, weight: 900, font: head, col: "right", anim: IN.right, delay: TEXT_LEAD + 220 });
-      add({ role: "cap", body: b.right?.text ?? "", color: pal.text, weight: 400, font: body, col: "right", maxLines: 4, anim: IN.fade, delay: TEXT_LEAD + 320 });
-      add({ role: "sub", body: b.left?.title ?? "", color: pal.second, weight: 900, font: head, col: "left", anim: IN.left, delay: TEXT_LEAD + 440 });
-      add({ role: "cap", body: b.left?.text ?? "", color: pal.text, weight: 400, font: body, col: "left", maxLines: 4, anim: IN.fade, delay: TEXT_LEAD + 540 });
+      add({ role: "sub", body: b.right?.title ?? "", color: pal.accent, weight: 900, font: head, col: "right", anim: IN.right, delay: TEXT_LEAD + STAGGER_MS });
+      add({ role: "cap", body: b.right?.text ?? "", color: pal.text, weight: 400, font: body, col: "right", maxLines: 4, anim: IN.fade, delay: TEXT_LEAD + 2 * STAGGER_MS });
+      add({ role: "sub", body: b.left?.title ?? "", color: pal.second, weight: 900, font: head, col: "left", anim: IN.left, delay: TEXT_LEAD + 3 * STAGGER_MS });
+      add({ role: "cap", body: b.left?.text ?? "", color: pal.text, weight: 400, font: body, col: "left", maxLines: 4, anim: IN.fade, delay: TEXT_LEAD + 4 * STAGGER_MS });
       break;
+    case "kinetic": {
+      // kinetic typography: one word a line, each landing a beat after the one before; the hot word in the pill
+      const words = b.words ?? [];
+      const hot = b.hot != null && b.hot >= 0 && b.hot < words.length ? b.hot : -1;
+      words.forEach((w, i) => add({ role: "head", body: w, color: i === hot ? pal.pillText : i % 2 ? pal.second : pal.text, box: i === hot ? pal.pill : null, weight: 900, font: head, maxLines: 1, delay: TEXT_LEAD + i * 240, anim: i === hot ? IN.settle : IN.rise }));
+      break;
+    }
     case "outro":
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: IN.pop });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
       add({ role: "sub", body: b.text ?? "", color: pal.second, weight: 700, font: body, anim: IN.rise });
-      add({ role: "pill", body: b.handle ? (/[A-Za-z@]/.test(b.handle) ? `⁦${b.handle}⁩` : b.handle) : "", color: pal.pillText, box: pal.pill, weight: 900, font: body, maxLines: 1, anim: IN.pop, delay: TEXT_LEAD + 460 });
+      add({ role: "pill", body: b.handle ? (/[A-Za-z@]/.test(b.handle) ? `\u2066${b.handle}\u2069` : b.handle) : "", color: pal.pillText, box: pal.pill, weight: 900, font: body, maxLines: 1, anim: IN.settle, delay: TEXT_LEAD + 460 });
       break;
   }
   return specs;
@@ -352,7 +420,8 @@ export interface BeatTime {
 export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[]; anchors: Anchors[]; times: BeatTime[] } {
   const f = frameOf(W, H);
   const base = sizes(f);
-  const pal = paletteOf(sb.palette);
+  const pal = brandPalette(sb.colors) ?? paletteOf(sb.palette);
+  const ad = sb.digits === "arabic";
   const head = sb.head || "cairo";
   const body = sb.body || "tajawal";
   // a beat too full for one screen becomes two (and so on), before anything is placed
@@ -360,7 +429,7 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
   const beats: Beat[] = [];
   while (queue.length && beats.length < 48) {
     const b = queue.shift()!;
-    if (layBeat(specsOf(b, pal, head, body), f, base)) {
+    if (layBeat(specsOf(b, pal, head, body, 0, ad), f, base)) {
       beats.push(b);
       continue;
     }
@@ -380,7 +449,7 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
   let t = sb.at ?? 0;
   beats.forEach((b, bi) => {
     const dur = beatMs(b);
-    const laid = layBeat(specsOf(b, pal, head, body, bi), f, base);
+    const laid = layBeat(specsOf(b, pal, head, body, bi, ad), f, base);
     times.push({ start: t, end: t + dur });
     if (!laid) {
       anchors.push({ top: f.top, bottom: 1 - f.bottom });
@@ -467,7 +536,21 @@ function cuesOf(beats: Beat[], times: BeatTime[]): SfxCue[] {
         out.push({ kind: i % 2 === 0 ? "whoosh" : "pop", at: t + TEXT_LEAD });
     }
   });
-  return out;
+  return capCues(out);
+}
+
+/** At most this many sound events in any minute (majed-video: sound only on the moments that mean something). */
+export const SFX_PER_MINUTE = 15;
+const SFX_RANK: Record<SfxKind, number> = { hit: 0, shimmer: 1, whoosh: 2, pop: 2, swish: 3 };
+/**
+ * The cues thinned to SFX_PER_MINUTE in every 60 s window: the number's hit and the ending's shimmer first, then the
+ * arrivals, the transition swishes last; in time order.
+ */
+export function capCues(cues: SfxCue[], perMinute = SFX_PER_MINUTE): SfxCue[] {
+  const kept: SfxCue[] = [];
+  const fits = (all: SfxCue[]) => all.every((a) => all.filter((b) => b.at >= a.at && b.at < a.at + 60_000).length <= perMinute);
+  for (const c of [...cues].sort((a, b) => SFX_RANK[a.kind] - SFX_RANK[b.kind] || a.at - b.at)) if (fits([...kept, c])) kept.push(c);
+  return kept.sort((a, b) => a.at - b.at);
 }
 
 /** Everything the engine decided for a piece: the texts, the art to draw, and the sounds to make and place. */
@@ -477,7 +560,7 @@ export function motionPlan(sb: Storyboard, W: number, H: number) {
 }
 
 /** The decoration's entrance by the beat's kind: shapes pop, bands and rails whip in. */
-const artIn = (b: Beat) => (b.kind === "title" || b.kind === "points" || b.kind === "steps" ? IN.whip : b.kind === "statement" ? IN.right : IN.pop);
+const artIn = (b: Beat) => (b.kind === "title" || b.kind === "points" || b.kind === "steps" ? IN.whip : b.kind === "statement" ? IN.right : IN.settle);
 
 /**
  * The commands that make the piece: the background colour, then — when the art was drawn (`art`: picture key →
@@ -541,7 +624,7 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, a
 // ───────────── the check ─────────────
 
 export interface MotionIssue {
-  kind: "overlap" | "outside" | "long_line" | "contrast" | "fonts" | "tiny";
+  kind: "overlap" | "outside" | "long_line" | "contrast" | "fonts" | "tiny" | "bounce" | "slow_entrance" | "slow_exit" | "short_hold" | "digits" | "late_hook";
   text: string;
 }
 
@@ -559,7 +642,11 @@ interface Box {
   box: string | null;
   size: number;
   font: string;
+  anim?: { in: string | null; out: string | null; inMs: number; outMs: number } | null;
 }
+
+/** Entrances that bounce or grow from nothing (majed-video: never, unless the person asks for them by name). */
+export const BOUNCY = new Set(["pop", "spin", "drop"]);
 
 function boxesOf(tl: Timeline): Box[] {
   const out: Box[] = [];
@@ -571,7 +658,7 @@ function boxesOf(tl: Timeline): Box[] {
       const size = s.size * (c.transform.scale || 1);
       const lines = wrapEm(s.body, (0.9 * tl.width) / (size * tl.height), s.font, s.weight);
       const wEm = Math.max(...lines.map((l) => emWidth(l, s.font, s.weight)), 0);
-      out.push({ id: c.id, body: s.body, x: c.transform.x, y: c.transform.y, w: ((wEm + (s.box ? 0.6 : 0)) * size * tl.height) / tl.width, h: lines.length * LINE * size, start: c.start, end: clipEnd(c), color: s.color, box: s.box, size, font: s.font });
+      out.push({ id: c.id, body: s.body, x: c.transform.x, y: c.transform.y, w: ((wEm + (s.box ? 0.6 : 0)) * size * tl.height) / tl.width, h: lines.length * LINE * size, start: c.start, end: clipEnd(c), color: s.color, box: s.box, size, font: s.font, anim: c.anim ?? null });
     }
   }
   return out;
@@ -600,6 +687,14 @@ export function lintBoxes(boxes: Box[], W: number, H: number, bg: string, only?:
     const under = a.box ?? bg;
     const need = a.size >= 0.05 ? 3 : 4.5;
     if (/^#[0-9a-f]{6}/i.test(a.color) && /^#[0-9a-f]{6}/i.test(under) && contrast(a.color, under) < need) issues.push({ kind: "contrast", text: `${name(a)}: its colour ${a.color} on ${under} is hard to read (contrast ${contrast(a.color, under).toFixed(1)}, needs ${need})` });
+    // majed-video's motion rules: no bounce, entrances 0.15–0.30 s (0.45 s for a hero moment), exits faster, read ≥ 0.6 s
+    if (a.anim) {
+      const { inMs, outMs } = a.anim;
+      if (a.anim.in && BOUNCY.has(a.anim.in)) issues.push({ kind: "bounce", text: `${name(a)} enters with «${a.anim.in}», which bounces or grows from nothing; use "settle" (from 0.94 with a fade), "rise" or "fade"` });
+      if (a.anim.in && a.anim.in !== "words" && a.anim.in !== "wipe" && a.anim.in !== "kashida" && inMs > 450) issues.push({ kind: "slow_entrance", text: `${name(a)} takes ${inMs} ms to enter; keep entrances 150–300 ms (up to 450 for the hook or the ending)` });
+      if (a.anim.out && a.anim.in && outMs > inMs) issues.push({ kind: "slow_exit", text: `${name(a)} leaves slower (${outMs} ms) than it enters (${inMs} ms); exits are faster` });
+      if (a.end - a.start - (a.anim.in ? inMs : 0) < 600) issues.push({ kind: "short_hold", text: `${name(a)} is readable for less than 0.6 s; keep every word on screen at least 0.6 s after it lands (better: until its sentence ends)` });
+    }
     if (a.size < 0.022) issues.push({ kind: "tiny", text: `${name(a)} is too small to read on a phone (size ${a.size.toFixed(3)}; at least 0.025)` });
   }
   const fonts = new Set(boxes.filter(mine).map((b) => b.font));
@@ -613,11 +708,27 @@ export function lintMotion(tl: Timeline, only?: Set<string>): MotionIssue[] {
 }
 
 /** The lint on a laid-out storyboard (the tests: what the engine makes must come out clean). */
-export function lintPlaced(placed: Placed[], W: number, H: number, bg: string): MotionIssue[] {
-  return lintBoxes(
-    placed.map((p, i) => ({ id: `p${i}`, body: p.body, x: p.x, y: p.y, w: p.w, h: p.h, start: p.start, end: p.end, color: p.color, box: p.box, size: p.size, font: p.font })),
+export function lintPlaced(placed: Placed[], W: number, H: number, bg: string, o: { startMs?: number; arabicDigits?: boolean } = {}): MotionIssue[] {
+  const issues = lintBoxes(
+    placed.map((p, i) => ({ id: `p${i}`, body: p.body, x: p.x, y: p.y, w: p.w, h: p.h, start: p.start, end: p.end, color: p.color, box: p.box, size: p.size, font: p.font, anim: p.anim })),
     W,
     H,
     bg,
   );
+  // the hook moves in the first second; Western digits unless the person asked for ٠١٢
+  if (placed.length && o.startMs != null && Math.min(...placed.map((p) => p.start)) - o.startMs > 1000) issues.push({ kind: "late_hook", text: "nothing moves in the first second of the piece" });
+  if (!o.arabicDigits) for (const p of placed) if (/[\u0660-\u0669\u06f0-\u06f9]/.test(p.body)) issues.push({ kind: "digits", text: `«${p.body.slice(0, 30)}» uses Eastern digits; Western digits (0–9) unless asked` });
+  return issues;
+}
+
+/**
+ * «قائمة الحقائق» (majed-video: no number or name on screen that the person didn't give): every number of the
+ * storyboard, and which of them is not in the person's own words (digits compared as Western ones).
+ */
+export function storyboardNumbers(sb: Storyboard, source: string): { all: string[]; unsourced: string[] } {
+  const text = [...sb.beats.flatMap((b) => [b.title, b.text, b.value, b.label, b.by, ...(b.items ?? []), ...(b.words ?? []), b.left?.title, b.left?.text, b.right?.title, b.right?.text])].filter(Boolean).join(" ");
+  const nums = (t: string) => [...new Set((westernDigits(t).replace(/(\d)[,٬](?=\d{3})/g, "$1").match(/\d+(?:[.٫]\d+)?/g) ?? []).map((n) => n.replace("٫", ".")))];
+  const have = new Set(nums(source));
+  const all = nums(text).filter((n) => !/^[1-5]$/.test(n) || !sb.beats.some((b) => b.kind === "steps"));
+  return { all, unsourced: all.filter((n) => !have.has(n)) };
 }
