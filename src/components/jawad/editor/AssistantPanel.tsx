@@ -745,6 +745,7 @@ export default function AssistantPanel({
             }}
           >
             <option value="auto">🔊 تلقائي</option>
+            <option value="device">🖥️ صوت الجهاز (مجاني)</option>
             <option value="openai">OpenAI</option>
             <option value="minimax">MiniMax</option>
             <option value="elevenlabs">ElevenLabs</option>
