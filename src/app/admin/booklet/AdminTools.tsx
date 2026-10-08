@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const SITE = typeof window === "undefined" ? "https://nahjali.vercel.app" : window.location.origin;
+const SITE = typeof window === "undefined" ? "https://www.aljawadai.app" : window.location.origin;
 const SHARE_TEXT = "جرّبوا «نهج علي» 🌟 كتيب عادات طيبة بشخصية طفلكم الكرتونية واسمه، مجانًا خلال فترة التجربة:";
 
 /** Quick marketing actions for the owner. */

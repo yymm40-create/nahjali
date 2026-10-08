@@ -21,7 +21,7 @@ export interface Reader {
   step(source: { url: string }, cursor: Record<string, unknown>, deadline: number): Promise<ReadStep>;
 }
 
-export const UA = "JawadAI-IslamicLibrary/1.0 (+https://nahjali.com)";
+export const UA = "JawadAI-IslamicLibrary/1.0 (+https://www.aljawadai.app)";
 
 /** Why the last fetch gave nothing (a status, or the failure), for the dashboard: a site that refuses us says so here. */
 export const fetchLog = { last: "" };
