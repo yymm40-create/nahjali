@@ -73,7 +73,7 @@ interface Video {
 
 const RESOLUTIONS = Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[];
 /** Videos made at the same time (the server's MAX_VIDEOS_AT_ONCE). */
-const MAX_AT_ONCE = 4;
+const MAX_AT_ONCE = 10;
 const usd = (n: number) => credits(n);
 
 /** Days left before a video file is removed from the site. */

@@ -27,21 +27,21 @@ type Send = (body: Record<string, unknown>) => Promise<void> | void;
 
 const SHEET_USD = 0.4;
 
-export default function SheetCards({ projectId, items, versions, assets, busy, send, onEdit }: { projectId: string; items: { id: string; title: string }[]; versions: SheetVersion[]; assets: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void }) {
+export default function SheetCards({ projectId, items, versions, assets, busy, send, onEdit, selected = [], onSelect }: { projectId: string; items: { id: string; title: string }[]; versions: SheetVersion[]; assets: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; selected?: string[]; onSelect?: (assetId: string) => void }) {
   if (!items.length) return null;
   return (
     <section className="space-y-2">
       <p className="text-sm font-bold text-muted">اسحب يمين ويسار بين الشخصيات والأماكن 👈👉 · عجبتك؟ اعتمدها. ما عجبتك؟ «ما عجبني» واكتب وش تبي.</p>
       <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3" style={{ scrollbarWidth: "thin" }}>
         {items.map((it) => (
-          <SheetCard key={it.id} projectId={projectId} id={it.id} title={it.title} prompts={versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === it.id)} images={assets.filter((a) => a.kind === "image" && a.ref_key === it.id)} busy={busy} send={send} onEdit={onEdit} />
+          <SheetCard key={it.id} projectId={projectId} id={it.id} title={it.title} prompts={versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === it.id)} images={assets.filter((a) => a.kind === "image" && a.ref_key === it.id)} busy={busy} send={send} onEdit={onEdit} selected={selected} onSelect={onSelect} />
         ))}
       </div>
     </section>
   );
 }
 
-function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit }: { projectId: string; id: string; title: string; prompts: SheetVersion[]; images: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void }) {
+function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit, selected = [], onSelect }: { projectId: string; id: string; title: string; prompts: SheetVersion[]; images: CardAsset[]; busy: boolean; send: Send; onEdit: (sheetId: string) => void; selected?: string[]; onSelect?: (assetId: string) => void }) {
   const latest = prompts.at(-1);
   const [count, setCount] = useState(1);
   const [editing, setEditing] = useState(false);
@@ -102,6 +102,11 @@ function SheetCard({ projectId, id, title, prompts, images, busy, send, onEdit }
 
       {!busy && main?.status === "generated" && !approved && (
         <div className="flex gap-2">
+          {onSelect && (
+            <label className="flex items-center gap-1 rounded-xl border border-line px-2 text-xs font-extrabold" title="للاعتماد مع المحدد">
+              <input type="checkbox" className="size-4 accent-gold" checked={selected.includes(main.id)} onChange={() => onSelect(main.id)} /> حدّد
+            </label>
+          )}
           <button className="btn btn-primary min-h-10 flex-1 text-sm" onClick={() => send({ action: "approve_image", assetId: main.id })}>اعتمد ✅</button>
           <button className="btn btn-ghost min-h-10 px-3 text-sm" onClick={() => send({ action: "reject_image", assetId: main.id })}>ارفضها</button>
         </div>

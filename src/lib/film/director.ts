@@ -626,7 +626,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
 }
 
 /** Videos made at the same time in one project. */
-export const MAX_VIDEOS_AT_ONCE = 4;
+export const MAX_VIDEOS_AT_ONCE = 10;
 
 async function submitVideo(
   project: FilmProject,

@@ -122,7 +122,8 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
       localStorage.setItem(modeKey, m);
     } catch {}
   };
-  const answered = questions.some((q) => q.status === "approved");
+  // the directing questions were answered at the very start (the screenwriter's one round): the choice comes after the understanding
+  const answered = questions.some((q) => q.status === "approved") || (understanding?.status === "approved" && !questions.some((q) => q.status === "awaiting_approval"));
   const direct = mode === "direct";
   // The director starts by itself and its understanding is approved in the background: the person meets its questions
   const autoStart = stage === "director" && !failed;

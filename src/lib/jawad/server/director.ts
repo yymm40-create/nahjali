@@ -8,7 +8,7 @@ import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn, type Clau
 import { SUPER_DIRECTOR } from "@config/film-prompts/director";
 import { DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
 import type { GeneratorDef, RefKind, RefRole, RefStyle, Settings } from "@config/jawad/types";
-import { DIRECTOR_LIMITS, directorProblems, directorPrompt, type DirectorOutput } from "../director";
+import { DIRECTOR_LIMITS, directorProblems, directorPrompt, salvageDirector, type DirectorOutput } from "../director";
 import { evaluate } from "../engine";
 import { cleanRefName, defaultRefName } from "../mentions";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
@@ -192,15 +192,24 @@ export function settingsText(def: GeneratorDef, s: Settings, modeId: string, met
 export async function directorRun(task: string, parts: ClaudePart[], names: string[]): Promise<{ prompt: string; usd: number; attempts: number }> {
   let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
   const usage: ClaudeUsage[] = [];
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  let last: DirectorOutput | null = null;
+  let left: string[] = [];
+  for (let attempt = 1; attempt <= 3; attempt++) {
     const r = await callClaudeJson<DirectorOutput>({ system: SUPER_DIRECTOR + task, turns, schema: SCHEMA, maxTokens: 16000 });
     usage.push(r.usage);
-    const problems = directorProblems(r.data, names);
-    if (!problems.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
+    last = r.data;
+    left = directorProblems(r.data, names);
+    if (!left.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
     // Once more, with what to fix
-    turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${problems.join("\n- ")}` }];
+    turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];
   }
-  throw new Error("director answer broke the website rules twice");
+  // still off after three tries: repaired where it is safe and used (an edit that works beats a refusal)
+  const saved = last ? salvageDirector(last, names) : null;
+  if (saved) {
+    console.warn("director answer used after repair", { problems: left });
+    return { prompt: directorPrompt(saved), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: 3 };
+  }
+  throw new Error(`director answer broke the website rules three times: ${left.join(" | ").slice(0, 400)}`);
 }
 
 async function refund(userId: string, coins: number, ref: string) {

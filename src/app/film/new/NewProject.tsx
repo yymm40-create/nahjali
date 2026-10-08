@@ -31,8 +31,8 @@ export default function NewProject() {
     setError("");
     try {
       const { id } = await postJson<{ id: string }>("/api/film/projects", { ...values, research });
-      // «نعم»: سجاد opens on the project's page and asks for the scope
-      router.push(`${filmBase}/${id}${research === "yes" ? "?research=1" : ""}`);
+      // straight to the screenwriter, who starts by himself; «نعم»: سجاد opens there too and asks for the research's scope
+      router.push(`${filmBase}/${id}/script?start=1${research === "yes" ? "&research=1" : ""}`);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

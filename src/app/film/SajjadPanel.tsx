@@ -58,7 +58,9 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
     // just made with «نعم، ابحث»: سجاد opens by himself and asks for the scope
     const wantsResearch = new URLSearchParams(window.location.search).get("research") === "1";
     if (wantsResearch) {
-      window.history.replaceState(null, "", window.location.pathname);
+      const u = new URL(window.location.href);
+      u.searchParams.delete("research");
+      window.history.replaceState(null, "", u.pathname + (u.search || ""));
       const t = setTimeout(() => {
         setOpen(true);
         setText("ابحث لي عن: ");
