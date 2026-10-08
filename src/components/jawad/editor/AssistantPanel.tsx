@@ -102,6 +102,8 @@ export default function AssistantPanel({
   readOnly,
   big,
   onBig,
+  mode = "dock",
+  onMode,
   zoom,
   onZoom,
   diag,
@@ -126,6 +128,9 @@ export default function AssistantPanel({
   /** the conversation over the whole editor (a computer) */
   big?: boolean;
   onBig?: () => void;
+  /** حيدرة's place on a computer: beside the preview, the whole side, or half the screen */
+  mode?: "dock" | "tall" | "half";
+  onMode?: (m: "dock" | "tall" | "half") => void;
   /** its text size (1 = normal) */
   zoom?: number;
   onZoom?: (z: number) => void;
@@ -654,6 +659,21 @@ export default function AssistantPanel({
             <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={zoom >= 1.6} onClick={() => onZoom(Math.round((zoom + 0.15) * 100) / 100)} aria-label="كبّر الكلام" title="كبّر الكلام">
               <Icon name="zoomIn" size={15} />
             </button>
+          </span>
+        )}
+        {onMode && !big && (
+          <span className="hidden items-center rounded-full border border-jw-line p-0.5 lg:flex" role="radiogroup" aria-label="مكان حيدرة">
+            {(
+              [
+                ["dock", "عادي", "جنب المعاينة"],
+                ["tall", "طول كامل", "الجهة كاملة من فوق لتحت"],
+                ["half", "نص الشاشة", "نص الشاشة من فوق لتحت"],
+              ] as const
+            ).map(([m, label, title]) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} title={title} onClick={() => onMode(m)} className={`rounded-full px-2 py-1 text-[11px] ${mode === m ? "bg-jw-accent text-jw-on-accent" : "text-jw-muted hover:text-jw-ink"}`}>
+                {label}
+              </button>
+            ))}
           </span>
         )}
         {onBig && (

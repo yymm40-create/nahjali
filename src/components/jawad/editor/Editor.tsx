@@ -152,6 +152,19 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [big, setBig] = useState(false);
   // Claude's width on a computer (dragged by its edge; kept on this device)
   const [chatW, setChatW] = useState(400);
+  // حيدرة's place on a computer: docked beside the preview, the whole side from top to bottom («طول كامل»), or half
+  // the screen («نص الشاشة»); kept on this device
+  const [chatMode, setChatModeState] = useState<"dock" | "tall" | "half">("dock");
+  const setChatMode = (m: "dock" | "tall" | "half") => {
+    setChatModeState(m);
+    try {
+      localStorage.setItem("jw-editor-chat-mode", m);
+    } catch {
+      /* not kept */
+    }
+  };
+  // the timeline's height, dragged by its top edge (null: the usual share of the screen); kept on this device
+  const [tlH, setTlH] = useState<number | null>(null);
   // the conversation over the whole editor (a computer), and its text size (kept on this device)
   const [chatBig, setChatBig] = useState(false);
   const [chatZoom, setChatZoom] = useState(1);
@@ -326,6 +339,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (w >= 300 && w <= 900) setChatW(w);
         const z = Number(localStorage.getItem("jw-editor-chat-zoom"));
         if (z >= 0.85 && z <= 1.6) setChatZoom(z);
+        const cm = localStorage.getItem("jw-editor-chat-mode");
+        if (cm === "tall" || cm === "half") setChatModeState(cm);
+        const th2 = Number(localStorage.getItem("jw-editor-tl-h"));
+        if (th2 >= 110 && th2 <= 2000) setTlH(th2);
       } catch {
         /* private mode: the normal size */
       }
@@ -420,6 +437,38 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+  };
+  // the timeline's top edge, dragged: taller up, shorter down (between 110 px and three quarters of the editor)
+  const dragTimeline = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const box = e.currentTarget.parentElement!;
+    const startY = e.clientY;
+    const startH = box.getBoundingClientRect().height;
+    const most = Math.max(200, (box.parentElement?.getBoundingClientRect().height ?? window.innerHeight) * 0.75);
+    let h = startH;
+    const move = (ev: PointerEvent) => {
+      h = Math.round(Math.min(most, Math.max(110, startH - (ev.clientY - startY))));
+      setTlH(h);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      try {
+        localStorage.setItem("jw-editor-tl-h", String(h));
+      } catch {
+        /* not kept */
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const resetTimeline = () => {
+    setTlH(null);
+    try {
+      localStorage.removeItem("jw-editor-tl-h");
+    } catch {
+      /* not kept */
+    }
   };
   const openClaude = (on?: boolean) => {
     setAssisting((v) => on ?? !v);
@@ -1261,15 +1310,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== THEMES[theme].mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
   ) : null;
 
+  // حيدرة along the whole side (top to bottom): the editor makes room for him on that side
+  const sideChat = wide && assisting && !chatBig && !big && chatMode !== "dock" && !layout.float.chat;
+  const chatPad = chatMode === "half" ? "50%" : `${chatW + 12}px`;
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
   return (
     <div
-      className="flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px]"
+      className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (THEMES[theme].mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
       data-ed-theme={theme}
       // a phone: the editor takes the whole screen (JAWAD AI's header steps aside, sections.css)
       data-ed-full=""
-      style={THEMES[theme].font ? { fontFamily: `"${familyOf(THEMES[theme].font!)}", var(--jw-font)` } : undefined}
+      style={{ ...(THEMES[theme].font ? { fontFamily: `"${familyOf(THEMES[theme].font!)}", var(--jw-font)` } : {}), ...(sideChat ? ({ "--jw-chat-pad": chatPad } as React.CSSProperties) : {}) }}
       // files dropped anywhere else (the preview, the panels) go at the playhead
       onDragOver={(e) => {
         if (!readOnly && e.dataTransfer.types.includes("Files")) e.preventDefault();
@@ -1417,7 +1469,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
-        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl ${chatBig ? "lg:!fixed lg:inset-4 lg:!z-[60] lg:!my-0 lg:flex lg:!bg-jw-surface lg:shadow-2xl lg:backdrop-blur-none" : ""} ${floatCls("chat")}`} style={chatBig ? undefined : placeStyle("chat", { width: chatW })} ref={sizeChat} aria-label="حيدرة">
+        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl ${chatBig ? "lg:!fixed lg:inset-4 lg:!z-[60] lg:!my-0 lg:flex lg:!bg-jw-surface lg:shadow-2xl lg:backdrop-blur-none" : ""} ${sideChat ? `lg:!absolute lg:inset-y-2 lg:!my-0 lg:!z-30 ${THEMES[theme].mirror ? "lg:end-2" : "lg:start-2"}` : ""} ${floatCls("chat")}`} style={chatBig ? undefined : sideChat ? { width: chatMode === "half" ? "calc(50% - 16px)" : chatW } : placeStyle("chat", { width: chatW })} ref={sizeChat} aria-label="حيدرة">
           {floatBar("chat")}
           {/* its edge: drag to make the conversation wider or narrower (double-click: the usual width) */}
           <div
@@ -1430,7 +1482,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             onDoubleClick={() => setChatW(400)}
           />
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-          <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
+          <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} mode={chatMode} onMode={wide ? setChatMode : undefined} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
           </div>
         </aside>
         {chatBig && <button type="button" aria-label="رجّع المحادثة لمكانها" className="fixed inset-0 z-[59] hidden bg-black/50 lg:block" onClick={() => setChatBig(false)} />}
@@ -1581,7 +1633,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       </div>
 
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
-      <div className={`jw-glass mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`}>
+      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`} style={tlH && wide && !big ? { height: tlH, minHeight: 0 } : undefined}>
+        {/* its top edge: drag to make the timeline taller or shorter (double-click: the usual height) */}
+        {wide && !big && (
+          <div role="separator" aria-orientation="horizontal" aria-label="غيّر ارتفاع التايملاين" title="اسحب لتطويل التايملاين أو تقصيره (ضغطتين: الارتفاع الأصلي)" className="absolute inset-x-8 top-0 z-20 h-2 cursor-row-resize rounded-full hover:bg-jw-accent/40" onPointerDown={dragTimeline} onDoubleClick={resetTimeline} />
+        )}
         {wide && <SequenceTabs tl={tl} run={run} readOnly={readOnly} />}
         <div className="min-h-0 flex-1">
         <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
