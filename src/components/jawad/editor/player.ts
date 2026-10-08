@@ -47,6 +47,10 @@ export class Player {
   private images = new Map<string, HTMLImageElement>();
   /** pictures the browser could not give us, with why (shown to the person once) */
   private imageTrouble = new Map<string, string>();
+  /** pictures whose load failed (never drawn: drawing a broken picture throws) */
+  private broken = new WeakSet<HTMLImageElement>();
+  /** media that storage refused with CORS: loaded again plainly so they at least show */
+  private plainSrc = new Set<string>();
   /** the page's way of telling the person about a picture that can't be shown */
   onTrouble: ((message: string) => void) | null = null;
   private host: HTMLDivElement;
@@ -408,7 +412,23 @@ export class Player {
     if (m && m.dataset.src === a.url) return m;
     if (m) release(m);
     m = document.createElement(a.kind === "video" ? "video" : "audio");
-    m.crossOrigin = "anonymous";
+    // a file storage refused with CORS before: plainly (it shows and plays; only the export may refuse it)
+    if (!this.plainSrc.has(a.url!)) m.crossOrigin = "anonymous";
+    const el = m;
+    el.addEventListener("error", () => {
+      if (!el.crossOrigin || this.plainSrc.has(a.url!)) {
+        this.trouble(a, `ما قدر المتصفح يشغّل «${a.name ?? ""}»؛ قد يكون الملف تالفًا أو رابطه انتهى. جرّب تحديث الصفحة.`);
+        return;
+      }
+      this.plainSrc.add(a.url!);
+      this.trouble(a, "مخزن الملفات ما سمح لهذا العنوان (CORS): شغّلت الملف بدونه عشان يطلع، لكن التصدير قد يرفضه. أضف عنوان الموقع في إعدادات CORS للمخزن (R2).");
+      if (this.media.get(clip.id) === el) {
+        release(el);
+        this.media.delete(clip.id);
+        this.sync(true);
+        this.draw();
+      }
+    });
     m.preload = "auto";
     if (m instanceof HTMLVideoElement) m.playsInline = true;
     // a faster or slower clip keeps its voice's pitch
@@ -433,6 +453,7 @@ export class Player {
     img.crossOrigin = "anonymous";
     img.onload = () => this.draw();
     img.onerror = () => {
+      this.broken.add(img);
       const plain = new Image();
       plain.onload = () => {
         this.images.set(a.id, plain);
@@ -440,6 +461,7 @@ export class Player {
         this.draw();
       };
       plain.onerror = () => {
+        this.broken.add(plain);
         this.trouble(a, `ما قدر المتصفح يحمّل الصورة «${a.name ?? ""}»${a.width && a.height && a.width * a.height > 16_000_000 ? ` — حجمها ${a.width}×${a.height} أكبر من ما تتحمله المتصفحات؛ صغّرها وارفعها من جديد` : "؛ قد يكون الملف تالفًا أو رابطه انتهى. جرّب تحديث الصفحة"}.`);
         this.draw();
       };
@@ -464,7 +486,7 @@ export class Player {
     if (a.kind === "image") {
       const img = this.images.get(a.id);
       // a picture the browser gives no size for (an SVG with none, or a decode it refuses) is drawn at its stored size
-      f = img?.complete && img.naturalWidth ? { img, width: img.naturalWidth, height: img.naturalHeight } : img?.complete && a.width && a.height && !this.imageTrouble.has(a.id) ? { img, width: a.width, height: a.height } : null;
+      f = !img || this.broken.has(img) ? null : img.complete && img.naturalWidth ? { img, width: img.naturalWidth, height: img.naturalHeight } : img.complete && a.width && a.height && !this.imageTrouble.has(a.id) ? { img, width: a.width, height: a.height } : null;
     } else {
       const m = this.media.get(clip.id);
       if (m instanceof HTMLVideoElement && m.readyState >= 2) {
