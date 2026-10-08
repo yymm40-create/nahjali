@@ -21,7 +21,7 @@ export default async function ScriptView({ id, base }: { id: string; base: strin
         <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">✍️ السيناريست</h1>
         <p className="text-sm font-bold text-muted">
-          يمشي على برومبت «السيناريست الذكي» من الدورة: الفهم ← الأسئلة ← السيناريو (مع القصة المطوّرة فيه)، وبعدها ينتقل تلقائيًا لصانع الشيت.
+          يبدأ لحاله من قصتك: يفهمها ← جولة أسئلة وحدة للرحلة كلها (القصة، شكل الشخصيات والأماكن، الإخراج) ← السيناريو مع القصة المطوّرة، وبعد اعتماده ينتقل تلقائيًا لصانع الشيت.
           تكلفة النصوص إلى الآن: <span>{credits(scriptCost)}</span>
         </p>
       </header>

@@ -88,7 +88,10 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   useEffect(() => {
     if (autoStarted.current || versions.length || running || failed || !hasStory || new URLSearchParams(window.location.search).get("start") !== "1") return;
     autoStarted.current = true;
-    window.history.replaceState(null, "", window.location.pathname);
+    // only «start» is taken off the address (سجاد reads his own «research» mark)
+    const u = new URL(window.location.href);
+    u.searchParams.delete("start");
+    window.history.replaceState(null, "", u.pathname + (u.search || ""));
     // (a moment, so the story's last words saved on the way here arrive first)
     const t = setTimeout(() => send({ action: "start" }), 900);
     return () => clearTimeout(t);

@@ -148,6 +148,16 @@ export async function runningImageJobs(projectId: string) {
 
 const addUserMessage = (projectId: string, content: string) => addMessage(projectId, STAGE, content);
 
+/** The person behind a background job (who pays for what the chain starts next). */
+async function jobUser(jobId: string) {
+  const { data } = await db().from("film_jobs").select("user_id").eq("id", jobId).maybeSingle();
+  return { id: String(data?.user_id ?? "") };
+}
+async function loadProject(projectId: string) {
+  const { data } = await db().from("film_projects").select("*").eq("id", projectId).maybeSingle();
+  return data as FilmProject | null;
+}
+
 /** Queues the sheet maker's next reply in the background. */
 async function queueReply(project: FilmProject, user: { id: string; email?: string | null }, messageId: string, estimateUsd = ESTIMATE_USD) {
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).like("idempotency_key", `${messageId}%`);
@@ -180,6 +190,8 @@ export type SheetAction =
   | { action: "write_all" }
   | { action: "approve_all_prompts" }
   | { action: "approve_all_images" }
+  /** «اعتمد المحدد»: these new pictures (one per sheet) */
+  | { action: "approve_images"; assetIds: string[] }
   | { action: "approve_image"; assetId: string }
   | { action: "unapprove_image"; assetId: string }
   | { action: "reject_image"; assetId: string }
@@ -403,6 +415,21 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       return { jobId: await maybeFinish(project, user) };
     }
 
+    case "approve_images": {
+      const ids = Array.isArray(input.assetIds) ? input.assetIds.filter((x): x is string => typeof x === "string") : [];
+      const { map } = approvedMap(versions);
+      const picks = ids.map((id) => assets.find((a) => a.id === id)).filter((a): a is FilmAsset => Boolean(a && a.kind === "image" && (a.status === "generated" || (a.status === "rejected" && a.storage_path)) && a.ref_key !== STYLE_TEST_ID));
+      if (!picks.length) throw new UserError("حدّد صورة أو أكثر.", 400);
+      for (const a of picks) {
+        const item = map.find((m) => m.id === a.ref_key);
+        const older = assets.filter((x) => x.ref_key === a.ref_key && x.id !== a.id && x.status === "approved").map((x) => x.id);
+        if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
+        await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: atName(item?.name ?? a.ref_key) } }).eq("id", a.id);
+      }
+      if (convo?.status === "running") return { jobId: convo.id };
+      return { jobId: await maybeFinish(project, user) };
+    }
+
     case "approve_image": {
       const a = assets.find((x) => x.id === input.assetId);
       // a rejected attempt can be taken back too (it stays under its sheet for that)
@@ -588,7 +615,7 @@ async function startImage(
   after(() => runImage(project, job.id, asset.id, o));
 }
 
-async function runImage(project: FilmProject, jobId: string, assetId: string, o: { prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" }) {
+async function runImage(project: FilmProject, jobId: string, assetId: string, o: { sheetId: string; prompt: string; refs: FilmAsset[]; kind: "test" | "sheet" }) {
   const client = db();
   try {
     const refs: Buffer[] = [];
@@ -607,12 +634,64 @@ async function runImage(project: FilmProject, jobId: string, assetId: string, o:
     const up = await storage.from(FILM_BUCKET).upload(path, png, { contentType: "image/png", upsert: true });
     if (up.error) throw up.error;
     await client.from("film_assets").update({ status: "generated", storage_path: path, mime: "image/png", bytes: png.length, error: null }).eq("id", assetId);
+    // the master is a style board (no characters, no places): it is approved by itself, and the sheets' prompts are asked for
+    if (o.kind === "sheet" && o.sheetId === MASTER_ID) await autoAfterMaster(project, jobId, assetId).catch((e) => console.error("sheet chain: after master", e));
     await succeedJob(jobId, { costUsd: costUsd ?? IMAGE_ESTIMATE_USD[o.kind], units: tokens });
   } catch (err) {
     console.error("film image failed", err);
     const msg = String(err instanceof Error ? err.message : err).slice(0, 300);
     await client.from("film_assets").update({ status: "failed", error: msg }).eq("id", assetId);
     await failJob(jobId, err);
+  }
+}
+
+// ───────────── the chain after the style («بس يحط اعتمد، يصنع الماستر وكل الشيتات بعدها») ─────────────
+
+/** The master's prompt just arrived: approved, and its picture started. */
+async function autoMaster(projectId: string, jobId: string) {
+  const [project, user, versions, assets] = await Promise.all([loadProject(projectId), jobUser(jobId), sheetVersions(projectId), sheetAssets(projectId)]);
+  const v = latest(versions, "sheet_prompt", MASTER_ID);
+  if (!project || !user.id || !v || v.status !== "awaiting_approval" || !v.data.prompt) return;
+  if (assets.some((a) => a.ref_key === MASTER_ID && a.kind === "image" && (a.status === "generating" || a.status === "generated" || a.status === "approved"))) return;
+  await setApproved(v, versions);
+  await generateSheet(project, user, { ...v, status: "approved" }, assets);
+}
+
+/** The master's picture is in: approved as the style reference, and every other sheet's prompt asked for in one batch. */
+async function autoAfterMaster(project: FilmProject, jobId: string, assetId: string) {
+  const [user, versions, assets] = await Promise.all([jobUser(jobId), sheetVersions(project.id), sheetAssets(project.id)]);
+  const a = assets.find((x) => x.id === assetId);
+  if (!user.id || !a || a.status !== "generated") return;
+  // an older master already approved (e.g. a redraw after an edit): the person decides between them
+  if (assets.some((x) => x.ref_key === MASTER_ID && x.id !== a.id && x.status === "approved")) return;
+  const { map } = approvedMap(versions);
+  const item = map.find((m) => m.id === MASTER_ID);
+  await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: atName(item?.name ?? "الماستر") } }).eq("id", a.id).eq("status", "generated");
+  if (versions.some((x) => x.kind === "sheet_prompt" && x.ref_key !== MASTER_ID)) return;
+  const running = await latestJob(project.id, STAGE);
+  if (running?.status === "running") return;
+  const pending = pendingSheets(versions);
+  const id = await addUserMessage(project.id, pending.length ? batchMessage(pending, a.id) : `اعتمد\nصورة الماستر ${MASTER_ID} المولّدة مرفقة هنا:\n[[image:${a.id}]]`);
+  await queueReply(project, user, id, ESTIMATE_USD * Math.max(1, pending.length));
+}
+
+/** The batch's prompts just arrived: approved, and one picture each started (what can't start stays for the page's buttons). */
+async function autoSheets(projectId: string, jobId: string, sheetIds: string[]) {
+  const [project, user] = await Promise.all([loadProject(projectId), jobUser(jobId)]);
+  if (!project || !user.id) return;
+  const versions = await sheetVersions(projectId);
+  const assets = await sheetAssets(projectId);
+  if (!approvedImages(assets)[MASTER_ID]) return;
+  for (const sid of sheetIds) {
+    const v = latest(versions, "sheet_prompt", sid);
+    if (!v || v.status !== "awaiting_approval" || !v.data.prompt) continue;
+    await setApproved(v, versions);
+    try {
+      await generateSheet(project, user, { ...v, status: "approved" }, assets);
+    } catch (e) {
+      if (!(e instanceof UserError)) throw e;
+      console.warn("sheet chain: picture not started", sid, e.message);
+    }
   }
 }
 
@@ -673,6 +752,8 @@ export async function runSheetReply(projectId: string, jobId: string) {
     if (error) throw error;
     // The reply joins the conversation only once its deliverable is stored, so a failure stays retryable
     await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: result.raw });
+    // «الستايل معتمد → الماستر يتصنع»: the master's prompt is approved and drawn by itself (the person waits for pictures, not texts)
+    if (kind === "sheet_prompt" && ref === MASTER_ID) await autoMaster(projectId, jobId).catch((e) => console.error("sheet chain: master", e));
     // The project moves on before the job reads "done", so the page that sees it finish goes straight to the director
     if (isHandoff) {
       const all = await sheetVersions(projectId);
@@ -733,6 +814,8 @@ async function runSheetBatch(projectId: string, jobId: string, turns: Awaited<Re
     });
     if (error) throw error;
   }
+  // «كل الشيتات مع بعض»: their prompts are approved and drawn by themselves (one picture each)
+  await autoSheets(projectId, jobId, done.map((d) => d.item.id)).catch((e) => console.error("sheet chain: sheets", e));
   const missing = pending.filter((m) => !done.some((d) => d.item.id === m.id));
   const text = [
     `سلّمت برومبتات الشيتات التالية دفعة واحدة، وكل واحد ينتظر "اعتمد" أو تعديل:`,

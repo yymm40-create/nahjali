@@ -40,3 +40,6 @@ export const FILM_STYLES: FilmStyle[] = [
 ];
 
 export const findStyle = (id: string) => FILM_STYLES.find((s) => s.id === id);
+
+/** The style's picture from the course guide (public/film/styles, one per style, 640×360). */
+export const styleImage = (id: string) => `/film/styles/${id}.jpg`;

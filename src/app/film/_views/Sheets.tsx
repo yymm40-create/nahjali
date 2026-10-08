@@ -5,7 +5,7 @@ import { requireFilmUser, requireProject } from "@/lib/film/access";
 import { latestJob, runningImageJobs, sheetAssets, sheetVersions } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
-import { FILM_STYLES } from "@config/film-styles";
+import { FILM_STYLES, styleImage } from "@config/film-styles";
 import SheetsWorkspace from "../[id]/sheets/SheetsWorkspace";
 import { castLinks, castOf } from "@/lib/film/series-cast";
 
@@ -39,7 +39,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
         <h1 className="display text-4xl">🎨 صانع الشيت</h1>
         <p className="text-sm font-bold text-muted">
-          خريطة الشيتات ← أسئلة التصميم ← اختبار الستايل ← الماستر (الستايل والألوان فقط) ← شيت لكل شخصية ومكان، وبعدها ينتقل تلقائيًا للمخرج.
+          خريطة الشيتات ← اختبار الستايل (كل ستايل بصورته) ← بس تعتمد الستايل ينرسم الماستر وكل الشيتات لحالهم ← تعتمد الصور (الكل، المحدد، أو وحدة وحدة)، وبعدها ينتقل تلقائيًا للمخرج.
           النصوص <span>{credits(cost.byService.anthropic ?? 0)}</span> · الصور <span>{credits(cost.byService.openai_image ?? 0)}</span>
         </p>
       </header>
@@ -52,7 +52,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         job={job ? { status: job.status, error: job.error } : null}
         imagesRunning={imageJobs.length}
         seriesCast={series.map((c) => ({ id: c.id, kind: c.kind, name: c.name, url: seriesLinks[c.id] ?? "" }))}
-        styles={FILM_STYLES.map(({ id, group, name, description, feel, bestFor }) => ({ id, group, name, description, feel, bestFor }))}
+        styles={FILM_STYLES.map(({ id, group, name, description, feel, bestFor }) => ({ id, group, name, description, feel, bestFor, image: styleImage(id) }))}
       />
     </div>
   );

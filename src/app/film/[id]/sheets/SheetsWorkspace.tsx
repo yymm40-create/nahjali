@@ -35,6 +35,8 @@ interface StyleCard {
   description: string;
   feel: string;
   bestFor: string;
+  /** the style's picture from the course guide */
+  image: string;
 }
 interface Props {
   projectId: string;
@@ -191,6 +193,9 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     return () => clearTimeout(t);
   });
   const revise = (v: SheetVersion) => (mode: SendMode, text: string) => send({ action: "revise", text, versionId: v.id, mode });
+  // «اعتمد المحدد»: new pictures ticked on their cards
+  const [selected, setSelected] = useState<string[]>([]);
+  const toggleSelect = (assetId: string) => setSelected((s) => (s.includes(assetId) ? s.filter((x) => x !== assetId) : [...s, assetId]));
   const backToSheets = stage === "director" ? " والمشروع انتقل للمخرج، فبيرجع لصانع الشيت لين تعتمد صورة جديدة." : "";
   return (
     <EditsLeftContext value={editsLeft}>
@@ -285,9 +290,14 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
             </button>
           )}
           {readyImages.length > 1 && (
-            <button className="btn btn-secondary w-full" disabled={busy} onClick={() => send({ action: "approve_all_images" })}>
-              ✅ اعتمد كل الصور الجديدة ({readyImages.length})
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button className="btn btn-secondary w-full" disabled={busy} onClick={() => send({ action: "approve_all_images" })}>
+                ✅ اعتمد الكل ({readyImages.length})
+              </button>
+              <button className="btn btn-primary w-full" disabled={busy || !selected.length} onClick={() => { const ids = selected; setSelected([]); void send({ action: "approve_images", assetIds: ids }); }}>
+                ☑️ اعتمد المحدد ({selected.length})
+              </button>
+            </div>
           )}
           {masterApproved && noPrompt.length > 0 && !writing && !waitingPrompts.length && (
             <button className="btn btn-ghost w-full" disabled={busy} onClick={() => send({ action: "write_all" })}>
@@ -298,7 +308,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         </section>
       )}
       {orderedSheets.includes(MASTER) && !masterApproved && (
-        <p className="rounded-2xl bg-surface-2 p-3 text-sm font-bold">💡 «الماستر»: لوحة الستايل والألوان وطريقة الرسم لكل الفيلم (بدون شخصيات ولا أماكن، عشان ما تنسخ منه). اعتمد صورته أول، وبعدها تنكتب كل الشيتات الباقية مع بعض.</p>
+        <p className="rounded-2xl bg-surface-2 p-3 text-sm font-bold">💡 «الماستر»: لوحة الستايل والألوان وطريقة الرسم لكل الفيلم (بدون شخصيات ولا أماكن). ينرسم ويُعتمد لحاله، وبعدها تنكتب كل الشيتات وتنرسم مع بعض — أنت بس تعتمد صورها: الكل، أو المحدد، أو وحدة وحدة.</p>
       )}
       {orderedSheets.length > 0 && (
         <label className="flex items-center gap-2 text-sm font-bold">
@@ -313,6 +323,8 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
         busy={busy || writing}
         send={send}
         onEdit={(sid) => autoAfterEdit.current.add(sid)}
+        selected={selected}
+        onSelect={toggleSelect}
       />
 
       {/* Items the user supplied "as is" need no prompt */}
@@ -549,7 +561,11 @@ function StyleTest({
                     // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
                     <a href={t.url} target="_blank" rel="noopener"><img src={t.url} alt={nameOf(sid)} className="aspect-[3/2] w-full rounded-xl object-cover" /></a>
                   )}
-                  <figcaption className="text-sm font-extrabold">{nameOf(sid)}</figcaption>
+                  <figcaption className="flex items-center gap-2 text-sm font-extrabold">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a static picture from the course guide */}
+                    <img src={styles.find((s) => s.id === sid)?.image} alt="" className="h-8 w-14 rounded-md object-cover" />
+                    {nameOf(sid)}
+                  </figcaption>
                   {!chosen && t.status === "generated" && (
                     <button className="btn btn-primary min-h-10 w-full text-sm" disabled={busy} onClick={() => onChoose(sid)}>اعتمد هذا الستايل</button>
                   )}
@@ -565,16 +581,20 @@ function StyleTest({
       ) : (
         <div className="space-y-3">
           <h3 className="font-extrabold">اختر من ٢ إلى ٤ ستايلات للتجربة ({picked.length}/٤)</h3>
-          <p className="text-sm font-bold text-muted">💡 اختر ٢ أو ٣ أشكال رسم، نجرّبها على لقطة من قصتك، وبعدين تختار اللي يعجبك.</p>
+          <p className="text-sm font-bold text-muted">💡 كل ستايل بصورته من الدليل. اختر ٢ أو ٣ أشكال رسم، نجرّبها على لقطة من قصتك، وبعدين تختار اللي يعجبك — وبعد الاعتماد ينرسم الماستر وكل الشيتات لحالهم.</p>
           {groups.map((g) => (
             <div key={g} className="space-y-2">
               <p className="text-sm font-extrabold text-muted">{g}</p>
               <div className="grid grid-cols-2 gap-2">
                 {styles.filter((s) => s.group === g).map((s) => (
-                  <button key={s.id} onClick={() => toggle(s.id)} className={`rounded-2xl border p-3 text-start ${picked.includes(s.id) ? "border-2 border-gold bg-surface-2" : "border-line"}`}>
-                    <p className="font-extrabold">{s.name}</p>
-                    <p className="text-xs font-bold text-muted">{s.feel}</p>
-                    <p className="mt-1 text-xs text-muted">{s.bestFor}</p>
+                  <button key={s.id} onClick={() => toggle(s.id)} className={`overflow-hidden rounded-2xl border text-start ${picked.includes(s.id) ? "border-2 border-gold bg-surface-2" : "border-line"}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a static picture from the course guide */}
+                    <img src={s.image} alt={s.name} loading="lazy" className="aspect-video w-full object-cover" />
+                    <div className="p-2.5">
+                      <p className="font-extrabold">{s.name}</p>
+                      <p className="text-xs font-bold text-muted">{s.feel}</p>
+                      <p className="mt-1 text-xs text-muted">{s.bestFor}</p>
+                    </div>
                   </button>
                 ))}
               </div>
