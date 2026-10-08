@@ -33,6 +33,7 @@ import { peaksOf, waveImage } from "./peaks";
 import Library from "./Library";
 import { thumbnail } from "./media";
 import { Player } from "./player";
+import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
 import Timeline from "./Timeline";
 import type { EditorAsset, EditorProjectView } from "./types";
@@ -795,7 +796,45 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     tracks: tl.tracks.map((t) => ({ kind: t.kind, name: t.name, clips: t.clips.length, ...(t.muted ? { muted: true } : {}), ...(t.hidden ? { hidden: true } : {}) })),
     files: assets.map((a) => ({ id: a.id, kind: a.kind, name: a.name, mime: a.mime, mb: Math.round(a.bytes / 1e5) / 10, status: a.status, hasUrl: !!a.url, origin: a.origin, size: a.width ? `${a.width}x${a.height}` : null, durationMs: a.durationMs })),
   });
-  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio, durationMs: a.durationMs, name: a.name, width: a.width, height: a.height })), [assets]);
+  // «النسخة الخفيفة»: a 4K video (anything over 1080p) gets a light copy made on this device once, and the preview
+  // plays it (smooth seeking, no 4K streaming); the export always uses the original
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const proxyBusy = useRef(new Set<string>());
+  useEffect(() => {
+    if (readOnly) return;
+    const todo = assets.filter((a) => a.status === "ready" && a.url && needsProxy(a) && !previews[a.id] && !proxyBusy.current.has(a.id));
+    if (!todo.length) return;
+    let stop = false;
+    for (const a of todo) proxyBusy.current.add(a.id);
+    void (async () => {
+      for (const a of todo) {
+        if (stop) break;
+        try {
+          let url = await proxyUrl(a.id);
+          if (!url) {
+            flashRef.current(`🎞️ «${a.name}» دقته ${a.width}×${a.height}: أجهّز له نسخة خفيفة للمعاينة على جهازك (مرة وحدة)، والتصدير يظل بالدقة الأصلية…`);
+            let last = 0;
+            url = await makeProxy(a.id, a.url!, (p) => {
+              if (p - last >= 0.25) {
+                last = p;
+                diagNote(`النسخة الخفيفة «${a.name}»: ${Math.round(p * 100)}٪`, "note");
+              }
+            });
+            if (url) flashRef.current(`✅ «${a.name}» صار يشتغل خفيف في المعاينة.`);
+          }
+          if (url && !stop) setPreviews((m) => ({ ...m, [a.id]: url! }));
+        } catch (e) {
+          diagNote(`النسخة الخفيفة «${a.name}» ما انعملت: ${e instanceof Error ? e.message : String(e)}`, "note");
+        } finally {
+          proxyBusy.current.delete(a.id);
+        }
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [assets, previews, readOnly]);
+  const playerAssets = useMemo(() => assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, preview: a.status === "ready" ? (previews[a.id] ?? null) : null, hasAudio: a.hasAudio, durationMs: a.durationMs, name: a.name, width: a.width, height: a.height })), [assets, previews]);
   useEffect(() => {
     // nested timelines («Nest») opened into their clips, so they play like any others
     player?.update(flatten(tl), playerAssets);

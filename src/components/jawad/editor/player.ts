@@ -16,6 +16,8 @@ export interface PlayerAsset {
   id: string;
   kind: "video" | "audio" | "image";
   url: string | null;
+  /** «النسخة الخفيفة»: a light copy kept on this device, played instead of a 4K original (never exported) */
+  preview?: string | null;
   hasAudio: boolean;
   durationMs?: number | null;
   name?: string;
@@ -408,19 +410,21 @@ export class Player {
   }
 
   private element(clip: Clip, a: PlayerAsset): Media {
+    // a 4K video plays its light copy here (the export still reads the original)
+    const src = (a.kind === "video" && a.preview) || a.url!;
     let m = this.media.get(clip.id);
-    if (m && m.dataset.src === a.url) return m;
+    if (m && m.dataset.src === src) return m;
     if (m) release(m);
     m = document.createElement(a.kind === "video" ? "video" : "audio");
     // a file storage refused with CORS before: plainly (it shows and plays; only the export may refuse it)
-    if (!this.plainSrc.has(a.url!)) m.crossOrigin = "anonymous";
+    if (!this.plainSrc.has(src)) m.crossOrigin = "anonymous";
     const el = m;
     el.addEventListener("error", () => {
-      if (!el.crossOrigin || this.plainSrc.has(a.url!)) {
+      if (!el.crossOrigin || this.plainSrc.has(src)) {
         this.trouble(a, `ما قدر المتصفح يشغّل «${a.name ?? ""}»؛ قد يكون الملف تالفًا أو رابطه انتهى. جرّب تحديث الصفحة.`);
         return;
       }
-      this.plainSrc.add(a.url!);
+      this.plainSrc.add(src);
       this.trouble(a, "مخزن الملفات ما سمح لهذا العنوان (CORS): شغّلت الملف بدونه عشان يطلع، لكن التصدير قد يرفضه. أضف عنوان الموقع في إعدادات CORS للمخزن (R2).");
       if (this.media.get(clip.id) === el) {
         release(el);
@@ -433,8 +437,8 @@ export class Player {
     if (m instanceof HTMLVideoElement) m.playsInline = true;
     // a faster or slower clip keeps its voice's pitch
     m.preservesPitch = true;
-    m.dataset.src = a.url!;
-    m.src = a.url!;
+    m.dataset.src = src;
+    m.src = src;
     // while paused, a frame that arrives after a seek is drawn straight away
     const redraw = () => !this.playing && this.draw();
     m.addEventListener("seeked", redraw);
