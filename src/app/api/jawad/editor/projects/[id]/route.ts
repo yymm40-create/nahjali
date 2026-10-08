@@ -25,6 +25,7 @@ import {
   completeUpload,
 } from "@/lib/editor/server";
 import { align, signSpeechUpload, transcribe, voiceIn, voiceOut } from "@/lib/editor/speech";
+import { voiceprint } from "@/lib/editor/voiceprint";
 import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist, gradeCheck } from "@/lib/editor/assistant";
 import { diagnose } from "@/lib/editor/diagnose";
@@ -53,7 +54,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["transcribe", "align", "voice_in", "voice_out", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -103,6 +104,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await voiceIn(p, who, b));
     case "voice_out":
       return NextResponse.json(await voiceOut(p, who, b));
+    // «بصمة صوتك» from the edit: a recording of the person's own voice → a voice of their library
+    case "voiceprint":
+      return NextResponse.json({ voice: await voiceprint(p, user, owner, b) });
     case "make_hook":
       return NextResponse.json({ asset: await makeHook(p, who, b) });
     case "make_sfx":

@@ -23,7 +23,7 @@ export interface RecordingHandle {
 
 const TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 /** Louder than this (RMS, 0–1) counts as talking. */
-const SPEECH_LEVEL = 0.025;
+const SPEECH_LEVEL = 0.012;
 /** Quiet this long after talking ends a conversation turn. */
 const QUIET_MS = 1300;
 /** A conversation turn with nothing said is dropped after this. */
@@ -52,6 +52,10 @@ export async function record(o: { untilQuiet?: boolean; onLevel?: (v: number) =>
   let cancelled = false;
 
   const ctx = new AudioContext();
+  // a context made after an await starts «suspended» in Safari and some Chrome builds: its meter then reads 0 forever,
+  // and a voice message used to be dropped as «nothing said» without a word
+  void ctx.resume().catch(() => {});
+  let heardAny = false;
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
   ctx.createMediaStreamSource(stream).connect(analyser);
@@ -62,7 +66,14 @@ export async function record(o: { untilQuiet?: boolean; onLevel?: (v: number) =>
     for (const v of buf) sum += v * v;
     const level = Math.sqrt(sum / buf.length);
     o.onLevel?.(Math.min(1, level * 8));
+    if (level > 0) heardAny = true;
     const now = performance.now();
+    // a meter that never moves (the context never started): no silence detection; a turn ends after 8 s
+    if (!heardAny && o.untilQuiet && now - started > 1500) {
+      spoke = true;
+      if (now - started > 8000) end();
+      return;
+    }
     if (level > SPEECH_LEVEL) {
       spoke = true;
       lastLoud = now;
@@ -84,7 +95,9 @@ export async function record(o: { untilQuiet?: boolean; onLevel?: (v: number) =>
       o.onLevel?.(0);
       const seconds = (performance.now() - started) / 1000;
       const type = (rec.mimeType || mime || "audio/webm").split(";")[0];
-      ok(cancelled || !spoke || seconds < 0.4 || !chunks.length ? null : { blob: new Blob(chunks, { type }), mime: type, seconds });
+      // a voice message ends by the person's own press: kept even when the meter didn't see the voice
+      const said = o.untilQuiet ? spoke : true;
+      ok(cancelled || !said || seconds < 0.6 || !chunks.length ? null : { blob: new Blob(chunks, { type }), mime: type, seconds });
     };
   });
   function end() {
@@ -111,15 +124,25 @@ const base64 = (blob: Blob) =>
 
 /** What was said, written. */
 export async function hear(projectId: string, r: Recording) {
-  const out = await postJson<{ text: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "voice_in", audio: await base64(r.blob), mime: r.mime, seconds: Math.round(r.seconds) });
+  const out = await postJson<{ text: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "voice_in", audio: await base64(r.blob), mime: r.mime, seconds: Math.max(1, Math.round(r.seconds)) });
   return out.text.trim();
 }
 
 let playing: HTMLAudioElement | null = null;
 
 /** حيدرة says `text` aloud; resolves when it has finished (or was stopped with `hush`). */
+/** Who reads حيدرة's replies (kept on this device): a provider, or one of the person's own voices («v:<id>»). */
+export const REPLY_VOICE_KEY = "jw-haydara-voice";
+export function replyVoice(): string {
+  try {
+    return localStorage.getItem(REPLY_VOICE_KEY) || "auto";
+  } catch {
+    return "auto";
+  }
+}
+
 export async function say(projectId: string, text: string) {
-  const out = await postJson<{ audio: string; mime: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "voice_out", text });
+  const out = await postJson<{ audio: string; mime: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "voice_out", text, voice: replyVoice() });
   hush();
   const a = new Audio(`data:${out.mime};base64,${out.audio}`);
   playing = a;
@@ -137,3 +160,52 @@ export function hush() {
   playing?.pause();
   playing = null;
 }
+
+/**
+ * Any recording (WebM/Opus, MP4, WAV…) as a mono 16-bit WAV at `rate`, at most `maxSec` long — what the voice
+ * libraries accept for «بصمة صوتك». Decoded by the browser itself.
+ */
+export async function wavOf(blob: Blob, rate = 24000, maxSec = 170): Promise<{ wav: Blob; seconds: number }> {
+  const ctx = new AudioContext();
+  let buf: AudioBuffer;
+  try {
+    buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+  } catch {
+    throw new Error("ما قدرت أقرأ هذا الصوت في المتصفح؛ جرّب Chrome.");
+  } finally {
+    void ctx.close().catch(() => {});
+  }
+  const seconds = Math.min(maxSec, buf.duration);
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(seconds * rate)), rate);
+  const src = off.createBufferSource();
+  src.buffer = buf;
+  src.connect(off.destination);
+  src.start(0, 0, seconds);
+  const out = (await off.startRendering()).getChannelData(0);
+  const data = new DataView(new ArrayBuffer(44 + out.length * 2));
+  const text = (at: number, s: string) => [...s].forEach((ch, i) => data.setUint8(at + i, ch.charCodeAt(0)));
+  text(0, "RIFF");
+  data.setUint32(4, 36 + out.length * 2, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  data.setUint32(16, 16, true);
+  data.setUint16(20, 1, true);
+  data.setUint16(22, 1, true);
+  data.setUint32(24, rate, true);
+  data.setUint32(28, rate * 2, true);
+  data.setUint16(32, 2, true);
+  data.setUint16(34, 16, true);
+  text(36, "data");
+  data.setUint32(40, out.length * 2, true);
+  for (let i = 0; i < out.length; i++) data.setInt16(44 + i * 2, Math.max(-1, Math.min(1, out[i])) * 0x7fff, true);
+  return { wav: new Blob([data.buffer], { type: "audio/wav" }), seconds };
+}
+
+/** A blob as base64 (no data: prefix). */
+export const blobBase64 = (blob: Blob) =>
+  new Promise<string>((ok, fail) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => fail(new Error("ما قدرت أقرأ الملف."));
+    r.readAsDataURL(blob);
+  });

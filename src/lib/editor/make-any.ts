@@ -26,7 +26,7 @@ export const MAKE_KINDS: MakeKind[] = ["image", "video", "speech", "sfx", "music
 const CHOICES: Record<MakeKind, string[]> = {
   image: ["openai-gpt-image-2"],
   video: ["byteplus-seedance-2-5", "byteplus-seedance-2-0"],
-  speech: ["elevenlabs-eleven-v4", "openai-gpt-4o-mini-tts"],
+  speech: ["elevenlabs-eleven-v4", "minimax-speech-2-8", "openai-gpt-4o-mini-tts"],
   sfx: ["elevenlabs-sfx-v2"],
   music: ["elevenlabs-music-v2-5"],
 };
@@ -101,21 +101,37 @@ export function makeSettings(s: MakeSpec, projectRatio: number, voice: string | 
   }
 }
 
+/** The speech providers by generator (a voice is spoken only where it lives). */
+const SPEECH_GEN: Record<string, string> = { elevenlabs: "elevenlabs-eleven-v4", minimax: "minimax-speech-2-8", openai: "openai-gpt-4o-mini-tts" };
+/** «openai: calm male» / «minimax: …»: the provider حيدرة asked for, and the rest of the words. */
+export function speechWish(voice: string): { provider: "elevenlabs" | "minimax" | "openai" | null; want: string } {
+  const m = /^\s*(openai|minimax|elevenlabs|eleven)\s*[:：]\s*/i.exec(voice);
+  if (!m) return { provider: null, want: voice };
+  const k = m[1].toLowerCase();
+  return { provider: k === "eleven" ? "elevenlabs" : (k as "openai" | "minimax" | "elevenlabs"), want: voice.slice(m[0].length) };
+}
+
 /** A voice for the words: one of the person's own by its name, else a ready voice whose description fits best. */
-async function pickVoice(who: Who, want: string): Promise<string | null> {
+async function pickVoice(who: Who, wanted: string): Promise<{ value: string; provider: string } | null> {
+  const { provider, want } = speechWish(wanted);
+  // OpenAI's voices are the generator's own (its default fits Arabic); nothing to pick from the library
+  if (provider === "openai") return null;
   const v = await listVoices(who.id, who.owner).catch(() => null);
   if (!v) return null;
   const w = want.trim().toLowerCase();
-  const all = [...v.mine, ...v.ready];
+  const all = [...v.mine, ...v.ready].filter((x) => !provider || x.provider === provider);
+  const pick = (x: { value: string; provider: string }) => ({ value: x.value, provider: x.provider });
   if (w) {
     const named = all.find((x) => x.name.toLowerCase() === w) ?? all.find((x) => w.includes(x.name.toLowerCase()) || x.name.toLowerCase().includes(w));
-    if (named) return named.value;
+    if (named) return pick(named);
     // «صوتي» / my voice: the person's newest own voice
-    if (/صوتي|my voice|بصوتي/.test(w) && v.mine[0]) return v.mine[0].value;
+    const mine = v.mine.filter((x) => !provider || x.provider === provider);
+    if (/صوتي|my voice|بصوتي|بصمتي/.test(w) && mine[0]) return pick(mine[0]);
     const words = w.split(/[\s,،·]+/).filter((x) => x.length > 2);
     const male = /رجل|ذكر|male|man|رجالي|شاب/.test(w);
     const female = /امرأة|أنثى|انثى|female|woman|بنت|نسائي/.test(w);
     const scored = v.ready
+      .filter((x) => !provider || x.provider === provider)
       .map((x) => {
         const d = `${x.name} ${x.description}`.toLowerCase();
         let n = words.filter((k) => d.includes(k)).length;
@@ -124,7 +140,7 @@ async function pickVoice(who: Who, want: string): Promise<string | null> {
         return { x, n };
       })
       .sort((a, b) => b.n - a.n);
-    if (scored[0]?.n) return scored[0].x.value;
+    if (scored[0]?.n) return pick(scored[0].x);
   }
   return null;
 }
@@ -142,11 +158,17 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
   if (!(await can(who.email, "editor_ai"))) return { error: "حيدرة (الذكاء الاصطناعي) مقفل لحسابك الحين." };
   const rt = await loadRuntime();
   if (!rt.migrated) return { error: "منصة الجواد AI قيد التجهيز." };
-  const rg = CHOICES[s.makeKind].map((id) => rt.generators.find((g) => g.id === id)).find((g) => g && (g.live || (who.owner && g.keyConfigured)));
+  // speech: the voice's own provider first (a library voice lives at one), else the provider asked for
+  const voicePick = s.makeKind === "speech" ? await pickVoice(who, s.voice) : null;
+  const asked = s.makeKind === "speech" ? speechWish(s.voice).provider : null;
+  const first = voicePick ? SPEECH_GEN[voicePick.provider] : asked ? SPEECH_GEN[asked] : null;
+  const order = first ? [first, ...CHOICES[s.makeKind].filter((id) => id !== first)] : CHOICES[s.makeKind];
+  const rg = order.map((id) => rt.generators.find((g) => g.id === id)).find((g) => g && (g.live || (who.owner && g.keyConfigured)));
   const def = rg ? generatorById(rg.id) : undefined;
   const section = rg ? rt.sections.find((x) => x.id === rg.sectionId && (x.enabled || who.owner)) : undefined;
   if (!rg || !def || !section) return { error: "هذا النوع من التوليد غير متاح حاليًا." };
-  const voice = s.makeKind === "speech" ? await pickVoice(who, s.voice) : null;
+  // a library voice only goes to the generator it lives at (another one speaks with its own default voice)
+  const voice = voicePick && SPEECH_GEN[voicePick.provider] === rg.id ? voicePick.value : null;
   const prompt = s.prompt.trim().slice(0, def.prompt.max);
   const e = evaluate(def, { settings: makeSettings(s, projectRatio, voice), prompt, instructions: "", refStyle: "none", refs: [], strict: false }, rt.prices[def.id]);
   if (e.issues.length) return { error: e.issues[0].message };

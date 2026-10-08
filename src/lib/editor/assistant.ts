@@ -18,6 +18,7 @@ import { MOTION_SKILL } from "./motion";
 import { MAJED_SKILL } from "./majed";
 import { lintMotion, motionCommands, motionPlan, readStoryboard, SFX, storyboardNumbers, type SfxKind } from "./motion-build";
 import { makeMotionArt } from "./generate";
+import { readTalk, talkArt, talkCommands } from "./talk-motion";
 import type { AssetView } from "./server";
 import { applyAll } from "./commands";
 import { COMMANDS_GUIDE } from "./assistant-commands";
@@ -32,8 +33,9 @@ const db = () => createAdminClient();
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "commands", "suggestions", "requests", "checkClipId", "motion"],
+  required: ["reply", "commands", "suggestions", "requests", "checkClipId", "motion", "talk"],
   properties: {
+    talk: { type: "string", description: "MOTION THAT FOLLOWS THE SPEAKER'S WORDS only: the cues as a JSON object string (see TALKING VIDEO). Else empty." },
     motion: { type: "string", description: "MOTION GRAPHICS only: the storyboard as a JSON object string (see MOTION GRAPHICS — the layout engine places every text). Else empty." },
     checkClipId: { type: "string", description: "The clip whose colour you changed (the page grades it and sends you the result to check). Empty when no colour changed." },
     reply: { type: "string", description: "Short answer to the person, in their language (Arabic by default)." },
@@ -46,7 +48,7 @@ const SCHEMA = {
         additionalProperties: false,
         required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer", "captionStyle", "poem", "then"],
         properties: {
-          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions"] },
+          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion"] },
           captionStyle: { type: "string", enum: ["karaoke", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up). Else empty." },
           poem: { type: "string", description: "captions: a poem's verses (one per line, exactly as the person gave them) to time on its recitation in clipId. Else empty." },
           then: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "captions: commands to run once the captions exist — \"$CAPTIONS\" is the new caption track's id, and a command whose clipId is \"$EACH\" runs on every caption. Else empty." },
@@ -55,7 +57,7 @@ const SCHEMA = {
           makeKind: { type: "string", enum: ["image", "video", "speech", "sfx", "music", ""], description: "make: what to make. Else empty." },
           aspect: { type: "string", description: "make image/video: \"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\" (video also \"4:3\", \"3:4\", \"21:9\"); empty = the project's shape." },
           seconds: { type: "number", description: "make video (4–15), sfx (1–30), music (10–300): length in seconds. Else 0." },
-          voice: { type: "string", description: "make speech: one of the person's own voices by name (\"voices\"), or a short English description (e.g. \"deep calm male Arabic narrator\"). Else empty." },
+          voice: { type: "string", description: "make speech: one of the person's own voices by name (\"voices\"), or a short English description (e.g. \"deep calm male Arabic narrator\"); start it with \"openai:\", \"minimax:\" or \"elevenlabs:\" to choose who speaks it (a library voice is always spoken where it lives). Else empty." },
           withSound: { type: "boolean", description: "make video: with its own generated sound; make music: with singing. Else false." },
           quality: { type: "string", description: "make image: \"low\"|\"medium\"|\"high\" (default high); video: \"480p\"|\"720p\"|\"1080p\" (default 720p). Else empty." },
           place: { type: "string", enum: ["over", "main", "audio", "library", ""], description: "make: where the result goes — over (a new track above the video, at \"at\"), main (into the main track at \"at\"), audio (a new sound track at \"at\"), library (only added to the files). Else empty." },
@@ -103,6 +105,17 @@ RULES:
 - «نص الهوك» (a hook text: whenever the person asks for a hook, a hook text or a title hook): it is designed as one piece — the picture of the words (GPT Image 2), its entrance and exit, and two sound effects — by the hook designer, from {"kind":"hook_design","text":...,"lang":...,"domain":...,"age":...,"at":0}. It needs five inputs: the hook text (exactly as given — you never write or change it), its language, the orientation (the project's shape: you know it, never ask), the field or project, and the audience age. If any is missing, ask ONE short grouped question for the missing ones only (mention reference pictures are optional) and send no request. Once they are all there, send the request and reply only that the design is on its way (the designer's delivery follows).
 - MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost). Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
 - MAKING ANYTHING with JAWAD AI's generators → {"kind":"make","makeKind":...,"prompt":...,"place":...,"at":...}: any picture (GPT Image 2: a B-roll shot, a background, a thumbnail, an illustration, a poster, a picture with Arabic writing — quote the Arabic text exactly in «» inside the English prompt), any video shot (Seedance: 4–15 s; describe subject, action, setting, camera move, lighting, style in English), any voice reading a text (speech: the exact words, with diacritics where the pronunciation matters; "voice" picks who reads), any sound effect (English description), any music (English description; withSound true = with singing). Prompts are rich and specific like a professional's. Where it goes: pictures/videos usually "over" at the moment they illustrate (or "main" to insert a shot), sounds "audio" at the moment they belong. Use it whenever the person asks to make/create/generate something (not for the hook text, which has its own designer, and use "music" above for music made to the video's length). It costs coins (the price is shown to the person before it starts) and a video takes a few minutes; it arrives on the timeline by itself. Up to 3 per answer.
+- «بصمة صوتك» (VOICEPRINT) → {"kind":"voiceprint","clipId":<a clip where the person talks alone, or "" to record at the microphone>,"name":<the voice's name, e.g. «صوتي»>,"voice":"minimax" (default: unlimited voices, Arabic) or "elevenlabs"}. The page takes 10 s–2 min of their voice, asks their consent, and keeps it in their voice library; then any "make speech" with that name (or «بصوتي») reads text in their voice. Only the person's own voice, or one they have permission for.
+- VOICES: you (Claude) write words but have no voice of your own — speech is made by a speech provider: start "voice" with "openai:", "minimax:" or "elevenlabs:" to choose (a voice from the person's library always speaks where it lives). The person picks who reads YOUR spoken replies in the panel (🔊).
+- REFERENCES the person attached («📎»): listed in the message with their ids (they are in the library now); pictures and moments of videos are shown to you. Use them as asked: place them (add_clip with their assetId), match their look, colours, style or pace, use a recording for a voiceprint, or describe them in a "make" prompt.
+- TALKING VIDEO — MOTION THAT FOLLOWS THE WORDS («موشن على كلامه», Majed Alzaabi's talking reels): the person talks to the camera; the moment they say a thing, it appears, and for those seconds the person shrinks into a box at the bottom, then comes back full screen. It needs the words with their times ("speech" in the timeline). If there is no "speech" for the talking clip yet, send ONLY {"kind":"talk_motion","clipId":<the talking clip>} — the page writes the captions and asks you again by itself. When "speech" is there, write "talk" (a JSON object string): {"palette":"studio"|…,"colors":{…brand colours, optional},"layout":"shrink" (default) or "over" (the person stays full),"cues":[…]} with one cue per moment worth showing (one every 2–6 s at most, never two within 0.9 s), "at" = the timeline ms where that word STARTS (from "speech"), optional "until":
+  · {"kind":"word","at":…,"text":"تاكسي"} — the key word itself, big in the highlight pill;
+  · {"kind":"emoji","at":…,"emoji":"🚕","text":"تاكسي"} — a picture of a thing (any emoji that shows it) with its word;
+  · {"kind":"brand","at":…,"brand":"instagram"|"tiktok"|"youtube"|"x"|"snapchat"|"whatsapp"|"facebook"|"telegram"|"linkedin"|"threads","text":"انستقرام"} — when they name an app: its icon;
+  · {"kind":"route","at":…,"from":"الكويت","to":"الرياض"} — going somewhere: a line drawn from where they are to the place (from "" or omitted when unknown → a pin on the place);
+  · {"kind":"pin","at":…,"to":"الرياض"} — a place mentioned;
+  · {"kind":"stat","at":…,"value":"70%","text":"من الناس"} — a number they say (only numbers they really say).
+  Choose the moments that carry the meaning (nouns, places, apps, numbers), not every word. The engine lays them out, draws the icons and routes, keys the shrink on every piece of the talking video, lifts the captions above the box and adds the sounds. Never use "talk" for a piece without a talking person (that is "motion").
 - A PRECISE WINDOW («ماسك ذكي», by SAM 3: the subject's exact outline, following its shape as it moves) → {"kind":"smart_mask","clipId":...,"prompt":"<what to select as a short English noun phrase: face, sky, person on the right, white robe>","track":true for a moving subject in a video,"layer":N}. Use it whenever a grade or fix must touch exactly one thing (brighten a face, darken the sky, warm a robe, cool the background with invert): in the same answer put that layer's grade change in "commands" (e.g. {"type":"update_clip","clipId":...,"patch":{"grade":{"layer":1,"name":"الوجه","exposure":0.3}}}; for "everything except it" add "mask":{"kind":"ellipse","invert":true} there and the precise outline keeps the invert). The outline replaces that layer's window when it arrives. A rough ellipse/rect with "keys" stays fine for soft, broad areas.
 - MOTION GRAPHICS («موشن جرافيكس», «فيديو توضيحي متحرك», «إنفوجرافيك متحرك», «تايبوغرافي», an animated ad or intro): follow the MOTION GRAPHICS skill below — get the brief in one grouped question (only what's missing), write the script, then build the whole piece from editable clips, with its narration, sounds and music, in one answer.
 - If something is missing that only a new shot could fix (e.g. an opening view), offer to make it (make) or add a suggestion with a clear English generation prompt.
@@ -144,7 +157,7 @@ function lookParts(look: NonNullable<ReturnType<typeof readLook>>): ClaudePart[]
 }
 
 export interface MakeRequest {
-  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions";
+  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion";
   /** captions: the starting look, a poem to time, and the commands run on the new captions */
   captionStyle?: string;
   poem?: string;
@@ -182,6 +195,7 @@ export interface MakeRequest {
 interface Answer {
   checkClipId?: string;
   motion?: string;
+  talk?: string;
   reply: string;
   commands: string[];
   requests?: MakeRequest[];
@@ -192,7 +206,7 @@ interface Answer {
 const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown }, origin: string | null = null) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown }, origin: string | null = null) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -236,6 +250,25 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       { type: "text", text: `THE SELECTED CLIP (${look.clipId}) — a few of its moments, each with its scope (read the numbers like a colourist reads the waveform and vectorscope). Use them to understand the clip (people, places, actions, text on screen, mood, and its colour and exposure: compare as filmed with after the grading) when the request is about it.` },
       ...lookParts(look),
     ];
+    last.content = parts;
+  }
+  // «📎 مراجع»: the files attached to this message — pictures shown as they are, videos by a few of their moments
+  const refIds = new Set(Array.isArray(b.refs) ? b.refs.filter((x): x is string => typeof x === "string").slice(0, 6) : []);
+  const refs = assets.filter((a) => refIds.has(a.id) && a.status === "ready");
+  if (refs.length) {
+    const looks = new Map<string, { t: number; data: string }[]>();
+    for (const x of Array.isArray(b.refLooks) ? b.refLooks.slice(0, 6) : []) {
+      const o = (x ?? {}) as { id?: unknown; frames?: unknown };
+      if (typeof o.id !== "string" || !refIds.has(o.id) || !Array.isArray(o.frames)) continue;
+      looks.set(o.id, o.frames.slice(0, 3).filter((f): f is { t: number; data: string } => !!f && typeof (f as { data?: unknown }).data === "string" && (f as { data: string }).data.length < 400_000 && /^[A-Za-z0-9+/]+=*$/.test((f as { data: string }).data)).map((f) => ({ t: Number(f.t) || 0, data: f.data })));
+    }
+    const last = merged[merged.length - 1];
+    const parts: ClaudePart[] = typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...last.content];
+    parts.push({ type: "text", text: `REFERENCES the person attached to this message (in the library now — use their ids): ${refs.map((a) => `${a.id} · ${a.kind} · «${a.name}»${a.durationMs ? ` · ${(a.durationMs / 1000).toFixed(1)} s` : ""}${a.width ? ` · ${a.width}×${a.height}` : ""}`).join(" | ")}` });
+    for (const a of refs) {
+      if (a.kind === "image" && a.url) parts.push({ type: "text", text: `Reference «${a.name}» (${a.id}):` }, { type: "image", url: a.url });
+      for (const f of looks.get(a.id) ?? []) parts.push({ type: "text", text: `Reference video «${a.name}» (${a.id}) at ${(f.t / 1000).toFixed(1)} s:` }, { type: "image64", data: f.data, mediaType: "image/jpeg" });
+    }
     last.content = parts;
   }
   // a colour request: the library's cases most like this clip (its scope as the person sees it now) and these words
@@ -310,8 +343,31 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       if (facts.all.length) motionNote += `\n🔢 الأرقام اللي بتطلع على الشاشة: ${facts.all.join("، ")}${facts.unsourced.length ? ` — ⚠️ ما لقيت ${facts.unsourced.join("، ")} في كلامك، تأكد منها` : ""}. صح؟`;
     } else motionNote = `\n\n(ما قدرت أبني الموشن: ${all.error.message})`;
   } else if (answer.motion?.trim()) motionNote = "\n\n(الستوري بورد ما انقرأ؛ اطلبها مرة ثانية.)";
+  // «موشن على كلامه»: the cues laid over the talking video by the engine (icons and routes drawn here)
+  const talk = answer.talk?.trim() ? readTalk(answer.talk, Math.max(...tl.tracks.flatMap((t) => t.clips.map((c) => c.start + (c.out - c.in) / c.speed)), 0)) : null;
+  if (talk) {
+    const made = await makeMotionArt(p, talkArt(talk)).catch((e) => (console.error("talk art", e), new Map<string, AssetView>()));
+    const artIds = new Map<string, string>();
+    for (const [k, a] of made) {
+      artIds.set(k, a.id);
+      infos.set(a.id, assetInfo(a));
+      newAssets.push(a);
+    }
+    const built = talkCommands(talk, tl, valid.length, artIds);
+    const all = checkCommands(tl, [...valid, ...built.commands].map((c) => JSON.stringify(c)), infos);
+    if (!all.error) {
+      valid = all.cmds;
+      const byKind = new Map<SfxKind, number[]>();
+      for (const c of built.sounds) (byKind.get(c.kind) ?? byKind.set(c.kind, []).get(c.kind)!).push(c.at);
+      for (const [kind, ats] of byKind) {
+        const [first, ...rest] = ats.sort((a, b) => a - b);
+        sfxRequests.push({ kind: "make", makeKind: "sfx", prompt: SFX[kind].prompt, seconds: SFX[kind].seconds, place: "audio", at: first, alsoAt: rest, volume: 0.35, name: SFX[kind].name, text: "", lang: "", domain: "", age: "", style: "", aspect: "", voice: "", withSound: false, quality: "", lengthMs: 0, clipId: "" });
+      }
+      motionNote += `\n\n🎬 ركّبت ${talk.cues.length} لحظة على كلامك${built.windows.length ? `، وتصغر لمربع تحت ${built.windows.length} مرات وترجع` : ""}: ${talk.cues.map((c) => `${(c.at / 1000).toFixed(1)}ث ${c.kind === "brand" ? c.brand : c.kind === "route" ? `→ ${c.to}` : c.kind === "stat" ? c.value : c.emoji ?? c.text}`).join(" · ")}. كل شي قابل للتعديل.`;
+    } else motionNote += `\n\n(ما قدرت أركّب الموشن على الكلام: ${all.error.message})`;
+  } else if (answer.talk?.trim()) motionNote += "\n\n(خطة الموشن على الكلام ما انقرأت؛ اطلبها مرة ثانية.)";
   // the texts this answer placed by hand: checked like the engine's (overlaps, long lines, contrast, safe area)
-  if (!sb && valid.some((c) => c.type === "add_text" || (c.type === "update_clip" && c.patch.text))) {
+  if (!sb && !talk && valid.some((c) => c.type === "add_text" || (c.type === "update_clip" && c.patch.text))) {
     try {
       const after = applyAll(tl, valid, infos).timeline;
       const before = new Set(tl.tracks.flatMap((t) => t.clips.map((c) => c.id)));
@@ -340,7 +396,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
   const requests = (answer.requests ?? [])
-    .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
