@@ -141,7 +141,32 @@ export function replyVoice(): string {
   }
 }
 
+/**
+ * «🖥️ صوت الجهاز»: read by the browser's own speech (free, nothing sent anywhere): the device's Arabic voice when it
+ * has one (e.g. «Majed» on Apple devices). Resolves when it has finished, or at once when the browser has no speech.
+ */
+export function sayOnDevice(text: string) {
+  return new Promise<void>((ok) => {
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    if (!synth) return ok();
+    const clean = text.replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/g, " ").replace(/[*_`#>|]/g, "").replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").trim().slice(0, 700);
+    if (!clean) return ok();
+    const u = new SpeechSynthesisUtterance(clean);
+    const arabic = /[\u0600-\u06FF]/.test(clean);
+    u.lang = arabic ? "ar-SA" : "en-US";
+    const voices = synth.getVoices();
+    const v = voices.find((x) => x.lang.toLowerCase().startsWith(arabic ? "ar" : "en") && /majed|maged|tarik|hamed|naayf/i.test(x.name)) ?? voices.find((x) => x.lang.toLowerCase().startsWith(arabic ? "ar" : "en"));
+    if (v) u.voice = v;
+    u.rate = 1;
+    u.onend = () => ok();
+    u.onerror = () => ok();
+    synth.cancel();
+    synth.speak(u);
+  });
+}
+
 export async function say(projectId: string, text: string) {
+  if (replyVoice() === "device") return sayOnDevice(text);
   const out = await postJson<{ audio: string; mime: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "voice_out", text, voice: replyVoice() });
   hush();
   const a = new Audio(`data:${out.mime};base64,${out.audio}`);
@@ -157,6 +182,7 @@ export async function say(projectId: string, text: string) {
 
 /** Stops حيدرة talking. */
 export function hush() {
+  if (typeof window !== "undefined") window.speechSynthesis?.cancel();
   playing?.pause();
   playing = null;
 }
