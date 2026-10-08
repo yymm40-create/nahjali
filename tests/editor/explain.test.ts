@@ -14,6 +14,10 @@ describe("why a generation failed, in plain words", () => {
     expect(explainFailure("OutputAudioSensitiveContentDetected.PolicyViolation ... copyright restrictions", "x")).toMatch(/الصوت الناتج/);
   });
   it("keeps the usual message when nothing is recognised", () => {
-    expect(explainFailure("something else", "الرسالة")).toBe("الرسالة");
+    // the provider's own words are never hidden
+    expect(explainFailure("something else", "الرسالة")).toBe("الرسالة السبب عند المزوّد: something else");
+    expect(explainFailure("failed", "الرسالة")).toBe("الرسالة");
+    expect(explainFailure("InputVideoSensitiveContentDetected the reference video was rejected", "x")).toMatch(/مقطع الفيديو المرجعي/);
+    expect(explainFailure("InvalidParameter.UnsupportedVideo fps must be between 24 and 60", "x")).toMatch(/غير مقبول عنده: InvalidParameter/);
   });
 });

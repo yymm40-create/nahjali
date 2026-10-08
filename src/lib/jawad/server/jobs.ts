@@ -131,9 +131,15 @@ export function explainFailure(detail: string | undefined, fallback: string | un
   if (/Output(Video|Audio)SensitiveContentDetected/.test(d)) return tag("رفض المزوّد النتيجة لأنها خالفت سياسة المحتوى عنده. غيّر الملاحظة وجرّب. ما انخصم منك شي.");
   if (/InputImageSensitiveContentDetected/.test(d)) return tag("رفض المزوّد صورة المرجع أو لقطة القص (فيها شخص حقيقي أو محتوى حساس عنده). جرّب «كامل» أو جزءًا ثانيًا. ما انخصم منك شي.");
   if (/InputTextSensitiveContentDetected/.test(d)) return tag("رفض المزوّد نص الطلب لأنه خالف سياسة المحتوى عنده. غيّر كلمات الملاحظة وجرّب. ما انخصم منك شي.");
+  if (/InputVideo/.test(d)) return `رفض المزوّد مقطع الفيديو المرجعي (الاستمرارية): ${d.slice(0, 200)}. جرّب «أعد المقطع كاملًا» أو مقاطع استمرارية أطول. ما انخصم منك شي.`;
+  if (/InputAudio/.test(d)) return `رفض المزوّد الصوت المرجعي: ${d.slice(0, 200)}. أطفئ الصوت أو جرّب بدون مقاطع الصوت. ما انخصم منك شي.`;
   if (/SensitiveContent|PolicyViolation/.test(d)) return tag("رفض المزوّد الطلب لأنه خالف سياسة المحتوى عنده. غيّر الملاحظة وجرّب. ما انخصم منك شي.");
   if (/rate.?limit|RateLimit|429|overloaded|Quota/i.test(d)) return tag("المزوّد مشغول الحين أو وصل حده. جرّب بعد دقائق. ما انخصم منك شي.");
-  return fallback;
+  if (/InvalidParameter|Unsupported|Invalid|MissingParameter/.test(d)) return `المزوّد رفض الطلب لأن أحد المراجع أو الإعدادات غير مقبول عنده: ${d.slice(0, 220)}. ما انخصم منك شي.`;
+  if (/InternalServiceError|ServiceUnavailable|InternalError|ServerError/.test(d)) return `خطأ داخلي عند المزوّد (${d.slice(0, 120)}). جرّب مرة ثانية بعد دقائق. ما انخصم منك شي.`;
+  // nothing recognised: the provider's own words go along, so the reason is never hidden
+  const raw = d.replace(/^smart edit prompt: /, "").replace(/\s+/g, " ").trim();
+  return fallback && raw && !/^(failed|expired|cancelled)$/.test(raw) ? `${fallback} السبب عند المزوّد: ${raw.slice(0, 220)}` : fallback;
 }
 
 export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status: "succeeded" | "failed" | "cancelled", o: { message?: string; detail?: string; costUsd?: number | null; units?: Record<string, unknown> } = {}) {
