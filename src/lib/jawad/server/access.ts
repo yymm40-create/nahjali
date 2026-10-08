@@ -7,7 +7,7 @@ import { notFound, redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiUser, UserError } from "@/lib/api";
-import { can, unlimitedFor, type Perm } from "@/lib/access";
+import { can, hasAnyAccess, unlimitedFor, type Perm } from "@/lib/access";
 import { isAdmin } from "@config/site";
 import { JAWAD } from "@config/jawad/brand";
 
@@ -31,7 +31,7 @@ export async function canUseJawad(user: { email?: string | null } | null) {
 }
 
 /** Should this visitor see the platform (rather than «قيد التطوير»)? Only those the dashboard's list lets in. */
-export const jawadVisibleTo = canUseJawad;
+export const jawadVisibleTo = async (user: { email?: string | null } | null) => hasAnyAccess(user?.email);
 
 /** Where to sign in without leaving JAWAD AI, coming back to `next` afterwards. */
 export const jawadLogin = (next: string) => `${JAWAD.base}/login?next=${encodeURIComponent(next)}`;
