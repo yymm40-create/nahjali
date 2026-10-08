@@ -825,7 +825,7 @@ export default function AssistantPanel({
           📎
         </button>
         <textarea
-          className="jw-textarea max-h-32 min-h-11 flex-1 resize-none text-sm"
+          className="jw-textarea max-h-32 min-h-11 min-w-0 flex-1 resize-none text-sm"
           rows={1}
           dir="auto"
           value={text}

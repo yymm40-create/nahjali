@@ -4,7 +4,7 @@
 // Only the timeline itself (a little text), the person's account and what is asked of حيدرة go over the internet.
 // The editor's pages come from the live site, so every update reaches the program as soon as it is published.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, shell, systemPreferences } = require("electron");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -229,10 +229,27 @@ function setupSession() {
   ses.setUserAgent(`${ua} JawadAI/${app.getVersion()}`);
 
   // the microphone and camera (recording), notifications, full screen and the clipboard, for the site itself
-  ses.setPermissionRequestHandler((wc, permission, done, details) => {
+  ses.setPermissionRequestHandler(async (wc, permission, done, details) => {
     const allowed = ["media", "notifications", "fullscreen", "clipboard-sanitized-write", "clipboard-read", "display-capture", "window-management"];
     const origin = details.requestingUrl ? new URL(details.requestingUrl).origin : "";
-    done(origin === SITE.origin && allowed.includes(permission));
+    if (!(origin === SITE.origin && allowed.includes(permission))) return done(false);
+    // macOS: the system's own microphone/camera permission (TCC) must be asked for, else the page gets a silent
+    // stream and «🎤» records nothing — the system prompt shows once, then its answer is remembered
+    if (permission === "media" && process.platform === "darwin") {
+      const kinds = details.mediaTypes?.length ? details.mediaTypes : ["audio"];
+      for (const kind of kinds) {
+        const device = kind === "video" ? "camera" : "microphone";
+        if (systemPreferences.getMediaAccessStatus(device) === "granted") continue;
+        const ok = await systemPreferences.askForMediaAccess(device).catch(() => false);
+        if (!ok) {
+          dialog.showMessageBox(win && !win.isDestroyed() ? win : null, { type: "warning", message: device === "microphone" ? "الجواد AI ما عنده إذن المايك" : "الجواد AI ما عنده إذن الكاميرا", detail: "افتح إعدادات النظام ← الخصوصية والأمان ← " + (device === "microphone" ? "الميكروفون" : "الكاميرا") + "، وفعّل «الجواد AI»، ثم أعد المحاولة.", buttons: ["افتح الإعدادات", "لاحقًا"] }).then((r) => {
+            if (r.response === 0) shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${device === "microphone" ? "Microphone" : "Camera"}`);
+          });
+          return done(false);
+        }
+      }
+    }
+    done(true);
   });
   ses.setPermissionCheckHandler((_wc, permission, origin) => origin === SITE.origin && ["media", "notifications", "fullscreen", "clipboard-sanitized-write", "clipboard-read"].includes(permission));
 

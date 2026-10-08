@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL) : null;
 
 const nextConfig: NextConfig = {
+  // the build the pages were made from: a page kept open compares it with /api/version («في نسخة جديدة»)
+  env: { NEXT_PUBLIC_BUILD: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ?? "dev" },
   images: {
     remotePatterns: supabase
       ? [{ protocol: supabase.protocol.replace(":", "") as "http" | "https", hostname: supabase.hostname, port: supabase.port, pathname: "/storage/v1/object/public/mahdi-shrines/**" }]
