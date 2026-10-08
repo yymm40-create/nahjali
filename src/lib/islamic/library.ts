@@ -23,7 +23,7 @@ export interface Source {
   enabled: boolean;
   notes: string;
   cursor: Record<string, unknown>;
-  stats: { docs?: number; chunks?: number; lastRunAt?: string; stage?: string; done?: boolean; runs?: number; errors?: number };
+  stats: { docs?: number; chunks?: number; lastRunAt?: string; stage?: string; done?: boolean; runs?: number; errors?: number; lastError?: string };
   created_at: string;
 }
 
@@ -74,11 +74,16 @@ export async function resetSource(id: string) {
 export async function counts(): Promise<Record<string, { docs: number; chunks: number }>> {
   const d = db();
   const out: Record<string, { docs: number; chunks: number }> = {};
-  const { data } = await d.from("islamic_docs").select("source_id");
-  for (const r of (data ?? []) as { source_id: string }[]) (out[r.source_id] ??= { docs: 0, chunks: 0 }).docs++;
+  // exact counts (a plain select stops at 1,000 rows and would show the first source only)
+  const { data: srcs } = await d.from("islamic_sources").select("id");
+  let docs = 0;
+  for (const s of (srcs ?? []) as { id: string }[]) {
+    const { count } = await d.from("islamic_docs").select("id", { count: "exact", head: true }).eq("source_id", s.id);
+    out[s.id] = { docs: count ?? 0, chunks: 0 };
+    docs += count ?? 0;
+  }
   const { count } = await d.from("islamic_chunks").select("id", { count: "exact", head: true });
-  // chunks are not per source in one cheap query; the total is shown on the page
-  out.__all = { docs: Object.values(out).reduce((s, x) => s + x.docs, 0), chunks: count ?? 0 };
+  out.__all = { docs, chunks: count ?? 0 };
   return out;
 }
 
@@ -109,12 +114,13 @@ export async function runRead(id: string, budgetMs: number = ISLAMIC.crawlBudget
       console.error("islamic read", s.key, e);
       errors++;
       stage = `خطأ: ${e instanceof Error ? e.message : String(e)}`;
+      stats = { ...stats, lastError: stage };
       break;
     }
     const results = await pool(step.docs, 6, (doc) =>
       saveDoc(s.id, doc).then(
         () => true,
-        (e) => (console.error("islamic save", doc.url, e), false),
+        (e) => (console.error("islamic save", doc.url, e), (stats = { ...stats, lastError: `حفظ ${doc.url}: ${e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e)}` }), false),
       ),
     );
     const ok = results.filter(Boolean).length;

@@ -131,6 +131,7 @@ export default function IslamicAdmin() {
                   {s.stats?.stage && <> · {s.stats.done ? "✅ اكتملت" : `وقفت عند: ${s.stats.stage}`}</>}
                   {s.stats?.errors ? <span className="text-red-700"> · أخطاء: {s.stats.errors}</span> : null}
                 </p>
+                {s.stats?.lastError && <p className="text-xs text-red-700">آخر خطأ: {s.stats.lastError}</p>}
                 {busy && <p className="text-sm font-bold text-teal">⏳ يقرأ… {reading[s.id]}</p>}
                 <div className="flex flex-wrap gap-2">
                   {busy ? (
@@ -142,7 +143,7 @@ export default function IslamicAdmin() {
                       {s.stats?.done ? "اقرأ من جديد (تحديث)" : c.docs ? "كمّل القراءة" : "اقرأ المصدر"}
                     </button>
                   )}
-                  {!busy && c.docs > 0 && (
+                  {!busy && (c.docs > 0 || (s.stats?.runs ?? 0) > 0) && (
                     <button type="button" className="btn btn-ghost !min-h-10 !px-4 !text-sm" onClick={() => confirm("يحذف كل ما قُرئ من هذا المصدر ويبدأ من الصفر؟") && act({ action: "reset", id: s.id })}>
                       امسح وابدأ من الصفر
                     </button>
