@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 
-type Msg = { role: "user" | "sajjad"; text: string; at: string; username?: string | null; questions?: { question: string; options: string[] }[]; changes?: string[] };
+type Action = { kind: "rewind" | "revise_script" | "revise_sheets" | "revise_director" | "fixed_facts"; to?: string; text?: string; sceneId?: string; effect: string; blocked?: string };
+type Msg = { role: "user" | "sajjad"; text: string; at: string; username?: string | null; questions?: { question: string; options: string[] }[]; changes?: string[]; pending?: Action[]; applied?: string[] };
+const ACTION_LABEL: Record<Action["kind"], string> = { rewind: "↩️ رجوع لنقطة", revise_script: "✍️ توجيه السيناريست", revise_sheets: "🎨 توجيه صانع الشيت", revise_director: "🎥 توجيه المخرج", fixed_facts: "📌 قاعدة ثابتة" };
 type Plan = { note: string; episodes: { number: number; title: string; summary: string; scenes: { title: string; brief: string; assignee: string }[] }[] };
 type Finding = { id: string; title: string; text: string; sources: string[]; status: "pending" | "approved" | "dropped"; scope: string };
 type Research = { asked?: "yes" | "no"; items: Finding[] };
@@ -143,6 +145,26 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
       setBusy(false);
     }
   };
+  // «تدخّل سجاد»: his last proposal still waiting for «طبّق»
+  const proposal = messages.findLast((m) => m.role === "sajjad" && m.pending?.length)?.pending ?? null;
+  const decideAction = async (apply: boolean) => {
+    setBusy(true);
+    setError("");
+    try {
+      if (apply) {
+        const r = await postJson<{ message: Msg }>("/api/film/sajjad", { kind, id, action: "apply" });
+        setMessages((m) => [...m.map((x) => (x.pending ? { ...x, pending: undefined, applied: r.message.changes } : x)), r.message]);
+        router.refresh();
+      } else {
+        await postJson("/api/film/sajjad", { kind, id, action: "drop" });
+        setMessages((m) => m.map((x) => (x.pending ? { ...x, pending: undefined, applied: ["ما طُبّق"] } : x)));
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const pending = research.items.filter((f) => f.status === "pending");
   const approved = research.items.filter((f) => f.status === "approved").length;
   const last = messages.at(-1);
@@ -207,6 +229,26 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
                     </div>
                   ))}
                   <button type="button" className="btn btn-primary min-h-10 w-full text-sm" disabled={!Object.values(answers).some((a) => a?.trim())} onClick={answerAll}>أرسل أجوبتي</button>
+                </div>
+              )}
+
+              {proposal && !busy && (
+                <div className="space-y-2 rounded-2xl border-2 border-[#dc2626] bg-white p-3 text-sm" aria-label="تدخّل سجاد">
+                  <p className="font-black">🛠️ سجاد يبي يتدخّل — هذا اللي بيصير لو طبّقت:</p>
+                  <ol className="space-y-2">
+                    {proposal.map((a, i) => (
+                      <li key={i} className={`rounded-xl p-2 ${a.blocked ? "bg-black/5 opacity-70" : "bg-[#fff1f2]"}`}>
+                        <p className="font-extrabold">{ACTION_LABEL[a.kind]}{a.to ? ` · ${a.to === "screenwriter" ? "السيناريست" : a.to === "sheets" ? "صانع الشيت" : "المخرج"}` : ""}</p>
+                        {a.text && <p className="whitespace-pre-wrap text-xs font-bold text-muted">«{a.text}»</p>}
+                        {a.effect && <p className="text-xs font-extrabold leading-6">⚠️ {a.effect}</p>}
+                        {a.blocked && <p className="text-xs font-extrabold text-[#dc2626]">⏭️ ما ينطبق: {a.blocked}</p>}
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="flex gap-2">
+                    <button type="button" className="btn btn-primary min-h-10 flex-1 text-sm" disabled={busy || proposal.every((a) => a.blocked)} onClick={() => decideAction(true)}>طبّق ✅</button>
+                    <button type="button" className="btn btn-ghost min-h-10 px-3 text-sm" disabled={busy} onClick={() => decideAction(false)}>لا، خلّه</button>
+                  </div>
                 </div>
               )}
 
@@ -283,7 +325,7 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
                 className="field min-h-12 flex-1 resize-none text-sm"
                 rows={2}
                 maxLength={6000}
-                placeholder={kind === "series" && canEdit ? "اكتب وصف المسلسل، أو اسأل، أو اطلب: «اقترح الشخصيات» «ابحث لي عن…» «رتّب الحلقات والمشاهد ووزّع الشغل»" : "اسأل سجاد أي شي عن الشغل، أو «ابحث لي عن…»"}
+                placeholder={kind === "series" && canEdit ? "اكتب وصف المسلسل، أو اسأل، أو اطلب: «اقترح الشخصيات» «ابحث لي عن…» «رتّب الحلقات والمشاهد ووزّع الشغل»" : "اسأل سجاد، أو «ابحث لي عن…»، أو اطلب تغييرًا: «غيّر نهاية القصة» «رجّعنا للسيناريست» «خل المقطع GEN-03 ليلًا»"}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
