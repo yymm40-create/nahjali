@@ -9,12 +9,13 @@ import { callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, type Claud
 import { checkCommands, context, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
-import { GRADE_CHECK, GRADE_COMMANDS, GRADING_KNOW_HOW, gradeBrief, MAX_CHECKS } from "./assistant-guide";
+import { GRADE_CHECK, GRADING_KNOW_HOW, gradeBrief, MAX_CHECKS } from "./assistant-guide";
 import { readScope, scopeLine } from "./scopes";
 import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading-library";
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
-import { FX_LIST } from "./effects";
 import { TR_LIST } from "./transitions";
+import { MOTION_SKILL } from "./motion";
+import { COMMANDS_GUIDE } from "./assistant-commands";
 import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
 import { sajjadBrief } from "@/lib/film/sajjad";
 import { checkDesign, deliveryText, DESIGN_SCHEMA, DESIGN_SYSTEM, designPrompt, RESEARCH_SYSTEM, researchPrompt, type HookDesign, type HookInputs } from "./hook-design";
@@ -84,27 +85,7 @@ const SYSTEM = `You are «حيدرة», the editing assistant inside the «حي�
 
 THE TIMELINE (sent with every request as JSON): times are whole milliseconds. Each clip shows its source from "in" to "out" starting at "start" on the timeline; its length is (out-in)/speed. Tracks are drawn bottom to top; the first video track is the main one and, when "magnetic" is true, it has no gaps (clips follow each other in order). Audio tracks are heard only. Text tracks hold text and captions. "library" lists the project's media you can place. "quiet" lists the silent parts of clips that have sound (timeline ms). "speech" lists what is said, phrase by phrase, when it was transcribed. A clip's "grades" are its colour grading layers (only what differs from neutral), "crop" its crop, "nest" the timeline a Nest clip holds; "sequences" lists the project's timelines (the open one is the one you edit); "voices" lists the person's own saved voices (for speech).
 
-COMMANDS: put each command in "commands" as a JSON object string. Available:
-- {"type":"add_clip","assetId":ID,"at":MS?,"trackId":ID or "new"?} – put library media on the timeline (pictures/videos go to the main track, inserted at "at" or at the end; sound to a free sound track at "at", default 0; "new" = a new track of its kind, e.g. a picture over the video).
-- {"type":"extract_audio","clipId":ID} – take a video clip's sound out onto a sound track, in sync (the video goes quiet); then that sound can be cut, faded or moved alone.
-- {"type":"add_track","kind":"video"|"audio"|"text"}
-- {"type":"lift_fix","clipId":ID} – «التعديل الذكي»: lift a video piece straight up onto the red track (role "fix"), same place, to be made again. To mark seconds A–B of a video: split at A and B, then lift the middle piece ("$N" ids work). Then {"type":"update_clip","clipId":ID,"patch":{"fix":{"note":TEXT,"mode":"parts"|"whole"}}} writes what to fix in it (parts = only that piece is made again, whole = the whole video). The person sends them from «اكتب التعديلات وأرسلها»; what is made lands on the green track (role "fixed") by itself.
-- {"type":"add_text","at":MS,"body":TEXT,"duration":MS?} – a title or text over the video.
-- {"type":"move_clip","clipId":ID,"trackId":ID or "new","start":MS}
-- {"type":"trim_clip","clipId":ID,"edge":"start"|"end","to":MS} – move one edge of a clip to timeline time "to".
-- {"type":"split","at":MS,"clipIds":[IDs]?}
-- {"type":"delete","clipIds":[IDs],"ripple":BOOL} – ripple closes the gap.
-- {"type":"remove_ranges","ranges":[[FROM,TO],...]} – cut timeline spans out of every track at once and close them. Use it for silences, unwanted parts and to shorten to a length; it keeps picture and sound in sync and needs no clip ids.
-- {"type":"duplicate","clipId":ID}
-- {"type":"update_clip","clipId":ID,"patch":{...}} – patch fields: volume 0–2, speed 0.25–3, fit "cover"|"contain", transform {x,y (0–1 centre), scale, rotate, opacity}, text {body,size (0.02–0.2 of height),color "#rrggbb",box "#rrggbbaa"|null,weight 400|700|900,font "readex"|"naskh"|"kufi" or a font id (e.g. "cairo", "tajawal", "almarai", "alexandria", "changa", "el-messiri", "lalezar", "rakkas", "lemonada", "marhey", "reem-kufi", "aref-ruqaa", "amiri", "jomhuria", "noto-nastaliq-urdu"),highlight "#rrggbb"|null}, color {preset "none"|"vivid"|"warm"|"cool"|"bw"|"vintage"|"cinema"|"fade",brightness,contrast,saturation (1 = unchanged),warmth -1..1} or null, transition {kind: one of the 100 transition ids, ms 100–4000} or null (into the next clip on the same track; they must touch), fadeIn/fadeOut MS (sound), shape "rect"|"rounded"|"circle", fx [{id, amount 0–1}] (pictures/videos only, up to 3 effects on the clip itself; the whole list replaces the old one; [] = none; ids: ${FX_LIST.map((f) => f.id).join(", ")}), own BOOL (texts only: true = this caption keeps its own look, apart from its track), anim {in, out: "fade"|"pop"|"punch"|"blur"|"rise"|"fromRight"|"fromLeft"|"drop"|"spin"|"flip"|"glitch"|"shake"|"wipe"|"whip"|"flash" (texts also "words" word by word, "kashida" Arabic stretch; pictures also "kenburns" as "in" = slow push over the whole clip) or null, inMs, outMs 100–3000} or null (entrance and exit), sound {clean 0–1 (noise reduction), enhance BOOL (voice enhancer), effect "echo"|"reverb"|"stadium"|"cave"|"radio"|"phone"|"megaphone"|"underwater"|"robot"|null, mix 0–1 (how much of the effect), pitch −12…12 semitones (voice deeper/thinner, same length)} or null (media with sound only; good defaults for a talking voice: clean 0.8 + enhance), bg {mode "blur"|"color"|"remove",color,blur 1–100} or null (person cut from the background).
-- {"type":"style_track","trackId":ID,"text":{...},"y":0–1?} – one look for every text/caption of a track (size, font, colour, box, highlight, weight; y = height on screen). Captions set apart ("own": true) keep their look.
-- {"type":"transition_all","kind":ID|null,"ms":MS?,"trackId":ID?} – the same transition at every cut.
-- {"type":"set_key","clipId":ID,"at":MS,"transform":{...}} – a motion point (keyframe); two or more make the clip move between them.
-- {"type":"update_track","trackId":ID,"patch":{"muted"|"hidden"|"locked"|"duck":BOOL}} – duck: music goes quieter by itself under speech.
-- {"type":"set_ratio","ratio":"9:16"|"16:9"|"1:1"|"4:5"}, {"type":"set_background","color":"#rrggbb"}, {"type":"set_magnetic","on":BOOL}
-- {"type":"set_markers","markers":[MS],"mode":"add"|"replace"|"clear"}
-${GRADE_COMMANDS}
-A clip made by an earlier command in the same answer is "$N" (N = that command's position, from 1): e.g. add_clip as the 1st command, then {"type":"update_clip","clipId":"$1",...}.
+${COMMANDS_GUIDE}
 
 RULES:
 - Use only ids that appear in the timeline or library, or "$N". Never invent ids.
@@ -117,6 +98,7 @@ RULES:
 - MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost). Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
 - MAKING ANYTHING with JAWAD AI's generators → {"kind":"make","makeKind":...,"prompt":...,"place":...,"at":...}: any picture (GPT Image 2: a B-roll shot, a background, a thumbnail, an illustration, a poster, a picture with Arabic writing — quote the Arabic text exactly in «» inside the English prompt), any video shot (Seedance: 4–15 s; describe subject, action, setting, camera move, lighting, style in English), any voice reading a text (speech: the exact words, with diacritics where the pronunciation matters; "voice" picks who reads), any sound effect (English description), any music (English description; withSound true = with singing). Prompts are rich and specific like a professional's. Where it goes: pictures/videos usually "over" at the moment they illustrate (or "main" to insert a shot), sounds "audio" at the moment they belong. Use it whenever the person asks to make/create/generate something (not for the hook text, which has its own designer, and use "music" above for music made to the video's length). It costs coins (the price is shown to the person before it starts) and a video takes a few minutes; it arrives on the timeline by itself. Up to 3 per answer.
 - A PRECISE WINDOW («ماسك ذكي», by SAM 3: the subject's exact outline, following its shape as it moves) → {"kind":"smart_mask","clipId":...,"prompt":"<what to select as a short English noun phrase: face, sky, person on the right, white robe>","track":true for a moving subject in a video,"layer":N}. Use it whenever a grade or fix must touch exactly one thing (brighten a face, darken the sky, warm a robe, cool the background with invert): in the same answer put that layer's grade change in "commands" (e.g. {"type":"update_clip","clipId":...,"patch":{"grade":{"layer":1,"name":"الوجه","exposure":0.3}}}; for "everything except it" add "mask":{"kind":"ellipse","invert":true} there and the precise outline keeps the invert). The outline replaces that layer's window when it arrives. A rough ellipse/rect with "keys" stays fine for soft, broad areas.
+- MOTION GRAPHICS («موشن جرافيكس», «فيديو توضيحي متحرك», «إنفوجرافيك متحرك», «تايبوغرافي», an animated ad or intro): follow the MOTION GRAPHICS skill below — get the brief in one grouped question (only what's missing), write the script, then build the whole piece from editable clips, with its narration, sounds and music, in one answer.
 - If something is missing that only a new shot could fix (e.g. an opening view), offer to make it (make) or add a suggestion with a clear English generation prompt.
 - When something doesn't work or looks wrong («ليش ما يطلع الصوت؟», «ليش الصورة مشعة؟»), find the reason in what you see (a muted or hidden track, a clip past its file, a wrong log or gamut, a file still uploading) and fix it or explain; the site's owner also has «🩺 تشخيص» next to the send button, which reads the browser's error log, the files and the server for a deep check.
 - If the request is unclear or impossible, ask or explain in "reply" with no commands. Never pretend a change was made.
@@ -128,7 +110,9 @@ ${GRADING_LESSONS}
 
 TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
-${KNOW_HOW}`;
+${KNOW_HOW}
+
+${MOTION_SKILL}`;
 
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
 function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {

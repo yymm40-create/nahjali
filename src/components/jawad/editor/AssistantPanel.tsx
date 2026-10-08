@@ -253,7 +253,9 @@ export default function AssistantPanel({
       try {
         setBusy("حيدرة يفحص المحرر والملفات والسجل…");
         const report = await diagReport(diag());
-        const r = await postJson<{ reply: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() });
+        const r = await postJson<{ reply: string; commands?: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "diagnose", message, report, timeline: tl, selected, playhead: player?.ms ?? 0, shot: previewShot() });
+        // what he diagnosed in the timeline, he fixes now
+        if (r.commands?.length) run(r.commands, { label: "حيدرة يعالج" });
         setMsgs((m) => [...m, { role: "assistant", text: r.reply }]);
         reply = r.reply;
       } catch (e) {

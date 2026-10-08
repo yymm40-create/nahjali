@@ -8,10 +8,11 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, claudeTrouble, type ClaudePart } from "@/lib/film/anthropic";
-import { context } from "./assistant-core";
+import { checkCommands, context } from "./assistant-core";
+import { COMMANDS_GUIDE } from "./assistant-commands";
 import { appendChat } from "./chat";
 import { readTimeline, allTracks, flatten, duration, clipEnd, type Timeline } from "./model";
-import { assetViews, stillOpen, type EditorProject } from "./server";
+import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
 import type { Who } from "./pricing";
 
 const db = () => createAdminClient();
@@ -43,9 +44,10 @@ src/app/api/jawad/editor/projects/[id]/route.ts — the editor's API (actions)`;
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "developerMessage"],
+  required: ["reply", "commands", "developerMessage"],
   properties: {
-    reply: { type: "string", description: "To the owner, in Gulf Arabic: what is happening, the most likely cause (say how sure you are), and what to try now, step by step. Short." },
+    reply: { type: "string", description: "To the owner, in Gulf Arabic: what is happening, the most likely cause (say how sure you are), what you fixed yourself right now (when \"commands\" has any), and what to try now, step by step. Short." },
+    commands: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "The editing commands that fix the problem on the timeline right now (empty when the cause is not in the timeline)." },
     developerMessage: { type: "string", description: "A message in English for the developer (Claude Code) to fix it: the symptom, the evidence (exact log lines, statuses, numbers), the suspected cause, where in the code to look (paths from the code map), how to reproduce, and a proposed fix. Empty when nothing needs the developer." },
   },
 };
@@ -55,6 +57,10 @@ const SYSTEM = `You are «حيدرة», the assistant inside the «حيدرة ك
 You receive: the owner's words; the browser report (device and browser abilities, the editor's state, its media elements, and a log of errors, rejected promises, console errors/warnings, failed server requests with status and body, media that failed to load, and the editor's own notes, each with ms since the editor opened); the server's view (the project, its files and their status, the last saves, the latest generation jobs with their errors, which services are configured, the deployment); the timeline as JSON (the context format «حيدرة» uses) with a few computed checks; and, when available, a picture of the preview right now.
 
 Work from evidence: quote the log lines and numbers that point to the cause; separate what you know from what you guess. Typical causes: a file still uploading or failed (status), an expired link (403 from storage), a browser without WebCodecs/WebGL2 (export or grading), a codec the browser can't decode (HEVC/ProRes on Chrome/Windows), memory, a 401 (signed out), a 409 (saved from another tab), a provider error (jobs), a timeline that points to a missing file, a wrong log/gamut setting making footage look glowing or flat, a muted/hidden track, a clip out of its source range. When the report has no trace of the problem, say exactly how to catch it: do the thing again, then press «تشخيص» right away.
+
+FIX IT YOURSELF: when the cause lives in the timeline — a muted or hidden track, a clip that plays past its file, overlapping clips, a wrong log/gamut/range on a grade (glowing or flat footage), a text off the safe area or too small, a missing transition, a clip pointing to a file that is gone (delete it), a volume at 0, a sound track without ducking under speech — put the commands that fix it in "commands" (the same editing commands «حيدرة» uses, listed below; use only ids that appear in the timeline) and tell the owner in "reply" what you fixed. When the cause is a file, a service, the browser or the code, send no commands and say what to do instead. Never pretend a change was made.
+
+${COMMANDS_GUIDE}
 
 The reply is for the owner (Gulf Arabic, short, practical). The developer message is English, precise and complete enough for the developer to fix it without asking: include file paths from the code map. Never invent log lines.
 
@@ -133,13 +139,18 @@ export async function diagnose(p: EditorProject, who: Who, b: { message?: unknow
   ].join("\n\n");
   const content: string | ClaudePart[] = shot ? [{ type: "text", text }, { type: "image64", data: shot, mediaType: "image/jpeg" }] : text;
 
-  const r = await callClaudeJson<{ reply: string; developerMessage: string }>({ system: SYSTEM, turns: [{ role: "user", content }], schema: SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
+  const r = await callClaudeJson<{ reply: string; commands: string[]; developerMessage: string }>({ system: SYSTEM, turns: [{ role: "user", content }], schema: SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
     console.error("editor diagnose", e);
     throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يشخّص الحين؛ جرّب بعد شوي.", 502);
   });
   const dev = r.data.developerMessage.trim();
-  const reply = `🩺 ${r.data.reply.trim()}${dev ? `\n\n**رسالة للمطوّر** (انسخها وأرسلها):\n\`\`\`\n${dev}\n\`\`\`` : ""}`;
+  // the fixes he proposes are tried on the timeline first; a broken one is dropped and said so
+  const infos = new Map(assets.map((a) => [a.id, assetInfo(a)]));
+  const checked = checkCommands(tl, r.data.commands ?? [], infos);
+  const commands = checked.error ? checked.cmds.slice(0, checked.error.i) : checked.cmds;
+  const dropped = checked.error ? `\n\n(ما قدرت أطبّق أحد الإصلاحات: ${checked.error.message})` : "";
+  const reply = `🩺 ${r.data.reply.trim()}${commands.length ? `\n\n🛠️ طبّقت ${commands.length} إصلاح على التايملاين.` : ""}${dropped}${dev ? `\n\n**رسالة للمطوّر** (انسخها وأرسلها):\n\`\`\`\n${dev}\n\`\`\`` : ""}`;
   await db().from("editor_ops").insert({ project_id: p.id, version: p.version, actor: "claude", label: claudeCost(r.usage).toFixed(4) });
   await appendChat(p, [{ role: "user", text: `🩺 ${message}` }, { role: "assistant", text: reply }]);
-  return { reply };
+  return { reply, commands };
 }
