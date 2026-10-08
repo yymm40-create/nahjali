@@ -160,7 +160,7 @@ export interface GeneratorDef {
   output: OutputKind;
   /** The built-in section that shows it (the owner can move it to another section of the same output). */
   defaultSection: string;
-  provider: { id: "openai" | "byteplus-modelark" | "elevenlabs" | "minimax"; label: string };
+  provider: { id: "openai" | "byteplus-modelark" | "elevenlabs" | "minimax" | "jawad"; label: string };
   model: { id: string; family: string; version: string };
   api: {
     name: string;

@@ -60,6 +60,8 @@ export const PROVIDER_KEYS: Record<GeneratorDef["provider"]["id"], string[]> = {
   elevenlabs: ["ELEVENLABS_API_KEY", "elevenlabs_api", "ELEVENLABS_API", "XI_API_KEY"],
   // MiniMax runs through fal.ai (the same key as «الفصل الذكي»)
   minimax: ["FAL_KEY"],
+  // «صوت الجواد»: our own Habibi endpoint, or Chatterbox through fal
+  jawad: ["HABIBI_URL", "FAL_KEY"],
 };
 export const keyConfigured = (d: GeneratorDef) => PROVIDER_KEYS[d.provider.id].some((k) => Boolean(process.env[k]));
 

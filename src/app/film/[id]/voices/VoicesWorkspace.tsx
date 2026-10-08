@@ -11,7 +11,7 @@ interface Choice {
   value: string;
   name: string;
   group: "mine" | "ready" | "minimax";
-  provider?: "elevenlabs" | "minimax";
+  provider?: "elevenlabs" | "minimax" | "jawad";
 }
 interface Audio {
   key: string;

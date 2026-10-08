@@ -19,7 +19,7 @@ const FEELINGS = [
   ["serious", "جدّي"],
 ] as const;
 
-export default function EmotionPicker({ value, onChange, disabled, provider = "elevenlabs" }: { value: string; onChange: (v: string) => void; disabled?: boolean; provider?: "elevenlabs" | "minimax" }) {
+export default function EmotionPicker({ value, onChange, disabled, provider = "elevenlabs" }: { value: string; onChange: (v: string) => void; disabled?: boolean; provider?: "elevenlabs" | "minimax" | "jawad" }) {
   if (provider === "minimax") {
     return (
       <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="المشاعر">
