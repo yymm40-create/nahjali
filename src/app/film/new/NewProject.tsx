@@ -7,8 +7,9 @@ import ProjectFields, { type FieldValues } from "../ProjectFields";
 import { useFilmBase } from "../FilmBase";
 import ResearchChoice from "../ResearchChoice";
 import StepWhy from "../StepWhy";
+import "../stage/stage.css";
 
-/** The first screen of a film: title + the user's own story. Saved as soon as it is created. */
+/** The first screen of a scene: title + the user's own story. Saved as soon as it is created. */
 export default function NewProject() {
   const router = useRouter();
   const filmBase = useFilmBase();
@@ -40,19 +41,23 @@ export default function NewProject() {
   }
 
   return (
-    <div className="space-y-5">
-      <header className="space-y-1">
-        <h1 className="display text-4xl">مشروع فيلم جديد</h1>
-        <p className="font-bold text-muted">اكتب فكرتك بكلماتك ولو بأسطر قليلة. السيناريست بيبدأ منها، وما يغيّر قصتك بدون ما يسألك.</p>
-      </header>
-      <StepWhy step="new" sajjad={false} />
-      <ProjectFields values={values} onChange={setValues} />
-      <ResearchChoice value={research} onChange={setResearch} />
-      {error && <p className="error-box">{error}</p>}
-      {!research && values.title.trim() && <p className="text-center text-sm font-bold text-muted">اختر أول: تبيني أبحث لتطوير القصة أو لا؟</p>}
-      <button className="btn btn-primary w-full text-xl" onClick={create} disabled={busy || !values.title.trim() || !research}>
-        {busy ? "نجهّز المشروع…" : "أنشئ المشروع"}
-      </button>
+    <div className="fs">
+      <div className="fs-room" aria-hidden><div className="beam" /><div className="dust" /><div className="grain" /></div>
+      <div className="mx-auto max-w-2xl space-y-5 px-3 pb-20">
+        <header className="fs-hero">
+          <p className="fs-kicker">مشهد جديد</p>
+          <h1>ابدأ من فكرتك</h1>
+          <p>اكتبها بكلماتك ولو بأسطر قليلة. السيناريست بيبدأ منها، وما يغيّر قصتك بدون ما يسألك.</p>
+        </header>
+        <StepWhy step="new" sajjad={false} />
+        <ProjectFields values={values} onChange={setValues} />
+        <ResearchChoice value={research} onChange={setResearch} />
+        {error && <p className="error-box">{error}</p>}
+        {!research && values.title.trim() && <p className="text-center text-sm font-bold text-muted">اختر أول: تبيني أبحث لتطوير القصة أو لا؟</p>}
+        <button className="btn btn-primary w-full text-xl" onClick={create} disabled={busy || !values.title.trim() || !research}>
+          {busy ? "نجهّز المشهد…" : "🎬 ابدأ المشهد"}
+        </button>
+      </div>
     </div>
   );
 }

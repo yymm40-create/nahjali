@@ -39,11 +39,14 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
   const scriptStarted = (messageCount ?? 0) > 0;
   const current = FILM_STAGES.findIndex((s) => s.key === project.stage);
 
+  const stage = !project.series_id;
   return (
     <div className="space-y-6">
-      <header className="space-y-3">
-        <h1 className="display text-4xl">{project.title}</h1>
-      </header>
+      {!stage && (
+        <header className="space-y-3">
+          <h1 className="display text-4xl">{project.title}</h1>
+        </header>
+      )}
 
       <section className="card space-y-3 p-4">
         <div className="flex items-center justify-between">
@@ -74,7 +77,7 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
         }}
       />
 
-      {project.stage !== "screenwriter" && <RewindCard projectId={project.id} />}
+      {!stage && project.stage !== "screenwriter" && <RewindCard projectId={project.id} />}
 
       <References projectId={project.id} initial={references} />
 

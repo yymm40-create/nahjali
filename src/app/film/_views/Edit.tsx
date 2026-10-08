@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
+import { directorVideos } from "@/lib/film/director";
+import { FILM_BUCKET } from "@/lib/film/types";
 import { editorForFilm, filmCut, successfulScene } from "@/lib/editor/film";
+import { storage } from "@/lib/storage";
 import OpenEdit from "../[id]/edit/OpenEdit";
 import SaveScene from "../[id]/edit/SaveScene";
+import MontagePanel from "../stage/MontagePanel";
 
 /** «المونتاج»: the film's chosen videos in the director's order, then «حيدرة كت» puts them together. */
 export default async function EditView({ id, base }: { id: string; base: string }) {
@@ -14,6 +18,32 @@ export default async function EditView({ id, base }: { id: string; base: string 
   if (project.stage === "sheets") redirect(`${base}/${id}/sheets`);
   const [cut, editId, scene] = await Promise.all([filmCut(id), editorForFilm(id).catch(() => null), successfulScene(id).catch(() => null)]);
   const ready = cut.filter((c) => c.video);
+
+  if (!project.series_id) {
+    // the stage: the takes play on one screen here, with short-lived links to their files
+    const videos = await directorVideos(id);
+    const paths = cut.map((c) => (c.video ? videos.find((v) => v.id === c.video!.id)?.storage_path ?? null : null));
+    const have = paths.filter((p): p is string => Boolean(p));
+    const signed = have.length ? ((await storage.from(FILM_BUCKET).createSignedUrls(have, 3600)).data ?? []) : [];
+    const url: Record<string, string> = {};
+    signed.forEach((s, i) => s.signedUrl && (url[have[i]] = s.signedUrl));
+    return (
+      <div className="space-y-4">
+        <header className="space-y-1">
+          <h1 className="display text-2xl">✂️ المونتاج</h1>
+          <p className="text-sm font-bold text-muted">شوف المشهد كاملًا هنا أول (اللقطات وراء بعض بترتيب المخرج)، واكتب ملاحظتك على أي لقطة، ثم افتحه في «حيدرة كت» للقص والتصدير.</p>
+        </header>
+        <MontagePanel
+          filmId={id}
+          filmTitle={project.title}
+          editExists={!!editId}
+          scene={scene ? { url: scene.url } : null}
+          takes={cut.map((c, i) => ({ genId: c.genId, name: c.name, videoId: c.video?.id ?? null, url: paths[i] ? (url[paths[i]!] ?? "") : "", note: c.video?.note ?? "", durationSec: c.video?.durationSec ?? c.plannedSec, approved: Boolean(c.video?.approved), removed: c.removed }))}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <header className="space-y-1">

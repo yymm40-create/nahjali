@@ -8,6 +8,7 @@ import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { GENERATOR_FACTS, MASTER_STYLE_ONLY, SHEET_APP_INTEGRATION, SHEET_MAKER_PROMPT, SHEET_MAKER_SCHEMA, STYLE_PLACEHOLDER } from "@config/film-prompts/sheet-maker";
 import { findStyle } from "@config/film-styles";
+import { sheetImpact } from "./impact";
 
 import { storage } from "@/lib/storage";
 const STAGE = "sheets";
@@ -441,6 +442,8 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       const older = assets.filter((x) => x.ref_key === a.ref_key && x.id !== a.id && x.status === "approved").map((x) => x.id);
       if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
       await db().from("film_assets").update({ status: "approved", meta: { ...a.meta, at_name: atName(item?.name ?? a.ref_key) } }).eq("id", a.id);
+      // «الرجوع الذكي»: a picture replaced after the director planned the shots → the shots drawn with it are listed
+      if (older.length && project.stage !== "sheets" && a.ref_key !== MASTER_ID) after(() => sheetImpact(project, a.ref_key, atName(item?.name ?? a.ref_key)));
       const laterSheets = versions.some((x) => x.kind === "sheet_prompt" && x.ref_key !== MASTER_ID);
       if (convo?.status === "running") return { jobId: convo.id };
       if (a.ref_key === MASTER_ID && !laterSheets) {

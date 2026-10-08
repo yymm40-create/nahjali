@@ -78,8 +78,8 @@ export default async function VideosView({ id, base }: { id: string; base: strin
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
-        <h1 className="display text-4xl">🎬 توليد الفيديو</h1>
+        {project.series_id && <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>}
+        <h1 className={project.series_id ? "display text-4xl" : "display text-2xl"}>🎬 توليد الفيديو</h1>
         <p className="text-sm font-bold text-muted">
           آخر قرار قبل التوليد: ولّد أصوات كل مقطع أول (تروح مع الفيديو مرجعًا فتتحرك الشفاه عليها)، ثم اختر الجودة وولّد. الفيديو حتى الآن <span>{credits(cost.byService.seedance ?? 0)}</span>
         </p>
@@ -110,6 +110,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         voicesOn={voicesReady()}
         dialogueStart={startingMode(source, voicesReady())}
         dialogueSource={source}
+        rewind={Boolean(project.series_id)}
       />
       <Link href={`${base}/${id}/edit`} className="card flex items-center gap-3 p-4 font-extrabold">
         <span className="text-2xl" aria-hidden>✂️</span>

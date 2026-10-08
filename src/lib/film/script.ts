@@ -6,6 +6,7 @@ import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
 import { readResearch, researchText } from "./research";
 import { watchAfterScreenplay } from "./watch";
+import { screenplayImpact } from "./impact";
 import {
   APP_INTEGRATION,
   KIND_ORDER,
@@ -132,10 +133,13 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
       if (!v || v.status !== "awaiting_approval" || latestOf(v.kind)?.id !== v.id) {
         throw new UserError("«اعتمد» يعتمد آخر نسخة معروضة بس. حدّث الصفحة وجرّب.", 409);
       }
+      // «الرجوع الذكي»: a screenplay approved again while sheets or shots exist → سجاد lists what the change reaches
+      const again = v.kind === "screenplay" && project.stage !== "screenwriter" && versions.some((x) => x.kind === "screenplay" && x.id !== v.id && x.status === "approved");
       await approve(project.id, v, versions);
+      if (again) after(() => screenplayImpact(project, user));
       if (v.kind === "handoff") {
-        // The approved handoff unlocks the sheet maker
-        await db().from("film_projects").update({ stage: "sheets" }).eq("id", project.id);
+        // The approved handoff unlocks the sheet maker (a project already past it stays where it is)
+        if (project.stage === "screenwriter") await db().from("film_projects").update({ stage: "sheets" }).eq("id", project.id);
         // a scene of a series: سجاد checks its continuity with the scenes around it
         after(() => watchAfterScreenplay(project.id));
         return null;
@@ -285,7 +289,8 @@ export async function runScriptJob(projectId: string, jobId: string) {
     // The reply joins the conversation only once its deliverable is stored, so a failure stays retryable
     await client.from("film_messages").insert({ project_id: projectId, stage: STAGE, role: "assistant", content: result.raw });
     if (isHandoff) {
-      await client.from("film_projects").update({ stage: "sheets" }).eq("id", projectId);
+      // the project moves to the sheet maker the first time only: a screenplay revised later never pushes it back
+      await client.from("film_projects").update({ stage: "sheets" }).eq("id", projectId).eq("stage", "screenwriter");
       after(() => watchAfterScreenplay(projectId));
     }
 
