@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { tellSajjad } from "./sajjad";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { filmPathsInUse } from "@/lib/editor/server";
@@ -6,13 +7,11 @@ import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
-import { filmTrialApplies, filmTrialState, filmTrialUsers, filmTrialVideos } from "./access";
-import { assertCanEdit, getLimit } from "./limits";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
 import { buildVoiceTrack, voiceTrackNote } from "./voice-track";
-import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, FILM_PUBLIC_TRIAL, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
   DIRECTOR_PROMPT,
@@ -300,8 +299,6 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const target = input.versionId ? versions.find((x) => x.id === input.versionId) : undefined;
       const prefix =
         input.mode === "direct" ? "توجيه / أمر جديد:\n" : target?.kind === "dir_generation" ? `تعديل على ${target.ref_key}:\n` : "تعديل:\n";
-      // Counted against the owner's edit limit (/admin/limits)
-      await assertCanEdit(project.id, "director", user.email);
       const id = await addUserMessage(project.id, prefix + text);
       return { jobId: await queueReply(project, user, id) };
     }
@@ -376,6 +373,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
         mime: String(file.metadata?.mimetype ?? "video/mp4"), bytes: size, status: "approved", meta: { uploaded: true, edited: true },
       });
       if (error) throw error;
+      await tellSajjad(project.id, `${input.genId} رجع للفيلم بنسخة معدّلة رفعها الشخص بنفسه (مكان القديمة).`);
       await maybeFinish(project, versions, await directorVideos(project.id));
       return { jobId: null };
     }
@@ -387,7 +385,6 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       if (!text || text.length > 4000) throw new UserError("اكتب تعديلاتك (٤٠٠٠ حرف كحد أقصى).", 400);
       const a = (await directorVideos(project.id)).find((x) => x.id === input.assetId);
       if (!a || !["generated", "approved", "rejected"].includes(a.status)) throw new UserError("ما لقينا الفيديو.", 404);
-      await assertCanEdit(project.id, "director", user.email);
       const id = await addUserMessage(project.id, `ملاحظاتي على فيديو ${a.ref_key} بعد توليده:\n${text}`);
       return { jobId: await queueReply(project, user, id) };
     }
@@ -460,6 +457,15 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
       const assetId = await studioVideoToFilm(project, user, input.genId, v.id, String(input.jobId ?? ""));
+      // what was changed goes to سجاد
+      const { data: made } = await db().from("jawad_jobs").select("inputs").eq("id", String(input.jobId ?? "")).maybeSingle();
+      const edit = (made?.inputs as { edit?: { mode?: string; notes?: string; ranges?: { from: number; to: number; note: string }[] } } | undefined)?.edit;
+      await tellSajjad(
+        project.id,
+        edit
+          ? `${input.genId} رجع للفيلم بعد «التعديل الذكي» (${edit.mode === "parts" ? "جزء منه انصنع من جديد" : "انصنع كامل من جديد"}). المطلوب كان: ${[edit.notes, ...(edit.ranges ?? []).map((r) => `${r.from}–${r.to} ث: ${r.note}`)].filter(Boolean).join(" · ") || "—"}`
+          : `${input.genId} صار فيديو جديد مصنوع في قسم الفيديو بدل القديم.`,
+      );
       const videos = await directorVideos(project.id);
       const older = videos.filter((x) => x.ref_key === input.genId && x.id !== assetId && x.status === "approved").map((x) => x.id);
       if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
@@ -545,15 +551,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
   }
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= MAX_VIDEOS_AT_ONCE) throw new UserError(`فيه ${MAX_VIDEOS_AT_ONCE} فيديوهات تتولد الحين، انتظر واحد يخلص.`, 409);
-  // Public trial: one free video per trial user; their trial ends once it is made (the owner has no limit)
-  const trial = await filmTrialApplies(user);
-  // (only in a project started during the trial, by one of its users)
-  const trialProject = new Date(project.created_at) >= new Date(FILM_PUBLIC_TRIAL.since) && (await filmTrialUsers()).includes(user.id);
-  if (trial && (!trialProject || (await filmTrialState(user)) !== "open" || (await filmTrialVideos(user.id)).taken >= (await getLimit("videos", user.email)))) {
-    throw new UserError("خلصت فيديوهات تجربتك المجانية (أو آخرها قاعد يتولد). شكرًا لك!", 403);
-  }
-
-  const meta = { ...(trial ? { trial: true } : {}), model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true, ...(voiceTrack ? { voiceTrack } : {}) };
+  const meta = { model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true, ...(voiceTrack ? { voiceTrack } : {}) };
   const { data: asset, error } = await db()
     .from("film_assets")
     .insert({ project_id: project.id, kind: "video", ref_key: v.ref_key, version_id: v.id, status: "generating", meta })

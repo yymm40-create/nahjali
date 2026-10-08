@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { BOOKLET_PATHS, JAWAD_PATH_HEADER, OWN_CHROME_HEADER } from "@config/site";
-import { bookletOpenFor } from "@/lib/film/limits";
+import { can } from "@/lib/access";
 
 // Pages that require a signed-in user
 const PROTECTED = ["/new", "/order", "/my-booklets", "/admin", "/film", "/coins"];
@@ -62,8 +62,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // «كتيب نهج علي»: open, closed (owner only) or for given emails, as set on /admin/limits (pages and API)
-  if (BOOKLET_PATHS.some((p) => path === p || path.startsWith(p + "/")) && !(await bookletOpenFor(user?.email))) {
+  // «كتيب نهج علي»: for those «السماح» (the dashboard's one list) lets in (pages and API)
+  if (BOOKLET_PATHS.some((p) => path === p || path.startsWith(p + "/")) && !(await can(user?.email, "booklet"))) {
     if (path.startsWith("/api/")) return NextResponse.json({ error: "كتيب نهج علي تحت التطوير حاليًا." }, { status: 503 });
     const url = request.nextUrl.clone();
     url.pathname = "/under-development";

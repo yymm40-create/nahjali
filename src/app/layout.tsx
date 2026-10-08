@@ -1,4 +1,7 @@
 import UiSounds from "@/components/UiSounds";
+import SecretGate from "@/components/SecretGate";
+import NotesPin from "@/components/NotesPin";
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import { Baloo_Bhaijaan_2, Lalezar } from "next/font/google";
 import Link from "next/link";
@@ -39,6 +42,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         <NavFeedback />
         <UiSounds />
+        <SecretGate />
+        <Suspense>
+          <NotesPin />
+        </Suspense>
         <NativeAppBridge />
         <DesktopUpdate />
         <SiteChrome

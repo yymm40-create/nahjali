@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Studio from "@/components/jawad/studio/Studio";
 import { coinBalance } from "@/lib/coins";
-import { canUseJawad, jawadSession } from "@/lib/jawad/server/access";
+import { jawadSession } from "@/lib/jawad/server/access";
+import { accessOf, permForGenerator } from "@/lib/access";
+import { generatorById } from "@config/jawad/generators";
 import { loadRuntime, sectionGenerators } from "@/lib/jawad/server/runtime";
 import { worksPage } from "@/lib/jawad/server/works";
-import { isUnlimited } from "@config/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,8 +27,10 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
   const [{ rt, s }, { user, owner }] = await Promise.all([studioSection(section), jawadSession()]);
   if (!s || s.output === null || (!s.enabled && !owner)) notFound();
 
-  const allowed = user ? await canUseJawad(user) : false;
-  const generators = sectionGenerators(rt, s.id, owner).map((g) => ({ id: g.id, name: g.name, sampleUrl: g.sampleUrl, live: g.live, reason: owner ? g.reason : null }));
+  // the dashboard's list: each branch (images, video, voices, music) for this email
+  const perms = await accessOf(user?.email);
+  const generators = sectionGenerators(rt, s.id, owner).filter((g) => !user || perms.has(permForGenerator(generatorById(g.id) ?? { id: g.id, output: s.output! }))).map((g) => ({ id: g.id, name: g.name, sampleUrl: g.sampleUrl, live: g.live, reason: owner ? g.reason : null }));
+  const allowed = Boolean(user) && generators.length > 0;
   const [balance, initialWorks] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null)]) : [null, null];
 
   return (
@@ -39,8 +42,8 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
       generators={generators}
       prices={Object.fromEntries(generators.map((g) => [g.id, rt.prices[g.id]]))}
       user={user ? { id: user.id } : null}
-      // a free guest is shown the studio without prices blocking them (charges are skipped on the server too)
-      owner={owner || isUnlimited(user?.email)}
+      // everyone let in makes for free, without prices blocking them (charges are skipped on the server too)
+      owner={owner || allowed}
       allowed={allowed}
       balance={balance}
       initialWorks={initialWorks}

@@ -8,6 +8,9 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
+import { can, permForGenerator } from "@/lib/access";
+import { PERMS } from "@config/access";
 import { holdTeamCoins, refundTeamCoins } from "@/lib/coins";
 import { giveAttempt } from "@/lib/film/team";
 import { after } from "next/server";
@@ -56,7 +59,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -179,11 +182,14 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
   if (!def) throw new UserError("المولد غير معروف.", 400);
+  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرة» makes with its own right
+  const perm = server.via === "editor" ? "editor_ai" : permForGenerator(def);
+  if (!(await can(user.email, perm))) throw new UserError(`${PERMS.find((x) => x.key === perm)!.label.replace(/^\S+\s/, "")} مقفلة لحسابك حاليًا.`, 403);
 
   // The same click again: the job it already made (no new check, no new charge)
   const existing = await db().from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key).maybeSingle();
@@ -392,6 +398,18 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   }
 
   if (def.provider.id === "elevenlabs") return runEleven(job, def, refs);
+  if (def.provider.id === "minimax") {
+    const voice = await resolveVoice(job.user_id, String(s.voice));
+    if (!voice.ok) throw new ProviderError("rejected", voice.reason, `voice ${String(s.voice)}`);
+    if (voice.provider !== "minimax") throw new ProviderError("rejected", "هذا الصوت من ElevenLabs؛ اختر صوت MiniMax أو صوتًا نسخته في MiniMax.", `voice provider ${voice.provider}`);
+    const arabic = /[\u0600-\u06FF]/.test(job.prompt);
+    const emotion = String(s.emotion ?? "auto");
+    const r = await minimaxSpeech({ voiceId: voice.voiceId, text: job.prompt, model: "hd", speed: Number(s.speed) || 1, ...(emotion !== "auto" ? { emotion } : {}), ...(arabic ? { languageBoost: "Arabic" } : {}) });
+    await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+    await saveOutput(job, 0, r.audio, "audio/mpeg", "mp3", { durationMs: r.durationMs ?? undefined });
+    await finishJob(job, "succeeded", { costUsd: (job.prompt.length / 1000) * MINIMAX_PRICE.hdPerKChars, units: { characters: job.prompt.length } });
+    return;
+  }
 
   if (def.output === "audio") {
     const format = String(s.format);

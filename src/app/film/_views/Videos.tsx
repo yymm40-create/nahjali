@@ -1,15 +1,14 @@
 import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { filmTrialApplies, filmTrialVideos, requireFilmUser, requireProject } from "@/lib/film/access";
-import { editsLeft, getLimit } from "@/lib/film/limits";
+import { requireFilmUser, requireProject } from "@/lib/film/access";
 import { checkVideos, directorVersions, directorVideos, purgeOldVideos } from "@/lib/film/director";
 import { voiceReadiness } from "@/lib/film/voice-track";
 import { voicesReady } from "@/lib/film/voices";
 import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
-import { canUseJawad } from "@/lib/jawad/server/access";
+import { can } from "@/lib/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import VideosWorkspace from "../[id]/videos/VideosWorkspace";
 
@@ -54,7 +53,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
   // JAWAD AI's video section, when this person may use it (only inside JAWAD AI): «التعديل الذكي» and its videos
   const rt = base.startsWith("/jawad-ai") ? await loadRuntime() : null;
   const videoSection = rt?.sections.find((s) => s.implementation === "studio:video" && s.enabled);
-  const studioPath = videoSection && (await canUseJawad(user)) ? videoSection.path : null;
+  const studioPath = videoSection && (await can(user.email, "video")) ? videoSection.path : null;
 
   // Short-lived links: one to watch, one that downloads the file
   const kept = videos.filter((v) => v.storage_path);
@@ -94,8 +93,8 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         }))}
         videosRunning={videosRunning}
         job={job ? { status: job.status, error: job.error } : null}
-        trialVideosLeft={(await filmTrialApplies(user)) ? Math.max(0, (await getLimit("videos", user.email)) - (await filmTrialVideos(user.id)).taken) : null}
-        editsLeft={await editsLeft(id, "director", user.email)}
+        trialVideosLeft={null}
+        editsLeft={null}
         studioPath={studioPath}
         voicesOn={voicesReady()}
       />

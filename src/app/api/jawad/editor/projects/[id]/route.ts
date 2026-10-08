@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { handOff, loadChat } from "@/lib/editor/chat";
 import { linkForFix } from "@/lib/editor/smart";
 import { handle, UserError } from "@/lib/api";
-import { requireStudentApiUser } from "@/lib/jawad/server/access";
+import { requireEditorApiUser } from "@/lib/jawad/server/access";
+import { can } from "@/lib/access";
 import type { Command } from "@/lib/editor/commands";
 import {
   addLocalAsset,
@@ -39,26 +40,30 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 
 /** «حيدرة كت» · a project: its timeline, version and library (with short-lived links). */
 export const GET = handle(async (_req: Request, ctx: Ctx) => {
-  const { user } = await requireStudentApiUser();
+  const { user } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
   return NextResponse.json(await projectState(p), noStore);
 });
 
 /** Saves the timeline: `{ timeline, version, label, title? }` → `{ ok, version }` (409-style `ok: false` with the newer one). */
 export const PUT = handle(async (req: Request, ctx: Ctx) => {
-  const { user } = await requireStudentApiUser();
+  const { user } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
+const AI_ACTIONS = new Set(["transcribe", "align", "voice_in", "voice_out", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
-  const { user, owner } = await requireStudentApiUser();
+  const { user, owner } = await requireEditorApiUser();
   const p = await requireEditorProject((await ctx.params).id, user.id);
   // a team series' edit: what is made in it is paid from its «نقود الفريق الذكي»
   const who = { id: user.id, email: user.email, owner, team: (await editorTeamSeries(p))?.id ?? null };
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  // the AI («حيدرة» and all it makes) is its own right on the dashboard's list
+  if (AI_ACTIONS.has(String(b.action)) && !(await can(user.email, "editor_ai"))) throw new UserError("حيدرة (الذكاء الاصطناعي) مقفل لحسابك حاليًا.", 403);
   switch (b.action) {
     case "sign_upload":
       return NextResponse.json(await signAssetUpload(p, b));
@@ -134,7 +139,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
 
 /** Deletes the project and every file it uploaded. */
 export const DELETE = handle(async (_req: Request, ctx: Ctx) => {
-  const { user } = await requireStudentApiUser();
+  const { user } = await requireEditorApiUser();
   await deleteProject(await requireEditorProject((await ctx.params).id, user.id));
   return NextResponse.json({ ok: true });
 });

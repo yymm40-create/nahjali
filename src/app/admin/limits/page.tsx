@@ -2,16 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
-import { ACCESS_MODES, accessMode, LIMITS, SECTIONS_ACCESS, type AccessSection, type LimitRow } from "@/lib/film/limits";
+import { LIMITS, type LimitRow } from "@/lib/film/limits";
 import { isAdmin } from "@config/site";
 import LimitsAdmin from "./LimitsAdmin";
 import CoinsAdmin from "./CoinsAdmin";
 import { coinsRequired } from "@/lib/coins";
 
-export const metadata = { title: "التحكم بالموارد والمحاولات | لوحة التحكم" };
+export const metadata = { title: "النقود والأسعار | لوحة التحكم" };
 export const dynamic = "force-dynamic";
 
-/** Owner only: the film maker's limits — for everyone, per email, and later per plan. */
+/** Owners only: coins and «حيدرة كت»'s prices. */
 export default async function LimitsPage() {
   const user = await requireUser("/admin/limits");
   if (!isAdmin(user.email)) notFound();
@@ -30,9 +30,9 @@ export default async function LimitsPage() {
     <div className="space-y-6">
       <header className="space-y-1">
         <Link href="/admin" className="text-sm font-bold text-muted">→ لوحة التحكم</Link>
-        <h1 className="display text-4xl">التحكم بالموارد والمحاولات</h1>
+        <h1 className="display text-4xl">النقود والأسعار</h1>
         <p className="text-sm font-bold text-muted">
-          مين يقدر يدخل كل قسم، وحدود صناعة الأفلام. لكل شخص: إعداده بإيميله إن وُجد، وإلا إعداد الجميع، وإلا الافتراضي. أنت ما عليك أي حد.
+          النقود الذكية وأسعار حيدرة كت. مين يدخل وش (مجانًا بلا حدود): من <Link href="/admin/access" className="underline">🔐 السماح</Link>.
         </p>
       </header>
       {error && (
@@ -45,18 +45,7 @@ export default async function LimitsPage() {
         ready={!wallets.error}
         top={(wallets.data ?? []).map((w) => ({ email: emailOf.get(w.user_id) ?? w.user_id, balance: w.balance }))}
       />
-      <LimitsAdmin
-        sections={await Promise.all(
-          (Object.keys(SECTIONS_ACCESS) as AccessSection[]).map(async (key) => ({
-            key,
-            label: SECTIONS_ACCESS[key].label,
-            modes: SECTIONS_ACCESS[key].modes.map((m) => ({ code: ACCESS_MODES[m].code, label: ACCESS_MODES[m].label })),
-            current: ACCESS_MODES[await accessMode(key, rows)].code,
-          })),
-        )}
-        limits={Object.entries(LIMITS).map(([key, l]) => ({ key, label: l.label, hint: l.hint, def: l.default, perUser: l.perUser }))}
-        rows={rows}
-      />
+      <LimitsAdmin limits={Object.entries(LIMITS).map(([key, l]) => ({ key, label: l.label, hint: l.hint, def: l.default, perUser: l.perUser }))} rows={rows} />
     </div>
   );
 }

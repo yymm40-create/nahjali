@@ -1,10 +1,10 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
-import { assertCanEdit } from "./limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
+import { readResearch, researchText } from "./research";
 import {
   APP_INTEGRATION,
   KIND_ORDER,
@@ -54,6 +54,9 @@ export function storyMessage(p: FilmProject) {
   const parts = [`عنوان المشروع: ${p.title}`, "", p.story];
   if (p.fixed_facts) parts.push("", "أشياء ثابتة لا تتغير:", p.fixed_facts);
   if (p.target_duration_sec) parts.push("", `مدة تقريبية: ${p.target_duration_sec} ثانية`);
+  // what سجاد found and the person approved
+  const research = researchText(readResearch(p.research));
+  if (research) parts.push("", research);
   return parts.join("\n");
 }
 
@@ -160,8 +163,6 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
       const target = input.versionId ? versions.find((x) => x.id === input.versionId) : undefined;
       if (target?.status === "approved") await markLaterStale(project.id, target.kind, versions);
       // A new direction is sent as such; an edit is the user's words as they are
-      // Counted against the owner's edit limit (/admin/limits)
-      await assertCanEdit(project.id, "screenwriter", user.email);
       userText = input.mode === "direct" ? `توجيه / أمر جديد:\n${text}` : `تعديل:\n${text}`;
       break;
     }

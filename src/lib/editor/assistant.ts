@@ -16,8 +16,9 @@ import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, 
 import { FX_LIST } from "./effects";
 import { TR_LIST } from "./transitions";
 import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
+import { sajjadBrief } from "@/lib/film/sajjad";
 import { checkDesign, deliveryText, DESIGN_SCHEMA, DESIGN_SYSTEM, designPrompt, RESEARCH_SYSTEM, researchPrompt, type HookDesign, type HookInputs } from "./hook-design";
-import { charged, editorLimit, type Who } from "./pricing";
+import { charged, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
 
 const db = () => createAdminClient();
@@ -129,17 +130,6 @@ TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
 ${KNOW_HOW}`;
 
-/** What Claude sees of the project (compact). */
-async function usedToday(p: EditorProject) {
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
-  const { data: projects } = await db().from("editor_projects").select("id").eq("user_id", p.user_id);
-  const ids = (projects ?? []).map((x) => x.id as string);
-  if (!ids.length) return 0;
-  const { count } = await db().from("editor_ops").select("id", { count: "exact", head: true }).in("project_id", ids).eq("actor", "claude").gte("created_at", since.toISOString());
-  return count ?? 0;
-}
-
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
 function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
   if (!v || typeof v !== "object") return null;
@@ -210,8 +200,6 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
-  const daily = await editorLimit("editor_claude_daily", who);
-  if (daily !== Infinity && (await usedToday(p)) >= daily) throw new UserError(`وصلت لحد طلبات حيدرة اليوم (${daily}). ترجع بكرة.`, 429);
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
 
   const assets = await assetViews(p.id);
@@ -224,7 +212,15 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // the edit's own conversation (kept with the project, with its handoff); before the migration, the page's
   const chat = await loadChat(p);
   const history = chat.stored ? chatTurns(chat) : chatTurns({ messages: readMessages(b.history), handoff: typeof b.handoff === "string" ? b.handoff.slice(0, 8000) : null });
+  // «سجاد» handed over the film (or the episode): everything about it, read fresh
+  const brief = p.film_project_id || p.episode_id ? await sajjadBrief({ filmProjectId: p.film_project_id, episodeId: p.episode_id }) : null;
   const turns: ClaudeTurn[] = [
+    ...(brief
+      ? ([
+          { role: "user", content: `FROM SAJJAD («سجاد», the film studio's consultant) — everything about the ${p.episode_id ? "episode" : "scene"} this edit is for (story, screenplay, characters, each clip as the director planned it with its dialogue, the person's notes). Use it to edit in the spirit of the story: order, pace, emotion, where music and effects belong, which clip is which. Mention سجاد only if asked.\n\n${brief}` },
+          { role: "assistant", content: "وصلني كل شي من سجاد عن المشهد، وبشتغل على أساسه." },
+        ] as ClaudeTurn[])
+      : []),
     ...history,
     { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${b.spoken === true ? SPOKEN : ""}` },
   ];

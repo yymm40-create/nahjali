@@ -7,11 +7,10 @@ const KEY = "site-sounds";
 
 /**
  * The site's sounds, made in the browser (no files) and quiet: a soft tap when something is pressed and a light
- * swoosh when the page changes — in «الفيلم السينمائي» a projector's click and a reel's whirr instead. One small button
- * turns them off (remembered on this device). Nothing plays while typing, nor on the first arrival.
+ * swoosh when the page changes — in «الفيلم السينمائي» a projector's click and a reel's whirr instead. The switch
+ * (SoundToggle) sits in the top bar and is remembered on this device. Nothing plays while typing, nor on the first arrival.
  */
 export default function UiSounds() {
-  const [on, setOn] = useState(true);
   const onRef = useRef(true);
   const ctx = useRef<AudioContext | null>(null);
   useEffect(() => {
@@ -20,7 +19,6 @@ export default function UiSounds() {
         // the film maker's own switch (before the sounds covered the whole site) still counts
         const v = (localStorage.getItem(KEY) ?? localStorage.getItem("film-sounds")) !== "off";
         onRef.current = v;
-        setOn(v);
       } catch {}
     }, 0);
     return () => clearTimeout(t);
@@ -64,16 +62,38 @@ export default function UiSounds() {
     } catch {}
   }, [path]);
 
+  // the switch lives in the top bars (SoundToggle): it tells us when it changes
+  useEffect(() => {
+    const on = (e: Event) => {
+      onRef.current = (e as CustomEvent<boolean>).detail;
+    };
+    window.addEventListener(EVENT, on);
+    return () => window.removeEventListener(EVENT, on);
+  }, []);
+  return null;
+}
+
+const EVENT = "site-sounds";
+
+/** The sounds' switch: a small icon in the site's top bar (and JAWAD AI's), remembered on this device. */
+export function SoundToggle({ className = "" }: { className?: string }) {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        setOn((localStorage.getItem(KEY) ?? localStorage.getItem("film-sounds")) !== "off");
+      } catch {}
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
   const toggle = () => {
     const v = !on;
     setOn(v);
-    onRef.current = v;
     try {
       localStorage.setItem(KEY, v ? "on" : "off");
     } catch {}
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: v }));
   };
-  // the editor's screen is full of its own controls: no floating button there (its sounds follow this setting)
-  if (/^\/(jawad-ai\/)?editor\/./.test(path)) return null;
   return (
     <button
       type="button"
@@ -82,8 +102,7 @@ export default function UiSounds() {
       aria-pressed={on}
       aria-label={on ? "اكتم أصوات الموقع" : "شغّل أصوات الموقع"}
       title={on ? "اكتم أصوات الموقع" : "شغّل أصوات الموقع"}
-      className="fixed bottom-4 left-4 z-40 grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-white/90 text-base shadow-lg backdrop-blur transition-transform hover:scale-105 active:scale-95"
-      style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+      className={`grid size-7 shrink-0 place-items-center rounded-full text-sm opacity-70 transition hover:opacity-100 ${className}`}
     >
       {on ? "🔊" : "🔇"}
     </button>

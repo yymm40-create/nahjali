@@ -2,7 +2,6 @@ import { credits } from "@/lib/film/credits";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireFilmUser, requireProject } from "@/lib/film/access";
-import { editsLeft } from "@/lib/film/limits";
 import { latestScriptJob, scriptVersions } from "@/lib/film/script";
 import { projectCost } from "@/lib/film/usage";
 import ScriptWorkspace from "../[id]/script/ScriptWorkspace";
@@ -27,7 +26,7 @@ export default async function ScriptView({ id, base }: { id: string; base: strin
         </p>
       </header>
       <ScriptWorkspace
-        editsLeft={await editsLeft(id, "screenwriter", user.email)}
+        editsLeft={null}
         projectId={id}
         hasStory={project.story.trim().length >= 10}
         versions={versions}

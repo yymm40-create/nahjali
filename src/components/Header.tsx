@@ -6,8 +6,9 @@ import MenuDetails from "./MenuDetails";
 import SmartCoin from "./SmartCoin";
 import { coinBalance } from "@/lib/coins";
 import ThemeSwitcher from "./ThemeSwitcher";
+import { SoundToggle } from "./UiSounds";
 import { isAdmin } from "@config/site";
-import { bookletOpenFor } from "@/lib/film/limits";
+import { can } from "@/lib/access";
 import { SECTIONS } from "@config/sections";
 
 const ITEM = "rounded-xl px-3 py-2 hover:bg-surface-2";
@@ -17,7 +18,7 @@ export default async function Header() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const bookletOpen = user ? await bookletOpenFor(user.email) : false;
+  const bookletOpen = user ? await can(user.email, "booklet") : false;
   // «النقود الذكية»: the user's balance (null until the coin tables exist)
   const coins = user ? await coinBalance(user.id) : null;
 
@@ -29,6 +30,7 @@ export default async function Header() {
           <span className="display gold-text text-2xl">نهج علي</span>
         </Link>
         <div className="flex items-center gap-2">
+          <SoundToggle />
           {user && coins !== null && (
             <Link
               href="/coins"

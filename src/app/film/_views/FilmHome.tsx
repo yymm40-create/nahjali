@@ -1,8 +1,7 @@
 import Link from "next/link";
 import "@/app/jawad-ai/film/film-theme.css";
 import { createClient } from "@/lib/supabase/server";
-import { filmTrialApplies, filmTrialState, requireFilmUser } from "@/lib/film/access";
-import { accessMode } from "@/lib/film/limits";
+import { requireFilmUser } from "@/lib/film/access";
 import type { FilmProject } from "@/lib/film/types";
 import { FILM_STAGES } from "@config/film";
 
@@ -18,28 +17,14 @@ const STEPS = [
 const stageLabel = (key: string) => FILM_STAGES.find((s) => s.key === key)?.label ?? key;
 
 export default async function FilmHomeView({ base }: { base: string }) {
-  const { user, allowed } = await requireFilmUser(base);
+  const { allowed } = await requireFilmUser(base);
 
   if (!allowed) {
     return (
       <div className="card space-y-3 p-6 text-center">
         <p className="text-5xl">🎬</p>
-        {(await filmTrialApplies(user)) && (await filmTrialState(user)) === "done" ? (
-          <>
-            <h1 className="display text-3xl">انتهت تجربتك المجانية 🎉</h1>
-            <p className="font-bold text-muted">شكرًا لك على التجربة! صانع الفيلم مقفل حاليًا، وبنعلن أول ما يرجع إن شاء الله.</p>
-          </>
-        ) : (await accessMode("film")) === "trial" ? (
-          <>
-            <h1 className="display text-3xl">صانع الفيلم مقفل حاليًا</h1>
-            <p className="font-bold text-muted">اكتمل عدد المجرّبين في الفترة المجانية. بنعلن أول ما يرجع إن شاء الله.</p>
-          </>
-        ) : (
-          <>
-            <h1 className="display text-3xl">صناعة فيلم: قريبًا</h1>
-            <p className="font-bold text-muted">هذا القسم تحت التجربة ومتاح للمدعوين فقط حاليًا. بنعلن عنه أول ما يجهز إن شاء الله.</p>
-          </>
-        )}
+        <h1 className="display text-3xl">صانع الأفلام الذكي: قريبًا</h1>
+        <p className="font-bold text-muted">هذا القسم تحت التطوير ومتاح لحسابات محددة حاليًا. بنعلن عنه أول ما يجهز إن شاء الله.</p>
         <Link href={base === "/film" ? "/" : "/jawad-ai"} className="btn btn-ghost">الرئيسية</Link>
       </div>
     );

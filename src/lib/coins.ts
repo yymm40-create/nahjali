@@ -5,7 +5,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { coinsFor } from "@config/coins";
-import { isUnlimited } from "@config/site";
+import { unlimitedFor } from "@/lib/access";
 
 const db = () => createAdminClient();
 
@@ -35,7 +35,7 @@ export const grantCoins = (userId: string, amount: number, note: string) => adju
 
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
 export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string) {
-  if (isUnlimited(user.email) || !(await coinsRequired())) return;
+  if ((await unlimitedFor(user.email)) || !(await coinsRequired())) return;
   const coins = coinsFor(estimateUsd);
   const left = await adjust(user.id, -coins, "reserve", jobId, label);
   if (left === null) {
@@ -122,14 +122,15 @@ export async function fundTeam(owner: { id: string; email?: string | null }, ser
   if (!Number.isInteger(coins) || coins <= 0 || coins > 100000) throw new UserError("اكتب عدد نقود صحيح.", 400);
   const ref = `team-fund:${seriesId}:${crypto.randomUUID()}`;
   // the site's owner (unlimited) fills the team without taking from a balance
-  if (!isUnlimited(owner.email)) {
+  const free = await unlimitedFor(owner.email);
+  if (!free) {
     const left = await adjust(owner.id, -coins, "reserve", ref, "تحويل إلى نقود الفريق الذكي");
     if (left === null) throw new UserError(`رصيدك من النقود الذكية ما يكفي لتحويل ${coins} نقدة.`, 402);
   }
   try {
     return await adjustTeam(seriesId, owner.id, coins, "fund", ref, "تحويل من صاحب المسلسل", true);
   } catch (e) {
-    if (!isUnlimited(owner.email)) await adjust(owner.id, coins, "refund", ref, "تحويل إلى نقود الفريق الذكي", true);
+    if (!free) await adjust(owner.id, coins, "refund", ref, "تحويل إلى نقود الفريق الذكي", true);
     throw e;
   }
 }
@@ -139,7 +140,7 @@ export async function withdrawTeam(owner: { id: string; email?: string | null },
   if (!Number.isInteger(coins) || coins <= 0 || coins > 100000) throw new UserError("اكتب عدد نقود صحيح.", 400);
   const ref = `team-withdraw:${seriesId}:${crypto.randomUUID()}`;
   if ((await adjustTeam(seriesId, owner.id, -coins, "withdraw", ref, "رجعت لمحفظة صاحب المسلسل")) === null) throw new UserError("رصيد الفريق أقل من هذا العدد.", 400);
-  if (!isUnlimited(owner.email)) await adjust(owner.id, coins, "refund", ref, "رجوع من نقود الفريق الذكي", true);
+  if (!(await unlimitedFor(owner.email))) await adjust(owner.id, coins, "refund", ref, "رجوع من نقود الفريق الذكي", true);
 }
 
 /** The site's owner adds (or takes back) team coins. */

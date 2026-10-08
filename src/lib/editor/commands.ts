@@ -152,7 +152,9 @@ export type Command =
    * «التعديل الذكي»: what was made for a red piece, on the green track at the same place and of the same length.
    * `offset` is where in the new video the piece's own first moment is (ms).
    */
-  | { type: "place_fixed"; clipId: string; assetId: string; offset: number };
+  | { type: "place_fixed"; clipId: string; assetId: string; offset: number }
+  /** «التعديل الذكي»: a copy of a clip on the yellow track (continuity reference for the red piece next to it) */
+  | { type: "copy_cont"; clipId: string };
 
 export class CommandError extends Error {}
 
@@ -244,7 +246,7 @@ function roleTrack(t: Timeline, role: TrackRole): Track {
   const have = t.tracks.find((x) => x.role === role);
   if (have) return have;
   const track = newTrack(t, "video");
-  Object.assign(track, { name: FIX_TRACK[role].name, color: FIX_TRACK[role].color, role });
+  Object.assign(track, { name: FIX_TRACK[role].name, color: FIX_TRACK[role].color, role, ...(role === "cont" ? { hidden: true, muted: true } : {}) });
   const green = t.tracks.find((x) => x.role === "fixed");
   if (role === "fix" && green) {
     t.tracks = t.tracks.filter((x) => x !== track);
@@ -448,7 +450,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (src.assetId && !assets.has(src.assetId)) fail("الملف المنسوخ مو في مكتبة هذا المشروع.");
         const kind: TrackKind = src.text ? "text" : src.assetId ? (t.tracks.find((x) => x.id === trackId)?.kind === "audio" ? "audio" : trackFor(src, assets)) : "video";
         const c: Clip = { ...structuredClone(src), id: newId("c"), start: at + (src.start - base), fix: null };
-        const same = t.tracks.find((x) => x.id === trackId && x.kind === kind && !x.locked && x.role !== "fix" && x.role !== "fixed");
+        const same = t.tracks.find((x) => x.id === trackId && x.kind === kind && !x.locked && !x.role);
         const to = same ?? t.tracks.find((x) => x.kind === kind && !x.locked && !x.role) ?? newTrack(t, kind);
         if (magnet(t, to)) insertMain(to, c, c.start);
         else place(to, c);
@@ -823,7 +825,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
     }
 
     case "add_track": {
-      if (cmd.role === "fix" || cmd.role === "fixed") {
+      if (cmd.role === "fix" || cmd.role === "fixed" || cmd.role === "cont") {
         if (t.tracks.some((x) => x.role === cmd.role)) fail("المسار موجود من قبل.");
         const track = roleTrack(t, cmd.role);
         return { timeline: t, label: `أضفت مسار «${track.name}»`, select: [track.id] };
@@ -888,6 +890,20 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       clip.transition = null;
       red.clips = [...red.clips, clip].sort((x, y) => x.start - y.start);
       return { timeline: t, label: "رفعت جزءًا للمسار الأحمر", select: [clip.id] };
+    }
+
+    case "copy_cont": {
+      const { track: from, clip } = owned(t, cmd.clipId);
+      const a = clip.assetId ? assets.get(clip.assetId) : null;
+      if (from.kind !== "video" || !a || a.kind !== "video") fail("الاستمرارية من مقطع فيديو.");
+      if (from.role) fail("انسخ للأصفر من مسار عادي.");
+      if (clip.out - clip.in < 2000) fail("مقطع الاستمرارية ثانيتين أو أكثر.");
+      const yellow = roleTrack(t, "cont");
+      if (!free(yellow, clip.start, clipEnd(clip))) fail("فيه مقطع ثاني بنفس المكان على المسار الأصفر.");
+      const copy: Clip = { ...structuredClone(clip), id: newId("c"), fix: null, transition: null };
+      yellow.clips = [...yellow.clips, copy].sort((x, y) => x.start - y.start);
+      if (countClips(t) > LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      return { timeline: t, label: "نسخت للمسار الأصفر (استمرارية)", select: [copy.id] };
     }
 
     case "place_fixed": {

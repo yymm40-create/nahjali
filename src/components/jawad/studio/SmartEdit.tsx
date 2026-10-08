@@ -4,18 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
 import { EDIT_FEE_KEY, GENERATORS, generatorById } from "@config/jawad/generators";
 import type { JobView, OutputView } from "@/lib/jawad/labels";
-import { cutRange, EDIT_LIMITS, frameTimes, type EditMode, type EditRange } from "@/lib/jawad/smart-edit";
+import { continuityRanges, cutRange, EDIT_LIMITS, frameTimes, type EditMode, type EditRange } from "@/lib/jawad/smart-edit";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
-import { grabFrames } from "./frames";
+import { grabFrames, grabSounds } from "./frames";
+import { uploadContinuity } from "./continuity";
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const fmt = (s: number) => (Number.isFinite(s) ? s.toFixed(1) : "—");
 
 const CHOICES: Record<"video" | "image", { mode: EditMode; title: string; text: string; icon: string }[]> = {
   video: [
-    { mode: "whole", title: "أعد المقطع كاملًا", text: "يكتب «المخرج الخارق» برومبتًا جديدًا يصلح الأخطاء ويحافظ على ما نجح، ثم يولَّد المقطع كله من جديد بنفس الإعدادات والمراجع.", icon: "retry" },
-    { mode: "parts", title: "أعد الجزء الذي لم ينجح فقط", text: "يولَّد الجزء المحدد وحده، ويبدأ وينتهي بنفس لقطتي الأصل عند نقطتي القص، لتركّبه مكانه بقصّ نظيف.", icon: "frames" },
+    { mode: "whole", title: "أعد المقطع كاملًا", text: "يكتب «المخرج الخارق» برومبتًا جديدًا بنفس الأفكار وتعديلك فيه، ويُصنع المقطع كله من جديد بنفس الإعدادات والمراجع.", icon: "retry" },
+    { mode: "parts", title: "أعد الجزء الذي لم ينجح فقط", text: "يولَّد الجزء المحدد وحده: تُرسل ثواني من الفيديو نفسه قبل القص وبعده كمرجع، فيكمّل بنفس الحركة والصوت، لتركّبه مكانه بقصّ نظيف.", icon: "frames" },
   ],
   image: [
     { mode: "same", title: "عدّل نفس الصورة", text: "تُرسل صورتك نفسها للمولد مع تعديلاتك، ويبقى كل ما لم تطلب تغييره كما هو.", icon: "wand" },
@@ -47,7 +48,9 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   const part = mode === "parts" ? (ranges[0] ?? null) : null;
   const cut = part && Number.isFinite(part.from) && Number.isFinite(part.to) ? cutRange(part.from, part.to, videoSec, durOpt?.min ?? 4, durOpt?.max ?? 15) : null;
   const rangesOk = mode !== "parts" || Boolean(cut);
-  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId };
+  // the seconds of the video itself around the cut, sent as continuity references
+  const continuity = cut ? continuityRanges(cut, videoSec) : undefined;
+  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId, ...(continuity ? { continuity } : {}) };
   const quoteKey = JSON.stringify([out?.id, mode, genId, ranges.map((r) => [r.from, r.to])]);
 
   // The price (again whenever the kind of edit or the marked times change)
@@ -109,13 +112,19 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
         const small = await grabFrames(out.url, times, EDIT_LIMITS.frameWidth, 0.72);
         send.frames = times.map((t, i) => ({ t, data: small[i] }));
         if (mode === "parts" && cut) {
-          const [first, last] = await grabFrames(out.url, [cut.start, cut.end], null, 0.92);
-          send.cutFrames = { first, last };
+          // the video itself right before and after the cut, cut here and uploaded (continuity references)
+          setBusy("يقص مقاطع الاستمرارية…");
+          const ids: string[] = [];
+          for (const r of continuity ?? []) ids.push(await uploadContinuity(out.url, r, `continuity-${r.at}`));
+          send.continuityUploads = ids;
+          // and the sound around the cut (voices, effects, music carry on)
+          const [before, after] = await grabSounds(out.url, [{ from: cut.start - 2.5, to: cut.start }, { from: cut.end, to: cut.end + 2.5 }]);
+          send.cutSounds = { before, after };
         }
       }
-    } catch {
+    } catch (e) {
       setBusy(null);
-      return setError("تعذّر قراءة لقطات المقطع في المتصفح؛ جرّب مرة ثانية.");
+      return setError(e instanceof Error && e.message && !/fetch|decode/i.test(e.message) ? e.message : "تعذّر تجهيز المقطع في المتصفح؛ جرّب مرة ثانية.");
     }
     setBusy("يرسل التعديل…");
     const res = await fetch("/api/jawad/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(send) }).catch(() => null);
@@ -215,7 +224,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                   {mode === "parts" &&
                     (cut ? (
                       <p className="rounded-lg bg-jw-accent-soft px-2.5 py-2 text-xs">
-                        يُعاد الجزء من <b dir="ltr">{fmt(cut.start)}</b> إلى <b dir="ltr">{fmt(cut.end)}</b> ثانية ({cut.seconds} ث{cut.seconds > (part ? part.to - part.from : 0) + 0.05 ? ` — أقل مدة يولّدها ${def?.name ?? "المولد"} ${durOpt?.min ?? 4} ث` : ""})، ويبدأ وينتهي بنفس لقطتي الأصل؛ ركّبه مكان هذا الجزء.
+                        يُعاد الجزء من <b dir="ltr">{fmt(cut.start)}</b> إلى <b dir="ltr">{fmt(cut.end)}</b> ثانية ({cut.seconds} ث{cut.seconds > (part ? part.to - part.from : 0) + 0.05 ? ` — أقل مدة يولّدها ${def?.name ?? "المولد"} ${durOpt?.min ?? 4} ث` : ""})، ويكمّل من الفيديو نفسه قبل القص وبعده (مرجع استمرارية)؛ ركّبه مكان هذا الجزء.
                       </p>
                     ) : (
                       <p className="text-xs text-jw-danger">حدّد جزءًا صحيحًا داخل مدة المقطع ({fmt(videoSec)} ث).</p>

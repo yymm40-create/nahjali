@@ -53,3 +53,35 @@ export function frameTimes(videoSec: number, ranges: EditRange[], cut?: { start:
   const uniq = [...new Set(times.map((t) => round1(Math.min(end, Math.max(0, t)))))].sort((x, y) => x - y);
   return uniq.slice(0, EDIT_LIMITS.framesMax);
 }
+
+/** «التعديل الذكي» of a part: seconds of the video itself next to the cut, sent as video references for continuity. */
+export interface ContinuityRange {
+  at: "before" | "after";
+  from: number;
+  to: number;
+}
+/** Seedance: each reference video 2 s or more. */
+export const CONTINUITY = { minSec: 2, sec: 3, max: 3, totalSec: 15 } as const;
+
+/** The default: up to 3 s of the video right before the cut and right after it (each only when 2 s or more fit). */
+export function continuityRanges(cut: { start: number; end: number }, videoSec: number): ContinuityRange[] {
+  const out: ContinuityRange[] = [];
+  const b = { at: "before" as const, from: round1(Math.max(0, cut.start - CONTINUITY.sec)), to: cut.start };
+  if (b.to - b.from >= CONTINUITY.minSec - 1e-9) out.push(b);
+  const a = { at: "after" as const, from: cut.end, to: round1(Math.min(videoSec, cut.end + CONTINUITY.sec)) };
+  if (a.to - a.from >= CONTINUITY.minSec - 1e-9) out.push(a);
+  return out;
+}
+
+/** Ranges sent by the page (the editor's yellow track), checked; null when none were sent. */
+export function readContinuity(v: unknown, videoSec: number): ContinuityRange[] | null {
+  if (!Array.isArray(v)) return null;
+  const out = v.slice(0, CONTINUITY.max + 1).map((x) => {
+    const r = (x ?? {}) as Record<string, unknown>;
+    return { at: r.at === "after" ? ("after" as const) : ("before" as const), from: round1(Number(r.from)), to: round1(Number(r.to)) };
+  });
+  if (out.length > CONTINUITY.max) return null;
+  for (const r of out) if (!(r.from >= 0 && r.to <= videoSec + 0.05 && r.to - r.from >= CONTINUITY.minSec - 0.05 && r.to - r.from <= CONTINUITY.totalSec)) return null;
+  if (out.reduce((t, r) => t + r.to - r.from, 0) > CONTINUITY.totalSec + 0.05) return null;
+  return out;
+}

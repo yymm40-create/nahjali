@@ -12,7 +12,7 @@ import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { coinsRequired, refundCoins, releaseCoins, reserveCoins, settleCoins } from "@/lib/coins";
 import { coinsFor } from "@config/coins";
-import { isUnlimited } from "@config/site";
+import { unlimitedFor } from "@/lib/access";
 import { STUDENT } from "@config/jawad/student";
 import { sdb } from "./db";
 import { HANDLERS } from "./handlers";
@@ -81,7 +81,7 @@ export async function createJob(
   if (busy?.length) throw new UserError("فيه عملية شغالة على هذه المادة، انتظر تخلص ثم كمّل.", 409);
 
   // Free trial (no coins taken): a daily ceiling per person, so nobody can repeat paid steps without end
-  if (o.estimateUsd > 0 && !isUnlimited(user.email) && !(await coinsRequired())) {
+  if (o.estimateUsd > 0 && !(await unlimitedFor(user.email)) && !(await coinsRequired())) {
     const since = new Date(Date.now() - 24 * 3600_000).toISOString();
     const { data: today } = await db.from("student_jobs").select("estimate_usd,cost_usd,status").eq("user_id", user.id).gte("created_at", since);
     const used = ((today ?? []) as { estimate_usd: number; cost_usd: number; status: string }[]).reduce(

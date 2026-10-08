@@ -5,11 +5,13 @@ import { api, postJson } from "@/lib/fetch";
 import Spinner from "@/components/Spinner";
 import type { VoiceLine } from "@/lib/film/voices";
 import EmotionPicker from "../../EmotionPicker";
+import VoiceDesigner from "../../VoiceDesigner";
 
 interface Choice {
   value: string;
   name: string;
-  group: "mine" | "ready";
+  group: "mine" | "ready" | "minimax";
+  provider?: "elevenlabs" | "minimax";
 }
 interface Audio {
   key: string;
@@ -98,7 +100,13 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
                   <optgroup label="أصوات ElevenLabs الجاهزة">
                     {s.voices.filter((v) => v.group === "ready").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}
                   </optgroup>
+                  {s.voices.some((v) => v.group === "minimax") && (
+                    <optgroup label="أصوات MiniMax الجاهزة">
+                      {s.voices.filter((v) => v.group === "minimax").map((v) => <option key={v.value} value={v.value}>{v.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
+                <VoiceDesigner projectId={projectId} speaker={sp} minimaxOn={s.voices.some((v) => v.group === "minimax")} disabled={Boolean(busy)} onCast={async (value) => { await cast(sp, value); await load(); }} />
               </li>
             ))}
           </ul>
@@ -132,7 +140,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
               return (
                 <li key={l.key} className="space-y-2 rounded-2xl border border-line p-3" data-line={l.key}>
                   <p className="text-sm"><span className="font-extrabold">{l.speaker}:</span> <span dir="rtl">{l.line}</span></p>
-                  <EmotionPicker value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(busy)} />
+                  <EmotionPicker provider={s?.voices.find((v) => v.value === s?.cast[l.speaker])?.provider ?? "elevenlabs"} value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(busy)} />
                   {a?.url && <audio controls preload="none" src={a.url} className="w-full" />}
                   {stale && <p className="text-xs font-bold text-muted">تغيّرت الجملة بعد توليد صوتها؛ ولّدها من جديد.</p>}
                   <button type="button" className="btn btn-secondary min-h-10 px-4 text-sm" disabled={Boolean(busy) || !s?.cast[l.speaker]} onClick={() => speak([l.key])}>

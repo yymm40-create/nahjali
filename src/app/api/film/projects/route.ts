@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { filmTrialApplies, filmTrialUsers, requireFilmApiUser } from "@/lib/film/access";
+import { requireFilmApiUser } from "@/lib/film/access";
 import { projectFields } from "@/lib/film/validate";
 import { FILM_LIMITS } from "@config/film";
 
@@ -19,16 +19,14 @@ export const POST = handle(async (req: Request) => {
     throw new UserError(`وصلت للحد الأقصى للمشاريع (${FILM_LIMITS.maxProjectsPerUser}).`, 403);
   }
 
-  const { data, error } = await db
-    .from("film_projects")
-    .insert({ user_id: user.id, ...fields })
-    .select("id")
-    .single();
-  if (error) throw error;
-  // Public trial: two people starting at the same moment can't both take the last place
-  if ((await filmTrialApplies(user)) && !(await filmTrialUsers()).includes(user.id)) {
-    await db.from("film_projects").delete().eq("id", data.id);
-    throw new UserError("اكتمل عدد المجرّبين في الفترة المجانية.", 403);
+  // «هل تبيني أبحث لتطوير القصة؟» is kept with the film (without migration 0037 the film is made without it)
+  const research = body.research === "yes" || body.research === "no" ? { asked: body.research, items: [] } : null;
+  const row: Record<string, unknown> = { user_id: user.id, ...fields, ...(research ? { research } : {}) };
+  let made = await db.from("film_projects").insert(row).select("id").single();
+  if (made.error && research) {
+    delete row.research;
+    made = await db.from("film_projects").insert(row).select("id").single();
   }
-  return NextResponse.json({ id: data.id });
+  if (made.error || !made.data) throw made.error ?? new Error("insert failed");
+  return NextResponse.json({ id: made.data.id });
 });
