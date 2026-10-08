@@ -6,6 +6,7 @@ import type { Runtime } from "@/lib/jawad/server/runtime";
 import AccountMenu from "./AccountMenu";
 import CoinBalance from "./CoinBalance";
 import { SoundToggle } from "@/components/UiSounds";
+import LayoutToggle from "./LayoutToggle";
 import LoginLink from "./LoginLink";
 import SectionsBar from "./SectionsBar";
 
@@ -25,6 +26,8 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
             </span>
           </Link>
           <div className="flex items-center gap-2">
+            {/* on a computer: the whole width, or a phone-wide column */}
+            {!preview && <LayoutToggle />}
             <SoundToggle />
             {/* back to نهج علي's home (its two branches) */}
             <Link href="/" className="jw-btn jw-btn-quiet h-9 min-h-9 gap-1.5 px-2.5 text-xs" aria-label="الرجوع لصفحة نهج علي الرئيسية" title="نهج علي: الصفحة الرئيسية">

@@ -40,7 +40,9 @@ export default async function JawadLayout({ children }: { children: React.ReactN
     ? await Promise.all([coinBalance(user.id), getUsername(await createClient(), user.id).catch(() => null)])
     : [null, null];
   return (
-    <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }}>
+    <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }} suppressHydrationWarning>
+      {/* «عرض الديسكتوب» remembered on this device: applied before the first paint (LayoutToggle) */}
+      <script dangerouslySetInnerHTML={{ __html: "try{if(localStorage.getItem('jw-layout')==='wide')document.currentScript.parentElement.classList.add('jw-wide')}catch(e){}" }} />
       <a href="#jw-main" className="sr-only z-50 rounded-lg bg-jw-accent px-3 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
         تخطَّ إلى المحتوى
       </a>

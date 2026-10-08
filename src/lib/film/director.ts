@@ -10,7 +10,8 @@ import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
-import { buildVoiceTrack, voiceTrackNote } from "./voice-track";
+import { buildVoiceTrack, OWN_TRACK, uploadedVoiceTrack, voiceTrackNote, wavSeconds } from "./voice-track";
+import { checkMp3 } from "@/lib/jawad/student/audio";
 import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
 import {
   DIRECTOR_APP_INTEGRATION,
@@ -173,13 +174,19 @@ export type DirectorAction =
   | { action: "upload_video_url"; genId: string; mime: string }
   // «ملاحظة للمونتاج»: what the person didn't like in a take, and where (for the montage, not a new generation)
   | { action: "montage_note"; assetId: string; text: string }
-  | { action: "upload_video_confirm"; genId: string; path: string };
+  | { action: "upload_video_confirm"; genId: string; path: string }
+  // «الحوار من جهازي»: the person's own recording of a shot's dialogue (made in their own program or account)
+  | { action: "upload_voice_url"; genId: string; mime: string }
+  | { action: "upload_voice_confirm"; genId: string; path: string }
+  | { action: "remove_voice_upload"; genId: string };
 
 /** The client's choices on the generation page (each wins over the director's plan). */
-type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel; useVoices?: boolean };
+type VideoChoice = { resolution: VideoResolution; ratio?: "16:9" | "9:16"; durationSec?: number; model?: VideoModel; useVoices?: boolean; voiceSource?: "make" | "upload" };
 const readChoice = (c: VideoChoice) => ({
-  // «الأصوات قبل الفيديو»: the generation's spoken lines go with the request as reference audio
+  // «الأصوات قبل الفيديو»: the generation's spoken lines go with the request as reference audio — made here, or the
+  // person's own recording («من جهازي»)
   useVoices: c.useVoices === true,
+  voiceSource: c.voiceSource === "upload" ? ("upload" as const) : ("make" as const),
   resolution: VIDEO_OPEN_RESOLUTIONS.includes(c.resolution) ? c.resolution : DEFAULT_VIDEO_RESOLUTION,
   ratio: c.ratio === "9:16" || c.ratio === "16:9" ? c.ratio : undefined,
   seconds: c.durationSec ? clampVideoSeconds(Number(c.durationSec)) : undefined,
@@ -332,7 +339,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const v = versions.filter((x) => x.kind === "dir_generation" && x.ref_key === input.genId && x.status === "approved").at(-1);
       if (!v) throw new UserError("اعتمد هذا التوليد أول.", 409);
       const c = readChoice(input);
-      const started = await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
+      const started = await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices, c.voiceSource);
       return { jobId: null, warning: started.warning };
     }
 
@@ -378,6 +385,48 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       return { jobId: null };
     }
 
+    case "upload_voice_url": {
+      // «الحوار من جهازي»: an MP3 or WAV of this shot's dialogue, recorded or made by the person wherever they like
+      const ext = OWN_TRACK.mimes[String(input.mime)];
+      if (!ext || !/^GEN-\d{2,3}$/.test(String(input.genId))) throw new UserError("ملف صوت MP3 أو WAV فقط.", 400);
+      const path = `${projectDir(project)}/voices/own-${input.genId}-${Date.now()}.${ext}`;
+      const { data, error } = await storage.from(FILM_BUCKET).createSignedUploadUrl(path);
+      if (error) throw error;
+      return { jobId: null, upload: { path: data.path, token: data.token } };
+    }
+
+    case "upload_voice_confirm": {
+      const dir = `${projectDir(project)}/voices`;
+      const path = String(input.path ?? "");
+      if (!/^GEN-\d{2,3}$/.test(String(input.genId)) || !path.startsWith(`${dir}/own-${input.genId}-`) || path.includes("..")) throw new UserError("ملف غير صحيح.", 400);
+      const name = path.slice(dir.length + 1);
+      const { data: list } = await storage.from(FILM_BUCKET).list(dir, { search: name });
+      const file = list?.find((f) => f.name === name);
+      const size = Number(file?.metadata?.size ?? 0);
+      if (!file || size <= 0 || size > OWN_TRACK.maxBytes) throw new UserError("ما وصل الملف أو حجمه أكبر من ١٥ ميجا.", 400);
+      // how long it plays (the model's limits are checked when the video is sent, per model)
+      const f = await storage.from(FILM_BUCKET).download(path);
+      if (f.error) throw new Error(`storage: ${f.error.message}`);
+      const bytes = new Uint8Array(await f.data.arrayBuffer());
+      const mp3 = name.endsWith(".mp3") ? checkMp3(bytes) : null;
+      const seconds = mp3 ? (mp3.ok ? mp3.seconds : 0) : (wavSeconds(bytes) ?? 0);
+      if (mp3 && !mp3.ok) throw new UserError("ملف MP3 غير صالح.", 400);
+      const { data: older } = await db().from("film_assets").select("id").eq("project_id", project.id).eq("kind", "audio").eq("ref_key", `track:${input.genId}`).eq("status", "approved");
+      if (older?.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older.map((x) => x.id));
+      const { error } = await db().from("film_assets").insert({
+        project_id: project.id, kind: "audio", ref_key: `track:${input.genId}`, storage_path: path, file_name: name,
+        mime: name.endsWith(".mp3") ? "audio/mpeg" : "audio/wav", bytes: size, status: "approved", meta: { uploaded: true, seconds },
+      });
+      if (error) throw error;
+      await tellSajjad(project.id, `${input.genId}: رفع الشخص حوار المقطع من جهازه (${seconds ? `${seconds} ث` : "ملف صوت"}) بدل تصنيعه هنا.`);
+      return { jobId: null };
+    }
+
+    case "remove_voice_upload": {
+      await db().from("film_assets").update({ status: "rejected" }).eq("project_id", project.id).eq("kind", "audio").eq("ref_key", `track:${input.genId}`).eq("status", "approved");
+      return { jobId: null };
+    }
+
     case "video_feedback": {
       // After a video: the client's notes go to the director, who answers with his understanding as options first
       busy();
@@ -400,7 +449,7 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       readyForVideo(v, lib);
       await setApproved(v, versions);
       const c = readChoice(input);
-      const started = await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model, c.useVoices);
+      const started = await startVideo(project, user, { ...v, status: "approved" }, lib, c.resolution, c.ratio, c.seconds, c.model, c.useVoices, c.voiceSource);
       const id = await addUserMessage(project.id, "اعتمد");
       return { jobId: await queueReply(project, user, id), warning: started.warning };
     }
@@ -535,7 +584,7 @@ function readyForVideo(v: DirectorVersion, lib: Record<string, FilmAsset>, chose
 }
 
 /** Creates the video asset + paid job, and sends the generation to Seedance in the background. */
-async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel, useVoices = false) {
+async function startVideo(project: FilmProject, user: User, v: DirectorVersion, lib: Record<string, FilmAsset>, resolution: VideoResolution, ratio?: string, seconds?: number, chosenModel?: VideoModel, useVoices = false, voiceSource: "make" | "upload" = "make") {
   const model: VideoModel = chosenModel || v.data.video_model || project.video_model || "seedance-2.5";
   const ready = readyForVideo(v, lib, model);
   const { refs } = ready;
@@ -544,7 +593,7 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
   // The spoken lines, made first, ride along as reference audio; the video is at least as long as they are
   let voiceTrack: string | null = null;
   if (useVoices) {
-    const t = await buildVoiceTrack(project, v.ref_key, model);
+    const t = voiceSource === "upload" ? await uploadedVoiceTrack(project, v.ref_key, model) : await buildVoiceTrack(project, v.ref_key, model);
     voiceTrack = t.path;
     prompt += voiceTrackNote(t);
     durationSec = Math.min(VIDEO_MODELS[model].maxSeconds, Math.max(durationSec, Math.ceil(t.seconds) + 1));
