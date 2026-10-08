@@ -136,7 +136,25 @@ export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: numbe
       ctx.restore();
     } else {
       const f = frameOf(l.clip, l.ms);
-      if (f && f.width && f.height) drawMedia(ctx, f, l.clip, t, look, W, H, l.ms);
+      // one picture the browser can't draw (broken, not decoded yet) must not take the other layers with it
+      if (f && f.width && f.height) {
+        ctx.save();
+        try {
+          drawMedia(ctx, f, l.clip, t, look, W, H, l.ms);
+        } catch (e) {
+          // a picture the GPU may not read (a file loaded without CORS) is drawn ungraded rather than not at all
+          ctx.restore();
+          ctx.save();
+          try {
+            if (l.clip.grades.length) drawMedia(ctx, f, { ...l.clip, grades: [] }, t, look, W, H, l.ms);
+          } catch {
+            /* nothing more to try for this layer */
+          }
+          console.warn("frame layer", l.clip.id, e);
+        } finally {
+          ctx.restore();
+        }
+      }
     }
   }
 }
