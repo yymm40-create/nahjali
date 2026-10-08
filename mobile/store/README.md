@@ -1,6 +1,6 @@
 # نهج علي في App Store و Google Play
 
-التطبيق في `mobile/` (Capacitor): يفتح الموقع nahjali.vercel.app داخل تطبيق حقيقي، فكل تحديث للموقع يوصل التطبيق
+التطبيق في `mobile/` (Capacitor): يفتح الموقع www.aljawadai.app داخل تطبيق حقيقي، فكل تحديث للموقع يوصل التطبيق
 على طول بدون رفع نسخة جديدة. يبني التطبيقين تلقائيًا `.github/workflows/mobile.yml`.
 
 ## ١) الحسابات (مرة وحدة)
@@ -61,10 +61,10 @@
 **الكلمات المفتاحية (Apple):** كتيب,أطفال,عادات,مونتاج,فيديو,ذكاء اصطناعي,قرآن,صلاة,تعليم,كرتون
 **الفئة:** التعليم (الثانوية: الصور والفيديو). **لا تختار قسم الأطفال (Kids)**: التطبيق يستخدمه ولي الأمر.
 **العمر:** ‎4+ (Apple) / ‎Everyone (Google)، مع الإشارة إن فيه محتوى يولّده المستخدم بالذكاء الاصطناعي.
-**رابط الخصوصية:** https://nahjali.vercel.app/privacy
-**رابط الشروط:** https://nahjali.vercel.app/terms
-**رابط الدعم:** https://nahjali.vercel.app
-**حذف الحساب (Apple و Google يطلبونه):** https://nahjali.vercel.app/account/delete
+**رابط الخصوصية:** https://www.aljawadai.app/privacy
+**رابط الشروط:** https://www.aljawadai.app/terms
+**رابط الدعم:** https://www.aljawadai.app
+**حذف الحساب (Apple و Google يطلبونه):** https://www.aljawadai.app/account/delete
 
 ## ٥) إجابات الخصوصية
 

@@ -10,7 +10,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Readable } = require("node:stream");
 
-const SITE = new URL(process.env.HAIDARA_URL || "https://nahjali.vercel.app");
+const SITE = new URL(process.env.HAIDARA_URL || "https://www.aljawadai.app");
+// the site's addresses: the domain (with and without www) and the old one, which still opens the same site
+const SITE_ORIGINS = new Set([SITE.origin, "https://www.aljawadai.app", "https://aljawadai.app", "https://nahjali.vercel.app"]);
+const isSite = (origin) => SITE_ORIGINS.has(origin);
 // (it opens on نهج علي's home, with its two branches: «الجواد للذكاء الاصطناعي» and «لأجل المهدي»)
 const START = new URL("/?desktop=1", SITE).toString();
 // the places sign-in passes through (Google, and the login service) stay inside the window
@@ -35,7 +38,7 @@ let win = null;
 const ours = (u) => {
   try {
     const url = new URL(u);
-    return url.origin === SITE.origin || SIGN_IN.some((r) => r.test(url.hostname));
+    return isSite(url.origin) || SIGN_IN.some((r) => r.test(url.hostname));
   } catch {
     return false;
   }
@@ -168,7 +171,7 @@ function createWindow() {
   const wc = win.webContents;
   // links to other sites open in the person's browser; the site's own pages and sign-in stay here
   wc.setWindowOpenHandler(({ url }) => {
-    if (ours(url) && new URL(url).origin === SITE.origin) {
+    if (isSite(new URL(url).origin)) {
       wc.loadURL(url);
       return { action: "deny" };
     }
@@ -211,7 +214,7 @@ function setupSession() {
     } catch {
       /* none */
     }
-    if (origin !== SITE.origin || typeof file !== "string" || !path.isAbsolute(file)) return null;
+    if (!isSite(origin) || typeof file !== "string" || !path.isAbsolute(file)) return null;
     try {
       if (!fs.statSync(file).isFile()) return null;
     } catch {
@@ -232,7 +235,7 @@ function setupSession() {
   ses.setPermissionRequestHandler(async (wc, permission, done, details) => {
     const allowed = ["media", "notifications", "fullscreen", "clipboard-sanitized-write", "clipboard-read", "display-capture", "window-management"];
     const origin = details.requestingUrl ? new URL(details.requestingUrl).origin : "";
-    if (!(origin === SITE.origin && allowed.includes(permission))) return done(false);
+    if (!(isSite(origin) && allowed.includes(permission))) return done(false);
     // macOS: the system's own microphone/camera permission (TCC) must be asked for, else the page gets a silent
     // stream and «🎤» records nothing — the system prompt shows once, then its answer is remembered
     if (permission === "media" && process.platform === "darwin") {
@@ -251,7 +254,7 @@ function setupSession() {
     }
     done(true);
   });
-  ses.setPermissionCheckHandler((_wc, permission, origin) => origin === SITE.origin && ["media", "notifications", "fullscreen", "clipboard-sanitized-write", "clipboard-read"].includes(permission));
+  ses.setPermissionCheckHandler((_wc, permission, origin) => isSite(origin) && ["media", "notifications", "fullscreen", "clipboard-sanitized-write", "clipboard-read"].includes(permission));
 
   // a finished video, captions or a sound: saved where the person picks (the Downloads folder first)
   ses.on("will-download", (_e, item) => {
