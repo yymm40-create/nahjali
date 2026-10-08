@@ -1,6 +1,7 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { fitImages } from "@/lib/claude-images";
 
 export const CLAUDE_MODEL = "claude-opus-5-5";
 
@@ -78,12 +79,13 @@ export async function callClaudeJson<T>({
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
 
-  const messages = turns.map((t, i) => {
+  // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
+  const messages = await fitImages(turns.map((t, i) => {
     const blocks: Record<string, unknown>[] = (typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content).map(toBlock);
     // Cache breakpoint on the latest turn: the next request reuses everything up to here
     if (i === turns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
     return { role: t.role, content: blocks };
-  });
+  }));
 
   // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
   const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
@@ -157,5 +159,6 @@ export function claudeTrouble(e: unknown): string | null {
   const m = e instanceof Error ? e.message : String(e);
   if (/credit balance is too low/i.test(m)) return "رصيد Claude (Anthropic) عند المنصة خلص، فما قدر Claude يشتغل. صاحب المنصة لازم يشحن رصيد Anthropic.";
   if (/Claude (429|529)|overloaded|rate.?limit/i.test(m)) return "Claude مشغول الحين؛ جرّب بعد دقيقة.";
+  if (/image.*(exceeds|too large|dimensions)|Unable to download|Could not process image|invalid image/i.test(m)) return "Claude ما قدر يقرا الصورة المرفقة (كبيرة أو تالفة). جرّب صورة أصغر أو بصيغة PNG/JPG.";
   return null;
 }
