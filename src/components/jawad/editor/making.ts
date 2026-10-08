@@ -17,6 +17,8 @@ export interface Making {
   at: number;
   name: string;
   started: number;
+  alsoAt?: number[];
+  volume?: number;
 }
 
 const key = (projectId: string) => `jw-editor-making-${projectId}`;
@@ -56,7 +58,7 @@ function save(projectId: string, list: Making[]) {
 /** Starts a priced plan (JAWAD AI checks it again and takes its coins), and waits for it. */
 export async function startMaking(projectId: string, plan: MakePlan) {
   const r = await postJson<{ job: JobView }>(`/api/jawad/editor/projects/${projectId}`, { action: "make_start", key: `ed-${crypto.randomUUID()}`, plan });
-  save(projectId, [...load(projectId), { jobId: r.job.id, kind: plan.kind, place: plan.place, at: plan.at, name: plan.name, started: Date.now() }]);
+  save(projectId, [...load(projectId), { jobId: r.job.id, kind: plan.kind, place: plan.place, at: plan.at, name: plan.name, started: Date.now(), ...(plan.alsoAt?.length ? { alsoAt: plan.alsoAt } : {}), ...(plan.volume !== undefined ? { volume: plan.volume } : {}) }]);
   return r.job;
 }
 
@@ -115,7 +117,7 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
         drop();
         // the file must be known to the timeline before a clip is laid on it
         await new Promise((ok) => setTimeout(ok, 0));
-        const cmds = res.assets[0] ? placeMade(m.kind, res.assets[0].id, m.place, m.at) : [];
+        const cmds = res.assets[0] ? placeMade(m.kind, res.assets[0].id, m.place, m.at, { alsoAt: m.alsoAt, volume: m.volume }) : [];
         if (cmds.length) run(cmds, { label: `حيدرة صنع: ${m.name.slice(0, 30)}` });
         flash(`وصل «${m.name}» ✓${cmds.length ? "" : " (في الملفات)"}`);
       } catch {

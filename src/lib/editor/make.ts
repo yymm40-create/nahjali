@@ -74,9 +74,18 @@ export function placeHookDesign(
  * Something «حيدرة» made with JAWAD AI («اصنع لي…»), once it is in the library: a picture or video over the video
  * (a new track) or into the main track, a sound on a new sound track (music a little lower, ducking under talking).
  */
-export function placeMade(kind: "image" | "video" | "speech" | "sfx" | "music", assetId: string, place: "over" | "main" | "audio" | "library", at: number): Command[] {
+export function placeMade(kind: "image" | "video" | "speech" | "sfx" | "music", assetId: string, place: "over" | "main" | "audio" | "library", at: number, more: { alsoAt?: number[]; volume?: number } = {}): Command[] {
   if (place === "library") return [];
   const start = Math.max(0, Math.round(at));
+  // a sound wanted at several moments (a motion piece's effect on every arrival): one clip at each, same volume
+  if (kind === "sfx" && (more.alsoAt?.length || more.volume !== undefined)) {
+    const cmds: Command[] = [];
+    for (const t of [start, ...(more.alsoAt ?? []).map((x) => Math.max(0, Math.round(x)))]) {
+      cmds.push({ type: "add_clip", assetId, at: t });
+      if (more.volume !== undefined) cmds.push({ type: "update_clip", clipId: `$${cmds.length}`, patch: { volume: more.volume } });
+    }
+    return cmds;
+  }
   if (kind === "image" || kind === "video") {
     if (place === "main") return [{ type: "add_clip", assetId, at: start }];
     const cmds: Command[] = [{ type: "add_clip", assetId, trackId: "new", at: start }];

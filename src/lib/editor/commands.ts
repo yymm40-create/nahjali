@@ -189,7 +189,8 @@ const sourceMax = (c: Clip, assets: Map<string, AssetInfo>) => {
 const isStill = (c: Clip, assets: Map<string, AssetInfo>) => c.text != null || assets.get(c.assetId ?? "")?.kind === "image";
 
 function editable(t: Timeline, trackId: string) {
-  const track = t.tracks.find((x) => x.id === trackId) ?? fail("ما لقينا هذا المسار.");
+  // a track, or the track of a clip (a clip just made, as "$N": the next picture goes on the same track as it)
+  const track = t.tracks.find((x) => x.id === trackId) ?? findClip(t, trackId)?.track ?? fail("ما لقينا هذا المسار.");
   if (track.locked) fail(`المسار «${track.name}» مقفول؛ افتح القفل أول.`);
   return track;
 }

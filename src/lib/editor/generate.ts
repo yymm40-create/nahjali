@@ -57,6 +57,29 @@ async function addFile(p: EditorProject, o: { bytes: Buffer; mime: string; ext: 
   return (await assetViews(p.id)).find((a) => a.id === data.id)!;
 }
 
+// ───────── the motion engine's own art (backgrounds and decorations drawn as SVG, kept as PNG) ─────────
+
+/** The pictures a motion piece drew for itself, each made a file of the project; returns picture key → file. */
+export async function makeMotionArt(p: EditorProject, art: { key: string; svg: string; w: number; h: number }[]) {
+  const out = new Map<string, Awaited<ReturnType<typeof addFile>>>();
+  const queue = [...art];
+  await Promise.all(
+    Array.from({ length: 6 }, async () => {
+      while (queue.length) {
+        const a = queue.shift()!;
+        try {
+          const png = await sharp(Buffer.from(a.svg), { density: 96 }).png({ compressionLevel: 8 }).toBuffer();
+          const file = await addFile(p, { bytes: png, mime: "image/png", ext: "png", kind: "image", name: a.key.startsWith("bg-") ? `خلفية ${Number(a.key.slice(3)) + 1}` : `زخرفة ${Number(a.key.slice(4)) + 1}`, width: a.w, height: a.h, meta: { made: "motion-art" } });
+          out.set(a.key, file);
+        } catch (e) {
+          console.error("motion art", a.key, e);
+        }
+      }
+    }),
+  );
+  return out;
+}
+
 // ───────── a written hook, as a picture ─────────
 
 /**

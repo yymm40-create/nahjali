@@ -15,7 +15,9 @@ import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { TR_LIST } from "./transitions";
 import { MOTION_SKILL } from "./motion";
-import { lintMotion, motionCommands, readStoryboard } from "./motion-build";
+import { lintMotion, motionCommands, motionPlan, readStoryboard, SFX, type SfxKind } from "./motion-build";
+import { makeMotionArt } from "./generate";
+import type { AssetView } from "./server";
 import { applyAll } from "./commands";
 import { COMMANDS_GUIDE } from "./assistant-commands";
 import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
@@ -157,6 +159,9 @@ export interface MakeRequest {
   name?: string;
   /** make: priced on the server, ready to start */
   plan?: MakePlan;
+  /** make (a sound): copies of it at these moments too, and its volume */
+  alsoAt?: number[];
+  volume?: number;
   text: string;
   lang: string;
   domain: string;
@@ -270,13 +275,32 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   let valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
   // «موشن جرافيكس»: the storyboard laid out by the engine (sizes, places, timing, colours measured), after his commands
   let motionNote = "";
+  // the art the engine drew (files of the project) and the sounds it wants, added to the answer below
+  const newAssets: AssetView[] = [];
+  const sfxRequests: MakeRequest[] = [];
   const sb = answer.motion?.trim() ? readStoryboard(answer.motion) : null;
   if (sb) {
-    const built = motionCommands(sb, tl.width, tl.height, valid.length);
+    const plan = motionPlan(sb, tl.width, tl.height);
+    // the backgrounds and decorations, drawn here and kept with the project (no generator): a picture that failed is left out
+    const made = await makeMotionArt(p, plan.art).catch((e) => (console.error("motion art", e), new Map<string, AssetView>()));
+    const artIds = new Map<string, string>();
+    for (const [k, a] of made) {
+      artIds.set(k, a.id);
+      infos.set(a.id, assetInfo(a));
+      newAssets.push(a);
+    }
+    const built = motionCommands(sb, tl.width, tl.height, valid.length, artIds);
     const all = checkCommands(tl, [...valid, ...built.commands].map((c) => JSON.stringify(c)), infos);
     if (!all.error) {
       valid = all.cmds;
-      motionNote = `\n\n🎬 رتّبت ${sb.beats.length} لقطات بلوحة «${built.palette.ar}» (${Math.round((built.endMs - (sb.at ?? 0)) / 1000)} ث): كل نص بمقاسه ومكانه وتوقيته بدون تداخل، وكل شي قابل للتعديل.`;
+      // one sound of each kind, made once and placed at every cue (quiet: under the voice)
+      const byKind = new Map<SfxKind, number[]>();
+      for (const c of plan.cues) (byKind.get(c.kind) ?? byKind.set(c.kind, []).get(c.kind)!).push(c.at);
+      for (const [kind, ats] of byKind) {
+        const [first, ...rest] = ats.sort((a, b) => a - b);
+        sfxRequests.push({ kind: "make", makeKind: "sfx", prompt: SFX[kind].prompt, seconds: SFX[kind].seconds, place: "audio", at: first, alsoAt: rest, volume: 0.35, name: SFX[kind].name, text: "", lang: "", domain: "", age: "", style: "", aspect: "", voice: "", withSound: false, quality: "", lengthMs: 0, clipId: "" });
+      }
+      motionNote = `\n\n🎬 رتّبت ${plan.beats.length} لقطات بلوحة «${built.palette.ar}» (${Math.round((built.endMs - (sb.at ?? 0)) / 1000)} ث): خلفية تتبدل مع كل لقطة وزخارف مرسومة حولها، دخول سريع وخروج أسرع، و${byKind.size} مؤثرات صوتية مختلفة على مواضعها — وكل شي قابل للتعديل.`;
     } else motionNote = `\n\n(ما قدرت أبني الموشن: ${all.error.message})`;
   } else if (answer.motion?.trim()) motionNote = "\n\n(الستوري بورد ما انقرأ؛ اطلبها مرة ثانية.)";
   // the texts this answer placed by hand: checked like the engine's (overlaps, long lines, contrast, safe area)
@@ -312,11 +336,14 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
+    // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
+    .filter((r) => !(sb && r.kind === "make" && r.makeKind === "sfx"))
     .slice(0, 4);
+  requests.push(...sfxRequests);
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
   let reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "") + motionNote;
   // «اصنع لي…»: each priced now with JAWAD AI's prices (the page shows the price and starts it)
-  for (const r of requests.filter((x) => x.kind === "make").slice(0, 3)) {
+  for (const r of requests.filter((x) => x.kind === "make").slice(0, 3 + sfxRequests.length)) {
     const planned = await planMake(who, { ...(r as unknown as MakeSpec), makeKind: r.makeKind as MakeKind, place: (r.place || "over") as MakePlace }, tl.width / tl.height);
     if ("plan" in planned) r.plan = planned.plan;
     else reply += `\n\n(ما قدرت أصنع «${r.name || r.prompt.slice(0, 30)}»: ${planned.error})`;
@@ -338,6 +365,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     requests: requests.filter((r) => (r.kind !== "hook_design" || r.design) && (r.kind !== "make" || r.plan)),
     // the colour changed: the page checks the result with حيدرة before it is called done
     checkClipId: answer.checkClipId && valid.length && tl.tracks.some((t) => t.clips.some((c) => c.id === answer.checkClipId)) ? answer.checkClipId : null,
+    // the pictures the motion engine drew: the page puts them in its library before the commands run
+    assets: newAssets,
   };
 }
 
