@@ -8,7 +8,7 @@ import { almojib } from "./adapters/almojib";
 import { aqaed } from "./adapters/aqaed";
 import { site } from "./adapters/site";
 import { thaqalayn } from "./adapters/thaqalayn";
-import type { ReadDoc, Reader } from "./adapters/types";
+import { pool, type ReadDoc, type Reader } from "./adapters/types";
 import { chunkText, hostOf, queryWords, tsQuery } from "./text";
 
 export type Adapter = "thaqalayn" | "almojib" | "aqaed" | "site";
@@ -83,47 +83,68 @@ export async function counts(): Promise<Record<string, { docs: number; chunks: n
 }
 
 /**
- * One reading run of a source: its reader works until the budget ends, each document read is saved (replacing an
- * older copy of the same address) and cut into searchable chunks, and where it stopped is kept for the next run.
+ * One reading run of a source, in short rounds: the reader works ~40 seconds, what it read is saved at once (a few
+ * documents in parallel) and where it stopped is kept, then the next round — until the budget ends or the source
+ * is finished. A request cut off by the host loses one round at most, never the run.
  */
-export async function runRead(id: string, budgetMs = ISLAMIC.crawlBudgetMs) {
+export async function runRead(id: string, budgetMs: number = ISLAMIC.crawlBudgetMs) {
   const d = db();
   const { data: row, error } = await d.from("islamic_sources").select("*").eq("id", id).maybeSingle();
   if (error) throw missing(error) ? new UserError(NOT_READY, 503) : error;
   const s = row as Source | null;
   if (!s) throw new UserError("ما لقينا هذا المصدر.", 404);
   const reader = READERS[s.adapter] ?? site;
-  const deadline = Date.now() + budgetMs;
-  let errors = 0;
-  let step;
-  try {
-    step = await reader.step(s, s.cursor ?? {}, deadline);
-  } catch (e) {
-    console.error("islamic read", s.key, e);
-    errors++;
-    step = { docs: [], cursor: s.cursor ?? {}, done: false, stage: `خطأ: ${e instanceof Error ? e.message : String(e)}` };
-  }
+  const end = Date.now() + budgetMs;
+  let cursor = s.cursor ?? {};
+  let stats = { ...(s.stats ?? {}) };
   let saved = 0;
-  for (const doc of step.docs) {
+  let errors = 0;
+  let stage = stats.stage ?? "";
+  let done = false;
+  while (!done && Date.now() < end - ISLAMIC.roundMs) {
+    let step;
     try {
-      await saveDoc(s.id, doc);
-      saved++;
+      step = await reader.step(s, cursor, Math.min(end - ISLAMIC.roundMs, Date.now() + ISLAMIC.roundMs));
     } catch (e) {
-      console.error("islamic save", doc.url, e);
+      console.error("islamic read", s.key, e);
       errors++;
+      stage = `خطأ: ${e instanceof Error ? e.message : String(e)}`;
+      break;
     }
+    const results = await pool(step.docs, 6, (doc) =>
+      saveDoc(s.id, doc).then(
+        () => true,
+        (e) => (console.error("islamic save", doc.url, e), false),
+      ),
+    );
+    const ok = results.filter(Boolean).length;
+    saved += ok;
+    errors += results.length - ok;
+    cursor = step.cursor;
+    stage = step.stage;
+    done = step.done;
+    stats = { ...stats, docs: (stats.docs ?? 0) + ok, lastRunAt: new Date().toISOString(), stage, done, errors: (stats.errors ?? 0) + (results.length - ok) };
+    await d.from("islamic_sources").update({ cursor, stats }).eq("id", s.id);
+    if (!step.docs.length && !done) break; // a reader that returned nothing: don't spin
   }
-  const stats = {
-    ...(s.stats ?? {}),
-    docs: (s.stats?.docs ?? 0) + saved,
-    lastRunAt: new Date().toISOString(),
-    stage: step.stage,
-    done: step.done,
-    runs: (s.stats?.runs ?? 0) + 1,
-    errors: (s.stats?.errors ?? 0) + errors,
-  };
-  await d.from("islamic_sources").update({ cursor: step.cursor, stats }).eq("id", s.id);
-  return { saved, done: step.done, stage: step.stage, errors };
+  stats = { ...stats, lastRunAt: new Date().toISOString(), stage, done, runs: (stats.runs ?? 0) + 1 };
+  await d.from("islamic_sources").update({ cursor, stats }).eq("id", s.id);
+  return { saved, done, stage, errors };
+}
+
+/** Reads every enabled, unfinished source for a while (the timer's run, no page open): the least recently run first. */
+export async function runDue(budgetMs: number) {
+  const all = (await sources()).filter((x) => x.enabled && !x.stats?.done);
+  all.sort((a, b) => String(a.stats?.lastRunAt ?? "").localeCompare(String(b.stats?.lastRunAt ?? "")));
+  const out: { key: string; saved: number; done: boolean; stage: string }[] = [];
+  const end = Date.now() + budgetMs;
+  for (const x of all) {
+    const left = end - Date.now();
+    if (left < ISLAMIC.roundMs * 2) break;
+    const r = await runRead(x.id, Math.min(left, Math.max(ISLAMIC.roundMs * 2, Math.floor(budgetMs / all.length))));
+    out.push({ key: x.key, ...r });
+  }
+  return out;
 }
 
 async function saveDoc(sourceId: string, doc: ReadDoc) {
@@ -140,8 +161,8 @@ async function saveDoc(sourceId: string, doc: ReadDoc) {
   await d.from("islamic_chunks").delete().eq("doc_id", docId);
   // every chunk starts with the title, so a search on it finds the document and Claude knows what it reads
   const pieces = chunkText(text, ISLAMIC.chunkChars, ISLAMIC.chunkOverlap).map((p) => (title && !p.startsWith(title) ? `${title}\n${p}` : p));
-  for (let i = 0; i < pieces.length; i += 50) {
-    const rows = pieces.slice(i, i + 50).map((p, k) => ({ doc_id: docId, n: i + k, text: p }));
+  for (let i = 0; i < pieces.length; i += 200) {
+    const rows = pieces.slice(i, i + 200).map((p, k) => ({ doc_id: docId, n: i + k, text: p }));
     const { error: e2 } = await d.from("islamic_chunks").insert(rows);
     if (e2) throw e2;
   }

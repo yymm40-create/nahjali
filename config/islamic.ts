@@ -4,8 +4,9 @@
 export const ISLAMIC = {
   base: "/jawad-ai/islamic",
   name: "الذكاء الإسلامي",
-  /** one reading run of a source: how long a request works before it saves where it stopped */
-  crawlBudgetMs: 230_000,
+  /** one reading run of a source (one request): rounds of `roundMs` of reading, each saved at once */
+  crawlBudgetMs: 240_000,
+  roundMs: 40_000,
   /** pages fetched at once from one site (polite) */
   crawlConcurrency: 4,
   /** chunk sizes (characters): what a search returns and Claude reads */
