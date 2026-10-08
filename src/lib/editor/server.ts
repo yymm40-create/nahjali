@@ -407,6 +407,24 @@ export async function completeUpload(p: EditorProject, b: { id?: unknown; upload
 }
 
 /** The first bytes of a stored file, through a short link (the file itself may be large). */
+/** More pixels than this and a picture is made smaller on arrival (iOS draws at most ~16.7 M pixels on a canvas). */
+const HUGE_IMAGE_PIXELS = 12_000_000;
+const MAX_IMAGE_SIDE = 4096;
+
+/** The picture at most MAX_IMAGE_SIDE on its longer side, in the same place (PNG keeps its transparency). */
+async function shrinkImage(row: AssetRow, width: number, height: number) {
+  const sharp = (await import("sharp")).default;
+  const { data, error } = await storage.from(row.bucket).download(row.path);
+  if (error || !data) return null;
+  const src = Buffer.from(await data.arrayBuffer());
+  const png = row.mime === "image/png";
+  const img = sharp(src, { limitInputPixels: 300_000_000 }).rotate().resize({ width: MAX_IMAGE_SIDE, height: MAX_IMAGE_SIDE, fit: "inside", withoutEnlargement: true });
+  const out = png ? await img.png({ compressionLevel: 8 }).toBuffer({ resolveWithObject: true }) : row.mime === "image/webp" ? await img.webp({ quality: 90 }).toBuffer({ resolveWithObject: true }) : await img.jpeg({ quality: 90 }).toBuffer({ resolveWithObject: true });
+  const up = await storage.from(row.bucket).upload(row.path, out.data, { contentType: row.mime, upsert: true });
+  if (up.error) return null;
+  return { width: out.info.width || width, height: out.info.height || height, bytes: out.data.length };
+}
+
 async function head(bucket: string, path: string) {
   const s = await storage.from(bucket).createSignedUrl(path, 60);
   if (!s.data?.signedUrl) return null;
@@ -453,12 +471,21 @@ export async function confirmAsset(p: EditorProject, b: { id?: unknown; duration
 
   const durationMs = row.kind === "image" ? null : clampInt(b.durationMs, 24 * 3600_000);
   if (row.kind !== "image" && !durationMs) return drop("تعذّر قراءة مدة الملف؛ قد يكون تالفًا أو بترميز ما يدعمه المتصفح.");
+  let width = row.kind === "audio" ? null : clampInt(b.width, 16384);
+  let height = row.kind === "audio" ? null : clampInt(b.height, 16384);
+  let stored = size ?? row.bytes;
+  // a huge picture (a logo exported at print size) is more than phones and Safari will show on a canvas: made smaller
+  // here once, with its transparency kept, so it shows everywhere and the export stays light
+  if (row.kind === "image" && width && height && width * height > HUGE_IMAGE_PIXELS) {
+    const shrunk = await shrinkImage(row, width, height).catch((e) => (console.error("shrink image", e), null));
+    if (shrunk) ({ width, height, bytes: stored } = shrunk);
+  }
   const update = {
     status: "ready" as const,
-    bytes: size ?? row.bytes,
+    bytes: stored,
     duration_ms: durationMs,
-    width: row.kind === "audio" ? null : clampInt(b.width, 16384),
-    height: row.kind === "audio" ? null : clampInt(b.height, 16384),
+    width,
+    height,
     meta: { ...row.meta, hasAudio: row.kind === "video" ? b.hasAudio !== false : row.kind === "audio" },
   };
   await db().from("editor_assets").update(update).eq("id", row.id);

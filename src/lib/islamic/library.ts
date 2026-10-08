@@ -193,17 +193,41 @@ export interface Passage {
 }
 
 /** The passages of the library that best match a question (at most ISLAMIC.perDoc from one document). */
+/**
+ * The passages of the library that best match a question (at most ISLAMIC.perDoc from one document). Searched from
+ * the most precise to the widest: passages holding all of the telling words, then the two most telling, then any
+ * of them — so a question finds what is really about it first, and a big library never ranks everything.
+ */
 export async function search(question: string, k = ISLAMIC.passages): Promise<{ passages: Passage[]; words: string[] }> {
   const words = queryWords(question);
   if (!words.length) return { passages: [], words };
-  const { data, error } = await db().rpc("islamic_search", { q: tsQuery(words), k: k * 3 });
-  if (error) {
-    if (missing(error) || /function .*islamic_search/i.test(error.message ?? "")) throw new UserError(NOT_READY, 503);
-    throw error;
+  const tries = [
+    ...(words.length >= 3 ? [tsQuery(words.slice(0, 3), true)] : []),
+    ...(words.length >= 2 ? [tsQuery(words.slice(0, 2), true)] : []),
+    tsQuery(words),
+  ];
+  const seen = new Set<number>();
+  const found: Passage[] = [];
+  let lastError: { message?: string } | null = null;
+  for (const q of tries) {
+    if (found.length >= k) break;
+    const { data, error } = await db().rpc("islamic_search", { q, k: k * 3 });
+    if (error) {
+      if (missing(error) || /function .*islamic_search/i.test(error.message ?? "")) throw new UserError(NOT_READY, 503);
+      // too slow for this one: the next (or the passages already found) carry on
+      lastError = error;
+      continue;
+    }
+    for (const p of (data ?? []) as Passage[]) {
+      if (seen.has(p.chunk_id)) continue;
+      seen.add(p.chunk_id);
+      found.push(p);
+    }
   }
+  if (!found.length && lastError) throw new UserError(/timeout/i.test(lastError.message ?? "") ? "البحث في المكتبة أخذ وقت أطول من المسموح. شغّل ملف SQL رقم 0039 (البحث السريع) في Supabase، وبعدها جرّب." : "تعذّر البحث في المكتبة الحين؛ جرّب بعد شوي.", 503);
   const perDoc: Record<string, number> = {};
   const out: Passage[] = [];
-  for (const p of (data ?? []) as Passage[]) {
+  for (const p of found) {
     if ((perDoc[p.doc_id] ?? 0) >= ISLAMIC.perDoc) continue;
     perDoc[p.doc_id] = (perDoc[p.doc_id] ?? 0) + 1;
     out.push(p);

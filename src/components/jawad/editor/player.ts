@@ -18,6 +18,9 @@ export interface PlayerAsset {
   url: string | null;
   hasAudio: boolean;
   durationMs?: number | null;
+  name?: string;
+  width?: number | null;
+  height?: number | null;
 }
 
 /** How far ahead clips get their element ready (so a cut doesn't wait), and how far around them it is kept. */
@@ -42,6 +45,10 @@ export class Player {
   private spans: [number, number][] = [];
   private media = new Map<string, Media>();
   private images = new Map<string, HTMLImageElement>();
+  /** pictures the browser could not give us, with why (shown to the person once) */
+  private imageTrouble = new Map<string, string>();
+  /** the page's way of telling the person about a picture that can't be shown */
+  onTrouble: ((message: string) => void) | null = null;
   private host: HTMLDivElement;
   private raf = 0;
   private clock = { perf: 0, ms: 0 };
@@ -417,12 +424,36 @@ export class Player {
     return m;
   }
 
+  /**
+   * A picture of the library: loaded with CORS (so the frame can be exported); when that is refused, loaded again
+   * plainly so it at least shows; when it still fails, the person is told why instead of a silent empty frame.
+   */
   private loadImage(a: PlayerAsset) {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => this.draw();
+    img.onerror = () => {
+      const plain = new Image();
+      plain.onload = () => {
+        this.images.set(a.id, plain);
+        this.trouble(a, "تحمّلت الصورة بدون إذن المشاركة (CORS) من مخزن الملفات؛ تظهر هنا لكن التصدير قد يرفضها. راجع إعدادات CORS للمخزن.");
+        this.draw();
+      };
+      plain.onerror = () => {
+        this.trouble(a, `ما قدر المتصفح يحمّل الصورة «${a.name ?? ""}»${a.width && a.height && a.width * a.height > 16_000_000 ? ` — حجمها ${a.width}×${a.height} أكبر من ما تتحمله المتصفحات؛ صغّرها وارفعها من جديد` : "؛ قد يكون الملف تالفًا أو رابطه انتهى. جرّب تحديث الصفحة"}.`);
+        this.draw();
+      };
+      plain.src = a.url!;
+    };
     img.src = a.url!;
     this.images.set(a.id, img);
+  }
+
+  private trouble(a: PlayerAsset, message: string) {
+    if (this.imageTrouble.has(a.id)) return;
+    this.imageTrouble.set(a.id, message);
+    console.warn("editor image", a.id, message);
+    this.onTrouble?.(message);
   }
 
   private frameOf = (clip: Clip): Frame | null => {
@@ -432,7 +463,8 @@ export class Player {
     let t = 0;
     if (a.kind === "image") {
       const img = this.images.get(a.id);
-      f = img?.complete && img.naturalWidth ? { img, width: img.naturalWidth, height: img.naturalHeight } : null;
+      // a picture the browser gives no size for (an SVG with none, or a decode it refuses) is drawn at its stored size
+      f = img?.complete && img.naturalWidth ? { img, width: img.naturalWidth, height: img.naturalHeight } : img?.complete && a.width && a.height && !this.imageTrouble.has(a.id) ? { img, width: a.width, height: a.height } : null;
     } else {
       const m = this.media.get(clip.id);
       if (m instanceof HTMLVideoElement && m.readyState >= 2) {
