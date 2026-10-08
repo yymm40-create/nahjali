@@ -3,9 +3,9 @@
   "appName": "نهج علي",
   "webDir": "www",
   "server": {
-    "url": "https://nahjali.vercel.app",
+    "url": "https://www.aljawadai.app",
     "errorPath": "offline.html",
-    "allowNavigation": ["nahjali.vercel.app", "*.supabase.co", "accounts.google.com", "*.google.com", "appleid.apple.com", "*.r2.cloudflarestorage.com"]
+    "allowNavigation": ["www.aljawadai.app", "aljawadai.app", "nahjali.vercel.app", "*.supabase.co", "accounts.google.com", "*.google.com", "appleid.apple.com", "*.r2.cloudflarestorage.com"]
   },
   "ios": {
     "contentInset": "never",
