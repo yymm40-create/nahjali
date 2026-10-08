@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-14
             target: --mac
           - os: windows-latest
             target: --win
@@ -43,7 +43,7 @@ jobs:
       # Apple signing only when its secrets are all there and the certificate reads (a stray or half-filled secret used to
       # stop the build); otherwise the Mac build is signed ad hoc, as package.json says
       - name: Apple signing (when its secrets are complete)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         shell: bash
         env:
           P12: ${{ secrets.MAC_CERT_P12_BASE64 }}
