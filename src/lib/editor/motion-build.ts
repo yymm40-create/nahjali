@@ -482,19 +482,20 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
     const top = f.top + (1 - f.top - f.bottom - laid.total) / 2;
     let y = top;
     const mine: Placed[] = [];
-    const placeOne = (blk: (typeof laid.blocks)[number], cx: number, cy: number) => {
+    const placeOne = (blk: (typeof laid.blocks)[number], cx: number, cy: number, al: "center" | "right" = "center") => {
       const s = blk.s;
-      const x = cx;
+      // «right»: the block flush with the right margin (Arabic's start), its lines aligned right inside it
+      const x = al === "right" ? 1 - f.side - blk.w / 2 : cx;
       const p: Placed = {
         beat: bi, role: s.role, body: blk.lines.join("\n"), lines: blk.lines, size: +blk.size.toFixed(4), weight: s.weight, font: s.font, color: s.color, box: s.box ?? null,
-        align: "center", x: +x.toFixed(4), y: +cy.toFixed(4), w: +blk.w.toFixed(4), h: +blk.h.toFixed(4),
+        align: al, x: +x.toFixed(4), y: +cy.toFixed(4), w: +blk.w.toFixed(4), h: +blk.h.toFixed(4),
         start: t + s.delay, end: t + dur, anim: s.anim,
       };
       placed.push(p);
       mine.push(p);
     };
     for (const blk of laid.blocks.filter((x) => (x.s.col ?? "full") === "full")) {
-      placeOne(blk, 0.5, y + blk.h / 2);
+      placeOne(blk, 0.5, y + blk.h / 2, look.align);
       y += blk.h + 0.035 * laid.scale;
     }
     if (laid.blocks.some((x) => x.s.col === "right" || x.s.col === "left")) {
@@ -509,7 +510,7 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
     }
     const one = (role: Role) => {
       const p = mine.find((x) => x.role === role);
-      return p ? { y: p.y, h: p.h, w: p.w } : undefined;
+      return p ? { x: p.x, y: p.y, h: p.h, w: p.w } : undefined;
     };
     anchors.push({
       head: one("head"),

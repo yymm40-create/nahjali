@@ -9,6 +9,8 @@ import type { BeatKind } from "./motion-build";
 import type { TalkLayout } from "./talk-motion";
 
 export type MotionPace = "fast" | "normal" | "calm";
+/** The art's language: how backgrounds and decorations are drawn (motion-art.ts) — each skill its own. */
+export type MotionTheme = "glow" | "paper" | "bold" | "flat" | "chart" | "rail" | "split" | "frame" | "arabesque" | "confetti" | "badge" | "none" | "grid" | "film";
 export type MotionEntrance = "mixed" | "whip" | "rise" | "right" | "fade" | "settle" | "punch" | "blur" | "glitch" | "flash" | "wipe";
 
 /** What the engine does with a piece (every field has a default; a skill sets some, the person's wishes override). */
@@ -32,6 +34,10 @@ export interface MotionLook {
   sfx: "full" | "soft" | "none";
   /** the slow push-in on headlines and decorations */
   drift: boolean;
+  /** the art's language (backgrounds, decorations) */
+  theme: MotionTheme;
+  /** the words centred, or on the right (Arabic's start) */
+  align: "center" | "right";
 }
 
 export const DEFAULT_LOOK: MotionLook = {
@@ -42,6 +48,8 @@ export const DEFAULT_LOOK: MotionLook = {
   decor: true,
   sfx: "full",
   drift: true,
+  theme: "glow",
+  align: "center",
 };
 
 export interface MotionStyle {
@@ -70,7 +78,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "🔭",
     hint: "شرح هادئ وواضح على خلفية ليلية، فكرة وحدة بكل لقطة، أرقام وخطوات",
     beats: ["title", "statement", "stat", "steps", "points", "outro"],
-    look: { palette: "night", pace: "normal", entrance: "rise", transitions: ["iris", "wipeSoft", "softDissolve", "pushUp"], background: "beat", sfx: "soft" },
+    look: { palette: "night", head: "cairo", body: "tajawal", pace: "normal", entrance: "rise", transitions: ["iris", "wipeSoft", "softDissolve", "pushUp"], background: "beat", sfx: "soft", theme: "glow", align: "center" },
     craft: "Kurzgesagt-like explainer: hook question → the problem → the mechanism in 3–6 one-idea beats (a stat or steps where it helps) → the payoff → outro. Calm, clear sentences; 4–5 s a beat.",
   },
   {
@@ -80,7 +88,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "🖍️",
     hint: "أسلوب التقارير: ورق فاتح، كلمة مظللة بالأصفر، اقتباسات وأرقام موثّقة",
     beats: ["kinetic", "quote", "stat", "statement", "outro"],
-    look: { palette: "paper", pace: "normal", entrance: "fade", transitions: ["wipeLeft", "slideLeft", "wipe"], background: "steady", sfx: "soft" },
+    look: { palette: "paper", head: "changa", body: "ibm-plex-sans-arabic", pace: "normal", entrance: "fade", transitions: ["wipeLeft", "slideLeft", "wipe"], background: "steady", sfx: "soft", theme: "paper", align: "right" },
     craft: "Vox-like journalism: a kinetic hook with the key word in the highlighter pill (hot), quotes with their source, numbers only from the person's words; sober tone.",
   },
   {
@@ -90,7 +98,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "⚡",
     hint: "إيقاع سريع للسوشال: لقطات ٢–٣ ثواني، سحبات وانتقالات قوية ومؤثرات على كل دخول",
     beats: ["kinetic", "statement", "stat", "points", "outro"],
-    look: { palette: "studio", pace: "fast", entrance: "whip", transitions: ["whipLeft", "whipRight", "punchIn", "zoomFlash"], background: "beat", sfx: "full" },
+    look: { palette: "studio", head: "alexandria", body: "cairo", pace: "fast", entrance: "whip", transitions: ["whipLeft", "whipRight", "punchIn", "zoomFlash"], background: "beat", sfx: "full", theme: "bold", align: "center" },
     craft: "A fast social reel (15–30 s): a kinetic hook in the first second, short punchy lines (2–5 words), 2–3 s beats, ends on the handle.",
   },
   {
@@ -100,7 +108,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "🔤",
     hint: "الكلام نفسه هو الموشن: كلمة تنزل ورا كلمة، والكلمة المهمة مظللة، قطع حاد بين اللقطات",
     beats: ["kinetic", "statement"],
-    look: { pace: "fast", entrance: "punch", transitions: [], background: "steady", decor: false, sfx: "full" },
+    look: { head: "kufam", body: "cairo", pace: "fast", entrance: "punch", transitions: [], background: "steady", decor: false, sfx: "full", theme: "flat", align: "center" },
     craft: "Kinetic typography: almost every beat is «kinetic» (2–6 words, one a line, the key word hot), a statement between them for breath; hard cuts; follows the voice word by word.",
   },
   {
@@ -110,7 +118,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "📊",
     hint: "الأرقام بطل القصة: رقم كبير يضرب على الشاشة مع وصفه، ومؤثر ضربة على كل رقم",
     beats: ["title", "stat", "stat", "compare", "outro"],
-    look: { palette: "night", pace: "normal", entrance: "punch", transitions: ["flashWhite", "zoom", "pushUp"], background: "beat", sfx: "full" },
+    look: { palette: "night", head: "changa", body: "tajawal", pace: "normal", entrance: "punch", transitions: ["flashWhite", "zoom", "pushUp"], background: "beat", sfx: "full", theme: "chart", align: "center" },
     craft: "An animated infographic: one big number per beat (≤ 6 characters) with its label and a short note; numbers ONLY from the person's words; a comparison when two numbers meet.",
   },
   {
@@ -120,7 +128,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "🪜",
     hint: "خطوات مرقمة تدخل من اليمين وحدة ورا وحدة، مناسب للشرح والتعليم",
     beats: ["title", "steps", "steps", "statement", "outro"],
-    look: { pace: "normal", entrance: "right", transitions: ["slideLeft", "pushRight"], background: "beat", sfx: "soft" },
+    look: { head: "almarai", body: "almarai", pace: "normal", entrance: "right", transitions: ["slideLeft", "pushRight"], background: "beat", sfx: "soft", theme: "rail", align: "right" },
     craft: "A how-to: a title, then numbered steps (3–4 a screen, split over beats when more), each a short imperative; one closing statement and the outro.",
   },
   {
@@ -130,7 +138,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "⚖️",
     hint: "طرفين جنب بعض: قبل وبعد، الخطأ والصح، هذا وذاك",
     beats: ["title", "compare", "compare", "statement", "outro"],
-    look: { pace: "normal", entrance: "mixed", transitions: ["wipeDiagTR", "barnH", "slideLeft"], background: "beat", sfx: "soft" },
+    look: { head: "cairo", body: "tajawal", pace: "normal", entrance: "mixed", transitions: ["wipeDiagTR", "barnH", "slideLeft"], background: "beat", sfx: "soft", theme: "split", align: "center" },
     craft: "Comparisons: each beat a «compare» (right = before / the first / the better one), a statement that says the lesson, the outro.",
   },
   {
@@ -140,7 +148,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "👑",
     hint: "هادئ وفخم: ذهبي على كحلي، خط أميري، ظهور ناعم وانتقالات ذهبية",
     beats: ["title", "statement", "quote", "outro"],
-    look: { palette: "majlis", head: "amiri", body: "tajawal", pace: "calm", entrance: "fade", transitions: ["softDissolve", "dipGold", "fade"], background: "steady", sfx: "soft" },
+    look: { palette: "majlis", head: "amiri", body: "markazi-text", pace: "calm", entrance: "fade", transitions: ["softDissolve", "dipGold", "fade"], background: "steady", sfx: "soft", theme: "frame", align: "center" },
     craft: "Luxury: few words, generous holds (5–6 s), elegant sentences, no exclamation; the brand name held long at the end.",
   },
   {
@@ -150,7 +158,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "🕌",
     hint: "للمحتوى الديني والمناسبات: هادئ وخاشع، خط أميري، ظهور ناعم بدون ضربات قوية",
     beats: ["title", "quote", "statement", "outro"],
-    look: { palette: "majlis", head: "amiri", body: "naskh", pace: "calm", entrance: "blur", transitions: ["softDissolve", "dipGold"], background: "steady", sfx: "soft" },
+    look: { palette: "majlis", head: "amiri", body: "harmattan", pace: "calm", entrance: "blur", transitions: ["softDissolve", "dipGold"], background: "steady", sfx: "soft", theme: "arabesque", align: "center" },
     craft: "Religious and occasion content: reverent and calm, quotes (a verse or a narration exactly as the person gave it, with its source in «by»), no punches or glitches, no music unless asked.",
   },
   {
@@ -160,7 +168,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "🎈",
     hint: "ألوان مرحة وأشكال، دخول مستقر لطيف وانتقالات بأشكال (نجمة، قلب، ماسة)",
     beats: ["kinetic", "points", "statement", "outro"],
-    look: { palette: "riso", pace: "fast", entrance: "settle", transitions: ["diamond", "star", "heart", "iris"], background: "beat", sfx: "full" },
+    look: { palette: "riso", head: "marhey", body: "baloo-bhaijaan-2", pace: "fast", entrance: "settle", transitions: ["diamond", "star", "heart", "iris"], background: "beat", sfx: "full", theme: "confetti", align: "center" },
     craft: "Playful and for kids: simple words, short beats, friendly tone, lists of fun points; never scary.",
   },
   {
@@ -170,7 +178,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "📣",
     hint: "إعلان ١٥–٣٠ ثانية: هوك ← المشكلة ← الحل ← النداء، سريع وقوي",
     beats: ["kinetic", "statement", "points", "stat", "outro"],
-    look: { palette: "studio", pace: "fast", entrance: "whip", transitions: ["whipLeft", "punchIn", "flashWhite"], background: "beat", sfx: "full" },
+    look: { palette: "studio", head: "lalezar", body: "cairo", pace: "fast", entrance: "whip", transitions: ["whipLeft", "punchIn", "flashWhite"], background: "beat", sfx: "full", theme: "badge", align: "center" },
     craft: "An ad of 15–30 s: hook (≤ 2 s) → the pain (1 beat) → the product as the answer (2–3 beats: benefits, one number) → the offer and the call to action, held ≥ 3 s.",
   },
   {
@@ -180,7 +188,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "◻️",
     hint: "هادئ ومرتب بدون زخارف: خلفية ثابتة، صعود ناعم، انتقالات قليلة",
     beats: ["title", "statement", "points", "outro"],
-    look: { pace: "normal", entrance: "rise", transitions: ["wipe", "slideLeft"], background: "steady", decor: false, sfx: "soft" },
+    look: { head: "fustat", body: "fustat", pace: "normal", entrance: "rise", transitions: ["wipe", "slideLeft"], background: "steady", decor: false, sfx: "soft", theme: "none", align: "right" },
     craft: "Minimal (School of Motion-like): strict hierarchy, lots of space, one idea a beat, no decoration; reads like a calm brand piece.",
   },
   {
@@ -190,7 +198,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "💻",
     hint: "طابع تقني: دخول قلتش، انتقالات رقمية (بكسل، تشويش)، سريع",
     beats: ["kinetic", "stat", "points", "outro"],
-    look: { palette: "studio", head: "readex", pace: "fast", entrance: "glitch", transitions: ["glitchT", "rgbSplitT", "pixelT"], background: "beat", sfx: "full" },
+    look: { palette: "studio", head: "readex", body: "ibm-plex-sans-arabic", pace: "fast", entrance: "glitch", transitions: ["glitchT", "rgbSplitT", "pixelT"], background: "beat", sfx: "full", theme: "grid", align: "right" },
     craft: "Tech: crisp short lines, numbers and features, a launch feel; Latin product names kept as they are.",
   },
   {
@@ -200,7 +208,7 @@ export const MOTION_STYLES: MotionStyle[] = [
     icon: "🎞️",
     hint: "مثل التريلر: جمل قليلة على خلفية داكنة، ظهور من الضباب، انتقالات للأسود",
     beats: ["statement", "kinetic", "quote", "outro"],
-    look: { palette: "night", pace: "calm", entrance: "blur", transitions: ["black", "zoom", "softDissolve"], background: "steady", decor: false, sfx: "soft" },
+    look: { palette: "night", head: "el-messiri", body: "amiri", pace: "calm", entrance: "blur", transitions: ["black", "zoom", "softDissolve"], background: "steady", decor: false, sfx: "soft", theme: "film", align: "center" },
     craft: "A trailer: short dramatic lines with pauses, building up; the title revealed last, held long.",
   },
   {
@@ -247,6 +255,7 @@ export function styleInText(text: string): MotionStyle | undefined {
 }
 
 const PACES: MotionPace[] = ["fast", "normal", "calm"];
+export const THEMES: MotionTheme[] = ["glow", "paper", "bold", "flat", "chart", "rail", "split", "frame", "arabesque", "confetti", "badge", "none", "grid", "film"];
 const ENTRANCES: MotionEntrance[] = ["mixed", "whip", "rise", "right", "fade", "settle", "punch", "blur", "glitch", "flash", "wipe"];
 
 /** A look from حيدرة's JSON (what the person asked to change), unknown values dropped. */
@@ -261,6 +270,8 @@ export function readLook(raw: unknown, transitionIds: ReadonlySet<string>): Part
   if (typeof o.decor === "boolean") out.decor = o.decor;
   if (o.sfx === "full" || o.sfx === "soft" || o.sfx === "none") out.sfx = o.sfx;
   if (typeof o.drift === "boolean") out.drift = o.drift;
+  if (THEMES.includes(o.theme as MotionTheme)) out.theme = o.theme as MotionTheme;
+  if (o.align === "center" || o.align === "right") out.align = o.align;
   return out;
 }
 
@@ -271,5 +282,5 @@ export function lookOf(style: string | undefined, own: Partial<MotionLook> | und
 }
 
 /** What حيدرة knows about the named skills (in his system prompt). */
-export const MOTION_STYLES_SKILL = `NAMED MOTION SKILLS («مهارات الموشن») — each one a look the engine knows. When the person writes one of these names (or asks for "a motion in the style of …"), build the storyboard in it: set "style":"<id>" and follow its craft. THE PERSON'S OWN WISHES COME FIRST: anything they ask beyond the name (another colour or palette, slower, other fonts, no sounds, no decorations, a different transition, other beats) goes in the storyboard and wins over the skill — "palette"/"colors"/"head"/"body" for colours and fonts, and "look" for the rest: {"pace":"fast"|"normal"|"calm","entrance":"mixed"|"whip"|"rise"|"right"|"fade"|"settle"|"punch"|"blur"|"glitch"|"flash"|"wipe","transitions":["<transition id>",…] ([] = hard cuts),"background":"beat"|"steady","decor":true|false,"sfx":"full"|"soft"|"none","drift":true|false}. Only write "palette"/"look" fields the person asked for (the skill sets the rest). Say in your reply which skill you used and that they can change anything in it.
+export const MOTION_STYLES_SKILL = `NAMED MOTION SKILLS («مهارات الموشن») — each one a look the engine knows. When the person writes one of these names (or asks for "a motion in the style of …"), build the storyboard in it: set "style":"<id>" and follow its craft. THE PERSON'S OWN WISHES COME FIRST: anything they ask beyond the name (another colour or palette, slower, other fonts, no sounds, no decorations, a different transition, other beats) goes in the storyboard and wins over the skill — "palette"/"colors"/"head"/"body" for colours and fonts, and "look" for the rest: {"pace":"fast"|"normal"|"calm","entrance":"mixed"|"whip"|"rise"|"right"|"fade"|"settle"|"punch"|"blur"|"glitch"|"flash"|"wipe","transitions":["<transition id>",…] ([] = hard cuts),"background":"beat"|"steady","decor":true|false,"sfx":"full"|"soft"|"none","drift":true|false,"align":"center"|"right","theme":<one of the art languages: glow, paper, bold, flat, chart, rail, split, frame, arabesque, confetti, badge, none, grid, film>}. Only write "palette"/"look" fields the person asked for (the skill sets the rest). Say in your reply which skill you used and that they can change anything in it.
 ${MOTION_STYLES.map((s) => (s.talk ? `- «${s.ar}» (also: ${s.aliases.slice(0, 3).join("، ")}) — ${s.craft} Not a storyboard: write "talk" with "layout":"${s.talk}" (or the talk_motion request first when the clip has no "speech").` : `- «${s.ar}» (style "${s.id}"; also: ${s.aliases.slice(0, 3).join("، ")}) — ${s.craft} Beats: ${s.beats.join(", ")}.`)).join("\n")}`;
