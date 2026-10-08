@@ -4,6 +4,7 @@
 
 import { applyLook, LOOKS, MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
 import {
+  allTracks,
   clipEnd,
   clipLength,
   DEFAULT_TEXT,
@@ -153,6 +154,8 @@ export type Command =
    * `offset` is where in the new video the piece's own first moment is (ms).
    */
   | { type: "place_fixed"; clipId: string; assetId: string; offset: number }
+  /** «رفع الدقة»: every clip of a file now plays its upscaled copy (same length, same moments) */
+  | { type: "swap_asset"; from: string; to: string }
   /** «التعديل الذكي»: a copy of a clip on the yellow track (continuity reference for the red piece next to it) */
   | { type: "copy_cont"; clipId: string };
 
@@ -905,6 +908,25 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       yellow.clips = [...yellow.clips, copy].sort((x, y) => x.start - y.start);
       if (countClips(t) > LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
       return { timeline: t, label: "نسخت للمسار الأصفر (استمرارية)", select: [copy.id] };
+    }
+
+    case "swap_asset": {
+      const a = assets.get(cmd.to) ?? fail("ما لقينا الملف الجديد.");
+      const was = assets.get(cmd.from);
+      if (was && was.kind !== a.kind) fail("الملف الجديد من نوع ثاني.");
+      let n = 0;
+      for (const tr of allTracks(t)) {
+        if (tr.locked) continue;
+        for (const c of tr.clips) {
+          if (c.assetId !== cmd.from) continue;
+          c.assetId = a.id;
+          // the copy is as long as the original; a few ms less at its end never leaves a clip past it
+          if (a.durationMs) c.out = Math.min(c.out, a.durationMs);
+          n++;
+        }
+      }
+      if (!n) fail("ما فيه مقاطع على التايملاين من هذا الملف.");
+      return { timeline: t, label: `بدّلت ${n === 1 ? "المقطع" : `${n} مقاطع`} بالنسخة الجديدة` };
     }
 
     case "place_fixed": {

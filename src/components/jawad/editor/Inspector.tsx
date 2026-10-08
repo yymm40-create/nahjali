@@ -110,6 +110,7 @@ export default function Inspector({
   onSeparate,
   projectId,
   onSceneCut,
+  onUpscale,
 }: {
   tl: Timeline;
   selected: string[];
@@ -132,6 +133,8 @@ export default function Inspector({
   projectId?: string;
   /** «التقطيع الذكي»: cuts a video clip where its shot changes; resolves with how many cuts were made */
   onSceneCut?: SceneCutRun;
+  /** «رفع الدقة»: the clip's video sent to be upscaled (720p/1080p → 4K) */
+  onUpscale?: (assetId: string, target: "4k" | "1080p") => void;
 }) {
   const playhead = usePlayhead(player);
   const [beatBusy, setBeatBusy] = useState(false);
@@ -337,6 +340,22 @@ export default function Inspector({
       {current === "basic" && (
         <div className="space-y-3">
           {a?.kind === "video" && onSceneCut && <SceneCut clipId={clip.id} locked={locked} run={onSceneCut} />}
+          {a?.kind === "video" && a.status === "ready" && onUpscale && a.width && a.height && Math.max(a.width, a.height) < 3800 && (
+            <div className="space-y-1.5 rounded-xl border border-jw-line p-2.5">
+              <p className="text-xs font-semibold">⬆️ رفع الدقة بالذكاء الاصطناعي</p>
+              <p className="text-[11px] leading-5 text-jw-muted">دقته الحين {a.width}×{a.height}. Topaz يكبّره ويرجّع التفاصيل وينظّف التشويش؛ تنضاف نسخة جديدة والأصلي يظل.</p>
+              <div className="flex gap-1.5">
+                <button type="button" className="jw-btn jw-btn-primary !min-h-8 flex-1 text-xs" disabled={locked} onClick={() => onUpscale(a.id, "4k")}>
+                  إلى 4K
+                </button>
+                {Math.max(a.width, a.height) < 1800 && (
+                  <button type="button" className="jw-btn !min-h-8 flex-1 text-xs" disabled={locked} onClick={() => onUpscale(a.id, "1080p")}>
+                    إلى 1080p
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {group && (
             <div className={`space-y-1.5 rounded-lg border p-2 text-[11px] leading-5 ${together ? "border-jw-accent/40 bg-jw-accent/5" : "border-jw-warn/50 bg-jw-warn/5"}`}>
               <p>
