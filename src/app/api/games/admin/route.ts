@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { claudeTrouble } from "@/lib/film/anthropic";
+import { getVisibility, setVisibility } from "@/lib/games/access";
 import { countGames, listGames, parseGameLines, putGames, removeGames, updateGame } from "@/lib/games/library";
 import { getPersona, resetPersona, savePersona } from "@/lib/games/persona";
 import { deleteRun, ESTIMATE_USD, listRuns, runStatus, startRun, stepRun, worst, type Mode } from "@/lib/games/tests";
@@ -20,8 +21,8 @@ export const GET = handle(async (req: Request) => {
   await owner();
   const run = new URL(req.url).searchParams.get("run");
   if (run) return NextResponse.json({ status: await runStatus(run), worst: await worst(run) });
-  const [persona, games, count, runs] = await Promise.all([getPersona(), listGames(), countGames(), listRuns()]);
-  return NextResponse.json({ persona, games, count, runs, estimate: ESTIMATE_USD });
+  const [persona, games, count, runs, visibility] = await Promise.all([getPersona(), listGames(), countGames(), listRuns(), getVisibility()]);
+  return NextResponse.json({ visibility, persona, games, count, runs, estimate: ESTIMATE_USD });
 });
 
 /** One action of the dashboard (see /admin/games). */
@@ -31,6 +32,9 @@ export const POST = handle(async (req: Request) => {
   const id = String(b.id ?? "");
   try {
     switch (b.action) {
+      case "visibility":
+        await setVisibility(b.value as "owner" | "codes" | "all");
+        return NextResponse.json({ ok: true });
       case "persona_save":
         await savePersona(String(b.text ?? ""));
         return NextResponse.json({ ok: true });
