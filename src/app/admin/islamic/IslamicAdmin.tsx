@@ -105,7 +105,7 @@ export default function IslamicAdmin() {
       <section className="space-y-3">
         <h2 className="text-xl font-extrabold">المصادر</h2>
         <p className="text-sm text-muted">
-          المكتبة الآن: <b>{total.docs.toLocaleString("ar")}</b> نص، <b>{total.chunks.toLocaleString("ar")}</b> مقطع للبحث، حجمها في قاعدة البيانات <b>{(v.bytes / 1_048_576).toFixed(0)} MB</b>. «اقرأ» تقرأ الموقع على دفعات وتكمل من وين وقفت، وتقدر توقفها وتكمل بعدين. انتبه لحجم خطة Supabase: كتب الحديث كاملة في الثقلين كبيرة (مئات الميجابايت)، وتُقرأ في الأخير.
+          المكتبة الآن: <b>{total.docs.toLocaleString("ar")}</b> نص، <b>{total.chunks.toLocaleString("ar")}</b> مقطع للبحث، حجمها في قاعدة البيانات <b>{(v.bytes / 1_048_576).toFixed(0)} MB</b>. «اقرأ» تقرأ الموقع على دفعات وتكمل من وين وقفت، وتقدر توقفها وتكمل بعدين. وإذا شغّلت المؤقّت (ملف SQL رقم 0038) تكمل القراءة لحالها كل ٥ دقايق بدون ما تفتح هذي الصفحة. كتب الحديث كاملة في الثقلين كبيرة (مئات الميجابايت)، وتُقرأ في الأخير.
         </p>
         <ul className="space-y-3">
           {v.sources.map((s) => {
