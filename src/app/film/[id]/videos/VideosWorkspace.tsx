@@ -51,6 +51,8 @@ interface VoiceState {
   cast: Record<string, string>;
   audios: { key: string; url: string; text: string }[];
   voices: { value: string; name: string; group: "mine" | "ready" | "minimax"; provider?: "elevenlabs" | "minimax" }[];
+  /** «الحوار من جهازي»: the person's own recording per shot */
+  tracks?: { genId: string; url: string | null; name: string; seconds: number }[];
 }
 interface Video {
   id: string;
@@ -206,18 +208,53 @@ export default function VideosWorkspace({
   const [voiceError, setVoiceError] = useState("");
   const hasLines = generations.some((g) => g.lines.length);
   useEffect(() => {
-    if (!voicesOn || !hasLines) return;
+    if (!hasLines) return;
     api<VoiceState>(voicesUrl).then(setVoice).catch((e: Error) => setVoiceError(e.message));
-  }, [voicesOn, hasLines, voicesUrl]);
-  // Per shot: send its voices with the video (on by default; off when it has no lines)
-  const [withVoices, setWithVoices] = useState<Record<string, boolean>>({});
-  const sendVoices = (g: Generation) => g.lines.length > 0 && voicesOn && (withVoices[g.id] ?? true);
+  }, [hasLines, voicesUrl]);
+  // Per shot, the dialogue: made here (voices given to its speakers), the person's own recording from their device
+  // («من جهازي»: e.g. made in their own ElevenLabs account), or none
+  type Dialogue = "make" | "upload" | "none";
+  const [dialog, setDialog] = useState<Record<string, Dialogue>>({});
+  const modeOf = (g: Generation): Dialogue => dialog[g.id] ?? (voicesOn ? "make" : "none");
+  const trackOf = (g: Generation) => voice?.tracks?.find((t) => t.genId === g.id) ?? null;
+  const sendVoices = (g: Generation) => g.lines.length > 0 && modeOf(g) !== "none";
+  const [trackBusy, setTrackBusy] = useState<string | null>(null);
+  async function uploadTrack(g: Generation, file: File) {
+    setVoiceError("");
+    setTrackBusy(g.id);
+    try {
+      const mime = file.type || (file.name.toLowerCase().endsWith(".wav") ? "audio/wav" : "audio/mpeg");
+      const { upload } = await postJson<{ upload: { path: string; token: string } }>(`/api/film/projects/${projectId}/director`, { action: "upload_voice_url", genId: g.id, mime });
+      const put = await fetch(upload.token, { method: "PUT", headers: { "content-type": mime }, body: file }).catch(() => null);
+      if (!put?.ok) throw new Error("تعذّر رفع الملف؛ تأكد من الإنترنت وجرّب.");
+      await postJson(`/api/film/projects/${projectId}/director`, { action: "upload_voice_confirm", genId: g.id, path: upload.path });
+      setVoice(await api<VoiceState>(voicesUrl));
+    } catch (e) {
+      setVoiceError((e as Error).message);
+    } finally {
+      setTrackBusy(null);
+    }
+  }
+  async function removeTrack(g: Generation) {
+    setTrackBusy(g.id);
+    try {
+      await postJson(`/api/film/projects/${projectId}/director`, { action: "remove_voice_upload", genId: g.id });
+      setVoice(await api<VoiceState>(voicesUrl));
+    } catch (e) {
+      setVoiceError((e as Error).message);
+    } finally {
+      setTrackBusy(null);
+    }
+  }
   const spokenOf = (g: Generation, key: string) => {
     const a = voice?.audios.find((x) => x.key === key);
     const l = g.lines.find((x) => x.key === key);
     return Boolean(a && l && a.text === l.line) || Boolean(!voice && l?.spoken);
   };
   const allSpoken = (g: Generation) => g.lines.every((l) => spokenOf(g, l.key));
+  /** the shot's dialogue is ready to ride with the video: all its lines spoken, or the person's own file there */
+  const dialogueReady = (g: Generation) => (modeOf(g) === "upload" ? Boolean(trackOf(g)) : allSpoken(g));
+  const voiceChoice = (g: Generation) => ({ useVoices: sendVoices(g) && dialogueReady(g), voiceSource: modeOf(g) === "upload" ? ("upload" as const) : ("make" as const) });
   async function castVoice(speaker: string, value: string) {
     setVoiceError("");
     setVoice((x) => (x ? { ...x, cast: { ...x.cast, [speaker]: value } } : x));
@@ -249,7 +286,13 @@ export default function VideosWorkspace({
    */
   async function generate(g: Generation) {
     let useVoices = false;
-    if (sendVoices(g) && voice) {
+    if (sendVoices(g) && modeOf(g) === "upload") {
+      if (!trackOf(g)) {
+        setVoiceError(`ارفع ملف حوار ${g.id} من جهازك أول (MP3 أو WAV)، أو اختر «أصنعه هنا».`);
+        return;
+      }
+      useVoices = true;
+    } else if (sendVoices(g) && voice) {
       const cast = { ...voice.cast };
       const free = voice.voices.filter((v) => v.group === "ready" && !Object.values(cast).includes(v.value));
       for (const sp of [...new Set(g.lines.map((l) => l.speaker))]) {
@@ -264,7 +307,7 @@ export default function VideosWorkspace({
       useVoices = true;
     }
     const sec = secOf(g);
-    await send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices });
+    await send({ action: "generate_video", genId: g.id, resolution, ratio, durationSec: sec, model, useVoices, voiceSource: voiceChoice(g).voiceSource });
   }
   const runningNow = videos.filter((v) => v.status === "generating").length;
   const notStarted = generations.filter((g) => !videos.some((v) => v.ref_key === g.id && v.status !== "rejected" && v.status !== "failed") && !g.questions && !g.revision);
@@ -560,22 +603,48 @@ export default function VideosWorkspace({
                 </details>
                 <ActionBar
                   busy={busy || writing}
-                  onApprove={() => send({ action: "approve_and_generate", versionId: g.revision!.id, resolution, ratio, durationSec: sec, model, useVoices: sendVoices(g) && allSpoken(g) })}
+                  onApprove={() => send({ action: "approve_and_generate", versionId: g.revision!.id, resolution, ratio, durationSec: sec, model, ...voiceChoice(g) })}
                   approveLabel={`اعتمد وولّد من جديد · ≈ ${usd(cost)}`}
                   onSend={(mode, text) => send({ action: "revise", text, versionId: g.revision!.id, mode })}
                 />
               </div>
             )}
 
-            {voicesOn && g.lines.length > 0 && !generating && (
-              <section className="space-y-2 rounded-2xl border border-line p-3" aria-label="أصوات هذا المقطع">
+            {g.lines.length > 0 && !generating && (
+              <section className="space-y-2 rounded-2xl border border-line p-3" aria-label="حوار هذا المقطع">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-extrabold">🎙️ أصوات هذا المقطع {allSpoken(g) ? <span className="chip bg-teal text-xs text-white">جاهزة ✅</span> : <span className="chip text-xs">{g.lines.filter((l) => spokenOf(g, l.key)).length}/{g.lines.length}</span>}</p>
-                  <label className="flex items-center gap-2 text-sm font-bold">
-                    <input type="checkbox" className="size-4 accent-gold" checked={sendVoices(g)} onChange={(e) => setWithVoices({ ...withVoices, [g.id]: e.target.checked })} />
-                    ترسل مع الفيديو مرجعًا (تتحرك الشفاه عليها)
-                  </label>
+                  <p className="font-extrabold">🎙️ حوار هذا المقطع {sendVoices(g) && (dialogueReady(g) ? <span className="chip bg-teal text-xs text-white">جاهز ✅</span> : modeOf(g) === "make" ? <span className="chip text-xs">{g.lines.filter((l) => spokenOf(g, l.key)).length}/{g.lines.length}</span> : null)}</p>
                 </div>
+                {/* every generation asks: the dialogue made here, from your device, or none */}
+                <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="مصدر الحوار">
+                  {([
+                    ["make", "🎙️ أصنعه هنا", voicesOn ? "بأصوات JAWAD (ElevenLabs / MiniMax)" : "الأصوات غير مفعّلة على الخادم"],
+                    ["upload", "📁 من جهازي", "ملف MP3 أو WAV سويته بنفسك (مثلًا من حسابك في ElevenLabs)"],
+                    ["none", "🔇 بدون", "الفيديو يتولد بلا حوار مرجعي"],
+                  ] as const).map(([m, label, hint]) => (
+                    <button key={m} type="button" role="radio" aria-checked={modeOf(g) === m} title={hint} disabled={m === "make" && !voicesOn} className={`btn min-h-10 px-2 text-xs ${modeOf(g) === m ? "btn-secondary" : "btn-ghost"}`} onClick={() => setDialog({ ...dialog, [g.id]: m })}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {modeOf(g) === "none" && <p className="text-xs font-bold text-muted">الفيديو يتولد بدون حوار مرجعي؛ Seedance قد يولّد كلامًا من عنده حسب البرومبت.</p>}
+                {modeOf(g) === "upload" && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-muted">💡 سجّل الحوار أو صنّعه بأي برنامج أو حساب تبيه (ElevenLabs، MiniMax، تسجيل بصوتك…) بترتيب الجمل، وارفعه هنا: Seedance يحرّك الشفاه عليه ولا يولّد كلامًا غيره. من ٢ إلى {VIDEO_MODELS[model].maxSeconds} ثانية، حتى ١٥ ميجا.</p>
+                    {trackOf(g) ? (
+                      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-2 text-sm">
+                        <span className="flex-1 truncate font-bold" dir="ltr">📁 {trackOf(g)!.name}{trackOf(g)!.seconds ? ` · ${trackOf(g)!.seconds}s` : ""}</span>
+                        {trackOf(g)!.url && <audio controls preload="none" src={trackOf(g)!.url!} className="h-8 w-40" />}
+                        <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" disabled={trackBusy === g.id} onClick={() => removeTrack(g)}>احذفه</button>
+                      </div>
+                    ) : null}
+                    <label className={`btn min-h-10 w-full cursor-pointer text-sm ${trackOf(g) ? "btn-ghost" : "btn-primary"}`}>
+                      {trackBusy === g.id ? "يرفع…" : trackOf(g) ? "📁 ارفع ملفًا غيره" : "📁 اختر ملف الحوار من جهازك"}
+                      <input type="file" accept="audio/mpeg,audio/mp3,audio/wav,.mp3,.wav" className="sr-only" disabled={trackBusy === g.id} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void uploadTrack(g, f); }} />
+                    </label>
+                  </div>
+                )}
+                {modeOf(g) === "make" && voicesOn && (<>
                 <p className="text-xs font-bold text-muted">💡 ولّد الصوت أول، وبعدها الفيديو: Seedance يلتزم بالصوت المرفق ويحرّك الشفاه عليه ولا يولّد كلامًا غيره.</p>
                 {voice && [...new Set(g.lines.map((l) => l.speaker))].map((sp) => (
                   <div key={sp} className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -622,6 +691,7 @@ export default function VideosWorkspace({
                   </button>
                 )}
                 {!voice && !voiceError && <Spinner />}
+                </>)}
                 {voiceError && <p className="error-box text-sm">{voiceError}</p>}
               </section>
             )}

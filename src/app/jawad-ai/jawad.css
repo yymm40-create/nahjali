@@ -352,3 +352,15 @@ html:has(.jw) body {
     animation-iteration-count: infinite !important;
   }
 }
+
+/* «🖥️ عرض الديسكتوب» (LayoutToggle): on a computer the pages' centred columns open up to the whole width */
+@media (min-width: 1024px) {
+  .jw.jw-wide .max-w-3xl,
+  .jw.jw-wide .max-w-4xl,
+  .jw.jw-wide .max-w-5xl,
+  .jw.jw-wide .max-w-6xl,
+  .jw.jw-wide .max-w-7xl,
+  .jw.jw-wide .max-w-\[1600px\] {
+    max-width: none;
+  }
+}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { castChoices, describeVoice, lineAudios, setCast, speakLine, voiceCast, voiceLines, voicesReady } from "@/lib/film/voices";
+import { ownTracks } from "@/lib/film/voice-track";
 
 export const maxDuration = 120;
 
@@ -9,8 +10,9 @@ export const maxDuration = 120;
 export const GET = handle(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireFilmApiUser();
   const project = await getOwnedProject((await params).id, user.id);
-  const [lines, cast, audios, voices] = await Promise.all([voiceLines(project.id), voiceCast(project.id), lineAudios(project.id), voicesReady() ? castChoices(user.id) : []]);
-  return NextResponse.json({ ready: voicesReady(), lines, cast, audios, voices }, { headers: { "Cache-Control": "no-store" } });
+  const [lines, cast, audios, voices, tracks] = await Promise.all([voiceLines(project.id), voiceCast(project.id), lineAudios(project.id), voicesReady() ? castChoices(user.id) : [], ownTracks(project.id)]);
+  // tracks: «الحوار من جهازي», the person's own recording per shot
+  return NextResponse.json({ ready: voicesReady(), lines, cast, audios, voices, tracks }, { headers: { "Cache-Control": "no-store" } });
 });
 
 /** `{ action: "cast", speaker, voice }` · `{ action: "speak", key, idempotencyKey }` (one line, charged) · `{ action: "describe", speaker, hint? }`. */

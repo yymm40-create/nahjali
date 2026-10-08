@@ -66,3 +66,48 @@ export async function buildVoiceTrack(project: FilmProject, genId: string, model
 /** What the prompt tells the model about the attached dialogue (English, like the rest of the prompt). */
 export const voiceTrackNote = (t: { seconds: number; speakers: string[]; lines: string[] }) =>
   `\n\nDIALOGUE AUDIO: the attached reference audio is the complete, final spoken dialogue of this shot (${t.speakers.join(", ")}; ${Math.ceil(t.seconds)} s), in order. Lip-sync the speaking characters to it exactly and keep it as the only speech in the shot: do not generate, replace, translate or add any other voice or words. Ambient sound and music may be added softly under it.`;
+
+// ───────────── «الحوار من جهازي»: the person's own recording of a shot's dialogue ─────────────
+
+/** Seedance takes MP3 and WAV as reference audio, up to 15 MB. */
+export const OWN_TRACK = { mimes: { "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/wave": "wav" } as Record<string, string>, maxBytes: 15 * 1024 * 1024 };
+
+/** How long a WAV plays, from its header (null when it isn't a plain PCM WAV). */
+export function wavSeconds(b: Uint8Array) {
+  if (b.length < 44 || Buffer.from(b.subarray(0, 4)).toString("ascii") !== "RIFF" || Buffer.from(b.subarray(8, 12)).toString("ascii") !== "WAVE") return null;
+  const v = Buffer.from(b.buffer, b.byteOffset, b.length);
+  // walk the chunks: fmt gives the byte rate, data its length
+  let at = 12;
+  let byteRate = 0;
+  while (at + 8 <= v.length) {
+    const id = v.toString("ascii", at, at + 4);
+    const len = v.readUInt32LE(at + 4);
+    if (id === "fmt ") byteRate = v.readUInt32LE(at + 16);
+    if (id === "data") return byteRate > 0 ? Math.round(((Math.min(len, v.length - at - 8) || 0) / byteRate) * 10) / 10 : null;
+    at += 8 + len + (len % 2);
+  }
+  return null;
+}
+
+/** The person's own dialogue tracks of this project (one per shot, the latest), with links to hear them. */
+export async function ownTracks(projectId: string) {
+  const { data } = await db().from("film_assets").select("ref_key,storage_path,file_name,meta,created_at").eq("project_id", projectId).eq("kind", "audio").eq("status", "approved").like("ref_key", "track:%").order("created_at", { ascending: true });
+  const rows = (data ?? []) as { ref_key: string; storage_path: string | null; file_name: string | null; meta: Record<string, unknown> | null }[];
+  const latest = new Map(rows.map((r) => [r.ref_key.slice(6), r]));
+  const list = [...latest.values()].filter((r) => r.storage_path);
+  const signed = list.length ? (await storage.from(FILM_BUCKET).createSignedUrls(list.map((r) => r.storage_path!), 3600)).data ?? [] : [];
+  return list.map((r, i) => ({ genId: r.ref_key.slice(6), url: signed[i]?.signedUrl ?? null, name: r.file_name ?? "", seconds: Number(r.meta?.seconds) || 0 }));
+}
+
+/** The person's own track of a shot as the video's reference audio (checked against the model's limits). */
+export async function uploadedVoiceTrack(project: FilmProject, genId: string, model: VideoModel) {
+  const { data } = await db().from("film_assets").select("*").eq("project_id", project.id).eq("kind", "audio").eq("ref_key", `track:${genId}`).eq("status", "approved").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const a = data as FilmAsset | null;
+  if (!a?.storage_path) throw new UserError("ارفع ملف الحوار من جهازك أول (MP3 أو WAV)، أو اختر «أصنعه هنا».", 409);
+  const seconds = Number(a.meta?.seconds) || 0;
+  const lim = VOICE_TRACK_LIMIT[model];
+  if (seconds && seconds < lim.minSec) throw new UserError(`ملف الحوار أقصر من ${lim.minSec} ثانية، و${VIDEO_MODELS[model].label} ما يقبل مرجعًا صوتيًا أقصر من ذلك.`, 409);
+  if (seconds > lim.maxSec) throw new UserError(`ملف الحوار ${Math.ceil(seconds)} ثانية، و${VIDEO_MODELS[model].label} يقبل حتى ${lim.maxSec} ثانية. قصّه أو قسّم المقطع.`, 409);
+  const lines = (await voiceLines(project.id)).filter((l) => l.genId === genId);
+  return { path: a.storage_path, seconds: seconds || lim.minSec, speakers: [...new Set(lines.map((l) => l.speaker))], lines: lines.map((l) => `${l.speaker}: ${l.line}`) };
+}
