@@ -14,5 +14,10 @@ export const DOWNLOADS = {
   play: null as string | null,
 };
 
-/** The desktop program's newest version: an older one shows «نسخة جديدة» inside it (DesktopUpdate). */
-export const DESKTOP_LATEST = "1.2.0";
+/** The desktop program's newest version: an older one shows «نسخة جديدة» inside it (AppUpdate). */
+export const DESKTOP_LATEST = "1.2.2";
+/** The phone app's newest version, as its user agent says it («NahjAliApp/1.1», mobile/capacitor.config.json): an
+ *  older one shows «نسخة جديدة» inside it (AppUpdate). */
+export const MOBILE_LATEST = "1.1";
+/** The site's address, written in the notice: the apps before it knew only nahjali.vercel.app. */
+export const SITE_ADDRESS = "www.aljawadai.app";

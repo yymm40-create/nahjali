@@ -1,4 +1,3 @@
-import NewVersion from "@/components/NewVersion";
 import type { Metadata, Viewport } from "next";
 import { Readex_Pro } from "next/font/google";
 import { coinBalance } from "@/lib/coins";
@@ -48,7 +47,6 @@ export default async function JawadLayout({ children }: { children: React.ReactN
         تخطَّ إلى المحتوى
       </a>
       <JawadHeader rt={rt} user={user} owner={owner} balance={balance} username={username} preview={!allowed} />
-      <NewVersion />
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
     </div>
   );
