@@ -10,6 +10,8 @@ import { callClaudeJson, type ClaudePart, type ClaudeTurn } from "@/lib/film/ant
 import { generatorById } from "@config/jawad/generators";
 import { ASSISTANT_LIMITS, ASSISTANT_SCHEMA, assistantSystem, checkAnswer, type AssistantAnswer, type AssistantDraft, type AssistantRaw, type AssistantRef } from "@config/jawad/assistant";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
+import { detectPlaybook, playbookGuide } from "@config/jawad/playbooks";
+import { examplesBrief, nearestExamples } from "@config/jawad/playbook-examples";
 import { loadRuntime, sectionGenerators } from "./runtime";
 import { isUuid, uploadViews, type UploadRow } from "./uploads";
 
@@ -110,10 +112,16 @@ export async function assistantTurn(user: { id: string }, owner: boolean, b: Ass
     .filter(Boolean)
     .join("\n");
 
+  // The kind of work this is (from this message, then the conversation): its recipe and the closest worked examples
+  const lastText = turns[turns.length - 1].text;
+  const earlier = turns.slice(0, -1).map((t) => t.text).join("\n");
+  const kind = detectPlaybook(lastText, earlier);
+  const guide = kind ? playbookGuide(kind, section.output) : "";
+  const examples = examplesBrief(nearestExamples(lastText, section.output, 3, earlier));
   const claudeTurns: ClaudeTurn[] = turns.map((t, i) => {
     if (i < turns.length - 1) return { role: t.role, content: t.text };
-    // The last message carries the form and the pictures
-    return { role: "user", content: [...parts, { type: "text", text: `${state}\n\nTHE PERSON'S MESSAGE:\n${t.text}` } as ClaudePart] };
+    // The last message carries the form, the pictures, the recipe and the examples
+    return { role: "user", content: [...parts, { type: "text", text: [state, guide, examples, `THE PERSON'S MESSAGE:\n${t.text}`].filter(Boolean).join("\n\n") } as ClaudePart] };
   });
 
   const out = await callClaudeJson<AssistantRaw>({
