@@ -6,6 +6,7 @@
 // Pure: shared by the server (حيدرة, the engine) and the page.
 
 import type { BeatKind } from "./motion-build";
+import type { TalkLayout } from "./talk-motion";
 
 export type MotionPace = "fast" | "normal" | "calm";
 export type MotionEntrance = "mixed" | "whip" | "rise" | "right" | "fade" | "settle" | "punch" | "blur" | "glitch" | "flash" | "wipe";
@@ -57,6 +58,8 @@ export interface MotionStyle {
   look: Partial<MotionLook>;
   /** how حيدرة builds it (for Claude) */
   craft: string;
+  /** a skill for a TALKING video (motion on the person's words, «talk»), with its layout — not a storyboard piece */
+  talk?: TalkLayout;
 }
 
 export const MOTION_STYLES: MotionStyle[] = [
@@ -200,6 +203,28 @@ export const MOTION_STYLES: MotionStyle[] = [
     look: { palette: "night", pace: "calm", entrance: "blur", transitions: ["black", "zoom", "softDissolve"], background: "steady", decor: false, sfx: "soft" },
     craft: "A trailer: short dramatic lines with pauses, building up; the title revealed last, held long.",
   },
+  {
+    id: "box",
+    ar: "المربع الصغير",
+    aliases: ["مربع صغير", "اسلوب ماجد", "ستايل ماجد", "بكتشر ان بكتشر", "pip"],
+    icon: "🔳",
+    hint: "على فيديو تتكلم فيه: أول ما تقول شي يطلع، وأنت تصغر في مربع تحت (متمركز على وجهك) وترجع",
+    beats: [],
+    look: {},
+    talk: "shrink",
+    craft: "Motion on the person's talking video («talk», layout \"shrink\"): the moment they say a thing it appears above, and they shrink into a box at the bottom, the box centred on their face.",
+  },
+  {
+    id: "float3d",
+    ar: "فوق كلامي ثلاثي الأبعاد",
+    aliases: ["ثلاثي الابعاد", "ثري دي", "فوق كلامي", "بدون ما يصغرني", "بدون مربع"],
+    icon: "🧊",
+    hint: "على فيديو تتكلم فيه وأنت بملء الشاشة: الكلمات والأرقام والشعارات تطلع بشكل ثلاثي الأبعاد بعيد عن وجهك",
+    beats: [],
+    look: {},
+    talk: "over3d",
+    craft: "Motion on the person's talking video («talk», layout \"over3d\"): they stay full screen; the words, numbers and app logos float in 3D (slabs and tiles flipping in, tilting slowly) where their face isn't.",
+  },
 ];
 
 const norm = (s: string) =>
@@ -247,4 +272,4 @@ export function lookOf(style: string | undefined, own: Partial<MotionLook> | und
 
 /** What حيدرة knows about the named skills (in his system prompt). */
 export const MOTION_STYLES_SKILL = `NAMED MOTION SKILLS («مهارات الموشن») — each one a look the engine knows. When the person writes one of these names (or asks for "a motion in the style of …"), build the storyboard in it: set "style":"<id>" and follow its craft. THE PERSON'S OWN WISHES COME FIRST: anything they ask beyond the name (another colour or palette, slower, other fonts, no sounds, no decorations, a different transition, other beats) goes in the storyboard and wins over the skill — "palette"/"colors"/"head"/"body" for colours and fonts, and "look" for the rest: {"pace":"fast"|"normal"|"calm","entrance":"mixed"|"whip"|"rise"|"right"|"fade"|"settle"|"punch"|"blur"|"glitch"|"flash"|"wipe","transitions":["<transition id>",…] ([] = hard cuts),"background":"beat"|"steady","decor":true|false,"sfx":"full"|"soft"|"none","drift":true|false}. Only write "palette"/"look" fields the person asked for (the skill sets the rest). Say in your reply which skill you used and that they can change anything in it.
-${MOTION_STYLES.map((s) => `- «${s.ar}» (style "${s.id}"; also: ${s.aliases.slice(0, 3).join("، ")}) — ${s.craft} Beats: ${s.beats.join(", ")}.`).join("\n")}`;
+${MOTION_STYLES.map((s) => (s.talk ? `- «${s.ar}» (also: ${s.aliases.slice(0, 3).join("، ")}) — ${s.craft} Not a storyboard: write "talk" with "layout":"${s.talk}" (or the talk_motion request first when the clip has no "speech").` : `- «${s.ar}» (style "${s.id}"; also: ${s.aliases.slice(0, 3).join("، ")}) — ${s.craft} Beats: ${s.beats.join(", ")}.`)).join("\n")}`;

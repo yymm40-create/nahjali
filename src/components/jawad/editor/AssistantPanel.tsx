@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { clipEnd, findClip, type Timeline } from "@/lib/editor/model";
+import { clipEnd, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
 import { diagNote, diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
@@ -19,7 +19,9 @@ import { MAX_CHECKS } from "@/lib/editor/assistant-guide";
 import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
-import { MOTION_STYLES } from "@/lib/editor/motion-styles";
+import { MOTION_STYLES, styleInText } from "@/lib/editor/motion-styles";
+import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
+import { faceIn } from "./face";
 import Icon from "../Icon";
 import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
@@ -136,7 +138,8 @@ export default function AssistantPanel({
   const [showSkills, setShowSkills] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const pickSkill = (ar: string) => {
-    setText(`موشن جرافيكس بمهارة «${ar}» عن: `);
+    const talk = MOTION_STYLES.find((m) => m.ar === ar)?.talk;
+    setText(talk ? `ركّب موشن على كلامي بمهارة «${ar}»` : `موشن جرافيكس بمهارة «${ar}» عن: `);
     setShowSkills(false);
     setTimeout(() => {
       const el = textRef.current;
@@ -317,6 +320,35 @@ export default function AssistantPanel({
     setOwnVoices((x) => [...x.filter((v) => v.value !== r.voice.value), { value: r.voice.value, name: r.voice.name }]);
     setMsgs((m) => [...m, { role: "assistant", text: `✅ صار عندك صوت «${r.voice.name}» في مكتبتك. قل لي «اقرأ هالنص بصوت ${r.voice.name}»، أو اختره لردودي من 🔊 وقت المكالمة.` }]);
   };
+  // «المربع الصغير» / «فوق كلامي»: the face in the talking video (found once per file, here in the browser), the
+  // talking clips moved so a crop never cuts it, and its place on the frame sent to حيدرة (the box follows it, the
+  // cues keep off it)
+  const faces = useRef(new Map<string, { face: FaceBox; width: number; height: number } | null>());
+  const talkFace = async (message: string): Promise<{ face: FaceBox; timeline: Timeline | null } | null> => {
+    const talky = !!styleInText(message)?.talk || /على\s*كلام|موشن على|talk\)/.test(message);
+    if (!talky) return null;
+    const main = mainTrack(tlRef.current);
+    const first = main?.clips.find((c) => !c.text && c.assetId && assets.get(c.assetId)?.kind === "video");
+    const a = first?.assetId ? assets.get(first.assetId) : null;
+    if (!first || !a?.url) return null;
+    if (!faces.current.has(a.id)) {
+      setBusy("أدوّر على وجهك في الفيديو…");
+      faces.current.set(a.id, await faceIn(a.url, first.in, first.out).catch(() => null));
+    }
+    const found = faces.current.get(a.id);
+    if (!found) return null;
+    const tl0 = tlRef.current;
+    const pans = [];
+    let face: FaceBox | null = null;
+    for (const c of mainTrack(tl0)?.clips ?? []) {
+      if (c.text || c.assetId !== a.id) continue;
+      const at = faceOnFrame(c.transform, c.fit, found.width, found.height, tl0.width, tl0.height, found.face);
+      face ??= at.face;
+      if (at.moved && !c.keys.length) pans.push({ type: "update_clip" as const, clipId: c.id, patch: { transform: { ...c.transform, x: at.x, y: at.y } } });
+    }
+    const moved = pans.length ? (run(pans, { label: "وسّطت وجهك في الكادر" }) as { timeline: Timeline } | null) : null;
+    return face ? { face, timeline: moved?.timeline ?? null } : null;
+  };
   const send = async (words = text, spoken = false): Promise<string | null> => {
     const message = words.trim() || (pending.length ? "شوف المراجع اللي أرفقتها" : "");
     if (!message || readOnly) return null;
@@ -372,13 +404,15 @@ export default function AssistantPanel({
         const frames = await framesOf(a.url!, "video", 0, a.durationMs ?? 3000, 3).catch(() => []);
         if (frames.length) refLooks.push({ id: a.id, frames: frames.map((f) => ({ t: f.t, data: f.data })) });
       }
+      const found = await talkFace(message).catch(() => null);
       setBusy("حيدرة يشتغل على التايملاين…");
       const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         message,
         history,
         handoff: chat.handoff,
-        timeline: tl,
+        // (the talking clips moved to keep the face in view, when they were)
+        timeline: found?.timeline ?? tl,
         playhead: player?.ms ?? 0,
         selected,
         quiet,
@@ -386,11 +420,12 @@ export default function AssistantPanel({
         spoken,
         refs: pending.map((a) => a.id),
         refLooks,
+        face: found?.face ?? null,
       }, signal);
       setPending([]);
       reply = r.reply;
       let done = 0;
-      let now = tl;
+      let now = found?.timeline ?? tl;
       // the art a motion piece drew for itself: in the library before the commands that place it
       if (r.assets?.length) onAssets(r.assets);
       if (r.commands.length) {

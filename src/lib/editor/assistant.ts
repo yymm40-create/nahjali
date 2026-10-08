@@ -19,7 +19,7 @@ import { MOTION_STYLES_SKILL, motionStyleOf, styleInText } from "./motion-styles
 import { MAJED_SKILL } from "./majed";
 import { lintMotion, motionCommands, motionPlan, readStoryboard, SFX, storyboardNumbers, type SfxKind } from "./motion-build";
 import { makeMotionArt } from "./generate";
-import { readTalk, talkArt, talkCommands } from "./talk-motion";
+import { readFace, readTalk, talkArt, talkCommands } from "./talk-motion";
 import type { AssetView } from "./server";
 import { applyAll } from "./commands";
 import { COMMANDS_GUIDE } from "./assistant-commands";
@@ -109,7 +109,7 @@ RULES:
 - «بصمة صوتك» (VOICEPRINT) → {"kind":"voiceprint","clipId":<a clip where the person talks alone, or "" to record at the microphone>,"name":<the voice's name, e.g. «صوتي»>,"voice":"jawad" (default: JAWAD's own engine — free, unlimited, Arabic dialects) or "minimax" or "elevenlabs"}. The page takes 10 s–2 min of their voice, asks their consent, and keeps it in their voice library; then any "make speech" with that name (or «بصوتي») reads text in their voice. Only the person's own voice, or one they have permission for.
 - VOICES: you (Claude) write words but have no voice of your own — speech is made by a speech engine. JAWAD's OWN engine («صوت الجواد»: Habibi, made for Arabic and its dialects, or Chatterbox) speaks with the person's voiceprint («بصوتي») and is preferred for Arabic; start "voice" with "jawad:", "openai:", "minimax:" or "elevenlabs:" to choose (a voice from the person's library always speaks where it lives). The person picks who reads YOUR spoken replies in the panel (🔊).
 - REFERENCES the person attached («📎»): listed in the message with their ids (they are in the library now); pictures and moments of videos are shown to you. Use them as asked: place them (add_clip with their assetId), match their look, colours, style or pace, use a recording for a voiceprint, or describe them in a "make" prompt.
-- TALKING VIDEO — MOTION THAT FOLLOWS THE WORDS («موشن على كلامه», Majed Alzaabi's talking reels): the person talks to the camera; the moment they say a thing, it appears, and for those seconds the person shrinks into a box at the bottom, then comes back full screen. It needs the words with their times ("speech" in the timeline). If there is no "speech" for the talking clip yet, send ONLY {"kind":"talk_motion","clipId":<the talking clip>} — the page writes the captions and asks you again by itself. When "speech" is there, write "talk" (a JSON object string): {"palette":"studio"|…,"colors":{…brand colours, optional},"layout":"shrink" (default) or "over" (the person stays full),"cues":[…]} with one cue per moment worth showing (one every 2–6 s at most, never two within 0.9 s), "at" = the timeline ms where that word STARTS (from "speech"), optional "until":
+- TALKING VIDEO — MOTION THAT FOLLOWS THE WORDS («موشن على كلامه», Majed Alzaabi's talking reels): the person talks to the camera; the moment they say a thing, it appears, and for those seconds the person shrinks into a box at the bottom, then comes back full screen. It needs the words with their times ("speech" in the timeline). If there is no "speech" for the talking clip yet, send ONLY {"kind":"talk_motion","clipId":<the talking clip>} — the page writes the captions and asks you again by itself. When "speech" is there, write "talk" (a JSON object string): {"palette":"studio"|…,"colors":{…brand colours, optional},"layout":"shrink" (default, «المربع الصغير»: the person shrinks into a box centred on their face) or "over" (the person stays full, the cues on boxes) or "over3d" («فوق كلامي ثلاثي الأبعاد»: the person stays full, the words, numbers and logos float in 3D away from the face — when they don't want to be made small or ask for 3D),"cues":[…]} with one cue per moment worth showing (one every 2–6 s at most, never two within 0.9 s), "at" = the timeline ms where that word STARTS (from "speech"), optional "until":
   · {"kind":"word","at":…,"text":"تاكسي"} — the key word itself, big in the highlight pill;
   · {"kind":"emoji","at":…,"emoji":"🚕","text":"تاكسي"} — a picture of a thing (any emoji that shows it) with its word;
   · {"kind":"brand","at":…,"brand":"instagram"|"tiktok"|"youtube"|"x"|"snapchat"|"whatsapp"|"facebook"|"telegram"|"linkedin"|"threads","text":"انستقرام"} — when they name an app: its icon;
@@ -209,7 +209,7 @@ interface Answer {
 const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown }, origin: string | null = null) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown }, origin: string | null = null) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -237,7 +237,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
         ] as ClaudeTurn[])
       : []),
     ...history,
-    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${b.spoken === true ? SPOKEN : ""}${named ? `\n\n(The person named the motion skill «${named.ar}»: build it with "style":"${named.id}"; whatever else they asked in these words wins over the skill.)` : ""}` },
+    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${b.spoken === true ? SPOKEN : ""}${named ? (named.talk ? `\n\n(The person named «${named.ar}»: motion on their talking video — write "talk" with "layout":"${named.talk}" (or ONLY the talk_motion request when the clip has no "speech" yet); whatever else they asked in these words wins.)` : `\n\n(The person named the motion skill «${named.ar}»: build it with "style":"${named.id}"; whatever else they asked in these words wins over the skill.)`) : ""}` },
   ];
   const merged = turns.reduce<ClaudeTurn[]>((m, t) => {
     const last = m[m.length - 1];
@@ -321,7 +321,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const sfxRequests: MakeRequest[] = [];
   const sb = answer.motion?.trim() ? readStoryboard(answer.motion) : null;
   // the skill the person named holds even when the answer forgot to say it
-  if (sb && !motionStyleOf(sb.style) && named) sb.style = named.id;
+  if (sb && !motionStyleOf(sb.style) && named && !named.talk) sb.style = named.id;
   if (sb) {
     const plan = motionPlan(sb, tl.width, tl.height);
     // the backgrounds and decorations, drawn here and kept with the project (no generator): a picture that failed is left out
@@ -353,7 +353,10 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // «موشن على كلامه»: the cues laid over the talking video by the engine (icons and routes drawn here)
   const talk = answer.talk?.trim() ? readTalk(answer.talk, Math.max(...tl.tracks.flatMap((t) => t.clips.map((c) => c.start + (c.out - c.in) / c.speed)), 0)) : null;
   if (talk) {
-    const made = await makeMotionArt(p, talkArt(talk)).catch((e) => (console.error("talk art", e), new Map<string, AssetView>()));
+    // the skill named in the words decides the layout; the face found by the page places the box and the cues
+    if (named?.talk) talk.layout = named.talk;
+    talk.face = readFace(b.face);
+    const made = await makeMotionArt(p, talkArt(talk, tl.width, tl.height)).catch((e) => (console.error("talk art", e), new Map<string, AssetView>()));
     const artIds = new Map<string, string>();
     for (const [k, a] of made) {
       artIds.set(k, a.id);
@@ -370,7 +373,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
         const [first, ...rest] = ats.sort((a, b) => a - b);
         sfxRequests.push({ kind: "make", makeKind: "sfx", prompt: SFX[kind].prompt, seconds: SFX[kind].seconds, place: "audio", at: first, alsoAt: rest, volume: 0.35, name: SFX[kind].name, text: "", lang: "", domain: "", age: "", style: "", aspect: "", voice: "", withSound: false, quality: "", lengthMs: 0, clipId: "" });
       }
-      motionNote += `\n\n🎬 ركّبت ${talk.cues.length} لحظة على كلامك${built.windows.length ? `، وتصغر لمربع تحت ${built.windows.length} مرات وترجع` : ""}: ${talk.cues.map((c) => `${(c.at / 1000).toFixed(1)}ث ${c.kind === "brand" ? c.brand : c.kind === "route" ? `→ ${c.to}` : c.kind === "stat" ? c.value : c.emoji ?? c.text}`).join(" · ")}. كل شي قابل للتعديل.`;
+      motionNote += `\n\n🎬 ركّبت ${talk.cues.length} لحظة على كلامك${built.windows.length ? `، وتصغر لمربع تحت ${built.windows.length} مرات وترجع${talk.face ? " (المربع على وجهك)" : ""}` : talk.layout === "over3d" ? `، وأنت بملء الشاشة والعناصر تطلع ثلاثية الأبعاد${talk.face ? " بعيد عن وجهك" : ""}` : ""}: ${talk.cues.map((c) => `${(c.at / 1000).toFixed(1)}ث ${c.kind === "brand" ? c.brand : c.kind === "route" ? `→ ${c.to}` : c.kind === "stat" ? c.value : c.emoji ?? c.text}`).join(" · ")}. كل شي قابل للتعديل.`;
     } else motionNote += `\n\n(ما قدرت أركّب الموشن على الكلام: ${all.error.message})`;
   } else if (answer.talk?.trim()) motionNote += "\n\n(خطة الموشن على الكلام ما انقرأت؛ اطلبها مرة ثانية.)";
   // the texts this answer placed by hand: checked like the engine's (overlaps, long lines, contrast, safe area)
