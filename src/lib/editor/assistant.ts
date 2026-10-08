@@ -15,6 +15,7 @@ import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { TR_LIST } from "./transitions";
 import { MOTION_SKILL } from "./motion";
+import { MOTION_STYLES_SKILL, motionStyleOf, styleInText } from "./motion-styles";
 import { MAJED_SKILL } from "./majed";
 import { lintMotion, motionCommands, motionPlan, readStoryboard, SFX, storyboardNumbers, type SfxKind } from "./motion-build";
 import { makeMotionArt } from "./generate";
@@ -133,6 +134,8 @@ ${KNOW_HOW}
 
 ${MOTION_SKILL}
 
+${MOTION_STYLES_SKILL}
+
 ${MAJED_SKILL}`;
 
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
@@ -224,6 +227,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const history = chat.stored ? chatTurns(chat) : chatTurns({ messages: readMessages(b.history), handoff: typeof b.handoff === "string" ? b.handoff.slice(0, 8000) : null });
   // «سجاد» handed over the film (or the episode): everything about it, read fresh
   const brief = p.film_project_id || p.episode_id ? await sajjadBrief({ filmProjectId: p.film_project_id, episodeId: p.episode_id }) : null;
+  // «مهارات الموشن»: a skill the person named in this message (its look and craft; their other words win)
+  const named = styleInText(message);
   const turns: ClaudeTurn[] = [
     ...(brief
       ? ([
@@ -232,7 +237,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
         ] as ClaudeTurn[])
       : []),
     ...history,
-    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${b.spoken === true ? SPOKEN : ""}` },
+    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${b.spoken === true ? SPOKEN : ""}${named ? `\n\n(The person named the motion skill «${named.ar}»: build it with "style":"${named.id}"; whatever else they asked in these words wins over the skill.)` : ""}` },
   ];
   const merged = turns.reduce<ClaudeTurn[]>((m, t) => {
     const last = m[m.length - 1];
@@ -315,6 +320,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const newAssets: AssetView[] = [];
   const sfxRequests: MakeRequest[] = [];
   const sb = answer.motion?.trim() ? readStoryboard(answer.motion) : null;
+  // the skill the person named holds even when the answer forgot to say it
+  if (sb && !motionStyleOf(sb.style) && named) sb.style = named.id;
   if (sb) {
     const plan = motionPlan(sb, tl.width, tl.height);
     // the backgrounds and decorations, drawn here and kept with the project (no generator): a picture that failed is left out
@@ -334,9 +341,9 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       for (const c of plan.cues) (byKind.get(c.kind) ?? byKind.set(c.kind, []).get(c.kind)!).push(c.at);
       for (const [kind, ats] of byKind) {
         const [first, ...rest] = ats.sort((a, b) => a - b);
-        sfxRequests.push({ kind: "make", makeKind: "sfx", prompt: SFX[kind].prompt, seconds: SFX[kind].seconds, place: "audio", at: first, alsoAt: rest, volume: 0.35, name: SFX[kind].name, text: "", lang: "", domain: "", age: "", style: "", aspect: "", voice: "", withSound: false, quality: "", lengthMs: 0, clipId: "" });
+        sfxRequests.push({ kind: "make", makeKind: "sfx", prompt: SFX[kind].prompt, seconds: SFX[kind].seconds, place: "audio", at: first, alsoAt: rest, volume: plan.look.sfx === "soft" ? 0.25 : 0.35, name: SFX[kind].name, text: "", lang: "", domain: "", age: "", style: "", aspect: "", voice: "", withSound: false, quality: "", lengthMs: 0, clipId: "" });
       }
-      motionNote = `\n\n🎬 رتّبت ${plan.beats.length} لقطات بلوحة «${built.palette.ar}» (${Math.round((built.endMs - (sb.at ?? 0)) / 1000)} ث): خلفية تتبدل مع كل لقطة وزخارف مرسومة حولها، دخول سريع وخروج أسرع، و${byKind.size} مؤثرات صوتية مختلفة على مواضعها — وكل شي قابل للتعديل.`;
+      motionNote = `\n\n🎬 ${plan.look.style ? `بمهارة «${plan.look.style.ar}» ${plan.look.style.icon} — ` : ""}رتّبت ${plan.beats.length} لقطات بلوحة «${built.palette.ar}» (${Math.round((built.endMs - (sb.at ?? 0)) / 1000)} ث): ${plan.look.background === "steady" ? "خلفية ثابتة" : "خلفية تتبدل مع كل لقطة"}${plan.look.decor ? " وزخارف مرسومة حولها" : ""}، ${plan.look.pace === "fast" ? "إيقاع سريع" : plan.look.pace === "calm" ? "إيقاع هادئ" : "دخول سريع وخروج أسرع"}${plan.look.transitions.length ? "" : "، قطع حاد بين اللقطات"}${byKind.size ? `، و${byKind.size} مؤثرات صوتية مختلفة على مواضعها` : "، بدون مؤثرات صوتية"} — وكل شي قابل للتعديل.`;
       // «قائمة الحقائق»: the numbers that will be on screen, shown to the person (the ones not in their words marked)
       const said = [message, ...history.filter((h) => h.role === "user").map((h) => (typeof h.content === "string" ? h.content : ""))].join("\n");
       const facts = storyboardNumbers(sb, said);

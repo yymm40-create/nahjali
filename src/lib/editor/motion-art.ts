@@ -6,6 +6,7 @@
 
 import type { Beat } from "./motion-build";
 import type { Palette } from "./motion-build";
+import type { MotionLook } from "./motion-styles";
 
 // ───────────── colours ─────────────
 
@@ -24,7 +25,7 @@ export function beatBackground(pal: Palette, i: number) {
 
 /** The transition into beat `i`'s background (a few kinds, cycled; the hook arrives with a hard cut). */
 const TRANSITIONS = ["wipe", "slideLeft", "iris", "wipeDiagTR", "pushUp", "diamond", "clock", "uncoverLeft"];
-export const beatTransition = (i: number) => ({ kind: TRANSITIONS[i % TRANSITIONS.length], ms: 420 });
+export const beatTransition = (i: number, kinds: string[] = TRANSITIONS) => (kinds.length ? { kind: kinds[i % kinds.length], ms: 420 } : null);
 
 // ───────────── drawing helpers (fractions of the frame → pixels) ─────────────
 
@@ -214,15 +215,16 @@ export function decorationSvg(b: Beat, i: number, pal: Palette, a: Anchors, w: n
 }
 
 /** The pictures of a whole piece: a background and a decoration for every beat (keys "bg-N" and "art-N"). */
-export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: number, H: number): ArtPiece[] {
+export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: number, H: number, look?: Pick<MotionLook, "background" | "decor">): ArtPiece[] {
   // drawn at a size that stays crisp on a phone and light to make (the player scales it to the frame)
   const k = Math.min(1, 1080 / Math.max(W, H));
   const w = Math.round(W * k);
   const h = Math.round(H * k);
   const out: ArtPiece[] = [];
   beats.forEach((b, i) => {
-    out.push({ key: `bg-${i}`, svg: backgroundSvg(pal, i, w, h), w, h });
-    out.push({ key: `art-${i}`, svg: decorationSvg(b, i, pal, anchors[i] ?? { top: 0.2, bottom: 0.8 }, w, h), w, h });
+    // «steady»: one background for the whole piece (the same colour every beat)
+    out.push({ key: `bg-${i}`, svg: backgroundSvg(pal, look?.background === "steady" ? 0 : i, w, h), w, h });
+    if (look?.decor !== false) out.push({ key: `art-${i}`, svg: decorationSvg(b, i, pal, anchors[i] ?? { top: 0.2, bottom: 0.8 }, w, h), w, h });
   });
   return out;
 }

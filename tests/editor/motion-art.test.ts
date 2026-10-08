@@ -42,7 +42,7 @@ describe("«موشن جرافيكس» art: drawn by the engine, no generator", (
   it("uses transitions the editor has, cycling through several kinds", () => {
     const kinds = new Set<string>();
     for (let i = 0; i < 10; i++) {
-      const t = beatTransition(i);
+      const t = beatTransition(i)!;
       expect(t.kind in TRANSITIONS).toBe(true);
       kinds.add(t.kind);
     }

@@ -19,6 +19,7 @@ import { MAX_CHECKS } from "@/lib/editor/assistant-guide";
 import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
+import { MOTION_STYLES } from "@/lib/editor/motion-styles";
 import Icon from "../Icon";
 import { blobBase64, canTalk, hear, hush, record, SILENT_PEAK, REPLY_VOICE_KEY, replyVoice, say, wavOf, type RecordingHandle } from "./talk";
 import { useUploads } from "./useUploads";
@@ -131,6 +132,19 @@ export default function AssistantPanel({
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
+  // «🎬 مهارات الموشن»: the named motion skills as chips (one press writes the start of the request)
+  const [showSkills, setShowSkills] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const pickSkill = (ar: string) => {
+    setText(`موشن جرافيكس بمهارة «${ar}» عن: `);
+    setShowSkills(false);
+    setTimeout(() => {
+      const el = textRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 0);
+  };
   const [busy, setBusyState] = useState<string | null>(null);
   // the latest «busy», for code that runs between renders (a voice message's send used to see the old one and drop
   // the words silently: it read «أكتب كلامك…» from the render before the transcript arrived)
@@ -653,6 +667,17 @@ export default function AssistantPanel({
                 </button>
               ))}
             </div>
+            <p className="text-[11px] text-jw-muted">🎬 موشن جرافيكس بمهارة جاهزة:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {MOTION_STYLES.slice(0, 6).map((m) => (
+                <button key={m.id} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" title={m.hint} onClick={() => pickSkill(m.ar)}>
+                  {m.icon} {m.ar}
+                </button>
+              ))}
+              <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => setShowSkills(true)}>
+                كل المهارات ({MOTION_STYLES.length})
+              </button>
+            </div>
           </div>
         )}
         {msgs.map((m, i) => (
@@ -804,6 +829,23 @@ export default function AssistantPanel({
           ))}
         </div>
       )}
+      <div className="border-t border-jw-line px-2 pt-1.5">
+        <button type="button" className="text-[11px] font-semibold text-jw-accent" onClick={() => setShowSkills((v) => !v)} aria-expanded={showSkills} disabled={readOnly}>
+          🎬 مهارات الموشن {showSkills ? "▴" : "▾"}
+        </button>
+        {showSkills && (
+          <div className="mt-1.5 space-y-1.5 pb-1">
+            <p className="text-[11px] leading-5 text-jw-muted">اختر مهارة واكتب موضوعك، أو اكتب اسمها في أي طلب. وأي شي تطلبه زيادة (لون، سرعة، بدون أصوات…) يمشي على المهارة.</p>
+            <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+              {MOTION_STYLES.map((m) => (
+                <button key={m.id} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" title={m.hint} onClick={() => pickSkill(m.ar)}>
+                  {m.icon} {m.ar}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
       <form
         className="flex items-end gap-2 border-t border-jw-line p-2"
         onSubmit={(e) => {
@@ -826,6 +868,7 @@ export default function AssistantPanel({
           📎
         </button>
         <textarea
+          ref={textRef}
           className="jw-textarea max-h-32 min-h-11 min-w-0 flex-1 resize-none text-sm"
           rows={1}
           dir="auto"
