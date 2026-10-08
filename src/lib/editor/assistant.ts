@@ -266,6 +266,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
   const requests = (answer.requests ?? [])
     .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || ((r.kind === "separate" || r.kind === "scene_cut" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    // the same thing asked twice in one answer (same kind, words and place) is made once
+    .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     .slice(0, 4);
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
   let reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "");

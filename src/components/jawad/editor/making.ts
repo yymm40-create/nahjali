@@ -31,6 +31,21 @@ function load(projectId: string): Making[] {
     return [];
   }
 }
+/** Jobs already brought in and placed (on this device): never placed a second time, whatever check sees them again. */
+const placedKey = (projectId: string) => `jw-editor-placed-${projectId}`;
+function placed(projectId: string): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(placedKey(projectId)) ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function markPlaced(projectId: string, jobId: string) {
+  try {
+    localStorage.setItem(placedKey(projectId), JSON.stringify([...placed(projectId), jobId].slice(-100)));
+  } catch {}
+}
 function save(projectId: string, list: Making[]) {
   try {
     localStorage.setItem(key(projectId), JSON.stringify(list.slice(-20)));
@@ -50,6 +65,9 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
   const { projectId, run, onAssets, flash, readOnly } = o;
   const [list, setList] = useState<Making[]>([]);
   const busy = useRef(new Set<string>());
+  // one check at a time: two overlapping checks (the timer firing while the last one still waits) used to bring
+  // the same finished job in twice — the same sound or picture placed twice
+  const checking = useRef(false);
   useEffect(() => {
     const read = () => setList(load(projectId));
     read();
@@ -58,6 +76,14 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
   }, [projectId]);
 
   const check = useCallback(async () => {
+    if (checking.current) return;
+    checking.current = true;
+    try {
+      await checkOnce();
+    } finally {
+      checking.current = false;
+    }
+    async function checkOnce() {
     const now = load(projectId);
     if (!now.length) return;
     const r = await fetch(`/api/jawad/jobs?ids=${now.map((m) => m.jobId).join(",")}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
@@ -73,7 +99,13 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
       }
       const out = j.status === "succeeded" ? j.outputs[0] : undefined;
       if (!out) continue;
+      // already brought in (another check, another tab of this project): only taken off the list
+      if (placed(projectId).includes(m.jobId) || !load(projectId).some((x) => x.jobId === m.jobId)) {
+        drop();
+        continue;
+      }
       busy.current.add(m.jobId);
+      markPlaced(projectId, m.jobId);
       try {
         const res = await postJson<{ assets: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
           action: "import",
@@ -87,10 +119,14 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
         if (cmds.length) run(cmds, { label: `حيدرة صنع: ${m.name.slice(0, 30)}` });
         flash(`وصل «${m.name}» ✓${cmds.length ? "" : " (في الملفات)"}`);
       } catch {
-        /* tried again at the next check */
+        // tried again at the next check
+        try {
+          localStorage.setItem(placedKey(projectId), JSON.stringify(placed(projectId).filter((x) => x !== m.jobId)));
+        } catch {}
       } finally {
         busy.current.delete(m.jobId);
       }
+    }
     }
   }, [projectId, run, onAssets, flash]);
 
