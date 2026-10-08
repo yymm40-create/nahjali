@@ -7,6 +7,7 @@ import { castLinks, castOf } from "@/lib/film/series-cast";
 import SeriesGround from "../series/SeriesGround";
 import SajjadPanel from "../SajjadPanel";
 import ContinuityAlerts from "../series/ContinuityAlerts";
+import StepWhy from "../StepWhy";
 import { openAlerts, readWatch } from "@/lib/film/watch";
 import { memberRights } from "@/lib/film/team";
 import TeamWallet from "../series/TeamWallet";
@@ -51,6 +52,8 @@ export default async function SeriesView({ id, base }: { id: string; base: strin
         {series.about && <p className="whitespace-pre-wrap text-sm font-bold leading-7 text-muted">{series.about}</p>}
         {!owner && <p className="rounded-2xl bg-gold/15 p-3 text-sm font-bold">أنت في فريق هذا المسلسل: تشتغل على مشاهده بالصلاحيات اللي أعطاك إياها صاحبه، وكل شي تصنعه ينقص من «نقود الفريق الذكي».</p>}
       </header>
+
+      <StepWhy step="series" />
 
       {/* the team's own coins (in individual mode only while something is left in it, to take it back) */}
       {(series.mode === "team" || wallet.balance > 0) && <TeamWallet seriesId={series.id} owner={owner} balance={wallet.balance} ledger={wallet.ledger} />}
