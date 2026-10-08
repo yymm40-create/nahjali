@@ -6,7 +6,7 @@ import Icon from "../Icon";
 import VoicePicker from "./VoicePicker";
 
 /** The output options this generator really supports in this mode (nothing shared by default between generators). */
-export default function OutputSettings({ ev, values, onChange, voiceCoins, voiceProvider }: { ev: Evaluation; values: Settings; onChange: (key: string, v: SettingValue) => void; voiceCoins?: { design: number | null; clone: number | null; cloneMinimax?: number | null }; voiceProvider?: "elevenlabs" | "minimax" }) {
+export default function OutputSettings({ ev, values, onChange, voiceCoins, voiceProvider }: { ev: Evaluation; values: Settings; onChange: (key: string, v: SettingValue) => void; voiceCoins?: { design: number | null; clone: number | null; cloneMinimax?: number | null; cloneJawad?: number | null }; voiceProvider?: "elevenlabs" | "minimax" | "jawad" }) {
   const shown = ev.options.filter((o) => !o.hidden);
   if (!shown.length) return null;
   return (

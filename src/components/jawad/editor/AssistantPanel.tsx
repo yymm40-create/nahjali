@@ -277,7 +277,7 @@ export default function AssistantPanel({
     hush();
   };
   /** «بصمة صوتك»: the person's voice from a clip (or the microphone) → a voice of their library, with their consent. */
-  const takeVoiceprint = async (clipId: string, name: string, provider: "minimax" | "elevenlabs") => {
+  const takeVoiceprint = async (clipId: string, name: string, provider: "jawad" | "minimax" | "elevenlabs") => {
     let source: Blob | null = null;
     const f = clipId ? findClip(tlRef.current, clipId) : null;
     const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
@@ -454,7 +454,7 @@ export default function AssistantPanel({
             run({ type: "add_captions", items, style: "karaoke", name: "كابشن" }, { label: `كابشن (${items.length})` });
             followUp.current = "كمّل: الحين كلامي مكتوب بتوقيته — ركّب الموشن على كلامي (talk) بأسلوب ماجد.";
           } else if (q.kind === "voiceprint") {
-            await takeVoiceprint(q.clipId, q.name || q.text || "صوتي", q.voice === "elevenlabs" ? "elevenlabs" : "minimax");
+            await takeVoiceprint(q.clipId, q.name || q.text || "صوتي", q.voice === "elevenlabs" ? "elevenlabs" : q.voice === "minimax" ? "minimax" : "jawad");
           } else if (q.kind === "separate") {
             setBusy("نفصل الكلام والموسيقى والمؤثرات…");
             await onSeparate(q.clipId);
@@ -773,6 +773,7 @@ export default function AssistantPanel({
             <option value="openai">OpenAI</option>
             <option value="minimax">MiniMax</option>
             <option value="elevenlabs">ElevenLabs</option>
+            <option value="jawad">🧬 صوت الجواد (بصمتي)</option>
             {[...ownVoices, ...(voicePick.startsWith("v:") && !ownVoices.some((v) => v.value === voicePick) ? [{ value: voicePick, name: "صوتي" }] : [])].map((v) => (
               <option key={v.value} value={v.value}>
                 🧬 {v.name}

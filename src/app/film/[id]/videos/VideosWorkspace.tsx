@@ -50,7 +50,7 @@ interface VoiceState {
   ready: boolean;
   cast: Record<string, string>;
   audios: { key: string; url: string; text: string }[];
-  voices: { value: string; name: string; group: "mine" | "ready" | "minimax"; provider?: "elevenlabs" | "minimax" }[];
+  voices: { value: string; name: string; group: "mine" | "ready" | "minimax"; provider?: "elevenlabs" | "minimax" | "jawad" }[];
   /** «الحوار من جهازي»: the person's own recording per shot */
   tracks?: { genId: string; url: string | null; name: string; seconds: number }[];
 }

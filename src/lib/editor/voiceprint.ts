@@ -21,8 +21,9 @@ export async function voiceprint(p: EditorProject, user: { id: string }, owner: 
   stillOpen(p);
   if (b.consent !== true) throw new UserError("أكّد أن الصوت صوتك أو عندك إذن صاحبه.", 400);
   const seconds = Number(b.seconds) || 0;
-  const provider = b.provider === "elevenlabs" ? "elevenlabs" : "minimax";
-  if (seconds < (provider === "minimax" ? 10 : 3)) throw new UserError(provider === "minimax" ? "البصمة تحتاج ١٠ ثوانٍ كلام على الأقل (الأفضل ٣٠–٦٠ ثانية)." : "البصمة تحتاج ٣ ثوانٍ على الأقل.", 400);
+  // the site's own engine by default (free, no limit); MiniMax or ElevenLabs when asked
+  const provider = b.provider === "elevenlabs" ? "elevenlabs" : b.provider === "minimax" ? "minimax" : "jawad";
+  if (seconds < (provider === "elevenlabs" ? 3 : 10)) throw new UserError(provider === "elevenlabs" ? "البصمة تحتاج ٣ ثوانٍ على الأقل." : "البصمة تحتاج ١٠ ثوانٍ كلام على الأقل (الأفضل ٣٠–٦٠ ثانية).", 400);
   const wav = readWav(b.audio);
   const up = await uploadFromBuffer(user.id, new Uint8Array(wav), "voiceprint.wav");
   const name = (typeof b.name === "string" && b.name.trim() ? b.name.trim() : "صوتي").slice(0, 40);

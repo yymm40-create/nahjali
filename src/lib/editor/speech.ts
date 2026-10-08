@@ -10,6 +10,8 @@ import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { elevenAlign, elevenSpeech, elevenTranscribe } from "@/lib/jawad/server/providers/elevenlabs";
 import { MINIMAX_READY_VOICES, minimaxReady, minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
 import { openaiSpeech } from "@/lib/jawad/server/providers/openai";
+import { jawadSpeak, jawadVoiceReady } from "@/lib/jawad/server/providers/jawad-voice";
+import { jawadReference } from "@/lib/jawad/server/voices";
 import { ELEVEN_DEFAULT_VOICE } from "@config/jawad/generators";
 import { charged, type Who } from "./pricing";
 import { EDITOR_BUCKET, isUuid, stillOpen, type AssetRow, type EditorProject } from "./server";
@@ -144,7 +146,7 @@ export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; 
 }
 
 /** Who speaks حيدرة's replies: a provider, or one of the person's own voices («v:<id>», a voiceprint included). */
-export type ReplyVoice = "auto" | "openai" | "minimax" | "elevenlabs" | `v:${string}`;
+export type ReplyVoice = "auto" | "openai" | "minimax" | "elevenlabs" | "jawad" | `v:${string}`;
 
 /**
  * حيدرة's reply said aloud: `{ text, voice? }` → `{ audio: base64 mp3, by }`. Claude writes the words but has no voice
@@ -166,12 +168,22 @@ export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown; 
   const arabic = /[\u0600-\u06FF]/.test(spoken);
   const want = typeof b.voice === "string" ? b.voice : "auto";
   // the person's own voice (a voiceprint or a designed one): spoken where it lives
-  let own: { provider: string; id: string } | null = null;
+  let own: { provider: string; id: string; refText?: string } | null = null;
   if (/^v:/.test(want) && isUuid(want.slice(2))) {
-    const { data } = await createAdminClient().from("jawad_voices").select("provider,provider_voice_id").eq("id", want.slice(2)).eq("user_id", p.user_id).maybeSingle();
-    if (data) own = { provider: String(data.provider ?? "elevenlabs"), id: String(data.provider_voice_id) };
+    const { data } = await createAdminClient().from("jawad_voices").select("provider,provider_voice_id,reference_text").eq("id", want.slice(2)).eq("user_id", p.user_id).maybeSingle();
+    if (data) own = { provider: String(data.provider ?? "elevenlabs"), id: String(data.provider_voice_id), refText: String((data as { reference_text?: string | null }).reference_text ?? "") };
+  }
+  // «صوت الجواد» without a chosen voice: the person's newest voiceprint in the site's own engine
+  if (!own && want === "jawad") {
+    const { data } = await createAdminClient().from("jawad_voices").select("provider_voice_id,reference_text").eq("user_id", p.user_id).eq("provider", "jawad").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (data) own = { provider: "jawad", id: String(data.provider_voice_id), refText: String((data as { reference_text?: string | null }).reference_text ?? "") };
   }
   const readers: Record<string, () => Promise<Buffer>> = {
+    jawad: async () => {
+      if (!own || own.provider !== "jawad") throw new Error("no voiceprint in JAWAD's engine");
+      if (!jawadVoiceReady()) throw new Error("JAWAD voice engine not configured");
+      return (await jawadSpeak({ refUrl: await jawadReference(own.id), refText: own.refText ?? "", text: spoken })).audio;
+    },
     openai: async () => {
       if (!process.env.OPENAI_API_KEY) throw new Error("no OpenAI key");
       return openaiSpeech({ model: "gpt-4o-mini-tts", input: spoken, voice: "marin", format: "mp3", instructions: arabic ? "Speak natural, warm Gulf Arabic, friendly and clear, at a relaxed conversational pace." : "Speak naturally and warmly." });
@@ -188,6 +200,7 @@ export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown; 
   };
   const first = own ? own.provider : want === "auto" || !(want in readers) ? "openai" : want;
   const order = [first, ...["openai", "minimax", "elevenlabs"].filter((x) => x !== first)];
+  const mimeOf = (by: string) => (by === "jawad" ? "audio/wav" : "audio/mpeg");
   const audio = await charged(who, "editor_price_voice", 1, "رد حيدرة بالصوت", async () => {
     let last: unknown = null;
     for (const name of order) {
@@ -201,5 +214,5 @@ export async function voiceOut(p: EditorProject, who: Who, b: { text?: unknown; 
     if (last instanceof ProviderError) providerError(last);
     throw new UserError("ما قدرت أقرأ الرد بصوت الحين (ولا مزوّد صوت رد). الرد مكتوب فوق.", 502);
   });
-  return { audio: Buffer.from(audio.buf).toString("base64"), mime: "audio/mpeg", by: audio.by };
+  return { audio: Buffer.from(audio.buf).toString("base64"), mime: mimeOf(audio.by), by: audio.by };
 }
