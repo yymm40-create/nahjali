@@ -1,3 +1,4 @@
+import { checkUpscale, startUpscale } from "@/lib/editor/upscale";
 import { NextResponse } from "next/server";
 import { handOff, loadChat } from "@/lib/editor/chat";
 import { linkForFix } from "@/lib/editor/smart";
@@ -54,7 +55,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -115,6 +116,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json({ asset: await makeMusic(p, who, b) });
     case "separate":
       return NextResponse.json(await separate(p, who, b));
+    // «رفع الدقة»: a video sent to be upscaled (720p/1080p → 4K) and asked about until its new file is ready
+    case "upscale":
+      return NextResponse.json(await startUpscale(p, who, b));
+    case "upscale_check":
+      return NextResponse.json(await checkUpscale(p, b));
     // «اصنع لي…» from حيدرة: a priced plan started as a JAWAD AI job
     case "make_start":
       return NextResponse.json(await startMake(user, owner, b, new URL(req.url).origin, who.team));

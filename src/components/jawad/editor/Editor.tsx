@@ -632,6 +632,75 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     for (const a of list) infos.current.set(a.id, info(a));
     setAssets((xs) => [...xs.filter((x) => !list.some((a) => a.id === x.id)), ...list]);
   }, []);
+  // «رفع الدقة»: a video sent to Topaz (fal) comes back as a new file; the page asks how far it is every 15 s (and
+  // again after a reload: the files still being made are remembered on this device), then the clips that used the
+  // original play the new one
+  const upKey = `jw-upscale-${project.id}`;
+  const upWatch = useRef(new Set<string>());
+  const watchUpscale = useCallback(
+    (id: string, from: string) => {
+      if (upWatch.current.has(id)) return;
+      upWatch.current.add(id);
+      const keep = (on: boolean) => {
+        try {
+          const all = JSON.parse(localStorage.getItem(upKey) ?? "{}") as Record<string, string>;
+          if (on) all[id] = from;
+          else delete all[id];
+          localStorage.setItem(upKey, JSON.stringify(all));
+        } catch {
+          /* not kept */
+        }
+      };
+      keep(true);
+      void (async () => {
+        for (let i = 0; i < 960; i++) {
+          await new Promise((r) => setTimeout(r, 15_000));
+          const r = await postJson<{ state: string; asset?: EditorAsset; message?: string }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale_check", id }).catch(() => null);
+          if (!r) continue;
+          if (r.state === "done" && r.asset) {
+            addAssets([r.asset]);
+            // the new file's info first, then the clips switched to it (one undo)
+            setTimeout(() => {
+              const done = run({ type: "swap_asset", from, to: id }, { label: "رفع الدقة" });
+              flash(done ? `✅ صار المقطع بدقة ${r.asset!.width}×${r.asset!.height}، والأصلي باقي في المكتبة.` : `✅ النسخة بدقة ${r.asset!.width}×${r.asset!.height} جاهزة في المكتبة.`);
+            }, 50);
+            break;
+          }
+          if (r.state === "failed") {
+            setAssets((xs) => xs.filter((x) => x.id !== id));
+            flash(r.message ?? "ما انرفعت الدقة.", true);
+            break;
+          }
+        }
+        keep(false);
+        upWatch.current.delete(id);
+      })();
+    },
+    [addAssets, flash, project.id, run, upKey],
+  );
+  useEffect(() => {
+    try {
+      for (const [id, from] of Object.entries(JSON.parse(localStorage.getItem(upKey) ?? "{}") as Record<string, string>)) watchUpscale(id, from);
+    } catch {
+      /* nothing remembered */
+    }
+  }, [upKey, watchUpscale]);
+  const upscale = useCallback(
+    async (assetId: string, target: "4k" | "1080p") => {
+      const a = assets.find((x) => x.id === assetId);
+      if (!a) return;
+      if (!window.confirm(`أرفع دقة «${a.name}» (${a.width}×${a.height}) إلى ${target === "4k" ? "4K" : "1080p"} بالذكاء الاصطناعي (Topaz)؟\nياخذ من دقايق لأكثر على حسب طوله، وتقدر تكمل شغلك. النسخة الجديدة تنضاف للمكتبة والأصلي يظل.`)) return;
+      try {
+        const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId, target });
+        addAssets([r.asset]);
+        flash(`⬆️ بدأ رفع الدقة${r.coins ? ` (${r.coins} نقدة)` : ""}… أعلمك إذا خلص.`);
+        watchUpscale(r.asset.id, assetId);
+      } catch (e) {
+        flash(e instanceof Error ? e.message : "ما بدأ رفع الدقة.", true);
+      }
+    },
+    [assets, addAssets, flash, project.id, watchUpscale],
+  );
   // files let go on the timeline land where they were dropped: one after another («line») or each on its own track
   // one above the other («stack»); the line goes on from the end of the last one placed
   const cursor = useRef<{ group: string; at: number } | null>(null);
@@ -1558,7 +1627,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           {panelEdge}
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Guard name="الإعدادات"><Inspector projectId={project.id} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector projectId={project.id} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 

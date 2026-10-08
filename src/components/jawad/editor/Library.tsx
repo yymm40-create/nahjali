@@ -124,7 +124,7 @@ export default function Library({
                         </span>
                       )}
                       {a.durationMs != null && <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] text-white" dir="ltr">{formatTime(a.durationMs, false)}</span>}
-                      {a.status !== "ready" && <span className="absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-jw-danger">انحذف</span>}
+                      {a.status === "pending" ? <span className="absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-white">⏳ يتجهّز…</span> : a.status !== "ready" && <span className="absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-jw-danger">انحذف</span>}
                       {!readOnly && a.status === "ready" && (
                         <span className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-jw-accent text-jw-on-accent opacity-90">
                           <Icon name="plus" size={12} strokeWidth={2.5} />

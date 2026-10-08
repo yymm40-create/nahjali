@@ -210,6 +210,11 @@ const view = (r: AssetRow, signed: string | null): AssetView => {
   };
 };
 
+/** One file of a project as the page sees it (with a fresh link when it is ready). */
+export async function assetView(row: AssetRow) {
+  return view(row, row.status === "ready" ? ((await sign([row])).get(row.id) ?? null) : null);
+}
+
 export async function assetViews(projectId: string) {
   const rows = (await assetRows(projectId)).filter((r) => r.status !== "pending");
   const urls = await sign(rows);
