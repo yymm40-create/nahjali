@@ -131,11 +131,16 @@ export async function voiceIn(p: EditorProject, who: Who, b: { audio?: unknown; 
   if (!buf.length) throw new UserError("ما وصل صوت.", 400);
   if (buf.length > VOICE_MAX_BYTES) throw new UserError("التسجيل طويل؛ خلّه أقل من دقيقتين.", 400);
   const minutes = Math.min(2, Math.max(0.05, Number(b.seconds) / 60 || 0.5));
-  const heard = await charged(who, "editor_price_caption", Math.ceil(minutes), "رسالة صوتية لحيدرة", () =>
-    elevenTranscribe({ file: new Blob([new Uint8Array(buf)], { type: mime }), name: `voice.${ext}` }).catch(providerError),
-  );
+  const text = await charged(who, "editor_price_caption", Math.ceil(minutes), "رسالة صوتية لحيدرة", async () => {
+    const heard = await elevenTranscribe({ file: new Blob([new Uint8Array(buf)], { type: mime }), name: `voice.${ext}` }).catch(providerError);
+    const said = heard.words.map((w) => w.text).join(" ").replace(/\s+([،,.؟?!:])/g, "$1").trim();
+    // nothing understood: said plainly, and the coins come back (charged() releases them when this throws)
+    if (!said) throw new UserError("سجّلت بس ما فهمت كلام في التسجيل (ما وصل صوت واضح). تأكد إن المايك الصحيح مختار وقرّب منه، وجرّب مرة ثانية.", 422);
+    return said;
+  });
   await logUse(p, minutes);
-  return { text: heard.words.map((w) => w.text).join(" ").replace(/\s+([،,.؟?!:])/g, "$1").trim() };
+  console.info("haydara voice in", { project: p.id, bytes: buf.length, mime, minutes: Math.round(minutes * 100) / 100, chars: text.length });
+  return { text };
 }
 
 /** Who speaks حيدرة's replies: a provider, or one of the person's own voices («v:<id>», a voiceprint included). */

@@ -10,7 +10,14 @@ export interface Recording {
   blob: Blob;
   mime: string;
   seconds: number;
+  /** the loudest moment (RMS, 0–1) the meter saw */
+  peak: number;
+  /** whether the meter worked at all (a context that never started reads 0) */
+  meter: boolean;
 }
+
+/** Below this the recording is silence (a muted or wrong input device): it is not sent. */
+export const SILENT_PEAK = 0.004;
 
 export interface RecordingHandle {
   /** the recording, or null when nothing was said (or it was cancelled) */
@@ -56,6 +63,7 @@ export async function record(o: { untilQuiet?: boolean; onLevel?: (v: number) =>
   // and a voice message used to be dropped as «nothing said» without a word
   void ctx.resume().catch(() => {});
   let heardAny = false;
+  let peak = 0;
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
   ctx.createMediaStreamSource(stream).connect(analyser);
@@ -67,6 +75,7 @@ export async function record(o: { untilQuiet?: boolean; onLevel?: (v: number) =>
     const level = Math.sqrt(sum / buf.length);
     o.onLevel?.(Math.min(1, level * 8));
     if (level > 0) heardAny = true;
+    if (level > peak) peak = level;
     const now = performance.now();
     // a meter that never moves (the context never started): no silence detection; a turn ends after 8 s
     if (!heardAny && o.untilQuiet && now - started > 1500) {
@@ -97,7 +106,7 @@ export async function record(o: { untilQuiet?: boolean; onLevel?: (v: number) =>
       const type = (rec.mimeType || mime || "audio/webm").split(";")[0];
       // a voice message ends by the person's own press: kept even when the meter didn't see the voice
       const said = o.untilQuiet ? spoke : true;
-      ok(cancelled || !said || seconds < 0.6 || !chunks.length ? null : { blob: new Blob(chunks, { type }), mime: type, seconds });
+      ok(cancelled || !said || seconds < 0.6 || !chunks.length ? null : { blob: new Blob(chunks, { type }), mime: type, seconds, peak, meter: heardAny });
     };
   });
   function end() {
