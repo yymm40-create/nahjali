@@ -26,6 +26,9 @@ export const ISLAMIC_KV = {
   persona: "persona",
   /** the analysis file (how the sources reason), extracted and approved */
   analysis: "analysis",
+  /** what the last «استخرج» wrote, waiting for the owner's look and «اعتمد» */
+  personaDraft: "persona_draft",
+  analysisDraft: "analysis_draft",
 } as const;
 
 /**

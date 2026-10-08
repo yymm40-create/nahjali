@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { addSource, answers, counts, kvAll, kvSet, librarySize, noteAnswer, removeSource, resetSource, runRead, sources, updateSource } from "@/lib/islamic/library";
+import { approve, train } from "@/lib/islamic/train";
+import { claudeTrouble } from "@/lib/film/anthropic";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +46,18 @@ export const POST = handle(async (req: Request) => {
       return NextResponse.json({ ok: true });
     case "note":
       await noteAnswer(id, String(b.note ?? ""));
+      return NextResponse.json({ ok: true });
+    case "train":
+      // «الفهم»: a few minutes; the drafts land in the settings for the owner to approve
+      try {
+        return NextResponse.json(await train());
+      } catch (e) {
+        const why = claudeTrouble(e);
+        if (why) throw new UserError(why, 503);
+        throw e;
+      }
+    case "approve":
+      await approve(b.which === "analysis" ? "analysis" : "persona");
       return NextResponse.json({ ok: true });
   }
   throw new UserError("طلب غير معروف.");

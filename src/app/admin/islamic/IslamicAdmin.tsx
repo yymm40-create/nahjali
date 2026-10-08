@@ -26,6 +26,8 @@ export default function IslamicAdmin() {
   const [form, setForm] = useState({ name: "", url: "" });
   const [kv, setKv] = useState<Record<string, string>>({});
   const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [training, setTraining] = useState(false);
+  const [trainMsg, setTrainMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -65,6 +67,20 @@ export default function IslamicAdmin() {
         void _gone;
         return rest;
       });
+    }
+  };
+
+  const runTrain = async () => {
+    setTraining(true);
+    setTrainMsg(null);
+    try {
+      const r = await call<{ chunks: number; usd: number }>({ action: "train" });
+      setTrainMsg(`✓ قرأ ${r.chunks} نصًا وكتب المسودتين (التكلفة $${r.usd.toFixed(2)}). راجعهم تحت واعتمدهم.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTraining(false);
     }
   };
 
@@ -160,14 +176,50 @@ export default function IslamicAdmin() {
         </form>
       </section>
 
+      {/* ───────── understanding: the persona and analysis files, extracted from the library ───────── */}
+      <section className="space-y-3">
+        <h2 className="text-xl font-extrabold">الفهم: استخراج الشخصية من المصادر</h2>
+        <div className="card space-y-3 p-4">
+          <p className="text-sm text-muted">
+            يقرأ عينة واسعة من المكتبة (من كل مصدر ومن كل نوع) ويكتب مسودتين: <b>ملف الأخلاق والأسلوب</b> و<b>منهج التحليل</b>، وكل نقطة معها مصدرها. راجعهم، عدّل ما تبي، ثم «اعتمد» عشان يصيرون جزءًا من كل جواب. تقدر تعيد الاستخراج بعد ما تكبر المكتبة. يأخذ ٢ إلى ٤ دقايق ويكلّف دولار تقريبًا.
+          </p>
+          <button type="button" className="btn btn-secondary !min-h-10 !px-5 !text-sm" disabled={training} onClick={() => void runTrain()}>
+            {training ? "⏳ يقرأ ويستخرج…" : "استخرج من المصادر"}
+          </button>
+          {trainMsg && <p className="text-sm font-bold text-teal">{trainMsg}</p>}
+        </div>
+        {(
+          [
+            [ISLAMIC_KV.personaDraft, ISLAMIC_KV.persona, "persona", "مسودة ملف الأخلاق والأسلوب"],
+            [ISLAMIC_KV.analysisDraft, ISLAMIC_KV.analysis, "analysis", "مسودة منهج التحليل"],
+          ] as const
+        ).map(([draftKey, liveKey, which, label]) => (
+          <div key={draftKey} className="card space-y-2 p-4">
+            <label className="block">
+              <b>{label}</b>
+              <span className="block text-xs text-muted">{(v.kv[draftKey] ?? "").trim() ? ((v.kv[liveKey] ?? "") === (v.kv[draftKey] ?? "") ? "✅ معتمدة (هي اللي تشتغل الحين)" : "تنتظر مراجعتك واعتمادك") : "ما فيه مسودة بعد."}</span>
+              <textarea className="field mt-2 min-h-40 w-full text-sm" value={kv[draftKey] ?? ""} onChange={(e) => setKv({ ...kv, [draftKey]: e.target.value })} />
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="btn btn-ghost !min-h-10 !px-4 !text-sm" disabled={(kv[draftKey] ?? "") === (v.kv[draftKey] ?? "")} onClick={() => act({ action: "kv", key: draftKey, value: kv[draftKey] ?? "" })}>
+                احفظ تعديلي
+              </button>
+              <button type="button" className="btn btn-primary !min-h-10 !px-5 !text-sm" disabled={!(v.kv[draftKey] ?? "").trim() || (kv[draftKey] ?? "") !== (v.kv[draftKey] ?? "")} onClick={() => act({ action: "approve", which })}>
+                اعتمد — خلّه يشتغل في الأجوبة
+              </button>
+            </div>
+          </div>
+        ))}
+      </section>
+
       {/* ───────── the method and the persona files ───────── */}
       <section className="space-y-3">
-        <h2 className="text-xl font-extrabold">المنهج والشخصية</h2>
+        <h2 className="text-xl font-extrabold">المنهج والشخصية (اللي يشتغل الحين)</h2>
         {(
           [
             [ISLAMIC_KV.method, "المنهج", "قواعدك اللي يمشي عليها في كل جواب: من وين الأحكام، وش الممنوع، كيف يتعامل مع السائل… (الهوية الأساسية ثابتة في الكود ولا تحتاج تكتبها)."],
-            [ISLAMIC_KV.persona, "ملف الأخلاق والأسلوب", "كيف يتكلم وبأي أخلاق (يُستخرج من المصادر في الخطوة الجاية، وتعدّله هنا). فاضي = ما يُطبّق."],
-            [ISLAMIC_KV.analysis, "منهج التحليل", "كيف يحلل السؤال قبل ما يجاوب (يُستخرج من المصادر في الخطوة الجاية). فاضي = ما يُطبّق."],
+            [ISLAMIC_KV.persona, "ملف الأخلاق والأسلوب", "اللي يتقمصه في كل جواب. يجي من اعتماد المسودة فوق، وتقدر تعدّله هنا مباشرة. فاضي = ما يُطبّق."],
+            [ISLAMIC_KV.analysis, "منهج التحليل", "اللي يحلل فيه كل سؤال قبل الجواب. يجي من اعتماد المسودة فوق، وتقدر تعدّله هنا. فاضي = ما يُطبّق."],
           ] as const
         ).map(([key, label, hint]) => (
           <div key={key} className="card space-y-2 p-4">
