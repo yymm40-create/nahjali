@@ -40,7 +40,7 @@ export interface PictureLook {
   fonts: { sans: string; display: string };
   /** The shrine picture behind. */
   image?: string | null;
-  /** The site's address, written in the invitation (e.g. «nahjali.vercel.app/mahdi»). */
+  /** The site's address, written in the invitation (e.g. «www.aljawadai.app/mahdi»). */
   site: string;
 }
 
