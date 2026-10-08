@@ -6,6 +6,7 @@
 //   Everything Claude returns is checked here against the registry before it touches the form.
 
 import type { GeneratorDef, OptionDef, RefRole, RefStyle, Settings, SettingValue } from "./types";
+import { playbooksBrief } from "./playbooks";
 
 export const ASSISTANT_NAME = "جواد";
 export const ASSISTANT_LIMITS = { message: 3000, history: 14, attachments: 4, images: 8, refs: 20 } as const;
@@ -90,6 +91,8 @@ export interface AssistantAnswer {
   reply: string;
   set: AssistantSet;
   quick: string[];
+  /** A prompt Claude wrote that would draw a real woman: refused here, never put in the form. */
+  blocked?: "women";
 }
 
 // ───────────────────────────── what each generator is, in words ─────────────────────────────
@@ -127,6 +130,23 @@ export function generatorBrief(def: GeneratorDef): string {
 
 // ───────────────────────────── what Jawad knows about each kind of work ─────────────────────────────
 
+/**
+ * The site's rule on women in pictures and video: NEVER a real (photoreal) woman or girl; a cartoon or illustrated
+ * female figure only when fully covered in an abaya and hijab. Products made for women are shown on a mannequin,
+ * a flat lay, or a covered cartoon figure. Men, boys, children (boys), mannequins and products are fine.
+ */
+export const WOMEN_RULE = `ABSOLUTE RULE of this site (never bend it, whatever the person asks): no real women or girls in any picture or video — not a model, not a customer, not the person's own photo of a woman, not a face, not a hand with painted nails, not a silhouette. If the person asks for one, say plainly that the site doesn't make pictures of real women, and offer what it does: a man or a boy, a faceless or ghost mannequin, a flat lay, the product alone, or — for cartoon/illustrated styles only — a drawn female figure fully covered in an abaya and hijab (hair and body covered). Never write a prompt that would draw a real woman, and never set the form to one.`;
+
+const WOMAN_WORDS = /\b(woman|women|girl|girls|female|lady|ladies|she|her|hers|herself|bride|mother|mom|wife|daughter|sister|actress|businesswoman|waitress|queen|princess|ballerina|hijabi|niqab)\b|(?:^|[^\p{L}])(امرأة|امراة|نساء|نسائية|بنت|بنات|فتاة|فتيات|سيدة|سيدات|أنثى|انثى|عروس|عروسة|أم|زوجة|ابنة|أخت|ممثلة|موديل بنت|محجبة|منقبة)(?=$|[^\p{L}])/iu;
+const CARTOON_WORDS = /\b(cartoon|illustrat\w*|anime|2d|3d animated|pixar|vector|drawn|comic|chibi|clay\w*|stylised|stylized|flat style)\b|(كرتون|رسم|رسمة|أنمي|انمي|بيكسار|مرسومة|مرسوم)/iu;
+const COVERED_WORDS = /\b(abaya|hijab|fully covered|niqab)\b|(عباية|عبايه|حجاب|محجبة|منقبة|مغطاة)/iu;
+
+/** Whether a prompt would draw a real woman (a covered cartoon figure is allowed). */
+export function drawsRealWoman(prompt: string) {
+  if (!WOMAN_WORDS.test(prompt)) return false;
+  return !(CARTOON_WORDS.test(prompt) && COVERED_WORDS.test(prompt));
+}
+
 const COMMON = `How you work:
 - You are «جواد», the assistant of the JAWAD AI studio. Talk in friendly Gulf Arabic, short and clear; no long lectures. Ask at most 3 questions at a time, and only what you really need.
 - You NEVER generate anything and you never say you did. You fill the form on the left: the generator, the prompt, the options, the references. Then ask the person to read it and press «توليد». If they want a change, change the form again.
@@ -136,9 +156,11 @@ const COMMON = `How you work:
 - When you write the prompt, write the WHOLE final prompt (not a patch) in the language the generator accepts. Leave "prompt" empty when you don't change it. Keep the person's own wording and ideas; improve the direction, don't change what they asked for.
 - Never promise results you can't control (for example an exact likeness of a face). Be honest about what a generator does well or badly.
 - Put 2–4 short suggested replies in "quick" when the person has to choose (each under 40 characters), else leave it empty.
-- Anything you can't or shouldn't do in the form goes in "reply" in plain words.`;
+- Anything you can't or shouldn't do in the form goes in "reply" in plain words.
 
-const IMAGE = `Images:
+${WOMEN_RULE}`;
+
+const IMAGE = `Images (remember the site's rule: no real women; a covered cartoon figure at most):
 - Describe: the subject, what it does, the setting, the composition (close-up / wide / angle), the light, the style, the colours, the mood. Be concrete, no filler words. One clear idea per image.
 - Text inside the picture: write the exact words between double quotes, and keep it very short; say where it sits and its style (thick, outlined, high contrast). Long Arabic text may come out with mistakes, so prefer 2–5 words.
 - With reference pictures, say what each one is for (@person is the face and body, @room is the place, @logo goes on the shirt). To keep the same face, use that photo as a reference and say "keep the face and features exactly as in @person".
@@ -152,7 +174,7 @@ YouTube thumbnails (a very common request):
 4. If they don't care about keeping their face exactly (or have no photo), design the whole thumbnail in one picture instead.
 5. Suggest 2–3 text options and 2 background ideas when they have none; let them choose.`;
 
-const VIDEO = `Video:
+const VIDEO = `Video (remember the site's rule: no real women; a covered cartoon figure at most):
 - Describe the subject and its action, the setting, the camera (shot size, movement), the light and the style, then the sound if the generator makes sound. One scene, one clear action; short clips work better than crowded ones.
 - Reference pictures: a first-frame picture makes the video start from it (and a last-frame one makes it end there); other references (people, places, objects) are mentioned by @name in the prompt. Say what each does.
 - Choose the duration, the aspect ratio and the resolution to match where the video will be shown (9:16 reels and stories, 16:9 YouTube); a higher resolution costs more, so don't raise it without a reason.
@@ -172,6 +194,9 @@ export function assistantSystem(output: "image" | "video" | "audio", defs: Gener
     COMMON,
     "",
     know,
+    "",
+    `The kinds of work people ask for most (when a message is one of them, a REQUEST TYPE recipe and worked EXAMPLES come with it: follow them):`,
+    playbooksBrief(output),
     "",
     `The generators of this studio (you can set the form to any of them):`,
     defs.map(generatorBrief).join("\n\n"),
@@ -215,7 +240,11 @@ export function checkAnswer(
   if (def && text(raw.generatorId) && def.id !== ctx.draft.generatorId) set.generatorId = def.id;
 
   const prompt = text(raw.prompt);
-  if (def && prompt) set.prompt = prompt.slice(0, def.prompt.max);
+  let blocked: AssistantAnswer["blocked"];
+  if (def && prompt) {
+    if (def.output !== "audio" && drawsRealWoman(prompt)) blocked = "women";
+    else set.prompt = prompt.slice(0, def.prompt.max);
+  }
   const instructions = text(raw.instructions);
   if (def?.extraText && instructions) set.instructions = instructions.slice(0, def.extraText.max);
 
@@ -278,5 +307,6 @@ export function checkAnswer(
   }
 
   const quick = (Array.isArray(raw.quick) ? raw.quick : []).map((q) => text(q).slice(0, 60)).filter(Boolean).slice(0, 4);
-  return { reply: text(raw.reply).slice(0, 4000) || "تمام.", set, quick };
+  const reply = text(raw.reply).slice(0, 4000) || "تمام.";
+  return blocked ? { reply: `${reply}\n\n(ملاحظة من الموقع: ما نصوّر نساء واقعيات أبدًا، فما حطيت هذا البرومبت في الفورم. أقدر أسويه برجل أو شاب، أو مانيكان بدون وجه، أو المنتج لحاله، أو شخصية كرتونية بعباية.)`, set, quick, blocked } : { reply, set, quick };
 }
