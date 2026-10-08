@@ -5,7 +5,7 @@
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
-import { ALL_PERMS, isPerm, type Perm } from "@config/access";
+import { ALL_PERMS, hasUnlimited, isPerm, OPEN_PERMS, permsByCodes, type CodeRow, type CodeUse, type Perm } from "@config/access";
 
 export type { Perm };
 
@@ -31,18 +31,34 @@ export async function liveCodeId(): Promise<string | null> {
   return id;
 }
 
+/** The owner's codes («الأكواد») and who entered them, as the pure rules read them. */
+export const codeFromRow = (r: Record<string, unknown>): CodeRow => ({
+  id: r.id as string,
+  label: String(r.label ?? ""),
+  code: String(r.code ?? ""),
+  perms: ((r.perms as string[]) ?? []).filter(isPerm),
+  expiresAt: (r.expires_at as string | null) ?? null,
+  validHours: (r.valid_hours as number | null) ?? null,
+  maxUses: (r.max_uses as number | null) ?? null,
+  enabled: Boolean(r.enabled),
+});
+
 async function load(email: string): Promise<Set<Perm>> {
   const hit = memo.get(email);
   if (hit && Date.now() - hit.at < TTL) return hit.perms;
   const db = createAdminClient();
-  const [{ data }, grant, live] = await Promise.all([
+  const [{ data }, grant, live, uses] = await Promise.all([
     db.from("site_access").select("perms").eq("email", email).maybeSingle(),
     db.from("site_code_grants").select("code_id").eq("email", email).maybeSingle(),
     liveCodeId(),
+    db.from("site_code_uses").select("code_id,email,at").eq("email", email),
   ]);
-  // came in by «الكود السري», and that very code is still on: everything
+  // came in by «الكود السري», and that very code is still on: everything (but what only opens by name)
   const byCode = Boolean(live && grant.data?.code_id === live);
-  const perms = new Set(byCode ? ALL_PERMS : ((data?.perms as string[] | undefined) ?? []).filter(isPerm));
+  const mine: CodeUse[] = (uses.data ?? []).map((u) => ({ codeId: u.code_id as string, email: u.email as string, at: u.at as string }));
+  // the owner's codes this person entered: each opens only its own sections, while it lives (a missing table = none)
+  const codes = mine.length ? ((await db.from("site_codes").select("*").in("id", mine.map((u) => u.codeId))).data ?? []).map(codeFromRow) : [];
+  const perms = new Set<Perm>([...(byCode ? OPEN_PERMS : []), ...((data?.perms as string[] | undefined) ?? []).filter(isPerm), ...permsByCodes(codes, mine)]);
   memo.set(email, { at: Date.now(), perms });
   return perms;
 }
@@ -58,8 +74,11 @@ export const accessOf = cache(async (email: string | null | undefined): Promise<
 
 export const can = async (email: string | null | undefined, perm: Perm) => (await accessOf(email)).has(perm);
 
-/** In the list at all (or an owner): such a person uses what they may for free, without limits. */
-export const unlimitedFor = async (email: string | null | undefined) => (await accessOf(email)).size > 0;
+/** Opened a paid section (or an owner): such a person uses what they may for free, without limits. */
+export const unlimitedFor = async (email: string | null | undefined) => hasUnlimited(await accessOf(email));
+
+/** Has something open (any section, named-only ones included): the secret-code question isn't asked again. */
+export const hasAnyAccess = async (email: string | null | undefined) => (await accessOf(email)).size > 0;
 
 /** After a change on the dashboard: forget what was remembered. */
 export const forgetAccess = (email?: string) => {

@@ -12,8 +12,72 @@ export const PERMS = [
   { key: "editor_ai", label: "🤖 حيدرة (الذكاء الاصطناعي)", hint: "المحادثة مع حيدرة وكل ما يصنعه (كابشن، تلوين، صناعة…)" },
   { key: "student", label: "🎓 الطالب الذكي", hint: "بكل ما فيه (صوره وأصواته معه)" },
   { key: "booklet", label: "📖 كتيب نهج علي", hint: "بلا حد للتجارب" },
+  { key: "games", label: "🎮 صانع الألعاب الذكي", hint: "قنبر: محادثة تصميم الألعاب. للمالك وحده؛ ما يدخل في «الكود السري» الشامل، وينفتح بإيميل أو بكود تحدد له هذي الصلاحية بالاسم" },
 ] as const;
 
 export type Perm = (typeof PERMS)[number]["key"];
 export const ALL_PERMS: Perm[] = PERMS.map((p) => p.key);
 export const isPerm = (v: unknown): v is Perm => typeof v === "string" && (ALL_PERMS as string[]).includes(v);
+
+/**
+ * Sections that only open by name: «الكود السري» (the one that opens everything), and the owner's «اختر الكل»,
+ * never include them. Whoever has them gets exactly them, and no free use of the paid generators.
+ */
+export const NAMED_ONLY: Perm[] = ["games"];
+/** What the all-opening secret code opens (everything but the named-only sections). */
+export const OPEN_PERMS: Perm[] = ALL_PERMS.filter((p) => !NAMED_ONLY.includes(p));
+/** Free, unlimited use of the paid generators goes with any section except the named-only ones. */
+export const hasUnlimited = (perms: ReadonlySet<Perm>) => [...perms].some((p) => !NAMED_ONLY.includes(p));
+
+// ───────── the owner's codes («الأكواد»): many, each with its own sections and time ─────────
+
+/** One code, as the owner set it: only the sections it names, until it expires, for as many people as it allows. */
+export interface CodeRow {
+  id: string;
+  label: string;
+  code: string;
+  perms: Perm[];
+  /** the code stops working at this moment for everyone (null: never) */
+  expiresAt: string | null;
+  /** each person's access lasts this many hours from when THEY entered it (null: as long as the code lives) */
+  validHours: number | null;
+  /** at most this many different people (null: no limit) */
+  maxUses: number | null;
+  enabled: boolean;
+}
+export interface CodeUse {
+  codeId: string;
+  email: string;
+  at: string;
+}
+
+/** Whether a person's entry of a code still opens its sections now. */
+export function codeOpen(c: CodeRow, use: CodeUse | null | undefined, now = Date.now()): boolean {
+  if (!use || !c.enabled) return false;
+  if (c.expiresAt && new Date(c.expiresAt).getTime() <= now) return false;
+  if (c.validHours && new Date(use.at).getTime() + c.validHours * 3600_000 <= now) return false;
+  return true;
+}
+
+/**
+ * What a person's codes open together. Every code stands alone: a code that is off, expired, or past its hours
+ * opens nothing, and takes nothing from another code (no overlap, no override): the sections are only ever added.
+ */
+export function permsByCodes(codes: CodeRow[], uses: CodeUse[], now = Date.now()): Set<Perm> {
+  const out = new Set<Perm>();
+  for (const c of codes) {
+    const use = uses.find((u) => u.codeId === c.id);
+    if (codeOpen(c, use, now)) for (const p of c.perms) out.add(p);
+  }
+  return out;
+}
+
+/** Sections from the owner's form: only the known ones, no repeats. */
+export const normalizePerms = (v: unknown): Perm[] => (Array.isArray(v) ? [...new Set(v.filter(isPerm))] : []);
+
+/** A readable random code (no 0/O/1/I): `XXXX-XXXX`. */
+export function newCodeText(random: (n: number) => number = (n) => Math.floor(Math.random() * n)): string {
+  const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const pick = () => abc[random(abc.length)];
+  return `${Array.from({ length: 4 }, pick).join("")}-${Array.from({ length: 4 }, pick).join("")}`;
+}
