@@ -3,7 +3,7 @@ import { applyAll } from "@/lib/editor/commands";
 import { emptyTimeline, type Ratio } from "@/lib/editor/model";
 import { contrast, layoutMotion, lintMotion, lintPlaced, motionCommands, PALETTES, readStoryboard, type Beat, type Storyboard } from "@/lib/editor/motion-build";
 
-// 100 storyboards, from short to very long words, every beat kind, every palette, every frame shape
+// 1000 storyboards, from short to very long words, every beat kind, every palette, every frame shape
 const WORDS = "الصدقة تطفئ غضب الرب وتدفع البلاء وتزيد الرزق والبركة في المال والعمر والذرية بإذن الله تعالى في كل وقت وحين".split(" ");
 const pick = (seed: number, n: number) => Array.from({ length: n }, (_, i) => WORDS[(seed * 7 + i * 3) % WORDS.length]).join(" ");
 const RATIOS: Ratio[] = ["9:16", "16:9", "1:1", "4:5"];
@@ -31,8 +31,8 @@ function board(i: number): Storyboard {
   return { palette: PALETTES[i % PALETTES.length].id, head: ["cairo", "tajawal", "almarai", "changa"][i % 4], body: "tajawal", beats };
 }
 
-describe("«موشن جرافيكس» engine: 100 pieces come out clean", () => {
-  for (let i = 0; i < 100; i++) {
+describe("«موشن جرافيكس» engine: 1000 pieces come out clean", () => {
+  for (let i = 0; i < 1000; i++) {
     const ratio = RATIOS[i % RATIOS.length];
     it(`piece ${i + 1} (${ratio}, ${PALETTES[i % PALETTES.length].id})`, () => {
       const tl = emptyTimeline(ratio);

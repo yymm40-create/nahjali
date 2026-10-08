@@ -7,6 +7,7 @@
 
 import type { Command } from "./commands";
 import { allTracks, clipEnd, type Timeline } from "./model";
+import { beatTransition, pieceArt, type Anchors } from "./motion-art";
 
 // ───────────── palettes (from the motion skill: five named looks, every pair checked for contrast) ─────────────
 
@@ -279,63 +280,76 @@ export function splitBeat(b: Beat): [Beat, Beat] | null {
   return null;
 }
 
+/**
+ * Entrances with energy: short (240–320 ms), eased with the editor's own overshoots, exits always faster (160 ms). The
+ * headline alternates beat to beat (a whip from the right, then a rise), so no two beats arrive the same way.
+ */
 const IN = {
-  rise: { in: "rise", out: "fade", inMs: 380, outMs: 220 },
-  fade: { in: "fade", out: "fade", inMs: 320, outMs: 200 },
-  right: { in: "fromRight", out: "fade", inMs: 320, outMs: 200 },
-  left: { in: "fromLeft", out: "fade", inMs: 320, outMs: 200 },
-  pop: { in: "pop", out: "fade", inMs: 450, outMs: 220 },
+  rise: { in: "rise", out: "fade", inMs: 260, outMs: 160 },
+  fade: { in: "fade", out: "fade", inMs: 240, outMs: 160 },
+  right: { in: "fromRight", out: "fade", inMs: 260, outMs: 160 },
+  left: { in: "fromLeft", out: "fade", inMs: 260, outMs: 160 },
+  whip: { in: "whip", out: "whip", inMs: 260, outMs: 180 },
+  pop: { in: "pop", out: "fade", inMs: 320, outMs: 160 },
+  punch: { in: "punch", out: "fade", inMs: 300, outMs: 160 },
 };
+/** The headline's entrance for beat `bi` (the art leads by TEXT_LEAD ms, so the words land on it). */
+const headIn = (bi: number) => (bi % 2 === 0 ? IN.whip : IN.rise);
+const TEXT_LEAD = 80;
 
 /** The texts of one beat, in reading order, with their roles, colours, fonts and entrances. */
-function specsOf(b: Beat, pal: Palette, head: string, body: string): Spec[] {
+function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0): Spec[] {
   const specs: Spec[] = [];
   const add = (s: Omit<Spec, "maxLines" | "delay"> & { maxLines?: number; delay?: number }) => {
-    if (s.body.replace(/[«»—\-●.:\s]/g, "")) specs.push({ maxLines: 2, delay: specs.length * 120, ...s });
+    if (s.body.replace(/[«»—\-●.:\s]/g, "")) specs.push({ maxLines: 2, delay: TEXT_LEAD + specs.length * 100, ...s });
   };
   switch (b.kind) {
     case "title":
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: IN.rise });
-      if (b.title) add({ role: "bar", body: "ـــــــــــ", color: pal.accent, weight: 900, font: head, maxLines: 1, anim: IN.right });
-      add({ role: "sub", body: b.text ?? "", color: pal.second, weight: 700, font: body, anim: IN.fade });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
+      add({ role: "sub", body: b.text ?? "", color: pal.second, weight: 700, font: body, anim: IN.rise });
       break;
     case "statement":
-      add({ role: "head", body: b.text || b.title || "", color: pal.text, weight: 900, font: head, maxLines: 3, anim: IN.rise });
+      add({ role: "head", body: b.text || b.title || "", color: pal.text, weight: 900, font: head, maxLines: 3, anim: headIn(bi) });
       break;
     case "stat":
-      add({ role: "value", body: b.value ?? "", color: pal.accent, weight: 900, font: head, maxLines: 1, anim: IN.pop });
-      add({ role: "sub", body: b.label ?? "", color: pal.text, weight: 700, font: body, anim: IN.fade });
+      add({ role: "value", body: b.value ?? "", color: pal.accent, weight: 900, font: head, maxLines: 1, anim: IN.punch });
+      add({ role: "sub", body: b.label ?? "", color: pal.text, weight: 700, font: body, anim: IN.rise });
       add({ role: "cap", body: b.text ?? "", color: pal.second, weight: 400, font: body, anim: IN.fade });
       break;
     case "points":
     case "steps": {
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: IN.rise });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
       const nums = ["١", "٢", "٣", "٤", "٥"];
-      (b.items ?? []).forEach((it, i) => add({ role: "item", body: `${b.kind === "steps" ? `${nums[i] ?? i + 1}.` : "●"} ${it}`, color: i === 0 ? pal.accent : pal.text, weight: 700, font: body, list: true, delay: 420 + i * 420, anim: IN.right }));
+      (b.items ?? []).forEach((it, i) => add({ role: "item", body: `${b.kind === "steps" ? `${nums[i] ?? i + 1}.` : "●"} ${it}`, color: i === 0 ? pal.accent : pal.text, weight: 700, font: body, list: true, delay: TEXT_LEAD + 360 + i * 340, anim: IN.right }));
       break;
     }
     case "quote":
       add({ role: "quote", body: b.text ? `«${b.text}»` : "", color: pal.text, weight: 700, font: body, maxLines: 4, anim: IN.fade });
-      add({ role: "cap", body: b.by ? `— ${b.by}` : "", color: pal.accent, weight: 700, font: body, anim: IN.fade, delay: 360 });
+      add({ role: "cap", body: b.by ? `— ${b.by}` : "", color: pal.accent, weight: 700, font: body, anim: IN.rise, delay: TEXT_LEAD + 320 });
       break;
     case "compare":
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: IN.rise });
-      add({ role: "sub", body: b.right?.title ?? "", color: pal.accent, weight: 900, font: head, col: "right", anim: IN.right, delay: 260 });
-      add({ role: "cap", body: b.right?.text ?? "", color: pal.text, weight: 400, font: body, col: "right", maxLines: 4, anim: IN.fade, delay: 380 });
-      add({ role: "sub", body: b.left?.title ?? "", color: pal.second, weight: 900, font: head, col: "left", anim: IN.left, delay: 520 });
-      add({ role: "cap", body: b.left?.text ?? "", color: pal.text, weight: 400, font: body, col: "left", maxLines: 4, anim: IN.fade, delay: 640 });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
+      add({ role: "sub", body: b.right?.title ?? "", color: pal.accent, weight: 900, font: head, col: "right", anim: IN.right, delay: TEXT_LEAD + 220 });
+      add({ role: "cap", body: b.right?.text ?? "", color: pal.text, weight: 400, font: body, col: "right", maxLines: 4, anim: IN.fade, delay: TEXT_LEAD + 320 });
+      add({ role: "sub", body: b.left?.title ?? "", color: pal.second, weight: 900, font: head, col: "left", anim: IN.left, delay: TEXT_LEAD + 440 });
+      add({ role: "cap", body: b.left?.text ?? "", color: pal.text, weight: 400, font: body, col: "left", maxLines: 4, anim: IN.fade, delay: TEXT_LEAD + 540 });
       break;
     case "outro":
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: IN.rise });
-      add({ role: "sub", body: b.text ?? "", color: pal.second, weight: 700, font: body, anim: IN.fade });
-      add({ role: "pill", body: b.handle ? (/[A-Za-z@]/.test(b.handle) ? `\u2066${b.handle}\u2069` : b.handle) : "", color: pal.pillText, box: pal.pill, weight: 900, font: body, maxLines: 1, anim: IN.pop, delay: 520 });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: IN.pop });
+      add({ role: "sub", body: b.text ?? "", color: pal.second, weight: 700, font: body, anim: IN.rise });
+      add({ role: "pill", body: b.handle ? (/[A-Za-z@]/.test(b.handle) ? `⁦${b.handle}⁩` : b.handle) : "", color: pal.pillText, box: pal.pill, weight: 900, font: body, maxLines: 1, anim: IN.pop, delay: TEXT_LEAD + 460 });
       break;
   }
   return specs;
 }
 
-/** The storyboard as placed texts (the layout the commands write). Also used by the tests and the lint. */
-export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[] } {
+export interface BeatTime {
+  start: number;
+  end: number;
+}
+
+/** The storyboard as placed texts (the layout the commands write), with where each beat's words sit for the art. */
+export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[]; anchors: Anchors[]; times: BeatTime[] } {
   const f = frameOf(W, H);
   const base = sizes(f);
   const pal = paletteOf(sb.palette);
@@ -361,24 +375,32 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
     else beats.push(b);
   }
   const placed: Placed[] = [];
+  const anchors: Anchors[] = [];
+  const times: BeatTime[] = [];
   let t = sb.at ?? 0;
   beats.forEach((b, bi) => {
     const dur = beatMs(b);
-    const laid = layBeat(specsOf(b, pal, head, body), f, base);
+    const laid = layBeat(specsOf(b, pal, head, body, bi), f, base);
+    times.push({ start: t, end: t + dur });
     if (!laid) {
+      anchors.push({ top: f.top, bottom: 1 - f.bottom });
       t += dur;
       return;
     }
     // stacked from the top of the centred block; the two comparison columns side by side under the full-width texts
-    let y = f.top + (1 - f.top - f.bottom - laid.total) / 2;
+    const top = f.top + (1 - f.top - f.bottom - laid.total) / 2;
+    let y = top;
+    const mine: Placed[] = [];
     const placeOne = (blk: (typeof laid.blocks)[number], cx: number, cy: number) => {
       const s = blk.s;
       const x = cx;
-      placed.push({
+      const p: Placed = {
         beat: bi, role: s.role, body: blk.lines.join("\n"), lines: blk.lines, size: +blk.size.toFixed(4), weight: s.weight, font: s.font, color: s.color, box: s.box ?? null,
         align: "center", x: +x.toFixed(4), y: +cy.toFixed(4), w: +blk.w.toFixed(4), h: +blk.h.toFixed(4),
         start: t + s.delay, end: t + dur, anim: s.anim,
-      });
+      };
+      placed.push(p);
+      mine.push(p);
     };
     for (const blk of laid.blocks.filter((x) => (x.s.col ?? "full") === "full")) {
       placeOne(blk, 0.5, y + blk.h / 2);
@@ -394,25 +416,113 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
         }
       }
     }
+    const one = (role: Role) => {
+      const p = mine.find((x) => x.role === role);
+      return p ? { y: p.y, h: p.h, w: p.w } : undefined;
+    };
+    anchors.push({
+      head: one("head"),
+      value: one("value"),
+      quote: one("quote"),
+      pill: one("pill"),
+      items: mine.filter((x) => x.role === "item").map((x) => ({ y: x.y, h: x.h })),
+      top,
+      bottom: Math.max(...mine.map((x) => x.y + x.h / 2), top),
+    });
     t += dur;
   });
-  return { placed, palette: pal, endMs: t, beats };
+  return { placed, palette: pal, endMs: t, beats, anchors, times };
 }
 
+// ───────────── sounds: one short effect per arrival, five kinds, never the same on every beat ─────────────
+
+export type SfxKind = "swish" | "whoosh" | "hit" | "pop" | "shimmer";
+/** What each sound is (ElevenLabs makes it once; copies are placed at every cue). Short, clean, no tails. */
+export const SFX: Record<SfxKind, { prompt: string; seconds: number; name: string }> = {
+  swish: { prompt: "very short soft airy swish, a light transition swipe, clean and smooth, no tail, no reverb", seconds: 0.6, name: "سويش الانتقال" },
+  whoosh: { prompt: "quick cinematic whoosh ending in a soft stop, tight and dry, no reverb, modern motion graphics", seconds: 0.7, name: "ووش الدخول" },
+  hit: { prompt: "soft deep cinematic impact, a round sub thud with a short tail, clean, not harsh", seconds: 0.9, name: "ضربة الرقم" },
+  pop: { prompt: "small round bubble pop, pleasant and soft, like a UI element appearing, very short", seconds: 0.35, name: "نبضة العنصر" },
+  shimmer: { prompt: "gentle rising magical shimmer sparkle, soft and bright, short, no long tail", seconds: 1.1, name: "لمعة الختام" },
+};
+/** The sound cues of a piece: the transition into each beat, and the arrival of its main thing. */
+export interface SfxCue {
+  kind: SfxKind;
+  at: number;
+}
+function cuesOf(beats: Beat[], times: BeatTime[]): SfxCue[] {
+  const out: SfxCue[] = [];
+  beats.forEach((b, i) => {
+    const t = times[i].start;
+    if (i > 0) out.push({ kind: "swish", at: Math.max(0, t - 120) });
+    switch (b.kind) {
+      case "stat":
+        out.push({ kind: "pop", at: t }, { kind: "hit", at: t + TEXT_LEAD + 120 });
+        break;
+      case "quote":
+      case "outro":
+        out.push({ kind: "shimmer", at: t + TEXT_LEAD });
+        break;
+      default:
+        out.push({ kind: i % 2 === 0 ? "whoosh" : "pop", at: t + TEXT_LEAD });
+    }
+  });
+  return out;
+}
+
+/** Everything the engine decided for a piece: the texts, the art to draw, and the sounds to make and place. */
+export function motionPlan(sb: Storyboard, W: number, H: number) {
+  const laid = layoutMotion(sb, W, H);
+  return { ...laid, art: pieceArt(laid.beats, laid.palette, laid.anchors, W, H), cues: cuesOf(laid.beats, laid.times) };
+}
+
+/** The decoration's entrance by the beat's kind: shapes pop, bands and rails whip in. */
+const artIn = (b: Beat) => (b.kind === "title" || b.kind === "points" || b.kind === "steps" ? IN.whip : b.kind === "statement" ? IN.right : IN.pop);
+
 /**
- * The commands that make the piece: the background colour, then each text (add_text, then its look, place and
- * entrance/exit on "$N"), and a slow push-in on each headline. `base` = how many commands come before these in the
- * same answer (so "$N" points at the right one).
+ * The commands that make the piece: the background colour, then — when the art was drawn (`art`: picture key →
+ * file id) — a background picture per beat on one track with a transition into the next, and the beat's decoration
+ * on a track above it (entering just before the words, drifting slowly); then each text (add_text, then its look,
+ * place and entrance/exit on "$N"), and a slow push-in on each headline. `base` = how many commands come before
+ * these in the same answer (so "$N" points at the right one).
  */
-export function motionCommands(sb: Storyboard, W: number, H: number, base = 0): { commands: Command[]; endMs: number; palette: Palette } {
-  const { placed, palette, endMs } = layoutMotion(sb, W, H);
+export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, art?: Map<string, string>): { commands: Command[]; endMs: number; palette: Palette } {
+  const { placed, palette, endMs, beats, times } = layoutMotion(sb, W, H);
   const out: Command[] = [{ type: "set_background", color: palette.bg }];
+  const ref = () => `$${base + out.length}`;
+  if (art?.size) {
+    let bgTrack = "new";
+    let artTrack = "new";
+    beats.forEach((b, i) => {
+      const { start, end } = times[i];
+      const bg = art.get(`bg-${i}`);
+      if (bg) {
+        out.push({ type: "add_clip", assetId: bg, trackId: bgTrack, at: start });
+        const r = ref();
+        if (bgTrack === "new") bgTrack = r;
+        out.push({ type: "trim_clip", clipId: r, edge: "end", to: end });
+        out.push({ type: "update_clip", clipId: r, patch: { fit: "cover", transition: i < beats.length - 1 ? (beatTransition(i + 1) as { kind: string; ms: number }) : null } });
+      }
+      const deco = art.get(`art-${i}`);
+      if (deco) {
+        out.push({ type: "add_clip", assetId: deco, trackId: artTrack, at: start });
+        const r = ref();
+        if (artTrack === "new") artTrack = r;
+        out.push({ type: "trim_clip", clipId: r, edge: "end", to: end });
+        const a = artIn(b);
+        out.push({ type: "update_clip", clipId: r, patch: { fit: "cover", anim: { in: a.in, out: "fade", inMs: a.inMs, outMs: 160 } as never } });
+        // nothing still: the decoration turns and grows a touch over its beat
+        out.push({ type: "set_key", clipId: r, at: start, transform: { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 } });
+        out.push({ type: "set_key", clipId: r, at: end - 1, transform: { x: 0.5, y: 0.5, scale: 1.05, rotate: i % 2 === 0 ? 2 : -2, opacity: 1 } });
+      }
+    });
+  }
   for (const p of placed) {
     out.push({ type: "add_text", at: p.start, body: p.body, duration: p.end - p.start });
-    const ref = `$${base + out.length}`;
+    const r = ref();
     out.push({
       type: "update_clip",
-      clipId: ref,
+      clipId: r,
       patch: {
         text: { body: p.body, size: p.size, color: p.color, weight: p.weight, font: p.font, align: p.align, box: p.box, highlight: null },
         transform: { x: p.x, y: p.y, scale: 1, rotate: 0, opacity: 1 },
@@ -421,8 +531,8 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0): 
     });
     // nothing fully still: the headline and the big number drift in slowly over their beat
     if (p.role === "head" || p.role === "value") {
-      out.push({ type: "set_key", clipId: ref, at: p.start, transform: { x: p.x, y: p.y, scale: 1, rotate: 0, opacity: 1 } });
-      out.push({ type: "set_key", clipId: ref, at: p.end - 1, transform: { x: p.x, y: p.y, scale: 1.04, rotate: 0, opacity: 1 } });
+      out.push({ type: "set_key", clipId: r, at: p.start, transform: { x: p.x, y: p.y, scale: 1, rotate: 0, opacity: 1 } });
+      out.push({ type: "set_key", clipId: r, at: p.end - 1, transform: { x: p.x, y: p.y, scale: 1.04, rotate: 0, opacity: 1 } });
     }
   }
   return { commands: out, endMs, palette };

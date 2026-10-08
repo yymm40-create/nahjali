@@ -281,7 +281,7 @@ export default function AssistantPanel({
       // the clip the person chose: Claude looks at a few of its moments to know what is in it
       const look = await lookAt();
       setBusy("حيدرة يشتغل على التايملاين…");
-      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[]; checkClipId?: string | null }>(`/api/jawad/editor/projects/${projectId}`, {
+      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         message,
         history,
@@ -296,6 +296,8 @@ export default function AssistantPanel({
       reply = r.reply;
       let done = 0;
       let now = tl;
+      // the art a motion piece drew for itself: in the library before the commands that place it
+      if (r.assets?.length) onAssets(r.assets);
       if (r.commands.length) {
         const applied = run(r.commands, { label: `حيدرة: ${message.slice(0, 40)}` });
         done = applied ? r.commands.length : 0;

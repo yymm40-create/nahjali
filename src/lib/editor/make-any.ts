@@ -47,6 +47,10 @@ export interface MakeSpec {
   place: MakePlace;
   at: number;
   name: string;
+  /** more places on the timeline for copies of the same file (a sound on every arrival of a motion piece) */
+  alsoAt?: number[];
+  /** the clip's volume when placed (sound; default 1) */
+  volume?: number;
 }
 
 /** A priced plan the page can start (as is: the server checks it all again when it starts). */
@@ -63,6 +67,8 @@ export interface MakePlan {
   place: MakePlace;
   at: number;
   name: string;
+  alsoAt?: number[];
+  volume?: number;
 }
 
 const IMAGE_ASPECTS = ["1:1", "16:9", "9:16", "3:2", "2:3"];
@@ -158,6 +164,8 @@ export async function planMake(who: Who & { email?: string | null }, s: MakeSpec
       free: who.owner || e.price.coins === 0,
       place: (["over", "main", "audio", "library"] as const).includes(s.place) ? s.place : s.makeKind === "image" || s.makeKind === "video" ? "over" : "audio",
       at: Math.max(0, Math.round(Number(s.at) || 0)),
+      alsoAt: (Array.isArray(s.alsoAt) ? s.alsoAt : []).map((x) => Math.max(0, Math.round(Number(x) || 0))).slice(0, 60),
+      volume: Number.isFinite(Number(s.volume)) && Number(s.volume) > 0 ? Math.min(2, Number(s.volume)) : undefined,
       name: (s.name.trim() || `${kindName}: ${prompt.slice(0, 40)}`).slice(0, 80),
     },
   };
