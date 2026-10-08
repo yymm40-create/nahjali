@@ -36,8 +36,8 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
-        <h1 className="display text-4xl">🎨 صانع الشيت</h1>
+        {project.series_id && <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>}
+        <h1 className={project.series_id ? "display text-4xl" : "display text-2xl"}>🎨 صانع الشيت</h1>
         <p className="text-sm font-bold text-muted">
           خريطة الشيتات ← اختبار الستايل (كل ستايل بصورته) ← بس تعتمد الستايل ينرسم الماستر وكل الشيتات لحالهم ← تعتمد الصور (الكل، المحدد، أو وحدة وحدة)، وبعدها ينتقل تلقائيًا للمخرج.
           النصوص <span>{credits(cost.byService.anthropic ?? 0)}</span> · الصور <span>{credits(cost.byService.openai_image ?? 0)}</span>

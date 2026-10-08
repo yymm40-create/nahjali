@@ -1,31 +1,29 @@
 import Link from "next/link";
 import "@/app/jawad-ai/film/film-theme.css";
+import "../stage/stage.css";
 import { createClient } from "@/lib/supabase/server";
 import { requireFilmUser } from "@/lib/film/access";
 import type { FilmProject } from "@/lib/film/types";
 import { FILM_STAGES } from "@config/film";
-
-
-const STEPS = [
-  { icon: "✍️", title: "السيناريست", text: "يفهم قصتك، يسألك الأسئلة المهمة، ويكتب السيناريو مشهدًا مشهدًا." },
-  { icon: "🎨", title: "صانع الشيت", text: "تختار الستايل بلقطة من قصتك، ثم الماستر وشيتات الشخصيات والأماكن." },
-  { icon: "🎥", title: "المخرج", text: "يقسّم الفيلم لمقاطع، يكتب برومبت كل مقطع، وتولّده وتشاهده." },
-  { icon: "🎙️", title: "الأصوات", text: "تصمم صوت كل شخصية، وتحوّل الحوار المشكول إلى كلام." },
-  { icon: "📦", title: "التنزيل", text: "كل الملفات مرتبة وجاهزة للمونتاج في البرنامج اللي تحبه." },
-];
+import { STEPS } from "../stage/FilmStage";
 
 const stageLabel = (key: string) => FILM_STAGES.find((s) => s.key === key)?.label ?? key;
+const stageIcon = (key: string) => FILM_STAGES.find((s) => s.key === key)?.icon ?? "🎞️";
 
+/** The screening room's lobby: start a scene, open one of yours, or go to the series. */
 export default async function FilmHomeView({ base }: { base: string }) {
   const { allowed } = await requireFilmUser(base);
 
   if (!allowed) {
     return (
-      <div className="card space-y-3 p-6 text-center">
-        <p className="text-5xl">🎬</p>
-        <h1 className="display text-3xl">صانع الأفلام الذكي: قريبًا</h1>
-        <p className="font-bold text-muted">هذا القسم تحت التطوير ومتاح لحسابات محددة حاليًا. بنعلن عنه أول ما يجهز إن شاء الله.</p>
-        <Link href={base === "/film" ? "/" : "/jawad-ai"} className="btn btn-ghost">الرئيسية</Link>
+      <div className="fs">
+        <div className="fs-room" aria-hidden><div className="beam" /><div className="grain" /></div>
+        <div className="card mx-auto max-w-lg space-y-3 p-6 text-center">
+          <p className="text-5xl">🎬</p>
+          <h1 className="display text-3xl">صانع الأفلام الذكي: قريبًا</h1>
+          <p className="font-bold text-muted">هذا القسم تحت التطوير ومتاح لحسابات محددة حاليًا. بنعلن عنه أول ما يجهز إن شاء الله.</p>
+          <Link href={base === "/film" ? "/" : "/jawad-ai"} className="btn btn-ghost">الرئيسية</Link>
+        </div>
       </div>
     );
   }
@@ -37,59 +35,51 @@ export default async function FilmHomeView({ base }: { base: string }) {
   const projects = ((data ?? []) as FilmProject[]).filter((p) => !p.series_id);
 
   return (
-    <div className="space-y-8">
-      <header className="space-y-2 text-center">
-        <p className="text-sm font-extrabold tracking-wide text-muted">🎞️ استوديو الجواد</p>
-        <h1 className="display text-4xl">فيلم أو مسلسل، من الصفر</h1>
-        <p className="font-bold text-muted">تبدأ بفكرتك، والموقع يمشي معك مرحلة مرحلة، وأنت اللي تعتمد كل خطوة.</p>
-      </header>
+    <div className="fs">
+      <div className="fs-room" aria-hidden><div className="beam" /><div className="dust" /><div className="grain" /></div>
+      <div className="mx-auto max-w-5xl space-y-8 px-3 pb-20">
+        <header className="fs-hero">
+          <p className="fs-kicker">استوديو الجواد</p>
+          <h1>مشهدك السينمائي، من الفكرة إلى الشاشة</h1>
+          <p>تكتب فكرتك، والمشهد يُصنع معك خطوة خطوة في صفحة وحدة، وأنت اللي تعتمد كل شي.</p>
+        </header>
 
-      {/* the two branches, side by side: a film, or a series (episodes → scenes, alone or with a team) */}
-      <section className="grid grid-cols-2 gap-3" aria-label="وش تبي تصنع؟">
-        <Link href={`${base}/new`} className="film-option !min-h-[230px] !w-auto" data-tone="gold">
-          <span className="film-option-icon" aria-hidden>🎬</span>
-          <span className="film-option-step">جديد</span>
-          <h3>فيلم سينمائي</h3>
-          <p>فكرتك بسطرين، والسيناريست يبدأ معك.</p>
-        </Link>
-        <Link href={`${base}/series`} className="film-option !min-h-[230px] !w-auto">
-          <span className="film-option-icon" aria-hidden>📺</span>
-          <span className="film-option-step">مع سجاد</span>
-          <h3>المسلسل الذكي</h3>
-          <p>حلقات ومشاهد، شخصيات وبيئات، لحالك أو مع فريقك.</p>
-        </Link>
-      </section>
-
-      {/* the person's films, as big cards to swipe between */}
-      {projects.length > 0 && (
-        <section className="space-y-2" aria-label="أفلامي">
-          <h2 className="display text-2xl">أفلامي ({projects.length})</h2>
-          <div className="film-swipe">
-            {projects.map((p, i) => (
-              <Link key={p.id} href={`${base}/${p.id}`} className="film-option" style={{ animationDelay: `${Math.min(i, 6) * 0.06}s` }}>
-                <span className="film-option-icon" aria-hidden>{FILM_STAGES.find((s) => s.key === p.stage)?.icon ?? "🎞️"}</span>
-                <span className="film-option-step">{stageLabel(p.stage)}</span>
-                <h3 className="line-clamp-2">{p.title}</h3>
-                <p>آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="space-y-2" aria-label="كيف يمشي المشروع">
-        <h2 className="display text-2xl">كيف يمشي المشروع؟</h2>
-        <div className="film-swipe">
-          {STEPS.map((s, i) => (
-            <div key={s.title} className="film-option" data-tone="light" style={{ animationDelay: `${i * 0.07}s` }}>
-              <span className="film-option-icon" aria-hidden>{s.icon}</span>
-              <span className="film-option-step">{i + 1}</span>
-              <h3>{s.title}</h3>
-              <p>{s.text}</p>
-            </div>
+        <section className="fs-posters" aria-label="وش تبي تصنع؟">
+          <Link href={`${base}/new`} className="fs-poster new">
+            <span className="ic" aria-hidden>🎬</span>
+            <span className="st">جديد</span>
+            <h3>مشهد جديد</h3>
+            <p>فكرتك بسطرين، والسيناريست يبدأ معك.</p>
+          </Link>
+          <Link href={`${base}/series`} className="fs-poster series">
+            <span className="ic" aria-hidden>📺</span>
+            <span className="st">مع سجاد</span>
+            <h3>المسلسل الذكي</h3>
+            <p>حلقات ومشاهد، لحالك أو مع فريقك.</p>
+          </Link>
+          {projects.map((p, i) => (
+            <Link key={p.id} href={`${base}/${p.id}`} className="fs-poster" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s` }}>
+              <span className="ic" aria-hidden>{stageIcon(p.stage)}</span>
+              <span className="st">{stageLabel(p.stage)}</span>
+              <h3 className="line-clamp-3">{p.title}</h3>
+              <p>آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
+            </Link>
           ))}
-        </div>
-      </section>
+        </section>
+
+        <section className="fs-glass space-y-3 p-4" aria-label="كيف يمشي المشهد">
+          <h2 className="font-black">كيف يمشي المشهد؟</h2>
+          <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {STEPS.filter((s) => s.key !== "story").map((s, i) => (
+              <li key={s.key} className="fs-step" style={{ pointerEvents: "none" }}>
+                <span className="n">{i + 1}</span>
+                <span className="t"><b>{s.icon} {s.label}</b><small>{s.hint}</small></span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs font-bold text-muted">كل الخطوات في صفحة وحدة: تتقدّم وترجع متى ما تبي، واللي تغيّره ما يعيد إلا اللي يتأثر فيه فعلًا.</p>
+        </section>
+      </div>
     </div>
   );
 }

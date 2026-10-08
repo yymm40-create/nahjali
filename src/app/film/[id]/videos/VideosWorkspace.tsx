@@ -90,8 +90,10 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, dialogueStart, dialogueSource = null,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, dialogueStart, dialogueSource = null, rewind = true,
 }: {
+  /** the old «ارجع بمشروعك لنقطة» card (a series' scene); a film edits any step directly instead */
+  rewind?: boolean;
   /** ElevenLabs is configured on the server: the voices block is shown. */
   voicesOn?: boolean;
   /** The dialogue mode every shot starts on: the person's «مصدر الحوار» answer to the screenwriter. */
@@ -781,7 +783,7 @@ export default function VideosWorkspace({
           <Link href={`${filmBase}/${projectId}/voices`} className="btn btn-primary w-full">🎙️ كمّل: الأصوات</Link>
         </div>
       ) : null}
-      <RewindCard projectId={projectId} />
+      {rewind && <RewindCard projectId={projectId} />}
       {error && <p className="error-box">{error}</p>}
     </div>
     </EditsLeftContext>

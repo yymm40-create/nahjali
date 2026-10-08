@@ -13,7 +13,7 @@ export default function JawadFilmLayout({ children }: { children: React.ReactNod
       {/* the film maker's own look: the JAWAD logo's navy, blue and gold on white, reels and film in the background */}
       <div className="jw-sec" data-jw-section="film">
         <FilmDecor />
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 pb-16 pt-6">
+        <div className="film-shell mx-auto w-full max-w-3xl space-y-4 px-4 pb-16 pt-6">
           <SectionHint kind="film" />
           {children}
         </div>

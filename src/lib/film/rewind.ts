@@ -1,8 +1,9 @@
 // «ارجع بمشروعك لنقطة»: after the video is made (or any later stage), the person can go back to the screenwriter, the
 // sheets or the director to change something, without losing work:
 //   fork  — a NEW project with everything up to and including that stage (the original stays untouched);
-//   reset — the SAME project goes back to that stage and everything after it is deleted.
-// Server only. Nothing here is charged: copying and deleting call no paid service.
+//   reset — the SAME project goes back to that stage; the texts after it are deleted, but its pictures, videos and
+//          voices are kept in «المكتبة» (archived under their old names, never shown as the new work's).
+// Server only. Nothing here is charged: copying and archiving call no paid service.
 
 import { randomUUID } from "node:crypto";
 import { UserError } from "@/lib/api";
@@ -73,15 +74,17 @@ export async function resetProject(project: FilmProject, toRaw: unknown) {
   await assertIdle(project.id);
   const later = LATER_STAGES[to];
   const { data } = await db().from("film_assets").select("*").eq("project_id", project.id);
-  const doomed = ((data ?? []) as FilmAsset[]).filter((a) => afterPoint(a, to));
-  const paths = new Set(doomed.map((a) => a.storage_path).filter((p): p is string => Boolean(p)));
+  const doomed = ((data ?? []) as FilmAsset[]).filter((a) => afterPoint(a, to) && !a.ref_key.startsWith("archive:"));
+  const paths = new Set<string>();
   // the joined dialogue tracks sent to the video model are not assets: they live in the voices folder
   {
     const { data: files } = await storage.from(FILM_BUCKET).list(`${projectDir(project)}/voices`, { limit: 1000 });
-    for (const f of files ?? []) if (f.name.startsWith("track-") || doomed.some((a) => a.storage_path?.endsWith(f.name))) paths.add(`${projectDir(project)}/voices/${f.name}`);
+    for (const f of files ?? []) if (f.name.startsWith("track-")) paths.add(`${projectDir(project)}/voices/${f.name}`);
   }
-  if (doomed.length) {
-    const { error } = await db().from("film_assets").delete().in("id", doomed.map((a) => a.id));
+  // kept for «المكتبة»: out of the way of the new work (an archived ref_key matches no sheet or shot), files untouched
+  const at = new Date().toISOString();
+  for (const a of doomed) {
+    const { error } = await db().from("film_assets").update({ status: a.storage_path ? "rejected" : "failed", ref_key: `archive:${a.ref_key}`, meta: { ...(a.meta ?? {}), archived_at: at, archived_from: a.ref_key } }).eq("id", a.id);
     if (error) throw error;
   }
   if (later.length) {

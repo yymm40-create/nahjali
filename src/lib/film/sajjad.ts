@@ -413,7 +413,7 @@ async function proposeActions(scope: Scope, userId: string, raw: Reply["actions"
       if ((to === "screenwriter" || to === "sheets") && rankOf(stage) > rankOf("sheets")) lost.push("شغل المخرج كله (خريطة المقاطع وبرومبتاتها)");
       if (sum?.videos) lost.push(`${sum.videos} فيديو`);
       if (sum?.voices) lost.push(`${sum.voices} صوت`);
-      out.push({ ...base, to, effect: `يرجع العمل إلى ${stageLabel(to)}. ينحذف: ${lost.length ? lost.join("، ") : "لا شي"}. يبقى: ${to === "screenwriter" ? "القصة والسيناريو" : to === "sheets" ? "القصة والسيناريو وخريطة الشيتات وصورها" : "كل شي حتى برومبتات المخرج"}.` });
+      out.push({ ...base, to, effect: `يرجع العمل إلى ${stageLabel(to)}. يُزال من الشغل (ويبقى في «المكتبة» أرشيفًا): ${lost.length ? lost.join("، ") : "لا شي"}. يبقى: ${to === "screenwriter" ? "القصة والسيناريو" : to === "sheets" ? "القصة والسيناريو وخريطة الشيتات وصورها" : "كل شي حتى برومبتات المخرج"}.` });
       stage = to;
       continue;
     }

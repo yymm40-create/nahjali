@@ -35,8 +35,8 @@ export default async function DirectorView({ id, base }: { id: string; base: str
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>
-        <h1 className="display text-4xl">🎥 المخرج السينمائي</h1>
+        {project.series_id && <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>}
+        <h1 className={project.series_id ? "display text-4xl" : "display text-2xl"}>🎥 المخرج السينمائي</h1>
         <p className="text-sm font-bold text-muted">
           الفهم ← أسئلة الإخراج ← خريطة التوليدات ← تحليل وبرومبت لكل توليد، والاعتماد يولّد الفيديو.
           النصوص <span>{credits(cost.byService.anthropic ?? 0)}</span> · الفيديو <span>{credits(cost.byService.seedance ?? 0)}</span>
