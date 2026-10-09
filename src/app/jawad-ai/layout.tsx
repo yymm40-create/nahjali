@@ -6,6 +6,7 @@ import { getUsername } from "@/lib/username";
 import { headers } from "next/headers";
 import { gamesAllowed, getVisibility } from "@/lib/games/access";
 import { contentAllowed, getVisibility as contentVisibility } from "@/lib/content/access";
+import { designerAllowed, getVisibility as designerVisibility } from "@/lib/designer/access";
 import { jawadSession, jawadVisibleTo } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import InDevelopment from "@/components/jawad/InDevelopment";
@@ -43,17 +44,20 @@ export default async function JawadLayout({ children }: { children: React.ReactN
     : [null, null];
   // «صانع الألعاب» shows in the bar by the owner's switch (/admin/games); the owner sees it hidden while it is "owner" only
   // (and «صانع المحتوى» the same way, by its switch in /admin/content)
-  const [gamesOk, gamesVis, contentOk, contentVis] = await Promise.all([
+  // (and «المصمم الذكي» by its switch in /admin/designer)
+  const [gamesOk, gamesVis, contentOk, contentVis, designerOk, designerVis] = await Promise.all([
     user ? gamesAllowed(user.email) : false,
     owner ? getVisibility() : "all",
     user ? contentAllowed(user.email) : false,
     owner ? contentVisibility() : "all",
+    user ? designerAllowed(user.email) : false,
+    owner ? designerVisibility() : "all",
   ]);
   const bar = {
     ...rt,
     sections: rt.sections
-      .filter((s) => (s.implementation !== "games" || gamesOk) && (s.implementation !== "content" || contentOk))
-      .map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s.implementation === "content" ? { ...s, enabled: contentVis !== "owner" } : s)),
+      .filter((s) => (s.implementation !== "games" || gamesOk) && (s.implementation !== "content" || contentOk) && (s.implementation !== "designer" || designerOk))
+      .map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s.implementation === "content" ? { ...s, enabled: contentVis !== "owner" } : s.implementation === "designer" ? { ...s, enabled: designerVis !== "owner" } : s)),
   };
   return (
     <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }} suppressHydrationWarning>
