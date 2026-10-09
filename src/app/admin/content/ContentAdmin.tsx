@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 
 interface Run { id: string; label: string; mode: "quick" | "deep"; total: number; done: number; failed: number; passed: number; errors: number; avg: number; usd: number; byKind: Record<string, { n: number; avg: number }>; fixes: string[] }
-interface Data { visibility: "owner" | "codes" | "all"; persona: { text: string; edited: boolean }; runs: Run[]; estimate: { quick: number; deep: number }; kinds: { id: string; name: string; examples: number }[] }
+interface Tpl { id: string; name: string; group: string; image: string | null }
+interface Data { visibility: "owner" | "codes" | "all"; persona: { text: string; edited: boolean }; runs: Run[]; estimate: { quick: number; deep: number }; kinds: { id: string; name: string; examples: number }[]; templates: Tpl[]; templateExamples: number; pictureUsd: number }
 interface Worst { idx: number; scenario: { kind: string; message: string }; transcript: { role: string; text: string }[]; verdict: { score: number; bad: string; fix: string } | null; error: string | null }
 
 const KIND: Record<string, string> = { carousel: "كاروسيل", reel_script: "سكربت ريل", reel_produced: "ريل منتج", motion: "موشن", titles: "عناوين وكابشن", repurpose: "إعادة توظيف", trap: "فخاخ" };
@@ -21,6 +22,8 @@ export default function ContentAdmin() {
   const [running, setRunning] = useState<Run | null>(null);
   const [bad, setBad] = useState<Worst[]>([]);
   const stop = useRef(false);
+  const [making, setMaking] = useState<{ id: string; done: number; total: number } | null>(null);
+  const stopPics = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -47,6 +50,33 @@ export default function ContentAdmin() {
       setErr(e instanceof Error ? e.message : "تعذّر التنفيذ.");
     }
   };
+
+  /** Draws the pictures of the templates that have none (or of all of them), one by one; each is kept for everyone. */
+  async function makePictures(all: boolean) {
+    if (!d) return;
+    const todo = d.templates.filter((t) => all || !t.image);
+    if (!todo.length) return;
+    if (!confirm(`نرسم ${todo.length} صورة قالب بـ GPT Image 2؟ التكلفة التقريبية $${(todo.length * d.pictureUsd).toFixed(2)} مرة وحدة، وتُحفظ ويشوفها الكل في كل المحادثات.`)) return;
+    stopPics.current = false;
+    setErr(null);
+    setMsg(null);
+    let ok = 0;
+    for (const [i, t] of todo.entries()) {
+      if (stopPics.current) break;
+      setMaking({ id: t.id, done: i, total: todo.length });
+      try {
+        const r = await postJson<{ flag: string | null }>(URL, { action: "template_image", id: t.id });
+        ok++;
+        if (r.flag) setMsg(`«${t.name}»: انحفظت وفيها ملاحظة بعد الفحص (${r.flag})`);
+      } catch (e) {
+        setErr(`«${t.name}»: ${e instanceof Error ? e.message : "تعذّر الرسم."}`);
+        break;
+      }
+    }
+    setMaking(null);
+    if (ok) setMsg(`انرسمت ${ok} صورة قالب ✅`);
+    await load();
+  }
 
   const n = Math.max(1, Math.min(1000, Number(count) || 0));
   const cost = d ? n * d.estimate[mode] : 0;
@@ -100,9 +130,29 @@ export default function ContentAdmin() {
         </div>
       </section>
 
+      <section className="card space-y-3 p-4">
+        <h2 className="text-xl font-extrabold">🖼️ صور قوالب الكاروسيل ({d.templates.filter((t) => t.image).length} من {d.templates.length})</h2>
+        <p className="text-sm font-bold text-muted">٢٤ قالب يعرضها محمد باقر للعميل في معرض (صور صغيرة تكبّر بالضغط). لكل قالب صورة غلاف تجريبية واحدة بـ GPT Image 2 (نفس العنوان في كل القوالب ليسهل المقارنة)، تُفحص كتابتها العربية مثل أي شريحة، وتنرسم <b>مرة وحدة</b> وتظهر لكل المستخدمين في كل المحادثات. القالب بلا صورة يظهر بلوحة ألوانه. التكلفة التقريبية للصورة ${d.pictureUsd.toFixed(2)}$.</p>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn btn-primary" disabled={!!making || d.templates.every((t) => t.image)} onClick={() => makePictures(false)}>ارسم الناقص ({d.templates.filter((t) => !t.image).length}) · ≈ ${(d.templates.filter((t) => !t.image).length * d.pictureUsd).toFixed(2)}</button>
+          <button className="btn btn-ghost" disabled={!!making} onClick={() => makePictures(true)}>أعد رسم الكل · ≈ ${(d.templates.length * d.pictureUsd).toFixed(2)}</button>
+          {making && <button className="btn btn-ghost" onClick={() => { stopPics.current = true; }}>أوقف بعد الحالية</button>}
+        </div>
+        {making && <p className="text-sm font-bold">يرسم «{d.templates.find((t) => t.id === making.id)?.name}» ({making.done + 1} من {making.total})… كل صورة تأخذ حتى دقيقتين، لا تقفل الصفحة.</p>}
+        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+          {d.templates.map((t) => (
+            <li key={t.id} className="space-y-1 text-center text-xs font-bold">
+              {t.image ? <img src={t.image} alt={t.name} className="aspect-square w-full rounded-xl object-cover" loading="lazy" /> : <div className="grid aspect-square w-full place-items-center rounded-xl bg-surface-2 text-muted">بلا صورة</div>}
+              <span className="block truncate">{t.name}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="card space-y-2 p-4">
         <h2 className="text-xl font-extrabold">📚 بنك الأمثلة</h2>
         <p className="text-sm font-bold text-muted">لكل نوع عمل ألف مثال جاهز (طلب كما يكتبه الناس ← ما يُقرأ منه، وما يُسأل عنه، وهيكل المخرج). في كل رسالة يشوف محمد باقر أقرب ٣ أمثلة لطلب العميل. الأمثلة مبنية في الكود وتُفحص كلها في اختبارات المشروع.</p>
+        <p className="text-sm font-bold text-muted">وفوقها ٢٤ قالبًا × {d.templateExamples} كاروسيلًا مكتملًا ({(24 * d.templateExamples).toLocaleString("en")}): خطة الشرائح بنصوصها العربية القصيرة، وتوجيه الغلاف والشريحة الداخلية بنظام التصميم كاملًا كما يذهب لـ GPT Image 2. يشوف أقرب مثالين لطلب العميل ولقالبه.</p>
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {d.kinds.map((k) => (
             <li key={k.id} className="rounded-xl bg-surface-2 px-3 py-2 text-sm font-bold">{k.name}: <span dir="ltr">{k.examples.toLocaleString("en")}</span></li>

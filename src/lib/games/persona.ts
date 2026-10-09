@@ -1,6 +1,7 @@
 // «قنبر» — the persona's text: the owner's edit (games_kv) or the default template (config/games.ts), and the whole
 // system text of a conversation (persona + the platform's rules + the library notes of the games named). Server only.
 
+import { OPTIONS_RULE } from "@/lib/chat-options";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GAMES_KV, GAMES_PLATFORM_RULES, QANBAR_PERSONA } from "@config/games";
 
@@ -27,7 +28,10 @@ export async function resetPersona() {
   await db().from("games_kv").delete().eq("key", GAMES_KV.persona);
 }
 
-/** The whole system text: persona, then what the platform requires, then the library notes (when games were named). */
+/**
+ * The whole system text: persona, then what the platform requires (the rules and the clickable answers every chat
+ * ends with), then the library notes (when games were named).
+ */
 export function systemText(persona: string, libraryBlock = "") {
-  return [persona, GAMES_PLATFORM_RULES, libraryBlock].filter(Boolean).join("\n\n");
+  return [persona, GAMES_PLATFORM_RULES, OPTIONS_RULE, libraryBlock].filter(Boolean).join("\n\n");
 }

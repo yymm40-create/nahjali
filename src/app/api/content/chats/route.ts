@@ -24,9 +24,11 @@ export const GET = handle(async (req: Request) => {
   const messages = chat.messages.map((m) => ({
     ...m,
     files: m.files?.map((f) => ({ ...f, url: ups.get(f.id) ?? null })),
-    slides: m.slides ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null })) } : undefined,
+    slides: m.slides
+      ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null })), failed: m.slides.failed.map(({ n, reason, text }) => ({ n, reason, text })) }
+      : undefined,
   }));
-  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: !!chat.pending, record: chat.record } });
+  return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: chat.pending ? { total: chat.pending.slides.length, mode: chat.pending.mode, todo: chat.pending.slides.map((x) => x.n) } : null, record: chat.record } });
 });
 
 export const DELETE = handle(async (req: Request) => {

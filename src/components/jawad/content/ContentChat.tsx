@@ -1,25 +1,36 @@
 "use client";
 
-// «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, the
-// messages with the person's attachments, the carousel's slides as they are made (each downloadable), and the edit
-// rooms he opens in «حيدرة كت». The look is content.css; this file holds the behaviour.
+// «صانع المحتوى» — the desk and the conversation with «محمد باقر»: chats on the side, cards to start from, his
+// questions as buttons (and the two galleries: carousel templates and the 24 cartoon styles), the messages with the
+// person's attachments, the carousel's slides appearing as they are drawn (each downloadable, each with its check and
+// a way to draw it again), and the edit rooms he opens in «حيدرة كت». The look is content.css.
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
+import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
+import { answerLine, DELEGATE_LINE, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 
 interface FileView { id: string; kind: "image" | "video" | "audio"; name: string; durationMs: number | null; url?: string | null }
-interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null }
+interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
+interface FailView { n: number; reason: string; detail?: string; text: string }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string }
+interface Question { label: string; kind: "choice" | "templates" | "styles"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
   text: string;
   files?: FileView[];
-  slides?: { aspect: string; items: SlideView[]; failed: number };
+  questions?: Question[];
+  slides?: SlidesView;
   editor?: { id: string; title: string };
   error?: boolean;
 }
 interface ChatItem { id: string; title: string }
+interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
+interface Palette { name: string; bg: string; text: string; primary: string; accent: string }
+interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; palettes?: Palette[]; structures?: string[] }
+interface Galleries { templates: GalleryItem[]; styles: GalleryItem[] }
 
 const STARTS = [
   { ic: "🖼️", t: "كاروسيل", d: "من فكرة أو نص إلى شرائح جاهزة بالصور", m: "أبي كاروسيل. اسألني عن اللي تحتاجه عشان نبدأ.", c: "#f6b73c" },
@@ -31,10 +42,10 @@ const STARTS = [
 
 const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧" } as const;
 
-/** The answer's light markdown (headings, lists, tables, bold, rules) as elements. */
+/** The answer's light markdown (headings, lists, tables, bold, rules; colours as swatches) as elements. */
 function Rich({ text }: { text: string }) {
   const inline = (s: string) =>
-    s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : /^`[^`]+`$/.test(p) ? <code key={i}>{p.slice(1, -1)}</code> : <span key={i}>{p}</span>));
+    s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : /^`[^`]+`$/.test(p) ? <code key={i}>{p.slice(1, -1)}</code> : <Swatches key={i} text={p} cls="ct" />));
   const out: React.ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let table: string[][] | null = null;
@@ -88,7 +99,234 @@ const FLOATERS: { s: number; c: string; t: number; d: number; top: string; left:
   { s: 40, c: "#a78bfa", t: 12, d: 52, top: "72%", left: "92%" },
 ];
 
-export default function ContentChat({ name, persona, loginHref }: { name: string; persona: string; loginHref: string | null }) {
+/** A thumbnail of a gallery item: its picture, or (a template with no picture yet) its palette. */
+function Thumb({ item, big }: { item: GalleryItem; big?: boolean }) {
+  if (item.image) return <img src={item.image} alt={item.name} loading="lazy" className={`ct-thumb ${big ? "big" : ""}`} />;
+  const p = item.palettes?.[0];
+  return (
+    <div className={`ct-thumb ct-thumb-ph ${big ? "big" : ""}`} style={{ background: p?.bg ?? "#222" }} aria-label={item.name}>
+      {p && (
+        <>
+          <b style={{ color: p.text }}>{item.name}</b>
+          <span><i style={{ background: p.text }} /><i style={{ background: p.primary }} /><i style={{ background: p.accent }} /></span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One of the two galleries: small pictures grouped, a press enlarges, «اختر» picks, with a way out and a way to write. */
+export function Gallery({ kind, items, onPick, onNone, onWrite }: { kind: "templates" | "styles"; items: GalleryItem[]; onPick: (i: GalleryItem) => void; onNone: () => void; onWrite: () => void }) {
+  const [view, setView] = useState<GalleryItem | null>(null);
+  const groups = [...new Set(items.map((i) => i.group))];
+  useEffect(() => {
+    if (!view) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setView(null);
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [view]);
+  return (
+    <div className="ct-gal">
+      {groups.map((g) => (
+        <section key={g}>
+          <h5>{g}</h5>
+          <div className={`ct-gal-grid ${kind}`}>
+            {items.filter((i) => i.group === g).map((i) => (
+              <figure key={i.id} className="ct-gal-card">
+                <button type="button" className="ct-gal-open" onClick={() => setView(i)} aria-label={`كبّر ${i.name}`}>
+                  <Thumb item={i} />
+                  <span className="zoom" aria-hidden>🔍</span>
+                </button>
+                <figcaption>
+                  <b>{i.name}</b>
+                  <button type="button" className="ct-mini" onClick={() => onPick(i)}>اختر</button>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      ))}
+      <div className="ct-actions">
+        <button type="button" className="ct-opt" onClick={onNone}>{kind === "templates" ? "🚫 بدون قالب — صمّم لي بحرية" : "🚫 بدون ستايل كرتوني"}</button>
+        <button type="button" className="ct-opt ct-opt-write" onClick={onWrite}>✍️ أكتب وصفي الخاص</button>
+      </div>
+      {view && (
+        <div className="ct-lightbox" role="dialog" aria-modal="true" aria-label={view.name} onClick={() => setView(null)}>
+          <div className="ct-lightbox-card" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="ct-lightbox-x" onClick={() => setView(null)} aria-label="أغلق">✕</button>
+            <Thumb item={view} big />
+            <h4>{view.name} <small>({view.group})</small></h4>
+            <p>{view.description}</p>
+            <p className="muted">يناسب: {view.bestFor}</p>
+            {view.structures && <p className="muted">بنيات تناسبه: {view.structures.join("، ")}</p>}
+            {view.palettes && (
+              <div className="ct-pals">
+                {view.palettes.map((p) => (
+                  <span key={p.name} className="ct-pal">
+                    <i style={{ background: p.bg }} /><i style={{ background: p.text }} /><i style={{ background: p.primary }} /><i style={{ background: p.accent }} />
+                    {p.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="ct-actions">
+              <button type="button" className="ct-send" style={{ height: 42 }} onClick={() => { onPick(view); setView(null); }}>اختر هذا</button>
+              <button type="button" className="ct-opt" onClick={() => setView(null)}>رجوع للمعرض</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The questions of an answer as buttons. One plain question sends on a press; a batch collects the answers first. */
+export function Questions({ questions, gal, disabled, onSend, onWrite }: { questions: Question[]; gal: Galleries | null; disabled: boolean; onSend: (text: string) => void; onWrite: () => void }) {
+  const [picked, setPicked] = useState<Record<number, string[]>>({});
+  const [other, setOther] = useState<Record<number, string>>({});
+  const [openOther, setOpenOther] = useState<Record<number, boolean>>({});
+  const [gallery, setGallery] = useState<number | null>(null);
+  const [lines, setLines] = useState<Record<number, string>>({});
+
+  // one plain question: a press sends it
+  if (questions.length === 1 && questions[0].kind === "choice" && !questions[0].multi) {
+    return <QuickReplies cls="ct" options={questions[0].options} disabled={disabled} onPick={(o) => onSend(o)} onWrite={onWrite} />;
+  }
+
+  const toggle = (qi: number, o: string, multi: boolean) =>
+    setPicked((p) => {
+      const cur = p[qi] ?? [];
+      return { ...p, [qi]: cur.includes(o) ? cur.filter((x) => x !== o) : multi ? [...cur, o] : [o] };
+    });
+  const answerOf = (qi: number): string | null => {
+    const q = questions[qi];
+    if (q.kind !== "choice") return lines[qi] ?? null;
+    const a = [...(picked[qi] ?? []), ...(other[qi]?.trim() ? [other[qi].trim()] : [])];
+    return a.length ? answerLine(q.label, a) : null;
+  };
+  const answered = questions.map((_, i) => answerOf(i)).filter((x): x is string => !!x);
+  const send = (delegate: boolean) => onSend([...answered, ...(delegate ? [DELEGATE_LINE] : [])].join("\n"));
+  const chosenName = (qi: number) => (lines[qi] ? stripMarks(lines[qi]).replace(/^•\s*[^:]+:\s*/, "") : "");
+
+  return (
+    <div className="ct-qs">
+      {questions.map((q, qi) => (
+        <div key={qi} className="ct-q">
+          <b>{qi + 1}) {q.label}{q.multi ? " (يجوز أكثر من خيار)" : ""}</b>
+          {q.kind === "choice" ? (
+            <div className="ct-opts">
+              {q.options.map((o) => (
+                <button key={o} type="button" className="ct-opt" aria-pressed={(picked[qi] ?? []).includes(o)} disabled={disabled} onClick={() => toggle(qi, o, q.multi)}>
+                  <Swatches text={o} cls="ct" />
+                </button>
+              ))}
+              <button type="button" className="ct-opt ct-opt-write" aria-pressed={!!openOther[qi]} disabled={disabled} onClick={() => setOpenOther((s) => ({ ...s, [qi]: !s[qi] }))}>✍️ غير ذلك</button>
+              {openOther[qi] && <input className="ct-inline" dir="auto" value={other[qi] ?? ""} placeholder="اكتب إجابتك" onChange={(e) => setOther((s) => ({ ...s, [qi]: e.target.value.slice(0, 200) }))} />}
+            </div>
+          ) : (
+            <div className="ct-opts">
+              <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
+                {q.kind === "templates" ? "🖼️ افتح معرض القوالب" : "🎨 افتح معرض الستايلات الكرتونية"}
+              </button>
+              {chosenName(qi) && (
+                <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
+              )}
+              {gallery === qi && (
+                gal ? (
+                  <Gallery
+                    kind={q.kind as "templates" | "styles"}
+                    items={q.kind === "templates" ? gal.templates : gal.styles}
+                    onPick={(i) => { setLines((s) => ({ ...s, [qi]: q.kind === "templates" ? templateLine({ id: i.id, name: i.name }) : styleLine({ id: i.id, name: i.name }) })); setGallery(null); }}
+                    onNone={() => { setLines((s) => ({ ...s, [qi]: q.kind === "templates" ? templateLine({ id: "none", name: "" }) : styleLine({ id: "none", name: "" }) })); setGallery(null); }}
+                    onWrite={onWrite}
+                  />
+                ) : (
+                  <p className="muted">جاري تحميل المعرض…</p>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+      <div className="ct-actions">
+        <button type="button" className="ct-send" style={{ height: 42, minWidth: 0, padding: "0 18px" }} disabled={disabled || answered.length === 0} onClick={() => send(false)}>أرسل الإجابات ✅</button>
+        <button type="button" className="ct-opt" disabled={disabled} onClick={() => send(true)}>🎲 اختر أنت لكل ما لم أحدده</button>
+        <button type="button" className="ct-opt ct-opt-write" disabled={disabled} onClick={onWrite}>✍️ اكتب إجابة مختلفة</button>
+      </div>
+    </div>
+  );
+}
+
+/** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void }) {
+  const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
+  const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
+  const aspect = s.aspect.replace(":", " / ") || "1 / 1";
+  return (
+    <div className="ct-slidebox">
+      {s.running && (
+        <div className="ct-progress" role="status" aria-live="polite">
+          <span className="ct-spin" aria-hidden />
+          <div>
+            <b>GPT Image 2 يرسم الشرائح… ({done} من {s.total})</b>
+            <small>كل شريحة يرسمها ثم يفحص كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+            <span className="bar"><i style={{ width: `${s.total ? Math.round((done / s.total) * 100) : 0}%` }} /></span>
+          </div>
+        </div>
+      )}
+      <div className="ct-slides">
+        {ns.map((n) => {
+          const item = s.items.find((i) => i.n === n);
+          const drawing = s.todo.includes(n);
+          return (
+            <figure key={n} className={`ct-slide ${drawing ? "drawing" : ""} ${item?.flag ? "flag" : ""}`} style={{ aspectRatio: aspect }}>
+              {item?.url && <img src={item.url} alt={item.text} loading="lazy" />}
+              <span className="n">{n}</span>
+              {drawing && <span className="shimmer" aria-label={`الشريحة ${n} قيد الرسم`}><span className="ct-spin" /></span>}
+              {item && !drawing && (
+                <>
+                  {item.flag ? <span className="badge warn" title={item.flag}>⚠️</span> : item.fixed ? <span className="badge fixed" title="أُعيد رسمها بعد أن وُجد فيها خطأ">🔁✓</span> : <span className="badge ok" title="سليمة في الفحص الآلي">✓</span>}
+                  <span className="tools">
+                    {item.download && <a href={item.download} download={`${item.name}.png`}>⬇️</a>}
+                    <button type="button" disabled={busy} onClick={() => onRetry([n])} title="أعد رسم هذه الشريحة">🔁</button>
+                  </span>
+                </>
+              )}
+            </figure>
+          );
+        })}
+      </div>
+      {s.items.some((i) => i.flag) && (
+        <ul className="ct-flags">
+          {s.items.filter((i) => i.flag).map((i) => <li key={i.n}>⚠️ الشريحة {i.n}: {i.flag}</li>)}
+        </ul>
+      )}
+      {s.failed.length > 0 && (
+        <div className="ct-failed">
+          <b>❌ لم تُصنع {s.failed.length} {s.failed.length === 1 ? "شريحة" : "شرائح"}:</b>
+          <ul>
+            {s.failed.map((f) => (
+              <li key={f.n}>
+                الشريحة {f.n}: {f.reason}
+                {owner && f.detail && <small dir="ltr"> {f.detail}</small>}
+                <button type="button" className="ct-mini" disabled={busy} onClick={() => onRetry([f.n])}>أعد المحاولة</button>
+              </li>
+            ))}
+          </ul>
+          {s.failed.length > 1 && <button type="button" className="ct-mini" disabled={busy} onClick={() => onRetry("failed")}>أعد محاولة كل الفاشلة</button>}
+        </div>
+      )}
+      {s.report && <pre className="ct-report">{s.report}</pre>}
+      {!s.running && s.items.length > 0 && (
+        <div className="ct-actions">
+          <button className="ct-mini" type="button" onClick={onDownloadAll}>⬇️ حمّل كل الشرائح ({s.items.length})</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ContentChat({ name, persona, loginHref, owner }: { name: string; persona: string; loginHref: string | null; owner?: boolean }) {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -97,9 +335,11 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
   const [side, setSide] = useState(false);
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [gal, setGal] = useState<Galleries | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
 
   const refresh = useCallback(async () => {
     if (loginHref) return;
@@ -110,6 +350,13 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
 
+  // the galleries load once, when a message first asks for one
+  const wantsGallery = msgs.some((m) => m.questions?.some((x) => x.kind !== "choice"));
+  useEffect(() => {
+    if (!wantsGallery || gal || loginHref) return;
+    api<Galleries>("/api/content/templates").then(setGal).catch(() => null);
+  }, [wantsGallery, gal, loginHref]);
+
   const move = (e: React.PointerEvent) => {
     const r = root.current;
     if (!r || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -117,20 +364,29 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
     r.style.setProperty("--my", String((e.clientY / window.innerHeight - 0.5) * 2));
   };
 
-  /** The produce step: the slides come back and sit on the last answer. */
-  const produceNow = useCallback(async (id: string) => {
+  /** The last answer that carries a carousel gets this block (the produce step reports into it). */
+  const putSlides = (fn: (old: SlidesView | undefined) => SlidesView) =>
+    setMsgs((m) => {
+      const i = m.map((x) => !!x.slides).lastIndexOf(true);
+      if (i < 0) return m;
+      const copy = [...m];
+      copy[i] = { ...copy[i], slides: fn(copy[i].slides) };
+      return copy;
+    });
+
+  /** The produce step: the server draws a few slides a call; this asks again while it says `running`. */
+  const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
     setBusy("producing");
+    let first = true;
     try {
-      const r = await postJson<{ slides: SlideView[]; failed: number }>("/api/content/produce", { chatId: id });
-      setMsgs((m) => {
-        const i = m.map((x) => x.role).lastIndexOf("assistant");
-        if (i < 0) return m;
-        const copy = [...m];
-        copy[i] = { ...copy[i], slides: { aspect: "", items: r.slides, failed: r.failed } };
-        return copy;
-      });
-      if (r.failed) setMsgs((m) => [...m, { role: "assistant", text: `⚠️ ${r.failed} من الشرائح ما انصنعت. اطلب إعادة إنتاجها بالرقم.`, error: true }]);
+      for (let guard = 0; guard < 40; guard++) {
+        const r = await postJson<{ aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null }>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
+        first = false;
+        putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report }));
+        if (!r.running) break;
+      }
     } catch (e) {
+      putSlides((old) => ({ aspect: old?.aspect ?? "", items: old?.items ?? [], todo: [], failed: old?.failed ?? [], running: false, total: old?.total ?? 0, report: old?.report }));
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر إنتاج الشرائح.", error: true }]);
     } finally {
       setBusy("");
@@ -140,11 +396,11 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
   async function open(id: string) {
     setSide(false);
     try {
-      const r = await api<{ chat: { id: string; messages: Msg[]; pending: boolean } }>(`/api/content/chats?id=${id}`);
+      const r = await api<{ chat: { id: string; messages: Msg[]; pending: Pending | null } }>(`/api/content/chats?id=${id}`);
       setChatId(r.chat.id);
       setMsgs(r.chat.messages);
-      // a carousel ordered before the page was left: made now
-      if (r.chat.pending) void produceNow(r.chat.id);
+      // a carousel ordered before the page was left: drawn on from where it stopped
+      if (r.chat.pending) void runProduce(r.chat.id);
     } catch (e) {
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
@@ -181,17 +437,29 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
     setPending([]);
     setBusy("writing");
     setMsgs((m) => [...m, { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
+    let produceId: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; pending: boolean; editor: { id: string; title: string } | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id) });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string } | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id) });
       setChatId(r.chatId);
-      setMsgs((m) => [...m, { role: "assistant", text: r.text, editor: r.editor ?? undefined }]);
+      setMsgs((m) => {
+        const copy = [...m];
+        const reply: Msg = { role: "assistant", text: r.text, questions: r.questions ?? undefined, editor: r.editor ?? undefined };
+        // a new carousel: the placeholders of its slides appear at once; a fix: the slides being redrawn are marked
+        if (r.pending?.mode === "all") reply.slides = { aspect: "", items: [], todo: r.pending.todo, failed: [], running: true, total: r.pending.total };
+        if (r.pending?.mode === "fix") {
+          const i = copy.map((x) => !!x.slides).lastIndexOf(true);
+          if (i >= 0) copy[i] = { ...copy[i], slides: { ...copy[i].slides!, todo: r.pending.todo, running: true, report: undefined } };
+        }
+        return [...copy, reply];
+      });
       void refresh();
-      if (r.pending) await produceNow(r.chatId);
+      if (r.pending) produceId = r.chatId;
     } catch (e) {
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر الرد.", error: true }]);
     } finally {
       setBusy("");
     }
+    if (produceId) await runProduce(produceId);
   }
 
   async function remove(id: string) {
@@ -212,6 +480,8 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
       }, i * 400);
     });
   };
+
+  const lastAssistant = msgs.map((x) => x.role).lastIndexOf("assistant");
 
   return (
     <div className="ct" ref={root} onPointerMove={move}>
@@ -273,7 +543,7 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
             ) : (
               msgs.map((m, i) => (
                 <div key={i} className={`ct-msg ${m.role === "user" ? "user" : "bot"} ${m.error ? "err" : ""}`}>
-                  {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{m.text}</p> : <Rich text={m.text} />}
+                  {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{stripMarks(m.text)}</p> : <Rich text={m.text} />}
                   {m.files && m.files.length > 0 && (
                     <div className="ct-files">
                       {m.files.map((f) => (
@@ -284,38 +554,33 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
                       ))}
                     </div>
                   )}
-                  {m.slides && m.slides.items.length > 0 && (
-                    <>
-                      <div className="ct-slides">
-                        {m.slides.items.map((s) => (
-                          <figure key={s.fileId} className="ct-slide">
-                            {s.url && <img src={s.url} alt={s.text} loading="lazy" />}
-                            <span className="n">{s.n}</span>
-                            {s.download && <a href={s.download} download={`${s.name}.png`}>⬇️ حمّل</a>}
-                          </figure>
-                        ))}
-                      </div>
-                      <div className="ct-actions">
-                        <button className="ct-mini" onClick={() => downloadAll(m.slides!.items)}>⬇️ حمّل كل الشرائح ({m.slides.items.length})</button>
-                        {m.slides.failed > 0 && <span style={{ color: "#fca5a5", fontSize: 12 }}>{m.slides.failed} ما انصنعت</span>}
-                      </div>
-                    </>
+                  {m.slides && (
+                    <SlidesBox
+                      s={m.slides}
+                      busy={!!busy}
+                      owner={!!owner}
+                      onRetry={(ns) => chatId && void runProduce(chatId, ns)}
+                      onDownloadAll={() => downloadAll(m.slides!.items)}
+                    />
                   )}
                   {m.editor && (
                     <div className="ct-actions">
                       <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}`}>🎬 افتح غرفة المونتاج «{m.editor.title}» مع حيدرة</Link>
                     </div>
                   )}
+                  {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (
+                    <Questions key={`q${i}-${msgs.length}`} questions={m.questions} gal={gal} disabled={!!busy} onSend={(t) => void send(t)} onWrite={() => box.current?.focus()} />
+                  ) : null}
                   {m.role === "assistant" && !m.error && (
                     <div className="ct-actions"><button className="ct-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>
                   )}
                 </div>
               ))
             )}
-            {busy && (
+            {busy === "writing" && (
               <div className="ct-think">
                 <span className="ct-dots"><span /><span /><span /></span>
-                {busy === "producing" ? "GPT Image 2 يرسم الشرائح… (من دقيقة إلى ٤ دقائق)" : `${persona} يكتب…`}
+                {persona} يكتب…
               </div>
             )}
             <div ref={end} />
@@ -338,12 +603,13 @@ export default function ContentChat({ name, persona, loginHref }: { name: string
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق ملفات" title="أرفق صور أو فيديو أو صوت" disabled={uploading || !!busy} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
                 <textarea
+                  ref={box}
                   className="ct-input"
                   dir="auto"
                   rows={1}
                   value={q}
                   maxLength={8000}
-                  placeholder={`اكتب لـ${persona}…`}
+                  placeholder={busy === "producing" ? "الشرائح قيد الرسم…" : `اكتب لـ${persona}…`}
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}
                 />

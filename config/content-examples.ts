@@ -46,7 +46,7 @@ const SOURCES = ["مقال كتبته", "منشور طويل", "حلقة بود�
 const CTAS = ["احفظ المنشور", "شاركه مع صديق", "اكتب رأيك", "تابعنا", "اطلب الآن", "سجّل من الرابط", "راسلنا", "جرّبها اليوم"];
 
 /** A small deterministic generator (the same seed gives the same bank on every machine). */
-class Rng {
+export class Rng {
   private s: number;
   constructor(seed: number) {
     this.s = seed >>> 0 || 1;

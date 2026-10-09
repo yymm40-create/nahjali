@@ -247,6 +247,9 @@ export default function AssistantChat({
                     {q}
                   </button>
                 ))}
+                <button type="button" className="rounded-full border border-dashed border-jw-line-strong px-3 py-1 text-xs hover:bg-jw-surface-2" onClick={() => input.current?.focus()}>
+                  ✍️ اكتب إجابة مختلفة
+                </button>
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ import { DEFAULT_SECTIONS, FIXED_IMPLEMENTATIONS, RESERVED_SECTION_IDS, sectionP
 import { cleanHistory, forModel, titleOf } from "@/lib/games/chats";
 import { nameKey, namedIn, parseGameLines, type Game } from "@/lib/games/library";
 import { systemText } from "@/lib/games/persona";
+import { OPTIONS_RULE } from "@/lib/chat-options";
 import { scenarios } from "@/lib/games/scenarios";
 import { parseVerdict } from "@/lib/games/tests";
 
@@ -14,6 +15,9 @@ describe("«قنبر»", () => {
     expect(t.indexOf("PERSONA")).toBeLessThan(t.indexOf(GAMES_PLATFORM_RULES));
     expect(t.endsWith("LIB")).toBe(true);
     expect(GAMES_PLATFORM_RULES).toContain("لا تدّعِ");
+    // every reply ends with clickable options (with a way to write one's own), told after the rules
+    expect(t.indexOf(GAMES_PLATFORM_RULES)).toBeLessThan(t.indexOf(OPTIONS_RULE));
+    expect(t.indexOf(OPTIONS_RULE)).toBeLessThan(t.indexOf("LIB"));
   });
 });
 

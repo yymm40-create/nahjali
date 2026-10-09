@@ -1,10 +1,13 @@
 // «صانع المحتوى» — the conversations: kept per person with the project's record and what was produced, so a chat is
-// still there after a reload, with its slides and the edit rooms it opened. Server only.
+// still there after a reload, with its questions, slides and the edit rooms it opened. Server only.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CONTENT, type CarouselAspect } from "@config/content";
 
 const db = () => createAdminClient();
+
+const ASPECTS = ["1:1", "2:3", "9:16", "16:9"];
+const aspectOf = (v: unknown): CarouselAspect => (ASPECTS.includes(String(v)) ? String(v) : "1:1") as CarouselAspect;
 
 /** A file the person attached to a message (one of their JAWAD AI uploads). */
 export interface Attachment {
@@ -20,6 +23,42 @@ export interface Slide {
   fileId: string;
   name: string;
   text: string;
+  /** what the check after drawing still found wrong (the slide is kept, flagged) */
+  flag?: string;
+  /** drawn again by itself after the check found a mistake, and then sound */
+  fixed?: boolean;
+}
+
+/** A slide that was not made, with what is needed to try it again. */
+export interface SlideFailure {
+  n: number;
+  reason: string;
+  /** the technical reason (only the owner sees it) */
+  detail?: string;
+  text: string;
+  prompt: string;
+}
+
+/** The carousel of an answer: what exists, what is still being drawn, what failed, and the check's report. */
+export interface SlidesBlock {
+  aspect: CarouselAspect;
+  items: Slide[];
+  /** the numbers still being drawn (new ones, or ones being drawn again) */
+  todo: number[];
+  failed: SlideFailure[];
+  running: boolean;
+  total: number;
+  styleId: string;
+  templateId: string;
+  report?: string;
+}
+
+/** A question of a batch, answered by pressing (or writing). */
+export interface Question {
+  label: string;
+  kind: "choice" | "templates" | "styles";
+  options: string[];
+  multi: boolean;
 }
 
 export interface Turn {
@@ -27,19 +66,31 @@ export interface Turn {
   text: string;
   /** the person's attachments with this message */
   files?: Attachment[];
+  /** the questions this answer asks, as buttons */
+  questions?: Question[];
   /** a carousel this answer produced (filled by the produce step) */
-  slides?: { aspect: CarouselAspect; items: Slide[]; failed: number };
+  slides?: SlidesBlock;
   /** an edit room this answer opened in «حيدرة كت» */
   editor?: { id: string; title: string };
   error?: boolean;
 }
 
-/** A carousel the persona asked to produce, waiting for the produce step (then cleared). */
+/** A carousel ordered and being made: the produce step takes it a few slides at a time. */
 export interface PendingProduce {
+  id: string;
   aspect: CarouselAspect;
   slides: { n: number; text: string; prompt: string }[];
-  /** the message index that announced it (its slides are attached there) */
+  /** the message index the slides are attached to */
   at: number;
+  styleId: string;
+  templateId: string;
+  /** "fix": only these slides are drawn again, in a carousel that exists */
+  mode: "all" | "fix";
+  /** made in this production so far */
+  made: Slide[];
+  failed: SlideFailure[];
+  /** failures of other slides of the carousel that this production leaves as they are */
+  carry: SlideFailure[];
 }
 
 export interface Chat {
@@ -53,17 +104,41 @@ export interface Chat {
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const objs = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === "object") : []);
 
 function readFiles(v: unknown): Attachment[] | undefined {
-  if (!Array.isArray(v)) return undefined;
-  const out = v
-    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object" && typeof f.id === "string")
+  const out = objs(v)
+    .filter((f) => typeof f.id === "string")
     .map((f) => ({ id: f.id as string, kind: (f.kind === "video" || f.kind === "audio" ? f.kind : "image") as Attachment["kind"], name: str(f.name, 200), durationMs: typeof f.durationMs === "number" ? f.durationMs : null }))
     .slice(0, CONTENT.maxAttachments);
   return out.length ? out : undefined;
 }
 
-/** Messages from storage, checked: only the two roles, text, the attachments, what was produced. */
+const readSlide = (x: Record<string, unknown>): Slide => ({
+  n: num(x.n),
+  fileId: x.fileId as string,
+  name: str(x.name, 120),
+  text: str(x.text, 2000),
+  ...(typeof x.flag === "string" && x.flag ? { flag: x.flag.slice(0, 400) } : {}),
+  ...(x.fixed === true ? { fixed: true } : {}),
+});
+const readFailure = (x: Record<string, unknown>): SlideFailure => ({ n: num(x.n), reason: str(x.reason, 300), ...(typeof x.detail === "string" && x.detail ? { detail: x.detail.slice(0, 400) } : {}), text: str(x.text, 2000), prompt: str(x.prompt, 4000) });
+
+/** Questions from the model or from storage, checked: at most 6, each with a short label and at most 8 short options. */
+export function readQuestions(v: unknown): Question[] | undefined {
+  const out = objs(v)
+    .map((q): Question => {
+      const kind = q.kind === "templates" || q.kind === "styles" ? q.kind : "choice";
+      const options = kind === "choice" ? (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 140)).slice(0, 8) : [];
+      return { label: str(q.label, 120).trim(), kind, options, multi: q.multi === true && kind === "choice" };
+    })
+    .filter((q) => q.label && (q.kind !== "choice" || q.options.length > 0))
+    .slice(0, 6);
+  return out.length ? out : undefined;
+}
+
+/** Messages from storage, checked: only the two roles, text, the attachments, the questions, what was produced. */
 export function cleanHistory(raw: unknown): Turn[] {
   if (!Array.isArray(raw)) return [];
   const out: Turn[] = [];
@@ -78,12 +153,22 @@ export function cleanHistory(raw: unknown): Turn[] {
     const turn: Turn = { role, text };
     if (files) turn.files = files;
     if (m.error === true) turn.error = true;
+    if (role === "assistant") {
+      const questions = readQuestions(m.questions);
+      if (questions) turn.questions = questions;
+    }
     const s = m.slides as Record<string, unknown> | undefined;
     if (s && typeof s === "object" && Array.isArray(s.items)) {
       turn.slides = {
-        aspect: (["1:1", "2:3", "9:16", "16:9"].includes(String(s.aspect)) ? String(s.aspect) : "1:1") as CarouselAspect,
-        items: (s.items as Record<string, unknown>[]).filter((x) => x && typeof x.fileId === "string").map((x) => ({ n: Number(x.n) || 0, fileId: x.fileId as string, name: str(x.name, 120), text: str(x.text, 2000) })),
-        failed: Number(s.failed) || 0,
+        aspect: aspectOf(s.aspect),
+        items: objs(s.items).filter((x) => typeof x.fileId === "string").map(readSlide),
+        todo: (Array.isArray(s.todo) ? s.todo : []).map(num).filter((n) => n > 0).slice(0, CONTENT.maxSlides),
+        failed: objs(s.failed).map(readFailure),
+        running: s.running === true,
+        total: num(s.total),
+        styleId: str(s.styleId, 60),
+        templateId: str(s.templateId, 60),
+        ...(typeof s.report === "string" && s.report ? { report: s.report.slice(0, 4000) } : {}),
       };
     }
     const e = m.editor as Record<string, unknown> | undefined;
@@ -96,13 +181,23 @@ export function cleanHistory(raw: unknown): Turn[] {
 export function readPending(v: unknown): PendingProduce | null {
   if (!v || typeof v !== "object") return null;
   const p = v as Record<string, unknown>;
-  if (!Array.isArray(p.slides)) return null;
-  const slides = (p.slides as Record<string, unknown>[])
-    .filter((s) => s && typeof s === "object" && typeof s.prompt === "string")
-    .map((s, i) => ({ n: Number(s.n) || i + 1, text: str(s.text, 2000), prompt: str(s.prompt, 4000) }))
+  const slides = objs(p.slides)
+    .filter((s) => typeof s.prompt === "string")
+    .map((s, i) => ({ n: num(s.n) || i + 1, text: str(s.text, 2000), prompt: str(s.prompt, 4000) }))
     .slice(0, CONTENT.maxSlides);
   if (!slides.length) return null;
-  return { aspect: (["1:1", "2:3", "9:16", "16:9"].includes(String(p.aspect)) ? String(p.aspect) : "1:1") as CarouselAspect, slides, at: Number(p.at) || 0 };
+  return {
+    id: str(p.id, 60) || "legacy",
+    aspect: aspectOf(p.aspect),
+    slides,
+    at: num(p.at),
+    styleId: str(p.styleId, 60),
+    templateId: str(p.templateId, 60),
+    mode: p.mode === "fix" ? "fix" : "all",
+    made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
+    failed: objs(p.failed).map(readFailure),
+    carry: objs(p.carry).map(readFailure),
+  };
 }
 
 /** The turns sent to Claude: the last ones, starting with the person, without failed answers. */

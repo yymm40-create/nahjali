@@ -419,6 +419,26 @@
 .gm-card b { display: block; margin-top: 6px; font-size: 15px; transform: translateZ(18px); }
 .gm-card small { display: block; margin-top: 2px; color: #b8c0d4; font-size: 12px; line-height: 1.6; transform: translateZ(10px); }
 
+/* clickable answers under the last reply, and colours drawn as swatches */
+.gm-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.gm-opt {
+  border: 1px solid color-mix(in srgb, var(--gm-cyan) 55%, transparent);
+  background: color-mix(in srgb, var(--gm-cyan) 10%, transparent);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: start;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
+}
+.gm-opt:hover:not(:disabled) { background: color-mix(in srgb, var(--gm-cyan) 24%, transparent); transform: translateY(-2px); border-color: var(--gm-cyan); }
+.gm-opt:disabled { opacity: 0.5; cursor: not-allowed; }
+.gm-opt-write { border-style: dashed; border-color: color-mix(in srgb, var(--gm-amber) 60%, transparent); background: transparent; color: var(--gm-amber); }
+.gm-chip { display: inline-flex; align-items: center; gap: 5px; margin-inline: 3px; padding: 1px 7px; border-radius: 999px; background: #ffffff14; font-size: 12px; vertical-align: middle; }
+.gm-sw { display: inline-block; width: 14px; height: 14px; border-radius: 5px; border: 1px solid #ffffff66; }
+
 /* the box to write in */
 .gm-compose {
   display: flex;
