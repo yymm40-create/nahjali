@@ -3,6 +3,7 @@
 // (the owner's prices); the job is then made by JAWAD AI's job system (its checks, its coins, its refunds), the result
 // lands in «أعمالي» and the page brings it into the project and places it. Server only.
 
+import type { Fit } from "./motion-build";
 import { giveAttempt, takeAttempt } from "@/lib/film/team";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -69,6 +70,8 @@ export interface MakePlan {
   name: string;
   alsoAt?: number[];
   volume?: number;
+  /** a motion piece's narration: where its beats sit, so the page can stretch them to the recording's real length */
+  fit?: Fit;
 }
 
 const IMAGE_ASPECTS = ["1:1", "16:9", "9:16", "3:2", "2:3"];

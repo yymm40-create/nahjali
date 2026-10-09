@@ -16,7 +16,9 @@ import { findTemplate } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
 import { cleanHistory, forModel, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
-import { catalogBlock, chosenBlock, chosenIds, getPersona, systemText } from "./persona";
+import { catalogBlock, chosenBlock, chosenIds, getPersona, motionCatalogBlock, systemText } from "./persona";
+import { moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
+import { readStoryboard } from "@/lib/editor/motion-build";
 import { stripMarks } from "./marks";
 import { lastSlidesAt } from "./produce";
 import { randomUUID } from "crypto";
@@ -38,8 +40,8 @@ export const ANSWER_SCHEMA = {
         required: ["label", "kind", "options", "multi"],
         properties: {
           label: { type: "string", description: "نص السؤال القصير" },
-          kind: { type: "string", enum: ["choice", "templates", "styles"], description: "choice: خيارات نصية؛ templates: معرض قوالب الكاروسيل؛ styles: معرض الستايلات الكرتونية الـ٢٤" },
-          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٧) لـ choice، وفارغة للمعرضين" },
+          kind: { type: "string", enum: ["choice", "templates", "styles", "motion", "moods"], description: "choice: خيارات نصية؛ templates: معرض قوالب الكاروسيل؛ styles: معرض الستايلات الكرتونية الـ٢٤؛ motion: معرض مهارات الموشن عند حيدرة؛ moods: معرض مشاعر الموشن" },
+          options: { type: "array", items: { type: "string" }, description: "إجابات قصيرة (٢–٧) لـ choice، وفارغة للمعارض" },
           multi: { type: "boolean", description: "يجوز اختيار أكثر من إجابة" },
         },
       },
@@ -103,13 +105,14 @@ export const ANSWER_SCHEMA = {
     handoff: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "title", "shape", "package"],
+      required: ["on", "title", "shape", "package", "storyboard"],
       description: "تسليم ريل منتج أو موشن جرافيكس إلى حيدرة، فقط بعد طلب صريح. on=false بدون تسليم.",
       properties: {
         on: { type: "boolean" },
         title: { type: "string", description: "اسم المشروع (قصير)" },
         shape: { type: "string", enum: ["9:16", "16:9"] },
         package: { type: "string", description: "الحزمة الكاملة المكتفية بذاتها بالعربية (المرحلة الخامسة)" },
+        storyboard: { type: "string", description: "للموشن جرافيكس فقط: لوحة القصة كنص JSON (style وmood وpalette وbeats… كما يقرؤها حيدرة)؛ الموقع يفحصها ويسلّمها لحيدرة. فارغ لغير الموشن." },
       },
     },
   },
@@ -121,7 +124,7 @@ interface Answer {
   record: string;
   produce: { on: boolean; mode: string; aspect: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
-  handoff: { on: boolean; title: string; shape: string; package: string };
+  handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
 }
 
 export interface Reply {
@@ -142,7 +145,7 @@ const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" } as c
 function assistantNote(t: Turn): string {
   const parts: string[] = [];
   if (t.questions?.length) {
-    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "templates" ? " (معرض القوالب)" : q.kind === "styles" ? " (معرض الستايلات الكرتونية)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
+    parts.push(`[الأسئلة التي عُرضت للعميل كأزرار: ${t.questions.map((q, i) => `${i + 1}) ${q.label}${q.kind === "templates" ? " (معرض القوالب)" : q.kind === "styles" ? " (معرض الستايلات الكرتونية)" : q.kind === "motion" ? " (معرض مهارات الموشن)" : q.kind === "moods" ? " (معرض مشاعر الموشن)" : `: ${q.options.join(" | ")}`}`).join("؛ ")}]`);
   }
   const s = t.slides;
   if (s) {
@@ -189,6 +192,8 @@ export async function say(userId: string, chatId: string | null, message: string
   const ask = stripMarks(said || turns.find((t) => t.role === "user")?.text || "");
   const parts = [
     catalogBlock(),
+    // the motion skills, feelings and drawing tools: when the work is motion graphics
+    ...(ids.motion || ids.mood || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
     chosenBlock(ids),
     contentExamplesBrief(nearestContentExamples(ask, 3)),
     ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? "")) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
@@ -287,8 +292,13 @@ async function openEditRoom(userId: string, h: Answer["handoff"], history: Turn[
   const id = await createEditorProject(userId, { title, kind });
   const p = await requireEditorProject(id, userId);
   const pkg = h.package.trim().slice(0, 7900);
+  // a motion piece: the storyboard Baqir wrote, checked by the same reader حيدرة's engine uses (what it can't read is left out), with the choices the client made
+  const sb = typeof h.storyboard === "string" && h.storyboard.trim() ? readStoryboard(h.storyboard) : null;
+  const motion = sb
+    ? `\n\nلوحة القصة (storyboard) للموشن جرافيكس، فحصها الموقع وهي جاهزة للبناء كما هي (مهارة: ${motionStyleOf(sb.style)?.ar ?? "من اختيارك"}، مزاج: ${moodOf(sb.look?.mood)?.ar ?? "من اختيارك"}): استخدمها في الحقل "motion" كما هي أو عدّل عليها بحسب طلب العميل.\n${JSON.stringify(sb).slice(0, 12000)}\nالخلفيات والأيقونات والمشاهد ترسمها أنت بأدوات المحرر (لا تطلب خلفية من GPT Image 2 إلا إذا طلب العميل صورة صراحةً).`
+    : "";
   // the handoff is what حيدرة reads first at every answer; the message is what the person sees
-  const { error } = await db().from("editor_chats").upsert({ project_id: p.id, user_id: p.user_id, messages: [], handoff: `من محمد باقر (صانع المحتوى) — حزمة المشروع الكاملة:\n${pkg}`, chats: 1, updated_at: new Date().toISOString() });
+  const { error } = await db().from("editor_chats").upsert({ project_id: p.id, user_id: p.user_id, messages: [], handoff: `من محمد باقر (صانع المحتوى) — حزمة المشروع الكاملة:\n${pkg}${motion}`, chats: 1, updated_at: new Date().toISOString() });
   if (error) console.error("content handoff chat", error.message);
   // the files the person attached in this conversation (the latest of each), pointed at from the room's library
   const seen = new Map<string, Attachment>();

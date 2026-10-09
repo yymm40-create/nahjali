@@ -11,6 +11,11 @@ import type { TalkLayout } from "./talk-motion";
 export type MotionPace = "fast" | "normal" | "calm";
 /** The art's language: how backgrounds and decorations are drawn (motion-art.ts) — each skill its own. */
 export type MotionTheme = "glow" | "paper" | "bold" | "flat" | "chart" | "rail" | "split" | "frame" | "arabesque" | "confetti" | "badge" | "none" | "grid" | "film";
+/** The drawn scenes that can sit behind a beat (motion-scenes.ts); "none" = no scene. */
+export type SceneId = "stars" | "rain" | "dunes" | "skyline" | "mosque" | "waves" | "clouds" | "rays" | "sparkles" | "bars" | "rings" | "stripes" | "dots" | "hills" | "chalk" | "none";
+export const SCENE_IDS: SceneId[] = ["stars", "rain", "dunes", "skyline", "mosque", "waves", "clouds", "rays", "sparkles", "bars", "rings", "stripes", "dots", "hills", "chalk", "none"];
+/** The feeling a piece (or one beat) carries: it sets the tempo, the entrances and the scene drawn behind the words. */
+export type MotionMood = "joy" | "sad" | "teach" | "aware" | "urgent" | "calm" | "proud" | "hype" | "faith";
 export type MotionEntrance = "mixed" | "whip" | "rise" | "right" | "fade" | "settle" | "punch" | "blur" | "glitch" | "flash" | "wipe";
 
 /** What the engine does with a piece (every field has a default; a skill sets some, the person's wishes override). */
@@ -38,6 +43,10 @@ export interface MotionLook {
   theme: MotionTheme;
   /** the words centred, or on the right (Arabic's start) */
   align: "center" | "right";
+  /** the feeling of the piece (a beat can carry its own) */
+  mood?: MotionMood;
+  /** a scene behind every beat that has none of its own ("none"/absent: only the theme's art) */
+  scene?: SceneId;
 }
 
 export const DEFAULT_LOOK: MotionLook = {
@@ -254,6 +263,47 @@ export function styleInText(text: string): MotionStyle | undefined {
   return MOTION_STYLES.find((s) => t.includes(` ${norm(s.ar)} `)) ?? MOTION_STYLES.find((s) => s.aliases.some((a) => norm(a).length >= 3 && t.includes(` ${norm(a)} `)));
 }
 
+
+export interface MoodDef {
+  id: MotionMood;
+  /** the name the person writes */
+  ar: string;
+  aliases: string[];
+  icon: string;
+  hint: string;
+  /** the tempo and entrance this feeling asks for (they win over a skill's, because the feeling is what the viewer feels) */
+  pace: MotionPace;
+  entrance: MotionEntrance;
+  sfx: "full" | "soft" | "none";
+  /** the scene drawn behind the words */
+  scene: SceneId;
+  /** the palette it starts from when the piece has no skill and no palette of its own */
+  palette: string;
+  /** how حيدرة writes for it (for Claude and محمد باقر) */
+  craft: string;
+}
+
+export const MOODS: MoodDef[] = [
+  { id: "joy", ar: "الفرح", aliases: ["فرح", "سعادة", "مبهج", "احتفال", "تهنئة", "joy", "happy"], icon: "🎉", hint: "ألوان دافئة وشرارات صاعدة، دخول مستقر لطيف وإيقاع خفيف", pace: "normal", entrance: "settle", sfx: "full", scene: "sparkles", palette: "riso", craft: "Joy: warm, bright words that rise; short upbeat lines, a celebratory number or wish, rounded friendly shapes; sparkles behind; never heavy words." },
+  { id: "sad", ar: "الحزن", aliases: ["حزن", "حزين", "مأساوي", "عزاء", "فقد", "sad", "grief"], icon: "🌧️", hint: "مطر هادئ وألوان باردة، ظهور ناعم وبطيء وكلمات قليلة", pace: "calm", entrance: "fade", sfx: "soft", scene: "rain", palette: "night", craft: "Sadness: few words, long holds (≥ 5 s), soft fades, no punches or exclamation marks, cool dim colours, rain behind; the pain is stated plainly, then one line of consolation or meaning." },
+  { id: "teach", ar: "التعليم", aliases: ["تعليم", "تعليمي", "شرح", "درس", "تدريب", "teach", "lesson"], icon: "🧠", hint: "سبورة طباشير وشبكة هادئة، خطوات تدخل من اليمين وفكرة واحدة في كل لقطة", pace: "normal", entrance: "right", sfx: "soft", scene: "chalk", palette: "night", craft: "Teaching: one idea a beat, a question first, then the rule, then an example; numbered steps enter from the right; a chalk-board scene; end with a one-line summary." },
+  { id: "aware", ar: "التوعية", aliases: ["توعية", "توعوي", "تحذير", "انتباه", "حملة", "aware", "awareness"], icon: "📢", hint: "دوائر نبض تلفت الانتباه، رقم يضرب ثم السبب ثم المطلوب فعله", pace: "normal", entrance: "rise", sfx: "soft", scene: "rings", palette: "studio", craft: "Awareness: a striking number or question first, then the cause, then the ONE action asked of the viewer; pulse rings behind; serious but not scary; end with the action and the handle." },
+  { id: "urgent", ar: "الاستعجال", aliases: ["استعجال", "عاجل", "تنبيه عاجل", "عرض محدود", "urgent", "hurry"], icon: "⏱️", hint: "خطوط مائلة وإيقاع سريع، قطع حاد ودخول سحب سريع", pace: "fast", entrance: "whip", sfx: "full", scene: "stripes", palette: "studio", craft: "Urgency: 2 s beats, imperative verbs, a deadline or count, diagonal stripes behind, whips and punches; the call to action is held ≥ 3 s." },
+  { id: "calm", ar: "السكينة", aliases: ["سكينة", "هدوء", "هادئ", "استرخاء", "تأمل", "calm", "relax"], icon: "🌿", hint: "سحب وموجات ناعمة، ظهور من الضباب وإيقاع بطيء جدًا", pace: "calm", entrance: "blur", sfx: "none", scene: "clouds", palette: "night", craft: "Calm: breathing room — one short line per beat held 5–6 s, soft clouds, blur-in, no sounds, long gentle transitions." },
+  { id: "proud", ar: "الفخر", aliases: ["فخر", "اعتزاز", "وطني", "إنجاز", "اليوم الوطني", "proud", "pride"], icon: "🏆", hint: "أفق مدينة ذهبي وأشعة، ظهور واثق ثابت وكلمات كبيرة", pace: "normal", entrance: "punch", sfx: "soft", scene: "skyline", palette: "majlis", craft: "Pride: confident, large words, an achievement number, a skyline behind with gold light; steady, never rushed; the closing line gives credit." },
+  { id: "hype", ar: "الحماس", aliases: ["حماس", "حماسي", "متحمس", "إثارة", "هايب", "hype", "energy"], icon: "🔥", hint: "أشعة منطلقة وسرعة عالية، ضربات ودخول سحب وكلمات مظللة", pace: "fast", entrance: "punch", sfx: "full", scene: "rays", palette: "studio", craft: "Hype: 2 s beats, the key word in the highlight pill, big numbers that hit, rays behind, hard cuts or flashes; it ends on the biggest moment." },
+  { id: "faith", ar: "الخشوع", aliases: ["خشوع", "إيمان", "روحانية", "دعاء", "عبادة", "faith", "devotion"], icon: "🕌", hint: "أفق مسجد ونجوم وهلال، ظهور ناعم وخط أميري هادئ", pace: "calm", entrance: "blur", sfx: "none", scene: "mosque", palette: "majlis", craft: "Devotion: reverent and slow; a verse or narration exactly as given, with its source; a mosque skyline and stars behind; no punches, no music unless asked." },
+];
+
+export const moodOf = (id: unknown): MoodDef | undefined => (typeof id === "string" && id ? MOODS.find((m) => m.id === id || m.ar === id) : undefined);
+
+/** The mood named in the person's words (the Arabic name first, then an alias), or none. */
+export function moodInText(text: string): MoodDef | undefined {
+  const t = ` ${norm(text)} `;
+  const word = (a: string) => norm(a).length >= 3 && (t.includes(` ${norm(a)} `) || t.includes(` ب${norm(a)} `) || t.includes(` ال${norm(a)} `) || t.includes(` بال${norm(a)} `));
+  return MOODS.find((m) => word(m.ar.replace(/^ال/, ""))) ?? MOODS.find((m) => m.aliases.some(word));
+}
+
 const PACES: MotionPace[] = ["fast", "normal", "calm"];
 export const THEMES: MotionTheme[] = ["glow", "paper", "bold", "flat", "chart", "rail", "split", "frame", "arabesque", "confetti", "badge", "none", "grid", "film"];
 const ENTRANCES: MotionEntrance[] = ["mixed", "whip", "rise", "right", "fade", "settle", "punch", "blur", "glitch", "flash", "wipe"];
@@ -272,14 +322,25 @@ export function readLook(raw: unknown, transitionIds: ReadonlySet<string>): Part
   if (typeof o.drift === "boolean") out.drift = o.drift;
   if (THEMES.includes(o.theme as MotionTheme)) out.theme = o.theme as MotionTheme;
   if (o.align === "center" || o.align === "right") out.align = o.align;
+  if (moodOf(o.mood)) out.mood = moodOf(o.mood)!.id;
+  if (SCENE_IDS.includes(o.scene as SceneId)) out.scene = o.scene as SceneId;
   return out;
 }
 
 /** The look of a piece: the defaults, then the named skill's, then what the person asked for (always last: it wins). */
 export function lookOf(style: string | undefined, own: Partial<MotionLook> | undefined): MotionLook & { style?: MotionStyle } {
   const s = motionStyleOf(style);
-  return { ...DEFAULT_LOOK, ...(s?.look ?? {}), ...(own ?? {}), ...(s ? { style: s } : {}) };
+  const m = moodOf(own?.mood);
+  // the feeling sets the tempo, entrances and sounds (over the skill's: the viewer feels the mood), and the palette when no skill gives one
+  return { ...DEFAULT_LOOK, ...(m ? { palette: m.palette } : {}), ...(s?.look ?? {}), ...(m ? { pace: m.pace, entrance: m.entrance, sfx: m.sfx } : {}), ...(own ?? {}), ...(s ? { style: s } : {}) };
 }
+
+/** The person asked for a generated picture in so many words (otherwise a motion piece draws everything itself). */
+export const askedForPicture = (message: string) => /(?:ارسم|ولّد|ولد|اصنع|سوّ|سو|ابي|أبي|أبغى|ابغى|اعمل)\s+(?:لي\s+)?(?:صور[ةه]|رسم[ةه]?|illustration|image)|جي\s*بي\s*تي|gpt\s*image|بصور[ةه] (?:من|مولد)|generate (?:an? )?(?:image|picture)/i.test(message);
+
+/** What حيدرة knows about the feelings (in his system prompt). */
+export const MOODS_SKILL = `MOODS («المشاعر») — the feeling the piece carries; the engine changes tempo, entrances, sounds and draws a scene behind the words for it. When the person says the feeling (or it is plain from the topic), set "mood" in the storyboard (and a beat can carry its own "mood" when the piece changes feeling: a sad beat, then a hopeful one). The person's own words about pace or colour still win.
+${MOODS.map((m) => `- «${m.ar}» (mood "${m.id}"; also: ${m.aliases.slice(0, 3).join("، ")}) — ${m.craft} Scene: ${m.scene}.`).join("\n")}`;
 
 /** What حيدرة knows about the named skills (in his system prompt). */
 export const MOTION_STYLES_SKILL = `NAMED MOTION SKILLS («مهارات الموشن») — each one a look the engine knows. When the person writes one of these names (or asks for "a motion in the style of …"), build the storyboard in it: set "style":"<id>" and follow its craft. THE PERSON'S OWN WISHES COME FIRST: anything they ask beyond the name (another colour or palette, slower, other fonts, no sounds, no decorations, a different transition, other beats) goes in the storyboard and wins over the skill — "palette"/"colors"/"head"/"body" for colours and fonts, and "look" for the rest: {"pace":"fast"|"normal"|"calm","entrance":"mixed"|"whip"|"rise"|"right"|"fade"|"settle"|"punch"|"blur"|"glitch"|"flash"|"wipe","transitions":["<transition id>",…] ([] = hard cuts),"background":"beat"|"steady","decor":true|false,"sfx":"full"|"soft"|"none","drift":true|false,"align":"center"|"right","theme":<one of the art languages: glow, paper, bold, flat, chart, rail, split, frame, arabesque, confetti, badge, none, grid, film>}. Only write "palette"/"look" fields the person asked for (the skill sets the rest). Say in your reply which skill you used and that they can change anything in it.

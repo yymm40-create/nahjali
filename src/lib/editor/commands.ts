@@ -157,7 +157,13 @@ export type Command =
   /** «رفع الدقة»: every clip of a file now plays its upscaled copy (same length, same moments) */
   | { type: "swap_asset"; from: string; to: string }
   /** «التعديل الذكي»: a copy of a clip on the yellow track (continuity reference for the red piece next to it) */
-  | { type: "copy_cont"; clipId: string };
+  | { type: "copy_cont"; clipId: string }
+  /**
+   * «ضبط التوقيت»: the times of every clip moved by a map of [old, new] pairs (increasing, linear between them; before
+   * the first and after the last only shifted). Texts and pictures stretch or shrink with it; sounds and videos keep
+   * their length and only start at the new moment. Used to fit a motion piece to the real length of its narration.
+   */
+  | { type: "retime"; map: [number, number][] };
 
 export class CommandError extends Error {}
 
@@ -996,6 +1002,56 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         removed += b - a;
       }
       return { timeline: t, label: `شلت ${formatTime(removed)} (${spans.length} جزء)` };
+    }
+
+    case "retime": {
+      const map = (cmd.map ?? [])
+        .map(([a, b]) => [Math.round(Number(a)), Math.round(Number(b))] as [number, number])
+        .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= 0 && b <= LIMITS.maxMs)
+        .slice(0, 120);
+      if (map.length < 1) fail("ما فيه نقاط توقيت.");
+      for (let i = 1; i < map.length; i++) if (map[i][0] <= map[i - 1][0] || map[i][1] < map[i - 1][1]) fail("نقاط التوقيت لازم تكون مرتبة تصاعديًا.");
+      const at = (x: number) => {
+        if (x <= map[0][0]) return x + (map[0][1] - map[0][0]);
+        for (let i = 1; i < map.length; i++) {
+          const [a0, b0] = map[i - 1];
+          const [a1, b1] = map[i];
+          if (x <= a1) return Math.round(b0 + ((x - a0) * (b1 - b0)) / (a1 - a0));
+        }
+        const last = map[map.length - 1];
+        return x + (last[1] - last[0]);
+      };
+      let moved = 0;
+      for (const track of t.tracks) {
+        if (track.locked && track.clips.length) fail(`المسار «${track.name}» مقفول؛ افتح القفل أول.`);
+        for (const c of track.clips) {
+          const s0 = c.start;
+          const e0 = clipEnd(c);
+          const s1 = at(s0);
+          const e1 = at(e0);
+          if (isStill(c, assets)) {
+            // a text or a picture stretches: its motion points keep their place inside it
+            const len0 = Math.max(1, e0 - s0);
+            const len1 = Math.max(LIMITS.minClipMs, e1 - s1);
+            c.keys = c.keys.map((k) => ({ ...k, t: Math.round(c.in + ((k.t - c.in) * len1) / len0) }));
+            c.out = c.in + len1 * (c.speed || 1);
+            c.words = c.words.map((w) => ({ ...w, s: Math.round((w.s * len1) / len0), e: Math.round((w.e * len1) / len0) }));
+          }
+          if (s1 !== s0) moved++;
+          c.start = s1;
+        }
+        // sounds and videos keep their length: where two now overlap, the earlier one is cut at the later one's start
+        track.clips.sort((a, b) => a.start - b.start);
+        for (let i = 0; i + 1 < track.clips.length; i++) {
+          const c = track.clips[i];
+          const over = clipEnd(c) - track.clips[i + 1].start;
+          if (over > 0) c.out = Math.max(c.in + LIMITS.minClipMs * (c.speed || 1), c.out - over * (c.speed || 1));
+        }
+        tidy(t, track);
+      }
+      t.markers = t.markers.map(at).sort((a, b) => a - b);
+      if (!moved) fail("ما تغيّر شي في التوقيت.");
+      return { timeline: t, label: "ضبطت التوقيت على الصوت" };
     }
 
     case "close_gaps": {

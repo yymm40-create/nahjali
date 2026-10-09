@@ -7,6 +7,7 @@ import { postJson } from "@/lib/fetch";
 import type { Command } from "@/lib/editor/commands";
 import { placeMade } from "@/lib/editor/make";
 import type { MakePlan } from "@/lib/editor/make-any";
+import { mapTime, retimeMap, type Fit } from "@/lib/editor/motion-build";
 import type { JobView } from "@/lib/jawad/labels";
 import type { EditorAsset } from "./types";
 
@@ -19,6 +20,8 @@ export interface Making {
   started: number;
   alsoAt?: number[];
   volume?: number;
+  /** a motion piece's narration: its beats stretch to the recording's real length when it arrives */
+  fit?: Fit;
 }
 
 const key = (projectId: string) => `jw-editor-making-${projectId}`;
@@ -58,7 +61,7 @@ function save(projectId: string, list: Making[]) {
 /** Starts a priced plan (JAWAD AI checks it again and takes its coins), and waits for it. */
 export async function startMaking(projectId: string, plan: MakePlan) {
   const r = await postJson<{ job: JobView }>(`/api/jawad/editor/projects/${projectId}`, { action: "make_start", key: `ed-${crypto.randomUUID()}`, plan });
-  save(projectId, [...load(projectId), { jobId: r.job.id, kind: plan.kind, place: plan.place, at: plan.at, name: plan.name, started: Date.now(), ...(plan.alsoAt?.length ? { alsoAt: plan.alsoAt } : {}), ...(plan.volume !== undefined ? { volume: plan.volume } : {}) }]);
+  save(projectId, [...load(projectId), { jobId: r.job.id, kind: plan.kind, place: plan.place, at: plan.at, name: plan.name, started: Date.now(), ...(plan.alsoAt?.length ? { alsoAt: plan.alsoAt } : {}), ...(plan.volume !== undefined ? { volume: plan.volume } : {}), ...(plan.fit ? { fit: plan.fit } : {}) }]);
   return r.job;
 }
 
@@ -119,6 +122,18 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
         await new Promise((ok) => setTimeout(ok, 0));
         const cmds = res.assets[0] ? placeMade(m.kind, res.assets[0].id, m.place, m.at, { alsoAt: m.alsoAt, volume: m.volume }) : [];
         if (cmds.length) run(cmds, { label: `حيدرة صنع: ${m.name.slice(0, 30)}` });
+        // the narration of a motion piece: the piece ends when the voice does (each beat keeps its share of the saying)
+        const dur = res.assets[0]?.durationMs;
+        if (m.kind === "speech" && m.fit && dur && cmds.length) {
+          const end = m.at + dur + 500;
+          const old = m.fit.marks[m.fit.marks.length - 1];
+          if (Math.abs(end - old) / Math.max(1, old - m.fit.from) > 0.03 && end > m.fit.from + 1500) {
+            const map = retimeMap(m.fit, end);
+            run([{ type: "retime", map }], { label: "ضبط الموشن على طول الصوت" });
+            // sounds still on their way follow the same map (placed where the beats now are)
+            save(projectId, load(projectId).map((x) => (x.jobId === m.jobId ? x : { ...x, at: mapTime(map, x.at), ...(x.alsoAt ? { alsoAt: x.alsoAt.map((t) => mapTime(map, t)) } : {}) })));
+          }
+        }
         flash(`وصل «${m.name}» ✓${cmds.length ? "" : " (في الملفات)"}`);
       } catch {
         // tried again at the next check

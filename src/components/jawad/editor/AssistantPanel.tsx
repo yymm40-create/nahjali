@@ -19,7 +19,7 @@ import { MAX_CHECKS } from "@/lib/editor/assistant-guide";
 import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { postJson } from "@/lib/fetch";
-import { MOTION_STYLES, styleInText } from "@/lib/editor/motion-styles";
+import { MOODS, MOTION_STYLES, styleInText } from "@/lib/editor/motion-styles";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
 import Icon from "../Icon";
@@ -144,6 +144,11 @@ export default function AssistantPanel({
   // «🎬 مهارات الموشن»: the named motion skills as chips (one press writes the start of the request)
   const [showSkills, setShowSkills] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  // «🎭 المشاعر»: the feeling of the piece, added to what is written (or the start of a request)
+  const pickMood = (ar: string) => {
+    setText((t) => (t.trim() ? `${t.replace(/\s*بمزاج «[^»]*»/, "")} بمزاج «${ar}»` : `موشن جرافيكس بمزاج «${ar}» عن: `));
+    setTimeout(() => textRef.current?.focus(), 0);
+  };
   const pickSkill = (ar: string) => {
     const talk = MOTION_STYLES.find((m) => m.ar === ar)?.talk;
     setText(talk ? `ركّب موشن على كلامي بمهارة «${ar}»` : `موشن جرافيكس بمهارة «${ar}» عن: `);
@@ -732,6 +737,14 @@ export default function AssistantPanel({
               <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => setShowSkills(true)}>
                 كل المهارات ({MOTION_STYLES.length})
               </button>
+            </div>
+            <p className="text-[11px] text-jw-muted">🎭 بأي شعور؟</p>
+            <div className="flex flex-wrap gap-1.5">
+              {MOODS.map((m) => (
+                <button key={m.id} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" title={m.hint} onClick={() => pickMood(m.ar)}>
+                  {m.icon} {m.ar}
+                </button>
+              ))}
             </div>
           </div>
         )}

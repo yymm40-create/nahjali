@@ -6,6 +6,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BAQIR_PERSONA, CONTENT_KV, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@config/content-templates";
 import { FILM_STYLES, findStyle } from "@config/film-styles";
+import { MOODS, MOTION_STYLES, moodOf, motionStyleOf } from "@/lib/editor/motion-styles";
+import { MOTION_ICONS } from "@/lib/editor/motion-icons";
+import { SCENE_IDS } from "@/lib/editor/motion-styles";
 
 const db = () => createAdminClient();
 const MAX = 80_000;
@@ -45,22 +48,45 @@ export function catalogBlock(): string {
   return `قوالب الكاروسيل التي يعرضها الموقع للعميل (معرض kind="templates"؛ يختار واحدًا أو لا يختار):\n${tpl}\n\nالستايلات الكرتونية الـ٢٤ لرسوم الصور (معرض kind="styles"؛ يطبّق الموقع نص الستايل حرفيًا على الرسوم والشخصيات والمشاهد المرسومة فقط، لا على تخطيط الكتابة):\n${sty}`;
 }
 
+/**
+ * What حيدرة can do in motion graphics, one line each (the same text every time, so it caches): the skills the client
+ * can choose from (kind="motion"), the feelings (kind="moods"), and the drawing tools he arranges backgrounds with.
+ */
+export function motionCatalogBlock(): string {
+  const skills = MOTION_STYLES.filter((x) => !x.talk).map((x) => `- ${x.id} — ${x.ar} ${x.icon} — ${x.hint}. لقطاته: ${x.beats.join("، ")}.`).join("\n");
+  const moods = MOODS.map((m) => `- ${m.id} — ${m.ar} ${m.icon} — ${m.hint}.`).join("\n");
+  return `مهارات الموشن التي يعرضها الموقع للعميل (معرض kind="motion"؛ يختار واحدة أو يترك الاختيار لحيدرة):\n${skills}\n\nمشاعر الموشن (معرض kind="moods"؛ تغيّر الإيقاع والدخول والمشهد المرسوم خلف الكلام):\n${moods}\n\nأدوات الرسم عند حيدرة: حيدرة يرتب الخلفيات بنفسه بأدوات «حيدرة كت» ولا يطلب خلفية من أي مولّد صور: ${SCENE_IDS.filter((x) => x !== "none").length} مشهدًا مرسومًا (${SCENE_IDS.filter((x) => x !== "none").join("، ")})، ومكتبة من ${MOTION_ICONS.length} أيقونة مرسومة، وأشكال يرسمها بنفسه، وتوقيت يتبع طول التعليق الصوتي. لا تطلب من جواد صورًا لخلفيات الموشن، ولا تطلب «GPT Image 2» للموشن إلا إذا طلب العميل صورة صراحةً.`;
+}
+
 const TEMPLATE_MARK = /\[قالب:([a-z0-9-]+)\]/g;
 const STYLE_MARK = /\[ستايل:([a-z0-9-]+)\]/g;
+const MOTION_MARK = /\[موشن:([a-z0-9-]+)\]/g;
+const MOOD_MARK = /\[مزاج:([a-z0-9-]+)\]/g;
 
 /** What the person picked in the galleries: the last mark of each kind in their messages ("none" = they chose neither). */
-export function chosenIds(userTexts: string[]): { template: string | null; style: string | null } {
+export interface Chosen {
+  template: string | null;
+  style: string | null;
+  /** the motion skill and the mood of the piece ("none" = حيدرة chooses) */
+  motion?: string | null;
+  mood?: string | null;
+}
+export function chosenIds(userTexts: string[]): Required<Chosen> {
   let template: string | null = null;
   let style: string | null = null;
+  let motion: string | null = null;
+  let mood: string | null = null;
   for (const t of userTexts) {
     for (const m of t.matchAll(TEMPLATE_MARK)) template = m[1];
     for (const m of t.matchAll(STYLE_MARK)) style = m[1];
+    for (const m of t.matchAll(MOTION_MARK)) motion = m[1];
+    for (const m of t.matchAll(MOOD_MARK)) mood = m[1];
   }
-  return { template, style };
+  return { template, style, motion, mood };
 }
 
 /** The full details of what was picked (the design system to copy into every slide, the style's meaning). */
-export function chosenBlock(ids: { template: string | null; style: string | null }): string {
+export function chosenBlock(ids: Chosen): string {
   const out: string[] = [];
   const t = ids.template ? findTemplate(ids.template) : null;
   if (t) {
@@ -71,5 +97,11 @@ export function chosenBlock(ids: { template: string | null; style: string | null
   const x = ids.style ? findStyle(ids.style) : null;
   if (x) out.push(`الستايل الكرتوني الذي اختاره العميل لرسوم الصور: ${x.name} (${x.id}) — ${x.description} (الموقع يضيف نصه الكامل حرفيًا إلى كل شريحة؛ ضع في "style_id" معرّفه: ${x.id}).`);
   else if (ids.style === "none") out.push('العميل اختار «بدون ستايل كرتوني»: اترك "style_id" فارغًا وصمّم الصور تصميمًا رسوميًا نظيفًا أو بصورًا حسب القالب والموضوع.');
+  const sk = ids.motion ? motionStyleOf(ids.motion) : null;
+  const md = ids.mood ? moodOf(ids.mood) : null;
+  if (sk) out.push(`مهارة الموشن التي اختارها العميل: ${sk.ar} (${sk.id}) — ${sk.hint}.\nطريقة حيدرة فيها: ${sk.craft}\nضع "style":"${sk.id}" في لوحة القصة (storyboard) التي تسلّمها لحيدرة.`);
+  else if (ids.motion === "none") out.push('العميل ترك مهارة الموشن لك: اختر الأنسب لهدفه وجمهوره وقل له اسمها بالعربية، وضع معرّفها في "style" في لوحة القصة.');
+  if (md) out.push(`مزاج الموشن الذي اختاره العميل: ${md.ar} (${md.id}) — ${md.hint}.\nكيف يُكتب: ${md.craft}\nضع "mood":"${md.id}" في لوحة القصة.`);
+  else if (ids.mood === "none") out.push('العميل ترك مزاج الموشن لك: اختر الأنسب للموضوع (فرح، حزن، تعليم، توعية، استعجال، سكينة، فخر، حماس، خشوع) وضعه في "mood".');
   return out.join("\n\n");
 }

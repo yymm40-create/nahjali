@@ -3,9 +3,10 @@ import { WOMAN_WORDING } from "@config/content";
 import { ARABIC_TEXT_RULES, CAROUSEL_TEMPLATES, designSystem } from "@config/content-templates";
 import { FILM_STYLES } from "@config/film-styles";
 import { DeskError, isTransientText } from "@/lib/content/jawad";
-import { answerLine, DELEGATE_LINE, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, DELEGATE_LINE, moodLine, motionLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import { readQuestions, readPending, cleanHistory } from "@/lib/content/chats";
-import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
+import { catalogBlock, chosenBlock, chosenIds, motionCatalogBlock } from "@/lib/content/persona";
+import { MOODS, MOTION_STYLES } from "@/lib/editor/motion-styles";
 import { buildReport, isTransient, slidePrompt, UNCHECKED } from "@/lib/content/produce";
 import { fixNote } from "@/lib/content/verify";
 
@@ -102,8 +103,8 @@ describe("the buttons and the galleries", () => {
   });
   it("finds the last pick of each kind and tells him the full details of it", () => {
     const ids = chosenIds(["أبي كاروسيل", `${templateLine({ id: "minimal-clean", name: "بسيط نظيف" })}\n${styleLine({ id: "none", name: "" })}`, templateLine({ id: "scrapbook", name: "دفتر قصاصات" })]);
-    expect(ids).toEqual({ template: "scrapbook", style: "none" });
-    expect(chosenIds(["لا شي"])).toEqual({ template: null, style: null });
+    expect(ids).toEqual({ template: "scrapbook", style: "none", motion: null, mood: null });
+    expect(chosenIds(["لا شي"])).toEqual({ template: null, style: null, motion: null, mood: null });
     const t = CAROUSEL_TEMPLATES.find((x) => x.id === "scrapbook")!;
     const block = chosenBlock({ template: "scrapbook", style: "ghibli" });
     expect(block).toContain(t.name);
@@ -160,5 +161,35 @@ describe("what is kept with the conversation", () => {
     expect(p?.made).toHaveLength(1);
     expect(p?.carry[0].n).toBe(5);
     expect(readPending({ slides: [] })).toBeNull();
+  });
+});
+
+describe("the motion choices", () => {
+  it("a pick of a skill or a mood carries a mark the server reads and the person never sees", () => {
+    const line = `${motionLine({ id: "reel", name: "الريل السريع" })}\n${moodLine({ id: "sad", name: "الحزن" })}`;
+    expect(stripMarks(line)).toBe("• مهارة الموشن: «الريل السريع»\n• مزاج الموشن: «الحزن»");
+    expect(chosenIds(["أبي موشن", line])).toMatchObject({ motion: "reel", mood: "sad" });
+    expect(chosenIds([motionLine({ id: "none", name: "" }), moodLine({ id: "none", name: "" })])).toMatchObject({ motion: "none", mood: "none" });
+  });
+  it("he is told the details of what was picked, and what to write in the storyboard", () => {
+    const block = chosenBlock({ template: null, style: null, motion: "luxury", mood: "faith" });
+    expect(block).toContain("الفخامة");
+    expect(block).toContain('"style":"luxury"');
+    expect(block).toContain("الخشوع");
+    expect(block).toContain('"mood":"faith"');
+    expect(chosenBlock({ template: null, style: null, motion: "none", mood: "none" })).toContain("اختر الأنسب");
+  });
+  it("he knows every skill and mood حيدرة has, and that حيدرة draws the backgrounds himself", () => {
+    const text = motionCatalogBlock();
+    for (const s of MOTION_STYLES.filter((x) => !x.talk)) expect(text).toContain(s.ar);
+    for (const m of MOODS) expect(text).toContain(m.ar);
+    expect(text).toContain("يرتب الخلفيات بنفسه");
+    expect(text).toContain("GPT Image 2");
+  });
+  it("readQuestions keeps the two new galleries (with no options)", () => {
+    expect(readQuestions([{ label: "المهارة؟", kind: "motion", options: ["x"], multi: true }, { label: "المزاج؟", kind: "moods", options: [], multi: false }])).toEqual([
+      { label: "المهارة؟", kind: "motion", options: [], multi: false },
+      { label: "المزاج؟", kind: "moods", options: [], multi: false },
+    ]);
   });
 });

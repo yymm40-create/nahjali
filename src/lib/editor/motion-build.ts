@@ -7,8 +7,9 @@
 
 import type { Command } from "./commands";
 import { allTracks, clipEnd, type Timeline } from "./model";
-import { beatTransition, pieceArt, type Anchors } from "./motion-art";
-import { lookOf, readLook, type MotionLook } from "./motion-styles";
+import { beatTransition, pieceArt, readShapes, type Anchors, type DrawShape } from "./motion-art";
+import { iconById, iconOf } from "./motion-icons";
+import { lookOf, moodOf, readLook, SCENE_IDS, type MotionLook, type MotionMood, type SceneId } from "./motion-styles";
 import { TR_BY_ID } from "./transitions";
 
 // ───────────── palettes (from the motion skill: five named looks, every pair checked for contrast) ─────────────
@@ -56,12 +57,25 @@ function readable(c: string, bg: string, need: number) {
  */
 export function brandPalette(c: { bg?: string; text?: string; accent?: string; second?: string } | null | undefined): Palette | null {
   if (!c || !HEX.test(c.bg ?? "")) return null;
-  const bg = c.bg!.toLowerCase();
+  let bg = c.bg!.toLowerCase();
+  // the brand's background is kept as given — except a mid-tone one that neither white nor black reaches 4.5 on: that is moved, as little as it takes
+  const best = contrast("#ffffff", bg) >= contrast("#111111", bg) ? "#ffffff" : "#111111";
+  for (let k = 0.02; k <= 1.0001 && contrast(best, bg) < 4.6; k += 0.02) bg = hexOf(rgbOf(c.bg!).map((v, i) => v + ((best === "#ffffff" ? 0 : 255) - v) * k));
   const text = readable(HEX.test(c.text ?? "") ? c.text! : contrast("#ffffff", bg) >= contrast("#111111", bg) ? "#ffffff" : "#111111", bg, 7);
   const accent = readable(HEX.test(c.accent ?? "") ? c.accent! : text, bg, 4.5);
   const second = readable(HEX.test(c.second ?? "") ? c.second! : hexOf(rgbOf(text).map((v, i) => v * 0.75 + rgbOf(bg)[i] * 0.25)), bg, 4.5);
-  const pillText = contrast(bg, accent) >= contrast(text, accent) ? bg : text;
-  return { id: "brand", ar: "ألوان هويتك", bg, text, accent, second, pill: accent, pillText: readable(pillText, accent, 4.5) };
+  // the highlight pill: the accent, with the text colour that reads best on it; when none reaches 4.5 the pill itself is lightened/darkened
+  const onPill = contrast(bg, accent) >= contrast(text, accent) ? bg : text;
+  const dark = contrast("#111111", onPill) < contrast("#ffffff", onPill);
+  let pill = accent;
+  let pillText = onPill;
+  for (let k = 0; k <= 1.0001 && contrast(pillText, pill) < 4.5; k += 0.1) {
+    pill = hexOf(rgbOf(accent).map((v, i) => v + ((dark ? 255 : 0) - v) * k));
+    // the text on the pill: the extreme that reads on it
+    pillText = contrast("#111111", pill) >= contrast("#ffffff", pill) ? "#111111" : "#ffffff";
+    if (contrast(pillText, pill) >= 4.5) break;
+  }
+  return { id: "brand", ar: "ألوان هويتك", bg, text, accent, second, pill, pillText };
 }
 
 /** Eastern Arabic (٠–٩) and Persian digits as Western ones (majed-video: Western digits always, unless asked). */
@@ -143,6 +157,15 @@ export interface Beat {
   hot?: number;
   /** how long it stays (seconds); default: from its words */
   seconds?: number;
+  /** a picture the engine draws above the words: an icon id from the library, or "auto" (picked from the beat's words) */
+  icon?: string;
+  /** the feeling of this beat (over the piece's) and the scene drawn behind it */
+  mood?: MotionMood;
+  scene?: SceneId;
+  /** shapes حيدرة draws himself behind the words (the engine keeps them off the text) */
+  shapes?: DrawShape[];
+  /** what the voice says over this beat: the beat stays as long as the saying takes */
+  say?: string;
 }
 export interface Storyboard {
   palette?: string;
@@ -159,7 +182,49 @@ export interface Storyboard {
   style?: string;
   /** what the person asked to change in the look (wins over the skill) */
   look?: Partial<MotionLook>;
+  /** the whole piece fits this long (ms): the beats share it by how long each takes to say (the voice sets the timing) */
+  fitMs?: number;
   beats: Beat[];
+}
+
+// ───────────── the voice sets the timing ─────────────
+
+/** How long an Arabic narration takes to say: about 2.4 words a second, and 0.4 s of air at every clause. */
+export function narrationMs(text: string) {
+  const words = text.replace(/[،,.;؛:!؟?…«»"()\-—]/g, " ").split(/\s+/).filter(Boolean).length;
+  const clauses = (text.match(/[،,.;؛:!؟?…]/g) ?? []).length;
+  return Math.round((words / 2.4) * 1000 + clauses * 400);
+}
+
+/** A time moved by a retime map (pairs of [old, new], increasing; before the first and after the last it only shifts). */
+export function mapTime(map: [number, number][], t: number) {
+  if (!map.length) return t;
+  if (t <= map[0][0]) return t + (map[0][1] - map[0][0]);
+  for (let i = 1; i < map.length; i++) {
+    const [a0, b0] = map[i - 1];
+    const [a1, b1] = map[i];
+    if (t <= a1) return a1 === a0 ? b1 : Math.round(b0 + ((t - a0) * (b1 - b0)) / (a1 - a0));
+  }
+  const last = map[map.length - 1];
+  return t + (last[1] - last[0]);
+}
+
+/** Where a piece's beats sit and how long each takes to say, so the page can stretch it to the real recording. */
+export interface Fit {
+  from: number;
+  marks: number[];
+  weights: number[];
+}
+/** The map that moves the beats' boundaries so the piece ends at `newEnd` and each beat keeps its share of the voice. */
+export function retimeMap(fit: Fit, newEnd: number): [number, number][] {
+  const sum = fit.weights.reduce((a, b) => a + b, 0) || 1;
+  const total = Math.max(1200 * fit.weights.length, newEnd - fit.from);
+  let cum = 0;
+  return fit.marks.map((m, i) => {
+    const at = Math.round(fit.from + (total * cum) / sum);
+    cum += fit.weights[i] ?? 0;
+    return [m, at] as [number, number];
+  });
 }
 
 
@@ -197,17 +262,26 @@ export function readStoryboard(raw: unknown): Storyboard | null {
         handle: clean(b.handle, 40),
         ...(b.kind === "kinetic" ? { words: (Array.isArray(b.words) ? b.words : String(b.text ?? "").split(/\s+/)).map((x) => clean(x, 24)).filter(Boolean).slice(0, 6), hot: Number.isInteger(b.hot) ? Number(b.hot) : undefined } : {}),
         seconds: Number.isFinite(Number(b.seconds)) && Number(b.seconds) > 0 ? Math.min(12, Math.max(1.5, Number(b.seconds))) : undefined,
+        ...(typeof b.icon === "string" && (b.icon === "auto" || iconById(b.icon)) ? { icon: b.icon } : {}),
+        ...(moodOf(b.mood) ? { mood: moodOf(b.mood)!.id } : {}),
+        ...(SCENE_IDS.includes(b.scene as SceneId) ? { scene: b.scene as SceneId } : {}),
+        ...(readShapes(b.shapes).length ? { shapes: readShapes(b.shapes) } : {}),
+        ...(clean(b.say, 400) ? { say: clean(b.say, 400) } : {}),
       };
     })
     .filter((b) => (b.kind === "kinetic" ? (b.words?.length ?? 0) > 0 : b.title || b.text || b.items?.length || b.value || b.left || b.right));
   if (!beats.length) return null;
   const col = s.colors && typeof s.colors === "object" ? (s.colors as Record<string, unknown>) : null;
+  // the look the person asked for, with the feeling and the scene written at the top level of the storyboard too
+  const lk: Partial<MotionLook> = { ...(s.look && typeof s.look === "object" ? readLook(s.look, new Set(TR_BY_ID.keys())) : {}), ...(moodOf(s.mood) ? { mood: moodOf(s.mood)!.id } : {}), ...(SCENE_IDS.includes(s.scene as SceneId) ? { scene: s.scene as SceneId } : {}) };
+  const look = (s.look && typeof s.look === "object") || Object.keys(lk).length ? lk : null;
   const colors = col ? Object.fromEntries(["bg", "text", "accent", "second"].filter((k) => typeof col[k] === "string" && HEX.test(col[k] as string)).map((k) => [k, col[k] as string])) : undefined;
   return {
     palette: clean(s.palette, 20), head: clean(s.head, 30) || undefined, body: clean(s.body, 30) || undefined, at: Number.isFinite(Number(s.at)) ? Math.max(0, Math.round(Number(s.at))) : 0,
     ...(colors?.bg ? { colors } : {}), ...(arabic ? { digits: "arabic" as const } : {}),
     ...(typeof s.style === "string" && s.style.trim() ? { style: s.style.trim().slice(0, 40) } : {}),
-    ...(s.look && typeof s.look === "object" ? { look: readLook(s.look, new Set(TR_BY_ID.keys())) } : {}),
+    ...(look ? { look } : {}),
+    ...(Number.isFinite(Number(s.fitMs)) && Number(s.fitMs) >= 2000 ? { fitMs: Math.min(600_000, Math.round(Number(s.fitMs))) } : {}),
     beats,
   };
 }
@@ -258,6 +332,8 @@ const FLOOR: Record<Role, number> = { head: 0.04, sub: 0.03, cap: 0.026, value: 
 /** How long a beat stays: its words read twice at the Arabic pace, between 2.5 and 8 s (or as asked). */
 export function beatMs(b: Beat, pace: MotionLook["pace"] = "normal") {
   if (b.seconds) return Math.round(b.seconds * 1000);
+  // a beat the voice speaks stays as long as the saying takes (and a breath), whatever the pace
+  if (b.say) return Math.min(14_000, Math.max(1600, narrationMs(b.say) + 350));
   const words = [b.title, b.text, b.value, b.label, b.by, b.handle, ...(b.items ?? []), ...(b.kind === "kinetic" ? (b.words ?? []) : []), b.left?.title, b.left?.text, b.right?.title, b.right?.text].join(" ").split(/\s+/).filter(Boolean).length;
   const read = words * 0.42 + 1.4;
   // a fast piece moves on sooner (never under 1.8 s), a calm one lets each beat breathe
@@ -285,13 +361,13 @@ interface Spec {
  * Lays one beat out: every text measured, wrapped to its column, made smaller (all together) until the stack fits
  * the safe area and each text keeps to its line limit, then stacked top to bottom with gaps and centred in the frame.
  */
-function layBeat(specs: Spec[], f: Frame, base: ReturnType<typeof sizes>) {
+function layBeat(specs: Spec[], f: Frame, base: ReturnType<typeof sizes>, floorK = 1) {
   const availH = 1 - f.top - f.bottom;
   const colW = (c: Spec["col"]) => (c === "right" || c === "left" ? 0.4 : 1 - 2 * f.side);
   let scale = 1;
   for (let round = 0; round < 30; round++) {
     // past a role's floor the beat holds too much: it is split into two beats instead (see splitBeat)
-    if (specs.some((s) => base[s.role] * scale < FLOOR[s.role])) return null;
+    if (specs.some((s) => base[s.role] * scale < FLOOR[s.role] * floorK)) return null;
     const blocks = specs.map((s) => {
       // the big number fits its own width first, so a long number never drags the other texts below their floor
       const own = s.role === "value" ? Math.min(1, (0.98 * colW(s.col) * f.W) / ((emWidth(s.body, s.font, s.weight) + 0.15) * base.value * f.H)) : 1;
@@ -337,13 +413,16 @@ export function splitBeat(b: Beat): [Beat, Beat] | null {
     return [w.slice(0, at).join(" "), w.slice(at).join(" ")] as const;
   };
   if (b.kind === "compare") {
-    // two columns that can't share one screen: one side after the other
-    return [{ ...b, kind: "statement", text: `${b.right?.title ?? ""}: ${b.right?.text ?? ""}`, title: undefined, seconds: undefined }, { ...b, kind: "statement", text: `${b.left?.title ?? ""}: ${b.left?.text ?? ""}`, title: undefined, seconds: undefined }];
+    // a long headline goes first on its own; otherwise two columns that can't share one screen: one side after the other (the headline kept with the first)
+    if ((b.title ?? "").split(/\s+/).filter(Boolean).length >= 4) return [{ kind: "statement", text: b.title, seconds: undefined, say: b.say, mood: b.mood, scene: b.scene }, { ...b, title: "", seconds: undefined }];
+    return [{ ...b, kind: "statement", text: `${b.title ? `${b.title} — ` : ""}${b.right?.title ?? ""}: ${b.right?.text ?? ""}`, title: undefined, seconds: undefined }, { ...b, kind: "statement", text: `${b.left?.title ?? ""}: ${b.left?.text ?? ""}`, title: undefined, seconds: undefined }];
   }
+  // the second half is a plain sentence of its own (it never carries the first half's points, number or handle again)
+  const next = (text: string): Beat => ({ kind: "statement", text, seconds: undefined, say: b.say, mood: b.mood, scene: b.scene });
   const t = cut(b.text ?? "");
-  if (t) return [{ ...b, text: t[0], seconds: undefined }, { ...b, kind: b.kind === "title" || b.kind === "outro" ? "statement" : b.kind, title: b.kind === "quote" ? b.title : undefined, text: t[1], seconds: undefined }];
+  if (t) return [{ ...b, text: t[0], seconds: undefined }, b.kind === "quote" ? { ...b, text: t[1], seconds: undefined } : next(t[1])];
   const h = cut(b.title ?? "");
-  if (h) return [{ ...b, title: h[0], seconds: undefined }, { ...b, kind: "statement", title: undefined, text: h[1], seconds: undefined }];
+  if (h) return [{ ...b, title: h[0], seconds: undefined }, next(h[1])];
   return null;
 }
 
@@ -386,7 +465,7 @@ function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arab
   };
   switch (b.kind) {
     case "title":
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, maxLines: 3, anim: headIn(bi) });
       add({ role: "sub", body: b.text ?? "", color: pal.second, weight: 700, font: body, anim: IN.rise });
       break;
     case "statement":
@@ -399,7 +478,7 @@ function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arab
       break;
     case "points":
     case "steps": {
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, maxLines: 3, anim: headIn(bi) });
       const nums = arabicDigits ? ["١", "٢", "٣", "٤", "٥"] : ["1", "2", "3", "4", "5"];
       (b.items ?? []).forEach((it, i) => add({ role: "item", body: `${b.kind === "steps" ? `${nums[i] ?? i + 1}.` : "●"} ${it}`, color: i === 0 ? pal.accent : pal.text, weight: 700, font: body, list: true, delay: TEXT_LEAD + 360 + i * 340, anim: IN.right }));
       break;
@@ -409,7 +488,7 @@ function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arab
       add({ role: "cap", body: b.by ? `— ${b.by}` : "", color: pal.accent, weight: 700, font: body, anim: IN.rise, delay: TEXT_LEAD + 320 });
       break;
     case "compare":
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, maxLines: 3, anim: headIn(bi) });
       add({ role: "sub", body: b.right?.title ?? "", color: pal.accent, weight: 900, font: head, col: "right", anim: IN.right, delay: TEXT_LEAD + STAGGER_MS });
       add({ role: "cap", body: b.right?.text ?? "", color: pal.text, weight: 400, font: body, col: "right", maxLines: 4, anim: IN.fade, delay: TEXT_LEAD + 2 * STAGGER_MS });
       add({ role: "sub", body: b.left?.title ?? "", color: pal.second, weight: 900, font: head, col: "left", anim: IN.left, delay: TEXT_LEAD + 3 * STAGGER_MS });
@@ -423,7 +502,7 @@ function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arab
       break;
     }
     case "outro":
-      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, anim: headIn(bi) });
+      add({ role: "head", body: b.title ?? "", color: pal.text, weight: 900, font: head, maxLines: 3, anim: headIn(bi) });
       add({ role: "sub", body: b.text ?? "", color: pal.second, weight: 700, font: body, anim: IN.rise });
       add({ role: "pill", body: b.handle ? (/[A-Za-z@]/.test(b.handle) ? `\u2066${b.handle}\u2069` : b.handle) : "", color: pal.pillText, box: pal.pill, weight: 900, font: body, maxLines: 1, anim: IN.settle, delay: TEXT_LEAD + 460 });
       break;
@@ -436,8 +515,28 @@ export interface BeatTime {
   end: number;
 }
 
+/** The icon a beat shows: the one named, or (for "auto") the one its own words point at. */
+export function iconFor(b: Beat) {
+  if (!b.icon) return undefined;
+  if (b.icon !== "auto") return iconById(b.icon);
+  return iconOf([b.title, b.text, b.label, b.value, b.by, ...(b.items ?? []), ...(b.words ?? []), b.left?.title, b.right?.title].filter(Boolean).join(" "));
+}
+/** The icon's side as a fraction of the frame's short side, and the gap under it. */
+export const ICON_U = 0.17;
+const ICON_GAP = 0.025;
+/** The frame a beat's words may use: below its icon, when it has one. */
+function frameFor(b: Beat, f: Frame): Frame {
+  if (!iconFor(b)) return f;
+  return { ...f, top: f.top + (ICON_U * Math.min(f.W, f.H)) / f.H + ICON_GAP };
+}
+/** A beat's own look: its feeling's tempo and entrance over the piece's. */
+const beatLook = (b: Beat, look: ReturnType<typeof lookOf>): ReturnType<typeof lookOf> => {
+  const m = moodOf(b.mood);
+  return m && m.id !== look.mood ? { ...look, pace: m.pace, entrance: m.entrance } : look;
+};
+
 /** The storyboard as placed texts (the layout the commands write), with where each beat's words sit for the art. */
-export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[]; anchors: Anchors[]; times: BeatTime[]; look: ReturnType<typeof lookOf> } {
+export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[]; anchors: Anchors[]; times: BeatTime[]; look: ReturnType<typeof lookOf>; weights: number[] } {
   const f = frameOf(W, H);
   const base = sizes(f);
   // the named skill's look, under what the person asked for (their palette, fonts and look win)
@@ -449,19 +548,35 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
   // a beat too full for one screen becomes two (and so on), before anything is placed
   const queue = [...sb.beats];
   const beats: Beat[] = [];
-  while (queue.length && beats.length < 48) {
+  while (queue.length) {
     const b = queue.shift()!;
-    if (layBeat(specsOf(b, pal, head, body, 0, ad, look), f, base)) {
+    // a runaway split (a storyboard of thousands of words) stops here: what is left is laid as it is, never dropped
+    if (beats.length >= 96) {
       beats.push(b);
+      continue;
+    }
+    if (layBeat(specsOf(b, pal, head, body, 0, ad, beatLook(b, look)), frameFor(b, f), base)) {
+      beats.push(b);
+      continue;
+    }
+    // too full with its icon: the icon goes before the words are split or cut
+    if (b.icon) {
+      queue.unshift({ ...b, icon: undefined });
       continue;
     }
     const parts = splitBeat(b);
     if (parts) {
-      queue.unshift(...parts);
+      // the halves share the beat's time when it was given
+      queue.unshift(...parts.map((x) => (b.seconds ? { ...x, seconds: Math.max(1.5, b.seconds! / 2) } : x)));
       continue;
     }
-    // nothing left to split: the least important words go (the small note, then the second line), never the beat
-    const lighter: Beat | null = b.text && b.kind !== "statement" && b.kind !== "quote" ? { ...b, text: "" } : b.label && b.kind === "stat" ? { ...b, label: "" } : b.title && b.kind !== "statement" ? { ...b, title: "" } : null;
+    // nothing left to split: a little under the usual smallest size before any word goes
+    if (layBeat(specsOf(b, pal, head, body, 0, ad, beatLook(b, look)), frameFor(b, f), base, 0.6)) {
+      beats.push(b);
+      continue;
+    }
+    // still no room: the least important words go (the small note, then the second line), never the beat
+    const lighter: Beat | null = b.text && b.kind !== "statement" && b.kind !== "quote" ? { ...b, text: "" } : b.label && b.kind === "stat" ? { ...b, label: "" } : null;
     if (lighter) queue.unshift(lighter);
     else beats.push(b);
   }
@@ -469,19 +584,30 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
   const anchors: Anchors[] = [];
   const times: BeatTime[] = [];
   let t = sb.at ?? 0;
+  // how long each beat takes; a piece asked to fit a length (the narration's) shares it by those weights
+  const natural = beats.map((b) => Math.max(1400, beatMs(b, beatLook(b, look).pace)));
+  const durs = fitDurations(natural, sb.fitMs);
   beats.forEach((b, bi) => {
-    const dur = beatMs(b, look.pace);
-    const laid = layBeat(specsOf(b, pal, head, body, bi, ad, look), f, base);
+    const dur = durs[bi];
+    const lk = beatLook(b, look);
+    const fb = frameFor(b, f);
+    // a beat that holds too much even after splitting is set a little under the usual smallest size, never cut
+    const specs = specsOf(b, pal, head, body, bi, ad, lk);
+    const laid = layBeat(specs, fb, base) ?? layBeat(specs, fb, base, 0.6);
     times.push({ start: t, end: t + dur });
     if (!laid) {
       anchors.push({ top: f.top, bottom: 1 - f.bottom });
       t += dur;
       return;
     }
-    // stacked from the top of the centred block; the two comparison columns side by side under the full-width texts
-    const top = f.top + (1 - f.top - f.bottom - laid.total) / 2;
+    // stacked from the top of the centred block (under the icon, when there is one); the two comparison columns side by side under the full-width texts
+    const top = fb.top + (1 - fb.top - fb.bottom - laid.total) / 2;
     let y = top;
     const mine: Placed[] = [];
+    // texts that enter one after another must all be readable before the beat ends: a short beat packs its entrances closer
+    const lastIn = Math.max(...laid.blocks.map((x) => x.s.delay + x.s.anim.inMs), 0);
+    const room = dur - 650;
+    const squeeze = lastIn > room && lastIn > TEXT_LEAD ? Math.max(0.02, (room - TEXT_LEAD - 300) / Math.max(1, lastIn - TEXT_LEAD)) : 1;
     const placeOne = (blk: (typeof laid.blocks)[number], cx: number, cy: number, al: "center" | "right" = "center") => {
       const s = blk.s;
       // «right»: the block flush with the right margin (Arabic's start), its lines aligned right inside it
@@ -489,7 +615,7 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
       const p: Placed = {
         beat: bi, role: s.role, body: blk.lines.join("\n"), lines: blk.lines, size: +blk.size.toFixed(4), weight: s.weight, font: s.font, color: s.color, box: s.box ?? null,
         align: al, x: +x.toFixed(4), y: +cy.toFixed(4), w: +blk.w.toFixed(4), h: +blk.h.toFixed(4),
-        start: t + s.delay, end: t + dur, anim: s.anim,
+        start: t + Math.round(TEXT_LEAD + (s.delay - TEXT_LEAD) * squeeze), end: t + dur, anim: s.anim,
       };
       placed.push(p);
       mine.push(p);
@@ -512,7 +638,10 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
       const p = mine.find((x) => x.role === role);
       return p ? { x: p.x, y: p.y, h: p.h, w: p.w } : undefined;
     };
+    const ic = iconFor(b);
+    const iconS = (ICON_U * Math.min(W, H)) / W;
     anchors.push({
+      ...(ic ? { icon: { x: look.align === "right" ? 1 - f.side - iconS / 2 : 0.5, y: f.top + (ICON_U * Math.min(W, H)) / H / 2, size: ICON_U, id: ic.id } } : {}),
       head: one("head"),
       value: one("value"),
       quote: one("quote"),
@@ -523,7 +652,35 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
     });
     t += dur;
   });
-  return { placed, palette: pal, endMs: t, beats, anchors, times, look };
+  return { placed, palette: pal, endMs: t, beats, anchors, times, look, weights: beats.map((b, i) => (b.say ? narrationMs(b.say) + 350 : natural[i])) };
+}
+
+/** Beat lengths shared out to fill `total` (each at least 1.2 s), in proportion to how long each naturally takes. */
+export function fitDurations(natural: number[], total?: number): number[] {
+  if (!total || !natural.length) return natural;
+  const MIN = 1200;
+  // the voice is shorter than the words need to be read: every beat keeps the least a beat can be, and the piece runs a little longer
+  if (total < MIN * natural.length) return natural.map(() => MIN);
+  const out = natural.map(() => 0);
+  let fixed = new Set<number>();
+  for (let round = 0; round < 6; round++) {
+    const free = natural.map((_, i) => i).filter((i) => !fixed.has(i));
+    const rest = total - [...fixed].reduce((n, i) => n + out[i], 0);
+    const sum = free.reduce((n, i) => n + natural[i], 0) || 1;
+    let again = false;
+    for (const i of free) {
+      out[i] = (natural[i] * rest) / sum;
+      if (out[i] < MIN) {
+        out[i] = MIN;
+        fixed = new Set([...fixed, i]);
+        again = true;
+      }
+    }
+    if (!again) break;
+  }
+  const rounded = out.map(Math.round);
+  rounded[rounded.length - 1] += total - rounded.reduce((a, b) => a + b, 0);
+  return rounded;
 }
 
 // ───────────── sounds: one short effect per arrival, five kinds, never the same on every beat ─────────────
@@ -581,7 +738,8 @@ export function capCues(cues: SfxCue[], perMinute = SFX_PER_MINUTE): SfxCue[] {
 /** Everything the engine decided for a piece: the texts, the art to draw, and the sounds to make and place. */
 export function motionPlan(sb: Storyboard, W: number, H: number) {
   const laid = layoutMotion(sb, W, H);
-  return { ...laid, art: pieceArt(laid.beats, laid.palette, laid.anchors, W, H, laid.look), cues: cuesOf(laid.beats, laid.times, laid.look.sfx) };
+  const marks = [...laid.times.map((x) => x.start), laid.endMs];
+  return { ...laid, art: pieceArt(laid.beats, laid.palette, laid.anchors, W, H, laid.look), cues: cuesOf(laid.beats, laid.times, laid.look.sfx), fit: { from: laid.times[0]?.start ?? sb.at ?? 0, marks, weights: laid.weights } as Fit };
 }
 
 /** The decoration's entrance by the beat's kind: shapes pop, bands and rails whip in. */
@@ -611,7 +769,8 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, a
         out.push({ type: "trim_clip", clipId: r, edge: "end", to: end });
         out.push({ type: "update_clip", clipId: r, patch: { fit: "cover", transition: i < beats.length - 1 ? (beatTransition(i + 1, look.transitions) as { kind: string; ms: number } | null) : null } });
       }
-      const deco = look.decor ? art.get(`art-${i}`) : undefined;
+      // the decoration (and an icon or shapes alone, when the skill draws no decoration) is there when the engine drew it
+      const deco = art.get(`art-${i}`);
       if (deco) {
         out.push({ type: "add_clip", assetId: deco, trackId: artTrack, at: start });
         const r = ref();

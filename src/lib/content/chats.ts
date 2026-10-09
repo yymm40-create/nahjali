@@ -88,7 +88,7 @@ export interface MediaBlock {
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
-  kind: "choice" | "templates" | "styles";
+  kind: "choice" | "templates" | "styles" | "motion" | "moods";
   options: string[];
   multi: boolean;
 }
@@ -195,7 +195,7 @@ export function readMedia(v: unknown): MediaItem[] {
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
     .map((q): Question => {
-      const kind = q.kind === "templates" || q.kind === "styles" ? q.kind : "choice";
+      const kind = q.kind === "templates" || q.kind === "styles" || q.kind === "motion" || q.kind === "moods" ? q.kind : "choice";
       const options = kind === "choice" ? (Array.isArray(q.options) ? q.options : []).filter((o): o is string => typeof o === "string" && o.trim().length > 0).map((o) => o.trim().slice(0, 140)).slice(0, 8) : [];
       return { label: str(q.label, 120).trim(), kind, options, multi: q.multi === true && kind === "choice" };
     })
