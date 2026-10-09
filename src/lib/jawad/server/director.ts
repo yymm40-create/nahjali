@@ -10,7 +10,6 @@ import { SUPER_DIRECTOR } from "@config/film-prompts/director";
 import { DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
 import type { GeneratorDef, RefKind, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { DIRECTOR_LIMITS, directorProblems, directorPrompt, salvageDirector, type DirectorOutput } from "../director";
-import { LOCKS_SCHEMA, readLocks, type EditLock } from "../edit-locks";
 import { evaluate } from "../engine";
 import { cleanRefName, defaultRefName } from "../mentions";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
@@ -68,9 +67,6 @@ const SCHEMA = {
   required: ["en", "zh"],
   additionalProperties: false,
 };
-
-/** The same answer plus «kept»: what جواد declares his prompt carries over from the original (a smart edit). */
-const SCHEMA_KEPT = { ...SCHEMA, properties: { ...SCHEMA.properties, kept: LOCKS_SCHEMA.properties.locks }, required: ["en", "zh", "kept"] };
 
 export interface DirectorBody {
   idempotencyKey?: unknown;
@@ -194,29 +190,19 @@ export function settingsText(def: GeneratorDef, s: Settings, modeId: string, met
  * Asks the Super Director (the skill + a website task) for an EN/ZH prompt, once more if the answer breaks a
  * website rule. Throws when it fails twice.
  */
-export async function directorRun(
-  task: string,
-  parts: ClaudePart[],
-  names: string[],
-  extra?: (prompt: string, kept: EditLock[]) => string[],
-  /** `identity`: who is writing (a smart edit: جواد himself, before the skill); `keep`: he also declares the locks he carries over (checked against `previous`). */
-  opts: { identity?: string; keep?: { previous: string } } = {},
-): Promise<{ prompt: string; usd: number; attempts: number; kept: EditLock[] }> {
+export async function directorRun(task: string, parts: ClaudePart[], names: string[], extra?: (prompt: string) => string[]): Promise<{ prompt: string; usd: number; attempts: number }> {
   let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
   const usage: ClaudeUsage[] = [];
   let last: DirectorOutput | null = null;
-  let lastKept: EditLock[] = [];
   let left: string[] = [];
-  const system = `${opts.identity ? `${opts.identity}\n\n---\n\n` : ""}${SUPER_DIRECTOR}${task}`;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const r = await callClaudeJson<DirectorOutput & { kept?: unknown }>({ system, turns, schema: opts.keep ? SCHEMA_KEPT : SCHEMA, maxTokens: 16000 });
+    const r = await callClaudeJson<DirectorOutput>({ system: SUPER_DIRECTOR + task, turns, schema: SCHEMA, maxTokens: 16000 });
     usage.push(r.usage);
     last = r.data;
-    lastKept = opts.keep ? readLocks({ locks: r.data.kept }, opts.keep.previous) : [];
     left = directorProblems(r.data, names);
-    // the caller's own checks (e.g. the smart edit's locks and continuity), once the website's rules hold
-    if (!left.length && extra && r.data.en && r.data.zh) left = extra(directorPrompt(r.data), lastKept);
-    if (!left.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt, kept: lastKept };
+    // the caller's own checks (e.g. the smart edit's locks), once the website's rules hold
+    if (!left.length && extra && r.data.en && r.data.zh) left = extra(directorPrompt(r.data));
+    if (!left.length) return { prompt: directorPrompt(r.data), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: attempt };
     // Once more, with what to fix
     turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];
   }
@@ -224,7 +210,7 @@ export async function directorRun(
   const saved = last ? salvageDirector(last, names) : null;
   if (saved) {
     console.warn("director answer used after repair", { problems: left });
-    return { prompt: directorPrompt(saved), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: 3, kept: lastKept };
+    return { prompt: directorPrompt(saved), usd: usage.reduce((t, u) => t + claudeCost(u), 0), attempts: 3 };
   }
   throw new Error(`director answer broke the website rules three times: ${left.join(" | ").slice(0, 400)}`);
 }
