@@ -7,6 +7,15 @@ describe("حدّ الطلبات", () => {
     expect(rulesFor("/jawad-ai/film", "GET")).toEqual([]);
     expect(rulesFor("/api/cron/cleanup", "GET")).toEqual([]);
     expect(rulesFor("/api/mahdi/notifications/dispatch", "POST")).toEqual([]);
+    // Telegram calls the course's bot webhook from its own servers
+    expect(rulesFor("/api/course/telegram", "POST")).toEqual([]);
+  });
+  it("keeps the course's payment steps to a few presses (each one can buzz the owner's phone)", () => {
+    expect(rulesFor("/api/course/order", "POST").map((r) => r.key)).toEqual(["course", "api"]);
+    expect(rulesFor("/api/course/transferred", "POST").map((r) => r.key)).toEqual(["course", "api"]);
+    const rules = rulesFor("/api/course/transferred", "POST");
+    for (let i = 0; i < 20; i++) expect(take("9.9.9.9", rules, 0)).toBe(0);
+    expect(take("9.9.9.9", rules, 1000)).toBeGreaterThan(0);
   });
   it("guards the secret codes hardest, then what costs money, then everything", () => {
     expect(rulesFor("/api/access/code", "POST").map((r) => r.key)).toEqual(["code", "api"]);

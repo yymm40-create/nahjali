@@ -212,8 +212,8 @@ describe("prices show the coin's logo and never a currency word", () => {
           const lines = readFileSync(p, "utf8").split("\n");
           lines.forEach((l, i) => {
             if (/^\s*(\/\/|\*|\/\*)/.test(l)) return;
-            // the owner's own tools and cost notes (real riyals), the sellers' content examples, the words a customer puts on their own picture in «زهراء»'s examples, and the separate booklet product keep their words
-            if (/src\/app\/(admin|jawad-ai\/admin|booklet|new)\/|src\/lib\/film\/limits|config\/content-sales|config\/photo-training/.test(p) || /basis:/.test(l)) return;
+            // the owner's own tools and cost notes (real riyals), the sellers' content examples, the words a customer puts on their own picture in «زهراء»'s examples, the owner's Telegram note about a real bank transfer, and the separate booklet product keep their words
+            if (/src\/app\/(admin|jawad-ai\/admin|booklet|new)\/|src\/lib\/film\/limits|config\/content-sales|config\/photo-training|src\/lib\/course\/telegram/.test(p) || /basis:/.test(l)) return;
             // a price (an amount or the formatter) followed by the word
             if (/(fmtSar\([^)]*\)|\}|\d)\s*(ر\.س|ريال)(?![\p{L}])/u.test(l) && !/aria-label|بالريال|placeholder/.test(l)) bad.push(`${p}:${i + 1}: ${l.trim().slice(0, 100)}`);
           });

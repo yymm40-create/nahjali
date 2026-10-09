@@ -22,12 +22,14 @@ const must = (error: { message?: string } | null) => {
 
 // ───────────── public files (logo, ads, generator samples) ─────────────
 
-export type Purpose = "logo" | "ad_media" | "ad_poster" | "sample";
+export type Purpose = "logo" | "ad_media" | "ad_poster" | "sample" | "course_video" | "course_poster";
 const LIMITS: Record<Purpose, { kinds: ("image" | "video")[]; maxBytes: number }> = {
   logo: { kinds: ["image"], maxBytes: 5 * 1024 * 1024 },
   ad_media: { kinds: ["image", "video"], maxBytes: 50 * 1024 * 1024 },
   ad_poster: { kinds: ["image"], maxBytes: 8 * 1024 * 1024 },
   sample: { kinds: ["image"], maxBytes: 8 * 1024 * 1024 },
+  course_video: { kinds: ["video"], maxBytes: 150 * 1024 * 1024 },
+  course_poster: { kinds: ["image"], maxBytes: 8 * 1024 * 1024 },
 };
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "video/mp4": "mp4" };
 
@@ -37,7 +39,7 @@ export async function signPublicUpload(purpose: Purpose, target: string, mime: s
   if (!lim) throw new UserError("طلب غير صحيح.", 400);
   if (!EXT[mime] || !lim.kinds.includes(mime.startsWith("video/") ? "video" : "image")) throw new UserError("نوع الملف غير مقبول هنا.", 400);
   if (!(bytes > 0 && bytes <= lim.maxBytes)) throw new UserError(`حجم الملف أكبر من ${Math.round(lim.maxBytes / 1024 / 1024)}MB.`, 400);
-  const folder = purpose === "logo" ? "brand" : purpose === "sample" ? `samples/${target}` : `ads/${target}`;
+  const folder = purpose === "logo" ? "brand" : purpose === "sample" ? `samples/${target}` : purpose === "course_video" || purpose === "course_poster" ? "course" : `ads/${target}`;
   const path = `${folder}/${randomUUID()}.${EXT[mime]}`;
   const { data, error } = await storage.from(JAWAD_PUBLIC_BUCKET).createSignedUploadUrl(path);
   if (error) throw new UserError("تعذّر تجهيز الرفع (تأكد من تشغيل ملف SQL رقم 0017).", 500);
@@ -45,8 +47,8 @@ export async function signPublicUpload(purpose: Purpose, target: string, mime: s
 }
 
 /** Reads an uploaded public file and checks it is what it claims (bytes, size, pixels). Deletes it otherwise. */
-async function checkPublicFile(purpose: Purpose, path: string) {
-  if (!/^(brand|samples\/[\w-]+|ads\/[0-9a-f-]{36})\/[0-9a-f-]{36}\.(png|jpg|webp|mp4)$/.test(path)) throw new UserError("ملف غير صحيح.", 400);
+export async function checkPublicFile(purpose: Purpose, path: string) {
+  if (!/^(brand|course|samples\/[\w-]+|ads\/[0-9a-f-]{36})\/[0-9a-f-]{36}\.(png|jpg|webp|mp4)$/.test(path)) throw new UserError("ملف غير صحيح.", 400);
   const { data, error } = await storage.from(JAWAD_PUBLIC_BUCKET).download(path);
   if (error || !data) throw new UserError("ما وصل الملف؛ جرّب الرفع مرة ثانية.", 409);
   const buf = new Uint8Array(await data.arrayBuffer());
