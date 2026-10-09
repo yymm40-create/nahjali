@@ -37,6 +37,8 @@ const nextConfig: NextConfig = {
   // Template folders are read from disk at runtime, so ship them with the server functions on Vercel
   outputFileTracingIncludes: {
     "/api/**/*": ["./templates/**/*", "./config/style-reference.png", "./assets/fonts/**/*", "./node_modules/harfbuzzjs/dist/*.wasm"],
+    // The owner's diagnostician (🐞) reads the site's own source and the SQL migrations at runtime: ship them (text only)
+    "/api/report/diagnose": ["./src/**/*.{ts,tsx,css,json,md}", "./config/**/*.{ts,json,md}", "./supabase/migrations/*.sql", "./tests/**/*.ts", "./AGENTS.md", "./CLAUDE.md", "./package.json", "./next.config.ts"],
     // The order page reads the template list
     "/new": ["./templates/*/template.json"],
     // JAWAD AI's icons and share image read the shipped logo from disk
