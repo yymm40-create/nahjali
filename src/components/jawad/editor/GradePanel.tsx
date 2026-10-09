@@ -13,6 +13,8 @@ import { bakeLut, gradeReady, gradeView } from "./grade-gl";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
 import { saveFile } from "./package";
+import { copyGrade, pasteableGrade } from "./clipboard";
+import { pasteGradeCommands } from "@/lib/editor/grade-paste";
 
 
 function Slider({ label, value, min, max, step, onChange, format, disabled, center, bg }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format?: (v: number) => string; disabled?: boolean; center?: boolean; bg?: string }) {
@@ -436,8 +438,9 @@ const curveBg = (k: keyof Curves) => (k.startsWith("hue") ? HUE_BG : k === "r" ?
 const flatCurve = (k: keyof Curves) => k.startsWith("hue") || k === "lumSat" || k === "satSat";
 const isOff = (g: Grade, keys: (keyof Grade)[]) => keys.every((k) => JSON.stringify(g[k]) === JSON.stringify(NEUTRAL_GRADE[k]));
 
-export default function GradePanel({ clip, thumb, locked, run, flash, player, media = null, projectId = null }: { clip: Clip; thumb: string | null; locked: boolean; run: Run; flash: (m: string, bad?: boolean) => void; player: PlayerLike | null; /** the clip's picture or video (for «ماسك ذكي» and «تتبّع») */ media?: { url: string; kind: "video" | "image" } | null; projectId?: string | null }) {
+export default function GradePanel({ clip, thumb, locked, run, flash, player, media = null, projectId = null, targets }: { clip: Clip; thumb: string | null; locked: boolean; run: Run; flash: (m: string, bad?: boolean) => void; player: PlayerLike | null; /** the clip's picture or video (for «ماسك ذكي» and «تتبّع») */ media?: { url: string; kind: "video" | "image" } | null; projectId?: string | null; /** the other clips a copied grading can go to (see Inspector) */ targets?: { track: string[]; all: string[] } }) {
   const layers = clip.grades;
+  const [pasted, setPasted] = useState(0);
   const [li, setLi] = useState(0);
   const L = Math.min(li, Math.max(0, layers.length - 1));
   const g: Grade = layers[L] ?? NEUTRAL_GRADE;
@@ -564,6 +567,51 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
   return (
     <div className="space-y-2">
       {!gpu && <p className="rounded-lg bg-jw-warn/10 p-2 text-[11px] text-jw-warn">متصفحك ما يقدر يلوّن على كرت الشاشة (WebGL2). جرّب Chrome.</p>}
+
+      {/* copy this grading and paste it onto other clips (one, a whole track, or every picture) */}
+      {(() => {
+        const have = pasteableGrade();
+        const paste = (ids: string[], what: string) => {
+          if (!have || !ids.length) return;
+          run(pasteGradeCommands(have.grades, ids), { label: "لصق التلوين" });
+          setPasted(ids.length);
+          flash(`لصقت التلوين على ${what}.`);
+        };
+        const n = (k: number) => (k === 1 ? "مقطع واحد" : `${k} مقاطع`);
+        return (
+          <div className="space-y-1.5 rounded-xl border border-jw-line bg-jw-surface-2/50 p-1.5">
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" className="jw-btn jw-btn-quiet !min-h-8 text-xs" disabled={!layers.length} onClick={() => { copyGrade(layers, clip.id); setPasted(0); flash(`نسخت التلوين (${layers.length === 1 ? "طبقة" : `${layers.length} طبقات`}). الحين اختر مقطع ثاني والصقه.`); }} title="انسخ تلوين هذا المقطع بكل طبقاته">
+                📋 انسخ التلوين
+              </button>
+              {have && (
+                <button type="button" className="jw-btn !min-h-8 text-xs" disabled={D || have.from === clip.id} onClick={() => paste([clip.id], "هذا المقطع")} title="يستبدل تلوين هذا المقطع بالمنسوخ">
+                  📌 الصق هنا
+                </button>
+              )}
+            </div>
+            {have && targets && (targets.track.length > 0 || targets.all.length > 0) && (
+              <div className="flex flex-wrap gap-1.5">
+                {targets.track.length > 0 && (
+                  <button type="button" className="jw-btn !min-h-8 text-xs" disabled={D} onClick={() => paste(targets.track, `كل مقاطع هذا المسار (${n(targets.track.length)})`)}>
+                    📌 الصق على كل المسار ({targets.track.length})
+                  </button>
+                )}
+                {targets.all.length > 0 && (
+                  <button type="button" className="jw-btn !min-h-8 text-xs" disabled={D} onClick={() => paste(targets.all, `كل الفيديوهات والصور (${n(targets.all.length)})`)}>
+                    📌 الصق على كل الفيديوهات ({targets.all.length})
+                  </button>
+                )}
+              </div>
+            )}
+            <p className="text-[11px] leading-5 text-jw-faint">
+              {have ? `المنسوخ: تلوين ${have.grades.length === 1 ? "بطبقة" : `بـ${have.grades.length} طبقات`}. ` : ""}
+              {pasted ? `✓ انلصق على ${n(pasted)}. ` : ""}
+              تبي تلصقه على مقاطع تختارها؟ حدّدها (Shift أو مربع تحديد) واضغط «الصق التلوين المنسوخ على المحدد».
+            </p>
+          </div>
+        );
+      })()}
 
       {/* layers and the before / after */}
       <div className="sticky top-0 z-10 space-y-1.5 rounded-xl border border-jw-line bg-jw-surface p-1.5">

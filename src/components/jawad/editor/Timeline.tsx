@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { clipEnd, clipLength, duration, formatTime, mainTrack, trackEnd, TRACK_COLORS, TRANSITIONS, type Clip, type Timeline as TL, type Track } from "@/lib/editor/model";
 import type { Command } from "@/lib/editor/commands";
+import { freeSlot, movedLabel, nearestPoint } from "@/lib/editor/snap";
 import Icon from "../Icon";
 import type { EditorAsset } from "./types";
 
@@ -65,6 +66,8 @@ interface Drag {
   ghostStart: number;
   ghostEnd: number;
   ghostTrack: string;
+  /** the moment the clip is stuck to (another clip's edge, the playhead, a beat), for the guide line */
+  snapAt: number | null;
   /** the other selected clips, moving with it by the same time (they keep their tracks) */
   group: { id: string; trackId: string; start: number }[];
 }
@@ -84,7 +87,7 @@ const MIN_PPS = 1;
 const MAX_PPS = 400;
 const RULER = 26;
 const RULER_PHONE = 18;
-const SNAP_PX = 8;
+const SNAP_PX = 10;
 
 /** A clip on a sound track is sound, even when it comes from a video (its sound taken out). */
 const kindOf = (c: Clip, assets: Map<string, EditorAsset>, onSound = false) => (c.text ? "text" : onSound ? "audio" : (assets.get(c.assetId ?? "")?.kind ?? "video"));
@@ -312,27 +315,20 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     pts.push(...tl.markers);
     return pts;
   }, [tl.tracks, tl.markers]);
-  const snap = (ms: number, ignore: string) => {
-    const tol = (SNAP_PX * 1000) / pps;
+  /** the magnet point near `ms` (the other clips' edges, the playhead, beats), or null */
+  const snapTo = (ms: number, ignore: string): number | null => {
     const own = ignore ? findOwn(ignore) : null;
-    let best = ms;
-    let gap = tol;
-    for (const p of [...snapPoints, player?.ms ?? -1]) {
-      if (own && (p === own.start || p === clipEnd(own))) continue;
-      const d = Math.abs(p - ms);
-      if (d < gap) {
-        gap = d;
-        best = p;
-      }
-    }
-    return best;
+    return nearestPoint([...snapPoints, player?.ms ?? -1], ms, (SNAP_PX * 1000) / pps, own ? [own.start, clipEnd(own)] : []);
   };
+  const snap = (ms: number, ignore: string) => snapTo(ms, ignore) ?? ms;
   const findOwn = (id: string) => {
     for (const t of tl.tracks) for (const c of t.clips) if (c.id === id) return c;
     return null;
   };
 
   // ---------- clips: select, move, trim ----------
+  // (the window-level listeners of a drag call the latest versions of these, not the ones of the render it began in)
+  const handlers = useRef<{ onMove: (e: { pointerId: number; clientX: number; clientY: number }) => void; onUp: (e: { pointerId: number; shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void }>({ onMove: () => {}, onUp: () => {} });
   const begin = (e: React.PointerEvent, track: Track, c: Clip, mode: Mode) => {
     if (readOnly || e.button > 0) return;
     e.stopPropagation();
@@ -368,13 +364,37 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
       ghostStart: c.start,
       ghostEnd: clipEnd(c),
       ghostTrack: track.id,
+      snapAt: null,
       group,
     };
     dragRef.current = d;
     setDrag(d);
+    // the drag follows the pointer anywhere on the page: the clip's own element goes away when it crosses to another
+    // track (and the pointer may leave the little ghost), which used to stop the move half-way
+    const pid = e.pointerId;
+    const end = () => {
+      window.removeEventListener("pointermove", mv, true);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", cancel, true);
+    };
+    const mv = (ev: PointerEvent) => handlers.current.onMove(ev);
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      end();
+      handlers.current.onUp(ev);
+    };
+    const cancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      end();
+      dragRef.current = null;
+      setDrag(null);
+    };
+    window.addEventListener("pointermove", mv, true);
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", cancel, true);
   };
 
-  const onMove = (e: React.PointerEvent) => {
+  const onMove = (e: { pointerId: number; clientX: number; clientY: number }) => {
     const d = dragRef.current;
     if (!d || d.pointer !== e.pointerId) return;
     const dx = e.clientX - d.x0;
@@ -384,10 +404,12 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     if (d.mode === "move") {
       const len = d.end - d.start;
       let s = Math.max(0, d.start + dms);
-      const sStart = snap(s, d.id);
-      const sEnd = snap(s + len, d.id);
-      if (sStart !== s) s = sStart;
-      else if (sEnd !== s + len) s = sEnd - len;
+      // stuck to another clip's edge, the playhead or a beat when it comes near (the guide line shows where)
+      const hitStart = snapTo(s, d.id);
+      const hitEnd = hitStart == null ? snapTo(s + len, d.id) : null;
+      next.snapAt = hitStart ?? hitEnd;
+      if (hitStart != null) s = hitStart;
+      else if (hitEnd != null) s = hitEnd - len;
       // with others: none of them goes before 0
       const earliest = Math.min(d.start, ...d.group.map((g) => g.start));
       next.ghostStart = Math.max(d.start - earliest, Math.round(s));
@@ -398,10 +420,11 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         setDrag(next);
         return;
       }
-      // which track is under the finger; above the pictures (or under the sound) makes a new one
+      // which track is under the finger; above the pictures (or under the sound) makes a new one. Over a row the clip
+      // can't go on (a text track between, the sound) it stays on the last row it could be on, instead of jumping back
       const clip = findOwn(d.id)!;
       const onSound = tl.tracks.find((t) => t.id === d.trackId)?.kind === "audio";
-      let target = d.trackId;
+      let target = d.ghostTrack === "new" ? d.trackId : d.ghostTrack;
       let found = false;
       for (const t of ordered) {
         const r = rows.current.get(t.id)?.getBoundingClientRect();
@@ -415,21 +438,36 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         const last = rows.current.get(ordered.at(-1)?.id ?? "")?.getBoundingClientRect();
         const k = kindOf(clip, assets, onSound);
         if (first && e.clientY < first.top && k !== "audio") target = "new";
-        if (last && e.clientY > last.bottom && k === "audio") target = "new";
+        else if (last && e.clientY > last.bottom && k === "audio") target = "new";
       }
       next.ghostTrack = target;
+      // a taken spot: the clip sits at the nearest free one (against its neighbour) — what the ghost shows is where it lands
+      const dest = tl.tracks.find((t) => t.id === target);
+      if (dest && !(tl.magnetic && mainTrack(tl)?.id === dest.id)) {
+        const others = dest.clips.filter((x) => x.id !== d.id).map((x) => ({ start: x.start, end: clipEnd(x) }));
+        const at = freeSlot(others, next.ghostStart, len);
+        if (at !== next.ghostStart) {
+          next.ghostStart = at;
+          next.ghostEnd = at + len;
+          next.snapAt = others.some((o) => o.end === at) ? at : at + len;
+        }
+      }
     } else if (d.mode === "start") {
-      const s = Math.min(d.end - 100, Math.max(d.lo, snap(d.start + dms, d.id)));
+      const hit = snapTo(d.start + dms, d.id);
+      const s = Math.min(d.end - 100, Math.max(d.lo, hit ?? d.start + dms));
       next.ghostStart = Math.round(s);
+      next.snapAt = hit != null && Math.round(s) === hit ? hit : null;
     } else {
-      const en = Math.max(d.start + 100, Math.min(d.hi, snap(d.end + dms, d.id)));
+      const hit = snapTo(d.end + dms, d.id);
+      const en = Math.max(d.start + 100, Math.min(d.hi, hit ?? d.end + dms));
       next.ghostEnd = Math.round(en);
+      next.snapAt = hit != null && Math.round(en) === hit ? hit : null;
     }
     dragRef.current = next;
     setDrag(next);
   };
 
-  const onUp = (e: React.PointerEvent) => {
+  const onUp = (e: { pointerId: number; shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
     const d = dragRef.current;
     if (!d || d.pointer !== e.pointerId) return;
     dragRef.current = null;
@@ -454,6 +492,10 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     } else if (d.mode === "start") run({ type: "trim_clip", clipId: d.id, edge: "start", to: d.ghostStart });
     else run({ type: "trim_clip", clipId: d.id, edge: "end", to: d.ghostEnd });
   };
+
+  useEffect(() => {
+    handlers.current = { onMove, onUp };
+  });
 
   // a tap on a clip selects it (touch: the timeline may have scrolled instead, then nothing happens)
   const tap = useRef<{ id: string; x: number; y: number } | null>(null);
@@ -581,6 +623,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     // the track's own colour (if the person gave it one): the clip's fill on «بريمير», a tint on «عادي»
     const paint = track.color ?? (pro ? PRO_TONE[k as keyof typeof PRO_TONE] ?? PRO_TONE.video : null);
     const missing = a && (a.status !== "ready" || !a.url);
+    // «التلوين» (the colour page, and what حيدرة grades): a clip that has grading layers on shows it, like the simple filter does
+    const graded = c.grades.filter((g) => g.on).length;
     const handle = compact ? 18 : 10;
     return (
       <div
@@ -645,9 +689,10 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
             {c.fix.state === "sending" ? "⏫ يرسل" : c.fix.state === "making" ? "⏳ يُصنع" : c.fix.state === "done" ? "✓ على الأخضر" : c.fix.state === "failed" ? "✕ ما نجح" : c.fix.note ? "✎ جاهز للإرسال" : "✎ اكتب الملاحظة"}
           </span>
         )}
-        {(c.color || c.fadeIn > 0 || c.fadeOut > 0) && (
-          <span className="pointer-events-none absolute right-1 top-0.5 text-[9px] text-white/90">{c.color ? "🎨" : ""}{c.fadeIn > 0 || c.fadeOut > 0 ? "◢" : ""}</span>
+        {(c.color || graded > 0 || c.fadeIn > 0 || c.fadeOut > 0) && (
+          <span className="pointer-events-none absolute right-1 top-0.5 text-[9px] text-white/90">{c.color || graded ? "🎨" : ""}{graded > 1 ? <b>×{graded}</b> : null}{c.fadeIn > 0 || c.fadeOut > 0 ? "◢" : ""}</span>
         )}
+        {graded > 0 && <span aria-label={`تلوين: ${graded} طبقة`} className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-r from-orange-400 via-pink-400 to-sky-400" />}
         {sel && !readOnly && !track.locked && (
           <>
             <span
@@ -677,6 +722,24 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   };
 
   const moving = drag?.moved && drag.mode === "move" ? drag : null;
+  // while dragging: how far it went («+2.4 ث») next to the clip, and the guide line where it is stuck to something
+  const dragging = drag?.moved ? drag : null;
+  const rulerH = compact ? RULER_PHONE : RULER;
+  const rowTop = (id: string) => {
+    let y = rulerH;
+    for (const t of ordered) {
+      if (t.id === id) return y;
+      y += height(t);
+    }
+    return rulerH;
+  };
+  const dragBadge = dragging
+    ? dragging.mode === "move"
+      ? { ms: dragging.ghostStart - dragging.start, at: dragging.ghostStart, note: `عند ${formatTime(dragging.ghostStart, true)}` }
+      : dragging.mode === "start"
+        ? { ms: dragging.ghostStart - dragging.start, at: dragging.ghostStart, note: `الطول ${formatTime(dragging.end - dragging.ghostStart, true)}` }
+        : { ms: dragging.ghostEnd - dragging.end, at: dragging.ghostEnd, note: `الطول ${formatTime(dragging.ghostEnd - dragging.start, true)}` }
+    : null;
 
   return (
     <div dir="ltr" data-no-press className="relative flex h-full min-h-0 flex-col bg-jw-bg-2">
@@ -807,6 +870,24 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
               <span className="absolute -top-0.5 left-1 whitespace-nowrap rounded bg-jw-accent px-1.5 py-0.5 text-[10px] text-jw-on-accent" dir="rtl">
                 اترك هنا · {formatTime(dropAt.ms)}
               </span>
+            </div>
+          )}
+          {dragging && dragging.snapAt != null && (
+            <div className="pointer-events-none absolute bottom-0 z-30 w-0.5 bg-amber-400 shadow-[0_0_8px_#fbbf24]" style={{ top: rulerH, left: X0 + lanePx(dragging.snapAt) }}>
+              <span className="absolute -top-0.5 left-1 whitespace-nowrap rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-black" dir="rtl">
+                🧲 ملتصق
+              </span>
+            </div>
+          )}
+          {dragging && dragBadge && (
+            <div
+              className="pointer-events-none absolute z-40 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 text-xs font-bold text-white shadow-lg"
+              style={{ left: X0 + lanePx(dragBadge.at), top: Math.max(rulerH, rowTop(dragging.ghostTrack === "new" ? (ordered[0]?.id ?? "") : dragging.ghostTrack) - 20) }}
+              dir="rtl"
+              aria-live="off"
+            >
+              <span dir="ltr" className="tabular-nums text-amber-300">{movedLabel(dragBadge.ms)}</span>
+              <span className="ms-2 font-normal text-white/80">{dragBadge.note}</span>
             </div>
           )}
           {box && Math.hypot(box.x1 - box.x0, box.y1 - box.y0) >= 4 && (
