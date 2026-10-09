@@ -26,6 +26,7 @@ import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { isUuid, refsFor, uploadFromBuffer, uploadFromOutput } from "./uploads";
 import { runJob, type JobRow } from "./jobs";
 import { ProviderError } from "./providers/common";
+import { CONTINUITY_METHOD, checkEditPrompt, editModelsBrief, timingBlock, type EditModel } from "@config/jawad/smart-edit-training";
 
 import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
@@ -400,21 +401,23 @@ function continuityText(edit: EditInputs) {
 }
 
 /**
- * The generator's shortest clip is longer than what the person marked (e.g. 2 s marked, 4 s made): which seconds are
- * the change and which only carry the same moment on, so the whole clip is filled with the same idea.
+ * The edit in numbers, for the continuity method's checker and worked examples (config/jawad/smart-edit-training.ts):
+ * the video, what was marked, the cut, the continuity and sound references, the other references, the locks' key words.
  */
-function partFill(edit: EditInputs) {
-  const r = edit.ranges[0];
-  if (!r || !edit.cut) return "";
-  const marked = r.to - r.from;
-  if (edit.cut.seconds - marked < 0.5) return "";
-  const before = Math.max(0, r.from - edit.cut.start);
-  const after = Math.max(0, edit.cut.end - r.to);
-  return `\n\nTIMING — the generator's shortest clip is ${edit.cut.seconds} s, longer than the ${marked.toFixed(1)} s the user marked. Fill the whole ${edit.cut.seconds} s with ONE continuous moment of the same idea:
-- 0.0–${before.toFixed(1)} s of the new clip (= ${edit.cut.start.toFixed(1)}–${r.from.toFixed(1)} s of the original): the same action, pace and camera as in the original at those seconds, flowing out of the first frame.
-- ${before.toFixed(1)}–${(before + marked).toFixed(1)} s (= the marked ${r.from.toFixed(1)}–${r.to.toFixed(1)} s): the part the user wants different, written as simply how it happens.
-- ${(before + marked).toFixed(1)}–${edit.cut.seconds.toFixed(1)} s (= ${r.to.toFixed(1)}–${edit.cut.end.toFixed(1)} s of the original, ${after.toFixed(1)} s): the same action carries on as in the original and lands exactly on the last frame.
-Describe it as one natural, unhurried beat at the original's speed: no added events, no slow-motion or frozen padding, no new cuts.`;
+function editModelOf(edit: EditInputs, videoSec: number, names: string[], locks: EditLock[]): EditModel | null {
+  if (!edit.cut) return null;
+  const r = edit.ranges[0] ?? { from: edit.cut.start, to: edit.cut.end };
+  const cont = edit.continuity ?? continuityRanges(edit.cut, videoSec);
+  const contNames = new Set(cont.map((c, i) => contName(c, i, cont)));
+  return {
+    videoSec,
+    marked: { from: Math.max(edit.cut.start, r.from), to: Math.min(edit.cut.end, r.to) },
+    cut: edit.cut,
+    continuity: cont,
+    sounds: names.filter((n): n is "sound_before" | "sound_after" => n === "sound_before" || n === "sound_after"),
+    refs: names.filter((n) => !contNames.has(n) && !n.startsWith("sound_")),
+    lockWords: locks.flatMap((l) => l.check),
+  };
 }
 
 /**
@@ -474,10 +477,12 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
     };
     if (def.output === "video") {
       const s = job.inputs.settings;
+      const videoSec = (Number(out?.duration_ms) || Number(source.inputs.settings.duration) * 1000) / 1000;
+      const model = edit.mode === "parts" ? editModelOf(edit, videoSec, names, locks) : null;
       const task =
         edit.mode === "parts"
           ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip, cut in so that nobody can see the joins.
-CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) => n.startsWith("sound_")) ? ` SOUND CONTINUITY: ${names.includes("sound_before") ? "@sound_before is the original's sound in the seconds right before the cut" : ""}${names.includes("sound_before") && names.includes("sound_after") ? " and " : ""}${names.includes("sound_after") ? "@sound_after the sound right after it" : ""}: the new clip's sound continues it seamlessly — the same voices (timbre, pitch, pace) with any line in progress finishing naturally, the same ambience and sound effects, and the same music (tempo, key, instruments, level) running straight through both joins, no new music or sudden silence.` : ""} The other references are the original's characters and places.${partFill(edit)}`
+CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) => n.startsWith("sound_")) ? ` SOUND CONTINUITY: ${names.includes("sound_before") ? "@sound_before is the original's sound in the seconds right before the cut" : ""}${names.includes("sound_before") && names.includes("sound_after") ? " and " : ""}${names.includes("sound_after") ? "@sound_after the sound right after it" : ""}: the new clip's sound continues it seamlessly — the same voices (timbre, pitch, pace) with any line in progress finishing naturally, the same ambience and sound effects, and the same music (tempo, key, instruments, level) running straight through both joins, no new music or sudden silence.` : ""} The other references are the original's characters and places.${model && timingBlock(model) ? `\n\n${timingBlock(model)}` : ""}\n\n${CONTINUITY_METHOD}${model ? `\n\n${editModelsBrief(model, 2)}` : ""}`
           : "Mode: the WHOLE clip is made again as a fresh generation, with the same settings and references (the old video is not sent to the generator).";
       const parts: ClaudePart[] = [
         { type: "text", text: settingsText(def, s, job.mode, meta) },
@@ -492,7 +497,8 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
         if (refUrls[i]) parts.push({ type: "text", text: `@${m.name}:` }, { type: "image", url: refUrls[i]! });
       });
       parts.push(...lockPart, { type: "text", text: `What the user wants different (build it into the new prompt as simply how the shot is; never mention the old video or what was wrong):\n${asked}` });
-      const r = await directorRun(EDIT_TASK, parts, names, lockCheck);
+      // the continuity checker reads the prompt before it goes (what is missing is sent back to the writer)
+      const r = await directorRun(EDIT_TASK, parts, names, (p) => [...lockCheck(p), ...(model ? checkEditPrompt(p, model).map((x) => x.text) : [])]);
       prompt = r.prompt;
       usd = r.usd;
     } else {
