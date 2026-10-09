@@ -37,6 +37,8 @@ import { soundFile } from "./audio";
 import FontPicker from "./FontPicker";
 import FxPanel from "./FxPanel";
 import GradePanel from "./GradePanel";
+import { allGradeable, gradeable, pasteGradeCommands } from "@/lib/editor/grade-paste";
+import { copyGrade, pasteableGrade } from "./clipboard";
 import OpacityPanel from "./OpacityPanel";
 import TransitionPanel from "./TransitionPanel";
 import { TR_CATS, TR_LIST, type TrCat } from "@/lib/editor/transitions";
@@ -167,6 +169,29 @@ export default function Inspector({
             <p className="text-[11px] leading-5 text-jw-faint">يثبّت أول مقطع، ويحرّك الباقي لين ينطبق صوتهم عليه.</p>
           </div>
         )}
+        {selected.length > 1 && (() => {
+          // the colour grading of the first selected picture, spread onto the others (or a grading copied earlier onto all of them)
+          const okIds = new Set(gradeable(tl, selected));
+          const ids = selected.filter((id) => okIds.has(id));
+          const first = ids.length ? findClip(tl, ids[0]) : null;
+          const have = pasteableGrade();
+          if (ids.length < 1) return null;
+          return (
+            <div className="space-y-1.5">
+              {first && ids.length > 1 && (
+                <button type="button" className="jw-btn jw-3d w-full text-xs" disabled={readOnly || !first.clip.grades.length} onClick={() => { copyGrade(first.clip.grades, first.clip.id); run(pasteGradeCommands(first.clip.grades, ids.slice(1)), { label: "لصق التلوين" }); flash(`لصقت تلوين أول مقطع على ${ids.length - 1} مقاطع.`); }} title="ينسخ تلوين أول مقطع محدد ويلصقه على بقية المقاطع المحددة مرة وحدة">
+                  🎨 وزّع تلوين أول مقطع على الباقي ({ids.length - 1})
+                </button>
+              )}
+              {have && (
+                <button type="button" className="jw-btn w-full text-xs" disabled={readOnly} onClick={() => { run(pasteGradeCommands(have.grades, ids), { label: "لصق التلوين" }); flash(`لصقت التلوين المنسوخ على ${ids.length} مقاطع.`); }}>
+                  📌 الصق التلوين المنسوخ على المحدد ({ids.length})
+                </button>
+              )}
+              {first && !first.clip.grades.length && ids.length > 1 && <p className="text-[11px] leading-5 text-jw-faint">أول مقطع محدد ما عليه تلوين؛ لوّنه أول أو انسخ تلوين مقطع ثاني من صفحة «التلوين».</p>}
+            </div>
+          );
+        })()}
         <div className="space-y-1.5">
           <span className="text-xs text-jw-muted">المقاس</span>
           <div className="grid grid-cols-2 gap-1.5">
@@ -501,7 +526,7 @@ export default function Inspector({
 
       {current === "color" && (
         <div className="space-y-3">
-          <GradePanel clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} projectId={projectId ?? null} media={a?.url && (a.kind === "video" || a.kind === "image") ? { url: a.url, kind: a.kind } : null} />
+          <GradePanel clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} projectId={projectId ?? null} targets={{ track: gradeable(tl, track.clips.map((c) => c.id), clip.id), all: allGradeable(tl, clip.id) }} media={a?.url && (a.kind === "video" || a.kind === "image") ? { url: a.url, kind: a.kind } : null} />
           {clip.color && (
             <details className="rounded-lg border border-jw-line p-2">
               <summary className="cursor-pointer text-[11px] text-jw-muted">الألوان السريعة القديمة (هذا المقطع فيه منها)</summary>
