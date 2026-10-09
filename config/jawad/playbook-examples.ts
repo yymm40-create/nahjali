@@ -6,6 +6,7 @@
 
 import { PLAYBOOKS, detectPlaybook, type Playbook, type Studio } from "./playbooks";
 import type { Settings } from "./types";
+import { TRANSFORM_PLAYBOOK_ID, transformCases } from "./video-transform";
 
 export interface PlaybookExample {
   id: string;
@@ -263,6 +264,9 @@ const MAKERS: Record<string, Maker> = {
 
 // ───────────────────────────── the bank ─────────────────────────────
 
+/** The transformation playbook's thousand examples are its worked before→after cases (config/jawad/video-transform.ts). */
+const transformExamples = (): PlaybookExample[] => transformCases().map((c) => ({ id: c.id, playbook: TRANSFORM_PLAYBOOK_ID, studio: "video", ask: c.ask, settings: c.settings, prompt: c.prompt }));
+
 const banks = new Map<string, PlaybookExample[]>();
 
 /** A thousand examples of one kind of work (the same every time). */
@@ -270,8 +274,13 @@ export function examplesFor(playbook: string, count = EXAMPLES_PER_PLAYBOOK): Pl
   const key = `${playbook}:${count}`;
   const hit = banks.get(key);
   if (hit) return hit;
-  const make = MAKERS[playbook];
   const def = PLAYBOOKS.find((p) => p.id === playbook);
+  if (playbook === TRANSFORM_PLAYBOOK_ID && def) {
+    const list = transformExamples().slice(0, count);
+    banks.set(key, list);
+    return list;
+  }
+  const make = MAKERS[playbook];
   if (!make || !def) return [];
   const r = new Rng(PLAYBOOKS.indexOf(def) * 7919 + 17);
   const out: PlaybookExample[] = [];

@@ -179,6 +179,7 @@ const VIDEO = `Video (remember the site's rule: no real women; a covered cartoon
 - Reference pictures: a first-frame picture makes the video start from it (and a last-frame one makes it end there); other references (people, places, objects) are mentioned by @name in the prompt. Say what each does.
 - Choose the duration, the aspect ratio and the resolution to match where the video will be shown (9:16 reels and stories, 16:9 YouTube); a higher resolution costs more, so don't raise it without a reason.
 - Spoken lines inside a video: follow the generator's own note on the language of the prompt; if it only takes English, write the spoken words transliterated in Latin letters between double quotes.
+- A person's OWN clip to transform (the same man, a new world: the environment, an object, the clothes, the light, the weather, an added or removed element, the look) is the request type «video-transform»: the clip is a VIDEO reference named @source, one change per pass, the fence of what stays, the change written A → B, and the lock-down clause last («face and identity unchanged … everything else identical to the source»); its method and worked before→after cases come with the message.
 - «المخرج الخارق» is a separate paid button in the form that rewrites a video prompt in a professional director's way; you may mention it, but you write the prompt yourself first.`;
 
 const AUDIO = `Audio:

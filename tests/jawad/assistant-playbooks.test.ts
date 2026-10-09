@@ -13,9 +13,9 @@ import type { Settings } from "@config/jawad/types";
 const STUDIO_GENERATOR = { image: "openai-gpt-image-2", video: "byteplus-seedance-2-5", audio: "elevenlabs-eleven-v4" } as const;
 const WOMAN = /\b(woman|women|girl|female|lady|she|her)\b|بنت|امرأة|نساء|فتاة|سيدة/iu;
 
-describe("the ten playbooks", () => {
+describe("the eleven playbooks", () => {
   it("are ten, each with a name, triggers, questions, a recipe and exemplars of its studio", () => {
-    expect(PLAYBOOKS).toHaveLength(10);
+    expect(PLAYBOOKS).toHaveLength(11);
     for (const p of PLAYBOOKS) {
       expect(p.name.length).toBeGreaterThan(3);
       expect(p.triggers.length).toBeGreaterThanOrEqual(8);
@@ -78,7 +78,9 @@ for (const p of PLAYBOOKS) {
       expect(ans.set.prompt).toBe(e.prompt);
       expect(ans.set.settings).toEqual(e.settings);
       // and the engine prices it without an issue about those options
-      const refs = e.prompt.includes("@ref") ? [{ id: "r1", kind: "image" as const, role: (p.id === "viral-effect" ? "first_frame" : "reference") as "first_frame" | "reference", name: "ref", mime: "image/png", bytes: 500000, width: 1024, height: 1024, durationMs: null, fps: null, status: "ready" as const }] : [];
+      const refs = e.prompt.includes("@source")
+        ? [{ id: "v1", kind: "video" as const, role: "reference" as const, name: "source", mime: "video/mp4", bytes: 5_000_000, width: 1080, height: 1920, durationMs: Number(e.settings.duration) * 1000, fps: 30, status: "ready" as const }]
+        : e.prompt.includes("@ref") ? [{ id: "r1", kind: "image" as const, role: (p.id === "viral-effect" ? "first_frame" : "reference") as "first_frame" | "reference", name: "ref", mime: "image/png", bytes: 500000, width: 1024, height: 1024, durationMs: null, fps: null, status: "ready" as const }] : [];
       const ev = evaluate(def, { settings: e.settings, prompt: e.prompt, instructions: "", refStyle: refs.length ? (p.id === "viral-effect" ? "frames" : "references") : "none", refs }, {});
       for (const k of Object.keys(e.settings)) {
         const o = ev.options.find((x) => x.key === k);
