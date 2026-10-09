@@ -15,6 +15,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // The home page is «الجواد الذكي»: the address itself opens it (the old two-branch home is cancelled for now, see src/app/page.tsx)
+  if (request.nextUrl.pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/jawad-ai";
+    return NextResponse.redirect(url);
+  }
+
   // «الجواد الذكي!» | JAWAD AI renders none of the main site's chrome, not even on the server (see the root layout).
   // Always overwritten here, so a client can never set it.
   const requestHeaders = new Headers(request.headers);
