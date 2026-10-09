@@ -3,6 +3,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
 import { deleteChat, getChat, listChats } from "@/lib/content/chats";
 import { producedLinks, uploadLinks } from "@/lib/content/files";
+import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export const GET = handle(async (req: Request) => {
     ...m,
     files: m.files?.map((f) => ({ ...f, url: ups.get(f.id) ?? null })),
     slides: m.slides
-      ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null })), failed: m.slides.failed.map(({ n, reason, text }) => ({ n, reason, text })) }
+      ? { ...m.slides, items: m.slides.items.map((s) => ({ ...s, url: links.get(s.fileId) ?? null, download: downloads.get(s.fileId) ?? null })), failed: m.slides.failed.map(({ n, reason, detail, text }) => ({ n, reason, text, ...(isAdmin(user.email) ? { detail } : {}) })) }
       : undefined,
   }));
   return NextResponse.json({ chat: { id: chat.id, title: chat.title, messages, pending: chat.pending ? { total: chat.pending.slides.length, mode: chat.pending.mode, todo: chat.pending.slides.map((x) => x.n) } : null, record: chat.record } });
