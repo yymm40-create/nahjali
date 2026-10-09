@@ -88,6 +88,13 @@ describe("reading the owner's settings", () => {
     expect(readSettings(JSON.parse(JSON.stringify(S)))).toEqual(S);
   });
 
+  it("the WhatsApp group is the owner's own by default, and an empty one he saves stays empty", () => {
+    expect(DEFAULT_SETTINGS.groupLink).toBe("https://chat.whatsapp.com/GM4dDzGRevpIlb55Q1HEzo?mode=gi_t");
+    expect(readSettings({}).groupLink).toBe(DEFAULT_SETTINGS.groupLink);
+    expect(readSettings({ groupLink: "" }).groupLink).toBe("");
+    expect(readSettings({ groupLink: "http://x.com" }).groupLink).toBe("");
+  });
+
   it("keeps only safe https links and storage paths", () => {
     const s = readSettings({ groupLink: "https://chat.whatsapp.com/abc", recordedLink: "https://x.com/y z", videoPath: "course/3f2a1b4c-0000-4000-8000-000000000000.mp4", posterPath: "../x.png" });
     expect(s.groupLink).toBe("https://chat.whatsapp.com/abc");

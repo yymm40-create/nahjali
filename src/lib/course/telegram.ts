@@ -53,6 +53,7 @@ export function orderText(o: Order, state = ""): string {
     `✉️ ${esc(o.email)}`,
     `📦 ${esc(PRODUCT_LABEL[o.product])} — <b>${o.amount} ريال</b>${o.was > o.amount ? ` (قيمتها ${o.was})` : ""}${o.bonus ? ` + ${o.bonus} زهرة هدية` : ""}`,
     `🕒 ${when(o.transferredAt ?? o.createdAt)}`,
+    ...(state ? [] : ["👥 قد يطلب الانضمام لمجموعة الواتساب الحين: اقبله بعد ما تتأكد من التحويل."]),
   ].join("\n");
 }
 
