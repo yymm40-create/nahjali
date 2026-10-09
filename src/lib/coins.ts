@@ -207,7 +207,7 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   const need = claudeHalalas(typicalReplyUsd(model));
   const balance = who.team ? await teamCoinBalance(who.team) : await coinBalance(who.id);
   if (balance !== null && balance < need) {
-    throw new UserError(`رصيدك ما يكفي للمحادثة مع ${model.name}: الرد الواحد يحتاج تقريبًا ${coinStr(need)}. اشحن رصيدك من صفحة «النقود الذكية»، أو اختر موديل أرخص.`, 402);
+    throw new UserError(`رصيدك ما يكفي للمحادثة مع «${model.name}»: الرد الواحد يحتاج تقريبًا ${coinStr(need)}. اشحن رصيدك من صفحة «النقود الذكية»، أو اختر موديل أرخص.`, 402);
   }
   const ref = `claude:${crypto.randomUUID()}`;
   return {

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { explainFailure } from "@/lib/jawad/server/jobs";
 
 describe("why a generation failed, in plain words", () => {
-  it("says Claude's credit ran out", () => {
-    expect(explainFailure("smart edit prompt: Claude 400: Your credit balance is too low to access the Anthropic API.", "x")).toMatch(/رصيد Claude/);
+  it("says the AI provider's credit ran out, without naming it", () => {
+    expect(explainFailure("smart edit prompt: Claude 400: Your credit balance is too low to access the Anthropic API.", "x")).toMatch(/رصيد مزوّد الذكاء الاصطناعي/);
   });
   it("says the video looked like copyrighted content, with the provider's code", () => {
     const m = explainFailure("OutputVideoSensitiveContentDetected.PolicyViolation The request failed because the output video may be related to copyright restrictions.", "x")!;

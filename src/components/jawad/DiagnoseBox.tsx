@@ -42,7 +42,7 @@ export default function DiagnoseBox({ answer, question }: { answer: DiagnoseAnsw
       )}
       {answer.developerMessage && (
         <>
-          <b>رسالة للمطوّر (Claude)</b>
+          <b>رسالة للمطوّر</b>
           <textarea readOnly dir="ltr" rows={7} value={answer.developerMessage} style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px dashed var(--jw-line, #444)", background: "transparent", color: "inherit", fontSize: 11 }} />
         </>
       )}

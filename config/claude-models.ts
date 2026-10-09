@@ -16,6 +16,7 @@ export interface ClaudeModel {
   key: ClaudeModelKey;
   /** the API id */
   id: string;
+  /** the name the person sees: our own, never the maker's or the model's (nothing in the pages says whose it is) */
   name: string;
   /** one line: what it is */
   tagline: string;
@@ -33,7 +34,7 @@ export const CLAUDE_MODELS: readonly ClaudeModel[] = [
   {
     key: "fable",
     id: "claude-fable-5-1",
-    name: "Fable 5.1",
+    name: "العبقري",
     tagline: "الأقوى والأغلى",
     advice: "استخدمه بس للمهام المعقدة جدًا والصعبة حيل: تخطيط طويل، تحليل عميق، شغل ما قدر عليه غيره. للشغل العادي لا تستخدمه؛ يغلّي عليك الرصيد بدون فرق يبين.",
     rates: { input: 10, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25, output: 50 },
@@ -42,8 +43,8 @@ export const CLAUDE_MODELS: readonly ClaudeModel[] = [
   {
     key: "opus",
     id: "claude-opus-5-5",
-    name: "Opus 5.5",
-    tagline: "القوي المتوازن (الافتراضي)",
+    name: "الأصيل",
+    tagline: "صاحب أغلب المهمات (الافتراضي)",
     advice: "الاختيار الافتراضي لأغلب الشغل: كتابة وتخطيط وتعديل ومحادثات طويلة بجودة عالية وسعر معقول.",
     rates: { input: 4, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2, output: 20 },
     effort: true,
@@ -51,16 +52,16 @@ export const CLAUDE_MODELS: readonly ClaudeModel[] = [
   {
     key: "sonnet",
     id: "claude-sonnet-5-5",
-    name: "Sonnet 5.5",
+    name: "الرشيق",
     tagline: "سريع وسعره وسط",
-    advice: "للشغل اليومي لما تبي الشغل يمشي سريع: أسئلة، تعديلات، صياغة، أفكار. يكفي في أغلب الحالات وأرخص من Opus.",
+    advice: "للشغل اليومي لما تبي الشغل يمشي سريع: أسئلة، تعديلات، صياغة، أفكار. يكفي في أغلب الحالات وأرخص من الأصيل.",
     rates: { input: 2, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.1, output: 10 },
     effort: true,
   },
   {
     key: "haiku",
     id: "claude-haiku-5-5",
-    name: "Haiku 5.5",
+    name: "الخفيف",
     tagline: "الأسرع والأرخص",
     advice: "للأشياء الخفيفة والسريعة: أسئلة قصيرة، ترتيب أفكار، تصحيح كلام. أرخص بكثير، لكنه ما يناسب الشغل الطويل المعقد.",
     rates: { input: 0.1, cacheWrite5m: 0.125, cacheWrite1h: 0.2, cacheRead: 0.01, output: 0.5 },

@@ -129,7 +129,7 @@ export function explainFailure(detail: string | undefined, fallback: string | un
   const d = detail ?? "";
   const code = /\b([A-Z][A-Za-z]+(?:\.[A-Z][A-Za-z]+)?)\b/.exec(d.replace(/^smart edit prompt: /, ""))?.[1];
   const tag = (m: string) => (code && /Sensitive|Policy|Limit|Quota/.test(code) ? `${m} (${code})` : m);
-  if (/credit balance is too low/i.test(d)) return "رصيد Claude (Anthropic) عند المنصة خلص، فما قدر يكتب البرومبت المعدّل. أُعيدت لك نقودك. صاحب المنصة لازم يشحن رصيد Anthropic.";
+  if (/credit balance is too low/i.test(d)) return "رصيد مزوّد الذكاء الاصطناعي عند المنصة خلص، فما قدر يكتب البرومبت المعدّل. أُعيدت لك نقودك. صاحب المنصة لازم يشحن الرصيد.";
   if (/OutputVideoSensitiveContentDetected/.test(d) && /copyright/i.test(d)) return tag("رفض المزوّد الفيديو الناتج لأنه يشبه محتوى محمي بحقوق نشر (لاعب أو شخص مشهور، شعار، لبس فريق، شخصية معروفة). غيّر الملاحظة أو المراجع لتبعد عن هذا الشبه وجرّب. ما انخصم منك شي.");
   if (/OutputAudioSensitiveContentDetected/.test(d) && /copyright/i.test(d)) return tag("رفض المزوّد الصوت الناتج لأنه يشبه موسيقى أو صوتًا محميًا بحقوق نشر. اطلب صوتًا عاديًا بدون موسيقى معروفة، أو أطفئ الصوت وجرّب. ما انخصم منك شي.");
   if (/Output(Video|Audio)SensitiveContentDetected/.test(d)) return tag("رفض المزوّد النتيجة لأنها خالفت سياسة المحتوى عنده. غيّر الملاحظة وجرّب. ما انخصم منك شي.");

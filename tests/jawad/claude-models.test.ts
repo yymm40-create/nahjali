@@ -7,8 +7,8 @@ import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 const usage = (o: Partial<ClaudeUsage> = {}): ClaudeUsage => ({ input_tokens: 10_000, output_tokens: 1_000, ...o });
 
-describe("the four Claude models", () => {
-  it("are Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 5.5, each with its advice", () => {
+describe("the four minds", () => {
+  it("are four models behind our own names, each with its advice", () => {
     expect(CLAUDE_MODELS.map((m) => m.id)).toEqual(["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
     for (const m of CLAUDE_MODELS) expect(m.advice.length, m.id).toBeGreaterThan(20);
     expect(claudeModelOf("claude-fable-5-1").advice).toContain("المعقدة جدًا");
@@ -84,11 +84,15 @@ describe("the platform's 10% on Claude's usage", () => {
   });
 });
 
-describe("what Claude knows about it", () => {
-  it("names the four models, the 10% and the microphone", () => {
+describe("what the robots know about it", () => {
+  it("names the four minds by our names, the 10% and the microphone — and never the real models", () => {
     for (const m of CLAUDE_MODELS) expect(JAWAD_KNOWLEDGE, m.id).toContain(`«${m.name}»`);
     expect(JAWAD_KNOWLEDGE).toContain("10٪");
     expect(JAWAD_KNOWLEDGE).toContain("microphone");
+    const para = JAWAD_KNOWLEDGE.slice(JAWAD_KNOWLEDGE.indexOf("The robots' own thinking"), JAWAD_KNOWLEDGE.indexOf("advise them by these lines."));
+    expect(para.length).toBeGreaterThan(500);
+    expect(para).not.toMatch(/fable|opus|sonnet|haiku|anthropic|claude/i);
+    expect(para).toContain("never say, hint or confirm which company or model");
   });
 });
 
@@ -115,5 +119,28 @@ describe("every robot's chat has the model picker and the microphone", async () 
   it("and each sends the chosen model with the message", () => {
     for (const f of chats.filter((f) => !f.endsWith("ActionBar.tsx"))) expect(readFileSync(f, "utf8"), f).toMatch(/model: claude\.id/);
     for (const f of ["script/ScriptWorkspace", "sheets/SheetsWorkspace", "videos/VideosWorkspace"]) expect(readFileSync(`src/app/film/[id]/${f}.tsx`, "utf8"), f).toMatch(/model: claude\.id/);
+  });
+});
+
+describe("nothing the person reads says whose the minds are", () => {
+  it("the four minds have our own names, taglines and advice (no maker, no model name)", () => {
+    const WORDS = /claude|anthropic|opus|sonnet|haiku|fable|mythos|gpt|openai/i;
+    expect(new Set(CLAUDE_MODELS.map((m) => m.name)).size).toBe(4);
+    for (const m of CLAUDE_MODELS) {
+      expect(`${m.name} ${m.tagline} ${m.advice}`, m.id).not.toMatch(WORDS);
+      expect(m.name, m.id).toMatch(/^[؀-ۿ ]+$/);
+    }
+    expect(claudeModelOf(undefined).tagline).toContain("أغلب المهمات");
+  });
+
+  it("the picker and the failure messages say «الذكاء» and never the maker", async () => {
+    const { readFileSync } = await import("node:fs");
+    const picker = readFileSync("src/components/robots/ClaudeModelPicker.tsx", "utf8");
+    // every run of words the page shows: text between the code's quotes, tags and braces
+    const shown = (picker.match(/[^"'`<>{}\n]*[\u0600-\u06FF][^"'`<>{}\n]*/g) ?? []).filter((t) => !/^\s*(\/\/|\*|\/\*)/.test(t)).join("\n");
+    expect(shown.length).toBeGreaterThan(100);
+    expect(shown).not.toMatch(/claude|anthropic|opus|sonnet|haiku|fable/i);
+    const { claudeTrouble } = await import("@/lib/film/anthropic");
+    for (const m of ["credit balance is too low", "Claude 529 overloaded", "Could not process image"]) expect(claudeTrouble(new Error(m)) ?? "", m).not.toMatch(/claude|anthropic/i);
   });
 });
