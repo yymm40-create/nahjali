@@ -150,6 +150,22 @@ describe("«تم التحويل»", () => {
   });
 });
 
+describe("the group's link", () => {
+  it("is open to a buyer from «تم التحويل» on (the owner approves each join in WhatsApp) and not before, nor after a rejection", async () => {
+    const { startOrder, markTransferred, rejectOrder, myCourse } = await import("@/lib/course/orders");
+    expect((await myCourse(U.id)).groupOpen).toBe(false);
+    const a = await startOrder(U, { product: "combo", ...who }, T0 + H);
+    expect((await myCourse(U.id)).groupOpen).toBe(false);
+    await markTransferred({ id: U.id }, a.order.id, T0 + 2 * H);
+    const m = await myCourse(U.id);
+    expect(m.groupOpen).toBe(true);
+    expect(m.unlocked).toBe(false);
+    expect(m.products).toEqual([]);
+    await rejectOrder(a.order.id, "owner");
+    expect((await myCourse(U.id)).groupOpen).toBe(false);
+  });
+});
+
 describe("«أكّد»", () => {
   it("unlocks the buyer and grants the gift once (1 زهرة = 1 riyal = 100 halalas), however many times it is pressed", async () => {
     const { startOrder, markTransferred, confirmOrder, myCourse } = await import("@/lib/course/orders");
@@ -165,6 +181,7 @@ describe("«أكّد»", () => {
     expect(grant).toHaveBeenCalledTimes(1);
     const mine = await myCourse(U.id);
     expect(mine.unlocked).toBe(true);
+    expect(mine.groupOpen).toBe(true);
     expect(mine.products).toEqual(["recorded"]);
   });
 

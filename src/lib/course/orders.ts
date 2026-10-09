@@ -166,11 +166,12 @@ export async function getOrder(id: string): Promise<Order | null> {
 }
 
 /** A person's latest order of each product, and what their confirmed ones unlock. */
-export async function myCourse(userId: string): Promise<{ orders: Order[]; unlocked: boolean; products: Product[] }> {
+export async function myCourse(userId: string): Promise<{ orders: Order[]; unlocked: boolean; groupOpen: boolean; products: Product[] }> {
   const { data } = await db().from("course_orders").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20);
   const orders = (data ?? []).map(view);
   const confirmed = orders.filter((o) => o.status === "confirmed");
-  return { orders, unlocked: confirmed.length > 0, products: [...new Set(confirmed.flatMap((o) => (o.product === "combo" ? (["live", "recorded", "combo"] as Product[]) : [o.product])))] };
+  // the group link shows from «تم التحويل» on: the owner lets nobody in WhatsApp before he has seen the money
+  return { orders, unlocked: confirmed.length > 0, groupOpen: orders.some((o) => o.status === "transferred" || o.status === "confirmed"), products: [...new Set(confirmed.flatMap((o) => (o.product === "combo" ? (["live", "recorded", "combo"] as Product[]) : [o.product])))] };
 }
 
 export async function listOrders(status?: Status): Promise<Order[]> {

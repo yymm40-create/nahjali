@@ -22,7 +22,7 @@ export default async function CoursePage({ searchParams }: { searchParams: Promi
   const [{ user }, s] = await Promise.all([jawadSession(), loadSettings()]);
   const mine = user ? await myCourse(user.id).catch(() => null) : null;
   const orders: OrderView[] = (mine?.orders ?? []).map((o) => ({ id: o.id, product: o.product, status: o.status, amount: o.amount, bonus: o.bonus, lockedUntil: o.lockedUntil, name: o.name, phone: o.phone }));
-  // the private links appear only for a buyer whose payment is confirmed
-  const unlocked: Unlocked | null = mine?.unlocked ? { products: mine.products, groupLink: s.groupLink, recordedLink: s.recordedLink } : null;
+  // the group link shows from «تم التحويل» (the owner approves each join in WhatsApp); the recorded course only once confirmed
+  const unlocked: Unlocked | null = mine?.groupOpen ? { confirmed: mine.unlocked, products: mine.products, groupLink: s.groupLink, recordedLink: mine.unlocked ? s.recordedLink : "" } : null;
   return <CourseLanding s={publicView(s)} serverNow={nowMs()} user={user?.email ? { email: user.email } : null} orders={orders} unlocked={unlocked} buy={isProduct(buy) ? buy : null} loginHref={`${JAWAD.base}/login`} />;
 }

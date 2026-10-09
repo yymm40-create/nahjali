@@ -57,7 +57,7 @@ export interface CourseSettings {
   videoPath: string | null;
   videoUrl: string;
   posterPath: string | null;
-  /** shown only to those whose payment is confirmed */
+  /** the WhatsApp group: shown after «تم التحويل» (the owner approves each join request there); the recorded course only once confirmed */
   groupLink: string;
   recordedLink: string;
   bank: Bank;
@@ -82,7 +82,8 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   videoPath: null,
   videoUrl: "",
   posterPath: null,
-  groupLink: "",
+  // the course's WhatsApp group: joining needs the owner's approval in WhatsApp, so the link may be shown right after «تم التحويل»
+  groupLink: "https://chat.whatsapp.com/GM4dDzGRevpIlb55Q1HEzo?mode=gi_t",
   recordedLink: "",
   bank: { holder: "", iban: "", account: "", swift: "", bank: "" },
 };
@@ -143,7 +144,8 @@ export function readSettings(raw: unknown): CourseSettings {
     videoPath: typeof o.videoPath === "string" && /^course\/[0-9a-f-]{36}\.(mp4)$/.test(o.videoPath) ? o.videoPath : null,
     videoUrl: link(o.videoUrl),
     posterPath: typeof o.posterPath === "string" && /^course\/[0-9a-f-]{36}\.(png|jpg|webp)$/.test(o.posterPath) ? o.posterPath : null,
-    groupLink: link(o.groupLink),
+    // (absent = the default; an empty one the owner saved stays empty)
+    groupLink: o.groupLink === undefined ? d.groupLink : link(o.groupLink),
     recordedLink: link(o.recordedLink),
     bank: { holder: text(bk.holder, 120), iban: text(bk.iban, 60).replace(/\s+/g, " "), account: text(bk.account, 60), swift: text(bk.swift, 30), bank: text(bk.bank, 120) },
   };

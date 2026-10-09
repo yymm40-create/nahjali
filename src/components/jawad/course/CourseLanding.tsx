@@ -23,6 +23,8 @@ export interface OrderView {
   phone: string;
 }
 export interface Unlocked {
+  /** the owner has seen the money (else: the transfer is waiting for him) */
+  confirmed: boolean;
   products: Product[];
   groupLink: string;
   recordedLink: string;
@@ -92,6 +94,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
   const [bank, setBank] = useState<Bank | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [group, setGroup] = useState("");
 
   function pay(product: Product) {
     setError("");
@@ -121,7 +124,8 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
     setBusy(true);
     setError("");
     try {
-      await post("/api/course/transferred", { orderId: order.id });
+      const r = await post<{ groupLink?: string }>("/api/course/transferred", { orderId: order.id });
+      setGroup(r.groupLink ?? "");
       setSheet((x) => (x ? { ...x, step: "done" } : x));
       router.refresh();
     } catch (e) {
@@ -140,10 +144,13 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
     <div className="cr" dir="rtl">
       {unlocked && (
         <section className="cr-sec cr-ok" aria-live="polite">
-          <h2>✅ اشتراكك مؤكد</h2>
-          <p>أهلًا فيك في {COURSE.name}. {unlocked.groupLink ? "ادخل المجموعة من هنا:" : "بنرسل لك رابط المجموعة قريبًا."}</p>
+          <h2>{unlocked.confirmed ? "✅ اشتراكك مؤكد" : "⏳ تحويلك قيد التأكيد"}</h2>
+          <p>
+            {unlocked.confirmed ? `أهلًا فيك في ${COURSE.name}.` : "وصلنا طلبك، ونتأكد من التحويل."}{" "}
+            {unlocked.groupLink ? "اطلب الانضمام لمجموعة الواتساب من هنا، ويقبلك المالك بعد التأكد من التحويل:" : "بنرسل لك رابط المجموعة قريبًا."}
+          </p>
           <div className="cr-actions">
-            {unlocked.groupLink && <a className="cr-btn cr-primary" href={unlocked.groupLink} target="_blank" rel="noreferrer">ادخل المجموعة</a>}
+            {unlocked.groupLink && <a className="cr-btn cr-primary" href={unlocked.groupLink} target="_blank" rel="noreferrer">{unlocked.confirmed ? "ادخل المجموعة" : "اطلب الانضمام للمجموعة"}</a>}
             {unlocked.recordedLink && unlocked.products.includes("recorded") && <a className="cr-btn" href={unlocked.recordedLink} target="_blank" rel="noreferrer">افتح الدورة المسجلة</a>}
           </div>
         </section>
@@ -236,7 +243,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
           <li>سجّل دخولك في الموقع (عشان نسجّل إيميلك).</li>
           <li>اكتب اسمك ورقم جوالك، واضغط «ادفع الآن».</li>
           <li>تظهر لك بيانات الحساب (الآيبان والسويفت) وتنسخها وتحوّل المبلغ.</li>
-          <li>ارجع واضغط «تم التحويل»، ونضيفك للمجموعة بعد التأكيد.</li>
+          <li>ارجع واضغط «تم التحويل»: يظهر لك رابط مجموعة الواتساب، ويقبلك المالك فيها بعد التأكد من التحويل.</li>
         </ol>
       </section>
 
@@ -282,7 +289,8 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
             {sheet.step === "done" && (
               <>
                 <h3>وصلنا طلبك ✅</h3>
-                <p>راح نتأكد من التحويل ونضيفك للمجموعة. أول ما يتأكد يظهر لك رابط المجموعة هنا في هذي الصفحة، ونتواصل معك على الواتساب {phone ? <b dir="ltr">{phone}</b> : null}.</p>
+                <p>راح نتأكد من التحويل ونتواصل معك على الواتساب {phone ? <b dir="ltr">{phone}</b> : null}. الحين اطلب الانضمام لمجموعة الدورة، ويقبلك المالك بعد ما يتأكد من التحويل.</p>
+                {group && <a className="cr-btn cr-primary" href={group} target="_blank" rel="noreferrer">اطلب الانضمام لمجموعة الواتساب</a>}
                 <button type="button" className="cr-btn" onClick={() => setSheet(null)}>تمام</button>
               </>
             )}
