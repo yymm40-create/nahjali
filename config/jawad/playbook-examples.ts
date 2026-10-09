@@ -7,6 +7,7 @@
 import { PLAYBOOKS, detectPlaybook, type Playbook, type Studio } from "./playbooks";
 import type { Settings } from "./types";
 import { TRANSFORM_PLAYBOOK_ID, transformCases } from "./video-transform";
+import { FIGHT_PLAYBOOK_ID, fightCases } from "./fight-scenes";
 
 export interface PlaybookExample {
   id: string;
@@ -275,6 +276,11 @@ export function examplesFor(playbook: string, count = EXAMPLES_PER_PLAYBOOK): Pl
   const hit = banks.get(key);
   if (hit) return hit;
   const def = PLAYBOOKS.find((p) => p.id === playbook);
+  if (playbook === FIGHT_PLAYBOOK_ID && def) {
+    const list = fightCases().slice(0, count).map((c) => ({ id: c.id, playbook: FIGHT_PLAYBOOK_ID, studio: "video" as const, ask: c.ask, settings: c.settings, prompt: c.prompt }));
+    banks.set(key, list);
+    return list;
+  }
   if (playbook === TRANSFORM_PLAYBOOK_ID && def) {
     const list = transformExamples().slice(0, count);
     banks.set(key, list);

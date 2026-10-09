@@ -13,9 +13,9 @@ import type { Settings } from "@config/jawad/types";
 const STUDIO_GENERATOR = { image: "openai-gpt-image-2", video: "byteplus-seedance-2-5", audio: "elevenlabs-eleven-v4" } as const;
 const WOMAN = /\b(woman|women|girl|female|lady|she|her)\b|بنت|امرأة|نساء|فتاة|سيدة/iu;
 
-describe("the eleven playbooks", () => {
+describe("the twelve playbooks", () => {
   it("are ten, each with a name, triggers, questions, a recipe and exemplars of its studio", () => {
-    expect(PLAYBOOKS).toHaveLength(11);
+    expect(PLAYBOOKS).toHaveLength(12);
     for (const p of PLAYBOOKS) {
       expect(p.name.length).toBeGreaterThan(3);
       expect(p.triggers.length).toBeGreaterThanOrEqual(8);
