@@ -29,11 +29,6 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
             {/* on a computer: the whole width, or a phone-wide column */}
             {!preview && <LayoutToggle />}
             <SoundToggle />
-            {/* back to نهج علي's home (its two branches) */}
-            <Link href="/" className="jw-btn jw-btn-quiet h-9 min-h-9 gap-1.5 px-2.5 text-xs" aria-label="الرجوع لصفحة نهج علي الرئيسية" title="نهج علي: الصفحة الرئيسية">
-              <Image src="/brand/logo.png" alt="" width={22} height={25} className="h-6 w-auto" />
-              <span className="hidden sm:inline">نهج علي</span>
-            </Link>
             {user ? (
               <>
                 {!preview && <CoinBalance initial={balance} unlimited={owner} />}
