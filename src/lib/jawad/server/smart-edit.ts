@@ -125,6 +125,21 @@ function placeholderDims(out: { width?: number | null; height?: number | null },
   return ratio >= 1 ? { width: long, height: short } : { width: short, height: long };
 }
 
+/**
+ * Is the price the person agreed to the price charged? Those who make for free («بلا حدود»: the owners, the all-opening
+ * code, the marked) pay nothing, so there is nothing for them to agree to.
+ */
+export const priceAgreed = (free: boolean, expected: unknown, coins: number) => free || Number(expected) === coins;
+
+/**
+ * The continuity videos as the price reads them: cut from this generator's own video, so its size and frame rate are
+ * the generator's (whatever the browser's probe says), and its length is the length asked — the page's cut may land a
+ * few frames long on a key frame, and a second more must never move the price between the quote, the click and the job.
+ */
+export function trustedContinuity(found: RefMeta[], cont: ContinuityRange[], dims: { width: number; height: number }): RefMeta[] {
+  return found.map((m, i) => ({ ...m, ...dims, fps: 24, durationMs: Math.round((cont[i].to - cont[i].from) * 1000) }));
+}
+
 /** The price lines of the edit itself (on top of the generation). Null when the owner switched one off. */
 function editLines(def: GeneratorDef, table: Record<string, number | null>) {
   const video = def.output === "video";
@@ -251,7 +266,9 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   const first = price(meta);
   if (first.issues) return { kind: "issues", issues: first.issues };
   if (quote) return { kind: "quote", coins: first.coins!, lines: first.lines!, cut };
-  if (Number(b.expectedCoins) !== first.coins) return { kind: "price_changed", coins: first.coins!, lines: first.lines! };
+  // The price the person saw must be the price charged — checked here, FIRST, before any upload or Claude call, so a mismatch
+  // fails at once. Those who make for free («بلا حدود»: the owners, the all-opening code, the marked) pay nothing, so there is nothing to confirm.
+  if (!priceAgreed(owner, b.expectedCoins, first.coins!)) return { kind: "price_changed", coins: first.coins!, lines: first.lines! };
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("التعديل الذكي غير متاح حاليًا.", 503);
 
   // Frames of the original video for Claude, stored with the edit
@@ -282,8 +299,10 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
       const want = (cont[i].to - cont[i].from) * 1000;
       if (m.kind !== "video" || Math.abs((m.durationMs ?? 0) - want) > 1500) throw new UserError("أحد مقاطع الاستمرارية ما وصل صح؛ جرّب مرة ثانية.", 400);
     });
-    // cut from this generator's own video: its size and frame rate are the generator's, whatever the browser's probe says
-    const trusted = found.meta.map((m) => ({ ...m, ...placeholderDims(out, source), fps: 24 }));
+    // cut from this generator's own video: its size and frame rate are the generator's, whatever the browser's probe says; and
+    // its length is the length asked (the check above allows 1.5 s of slack for the cut landing on a key frame), so the price
+    // is the same at the quote, at the click and when the job is made — never a second more because a cut ran a few frames long
+    const trusted = trustedContinuity(found.meta, cont, placeholderDims(out, source));
     meta = [...named(trusted, cont.map((r, i) => contName(r, i, cont))), ...own].slice(0, PART_REFS_MAX);
     // the sound right before and after the cut, so voices, effects and music carry on (when the clip has sound)
     if (settings.audio !== false) {
@@ -309,7 +328,8 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   }
   const final = price(meta);
   if (final.issues) return { kind: "issues", issues: final.issues };
-  if (final.coins !== first.coins) return { kind: "price_changed", coins: final.coins!, lines: final.lines! };
+  // (the same inputs priced the same way: this only differs if the price table changed during the request)
+  if (!priceAgreed(owner, first.coins, final.coins!)) return { kind: "price_changed", coins: final.coins!, lines: final.lines! };
 
   const edit: EditInputs = { sourceJobId: source.id, outputId: String(out.id), mode, notes, ranges, cut, frames, ...(cont.length ? { continuity: cont } : {}) };
   const charge = !owner && final.coins! > 0;

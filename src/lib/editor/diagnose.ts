@@ -110,7 +110,7 @@ export async function diagnose(p: EditorProject, who: Who, b: { message?: unknow
   const { data: ops } = await db().from("editor_ops").select("actor,label,version,created_at").eq("project_id", p.id).order("created_at", { ascending: false }).limit(15);
   const { data: jobs } = await db().from("jawad_jobs").select("id,generator_id,status,submit_state,provider_status,error_message,error_detail,created_at,updated_at,finished_at").eq("user_id", p.user_id).order("created_at", { ascending: false }).limit(8);
   const env = {
-    ...Object.fromEntries(["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ELEVENLABS_API_KEY", "FAL_KEY", "R2_BUCKET", "R2_ENDPOINT", "NEXT_PUBLIC_SUPABASE_URL"].map((k) => [k, !!process.env[k]])),
+    ...Object.fromEntries(["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ELEVENLABS_API_KEY", "FAL_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "NEXT_PUBLIC_SUPABASE_URL"].map((k) => [k, !!process.env[k]])),
     // the video generator's key goes by several names
     SEEDANCE: ["ARK_API_KEY", "seedance_api", "SEEDANCE_API"].some((k) => !!process.env[k]),
   };
