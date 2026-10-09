@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { overallPercent, runningPercent, TYPICAL_MS } from "@/lib/film/progress-math";
-import { STEPS } from "@/app/film/stage/FilmStage";
+import { STEPS } from "@/app/film/stage/steps";
 import { FILM_STAGES } from "@config/film";
 
 describe("«العداد»", () => {

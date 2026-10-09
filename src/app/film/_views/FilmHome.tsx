@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireFilmUser } from "@/lib/film/access";
 import type { FilmProject } from "@/lib/film/types";
 import { FILM_STAGES } from "@config/film";
-import { STEPS } from "../stage/FilmStage";
+import { STEPS } from "../stage/steps";
 
 const stageLabel = (key: string) => FILM_STAGES.find((s) => s.key === key)?.label ?? key;
 const stageIcon = (key: string) => FILM_STAGES.find((s) => s.key === key)?.icon ?? "🎞️";
