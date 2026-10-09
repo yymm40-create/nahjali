@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { isSalesAsk, nearestSalesExamples, SALES_EXAMPLES_COUNT, SALES_FORMATS, SALES_METHOD, salesExamples, salesExamplesBrief } from "@config/content-sales";
 import { BAQIR_PERSONA } from "@config/content";
-import { drawsRealWoman } from "@config/jawad/assistant";
 
 // «محمد باقر» sells by the owner's four steps: the end result, the biggest problem, every risk killed, speed and a
 // bonus with an easy entry price — a hook before, one call to action after, and the viewer kept all the way.
-const WOMAN = /\b(woman|women|girl|female|lady|she|her)\b|بنت|امرأة|نساء|فتاة|سيدة|عباية|عبايات نسائية/iu;
 const STEP_WORDS = ["النتيجة", "المشكلة", "المخاطر", "السرعة", "بونص"];
 
 describe("the selling method", () => {
@@ -60,7 +58,7 @@ describe(`${SALES_EXAMPLES_COUNT} worked sales examples`, () => {
     expect(new Set(list.map((e) => e.product)).size).toBeGreaterThan(30);
   });
 
-  it.each(list.map((e) => [e.id, e] as const))("%s follows the four steps, hooks first, keeps the viewer, ends with one CTA, and draws no woman", (_id, e) => {
+  it.each(list.map((e) => [e.id, e] as const))("%s follows the four steps, hooks first, keeps the viewer, ends with one CTA", (_id, e) => {
     expect(isSalesAsk(e.ask)).toBe(true);
     expect(e.endResult.length).toBeGreaterThan(8);
     expect(e.problem.length).toBeGreaterThan(8);
@@ -95,9 +93,6 @@ describe(`${SALES_EXAMPLES_COUNT} worked sales examples`, () => {
       expect(e.outline[0]).toMatch(/^مشهد ١ \(هوك، ٠–٣ ث\)/);
       expect(e.outline[6]).toMatch(/مشطوب/);
     }
-    const all = [e.ask, e.hook, e.endResult, e.problem, ...e.risks, e.bonus, e.cta, ...e.outline].join(" ");
-    expect(all).not.toMatch(WOMAN);
-    expect(drawsRealWoman(all)).toBe(false);
   });
 
   it("the nearest examples favour the product and the format asked, and the brief carries the four steps", () => {

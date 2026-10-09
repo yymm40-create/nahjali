@@ -8,7 +8,6 @@ import { randomUUID } from "crypto";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, isDesignKind, type DesignAspect, type DesignKind } from "@config/designer";
 import { findKindStyle } from "@config/designer-library";
-import { drawsRealWoman } from "@config/jawad/assistant";
 import { cleanHistory, forModel, getChat, lastDesignAt, readQuestions, saveChat, type Attachment, type PendingDesign, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
 import { layersNote, readLayers, sizeOf, type Design } from "./layers";
@@ -164,9 +163,7 @@ export async function say(userId: string, chatId: string | null, message: string
     const prevAt = lastDesignAt(history);
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
     const keep = !artwork && prev?.artwork && prev.state === "ready" ? prev.artwork : null;
-    if (artwork && drawsRealWoman(artwork)) {
-      reply.text += "\n\n⚠️ لم أرسل الرسم لجواد: توجيه الصورة يرسم امرأة واقعية، وهذا ممنوع في الموقع. أعيد صياغته بلا أشخاص من النساء ثم أنفّذ؛ قل لي «صمّم» من جديد.";
-    } else if (!artwork && !keep) {
+    if (!artwork && !keep) {
       reply.text += "\n\n⚠️ لم أجد صورة قائمة أبقيها ولا توجيهًا جديدًا للرسم؛ اطلب التصميم من جديد.";
     } else if (!layers.length) {
       reply.text += "\n\n⚠️ لم تُحدَّد طبقات نص للتصميم؛ أعطني النصوص كما تريدها ثم اطلب التصميم من جديد.";

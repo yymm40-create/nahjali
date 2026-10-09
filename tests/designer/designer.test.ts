@@ -26,7 +26,6 @@ describe("«كاظم»", () => {
     expect(t.endsWith("REC")).toBe(true);
     expect(DESIGNER_PLATFORM_RULES).toContain("لا تدّعِ");
     expect(DESIGNER_PLATFORM_RULES).toContain("بلا أي كتابة");
-    expect(DESIGNER_PLATFORM_RULES).toContain("امرأة أو فتاة واقعية");
     for (const f of FONTS) expect(fontsBlock()).toContain(f.id);
   });
 
@@ -85,7 +84,6 @@ describe("the layers", () => {
     const p = artworkPrompt({ prompt: "a dark velvet poster", refs: 2, fix: "FIX" });
     expect(p).toContain(NO_TEXT_RULE);
     expect(p).toContain("ref1…");
-    expect(p).toContain("No real women");
     expect(p.endsWith("FIX")).toBe(true);
     expect(artworkPrompt({ prompt: "x", refs: 0 })).not.toContain("ref1");
   });

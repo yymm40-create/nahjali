@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generatorById } from "@config/jawad/generators";
-import { checkAnswer, drawsRealWoman } from "@config/jawad/assistant";
+import { checkAnswer } from "@config/jawad/assistant";
 import { detectPlaybook } from "@config/jawad/playbooks";
 import { FIGHT_CASES, FIGHT_METHOD, FIGHT_PLAYBOOK_ID, FIGHT_SCHOOLS, detectSchool, fightCases, nearestFightCases } from "@config/jawad/fight-scenes";
 import { evaluate } from "@/lib/jawad/engine";
@@ -8,7 +8,6 @@ import { findMentions } from "@/lib/jawad/mentions";
 
 // Ten thousand tests over the thousand worked fights «جواد» learns screen fighting from: ten checks on every fight.
 const def = generatorById("byteplus-seedance-2-5")!;
-const WOMAN = /\b(woman|women|girl|female|lady|she|her)\b|بنت|امرأة|نساء|فتاة|سيدة/iu;
 const GORE = /\b(blood|bleeding|gore|gory|wound|stab(bed)?|decapitat\w*|corpse|dies|dead body|kill(s|ed)?)\b/i;
 const cases = fightCases();
 
@@ -18,7 +17,6 @@ describe("the bank", () => {
     expect(new Set(cases.map((c) => `${c.ask}|${c.prompt}`)).size).toBe(FIGHT_CASES);
     for (const s of FIGHT_SCHOOLS) expect(cases.filter((c) => c.school === s.id).length).toBeGreaterThanOrEqual(Math.floor(FIGHT_CASES / FIGHT_SCHOOLS.length));
     expect(FIGHT_METHOD).toContain("A FIGHT IS SHOTS, NOT PROSE");
-    expect(FIGHT_METHOD).toContain("no women");
   });
 });
 
@@ -63,18 +61,15 @@ for (const c of cases) {
         { prompt: c.prompt, settings: Object.entries(c.settings).map(([key, value]) => ({ key, value: String(value) })) },
         { defs: [def], draft: { generatorId: def.id, prompt: "", instructions: "", settings: {}, refStyle: "none", refs: [] }, attachments: 0 },
       );
-      expect(ans.blocked).toBeUndefined();
       expect(ans.set.prompt).toBe(c.prompt);
       expect(ans.set.settings).toEqual(c.settings);
       const ev = evaluate(def, { settings: c.settings, prompt: c.prompt, instructions: "", refStyle: "none", refs: [] }, {});
       expect(ev.issues.filter((i) => i.field !== "price" && !/سعر/.test(i.message)).map((i) => i.message)).toEqual([]);
       expect(findMentions(c.prompt)).toEqual([]);
     });
-    it("shows no blood or death and draws no woman", () => {
+    it("shows no blood or death", () => {
       const noRules = c.prompt.replace("No blood, no gore, no wounds.", "").replace(/\(no cuts shown\)/g, "");
       expect(GORE.test(noRules)).toBe(false);
-      expect(drawsRealWoman(c.prompt)).toBe(false);
-      expect(WOMAN.test(c.ask)).toBe(false);
     });
     it("is recognised as a fight from its request alone, with its school", () => {
       expect(detectPlaybook(c.ask)).toBe(FIGHT_PLAYBOOK_ID);

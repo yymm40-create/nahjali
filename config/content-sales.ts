@@ -3,7 +3,6 @@
 // equation; what to say before and after; how to keep the viewer from leaving) and a thousand worked sales examples:
 // a product, a format (carousel / reel script / motion graphics), an audience, and the whole piece planned by the
 // four steps. Made deterministically from seed lists (nothing to store; every one is checked by the tests). Pure.
-// The site's rule holds in every example: no real women, ever.
 
 import { Rng } from "./content-examples";
 

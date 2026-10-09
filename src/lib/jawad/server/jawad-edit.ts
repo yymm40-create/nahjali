@@ -1,6 +1,6 @@
 // «الجواد الذكي!» | JAWAD AI — «التعديل الذكي»: the one who writes the final prompt is جواد himself, the studio's
 // assistant (the same brain as the chat: his system prompt, his knowledge of the generators and of the kinds of work,
-// his women rule, his answer checks). The request reaches him as it is — the person's own words, untouched — with the
+// his answer checks). The request reaches him as it is — the person's own words, untouched — with the
 // whole shot, and the edit is one more REQUEST TYPE of his (like «video-transform»): the recipe comes with the message.
 // He decides the prompt and the locks he carries over in ONE answer; the website's mechanical rules (length, language,
 // real @names, the continuity checker, his own locks) only send a fault back to him — nothing writes before or after him.
@@ -8,13 +8,12 @@
 
 import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn, type ClaudeUsage } from "@/lib/film/anthropic";
 import { SUPER_DIRECTOR } from "@config/film-prompts/director";
-import { ASSISTANT_SCHEMA, assistantSystem, checkAnswer, WOMEN_RULE, type AssistantDraft, type AssistantRaw } from "@config/jawad/assistant";
+import { ASSISTANT_SCHEMA, assistantSystem, checkAnswer, type AssistantDraft, type AssistantRaw } from "@config/jawad/assistant";
 import { JAWAD_EDIT_IDENTITY } from "@config/jawad/smart-edit-training";
 import type { GeneratorDef } from "@config/jawad/types";
 import { directorProblems, directorPrompt, salvageDirector } from "../director";
 import { KEPT_RULES, LOCKS_SCHEMA, readLocks, type EditLock } from "../edit-locks";
 import { EDIT_TASK } from "./director";
-import { ProviderError } from "./providers/common";
 
 /** جواد's answer in a smart edit: his usual fields (only the prompt and the reply are used), the Chinese twin of a video prompt, and the locks. */
 export type EditRaw = AssistantRaw & { promptZh: string; kept: unknown };
@@ -71,7 +70,6 @@ export async function jawadWritesEdit(o: {
   let last: { en: string; zh: string } | null = null;
   let lastKept: EditLock[] = [];
   let left: string[] = [];
-  let women = false;
   for (let attempt = 1; attempt <= tries; attempt++) {
     const r = await callClaudeJson<EditRaw>({ system, turns, schema: EDIT_SCHEMA, maxTokens: 16000 });
     usage.push(r.usage);
@@ -79,11 +77,9 @@ export async function jawadWritesEdit(o: {
     const zh = text(r.data.promptZh);
     last = { en, zh: zh || en };
     lastKept = o.noLocks ? [] : readLocks({ locks: r.data.kept }, o.previous);
-    // his own answer checks (the site's rule on women, the prompt's limit), as in the chat
+    // his own answer checks (the prompt's limit), as in the chat
     const checked = checkAnswer(r.data, { defs: [o.def], draft: o.draft, attachments: 0 });
-    women = checked.blocked === "women";
-    if (women) left = [`${WOMEN_RULE} Write the prompt again without a real woman or girl.`];
-    else if (!en) left = ['The "prompt" is empty: write the whole final prompt.'];
+    if (!en) left = ['The "prompt" is empty: write the whole final prompt.'];
     else if (video) left = directorProblems({ en, zh: zh || "-" }, o.names);
     else left = o.problems?.(en) ?? [];
     const final = video ? directorPrompt({ en, zh: zh || en }) : en;
@@ -92,8 +88,6 @@ export async function jawadWritesEdit(o: {
     if (!left.length) return { prompt: final, usd: cost(), attempts: attempt, kept: lastKept, reply: checked.reply };
     turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${left.join("\n- ")}` }];
   }
-  // the site's rule on women is never repaired around: the edit stops here (the coins go back)
-  if (women) throw new ProviderError("rejected", "الموقع ما يصنع نساء واقعيات أبدًا، وهذا التعديل يطلب واحدة. غيّر وصف التعديل (رجل أو شاب أو مانيكان بدون وجه أو المنتج لحاله أو شخصية كرتونية بعباية). أُعيدت لك نقودك.", "women rule");
   // a video still off after three tries: repaired where it is safe and used (an edit that works beats a refusal)
   const saved = video && last ? salvageDirector({ en: last.en, zh: last.zh }, o.names) : null;
   if (saved) {

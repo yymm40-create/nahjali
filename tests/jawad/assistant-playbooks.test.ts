@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GENERATORS, generatorById } from "@config/jawad/generators";
-import { ASSISTANT_SCHEMA, checkAnswer, drawsRealWoman, WOMEN_RULE, assistantSystem } from "@config/jawad/assistant";
+import { ASSISTANT_SCHEMA, checkAnswer, assistantSystem } from "@config/jawad/assistant";
 import { PLAYBOOKS, detectPlaybook, playbookGuide, playbooksBrief } from "@config/jawad/playbooks";
 import { EXAMPLES_PER_PLAYBOOK, examplesFor, nearestExamples } from "@config/jawad/playbook-examples";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
@@ -9,9 +9,8 @@ import type { Settings } from "@config/jawad/types";
 
 // «جواد» learns the ten kinds of work from a thousand worked examples each. Every example has to be one the form
 // can take as it is (a generator of that studio, options that exist with valid values, a prompt within the limit),
-// has to be recognised as its own kind from its request alone, and must respect the site's rule: no real women.
+// has to be recognised as its own kind from its request alone.
 const STUDIO_GENERATOR = { image: "openai-gpt-image-2", video: "byteplus-seedance-2-5", audio: "elevenlabs-eleven-v4" } as const;
-const WOMAN = /\b(woman|women|girl|female|lady|she|her)\b|بنت|امرأة|نساء|فتاة|سيدة/iu;
 
 describe("the twelve playbooks", () => {
   it("are ten, each with a name, triggers, questions, a recipe and exemplars of its studio", () => {
@@ -25,7 +24,6 @@ describe("the twelve playbooks", () => {
       for (const e of p.exemplars) {
         const def = generatorById(STUDIO_GENERATOR[e.studio])!;
         expect(e.prompt.length, e.ask).toBeLessThanOrEqual(def.prompt.max);
-        if (e.studio !== "audio") expect(drawsRealWoman(e.prompt), e.ask).toBe(false);
       }
       expect(detectPlaybook(p.exemplars[0].ask), p.id).toBe(p.id);
     }
@@ -45,13 +43,11 @@ describe("the twelve playbooks", () => {
     for (const studio of ["image", "video", "audio"] as const) {
       const sys = assistantSystem(studio, GENERATORS.filter((g) => g.output === studio));
       for (const p of PLAYBOOKS) expect(sys).toContain(p.id);
-      expect(sys).toContain(WOMEN_RULE);
       expect(playbooksBrief(studio)).toContain("«ثامبنيل");
     }
     for (const p of PLAYBOOKS) expect(playbookGuide(p.id, p.studio)).toContain(p.recipe[0]);
     expect(ASSISTANT_SCHEMA.required).toContain("thumbnailPerson");
     expect(JAWAD_KNOWLEDGE).toContain("«جواد»");
-    expect(JAWAD_KNOWLEDGE).toContain("No real (photoreal) women");
   });
 });
 
@@ -65,7 +61,7 @@ for (const p of PLAYBOOKS) {
       expect(new Set(list.map((e) => e.ask)).size).toBeGreaterThan(EXAMPLES_PER_PLAYBOOK / 4);
     });
 
-    it.each(list.map((e) => [e.id, e] as const))("%s is recognised, fits the form, and draws no woman", (_id, e) => {
+    it.each(list.map((e) => [e.id, e] as const))("%s is recognised, fits the form", (_id, e) => {
       // recognised from the request alone
       expect(detectPlaybook(e.ask)).toBe(p.id);
       // the form takes it as it is
@@ -74,7 +70,6 @@ for (const p of PLAYBOOKS) {
         { prompt: e.prompt, settings: Object.entries(e.settings).map(([key, value]) => ({ key, value: String(value) })) },
         { defs: [def], draft: { generatorId: def.id, prompt: "", instructions: "", settings: {}, refStyle: "none", refs: [] }, attachments: 0 },
       );
-      expect(ans.blocked).toBeUndefined();
       expect(ans.set.prompt).toBe(e.prompt);
       expect(ans.set.settings).toEqual(e.settings);
       // and the engine prices it without an issue about those options
@@ -87,9 +82,6 @@ for (const p of PLAYBOOKS) {
         if (o && !o.hidden && !o.fixed) expect(ev.settings[k], `${e.id} ${k}`).toEqual(e.settings[k]);
       }
       expect(ev.issues.filter((i) => i.field !== "price" && !/سعر/.test(i.message)).map((i) => i.message), e.id).toEqual([]);
-      // the site's rule
-      expect(drawsRealWoman(e.prompt), e.id).toBe(false);
-      expect(WOMAN.test(e.ask), e.id).toBe(false);
       // one reference at most is named, and it is in the prompt when the playbook needs it
       expect(e.prompt.length).toBeLessThanOrEqual(def.prompt.max);
     });

@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { applyOps, docFromPicture, readOps, type Op, type PhotoDoc } from "@/lib/photo/doc";
 import { nearestPhotoExamples, PHOTO_EXAMPLES_COUNT, PHOTO_KINDS, photoExamples, photoExamplesBrief, type Expect } from "@config/photo-training";
-import { drawsRealWoman } from "@config/jawad/assistant";
 import { FONTS } from "@config/jawad/student";
 import { PHOTO } from "@config/photo";
 
 // «زهراء» learns from a thousand worked requests. Every one is run on a real project: its commands must work, do what the
-// example claims, explain themselves, and never draw or edit a real woman.
+// example claims, explain themselves.
 const FILES = new Map([["f1", { w: 4000, h: 3000 }], ["f2", { w: 800, h: 800 }]]);
 const ctx = { files: FILES, fonts: FONTS.map((f) => f.id) };
-const WOMAN = /\b(woman|women|girl|female|lady)\b|امرأة|نساء|فتاة|سيدة|موظفة|مدرّسة|عروس|بنت|أختي|زوجتي|أمي/u;
 
 /** The project the examples run on: a 4:3 photo with a title (t1), a dark bar (s2) and a picture (i3). */
 const baseline = (): PhotoDoc => {
@@ -71,19 +69,7 @@ describe("a thousand worked requests", () => {
       expect(["generate", "cutout", "edit"]).toContain(e.jawad.kind);
       expect(["base", "layer", "file"]).toContain(e.jawad.target);
       if (e.jawad.kind !== "cutout") expect(e.jawad.prompt.length).toBeGreaterThan(20);
-      expect(drawsRealWoman(e.jawad.prompt)).toBe(false);
-      expect(e.jawad.prompt).not.toMatch(WOMAN);
       expect(e.jawad.prompt).toMatch(e.jawad.kind === "generate" || e.jawad.kind === "edit" ? /no text/i : /^$/);
-    }
-    if (e.kind === "refuse") {
-      expect(e.ops).toEqual([]);
-      expect(e.jawad).toBeUndefined();
-      expect(e.reply).toMatch(/قاعدة الموقع/);
-      expect(e.ask).toMatch(WOMAN);
-    } else {
-      // nothing she does, says or sends draws a woman
-      expect(`${e.reply} ${e.diagnosis} ${JSON.stringify(e.ops)} ${e.jawad?.prompt ?? ""}`).not.toMatch(WOMAN);
-      expect(e.ask).not.toMatch(WOMAN);
     }
   });
 
@@ -110,8 +96,6 @@ describe("a thousand worked requests", () => {
     expect(wedding.some((e) => e.kind === "title")).toBe(true);
     const thumb = nearestPhotoExamples("جهّز مصغّرة يوتيوب", 3);
     expect(thumb[0].kind).toBe("thumbnail");
-    const refuse = nearestPhotoExamples("حسّن صورة زوجتي", 3);
-    expect(refuse[0].kind).toBe("refuse");
     expect(nearestPhotoExamples("xyz", 3)).toEqual([]);
     const brief = photoExamplesBrief(dark);
     expect(brief).toContain("الطلب:");

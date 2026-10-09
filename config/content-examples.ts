@@ -2,7 +2,7 @@
 // each (a request as people write it → what he should read from it, what he still has to ask, and the shape of the
 // deliverable), made deterministically from seed lists so they cost nothing to keep and the tests can check every
 // one of them. At each turn the closest examples to the person's message are shown to him (few-shot), so he answers
-// the way the examples do. Pure. The site's rule holds in every example: no real women, ever.
+// the way the examples do. Pure.
 
 import { CONTENT_KINDS, type ContentKind } from "./content";
 

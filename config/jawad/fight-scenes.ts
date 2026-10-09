@@ -22,7 +22,7 @@
 //     reversals, the environment reacting (dust, debris, splinters), a heavy hit marked by a two-frame freeze, a flash
 //     and a slight shake then back to speed, hair and cloth trailing the motion, fast attacks with brief pauses and one
 //     or two 0.5–1 s slow moments, escalation to one environment move and one decisive finish.
-// The site's rules hold: the fighters are men or boys (no real women, ever); generic people, never a known actor's
+// The site's rules hold: generic people, never a known actor's
 // likeness; no blood, gore, wounds or death shown — the impact is felt in sound, reaction and the frame.
 
 export const FIGHT_PLAYBOOK_ID = "fight-scene";
@@ -124,14 +124,14 @@ export const INSERTS = [
 ];
 
 export const FIGHT_METHOD = `METHOD — a cinematic fight for Seedance (how the great fight directors stage it):
-1. ASK what matters: who fights (men or boys only — describe each one clearly: age, build, clothes, so they never swap), where, which school (صيني/هونغ كونغ، ووشيا، وينغ تشون، أمريكي، عراك شوارع، سيلات، لقطة الممر، ساموراي، أكشن مصري، تحطيب، مبارزة سيوف صحراوية), bare hands or which weapon, the feeling (حماس، تراجيدي، مضحك), the length and the shape (9:16 / 16:9).
+1. ASK what matters: who fights (describe each one clearly: age, build, clothes, so they never swap), where, which school (صيني/هونغ كونغ، ووشيا، وينغ تشون، أمريكي، عراك شوارع، سيلات، لقطة الممر، ساموراي، أكشن مصري، تحطيب، مبارزة سيوف صحراوية), bare hands or which weapon, the feeling (حماس، تراجيدي، مضحك), the length and the shape (9:16 / 16:9).
 2. A FIGHT IS SHOTS, NOT PROSE: a prose-only fight plays as three slow beats («walk in, raise the weapon, freeze»). Write 3–6 numbered SHOTS for the clip, each 1–3 s, each ONE move: «SHOT 1 (0–2 s, wide): … CUT TO SHOT 2 (2–3 s, insert): …». Wide to establish the space and the distance between the fighters, medium for the exchange, an INSERT (0.5–1 s: a fist, a foot pivoting, eyes, a grip, a block) to sell a moment, back to wide for the payoff. The one-take school (لقطة الممر، أمريكي طويل) is the exception: one continuous shot, said as such.
 3. CLEAR GEOGRAPHY: who is screen-left and who is screen-right, kept through every cut (the 180° line), the camera at the fighters' height, the action in the centre of the frame so it reads at speed.
 4. PHYSICS: weight transfer from the back foot, follow-through, the blocked arm giving way, the body reacting to every hit (head snapping, staggering back, falling over the table), hair and cloth trailing the move; the environment reacts — dust, splinters, a chair skidding, a lamp swinging. A heavy hit: a two-frame freeze, a slight camera shake, then straight back to speed.
 5. RHYTHM: fast exchanges with short pauses to breathe, at most one or two slow moments of 0.5–1 s on the biggest hit, escalation to one move with the environment and ONE decisive finish, then a held beat after it.
 6. THE SCHOOL'S GRAMMAR, written into the shots (the schools below).
 7. SOUND (Seedance makes it): whooshes, the thud of each blow, blocks clacking, cloth snapping, feet scraping, grunts and breaths with no words (unless a line is asked), and the school's music bed when it has one (drums for tahtib, strings for wuxia).
-8. RULES: no blood, gore, wounds or death shown — the impact is felt in sound, reaction and framing; generic people, NON-IP, never a known actor's or character's likeness; the site's rule: no women. Seedance takes 4–15 s; a longer fight is several clips, each its own beat (opening, exchange, turn, finish).`;
+8. RULES: no blood, gore, wounds or death shown — the impact is felt in sound, reaction and framing; generic people, NON-IP, never a known actor's or character's likeness; Seedance takes 4–15 s; a longer fight is several clips, each its own beat (opening, exchange, turn, finish).`;
 
 export const SCHOOLS_BRIEF = FIGHT_SCHOOLS.map((s) => `- ${s.id} «${s.ar}» (${s.masters}): ${s.grammar}.`).join("\n");
 

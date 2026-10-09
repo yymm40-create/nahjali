@@ -31,7 +31,6 @@ const rules = (edit: boolean) =>
   [
     edit ? "Edit the attached picture (given as reference ref1) exactly as described, keeping everything that is not mentioned the same." : "A picture for a graphic project. Any typography will be added later as separate text layers.",
     NO_TEXT_RULE,
-    "No real women or girls anywhere in the picture.",
   ].join("\n\n");
 
 export interface Made {
@@ -76,14 +75,7 @@ export async function make(userId: string, email: string | null, projectId: stri
       const r = await deskImage(who, { key: `p-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [rules(ask.kind === "edit"), ask.prompt, fix].filter(Boolean).join("\n\n"), aspect, resolution: "hi", quality: "high", refs });
       const check = await checkSlide(r.bytes, "");
       usd += check.usd;
-      const bad = check.checked && (check.problems.length > 0 || check.woman === "violation");
-      if (bad && check.woman === "violation") {
-        if (attempt < MAX_ATTEMPTS) {
-          fix = "The previous attempt drew a woman, which is forbidden: draw it again with no women or girls at all.";
-          continue;
-        }
-        throw new DeskError("الصورة خالفت قاعدة الموقع (امرأة واقعية) بعد المحاولتين فاستُبعدت.", "woman violation");
-      }
+      const bad = check.checked && check.problems.length > 0;
       if (bad && attempt < MAX_ATTEMPTS) {
         fix = `The previous attempt had these problems — fix every one: ${check.problems.join("; ")}. Remove every trace of letters, words or writing.`;
         continue;

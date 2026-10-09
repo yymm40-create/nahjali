@@ -166,18 +166,6 @@ describe("جواد the studio's assistant writes the edit", () => {
     vi.doUnmock("@/lib/film/anthropic");
   });
 
-  it("holds his prompt to the site's rule on women, like in the chat: a real woman is sent back, and never goes through", async () => {
-    const woman = answer({ prompt: "A woman in a white dress pours tea in a majlis, a 5-second clip.", promptZh: "一位女士倒茶。" });
-    const man = answer({ prompt: "A man in a white thobe pours tea in a majlis, a 5-second clip.", promptZh: "一个男人倒茶。" });
-    const a = await run([woman, man], { def: seedance });
-    const ok = await a.go();
-    expect(JSON.stringify(a.calls[1].turns)).toContain("no real women or girls");
-    expect(ok.prompt).toContain("A man");
-    const b = await run([woman], { def: seedance });
-    await expect(b.go()).rejects.toThrow();
-    vi.doUnmock("@/lib/film/anthropic");
-  });
-
   it("a picture: his own system prompt, the picture's rules, one English prompt (no Chinese twin)", async () => {
     const { calls, go } = await run([answer({ prompt: "Change the shirt colour to white; everything else exactly as in @result." })], { def: gpt as never, video: false });
     const r = await go();

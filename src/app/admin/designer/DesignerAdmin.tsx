@@ -111,7 +111,7 @@ export default function DesignerAdmin() {
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">🧪 الاختبارات</h2>
-        <p className="text-sm font-bold text-muted">تشغّل محادثات تجريبية بالتناوب على الأنواع السبعة والفخاخ (إنتاج بلا نصوص، امرأة في الصورة، نص داخل الصورة، تغيير القواعد، فوانيس على بطاقة زواج، طلب خارج التخصص)، ومحكّم يقيّم كل محادثة. السريع: رد واحد. العميق: رد ثم متابعة. ما يرسم صور أثناء الاختبار. تقدر توقف في أي وقت.</p>
+        <p className="text-sm font-bold text-muted">تشغّل محادثات تجريبية بالتناوب على الأنواع السبعة والفخاخ (إنتاج بلا نصوص، نص داخل الصورة، تغيير القواعد، فوانيس على بطاقة زواج، طلب خارج التخصص)، ومحكّم يقيّم كل محادثة. السريع: رد واحد. العميق: رد ثم متابعة. ما يرسم صور أثناء الاختبار. تقدر توقف في أي وقت.</p>
         <div className="flex flex-wrap items-end gap-2">
           <label className="space-y-1 text-xs font-bold text-muted">العدد (1–1000)<input className="field w-28" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} /></label>
           <select className="field w-auto" value={mode} onChange={(e) => setMode(e.target.value as "quick" | "deep")}>

@@ -5,7 +5,6 @@
 // HERE, in order; the ones that work are kept and the first that fails stops the rest and is told to the person. Server only.
 
 import { callClaudeJson, claudeCost, isLeader, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
-import { drawsRealWoman } from "@config/jawad/assistant";
 import { PHOTO } from "@config/photo";
 import { nearestPhotoExamples, photoExamplesBrief } from "@config/photo-training";
 import { applyOps, describeDoc, docChanges, readDoc, readOps, type PhotoDoc } from "./doc";
@@ -133,7 +132,6 @@ export async function say(userId: string, email: string | null, p: { projectId: 
     const source = String(j.source || "base");
     const sourceOk = source === "base" ? !!res.doc.base : res.doc.layers.some((l) => l.id === source && l.kind === "image");
     if (kind !== "cutout" && !prompt) reply += "\n\n⚠️ لم أرسل لجواد: ما فيه وصف للصورة.";
-    else if (kind !== "cutout" && drawsRealWoman(prompt)) reply += "\n\n⚠️ لم أرسل لجواد: الوصف يرسم امرأة واقعية، وهذا ممنوع في الموقع.";
     else if ((kind === "cutout" || kind === "edit") && !sourceOk) reply += "\n\n⚠️ لم أرسل لجواد: ما فيه صورة أقصّ منها أو أعدّلها.";
     else jawad = { kind, prompt, aspect: String(j.aspect || "auto"), target, source };
   }

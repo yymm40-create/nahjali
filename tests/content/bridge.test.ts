@@ -36,7 +36,7 @@ vi.mock("@/lib/content/files", () => ({
   attachmentsOf: vi.fn(async (_u: string, ids: string[]) => ({ list: ids.map((id) => ({ id, kind: id.startsWith("vid") ? "video" : "image", name: id, durationMs: null })), rows: [] })),
 }));
 vi.mock("@/lib/content/verify", () => ({
-  checkSlide: vi.fn(async () => ({ ok: true, checked: true, problems: [], woman: st.checkScript.shift() ?? "none", read: "", usd: 0.01 })),
+  checkSlide: vi.fn(async () => ({ ok: true, checked: true, problems: [], read: "", usd: 0.01 })),
 }));
 vi.mock("@/lib/content/jawad", async (orig) => {
   const real = await orig<typeof import("@/lib/content/jawad")>();
@@ -67,7 +67,6 @@ vi.mock("@/lib/content/jawad", async (orig) => {
 import { DeskError, deskSettings, DESK_GENERATOR } from "@/lib/content/jawad";
 import { stepMedia } from "@/lib/content/media";
 import { generatorById } from "@config/jawad/generators";
-import { womanCheck } from "@config/content";
 
 const item = (o: Partial<MediaItem> = {}): MediaItem => ({ id: "m1", kind: "image", name: "غلاف", prompt: "a cover", aspect: "1:1", refs: [], state: "todo", ...o });
 const start = (items: MediaItem[]) => {
@@ -184,39 +183,6 @@ describe("refusals (15)", () => {
     st.imgScript.push(new DeskError("رفض", "400"));
     const r = await step();
     expect(r.items.map((x) => x.state).sort()).toEqual(["done", "failed"]);
-  });
-});
-
-describe("the dress rule in what جواد returns (10)", () => {
-  it.each(["violation", "violation", "violation"])("a woman in a wrong dress is never kept (%s)", async (v) => {
-    start([item()]);
-    st.checkScript.push(v);
-    const r = await step();
-    expect(r.items[0]).toMatchObject({ state: "failed", error: "الصورة خالفت قاعدة اللباس فاستُبعدت" });
-    expect(st.files).toHaveLength(0);
-  });
-  it("is tried again and kept once she is dressed right", async () => {
-    start([item()]);
-    st.checkScript.push("violation", "covered_ok");
-    await step();
-    const r = await step();
-    expect(r.items[0].state).toBe("done");
-    expect(st.files).toHaveLength(1);
-  });
-  it.each(["none", "covered_ok"])("%s passes", async (v) => {
-    start([item()]);
-    st.checkScript.push(v);
-    expect((await step()).items[0].state).toBe("done");
-  });
-  it.each([
-    ["a woman with long hair", "violation"],
-    ["a woman in a plain fully black abaya, only face and hands visible", "ok"],
-    ["a man reading", "none"],
-  ])("the prompt rule: %s → %s", (p, v) => expect(womanCheck(p)).toBe(v));
-  it("a wrong-dress check is never charged to a video's start (videos are checked by prompt only)", async () => {
-    start([item({ kind: "video" })]);
-    st.checkScript.push("violation");
-    expect((await step()).items[0].state).toBe("running");
   });
 });
 

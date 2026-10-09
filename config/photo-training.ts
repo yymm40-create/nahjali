@@ -1,10 +1,9 @@
 // «زهراء» — what she learns from: a thousand worked requests over the kinds of work people bring a photo editor — light and
 // colour problems, looks, crops and platform sizes, tilt and turns, titles and names on pictures, product and portrait
 // finishing, thumbnails, cards sent from «كاظم», old photos, requests to جواد (a new picture, a cut-out, an edit) and the
-// requests she must decline (a real woman in the picture). Each one is a request as people write it, what she sees in it, the
+// edits of a layer already there. Each one is a request as people write it, what she sees in it, the
 // EXACT commands she gives (the tests run every one on a project and check their effect), and the reply that explains why.
 // Made deterministically from seed lists (nothing to store), the closest are shown to her at each message. Pure.
-// The site's rule holds in every example: no real women, ever.
 
 import { FONTS } from "./jawad/student";
 import { Rng } from "./content-examples";
@@ -12,7 +11,7 @@ import { SIZE_PRESETS, type AdjustKey } from "./photo";
 
 export type PhotoKind =
   | "exposure" | "color_cast" | "flat" | "extremes" | "look" | "crop_platform" | "straighten" | "title" | "name_bar" | "product"
-  | "portrait" | "thumbnail" | "card" | "old_photo" | "jawad" | "refuse" | "edit_layer";
+  | "portrait" | "thumbnail" | "card" | "old_photo" | "jawad" | "edit_layer";
 
 export const PHOTO_KINDS: { id: PhotoKind; name: string }[] = [
   { id: "exposure", name: "إضاءة (غامقة أو ساطعة)" },
@@ -30,7 +29,6 @@ export const PHOTO_KINDS: { id: PhotoKind; name: string }[] = [
   { id: "card", name: "تصميم وصل من كاظم" },
   { id: "old_photo", name: "صورة قديمة" },
   { id: "jawad", name: "طلب لجواد (صورة، قص، تعديل)" },
-  { id: "refuse", name: "اعتذار عن صورة فيها امرأة" },
   { id: "edit_layer", name: "تعديل طبقة موجودة" },
 ];
 
@@ -82,7 +80,6 @@ const TITLE_FONTS = FONTS.filter((f) => ["messiri", "reemkufi", "readex", "marka
 const BODY_FONTS = FONTS.filter((f) => ["plex", "tajawal", "amiri"].includes(f.id)).map((f) => f.id);
 const PLATFORMS = SIZE_PRESETS.filter((s) => ["ig_post", "ig_square", "story", "yt_thumb", "x_post", "linkedin", "card", "a4", "banner", "avatar"].includes(s.id));
 const PLATFORM_NAME: Record<string, string> = { ig_post: "منشور انستغرام", ig_square: "مربع", story: "ستوري", yt_thumb: "مصغّرة يوتيوب", x_post: "منشور إكس", linkedin: "لينكدإن", card: "بطاقة", a4: "ورقة A4", banner: "بانر", avatar: "صورة شخصية" };
-const WOMEN = ["صورة أختي", "صورة زوجتي", "صورة بنت عمي", "صورة عروس", "صورة بنت", "صورة أمي وهي تبتسم", "صورة موظفة", "صورة المدرّسة"];
 const LOOKS = [["cinematic", "سينمائي", "ظلال باردة وإضاءات دافئة وتباين"], ["warm", "دافئ", "حرارة ذهبية مريحة"], ["matte", "مات", "أسود مرفوع وألوان هادئة"], ["vintage", "قديم", "ألوان باهتة وحبيبات"], ["bw", "أبيض وأسود", "كلاسيكي هادئ"], ["bw_contrast", "أسود وأبيض قوي", "تباين عالٍ"], ["golden", "ساعة ذهبية", "وهج الغروب"], ["teal_orange", "تيل وبرتقالي", "ألوان الأفلام الحديثة"], ["noir", "نوار", "ليل قاتم"], ["fade", "باهت ناعم", "لمسة ضبابية"], ["emerald", "زمردي", "نغمة خضراء عميقة"], ["cool", "بارد", "نغمة زرقاء هادئة"], ["bright", "ساطع", "إضاءة عالية ونظافة"], ["dramatic", "درامي", "قتام وتباين وحدّة"]] as const;
 const RATIO_NAME: Record<string, string> = { "1:1": "مربعة", "4:5": "طولية انستغرام", "16:9": "عرضية", "9:16": "ستوري", "2:3": "بطاقة", "3:2": "عريضة", "3:1": "بانر", "4:3": "عرضية قديمة" };
 const RATIO_NUM: Record<string, number> = { "1:1": 1, "4:5": 0.8, "16:9": 1.78, "9:16": 0.56, "2:3": 0.67, "3:2": 1.5, "3:1": 3, "4:3": 1.33 };
@@ -106,7 +103,6 @@ const SUGG: Record<PhotoKind, string[]> = {
   card: ["رجّعها لكاظم", "جرّب فلتر ناعم", "أضف زخرفة"],
   old_photo: ["حوّلها أبيض وأسود", "أضف حدة", "قصّ الأطراف"],
   jawad: ["ضعها خلف النص", "حرّك العنصر", "أضف ظلًا"],
-  refuse: ["جرّب صورة ثانية", "ابدأ من لوحة فاضية"],
   edit_layer: ["حرّكه للأعلى", "كبّره", "غيّر الخط"],
 };
 
@@ -379,17 +375,6 @@ const MAKERS: Record<PhotoKind, Maker> = {
     if (mode === 1) return { ask: ask(r, r.pick([`اقصص الشخص من الصورة`, `أبي الموضوع بدون خلفية`, `شيل خلفية الصورة`])), diagnosis: "قص الخلفية: جواد يعيد الموضوع شفافًا فوق الصورة؛ أتحقق أن في صورة أساسية.", ops: [], reply: "طلبت من جواد يقص الموضوع بخلفية شفافة. يوصل عنصرًا فوق الصورة وتقدر تحرّكه وتحط خلفية جديدة تحته.", suggestions: SUGG.jawad, expect: {}, jawad: { kind: "cutout", prompt: "", aspect: "auto", target: "layer", source: "base" } };
     return { ask: ask(r, r.pick([`خلّ الخلفية ليل بدل النهار`, `غيّر الجو العام للصورة لغروب`, `أضف غيوم للسماء`])), diagnosis: "تعديل صورة بوصف: جواد يعدّل الصورة الأساسية ويحافظ على باقي العناصر.", ops: [], reply: "طلبت من جواد تعديل الصورة بهذا الوصف مع إبقاء كل شي ثاني كما هو. أول ما يرجع أضعه مكان الأساسية، وتقدر ترجع للأصلية بالتراجع.", suggestions: SUGG.jawad, expect: {}, jawad: { kind: "edit", prompt: "Change only the sky and the overall time of day as requested, keep every other element, composition and colour of the subject exactly the same, photographic, no text", aspect: "auto", target: "base", source: "base" } };
   },
-  refuse: (r) => {
-    const w = pickN(r, WOMEN);
-    return {
-      ask: ask(r, r.pick([`حسّن ${w}`, `${w} أبيها أحلى`, `عدّل ${w} وضع عليها فلتر`, `اقصص خلفية ${w}`])),
-      diagnosis: "الصورة فيها امرأة واقعية؛ قاعدة الموقع لا تسمح بتعديلها هنا.",
-      ops: [],
-      reply: "أعتذر منك، ما أقدر أعدّل صورة فيها امرأة؛ هذي قاعدة الموقع كله لكل الأقسام، وليس رأيي. أقدر أساعدك في صور الرجال والأطفال والمنتجات والمناظر والتصاميم، فارفع صورة ثانية أو ابدأ من لوحة فاضية.",
-      suggestions: SUGG.refuse,
-      expect: { none: true },
-    };
-  },
   edit_layer: (r) => {
     const mode = r.int(0, 5);
     const [fg] = r.pick(COLORS);
@@ -406,7 +391,7 @@ const MAKERS: Record<PhotoKind, Maker> = {
 };
 
 /** How many of the thousand each kind gets (the rest go to the biggest groups). */
-const SHARE: Record<PhotoKind, number> = { exposure: 80, color_cast: 70, flat: 70, extremes: 60, look: 94, crop_platform: 100, straighten: 40, title: 90, name_bar: 50, product: 70, portrait: 60, thumbnail: 40, card: 40, old_photo: 30, jawad: 40, refuse: 30, edit_layer: 50 };
+const SHARE: Record<PhotoKind, number> = { exposure: 80, color_cast: 70, flat: 70, extremes: 60, look: 104, crop_platform: 110, straighten: 40, title: 100, name_bar: 50, product: 70, portrait: 60, thumbnail: 40, card: 40, old_photo: 30, jawad: 40, edit_layer: 50 };
 
 let bank: PhotoExample[] | null = null;
 

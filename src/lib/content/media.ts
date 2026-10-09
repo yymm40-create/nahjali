@@ -10,7 +10,6 @@ import { unlimitedFor } from "@/lib/access";
 import { getChat, saveChat, type MediaItem, type Turn } from "./chats";
 import { addProducedFromOutput, attachmentsOf, deleteProduced } from "./files";
 import { deskCheck, deskImage, deskVideo, DeskError, type DeskReceipt, type DeskWho } from "./jawad";
-import { checkSlide } from "./verify";
 
 /** Pictures made at once in one call (a picture takes up to about a minute; the server's limit is 300 s). */
 const IMAGES_PER_CALL = 2;
@@ -49,22 +48,13 @@ function fail(item: MediaItem, e: unknown, owner: boolean) {
 }
 
 async function makeImage(c: { userId: string; chatId: string; who: DeskWho; owner: boolean }, item: MediaItem): Promise<number> {
-  let usd = 0;
+  const usd = 0;
   item.state = "running";
   item.tries = (item.tries ?? 0) + 1;
   try {
     const r = await deskImage(c.who, { key: key(), kind: "image", prompt: item.prompt, aspect: item.aspect, quality: item.quality, resolution: item.resolution, refs: await refsOf(c.userId, item) });
     item.desk = deskOf(r.receipt);
     item.jobId = r.receipt.jobId;
-    // the dress rule holds in what he gets back: a woman in a wrong dress is never kept
-    const check = await checkSlide(r.bytes, "");
-    usd += check.usd;
-    if (check.woman === "violation") {
-      item.state = "failed";
-      item.error = "الصورة خالفت قاعدة اللباس فاستُبعدت";
-      item.transient = (item.tries ?? 1) < MAX_TRIES;
-      return usd;
-    }
     const file = await addProducedFromOutput({ userId: c.userId, chatId: c.chatId, out: r.out, name: item.name || "image", meta: { media: item.id, prompt: item.prompt, desk: r.receipt } });
     item.fileId = file.id;
     item.state = "done";
