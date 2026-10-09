@@ -93,6 +93,7 @@ describe("جواد decides the final prompt", () => {
   });
   it("is told he is the one who decides, with nobody before or after him", () => {
     expect(JAWAD_EDIT_IDENTITY).toContain("«جواد»");
+    expect(JAWAD_EDIT_IDENTITY).toContain("the studio's assistant");
     expect(JAWAD_EDIT_IDENTITY).toContain("STRAIGHT");
     expect(JAWAD_EDIT_IDENTITY).toContain("YOU alone decide the final prompt");
     expect(JAWAD_EDIT_IDENTITY).toContain("nobody rewrites it after you");
@@ -108,31 +109,82 @@ describe("جواد decides the final prompt", () => {
   });
 });
 
-describe("directorRun: one writer, جواد", () => {
-  it("sends his identity before the skill, asks for «kept» in the same answer, and sends faults back to him", async () => {
+describe("جواد the studio's assistant writes the edit", () => {
+  const answer = (o: Record<string, unknown>) => ({ reply: "عدّلت اليد", generatorId: "", prompt: "", instructions: "", settings: [], refStyle: "", addRefs: [], removeRefs: [], thumbnailPerson: "", thumbnailSide: "", quick: [], promptZh: "", kept: [], ...o });
+  async function run(answers: Record<string, unknown>[], o: { def: typeof seedance; video?: boolean }) {
     vi.resetModules();
-    const calls: { system: string; schema: { required: string[] }; turns: unknown[] }[] = [];
+    const calls: { system: string; schema: { required: string[] }; turns: { role: string; content: unknown }[] }[] = [];
     vi.doMock("@/lib/film/anthropic", () => ({
-      callClaudeJson: vi.fn(async (o: { system: string; schema: { required: string[] }; turns: unknown[] }) => {
-        calls.push({ system: o.system, schema: o.schema, turns: o.turns });
-        const kept = [{ kind: "wardrobe", keep: "white thobe", check: ["white thobe"] }];
-        // the first answer forgets the thobe, the second keeps it
-        const en = calls.length === 1 ? "A man pours tea in a majlis, a 5-second clip." : "A man in a white thobe pours tea in a majlis, a 5-second clip.";
-        return { data: { en, zh: en, kept }, raw: JSON.stringify({ en, zh: en, kept }), usage: { input_tokens: 1, output_tokens: 1 } };
+      callClaudeJson: vi.fn(async (c: { system: string; schema: { required: string[] }; turns: { role: string; content: unknown }[] }) => {
+        calls.push({ system: c.system, schema: c.schema, turns: c.turns });
+        const data = answers[Math.min(calls.length - 1, answers.length - 1)];
+        return { data, raw: JSON.stringify(data), usage: { input_tokens: 1, output_tokens: 1 } };
       }),
       claudeCost: () => 0.01,
       siteSystem: (t: string) => [{ type: "text", text: t }],
     }));
-    const { directorRun } = await import("@/lib/jawad/server/director");
+    const { jawadWritesEdit } = await import("@/lib/jawad/server/jawad-edit");
     const { missingLocks: miss, missingText } = await import("@/lib/jawad/edit-locks");
-    const r = await directorRun("\n\nTASK", [{ type: "text", text: "the shot" }], [], (p, kept) => (miss(p, kept).length ? [missingText(miss(p, kept))] : []), { identity: JAWAD_EDIT_IDENTITY, keep: { previous: "A man in a white thobe pours tea" } });
-    expect(calls.length).toBe(2);
-    expect(calls[0].system.startsWith(JAWAD_EDIT_IDENTITY)).toBe(true);
-    expect(calls[0].schema.required).toContain("kept");
-    expect(JSON.stringify(calls[1].turns)).toContain("LOCKS of the original are missing");
+    const previous = "A man in a white thobe pours tea in a majlis";
+    const draft = { generatorId: o.def.id, prompt: previous, instructions: "", settings: {}, refStyle: "none" as const, refs: [] };
+    const go = () => jawadWritesEdit({ def: o.def, parts: [{ type: "text", text: "the shot" }], names: [], rules: o.video === false ? "PICTURE RULES" : "", draft, previous, extra: (p, kept) => (miss(p, kept).length ? [missingText(miss(p, kept))] : []), problems: () => [] });
+    return { calls, go };
+  }
+
+  it("is the studio assistant's own system prompt plus this request type and the director's craft, and asks for the locks in the same answer", async () => {
+    const good = answer({ prompt: "A man in a white thobe pours tea in a majlis, a 5-second clip.", promptZh: "一个穿白色长袍的男人在会客厅倒茶，五秒钟的片段。", kept: [{ kind: "wardrobe", keep: "white thobe", check: ["white thobe"] }] });
+    const { calls, go } = await run([good], { def: seedance });
+    const r = await go();
+    const sys = calls[0].system;
+    // his own: who he is, his knowledge, his generators — before anything else
+    expect(sys.startsWith("How you work:")).toBe(true);
+    expect(sys).toContain("You are «جواد», the assistant of the JAWAD AI studio");
+    expect(sys).toContain("byteplus-seedance-2-5");
+    // then this request type: the person's words reach him straight, and he alone decides
+    expect(sys).toContain("REQUEST TYPE — «تعديل ذكي»");
+    expect(sys).toContain("YOU alone decide the final prompt");
+    expect(sys).toContain("THE DIRECTOR'S CRAFT");
+    expect(sys).toContain('"promptZh"');
+    expect(calls[0].schema.required).toEqual(expect.arrayContaining(["prompt", "promptZh", "kept", "reply"]));
     expect(r.prompt).toContain("white thobe");
+    expect(r.prompt).toContain("一个穿白色长袍");
+    expect(r.reply).toBe("عدّلت اليد");
     expect(r.kept.map((l) => l.kind)).toEqual(["wardrobe"]);
+    vi.doUnmock("@/lib/film/anthropic");
+  });
+
+  it("sends a fault back to him (a lock he declared but dropped) and takes his second answer", async () => {
+    const kept = [{ kind: "wardrobe", keep: "white thobe", check: ["white thobe"] }];
+    const bad = answer({ prompt: "A man pours tea in a majlis, a 5-second clip.", promptZh: "一个男人倒茶。", kept });
+    const good = answer({ prompt: "A man in a white thobe pours tea in a majlis, a 5-second clip.", promptZh: "一个穿白色长袍的男人倒茶。", kept });
+    const { calls, go } = await run([bad, good], { def: seedance });
+    const r = await go();
+    expect(calls.length).toBe(2);
+    expect(JSON.stringify(calls[1].turns)).toContain("LOCKS of the original are missing");
     expect(r.attempts).toBe(2);
+    expect(r.prompt).toContain("white thobe");
+    vi.doUnmock("@/lib/film/anthropic");
+  });
+
+  it("holds his prompt to the site's rule on women, like in the chat: a real woman is sent back, and never goes through", async () => {
+    const woman = answer({ prompt: "A woman in a white dress pours tea in a majlis, a 5-second clip.", promptZh: "一位女士倒茶。" });
+    const man = answer({ prompt: "A man in a white thobe pours tea in a majlis, a 5-second clip.", promptZh: "一个男人倒茶。" });
+    const a = await run([woman, man], { def: seedance });
+    const ok = await a.go();
+    expect(JSON.stringify(a.calls[1].turns)).toContain("no real women or girls");
+    expect(ok.prompt).toContain("A man");
+    const b = await run([woman], { def: seedance });
+    await expect(b.go()).rejects.toThrow();
+    vi.doUnmock("@/lib/film/anthropic");
+  });
+
+  it("a picture: his own system prompt, the picture's rules, one English prompt (no Chinese twin)", async () => {
+    const { calls, go } = await run([answer({ prompt: "Change the shirt colour to white; everything else exactly as in @result." })], { def: gpt as never, video: false });
+    const r = await go();
+    expect(calls[0].system).toContain("PICTURE RULES");
+    expect(calls[0].system).toContain("REQUEST TYPE — «تعديل ذكي»");
+    expect(calls[0].system).not.toContain("THE DIRECTOR'S CRAFT");
+    expect(r.prompt).toBe("Change the shirt colour to white; everything else exactly as in @result.");
     vi.doUnmock("@/lib/film/anthropic");
   });
 });

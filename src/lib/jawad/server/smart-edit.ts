@@ -15,20 +15,22 @@ import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn, type ClaudeUsage } from "@/lib/film/anthropic";
+import type { ClaudePart } from "@/lib/film/anthropic";
 import { coinsOf, EDIT_CLAUDE_KEY, EDIT_CLAUDE_USD, EDIT_FEE_KEY, generatorById } from "@config/jawad/generators";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefMeta, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
-import { KEPT_RULES, LOCKS_SCHEMA, locksForSajjad, missingLocks, missingText, readLocks, type EditLock } from "../edit-locks";
+import { locksForSajjad, missingLocks, missingText, type EditLock } from "../edit-locks";
 import { defaultRefName, findMentions, promptForModel, sameName } from "../mentions";
 import { CONTINUITY, continuityRanges, cutRange, EDIT_LIMITS, IMAGE_EDIT_MODES, readContinuity, readEditSettings, VIDEO_EDIT_MODES, type ContinuityRange, type EditMode, type EditRange } from "../smart-edit";
-import { directorRun, EDIT_TASK, settingsText } from "./director";
+import { settingsText } from "./director";
+import { jawadWritesEdit } from "./jawad-edit";
+import type { AssistantDraft } from "@config/jawad/assistant";
 import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { isUuid, refsFor, uploadFromBuffer, uploadFromOutput } from "./uploads";
 import { runJob, type JobRow } from "./jobs";
 import { ProviderError } from "./providers/common";
-import { CONTINUITY_METHOD, JAWAD_EDIT_IDENTITY, checkEditPrompt, editModelsBrief, personWordsText, shotRecordText, timingBlock, type EditModel } from "@config/jawad/smart-edit-training";
+import { CONTINUITY_METHOD, checkEditPrompt, editModelsBrief, personWordsText, shotRecordText, timingBlock, type EditModel } from "@config/jawad/smart-edit-training";
 
 import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
@@ -49,8 +51,10 @@ export interface EditInputs {
   locks?: EditLock[];
   /** Set once the corrected prompt is written. */
   done?: boolean;
-  /** Who decided the final prompt: جواد himself, from the person's own words and the whole shot. */
+  /** Who decided the final prompt: جواد himself (the studio's assistant), from the person's own words and the whole shot. */
   writer?: "jawad";
+  /** What جواد said about it (one short line). */
+  jawadSaid?: string;
   claudeUsd?: number;
 }
 
@@ -382,20 +386,17 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
 
 // ───────────────────────────── the corrected prompt ─────────────────────────────
 
-const IMAGE_SYSTEM = `In the JAWAD AI image studio you write the prompt for OpenAI's GPT Image 2. You run in the background; the person never sees this exchange. Answer only with the JSON object {"prompt": "...", "kept": [...]}.
-
-The user made an image with the PREVIOUS PROMPT and settings given in the message; that result is attached as @result. They then wrote, precisely, what to change.
+/** The picture's own rules in a smart edit (جواد's recipe for a picture: SAME edits the image, FULL makes it again). */
+const IMAGE_EDIT_RULES = `SMART EDIT OF A PICTURE (GPT Image 2). The person made an image with the PREVIOUS PROMPT and settings given in the message; that result is attached as @result. They then wrote, precisely, what to change.
 
 When the mode is SAME (edit the same image): the generator receives @result as its input image. Write an edit prompt that states exactly what to change (where in the image and how) and says clearly that everything else must stay exactly as it is: composition, framing, people and their faces, poses, hands, clothing, every piece of text, colors, lighting, style and image quality. Refer to the input image only as @result.
 
-When the mode is FULL (make the image again): a FRESH GENERATION. The generator does NOT receive @result; it receives only the references listed in the message (if any). Write a complete, standalone prompt from the previous prompt's ideas with the user's change built in as simply how the image is. Write only what should be there, positively: never mention the previous image, a mistake, a fix or a change, and never describe the unwanted result, not even to forbid it (naming it brings it back). Refer to references only by their @name, exactly as given; never mention @result.
+When the mode is FULL (make the image again): a FRESH GENERATION. The generator does NOT receive @result; it receives only the references listed in the message (if any). Write a complete, standalone prompt from the previous prompt's ideas with the person's change built in as simply how the image is. Write only what should be there, positively: never mention the previous image, a mistake, a fix or a change, and never describe the unwanted result, not even to forbid it (naming it brings it back). Refer to references only by their @name, exactly as given; never mention @result.
 
 Rules:
 - Write in English (the generator follows it best), except text that must appear in the image: keep it exactly in its language and spelling, inside double quotes.
 - At most 1,500 characters. Concrete and visual; no explanations, no alternatives, no lists of options.
-- Do not add anything the user did not ask for. Never invent a reference or a name.`;
-
-const IMAGE_SCHEMA = { type: "object", properties: { prompt: { type: "string" }, kept: LOCKS_SCHEMA.properties.locks }, required: ["prompt", "kept"], additionalProperties: false };
+- Do not add anything the person did not ask for. Never invent a reference or a name.`;
 
 async function signed(paths: string[]) {
   if (!paths.length) return [];
@@ -471,6 +472,9 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
     let prompt: string;
     let usd = 0;
     let locks: EditLock[] = [];
+    let reply = "";
+    // the form as it stands when the person pressed «توليد التعديل»: the same generator, the previous prompt, the settings chosen
+    const draft: AssistantDraft = { generatorId: def.id, prompt: previous, instructions: "", settings: job.inputs.settings, refStyle: job.inputs.refStyle ?? "none", refs: [] };
     // the person's own words, untouched, and the whole shot's record (the film's brief too: it is for him, not for a go-between)
     const brief = source.inputs.film?.projectId ? await sajjadBrief({ filmProjectId: source.inputs.film.projectId }).catch(() => null) : null;
     const words = personWordsText(edit.notes, edit.ranges);
@@ -500,12 +504,13 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
         const m = meta[found.rows.indexOf(r)];
         if (refUrls[i]) parts.push({ type: "text", text: `@${m.name}:` }, { type: "image", url: refUrls[i]! });
       });
-      parts.push({ type: "text", text: KEPT_RULES }, { type: "text", text: words });
-      // his own declared locks and the continuity checker read the prompt before it goes (what is missing is sent back to him)
-      const r = await directorRun(EDIT_TASK, parts, names, (p, kept) => [...lockCheck(p, kept), ...(model ? checkEditPrompt(p, model).map((x) => x.text) : [])], { identity: JAWAD_EDIT_IDENTITY, keep: { previous } });
+      parts.push({ type: "text", text: words });
+      // جواد writes it: his own declared locks and the continuity checker read the prompt before it goes (what is missing is sent back to him)
+      const r = await jawadWritesEdit({ def, parts, names, rules: "", draft, previous, extra: (p, kept) => [...lockCheck(p, kept), ...(model ? checkEditPrompt(p, model).map((x) => x.text) : [])] });
       prompt = r.prompt;
       usd = r.usd;
       locks = r.kept;
+      reply = r.reply;
     } else {
       const [resultUrl] = await signed(out ? [out.storage_path] : []);
       const parts: ClaudePart[] = [
@@ -524,32 +529,19 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
         const refUrls = await signed(found.rows.slice(0, 8).map((r) => r.storage_path));
         found.rows.slice(0, 8).forEach((_, i) => refUrls[i] && parts.push({ type: "text", text: `@${meta[i].name}:` }, { type: "image", url: refUrls[i]! }));
       }
+      parts.push({ type: "text", text: words });
       // «SAME» edits the picture itself, so nothing else can move there anyway: no locks to declare
-      parts.push({ type: "text", text: edit.mode === "same" ? 'Leave "kept" empty: the picture itself stays as it is.' : KEPT_RULES }, { type: "text", text: words });
-      let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
-      const usage: ClaudeUsage[] = [];
-      let written: string | null = null;
-      for (let attempt = 1; attempt <= 2 && written === null; attempt++) {
-        const r = await callClaudeJson<{ prompt: string; kept?: unknown }>({ system: `${JAWAD_EDIT_IDENTITY}\n\n---\n\n${IMAGE_SYSTEM}`, turns, schema: IMAGE_SCHEMA, maxTokens: 8000 });
-        usage.push(r.usage);
-        const kept = edit.mode === "same" ? [] : readLocks({ locks: r.data.kept }, previous);
-        const problems = imagePromptProblems(r.data.prompt ?? "", names, edit.mode);
-        // the locks he declared are checked once the rules hold; on the last try a prompt that misses one is still used
-        if (!problems.length && attempt < 2) problems.push(...lockCheck(r.data.prompt ?? "", kept));
-        if (!problems.length) {
-          written = r.data.prompt.trim();
-          locks = kept;
-        } else turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${problems.join("\n- ")}` }];
-      }
-      if (written === null) throw new Error("image prompt broke the rules twice");
-      prompt = written;
-      usd = usage.reduce((t, u) => t + claudeCost(u), 0);
+      const r = await jawadWritesEdit({ def, parts, names, rules: IMAGE_EDIT_RULES, draft, previous, noLocks: edit.mode === "same", problems: (p) => imagePromptProblems(p, names, edit.mode), extra: (p, kept) => lockCheck(p, kept) });
+      prompt = r.prompt;
+      usd = r.usd;
+      locks = r.kept;
+      reply = r.reply;
     }
 
     const modelPrompt = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
     const kept = missingLocks(prompt, locks);
     if (kept.length) console.warn("smart edit: locks not kept", { job: job.id, missing: kept.map((l) => l.keep) });
-    const inputs = { ...job.inputs, ...(modelPrompt !== prompt ? { modelPrompt } : {}), edit: { ...edit, locks, done: true, writer: "jawad" as const, claudeUsd: Number(usd.toFixed(4)) } };
+    const inputs = { ...job.inputs, ...(modelPrompt !== prompt ? { modelPrompt } : {}), edit: { ...edit, locks, done: true, writer: "jawad" as const, ...(reply ? { jawadSaid: reply.slice(0, 400) } : {}), claudeUsd: Number(usd.toFixed(4)) } };
     const { data } = await db().from("jawad_jobs").update({ prompt, inputs, provider_status: null, lease_until: new Date(Date.now() + 7 * 60_000).toISOString() }).eq("id", job.id).select("*").single();
     console.info("jawad smart edit", { job: job.id, mode: edit.mode, locks: locks.length, usd: Number(usd.toFixed(4)) });
     // سجاد hears what the edit kept, so the film's story stays one
