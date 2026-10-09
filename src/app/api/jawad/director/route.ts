@@ -1,4 +1,4 @@
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { NextResponse } from "next/server";
 import { handle } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
@@ -16,7 +16,7 @@ export const POST = handle(async (req: Request) => {
   const body = (await req.json().catch(() => ({}))) as DirectorBody;
   const r = await improvePrompt(user, owner, body);
   if (r.kind === "price_changed") {
-    return NextResponse.json({ error: `تغيّر سعر التطوير إلى ${fmtSar(r.coins)} ر.س. أكّد المبلغ الجديد.`, code: "price_changed", coins: r.coins }, { status: 409 });
+    return NextResponse.json({ error: `تغيّر سعر التطوير إلى ${coinStr(r.coins)}. أكّد المبلغ الجديد.`, code: "price_changed", coins: r.coins }, { status: 409 });
   }
   return NextResponse.json({ prompt: r.prompt, coins: r.coins, balance: r.balance });
 });

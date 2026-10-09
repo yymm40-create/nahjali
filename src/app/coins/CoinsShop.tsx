@@ -42,17 +42,17 @@ export default function CoinsShop({
                 {plan === p.key && <span className="chip bg-teal text-xs text-white">باقتك</span>}
               </span>
               <span className="flex items-center gap-3">
-                <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> رصيد {fmt(p.coins)} ر.س / شهر</span>
+                <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> رصيد {fmt(p.coins)} / شهر</span>
                 <span className="text-muted">≈ {Math.floor(p.coins / cheapest)} فيديو · {(p.coins / journeyCoins).toFixed(1)} فيلم</span>
-                <b>{p.monthlySar} ر.س</b>
+                <b className="inline-flex items-center gap-1"><SmartCoin size={16} />{p.monthlySar}</b>
               </span>
             </li>
           ))}
           <li className="flex flex-wrap items-center justify-between gap-2 py-2">
             <span><b className="text-base">{ONE_TIME_PASS.name}</b> <span className="text-xs text-muted">· {ONE_TIME_PASS.note}</span></span>
             <span className="flex items-center gap-3">
-              <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> رصيد {fmt(ONE_TIME_PASS.coins)} ر.س</span>
-              <b>{ONE_TIME_PASS.priceSar} ر.س</b>
+              <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> رصيد {fmt(ONE_TIME_PASS.coins)}</span>
+              <b className="inline-flex items-center gap-1"><SmartCoin size={16} />{ONE_TIME_PASS.priceSar}</b>
             </span>
           </li>
           <li className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -64,7 +64,7 @@ export default function CoinsShop({
                 <span className="text-xs text-muted">· أصواتك وشخصياتك وأماكنك في «الجواد الذكي!»</span>
               )}
             </span>
-            <b>{LIBRARY_ADDON.monthlySar} ر.س / شهر</b>
+            <b className="inline-flex items-center gap-1"><SmartCoin size={16} />{LIBRARY_ADDON.monthlySar} / شهر</b>
           </li>
         </ul>
         <p className="text-xs font-bold text-muted">نقود الاشتراك تنضاف أول كل شهر وتنتهي بنهايته. الأسعار قبل ضريبة القيمة المضافة (١٥٪).</p>

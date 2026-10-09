@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import InstallApp from "./InstallApp";
 import { detectScenes } from "./scene-detect";
 import { takeStartKit } from "./start-kit";
@@ -41,6 +41,7 @@ import type { EditorAsset, EditorProjectView } from "./types";
 import { useUploads, type Placement } from "./useUploads";
 import { diagNote, startDiag } from "./diag";
 import { useMaking } from "./making";
+import Coined from "@/components/Coined";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 interface Step {
@@ -694,7 +695,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       try {
         const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId, target });
         addAssets([r.asset]);
-        flash(`⬆️ بدأ رفع الدقة${r.coins ? ` (${fmtSar(r.coins)} ر.س)` : ""}… أعلمك إذا خلص.`);
+        flash(`⬆️ بدأ رفع الدقة${r.coins ? ` (${coinStr(r.coins)})` : ""}… أعلمك إذا خلص.`);
         watchUpscale(r.asset.id, assetId);
       } catch (e) {
         flash(e instanceof Error ? e.message : "ما بدأ رفع الدقة.", true);
@@ -1587,7 +1588,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </div>
           {toast && (
             <div role="status" className={`pointer-events-none absolute inset-x-3 bottom-3 mx-auto w-fit max-w-full rounded-lg px-3 py-2 text-center text-xs shadow-lg ${toast.bad ? "bg-jw-danger text-white" : "bg-jw-surface-3 text-jw-ink"}`}>
-              {toast.text}
+              <Coined text={toast.text} />
             </div>
           )}
         </section>

@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import TeamCoin from "@/components/TeamCoin";
 import { postJson } from "@/lib/fetch";
-import { fmtSar, TEAM_COIN } from "@config/coins";
+import { TEAM_COIN } from "@config/coins";
+import Riyal from "@/components/Riyal";
 
 type Row = { id: string; username: string | null; delta: number; reason: string; label: string; created_at: string };
 
@@ -46,7 +47,7 @@ export default function TeamWallet({ seriesId, owner, balance, ledger }: { serie
         <span className="team-coin-float shrink-0"><TeamCoin size={88} alive /></span>
         <div className="min-w-0">
           <p className="text-sm font-extrabold tracking-wide text-[#fde68a]">{TEAM_COIN.name}</p>
-          <p className="text-5xl font-black tabular-nums leading-tight" dir="ltr" style={{ textAlign: "right" }}>{fmtSar(balance)} <span className="text-lg">ر.س</span></p>
+          <p className="text-5xl font-black tabular-nums leading-tight" dir="ltr" style={{ textAlign: "right" }}><Riyal halalas={balance} size={36} /></p>
           <p className="text-xs font-bold text-white/80">كل شي ينصنع داخل المسلسل ينقص من هنا، مهما كان اللي ضغط من الفريق.</p>
         </div>
       </div>

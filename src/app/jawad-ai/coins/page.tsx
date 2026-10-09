@@ -9,6 +9,7 @@ import { LIBRARY_ADDON, SMART_COIN, fmtSar } from "@config/coins";
 import { coinsOf, wasOf } from "@config/jawad/generators";
 import { libraryAccess } from "@/lib/jawad/server/library-access";
 import { CONTACT_EMAIL } from "@config/site";
+import Riyal from "@/components/Riyal";
 
 export const metadata = { title: "النقود الذكية" };
 export const dynamic = "force-dynamic";
@@ -35,13 +36,13 @@ export default async function JawadCoins() {
         </div>
         <p className="flex items-center gap-2 text-3xl font-bold tabular-nums">
           <SmartCoin size={30} />
-          <span dir="ltr">{owner ? "∞" : fmtSar(balance ?? 0)}</span>{!owner && <span className="text-base font-semibold text-jw-muted">ر.س</span>}
+          {owner ? <span dir="ltr">∞</span> : <Riyal halalas={balance ?? 0} size={30} />}
         </p>
       </section>
 
       <Link href="/jawad-ai/library" className="jw-panel flex flex-wrap items-center justify-between gap-3 p-5 hover:border-jw-accent/50">
         <span>
-          <span className="block font-semibold">📚 «{LIBRARY_ADDON.name}»<span className="hide-in-app"> · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span></span>
+          <span className="block font-semibold">📚 «{LIBRARY_ADDON.name}»<span className="hide-in-app"> · إضافة بـ <SmartCoin size={12} className="inline align-middle" />{LIBRARY_ADDON.monthlySar} شهريًا</span></span>
           <span className="block text-sm text-jw-muted">أصواتك وشخصياتك وأماكنك محفوظة، وتمنشنها بـ «@اسمها».</span>
         </span>
         <span className={`jw-chip !px-3 !py-1 ${library.active ? "!border-jw-accent/50 text-jw-accent" : ""}`}>{owner ? "مفتوحة لك دائمًا" : library.active ? "مفعّلة" : "غير مفعّلة"}</span>
@@ -59,7 +60,7 @@ export default async function JawadCoins() {
                   return (
                     <li key={k.key} className="flex justify-between gap-2">
                       <span className="text-jw-muted">{k.label}</span>
-                      <span className="tabular-nums" dir="ltr">{c == null ? "—" : (<>{fmtSar(coinsOf(c))} ر.س{wasOf(c) > coinsOf(c) && <s className="ms-1 text-xs text-jw-faint">{fmtSar(wasOf(c))}</s>}</>)}</span>
+                      <span className="tabular-nums" dir="ltr">{c == null ? "—" : (<><Riyal halalas={coinsOf(c)} size={14} />{wasOf(c) > coinsOf(c) && <s className="ms-1 text-xs text-jw-faint">{fmtSar(wasOf(c))}</s>}</>)}</span>
                     </li>
                   );
                 })}
@@ -84,7 +85,7 @@ export default async function JawadCoins() {
                 </span>
                 <span className="flex items-center gap-3">
                   <span className="text-xs text-jw-faint">{new Date(r.created_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "short", timeStyle: "short" })}</span>
-                  <span className={`tabular-nums ${r.delta < 0 ? "text-jw-danger" : "text-jw-ok"}`} dir="ltr">{r.delta > 0 ? "+" : "-"}{fmtSar(Math.abs(r.delta))} ر.س</span>
+                  <span className={`tabular-nums ${r.delta < 0 ? "text-jw-danger" : "text-jw-ok"}`} dir="ltr">{r.delta > 0 ? "+" : "-"}<Riyal halalas={Math.abs(r.delta)} size={14} /></span>
                 </span>
               </li>
             ))}

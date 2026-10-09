@@ -34,7 +34,7 @@ export async function libraryOpenFor(userId: string) {
   return unlimitedFor(data.user?.email);
 }
 
-export const LOCKED_MESSAGE = `«${LIBRARY_ADDON.name}» إضافة باشتراك ${LIBRARY_ADDON.monthlySar} ريال شهريًا: تحفظ فيها أصواتك وشخصياتك وأماكنك وتستخدمها متى ما تبي.`;
+export const LOCKED_MESSAGE = `«${LIBRARY_ADDON.name}» إضافة باشتراك ¤${LIBRARY_ADDON.monthlySar} شهريًا: تحفظ فيها أصواتك وشخصياتك وأماكنك وتستخدمها متى ما تبي.`;
 
 /** Throws when the library is closed for this person (or its tables aren't there yet). */
 export async function requireLibrary(userId: string, owner: boolean) {

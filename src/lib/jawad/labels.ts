@@ -10,7 +10,7 @@ export function stageLabel(status: JobStatus, providerStatus?: string | null) {
     case "queued":
       return "بالانتظار";
     case "submitting":
-      return providerStatus === "rewriting" ? "يكتب البرومبت المعدّل" : "الإرسال إلى المزوّد";
+      return providerStatus === "rewriting" ? "جواد يكتب البرومبت النهائي" : "الإرسال إلى المزوّد";
     case "running": {
       if (providerStatus === "queued") return "في طابور المزوّد";
       // «الفصل الذكي»

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import SmartCoin from "@/components/SmartCoin";
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { EDIT_FEE_KEY, GENERATORS, generatorById } from "@config/jawad/generators";
 import type { JobView, OutputView } from "@/lib/jawad/labels";
 import { continuityRanges, cutRange, EDIT_LIMITS, frameTimes, type EditMode, type EditRange } from "@/lib/jawad/smart-edit";
@@ -10,6 +9,10 @@ import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { grabFrames, grabSounds } from "./frames";
 import { uploadContinuity } from "./continuity";
+import EditOptions from "./EditOptions";
+import type { Settings, SettingValue } from "@config/jawad/types";
+import Riyal from "@/components/Riyal";
+import Coined from "@/components/Coined";
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const fmt = (s: number) => (Number.isFinite(s) ? s.toFixed(1) : "—");
@@ -21,7 +24,7 @@ const CHOICES: Record<"video" | "image", { mode: EditMode; title: string; text: 
   ],
   image: [
     { mode: "same", title: "عدّل نفس الصورة", text: "تُرسل صورتك نفسها للمولد مع تعديلاتك، ويبقى كل ما لم تطلب تغييره كما هو.", icon: "wand" },
-    { mode: "full", title: "أعد الصورة كاملة", text: "يكتب حيدرة برومبتًا جديدًا من برومبتك السابق وتعديلاتك، وتُصنع الصورة من جديد.", icon: "retry" },
+    { mode: "full", title: "أعد الصورة كاملة", text: "يصل كلامك كما كتبته إلى جواد مع معلومات الصورة كاملة، وهو من يكتب البرومبت الجديد، وتُصنع الصورة من جديد.", icon: "retry" },
   ],
 };
 
@@ -37,6 +40,8 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   const out: OutputView | undefined = job.outputs[outIdx];
   const videoSec = (out?.durationMs ?? Number(job.settings.duration) * 1000) / 1000;
   const [mode, setMode] = useState<EditMode | null>(null);
+  // the options chosen again for this edit (resolution, sound, a whole clip's seconds…): counted in the price, sent to جواد
+  const [chosen, setChosen] = useState<Settings>({});
   const [notes, setNotes] = useState("");
   const [ranges, setRanges] = useState<EditRange[]>([]);
   const [quote, setQuote] = useState<{ coins: number; lines: { label: string; centi: number }[] } | null>(null);
@@ -51,8 +56,8 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   const rangesOk = mode !== "parts" || Boolean(cut);
   // the seconds of the video itself around the cut, sent as continuity references
   const continuity = cut ? continuityRanges(cut, videoSec) : undefined;
-  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId, ...(continuity ? { continuity } : {}) };
-  const quoteKey = JSON.stringify([out?.id, mode, genId, ranges.map((r) => [r.from, r.to])]);
+  const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId, settings: chosen, ...(continuity ? { continuity } : {}) };
+  const quoteKey = JSON.stringify([out?.id, mode, genId, chosen, ranges.map((r) => [r.from, r.to])]);
 
   // The price (again whenever the kind of edit or the marked times change)
   useEffect(() => {
@@ -79,6 +84,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
 
   const reset = () => {
     setMode(null);
+    setChosen({});
     setNotes("");
     setRanges([]);
     setQuote(null);
@@ -138,7 +144,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
     }
     if (res?.status === 409 && r.code === "price_changed") {
       setQuote({ coins: r.coins, lines: r.lines });
-      return setError(`تغيّر السعر إلى ${fmtSar(r.coins)} ر.س. اضغط «توليد التعديل» مرة ثانية للتأكيد.`);
+      return setError(`تغيّر السعر إلى ${coinStr(r.coins)}. اضغط «توليد التعديل» مرة ثانية للتأكيد.`);
     }
     if (res) key.current = null;
     setError(r.error ?? "تعذّر بدء التعديل؛ جرّب مرة ثانية (لن يتكرر الخصم).");
@@ -233,19 +239,27 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                 </div>
               )}
 
-              {choices.length > 1 && (
-                <label className="block space-y-1">
-                  <span className="text-sm font-semibold">المولّد</span>
-                  <select className="jw-select" value={genId} disabled={Boolean(busy)} onChange={(e) => { setGenId(e.target.value); setQuote(null); key.current = null; }}>
-                    {choices.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                        {g.id === job.generatorId ? " (نفس مولد الأصل)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="block text-[11px] text-jw-faint">اختر المولد قبل التوليد؛ الإعدادات تنتقل كما هي حيث يدعمها، والسعر يتحدّث.</span>
-                </label>
+              {def && (
+                <EditOptions
+                  def={def}
+                  choices={choices}
+                  originalId={job.generatorId}
+                  onGenerator={(id) => {
+                    setGenId(id);
+                    setQuote(null);
+                    key.current = null;
+                  }}
+                  original={job.settings as Settings}
+                  chosen={chosen}
+                  onChange={(k: string, v: SettingValue) => {
+                    setChosen((c) => ({ ...c, [k]: v }));
+                    setQuote(null);
+                    key.current = null;
+                  }}
+                  mode={mode}
+                  cutSeconds={cut?.seconds ?? null}
+                  disabled={Boolean(busy)}
+                />
               )}
 
               <label className="block space-y-1">
@@ -270,21 +284,21 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                     {quote.lines.map((l, i) => (
                       <p key={i} className="flex justify-between gap-2 text-jw-muted">
                         <span>{l.label}</span>
-                        <span dir="ltr" className="tabular-nums">{(l.centi / 10000).toFixed(2)} ر.س تكلفة</span>
+                        <span className="flex items-center gap-1 tabular-nums"><Riyal halalas={l.centi / 100} size={11} /> تكلفة</span>
                       </p>
                     ))}
                     <p className="flex justify-between gap-2 border-t border-jw-line pt-1 font-semibold">
                       <span>المجموع</span>
-                      <span dir="ltr" className="flex items-center gap-1 tabular-nums"><SmartCoin size={12} /> {fmtSar(quote.coins)} ر.س</span>
+                      <Riyal halalas={quote.coins} size={13} />
                     </p>
-                    <p className="text-[11px] text-jw-faint">{kind === "video" ? "يكتب حيدرة البرومبت الجديد بمهارة «المخرج الخارق» من برومبتك السابق ولقطات المقطع وتعديلاتك." : "يكتب حيدرة البرومبت الجديد من برومبتك السابق والصورة وتعديلاتك."} إذا تعذّر التعديل يُعاد لك المبلغ كاملًا.</p>
+                    <p className="text-[11px] text-jw-faint">{kind === "video" ? "يصل كلامك كما كتبته إلى جواد مع معلومات اللقطة كاملة (البرومبت السابق، لقطات المقطع، المراجع، الإعدادات)، وهو من يقرر ويكتب البرومبت النهائي." : "يصل كلامك كما كتبته إلى جواد مع الصورة وبرومبتها السابق، وهو من يقرر ويكتب البرومبت النهائي."} إذا تعذّر التعديل يُعاد لك المبلغ كاملًا.</p>
                   </>
                 ) : (
                   <p className="text-jw-muted">{quoteError || (rangesOk ? "يحسب السعر…" : "حدّد الجزء أولًا.")}</p>
                 )}
               </div>
 
-              {error && <p className="text-xs text-jw-danger" role="alert">{error}</p>}
+              {error && <p className="text-xs text-jw-danger" role="alert"><Coined text={error} /></p>}
               <div className="flex justify-end gap-2">
                 <button type="button" className="jw-btn" disabled={Boolean(busy)} onClick={close}>إلغاء</button>
                 <button type="button" className="jw-btn jw-btn-primary" disabled={!quote || Boolean(busy) || !rangesOk || !out?.url} onClick={generate}>
@@ -297,7 +311,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                       <Icon name="wand" size={16} /> توليد التعديل
                       {quote && (
                         <span className="flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 text-xs tabular-nums" dir="ltr">
-                          <SmartCoin size={12} /> {fmtSar(quote.coins)} ر.س
+                          <Riyal halalas={quote.coins} size={13} />
                         </span>
                       )}
                     </>

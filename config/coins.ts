@@ -72,6 +72,13 @@ export function fmtSar(halalas: number | null | undefined): string {
   return Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/**
+ * A price inside a sentence: «¤2.50». No currency WORD ever follows a price on the site — the coin's logo stands for it —
+ * and a sentence is plain text, so the pages that show it swap «¤2.50» for the logo and the amount (components/Coined.tsx).
+ */
+export const COIN_MARK = "¤";
+export const coinStr = (halalas: number | null | undefined) => `${COIN_MARK}${fmtSar(halalas)}`;
+
 /** The saving the «was» price shows (percent, rounded). */
 export const savingPct = (price: number, was: number) => (was > price && was > 0 ? Math.round((1 - price / was) * 100) : 0);
 

@@ -1,5 +1,7 @@
 // «الجواد الذكي!» | JAWAD AI — «التعديل الذكي» of a finished result: shared by the page and the server.
 
+import type { GeneratorDef, Settings } from "@config/jawad/types";
+
 /** Video: the whole clip again, or only the part that failed (cut back in cleanly). Image: the same image edited, or a new one. */
 export type EditMode = "whole" | "parts" | "same" | "full";
 export const VIDEO_EDIT_MODES: EditMode[] = ["whole", "parts"];
@@ -83,5 +85,39 @@ export function readContinuity(v: unknown, videoSec: number): ContinuityRange[] 
   if (out.length > CONTINUITY.max) return null;
   for (const r of out) if (!(r.from >= 0 && r.to <= videoSec + 0.05 && r.to - r.from >= CONTINUITY.minSec - 0.05 && r.to - r.from <= CONTINUITY.totalSec)) return null;
   if (out.reduce((t, r) => t + r.to - r.from, 0) > CONTINUITY.totalSec + 0.05) return null;
+  return out;
+}
+
+// ───────────────────────────── the edit's own options (the same ones the generation had) ─────────────────────────────
+
+/**
+ * The generation options a smart edit lets the person choose again — what the first generation had, so the price is
+ * counted the same way from the start: a video's resolution, sound and (for the whole clip) its seconds; an image's
+ * resolution and quality. Everything else (the ratio, the references) stays as the original made it.
+ */
+export const EDIT_OPTION_KEYS: Record<"video" | "image", string[]> = { video: ["resolution", "audio", "duration"], image: ["resolution", "quality"] };
+
+/**
+ * The options asked for, checked against the generator that will make the edit: only the keys above, only values that
+ * generator really offers (a choice among its values, a whole number in its range, a true/false). The seconds count only
+ * for the whole clip: a part's length is the cut's. Anything else is dropped, never guessed.
+ */
+export function readEditSettings(def: Pick<GeneratorDef, "output" | "options">, raw: unknown, mode: EditMode): Settings {
+  const out: Settings = {};
+  if (!raw || typeof raw !== "object" || (def.output !== "video" && def.output !== "image")) return out;
+  const given = raw as Record<string, unknown>;
+  for (const key of EDIT_OPTION_KEYS[def.output]) {
+    if (key === "duration" && mode !== "whole") continue;
+    const o = def.options.find((x) => x.key === key);
+    const v = given[key];
+    if (!o || v === undefined || v === null) continue;
+    if (o.kind === "choice") {
+      const s = String(v);
+      if (o.values.some((x) => x.value === s)) out[key] = s;
+    } else if (o.kind === "int") {
+      const n = Number(v);
+      if (Number.isInteger(n) && n >= o.min && n <= o.max) out[key] = n;
+    } else if (typeof v === "boolean") out[key] = v;
+  }
   return out;
 }

@@ -1,4 +1,3 @@
-import { fmtSar } from "@config/coins";
 import Link from "next/link";
 import AdvanceJobsButton from "@/components/jawad/admin/AdvanceJobsButton";
 import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
@@ -6,6 +5,7 @@ import { stageLabel } from "@/lib/jawad/labels";
 import type { JobRow } from "@/lib/jawad/server/jobs";
 import { generatorById } from "@config/jawad/generators";
 import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
+import Riyal from "@/components/Riyal";
 
 export const metadata = { title: "المهام والسجلات" };
 
@@ -52,7 +52,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/jawad-ai/ad
               <span dir="ltr">{generatorById(j.generator_id)?.name ?? j.generator_id}</span>
               <span className="text-xs text-jw-muted" dir="ltr">{emailOf.get(j.user_id) ?? j.user_id.slice(0, 8)}</span>
               <span className="text-xs text-jw-muted">{when(j.created_at)}</span>
-              <span className="ms-auto text-xs tabular-nums">{fmtSar(j.price_coins)} ر.س · {j.charged ? { none: "—", held: "محجوز", settled: "مخصوم", refunded: "مُعاد" }[j.charge_state] : "بلا خصم (المالك)"}</span>
+              <span className="ms-auto text-xs tabular-nums"><Riyal halalas={j.price_coins} size={12} /> · {j.charged ? { none: "—", held: "محجوز", settled: "مخصوم", refunded: "مُعاد" }[j.charge_state] : "بلا خصم (المالك)"}</span>
             </summary>
             <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
               <div className="space-y-1">

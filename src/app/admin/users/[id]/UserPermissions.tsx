@@ -1,12 +1,12 @@
 "use client";
 
-import { fmtSar } from "@config/coins";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { postJson } from "@/lib/fetch";
 import { ALL_PERMS, type Perm } from "@config/access";
 import { AccessRow } from "../../access/AccessList";
+import Riyal from "@/components/Riyal";
 
 interface Props {
   email: string;
@@ -71,7 +71,7 @@ export default function UserPermissions(p: Props) {
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">💰 النقود الذكية والمكتبة</h2>
         <p className="font-bold">
-          رصيده: <span className="display text-2xl">{fmtSar(p.balance)}</span> ريال
+          رصيده: <span className="display text-2xl"><Riyal halalas={p.balance} size={22} /></span>
           <span className="ms-2 text-sm text-muted">{p.coinsOn ? "(الموقع مدفوع الحين)" : "(الموقع مجاني الحين: ما ينخصم شي)"}</span>
         </p>
         <div className="flex flex-wrap gap-2">

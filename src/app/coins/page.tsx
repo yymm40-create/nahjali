@@ -3,11 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { coinBalance, coinsRequired } from "@/lib/coins";
 import SmartCoin from "@/components/SmartCoin";
 import { IMAGE_ESTIMATE_USD } from "@/lib/film/images";
-import { SMART_COIN, coinsFor, fmtSar } from "@config/coins";
+import { SMART_COIN, coinsFor } from "@config/coins";
 import { loadPricing } from "@/lib/coins";
 import CoinsShop from "./CoinsShop";
 import { VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, type VideoResolution } from "@config/film";
 import { isAdmin } from "@config/site";
+import Riyal from "@/components/Riyal";
 
 export const metadata = { title: "النقود الذكية | نهج علي" };
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export default async function CoinsPage() {
       <section className="card space-y-2 p-6 text-center">
         <SmartCoin size={56} className="mx-auto" />
         <h1 className="display text-4xl">{SMART_COIN.name}</h1>
-        <p className="display text-5xl text-sky-500" dir="ltr">{owner ? "∞" : `${fmtSar(balance ?? 0)} ر.س`}</p>
+        <p className="display text-5xl text-sky-500" dir="ltr">{owner ? "∞" : <Riyal halalas={balance ?? 0} size={36} />}</p>
         <p className="text-sm font-bold text-muted">
           {owner ? "أنت صاحب الموقع: بدون حد." : required ? "رصيدك بالريال: كل عملية تنخصم من رصيدك بسعرها، والعملية اللي تفشل ترجع لك." : "حاليًا الاستخدام مجاني في فترة التجربة، وما ينخصم شي من رصيدك."}
         </p>
@@ -57,7 +58,7 @@ export default async function CoinsPage() {
           {prices.map(([label, coins]) => (
             <li key={label} className="flex justify-between gap-2">
               <span>{label}</span>
-              <span className="flex items-center gap-1" dir="ltr"><SmartCoin size={16} />{fmtSar(coins)} ر.س</span>
+              <span className="flex items-center gap-1" dir="ltr"><Riyal halalas={coins} size={16} /></span>
             </li>
           ))}
         </ul>
@@ -68,7 +69,7 @@ export default async function CoinsPage() {
               <div key={`${m}-${q}`} className="flex justify-between gap-2 border-b border-line p-2 last:border-0">
                 <span dir="ltr">{VIDEO_MODELS[m].label} · {q}</span>
                 <span className="flex items-center gap-1" dir="ltr">
-                  <SmartCoin size={16} />{fmtSar(coinsFor(videoEstimateUsd(m, q, 5)))} · {fmtSar(coinsFor(videoEstimateUsd(m, q, 10)))} ر.س
+                  <Riyal halalas={coinsFor(videoEstimateUsd(m, q, 5))} size={16} /> · <Riyal halalas={coinsFor(videoEstimateUsd(m, q, 10))} size={16} />
                 </span>
               </div>
             )),
@@ -98,7 +99,7 @@ export default async function CoinsPage() {
           {(ledger.data ?? []).map((r, i) => (
             <div key={i} className="flex justify-between gap-2 text-sm font-bold">
               <span>{REASONS[r.reason] ?? r.reason}{r.label ? ` · ${r.label}` : ""}</span>
-              <span className={r.delta >= 0 ? "text-teal" : "text-red-500"} dir="ltr">{r.delta > 0 ? "+" : "-"}{fmtSar(Math.abs(r.delta))} ر.س</span>
+              <span className={r.delta >= 0 ? "text-teal" : "text-red-500"} dir="ltr">{r.delta > 0 ? "+" : "-"}<Riyal halalas={Math.abs(r.delta)} size={14} /></span>
             </div>
           ))}
         </section>

@@ -5,11 +5,12 @@
 // the student goes back to («ارجع وغيّر»).
 
 import { useState } from "react";
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { FONTS, FORMATS, MAX_PAGES, OUTPUT_KINDS, STYLES, isPaged, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { PICTURE_KINDS } from "./autopilot";
 import { fontFacesUrl } from "./client";
 import type { ProjectHook } from "./StudentProject";
+import Coined from "@/components/Coined";
 
 type S = Record<string, unknown>;
 
@@ -40,7 +41,7 @@ export function Choice<T extends string | number>({ label, value, options, onCha
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
         {options.map((o) => (
           <button key={String(o.id)} type="button" role="radio" aria-checked={value === o.id} onClick={() => onChange(o.id)} className={`rounded-full border px-3 py-1.5 text-sm transition-all ${value === o.id ? "border-transparent bg-violet-600 text-white" : "border-jw-line bg-white hover:border-violet-300"}`}>
-            {o.label}
+            <Coined text={o.label} />
           </button>
         ))}
       </div>
@@ -75,7 +76,7 @@ export function Count({ label, value, options, max, unit, onChange }: { label: s
 /** «GPT Image 2 or Claude»: what each gives, and what drawing costs. */
 export function MethodChoice({ what, value, quality, perUnit, free, onChange }: { what: "page" | "slide"; value: boolean; quality: string; perUnit: { high: number; medium: number }; free: boolean; onChange: (draw: boolean, quality: string) => void }) {
   const unit = what === "slide" ? "الشريحة" : "الصفحة";
-  const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${fmtSar(perUnit[q])} ر.س لكل ${what === "slide" ? "شريحة" : "صفحة"}`);
+  const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${coinStr(perUnit[q])} لكل ${what === "slide" ? "شريحة" : "صفحة"}`);
   return (
     <div className="space-y-2">
       <span className="text-sm font-semibold">كيف تنصنع {what === "slide" ? "الشرائح" : "الصفحات"}؟</span>
@@ -88,7 +89,7 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
         </button>
         <button type="button" aria-pressed={value} onClick={() => onChange(true, quality)} className={`rounded-2xl p-3 text-start text-white ${value ? "ring-4 ring-pink-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#7c3aed,#db2777 55%,#f97316)" }}>
           <b className="block">🪄 GPT Image 2 يرسمها</b>
-          <span className="block text-xs text-white/90">كل {unit} لوحة فنية مرسومة، أجمل بكثير. النص يصير صورة (ما ينعدل)، وقد يغلط في كلمة أحيانًا وتقدر تعيد رسمها. {price(quality === "medium" ? "medium" : "high")}.</span>
+          <span className="block text-xs text-white/90">كل {unit} لوحة فنية مرسومة، أجمل بكثير. النص يصير صورة (ما ينعدل)، وقد يغلط في كلمة أحيانًا وتقدر تعيد رسمها. <Coined text={price(quality === "medium" ? "medium" : "high")} />.</span>
         </button>
       </div>
       {value && (
@@ -96,8 +97,8 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
           label="جودة الرسم"
           value={quality}
           options={[
-            { id: "high", label: `عالية${free ? "" : ` (${fmtSar(perUnit.high)} ر.س)`}` },
-            { id: "medium", label: `متوسطة${free ? "" : ` (${fmtSar(perUnit.medium)} ر.س)`}` },
+            { id: "high", label: `عالية${free ? "" : ` (${coinStr(perUnit.high)})`}` },
+            { id: "medium", label: `متوسطة${free ? "" : ` (${coinStr(perUnit.medium)})`}` },
           ]}
           onChange={(q) => onChange(true, q)}
         />

@@ -397,3 +397,35 @@ export function expectedKinds(fault: Fault, m: EditModel): EditProblemKind[] {
       return s.fill && s.after > 0 ? ["landing"] : [];
   }
 }
+
+// ───────────────────────────── who decides the final prompt: جواد ─────────────────────────────
+
+/**
+ * «التعديل الذكي»: the edit goes from the editor (حيدرة كت) or the studio STRAIGHT to جواد — the person's own words,
+ * unaltered, and everything about the shot. جواد alone decides the final prompt: no step before him rewrites the
+ * request, no step after him rewrites his prompt (only the website's mechanical rules send a fault back to him).
+ */
+export const JAWAD_EDIT_IDENTITY = `You are «جواد», JAWAD AI's own assistant — the one the person talks to in every studio of the site. This is a «تعديل ذكي» (smart edit) of something JAWAD made, and it reached you STRAIGHT from the editor (حيدرة كت) or the studio: nobody wrote, shortened, translated or "improved" it on the way. You are given:
+1. THE PERSON'S OWN WORDS, exactly as they typed them (with the seconds they marked, when they marked any);
+2. THE WHOLE SHOT: the previous prompt (the person's, and as the generator received it), the settings, the frames of the video with their times, the references, the pieces of the video and its sound that carry on around the cut, and — for a film's clip — the film's story brief.
+YOU alone decide the final prompt. The person's words say what must change (they win over everything else); everything they did not touch must stay as it is, so the result is the same work with only their change. Decide it yourself from all of that: the prompt you write is the one the generator receives, as you write it, and nobody rewrites it after you.`;
+
+/** The person's words as the one who decides reads them: untouched, in the order they wrote them. */
+export function personWordsText(notes: string, ranges: { from: number; to: number; note: string }[]): string {
+  const marked = ranges.map((r) => `- From ${r.from.toFixed(1)} s to ${r.to.toFixed(1)} s${r.note ? `: ${r.note}` : ""}`);
+  return [
+    "THE PERSON'S OWN WORDS — exactly as they typed them; nobody changed, shortened, translated or improved them (build what they want into the new prompt as simply how the shot is; never mention the old video or what was wrong):",
+    notes ? `<<<\n${notes}\n>>>` : "",
+    ...marked,
+  ].filter(Boolean).join("\n");
+}
+
+/** The shot's whole record for the one who decides: what was asked before, how it was made, how long it is. */
+export function shotRecordText(o: { previous: string; settings: Record<string, unknown>; videoSec?: number; filmBrief?: string | null }): string {
+  return [
+    `THE WHOLE SHOT — what the person did NOT ask to change must stay exactly as it is.`,
+    `PREVIOUS PROMPT (the ideas to keep; the old ${o.videoSec ? "video" : "result"} was made with it):\n<<<\n${o.previous}\n>>>`,
+    `Original ${o.videoSec ? `video: ${o.videoSec.toFixed(1)} s, ` : ""}settings ${JSON.stringify(o.settings)}.`,
+    o.filmBrief ? `FROM سجاد (the film's story consultant) — what this clip belongs to (story, characters, look, decisions):\n<<<\n${o.filmBrief.slice(0, 14_000)}\n>>>` : "",
+  ].filter(Boolean).join("\n\n");
+}

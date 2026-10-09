@@ -9,6 +9,7 @@ import { shrinkImage } from "@/lib/mahdi/client/reading";
 import BookCover from "./BookCover";
 import Icon from "./Icon";
 import { useMahdi } from "./Provider";
+import Coined from "@/components/Coined";
 
 const R = t.reading;
 const E = R.enhance;
@@ -137,7 +138,7 @@ export function CoverPicker({ title, onChange }: { title: string; onChange: (cov
             <p className="text-sm font-semibold" role="status">{E.working}</p>
           ) : asking ? (
             <div className="space-y-2">
-              <p className="text-sm">{price ? E.confirm(price) : E.confirmFree}</p>
+              <p className="text-sm">{price ? <Coined text={E.confirm(price)} /> : E.confirmFree}</p>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setAsking(false)}>{E.no}</button>
                 <button type="button" className="m-btn m-btn-primary m-btn-sm" onClick={enhance}>{E.yes}</button>
@@ -146,7 +147,7 @@ export function CoverPicker({ title, onChange }: { title: string; onChange: (cov
           ) : (
             !enhanced && (
               <button type="button" className="m-btn m-btn-primary m-btn-sm w-full" disabled={price === null} onClick={() => setAsking(true)}>
-                <Icon name="sparkle" size={16} /> {price ? E.button(price) : E.free}
+                <Icon name="sparkle" size={16} /> {price ? <Coined text={E.button(price)} /> : E.free}
               </button>
             )
           )}

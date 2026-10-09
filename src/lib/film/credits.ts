@@ -3,8 +3,8 @@
 
 import { coinsFor, fmtSar } from "@config/coins";
 
-/** One cost in riyals: «💰 2.50 ر.س». */
-export const credits = (usd: number) => `💰 ${usd > 0 ? fmtSar(coinsFor(usd)) : 0} ر.س`;
+/** One cost: «💰 2.50» (the coin, never a currency word). */
+export const credits = (usd: number) => `💰 ${usd > 0 ? fmtSar(coinsFor(usd)) : 0}`;
 
-/** A range («تقريبًا 0.50–4.50 ر.س»). */
-export const creditsRange = (lo: number, hi: number) => `💰 تقريبًا ${fmtSar(coinsFor(lo))}–${fmtSar(coinsFor(hi))} ر.س`;
+/** A range («تقريبًا 0.50–4.50»). */
+export const creditsRange = (lo: number, hi: number) => `💰 تقريبًا ${fmtSar(coinsFor(lo))}–${fmtSar(coinsFor(hi))}`;

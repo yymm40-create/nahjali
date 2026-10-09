@@ -1,4 +1,4 @@
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
@@ -28,7 +28,7 @@ export const POST = handle(async (req: Request) => {
     case "make": {
       const r = await makeItem(user, owner, b, new URL(req.url).origin);
       if (r.kind === "issues") return NextResponse.json({ error: r.issues[0]?.message ?? "الطلب غير صالح.", issues: r.issues }, { status: 422 });
-      if (r.kind === "price_changed") return NextResponse.json({ error: `السعر ${fmtSar(r.coins)} ر.س. أكّد المبلغ.`, code: "price_changed", coins: r.coins, lines: r.lines }, { status: 409 });
+      if (r.kind === "price_changed") return NextResponse.json({ error: `السعر ${coinStr(r.coins)}. أكّد المبلغ.`, code: "price_changed", coins: r.coins, lines: r.lines }, { status: 409 });
       const [job] = await jobViews([r.job]);
       return NextResponse.json({ job, created: r.kind === "created", balance: r.balance });
     }
