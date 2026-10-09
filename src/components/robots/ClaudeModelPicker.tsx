@@ -7,8 +7,9 @@ import { claudeHalalas, coinStr } from "@config/coins";
 import { useClaudeModel } from "./claude-model";
 
 /**
- * The model that answers in this chat (Fable 5.1 · Opus 5.5 · Sonnet 5.5 · Haiku 5.5): the choice is the person's, kept for
- * every robot. Each has its advice and a typical reply's price; the platform's profit on Claude's usage is 10%, said here.
+ * The mind that answers in this chat (العبقري · الأصيل · الرشيق · الخفيف — our own names, nothing says whose they are): the
+ * choice is the person's, kept for every robot. Each has its advice and a typical reply's price; the platform's profit on the
+ * usage is 10%, said here.
  * Neutral colours (they follow the text colour) so it sits in any robot's page.
  */
 export default function ClaudeModelPicker({ className = "", disabled = false }: { className?: string; disabled?: boolean }) {
@@ -28,7 +29,7 @@ export default function ClaudeModelPicker({ className = "", disabled = false }: 
       </button>
       {open && (
         <div style={{ marginTop: 6, border: line, borderRadius: 12, padding: 10 }}>
-          <div role="radiogroup" aria-label="موديل Claude" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div role="radiogroup" aria-label="اختيار الذكاء" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {CLAUDE_MODELS.map((m) => (
               <button
                 key={m.id}
@@ -54,7 +55,7 @@ export default function ClaudeModelPicker({ className = "", disabled = false }: 
           </div>
           <p style={{ margin: "8px 0 0" }}>💡 {model.advice}</p>
           <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-            الرد العادي تقريبًا <Coined text={coinStr(claudeHalalas(typicalReplyUsd(model)))} size={12} />، ويختلف حسب طول المحادثة والموديل. الخصم من رصيدك هو تكلفة استخدام Claude الفعلية + {CLAUDE_MARGIN_PCT}٪ فقط ربح للمنصة.
+            الرد العادي تقريبًا <Coined text={coinStr(claudeHalalas(typicalReplyUsd(model)))} size={12} />، ويختلف حسب طول المحادثة والموديل. الخصم من رصيدك هو تكلفة الاستخدام الفعلية + {CLAUDE_MARGIN_PCT}٪ فقط ربح للمنصة.
           </p>
         </div>
       )}

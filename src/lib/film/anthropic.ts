@@ -186,8 +186,8 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
 /** A Claude failure the person should hear about as it is (the account's credit ran out, the API is overloaded). */
 export function claudeTrouble(e: unknown): string | null {
   const m = e instanceof Error ? e.message : String(e);
-  if (/credit balance is too low/i.test(m)) return "رصيد Claude (Anthropic) عند المنصة خلص، فما قدر Claude يشتغل. صاحب المنصة لازم يشحن رصيد Anthropic.";
-  if (/Claude (429|529)|overloaded|rate.?limit/i.test(m)) return "Claude مشغول الحين؛ جرّب بعد دقيقة.";
-  if (/image.*(exceeds|too large|dimensions)|Unable to download|Could not process image|invalid image/i.test(m)) return "Claude ما قدر يقرا الصورة المرفقة (كبيرة أو تالفة). جرّب صورة أصغر أو بصيغة PNG/JPG.";
+  if (/credit balance is too low/i.test(m)) return "رصيد مزوّد الذكاء الاصطناعي عند المنصة خلص، فما قدر الروبوت يشتغل الحين. صاحب المنصة لازم يشحن الرصيد.";
+  if (/Claude (429|529)|overloaded|rate.?limit/i.test(m)) return "الذكاء الاصطناعي مشغول الحين؛ جرّب بعد دقيقة.";
+  if (/image.*(exceeds|too large|dimensions)|Unable to download|Could not process image|invalid image/i.test(m)) return "الروبوت ما قدر يقرا الصورة المرفقة (كبيرة أو تالفة). جرّب صورة أصغر أو بصيغة PNG/JPG.";
   return null;
 }
