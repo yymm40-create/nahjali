@@ -2,12 +2,19 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { BOOKLET_PATHS, JAWAD_PATH_HEADER, OWN_CHROME_HEADER } from "@config/site";
 import { can } from "@/lib/access";
+import { clientIp, rulesFor, take } from "@/lib/rate-limit";
 
 // Pages that require a signed-in user
 const PROTECTED = ["/new", "/order", "/my-booklets", "/admin", "/film", "/coins"];
 
 /** Refreshes the Supabase session cookie on every request and guards protected pages. */
 export async function proxy(request: NextRequest) {
+  // too many requests from one address: refused before anything else runs
+  const rules = rulesFor(request.nextUrl.pathname, request.method);
+  if (rules.length) {
+    const wait = take(clientIp(request.headers), rules);
+    if (wait) return NextResponse.json({ error: `طلبات كثيرة في وقت قصير. انتظر ${wait} ثانية وجرّب مرة ثانية.` }, { status: 429, headers: { "Retry-After": String(wait) } });
+  }
   // If Supabase falls back to the Site URL after sign-in, finish the login on our callback route
   if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code")) {
     const url = request.nextUrl.clone();
