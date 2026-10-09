@@ -191,14 +191,16 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content" } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
   if (!def) throw new UserError("المولد غير معروف.", 400);
-  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرة» makes with its own right
+  // the dashboard's list: this branch (images, video, voices, music) for this person; «حيدرة» makes with its own right,
+  // and «محمد باقر» makes through جواد's desk (src/lib/content/jawad.ts) with the door he already passed
+  // (the owner's switch in /admin/content already decided who gets in there: requireContentUser, before any request reaches the desk)
   const perm = server.via === "editor" ? "editor_ai" : permForGenerator(def);
-  if (!(await can(user.email, perm))) throw new UserError(`${PERMS.find((x) => x.key === perm)!.label.replace(/^\S+\s/, "")} مقفلة لحسابك حاليًا.`, 403);
+  if (server.via !== "content" && !(await can(user.email, perm))) throw new UserError(`${PERMS.find((x) => x.key === perm)!.label.replace(/^\S+\s/, "")} مقفلة لحسابك حاليًا.`, 403);
 
   // The same click again: the job it already made (no new check, no new charge)
   const existing = await db().from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key).maybeSingle();

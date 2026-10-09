@@ -67,7 +67,7 @@ describe("the carousel", () => {
 
   it("while it is drawn: progress, a moving placeholder for each slide to come, the made ones with their picture", () => {
     const html = renderToStaticMarkup(h(SlidesBox, { ...props, s: { ...base, items: [slide(1)], todo: [2, 3], running: true, total: 3 } }));
-    expect(html).toContain("GPT Image 2 يرسم الشرائح… (1 من 3)");
+    expect(html).toContain("جواد يولّد الشرائح بـ GPT Image 2… (1 من 3)");
     expect(html).toContain("لا تقفل الصفحة");
     expect(html).toContain("الشريحة 2 قيد الرسم");
     expect(html).toContain("الشريحة 3 قيد الرسم");

@@ -29,7 +29,7 @@ describe("«محمد باقر»", () => {
   });
 
   it("answers in the shape the site reads: a reply, the record, a carousel to produce, a package for حيدرة", () => {
-    expect(ANSWER_SCHEMA.required).toEqual(["reply", "questions", "record", "produce", "handoff"]);
+    expect(ANSWER_SCHEMA.required).toEqual(["reply", "questions", "record", "produce", "generate", "handoff"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(["1:1", "2:3", "9:16", "16:9"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.mode.enum).toEqual(["all", "fix"]);
     expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "templates", "styles"]);

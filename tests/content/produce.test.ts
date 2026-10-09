@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WOMAN_WORDING } from "@config/content";
 import { ARABIC_TEXT_RULES, CAROUSEL_TEMPLATES, designSystem } from "@config/content-templates";
 import { FILM_STYLES } from "@config/film-styles";
-import { ProviderError } from "@/lib/jawad/server/providers/common";
+import { DeskError, isTransientText } from "@/lib/content/jawad";
 import { answerLine, DELEGATE_LINE, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import { readQuestions, readPending, cleanHistory } from "@/lib/content/chats";
 import { catalogBlock, chosenBlock, chosenIds } from "@/lib/content/persona";
@@ -63,10 +63,10 @@ describe("what the report tells", () => {
 
 describe("a refusal worth another try", () => {
   it("is a busy provider or a cut connection, not a policy refusal", () => {
-    expect(isTransient(new ProviderError("unknown", "انقطع", "timeout"))).toBe(true);
-    expect(isTransient(new ProviderError("rejected", "مشغول", "429 rate_limit_exceeded"))).toBe(true);
-    expect(isTransient(new ProviderError("rejected", "خطأ", "503 server error"))).toBe(true);
-    expect(isTransient(new ProviderError("rejected", "سياسة", "400 content_policy_violation"))).toBe(false);
+    expect(isTransient(new DeskError("انقطع", "timeout", isTransientText("timeout")))).toBe(true);
+    expect(isTransient(new DeskError("مشغول", "429 rate_limit_exceeded", isTransientText("429 rate_limit_exceeded")))).toBe(true);
+    expect(isTransient(new DeskError("خطأ", "503 server error", isTransientText("503 server error")))).toBe(true);
+    expect(isTransient(new DeskError("سياسة", "400 content_policy_violation", isTransientText("400 content_policy_violation")))).toBe(false);
     expect(isTransient(new Error("fetch failed"))).toBe(true);
     expect(isTransient(new Error("bad input"))).toBe(false);
   });

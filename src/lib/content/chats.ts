@@ -53,6 +53,38 @@ export interface SlidesBlock {
   report?: string;
 }
 
+/** One picture or video «محمد باقر» asked جواد for (outside a carousel), and where it stands. */
+export interface MediaItem {
+  id: string;
+  kind: "image" | "video";
+  name: string;
+  prompt: string;
+  aspect: string;
+  quality?: string;
+  resolution?: string;
+  seconds?: number;
+  withSound?: boolean;
+  /** the person's attached files (jawad_uploads ids) used as references */
+  refs: string[];
+  state: "todo" | "running" | "done" | "failed";
+  /** جواد's job once he took the request */
+  jobId?: string;
+  /** a content_files row, when made */
+  fileId?: string;
+  /** what جواد answered when he took it: his generator, the settings, the price */
+  desk?: { generator: string; coins: number; free: boolean; settings: Record<string, unknown> };
+  error?: string;
+  /** the technical reason (only the owner sees it) */
+  detail?: string;
+  transient?: boolean;
+  tries?: number;
+}
+
+/** The pictures and videos of an answer: requests handed to جواد. */
+export interface MediaBlock {
+  items: MediaItem[];
+}
+
 /** A question of a batch, answered by pressing (or writing). */
 export interface Question {
   label: string;
@@ -70,6 +102,8 @@ export interface Turn {
   questions?: Question[];
   /** a carousel this answer produced (filled by the produce step) */
   slides?: SlidesBlock;
+  /** pictures and videos this answer handed to جواد (filled by the media step) */
+  media?: MediaBlock;
   /** an edit room this answer opened in «حيدرة كت» */
   editor?: { id: string; title: string };
   error?: boolean;
@@ -125,6 +159,36 @@ const readSlide = (x: Record<string, unknown>): Slide => ({
 });
 const readFailure = (x: Record<string, unknown>): SlideFailure => ({ n: num(x.n), reason: str(x.reason, 300), ...(typeof x.detail === "string" && x.detail ? { detail: x.detail.slice(0, 400) } : {}), text: str(x.text, 2000), prompt: str(x.prompt, 4000) });
 
+/** Media items from the model or from storage, checked. */
+export function readMedia(v: unknown): MediaItem[] {
+  return objs(v)
+    .filter((x) => typeof x.prompt === "string" && (x.kind === "image" || x.kind === "video"))
+    .map((x): MediaItem => {
+      const d = x.desk as Record<string, unknown> | undefined;
+      return {
+        id: str(x.id, 60) || "m",
+        kind: x.kind as MediaItem["kind"],
+        name: str(x.name, 120),
+        prompt: str(x.prompt, 4000),
+        aspect: str(x.aspect, 8) || "9:16",
+        ...(typeof x.quality === "string" && x.quality ? { quality: x.quality.slice(0, 12) } : {}),
+        ...(typeof x.resolution === "string" && x.resolution ? { resolution: x.resolution.slice(0, 12) } : {}),
+        ...(num(x.seconds) > 0 ? { seconds: num(x.seconds) } : {}),
+        ...(typeof x.withSound === "boolean" ? { withSound: x.withSound } : {}),
+        refs: (Array.isArray(x.refs) ? x.refs : []).filter((r): r is string => typeof r === "string").slice(0, 16),
+        state: x.state === "running" || x.state === "done" || x.state === "failed" ? x.state : "todo",
+        ...(typeof x.jobId === "string" && x.jobId ? { jobId: x.jobId } : {}),
+        ...(typeof x.fileId === "string" && x.fileId ? { fileId: x.fileId } : {}),
+        ...(d && typeof d === "object" ? { desk: { generator: str(d.generator, 80), coins: num(d.coins), free: d.free === true, settings: (d.settings as Record<string, unknown>) ?? {} } } : {}),
+        ...(typeof x.error === "string" && x.error ? { error: x.error.slice(0, 300) } : {}),
+        ...(typeof x.detail === "string" && x.detail ? { detail: x.detail.slice(0, 400) } : {}),
+        ...(x.transient === true ? { transient: true } : {}),
+        ...(num(x.tries) > 0 ? { tries: num(x.tries) } : {}),
+      };
+    })
+    .slice(0, 12);
+}
+
 /** Questions from the model or from storage, checked: at most 6, each with a short label and at most 8 short options. */
 export function readQuestions(v: unknown): Question[] | undefined {
   const out = objs(v)
@@ -170,6 +234,11 @@ export function cleanHistory(raw: unknown): Turn[] {
         templateId: str(s.templateId, 60),
         ...(typeof s.report === "string" && s.report ? { report: s.report.slice(0, 4000) } : {}),
       };
+    }
+    const md = m.media as Record<string, unknown> | undefined;
+    if (md && typeof md === "object" && Array.isArray(md.items)) {
+      const items = readMedia(md.items);
+      if (items.length) turn.media = { items };
     }
     const e = m.editor as Record<string, unknown> | undefined;
     if (e && typeof e === "object" && typeof e.id === "string") turn.editor = { id: e.id, title: str(e.title, 120) };
