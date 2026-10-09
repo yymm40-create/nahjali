@@ -7,6 +7,7 @@
 
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
+import { sellHalalas } from "@config/coins";
 import { coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
 import { getLimit } from "@/lib/film/limits";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -74,7 +75,7 @@ export async function startUpscale(p: EditorProject, who: Who, b: { assetId?: un
   const per = await getLimit("editor_price_upscale");
   if (!who.owner && per <= 0) throw new UserError("رفع الدقة ما انفتح بعد؛ صاحب المنصة يحدد سعره أول.", 403);
   const minutes = Math.ceil(src.duration_ms / 60_000);
-  const coins = who.owner || !(await coinsRequired()) ? 0 : Math.ceil(per * minutes);
+  const coins = who.owner || !(await coinsRequired()) ? 0 : sellHalalas(Math.ceil(per * minutes));
   const ref = `editor:editor_price_upscale:${randomUUID()}`;
   const label = `رفع دقة «${src.name.slice(0, 60)}» إلى ${target === "4k" ? "4K" : "1080p"}`;
   if (who.team) await holdTeamCoins(who.team, who, coins, ref, label);

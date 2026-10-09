@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
+import { fmtSar } from "@config/coins";
 import { EDIT_FEE_KEY, GENERATORS, generatorById } from "@config/jawad/generators";
 import type { JobView, OutputView } from "@/lib/jawad/labels";
 import { continuityRanges, cutRange, EDIT_LIMITS, frameTimes, type EditMode, type EditRange } from "@/lib/jawad/smart-edit";
@@ -137,7 +138,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
     }
     if (res?.status === 409 && r.code === "price_changed") {
       setQuote({ coins: r.coins, lines: r.lines });
-      return setError(`تغيّر السعر إلى ${r.coins} نقدة. اضغط «توليد التعديل» مرة ثانية للتأكيد.`);
+      return setError(`تغيّر السعر إلى ${fmtSar(r.coins)} ر.س. اضغط «توليد التعديل» مرة ثانية للتأكيد.`);
     }
     if (res) key.current = null;
     setError(r.error ?? "تعذّر بدء التعديل؛ جرّب مرة ثانية (لن يتكرر الخصم).");
@@ -269,14 +270,14 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                     {quote.lines.map((l, i) => (
                       <p key={i} className="flex justify-between gap-2 text-jw-muted">
                         <span>{l.label}</span>
-                        <span dir="ltr" className="tabular-nums">{(l.centi / 100).toFixed(2)}</span>
+                        <span dir="ltr" className="tabular-nums">{(l.centi / 10000).toFixed(2)} ر.س تكلفة</span>
                       </p>
                     ))}
                     <p className="flex justify-between gap-2 border-t border-jw-line pt-1 font-semibold">
                       <span>المجموع</span>
-                      <span dir="ltr" className="flex items-center gap-1 tabular-nums"><SmartCoin size={12} /> {quote.coins}</span>
+                      <span dir="ltr" className="flex items-center gap-1 tabular-nums"><SmartCoin size={12} /> {fmtSar(quote.coins)} ر.س</span>
                     </p>
-                    <p className="text-[11px] text-jw-faint">{kind === "video" ? "يكتب حيدرة البرومبت الجديد بمهارة «المخرج الخارق» من برومبتك السابق ولقطات المقطع وتعديلاتك." : "يكتب حيدرة البرومبت الجديد من برومبتك السابق والصورة وتعديلاتك."} إذا تعذّر التعديل تُعاد نقودك كاملة.</p>
+                    <p className="text-[11px] text-jw-faint">{kind === "video" ? "يكتب حيدرة البرومبت الجديد بمهارة «المخرج الخارق» من برومبتك السابق ولقطات المقطع وتعديلاتك." : "يكتب حيدرة البرومبت الجديد من برومبتك السابق والصورة وتعديلاتك."} إذا تعذّر التعديل يُعاد لك المبلغ كاملًا.</p>
                   </>
                 ) : (
                   <p className="text-jw-muted">{quoteError || (rangesOk ? "يحسب السعر…" : "حدّد الجزء أولًا.")}</p>
@@ -296,7 +297,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                       <Icon name="wand" size={16} /> توليد التعديل
                       {quote && (
                         <span className="flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 text-xs tabular-nums" dir="ltr">
-                          <SmartCoin size={12} /> {quote.coins}
+                          <SmartCoin size={12} /> {fmtSar(quote.coins)} ر.س
                         </span>
                       )}
                     </>

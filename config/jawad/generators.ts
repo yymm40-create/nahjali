@@ -6,7 +6,7 @@
 // The owner can rename, hide, reorder or re-price a generator from /jawad-ai/admin, but can never add a capability:
 // options, limits and modes only come from this file.
 
-import { COIN_COST_USD } from "../coins";
+import { COIN_COST_USD, sellHalalas, wasHalalas } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
@@ -27,10 +27,14 @@ export const EDIT_CLAUDE_KEY = "edit:claude";
 export const EDIT_CLAUDE_USD = (10_000 * 5 + 8_000 * 4 + 6_000 * 20 + 8_000 * 5 + 1_500 * 20) / 1e6;
 const MB = 1024 * 1024;
 
-/** Hundredths of a coin for a provider cost (rounded up), on the site's coin price (config/coins.ts). */
+/** Hundredths of a halala of COST for a provider cost (rounded up), at the default dollar rate (config/coins.ts). */
 export const centiFor = (usd: number) => Math.max(1, Math.ceil((usd / COIN_COST_USD) * 100 - 1e-9));
-/** Whole coins charged for a sum of hundredths (rounded up, never 0 for a paid line). */
-export const coinsOf = (centi: number) => Math.ceil(centi / 100 - 1e-9);
+/** The halalas of cost in a sum of hundredths (rounded up, never 0 for a paid line). */
+export const costOf = (centi: number) => Math.ceil(centi / 100 - 1e-9);
+/** What the customer pays (halalas) for a sum of cost hundredths: rounded up to the step, plus the margin (config/coins.ts). */
+export const coinsOf = (centi: number) => sellHalalas(costOf(centi));
+/** The struck «was» price (halalas) for the same cost. */
+export const wasOf = (centi: number) => wasHalalas(costOf(centi));
 
 const ARABIC = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 export const hasArabic = (s: string) => ARABIC.test(s);
@@ -314,7 +318,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
         key: DIRECTOR_PRICE_KEY,
         label: "تطوير البرومبت بالمخرج الخارق (للمرة)",
         defaultCenti: 3000,
-        basis: "سعر ثابت حدّده المالك (30 نقدة): Claude Opus 5.5 يعيد كتابة البرومبت بمهارة «المخرج الخارق»",
+        basis: "تكلفة ثابتة حدّدها المالك (0.30 ريال): Claude Opus 5.5 يعيد كتابة البرومبت بمهارة «المخرج الخارق»",
       },
       {
         key: EDIT_CLAUDE_KEY,
@@ -322,7 +326,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
         defaultCenti: centiFor(EDIT_CLAUDE_USD),
         basis: `سقف إجابة واحدة لـ Claude Opus 5.5: مهارة المخرج الخارق (~10,000 توكن × $5/مليون) + حتى 16 لقطة والنصوص (~8,000 × $4) + حتى 6,000 توكن ناتج × $20 = $${EDIT_CLAUDE_USD.toFixed(3)}`,
       },
-      { key: EDIT_FEE_KEY, label: "التعديل الذكي · رسوم إضافية (للمرة)", defaultCenti: 3000, basis: "سعر ثابت حدّده المالك (30 نقدة) فوق Claude وسعر الفيديو" },
+      { key: EDIT_FEE_KEY, label: "التعديل الذكي · رسوم إضافية (للمرة)", defaultCenti: 3000, basis: "تكلفة ثابتة حدّدها المالك (0.30 ريال) فوق Claude وسعر الفيديو" },
     ],
     modeFor(style, refs) {
       if (!refs.length) return modes[0];
@@ -750,12 +754,12 @@ const smartSplit: GeneratorDef = {
   prompt: { label: "توجيه إضافي", placeholder: "مثال: موسيقى عربية هادئة بالعود · ركّز على صوت السيوف", max: 2000, arabic: true },
   priceKeys: [
     { key: STEM_KEY.dialogue, label: "الحوار · كل ثانية من الفيديو", defaultCenti: centiFor(ELEVEN_PRICE.isolatorPerMin / 60), basis: `سعر ElevenLabs المنشور لعزل الصوت: $${ELEVEN_PRICE.isolatorPerMin} للدقيقة` },
-    { key: STEM_KEY.music, label: "الموسيقى · كل ثانية من الفيديو", defaultCenti: 100, basis: `مثل المؤثرات (30 نقدة لكل 30 ثانية): Claude يشاهد ويخطط الأقسام + Eleven Music $${ELEVEN_PRICE.musicPerMin}/دقيقة` },
+    { key: STEM_KEY.music, label: "الموسيقى · كل ثانية من الفيديو", defaultCenti: 100, basis: `مثل المؤثرات (0.30 ريال لكل 30 ثانية): Claude يشاهد ويخطط الأقسام + Eleven Music $${ELEVEN_PRICE.musicPerMin}/دقيقة` },
     {
       key: STEM_KEY.sfx,
       label: "المؤثرات · كل ثانية من الفيديو",
       defaultCenti: 100,
-      basis: `سعر ثابت حدّده المالك (30 نقدة لكل 30 ثانية). التكلفة القصوى لفيديو 30 ثانية: Claude ‏$${SPLIT_CLAUDE_USD.toFixed(2)} + مؤثرات حتى ${30 + VIDEO_SFX.eventsTotalSec} ثانية × $${ELEVEN_PRICE.sfxPerMin}/دقيقة`,
+      basis: `تكلفة ثابتة حدّدها المالك (0.30 ريال لكل 30 ثانية). التكلفة القصوى لفيديو 30 ثانية: Claude ‏$${SPLIT_CLAUDE_USD.toFixed(2)} + مؤثرات حتى ${30 + VIDEO_SFX.eventsTotalSec} ثانية × $${ELEVEN_PRICE.sfxPerMin}/دقيقة`,
     },
   ],
   modeFor: () => splitMode,
@@ -818,7 +822,7 @@ const smartSplit: GeneratorDef = {
 
 function total(lines: { label: string; centi: number }[], usd: number | null): PriceResult {
   const centi = lines.reduce((s, l) => s + l.centi, 0);
-  return { ok: true, coins: coinsOf(centi), lines, usdCeiling: usd };
+  return { ok: true, coins: coinsOf(centi), was: wasOf(centi), lines, usdCeiling: usd };
 }
 
 

@@ -6,18 +6,21 @@ import TeamCoin from "@/components/TeamCoin";
 import { TEAM_COIN } from "@config/coins";
 import { postJson } from "@/lib/fetch";
 import SmartCoin from "@/components/SmartCoin";
+import { fmtSar } from "@config/coins";
 
-/** «النقود الذكية» for the owner: charging on/off, and adding coins to anyone by email. */
+const money = (s: string) => s.replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 1632)).replace(/[^\d.-]/g, "");
+
+/** «النقود الذكية» for the owner: charging on/off, and adding riyals to anyone by email (balances are halalas). */
 export default function CoinsAdmin({ required, ready, top }: { required: boolean; ready: boolean; top: { email: string; balance: number }[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [email, setEmail] = useState("");
-  const [amount, setAmount] = useState("100");
+  const [amount, setAmount] = useState("50");
   const [note, setNote] = useState("");
   const [libEmail, setLibEmail] = useState("");
   const [series, setSeries] = useState("");
-  const [teamAmount, setTeamAmount] = useState("500");
+  const [teamAmount, setTeamAmount] = useState("200");
   const [libMonths, setLibMonths] = useState(1);
 
   async function send(body: Record<string, unknown>, done?: string) {
@@ -39,12 +42,12 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
       <h2 className="flex items-center gap-2 text-xl font-extrabold"><SmartCoin size={24} /> النقود الذكية</h2>
       {!ready && <p className="error-box">جداول النقود الذكية ما انضافت للحين: شغّل الملف <span dir="ltr">0015_smart_coins.sql</span> في SQL Editor.</p>}
       <div className="grid grid-cols-2 gap-2">
-        {([[false, "مجاني (ما ينخصم شي)", "فترة التجربة"], [true, "بالنقود الذكية", "كل عملية تنخصم من رصيد صاحبها"]] as const).map(([on, label, hint]) => (
+        {([[false, "مجاني (ما ينخصم شي)", "فترة التجربة: للكل"], [true, "مدفوع بالريال", "كل عملية تنخصم من رصيد صاحبها، إلا أنت ومن معه الكود السري أو «بلا حدود»"]] as const).map(([on, label, hint]) => (
           <button
             key={label}
             className={`rounded-2xl border-2 p-2 text-start ${required === on ? "border-sky-400 bg-sky-400/10" : "border-line"}`}
             disabled={busy || required === on}
-            onClick={() => window.confirm(`تحويل صناعة الأفلام إلى «${label}»؟`) && send({ action: "required", on })}
+            onClick={() => window.confirm(`تحويل الموقع كله إلى «${label}»؟`) && send({ action: "required", on })}
           >
             <span className="block text-sm font-extrabold">{label}</span>
             <span className="block text-xs font-bold text-muted">{hint}</span>
@@ -53,14 +56,14 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
       </div>
 
       <div className="space-y-2 rounded-2xl bg-surface-2 p-3">
-        <p className="font-extrabold">أضف أو اسحب نقود لشخص</p>
+        <p className="font-extrabold">أضف أو اسحب رصيدًا لشخص (بالريال)</p>
         <input className="field" dir="ltr" type="email" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
         <div className="flex gap-2">
-          <input className="field w-28 text-center" dir="ltr" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d-]/g, ""))} />
+          <input className="field w-28 text-center" dir="ltr" inputMode="decimal" value={amount} onChange={(e) => setAmount(money(e.target.value))} aria-label="المبلغ بالريال" />
           <input className="field flex-1" placeholder="ملاحظة (مثلًا: هدية التجربة)" value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
-        <p className="text-xs font-bold text-muted">رقم موجب يضيف، وسالب يسحب. كل نقدة تقريبًا ٠٫٢٥ ريال للعميل.</p>
-        <button className="btn btn-primary w-full" disabled={busy || !email.trim() || !Number(amount)} onClick={() => window.confirm(`${Number(amount) < 0 ? "تسحب" : "تضيف"} ${Math.abs(Number(amount))} نقدة ${Number(amount) < 0 ? "من" : "لـ"} ${email.trim()}؟`) && send({ action: "grant", email, amount: Number(amount), note }, "تم ✅")}>
+        <p className="text-xs font-bold text-muted">رقم موجب يضيف، وسالب يسحب. الرصيد ريال بريال: ما يدفعه لك العميل تكتبه هنا نفسه.</p>
+        <button className="btn btn-primary w-full" disabled={busy || !email.trim() || !Number(amount)} onClick={() => window.confirm(`${Number(amount) < 0 ? "تسحب" : "تضيف"} ${Math.abs(Number(amount))} ريال ${Number(amount) < 0 ? "من" : "لـ"} ${email.trim()}؟`) && send({ action: "grant", email, sar: Number(amount), note }, "تم ✅")}>
           نفّذ
         </button>
       </div>
@@ -70,8 +73,8 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
         <p className="text-xs font-bold text-muted">رصيد فريق «المسلسل الذكي»: كل شي ينصنع داخل المسلسل ينقص منه. الصق رابط المسلسل (من صاحبه) أو رقمه.</p>
         <input className="field" dir="ltr" placeholder="https://…/film/series/…" value={series} onChange={(e) => setSeries(e.target.value)} />
         <div className="flex gap-2">
-          <input className="field w-28 text-center" dir="ltr" inputMode="numeric" value={teamAmount} onChange={(e) => setTeamAmount(e.target.value.replace(/[^\d-]/g, ""))} />
-          <button className="btn btn-primary flex-1" disabled={busy || !series.trim() || !Number(teamAmount)} onClick={() => window.confirm(`${Number(teamAmount) < 0 ? "تسحب" : "تضيف"} ${Math.abs(Number(teamAmount))} نقدة فريق؟`) && send({ action: "team_grant", series, amount: Number(teamAmount), note }, "تم ✅")}>
+          <input className="field w-28 text-center" dir="ltr" inputMode="decimal" value={teamAmount} onChange={(e) => setTeamAmount(money(e.target.value))} aria-label="مبلغ الفريق بالريال" />
+          <button className="btn btn-primary flex-1" disabled={busy || !series.trim() || !Number(teamAmount)} onClick={() => window.confirm(`${Number(teamAmount) < 0 ? "تسحب" : "تضيف"} ${Math.abs(Number(teamAmount))} ريال من رصيد الفريق؟`) && send({ action: "team_grant", series, sar: Number(teamAmount), note }, "تم ✅")}>
             نفّذ
           </button>
         </div>
@@ -100,7 +103,7 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
           {top.map((t) => (
             <p key={t.email} className="flex justify-between gap-2">
               <button className="text-start" dir="ltr" onClick={() => setEmail(t.email)}>{t.email}</button>
-              <span className="flex items-center gap-1" dir="ltr"><SmartCoin size={14} />{t.balance}</span>
+              <span className="flex items-center gap-1" dir="ltr"><SmartCoin size={14} />{fmtSar(t.balance)} ر.س</span>
             </p>
           ))}
         </div>

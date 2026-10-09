@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
 import PricingCalculator from "./PricingCalculator";
+import { loadPricing } from "@/lib/coins";
 
 export const metadata = { title: "حاسبة الأسعار والأرباح | لوحة التحكم" };
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function PricingPage() {
         <h1 className="display text-4xl">🧮 حاسبة الأسعار والأرباح</h1>
         <p className="text-sm font-bold text-muted">كل الأرقام بالريال (الدولار = ٣٫٧٥ ريال). التكاليف تقديرية، وجنبها المتوسط الفعلي من استخدام الموقع لما يتوفر.</p>
       </header>
-      <PricingCalculator real={real} />
+      <PricingCalculator real={real} pricing={await loadPricing(true)} />
     </div>
   );
 }

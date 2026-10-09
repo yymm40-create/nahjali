@@ -1,3 +1,4 @@
+import { sellHalalas } from "@config/coins";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const coins = vi.hoisted(() => ({ required: false, held: [] as number[], released: [] as number[] }));
@@ -37,7 +38,9 @@ describe("the editor's prices (/admin/limits)", () => {
     coins.required = true;
     limits.values.editor_price_caption = 2;
     await charged(person, "editor_price_caption", 3, "x", async () => null);
-    expect(coins.held).toEqual([6]);
+    // cost 2 × 3 = 6 halalas → the customer pays it rounded up to half a riyal + the profit (rounded up): 1.00 SAR
+    expect(coins.held).toEqual([sellHalalas(6)]);
+    expect(sellHalalas(6)).toBe(100);
     expect(coins.released).toEqual([]);
   });
 
@@ -45,7 +48,7 @@ describe("the editor's prices (/admin/limits)", () => {
     coins.required = true;
     limits.values.editor_price_claude = 4;
     await expect(charged(person, "editor_price_claude", 1, "x", async () => Promise.reject(new Error("down")))).rejects.toThrow("down");
-    expect(coins.released).toEqual([4]);
+    expect(coins.released).toEqual([sellHalalas(4)]);
   });
 
   it("never charges the owner", async () => {

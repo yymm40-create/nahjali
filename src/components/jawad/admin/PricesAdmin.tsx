@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
+import { fmtSar } from "@config/coins";
+import { coinsOf } from "@config/jawad/generators";
 import { adminPost } from "./client";
 
 export interface AdminPriceGroup {
@@ -11,7 +13,8 @@ export interface AdminPriceGroup {
   keys: { key: string; label: string; basis: string; defaultCenti: number | null; overrideCenti: number | null }[];
 }
 
-const coins = (c: number | null) => (c == null ? "" : (c / 100).toFixed(2).replace(/\.00$/, ""));
+// the owner writes and reads riyals of COST (the table keeps hundredths of a halala)
+const coins = (c: number | null) => (c == null ? "" : (c / 10000).toFixed(2).replace(/\.00$/, ""));
 
 /** «النقود الذكية» per supported price unit: the verified default, or the owner's price (every change logged). */
 export default function PricesAdmin({ groups }: { groups: AdminPriceGroup[] }) {
@@ -55,7 +58,7 @@ function PriceRow({ generatorId, k }: { generatorId: string; k: AdminPriceGroup[
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm">{k.label}</span>
         <span className={`flex items-center gap-1 text-sm tabular-nums ${effective == null ? "text-jw-warn" : ""}`}>
-          {effective == null ? "موقوف حتى تحدد السعر" : (<><SmartCoin size={14} /><span dir="ltr">{coins(effective)}</span></>)}
+          {effective == null ? "موقوف حتى تحدد السعر" : (<><span dir="ltr">{coins(effective)}</span> تكلفة → <SmartCoin size={14} /><span dir="ltr">{fmtSar(coinsOf(effective))}</span> للعميل</>)}
         </span>
       </div>
       <p className="text-[11px] text-jw-faint">
@@ -69,7 +72,7 @@ function PriceRow({ generatorId, k }: { generatorId: string; k: AdminPriceGroup[
           placeholder={k.defaultCenti == null ? "مثال 1.5" : coins(k.defaultCenti)}
           value={value}
           onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, "").slice(0, 9))}
-          aria-label={`سعرك لـ ${k.label} (نقدة)`}
+          aria-label={`تكلفة ${k.label} بالريال`}
         />
         <button type="button" className="jw-btn jw-btn-primary" disabled={busy || !changed || !value} onClick={() => save(value)}>احفظ</button>
         {k.overrideCenti != null && (

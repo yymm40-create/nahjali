@@ -3,6 +3,8 @@
 // code defaults apply (generators stay off for users, the owner can still try them).
 
 import { cache } from "react";
+import { loadPricing } from "@/lib/coins";
+import type { Pricing } from "@config/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cleanAccent, JAWAD } from "@config/jawad/brand";
 import { GENERATORS } from "@config/jawad/generators";
@@ -49,6 +51,8 @@ export interface Runtime {
   sections: RuntimeSection[];
   generators: RuntimeGenerator[];
   prices: Record<string, Record<string, number | null>>;
+  /** the riyal pricing in force (config/coins.ts) */
+  pricing: Pricing;
 }
 
 /** Which environment variables hold each provider's key (the values never leave the server). */
@@ -126,6 +130,8 @@ export const loadRuntime = cache(async (): Promise<Runtime> => {
   }).sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
 
   const prices = Object.fromEntries(GENERATORS.map((d) => [d.id, priceTable(d, overrides[d.id])]));
+  // the riyal pricing in force (rate, step, margins) for every price computed from here on
+  const pricing = await loadPricing();
 
   return {
     migrated,
@@ -137,6 +143,7 @@ export const loadRuntime = cache(async (): Promise<Runtime> => {
     sections,
     generators,
     prices,
+    pricing,
   };
 });
 

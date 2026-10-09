@@ -5,6 +5,7 @@ import sharp from "sharp";
 import type { User } from "@supabase/supabase-js";
 import { COVER_ENHANCE } from "@config/mahdi";
 import { unlimitedFor } from "@/lib/access";
+import { coinsFor } from "@config/coins";
 import { coinsRequired, refundCoins, reserveCoins } from "@/lib/coins";
 import { openaiImage } from "@/lib/jawad/server/providers/openai";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
@@ -29,7 +30,7 @@ Do not add, remove, translate, retouch the design of, restyle or invent anything
 
 /** What one enhancement costs this person now (0 for the owner, or while coins are switched off). */
 export async function enhancePrice(user: Pick<User, "email">) {
-  return (await unlimitedFor(user.email)) || !(await coinsRequired()) ? 0 : COVER_ENHANCE.coins;
+  return (await unlimitedFor(user.email)) || !(await coinsRequired()) ? 0 : coinsFor(COVER_ENHANCE.costUsd);
 }
 
 export async function enhanceCover(user: User, photo: unknown): Promise<{ image: string; coins: number }> {

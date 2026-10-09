@@ -1,10 +1,10 @@
 "use client";
 
 import SmartCoin from "@/components/SmartCoin";
-import { LIBRARY_ADDON, ONE_TIME_PASS, PLANS } from "@config/coins";
+import { LIBRARY_ADDON, ONE_TIME_PASS, PLANS, fmtSar } from "@config/coins";
 import { CONTACT_EMAIL } from "@config/site";
 
-const fmt = (n: number) => n.toLocaleString("en");
+const fmt = (n: number) => fmtSar(n);
 
 /**
  * What the coins will cost once paying is possible: the plans in one glance, nothing to press that doesn't work yet.
@@ -42,7 +42,7 @@ export default function CoinsShop({
                 {plan === p.key && <span className="chip bg-teal text-xs text-white">باقتك</span>}
               </span>
               <span className="flex items-center gap-3">
-                <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> {fmt(p.coins)} / شهر</span>
+                <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> رصيد {fmt(p.coins)} ر.س / شهر</span>
                 <span className="text-muted">≈ {Math.floor(p.coins / cheapest)} فيديو · {(p.coins / journeyCoins).toFixed(1)} فيلم</span>
                 <b>{p.monthlySar} ر.س</b>
               </span>
@@ -51,7 +51,7 @@ export default function CoinsShop({
           <li className="flex flex-wrap items-center justify-between gap-2 py-2">
             <span><b className="text-base">{ONE_TIME_PASS.name}</b> <span className="text-xs text-muted">· {ONE_TIME_PASS.note}</span></span>
             <span className="flex items-center gap-3">
-              <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> {ONE_TIME_PASS.coins}</span>
+              <span className="flex items-center gap-1 text-sky-500"><SmartCoin size={16} /> رصيد {fmt(ONE_TIME_PASS.coins)} ر.س</span>
               <b>{ONE_TIME_PASS.priceSar} ر.س</b>
             </span>
           </li>

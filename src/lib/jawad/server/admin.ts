@@ -254,7 +254,7 @@ export async function setGeneratorSample(id: string, path: string | null) {
 
 // ───────────── prices ─────────────
 
-/** Sets one supported price (in coins, up to 2 decimals) or returns it to the code default (null). Logged. */
+/** Sets one supported price (riyals of COST, up to 2 decimals; stored as hundredths of a halala) or returns it to the code default (null). Logged. */
 export async function setPrice(generatorId: string, key: string, coins: unknown, by: string) {
   const def = generatorById(generatorId);
   const pk = def?.priceKeys.find((k) => k.key === key);
@@ -263,7 +263,7 @@ export async function setPrice(generatorId: string, key: string, coins: unknown,
   if (coins !== null && coins !== "") {
     const n = Number(coins);
     if (!Number.isFinite(n) || n <= 0 || n > 100000 || Math.abs(Math.round(n * 100) - n * 100) > 1e-6) throw new UserError("اكتب سعرًا موجبًا بخانتين عشريتين كحد أقصى.", 400);
-    centi = Math.round(n * 100);
+    centi = Math.round(n * 10000);
   }
   const { data: cur, error: e0 } = await db().from("jawad_price_rules").select("centicoins").eq("generator_id", def.id).eq("price_key", key).maybeSingle();
   must(e0);

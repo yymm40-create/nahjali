@@ -7,6 +7,7 @@
 //   run   ─► runJob calls prepareEdit first: Claude writes the corrected prompt (the Super Director for videos), then
 //            the job is sent like any other. If Claude fails, the job fails and every coin comes back.
 
+import { fmtSar } from "@config/coins";
 import { sajjadBrief, tellSajjad } from "@/lib/film/sajjad";
 import { after } from "next/server";
 import { randomUUID } from "crypto";
@@ -337,7 +338,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   });
   if (error) {
     const msg = String(error.message ?? "");
-    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التعديل يحتاج ${final.coins} نقدة.`, 402);
+    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التعديل يحتاج ${fmtSar(final.coins)} ر.س.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
     throw new Error(`إنشاء العمل: ${msg}`);
   }

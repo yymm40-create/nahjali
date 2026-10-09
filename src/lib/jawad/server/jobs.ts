@@ -8,6 +8,7 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { fmtSar } from "@config/coins";
 import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { jawadSpeak } from "./providers/jawad-voice";
 import { jawadReference } from "./voices";
@@ -301,7 +302,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
     // No job: the frames kept for it go too
     if (video) await removeFrames(video);
     const msg = String(error.message ?? "");
-    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${e.price.coins} نقدة.`, 402);
+    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${fmtSar(e.price.coins)} ر.س.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
     throw error;
   }

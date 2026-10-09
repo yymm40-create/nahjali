@@ -3,6 +3,7 @@
 // «الطالب الذكي» — shared pieces: a paid action (price first, then confirm), the three-way review gate
 // (اعتمد / عدّل / أمر آخر), job status, and small helpers.
 
+import { fmtSar } from "@config/coins";
 import { useRef, useState } from "react";
 import Dialog from "@/components/jawad/Dialog";
 import Icon from "@/components/jawad/Icon";
@@ -84,12 +85,12 @@ export function PaidButton({
             <p className="text-sm text-jw-muted">{what}</p>
             <div className="jw-panel flex items-center justify-between gap-3 p-3">
               <span>التكلفة {quote.coins ? "(الحد الأعلى)" : ""}</span>
-              <b className="text-lg">{quote.coins ? `${quote.coins} نقدة ذكية` : "مجانًا"}</b>
+              <b className="text-lg">{quote.coins ? `${fmtSar(quote.coins)} ر.س` : "مجانًا"}</b>
             </div>
             {quote.coins > 0 && (
               <p className="text-xs text-jw-faint">
-                تُحجز هذه النقود الآن، ثم يُخصم منها ما كلّفته الخطوة فعلًا ويرجع لك الباقي. إذا فشلت الخطوة ترجع كاملة.
-                {quote.balance !== null ? ` رصيدك: ${quote.balance} نقدة.` : ""}
+                يُحجز هذا المبلغ الآن، ثم يُخصم منه ما كلّفته الخطوة فعلًا ويرجع لك الباقي. إذا فشلت الخطوة يرجع كاملًا.
+                {quote.balance !== null ? ` رصيدك: ${fmtSar(quote.balance)} ر.س.` : ""}
               </p>
             )}
             <ErrorLine error={error} />

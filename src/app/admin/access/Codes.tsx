@@ -31,6 +31,7 @@ export default function Codes({ codes, uses }: Props) {
   const [expires, setExpires] = useState("");
   const [hours, setHours] = useState("");
   const [people, setPeople] = useState("");
+  const [free, setFree] = useState(false);
 
   async function send(body: Record<string, unknown>, done: string) {
     setBusy(true);
@@ -64,7 +65,7 @@ export default function Codes({ codes, uses }: Props) {
         onSubmit={async (e) => {
           e.preventDefault();
           const ok = await send(
-            { action: "codes_new", label: name, code: text, perms, expiresAt: expires ? new Date(expires).toISOString() : null, validHours: hours || null, maxUses: people || null },
+            { action: "codes_new", label: name, code: text, perms, expiresAt: expires ? new Date(expires).toISOString() : null, validHours: hours || null, maxUses: people || null, unlimited: free },
             "انسوى الكود",
           );
           if (ok) {
@@ -74,6 +75,7 @@ export default function Codes({ codes, uses }: Props) {
             setExpires("");
             setHours("");
             setPeople("");
+            setFree(false);
           }
         }}
       >
@@ -107,6 +109,10 @@ export default function Codes({ codes, uses }: Props) {
             <input className="field" inputMode="numeric" value={people} onChange={(e) => setPeople(e.target.value.replace(/\D/g, ""))} placeholder="فاضي = بلا حد" />
           </label>
         </div>
+        <label className="flex items-center gap-2 text-sm font-bold">
+          <input type="checkbox" checked={free} onChange={(e) => setFree(e.target.checked)} />
+          ♾️ بلا حدود: اللي يدخل بهذا الكود ما ينخصم منه شي (مجاني له حتى لو الموقع مدفوع)
+        </label>
         <button className="btn btn-primary min-h-12 px-5" disabled={busy || !name.trim() || !perms.length}>
           سوّ الكود
         </button>
@@ -125,6 +131,9 @@ export default function Codes({ codes, uses }: Props) {
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-extrabold ${st.ok ? "bg-teal/15 text-teal" : "bg-red-600/10 text-red-600"}`}>{st.text}</span>
                   <button type="button" className="btn btn-ghost min-h-9 px-3 text-xs" disabled={busy} onClick={() => send({ action: "codes_set", id: c.id, enabled: !c.enabled }, c.enabled ? "انطفى" : "اشتغل")}>
                     {c.enabled ? "أطفيه" : "شغّله"}
+                  </button>
+                  <button type="button" aria-pressed={c.unlimited} title="بلا حدود: ما ينخصم ممن يدخل بهذا الكود شي" className={`btn min-h-9 px-3 text-xs ${c.unlimited ? "bg-gold text-on-gold" : "btn-ghost"}`} disabled={busy} onClick={() => send({ action: "codes_set", id: c.id, unlimited: !c.unlimited }, c.unlimited ? "صار يدفع" : "صار بلا حدود")}>
+                    ♾️ {c.unlimited ? "بلا حدود" : "يدفع"}
                   </button>
                   <button type="button" className="btn min-h-9 bg-red-600 px-3 text-xs text-white" disabled={busy} onClick={() => confirm(`نحذف «${c.label}»؟ ينقفل على اللي دخلوا فيه (الأكواد الثانية ما تتأثر).`) && send({ action: "codes_delete", id: c.id }, "انحذف")}>
                     احذفه

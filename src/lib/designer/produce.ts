@@ -6,6 +6,7 @@
 
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
+import { unlimitedFor } from "@/lib/access";
 import { deskImage, DeskError, type DeskWho } from "@/lib/content/jawad";
 import { checkSlide } from "@/lib/content/verify";
 import { NO_TEXT_RULE } from "@config/designer";
@@ -53,7 +54,7 @@ export async function produce(userId: string, chatId: string, o: { owner?: boole
   const at = Math.min(p.at, chat.messages.length - 1);
   const base = chat.messages[at]?.design;
   if (!base) throw new UserError("ما لقينا التصميم في المحادثة.", 409);
-  const who: DeskWho = { id: userId, email: o.email, owner: true, origin: o.origin ?? "" };
+  const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" };
   const { list } = await attachmentsOf(userId, p.refs);
   const refs = list.filter((a) => a.kind === "image").map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
 

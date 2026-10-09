@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtSar } from "@config/coins";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { postJson } from "@/lib/fetch";
@@ -16,7 +18,7 @@ interface Props {
   coinsOn: boolean;
 }
 
-const toNum = (s: string) => s.replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 1632)).replace(/[^0-9-]/g, "");
+const toMoney = (s: string) => s.replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 1632)).replace(/[^0-9.]/g, "");
 
 /** Every switch the owner has over one person: «السماح», coins, «المكتبة». */
 export default function UserPermissions(p: Props) {
@@ -69,23 +71,23 @@ export default function UserPermissions(p: Props) {
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">💰 النقود الذكية والمكتبة</h2>
         <p className="font-bold">
-          رصيده: <span className="display text-2xl">{p.balance.toLocaleString("en")}</span> نقدة
-          <span className="ms-2 text-sm text-muted">{p.coinsOn ? "(النقود مطلوبة في الموقع الحين)" : "(النقود مو مطلوبة الحين: كل شي مجاني)"}</span>
+          رصيده: <span className="display text-2xl">{fmtSar(p.balance)}</span> ريال
+          <span className="ms-2 text-sm text-muted">{p.coinsOn ? "(الموقع مدفوع الحين)" : "(الموقع مجاني الحين: ما ينخصم شي)"}</span>
         </p>
         <div className="flex flex-wrap gap-2">
-          <input className="field w-32" inputMode="numeric" placeholder="العدد" value={coins} onChange={(e) => setCoins(toNum(e.target.value))} aria-label="عدد النقود" />
+          <input className="field w-32" inputMode="decimal" placeholder="المبلغ بالريال" value={coins} onChange={(e) => setCoins(toMoney(e.target.value))} aria-label="المبلغ بالريال" />
           <input className="field min-w-0 flex-1" placeholder="ملاحظة (اختياري)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={120} />
           <button
             className="btn btn-primary min-h-12 px-4"
             disabled={!!busy || !(Number(coins) > 0)}
-            onClick={() => run("coins", "/api/admin/coins", { action: "grant", email: p.email, amount: Math.abs(Number(coins)), note }, `انضاف ${coins} نقدة`).then(() => setCoins(""))}
+            onClick={() => run("coins", "/api/admin/coins", { action: "grant", email: p.email, sar: Math.abs(Number(coins)), note }, `انضاف ${coins} ريال`).then(() => setCoins(""))}
           >
             + أعطه
           </button>
           <button
             className="btn btn-ghost min-h-12 px-4"
             disabled={!!busy || !(Number(coins) > 0)}
-            onClick={() => run("coins", "/api/admin/coins", { action: "grant", email: p.email, amount: -Math.abs(Number(coins)), note }, `انسحب ${coins} نقدة`).then(() => setCoins(""))}
+            onClick={() => run("coins", "/api/admin/coins", { action: "grant", email: p.email, sar: -Math.abs(Number(coins)), note }, `انسحب ${coins} ريال`).then(() => setCoins(""))}
           >
             − اسحب
           </button>

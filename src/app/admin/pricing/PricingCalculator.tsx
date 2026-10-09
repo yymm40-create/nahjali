@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, type VideoResolution } from "@config/film";
+import { DEFAULT_PRICING, costHalalas, fmtSar, roundUpStep, savingPct, sellHalalas, type Pricing } from "@config/coins";
 
 const SAR = 3.75; // USD → SAR (pegged)
 const sar = (n: number) => `${n.toFixed(2)} ر.س`;
@@ -20,7 +21,16 @@ type Unit = keyof typeof UNIT_DEFAULTS;
 const MARKUP_PRESETS = [30, 50, 100, 150, 200, 300];
 const MARGIN_PRESETS = [30, 40, 50, 60, 70, 80];
 
-export default function PricingCalculator({ real }: { real: Record<string, { avg: number; count: number }> }) {
+export default function PricingCalculator({ real, pricing = DEFAULT_PRICING }: { real: Record<string, { avg: number; count: number }>; pricing?: Pricing }) {
+  // ── the site's own rule (riyals): cost → rounded up to the step → + margin (rounded up) — with the struck «was» price
+  const [rule, setRule] = useState<Pricing>(pricing);
+  const [tryUsd, setTryUsd] = useState(0.12);
+  const siteRow = (usd: number) => {
+    const cost = costHalalas(usd, rule);
+    const price = sellHalalas(cost, rule);
+    const was = sellHalalas(cost, rule, rule.wasMarginPct);
+    return { cost, rounded: roundUpStep(cost, rule), price, was, saving: savingPct(price, was), profit: price - cost };
+  };
   // ── unit costs
   const [units, setUnits] = useState<Record<Unit, number>>(() =>
     Object.fromEntries(Object.entries(UNIT_DEFAULTS).map(([k, u]) => [k, u.usd])) as Record<Unit, number>,
@@ -169,6 +179,35 @@ export default function PricingCalculator({ real }: { real: Record<string, { avg
           <span>تكلفة الرحلة عليك</span>
           <span dir="ltr">{sar(journey.usd * SAR)} (${journey.usd.toFixed(2)})</span>
         </p>
+      </section>
+
+      {/* 0. The site's rule, as the generators charge it */}
+      <section className="card space-y-3 p-4">
+        <h2 className="text-xl font-extrabold">٠. حسبة الموقع نفسها (بالريال)</h2>
+        <p className="text-xs font-bold text-muted">
+          هذي هي الحسبة اللي يخصم بها الموقع فعلًا: التكلفة بالدولار × سعر الدولار → تُقرَّب للأعلى إلى الخطوة → + نسبة الربح (مقرّبة للأعلى كذلك). وجنبها السعر المشطوب بالنسبة الكاملة. الأرقام هنا للتجربة فقط؛ اللي يشتغل في الموقع تعدّله من «النقود والأسعار» في لوحة التحكم.
+        </p>
+        <div className="grid grid-cols-2 gap-2 text-sm font-bold sm:grid-cols-4">
+          <label className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 p-2"><span>سعر الدولار</span>{num(rule.usdToSar, (n) => setRule({ ...rule, usdToSar: n || DEFAULT_PRICING.usdToSar }), 0.01)}</label>
+          <label className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 p-2"><span>الخطوة (هللة)</span>{num(rule.stepHalalas, (n) => setRule({ ...rule, stepHalalas: Math.max(1, Math.round(n)) }))}</label>
+          <label className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 p-2"><span>الربح الحالي ٪</span>{num(rule.marginPct, (n) => setRule({ ...rule, marginPct: n }))}</label>
+          <label className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 p-2"><span>الربح الكامل ٪</span>{num(rule.wasMarginPct, (n) => setRule({ ...rule, wasMarginPct: n }))}</label>
+        </div>
+        <label className="flex flex-wrap items-center gap-2 text-sm font-bold">جرّب تكلفة بالدولار: <span dir="ltr">$</span>{num(tryUsd, setTryUsd, 0.01)}</label>
+        <div className="overflow-hidden rounded-2xl border border-line text-sm font-bold">
+          {[{ label: "اللي جرّبته", usd: tryUsd }, ...(Object.keys(UNIT_DEFAULTS) as Unit[]).map((k) => ({ label: UNIT_DEFAULTS[k].label, usd: units[k] })), { label: `فيديو ١٠ ثواني ${VIDEO_MODELS[s.model as VideoModel].label} ${s.quality}`, usd: videoEstimateUsd(s.model as VideoModel, s.quality as VideoResolution, 10) }].map((p) => {
+            const r = siteRow(p.usd);
+            return (
+              <div key={p.label} className="grid grid-cols-2 gap-1 border-b border-line p-2 last:border-0 sm:grid-cols-5">
+                <span className="col-span-2 sm:col-span-1">{p.label}</span>
+                <span className="text-muted" dir="ltr">تكلفة {fmtSar(r.cost)}</span>
+                <span className="text-muted" dir="ltr">مقرّبة {fmtSar(r.rounded)}</span>
+                <span className="text-teal" dir="ltr">يدفع {fmtSar(r.price)} ر.س <s className="text-xs text-muted">{fmtSar(r.was)}</s> {r.saving > 0 && <span className="text-xs">(خصم {r.saving}٪)</span>}</span>
+                <span dir="ltr">ربحك {fmtSar(r.profit)}</span>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {/* 3. Profit */}
