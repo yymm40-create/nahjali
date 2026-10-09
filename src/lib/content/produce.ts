@@ -1,4 +1,6 @@
-// «صانع المحتوى» — the produce step: draws the slides of a carousel «محمد باقر» ordered, with GPT Image 2.
+// «صانع المحتوى» — the produce step: the slides of a carousel «محمد باقر» ordered. He does not draw them himself: each
+// slide is a request handed to جواد's desk (src/lib/content/jawad.ts), who makes it with GPT Image 2 as an ordinary
+// JAWAD AI job (so it is also in «أعمالي»), and «محمد باقر» checks the result.
 //
 // It works a few slides at a time (the page calls it again until nothing is left), so each call finishes well inside
 // the server's time limit and the page can show the slides as they arrive:
@@ -14,22 +16,20 @@
 
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
-import { openaiImage } from "@/lib/jawad/server/providers/openai";
-import { ProviderError, providerUserId } from "@/lib/jawad/server/providers/common";
-import { GPT_IMAGE_2_SIZES } from "@config/jawad/generators";
+import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt, type DeskWho } from "./jawad";
 import { WOMAN_WORDING } from "@config/content";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
-import { addProduced, deleteProduced, producedBytes, producedRow } from "./files";
+import { addProducedFromOutput, deleteProduced, producedBytes, producedRow } from "./files";
 import { checkSlide, fixNote, type SlideCheck } from "./verify";
 
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
 export const IMAGE_MODEL = "gpt-image-2-2026-04-21";
 export const IMAGE_TIER = "std" as const;
 export const IMAGE_QUALITY = "high" as const;
-/** Slides drawn at once in one call (after the first). */
-const CHUNK = 3;
+/** Slides asked of جواد at once in one call (after the first): his desk keeps three jobs going at most. */
+const CHUNK = 2;
 /** The server's limit is 300 s: a call never works past HARD (a try and its check included), and starts no new try after SOFT. */
 const HARD_MS = 250_000;
 const SOFT_MS = 130_000;
@@ -58,12 +58,12 @@ export const tuning = { pauseMs: 6000 };
 
 /** A refusal for a moment (busy, a cut connection, a server hiccup) — worth trying again; a policy refusal is not. */
 export function isTransient(e: unknown): boolean {
-  if (e instanceof ProviderError) return e.outcome === "unknown" || /^(429|408|5\d\d)\b|rate.?limit|overload|timeout|temporar/i.test(e.detail);
+  if (e instanceof DeskError) return e.transient;
   return /timeout|ECONN|socket|fetch failed/i.test(e instanceof Error ? e.message : String(e));
 }
 
-const reasonOf = (e: unknown) => (e instanceof ProviderError ? e.userMessage : "صار خطأ غير متوقع أثناء الرسم.");
-const detailOf = (e: unknown) => (e instanceof ProviderError ? e.detail : e instanceof Error ? e.message : String(e)).slice(0, 300);
+const reasonOf = (e: unknown) => (e instanceof DeskError ? e.reason : "صار خطأ غير متوقع أثناء الرسم.");
+const detailOf = (e: unknown) => (e instanceof DeskError ? e.detail || e.reason : e instanceof Error ? e.message : String(e)).slice(0, 300);
 
 /** The full prompt of one slide: where it stands, the design (Baqir's), the style (verbatim), the slide, the rules. */
 export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; withRef: boolean; fix?: string }): string {
@@ -105,36 +105,35 @@ interface SlideResult {
 }
 
 /** Draws one slide until it is made, flagged, or given up. */
-async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0: number; total: number }, p: PendingProduce, s: PendingProduce["slides"][number], ref: Buffer | null): Promise<SlideResult> {
-  const size = GPT_IMAGE_2_SIZES[IMAGE_TIER][p.aspect];
-  const user = providerUserId(c.userId);
+async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0: number; total: number; who: DeskWho }, p: PendingProduce, s: PendingProduce["slides"][number], ref: string | null): Promise<SlideResult> {
   const left = () => HARD_MS - (Date.now() - c.t0);
   let usd = 0;
   let fix = "";
   let lastErr: unknown = null;
-  let bad: { png: Buffer; check: SlideCheck } | null = null;
+  let bad: { png: Buffer; out: DeskOutput; receipt: DeskReceipt; check: SlideCheck } | null = null;
   let redrawn = false;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (attempt > 1 && (Date.now() - c.t0 > SOFT_MS || left() < MIN_TRY_MS + 20_000)) break;
     let png: Buffer;
+    let out: DeskOutput;
+    let receipt: DeskReceipt;
     try {
-      const r = await openaiImage({
-        model: IMAGE_MODEL,
+      const r = await deskImage(c.who, {
+        key: `c-${randomUUID().replace(/-/g, "")}`,
+        kind: "image",
         prompt: slidePrompt({ n: s.n, total: c.total, prompt: s.prompt, styleId: p.styleId, withRef: !!ref, fix }),
         aspect: p.aspect,
         resolution: IMAGE_TIER,
         quality: IMAGE_QUALITY,
-        count: 1,
-        references: ref ? [{ bytes: ref, mime: "image/png" }] : [],
-        user,
-        timeoutMs: Math.max(MIN_TRY_MS, Math.min(150_000, left() - 25_000)),
+        refs: ref ? [{ uploadId: ref, name: "slide1" }] : [],
       });
-      usd += r.costUsd ?? 0;
-      png = r.images[0];
+      png = r.bytes;
+      out = r.out;
+      receipt = r.receipt;
     } catch (e) {
       lastErr = e;
-      console.error("content slide", s.n, "attempt", attempt, e instanceof ProviderError ? e.detail : e);
+      console.error("content slide", s.n, "attempt", attempt, e instanceof DeskError ? e.detail : e);
       if (isTransient(e) && attempt < MAX_ATTEMPTS && left() > MIN_TRY_MS + 30_000) {
         await sleep(Math.min(tuning.pauseMs * attempt, 12_000));
         continue;
@@ -145,10 +144,10 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
     const check = await checkSlide(png, s.text);
     usd += check.usd;
     if (check.ok) {
-      const file = await store(c, p, s, png, size, check.checked ? undefined : UNCHECKED);
+      const file = await store(c, p, s, out, receipt, check.checked ? undefined : UNCHECKED);
       return { made: { n: s.n, fileId: file.id, name: file.name, text: s.text, ...(redrawn ? { fixed: true } : {}), ...(check.checked ? {} : { flag: UNCHECKED }) }, usd };
     }
-    bad = { png, check };
+    bad = { png, out, receipt, check };
     fix = fixNote(check, s.text);
     redrawn = true;
   }
@@ -159,21 +158,19 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
       return { failed: { n: s.n, reason: "الصورة خالفت قاعدة اللباس بعد المحاولات فاستُبعدت", text: s.text, prompt: s.prompt }, usd };
     }
     const flag = bad.check.problems.join("، ").slice(0, 300) || "خطأ في الكتابة";
-    const file = await store(c, p, s, bad.png, size, flag);
+    const file = await store(c, p, s, bad.out, bad.receipt, flag);
     return { made: { n: s.n, fileId: file.id, name: file.name, text: s.text, flag }, usd };
   }
   return { failed: { n: s.n, reason: reasonOf(lastErr), ...(c.owner ? { detail: detailOf(lastErr) } : {}), text: s.text, prompt: s.prompt }, usd };
 }
 
-async function store(c: { userId: string; chatId: string }, p: PendingProduce, s: PendingProduce["slides"][number], png: Buffer, size: [number, number], flag?: string) {
-  return addProduced({
+async function store(c: { userId: string; chatId: string }, p: PendingProduce, s: PendingProduce["slides"][number], out: DeskOutput, receipt: DeskReceipt, flag?: string) {
+  return addProducedFromOutput({
     userId: c.userId,
     chatId: c.chatId,
-    bytes: png,
+    out,
     name: `slide-${String(s.n).padStart(2, "0")}`,
-    width: size[0],
-    height: size[1],
-    meta: { slide: s.n, aspect: p.aspect, text: s.text, prompt: s.prompt, styleId: p.styleId, templateId: p.templateId, batch: p.id, ...(flag ? { flag } : {}) },
+    meta: { slide: s.n, aspect: p.aspect, text: s.text, prompt: s.prompt, styleId: p.styleId, templateId: p.templateId, batch: p.id, desk: receipt, ...(flag ? { flag } : {}) },
   });
 }
 
@@ -221,27 +218,36 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
  * One call of the produce step: draws the next few slides, saves what exists, and says what is left. `retry` first
  * plans the drawing again of the given slides (or «failed»: all that failed) of the last carousel.
  */
-export async function produce(userId: string, chatId: string, o: { retry?: number[] | "failed"; owner?: boolean } = {}): Promise<Produced> {
+export async function produce(userId: string, chatId: string, o: { retry?: number[] | "failed"; owner?: boolean; email?: string | null; origin?: string } = {}): Promise<Produced> {
   let chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   if (o.retry && (o.retry === "failed" || o.retry.length)) chat = await planRetry(userId, chat, o.retry);
   const p = chat.pending;
   if (!p) throw new UserError("ما فيه كاروسيل ينتظر الإنتاج في هذي المحادثة.", 409);
-  if (!process.env.OPENAI_API_KEY) throw new UserError("صناعة الصور غير مفعّلة على الخادم.", 503);
 
   const t0 = Date.now();
   const messages = [...chat.messages];
   const at = Math.min(p.at, messages.length - 1);
   const base = new Map((messages[at]?.slides?.items ?? []).map((s) => [s.n, s]));
-  const c = { userId, chatId, owner: !!o.owner, t0, total: p.mode === "all" ? p.slides.length : Math.max(base.size, ...p.slides.map((s) => s.n)) };
+  const who: DeskWho = { id: userId, email: o.email, owner: true, origin: o.origin ?? "" };
+  const c = { userId, chatId, owner: !!o.owner, who, t0, total: p.mode === "all" ? p.slides.length : Math.max(base.size, ...p.slides.map((s) => s.n)) };
   const done = new Set([...p.made.map((s) => s.n), ...p.failed.map((f) => f.n)]);
   const todo = p.slides.filter((s) => !done.has(s.n)).sort((a, b) => a.n - b.n);
 
   // the reference of every slide: slide 1 (made now, or the one that stands)
   const ref1 = p.made.find((s) => s.n === 1) ?? base.get(1);
-  const ref = ref1 ? await producedBytes(userId, ref1.fileId) : null;
+  const refBytes = ref1 ? await producedBytes(userId, ref1.fileId) : null;
+  // slide 1 is handed to جواد with each request as a stored reference of the person's (once for the call)
+  let ref: string | null = null;
+  if (refBytes) {
+    try {
+      ref = await deskReference(userId, refBytes, `slide1-${p.id.slice(0, 8)}`);
+    } catch (e) {
+      throw new UserError(e instanceof DeskError ? e.reason : "ما قدرنا نجهّز الشريحة الأولى كمرجع.", 502);
+    }
+  }
   const first = todo.find((s) => s.n === 1);
-  const batch = !ref && first ? [first] : todo.slice(0, CHUNK);
+  const batch = !refBytes && first ? [first] : todo.slice(0, CHUNK);
 
   let usd = 0;
   const results = await Promise.all(batch.map((s) => makeSlide(c, p, s, ref)));

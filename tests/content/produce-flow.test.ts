@@ -1,22 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProviderError } from "@/lib/jawad/server/providers/common";
+import { DeskError } from "@/lib/content/jawad";
 import type { Chat, Turn } from "@/lib/content/chats";
 
 // The produce step end to end, with the image generator, the check, the storage and the database replaced by
 // stand-ins: the order the slides are drawn in, the reference, a refusal for a moment, the redraw after the check
 // finds a mistake, the dress rule, what is kept when a slide fails, and a slide drawn again in a carousel that exists.
 const db = vi.hoisted(() => ({ chat: null as unknown, files: new Map<string, { path: string; name: string; meta: Record<string, unknown> }>(), deleted: [] as string[], next: 0 }));
-const gen = vi.hoisted(() => ({ calls: [] as { prompt: string; refs: number }[], script: [] as (Error | "ok")[] }));
+const gen = vi.hoisted(() => ({ calls: [] as { prompt: string; refs: number; key: string; kind: string }[], script: [] as (Error | "ok")[] }));
 const chk = vi.hoisted(() => ({ script: [] as ("ok" | "bad" | "woman" | "unchecked")[], calls: [] as string[] }));
 
-vi.mock("@/lib/jawad/server/providers/openai", () => ({
-  openaiImage: vi.fn(async (o: { prompt: string; references: unknown[] }) => {
-    gen.calls.push({ prompt: o.prompt, refs: o.references.length });
-    const step = gen.script.shift() ?? "ok";
-    if (step !== "ok") throw step;
-    return { images: [Buffer.from(`png-${gen.calls.length}`)], costUsd: 0.05, usage: null };
-  }),
-}));
+vi.mock("@/lib/content/jawad", async (orig) => {
+  const real = await orig<typeof import("@/lib/content/jawad")>();
+  return {
+    ...real,
+    deskReference: vi.fn(async () => "11111111-1111-1111-1111-111111111111"),
+    deskImage: vi.fn(async (_who: unknown, o: { prompt: string; refs?: unknown[]; key: string; kind: string }) => {
+      gen.calls.push({ prompt: o.prompt, refs: o.refs?.length ?? 0, key: o.key, kind: o.kind });
+      const step = gen.script.shift() ?? "ok";
+      if (step !== "ok") throw step;
+      const n = gen.calls.length;
+      return {
+        out: { jobId: `job-${n}`, outputId: `out-${n}`, path: `jawad/out-${n}.png`, mime: "image/png", kind: "image", width: 1024, height: 1024, durationMs: null },
+        bytes: Buffer.from(`png-${n}`),
+        receipt: { generatorId: "openai-gpt-image-2", generator: "GPT Image 2", settings: {}, coins: 0, free: true, jobId: `job-${n}` },
+      };
+    }),
+  };
+});
 vi.mock("@/lib/content/verify", async (orig) => {
   const real = await orig<typeof import("@/lib/content/verify")>();
   return {
@@ -42,7 +52,7 @@ vi.mock("@/lib/content/chats", () => ({
   }),
 }));
 vi.mock("@/lib/content/files", () => ({
-  addProduced: vi.fn(async (o: { name: string; meta: Record<string, unknown> }) => {
+  addProducedFromOutput: vi.fn(async (o: { name: string; meta: Record<string, unknown> }) => {
     const id = `file-${++db.next}`;
     db.files.set(id, { path: `p/${id}`, name: o.name, meta: o.meta });
     return { id, path: `p/${id}`, name: o.name, bytes: 10 };
@@ -97,32 +107,47 @@ describe("drawing a carousel", () => {
     expect(block().running).toBe(true);
 
     const b = await produce("u", "chat-1");
-    expect(gen.calls).toHaveLength(4);
+    expect(gen.calls).toHaveLength(3);
     expect(gen.calls.slice(1).every((c) => c.refs === 1)).toBe(true);
     expect(gen.calls[1].prompt).toContain("slide 1");
-    expect(b.running).toBe(false);
-    expect(b.slides.map((s) => s.n)).toEqual([1, 2, 3, 4]);
+    expect(b.running).toBe(true);
+    const b2 = await produce("u", "chat-1");
+    expect(gen.calls).toHaveLength(4);
+    expect(b2.running).toBe(false);
+    expect(b2.slides.map((s) => s.n)).toEqual([1, 2, 3, 4]);
     expect(state().pending).toBeNull();
-    expect(b.report).toContain("سليمة: 4 من 4");
-    expect(block().report).toBe(b.report);
+    expect(b2.report).toContain("سليمة: 4 من 4");
+    expect(block().report).toBe(b2.report);
     expect(block().running).toBe(false);
-    expect(state().usd).toBeCloseTo(4 * 0.06, 5);
+    expect(state().usd).toBeCloseTo(4 * 0.01, 5);
   });
 
-  it("draws at most three at a time after the first", async () => {
+  it("hands each slide to جواد as its own request with a key of its own", async () => {
+    start(3);
+    await produce("u", "chat-1");
+    await produce("u", "chat-1");
+    expect(gen.calls.every((c) => c.kind === "image")).toBe(true);
+    expect(new Set(gen.calls.map((c) => c.key)).size).toBe(gen.calls.length);
+    expect(gen.calls.every((c) => /^[A-Za-z0-9_-]{8,80}$/.test(c.key))).toBe(true);
+    expect([...db.files.values()].every((f) => (f.meta.desk as { generatorId: string }).generatorId === "openai-gpt-image-2")).toBe(true);
+  });
+
+  it("draws at most two at a time after the first", async () => {
     start(6);
     await produce("u", "chat-1");
     const b = await produce("u", "chat-1");
     expect(b.running).toBe(true);
-    expect(b.slides.map((s) => s.n)).toEqual([1, 2, 3, 4]);
+    expect(b.slides.map((s) => s.n)).toEqual([1, 2, 3]);
     const c = await produce("u", "chat-1");
-    expect(c.running).toBe(false);
-    expect(c.slides).toHaveLength(6);
+    expect(c.slides.map((s) => s.n)).toEqual([1, 2, 3, 4, 5]);
+    const d = await produce("u", "chat-1");
+    expect(d.running).toBe(false);
+    expect(d.slides).toHaveLength(6);
   });
 
   it("tries again after a moment's refusal, and does not for a policy refusal", async () => {
     start(2);
-    gen.script.push(new ProviderError("rejected", "المزوّد مشغول حاليًا. جرّب بعد قليل.", "429 rate_limit"));
+    gen.script.push(new DeskError("المزوّد مشغول حاليًا. جرّب بعد قليل.", "429 rate_limit", true));
     const a = await produce("u", "chat-1");
     expect(gen.calls).toHaveLength(2);
     expect(a.slides.map((s) => s.n)).toEqual([1]);
@@ -130,7 +155,7 @@ describe("drawing a carousel", () => {
 
     start(2);
     gen.calls.length = 0;
-    gen.script.push(new ProviderError("rejected", "رفض المزوّد الطلب لأنه قد يخالف سياسة المحتوى.", "400 content_policy_violation"));
+    gen.script.push(new DeskError("رفض المزوّد الطلب لأنه قد يخالف سياسة المحتوى.", "400 content_policy_violation"));
     const b = await produce("u", "chat-1");
     expect(gen.calls).toHaveLength(1);
     expect(b.failed).toHaveLength(1);
@@ -144,7 +169,7 @@ describe("drawing a carousel", () => {
 
   it("gives the owner the technical reason too", async () => {
     start(1);
-    gen.script.push(new ProviderError("rejected", "رفض", "400 invalid_request: size"));
+    gen.script.push(new DeskError("رفض", "400 invalid_request: size"));
     const r = await produce("u", "chat-1", { owner: true });
     expect(r.failed[0].detail).toContain("invalid_request");
   });

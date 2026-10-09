@@ -16,6 +16,11 @@ interface FileView { id: string; kind: "image" | "video" | "audio"; name: string
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
 interface FailView { n: number; reason: string; detail?: string; text: string }
 interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string }
+interface MediaView {
+  id: string; kind: "image" | "video"; name: string; aspect: string; state: "todo" | "running" | "done" | "failed";
+  url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
+  desk?: { generator: string; coins: number; free: boolean };
+}
 interface Question { label: string; kind: "choice" | "templates" | "styles"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
@@ -23,6 +28,7 @@ interface Msg {
   files?: FileView[];
   questions?: Question[];
   slides?: SlidesView;
+  media?: { items: MediaView[] };
   editor?: { id: string; title: string };
   error?: boolean;
 }
@@ -268,8 +274,8 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll }: { s: Slide
         <div className="ct-progress" role="status" aria-live="polite">
           <span className="ct-spin" aria-hidden />
           <div>
-            <b>GPT Image 2 يرسم الشرائح… ({done} من {s.total})</b>
-            <small>كل شريحة يرسمها ثم يفحص كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+            <b>جواد يولّد الشرائح بـ GPT Image 2… ({done} من {s.total})</b>
+            <small>محمد باقر سلّم الطلب لجواد، وكل شريحة يولّدها جواد ثم يفحص باقر كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
             <span className="bar"><i style={{ width: `${s.total ? Math.round((done / s.total) * 100) : 0}%` }} /></span>
           </div>
         </div>
@@ -322,6 +328,41 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll }: { s: Slide
           <button className="ct-mini" type="button" onClick={onDownloadAll}>⬇️ حمّل كل الشرائح ({s.items.length})</button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The pictures and videos «محمد باقر» handed to جواد: who took each request, what it costs, its state, and the result. */
+export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; busy: boolean; owner: boolean; onRetry: (ids: string[] | "failed") => void }) {
+  const ST = { todo: "بانتظار جواد", running: "جواد يولّده الحين…", done: "جاهز", failed: "تعذّر" } as const;
+  return (
+    <div className="ct-media">
+      {items.map((x) => (
+        <figure key={x.id} className={`ct-mediacard ${x.state}`}>
+          <figcaption>
+            <b>📨 محمد باقر سلّم الطلب لجواد</b>
+            <span>{x.kind === "video" ? "🎞️ فيديو" : "🖼️ صورة"} «{x.name}» · {x.aspect}</span>
+            <small>
+              {x.desk ? `${x.desk.generator} · ${x.desk.free ? "بلا رسوم عليك" : `${x.desk.coins} عملة`}` : "جواد يختار المولّد المناسب"} · {ST[x.state]}
+            </small>
+          </figcaption>
+          {(x.state === "todo" || x.state === "running") && (
+            <div className="ct-progress" role="status" aria-live="polite">
+              <span className="ct-spin" aria-hidden />
+              <small>{x.kind === "video" ? "الفيديو يأخذ دقائق عند جواد؛ لا تقفل الصفحة، وإن قفلتها تلقاه في «أعمالي».": "الصورة تأخذ نحو دقيقة."}</small>
+            </div>
+          )}
+          {x.state === "done" && x.url && (x.kind === "video" ? <video src={x.url} controls playsInline preload="metadata" /> : <img src={x.url} alt={x.name} loading="lazy" />)}
+          {x.state === "done" && x.download && <a className="ct-mini" href={x.download} download>⬇️ تحميل</a>}
+          {x.state === "failed" && (
+            <div className="ct-failed">
+              ❌ {x.error ?? "تعذّر التوليد."}
+              {owner && x.detail && <small dir="ltr"> {x.detail}</small>}
+              <button type="button" className="ct-mini" disabled={busy} onClick={() => onRetry([x.id])}>أعد المحاولة</button>
+            </div>
+          )}
+        </figure>
+      ))}
     </div>
   );
 }
@@ -393,6 +434,33 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     }
   }, []);
 
+  /** The media step: جواد takes what «محمد باقر» handed him; this asks again while he works (a video takes minutes). */
+  const runMedia = useCallback(async (id: string, retry?: string[] | "failed") => {
+    setBusy("producing");
+    let first = true;
+    const put = (items: MediaView[]) =>
+      setMsgs((m) => {
+        const i = m.map((x) => !!x.media).lastIndexOf(true);
+        if (i < 0) return m;
+        const copy = [...m];
+        copy[i] = { ...copy[i], media: { items } };
+        return copy;
+      });
+    try {
+      for (let guard = 0; guard < 120; guard++) {
+        const r = await postJson<{ items: MediaView[]; running: boolean }>("/api/content/generate", { chatId: id, ...(first && retry ? { retry } : {}) });
+        first = false;
+        put(r.items);
+        if (!r.running) break;
+        await new Promise((res) => setTimeout(res, r.items.some((x) => x.kind === "video" && x.state === "running") ? 8000 : 1500));
+      }
+    } catch (e) {
+      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر التوليد.", error: true }]);
+    } finally {
+      setBusy("");
+    }
+  }, []);
+
   async function open(id: string) {
     setSide(false);
     try {
@@ -401,6 +469,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       setMsgs(r.chat.messages);
       // a carousel ordered before the page was left: drawn on from where it stopped
       if (r.chat.pending) void runProduce(r.chat.id);
+      // pictures or videos still with جواد: followed on from where they stand
+      else if (r.chat.messages.some((m) => m.media?.items.some((x) => x.state === "todo" || x.state === "running"))) void runMedia(r.chat.id);
     } catch (e) {
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
@@ -438,12 +508,13 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     setBusy("writing");
     setMsgs((m) => [...m, { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
     let produceId: string | null = null;
+    let mediaId: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string } | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id) });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string } | null; media: MediaView[] | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id) });
       setChatId(r.chatId);
       setMsgs((m) => {
         const copy = [...m];
-        const reply: Msg = { role: "assistant", text: r.text, questions: r.questions ?? undefined, editor: r.editor ?? undefined };
+        const reply: Msg = { role: "assistant", text: r.text, questions: r.questions ?? undefined, editor: r.editor ?? undefined, ...(r.media ? { media: { items: r.media } } : {}) };
         // a new carousel: the placeholders of its slides appear at once; a fix: the slides being redrawn are marked
         if (r.pending?.mode === "all") reply.slides = { aspect: "", items: [], todo: r.pending.todo, failed: [], running: true, total: r.pending.total };
         if (r.pending?.mode === "fix") {
@@ -454,12 +525,14 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
       });
       void refresh();
       if (r.pending) produceId = r.chatId;
+      else if (r.media) mediaId = r.chatId;
     } catch (e) {
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر الرد.", error: true }]);
     } finally {
       setBusy("");
     }
     if (produceId) await runProduce(produceId);
+    else if (mediaId) await runMedia(mediaId);
   }
 
   async function remove(id: string) {
@@ -563,6 +636,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       onDownloadAll={() => downloadAll(m.slides!.items)}
                     />
                   )}
+                  {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} />}
                   {m.editor && (
                     <div className="ct-actions">
                       <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}`}>🎬 افتح غرفة المونتاج «{m.editor.title}» مع حيدرة</Link>

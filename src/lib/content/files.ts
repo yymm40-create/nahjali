@@ -8,6 +8,7 @@ import { storage } from "@/lib/storage";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { isUuid, type UploadRow } from "@/lib/jawad/server/uploads";
 import type { Attachment } from "./chats";
+import type { DeskOutput } from "./jawad";
 
 const db = () => createAdminClient();
 const LINK_SECONDS = 6 * 3600;
@@ -60,15 +61,29 @@ export async function addProduced(o: { userId: string; chatId: string; bytes: Bu
   return { id: data.id as string, path, name: o.name, bytes: o.bytes.length };
 }
 
+/**
+ * A picture جواد made (a JAWAD AI output, already stored in the same bucket), recorded as the conversation's file. The
+ * file stays جواد's: it is also in «أعمالي», so deleting this record never deletes the stored picture (meta.outputId).
+ */
+export async function addProducedFromOutput(o: { userId: string; chatId: string; out: DeskOutput; name: string; meta: Record<string, unknown> }): Promise<ProducedFile> {
+  const { data, error } = await db()
+    .from("content_files")
+    .insert({ chat_id: o.chatId, user_id: o.userId, kind: o.out.kind === "video" ? "video" : "image", bucket: JAWAD_BUCKET, path: o.out.path, name: o.name.slice(0, 200), mime: o.out.mime, bytes: 0, width: o.out.width, height: o.out.height, meta: { ...o.meta, outputId: o.out.outputId, jobId: o.out.jobId } })
+    .select("id")
+    .single();
+  if (error || !data) throw new UserError("ما قدرنا نسجّل الصورة.", 500);
+  return { id: data.id as string, path: o.out.path, name: o.name, bytes: 0 };
+}
+
 /** Short-lived links of a conversation's produced files (by id). */
 export async function producedLinks(userId: string, chatId: string, download = false): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  const { data } = await db().from("content_files").select("id,path,name").eq("chat_id", chatId).eq("user_id", userId);
-  const rows = (data ?? []) as { id: string; path: string; name: string }[];
+  const { data } = await db().from("content_files").select("id,path,name,mime").eq("chat_id", chatId).eq("user_id", userId);
+  const rows = (data ?? []) as { id: string; path: string; name: string; mime?: string }[];
   if (!rows.length) return out;
   if (download) {
     await Promise.all(rows.map(async (r) => {
-      const s = await storage.from(JAWAD_BUCKET).createSignedUrl(r.path, LINK_SECONDS, { download: `${r.name}.png` });
+      const s = await storage.from(JAWAD_BUCKET).createSignedUrl(r.path, LINK_SECONDS, { download: `${r.name}.${r.mime === "video/mp4" ? "mp4" : r.mime === "image/jpeg" ? "jpg" : r.mime === "image/webp" ? "webp" : "png"}` });
       if (s.data?.signedUrl) out.set(r.id, s.data.signedUrl);
     }));
     return out;
@@ -99,5 +114,6 @@ export async function deleteProduced(userId: string, fileId: string) {
   const row = await producedRow(userId, fileId);
   if (!row) return;
   await db().from("content_files").delete().eq("id", fileId).eq("user_id", userId);
-  await storage.from(JAWAD_BUCKET).remove([row.path]).catch(() => null);
+  // a picture جواد made is his (and in «أعمالي»): only the conversation's record goes
+  if (!row.meta.outputId) await storage.from(JAWAD_BUCKET).remove([row.path]).catch(() => null);
 }

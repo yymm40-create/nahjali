@@ -21,7 +21,7 @@ export const POST = handle(async (req: Request) => {
   if (!chatId) throw new UserError("محادثة غير صحيحة.", 400);
   const retry = b.retry === "failed" ? ("failed" as const) : Array.isArray(b.retry) ? b.retry.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 40).slice(0, 40) : undefined;
   try {
-    const r = await produce(user.id, chatId, { retry, owner: isAdmin(user.email) });
+    const r = await produce(user.id, chatId, { retry, owner: isAdmin(user.email), email: user.email, origin: new URL(req.url).origin });
     const [links, downloads] = await Promise.all([producedLinks(user.id, chatId), producedLinks(user.id, chatId, true)]);
     return NextResponse.json({
       ...r,

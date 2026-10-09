@@ -14,7 +14,7 @@ import { contentExamplesBrief, nearestContentExamples } from "@config/content-ex
 import { nearestTemplateExamples, templateExamplesBrief } from "@config/content-template-examples";
 import { findTemplate } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
-import { cleanHistory, forModel, getChat, readQuestions, saveChat, type Attachment, type PendingProduce, type Turn } from "./chats";
+import { cleanHistory, forModel, getChat, readMedia, readQuestions, saveChat, type Attachment, type MediaItem, type PendingProduce, type Turn } from "./chats";
 import { attachmentsOf, uploadLinks } from "./files";
 import { catalogBlock, chosenBlock, chosenIds, getPersona, systemText } from "./persona";
 import { stripMarks } from "./marks";
@@ -26,7 +26,7 @@ const db = () => createAdminClient();
 export const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "questions", "record", "produce", "handoff"],
+  required: ["reply", "questions", "record", "produce", "generate", "handoff"],
   properties: {
     reply: { type: "string", description: "ردّك للعميل بالعربية الفصحى (ماركداون خفيف)." },
     questions: {
@@ -71,6 +71,34 @@ export const ANSWER_SCHEMA = {
         },
       },
     },
+    generate: {
+      type: "object",
+      additionalProperties: false,
+      required: ["on", "items"],
+      description: "طلب صور أو فيديوهات منفردة (غلاف، لقطة مساندة، مشهد، مقطع) تُسلَّم إلى جواد ليولّدها، فقط بعد طلب صريح. on=false بدون طلب. لا تستخدمه للكاروسيل.",
+      properties: {
+        on: { type: "boolean" },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "name", "prompt", "aspect", "quality", "resolution", "seconds", "with_sound", "refs"],
+            properties: {
+              kind: { type: "string", enum: ["image", "video"] },
+              name: { type: "string", description: "اسم قصير بالعربية للعنصر" },
+              prompt: { type: "string", description: "التوجيه الكامل بالإنجليزية (الصورة: GPT Image 2؛ الفيديو: Seedance)، والنص العربي إن ظهر حرفيًا بين علامتي اقتباس" },
+              aspect: { type: "string", enum: ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "21:9"], description: "للصورة: 1:1 و16:9 و9:16 و3:2 و2:3 فقط" },
+              quality: { type: "string", enum: ["low", "medium", "high"], description: "للصورة فقط (high للنصوص العربية)؛ للفيديو اكتب high" },
+              resolution: { type: "string", enum: ["std", "hi", "480p", "720p", "1080p"], description: "للصورة std أو hi؛ للفيديو 480p أو 720p أو 1080p" },
+              seconds: { type: "integer", description: "للفيديو فقط: من 4 إلى 15؛ للصورة اكتب 0" },
+              with_sound: { type: "boolean", description: "للفيديو: بصوت مولَّد" },
+              refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) ملفات العميل المرفقة المراد استخدامها كمراجع بصرية، أو فارغة" },
+            },
+          },
+        },
+      },
+    },
     handoff: {
       type: "object",
       additionalProperties: false,
@@ -91,6 +119,7 @@ interface Answer {
   questions: unknown;
   record: string;
   produce: { on: boolean; mode: string; aspect: string; template_id: string; style_id: string; slides: { n: number; text: string; prompt: string }[] };
+  generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string };
 }
 
@@ -102,6 +131,8 @@ export interface Reply {
   /** slides are waiting to be made (the page calls the produce step) */
   pending: { total: number; mode: "all" | "fix"; todo: number[] } | null;
   editor: { id: string; title: string } | null;
+  /** pictures or videos were handed to جواد (the page calls the media step) */
+  media: MediaItem[] | null;
 }
 
 const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" } as const;
@@ -117,6 +148,10 @@ function assistantNote(t: Turn): string {
     const lines = [`[حالة الإنتاج من الموقع — كاروسيل ${s.aspect}: شرائح مصنوعة ${s.items.map((x) => x.n).join(",") || "لا شيء"}${s.todo.length ? `؛ قيد الرسم ${s.todo.join(",")}` : ""}${s.failed.length ? `؛ لم تُصنع ${s.failed.map((f) => `${f.n} (${f.reason})`).join(", ")}` : ""}]`];
     if (s.report) lines.push(s.report);
     parts.push(lines.join("\n"));
+  }
+  if (t.media) {
+    const ST = { todo: "بانتظار جواد", running: "جواد يولّدها", done: "جاهزة", failed: "فشلت" } as const;
+    parts.push(`[طلبات سلّمتها لجواد (هو من يولّد، وتظهر أيضًا في «أعمالي»): ${t.media.items.map((x, i) => `${i + 1}) ${x.kind === "video" ? "فيديو" : "صورة"} «${x.name}» — ${ST[x.state]}${x.error ? ` (${x.error})` : ""}${x.desk ? ` — ${x.desk.generator}${x.desk.free ? "" : ` ${x.desk.coins} عملة`}` : ""}`).join("؛ ")}]`);
   }
   if (t.editor) parts.push(`[فتح الموقع غرفة مونتاج «${t.editor.title}» في حيدرة كت وسلّمها الحزمة]`);
   return parts.length ? `${t.text}\n\n${parts.join("\n")}` : t.text;
@@ -193,6 +228,34 @@ export async function say(userId: string, chatId: string | null, message: string
     }
   }
 
+  // pictures and videos for جواد: the requests are kept with the answer; the page asks for the media step right after
+  let media: MediaItem[] | null = null;
+  if (a.generate?.on && Array.isArray(a.generate.items) && a.generate.items.length) {
+    const mine = new Set(history.flatMap((t) => (t.files ?? []).map((f) => f.id)));
+    const items = readMedia(
+      a.generate.items.slice(0, 6).map((x) => ({
+        id: randomUUID().slice(0, 8),
+        kind: x.kind,
+        name: x.name,
+        prompt: typeof x.prompt === "string" ? x.prompt.trim() : "",
+        aspect: x.aspect,
+        quality: x.kind === "image" ? x.quality : undefined,
+        resolution: x.resolution,
+        seconds: x.kind === "video" ? x.seconds : undefined,
+        withSound: x.kind === "video" ? x.with_sound : undefined,
+        refs: (Array.isArray(x.refs) ? x.refs : []).filter((r) => mine.has(r)),
+        state: "todo",
+      })),
+    ).filter((x) => x.prompt);
+    const bad = items.filter((x) => womanCheck(x.prompt) === "violation");
+    if (bad.length) {
+      reply.text += `\n\n⚠️ لم أسلّم الطلب لجواد: توجيه «${bad.map((x) => x.name || x.kind).join("، ")}» يرسم امرأة بوصف غير مسموح. المسموح فقط: امرأة بعباية سوداء ساترة لكامل الجسم، سادة بلا أي زينة، ولا يظهر منها إلا الوجه والكفان. اطلب مني تعديله ثم أسلّمه من جديد.`;
+    } else if (items.length) {
+      reply.media = { items };
+      media = items;
+    }
+  }
+
   // a package for «حيدرة»: an edit room in «حيدرة كت», the package first in its conversation, the files in its library
   let editor: { id: string; title: string } | null = null;
   if (a.handoff?.on && typeof a.handoff.package === "string" && a.handoff.package.trim()) {
@@ -208,7 +271,7 @@ export async function say(userId: string, chatId: string | null, message: string
 
   const id = await saveChat(userId, chatId, { messages, record: a.record?.trim() ? a.record.trim() : undefined, pending, addUsd: usd });
   usd = Math.round(usd * 10000) / 10000;
-  return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor };
+  return { chatId: id, text: reply.text, questions: questions ?? null, usd, pending: pending ? { total: pending.slides.length, mode: pending.mode, todo: pending.slides.map((x) => x.n) } : null, editor, media };
 }
 
 /**
