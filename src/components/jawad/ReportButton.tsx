@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import DiagnoseBox, { type DiagnoseAnswer } from "./DiagnoseBox";
 
 type Entry = { t: string; kind: string; text: string };
 const MAX = 30;
@@ -25,6 +26,10 @@ export default function ReportButton() {
   const [shotUrl, setShotUrl] = useState<string | null>(null);
   const [rec, setRec] = useState<"" | "on" | "busy">("");
   const [msg, setMsg] = useState("");
+  // «🔎 شخّص»: the site looks into itself (the page report, the server, its own code) and answers; follow-ups keep the thread
+  const [thread, setThread] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
+  const [answer, setAnswer] = useState<{ a: DiagnoseAnswer; q: string } | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const picker = useRef<HTMLInputElement>(null);
@@ -133,6 +138,25 @@ export default function ReportButton() {
       shot ? "\n(الصورة مرفقة: الصقها هنا بعد النص)" : "",
     ].filter(Boolean).join("\n");
 
+  /** The diagnostician: sends the words and the page report (no picture needed) and shows what he found. */
+  async function diagnose() {
+    setMsg("");
+    setDiagBusy(true);
+    try {
+      const res = await fetch("/api/report/diagnose", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: note.trim(), report: bundle(), path: location.pathname, history: thread }) });
+      const j = (await res.json().catch(() => ({}))) as Partial<DiagnoseAnswer> & { error?: string };
+      if (!res.ok || !j.reply) throw new Error(j.error ?? "تعذّر التشخيص.");
+      const a = { reply: j.reply, developerMessage: j.developerMessage ?? "", missing: j.missing ?? [], looked: j.looked ?? [], rounds: j.rounds ?? 1 };
+      setAnswer({ a, q: note.trim() });
+      setThread((t) => [...t, { role: "user" as const, text: note.trim() || "(بلا نص)" }, { role: "assistant" as const, text: a.reply }].slice(-10));
+      setNote("");
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setDiagBusy(false);
+    }
+  }
+
   async function copyText() {
     try { await navigator.clipboard.writeText(bundle()); setMsg("✅ انسخ النص. روح للمحادثة مع Claude والصقه (Ctrl+V)."); } catch { setMsg("تعذّر النسخ؛ حدّد النص في الصندوق وانسخه يدويًا."); }
   }
@@ -157,7 +181,7 @@ export default function ReportButton() {
         <div role="dialog" aria-label="بلاغ مشكلة" dir="rtl" style={{ position: "fixed", top: 64, insetInlineStart: 12, zIndex: 90, width: "min(440px, calc(100vw - 24px))", maxHeight: "calc(100dvh - 80px)", overflowY: "auto", padding: 14, borderRadius: 16, background: "var(--jw-bg, #0b0c0f)", color: "var(--jw-text, #fff)", border: "1px solid var(--jw-line, #333)", boxShadow: "0 24px 60px rgba(0,0,0,.5)", display: "grid", gap: 10 }}>
           <b>🐞 بلّغ عن مشكلة</b>
           <small style={{ opacity: 0.8 }}>الصفحة: {path} · أخطاء مسجّلة: {log.length}</small>
-          <textarea dir="auto" rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="اكتب وش صار (أو سجّل صوتك)…" style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid var(--jw-line, #444)", background: "transparent", color: "inherit" }} />
+          <textarea dir="auto" rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="اكتب وش صار، أو اسأل «ليش ما تقدر تسوي كذا؟» (أو سجّل صوتك). الصورة مو شرط." style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid var(--jw-line, #444)", background: "transparent", color: "inherit" }} />
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             <button type="button" className="jw-btn" onClick={() => void screenshot()}>📸 صوّر الشاشة</button>
             <button type="button" className="jw-btn" onClick={() => picker.current?.click()}>🖼️ أرفق صورة</button>
@@ -171,9 +195,12 @@ export default function ReportButton() {
               <button type="button" className="jw-btn" onClick={() => setPicture(null)}>احذف الصورة</button>
             </div>
           )}
+          {answer && <DiagnoseBox answer={answer.a} question={answer.q} />}
+          {thread.length > 0 && <button type="button" className="jw-btn" onClick={() => { setThread([]); setAnswer(null); }}>↺ مشكلة جديدة</button>}
           <textarea readOnly dir="auto" rows={5} value={bundle()} style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px dashed var(--jw-line, #444)", background: "transparent", color: "inherit", fontSize: 11 }} />
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <button type="button" className="jw-btn jw-btn-primary" onClick={() => void copyText()}>📋 انسخ النص</button>
+            <button type="button" className="jw-btn jw-btn-primary" disabled={diagBusy || (!note.trim() && !thread.length)} onClick={() => void diagnose()}>{diagBusy ? "…يفحص الموقع وكوده" : thread.length ? "🔎 كمّل التشخيص" : "🔎 شخّص المشكلة"}</button>
+            <button type="button" className="jw-btn" onClick={() => void copyText()}>📋 انسخ النص</button>
             {shot && <button type="button" className="jw-btn jw-btn-primary" onClick={() => void copyPicture()}>🖼️ انسخ الصورة</button>}
             <button type="button" className="jw-btn" onClick={() => setOpen(false)}>إغلاق</button>
           </div>
