@@ -135,9 +135,13 @@ export function explainFailure(detail: string | undefined, fallback: string | un
   if (/Output(Video|Audio)SensitiveContentDetected/.test(d)) return tag("رفض المزوّد النتيجة لأنها خالفت سياسة المحتوى عنده. غيّر الملاحظة وجرّب. ما انخصم منك شي.");
   if (/InputImageSensitiveContentDetected/.test(d)) return tag("رفض المزوّد صورة المرجع أو لقطة القص (فيها شخص حقيقي أو محتوى حساس عنده). جرّب «كامل» أو جزءًا ثانيًا. ما انخصم منك شي.");
   if (/InputTextSensitiveContentDetected/.test(d)) return tag("رفض المزوّد نص الطلب لأنه خالف سياسة المحتوى عنده. غيّر كلمات الملاحظة وجرّب. ما انخصم منك شي.");
+  // the provider reads even stylised or cartoon footage as «private information» now and then: «كامل» sends no video reference at all
+  if (/InputVideoSensitiveContentDetected/.test(d)) return "رفض المزوّد مقطع الاستمرارية (قدّره محتوى فيه معلومات خاصة، وهذا يحصل أحيانًا حتى مع الكرتون والمجسّمات). جرّب «أعد المقطع كاملًا»: ما يرسل أي مرجع فيديو. ما انخصم منك شي. (InputVideoSensitiveContentDetected)";
   if (/InputVideo/.test(d)) return `رفض المزوّد مقطع الفيديو المرجعي (الاستمرارية): ${d.slice(0, 200)}. جرّب «أعد المقطع كاملًا» أو مقاطع استمرارية أطول. ما انخصم منك شي.`;
   if (/InputAudio/.test(d)) return `رفض المزوّد الصوت المرجعي: ${d.slice(0, 200)}. أطفئ الصوت أو جرّب بدون مقاطع الصوت. ما انخصم منك شي.`;
   if (/SensitiveContent|PolicyViolation/.test(d)) return tag("رفض المزوّد الطلب لأنه خالف سياسة المحتوى عنده. غيّر الملاحظة وجرّب. ما انخصم منك شي.");
+  // the platform's own account at the provider (billing), not the person's: never «busy»
+  if (/AccountOverdue|OverdueBalance|BalanceNotEnough|InsufficientBalance|ArrearsError/i.test(d)) return "توقف مزوّد الفيديو عن قبول الطلبات بسبب حساب المنصة عنده (مستحقات أو رصيد)، وليس بسبب طلبك. أبلغ صاحب المنصة. أُعيدت لك نقودك. (AccountOverdueError)";
   if (/rate.?limit|RateLimit|429|overloaded|Quota/i.test(d)) return tag("المزوّد مشغول الحين أو وصل حده. جرّب بعد دقائق. ما انخصم منك شي.");
   if (/InvalidParameter|Unsupported|Invalid|MissingParameter/.test(d)) return `المزوّد رفض الطلب لأن أحد المراجع أو الإعدادات غير مقبول عنده: ${d.slice(0, 220)}. ما انخصم منك شي.`;
   if (/InternalServiceError|ServiceUnavailable|InternalError|ServerError/.test(d)) return `خطأ داخلي عند المزوّد (${d.slice(0, 120)}). جرّب مرة ثانية بعد دقائق. ما انخصم منك شي.`;

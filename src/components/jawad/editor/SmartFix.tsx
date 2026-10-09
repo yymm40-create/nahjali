@@ -32,6 +32,31 @@ const STATE: Record<Fix["state"], { text: string; cls: string }> = {
 };
 
 type Quote = { coins: number; from: number | null } | { error: string };
+type Sent = { job: string; from: number };
+type PriceLine = { label: string; centi: number };
+
+/**
+ * The server says the price is no longer what the person saw (409 «price_changed»): carries the new total and its lines,
+ * and `confirm` sends the very same edit again (the frames and cuts are already prepared) with the new total as the
+ * amount the person agreed to — only ever called from the person's press on «أكّد».
+ */
+export class PriceAsk extends Error {
+  constructor(
+    public coins: number,
+    public lines: PriceLine[],
+    public confirm: (coins: number) => Promise<Sent>,
+  ) {
+    super(`تغيّر السعر إلى ${fmtSar(coins)} ر.س`);
+  }
+}
+
+/** A price waiting for the person's yes (shown above the status bar). */
+export interface Ask {
+  id: string;
+  start: number;
+  note: string;
+  ask: PriceAsk;
+}
 
 interface Props {
   projectId: string;
@@ -52,6 +77,8 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   const pieces = useMemo(() => red?.clips ?? [], [red]);
   const [open, setOpen] = useState(false);
   const [approving, setApproving] = useState<string | null>(null);
+  // prices that moved since the quote: each waits for «أكّد» (nothing is charged before)
+  const [asks, setAsks] = useState<Ask[]>([]);
 
   const sel = selected.length === 1 ? findClip(tl, selected[0]) : null;
   const selAsset = sel?.clip.assetId ? assets.get(sel.clip.assetId) : undefined;
@@ -128,6 +155,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
       for (const { id, note } of list) run({ type: "update_clip", clipId: id, patch: { fix: { note, state: "sending", error: null } } }, { coalesce: `fix-send-${id}` });
       flash(list.length === 1 ? "انرسل الجزء للتعديل؛ تقدر تكمل شغلك." : `انرسلت ${list.length} أجزاء للتعديل؛ تقدر تكمل شغلك.`);
       let failed = 0;
+      let asked = 0;
       for (const { id, note } of list) {
         const c = fixOf(id);
         if (!c) continue;
@@ -135,10 +163,18 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current) });
           run({ type: "update_clip", clipId: id, patch: { fix: { job: made.job, from: made.from, state: "making", error: null } } }, { label: "أرسلت جزءًا للتعديل" });
         } catch (e) {
+          if (e instanceof PriceAsk) {
+            // not a failure: the person is asked to confirm the new amount (the bar above the timeline)
+            setAsks((x) => [...x.filter((y) => y.id !== id), { id, start: c.start, note, ask: e }]);
+            run({ type: "update_clip", clipId: id, patch: { fix: { state: "failed", error: `${e.message} — أكّده من الشريط الأصفر.` } } }, { label: "ينتظر تأكيد السعر" });
+            asked++;
+            continue;
+          }
           failed++;
           run({ type: "update_clip", clipId: id, patch: { fix: { state: "failed", error: e instanceof Error ? e.message : "تعذّر الإرسال." } } }, { label: "ما انرسل جزء" });
         }
       }
+      if (asked) flash(asked === 1 ? "تغيّر سعر جزء؛ اضغط «أكّد» في الشريط الأصفر لو توافق." : `تغيّر سعر ${asked} أجزاء؛ أكّدها من الشريط الأصفر.`, true);
       if (failed) flash(failed === 1 ? "جزء ما انرسل؛ السبب مكتوب عليه." : `${failed} أجزاء ما انرسلت؛ السبب مكتوب عليها.`, true);
     },
     [projectId, run, onAssets, flash],
@@ -162,9 +198,37 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
     void sendInBackground(list).finally(() => list.forEach((x) => busyIds.current.delete(x.id)));
   };
 
+  /** «أكّد»: the same edit goes again with the new total as the agreed amount. */
+  const confirmAsk = async (a: Ask) => {
+    setAsks((x) => x.filter((y) => y.id !== a.id));
+    busyIds.current.add(a.id);
+    run({ type: "update_clip", clipId: a.id, patch: { fix: { state: "sending", error: null } } }, { coalesce: `fix-send-${a.id}` });
+    try {
+      const made = await a.ask.confirm(a.ask.coins);
+      run({ type: "update_clip", clipId: a.id, patch: { fix: { job: made.job, from: made.from, state: "making", error: null } } }, { label: "أرسلت جزءًا للتعديل" });
+      flash("انرسل الجزء للتعديل بالسعر الجديد.");
+    } catch (e) {
+      if (e instanceof PriceAsk) {
+        // it moved again while the person was deciding: asked again, with the newest total
+        setAsks((x) => [...x.filter((y) => y.id !== a.id), { ...a, ask: e }]);
+        run({ type: "update_clip", clipId: a.id, patch: { fix: { state: "failed", error: `${e.message} — أكّده من الشريط الأصفر.` } } });
+      } else {
+        run({ type: "update_clip", clipId: a.id, patch: { fix: { state: "failed", error: e instanceof Error ? e.message : "تعذّر الإرسال." } } }, { label: "ما انرسل جزء" });
+        flash(e instanceof Error ? e.message : "تعذّر الإرسال.", true);
+      }
+    } finally {
+      busyIds.current.delete(a.id);
+    }
+  };
+  const cancelAsk = (a: Ask) => {
+    setAsks((x) => x.filter((y) => y.id !== a.id));
+    run({ type: "update_clip", clipId: a.id, patch: { fix: { state: "failed", error: "ما أكّدت السعر الجديد؛ ما انرسل ولا انخصم شي." } } });
+  };
+
   if (readOnly || (!red && !(fromJawad && canLift))) return null;
   const sending = pieces.filter((c) => c.fix?.state === "sending");
   const failedPieces = pieces.filter((c) => c.fix?.state === "failed");
+  const refused = failedPieces.filter((c) => (c.fix?.mode ?? "parts") === "parts" && (c.fix?.error ?? "").includes("InputVideoSensitiveContentDetected"));
 
   const lift = () => sel && run({ type: "lift_fix", clipId: sel.clip.id });
   // a copy on the yellow track: the seconds sent with the red piece next to it, so it carries on what's there
@@ -252,6 +316,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           )}
         </div>
       )}
+      <PriceAsks asks={asks} onConfirm={(a) => void confirmAsk(a)} onCancel={cancelAsk} />
       {(sending.length > 0 || failedPieces.length > 0) && (
         <div className={`mx-2 mb-1 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-1.5 text-xs ${failedPieces.length ? "border-red-500/40 bg-red-500/10" : "border-sky-400/50 bg-sky-400/10"}`} aria-live="polite">
           {sending.length > 0 && (
@@ -265,6 +330,19 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
             </button>
           ))}
           <span className="flex-1" />
+          {!sending.length && refused.length > 0 && (
+            // the provider refused the continuity video: «كامل» sends no video reference at all (priced again, asked first if it differs)
+            <button
+              type="button"
+              className="jw-btn !min-h-8 !px-3 text-xs"
+              onClick={() => {
+                for (const c of refused) run({ type: "update_clip", clipId: c.id, patch: { fix: { mode: "whole" } } }, { label: "كامل بدون مرجع فيديو" });
+                setTimeout(() => send(refused.filter((c) => (c.fix?.note ?? "").trim().length >= 3).map((c) => ({ id: c.id, note: c.fix!.note }))), 60);
+              }}
+            >
+              <Icon name="retry" size={14} /> أعده كاملًا بدون مرجع فيديو
+            </button>
+          )}
           {failedPieces.length > 0 && !sending.length && (
             <button type="button" className="jw-btn !min-h-8 !px-3 text-xs" onClick={() => send(failedPieces.filter((c) => (c.fix?.note ?? "").trim().length >= 3).map((c) => ({ id: c.id, note: c.fix!.note })))}>
               <Icon name="retry" size={14} /> أعد المحاولة
@@ -273,6 +351,40 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
         </div>
       )}
       {open && <FixDialog projectId={projectId} pieces={pieces} yellow={yellowOf(tl)} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/** The prices waiting for the person's yes: the new total, the lines it is made of, «أكّد» and «إلغاء». */
+export function PriceAsks({ asks, onConfirm, onCancel }: { asks: Ask[]; onConfirm: (a: Ask) => void; onCancel: (a: Ask) => void }) {
+  return (
+    <>
+      {asks.map((a) => (
+        <div key={a.id} className="mx-2 mb-1 space-y-1.5 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs" role="alert" aria-live="assertive">
+          <p className="font-bold">
+            تغيّر سعر الجزء <span dir="ltr">{formatTime(a.start)}</span> إلى {fmtSar(a.ask.coins)} ر.س
+          </p>
+          {a.ask.lines.length > 0 && (
+            <ul className="space-y-0.5 text-jw-muted">
+              {a.ask.lines.map((l, i) => (
+                <li key={i} className="flex justify-between gap-2">
+                  <span>{l.label}</span>
+                  <span dir="ltr" className="tabular-nums">{(l.centi / 10000).toFixed(2)} ر.س تكلفة</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="jw-btn !min-h-8 !px-3 text-xs" onClick={() => onConfirm(a)}>
+              <Icon name="wand" size={14} /> أكّد {fmtSar(a.ask.coins)} ر.س
+            </button>
+            <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-3 text-xs" onClick={() => onCancel(a)}>
+              إلغاء
+            </button>
+            <span className="text-[11px] text-jw-faint">ما ينخصم شي قبل ما تأكّد.</span>
+          </div>
+        </div>
+      ))}
     </>
   );
 }
@@ -354,16 +466,19 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
     throw new Error("تعذّر قراءة لقطات الفيديو في المتصفح؛ أعد المحاولة.");
   }
   const post = () => fetch("/api/jawad/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(send) }).catch(() => null);
-  let res = await post();
-  let r = res ? await res.json().catch(() => ({})) : {};
-  // a price that moved a little since the quote: take the new one (it is the real price of the same edit)
-  if (res?.status === 409 && r.code === "price_changed") {
-    send.expectedCoins = r.coins;
-    res = await post();
-    r = res ? await res.json().catch(() => ({})) : {};
-  }
-  if (res?.ok && r.job?.id) return { job: String(r.job.id), from: q.from ?? 0 };
-  throw new Error(r.error ?? (res ? `تعذّر الإرسال (${res.status}).` : "ما وصلنا للخادم؛ تأكد من النت وأعد المحاولة (ما يتكرر الخصم)."));
+  /** One post with `coins` as the amount agreed. A price that dropped is taken at once (the person pays less); a higher one is asked. */
+  const attempt = async (coins: number, again = true): Promise<Sent> => {
+    send.expectedCoins = coins;
+    const res = await post();
+    const r = res ? await res.json().catch(() => ({})) : {};
+    if (res?.status === 409 && r.code === "price_changed" && typeof r.coins === "number") {
+      if (r.coins <= coins && again) return attempt(r.coins, false);
+      throw new PriceAsk(r.coins, Array.isArray(r.lines) ? r.lines : [], (agreed) => attempt(agreed));
+    }
+    if (res?.ok && r.job?.id) return { job: String(r.job.id), from: q.from ?? 0 };
+    throw new Error(r.error ?? (res ? `تعذّر الإرسال (${res.status}).` : "ما وصلنا للخادم؛ تأكد من النت وأعد المحاولة (ما يتكرر الخصم)."));
+  };
+  return attempt(q.coins);
 }
 
 /** Every red piece: what to fix, «جزئي» or «كامل», its price; one tap saves the notes and sends them all in the background. */
