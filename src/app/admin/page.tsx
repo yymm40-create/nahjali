@@ -74,6 +74,7 @@ export default async function AdminHome() {
         ["المصمم الذكي", "/admin/designer"],
         ["زهراء فوتو ماستر", "/admin/photo"],
         ["دورة الجواد", "/admin/course"],
+        ["مكان الدورات (فيديو محمي)", "/admin/learn"],
       ],
     },
     {

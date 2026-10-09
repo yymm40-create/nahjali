@@ -39,7 +39,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
   const allowed = await jawadVisibleTo(user);
   const path = h.get(JAWAD_PATH_HEADER) ?? "";
   // (the dashboard keeps its own owner check: a plain JAWAD 404 for everyone else)
-  const preview = !allowed && path !== `${JAWAD.base}/login` && path !== `${JAWAD.base}/username` && !path.startsWith(`${JAWAD.base}/admin`) && path !== `${JAWAD.base}/course`;
+  const preview = !allowed && path !== `${JAWAD.base}/login` && path !== `${JAWAD.base}/username` && !path.startsWith(`${JAWAD.base}/admin`) && path !== `${JAWAD.base}/course` && !path.startsWith(`${JAWAD.base}/learn`);
   const [balance, username] = user && !preview
     ? await Promise.all([coinBalance(user.id), getUsername(await createClient(), user.id).catch(() => null)])
     : [null, null];

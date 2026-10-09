@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import Coined from "@/components/Coined";
 import Riyal from "@/components/Riyal";
 import { COURSE, countdown, embedOf, offersAt, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
+import { LEARN } from "@config/learn";
 import type { PublicCourse } from "@/lib/course/settings";
 
 export interface OrderView {
@@ -152,6 +153,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
           <div className="cr-actions">
             {unlocked.groupLink && <a className="cr-btn cr-primary" href={unlocked.groupLink} target="_blank" rel="noreferrer">{unlocked.confirmed ? "ادخل المجموعة" : "اطلب الانضمام للمجموعة"}</a>}
             {unlocked.recordedLink && unlocked.products.includes("recorded") && <a className="cr-btn" href={unlocked.recordedLink} target="_blank" rel="noreferrer">افتح الدورة المسجلة</a>}
+            {unlocked.confirmed && <Link className="cr-btn cr-primary" href={LEARN.base}>📚 افتح دروسي</Link>}
           </div>
         </section>
       )}
