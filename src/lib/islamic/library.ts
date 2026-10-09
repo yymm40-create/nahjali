@@ -9,7 +9,7 @@ import { aqaed } from "./adapters/aqaed";
 import { site } from "./adapters/site";
 import { thaqalayn } from "./adapters/thaqalayn";
 import { pool, type ReadDoc, type Reader } from "./adapters/types";
-import { chunkText, hostOf, queryWords, tsQuery } from "./text";
+import { chunkText, hostOf, NARRATION_KINDS, normalizeArabic, pickPassages, queryWords, tsQuery } from "./text";
 
 export type Adapter = "thaqalayn" | "almojib" | "aqaed" | "site";
 const READERS: Record<Adapter, Reader> = { thaqalayn, almojib, aqaed, site };
@@ -192,26 +192,32 @@ export interface Passage {
   rank: number;
 }
 
-/** The passages of the library that best match a question (at most ISLAMIC.perDoc from one document). */
 /**
- * The passages of the library that best match a question (at most ISLAMIC.perDoc from one document). Searched from
- * the most precise to the widest: passages holding all of the telling words, then the two most telling, then any
- * of them — so a question finds what is really about it first, and a big library never ranks everything.
+ * The passages of the library that best match a question. The narrations (the hadith chapters, the duas and ziyarat)
+ * are searched on their own first and given most of the places; the other sources fill the rest. Each is searched from
+ * the most precise to the widest: passages holding all of the telling words, then the two most telling, then any of
+ * them (with the classical words `extra` the question was turned into) — so a question finds what is really about it
+ * first, and a big library never ranks everything.
  */
-export async function search(question: string, k = ISLAMIC.passages): Promise<{ passages: Passage[]; words: string[] }> {
-  const words = queryWords(question);
-  if (!words.length) return { passages: [], words };
+let kindsOff = false;
+async function searchTier(words: string[], wide: string[], kinds: string[] | null, k: number) {
   const tries = [
     ...(words.length >= 3 ? [tsQuery(words.slice(0, 3), true)] : []),
     ...(words.length >= 2 ? [tsQuery(words.slice(0, 2), true)] : []),
-    tsQuery(words),
+    tsQuery(wide),
   ];
   const seen = new Set<number>();
   const found: Passage[] = [];
   let lastError: { message?: string } | null = null;
   for (const q of tries) {
     if (found.length >= k) break;
-    const { data, error } = await db().rpc("islamic_search", { q, k: k * 3 });
+    const withKinds = kinds && !kindsOff;
+    let { data, error } = await db().rpc("islamic_search", { q, k: k * 3, ...(withKinds ? { kinds } : {}) });
+    // SQL 0043 not run yet: the old search has no «kinds» (the narrations then rank with the rest)
+    if (error && withKinds && /islamic_search/i.test(error.message ?? "")) {
+      kindsOff = true;
+      ({ data, error } = await db().rpc("islamic_search", { q, k: k * 3 }));
+    }
     if (error) {
       if (missing(error) || /function .*islamic_search/i.test(error.message ?? "")) throw new UserError(NOT_READY, 503);
       // too slow for this one: the next (or the passages already found) carry on
@@ -224,16 +230,27 @@ export async function search(question: string, k = ISLAMIC.passages): Promise<{ 
       found.push(p);
     }
   }
-  if (!found.length && lastError) throw new UserError(/timeout/i.test(lastError.message ?? "") ? "البحث في المكتبة أخذ وقت أطول من المسموح. شغّل ملف SQL رقم 0039 (البحث السريع) في Supabase، وبعدها جرّب." : "تعذّر البحث في المكتبة الحين؛ جرّب بعد شوي.", 503);
-  const perDoc: Record<string, number> = {};
-  const out: Passage[] = [];
-  for (const p of found) {
-    if ((perDoc[p.doc_id] ?? 0) >= ISLAMIC.perDoc) continue;
-    perDoc[p.doc_id] = (perDoc[p.doc_id] ?? 0) + 1;
-    out.push(p);
-    if (out.length >= k) break;
+  return { found, lastError };
+}
+
+export async function search(question: string, k = ISLAMIC.passages, extra: string[] = []): Promise<{ passages: Passage[]; words: string[]; narrations: number }> {
+  const words = queryWords(question);
+  // the classical words the question was turned into (same normalising as the index), after the question's own
+  const more = [...new Set(extra.flatMap((w) => normalizeArabic(w).split(" ")).filter((w) => w.length >= 2 && !words.includes(w)))].slice(0, 10);
+  if (!words.length && !more.length) return { passages: [], words, narrations: 0 };
+  const wide = [...words, ...more];
+  const lead = words.length ? words : more;
+  const [nar, rest] = await Promise.all([searchTier(lead, wide, kindsOff ? null : NARRATION_KINDS, k), searchTier(lead, wide, null, k)]);
+  if (!nar.found.length && !rest.found.length && (nar.lastError || rest.lastError)) {
+    const e = nar.lastError ?? rest.lastError;
+    throw new UserError(/timeout/i.test(e?.message ?? "") ? "البحث في المكتبة أخذ وقت أطول من المسموح. شغّل ملف SQL رقم 0039 (البحث السريع) في Supabase، وبعدها جرّب." : "تعذّر البحث في المكتبة الحين؛ جرّب بعد شوي.", 503);
   }
-  return { passages: out, words };
+  // with the old search (no kinds) the narrations are told apart by their kind afterwards
+  const isNar = (p: Passage) => NARRATION_KINDS.includes(p.kind);
+  const narrations = kindsOff ? rest.found.filter(isNar) : nar.found;
+  const others = rest.found.filter((p) => !isNar(p));
+  const passages = pickPassages(narrations, others, k, ISLAMIC.perDoc);
+  return { passages, words: wide, narrations: passages.filter(isNar).length };
 }
 
 export async function kvGet(key: string): Promise<string> {

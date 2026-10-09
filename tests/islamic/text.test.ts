@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText, htmlToText, mainText, normalizeArabic, pageTitle, queryWords, tsQuery } from "@/lib/islamic/text";
+import { chunkText, htmlToText, mainText, normalizeArabic, pageTitle, pickPassages, queryWords, tsQuery } from "@/lib/islamic/text";
 
 describe("«الذكاء الإسلامي» · text", () => {
   it("turns HTML into readable text", () => {
@@ -39,5 +39,22 @@ describe("«الذكاء الإسلامي» · text", () => {
     expect(text.indexOf(pieces[1])).toBeLessThan(pieces[0].length);
     expect(chunkText("قصير", 500)).toEqual(["قصير"]);
     expect(chunkText("   ", 500)).toEqual([]);
+  });
+});
+
+
+describe("«الذكاء الإسلامي» · الروايات أولًا", () => {
+  const P = (chunk_id: number, doc_id: string) => ({ chunk_id, doc_id });
+  it("gives most places to the narrations, then fills with the rest, at most perDoc from one document", () => {
+    const nar = [P(1, "a"), P(2, "a"), P(3, "a"), P(4, "a"), P(5, "b"), P(6, "c")];
+    const other = [P(10, "x"), P(11, "y"), P(12, "z")];
+    const got = pickPassages(nar, other, 6, 3, 4);
+    // 4 narrations (a×3 then b), then the others fill, never more than 3 from document a
+    expect(got.map((p) => p.chunk_id)).toEqual([1, 2, 3, 5, 10, 11]);
+    expect(got.filter((p) => p.doc_id === "a").length).toBe(3);
+  });
+  it("narrations fill the answer when the rest has nothing, and the rest when no narration was found", () => {
+    expect(pickPassages([P(1, "a"), P(2, "b"), P(3, "c")], [], 5, 3, 2).map((p) => p.chunk_id)).toEqual([1, 2, 3]);
+    expect(pickPassages([], [P(9, "x"), P(8, "y")], 5, 3).map((p) => p.chunk_id)).toEqual([9, 8]);
   });
 });

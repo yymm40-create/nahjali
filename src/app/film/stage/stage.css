@@ -1,23 +1,22 @@
-/* «المشهد» — the film maker's stage: a dark screening room. Near-black velvet, panels of smoked glass, one warm ember
-light (the projector's) for what matters now,
-a thin crimson thread for what asks for the person,
-mint for what is
-   done. The chrome steps back so the pictures and videos carry the screen. Everything is scoped to .fs; the old studio
-   look (film-theme.css) stays for «المسلسل الذكي». */
+/* «المشهد» — the film maker's stage: a dark screening room in JAWAD's own blue. Night-blue black, panels of smoked
+   glass edged with blue light, electric blue for what matters now (it fills the light of the room, the ring, the open
+   step, the main buttons), a thin crimson thread for what asks for the person, mint for what is done. The chrome steps
+   back so the pictures and videos carry the screen. Everything is scoped to .fs; the old studio look (film-theme.css)
+   stays for «المسلسل الذكي». */
 
 .fs {
-  --fs-bg: #0b0a0c;
-  --fs-bg-2: #121014;
-  --fs-glass: rgba(24, 21, 27, 0.72);
-  --fs-glass-2: rgba(34, 30, 38, 0.72);
-  --fs-line: rgba(255, 244, 230, 0.09);
-  --fs-line-2: rgba(255, 244, 230, 0.18);
-  --fs-ink: #f4efe7;
-  --fs-muted: #a9a198;
-  --fs-faint: #6f6962;
-  --fs-ember: #ff7a45;
-  --fs-ember-2: #ffb08a;
-  --fs-ember-soft: rgba(255, 122, 69, 0.14);
+  --fs-bg: #050813;
+  --fs-bg-2: #0a1022;
+  --fs-glass: rgba(9, 20, 48, 0.76);
+  --fs-glass-2: rgba(20, 40, 88, 0.72);
+  --fs-line: rgba(190, 215, 255, 0.09);
+  --fs-line-2: rgba(190, 215, 255, 0.18);
+  --fs-ink: #eef3ff;
+  --fs-muted: #9db0d6;
+  --fs-faint: #6479a6;
+  --fs-ember: #2f74ff;
+  --fs-ember-2: #8bbcff;
+  --fs-ember-soft: rgba(47, 116, 255, 0.14);
   --fs-velvet: #d9304f;
   --fs-mint: #5ad7a3;
   --fs-radius: 18px;
@@ -32,21 +31,21 @@ mint for what is
   --line: var(--fs-line);
   --gold: var(--fs-ember);
   --gold-2: var(--fs-ember-2);
-  --on-gold: #1a0d06;
+  --on-gold: #ffffff;
   --teal: var(--fs-mint);
   --teal-2: #3fb886;
   --jw-bg: var(--fs-bg);
   --jw-bg-2: var(--fs-bg-2);
   --jw-surface: var(--fs-glass);
   --jw-surface-2: var(--fs-glass-2);
-  --jw-surface-3: #2a252f;
+  --jw-surface-3: #1c2a52;
   --jw-line: var(--fs-line);
   --jw-line-strong: var(--fs-line-2);
   --jw-ink: var(--fs-ink);
   --jw-muted: var(--fs-muted);
   --jw-faint: var(--fs-faint);
   --jw-accent: var(--fs-ember);
-  --jw-on-accent: #1a0d06;
+  --jw-on-accent: #ffffff;
   --jw-radius: var(--fs-radius);
   --film-navy: var(--fs-ink);
   --film-blue: var(--fs-ember);
@@ -66,16 +65,16 @@ html:has(.fs),
 html:has(.fs) body,
 .jw:has(.fs),
 .jw [data-jw-section="film"]:has(.fs) {
-  background: #0b0a0c;
+  background: #050813;
   color-scheme: dark;
 }
 .jw [data-jw-section="film"]:has(.fs) {
-  --jw-bg: #0b0a0c;
-  --jw-surface: rgba(24, 21, 27, 0.72);
+  --jw-bg: #050813;
+  --jw-surface: rgba(12, 19, 38, 0.74);
   --jw-ink: #f4efe7;
   --jw-muted: #a9a198;
-  --jw-line: rgba(255, 244, 230, 0.09);
-  --jw-accent: #ff7a45;
+  --jw-line: rgba(190, 215, 255, 0.09);
+  --jw-accent: #2f74ff;
   color: #f4efe7;
 }
 
@@ -92,9 +91,11 @@ html:has(.fs) body,
   pointer-events: none;
   overflow: hidden;
   background:
-    radial-gradient(60% 40% at 50% -10%, rgba(255, 122, 69, 0.16), transparent 70%),
-    radial-gradient(40% 30% at 100% 110%, rgba(217, 48, 79, 0.1), transparent 70%),
-    #0b0a0c;
+    radial-gradient(85% 60% at 50% -14%, rgba(47, 116, 255, 0.62), transparent 72%),
+    radial-gradient(60% 45% at 85% 40%, rgba(31, 99, 240, 0.2), transparent 70%),
+    radial-gradient(55% 45% at 0% 105%, rgba(31, 99, 240, 0.4), transparent 70%),
+    radial-gradient(40% 30% at 100% 110%, rgba(59, 140, 255, 0.16), transparent 70%),
+    #050813;
 }
 .fs-room .beam {
   position: absolute;
@@ -102,7 +103,7 @@ html:has(.fs) body,
   inset-inline-start: 25%;
   width: 50%;
   height: 90%;
-  background: conic-gradient(from 180deg at 50% 0%, transparent 168deg, rgba(255, 176, 138, 0.05) 176deg, rgba(255, 244, 230, 0.12) 180deg, rgba(255, 176, 138, 0.05) 184deg, transparent 192deg);
+  background: conic-gradient(from 180deg at 50% 0%, transparent 168deg, rgba(125, 178, 255, 0.1) 174deg, rgba(190, 215, 255, 0.26) 180deg, rgba(125, 178, 255, 0.1) 186deg, transparent 192deg);
   filter: blur(10px);
   animation: fs-sway 14s ease-in-out infinite;
 }
@@ -110,14 +111,28 @@ html:has(.fs) body,
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(1px 1px at 12% 30%, rgba(255, 244, 230, 0.5) 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 48% 18%, rgba(255, 244, 230, 0.35) 50%, transparent 51%),
-    radial-gradient(1px 1px at 70% 60%, rgba(255, 244, 230, 0.4) 50%, transparent 51%),
-    radial-gradient(1px 1px at 86% 26%, rgba(255, 244, 230, 0.3) 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 30% 75%, rgba(255, 244, 230, 0.3) 50%, transparent 51%);
+    radial-gradient(1px 1px at 12% 30%, rgba(190, 215, 255, 0.5) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 48% 18%, rgba(190, 215, 255, 0.35) 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 60%, rgba(190, 215, 255, 0.4) 50%, transparent 51%),
+    radial-gradient(1px 1px at 86% 26%, rgba(190, 215, 255, 0.3) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 30% 75%, rgba(190, 215, 255, 0.3) 50%, transparent 51%);
   animation: fs-drift 26s linear infinite;
   opacity: 0.6;
 }
+/* the lens flare: one long blue streak across the screen, like the anamorphic light of a cinema camera */
+.fs-room::before {
+  content: "";
+  position: absolute;
+  inset-inline: -10%;
+  inset-block-start: 22%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(125, 178, 255, 0.0) 10%, rgba(139, 188, 255, 0.85) 50%, rgba(125, 178, 255, 0.0) 90%, transparent);
+  filter: blur(1.5px);
+  box-shadow: 0 0 44px 12px rgba(47, 116, 255, 0.5);
+  opacity: 0.9;
+  animation: fs-flare 9s ease-in-out infinite;
+}
+@keyframes fs-flare { 0%, 100% { opacity: 0.55; transform: scaleX(0.85); } 50% { opacity: 1; transform: scaleX(1); } }
 .fs-room .grain {
   position: absolute;
   inset: -50%;
@@ -152,21 +167,36 @@ html:has(.fs) body,
   }
 }
 
-/* glass panels */
+/* glass panels: a thin blue edge and a blue light on top, like a lit screen */
 .fs-glass {
   background: var(--fs-glass);
   backdrop-filter: blur(16px) saturate(1.1);
   border: 1px solid var(--fs-line);
   border-radius: var(--fs-radius);
-  box-shadow: inset 0 1px 0 rgba(255, 244, 230, 0.06), 0 20px 50px -30px rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 1px 0 rgba(190, 215, 255, 0.06), 0 20px 50px -30px rgba(0, 0, 0, 0.9);
+}
+.fs-glass {
+  border-color: rgba(120, 170, 255, 0.22);
+  background-image: linear-gradient(180deg, rgba(47, 116, 255, 0.12), transparent 45%);
 }
 
 /* ── the top strip: the scene's name, its number, the library ── */
 .fs-top {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
+}
+.fs-top::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #2f74ff, #8bbcff, #2f74ff, transparent);
+  box-shadow: 0 0 18px #2f74ff;
 }
 .fs-title {
   min-width: 0;
@@ -202,16 +232,17 @@ html:has(.fs) body,
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: conic-gradient(var(--fs-ember) calc(var(--p) * 1%), rgba(255, 244, 230, 0.08) 0);
+  background: conic-gradient(var(--fs-ember) calc(var(--p) * 1%), rgba(190, 215, 255, 0.08) 0);
   transition: --p 0.6s ease;
   flex-shrink: 0;
 }
+.fs-ring { box-shadow: 0 0 26px rgba(47, 116, 255, 0.5), 0 0 0 1px rgba(139, 188, 255, 0.25); }
 .fs-ring::before {
   content: "";
   position: absolute;
   inset: 5px;
   border-radius: 50%;
-  background: #141117;
+  background: #0a1020;
   box-shadow: inset 0 0 0 1px var(--fs-line);
 }
 .fs-ring > span {
@@ -242,7 +273,7 @@ html:has(.fs) body,
   padding: 8px 10px;
   border-radius: 12px;
   background: var(--fs-ember-soft);
-  border: 1px solid rgba(255, 122, 69, 0.25);
+  border: 1px solid rgba(47, 116, 255, 0.25);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -264,7 +295,7 @@ html:has(.fs) body,
 .fs-run .bar {
   height: 4px;
   border-radius: 999px;
-  background: rgba(255, 244, 230, 0.08);
+  background: rgba(190, 215, 255, 0.08);
   overflow: hidden;
 }
 .fs-run .bar > i {
@@ -309,12 +340,12 @@ html:has(.fs) body,
   transition: background 0.25s, color 0.25s, border-color 0.25s, transform 0.25s;
 }
 @media (min-width: 1024px) { .fs-step { min-width: 0; } }
-.fs-step:hover { background: rgba(255, 244, 230, 0.05); color: var(--fs-ink); }
+.fs-step:hover { background: rgba(190, 215, 255, 0.05); color: var(--fs-ink); }
 .fs-step[aria-current="page"] {
   background: var(--fs-ember-soft);
-  border-color: rgba(255, 122, 69, 0.35);
+  border-color: rgba(47, 116, 255, 0.35);
   color: var(--fs-ink);
-  box-shadow: 0 0 0 1px rgba(255, 122, 69, 0.15), 0 10px 30px -18px var(--fs-ember);
+  box-shadow: 0 0 0 1px rgba(47, 116, 255, 0.15), 0 10px 30px -18px var(--fs-ember);
 }
 .fs-step[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 .fs-step .n {
@@ -325,17 +356,17 @@ html:has(.fs) body,
   border-radius: 10px;
   font-weight: 900;
   font-size: 0.8rem;
-  background: rgba(255, 244, 230, 0.07);
+  background: rgba(190, 215, 255, 0.07);
   border: 1px solid var(--fs-line);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 .fs-step[data-done="true"] .n { background: rgba(90, 215, 163, 0.14); color: var(--fs-mint); border-color: rgba(90, 215, 163, 0.35); }
-.fs-step[aria-current="page"] .n { background: var(--fs-ember); color: #1a0d06; border-color: transparent; }
+.fs-step[aria-current="page"] .n { background: var(--fs-ember); color: #ffffff; border-color: transparent; }
 .fs-step .t { min-width: 0; flex: 1; }
 .fs-step .t b { display: block; font-size: 0.86rem; font-weight: 800; line-height: 1.3; }
 .fs-step .t small { display: block; font-size: 0.68rem; color: var(--fs-faint); font-weight: 700; }
-.fs-step .bar { position: absolute; inset-inline: 12px; inset-block-end: 4px; height: 2px; border-radius: 2px; background: rgba(255, 244, 230, 0.07); overflow: hidden; }
+.fs-step .bar { position: absolute; inset-inline: 12px; inset-block-end: 4px; height: 2px; border-radius: 2px; background: rgba(190, 215, 255, 0.07); overflow: hidden; }
 .fs-step .bar > i { display: block; height: 100%; background: var(--fs-mint); transition: width 0.6s ease; }
 .fs-step[aria-current="page"] .bar > i { background: var(--fs-ember-2); }
 .fs-step[data-ask="true"]::after {
@@ -361,7 +392,7 @@ html:has(.fs) body,
   padding: 0 12px;
   border-radius: 12px;
   border: 1px solid var(--fs-line);
-  background: rgba(255, 244, 230, 0.04);
+  background: rgba(190, 215, 255, 0.04);
   color: var(--fs-ink);
   font-size: 0.8rem;
   font-weight: 800;
@@ -369,8 +400,8 @@ html:has(.fs) body,
   transition: background 0.2s, transform 0.15s, border-color 0.2s;
   white-space: nowrap;
 }
-.fs-tool:hover { background: rgba(255, 244, 230, 0.08); border-color: var(--fs-line-2); transform: translateY(-1px); }
-.fs-tool[aria-pressed="true"] { background: var(--fs-ember-soft); border-color: rgba(255, 122, 69, 0.4); }
+.fs-tool:hover { background: rgba(190, 215, 255, 0.08); border-color: var(--fs-line-2); transform: translateY(-1px); }
+.fs-tool[aria-pressed="true"] { background: var(--fs-ember-soft); border-color: rgba(47, 116, 255, 0.4); }
 
 /* ── the work: the open step slides in ── */
 .fs-main { min-width: 0; }
@@ -384,14 +415,14 @@ html:has(.fs) body,
   backdrop-filter: blur(14px);
   border: 1px solid var(--fs-line);
   border-radius: var(--fs-radius);
-  box-shadow: inset 0 1px 0 rgba(255, 244, 230, 0.05), 0 18px 44px -30px rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 1px 0 rgba(190, 215, 255, 0.05), 0 18px 44px -30px rgba(0, 0, 0, 0.9);
   color: var(--fs-ink);
   animation: fs-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .fs .card.border-gold,
 .jw [data-jw-section="film"] .fs .card.border-gold,
 .fs .card.border-2.border-gold,
-.jw [data-jw-section="film"] .fs .card.border-2.border-gold { border-color: rgba(255, 122, 69, 0.55); box-shadow: 0 0 0 1px rgba(255, 122, 69, 0.2), 0 24px 50px -30px var(--fs-ember); }
+.jw [data-jw-section="film"] .fs .card.border-2.border-gold { border-color: rgba(47, 116, 255, 0.55); box-shadow: 0 0 0 1px rgba(47, 116, 255, 0.2), 0 24px 50px -30px var(--fs-ember); }
 .fs .card.border-teal,
 .jw [data-jw-section="film"] .fs .card.border-teal,
 .fs .card.border-2.border-teal,
@@ -402,12 +433,12 @@ html:has(.fs) body,
 .jw [data-jw-section="film"] .fs .text-muted { color: var(--fs-muted) !important; }
 .fs .chip,
 .jw [data-jw-section="film"] .fs .chip {
-  background: rgba(255, 244, 230, 0.07);
+  background: rgba(190, 215, 255, 0.07);
   color: var(--fs-ink);
   border: 1px solid var(--fs-line);
 }
 .fs .chip.bg-gold,
-.jw [data-jw-section="film"] .fs .chip.bg-gold { background: var(--fs-ember); color: #1a0d06; border-color: transparent; }
+.jw [data-jw-section="film"] .fs .chip.bg-gold { background: var(--fs-ember); color: #ffffff; border-color: transparent; }
 .fs .chip.bg-teal,
 .jw [data-jw-section="film"] .fs .chip.bg-teal { background: rgba(90, 215, 163, 0.18); color: var(--fs-mint); border-color: rgba(90, 215, 163, 0.35); }
 .fs .chip.bg-red-500,
@@ -418,15 +449,15 @@ html:has(.fs) body,
 .jw [data-jw-section="film"] .fs .btn:active:not(:disabled) { transform: scale(0.97); }
 .fs .btn-primary,
 .jw [data-jw-section="film"] .fs .btn-primary {
-  background: linear-gradient(180deg, #ff9a6c, var(--fs-ember) 60%, #e85f2c);
-  color: #1a0d06;
+  background: linear-gradient(180deg, #5b9bff, var(--fs-ember) 60%, #1a4fd6);
+  color: #ffffff;
   box-shadow: 0 10px 26px -12px var(--fs-ember), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 .fs .btn-primary:hover:not(:disabled),
 .jw [data-jw-section="film"] .fs .btn-primary:hover:not(:disabled) { filter: brightness(1.06); }
 .fs .btn-secondary,
 .jw [data-jw-section="film"] .fs .btn-secondary {
-  background: rgba(255, 244, 230, 0.1);
+  background: rgba(190, 215, 255, 0.1);
   color: var(--fs-ink);
   border: 1px solid var(--fs-line-2);
   box-shadow: none;
@@ -434,7 +465,7 @@ html:has(.fs) body,
 .fs .btn-ghost,
 .jw [data-jw-section="film"] .fs .btn-ghost { color: var(--fs-ink); border: 1px solid var(--fs-line); background: transparent; }
 .fs .btn-ghost:hover:not(:disabled),
-.jw [data-jw-section="film"] .fs .btn-ghost:hover:not(:disabled) { background: rgba(255, 244, 230, 0.06); }
+.jw [data-jw-section="film"] .fs .btn-ghost:hover:not(:disabled) { background: rgba(190, 215, 255, 0.06); }
 .fs .field,
 .jw [data-jw-section="film"] .fs .field,
 .fs .input,
@@ -443,7 +474,7 @@ html:has(.fs) body,
 .jw [data-jw-section="film"] .fs textarea.field,
 .fs select.field,
 .jw [data-jw-section="film"] .fs select.field {
-  background: rgba(10, 9, 12, 0.7);
+  background: rgba(5, 8, 19, 0.7);
   color: var(--fs-ink);
   border: 1px solid var(--fs-line-2);
   border-radius: 14px;
@@ -477,7 +508,7 @@ html:has(.fs) body,
 .fs .bg-gold\/10,
 .jw [data-jw-section="film"] .fs .bg-gold\/10 { background: var(--fs-ember-soft) !important; }
 .fs .border-gold,
-.jw [data-jw-section="film"] .fs .border-gold { border-color: rgba(255, 122, 69, 0.6); }
+.jw [data-jw-section="film"] .fs .border-gold { border-color: rgba(47, 116, 255, 0.6); }
 .fs .border-teal,
 .jw [data-jw-section="film"] .fs .border-teal { border-color: rgba(90, 215, 163, 0.5); }
 .fs .text-teal,
@@ -491,15 +522,15 @@ html:has(.fs) body,
 .fs .border-red-500,
 .jw [data-jw-section="film"] .fs .border-red-500 { border-color: rgba(217, 48, 79, 0.5); }
 .fs .bg-\[\#0b1d47\],
-.jw [data-jw-section="film"] .fs .bg-\[\#0b1d47\] { background: var(--fs-ember) !important; color: #1a0d06 !important; }
+.jw [data-jw-section="film"] .fs .bg-\[\#0b1d47\] { background: var(--fs-ember) !important; color: #ffffff !important; }
 .fs .text-\[\#1f63f0\],
 .jw [data-jw-section="film"] .fs .text-\[\#1f63f0\],
 .fs .border-\[\#1f63f0\],
-.jw [data-jw-section="film"] .fs .border-\[\#1f63f0\] { color: var(--fs-ember-2) !important; border-color: rgba(255, 122, 69, 0.5) !important; }
+.jw [data-jw-section="film"] .fs .border-\[\#1f63f0\] { color: var(--fs-ember-2) !important; border-color: rgba(47, 116, 255, 0.5) !important; }
 .fs .bg-\[\#eef3ff\],
 .jw [data-jw-section="film"] .fs .bg-\[\#eef3ff\] { background: var(--fs-ember-soft) !important; }
 .fs .bg-page\/90,
-.jw [data-jw-section="film"] .fs .bg-page\/90 { background: rgba(10, 9, 12, 0.85) !important; }
+.jw [data-jw-section="film"] .fs .bg-page\/90 { background: rgba(5, 8, 19, 0.85) !important; }
 .fs .accent-gold,
 .jw [data-jw-section="film"] .fs .accent-gold,
 .fs input[type="range"],
@@ -511,29 +542,29 @@ html:has(.fs) body,
 .fs .film-option,
 .jw [data-jw-section="film"] .fs .film-option {
   color: var(--fs-ink);
-  background: linear-gradient(160deg, #221d27, #120f15 70%);
+  background: linear-gradient(160deg, #142048, #0a1226 70%);
   border: 1px solid var(--fs-line);
   box-shadow: 0 24px 50px -28px rgba(0, 0, 0, 0.9);
 }
 .fs .film-option[data-tone="gold"],
-.jw [data-jw-section="film"] .fs .film-option[data-tone="gold"] { background: linear-gradient(160deg, #ff9a6c, var(--fs-ember) 55%, #c84f20); color: #1a0d06; }
+.jw [data-jw-section="film"] .fs .film-option[data-tone="gold"] { background: linear-gradient(160deg, #5b9bff, var(--fs-ember) 55%, #123fae); color: #ffffff; }
 .fs .film-option[data-tone="light"],
-.jw [data-jw-section="film"] .fs .film-option[data-tone="light"] { background: linear-gradient(160deg, #2a2430, #17141b); color: var(--fs-ink); }
+.jw [data-jw-section="film"] .fs .film-option[data-tone="light"] { background: linear-gradient(160deg, #1a2a5a, #0d1430); color: var(--fs-ink); }
 .fs .film-option::after,
-.jw [data-jw-section="film"] .fs .film-option::after { background: repeating-linear-gradient(90deg, rgba(255, 244, 230, 0.25) 0 10px, transparent 10px 20px) center / 100% 5px no-repeat, rgba(0, 0, 0, 0.25); }
+.jw [data-jw-section="film"] .fs .film-option::after { background: repeating-linear-gradient(90deg, rgba(190, 215, 255, 0.25) 0 10px, transparent 10px 20px) center / 100% 5px no-repeat, rgba(0, 0, 0, 0.25); }
 .fs .film-option[data-active="true"],
 .jw [data-jw-section="film"] .fs .film-option[data-active="true"] { outline-color: var(--fs-ember); }
 
 /* سجاد's button and panel on the stage */
 .fs .sajjad-fab,
 .jw [data-jw-section="film"] .fs .sajjad-fab {
-  background: linear-gradient(135deg, #2a2430, #151218);
-  border: 1px solid rgba(255, 122, 69, 0.55);
+  background: linear-gradient(135deg, #1a2a5a, #151218);
+  border: 1px solid rgba(47, 116, 255, 0.55);
   box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.8), 0 0 0 4px var(--fs-ember-soft);
   animation: none;
 }
 .fs .sajjad-panel,
-.jw [data-jw-section="film"] .fs .sajjad-panel { background: linear-gradient(180deg, #17141b, #0f0d12); color: var(--fs-ink); box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.9); }
+.jw [data-jw-section="film"] .fs .sajjad-panel { background: linear-gradient(180deg, #0d1430, #070b1a); color: var(--fs-ink); box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.9); }
 .fs .sajjad-panel .border-black\/10,
 .jw [data-jw-section="film"] .fs .sajjad-panel .border-black\/10 { border-color: var(--fs-line); }
 .fs .sajjad-panel .bg-white,
@@ -547,15 +578,15 @@ html:has(.fs) body,
 .fs .sajjad-panel .bg-\[\#f0fdf4\],
 .jw [data-jw-section="film"] .fs .sajjad-panel .bg-\[\#f0fdf4\],
 .fs .sajjad-panel .bg-\[\#eef3ff\],
-.jw [data-jw-section="film"] .fs .sajjad-panel .bg-\[\#eef3ff\] { background: rgba(255, 244, 230, 0.05) !important; }
+.jw [data-jw-section="film"] .fs .sajjad-panel .bg-\[\#eef3ff\] { background: rgba(190, 215, 255, 0.05) !important; }
 .fs .sajjad-panel .shadow-sm,
 .jw [data-jw-section="film"] .fs .sajjad-panel .shadow-sm { box-shadow: none; border: 1px solid var(--fs-line); }
 .fs .sajjad-panel .bg-\[\#e2a72c\]\/20,
 .jw [data-jw-section="film"] .fs .sajjad-panel .bg-\[\#e2a72c\]\/20 { background: var(--fs-ember-soft) !important; }
 .fs .sajjad-panel .border-\[\#e2a72c\],
-.jw [data-jw-section="film"] .fs .sajjad-panel .border-\[\#e2a72c\] { border-color: rgba(255, 122, 69, 0.5); }
+.jw [data-jw-section="film"] .fs .sajjad-panel .border-\[\#e2a72c\] { border-color: rgba(47, 116, 255, 0.5); }
 .fs .sajjad-panel .bg-black\/5,
-.jw [data-jw-section="film"] .fs .sajjad-panel .bg-black\/5 { background: rgba(255, 244, 230, 0.04) !important; }
+.jw [data-jw-section="film"] .fs .sajjad-panel .bg-black\/5 { background: rgba(190, 215, 255, 0.04) !important; }
 .fs .sajjad-panel .border-\[\#dc2626\],
 .jw [data-jw-section="film"] .fs .sajjad-panel .border-\[\#dc2626\] { border-color: rgba(217, 48, 79, 0.6); }
 .fs .sajjad-panel .text-\[\#dc2626\],
@@ -565,7 +596,7 @@ html:has(.fs) body,
 .fs .sajjad-panel .text-\[\#16a34a\],
 .jw [data-jw-section="film"] .fs .sajjad-panel .text-\[\#16a34a\] { color: var(--fs-mint); }
 .fs .sajjad-panel .bg-\[\#1f63f0\],
-.jw [data-jw-section="film"] .fs .sajjad-panel .bg-\[\#1f63f0\] { background: var(--fs-ember) !important; color: #1a0d06 !important; border-color: transparent !important; }
+.jw [data-jw-section="film"] .fs .sajjad-panel .bg-\[\#1f63f0\] { background: var(--fs-ember) !important; color: #ffffff !important; border-color: transparent !important; }
 
 /* ── «المكتبة»: a drawer at the end side, its items like a small conversation ── */
 .fs-drawer-back {
@@ -583,7 +614,7 @@ html:has(.fs) body,
   width: min(100%, 440px);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #17141b, #0f0d12);
+  background: linear-gradient(180deg, #0d1430, #070b1a);
   border-inline-start: 1px solid var(--fs-line);
   box-shadow: -30px 0 60px -30px rgba(0, 0, 0, 0.9);
   animation: fs-drawer 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -610,13 +641,13 @@ html:has(.fs) body,
   animation: fs-in 0.3s both;
 }
 .fs-lib-item:hover { background: var(--fs-glass-2); transform: translateX(-2px); }
-.fs-lib-item .thumb { width: 56px; height: 56px; border-radius: 10px; background: #0b0a0c; object-fit: cover; display: grid; place-items: center; font-size: 1.3rem; overflow: hidden; }
+.fs-lib-item .thumb { width: 56px; height: 56px; border-radius: 10px; background: #050813; object-fit: cover; display: grid; place-items: center; font-size: 1.3rem; overflow: hidden; }
 .fs-lib-item .thumb img, .fs-lib-item .thumb video { width: 100%; height: 100%; object-fit: cover; border-radius: 0; }
 .fs-lib-item b { display: block; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fs-lib-item small { display: block; font-size: 0.68rem; color: var(--fs-muted); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fs-lib-item .state { font-size: 0.62rem; font-weight: 900; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--fs-line); color: var(--fs-muted); }
 .fs-lib-item .state[data-s="approved"] { color: var(--fs-mint); border-color: rgba(90, 215, 163, 0.4); }
-.fs-lib-item .state[data-s="current"] { color: var(--fs-ember-2); border-color: rgba(255, 122, 69, 0.4); }
+.fs-lib-item .state[data-s="current"] { color: var(--fs-ember-2); border-color: rgba(47, 116, 255, 0.4); }
 .fs-lib-item .state[data-s="archived"] { color: var(--fs-faint); }
 .fs-lib-item .state[data-s="failed"] { color: #ff8da0; }
 .fs-lib-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -642,7 +673,7 @@ html:has(.fs) body,
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  background: #15121a;
+  background: #0d1430;
   border: 1px solid var(--fs-line-2);
   border-radius: 20px;
   animation: fs-in 0.3s both;
@@ -664,11 +695,11 @@ html:has(.fs) body,
   padding: 8px 10px;
   border-radius: 12px;
   border: 1px solid var(--fs-line);
-  background: rgba(10, 9, 12, 0.5);
+  background: rgba(5, 8, 19, 0.5);
   font-size: 0.8rem;
   cursor: pointer;
 }
-.fs-impact .pick[data-on="true"] { border-color: rgba(255, 122, 69, 0.5); background: var(--fs-ember-soft); }
+.fs-impact .pick[data-on="true"] { border-color: rgba(47, 116, 255, 0.5); background: var(--fs-ember-soft); }
 .fs-impact .keep { display: inline-block; margin: 2px; padding: 2px 9px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; color: var(--fs-mint); border: 1px solid rgba(90, 215, 163, 0.35); }
 
 /* ── the montage inside the stage: the takes played one after the other ── */
@@ -683,7 +714,7 @@ html:has(.fs) body,
 .fs-screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; border-radius: 0; transition: opacity 0.35s; }
 .fs-screen .label { position: absolute; inset-inline-start: 12px; inset-block-start: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); font-size: 0.72rem; font-weight: 800; color: #fff; }
 .fs-strip { display: flex; gap: 6px; overflow-x: auto; padding: 6px 2px; scrollbar-width: thin; }
-.fs-strip button { flex: 0 0 auto; width: 112px; border-radius: 10px; overflow: hidden; border: 2px solid transparent; background: #0b0a0c; text-align: start; }
+.fs-strip button { flex: 0 0 auto; width: 112px; border-radius: 10px; overflow: hidden; border: 2px solid transparent; background: #050813; text-align: start; }
 .fs-strip button[aria-current="true"] { border-color: var(--fs-ember); }
 .fs-strip video { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 0; display: block; }
 .fs-strip span { display: block; padding: 3px 6px; font-size: 0.66rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -706,8 +737,8 @@ html:has(.fs) body,
   text-decoration: none;
   border: 1px solid var(--fs-line);
   background:
-    radial-gradient(120% 70% at 80% 0%, rgba(255, 122, 69, 0.28), transparent 60%),
-    linear-gradient(170deg, #241e2a, #0f0d12 75%);
+    radial-gradient(120% 70% at 80% 0%, rgba(47, 116, 255, 0.28), transparent 60%),
+    linear-gradient(170deg, #14224a, #070b1a 75%);
   box-shadow: 0 26px 50px -28px rgba(0, 0, 0, 0.95);
   transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s;
   animation: fs-in 0.5s both;
@@ -717,9 +748,9 @@ html:has(.fs) body,
 .fs-poster .st { position: absolute; inset-block-start: 12px; inset-inline-end: 12px; font-size: 0.64rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--fs-line); }
 .fs-poster h3 { font-size: 1rem; font-weight: 900; line-height: 1.3; }
 .fs-poster p { font-size: 0.68rem; color: var(--fs-muted); font-weight: 700; }
-.fs-poster.new { background: linear-gradient(170deg, #ff9a6c, var(--fs-ember) 55%, #b94a1d); color: #1a0d06; border-color: transparent; }
-.fs-poster.new p { color: rgba(26, 13, 6, 0.75); }
-.fs-poster.series { background: radial-gradient(120% 70% at 80% 0%, rgba(217, 48, 79, 0.3), transparent 60%), linear-gradient(170deg, #26191f, #0f0d12 75%); }
+.fs-poster.new { background: linear-gradient(170deg, #5b9bff, var(--fs-ember) 55%, #0f3a9c); color: #ffffff; border-color: transparent; }
+.fs-poster.new p { color: rgba(255, 255, 255, 0.75); }
+.fs-poster.series { background: radial-gradient(120% 70% at 80% 0%, rgba(217, 48, 79, 0.3), transparent 60%), linear-gradient(170deg, #26191f, #070b1a 75%); }
 
 @media (prefers-reduced-motion: reduce) {
 .fs-room *,
