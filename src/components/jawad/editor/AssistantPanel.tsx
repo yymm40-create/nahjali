@@ -467,13 +467,11 @@ export default function AssistantPanel({
             run(placeMusic(a.id, q.at), { label: "موسيقى" });
           } else if (q.kind === "make" && q.plan) {
             const plan = q.plan;
-            if (plan.free) {
-              setBusy(`أبدأ أصنع «${plan.name}»…`);
-              await startMaking(projectId, plan);
-              setMsgs((m) => [...m, { role: "assistant", text: `بدأت أصنع «${plan.name}» بـ ${plan.generatorName}${plan.kind === "video" ? " (الفيديو ياخذ كم دقيقة)" : ""}؛ ينحط على التايملاين لحاله أول ما يخلص.` }]);
-            } else {
-              setMsgs((m) => [...m, { role: "assistant", text: `جاهز أصنع «${plan.name}» بـ ${plan.generatorName}.`, plans: [{ plan, state: "ask" }] }]);
-            }
+            // حيدرة → جواد: what the robot asks جواد to make is made at once, with no permission step (the price is
+            // told after). Only what the person asks جواد for directly, in his own form, waits for their «توليد».
+            setBusy(`أبدأ أصنع «${plan.name}»…`);
+            await startMaking(projectId, plan);
+            setMsgs((m) => [...m, { role: "assistant", text: `سلّمت الطلب لجواد وبدأ يصنع «${plan.name}» بـ ${plan.generatorName}${plan.free ? "" : ` (${plan.coins} نقدة)`}${plan.kind === "video" ? " (الفيديو ياخذ كم دقيقة)" : ""}؛ ينحط على التايملاين لحاله أول ما يخلص، ويظهر في «أعمالي».` }]);
           } else if (q.kind === "smart_mask") {
             // the subject's exact outline (followed through the clip), as a grading layer's window
             const f = findClip(tl, q.clipId);
