@@ -111,6 +111,8 @@ export default function Inspector({
   projectId,
   onSceneCut,
   onUpscale,
+  onSync,
+  syncing = false,
 }: {
   tl: Timeline;
   selected: string[];
@@ -133,6 +135,9 @@ export default function Inspector({
   projectId?: string;
   /** «التقطيع الذكي»: cuts a video clip where its shot changes; resolves with how many cuts were made */
   onSceneCut?: SceneCutRun;
+  /** «زامن الصوت»: lines the selected clips up by their sound */
+  onSync?: (ids: string[]) => void;
+  syncing?: boolean;
   /** «رفع الدقة»: the clip's video sent to be upscaled (720p/1080p → 4K) */
   onUpscale?: (assetId: string, target: "4k" | "1080p") => void;
 }) {
@@ -154,6 +159,14 @@ export default function Inspector({
         {rail && !projectView && <p className="rounded-xl bg-jw-accent/10 p-2.5 text-xs leading-5 text-jw-ink">👆 اختر مقطعًا في التايملاين أو على المعاينة، وتطلع إعداداته هنا.</p>}
         <h3 className="text-sm font-semibold">المشروع</h3>
         {selected.length > 1 && <p className="text-xs text-jw-muted">محدد {selected.length} مقاطع: تقدر تحذفها أو تقصها مرة وحدة.</p>}
+        {selected.length > 1 && onSync && (
+          <div className="space-y-1">
+            <button type="button" className="jw-btn jw-3d w-full text-xs" disabled={readOnly || syncing} onClick={() => onSync(selected)} title="يقارن صوت المقاطع ويحرّكها لين ينطبق صوتها على بعض (كاميرات وجوال ومايك)">
+              {syncing ? <span className="jw-spinner" /> : "🎯"} {syncing ? "أزامن الصوت…" : "زامن الصوت"}
+            </button>
+            <p className="text-[11px] leading-5 text-jw-faint">يثبّت أول مقطع، ويحرّك الباقي لين ينطبق صوتهم عليه.</p>
+          </div>
+        )}
         <div className="space-y-1.5">
           <span className="text-xs text-jw-muted">المقاس</span>
           <div className="grid grid-cols-2 gap-1.5">
