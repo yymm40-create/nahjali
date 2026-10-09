@@ -3,7 +3,30 @@ import type { NextConfig } from "next";
 // Shrine pictures approved in /admin/mahdi live in Supabase's public «mahdi-shrines» folder
 const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL) : null;
 
+// Security headers on every response (the browser's own protections). No script rules here: the site loads scripts and
+// models from several places (MediaPipe, fonts, Supabase), and a script policy needs testing page by page first.
+const prod = process.env.NODE_ENV === "production";
+const SECURITY_HEADERS = [
+  // no other site may show ours inside a frame (clickjacking); <base> and plugins can't be injected
+  { key: "Content-Security-Policy", value: `frame-ancestors 'self'; base-uri 'self'; object-src 'none'${prod ? "; upgrade-insecure-requests" : ""}` },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  // a file is read as what it says it is (an uploaded "picture" can't run as a page)
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  // other sites get our address without the page's path or its query
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // camera and microphone only for our own pages (stories, recording a voice); nothing else asks for the device
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), browsing-topics=()" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+  // HTTPS always, for two years (the domains and their subdomains)
+  ...(prod ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }] : []),
+];
+
 const nextConfig: NextConfig = {
+  // no «X-Powered-By: Next.js»: nothing told about what runs the site
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+  },
   // the build the pages were made from: a page kept open compares it with /api/version («في نسخة جديدة»)
   env: { NEXT_PUBLIC_BUILD: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ?? "dev" },
   images: {
