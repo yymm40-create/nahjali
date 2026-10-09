@@ -4,6 +4,7 @@ import { claudeTrouble } from "@/lib/film/anthropic";
 import { requireDesignerUser } from "@/lib/designer/access";
 import { say } from "@/lib/designer/chat";
 import { DESIGNER } from "@config/designer";
+import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -28,6 +29,8 @@ export const POST = handle(async (req: Request) => {
     if (e instanceof Error && e.message === "chat not found") throw new UserError("ما لقينا هذي المحادثة.", 404);
     if (e instanceof Error && e.message === "empty message") throw new UserError("اكتب رسالتك.");
     console.error("designer chat", e);
-    throw new UserError("كاظم ما قدر يرد الحين؛ جرّب بعد شوي.", 502);
+    const raw = e instanceof Error ? e.message : typeof e === "object" && e ? JSON.stringify(e) : String(e);
+    if (/designer_(chats|kv|files)|PGRST205|42P01|does not exist|schema cache/i.test(raw)) throw new UserError("قسم «المصمم الذكي» ما انضاف للحين في قاعدة البيانات: شغّل ملف SQL رقم 0044 في Supabase.", 503);
+    throw new UserError(`كاظم ما قدر يرد الحين؛ جرّب بعد شوي.${isAdmin(user.email) ? ` (تفصيل للرئيس: ${raw.slice(0, 300)})` : ""}`, 502);
   }
 });
