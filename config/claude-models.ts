@@ -67,7 +67,7 @@ export const CLAUDE_MODELS: readonly ClaudeModel[] = [
     rates: { input: 0.1, cacheWrite5m: 0.125, cacheWrite1h: 0.2, cacheRead: 0.01, output: 0.5 },
     longAbove: 100_000,
     longRates: { input: 0.5, cacheWrite5m: 0.625, cacheWrite1h: 1, cacheRead: 0.05, output: 2.5 },
-    effort: false,
+    effort: true,
   },
 ];
 
