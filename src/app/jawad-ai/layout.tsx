@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { gamesAllowed, getVisibility } from "@/lib/games/access";
 import { contentAllowed, getVisibility as contentVisibility } from "@/lib/content/access";
 import { designerAllowed, getVisibility as designerVisibility } from "@/lib/designer/access";
+import { photoAllowed, getVisibility as photoVisibility } from "@/lib/photo/access";
 import { jawadSession, jawadVisibleTo, freeFor } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import InDevelopment from "@/components/jawad/InDevelopment";
@@ -45,19 +46,21 @@ export default async function JawadLayout({ children }: { children: React.ReactN
   // «صانع الألعاب» shows in the bar by the owner's switch (/admin/games); the owner sees it hidden while it is "owner" only
   // (and «صانع المحتوى» the same way, by its switch in /admin/content)
   // (and «المصمم الذكي» by its switch in /admin/designer)
-  const [gamesOk, gamesVis, contentOk, contentVis, designerOk, designerVis] = await Promise.all([
+  const [gamesOk, gamesVis, contentOk, contentVis, designerOk, designerVis, photoOk, photoVis] = await Promise.all([
     user ? gamesAllowed(user.email) : false,
     owner ? getVisibility() : "all",
     user ? contentAllowed(user.email) : false,
     owner ? contentVisibility() : "all",
     user ? designerAllowed(user.email) : false,
     owner ? designerVisibility() : "all",
+    user ? photoAllowed(user.email) : false,
+    owner ? photoVisibility() : "all",
   ]);
   const bar = {
     ...rt,
     sections: rt.sections
-      .filter((s) => (s.implementation !== "games" || gamesOk) && (s.implementation !== "content" || contentOk) && (s.implementation !== "designer" || designerOk))
-      .map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s.implementation === "content" ? { ...s, enabled: contentVis !== "owner" } : s.implementation === "designer" ? { ...s, enabled: designerVis !== "owner" } : s)),
+      .filter((s) => (s.implementation !== "games" || gamesOk) && (s.implementation !== "content" || contentOk) && (s.implementation !== "designer" || designerOk) && (s.implementation !== "photo" || photoOk))
+      .map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s.implementation === "content" ? { ...s, enabled: contentVis !== "owner" } : s.implementation === "designer" ? { ...s, enabled: designerVis !== "owner" } : s.implementation === "photo" ? { ...s, enabled: photoVis !== "owner" } : s)),
   };
   return (
     <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }} suppressHydrationWarning>

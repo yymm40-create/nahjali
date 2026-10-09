@@ -32,6 +32,7 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
       { href: "/admin/film", icon: "🎬", label: "صانع الأفلام الذكي" },
       { href: "/admin/content", icon: "✍️", label: "صانع المحتوى" },
       { href: "/admin/designer", icon: "🎨", label: "المصمم الذكي" },
+      { href: "/admin/photo", icon: "📸", label: "زهراء فوتو ماستر" },
       { href: "/admin/booklet", icon: "📖", label: "كتيب نهج علي" },
     ],
   },
