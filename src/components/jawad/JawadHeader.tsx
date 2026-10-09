@@ -8,6 +8,7 @@ import CoinBalance from "./CoinBalance";
 import { SoundToggle } from "@/components/UiSounds";
 import LayoutToggle from "./LayoutToggle";
 import LoginLink from "./LoginLink";
+import ReportButton from "./ReportButton";
 import SectionsBar from "./SectionsBar";
 
 /** JAWAD AI's compact header: the identity (back to JAWAD AI's home), a way back to نهج علي's home, the balance and the account; then the sections bar. */
@@ -27,6 +28,7 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           </Link>
           <div className="flex items-center gap-2">
             {/* on a computer: the whole width, or a phone-wide column */}
+            {owner && <ReportButton />}
             {!preview && <LayoutToggle />}
             <SoundToggle />
             {user ? (
