@@ -1,7 +1,7 @@
-// «التعديل الذكي» — the original's locks: before the new prompt is written, Claude reads the PREVIOUS prompt (and, for
-// a film's clip, سجاد's brief of the film) and lists what must not move — the look, each character's identity and
-// wardrobe, the place, the camera, the light, the spoken lines — minus what the person asked to change. The new
-// prompt is written with them and checked against them (each lock's check words must be in it). Pure, no I/O.
+// «التعديل الذكي» — the original's locks: what must not move — the look, each character's identity and wardrobe, the
+// place, the camera, the light, the spoken lines — minus what the person asked to change. جواد declares them in the
+// same answer as the prompt he writes (he is the one who decides what stays), and the prompt is checked against them
+// (each lock's check words must be in it). Pure, no I/O.
 
 export const LOCK_KINDS = ["style", "character", "wardrobe", "place", "camera", "lighting", "dialogue", "sound", "timing", "other"] as const;
 export type LockKind = (typeof LOCK_KINDS)[number];
@@ -16,9 +16,12 @@ export interface EditLock {
 
 export const LOCKS_MAX = 14;
 
-export const LOCKS_SYSTEM = `You prepare a JAWAD AI «smart edit» of a generated video or picture. You run in the background; the user never sees this. Answer only with the JSON object.
-
-You get the PREVIOUS PROMPT the original was made with, the user's notes on what to change, and sometimes the film's brief from «سجاد» (the story consultant: story, characters, look, decisions). List the LOCKS: the important constraints of the original that the new prompt MUST keep, so the edit looks like the same work — at most ${LOCKS_MAX}, the most important first:
+/**
+ * What جواد is asked to declare, in the same answer as the prompt, about what his prompt carries over from the original
+ * (no separate pass before it: the one who writes the prompt is the one who decides what stays). Each declared lock is
+ * then checked against the prompt by its key words.
+ */
+export const KEPT_RULES = `Besides the prompt, fill "kept": the LOCKS — the important constraints of the ORIGINAL that your prompt carries over, so the edit looks like the same work (at most ${LOCKS_MAX}, the most important first):
 - style: the visual style / look / render (e.g. "Pixar-like 3D animation, soft pastel palette").
 - character: each character's identity — the @name and how they look (age, face, hair, build).
 - wardrobe: what each one wears, colours included.
@@ -29,10 +32,10 @@ You get the PREVIOUS PROMPT the original was made with, the user's notes on what
 - sound: the ambience or music when the prompt sets it.
 - timing: the order of the action beats.
 - other: anything else the brief or the prompt insists on (an aspect, a rule of the film).
-Rules:
-- Only what the previous prompt or the brief actually says. Never invent.
-- DROP every lock the user asked to change (their notes win), and every part of a lock they changed.
-- "keep" is one short concrete English sentence. "check" is 1–3 distinctive words or short phrases (2–4 words) copied EXACTLY from the previous prompt (same spelling and case-insensitive match), that any faithful new prompt would contain — names, colours, nouns; for dialogue, a few words of the line itself. Never a whole sentence, never a word the user asked to change.`;
+Rules for "kept":
+- Only what the previous prompt or the film's brief actually says. Never invent.
+- Leave out every lock the person asked to change (their words win), and every part of a lock they changed.
+- "keep" is one short concrete English sentence. "check" is 1–3 distinctive words or short phrases (2–4 words) copied EXACTLY from the previous prompt (same spelling, case-insensitive) that your new prompt contains — names, colours, nouns; for dialogue, a few words of the line itself. Never a whole sentence, never a word the person asked to change.`;
 
 export const LOCKS_SCHEMA = {
   type: "object",

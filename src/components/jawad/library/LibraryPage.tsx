@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
-import { fmtSar, LIBRARY_ADDON } from "@config/coins";
+import { LIBRARY_ADDON } from "@config/coins";
 import { LIBRARY_KIND, LIBRARY_LIMIT, type LibraryKind } from "@config/jawad/library";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { probeFile, putWithProgress } from "../studio/upload";
 import { Play, VoiceStudio, type Voice } from "../studio/VoicePicker";
+import Riyal from "@/components/Riyal";
 
 export interface LibraryItem {
   id: string;
@@ -252,7 +253,7 @@ function Offer() {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="flex items-center gap-2 font-semibold"><Icon name="lock" size={16} className="text-jw-accent" /> «{LIBRARY_ADDON.name}» إضافة باشتراك</h2>
         <p className="hide-in-app text-2xl font-bold">
-          <span dir="ltr">{LIBRARY_ADDON.monthlySar}</span> <span className="text-sm font-normal text-jw-muted">ريال شهريًا</span>
+          <span className="inline-flex items-center gap-1"><SmartCoin size={20} /><span dir="ltr">{LIBRARY_ADDON.monthlySar}</span></span> <span className="text-sm font-normal text-jw-muted">شهريًا</span>
         </p>
       </div>
       <ul className="grid gap-1.5 text-sm sm:grid-cols-2">
@@ -377,7 +378,7 @@ function AddDialog({ kind, how, owner, onClose, onAdded, onMaking }: { kind: Lib
             <Icon name="sparkles" size={16} />
             {busy ? "لحظة…" : quote == null ? "احسب السعر" : (
               <>
-                اصنعها <span className="inline-flex items-center gap-1">· <span dir="ltr">{fmtSar(quote)}</span> ر.س <SmartCoin size={14} /></span>
+                اصنعها <span className="inline-flex items-center gap-1">· <Riyal halalas={quote} size={14} /></span>
                 {owner && <span className="text-[11px] opacity-80">(بلا خصم للمالك)</span>}
               </>
             )}

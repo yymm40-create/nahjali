@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
-import { fmtSar } from "@config/coins";
 import { LIBRARY_ADDON } from "@config/coins";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { probeFile, putWithProgress } from "./upload";
+import Riyal from "@/components/Riyal";
 
 export interface Voice {
   id: string;
@@ -196,7 +196,7 @@ export function LibraryLock({ what }: { what: string }) {
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-jw-accent/15 text-jw-accent"><Icon name="lock" size={16} /></span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{what}</span>
-        <span className="block text-[11px] text-jw-muted">ضمن «{LIBRARY_ADDON.name}»<span className="hide-in-app"> · إضافة بـ {LIBRARY_ADDON.monthlySar} ريال شهريًا</span></span>
+        <span className="block text-[11px] text-jw-muted">ضمن «{LIBRARY_ADDON.name}»<span className="hide-in-app"> · إضافة بـ <SmartCoin size={12} className="inline align-middle" />{LIBRARY_ADDON.monthlySar} شهريًا</span></span>
       </span>
       <Icon name="chevronLeft" size={16} className="text-jw-faint" />
     </Link>
@@ -472,7 +472,7 @@ export function VoiceStudio({ mode, coins, provider = "elevenlabs", onClose, onS
   const price = (n: number | null) =>
     n === null ? "السعر غير محدد بعد" : n === 0 ? "" : (
       <span className="inline-flex items-center gap-1">
-        · <span dir="ltr">{fmtSar(n)}</span> ر.س <SmartCoin size={14} />
+        · <Riyal halalas={n} size={14} />
       </span>
     );
 

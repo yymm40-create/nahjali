@@ -4,10 +4,11 @@
 //            (video: Claude writing the prompt + a fixed fee; image: a fixed fee).
 //   click ─► everything is checked again; frames of the original video are stored; ONE database call creates the job
 //            and takes its coins (or refuses). The job carries `inputs.edit` and an empty prompt.
-//   run   ─► runJob calls prepareEdit first: Claude writes the corrected prompt (the Super Director for videos), then
-//            the job is sent like any other. If Claude fails, the job fails and every coin comes back.
+//   run   ─► runJob calls prepareEdit first: جواد writes the final prompt — he gets the person's own words untouched and
+//            the whole shot (previous prompt, frames, references, continuity, the film's brief) and decides — then the
+//            job is sent like any other. If he fails, the job fails and every coin comes back.
 
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { sajjadBrief, tellSajjad } from "@/lib/film/sajjad";
 import { after } from "next/server";
 import { randomUUID } from "crypto";
@@ -19,15 +20,15 @@ import { coinsOf, EDIT_CLAUDE_KEY, EDIT_CLAUDE_USD, EDIT_FEE_KEY, generatorById 
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefMeta, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
-import { LOCKS_SCHEMA, LOCKS_SYSTEM, locksForSajjad, locksText, missingLocks, missingText, readLocks, type EditLock } from "../edit-locks";
+import { KEPT_RULES, LOCKS_SCHEMA, locksForSajjad, missingLocks, missingText, readLocks, type EditLock } from "../edit-locks";
 import { defaultRefName, findMentions, promptForModel, sameName } from "../mentions";
-import { CONTINUITY, continuityRanges, cutRange, EDIT_LIMITS, IMAGE_EDIT_MODES, readContinuity, VIDEO_EDIT_MODES, type ContinuityRange, type EditMode, type EditRange } from "../smart-edit";
+import { CONTINUITY, continuityRanges, cutRange, EDIT_LIMITS, IMAGE_EDIT_MODES, readContinuity, readEditSettings, VIDEO_EDIT_MODES, type ContinuityRange, type EditMode, type EditRange } from "../smart-edit";
 import { directorRun, EDIT_TASK, settingsText } from "./director";
 import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { isUuid, refsFor, uploadFromBuffer, uploadFromOutput } from "./uploads";
 import { runJob, type JobRow } from "./jobs";
 import { ProviderError } from "./providers/common";
-import { CONTINUITY_METHOD, checkEditPrompt, editModelsBrief, timingBlock, type EditModel } from "@config/jawad/smart-edit-training";
+import { CONTINUITY_METHOD, JAWAD_EDIT_IDENTITY, checkEditPrompt, editModelsBrief, personWordsText, shotRecordText, timingBlock, type EditModel } from "@config/jawad/smart-edit-training";
 
 import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
@@ -48,6 +49,8 @@ export interface EditInputs {
   locks?: EditLock[];
   /** Set once the corrected prompt is written. */
   done?: boolean;
+  /** Who decided the final prompt: جواد himself, from the person's own words and the whole shot. */
+  writer?: "jawad";
   claudeUsd?: number;
 }
 
@@ -69,6 +72,8 @@ export interface EditBody {
   expectedCoins?: unknown;
   /** The generator to make the edit with (another one of the same kind may be picked; default: the original's). */
   generatorId?: unknown;
+  /** The generation options chosen again for this edit (resolution, sound, seconds of a whole clip…): checked by readEditSettings. */
+  settings?: unknown;
   /** Only the price, nothing is made. */
   quote?: unknown;
 }
@@ -144,7 +149,7 @@ export function trustedContinuity(found: RefMeta[], cont: ContinuityRange[], dim
 function editLines(def: GeneratorDef, table: Record<string, number | null>) {
   const video = def.output === "video";
   const keys = video ? [EDIT_CLAUDE_KEY, EDIT_FEE_KEY] : [EDIT_FEE_KEY];
-  const labels: Record<string, string> = { [EDIT_CLAUDE_KEY]: "Claude يكتب البرومبت المعدّل", [EDIT_FEE_KEY]: "التعديل الذكي" };
+  const labels: Record<string, string> = { [EDIT_CLAUDE_KEY]: "جواد يكتب البرومبت المعدّل", [EDIT_FEE_KEY]: "التعديل الذكي" };
   const lines = keys.map((k) => ({ label: labels[k], centi: table[k] }));
   return lines.every((l) => l.centi != null) ? (lines as { label: string; centi: number }[]) : null;
 }
@@ -213,7 +218,9 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   const cont: ContinuityRange[] = mode === "parts" ? (sent ?? continuityRanges(cut!, videoSec)) : [];
 
   // The new job: same generator and settings; its references depend on the kind of edit
-  const settings: Settings = { ...(source.inputs.settings ?? {}) };
+  // the original's settings, then what the person chose for this edit (resolution, sound, the whole clip's seconds…): the
+  // same options the generation had, so the price is counted the same way; they go to جواد with the rest of the request
+  const settings: Settings = { ...(source.inputs.settings ?? {}), ...readEditSettings(def, b.settings, mode) };
   let refStyle: RefStyle = source.inputs.refStyle ?? "none";
   let meta: (RefMeta & { name: string })[] = [];
   const named = (m: RefMeta[], names: (string | undefined)[]) => {
@@ -358,7 +365,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
   });
   if (error) {
     const msg = String(error.message ?? "");
-    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التعديل يحتاج ${fmtSar(final.coins)} ر.س.`, 402);
+    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التعديل يحتاج ${coinStr(final.coins)}.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
     throw new Error(`إنشاء العمل: ${msg}`);
   }
@@ -375,7 +382,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
 
 // ───────────────────────────── the corrected prompt ─────────────────────────────
 
-const IMAGE_SYSTEM = `You write prompts for OpenAI's GPT Image 2 inside the JAWAD AI image studio. You run in the background; the user never sees this exchange. Answer only with the JSON object {"prompt": "..."}.
+const IMAGE_SYSTEM = `In the JAWAD AI image studio you write the prompt for OpenAI's GPT Image 2. You run in the background; the person never sees this exchange. Answer only with the JSON object {"prompt": "...", "kept": [...]}.
 
 The user made an image with the PREVIOUS PROMPT and settings given in the message; that result is attached as @result. They then wrote, precisely, what to change.
 
@@ -388,7 +395,7 @@ Rules:
 - At most 1,500 characters. Concrete and visual; no explanations, no alternatives, no lists of options.
 - Do not add anything the user did not ask for. Never invent a reference or a name.`;
 
-const IMAGE_SCHEMA = { type: "object", properties: { prompt: { type: "string" } }, required: ["prompt"], additionalProperties: false };
+const IMAGE_SCHEMA = { type: "object", properties: { prompt: { type: "string" }, kept: LOCKS_SCHEMA.properties.locks }, required: ["prompt", "kept"], additionalProperties: false };
 
 async function signed(paths: string[]) {
   if (!paths.length) return [];
@@ -442,30 +449,11 @@ function editModelOf(edit: EditInputs, videoSec: number, names: string[], locks:
 }
 
 /**
- * Step one of every edit: the original's locks. Claude reads the previous prompt, the person's notes and — for a
- * film's clip — سجاد's brief of the film, and lists what must not move. Never fails the edit: without locks the prompt
- * is written as before.
- */
-async function extractLocks(previous: string, asked: string, film: JobRow["inputs"]["film"], frames: string[]): Promise<{ locks: EditLock[]; usd: number }> {
-  try {
-    const brief = film?.projectId ? await sajjadBrief({ filmProjectId: film.projectId }) : null;
-    const parts: ClaudePart[] = [
-      { type: "text", text: `PREVIOUS PROMPT:\n<<<\n${previous}\n>>>` },
-      ...(brief ? [{ type: "text" as const, text: `سجاد's brief of the film (story, characters, look, decisions — what this clip belongs to):\n<<<\n${brief.slice(0, 14_000)}\n>>>` }] : []),
-      ...frames.slice(0, 3).flatMap((url) => [{ type: "text" as const, text: "A frame of the original (to see what the prompt produced):" }, { type: "image" as const, url }]),
-      { type: "text", text: `The user's notes — what they want CHANGED (drop these from the locks):\n${asked || "—"}` },
-    ];
-    const r = await callClaudeJson<unknown>({ system: LOCKS_SYSTEM, turns: [{ role: "user", content: parts }], schema: LOCKS_SCHEMA, maxTokens: 4000, effort: "low" });
-    return { locks: readLocks(r.data, previous), usd: claudeCost(r.usage) };
-  } catch (e) {
-    console.warn("smart edit locks", e instanceof Error ? e.message : e);
-    return { locks: [], usd: 0 };
-  }
-}
-
-/**
- * Before an edit job is sent: Claude writes the corrected prompt from the user's notes, the previous prompt and what
- * was really made. Videos use the Super Director with the editing task; images a focused prompt writer.
+ * Before an edit job is sent: جواد writes the final prompt. The request reaches him as it is — the person's own words,
+ * untouched — with the whole shot (the previous prompt as written and as the generator got it, the settings, the frames,
+ * the references, the continuity pieces and sound, the film's brief from سجاد). He decides, in ONE answer, the prompt
+ * and the locks he carries over; nothing writes before him and nothing rewrites after him (the website's mechanical
+ * rules only send a fault back to him). Videos use the Super Director's craft as his own skill; images a focused one.
  */
 export async function prepareEdit(job: JobRow): Promise<JobRow> {
   const edit = job.inputs.edit as EditInputs;
@@ -480,26 +468,21 @@ export async function prepareEdit(job: JobRow): Promise<JobRow> {
     const meta = found.meta.map((m, i) => ({ ...m, name: job.refs[i].name ?? `${m.kind}${i + 1}` }));
     const names = meta.map((m) => m.name);
     const previous = source.inputs.modelPrompt && source.inputs.modelPrompt !== source.prompt ? `${source.prompt}\n\n(As the generator received it: ${source.inputs.modelPrompt})` : source.prompt;
-    const asked = [
-      edit.notes ? `What went wrong and what to change:\n<<<\n${edit.notes}\n>>>` : "",
-      ...edit.ranges.map((r) => `- From ${r.from.toFixed(1)} s to ${r.to.toFixed(1)} s${r.note ? `: ${r.note}` : ""}`),
-    ].filter(Boolean).join("\n");
-
     let prompt: string;
     let usd = 0;
-    // the original's locks first («SAME» edits the picture itself, so nothing else can move there anyway)
+    let locks: EditLock[] = [];
+    // the person's own words, untouched, and the whole shot's record (the film's brief too: it is for him, not for a go-between)
+    const brief = source.inputs.film?.projectId ? await sajjadBrief({ filmProjectId: source.inputs.film.projectId }).catch(() => null) : null;
+    const words = personWordsText(edit.notes, edit.ranges);
     const frameUrls = def.output === "video" ? await signed(edit.frames.map((f) => f.path)) : [];
-    const lockFrames = def.output === "video" ? frameUrls.filter((u): u is string => Boolean(u)) : edit.mode === "full" && out ? (await signed([out.storage_path])).filter((u): u is string => Boolean(u)) : [];
-    const { locks, usd: lockUsd } = edit.mode === "same" ? { locks: [], usd: 0 } : await extractLocks(previous, asked, source.inputs.film, lockFrames);
-    const lockPart: ClaudePart[] = locks.length ? [{ type: "text", text: locksText(locks) }] : [];
-    const lockCheck = (p: string) => {
-      const miss = missingLocks(p, locks);
+    const lockCheck = (p: string, kept: EditLock[]) => {
+      const miss = missingLocks(p, kept);
       return miss.length ? [missingText(miss)] : [];
     };
     if (def.output === "video") {
       const s = job.inputs.settings;
       const videoSec = (Number(out?.duration_ms) || Number(source.inputs.settings.duration) * 1000) / 1000;
-      const model = edit.mode === "parts" ? editModelOf(edit, videoSec, names, locks) : null;
+      const model = edit.mode === "parts" ? editModelOf(edit, videoSec, names, []) : null;
       const task =
         edit.mode === "parts"
           ? `Mode: ONLY A PART is regenerated. The part from ${edit.cut!.start.toFixed(1)} s to ${edit.cut!.end.toFixed(1)} s of the original video is replaced by a new ${edit.cut!.seconds}-second clip, cut in so that nobody can see the joins.
@@ -507,7 +490,7 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
           : "Mode: the WHOLE clip is made again as a fresh generation, with the same settings and references (the old video is not sent to the generator).";
       const parts: ClaudePart[] = [
         { type: "text", text: settingsText(def, s, job.mode, meta) },
-        { type: "text", text: `${task}\n\nPREVIOUS PROMPT (the ideas to keep; the old video was made with it):\n<<<\n${previous}\n>>>\n\nOriginal video: ${((Number(out?.duration_ms) || Number(source.inputs.settings.duration) * 1000) / 1000).toFixed(1)} s, settings ${JSON.stringify(source.inputs.settings)}.` },
+        { type: "text", text: `${task}\n\n${shotRecordText({ previous, settings: source.inputs.settings, videoSec, filmBrief: brief })}` },
       ];
       edit.frames.forEach((f, i) => {
         if (frameUrls[i]) parts.push({ type: "text", text: `Frame of the old video at ${f.t.toFixed(1)} s (for your understanding only):` }, { type: "image", url: frameUrls[i]! });
@@ -517,11 +500,12 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
         const m = meta[found.rows.indexOf(r)];
         if (refUrls[i]) parts.push({ type: "text", text: `@${m.name}:` }, { type: "image", url: refUrls[i]! });
       });
-      parts.push(...lockPart, { type: "text", text: `What the user wants different (build it into the new prompt as simply how the shot is; never mention the old video or what was wrong):\n${asked}` });
-      // the continuity checker reads the prompt before it goes (what is missing is sent back to the writer)
-      const r = await directorRun(EDIT_TASK, parts, names, (p) => [...lockCheck(p), ...(model ? checkEditPrompt(p, model).map((x) => x.text) : [])]);
+      parts.push({ type: "text", text: KEPT_RULES }, { type: "text", text: words });
+      // his own declared locks and the continuity checker read the prompt before it goes (what is missing is sent back to him)
+      const r = await directorRun(EDIT_TASK, parts, names, (p, kept) => [...lockCheck(p, kept), ...(model ? checkEditPrompt(p, model).map((x) => x.text) : [])], { identity: JAWAD_EDIT_IDENTITY, keep: { previous } });
       prompt = r.prompt;
       usd = r.usd;
+      locks = r.kept;
     } else {
       const [resultUrl] = await signed(out ? [out.storage_path] : []);
       const parts: ClaudePart[] = [
@@ -531,7 +515,7 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
             `Mode: ${edit.mode === "same" ? "SAME (edit the same image)" : "FULL (make the image again)"}`,
             `Settings: ${JSON.stringify(job.inputs.settings)}`,
             edit.mode === "full" ? (meta.length ? `References sent to the generator: ${names.map((n) => `@${n}`).join(", ")}` : "References sent to the generator: none.") : "",
-            `PREVIOUS PROMPT:\n<<<\n${previous}\n>>>`,
+            shotRecordText({ previous, settings: source.inputs.settings, filmBrief: brief }),
           ].filter(Boolean).join("\n\n"),
         },
       ];
@@ -540,18 +524,22 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
         const refUrls = await signed(found.rows.slice(0, 8).map((r) => r.storage_path));
         found.rows.slice(0, 8).forEach((_, i) => refUrls[i] && parts.push({ type: "text", text: `@${meta[i].name}:` }, { type: "image", url: refUrls[i]! }));
       }
-      parts.push(...lockPart, { type: "text", text: `The user's requested changes:\n${asked}` });
+      // «SAME» edits the picture itself, so nothing else can move there anyway: no locks to declare
+      parts.push({ type: "text", text: edit.mode === "same" ? 'Leave "kept" empty: the picture itself stays as it is.' : KEPT_RULES }, { type: "text", text: words });
       let turns: ClaudeTurn[] = [{ role: "user", content: parts }];
       const usage: ClaudeUsage[] = [];
       let written: string | null = null;
       for (let attempt = 1; attempt <= 2 && written === null; attempt++) {
-        const r = await callClaudeJson<{ prompt: string }>({ system: IMAGE_SYSTEM, turns, schema: IMAGE_SCHEMA, maxTokens: 8000 });
+        const r = await callClaudeJson<{ prompt: string; kept?: unknown }>({ system: `${JAWAD_EDIT_IDENTITY}\n\n---\n\n${IMAGE_SYSTEM}`, turns, schema: IMAGE_SCHEMA, maxTokens: 8000 });
         usage.push(r.usage);
+        const kept = edit.mode === "same" ? [] : readLocks({ locks: r.data.kept }, previous);
         const problems = imagePromptProblems(r.data.prompt ?? "", names, edit.mode);
-        // the locks are checked once the rules hold; on the last try a prompt that misses a lock is still used
-        if (!problems.length && attempt < 2) problems.push(...lockCheck(r.data.prompt ?? ""));
-        if (!problems.length) written = r.data.prompt.trim();
-        else turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${problems.join("\n- ")}` }];
+        // the locks he declared are checked once the rules hold; on the last try a prompt that misses one is still used
+        if (!problems.length && attempt < 2) problems.push(...lockCheck(r.data.prompt ?? "", kept));
+        if (!problems.length) {
+          written = r.data.prompt.trim();
+          locks = kept;
+        } else turns = [...turns, { role: "assistant", content: r.raw }, { role: "user", content: `Fix these and return the complete JSON again:\n- ${problems.join("\n- ")}` }];
       }
       if (written === null) throw new Error("image prompt broke the rules twice");
       prompt = written;
@@ -559,10 +547,9 @@ CONTINUITY (the most important thing): ${continuityText(edit)}${names.some((n) =
     }
 
     const modelPrompt = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
-    usd += lockUsd;
     const kept = missingLocks(prompt, locks);
     if (kept.length) console.warn("smart edit: locks not kept", { job: job.id, missing: kept.map((l) => l.keep) });
-    const inputs = { ...job.inputs, ...(modelPrompt !== prompt ? { modelPrompt } : {}), edit: { ...edit, locks, done: true, claudeUsd: Number(usd.toFixed(4)) } };
+    const inputs = { ...job.inputs, ...(modelPrompt !== prompt ? { modelPrompt } : {}), edit: { ...edit, locks, done: true, writer: "jawad" as const, claudeUsd: Number(usd.toFixed(4)) } };
     const { data } = await db().from("jawad_jobs").update({ prompt, inputs, provider_status: null, lease_until: new Date(Date.now() + 7 * 60_000).toISOString() }).eq("id", job.id).select("*").single();
     console.info("jawad smart edit", { job: job.id, mode: edit.mode, locks: locks.length, usd: Number(usd.toFixed(4)) });
     // سجاد hears what the edit kept, so the film's story stays one

@@ -29,7 +29,6 @@ export default function CoinBalance({ initial, unlimited }: { initial: number | 
     >
       <SmartCoin size={18} />
       <span dir="ltr" className="tabular-nums">{text}</span>
-      {!unlimited && <span className="text-xs text-jw-muted">ر.س</span>}
     </Link>
   );
 }

@@ -6,7 +6,7 @@ import TeamCoin from "@/components/TeamCoin";
 import { TEAM_COIN } from "@config/coins";
 import { postJson } from "@/lib/fetch";
 import SmartCoin from "@/components/SmartCoin";
-import { fmtSar } from "@config/coins";
+import Riyal from "@/components/Riyal";
 
 const money = (s: string) => s.replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 1632)).replace(/[^\d.-]/g, "");
 
@@ -103,7 +103,7 @@ export default function CoinsAdmin({ required, ready, top }: { required: boolean
           {top.map((t) => (
             <p key={t.email} className="flex justify-between gap-2">
               <button className="text-start" dir="ltr" onClick={() => setEmail(t.email)}>{t.email}</button>
-              <span className="flex items-center gap-1" dir="ltr"><SmartCoin size={14} />{fmtSar(t.balance)} ر.س</span>
+              <span className="flex items-center gap-1" dir="ltr"><Riyal halalas={t.balance} size={14} /></span>
             </p>
           ))}
         </div>

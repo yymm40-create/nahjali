@@ -4,7 +4,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { coinsFor, fmtSar, setPricing, type Pricing } from "@config/coins";
+import { coinStr, coinsFor, setPricing, type Pricing } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
 
 const db = () => createAdminClient();
@@ -61,7 +61,7 @@ export async function reserveCoins(user: { id: string; email?: string | null }, 
   const coins = coinsFor(estimateUsd);
   const left = await adjust(user.id, -coins, "reserve", jobId, label);
   if (left === null) {
-    throw new UserError(`رصيدك ما يكفي: هذي العملية تحتاج تقريبًا ${fmtSar(coins)} ريال. اشحن رصيدك من صفحة «النقود الذكية».`, 402);
+    throw new UserError(`رصيدك ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اشحن رصيدك من صفحة «النقود الذكية».`, 402);
   }
 }
 
@@ -104,7 +104,7 @@ export async function teamCoinBalance(seriesId: string): Promise<number> {
   return (data?.balance as number | undefined) ?? 0;
 }
 
-const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذكي» ما يكفي: هذي العملية تحتاج تقريبًا ${fmtSar(coins)} ريال. اطلب من صاحب المسلسل يشحن رصيد الفريق.`;
+const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذكي» ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اطلب من صاحب المسلسل يشحن رصيد الفريق.`;
 
 /** A team series' paid job: holds its estimated coins from the team's wallet (`who` pressed it). */
 export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string) {
@@ -149,7 +149,7 @@ export async function fundTeam(owner: { id: string; email?: string | null }, ser
   const free = await unlimitedFor(owner.email);
   if (!free) {
     const left = await adjust(owner.id, -coins, "reserve", ref, "تحويل إلى نقود الفريق الذكي");
-    if (left === null) throw new UserError(`رصيدك من النقود الذكية ما يكفي لتحويل ${fmtSar(coins)} ر.س.`, 402);
+    if (left === null) throw new UserError(`رصيدك من النقود الذكية ما يكفي لتحويل ${coinStr(coins)}.`, 402);
   }
   try {
     return await adjustTeam(seriesId, owner.id, coins, "fund", ref, "تحويل من صاحب المسلسل", true);
@@ -177,7 +177,7 @@ export const grantTeamCoins = (seriesId: string, amount: number, note: string) =
 export async function holdCoins(userId: string, coins: number, ref: string, label: string) {
   if (coins <= 0) return;
   const left = await adjust(userId, -coins, "reserve", ref, label);
-  if (left === null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذه العملية تحتاج ${fmtSar(coins)} ر.س.`, 402);
+  if (left === null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذه العملية تحتاج ${coinStr(coins)}.`, 402);
 }
 export async function releaseCoins(userId: string, coins: number, ref: string, label: string) {
   if (coins > 0) await adjust(userId, coins, "refund", ref, label, true);

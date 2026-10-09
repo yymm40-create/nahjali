@@ -1,8 +1,7 @@
 "use client";
 
-import { fmtSar } from "@config/coins";
-import SmartCoin from "@/components/SmartCoin";
 import Icon from "../Icon";
+import Riyal from "@/components/Riyal";
 
 /**
  * «المخرج الخارق» under the prompt (video making): one press, and the website rewrites the prompt in the background
@@ -41,7 +40,7 @@ export default function DirectorBoost({
             <>
               طوّر
               <span className="flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 text-xs tabular-nums" dir="ltr">
-                <SmartCoin size={12} /> {fmtSar(coins)} ر.س
+                <Riyal halalas={coins} size={12} />
               </span>
             </>
           )}

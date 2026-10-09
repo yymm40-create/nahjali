@@ -5,7 +5,7 @@ import { VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, typ
 import { DEFAULT_PRICING, costHalalas, fmtSar, roundUpStep, savingPct, sellHalalas, type Pricing } from "@config/coins";
 
 const SAR = 3.75; // USD → SAR (pegged)
-const sar = (n: number) => `${n.toFixed(2)} ر.س`;
+const sar = (n: number) => n.toFixed(2);
 
 /** Unit costs in USD (estimates; the owner can edit them, or take the real average). */
 const UNIT_DEFAULTS = {
@@ -202,7 +202,7 @@ export default function PricingCalculator({ real, pricing = DEFAULT_PRICING }: {
                 <span className="col-span-2 sm:col-span-1">{p.label}</span>
                 <span className="text-muted" dir="ltr">تكلفة {fmtSar(r.cost)}</span>
                 <span className="text-muted" dir="ltr">مقرّبة {fmtSar(r.rounded)}</span>
-                <span className="text-teal" dir="ltr">يدفع {fmtSar(r.price)} ر.س <s className="text-xs text-muted">{fmtSar(r.was)}</s> {r.saving > 0 && <span className="text-xs">(خصم {r.saving}٪)</span>}</span>
+                <span className="text-teal" dir="ltr">يدفع {fmtSar(r.price)} <s className="text-xs text-muted">{fmtSar(r.was)}</s> {r.saving > 0 && <span className="text-xs">(خصم {r.saving}٪)</span>}</span>
                 <span dir="ltr">ربحك {fmtSar(r.profit)}</span>
               </div>
             );
@@ -228,7 +228,7 @@ export default function PricingCalculator({ real, pricing = DEFAULT_PRICING }: {
           <label className="flex items-center gap-1 text-sm font-bold">نسبة خاصة {num(pct, setPct)}<span dir="ltr">%</span></label>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm font-bold">
-          <label className="flex items-center gap-1">رسوم بوابة الدفع {num(fee.pct, (n) => setFee({ ...fee, pct: n }), 0.1, "w-16")}<span dir="ltr">%</span> + {num(fee.fixed, (n) => setFee({ ...fee, fixed: n }), 0.5, "w-16")} ر.س</label>
+          <label className="flex items-center gap-1">رسوم بوابة الدفع {num(fee.pct, (n) => setFee({ ...fee, pct: n }), 0.1, "w-16")}<span dir="ltr">%</span> + {num(fee.fixed, (n) => setFee({ ...fee, fixed: n }), 0.5, "w-16")}</label>
           <label className="flex items-center gap-2"><input type="checkbox" className="size-5" checked={vat} onChange={(e) => setVat(e.target.checked)} />ضريبة القيمة المضافة ١٥٪ (على العميل)</label>
         </div>
         <div className="space-y-2">
@@ -250,7 +250,7 @@ export default function PricingCalculator({ real, pricing = DEFAULT_PRICING }: {
                   </div>
                 )}
                 {p.label.startsWith("📖") && (
-                  <p className="text-xs text-muted">سعره الحالي {s.bookletPrice} ر.س → ربحك تقريبًا {sar(s.bookletPrice / (vat ? 1.15 : 1) * (1 - fee.pct / 100) - fee.fixed - p.costSar)}</p>
+                  <p className="text-xs text-muted">سعره الحالي {s.bookletPrice} → ربحك تقريبًا {sar(s.bookletPrice / (vat ? 1.15 : 1) * (1 - fee.pct / 100) - fee.fixed - p.costSar)}</p>
                 )}
               </div>
             );
@@ -262,7 +262,7 @@ export default function PricingCalculator({ real, pricing = DEFAULT_PRICING }: {
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">٤. الرصيد (Credits) والباقات</h2>
         <p className="text-xs font-bold text-muted">مثل Higgsfield وRunway وKling: العميل يشتري رصيد، وكل عملية تخصم حسب تكلفتها. سعر الرصيد يشمل ربحك ورسوم الدفع (قبل الضريبة).</p>
-        <label className="flex items-center gap-2 text-sm font-bold">سعر الرصيد الواحد للعميل {num(creditSar, setCreditSar, 0.01)} ر.س</label>
+        <label className="flex items-center gap-2 text-sm font-bold">سعر الرصيد الواحد للعميل {num(creditSar, setCreditSar, 0.01)}</label>
         <div className="space-y-1 text-sm font-bold">
           {products.map((p) => {
             const r = row(p.costSar);
@@ -282,7 +282,7 @@ export default function PricingCalculator({ real, pricing = DEFAULT_PRICING }: {
             return (
               <div key={pk.name} className="space-y-1 rounded-2xl border border-line p-3 text-center text-sm font-bold">
                 <p className="font-extrabold">{pk.name}</p>
-                <p className="display text-2xl" dir="ltr">{pk.priceSar} ر.س</p>
+                <p className="display text-2xl" dir="ltr">{pk.priceSar}</p>
                 <p>{credits} رصيد</p>
                 <p className="text-xs text-muted">≈ {journeys.toFixed(1)} رحلة فيلم</p>
               </div>

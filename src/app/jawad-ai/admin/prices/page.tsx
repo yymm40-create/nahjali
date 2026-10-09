@@ -7,7 +7,7 @@ import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 export const metadata = { title: "الأسعار" };
 
-const fmt = (c: number | null) => (c == null ? "الافتراضي" : `${(c / 10000).toFixed(2)} ر.س`);
+const fmt = (c: number | null) => (c == null ? "الافتراضي" : `${(c / 10000).toFixed(2)}`);
 
 export default async function PricesPage() {
   await requireJawadOwnerPage("/jawad-ai/admin/prices");

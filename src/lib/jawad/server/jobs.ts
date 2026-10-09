@@ -8,7 +8,7 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { jawadSpeak } from "./providers/jawad-voice";
 import { jawadReference } from "./voices";
@@ -306,7 +306,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
     // No job: the frames kept for it go too
     if (video) await removeFrames(video);
     const msg = String(error.message ?? "");
-    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${fmtSar(e.price.coins)} ر.س.`, 402);
+    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${coinStr(e.price.coins)}.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
     throw error;
   }
@@ -340,7 +340,7 @@ export async function runJob(jobId: string) {
   const def = generatorById(job.generator_id);
   try {
     if (!def) throw new ProviderError("rejected", "المولد لم يعد متاحًا.", `unknown generator ${job.generator_id}`);
-    // «التعديل الذكي»: Claude writes the corrected prompt first
+    // «التعديل الذكي»: جواد writes the final prompt first (from the person's own words and the whole shot)
     if (job.inputs.edit && !job.inputs.edit.done) job = await prepareEdit(job);
     const { rows } = await refsFor(job.user_id, job.refs.map((r) => ({ uploadId: r.uploadId, role: r.role }))).catch(() => {
       throw new ProviderError("rejected", "أحد المراجع حُذف قبل الإرسال. لم يُخصم منك شيء.", "reference missing at submit");

@@ -5,9 +5,11 @@
 // track over it, at the same place and length. Then the edit goes on as usual (arrange, export).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { generatorById } from "@config/jawad/generators";
+import { EDIT_FEE_KEY, GENERATORS, generatorById } from "@config/jawad/generators";
+import type { Settings, SettingValue } from "@config/jawad/types";
+import EditOptions from "../studio/EditOptions";
 import { postJson } from "@/lib/fetch";
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { clipLength, findClip, FIX_NOTE_MAX, flatten, formatTime, type Clip, type Fix, type Timeline as TL } from "@/lib/editor/model";
 import { canExport, exportVideo } from "./export";
 import { CONTINUITY, continuityRanges, EDIT_LIMITS, frameTimes, type ContinuityRange, type EditRange } from "@/lib/jawad/smart-edit";
@@ -20,6 +22,8 @@ import { uploadContinuity } from "../studio/continuity";
 import type { Run } from "./Inspector";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
+import Riyal from "@/components/Riyal";
+import Coined from "@/components/Coined";
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const POLL_MS = 10_000;
@@ -32,6 +36,13 @@ const STATE: Record<Fix["state"], { text: string; cls: string }> = {
 };
 
 type Quote = { coins: number; from: number | null } | { error: string };
+/** The options chosen again for the edits: the generator that makes them (null: each piece's own) and the output options. */
+export interface EditOpts {
+  generatorId: string | null;
+  settings: Settings;
+}
+const NO_OPTS: EditOpts = { generatorId: null, settings: {} };
+const optsBody = (o: EditOpts) => ({ ...(o.generatorId ? { generatorId: o.generatorId } : {}), ...(Object.keys(o.settings).length ? { settings: o.settings } : {}) });
 type Sent = { job: string; from: number };
 type PriceLine = { label: string; centi: number };
 
@@ -46,7 +57,7 @@ export class PriceAsk extends Error {
     public lines: PriceLine[],
     public confirm: (coins: number) => Promise<Sent>,
   ) {
-    super(`تغيّر السعر إلى ${fmtSar(coins)} ر.س`);
+    super(`تغيّر السعر إلى ${coinStr(coins)}`);
   }
 }
 
@@ -79,6 +90,12 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   const [approving, setApproving] = useState<string | null>(null);
   // prices that moved since the quote: each waits for «أكّد» (nothing is charged before)
   const [asks, setAsks] = useState<Ask[]>([]);
+  // what the person chose for the edits (generator, resolution, sound, seconds): counted in every price, sent with every piece
+  const [editOpts, setEditOpts] = useState<EditOpts>(NO_OPTS);
+  const optsRef = useRef(editOpts);
+  useEffect(() => {
+    optsRef.current = editOpts;
+  }, [editOpts]);
 
   const sel = selected.length === 1 ? findClip(tl, selected[0]) : null;
   const selAsset = sel?.clip.assetId ? assets.get(sel.clip.assetId) : undefined;
@@ -160,7 +177,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
         const c = fixOf(id);
         if (!c) continue;
         try {
-          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current) });
+          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current), opts: optsRef.current });
           run({ type: "update_clip", clipId: id, patch: { fix: { job: made.job, from: made.from, state: "making", error: null } } }, { label: "أرسلت جزءًا للتعديل" });
         } catch (e) {
           if (e instanceof PriceAsk) {
@@ -326,7 +343,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           )}
           {failedPieces.map((c) => (
             <button key={c.id} type="button" className="rounded-full bg-red-500/15 px-2 py-0.5 text-start font-semibold text-red-700 hover:bg-red-500/25" onClick={() => player?.seek(c.start)} title="روح للجزء">
-              ✕ {formatTime(c.start)}: {c.fix?.error ?? "ما انرسل"}
+              ✕ {formatTime(c.start)}: <Coined text={c.fix?.error ?? "ما انرسل"} />
             </button>
           ))}
           <span className="flex-1" />
@@ -350,7 +367,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           )}
         </div>
       )}
-      {open && <FixDialog projectId={projectId} pieces={pieces} yellow={yellowOf(tl)} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} onClose={() => setOpen(false)} />}
+      {open && <FixDialog projectId={projectId} pieces={pieces} yellow={yellowOf(tl)} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} opts={editOpts} setOpts={setEditOpts} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -362,21 +379,21 @@ export function PriceAsks({ asks, onConfirm, onCancel }: { asks: Ask[]; onConfir
       {asks.map((a) => (
         <div key={a.id} className="mx-2 mb-1 space-y-1.5 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs" role="alert" aria-live="assertive">
           <p className="font-bold">
-            تغيّر سعر الجزء <span dir="ltr">{formatTime(a.start)}</span> إلى {fmtSar(a.ask.coins)} ر.س
+            تغيّر سعر الجزء <span dir="ltr">{formatTime(a.start)}</span> إلى <Riyal halalas={a.ask.coins} size={13} />
           </p>
           {a.ask.lines.length > 0 && (
             <ul className="space-y-0.5 text-jw-muted">
               {a.ask.lines.map((l, i) => (
                 <li key={i} className="flex justify-between gap-2">
                   <span>{l.label}</span>
-                  <span dir="ltr" className="tabular-nums">{(l.centi / 10000).toFixed(2)} ر.س تكلفة</span>
+                  <span className="flex items-center gap-1 tabular-nums"><Riyal halalas={l.centi / 100} size={11} /> تكلفة</span>
                 </li>
               ))}
             </ul>
           )}
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="jw-btn !min-h-8 !px-3 text-xs" onClick={() => onConfirm(a)}>
-              <Icon name="wand" size={14} /> أكّد {fmtSar(a.ask.coins)} ر.س
+              <Icon name="wand" size={14} /> أكّد <Riyal halalas={a.ask.coins} size={14} />
             </button>
             <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-3 text-xs" onClick={() => onCancel(a)}>
               إلغاء
@@ -423,8 +440,8 @@ const loadJobs = async (ids: string[]) => {
   const r = await fetch(`/api/jawad/jobs?ids=${ids.join(",")}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
   return (r?.jobs ?? []) as JobView[];
 };
-const askPrice = async (p: Extract<Plan, { ok: true }>): Promise<Quote> => {
-  const body = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: "", ranges: p.ranges, ...(p.continuity ? { continuity: p.continuity } : {}), quote: true };
+const askPrice = async (p: Extract<Plan, { ok: true }>, opts: EditOpts = NO_OPTS): Promise<Quote> => {
+  const body = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: "", ranges: p.ranges, ...(p.continuity ? { continuity: p.continuity } : {}), ...optsBody(opts), quote: true };
   const res = await fetch("/api/jawad/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
   const r = res ? await res.json().catch(() => ({})) : {};
   if (!res) return { error: "ما وصلنا للخادم؛ تأكد من النت وجرّب مرة ثانية." };
@@ -435,7 +452,7 @@ const askPrice = async (p: Extract<Plan, { ok: true }>): Promise<Quote> => {
  * Sends one piece to be made again. Everything it needs is fetched right now (the film video's job, the original,
  * the price), so nothing waits on a window being open. Returns the job, or throws with the reason in plain Arabic.
  */
-async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset: EditorAsset | undefined; onAssets: (l: EditorAsset[]) => void; key: string; yellow: Clip[] }) {
+async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset: EditorAsset | undefined; onAssets: (l: EditorAsset[]) => void; key: string; yellow: Clip[]; opts?: EditOpts }) {
   let a = ctx.asset;
   if (a && !a.jobId && a.origin === "film") {
     a = (await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${ctx.projectId}`, { action: "fix_link", assetId: a.id })).asset;
@@ -444,11 +461,12 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
   const j = a?.jobId ? (await loadJobs([a.jobId]))[0] : undefined;
   const p = planOf(c, a, j, ctx.yellow);
   if (!p.ok) throw new Error(p.why);
-  const q = await askPrice(p);
+  const opts = ctx.opts ?? NO_OPTS;
+  const q = await askPrice(p, opts);
   if (!("coins" in q)) throw new Error(q.error);
   const ranges = p.ranges.map((r) => ({ ...r, note: note.slice(0, EDIT_LIMITS.noteMax) }));
   const partCut = p.mode === "parts" ? p.cut : null;
-  const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins, ...(p.continuity ? { continuity: p.continuity } : {}) };
+  const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins, ...(p.continuity ? { continuity: p.continuity } : {}), ...optsBody(opts) };
   try {
     const times = frameTimes(p.videoSec, ranges, partCut);
     const small = await grabFrames(p.out.url!, times, EDIT_LIMITS.frameWidth, 0.72);
@@ -482,7 +500,7 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
 }
 
 /** Every red piece: what to fix, «جزئي» or «كامل», its price; one tap saves the notes and sends them all in the background. */
-function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, onSend, onClose }: { projectId: string; pieces: Clip[]; yellow: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string }[]) => void; onClose: () => void }) {
+function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, onSend, opts, setOpts, onClose }: { opts: EditOpts; setOpts: (o: EditOpts) => void; projectId: string; pieces: Clip[]; yellow: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string }[]) => void; onClose: () => void }) {
   const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, c.fix?.note ?? ""])));
   const [jobs, setJobs] = useState<Record<string, JobView>>({});
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -524,7 +542,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
 
   // ---------- prices (again when a piece's kind or length changes) ----------
   const open = pieces.filter((c) => c.fix && (c.fix.state === "draft" || c.fix.state === "failed"));
-  const quoteKey = open.map((c) => `${c.id}:${c.fix!.mode}:${c.in}:${c.out}:${assetOf(c)?.jobId ?? ""}`).join("|") + `#${Object.keys(jobs).length}#${yellow.map((y) => `${y.assetId}:${y.in}:${y.out}:${y.start}`).join(",")}`;
+  const quoteKey = open.map((c) => `${c.id}:${c.fix!.mode}:${c.in}:${c.out}:${assetOf(c)?.jobId ?? ""}`).join("|") + `#${Object.keys(jobs).length}#${JSON.stringify(opts)}#${yellow.map((y) => `${y.assetId}:${y.in}:${y.out}:${y.start}`).join(",")}`;
   useEffect(() => {
     let live = true;
     const t = setTimeout(async () => {
@@ -533,7 +551,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
         if (!a?.jobId && a?.origin === "film") continue; // being linked
         if (a?.jobId && !jobs[a.jobId]) continue; // being read
         const p = planOf(c, a, a?.jobId ? jobs[a.jobId] : undefined, yellow);
-        const q: Quote = p.ok ? await askPrice(p) : { error: p.why };
+        const q: Quote = p.ok ? await askPrice(p, opts) : { error: p.why };
         if (!live) return;
         setQuotes((x) => ({ ...x, [c.id]: q }));
       }
@@ -567,6 +585,27 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
         <p className="text-xs text-jw-muted">
           اكتب لكل جزء شنو تبي يتعدل فيه، واختر <b>جزئي</b> (يتعاد هذا الجزء بس ويركب مكانه بقص نظيف) أو <b>كامل</b> (يتعاد الفيديو كله بالملاحظة). اللي ينصنع ينزل على <span className="font-bold text-emerald-600">المسار الأخضر</span> بنفس المكان.
         </p>
+        {(() => {
+          // the options of the edits: the generator that makes them and the output options, as at the start (the first piece's original is where they start from)
+          const first = Object.values(jobs)[0];
+          const def = generatorById(opts.generatorId ?? first?.generatorId ?? "");
+          if (!first || !def) return null;
+          const kind = def.output === "image" ? "image" : "video";
+          const choices = GENERATORS.filter((g) => g.output === kind && g.priceKeys.some((k) => k.key === EDIT_FEE_KEY));
+          return (
+            <EditOptions
+              def={def}
+              choices={choices}
+              originalId={first.generatorId}
+              onGenerator={(id) => setOpts({ ...opts, generatorId: id === first.generatorId ? null : id })}
+              original={first.settings as Settings}
+              chosen={opts.settings}
+              onChange={(k: string, v: SettingValue) => setOpts({ ...opts, settings: { ...opts.settings, [k]: v } })}
+              mode={pieces.some((c) => c.fix?.mode === "whole") ? "whole" : "parts"}
+              cutSeconds={null}
+            />
+          );
+        })()}
         <ol className="space-y-2">
           {pieces.map((c, i) => {
             const fix = c.fix ?? { note: "", mode: "parts" as const, job: null, from: null, state: "draft" as const };
@@ -606,8 +645,8 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
                 ) : (
                   fix.note && <p className="text-xs text-jw-muted">«{fix.note}»</p>
                 )}
-                {editable && (!q ? <p className="text-[11px] text-jw-faint">يحسب السعر…</p> : "coins" in q ? <p className="text-[11px] text-jw-muted">السعر: {fmtSar(q.coins)} ر.س</p> : <p className="text-xs font-semibold text-jw-danger">⚠ {q.error}</p>)}
-                {(errors[c.id] || (fix.state === "failed" && fix.error)) && <p className="rounded-lg bg-jw-danger/10 p-2 text-xs font-semibold text-jw-danger">✕ ما انرسل: {errors[c.id] || fix.error}</p>}
+                {editable && (!q ? <p className="text-[11px] text-jw-faint">يحسب السعر…</p> : "coins" in q ? <p className="text-[11px] text-jw-muted">السعر: <Riyal halalas={q.coins} size={12} /></p> : <p className="text-xs font-semibold text-jw-danger">⚠ {q.error}</p>)}
+                {(errors[c.id] || (fix.state === "failed" && fix.error)) && <p className="rounded-lg bg-jw-danger/10 p-2 text-xs font-semibold text-jw-danger">✕ ما انرسل: <Coined text={errors[c.id] || fix.error} /></p>}
               </li>
             );
           })}
@@ -619,7 +658,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
         )}
         <div className="flex flex-wrap items-center gap-3 border-t border-jw-line pt-3">
           <button type="button" className="jw-btn jw-btn-primary" disabled={!!busy || !written.length} onClick={sendAll}>
-            <Icon name="wand" size={16} /> {busy ?? (written.length ? `اصنع ${written.length} ${written.length === 1 ? "تعديل" : "تعديلات"}${priced.length === written.length ? ` · ${fmtSar(total)} ر.س` : ""}` : "اكتب ملاحظة (٣ أحرف أو أكثر) لكل جزء")}
+            <Icon name="wand" size={16} /> {busy ?? (written.length ? <>اصنع {written.length} {written.length === 1 ? "تعديل" : "تعديلات"}{priced.length === written.length && <> · <Riyal halalas={total} size={14} /></>}</> : "اكتب ملاحظة (٣ أحرف أو أكثر) لكل جزء")}
           </button>
           <span className="text-[11px] text-jw-faint">تضغط مرة وحدة وترجع للتايم لاين؛ الإرسال يكمل في الخلفية، وكل جزء يوصل ينحط على الأخضر بنفسه.</span>
         </div>

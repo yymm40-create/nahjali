@@ -4,7 +4,7 @@ import SectionHint from "@/components/jawad/SectionHint";
 import PromptHelpers from "./PromptHelpers";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fmtSar, setPricing } from "@config/coins";
+import { coinStr, setPricing } from "@config/coins";
 import Riyal from "@/components/Riyal";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, MINIMAX_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
 import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
@@ -30,6 +30,7 @@ import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
+import Coined from "@/components/Coined";
 
 /** The person is on another tab: the title changes until they come back, and a system notification when allowed. */
 function notifyDone(count: number, anyFailed: boolean) {
@@ -504,7 +505,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
   if (busyUploads) blockers.push("انتظر حتى يكتمل رفع المراجع وفحصها.");
   if (directing) blockers.push("انتظر حتى ينتهي «المخرج الخارق» من كتابة البرومبت.");
   if (ev) for (const i of ev.issues) if (!blockers.includes(i.message)) blockers.push(i.message);
-  if (user && !owner && price != null && balance != null && balance < price) blockers.push(`رصيدك (${fmtSar(balance)} ر.س) لا يكفي لهذا التوليد (${fmtSar(price)} ر.س).`);
+  if (user && !owner && price != null && balance != null && balance < price) blockers.push(`رصيدك (${coinStr(balance)}) لا يكفي لهذا التوليد (${coinStr(price)}).`);
 
   // «المخرج الخارق» (video making): its price, and why it can't run now
   const directorCenti = def?.priceKeys.some((k) => k.key === DIRECTOR_PRICE_KEY) ? prices[def.id]?.[DIRECTOR_PRICE_KEY] : undefined;
@@ -520,7 +521,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
           : submitting
             ? "انتظر حتى يبدأ التوليد."
             : !owner && directorCoins != null && balance != null && balance < directorCoins
-              ? `رصيدك (${fmtSar(balance)} ر.س) لا يكفي (${fmtSar(directorCoins)} ر.س).`
+              ? `رصيدك (${coinStr(balance)}) لا يكفي (${coinStr(directorCoins)}).`
               : null;
 
   async function runDirector(expectedCoins: number) {
@@ -542,7 +543,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       if (r.status === 409 && r.body.code === "price_changed" && typeof r.body.coins === "number") {
         const coins = r.body.coins;
         setPrices((p) => ({ ...p, [def.id]: { ...(p[def.id] ?? {}), [DIRECTOR_PRICE_KEY]: coins * 100 } }));
-        return setNotice(`تغيّر سعر «المخرج الخارق» إلى ${fmtSar(coins)} ر.س. اضغط «طوّر» مرة ثانية إذا تبيه.`);
+        return setNotice(`تغيّر سعر «المخرج الخارق» إلى ${coinStr(coins)}. اضغط «طوّر» مرة ثانية إذا تبيه.`);
       }
       if (!r.ok) return setNotice(r.body.error ?? "تعذّر تطوير البرومبت.");
       // The new prompt replaces the old one (which can be brought back)
@@ -550,7 +551,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       setDraft((d) => ({ ...d, prompt: r.body.prompt }));
       setTouched(true);
       announceBalance(r.body.balance);
-      setNotice(r.body.coins ? `طوّر «المخرج الخارق» البرومبت وخُصم ${fmtSar(r.body.coins)} ر.س. راجعه ثم اضغط «توليد».` : "طوّر «المخرج الخارق» البرومبت. راجعه ثم اضغط «توليد».");
+      setNotice(r.body.coins ? `طوّر «المخرج الخارق» البرومبت وخُصم ${coinStr(r.body.coins)}. راجعه ثم اضغط «توليد».` : "طوّر «المخرج الخارق» البرومبت. راجعه ثم اضغط «توليد».");
     } catch {
       setNotice("انقطع الاتصال أثناء التطوير. إذا خُصمت النقود ولم يتغير البرومبت، تواصل معنا.");
     } finally {
@@ -767,7 +768,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
     setItems((cur) => cur.filter((c) => c.id !== tempId));
     if (!r) return setNotice("انقطع الاتصال، جرّب مرة ثانية.");
     if (!r.ok) {
-      if (r.status === 409 && r.body.code === "price_changed" && typeof r.body.coins === "number") return setNotice(`تغيّر السعر إلى ${fmtSar(r.body.coins)} ر.س؛ اضغط «استخدم الإعدادات» ثم «توليد» لتأكيده.`);
+      if (r.status === 409 && r.body.code === "price_changed" && typeof r.body.coins === "number") return setNotice(`تغيّر السعر إلى ${coinStr(r.body.coins)}؛ اضغط «استخدم الإعدادات» ثم «توليد» لتأكيده.`);
       return setNotice(r.body.error ?? "تعذّر بدء التوليد.");
     }
     setItems((cur) => [r.body.job, ...cur.filter((c) => c.id !== r.body.job.id)]);
@@ -867,7 +868,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
             {notice && (
               <p className="flex items-start gap-2 rounded-lg border border-jw-line bg-jw-surface-2 px-3 py-2 text-xs text-jw-muted" role="status">
                 <Icon name="info" size={14} className="mt-0.5 shrink-0" />
-                <span className="flex-1">{notice}</span>
+                <span className="flex-1"><Coined text={notice} /></span>
                 <button type="button" onClick={() => setNotice("")} aria-label="إخفاء"><Icon name="x" size={12} /></button>
               </p>
             )}
@@ -961,7 +962,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
             <div id="jw-gen-why" aria-live="polite">
               {preparing && <p className="text-xs text-jw-muted" role="status">{preparing}</p>}
               {submitError && <p className="text-xs text-jw-danger" role="alert">{submitError}</p>}
-              {user && blockers.length > 0 && !submitError && <p className="text-xs text-jw-muted">{blockers[0]}</p>}
+              {user && blockers.length > 0 && !submitError && <p className="text-xs text-jw-muted"><Coined text={blockers[0]} /></p>}
               {owner && price != null && <p className="text-[11px] text-jw-faint">كصاحب المنصة لا يُخصم منك؛ يُسجَّل السعر للمتابعة فقط.</p>}
             </div>
           </div>
@@ -1029,7 +1030,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         {confirm && (
           <div className="space-y-4 p-4">
             <p className="text-sm">
-              تغيّر سعر هذا التوليد من <b dir="ltr">{fmtSar(confirm.was)}</b> إلى <b dir="ltr">{fmtSar(confirm.coins)}</b> ريال. لم يُخصم شيء بعد.
+              تغيّر سعر هذا التوليد من <b><Riyal halalas={confirm.was} size={13} /></b> إلى <b><Riyal halalas={confirm.coins} size={13} /></b>. لم يُخصم شيء بعد.
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" className="jw-btn" onClick={() => setConfirm(null)}>إلغاء</button>
@@ -1042,7 +1043,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
                   submit(c);
                 }}
               >
-                أوافق على {fmtSar(confirm.coins)} ر.س وولّد
+                أوافق على <Riyal halalas={confirm.coins} size={14} /> وولّد
               </button>
             </div>
           </div>

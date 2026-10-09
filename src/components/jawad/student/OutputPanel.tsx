@@ -1,6 +1,5 @@
 "use client";
 
-import { fmtSar } from "@config/coins";
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { DENSITIES, DESIGNED_KINDS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
@@ -11,6 +10,7 @@ import { defaults, DesignStep, Questions } from "./Questions";
 import { AudioResult, DocView, FileLinks, PdfFrame, QuizPlay, SlidesFonts, TranscriptView } from "./Results";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, Gate, JobStatus, PaidButton, Seg, useAsync } from "./ui";
+import Riyal from "@/components/Riyal";
 
 type S = Record<string, unknown>;
 const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
@@ -218,7 +218,7 @@ export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: Out
           {o.kind === "slides" && o.settings.render !== "image" && <SlidesFonts design={o.settings.design} />}
           <div className="jw-panel space-y-2 p-4">
             <p className="text-sm text-jw-muted">
-              بعد الاعتماد يُصنع الناتج كاملًا بنفس التصميم{o.trialCoins ? `، ويُخصم ${fmtSar(o.trialCoins)} ر.س (مبلغ التجربة) من سعره` : ""}. للتعديل: غيّر الخط أو التصميم من الإعدادات واحفظ ثم اصنع نسخة تجريبية جديدة، أو عدّل الخطة.
+              بعد الاعتماد يُصنع الناتج كاملًا بنفس التصميم{o.trialCoins ? <>، ويُخصم <Riyal halalas={o.trialCoins} size={13} /> (مبلغ التجربة) من سعره</> : ""}. للتعديل: غيّر الخط أو التصميم من الإعدادات واحفظ ثم اصنع نسخة تجريبية جديدة، أو عدّل الخطة.
             </p>
             <div className="flex flex-wrap gap-2">
               <PaidButton label="اعتمد وأكمل التصنيع" what="التصنيع الكامل." disabled={running || settingsDirty} run={(b) => act({ action: "final", ...b })} />

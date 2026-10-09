@@ -18,7 +18,7 @@ import type { MakeRequest } from "@/lib/editor/assistant";
 import { MAX_CHECKS } from "@/lib/editor/assistant-guide";
 import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { postJson } from "@/lib/fetch";
 import { MOODS, MOTION_STYLES, styleInText } from "@/lib/editor/motion-styles";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
@@ -31,6 +31,8 @@ import type { Run } from "./Inspector";
 import { PEAK_RATE, peaksOf } from "./peaks";
 import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
+import Riyal from "@/components/Riyal";
+import Coined from "@/components/Coined";
 
 interface Msg {
   role: "user" | "assistant";
@@ -477,7 +479,7 @@ export default function AssistantPanel({
             // told after). Only what the person asks جواد for directly, in his own form, waits for their «توليد».
             setBusy(`أبدأ أصنع «${plan.name}»…`);
             await startMaking(projectId, plan);
-            setMsgs((m) => [...m, { role: "assistant", text: `سلّمت الطلب لجواد وبدأ يصنع «${plan.name}» بـ ${plan.generatorName}${plan.free ? "" : ` (${fmtSar(plan.coins)} ر.س)`}${plan.kind === "video" ? " (الفيديو ياخذ كم دقيقة)" : ""}؛ ينحط على التايملاين لحاله أول ما يخلص، ويظهر في «أعمالي».` }]);
+            setMsgs((m) => [...m, { role: "assistant", text: `سلّمت الطلب لجواد وبدأ يصنع «${plan.name}» بـ ${plan.generatorName}${plan.free ? "" : ` (${coinStr(plan.coins)})`}${plan.kind === "video" ? " (الفيديو ياخذ كم دقيقة)" : ""}؛ ينحط على التايملاين لحاله أول ما يخلص، ويظهر في «أعمالي».` }]);
           } else if (q.kind === "smart_mask") {
             // the subject's exact outline (followed through the clip), as a grading layer's window
             const f = findClip(tl, q.clipId);
@@ -804,7 +806,7 @@ export default function AssistantPanel({
                       }
                     }}
                   >
-                    اصنعه ({fmtSar(x.plan.coins)} ر.س)
+                    اصنعه (<Riyal halalas={x.plan.coins} size={13} />)
                   </button>
                 ) : (
                   <p className="mt-1.5 text-[11px] text-jw-ok">{x.state === "started" ? "بدأ الصنع ✓ ينحط على التايملاين لحاله" : "ما بدأ"}</p>
@@ -1021,7 +1023,7 @@ function MsgText({ text }: { text: string }) {
           <CodeBlock key={i} code={part} />
         ) : part.trim() ? (
           <p key={i} className="whitespace-pre-wrap">
-            {part.replace(/^\n+|\n+$/g, "").split(/\*\*(.+?)\*\*/g).map((x, j) => (j % 2 ? <b key={j}>{x}</b> : x))}
+            {part.replace(/^\n+|\n+$/g, "").split(/\*\*(.+?)\*\*/g).map((x, j) => (j % 2 ? <b key={j}><Coined text={x} /></b> : <Coined key={j} text={x} />))}
           </p>
         ) : null,
       )}

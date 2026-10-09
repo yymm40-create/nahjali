@@ -72,7 +72,7 @@ describe("the page: a higher price is asked about, never silently taken", () => 
     });
     expect(ask).toBeInstanceOf(Error);
     expect(ask.coins).toBe(9400);
-    expect(ask.message).toContain("94");
+    expect(ask.message).toContain("¤94");
     expect(seen).toEqual([]);
     expect(await ask.confirm(ask.coins)).toEqual({ job: "j1", from: 17719 });
     expect(seen).toEqual([9400]);
@@ -81,7 +81,10 @@ describe("the page: a higher price is asked about, never silently taken", () => 
   it("is shown: the new total, each line, «أكّد» with the amount, and a way out", () => {
     const ask = new PriceAsk(9400, [{ label: "13 ث · 480p", centi: 41990 }, { label: "التعديل الذكي", centi: 30000 }], async () => ({ job: "j", from: 0 }));
     const html = renderToStaticMarkup(h(PriceAsks, { asks: [{ id: "c1", start: 17719, note: "x", ask }], onConfirm: () => {}, onCancel: () => {} }));
-    for (const part of ["تغيّر سعر الجزء", "0:17.7", "94 ر.س", "13 ث · 480p", "التعديل الذكي", "أكّد 94 ر.س", "إلغاء", "ما ينخصم شي قبل ما تأكّد"]) expect(html, part).toContain(part);
+    for (const part of ["تغيّر سعر الجزء", "0:17.7", "94", "13 ث · 480p", "التعديل الذكي", "أكّد", "إلغاء", "ما ينخصم شي قبل ما تأكّد"]) expect(html, part).toContain(part);
+    // the coin's logo stands for the currency: never the word
+    expect(html).toContain("<svg");
+    expect(html).not.toContain("ر.س");
     expect(renderToStaticMarkup(h(PriceAsks, { asks: [], onConfirm: () => {}, onCancel: () => {} }))).toBe("");
   });
 });
