@@ -4,6 +4,7 @@
 // (made by GPT Image 2 in the produce step) or a package handed to «حيدرة» (an edit room opened in «حيدرة كت»).
 // Server only.
 
+import { isSalesAsk, nearestSalesExamples, SALES_METHOD, salesExamplesBrief } from "@config/content-sales";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
@@ -196,6 +197,8 @@ export async function say(userId: string, chatId: string | null, message: string
     ...(ids.motion || ids.mood || /موشن|motion|انترو|إنترو|تايبوغرافي|إنفوجرافيك|انفوجرافيك/i.test(`${ask} ${before?.record ?? ""}`) ? [motionCatalogBlock()] : []),
     chosenBlock(ids),
     contentExamplesBrief(nearestContentExamples(ask, 3)),
+    // selling: the method (the four steps) and the closest worked sales examples, when that is what the person wants
+    ...(isSalesAsk(`${ask} ${before?.record ?? ""}`) ? [SALES_METHOD, salesExamplesBrief(nearestSalesExamples(ask, 3))] : []),
     ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? "")) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
   const system = systemText(persona.text, parts, before?.record ?? "");
