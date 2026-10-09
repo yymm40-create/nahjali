@@ -1,12 +1,12 @@
 // «صانع المحتوى» — what a press in the questions becomes as a message: the answers as bullets, a pick in a gallery
-// carrying a mark ([قالب:id] / [ستايل:id]) that the server reads and the page hides. Pure (server and browser).
+// carrying a mark ([قالب:id] / [ستايل:id] / [موشن:id] / [مزاج:id]) that the server reads and the page hides. Pure (server and browser).
 
 export interface Pick {
   id: string;
   name: string;
 }
 
-const MARK = /\s*\[(?:قالب|ستايل):[a-z0-9-]+\]/g;
+const MARK = /\s*\[(?:قالب|ستايل|موشن|مزاج):[a-z0-9-]+\]/g;
 
 /** The text as the person reads it (the marks are for the server). */
 export const stripMarks = (text: string) => text.replace(MARK, "");
@@ -16,6 +16,12 @@ export const templateLine = (p: Pick) => (p.id === "none" ? "• القالب: �
 
 /** A cartoon-style pick as a line of a message (id "none" = no cartoon style). */
 export const styleLine = (p: Pick) => (p.id === "none" ? "• الستايل الكرتوني للصور: بدون ستايل كرتوني [ستايل:none]" : `• الستايل الكرتوني للصور: «${p.name}» [ستايل:${p.id}]`);
+
+/** A motion-skill pick («مهارات الموشن» of حيدرة) as a line of a message (id "none" = he chooses). */
+export const motionLine = (p: Pick) => (p.id === "none" ? "• مهارة الموشن: اختر لي الأنسب [موشن:none]" : `• مهارة الموشن: «${p.name}» [موشن:${p.id}]`);
+
+/** A mood pick (the feeling of the motion piece) as a line of a message (id "none" = he chooses). */
+export const moodLine = (p: Pick) => (p.id === "none" ? "• المزاج: اختر لي الأنسب للموضوع [مزاج:none]" : `• مزاج الموشن: «${p.name}» [مزاج:${p.id}]`);
 
 /** An answer of the buttons: a line per question. */
 export const answerLine = (label: string, answers: string[]) => `• ${label}: ${answers.join("، ")}`;

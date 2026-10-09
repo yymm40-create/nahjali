@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
-import { answerLine, DELEGATE_LINE, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { answerLine, DELEGATE_LINE, moodLine, motionLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 
 interface FileView { id: string; kind: "image" | "video" | "audio"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
@@ -21,7 +21,7 @@ interface MediaView {
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
   desk?: { generator: string; coins: number; free: boolean };
 }
-interface Question { label: string; kind: "choice" | "templates" | "styles"; options: string[]; multi: boolean }
+interface Question { label: string; kind: "choice" | "templates" | "styles" | "motion" | "moods"; options: string[]; multi: boolean }
 interface Msg {
   role: "user" | "assistant";
   text: string;
@@ -35,8 +35,17 @@ interface Msg {
 interface ChatItem { id: string; title: string }
 interface Pending { total: number; mode: "all" | "fix"; todo: number[] }
 interface Palette { name: string; bg: string; text: string; primary: string; accent: string }
-interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; palettes?: Palette[]; structures?: string[] }
-interface Galleries { templates: GalleryItem[]; styles: GalleryItem[] }
+interface GalleryItem { id: string; group: string; name: string; description: string; bestFor: string; image: string | null; icon?: string; palettes?: Palette[]; structures?: string[] }
+interface Galleries { templates: GalleryItem[]; styles: GalleryItem[]; motion?: GalleryItem[]; moods?: GalleryItem[] }
+type GalleryKind = "templates" | "styles" | "motion" | "moods";
+
+/** What each gallery says on its buttons, and the line a pick becomes in the message. */
+const GALLERY: Record<GalleryKind, { open: string; none: string; line: (p: { id: string; name: string }) => string }> = {
+  templates: { open: "🖼️ افتح معرض القوالب", none: "🚫 بدون قالب — صمّم لي بحرية", line: templateLine },
+  styles: { open: "🎨 افتح معرض الستايلات الكرتونية", none: "🚫 بدون ستايل كرتوني", line: styleLine },
+  motion: { open: "🎬 افتح معرض مهارات الموشن", none: "🎲 اختر لي المهارة الأنسب", line: motionLine },
+  moods: { open: "🎭 افتح معرض مشاعر الموشن", none: "🎲 اختر لي المزاج الأنسب", line: moodLine },
+};
 
 const STARTS = [
   { ic: "🖼️", t: "كاروسيل", d: "من فكرة أو نص إلى شرائح جاهزة بالصور", m: "أبي كاروسيل. اسألني عن اللي تحتاجه عشان نبدأ.", c: "#f6b73c" },
@@ -122,7 +131,7 @@ function Thumb({ item, big }: { item: GalleryItem; big?: boolean }) {
 }
 
 /** One of the two galleries: small pictures grouped, a press enlarges, «اختر» picks, with a way out and a way to write. */
-export function Gallery({ kind, items, onPick, onNone, onWrite }: { kind: "templates" | "styles"; items: GalleryItem[]; onPick: (i: GalleryItem) => void; onNone: () => void; onWrite: () => void }) {
+export function Gallery({ kind, items, onPick, onNone, onWrite }: { kind: GalleryKind; items: GalleryItem[]; onPick: (i: GalleryItem) => void; onNone: () => void; onWrite: () => void }) {
   const [view, setView] = useState<GalleryItem | null>(null);
   const groups = [...new Set(items.map((i) => i.group))];
   useEffect(() => {
@@ -153,7 +162,7 @@ export function Gallery({ kind, items, onPick, onNone, onWrite }: { kind: "templ
         </section>
       ))}
       <div className="ct-actions">
-        <button type="button" className="ct-opt" onClick={onNone}>{kind === "templates" ? "🚫 بدون قالب — صمّم لي بحرية" : "🚫 بدون ستايل كرتوني"}</button>
+        <button type="button" className="ct-opt" onClick={onNone}>{GALLERY[kind].none}</button>
         <button type="button" className="ct-opt ct-opt-write" onClick={onWrite}>✍️ أكتب وصفي الخاص</button>
       </div>
       {view && (
@@ -232,7 +241,7 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
           ) : (
             <div className="ct-opts">
               <button type="button" className="ct-opt" aria-pressed={gallery === qi} disabled={disabled} onClick={() => setGallery(gallery === qi ? null : qi)}>
-                {q.kind === "templates" ? "🖼️ افتح معرض القوالب" : "🎨 افتح معرض الستايلات الكرتونية"}
+                {GALLERY[q.kind as GalleryKind].open}
               </button>
               {chosenName(qi) && (
                 <span className="ct-chip ct-picked">✓ {chosenName(qi)} <button type="button" aria-label="ألغِ" onClick={() => setLines((s) => { const n = { ...s }; delete n[qi]; return n; })}>✕</button></span>
@@ -240,10 +249,10 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
               {gallery === qi && (
                 gal ? (
                   <Gallery
-                    kind={q.kind as "templates" | "styles"}
-                    items={q.kind === "templates" ? gal.templates : gal.styles}
-                    onPick={(i) => { setLines((s) => ({ ...s, [qi]: q.kind === "templates" ? templateLine({ id: i.id, name: i.name }) : styleLine({ id: i.id, name: i.name }) })); setGallery(null); }}
-                    onNone={() => { setLines((s) => ({ ...s, [qi]: q.kind === "templates" ? templateLine({ id: "none", name: "" }) : styleLine({ id: "none", name: "" }) })); setGallery(null); }}
+                    kind={q.kind as GalleryKind}
+                    items={(gal[q.kind as GalleryKind] ?? []) as GalleryItem[]}
+                    onPick={(i) => { setLines((s) => ({ ...s, [qi]: GALLERY[q.kind as GalleryKind].line({ id: i.id, name: i.name }) })); setGallery(null); }}
+                    onNone={() => { setLines((s) => ({ ...s, [qi]: GALLERY[q.kind as GalleryKind].line({ id: "none", name: "" }) })); setGallery(null); }}
                     onWrite={onWrite}
                   />
                 ) : (

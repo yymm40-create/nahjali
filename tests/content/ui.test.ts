@@ -24,7 +24,7 @@ describe("clickable answers", () => {
 });
 
 describe("his questions", () => {
-  const gal = { templates: items, styles: [] };
+  const gal = { templates: items, styles: [], motion: items, moods: items };
   it("a single plain question sends on a press, with the way to write", () => {
     const html = renderToStaticMarkup(h(Questions, { questions: [{ label: "التالي", kind: "choice", options: ["أنتج الآن", "أريد تعديلًا"], multi: false }], gal, disabled: false, onSend: noop, onWrite: noop }));
     expect(html).toContain("أنتج الآن");
@@ -39,6 +39,8 @@ describe("his questions", () => {
           { label: "الألوان", kind: "choice", options: ["كحلي وذهبي — #0B1F3A #D4AF37 #FFFFFF"], multi: true },
           { label: "القالب", kind: "templates", options: [], multi: false },
           { label: "الستايل", kind: "styles", options: [], multi: false },
+          { label: "مهارة الموشن", kind: "motion", options: [], multi: false },
+          { label: "مزاج الموشن", kind: "moods", options: [], multi: false },
         ],
         gal,
         disabled: false,
@@ -46,7 +48,7 @@ describe("his questions", () => {
         onWrite: noop,
       }),
     );
-    for (const t of ["1) المنصة", "2) الألوان", "(يجوز أكثر من خيار)", "3) القالب", "4) الستايل", "افتح معرض القوالب", "افتح معرض الستايلات الكرتونية", "أرسل الإجابات", "اختر أنت لكل ما لم أحدده", "غير ذلك", "background:#0B1F3A"]) expect(html).toContain(t);
+    for (const t of ["1) المنصة", "2) الألوان", "(يجوز أكثر من خيار)", "3) القالب", "4) الستايل", "افتح معرض القوالب", "افتح معرض الستايلات الكرتونية", "افتح معرض مهارات الموشن", "افتح معرض مشاعر الموشن", "5) مهارة الموشن", "6) مزاج الموشن", "أرسل الإجابات", "اختر أنت لكل ما لم أحدده", "غير ذلك", "background:#0B1F3A"]) expect(html).toContain(t);
   });
 });
 

@@ -503,6 +503,9 @@
 .ct-gal-open .zoom { position: absolute; bottom: 5px; inset-inline-end: 5px; background: #000a; border-radius: 999px; font-size: 11px; padding: 2px 6px; }
 .ct-thumb { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
 .ct-gal-grid.styles .ct-thumb { aspect-ratio: 16 / 9; }
+/* the motion previews are portrait stills drawn by the engine */
+.ct-gal-grid.motion, .ct-gal-grid.moods { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.ct-gal-grid.motion .ct-thumb, .ct-gal-grid.moods .ct-thumb { aspect-ratio: 9 / 16; }
 .ct-thumb.big { max-height: 62vh; width: auto; max-width: 100%; margin: 0 auto; border-radius: 14px; }
 .ct-thumb-ph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px; text-align: center; }
 .ct-thumb-ph b { font-size: 13px; line-height: 1.4; }

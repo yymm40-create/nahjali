@@ -7,7 +7,46 @@
 
 import type { Beat } from "./motion-build";
 import type { Palette } from "./motion-build";
-import type { MotionLook, MotionTheme } from "./motion-styles";
+import { iconById, iconSvg } from "./motion-icons";
+import { sceneSvg } from "./motion-scenes";
+import { moodOf, type MotionLook, type MotionTheme, type SceneId } from "./motion-styles";
+
+// ───────────── shapes حيدرة draws himself (the drawing tool) ─────────────
+
+export type ShapeType = "rect" | "circle" | "ring" | "line" | "arrow" | "star" | "blob" | "wave" | "dots" | "icon";
+export const SHAPE_TYPES: ShapeType[] = ["rect", "circle", "ring", "line", "arrow", "star", "blob", "wave", "dots", "icon"];
+export const MAX_SHAPES = 16;
+/** One shape: centre (x, y) as fractions of the frame; w, h as fractions of the frame's SHORT side; colour a palette word or #rrggbb; opacity; rotation in degrees. */
+export interface DrawShape {
+  t: ShapeType;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  c: string;
+  o: number;
+  r: number;
+  icon?: string;
+}
+const COLOR_WORDS = ["accent", "second", "text", "pill", "bg"];
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** Shapes from حيدرة's JSON: unknown kinds and colours dropped, everything clamped into the frame. */
+export function readShapes(raw: unknown): DrawShape[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DrawShape[] = [];
+  for (const x of raw.slice(0, MAX_SHAPES)) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    if (!SHAPE_TYPES.includes(o.t as ShapeType)) continue;
+    const num = (v: unknown, d: number) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d);
+    const c = typeof o.c === "string" && (COLOR_WORDS.includes(o.c) || /^#[0-9a-f]{6}$/i.test(o.c)) ? o.c : "accent";
+    const icon = o.t === "icon" ? (iconById(o.icon) ? String(o.icon) : null) : undefined;
+    if (icon === null) continue;
+    out.push({ t: o.t as ShapeType, x: clamp(num(o.x, 0.5), 0, 1), y: clamp(num(o.y, 0.5), 0, 1), w: clamp(num(o.w, 0.2), 0.01, 1.2), h: clamp(num(o.h, num(o.w, 0.2)), 0.005, 1.2), c, o: clamp(num(o.o, 0.4), 0.05, 0.9), r: clamp(num(o.r, 0), -360, 360), ...(icon ? { icon } : {}) });
+  }
+  return out;
+}
 
 // ───────────── colours ─────────────
 
@@ -52,6 +91,8 @@ export interface Anchors {
   items?: { y: number; h: number }[];
   quote?: { x?: number; y: number; h: number; w: number };
   pill?: { y: number; h: number };
+  /** the icon above the words: centre (x, y) as fractions of the frame, side as a fraction of the short side */
+  icon?: { x: number; y: number; size: number; id: string };
   /** the whole block of words: top and bottom */
   top: number;
   bottom: number;
@@ -114,7 +155,7 @@ function arch(cx: number, top: number, bottom: number, halfW: number, color: str
 }
 
 /** The background picture of beat `i` in a theme: its colour, then the theme's own treatment. */
-export function backgroundSvg(pal: Palette, i: number, w: number, h: number, theme: MotionTheme = "glow"): string {
+export function backgroundSvg(pal: Palette, i: number, w: number, h: number, theme: MotionTheme = "glow", scene?: SceneId): string {
   const bg = beatBackground(pal, i);
   const ink = isDark(bg) ? "#ffffff" : "#000000";
   const u = Math.min(w, h);
@@ -244,6 +285,8 @@ export function backgroundSvg(pal: Palette, i: number, w: number, h: number, the
       break;
     }
   }
+  // the scene behind the words (a feeling's, or the one asked for), over the theme's own treatment
+  parts.push(sceneSvg(scene, pal, i, w, h));
   return `${svgOpen(w, h)}${parts.join("")}</svg>`;
 }
 
@@ -276,7 +319,7 @@ const STYLE: Record<MotionTheme, { band: "tilt" | "highlight" | "underline" | "r
  * enough never to fight the text, never under a line of it (the band behind the title is the one exception, at a
  * tint the text stays readable on).
  */
-export function decorationSvg(b: Beat, i: number, pal: Palette, a: Anchors, w: number, h: number, theme: MotionTheme = "glow"): string {
+export function decorationSvg(b: Beat, i: number, pal: Palette, a: Anchors, w: number, h: number, theme: MotionTheme = "glow", plain = false): string {
   const T = STYLE[theme];
   const r = seeded(i * 7 + 3);
   const X = (f: number) => (f * w).toFixed(1);
@@ -387,7 +430,7 @@ export function decorationSvg(b: Beat, i: number, pal: Palette, a: Anchors, w: n
         break;
     }
   };
-  switch (b.kind) {
+  if (!plain) switch (b.kind) {
     case "title":
       if (a.head) band(a.head);
       if (T.corners) parts.push(corner(0.06, 0.08, 1, 1), corner(0.94, 0.92, -1, -1), dots(0.14, 0.86, 7, pal.second));
@@ -479,11 +522,95 @@ export function decorationSvg(b: Beat, i: number, pal: Palette, a: Anchors, w: n
       break;
     }
   }
+  // the beat's own drawing: the shapes حيدرة placed (kept faint where they would cross the words), then the icon above the words
+  if (b.shapes?.length) parts.push(shapesSvg(b.shapes, pal, w, h, a));
+  const picked = a.icon ? iconById(a.icon.id) : undefined;
+  if (a.icon && picked) {
+    const size = a.icon.size * u;
+    const cx = a.icon.x * w;
+    const cy = a.icon.y * h;
+    parts.push(`<circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(size * 0.62)}" fill="${pal.second}" opacity="0.16"/>`, `<circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(size * 0.62)}" fill="none" stroke="${pal.accent}" stroke-width="${f1(u * 0.004)}" opacity="0.5"/>`);
+    parts.push(iconSvg(picked, cx - size / 2, cy - size / 2, size, pal.accent));
+    for (const [k, ang] of [0.3, 2.2, 4.1].entries()) parts.push(`<circle cx="${f1(cx + Math.cos(ang + i) * size * 0.78)}" cy="${f1(cy + Math.sin(ang + i) * size * 0.78)}" r="${f1(u * (0.006 + k * 0.002))}" fill="${[pal.pill, pal.second, pal.accent][k]}" opacity="0.8"/>`);
+  }
   return `${svgOpen(w, h)}${parts.join("")}</svg>`;
 }
 
+/** The shapes of a beat as SVG, in the palette's colours; any that crosses the words is made faint so it never covers them. */
+export function shapesSvg(shapes: DrawShape[], pal: Palette, w: number, h: number, a: Anchors): string {
+  const u = Math.min(w, h);
+  const col = (c: string) => (c === "accent" ? pal.accent : c === "second" ? pal.second : c === "text" ? pal.text : c === "pill" ? pal.pill : c === "bg" ? pal.bg : c);
+  const out: string[] = [];
+  for (const s of shapes.slice(0, MAX_SHAPES)) {
+    const cx = s.x * w;
+    const cy = s.y * h;
+    const sw = s.w * u;
+    const sh = s.h * u;
+    // the words' zone: a shape over it stays at most 0.3 opaque
+    const crossX = Math.abs(cx - w / 2) < (w * (1 - 2 * 0.08)) / 2 + sw / 2;
+    const crossY = cy + sh / 2 > a.top * h && cy - sh / 2 < a.bottom * h;
+    const o = crossX && crossY && s.t !== "icon" ? Math.min(s.o, 0.3) : s.t === "icon" && crossX && crossY ? Math.min(s.o, 0.3) : s.o;
+    const c = col(s.c);
+    const rot = s.r ? ` transform="rotate(${f1(s.r)} ${f1(cx)} ${f1(cy)})"` : "";
+    const op = o.toFixed(2);
+    switch (s.t) {
+      case "rect":
+        out.push(`<rect x="${f1(cx - sw / 2)}" y="${f1(cy - sh / 2)}" width="${f1(sw)}" height="${f1(sh)}" rx="${f1(Math.min(sw, sh) * 0.12)}" fill="${c}" opacity="${op}"${rot}/>`);
+        break;
+      case "circle":
+        out.push(`<ellipse cx="${f1(cx)}" cy="${f1(cy)}" rx="${f1(sw / 2)}" ry="${f1(sh / 2)}" fill="${c}" opacity="${op}"${rot}/>`);
+        break;
+      case "ring":
+        out.push(`<ellipse cx="${f1(cx)}" cy="${f1(cy)}" rx="${f1(sw / 2)}" ry="${f1(sh / 2)}" fill="none" stroke="${c}" stroke-width="${f1(u * 0.006)}" opacity="${op}"${rot}/>`);
+        break;
+      case "line":
+        out.push(`<line x1="${f1(cx - sw / 2)}" y1="${f1(cy)}" x2="${f1(cx + sw / 2)}" y2="${f1(cy)}" stroke="${c}" stroke-width="${f1(Math.max(2, sh))}" stroke-linecap="round" opacity="${op}"${rot}/>`);
+        break;
+      case "arrow": {
+        const hd = Math.max(u * 0.02, sh);
+        out.push(`<g opacity="${op}"${rot}><line x1="${f1(cx - sw / 2)}" y1="${f1(cy)}" x2="${f1(cx + sw / 2 - hd)}" y2="${f1(cy)}" stroke="${c}" stroke-width="${f1(Math.max(2, hd * 0.3))}" stroke-linecap="round"/><polygon points="${f1(cx + sw / 2)},${f1(cy)} ${f1(cx + sw / 2 - hd)},${f1(cy - hd * 0.6)} ${f1(cx + sw / 2 - hd)},${f1(cy + hd * 0.6)}" fill="${c}"/></g>`);
+        break;
+      }
+      case "star": {
+        const pts: string[] = [];
+        for (let k = 0; k < 10; k++) {
+          const ang = (Math.PI * 2 * k) / 10 - Math.PI / 2;
+          const rr = k % 2 ? 0.42 : 1;
+          pts.push(`${f1(cx + Math.cos(ang) * (sw / 2) * rr)},${f1(cy + Math.sin(ang) * (sh / 2) * rr)}`);
+        }
+        out.push(`<polygon points="${pts.join(" ")}" fill="${c}" opacity="${op}"${rot}/>`);
+        break;
+      }
+      case "blob":
+        out.push(`<path d="M${f1(cx - sw / 2)} ${f1(cy)} C${f1(cx - sw / 2)} ${f1(cy - sh * 0.7)} ${f1(cx + sw * 0.1)} ${f1(cy - sh * 0.6)} ${f1(cx + sw / 2)} ${f1(cy - sh * 0.1)} C${f1(cx + sw * 0.6)} ${f1(cy + sh * 0.6)} ${f1(cx - sw * 0.1)} ${f1(cy + sh * 0.7)} ${f1(cx - sw / 2)} ${f1(cy)} Z" fill="${c}" opacity="${op}"${rot}/>`);
+        break;
+      case "wave": {
+        let d = `M${f1(cx - sw / 2)} ${f1(cy)}`;
+        const n = 6;
+        for (let k = 0; k < n; k++) d += ` q${f1(sw / n / 2)} ${f1(k % 2 ? sh : -sh)} ${f1(sw / n)} 0`;
+        out.push(`<path d="${d}" fill="none" stroke="${c}" stroke-width="${f1(u * 0.006)}" stroke-linecap="round" opacity="${op}"${rot}/>`);
+        break;
+      }
+      case "dots": {
+        const g: string[] = [];
+        const cols = 5;
+        const rows = Math.max(1, Math.round((sh / sw) * cols));
+        for (let ry = 0; ry < rows; ry++) for (let k = 0; k < cols; k++) g.push(`<circle cx="${f1(cx - sw / 2 + (sw * (k + 0.5)) / cols)}" cy="${f1(cy - sh / 2 + (sh * (ry + 0.5)) / rows)}" r="${f1(sw / cols / 5)}" fill="${c}"/>`);
+        out.push(`<g opacity="${op}"${rot}>${g.join("")}</g>`);
+        break;
+      }
+      case "icon": {
+        const ic = iconById(s.icon);
+        if (ic) out.push(`<g opacity="${op}">${iconSvg(ic, cx - sw / 2, cy - sw / 2, sw, c)}</g>`);
+        break;
+      }
+    }
+  }
+  return out.join("");
+}
+
 /** Every picture of a piece (a background and a decoration per beat), drawn at a size that stays crisp and light. */
-export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: number, H: number, look?: Pick<MotionLook, "background" | "decor" | "theme">): ArtPiece[] {
+export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: number, H: number, look?: Pick<MotionLook, "background" | "decor" | "theme"> & Partial<Pick<MotionLook, "mood" | "scene">>): ArtPiece[] {
   // drawn at a size that stays crisp on a phone and light to make (the player scales it to the frame)
   const k = Math.min(1, 1080 / Math.max(W, H));
   const w = Math.round(W * k);
@@ -492,8 +619,12 @@ export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: num
   const out: ArtPiece[] = [];
   beats.forEach((b, i) => {
     // «steady»: one background for the whole piece (the same colour every beat)
-    out.push({ key: `bg-${i}`, svg: backgroundSvg(pal, look?.background === "steady" ? 0 : i, w, h, theme), w, h });
-    if (look?.decor !== false) out.push({ key: `art-${i}`, svg: decorationSvg(b, i, pal, anchors[i] ?? { top: 0.2, bottom: 0.8 }, w, h, theme), w, h });
+    // the scene behind the words: the beat's own, then its feeling's, then the piece's own, then the piece's feeling's
+    const scene = b.scene ?? moodOf(b.mood)?.scene ?? look?.scene ?? moodOf(look?.mood)?.scene;
+    out.push({ key: `bg-${i}`, svg: backgroundSvg(pal, look?.background === "steady" ? 0 : i, w, h, theme, scene), w, h });
+    // the decoration; or, when the skill draws none, only what the beat itself asked for (an icon, its own shapes)
+    const mine = Boolean(anchors[i]?.icon) || Boolean(b.shapes?.length);
+    if (look?.decor !== false || mine) out.push({ key: `art-${i}`, svg: decorationSvg(b, i, pal, anchors[i] ?? { top: 0.2, bottom: 0.8 }, w, h, theme, look?.decor === false), w, h });
   });
   return out;
 }

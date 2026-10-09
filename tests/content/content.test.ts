@@ -32,9 +32,9 @@ describe("«محمد باقر»", () => {
     expect(ANSWER_SCHEMA.required).toEqual(["reply", "questions", "record", "produce", "generate", "handoff"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(["1:1", "2:3", "9:16", "16:9"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.mode.enum).toEqual(["all", "fix"]);
-    expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "templates", "styles"]);
+    expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "templates", "styles", "motion", "moods"]);
     expect(ANSWER_SCHEMA.properties.handoff.properties.shape.enum).toEqual(["9:16", "16:9"]);
-    for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"handoff\"", "template_id", "style_id", "kind=\"templates\"", "kind=\"styles\"", "#RRGGBB"]) expect(CONTENT_TOOLS).toContain(field);
+    for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"handoff\"", "template_id", "style_id", "kind=\"templates\"", "kind=\"styles\"", "kind=\"motion\"", "kind=\"moods\"", "storyboard", "#RRGGBB"]) expect(CONTENT_TOOLS).toContain(field);
   });
 });
 

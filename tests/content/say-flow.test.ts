@@ -181,4 +181,21 @@ describe("his answer", () => {
     expect(r.text).toContain("فتحت غرفة مونتاج باسم «ريل القهوة»");
     expect(chat().messages[1].editor).toEqual({ id: "room-1", title: "ريل القهوة" });
   });
+
+  it("a motion piece: the storyboard he wrote is checked, kept in the handoff with the chosen skill and mood, and a broken one is left out", async () => {
+    const sb = JSON.stringify({ style: "reel", mood: "joy", beats: [{ kind: "kinetic", words: ["مبروك", "عليك", "الفرحة"], hot: 1 }, { kind: "outro", title: "شكرًا", handle: "@nahjali" }] });
+    answer({ handoff: { on: true, title: "تهنئة", shape: "9:16", package: "حزمة الموشن", storyboard: sb } });
+    await say("u", null, "ابدأ الإنتاج", []);
+    const handoff = String((db.editorChats[0] as { handoff: string }).handoff);
+    expect(handoff).toContain("لوحة القصة (storyboard)");
+    expect(handoff).toContain("الريل السريع");
+    expect(handoff).toContain("الفرح");
+    expect(handoff).toContain("مبروك");
+    expect(handoff).toContain("لا تطلب خلفية من GPT Image 2");
+    // unreadable: the package alone
+    db.editorChats.length = 0;
+    answer({ handoff: { on: true, title: "تهنئة", shape: "9:16", package: "حزمة الموشن", storyboard: "{not json" } });
+    await say("u", null, "ابدأ الإنتاج", []);
+    expect(String((db.editorChats[0] as { handoff: string }).handoff)).not.toContain("لوحة القصة");
+  });
 });

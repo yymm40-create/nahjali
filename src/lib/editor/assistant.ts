@@ -15,10 +15,11 @@ import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { TR_LIST } from "./transitions";
 import { MOTION_SKILL } from "./motion";
-import { MOTION_STYLES_SKILL, motionStyleOf, styleInText } from "./motion-styles";
+import { askedForPicture, MOODS_SKILL, MOTION_STYLES_SKILL, moodInText, motionStyleOf, styleInText } from "./motion-styles";
 import { MAJED_SKILL } from "./majed";
-import { lintMotion, motionCommands, motionPlan, readStoryboard, SFX, storyboardNumbers, type SfxKind } from "./motion-build";
+import { lintMotion, motionCommands, motionPlan, narrationMs, readStoryboard, SFX, storyboardNumbers, type Fit, type SfxKind } from "./motion-build";
 import { makeMotionArt } from "./generate";
+import { motionExamplesBrief, nearestMotionExamples } from "./motion-bank";
 import { readFace, readTalk, talkArt, talkCommands } from "./talk-motion";
 import type { AssetView } from "./server";
 import { applyAll } from "./commands";
@@ -138,6 +139,8 @@ ${MOTION_SKILL}
 
 ${MOTION_STYLES_SKILL}
 
+${MOODS_SKILL}
+
 ${MAJED_SKILL}`;
 
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
@@ -195,6 +198,8 @@ export interface MakeRequest {
   at: number;
   lengthMs: number;
   clipId: string;
+  /** make speech for a motion piece: where its beats sit, so the page stretches them to the real recording */
+  fit?: Fit;
 }
 
 interface Answer {
@@ -232,6 +237,11 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const brief = p.film_project_id || p.episode_id ? await sajjadBrief({ filmProjectId: p.film_project_id, episodeId: p.episode_id }) : null;
   // «مهارات الموشن»: a skill the person named in this message (its look and craft; their other words win)
   const named = styleInText(message);
+  // the feeling named in the words (the storyboard keeps its own when it has one)
+  const feeling = moodInText(message);
+  // a motion request: the closest worked pieces of the site's bank (same feeling and skill, then the topic's words) ride with it as examples
+  const motionAsk = Boolean((named && !named.talk) || feeling || /موشن|motion|إنفوجرافيك|انفوجرافيك|تايبوغرافي|كلمات طائرة/i.test(message));
+  const examples = motionAsk ? motionExamplesBrief(nearestMotionExamples(message, { mood: feeling?.id, style: named && !named.talk ? named.id : undefined }, 2)) : "";
   const turns: ClaudeTurn[] = [
     ...(brief
       ? ([
@@ -240,7 +250,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
         ] as ClaudeTurn[])
       : []),
     ...history,
-    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${b.spoken === true ? SPOKEN : ""}${named ? (named.talk ? `\n\n(The person named «${named.ar}»: motion on their talking video — write "talk" with "layout":"${named.talk}" (or ONLY the talk_motion request when the clip has no "speech" yet); whatever else they asked in these words wins.)` : `\n\n(The person named the motion skill «${named.ar}»: build it with "style":"${named.id}"; whatever else they asked in these words wins over the skill.)`) : ""}` },
+    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${examples ? `\n\n${examples}` : ""}${b.spoken === true ? SPOKEN : ""}${named ? (named.talk ? `\n\n(The person named «${named.ar}»: motion on their talking video — write "talk" with "layout":"${named.talk}" (or ONLY the talk_motion request when the clip has no "speech" yet); whatever else they asked in these words wins.)` : `\n\n(The person named the motion skill «${named.ar}»: build it with "style":"${named.id}"; whatever else they asked in these words wins over the skill.)`) : ""}` },
   ];
   const merged = turns.reduce<ClaudeTurn[]>((m, t) => {
     const last = m[m.length - 1];
@@ -325,8 +335,14 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const sb = answer.motion?.trim() ? readStoryboard(answer.motion) : null;
   // the skill the person named holds even when the answer forgot to say it
   if (sb && !motionStyleOf(sb.style) && named && !named.talk) sb.style = named.id;
+  if (sb && feeling && !sb.look?.mood) sb.look = { ...(sb.look ?? {}), mood: feeling.id };
+  // the narration sets the length: the beats share its estimated time (the page stretches them to the real recording later)
+  const speech = sb ? (answer.requests ?? []).find((r) => r.kind === "make" && r.makeKind === "speech" && r.prompt.trim()) : undefined;
+  if (sb && speech && !sb.fitMs) sb.fitMs = Math.max(2000, narrationMs(speech.prompt) + 600);
+  let motionFit: Fit | null = null;
   if (sb) {
     const plan = motionPlan(sb, tl.width, tl.height);
+    motionFit = plan.fit;
     // the backgrounds and decorations, drawn here and kept with the project (no generator): a picture that failed is left out
     const made = await makeMotionArt(p, plan.art).catch((e) => (console.error("motion art", e), new Map<string, AssetView>()));
     const artIds = new Map<string, string>();
@@ -414,6 +430,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
     .filter((r) => !(sb && r.kind === "make" && r.makeKind === "sfx"))
+    // a motion piece draws its own backgrounds and icons: GPT Image 2 only when the person asked for a picture in so many words
+    .filter((r) => !(sb && r.kind === "make" && r.makeKind === "image" && !askedForPicture(message)))
     .slice(0, 4);
   requests.push(...sfxRequests);
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
@@ -421,7 +439,11 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // «اصنع لي…»: each priced now with JAWAD AI's prices (the page shows the price and starts it)
   for (const r of requests.filter((x) => x.kind === "make").slice(0, 3 + sfxRequests.length)) {
     const planned = await planMake(who, { ...(r as unknown as MakeSpec), makeKind: r.makeKind as MakeKind, place: (r.place || "over") as MakePlace }, tl.width / tl.height);
-    if ("plan" in planned) r.plan = planned.plan;
+    if ("plan" in planned) {
+      r.plan = planned.plan;
+      // the narration of a motion piece carries where its beats sit (the page stretches them to the real recording)
+      if (r.makeKind === "speech" && motionFit && r === speech) r.plan.fit = motionFit;
+    }
     else reply += `\n\n(ما قدرت أصنع «${r.name || r.prompt.slice(0, 30)}»: ${planned.error})`;
   }
   for (const r of requests.filter((x) => x.kind === "hook_design").slice(0, 2)) {
