@@ -3,7 +3,7 @@
 // by number. Nothing found → it says so. Server only.
 
 import { ISLAMIC_IDENTITY, ISLAMIC_KV } from "@config/islamic";
-import { callClaudeJson, CLAUDE_MODEL, claudeCost, siteSystem, type ClaudeUsage } from "@/lib/film/anthropic";
+import { callClaudeJson, CLAUDE_MODEL, claudeCost, isLeader, siteSystem, type ClaudeUsage } from "@/lib/film/anthropic";
 import { KIND_LABEL } from "./text";
 import { kvAll, logAnswer, search, type Passage } from "./library";
 
@@ -70,7 +70,7 @@ async function classicalWords(question: string): Promise<{ words: string[]; usd:
 }
 
 /** Answers one question from the library, with the conversation before it (for follow-ups). */
-export async function ask(userId: string | null, question: string, history: Turn[] = []): Promise<Answer> {
+export async function ask(userId: string | null, question: string, history: Turn[] = [], email: string | null = null): Promise<Answer> {
   const q = question.trim().slice(0, 2000);
   if (!q) throw new Error("empty question");
   const key = process.env.ANTHROPIC_API_KEY;
@@ -99,7 +99,7 @@ export async function ask(userId: string | null, question: string, history: Turn
   const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 6000, system: siteSystem(system), messages: turns, output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } } }),
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 6000, system: siteSystem(system, true, isLeader(email)), messages: turns, output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } } }),
     signal: AbortSignal.timeout(170_000),
   });
   const body = await res.json().catch(() => ({}));

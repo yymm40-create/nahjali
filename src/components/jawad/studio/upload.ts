@@ -15,7 +15,7 @@ const KIND_AR: Record<RefKind, string> = { image: "صورة", video: "فيديو
 
 /** Reads what the file really is (first bytes) and its pixels / duration from the browser's own decoder. */
 export async function probeFile(file: File, expected?: RefKind): Promise<LocalProbe> {
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error("حجم الملف أكبر من ٥٠ ميجا.");
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error("حجم الملف أكبر من ٢٠٠ ميجا.");
   const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
   const s = sniff(head);
   if (!s || !UPLOAD_MIMES[s.mime]) throw new Error("نوع الملف غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، MP3/WAV).");

@@ -8,7 +8,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, totalTokens, type ClaudeTurn } from "./anthropic";
+import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, totalTokens, type ClaudeTurn } from "./anthropic";
 import { addFindings, decideFindings, parseFindings, pendingFindings, readResearch, researchText, RESEARCH_LIMITS, type Research } from "./research";
 import { addEpisode, addScene, canEditBible, episodesOf, membersOf, openSeries, scenesOf, usernames, type FilmSeries, type SeriesPlan } from "./series";
 import { castOf, upsertCast } from "./series-cast";
@@ -312,7 +312,7 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   const system = `${PERSONA}\n\n${rules}${researchState(scope)}\n\n=== CONTEXT (read fresh each time) ===\n${context}\n\n=== YOUR NOTES ===\n${memory.length ? memory.map((m) => `- ${m}`).join("\n") : "(none yet)"}`;
   // his answer, and — when he was asked to research — the search itself, paid together
   const call = async () => {
-    const r = await callClaudeJson<Reply>({ system, turns: turnsOf(messages, text, me), schema: SCHEMA, maxTokens: 16000, effort: "medium" });
+    const r = await callClaudeJson<Reply>({ system, turns: turnsOf(messages, text, me), schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
     let usd = claudeCost(r.usage);
     let found: Research | null = null;
     const scopeText = r.data.research.trim().slice(0, RESEARCH_LIMITS.scopeMax);

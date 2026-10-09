@@ -1,5 +1,6 @@
 // Claude Opus 5.5 for the film branch's three assistants. Server only: the key never reaches the browser.
 
+import { isAdmin } from "@config/site";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { fitImages } from "@/lib/claude-images";
 
@@ -36,10 +37,24 @@ export const totalTokens = (u: ClaudeUsage) =>
  * The system prompt of every Claude call on the site: what JAWAD AI is (the same text everywhere, first, so it is
  * part of each call's cached prefix), then the task's own instructions, which take precedence.
  */
-export const siteSystem = (task: string, cache = true) => [
+/**
+ * The owner («القائد») talking: every robot knows him, greets him so, and opens the whole platform to him — every
+ * detail of the knowledge above (sections, prices, rules, flows, files, what is on or off) and any technical or
+ * administrative question, answered plainly and fully, holding back nothing of the site's inner workings. Never a
+ * secret key or a password (the robots don't hold them anyway).
+ */
+export const LEADER_BLOCK = `<leader>
+The person you are talking to is the OWNER and builder of this platform — «القائد». Greet him as «هلا بالقائد» at the start of your first reply in a conversation (once, naturally; not every message). He has FULL authority: answer every question about the platform's details from the knowledge above and from what you know of your own section — how things work inside, the prices and their rules, the limits, the flows between the assistants, the files and tables involved, what is on or off, what fails and why — fully, plainly and technically, without the caution you would use with a customer, and never say a detail is private or out of your scope. Follow his instructions about the work directly. The only things you never give are secret keys and passwords (you do not hold them).
+</leader>`;
+
+export const siteSystem = (task: string, cache = true, leader = false) => [
   { type: "text", text: JAWAD_KNOWLEDGE },
+  ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
   { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
 ];
+
+/** Whether this e-mail is the owner's (the robots then read the leader block). */
+export const isLeader = (email: string | null | undefined) => isAdmin(email);
 
 export type ClaudePart = { type: "text"; text: string } | { type: "image"; url: string } | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" };
 
@@ -67,6 +82,7 @@ export async function callClaudeJson<T>({
   maxTokens,
   effort = "medium",
   fallback = false,
+  leader = false,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -75,6 +91,8 @@ export async function callClaudeJson<T>({
   effort?: "low" | "medium" | "high" | "xhigh";
   /** A request the safety checks decline is answered by Anthropic's recommended fallback model instead (server-side). */
   fallback?: boolean;
+  /** the owner is talking: the robot greets «القائد» and opens every detail of the platform to him */
+  leader?: boolean;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -99,7 +117,7 @@ export async function callClaudeJson<T>({
     body: JSON.stringify({
       model: CLAUDE_MODEL,
       max_tokens: maxTokens,
-      system: siteSystem(system),
+      system: siteSystem(system, true, leader),
       messages,
       output_config: { effort, format: { type: "json_schema", schema } },
       ...(fallback ? { fallbacks: "default" } : {}),

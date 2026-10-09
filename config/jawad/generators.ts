@@ -276,7 +276,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
     ],
     files: {
       image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB - 1, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5 },
-      video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 50 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minPixels: 407_696, maxPixels: 8_295_044, minMs: 2000, maxMs: lim.clipMax, minFps: 24, maxFps: 60 },
+      video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 200 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minPixels: 407_696, maxPixels: 8_295_044, minMs: 2000, maxMs: lim.clipMax, minFps: 24, maxFps: 60 },
       audio: { mimes: ["audio/mpeg", "audio/wav"], maxBytes: 15 * MB, minMs: 2000, maxMs: lim.clipMax },
     },
     // No hard limit documented (we accept up to 32,000 characters); BytePlus advises ≤ 500 Chinese characters or 1,000 English words
@@ -746,7 +746,7 @@ const smartSplit: GeneratorDef = {
     { key: "music", label: "الموسيقى", kind: "bool", default: true, hint: "تُصنع جديدة على مقاس مشاهده، بلا غناء" },
     { key: "sfx", label: "المؤثرات الصوتية", kind: "bool", default: true, hint: "تُصنع كل واحدة في لحظتها" },
   ],
-  files: { video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 50 * MB, minMs: VIDEO_SFX.minMs, maxMs: VIDEO_SFX.maxMs } },
+  files: { video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 200 * MB, minMs: VIDEO_SFX.minMs, maxMs: VIDEO_SFX.maxMs } },
   prompt: { label: "توجيه إضافي", placeholder: "مثال: موسيقى عربية هادئة بالعود · ركّز على صوت السيوف", max: 2000, arabic: true },
   priceKeys: [
     { key: STEM_KEY.dialogue, label: "الحوار · كل ثانية من الفيديو", defaultCenti: centiFor(ELEVEN_PRICE.isolatorPerMin / 60), basis: `سعر ElevenLabs المنشور لعزل الصوت: $${ELEVEN_PRICE.isolatorPerMin} للدقيقة` },

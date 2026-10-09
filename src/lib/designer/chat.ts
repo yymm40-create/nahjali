@@ -5,7 +5,7 @@
 // picture to split into layers. Server only.
 
 import { randomUUID } from "crypto";
-import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
+import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { DESIGNER, DESIGN_ASPECTS, isDesignAspect, isDesignKind, type DesignAspect, type DesignKind } from "@config/designer";
 import { findKindStyle } from "@config/designer-library";
 import { drawsRealWoman } from "@config/jawad/assistant";
@@ -131,7 +131,7 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
 }
 
 /** The person says something in a conversation (a new one when `chatId` is null). */
-export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown): Promise<Reply> {
+export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null): Promise<Reply> {
   const said = message.trim().slice(0, DESIGNER.messageMax);
   const { list: files } = await attachmentsOf(userId, attachmentIds);
   if (!said && !files.length) throw new Error("empty message");
@@ -143,7 +143,7 @@ export async function say(userId: string, chatId: string | null, message: string
   const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
   const persona = await getPersona();
   const system = systemText(persona.text, [], before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turns: turns.map((t) => toClaudeTurn(t, links)), schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium" });
+  const r = await callClaudeJson<Answer>({ system, turns: turns.map((t) => toClaudeTurn(t, links)), schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   let usd = claudeCost(r.usage);
   const questions = readQuestions(a.questions);
