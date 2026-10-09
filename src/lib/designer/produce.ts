@@ -1,7 +1,7 @@
 // «المصمم الذكي» — the produce step: the artwork of a design «كاظم» ordered. He does not draw it himself: the request
 // is handed to جواد's desk (src/lib/content/jawad.ts), who makes it with GPT Image 2 as an ordinary JAWAD AI job (so
 // it is also in «أعمالي»), with the site's rule that the picture carries NO TEXT (the words are real layers). The
-// picture is checked right after (Claude reads it: any text that slipped in, a woman); text in it is drawn again once
+// picture is checked right after (Claude reads it: any text that slipped in); text in it is drawn again once
 // with the problem written into the prompt. Server only.
 
 import { randomUUID } from "crypto";
@@ -26,7 +26,6 @@ export function artworkPrompt(o: { prompt: string; refs: number; fix?: string })
     o.refs ? `The client's own attached picture${o.refs > 1 ? "s are" : " is"} given as reference${o.refs > 1 ? "s" : ""} (named ref1${o.refs > 1 ? "…" : ""}): use ${o.refs > 1 ? "them" : "it"} as the brief says (a photo of a person to place, a template whose look to follow, a logo), keeping a person's face and identity exactly as in the photo.` : "",
     o.prompt,
     NO_TEXT_RULE,
-    "No real women or girls anywhere in the picture.",
     o.fix ?? "",
   ]
     .filter(Boolean)
@@ -66,15 +65,14 @@ export async function produce(userId: string, chatId: string, o: { owner?: boole
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const r = await deskImage(who, { key: `d-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: artworkPrompt({ prompt: p.artwork, refs: refs.length, fix }), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
-      // the check: no text should be on the picture (expected text is empty, so any word is "extra"), and no woman
+      // the check: no text should be on the picture (expected text is empty, so any word is "extra")
       const check = await checkSlide(r.bytes, "");
       usd += check.usd;
-      const bad = check.checked && (check.problems.length > 0 || check.woman === "violation");
+      const bad = check.checked && check.problems.length > 0;
       if (bad && attempt < MAX_ATTEMPTS) {
-        fix = `The previous attempt had these problems — fix every one of them: ${check.problems.join("; ") || "a woman was drawn"}. Remove every trace of letters, words or writing; keep the surfaces where text would go clean.`;
+        fix = `The previous attempt had these problems — fix every one of them: ${check.problems.join("; ") || "text was drawn"}. Remove every trace of letters, words or writing; keep the surfaces where text would go clean.`;
         continue;
       }
-      if (bad && check.woman === "violation") throw new DeskError("الصورة خالفت قاعدة الموقع (امرأة واقعية) بعد المحاولتين فاستُبعدت.", "woman violation");
       flag = bad ? check.problems.join("، ").slice(0, 300) : "";
       const file = await addFileFromOutput({ userId, chatId, out: r.out, name: `artwork-${p.id}`, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, refs: p.refs, desk: r.receipt, ...(flag ? { flag } : {}) } });
       design = { ...base, artwork: file.id, width: r.out.width ?? base.width, height: r.out.height ?? base.height, layers: base.layers.length ? base.layers : p.layers, state: "ready", ...(flag ? { flag } : {}) };

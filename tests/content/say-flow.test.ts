@@ -3,7 +3,7 @@ import type { Chat, Turn } from "@/lib/content/chats";
 
 // One message to «محمد باقر» end to end, with Claude, the database and the editor replaced by stand-ins: what he is
 // given (the catalogues, what the person picked, the state of an earlier carousel) and what the site does with his
-// answer (the buttons, the carousel to draw, the woman rule, drawing slides again, the hand-over to حيدرة).
+// answer (the buttons, the carousel to draw, drawing slides again, the hand-over to حيدرة).
 const claude = vi.hoisted(() => ({ answer: null as unknown, calls: [] as { system: string; turns: { role: string; content: unknown }[] }[] }));
 const db = vi.hoisted(() => ({ chat: null as unknown, editorProjects: [] as unknown[], editorChats: [] as unknown[], assets: [] as unknown[] }));
 
@@ -60,7 +60,6 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import { say } from "@/lib/content/chat";
-import { WOMAN_WORDING } from "@config/content";
 import { findStyle } from "@config/film-styles";
 import { styleLine, templateLine } from "@/lib/content/marks";
 
@@ -134,20 +133,6 @@ describe("his answer", () => {
     await say("u", null, "أنتج", []);
     expect(chat().pending).toMatchObject({ aspect: "1:1", templateId: "", styleId: "" });
     expect(findStyle("ghibli")).toBeDefined();
-  });
-
-  it("the woman rule: a prompt that draws a woman any other way is not ordered; the allowed wording is", async () => {
-    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: [{ n: 1, text: "أ", prompt: "a woman holding a cup \"أ\"" }] } });
-    const bad = await say("u", null, "أنتج", []);
-    expect(bad.pending).toBeNull();
-    expect(chat().pending).toBeNull();
-    expect(bad.text).toContain("لم يُنتج الكاروسيل");
-    expect(bad.text).toContain("عباية سوداء");
-
-    db.chat = null;
-    answer({ produce: { on: true, mode: "all", aspect: "1:1", template_id: "", style_id: "", slides: [{ n: 1, text: "أ", prompt: `a woman holding a cup. ${WOMAN_WORDING} "أ"` }] } });
-    const ok = await say("u", null, "أنتج", []);
-    expect(ok.pending).toMatchObject({ total: 1 });
   });
 
   it("slides drawn again: only those slides, in the carousel that exists, with its style kept", async () => {

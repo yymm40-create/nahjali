@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { womanCheck } from "@config/content";
 import { ARABIC_TEXT_RULES, CAROUSEL_TEMPLATES, designSystem, findTemplate, STRUCTURES, TEMPLATE_GROUPS, THUMB_TEXT, thumbPrompt } from "@config/content-templates";
 import { allTemplateExamples, nearestTemplateExamples, TEMPLATE_EXAMPLES_PER, templateExamplesBrief, templateExamplesFor } from "@config/content-template-examples";
 
@@ -15,7 +14,6 @@ const contrast = (a: string, b: string) => {
   const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
   return (x + 0.05) / (y + 0.05);
 };
-const WOMAN = /\b(woman|women|girl|female|lady|she|her)\b|بنت|امرأة|نساء|فتاة|سيدة/iu;
 
 describe("the 24 templates", () => {
   it("are 24, each with its own id, a known group, and a complete design system", () => {
@@ -34,7 +32,6 @@ describe("the 24 templates", () => {
       expect(t.words, t.id).toBeLessThanOrEqual(40);
       for (const f of [t.look, t.type, t.cover, t.body, t.closing]) expect(f.length, t.id).toBeGreaterThan(40);
       expect(t.type, t.id).toMatch(/Arabic/);
-      expect(WOMAN.test(`${t.look} ${t.cover} ${t.body} ${t.closing}`), t.id).toBe(false);
     }
     expect(findTemplate("scrapbook")?.name).toBe("دفتر قصاصات");
     expect(findTemplate("nope")).toBeUndefined();
@@ -72,7 +69,6 @@ describe("the 24 templates", () => {
       expect(p).toContain(ARABIC_TEXT_RULES);
       expect(p).toContain(t.id);
       expect(p.length).toBeLessThan(4000);
-      expect(womanCheck(p)).toBe("none");
     }
     expect(ARABIC_TEXT_RULES).toMatch(/right-to-left/);
     expect(ARABIC_TEXT_RULES).toMatch(/joined/);
@@ -121,10 +117,6 @@ describe("the worked carousels", () => {
         expect(e.coverPrompt).toContain(`"${cover.line}"`);
         expect(e.coverPrompt).toContain(t.cover);
         expect(e.bodyPrompt).toContain(t.body);
-        // the site's rule: no woman anywhere in an example
-        expect(WOMAN.test(e.ask)).toBe(false);
-        expect(womanCheck(e.coverPrompt)).toBe("none");
-        expect(womanCheck(e.bodyPrompt)).toBe("none");
       });
 
       it("come back first for their own requests, within their template", () => {

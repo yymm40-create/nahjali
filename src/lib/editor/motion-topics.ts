@@ -2,7 +2,7 @@
 // phrases a good piece of that feeling uses (titles, statements, points, numbers, quotes, comparisons, kinetic words,
 // closings). The bank (motion-bank.ts) builds its million pieces from these, so every example حيدرة sees speaks the
 // way its feeling speaks: sadness plain and slow, joy bright and short, teaching one idea at a time, urgency in
-// commands. Subjects avoid people's pictures entirely (the site's rule on women). Pure.
+// commands. Subjects avoid people's pictures entirely. Pure.
 
 import type { MotionMood } from "./motion-styles";
 

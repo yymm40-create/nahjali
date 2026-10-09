@@ -4,10 +4,10 @@ import type { Chat, Turn } from "@/lib/content/chats";
 
 // The produce step end to end, with the image generator, the check, the storage and the database replaced by
 // stand-ins: the order the slides are drawn in, the reference, a refusal for a moment, the redraw after the check
-// finds a mistake, the dress rule, what is kept when a slide fails, and a slide drawn again in a carousel that exists.
+// finds a mistake, what is kept when a slide fails, and a slide drawn again in a carousel that exists.
 const db = vi.hoisted(() => ({ chat: null as unknown, files: new Map<string, { path: string; name: string; meta: Record<string, unknown> }>(), deleted: [] as string[], next: 0 }));
 const gen = vi.hoisted(() => ({ calls: [] as { prompt: string; refs: number; key: string; kind: string }[], script: [] as (Error | "ok")[] }));
-const chk = vi.hoisted(() => ({ script: [] as ("ok" | "bad" | "woman" | "unchecked")[], calls: [] as string[] }));
+const chk = vi.hoisted(() => ({ script: [] as ("ok" | "bad" | "unchecked")[], calls: [] as string[] }));
 
 vi.mock("@/lib/content/jawad", async (orig) => {
   const real = await orig<typeof import("@/lib/content/jawad")>();
@@ -34,10 +34,9 @@ vi.mock("@/lib/content/verify", async (orig) => {
     checkSlide: vi.fn(async (_png: Buffer, expected: string) => {
       chk.calls.push(expected);
       const step = chk.script.shift() ?? "ok";
-      if (step === "ok") return { ok: true, checked: true, problems: [], woman: "none", read: "", usd: 0.01 };
-      if (step === "unchecked") return { ok: true, checked: false, problems: [], woman: "none", read: "", usd: 0 };
-      if (step === "woman") return { ok: false, checked: true, problems: ["امرأة بلباس غير مسموح"], woman: "violation", read: "", usd: 0.01 };
-      return { ok: false, checked: true, problems: ["حرف مقطوع في الكلمة الثانية"], woman: "none", read: "", usd: 0.01 };
+      if (step === "ok") return { ok: true, checked: true, problems: [], read: "", usd: 0.01 };
+      if (step === "unchecked") return { ok: true, checked: false, problems: [], read: "", usd: 0 };
+      return { ok: false, checked: true, problems: ["حرف مقطوع في الكلمة الثانية"], read: "", usd: 0.01 };
     }),
   };
 });
@@ -204,15 +203,6 @@ describe("drawing a carousel", () => {
     expect(r.slides).toHaveLength(1);
     expect(r.slides[0].flag).toContain("حرف مقطوع");
     expect(r.report).toContain("فيها ملاحظة بعد المحاولات: الشريحة 1");
-  });
-
-  it("never keeps a woman in a wrong dress", async () => {
-    start(1);
-    chk.script.push("woman", "woman", "woman");
-    const r = await produce("u", "chat-1");
-    expect(r.slides).toHaveLength(0);
-    expect(r.failed[0].reason).toContain("قاعدة اللباس");
-    expect([...db.files.values()]).toHaveLength(0);
   });
 
   it("keeps a slide whose check could not run and says it is unchecked", async () => {

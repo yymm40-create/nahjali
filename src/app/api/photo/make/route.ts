@@ -4,7 +4,6 @@ import { requirePhotoUser } from "@/lib/photo/access";
 import { make } from "@/lib/photo/make";
 import { getProject, saveProject } from "@/lib/photo/projects";
 import type { JawadAsk } from "@/lib/photo/chat";
-import { drawsRealWoman } from "@config/jawad/assistant";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -24,7 +23,6 @@ export const POST = handle(async (req: Request) => {
   if (!kind) throw new UserError("طلب غير معروف.", 400);
   const prompt = String(a.prompt ?? "").trim().slice(0, 4000);
   if (kind !== "cutout" && !prompt) throw new UserError("اكتب وصف الصورة.", 400);
-  if (kind !== "cutout" && drawsRealWoman(prompt)) throw new UserError("الوصف يرسم امرأة واقعية، وهذا ممنوع في الموقع.", 400);
   const ask: JawadAsk = { kind, prompt, aspect: String(a.aspect || "auto").slice(0, 8), target: a.target === "base" || a.target === "file" ? a.target : "layer", source: String(a.source || "base").slice(0, 60) };
   const made = await make(user.id, user.email ?? null, b.projectId, ask, new URL(req.url).origin);
   const project = await getProject(user.id, b.projectId);

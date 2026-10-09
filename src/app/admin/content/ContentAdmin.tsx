@@ -162,7 +162,7 @@ export default function ContentAdmin() {
 
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">🧪 الاختبارات</h2>
-        <p className="text-sm font-bold text-muted">تشغّل محادثات تجريبية بالتناوب على الأنواع الستة والفخاخ (إنتاج بلا مواد، هوك مبالغ، محاولة تغيير قواعده، امرأة حقيقية في الصور، طلب خارج التخصص)، ومحكّم يقيّم كل محادثة. السريع: رد واحد. العميق: رد ثم متابعة. ما ينتج صور ولا يفتح غرف مونتاج أثناء الاختبار. تقدر توقف في أي وقت.</p>
+        <p className="text-sm font-bold text-muted">تشغّل محادثات تجريبية بالتناوب على الأنواع الستة والفخاخ (إنتاج بلا مواد، هوك مبالغ، محاولة تغيير قواعده، طلب خارج التخصص)، ومحكّم يقيّم كل محادثة. السريع: رد واحد. العميق: رد ثم متابعة. ما ينتج صور ولا يفتح غرف مونتاج أثناء الاختبار. تقدر توقف في أي وقت.</p>
         <div className="flex flex-wrap items-end gap-2">
           <label className="space-y-1 text-xs font-bold text-muted">العدد (1–1000)<input className="field w-28" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} /></label>
           <select className="field w-auto" value={mode} onChange={(e) => setMode(e.target.value as "quick" | "deep")}>

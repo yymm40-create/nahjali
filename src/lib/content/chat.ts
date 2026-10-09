@@ -10,7 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { createEditorProject, requireEditorProject } from "@/lib/editor/server";
 import { appendChat } from "@/lib/editor/chat";
-import { CONTENT, isCarouselAspect, womanCheck, type CarouselAspect } from "@config/content";
+import { CONTENT, isCarouselAspect, type CarouselAspect } from "@config/content";
 import { contentExamplesBrief, nearestContentExamples } from "@config/content-examples";
 import { nearestTemplateExamples, templateExamplesBrief } from "@config/content-template-examples";
 import { findTemplate } from "@config/content-templates";
@@ -221,12 +221,8 @@ export async function say(userId: string, chatId: string | null, message: string
       .sort((x, y) => x.n - y.n);
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";
-    // the site's rule holds in the pictures: a woman only in a plain fully black abaya, face and hands only
-    const bad = slides.filter((s) => womanCheck(s.prompt) === "violation");
     const fixAt = a.produce.mode === "fix" ? lastSlidesAt({ messages: history }) : -1;
-    if (bad.length) {
-      reply.text += `\n\n⚠️ لم يُنتج الكاروسيل: توجيه الشريحة ${bad.map((s) => s.n).join("، ")} يرسم امرأة بوصف غير مسموح. المسموح فقط: امرأة بعباية سوداء ساترة لكامل الجسم، سادة بلا أي زينة، ولا يظهر منها إلا الوجه والكفان (ويجب أن يُكتب هذا الوصف في التوجيه). اطلب مني تعديل هذه الشرائح ثم الإنتاج من جديد.`;
-    } else if (slides.length && fixAt >= 0) {
+    if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
       pending = { id: randomUUID(), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, mode: "fix", made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
@@ -258,10 +254,7 @@ export async function say(userId: string, chatId: string | null, message: string
         state: "todo",
       })),
     ).filter((x) => x.prompt);
-    const bad = items.filter((x) => womanCheck(x.prompt) === "violation");
-    if (bad.length) {
-      reply.text += `\n\n⚠️ لم أسلّم الطلب لجواد: توجيه «${bad.map((x) => x.name || x.kind).join("، ")}» يرسم امرأة بوصف غير مسموح. المسموح فقط: امرأة بعباية سوداء ساترة لكامل الجسم، سادة بلا أي زينة، ولا يظهر منها إلا الوجه والكفان. اطلب مني تعديله ثم أسلّمه من جديد.`;
-    } else if (items.length) {
+    if (items.length) {
       reply.media = { items };
       media = items;
     }

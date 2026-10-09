@@ -7,9 +7,8 @@
 //   - the first slide is drawn alone, then it is the visual reference of all the others (three at a time);
 //   - a slide that the provider refuses for a moment (busy, a cut connection) is tried again after a pause;
 //   - every picture is checked right after it is drawn (src/lib/content/verify.ts): Arabic spelling, joined letters,
-//     direction, cropping, extra words, and the dress rule if a woman is drawn. A picture with a problem is drawn
-//     again once with the problem written into the prompt; if it is still wrong it is kept and flagged (a woman in a
-//     wrong dress is never kept);
+//     direction, cropping, extra words. A picture with a problem is drawn again once with the problem written into
+//     the prompt; if it is still wrong it is kept and flagged;
 //   - what could not be made is kept with its prompt, so the person can ask for it again (one slide, or all of them);
 //   - at the end a report says what the check found, and «محمد باقر» reads it in his next answer.
 // Server only.
@@ -18,7 +17,6 @@ import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt, type DeskWho } from "./jawad";
-import { WOMAN_WORDING } from "@config/content";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
@@ -79,7 +77,6 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
     style ? `ILLUSTRATION STYLE (verbatim; applies to every drawn character, object and scene — not to the lettering layout): ${style.text}` : "",
     o.prompt,
     ARABIC_TEXT_RULES,
-    `If any woman appears: ${WOMAN_WORDING} Otherwise draw no woman at all.`,
     o.fix ?? "",
   ]
     .filter(Boolean)
@@ -155,10 +152,7 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
   }
 
   if (bad) {
-    // still wrong after the tries: a woman in a wrong dress is never kept; a text problem is kept and said plainly
-    if (bad.check.woman === "violation") {
-      return { failed: { n: s.n, reason: "الصورة خالفت قاعدة اللباس بعد المحاولات فاستُبعدت", text: s.text, prompt: s.prompt }, usd };
-    }
+    // still wrong after the tries: a text problem is kept and said plainly
     const flag = bad.check.problems.join("، ").slice(0, 300) || "خطأ في الكتابة";
     const file = await store(c, p, s, bad.out, bad.receipt, flag);
     return { made: { n: s.n, fileId: file.id, name: file.name, text: s.text, flag }, usd };

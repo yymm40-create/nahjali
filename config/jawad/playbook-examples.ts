@@ -2,7 +2,7 @@
 // for each (a request as people write it → the form it should become: generator options and a full prompt), made
 // deterministically from seed lists so they cost nothing to keep and the tests can check every one of them.
 // At each turn the closest examples to the person's message are shown to Claude (few-shot), so it answers the way
-// the examples do. Pure. The site's rule holds in every example: no real women, ever.
+// the examples do. Pure.
 
 import { PLAYBOOKS, detectPlaybook, type Playbook, type Studio } from "./playbooks";
 import type { Settings } from "./types";
@@ -87,6 +87,7 @@ const GARMENTS: Noun[] = [
   n("عباية", "abaya"), n("فستان", "dress"), n("طرحة", "hijab scarf"), n("حقيبة يد", "handbag"), n("خاتم", "ring"), n("عقد", "necklace"), n("جلابية", "jalabiya"), n("تيشيرت", "printed t-shirt"),
 ];
 const WOMENS = new Set(["عباية", "فستان", "طرحة", "حقيبة يد", "عقد", "جلابية"]);
+const WOMEN_MODELS: Noun[] = [n("شابة", "a young woman in her twenties"), n("سيدة", "a woman in her thirties"), n("سيدة كبيرة", "a woman in her fifties"), n("موديل", "a female model")];
 
 const EFFECTS: Noun[] = [
   n("ايرث زوم", "Earth zoom: the camera pulls straight up and back from the subject through the clouds to orbit in one unbroken move"),
@@ -216,16 +217,11 @@ const MAKERS: Record<string, Maker> = {
   "try-on-fashion": (r) => {
     const g = r.pick(GARMENTS);
     const womens = WOMENS.has(g.ar);
-    const who = r.pick(MEN);
+    const who = womens ? r.pick(WOMEN_MODELS) : r.pick(MEN);
     const pl = r.pick(PLACES);
-    const cartoon = womens && r.next() < 0.4;
     const mood = r.pick(MOODS);
     const ask = r.pick([`${g.ar} على موديل ${who.ar} للمتجر`, `أبي تجربة لبس لـ${g.ar} ${pl.ar}`, `لقطة أزياء لـ${g.ar} ${pl.ar} بجو ${mood.ar}`, `صوّر ${g.ar} ملبوس على ${who.ar}`, `لوك بوك لـ${g.ar} بجو ${mood.ar}`, `تجربة لبس ${g.ar} على ${who.ar} ${pl.ar}`]);
-    const prompt = womens
-      ? cartoon
-        ? `Flat 2D illustrated fashion figure, cartoon style, fully covered in an abaya and a hijab covering the hair completely, wearing the ${g.en} @ref (same cut, colour and pattern as @ref) over it, a simple stylised face, standing in a clean pastel studio, soft shading, elegant pose. Illustration only, not photoreal, vertical 2:3, no text.`
-        : `Ghost-mannequin product photo of the ${g.en} @ref (cut, colour, fabric and details exactly as in @ref) shown as if worn on an invisible mannequin: no person, no face, no skin visible, full length in a clean light-grey studio, soft even lighting, fabric draping naturally. Photoreal, sharp texture, shop catalogue style, vertical 2:3, no text.`
-      : `Virtual try-on photo: ${who.en} wears the ${g.en} @ref (cut, colour, pattern and details exactly as in @ref) ${pl.en}, full-body three-quarter pose, soft natural light, 50mm lens, shallow depth of field, the garment sharp with real fabric texture and a correct natural fit. Photoreal, vertical 2:3, no text.`;
+    const prompt = `Virtual try-on photo: ${who.en} wears the ${g.en} @ref (cut, colour, pattern and details exactly as in @ref) ${pl.en}, full-body three-quarter pose, soft natural light, 50mm lens, shallow depth of field, the garment sharp with real fabric texture and a correct natural fit. Photoreal, vertical 2:3, no text.`;
     return { ask, settings: { aspect: "2:3", quality: "high", resolution: "hi" }, prompt, studio: "image" };
   },
   "viral-effect": (r) => {

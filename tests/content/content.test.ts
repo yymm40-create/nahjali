@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAQIR_PERSONA, CONTENT_KINDS, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, WOMAN_WORDING, womanCheck } from "@config/content";
+import { BAQIR_PERSONA, CONTENT_KINDS, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { ALL_PERMS, NAMED_ONLY, OPEN_PERMS } from "@config/access";
 import { DEFAULT_SECTIONS, FIXED_IMPLEMENTATIONS, RESERVED_SECTION_IDS, sectionPath } from "@config/jawad/sections";
 import { cleanHistory, forModel, readPending, titleOf } from "@/lib/content/chats";
@@ -20,9 +20,6 @@ describe("«محمد باقر»", () => {
     expect(t.indexOf(CONTENT_TOOLS)).toBeLessThan(t.indexOf("EX"));
     expect(t.endsWith("REC")).toBe(true);
     expect(CONTENT_PLATFORM_RULES).toContain("لا تدّعِ");
-    // the owner's rule for the pictures: a woman only in a plain fully black abaya, face and hands only
-    expect(CONTENT_PLATFORM_RULES).toContain("عباية سوداء ساترة لكامل الجسم");
-    expect(CONTENT_PLATFORM_RULES).toContain(WOMAN_WORDING);
     // the Arabic check after drawing is told, and he never sends the person to fill the text in themselves
     expect(CONTENT_PLATFORM_RULES).toContain("التحقق من العربية");
     expect(CONTENT_PLATFORM_RULES).toContain("لا تقترح أبدًا أن يترك العميل مساحات فارغة");
@@ -35,26 +32,6 @@ describe("«محمد باقر»", () => {
     expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "templates", "styles", "motion", "moods"]);
     expect(ANSWER_SCHEMA.properties.handoff.properties.shape.enum).toEqual(["9:16", "16:9"]);
     for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"handoff\"", "template_id", "style_id", "kind=\"templates\"", "kind=\"styles\"", "kind=\"motion\"", "kind=\"moods\"", "storyboard", "#RRGGBB"]) expect(CONTENT_TOOLS).toContain(field);
-  });
-});
-
-describe("the owner's rule for women in the pictures", () => {
-  it("allows a woman only in a plain fully black abaya with face and hands only, and says so in the prompt", () => {
-    expect(womanCheck("a product on a marble table")).toBe("none");
-    expect(womanCheck("a man in a thobe holding the product")).toBe("none");
-    expect(womanCheck("a woman holding a coffee cup in a cafe")).toBe("violation");
-    expect(womanCheck("a woman in a black abaya holding a cup")).toBe("violation");
-    expect(womanCheck(`a woman holding a cup. ${WOMAN_WORDING}`)).toBe("ok");
-    expect(womanCheck("a woman, plain black abaya with no ornament, only her face and hands visible, reading a book")).toBe("ok");
-    // the older allowance (a covered drawn figure in a cartoon style) still holds
-    expect(womanCheck("cartoon illustration of a girl fully covered in an abaya and hijab")).toBe("ok");
-    expect(womanCheck("امرأة بعباية سوداء بلا زينة ولا يظهر منها إلا الوجه والكفين")).toBe("ok");
-    expect(womanCheck("بنت جميلة بفستان")).toBe("violation");
-    // a prompt that keeps women out draws none
-    expect(womanCheck("a clean product shot, no women, no people")).toBe("none");
-    expect(womanCheck("flat illustration without any girl or woman")).toBe("none");
-    expect(womanCheck("صورة منتج بدون نساء")).toBe("none");
-    expect(womanCheck("no women in the background but a woman holding the cup")).toBe("violation");
   });
 });
 
@@ -101,7 +78,7 @@ describe("the tests", () => {
     expect(new Set(a.map((s) => s.message)).size).toBe(1000);
     expect(scenarios(50)).toEqual(a.slice(0, 50).map((s, i) => ({ ...s, id: `s${i + 1}` })));
     expect(new Set(a.map((s) => s.kind))).toEqual(new Set([...CONTENT_KINDS.map((k) => k.id), "trap"]));
-    expect(a.filter((s) => s.kind === "trap").length).toBeGreaterThanOrEqual(7);
+    expect(a.filter((s) => s.kind === "trap").length).toBeGreaterThanOrEqual(6);
   });
 
   it("reads the judge's verdict, and treats junk as a failure", () => {

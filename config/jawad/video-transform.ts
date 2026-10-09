@@ -24,7 +24,6 @@
 //     softness, the world's bounce on the person, matched haze, depth of field and grain, no cut-out edges. A new
 //     world must stream past with parallax matching the original motion. Warm directional daylight worlds hold the
 //     face better than night or neon (those force a relight).
-// The site's own rule holds: the person in the clip is a man or a boy; never a real woman or girl.
 
 import type { Settings } from "./types";
 
@@ -49,7 +48,7 @@ export const LOCK_CLAUSE = "Face and identity unchanged — the same person, fea
 /** The method, as the assistant reads it when a message asks for a transformation. */
 export const TRANSFORM_METHOD = `METHOD — transforming a real person's own clip (keep the person, change the world):
 1. THE SOURCE IS A VIDEO REFERENCE, never a first frame: set the references style to «references» (مراجع متعددة), add the person's clip as a video reference named «source», and mention it as @source. A picture that supplies a new thing (new clothes, a product, a place, an animal's real fur) is a second reference named by what it is (@jacket, @shop, @lion) and declared as «appearance/texture only; ignore its background and lighting».
-2. THE SOURCE LINE first: «@source: original clip — <who is in it (a man or a boy), his wardrobe, where he is, what he does, the framing and the camera move, the light>. Preserve his identity, face, wardrobe, performance, framing, camera and motion exactly; change only <the one thing>.» Write what the clip really shows (ask the person what is in it when you can't see it; never invent).
+2. THE SOURCE LINE first: «@source: original clip — <who is in it, their wardrobe, where he is, what he does, the framing and the camera move, the light>. Preserve his identity, face, wardrobe, performance, framing, camera and motion exactly; change only <the one thing>.» Write what the clip really shows (ask the person what is in it when you can't see it; never invent).
 3. ONE CHANGE PER PASS. Name it with an edit verb (replace, remove, relight, restyle, change … to …, add) and write it A → B («from a plain grey office wall to a sunlit Riyadh rooftop at golden hour»), never a vague «make it nicer». When they want two changes (a new place AND new clothes), do the environment in this pass and tell them the clothes come in a second pass on the result — a subject change first makes the model reinterpret the background.
 4. THE FENCE: name what stays before the change («keep the man, his face, his thobe, his hands, the phone he holds, the medium shot, the slow push-in and the timing exactly as they are»). Then the change. Then the LOCK-DOWN CLAUSE as the last sentence of the action: «${LOCK_CLAUSE}»
 5. SPECS LINE after the source line: «Photoreal. <the source's aspect>. <the source's seconds>s. <the grade, in words>. NON-IP — generic designs, nothing from a brand or a character. SFX and source dialogue only.» The output is as long as the source: set the duration option to the clip's seconds (4–15; a longer clip is trimmed to its strongest 4–15 s first) and the ratio to the clip's own.
@@ -60,7 +59,7 @@ export const TRANSFORM_METHOD = `METHOD — transforming a real person's own cli
 10. REMOVING: name the thing, where it is and when; «fill the gap naturally with what the scene would show behind it, matching the light and the perspective».
 11. RELIGHT / WEATHER / SEASON: the light's new direction, colour and softness; what wet, snow, rain or dust do to surfaces, hair and clothes; the sky; the sound of it. A CHANGE IN ONE MOMENT: «between 0:02 and 0:04 … then back to the original; everything outside that window unchanged».
 12. RESTYLE: the motion is the source's; describe only the look (medium, palette, line, grain) and keep the framing, timing and lip movement.
-13. HONESTY: the face is kept by locking it in words and by not relighting it, never guaranteed — say the result must be checked against the original, and that another pass fixes small drift (fewer references, the lock repeated, one change). The provider may refuse a clip whose face is clearly a known public figure. The site's rule holds: the person is a man or a boy; a clip of a woman is not transformed.
+13. HONESTY: the face is kept by locking it in words and by not relighting it, never guaranteed — say the result must be checked against the original, and that another pass fixes small drift (fewer references, the lock repeated, one change). The provider may refuse a clip whose face is clearly a known public figure.
 14. Sound: keep the source's own speech («SFX and source dialogue only») and add only the sounds the change brings; a new voice is never written in.`;
 
 /** A worked case: the clip as it was, what was asked, and the prompt that carries the change. */

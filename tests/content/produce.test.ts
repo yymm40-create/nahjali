@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { WOMAN_WORDING } from "@config/content";
 import { ARABIC_TEXT_RULES, CAROUSEL_TEMPLATES, designSystem } from "@config/content-templates";
 import { FILM_STYLES } from "@config/film-styles";
 import { DeskError, isTransientText } from "@/lib/content/jawad";
@@ -12,13 +11,12 @@ import { fixNote } from "@/lib/content/verify";
 
 describe("a slide's prompt", () => {
   const base = { n: 3, total: 8, prompt: 'Slide content. Text: "مرحبا".', styleId: "", withRef: true };
-  it("says where the slide stands, keeps Baqir's text, and adds the Arabic and dress rules", () => {
+  it("says where the slide stands, keeps Baqir's text, and adds the Arabic rules", () => {
     const p = slidePrompt(base);
     expect(p).toContain("Slide 3 of 8");
     expect(p).toContain("slide 1");
     expect(p).toContain(base.prompt);
     expect(p).toContain(ARABIC_TEXT_RULES);
-    expect(p).toContain(WOMAN_WORDING);
     expect(slidePrompt({ ...base, n: 1, withRef: false })).toContain("the first");
     expect(slidePrompt({ ...base, n: 1, withRef: true })).toContain("drawn again");
   });
@@ -29,10 +27,9 @@ describe("a slide's prompt", () => {
     expect(slidePrompt({ ...base, styleId: "unknown" })).not.toContain("ILLUSTRATION STYLE");
   });
   it("adds what the check found when a slide is drawn again", () => {
-    const note = fixNote({ ok: false, checked: true, problems: ["حرف مقطوع"], woman: "violation", read: "", usd: 0 }, "عنوان الشريحة");
+    const note = fixNote({ ok: false, checked: true, problems: ["حرف مقطوع"], read: "", usd: 0 }, "عنوان الشريحة");
     expect(note).toContain("حرف مقطوع");
     expect(note).toContain('"عنوان الشريحة"');
-    expect(note).toContain("plain fully black abaya");
     expect(slidePrompt({ ...base, fix: note })).toContain(note);
   });
 });

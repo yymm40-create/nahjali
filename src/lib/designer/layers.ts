@@ -62,7 +62,7 @@ export interface Design {
   error?: string;
   /** the technical reason (only the owner sees it) */
   detail?: string;
-  /** what the check after drawing found (text that slipped in, a woman) */
+  /** what the check after drawing found (text that slipped in) */
   flag?: string;
   /** the final PNG the person saved (a designer_files row) */
   final?: string;

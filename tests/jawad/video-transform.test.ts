@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generatorById } from "@config/jawad/generators";
-import { checkAnswer, drawsRealWoman } from "@config/jawad/assistant";
+import { checkAnswer } from "@config/jawad/assistant";
 import { detectPlaybook } from "@config/jawad/playbooks";
 import { LOCK_CLAUSE, TRANSFORM_CASES, TRANSFORM_KINDS, TRANSFORM_METHOD, TRANSFORM_PLAYBOOK_ID, detectTransformKind, nearestTransformCases, transformCases, transformCasesBrief } from "@config/jawad/video-transform";
 import { evaluate } from "@/lib/jawad/engine";
@@ -9,9 +9,8 @@ import { findMentions } from "@/lib/jawad/mentions";
 // Ten thousand tests over the thousand worked before→after cases «جواد» learns footage transformation from: ten
 // checks on every case — the source declared, the fence, the one change written A → B, the lock-down clause last,
 // the specs matching the clip, the form taking it as it is, the engine pricing it, the references all declared, the
-// kind recognised from the request alone, no woman anywhere, and the case found again from its own words.
+// kind recognised from the request alone, and the case found again from its own words.
 const def = generatorById("byteplus-seedance-2-5")!;
-const WOMAN = /\b(woman|women|girl|female|lady|she|her)\b|بنت|امرأة|نساء|فتاة|سيدة/iu;
 const cases = transformCases();
 
 describe("the bank", () => {
@@ -24,7 +23,6 @@ describe("the bank", () => {
     expect(TRANSFORM_METHOD).toContain("@source");
     expect(TRANSFORM_METHOD).toContain(LOCK_CLAUSE);
     expect(TRANSFORM_METHOD).toContain("ONE CHANGE PER PASS");
-    expect(TRANSFORM_METHOD).toContain("a clip of a woman is not transformed");
     expect(transformCasesBrief(cases.slice(0, 2))).toContain("check:");
   });
 });
@@ -67,7 +65,6 @@ for (const c of cases) {
         { prompt: c.prompt, settings: Object.entries(c.settings).map(([key, value]) => ({ key, value: String(value) })) },
         { defs: [def], draft: { generatorId: def.id, prompt: "", instructions: "", settings: {}, refStyle: "none", refs: [] }, attachments: 0 },
       );
-      expect(ans.blocked).toBeUndefined();
       expect(ans.set.prompt).toBe(c.prompt);
       expect(ans.set.settings).toEqual(c.settings);
       expect(c.settings.duration).toBe(c.before.seconds);
@@ -98,10 +95,7 @@ for (const c of cases) {
       expect(k === null || k === c.kind || (c.kind === "add" && k === "weather")).toBe(true);
       expect(c.check.length).toBeGreaterThanOrEqual(3);
     });
-    it("draws no woman and comes back first for its own words", () => {
-      expect(drawsRealWoman(c.prompt)).toBe(false);
-      expect(WOMAN.test(c.ask)).toBe(false);
-      expect(WOMAN.test(c.prompt)).toBe(false);
+    it("comes back first for its own words", () => {
       const near = nearestTransformCases(c.ask, 3);
       expect(near.map((x) => x.ask)).toContain(c.ask);
     });
