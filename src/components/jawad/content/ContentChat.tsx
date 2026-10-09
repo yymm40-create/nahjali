@@ -7,6 +7,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
+import MicButton from "@/components/robots/MicButton";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
@@ -508,6 +511,8 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     }
   }
 
+  const [claude] = useClaudeModel();
+
   async function send(text = q) {
     const message = text.trim();
     if ((!message && !pending.length) || busy || uploading) return;
@@ -519,7 +524,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     let produceId: string | null = null;
     let mediaId: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string } | null; media: MediaView[] | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id) });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string } | null; media: MediaView[] | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
       setChatId(r.chatId);
       setMsgs((m) => {
         const copy = [...m];
@@ -682,9 +687,11 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   ))}
                 </div>
               )}
+              <ClaudeModelPicker className="ct-claude" disabled={!!busy} />
               <div className="ct-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق ملفات" title="أرفق صور أو فيديو أو صوت" disabled={uploading || !!busy} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
+                <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={!!busy || uploading} className="ct-attach" />
                 <textarea
                   ref={box}
                   className="ct-input"

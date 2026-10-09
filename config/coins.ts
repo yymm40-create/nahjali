@@ -5,6 +5,8 @@
 //   full margin, struck through — the launch discount. The owner sets the rate, the step and both margins from
 //   /admin/limits; the defaults below hold until then. Pure (pages and server alike).
 
+import { CLAUDE_MARGIN_PCT } from "./claude-models";
+
 export const SMART_COIN = {
   name: "النقود الذكية",
   one: "ريال",
@@ -65,6 +67,15 @@ export const wasHalalas = (cost: number, p = current) => sellHalalas(cost, p, p.
 
 /** The customer's price, in halalas, for an operation that costs us `usd` (0 for nothing). */
 export const coinsFor = (usd: number) => sellHalalas(costHalalas(usd));
+
+/**
+ * What a robot's conversation costs the person: Claude's real usage of the chosen model plus the platform's 10% and
+ * nothing else — no rounding up to the step (that would be a bigger profit on a small reply), only to the halala.
+ */
+export function claudeHalalas(usd: number, p = current): number {
+  if (!(usd > 0)) return 0;
+  return Math.max(1, Math.ceil((usd * p.usdToSar * 100 * (100 + CLAUDE_MARGIN_PCT)) / 100 - 1e-9));
+}
 
 /** Halalas as riyals in text: 250 → «2.50», 1000 → «10». */
 export function fmtSar(halalas: number | null | undefined): string {

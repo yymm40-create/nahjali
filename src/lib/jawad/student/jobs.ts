@@ -11,7 +11,10 @@
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { coinsRequired, refundCoins, releaseCoins, reserveCoins, settleCoins } from "@/lib/coins";
-import { coinsFor } from "@config/coins";
+import { claudeHalalas, coinsFor } from "@config/coins";
+
+/** The steps that are Claude's usage alone (reading the material, researching): priced at the real cost + 10%. */
+export const CLAUDE_ONLY_KINDS = new Set(["understand", "research"]);
 import { unlimitedFor } from "@/lib/access";
 import { STUDENT } from "@config/jawad/student";
 import { sdb } from "./db";
@@ -113,7 +116,7 @@ export async function createJob(
   }
   const job = data as Job;
   try {
-    if (o.estimateUsd > 0) await reserveCoins(user, job.id, o.estimateUsd, `الطالب الذكي · ${handler.label}`);
+    if (o.estimateUsd > 0) await reserveCoins(user, job.id, o.estimateUsd, `الطالب الذكي · ${handler.label}`, CLAUDE_ONLY_KINDS.has(o.kind));
   } catch (e) {
     await db.from("student_jobs").delete().eq("id", job.id);
     throw e;
@@ -153,7 +156,7 @@ export async function runJob(id: string) {
       job = { ...job, ...patch };
       if (r.done) {
         await db.from("student_jobs").update({ ...patch, status: "succeeded", finished_at: new Date().toISOString(), lease_until: null }).eq("id", id);
-        await settleCoins(job.id, Number(job.cost_usd));
+        await settleCoins(job.id, Number(job.cost_usd), CLAUDE_ONLY_KINDS.has(job.kind));
         await creditTrial(job);
         await handler.onSuccess?.(job);
         return;
@@ -235,7 +238,7 @@ export const jobView = (j: Job): JobView => ({
   stage: j.stage,
   progress: j.progress,
   error: j.error,
-  coins: coinsFor(Number(j.estimate_usd) || 0),
+  coins: (CLAUDE_ONLY_KINDS.has(j.kind) ? claudeHalalas : coinsFor)(Number(j.estimate_usd) || 0),
 });
 
 export async function projectJobs(projectId: string, limit = 30): Promise<Job[]> {

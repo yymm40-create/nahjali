@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
@@ -63,11 +64,13 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
     if (openedAt.current === "screenwriter" && stage === "sheets") router.push(`${filmBase}/${projectId}/sheets?start=1`);
   }, [stage, projectId, router, filmBase]);
 
+  const [claude] = useClaudeModel();
+
   async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError("");
     try {
-      const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/script`, body);
+      const { jobId } = await postJson<{ jobId: string | null }>(`/api/film/projects/${projectId}/script`, { ...body, model: claude.id });
       if (jobId) setRunning(true);
       refresh();
     } catch (e) {

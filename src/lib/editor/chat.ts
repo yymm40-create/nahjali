@@ -4,8 +4,8 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeTrouble, type ClaudeTurn } from "@/lib/film/anthropic";
-import { charged, type Who } from "./pricing";
+import { callClaudeJson, claudeCost, claudeTrouble, type ClaudeTurn } from "@/lib/film/anthropic";
+import { claudeCharged, type Who } from "./pricing";
 import { stillOpen, type EditorProject } from "./server";
 
 const db = () => createAdminClient();
@@ -94,7 +94,7 @@ const HANDOFF_SCHEMA = {
  * Hands the conversation over: Claude writes a handoff (the goal of the edit, the person's taste and decisions, what
  * was done, what is left) and a new, empty conversation starts from it.
  */
-export async function handOff(p: EditorProject, who: Who, b: { messages?: unknown; handoff?: unknown } = {}): Promise<Chat> {
+export async function handOff(p: EditorProject, who: Who, b: { messages?: unknown; handoff?: unknown; model?: unknown } = {}): Promise<Chat> {
   stillOpen(p);
   const stored = await loadChat(p);
   // before the migration the page keeps the conversation and sends it
@@ -108,7 +108,7 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
     .slice(-60_000);
   const system =
     "You write a HANDOFF for a video-editing assistant that will continue this edit in a fresh conversation without seeing the old one. In Arabic (Gulf, plain), in short sections: هدف المونتاج · ذوق الشخص وقراراته (style, pace, fonts, colours, music, what they liked and refused) · اللي انسوّى · اللي باقي أو انطلب ولا تم · ملاحظات مهمة (ids or times only if still useful). Facts only, nothing invented.";
-  const r = await charged(who, "editor_price_claude", 1, "هاندوف محادثة حيدرة في حيدرة كت", () =>
+  const r = await claudeCharged(who, b.model, "هاندوف محادثة حيدرة في حيدرة كت", () =>
     callClaudeJson<{ summary: string }>({
       system,
       turns: [{ role: "user", content: `${c.handoff ? `PREVIOUS HANDOFF:\n${c.handoff}\n\n` : ""}CONVERSATION:\n${transcript}` }],
@@ -120,6 +120,7 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
       console.error("editor handoff", e);
       throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يكتب الهاندوف الحين؛ جرّب بعد شوي.", 502);
     }),
+    (x) => claudeCost(x.usage),
   );
   const next = { messages: [], handoff: r.data.summary.trim().slice(0, 8000), chats: c.chats + 1 };
   if (stored.stored && !(await saveChat(p, next))) throw new UserError("ما قدرنا نحفظ؛ جرّب مرة ثانية.", 500);

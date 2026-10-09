@@ -1,9 +1,11 @@
 // «حيدرة كت»'s prices, set by the owner from /admin/limits (film_limits). Everything is free while
 // the prices are 0 or «النقود الذكية مطلوبة» is off; a price is held before the paid call and given back if it fails.
 
-import { coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
+import { claudeMeter, coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
 import { getLimit, type LimitKey } from "@/lib/film/limits";
 import { sellHalalas } from "@config/coins";
+import { claudeModelOf } from "@config/claude-models";
+import { withClaude } from "@/lib/film/claude-model";
 
 export interface Who {
   id: string;
@@ -29,4 +31,20 @@ export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_pric
     else await releaseCoins(who.id, coins, ref, label).catch(() => {});
     throw e;
   }
+}
+
+/**
+ * A Claude conversation of حيدرة: the person's chosen model answers, a balance that covers a typical reply of it is needed
+ * first, and afterwards the reply's real usage + 10% is taken (the owner and unlimited accounts pay nothing). A failed
+ * call takes nothing. `usdOf` reads the real cost from what `run` returned.
+ */
+export async function claudeCharged<T>(who: Who, modelId: unknown, label: string, run: () => Promise<T>, usdOf: (r: T) => number): Promise<T & { model: string; coins: number }> {
+  const model = claudeModelOf(modelId);
+  const bill = await claudeMeter(who, model, label);
+  const out = await withClaude(model.id, run);
+  const coins = await bill.settle(usdOf(out)).catch((e) => {
+    console.error("claude settle failed", e);
+    return 0;
+  });
+  return { ...out, model: model.id, coins };
 }

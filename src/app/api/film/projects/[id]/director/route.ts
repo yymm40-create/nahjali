@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { checkVideos, directorAction, type DirectorAction } from "@/lib/film/director";
+import { withClaude } from "@/lib/film/claude-model";
 import { latestJob } from "@/lib/film/sheets";
 
 // Replies and videos are produced in the background (after()), within this route's time limit
@@ -13,7 +14,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const { id } = await params;
   const project = await getOwnedProject(id, user.id, "director");
   const body = (await req.json().catch(() => ({}))) as DirectorAction;
-  return NextResponse.json(await directorAction(project, user, body));
+  return NextResponse.json(await withClaude((body as { model?: unknown }).model, () => directorAction(project, user, body)));
 });
 
 /** Polled while the director writes or videos are generated; finished videos are saved here. */

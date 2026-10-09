@@ -5,7 +5,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fullAccessOf } from "@/lib/access";
-import { fmtSar } from "@config/coins";
+import { coinStr } from "@config/coins";
 import { readdir, readFile } from "fs/promises";
 import path from "path";
 
@@ -79,7 +79,7 @@ export async function personFacts(email: string) {
     registered: !!user,
     perms: access ? [...access.perms] : null,
     unlimited: access?.unlimited ?? null,
-    balance: wallet ? `${fmtSar(wallet.balance as number)} ر.س` : user ? "(لا محفظة بعد)" : null,
+    balance: wallet ? coinStr(wallet.balance as number) : user ? "(لا محفظة بعد)" : null,
     plan: (wallet?.plan as string | null) ?? null,
     libraryUntil: (wallet?.library_until as string | null) ?? null,
   };

@@ -3,13 +3,15 @@
 import { isAdmin } from "@config/site";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { fitImages } from "@/lib/claude-images";
+import { DEFAULT_CLAUDE_MODEL, claudeModelOf, servedModel, type ClaudeModel } from "@config/claude-models";
+import { currentClaude } from "./claude-model";
 
-export const CLAUDE_MODEL = "claude-opus-5-5";
-
-/** USD per 1M tokens (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-02). */
-const PRICE = { input: 4, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2, output: 20 };
+/** The default model (a request made inside `withClaude` uses the person's choice instead — see `currentClaude`). */
+export const CLAUDE_MODEL = DEFAULT_CLAUDE_MODEL;
 
 export interface ClaudeUsage {
+  /** the model that answered (stamped by the caller that made the request), so the cost follows it */
+  model?: string;
   input_tokens: number;
   output_tokens: number;
   cache_creation_input_tokens?: number;
@@ -17,7 +19,14 @@ export interface ClaudeUsage {
   cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
 }
 
-export function claudeCost(u: ClaudeUsage) {
+/** The usage of a reply, stamped with the model that answered. */
+export const withModel = (usage: ClaudeUsage, served: unknown, asked: ClaudeModel = currentClaude()): ClaudeUsage => ({ ...usage, model: (servedModel(served) ?? asked).id });
+
+/** USD for this usage, at the rates of the model that answered (the request's model when the usage carries none). */
+export function claudeCost(u: ClaudeUsage, model?: ClaudeModel) {
+  const m = model ?? (u.model ? claudeModelOf(u.model) : currentClaude());
+  const prompt = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+  const PRICE = m.longAbove && m.longRates && prompt > m.longAbove ? m.longRates : m.rates;
   const w1h = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
   const w5m = u.cache_creation?.ephemeral_5m_input_tokens ?? (u.cache_creation_input_tokens ?? 0) - w1h;
   return (
@@ -96,6 +105,7 @@ export async function callClaudeJson<T>({
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  const asked = currentClaude();
 
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
   const messages = await fitImages(turns.map((t, i) => {
@@ -115,11 +125,11 @@ export async function callClaudeJson<T>({
       ...(fallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}),
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
+      model: asked.id,
       max_tokens: maxTokens,
       system: siteSystem(system, true, leader),
       messages,
-      output_config: { effort, format: { type: "json_schema", schema } },
+      output_config: { ...(asked.effort ? { effort } : {}), format: { type: "json_schema", schema } },
       ...(fallback ? { fallbacks: "default" } : {}),
     }),
   });
@@ -130,7 +140,7 @@ export async function callClaudeJson<T>({
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
 
   const raw = (body.content ?? []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
-  return { data: JSON.parse(raw) as T, raw, usage: body.usage as ClaudeUsage };
+  return { data: JSON.parse(raw) as T, raw, usage: withModel(body.usage as ClaudeUsage, body.model, asked) };
 }
 
 /**
@@ -141,23 +151,24 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
   const messages: { role: "user" | "assistant"; content: unknown }[] = [{ role: "user", content: prompt }];
+  const asked = currentClaude();
   let usd = 0;
   for (let round = 0; round < 3; round++) {
     const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
+        model: asked.id,
         max_tokens: maxTokens,
         system: siteSystem(system, false),
         messages,
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: maxUses }],
-        output_config: { effort: "low" },
+        ...(asked.effort ? { output_config: { effort: "low" } } : {}),
       }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`Claude ${res.status}: ${body?.error?.message ?? "request failed"}`);
-    usd += claudeCost(body.usage as ClaudeUsage) + (Number(body.usage?.server_tool_use?.web_search_requests) || 0) * 0.01;
+    usd += claudeCost(withModel(body.usage as ClaudeUsage, body.model, asked)) + (Number(body.usage?.server_tool_use?.web_search_requests) || 0) * 0.01;
     if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
     if (body.stop_reason === "pause_turn") {
       messages.push({ role: "assistant", content: body.content });

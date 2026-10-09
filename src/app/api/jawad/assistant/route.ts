@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
 import { assistantTurn, type AssistantBody } from "@/lib/jawad/server/assistant";
+import { robotTurn } from "@/lib/claude-run";
 
 // Claude answers (with the pictures it is shown)
 export const maxDuration = 120;
@@ -10,5 +11,5 @@ export const maxDuration = 120;
 export const POST = handle(async (req: Request) => {
   const { user, owner } = await requireJawadApiUser();
   const body = (await req.json().catch(() => ({}))) as AssistantBody;
-  return NextResponse.json(await assistantTurn(user, owner, body));
+  return NextResponse.json(await robotTurn(user, body.model, "محادثة جواد", () => assistantTurn(user, owner, body)));
 });

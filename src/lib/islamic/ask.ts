@@ -3,7 +3,8 @@
 // by number. Nothing found → it says so. Server only.
 
 import { ISLAMIC_IDENTITY, ISLAMIC_KV } from "@config/islamic";
-import { callClaudeJson, CLAUDE_MODEL, claudeCost, isLeader, siteSystem, type ClaudeUsage } from "@/lib/film/anthropic";
+import { callClaudeJson, claudeCost, isLeader, siteSystem, withModel, type ClaudeUsage } from "@/lib/film/anthropic";
+import { currentClaude } from "@/lib/film/claude-model";
 import { KIND_LABEL } from "./text";
 import { kvAll, logAnswer, search, type Passage } from "./library";
 
@@ -96,10 +97,11 @@ export async function ask(userId: string | null, question: string, history: Turn
   const user = passages.length ? `المقاطع من المكتبة:\n\n${passagesText(passages)}\n\n────\n\nسؤال السائل: ${q}` : `المكتبة لم تُرجع أي مقطع لهذا السؤال.\n\nسؤال السائل: ${q}`;
   turns.push({ role: "user", content: [{ type: "text", text: user }] });
 
+  const model = currentClaude();
   const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 6000, system: siteSystem(system, true, isLeader(email)), messages: turns, output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } } }),
+    body: JSON.stringify({ model: model.id, max_tokens: 6000, system: siteSystem(system, true, isLeader(email)), messages: turns, output_config: { ...(model.effort ? { effort: "medium" } : {}), format: { type: "json_schema", schema: SCHEMA } } }),
     signal: AbortSignal.timeout(170_000),
   });
   const body = await res.json().catch(() => ({}));
@@ -107,7 +109,7 @@ export async function ask(userId: string | null, question: string, history: Turn
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
   const raw = (body.content ?? []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
   const data = JSON.parse(raw) as { answer: string; found: boolean; used: number[] };
-  const usd = claudeCost(body.usage as ClaudeUsage) + classical.usd;
+  const usd = claudeCost(withModel(body.usage as ClaudeUsage, body.model, model)) + classical.usd;
   const used = [...new Set(data.used.filter((n) => n >= 1 && n <= passages.length))].sort((a, b) => a - b);
   const sources = used.map((n) => {
     const p = passages[n - 1];

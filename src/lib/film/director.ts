@@ -4,6 +4,7 @@ import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { filmPathsInUse } from "@/lib/editor/server";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { currentClaude, withClaude } from "./claude-model";
 import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
@@ -137,7 +138,7 @@ async function queueReply(project: FilmProject, user: User, messageId: string) {
     units: 0,
     unit: "tokens",
   });
-  if (created) after(() => runDirectorReply(project.id, job.id));
+  if (created) { const picked = currentClaude().id; after(() => withClaude(picked, () => runDirectorReply(project.id, job.id))); };
   return job.id;
 }
 

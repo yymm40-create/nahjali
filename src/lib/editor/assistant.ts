@@ -27,7 +27,7 @@ import { COMMANDS_GUIDE } from "./assistant-commands";
 import { appendChat, chatTurns, loadChat, readMessages } from "./chat";
 import { sajjadBrief } from "@/lib/film/sajjad";
 import { checkDesign, deliveryText, DESIGN_SCHEMA, DESIGN_SYSTEM, designPrompt, RESEARCH_SYSTEM, researchPrompt, type HookDesign, type HookInputs } from "./hook-design";
-import { charged, type Who } from "./pricing";
+import { claudeCharged, type Who } from "./pricing";
 import { assetInfo, assetViews, stillOpen, type EditorProject } from "./server";
 
 const db = () => createAdminClient();
@@ -217,7 +217,7 @@ interface Answer {
 const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown }, origin: string | null = null) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown; model?: unknown }, origin: string | null = null) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -305,12 +305,11 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     usd += claudeCost(r.usage);
     return r;
   };
-  const r = await charged(who, "editor_price_claude", 1, "طلب حيدرة في حيدرة كت", () =>
-    ask(merged).catch((e) => {
-      console.error("editor assistant", e);
-      throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يرد الحين؛ جرّب بعد شوي.", 502);
-    }),
-  );
+  // the conversation is metered by the route (claudeCharged): the person's model, the real usage + 10%
+  const r = await ask(merged).catch((e) => {
+    console.error("editor assistant", e);
+    throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يرد الحين؛ جرّب بعد شوي.", 502);
+  });
 
   const check = (raw: string[]) => checkCommands(tl, raw, infos);
 
@@ -466,6 +465,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     checkClipId: answer.checkClipId && valid.length && tl.tracks.some((t) => t.clips.some((c) => c.id === answer.checkClipId)) ? answer.checkClipId : null,
     // the pictures the motion engine drew: the page puts them in its library before the commands run
     assets: newAssets,
+    // what the whole answer cost in dollars (the route takes it + 10%)
+    usd,
   };
 }
 
@@ -483,12 +484,10 @@ export async function designHook(who: Who, h: HookInputs): Promise<{ design: Hoo
   } catch (e) {
     console.error("hook research", e);
   }
-  const r = await charged(who, "editor_price_claude", 1, "تصميم نص الهوك في حيدرة كت", () =>
-    callClaudeJson<HookDesign>({ system: DESIGN_SYSTEM, turns: [{ role: "user", content: designPrompt(h, research) }], schema: DESIGN_SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
-      console.error("hook design", e);
-      throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يصمم الهوك الحين؛ جرّب بعد شوي.", 502);
-    }),
-  );
+  const r = await callClaudeJson<HookDesign>({ system: DESIGN_SYSTEM, turns: [{ role: "user", content: designPrompt(h, research) }], schema: DESIGN_SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
+    console.error("hook design", e);
+    throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يصمم الهوك الحين؛ جرّب بعد شوي.", 502);
+  });
   usd += claudeCost(r.usage);
   return { design: checkDesign(r.data, h), usd };
 }
@@ -509,7 +508,7 @@ const CHECK_SCHEMA = {
  * «يشيك التلوين»: Claude sees the clip after its colour change (pictures and scopes) and either approves it or sends
  * the corrections (checked like any of its commands). The page applies them and asks again, up to MAX_CHECKS rounds.
  */
-export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unknown; round?: unknown; request?: unknown; timeline?: unknown; look?: unknown }, origin: string | null = null) {
+export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unknown; round?: unknown; request?: unknown; timeline?: unknown; look?: unknown; model?: unknown }, origin: string | null = null) {
   stillOpen(p);
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
   const assets = await assetViews(p.id);
@@ -529,11 +528,12 @@ export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unkno
   // the library's two cases most like the result as it is now (to judge it by experience, not only by numbers)
   const after = look.frames.find((f) => f.graded && f.scope)?.scope ?? null;
   const cases = await caseParts(nearestCases(after, String(b.request ?? ""), 2), origin);
-  const r = await charged(who, "editor_price_claude", 1, "حيدرة يشيك التلوين في حيدرة كت", () =>
+  const r = await claudeCharged(who, b.model, "حيدرة يشيك التلوين في حيدرة كت", () =>
     callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
       console.error("grade check", e);
       throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يشيك الحين.", 502);
     }),
+    (x) => claudeCost(x.usage),
   );
   const result = checkCommands(tl, r.data.commands ?? [], infos);
   const commands = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;

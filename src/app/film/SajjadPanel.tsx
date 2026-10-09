@@ -3,6 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
+import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
+import MicButton from "@/components/robots/MicButton";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 type Action = { kind: "rewind" | "revise_script" | "revise_sheets" | "revise_director" | "fixed_facts"; to?: string; text?: string; sceneId?: string; effect: string; blocked?: string };
 type Msg = { role: "user" | "sajjad"; text: string; at: string; username?: string | null; questions?: { question: string; options: string[] }[]; changes?: string[]; pending?: Action[]; applied?: string[] };
@@ -97,6 +100,8 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
     if (open) end.current?.scrollIntoView({ block: "end" });
   }, [open, messages.length, busy]);
 
+  const [claude] = useClaudeModel();
+
   const send = async (t: string) => {
     const body = t.trim();
     if (!body || busy) return;
@@ -106,7 +111,7 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
     setText("");
     setAnswers({});
     try {
-      const r = await postJson<{ message: Msg; changes: string[]; plan: Plan | null; research: Research | null }>("/api/film/sajjad", { kind, id, text: body });
+      const r = await postJson<{ message: Msg; changes: string[]; plan: Plan | null; research: Research | null }>("/api/film/sajjad", { kind, id, text: body, model: claude.id });
       setMessages((m) => [...m, r.message]);
       if (r.plan) setPlan(r.plan);
       if (r.research) setResearch(r.research);
@@ -316,13 +321,15 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
               <div ref={end} />
             </div>
 
+            <ClaudeModelPicker className="border-t border-black/10 px-3 pt-2" disabled={busy} />
             <form
-              className="flex gap-2 border-t border-black/10 p-3"
+              className="flex gap-2 p-3"
               onSubmit={(e) => {
                 e.preventDefault();
                 void send(text);
               }}
             >
+              <MicButton onText={(t) => setText((v) => (v.trim() ? `${v.trim()} ${t}` : t).slice(0, 6000))} disabled={busy} />
               <textarea
                 className="field min-h-12 flex-1 resize-none text-sm"
                 rows={2}

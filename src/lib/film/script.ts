@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens, type ClaudeTurn } from "./anthropic";
+import { currentClaude, withClaude } from "./claude-model";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
 import type { FilmJob, FilmProject } from "./types";
 import { readResearch, researchText } from "./research";
@@ -206,7 +207,7 @@ export async function scriptAction(project: FilmProject, user: { id: string; ema
     units: 0,
     unit: "tokens",
   });
-  if (created) after(() => runScriptJob(project.id, newJob.id));
+  if (created) { const picked = currentClaude().id; after(() => withClaude(picked, () => runScriptJob(project.id, newJob.id))); };
   return newJob.id;
 }
 

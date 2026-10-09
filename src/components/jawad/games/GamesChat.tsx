@@ -5,6 +5,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
+import MicButton from "@/components/robots/MicButton";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { api, postJson } from "@/lib/fetch";
 import { splitOptions } from "@/lib/chat-options";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
@@ -118,6 +121,8 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
   }
   const fresh = () => { setChatId(null); setMsgs([]); setSide(false); };
 
+  const [claude] = useClaudeModel();
+
   async function send(text = q) {
     const message = text.trim();
     if (!message || busy) return;
@@ -125,7 +130,7 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
     setBusy(true);
     setMsgs((m) => [...m, { role: "user", text: message }]);
     try {
-      const r = await postJson<{ chatId: string; text: string }>("/api/games/chat", { chatId, message });
+      const r = await postJson<{ chatId: string; text: string }>("/api/games/chat", { chatId, message, model: claude.id });
       setChatId(r.chatId);
       setMsgs((m) => [...m, { role: "assistant", text: r.text }]);
       void refresh();
@@ -226,7 +231,10 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
           </div>
 
           {!loginHref && (
+            <>
+            <ClaudeModelPicker className="gm-claude" disabled={busy} />
             <form className="gm-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+              <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={busy} className="gm-send" />
               <textarea
                 ref={box}
                 className="gm-input"
@@ -240,6 +248,7 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
               />
               <button className="gm-send" disabled={busy || !q.trim()}>{busy ? "…" : "أرسل"}</button>
             </form>
+            </>
           )}
         </section>
       </div>

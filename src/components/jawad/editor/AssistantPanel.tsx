@@ -33,6 +33,8 @@ import type { PlayerLike } from "./Timeline";
 import type { EditorAsset } from "./types";
 import Riyal from "@/components/Riyal";
 import Coined from "@/components/Coined";
+import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 interface Msg {
   role: "user" | "assistant";
@@ -144,6 +146,7 @@ export default function AssistantPanel({
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
+  const [claude] = useClaudeModel();
   // «🎬 مهارات الموشن»: the named motion skills as chips (one press writes the start of the request)
   const [showSkills, setShowSkills] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -230,7 +233,7 @@ export default function AssistantPanel({
     if (busy || !msgs.length) return;
     setBusy("حيدرة يكتب الهاندوف ويبدأ محادثة جديدة…");
     try {
-      const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff });
+      const c = await postJson<Chat>(`/api/jawad/editor/projects/${projectId}`, { action: "handoff", messages: msgs.filter((m) => !m.error), handoff: chat.handoff, model: claude.id });
       setMsgs([]);
       setChat((x) => ({ ...x, handoff: c.handoff, chats: c.chats }));
       setShowHandoff(true);
@@ -280,7 +283,7 @@ export default function AssistantPanel({
       setBusy(round === 1 ? "حيدرة يشيك نتيجة التلوين (الصورة والسكوبات)…" : `حيدرة يعيد يشيك بعد التعديل (جولة ${round})…`);
       const look = await lookAtClip(at, clipId);
       if (!look) return;
-      const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", clipId, round, request, timeline: at, look });
+      const c = await postJson<{ ok: boolean; verdict: string; commands: Command[] }>(`/api/jawad/editor/projects/${projectId}`, { action: "grade_check", clipId, round, request, timeline: at, look, model: claude.id });
       if (c.ok || !c.commands.length) {
         setMsgs((m) => [...m, { role: "assistant", text: `✅ ${c.verdict}`, done: steps || undefined }]);
         return;
@@ -423,6 +426,7 @@ export default function AssistantPanel({
       setBusy("حيدرة يشتغل على التايملاين…");
       const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
+        model: claude.id,
         message,
         history,
         handoff: chat.handoff,
@@ -929,8 +933,9 @@ export default function AssistantPanel({
           </div>
         )}
       </div>
+      <ClaudeModelPicker className="border-t border-jw-line px-2 pt-1.5" disabled={!!busy} />
       <form
-        className="flex items-end gap-2 border-t border-jw-line p-2"
+        className="flex items-end gap-2 p-2"
         onSubmit={(e) => {
           e.preventDefault();
           void send();

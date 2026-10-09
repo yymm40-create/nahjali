@@ -4,14 +4,14 @@
 import { UserError } from "@/lib/api";
 import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
-import { coinsFor } from "@config/coins";
+import { claudeHalalas, coinsFor } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
 import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
-import { checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
+import { CLAUDE_ONLY_KINDS, checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "./model";
 import { estimate } from "./outputs";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
@@ -138,7 +138,7 @@ export async function createProject(user: User & { app_metadata?: Record<string,
 async function paid(user: User, b: Body, o: { projectId: string; outputId?: string; kind: string; usd: number; input?: Record<string, unknown>; stage?: string; started?: () => Promise<void> }) {
   // nothing is charged (the owner, a free guest, or while coins are switched off): no price to agree to
   const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
-  const coins = o.usd > 0 && !free ? coinsFor(o.usd) : 0;
+  const coins = o.usd > 0 && !free ? (CLAUDE_ONLY_KINDS.has(o.kind) ? claudeHalalas : coinsFor)(o.usd) : 0;
   if (!b.confirm) return { quote: coins, balance: await coinBalance(user.id) };
   const key = checkKey(b.key);
   const { job, created } = await createJob(user, { projectId: o.projectId, outputId: o.outputId ?? null, kind: o.kind, key, input: o.input, estimateUsd: o.usd, stage: o.stage });
