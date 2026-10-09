@@ -6,6 +6,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { api, postJson } from "@/lib/fetch";
+import { splitOptions } from "@/lib/chat-options";
+import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 
 interface Msg { role: "user" | "assistant"; text: string; error?: boolean }
 interface ChatItem { id: string; title: string }
@@ -20,7 +22,7 @@ const STARTS = [
 /** The answer's light markdown (headings, lists, bold, rules) as elements. */
 function Rich({ text }: { text: string }) {
   const inline = (s: string) =>
-    s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : /^`[^`]+`$/.test(p) ? <code key={i}>{p.slice(1, -1)}</code> : <span key={i}>{p}</span>));
+    s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : /^`[^`]+`$/.test(p) ? <code key={i}>{p.slice(1, -1)}</code> : <Swatches key={i} text={p} cls="gm" />));
   const out: React.ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   const flush = () => {
@@ -85,6 +87,7 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
   const [side, setSide] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
 
   const refresh = useCallback(async () => {
     if (loginHref) return;
@@ -198,14 +201,20 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
                 </div>
               </>
             ) : (
-              msgs.map((m, i) => (
-                <div key={i} className={`gm-msg ${m.role === "user" ? "user" : "bot"} ${m.error ? "err" : ""}`}>
-                  {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{m.text}</p> : <Rich text={m.text} />}
-                  {m.role === "assistant" && !m.error && (
-                    <div className="gm-actions"><button className="gm-mini" onClick={() => navigator.clipboard?.writeText(m.text).catch(() => null)}>انسخ</button></div>
-                  )}
-                </div>
-              ))
+              msgs.map((m, i) => {
+                // an answer ends with clickable options (a block the person doesn't read as text); only the last answer's are offered
+                const { body, options } = m.role === "assistant" && !m.error ? splitOptions(m.text) : { body: m.text, options: [] as string[] };
+                const last = i === msgs.length - 1 && !busy;
+                return (
+                  <div key={i} className={`gm-msg ${m.role === "user" ? "user" : "bot"} ${m.error ? "err" : ""}`}>
+                    {m.role === "user" ? <p style={{ whiteSpace: "pre-wrap" }}>{m.text}</p> : <Rich text={body} />}
+                    {last && !loginHref && <QuickReplies cls="gm" options={options} disabled={!!busy} onPick={(o) => void send(o)} onWrite={() => box.current?.focus()} />}
+                    {m.role === "assistant" && !m.error && (
+                      <div className="gm-actions"><button className="gm-mini" onClick={() => navigator.clipboard?.writeText(body).catch(() => null)}>انسخ</button></div>
+                    )}
+                  </div>
+                );
+              })
             )}
             {busy && (
               <div className="gm-think">
@@ -219,6 +228,7 @@ export default function GamesChat({ name, persona, loginHref }: { name: string; 
           {!loginHref && (
             <form className="gm-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
               <textarea
+                ref={box}
                 className="gm-input"
                 dir="auto"
                 rows={1}

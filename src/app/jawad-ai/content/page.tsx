@@ -16,5 +16,5 @@ export default async function ContentPage() {
   if (!section) notFound();
   if (!user) return <ContentChat name={section.name} persona={CONTENT.persona} loginHref={jawadLogin(CONTENT.base)} />;
   if (!owner && !(await contentAllowed(user.email))) notFound();
-  return <ContentChat name={section.name} persona={CONTENT.persona} loginHref={null} />;
+  return <ContentChat name={section.name} persona={CONTENT.persona} loginHref={null} owner={owner} />;
 }

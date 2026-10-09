@@ -36,6 +36,8 @@ export async function openaiImage(o: {
   count: number;
   references: { bytes: Buffer; mime: string }[];
   user: string;
+  /** a shorter wait than the client's default (a caller that must answer within its own time limit) */
+  timeoutMs?: number;
 }): Promise<{ images: Buffer[]; costUsd: number | null; usage: ImageUsage | null }> {
   const size = GPT_IMAGE_2_SIZES[o.resolution][o.aspect];
   if (!size) throw new ProviderError("rejected", "مقاس غير مدعوم.", `no size for ${o.resolution}/${o.aspect}`);
@@ -49,12 +51,16 @@ export async function openaiImage(o: {
     user: o.user,
   };
   try {
+    const opts = o.timeoutMs ? { timeout: o.timeoutMs } : undefined;
     const res = o.references.length
-      ? await openai().images.edit({
-          ...common,
-          image: await Promise.all(o.references.map((r, i) => toFile(r.bytes, `reference-${i + 1}.${r.mime.split("/")[1]}`, { type: r.mime }))),
-        })
-      : await openai().images.generate(common);
+      ? await openai().images.edit(
+          {
+            ...common,
+            image: await Promise.all(o.references.map((r, i) => toFile(r.bytes, `reference-${i + 1}.${r.mime.split("/")[1]}`, { type: r.mime }))),
+          },
+          opts,
+        )
+      : await openai().images.generate(common, opts);
     const images = (res.data ?? []).map((d) => d.b64_json).filter((b): b is string => Boolean(b)).map((b) => Buffer.from(b, "base64"));
     if (!images.length) throw new ProviderError("rejected", "لم يرجع المزوّد أي صورة.", "empty data");
     const u = (res as { usage?: ImageUsage }).usage ?? null;

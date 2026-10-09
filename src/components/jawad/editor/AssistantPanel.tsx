@@ -36,6 +36,8 @@ interface Msg {
   text: string;
   done?: number;
   suggestions?: { prompt: string; why: string }[];
+  /** clickable answers under حيدرة's last reply (with «✍️ اكتب إجابة مختلفة») */
+  quick?: string[];
   /** «اصنع لي…» that cost coins: shown with their price, started by a tap */
   plans?: { plan: MakePlan; state: "ask" | "started" | "failed" }[];
   error?: boolean;
@@ -411,7 +413,7 @@ export default function AssistantPanel({
       }
       const found = await talkFace(message).catch(() => null);
       setBusy("حيدرة يشتغل على التايملاين…");
-      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
+      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         message,
         history,
@@ -438,7 +440,7 @@ export default function AssistantPanel({
         done = applied ? r.commands.length : 0;
         if (applied) now = (applied as { timeline: Timeline }).timeline;
       }
-      setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions }]);
+      setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions, ...(r.quick?.length ? { quick: r.quick } : {}) }]);
       // a colour change: حيدرة looks at the result (pictures and scopes) and corrects it until it is right
       if (r.checkClipId && done) await checkColour(r.checkClipId, message, now);
       // what Claude asked to be made: made one by one, then placed (each its own undo)
@@ -757,6 +759,18 @@ export default function AssistantPanel({
                     <span className="block text-[10px] text-jw-faint" dir="ltr">{s.prompt}</span>
                   </a>
                 ))}
+              </div>
+            ) : null}
+            {m.quick?.length && i === msgs.length - 1 && !busy ? (
+              <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="اختر إجابة">
+                {m.quick.map((q) => (
+                  <button key={q} type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => send(q)}>
+                    {q}
+                  </button>
+                ))}
+                <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs !border-dashed" onClick={() => textRef.current?.focus()}>
+                  ✍️ اكتب إجابة مختلفة
+                </button>
               </div>
             ) : null}
             {m.plans?.map((x, k) => (

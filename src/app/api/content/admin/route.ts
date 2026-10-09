@@ -3,9 +3,11 @@ import { handle, requireApiUser, UserError } from "@/lib/api";
 import { claudeTrouble } from "@/lib/film/anthropic";
 import { getVisibility, setVisibility } from "@/lib/content/access";
 import { getPersona, resetPersona, savePersona } from "@/lib/content/persona";
+import { makeTemplateImage, TEMPLATE_PICTURE_USD, templateImageStatus } from "@/lib/content/templates";
 import { deleteRun, ESTIMATE_USD, listRuns, runStatus, startRun, stepRun, worst, type Mode } from "@/lib/content/tests";
 import { CONTENT_KINDS } from "@config/content";
 import { EXAMPLES_PER_KIND } from "@config/content-examples";
+import { TEMPLATE_EXAMPLES_PER } from "@config/content-template-examples";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +24,17 @@ export const GET = handle(async (req: Request) => {
   await owner();
   const run = new URL(req.url).searchParams.get("run");
   if (run) return NextResponse.json({ status: await runStatus(run), worst: await worst(run) });
-  const [persona, runs, visibility] = await Promise.all([getPersona(), listRuns(), getVisibility()]);
-  return NextResponse.json({ visibility, persona, runs, estimate: ESTIMATE_USD, kinds: CONTENT_KINDS.map((k) => ({ id: k.id, name: k.name, examples: EXAMPLES_PER_KIND })) });
+  const [persona, runs, visibility, templates] = await Promise.all([getPersona(), listRuns(), getVisibility(), templateImageStatus().catch(() => [])]);
+  return NextResponse.json({
+    visibility,
+    persona,
+    runs,
+    estimate: ESTIMATE_USD,
+    kinds: CONTENT_KINDS.map((k) => ({ id: k.id, name: k.name, examples: EXAMPLES_PER_KIND })),
+    templates,
+    templateExamples: TEMPLATE_EXAMPLES_PER,
+    pictureUsd: Math.round(TEMPLATE_PICTURE_USD * 1000) / 1000,
+  });
 });
 
 /** One action of the dashboard (see /admin/content). */
@@ -42,6 +53,9 @@ export const POST = handle(async (req: Request) => {
       case "persona_reset":
         await resetPersona();
         return NextResponse.json({ ok: true });
+      case "template_image":
+        // one template's gallery picture (drawn again if it already has one); the page calls it template by template
+        return NextResponse.json(await makeTemplateImage(id));
       case "test_start": {
         const mode: Mode = b.mode === "deep" ? "deep" : "quick";
         const count = Math.max(1, Math.min(1000, Math.floor(Number(b.count)) || 100));

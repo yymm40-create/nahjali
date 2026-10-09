@@ -86,3 +86,18 @@ export async function producedBytes(userId: string, fileId: string): Promise<Buf
   if (dl.error || !dl.data) return null;
   return Buffer.from(await dl.data.arrayBuffer());
 }
+
+/** The record of one produced file of the person's (its meta keeps the slide's prompt, text and style for a retry). */
+export async function producedRow(userId: string, fileId: string): Promise<{ id: string; path: string; name: string; meta: Record<string, unknown> } | null> {
+  if (!isUuid(fileId)) return null;
+  const { data } = await db().from("content_files").select("id,path,name,meta").eq("id", fileId).eq("user_id", userId).maybeSingle();
+  return data ? { id: data.id as string, path: data.path as string, name: String(data.name ?? ""), meta: (data.meta as Record<string, unknown>) ?? {} } : null;
+}
+
+/** Removes a produced file (the picture and its record), e.g. the old slide that a new one replaced. */
+export async function deleteProduced(userId: string, fileId: string) {
+  const row = await producedRow(userId, fileId);
+  if (!row) return;
+  await db().from("content_files").delete().eq("id", fileId).eq("user_id", userId);
+  await storage.from(JAWAD_BUCKET).remove([row.path]).catch(() => null);
+}
