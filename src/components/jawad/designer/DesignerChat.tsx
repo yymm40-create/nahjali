@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
+import { useRouter } from "next/navigation";
 import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
@@ -139,7 +140,8 @@ export function Questions({ questions, fonts, disabled, onSend, onWrite }: { que
   );
 }
 
-export default function DesignerChat({ name, persona, loginHref, owner }: { name: string; persona: string; loginHref: string | null; owner?: boolean }) {
+export default function DesignerChat({ name, persona, loginHref, owner, photo, initialChat }: { name: string; persona: string; loginHref: string | null; owner?: boolean; photo?: boolean; initialChat?: string | null }) {
+  const router = useRouter();
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -226,6 +228,26 @@ export default function DesignerChat({ name, persona, loginHref, owner }: { name
     }
   }
   const fresh = () => { setChatId(null); setMsgs([]); setPending([]); setSide(false); };
+
+  // coming back from «زهراء فوتو ماستر» (or a link): open that conversation
+  const opened = useRef(false);
+  useEffect(() => {
+    if (initialChat && !loginHref && !opened.current) { opened.current = true; void open(initialChat); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialChat, loginHref]);
+
+  /** Sends the last design to «زهراء» to be edited (she can send it back). */
+  async function toZahraa() {
+    if (!chatId) return;
+    setBusy("writing");
+    try {
+      const r = await postJson<{ id: string }>("/api/photo/projects", { from: "designer", chatId });
+      router.push(`/jawad-ai/photo/${r.id}`);
+    } catch (e) {
+      setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح التصميم عند زهراء.", error: true }]);
+      setBusy("");
+    }
+  }
 
   async function attach(files: FileList | null) {
     if (!files?.length) return;
@@ -403,7 +425,10 @@ export default function DesignerChat({ name, persona, loginHref, owner }: { name
                         <>
                           {m.design.flag && <p className="dz-flag">⚠️ ملاحظة الفحص الآلي على الصورة: {m.design.flag}. تقدر تعيد رسمها.</p>}
                           {i === lastDesign ? (
-                            <LayerEditor design={m.design} fonts={fonts} onChange={changeLayers} onSave={saveFinal} saving={saving} busy={!!busy} onRedraw={() => chatId && void runProduce(chatId, true)} />
+                            <>
+                              <LayerEditor design={m.design} fonts={fonts} onChange={changeLayers} onSave={saveFinal} saving={saving} busy={!!busy} onRedraw={() => chatId && void runProduce(chatId, true)} />
+                              {photo && <button type="button" className="dz-opt" disabled={!!busy} onClick={() => void toZahraa()} title="تنتقل الصورة والنصوص وسجل المشروع إلى زهراء، وتقدر ترجعها لي بعد التعديل">🪄 عدّل في زهراء فوتو ماستر</button>}
+                            </>
                           ) : (
                             <p className="dz-muted">تصميم سابق في هذه المحادثة (المحرر يفتح على آخر تصميم).</p>
                           )}

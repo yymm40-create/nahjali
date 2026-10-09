@@ -15,6 +15,7 @@ export const SECTION_IMPLEMENTATIONS = {
   games: { label: "صانع الألعاب الذكي (محادثة مع «قنبر» لتصميم الألعاب)", output: null },
   content: { label: "صانع المحتوى (محادثة مع «محمد باقر»: كاروسيل وريلز وموشن)", output: null },
   designer: { label: "المصمم الذكي (محادثة مع «كاظم»: بطاقات وبوسترات ومصغّرات بطبقات نصية)", output: null },
+  photo: { label: "زهراء فوتو ماستر (برنامج تحرير الصور والتصميم المستقل مع الروبوت «زهراء»)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
 export const isImplementation = (s: string): s is SectionImplementation => s in SECTION_IMPLEMENTATIONS;
@@ -47,13 +48,15 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "content", name: "صانع المحتوى", icon: "layers", implementation: "content", sort: 80, enabled: false },
   // private: the page opens for the owner and for whoever holds the «designer» permission (the owner's switch in /admin/designer)
   { id: "designer", name: "المصمم الذكي", icon: "palette", implementation: "designer", sort: 90, enabled: false },
+  // private: the page opens for the owner and for whoever holds the «photo» permission (the owner's switch in /admin/photo)
+  { id: "photo", name: "زهراء فوتو ماستر", icon: "camera", implementation: "photo", sort: 95, enabled: false },
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["admin", "login", "username", "coins", "api", "works", "film", "student", "editor", "islamic", "games", "content", "designer"];
+export const RESERVED_SECTION_IDS = ["admin", "login", "username", "coins", "api", "works", "film", "student", "editor", "islamic", "games", "content", "designer", "photo"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic", "games", "content", "designer"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic", "games", "content", "designer", "photo"];
 
 /** Where a section opens. The film maker, «الطالب الذكي» and «حيدرة كت» keep their own pages; studio sections open at /jawad-ai/<id>. */
 export const sectionPath = (s: { id: string; implementation: string }) =>

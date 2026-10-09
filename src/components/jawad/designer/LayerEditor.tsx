@@ -47,7 +47,7 @@ export async function loadFont(f: FontDef) {
 }
 
 /** The text of a layer wrapped into lines that fit its box (the same for the preview and the canvas). */
-function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+export function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const out: string[] = [];
   for (const para of text.split("\n")) {
     const words = para.split(/\s+/).filter(Boolean);
@@ -65,7 +65,7 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): s
 const px = (l: TextLayer, H: number) => Math.max(4, (l.size / 100) * H);
 
 /** Draws one text layer on a canvas at the design's full size. */
-function drawText(ctx: CanvasRenderingContext2D, l: TextLayer, W: number, H: number, family: string) {
+export function drawText(ctx: CanvasRenderingContext2D, l: TextLayer, W: number, H: number, family: string) {
   const size = px(l, H);
   ctx.save();
   ctx.translate((l.x / 100) * W, (l.y / 100) * H);
