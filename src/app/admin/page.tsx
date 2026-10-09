@@ -73,6 +73,7 @@ export default async function AdminHome() {
         ["صانع المحتوى", "/admin/content"],
         ["المصمم الذكي", "/admin/designer"],
         ["زهراء فوتو ماستر", "/admin/photo"],
+        ["دورة الجواد", "/admin/course"],
       ],
     },
     {
