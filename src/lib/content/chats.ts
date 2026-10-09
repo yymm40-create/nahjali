@@ -118,6 +118,8 @@ export interface PendingProduce {
   at: number;
   styleId: string;
   templateId: string;
+  /** the person's attached pictures (jawad_uploads ids) handed to جواد with every slide: a logo, a photo, a product */
+  refs?: string[];
   /** "fix": only these slides are drawn again, in a carousel that exists */
   mode: "all" | "fix";
   /** made in this production so far */
@@ -262,6 +264,7 @@ export function readPending(v: unknown): PendingProduce | null {
     at: num(p.at),
     styleId: str(p.styleId, 60),
     templateId: str(p.templateId, 60),
+    ...(Array.isArray(p.refs) && p.refs.length ? { refs: p.refs.filter((r): r is string => typeof r === "string").slice(0, 6) } : {}),
     mode: p.mode === "fix" ? "fix" : "all",
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),

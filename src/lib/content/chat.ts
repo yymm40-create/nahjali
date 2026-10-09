@@ -48,7 +48,7 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "mode", "aspect", "template_id", "style_id", "slides"],
+      required: ["on", "mode", "aspect", "template_id", "style_id", "refs", "slides"],
       description: "إنتاج كاروسيل بـ GPT Image 2، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
@@ -56,6 +56,7 @@ export const ANSWER_SCHEMA = {
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9"] },
         template_id: { type: "string", description: "معرّف القالب الذي اختاره العميل، أو فارغ" },
         style_id: { type: "string", description: "معرّف الستايل الكرتوني الذي اختاره العميل، أو فارغ" },
+        refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة التي تُسلَّم إلى جواد مع كل شريحة (شعار، صورة، منتج)، أو فارغة" },
         slides: {
           type: "array",
           items: {
@@ -118,7 +119,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; mode: string; aspect: string; template_id: string; style_id: string; slides: { n: number; text: string; prompt: string }[] };
+  produce: { on: boolean; mode: string; aspect: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string };
 }
@@ -223,7 +224,9 @@ export async function say(userId: string, chatId: string | null, message: string
       pending = { id: randomUUID(), aspect: block.aspect, slides, at: fixAt, styleId: styleId || block.styleId, templateId: templateId || block.templateId, mode: "fix", made: [], failed: [], carry: block.failed.filter((f) => !slides.some((x) => x.n === f.n)) };
       messages[fixAt] = { ...history[fixAt], slides: { ...block, todo: slides.map((x) => x.n), failed: pending.carry, running: true, report: undefined } };
     } else if (slides.length) {
-      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, mode: "all", made: [], failed: [], carry: [] };
+      const mine = new Set(history.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+      const refs = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((r) => mine.has(r)).slice(0, 6);
+      pending = { id: randomUUID(), aspect, slides, at, styleId, templateId, ...(refs.length ? { refs } : {}), mode: "all", made: [], failed: [], carry: [] };
       reply.slides = { aspect, items: [], todo: slides.map((x) => x.n), failed: [], running: true, total: slides.length, styleId, templateId };
     }
   }

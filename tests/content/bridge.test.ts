@@ -226,12 +226,17 @@ describe("references (10)", () => {
     await step();
     const images = refs.filter((r) => !r.startsWith("vid"));
     expect((st.img[0].refs as unknown[]).length).toBe(images.length);
-    (st.img[0].refs as { uploadId: string; name: string }[]).forEach((r, i) => expect(r.name).toBe(`ref${i + 1}`));
+    (st.img[0].refs as { uploadId: string; name: string }[]).forEach((r, i) => expect(r.name).toBe(`image${i + 1}`));
   });
-  it.each([[["img1"]], [["img1", "img2"]]])("a video gets its references too %o", async (refs) => {
+  it.each([[["img1"]], [["img1", "img2"]], [["img1", "vid1"]]])("a video gets all its references, pictures and clips too %o", async (refs) => {
     start([item({ kind: "video", refs })]);
     await step();
     expect((st.vid[0].refs as unknown[]).length).toBe(refs.length);
+  });
+  it("references are named by kind, each counted on its own", async () => {
+    start([item({ kind: "video", refs: ["img1", "vid1", "img2"] })]);
+    await step();
+    expect((st.vid[0].refs as { name: string }[]).map((r) => r.name)).toEqual(["image1", "video1", "image2"]);
   });
   it("every request has a key of its own", async () => {
     start([item({ id: "a" }), item({ id: "b" })]);
