@@ -21,7 +21,7 @@ import { WOMAN_WORDING } from "@config/content";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
-import { addProducedFromOutput, deleteProduced, producedBytes, producedRow } from "./files";
+import { addProducedFromOutput, attachmentsOf, deleteProduced, producedBytes, producedRow } from "./files";
 import { checkSlide, fixNote, type SlideCheck } from "./verify";
 
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
@@ -66,7 +66,7 @@ const reasonOf = (e: unknown) => (e instanceof DeskError ? e.reason : "صار خ
 const detailOf = (e: unknown) => (e instanceof DeskError ? e.detail || e.reason : e instanceof Error ? e.message : String(e)).slice(0, 300);
 
 /** The full prompt of one slide: where it stands, the design (Baqir's), the style (verbatim), the slide, the rules. */
-export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; withRef: boolean; fix?: string }): string {
+export function slidePrompt(o: { n: number; total: number; prompt: string; styleId: string; withRef: boolean; userRefs?: number; fix?: string }): string {
   const style = o.styleId ? findStyle(o.styleId) : null;
   return [
     o.withRef
@@ -74,6 +74,7 @@ export function slidePrompt(o: { n: number; total: number; prompt: string; style
         ? `Slide 1 of ${o.total} of a carousel, drawn again. The reference picture is the earlier version of this slide: keep its design system exactly (colours, typography, margins, grid, logo placement, decorative elements) and fix the listed problems.`
         : `Slide ${o.n} of ${o.total} of one carousel. The reference picture is slide 1: match its design system EXACTLY — the same colours, typography, margins, layout grid, logo placement and decorative elements — so the carousel reads as one set. Only the content changes.`
       : `Slide ${o.n} of ${o.total} of a carousel (the first: it sets the design system every other slide will copy).`,
+    o.userRefs ? `The client's own attached picture${o.userRefs > 1 ? "s are" : " is"} also given as reference${o.userRefs > 1 ? "s" : ""} (named ref1${o.userRefs > 1 ? "…" : ""}): use ${o.userRefs > 1 ? "them" : "it"} where the slide's brief asks (a logo, a photo, a product), exactly as ${o.userRefs > 1 ? "they are" : "it is"}, without redrawing or altering ${o.userRefs > 1 ? "them" : "it"}.` : "",
     style ? `ILLUSTRATION STYLE (verbatim; applies to every drawn character, object and scene — not to the lettering layout): ${style.text}` : "",
     o.prompt,
     ARABIC_TEXT_RULES,
@@ -105,7 +106,7 @@ interface SlideResult {
 }
 
 /** Draws one slide until it is made, flagged, or given up. */
-async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0: number; total: number; who: DeskWho }, p: PendingProduce, s: PendingProduce["slides"][number], ref: string | null): Promise<SlideResult> {
+async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0: number; total: number; who: DeskWho }, p: PendingProduce, s: PendingProduce["slides"][number], ref: string | null, mine: string[]): Promise<SlideResult> {
   const left = () => HARD_MS - (Date.now() - c.t0);
   let usd = 0;
   let fix = "";
@@ -122,11 +123,11 @@ async function makeSlide(c: { userId: string; chatId: string; owner: boolean; t0
       const r = await deskImage(c.who, {
         key: `c-${randomUUID().replace(/-/g, "")}`,
         kind: "image",
-        prompt: slidePrompt({ n: s.n, total: c.total, prompt: s.prompt, styleId: p.styleId, withRef: !!ref, fix }),
+        prompt: slidePrompt({ n: s.n, total: c.total, prompt: s.prompt, styleId: p.styleId, withRef: !!ref, userRefs: mine.length, fix }),
         aspect: p.aspect,
         resolution: IMAGE_TIER,
         quality: IMAGE_QUALITY,
-        refs: ref ? [{ uploadId: ref, name: "slide1" }] : [],
+        refs: [...(ref ? [{ uploadId: ref, name: "slide1" }] : []), ...mine.map((uploadId, i) => ({ uploadId, name: `ref${i + 1}` }))],
       });
       png = r.bytes;
       out = r.out;
@@ -170,7 +171,7 @@ async function store(c: { userId: string; chatId: string }, p: PendingProduce, s
     chatId: c.chatId,
     out,
     name: `slide-${String(s.n).padStart(2, "0")}`,
-    meta: { slide: s.n, aspect: p.aspect, text: s.text, prompt: s.prompt, styleId: p.styleId, templateId: p.templateId, batch: p.id, desk: receipt, ...(flag ? { flag } : {}) },
+    meta: { slide: s.n, aspect: p.aspect, text: s.text, prompt: s.prompt, styleId: p.styleId, templateId: p.templateId, batch: p.id, ...(p.refs?.length ? { refs: p.refs } : {}), desk: receipt, ...(flag ? { flag } : {}) },
   });
 }
 
@@ -196,7 +197,17 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     if (item && prompt) slides.push({ n, text: item.text, prompt });
   }
   if (!slides.length) throw new UserError("ما لقينا شرائح نعيد رسمها.", 409);
+  // the attached pictures the carousel was made with go again with the slides drawn again
+  let refs: string[] = [];
+  for (const it of block.items) {
+    const meta = (await producedRow(userId, it.fileId))?.meta.refs;
+    if (Array.isArray(meta) && meta.length) {
+      refs = meta.filter((r): r is string => typeof r === "string");
+      break;
+    }
+  }
   const pending: PendingProduce = {
+    ...(refs.length ? { refs } : {}),
     id: randomUUID(),
     aspect: block.aspect,
     slides,
@@ -238,6 +249,9 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   const ref1 = p.made.find((s) => s.n === 1) ?? base.get(1);
   const refBytes = ref1 ? await producedBytes(userId, ref1.fileId) : null;
   // slide 1 is handed to جواد with each request as a stored reference of the person's (once for the call)
+  // and the person's own attached pictures go to جواد with every slide
+  const { list: mineList } = await attachmentsOf(userId, p.refs ?? []);
+  const mine = mineList.filter((a) => a.kind === "image").map((a) => a.id);
   let ref: string | null = null;
   if (refBytes) {
     try {
@@ -250,7 +264,7 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   const batch = !refBytes && first ? [first] : todo.slice(0, CHUNK);
 
   let usd = 0;
-  const results = await Promise.all(batch.map((s) => makeSlide(c, p, s, ref)));
+  const results = await Promise.all(batch.map((s) => makeSlide(c, p, s, ref, mine)));
   for (const r of results) {
     usd += r.usd;
     if (r.made) {

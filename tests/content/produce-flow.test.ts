@@ -57,6 +57,7 @@ vi.mock("@/lib/content/files", () => ({
     db.files.set(id, { path: `p/${id}`, name: o.name, meta: o.meta });
     return { id, path: `p/${id}`, name: o.name, bytes: 10 };
   }),
+  attachmentsOf: vi.fn(async (_u: string, ids: string[]) => ({ list: ids.map((id) => ({ id, kind: id.startsWith("vid") ? "video" : "image", name: id, durationMs: null })), rows: [] })),
   producedBytes: vi.fn(async (_u: string, id: string) => Buffer.from(`bytes-${id}`)),
   producedRow: vi.fn(async (_u: string, id: string) => (db.files.has(id) ? { id, ...db.files.get(id)! } : null)),
   deleteProduced: vi.fn(async (_u: string, id: string) => {
@@ -130,6 +131,15 @@ describe("drawing a carousel", () => {
     expect(new Set(gen.calls.map((c) => c.key)).size).toBe(gen.calls.length);
     expect(gen.calls.every((c) => /^[A-Za-z0-9_-]{8,80}$/.test(c.key))).toBe(true);
     expect([...db.files.values()].every((f) => (f.meta.desk as { generatorId: string }).generatorId === "openai-gpt-image-2")).toBe(true);
+  });
+
+  it("hands the person's attached pictures to جواد with every slide, next to slide 1", async () => {
+    start(3, { refs: ["u-logo", "vid-clip"] });
+    await produce("u", "chat-1");
+    await produce("u", "chat-1");
+    expect(gen.calls[0].refs).toBe(1);
+    expect(gen.calls[0].prompt).toContain("client's own attached picture");
+    expect(gen.calls.slice(1).every((c) => c.refs === 2)).toBe(true);
   });
 
   it("draws at most two at a time after the first", async () => {

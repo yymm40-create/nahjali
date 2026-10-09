@@ -17,7 +17,7 @@ interface SlideView { n: number; fileId: string; name: string; text: string; url
 interface FailView { n: number; reason: string; detail?: string; text: string }
 interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string }
 interface MediaView {
-  id: string; kind: "image" | "video"; name: string; aspect: string; state: "todo" | "running" | "done" | "failed";
+  id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
   desk?: { generator: string; coins: number; free: boolean };
 }
@@ -341,7 +341,7 @@ export function MediaBox({ items, busy, owner, onRetry }: { items: MediaView[]; 
         <figure key={x.id} className={`ct-mediacard ${x.state}`}>
           <figcaption>
             <b>📨 محمد باقر سلّم الطلب لجواد</b>
-            <span>{x.kind === "video" ? "🎞️ فيديو" : "🖼️ صورة"} «{x.name}» · {x.aspect}</span>
+            <span>{x.kind === "video" ? "🎞️ فيديو" : "🖼️ صورة"} «{x.name}» · {x.aspect}{x.refs?.length ? ` · 📎 ${x.refs.length} مرفق نقلها لجواد` : ""}</span>
             <small>
               {x.desk ? `${x.desk.generator} · ${x.desk.free ? "بلا رسوم عليك" : `${x.desk.coins} عملة`}` : "جواد يختار المولّد المناسب"} · {ST[x.state]}
             </small>

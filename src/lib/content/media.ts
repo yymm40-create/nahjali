@@ -30,7 +30,12 @@ const key = () => `m-${randomUUID().replace(/-/g, "")}`;
 async function refsOf(userId: string, item: MediaItem) {
   if (!item.refs.length) return [];
   const { list } = await attachmentsOf(userId, item.refs);
-  return list.filter((a) => a.kind === "image").map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
+  // everything the person attached can go to جواد: a picture generator takes pictures only; a video generator also takes
+  // video and sound references (جواد's registry checks the counts and lengths and answers if it cannot use them)
+  const seen = { image: 0, video: 0, audio: 0 };
+  return list
+    .filter((a) => item.kind === "video" || a.kind === "image")
+    .map((a) => ({ uploadId: a.id, name: `${a.kind}${++seen[a.kind]}` }));
 }
 
 function fail(item: MediaItem, e: unknown, owner: boolean) {
