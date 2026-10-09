@@ -27,6 +27,7 @@ import { familyOf, loadFont, loadFontsOf } from "./fontload";
 import { separateAsset, stemQuality } from "./make";
 import { placeStems } from "@/lib/editor/make";
 import CaptionsPanel from "./CaptionsPanel";
+import { planSync } from "./sync";
 import ExportPanel from "./ExportPanel";
 import Handles from "./Handles";
 import Inspector, { type SceneCutRun, type InspectorTab } from "./Inspector";
@@ -828,6 +829,21 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     run(placeStems(f.clip, r.assets.map((x) => x.id)), { label: "فصلت الكلام والموسيقى والمؤثرات" });
     flash(r.full ? "انفصل الصوت: الكلام والموسيقى والمؤثرات كل واحد في مسار." : r.assets.length > 1 ? "انفصل الكلام عن الموسيقى، كل واحد في مسار (المؤثرات بقت مع الموسيقى)." : "فصلنا الكلام في مسار بروحه. فصل الموسيقى يحتاج تفعيل خدمة fal على الخادم.");
   };
+  // «زامن الصوت»: the chosen clips are lined up by what they hear (a camera and a phone, a camera and a microphone track)
+  const [syncing, setSyncing] = useState(false);
+  const syncClips = async (ids: string[]) => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const plan = await planSync(tlRef.current, ids, new Map(assets.map((x) => [x.id, x])), (text) => flash(text));
+      if (plan.cmds.length) run(plan.cmds, { label: `زامنت ${plan.moved} مقطع بالصوت` });
+      flash(plan.notes.join(" "), !plan.cmds.length);
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "تعذّرت المزامنة.", true);
+    } finally {
+      setSyncing(false);
+    }
+  };
   const dropAsset = (id: string, at: number, trackId: string | null) => {
     const a = assets.find((x) => x.id === id);
     if (a) placeAsset(a, { at, trackId, mode: "one", group: "", first: true });
@@ -1062,6 +1078,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       { label: ids.length > 1 ? `دمج ${ids.length} في تسلسل (Nest)` : "دمج في تسلسل (Nest)", onClick: () => run({ type: "nest", clipIds: ids }), disabled: !can },
       ...(f?.clip.seq ? [{ label: "افتح التسلسل المتداخل", onClick: () => run({ type: "seq_open", id: f.clip.seq! }) }] : []),
       { label: "تقسيم عند المؤشر", keys: "S", onClick: split, disabled: !can },
+      ...(ids.length > 1 ? [{ label: syncing ? "أزامن الصوت…" : `🎯 زامن الصوت (${ids.length} مقاطع)`, onClick: () => void syncClips(ids), disabled: !can || syncing }] : []),
       ...(video ? [{ label: "فصل صوت الفيديو لمسار", onClick: () => run({ type: "extract_audio", clipId: m.clipId! }), disabled: !can }] : []),
       ...(a && a.kind !== "image" && a.hasAudio ? [{ label: "فصل الكلام والموسيقى والمؤثرات", onClick: () => void separateClip(m.clipId!).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true)), disabled: !can }] : []),
       ...(f && !f.clip.text && f.track.kind === "video" ? [{ label: "التلوين", onClick: () => { setWantTab("color"); pick([m.clipId!]); } }] : []),
@@ -1629,7 +1646,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           {panelEdge}
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Guard name="الإعدادات"><Inspector projectId={project.id} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 
