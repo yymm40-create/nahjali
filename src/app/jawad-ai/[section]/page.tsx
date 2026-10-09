@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Studio from "@/components/jawad/studio/Studio";
 import { coinBalance } from "@/lib/coins";
-import { jawadSession } from "@/lib/jawad/server/access";
+import { freeFor, jawadSession } from "@/lib/jawad/server/access";
 import { accessOf, permForGenerator } from "@/lib/access";
 import { generatorById } from "@config/jawad/generators";
 import { loadRuntime, sectionGenerators } from "@/lib/jawad/server/runtime";
@@ -31,7 +31,7 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
   const perms = await accessOf(user?.email);
   const generators = sectionGenerators(rt, s.id, owner).filter((g) => !user || perms.has(permForGenerator(generatorById(g.id) ?? { id: g.id, output: s.output! }))).map((g) => ({ id: g.id, name: g.name, sampleUrl: g.sampleUrl, live: g.live, reason: owner ? g.reason : null }));
   const allowed = Boolean(user) && generators.length > 0;
-  const [balance, initialWorks] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null)]) : [null, null];
+  const [balance, initialWorks, free] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null), freeFor(user)]) : [null, null, false];
 
   return (
     // each section has its own look (sections.css), by its output type
@@ -42,8 +42,9 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
       generators={generators}
       prices={Object.fromEntries(generators.map((g) => [g.id, rt.prices[g.id]]))}
       user={user ? { id: user.id } : null}
-      // everyone let in makes for free, without prices blocking them (charges are skipped on the server too)
-      owner={owner || allowed}
+      // free for the owners and the unlimited; everyone else sees riyal prices and pays from their wallet
+      owner={owner || free}
+      pricing={rt.pricing}
       allowed={allowed}
       balance={balance}
       initialWorks={initialWorks}

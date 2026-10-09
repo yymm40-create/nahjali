@@ -10,14 +10,21 @@ const NO_TABLES = "جداول النقود الذكية ما انضافت للح
 /**
  * Owner only — «النقود الذكية»:
  *   { action: "required", on }               paid film operations need coins (on) or are free (off)
- *   { action: "grant", email, amount, note }  add (or take back, negative) coins for one user
- *   { action: "team_grant", series, amount, note }  «نقود الفريق الذكي» for a series (its link or id)
+ *   { action: "grant", email, sar | amount, note }  add (or take back, negative) riyals (`sar`, up to 2 decimals) — or halalas (`amount`) — for one user
+ *   { action: "team_grant", series, sar | amount, note }  «نقود الفريق الذكي» for a series (its link or id), riyals or halalas
  *   { action: "library", email, months }      «المكتبة» for one user: add months (1–12) from today or from its end, or stop it (0)
  */
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
   if (!isAdmin(user.email)) throw new UserError("غير مسموح.", 404);
-  const body = (await req.json().catch(() => ({}))) as { action?: string; on?: boolean; email?: string; amount?: unknown; note?: string; months?: unknown; series?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; on?: boolean; email?: string; amount?: unknown; sar?: unknown; note?: string; months?: unknown; series?: unknown };
+
+  /** The halalas asked for: `sar` (riyals, 2 decimals) wins over `amount` (halalas). */
+  const halalasAsked = () => {
+    const n = body.sar != null && body.sar !== "" ? Math.round(Number(body.sar) * 100) : Number(body.amount);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n === 0 || Math.abs(n) > 10_000_000) throw new UserError("اكتب مبلغًا بالريال (موجب للإضافة، سالب للسحب)، حتى ١٠٠ ألف ريال.", 400);
+    return n;
+  };
   const db = createAdminClient();
 
   if (body.action === "required") {
@@ -57,8 +64,7 @@ export const POST = handle(async (req: Request) => {
   }
 
   if (body.action === "grant") {
-    const amount = Number(body.amount);
-    if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 100000) throw new UserError("اكتب عدد صحيح (موجب للإضافة، سالب للسحب).", 400);
+    const amount = halalasAsked();
     const target = await userByEmail(body.email);
     const balance = await grantCoins(target, amount, String(body.note ?? "").slice(0, 120) || "من صاحب الموقع").catch(() => {
       throw new UserError(NO_TABLES, 500);
@@ -67,8 +73,7 @@ export const POST = handle(async (req: Request) => {
   }
 
   if (body.action === "team_grant") {
-    const amount = Number(body.amount);
-    if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 100000) throw new UserError("اكتب عدد صحيح (موجب للإضافة، سالب للسحب).", 400);
+    const amount = halalasAsked();
     const id = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(String(body.series ?? ""))?.[0];
     if (!id) throw new UserError("الصق رابط المسلسل أو رقمه.", 400);
     const { data: s } = await db.from("film_series").select("id").eq("id", id).maybeSingle();

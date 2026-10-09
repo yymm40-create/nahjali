@@ -1,15 +1,18 @@
 import PricesAdmin from "@/components/jawad/admin/PricesAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GENERATORS } from "@config/jawad/generators";
-import { SMART_COIN, COIN_COST_USD } from "@config/coins";
+import { fmtSar, getPricing } from "@config/coins";
+import { loadPricing } from "@/lib/coins";
 import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
 export const metadata = { title: "الأسعار" };
 
-const fmt = (c: number | null) => (c == null ? "الافتراضي" : (c / 100).toFixed(2));
+const fmt = (c: number | null) => (c == null ? "الافتراضي" : `${(c / 10000).toFixed(2)} ر.س`);
 
 export default async function PricesPage() {
   await requireJawadOwnerPage("/jawad-ai/admin/prices");
+  await loadPricing(true);
+  const p = getPricing();
   const db = createAdminClient();
   const [{ data: rules }, { data: log }] = await Promise.all([
     db.from("jawad_price_rules").select("generator_id,price_key,centicoins"),
@@ -19,7 +22,7 @@ export default async function PricesPage() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-jw-muted">
-        الأسعار بالنقود الذكية. الافتراضي محسوب من تكلفة المزوّد الموثّقة على إعدادات المشروع الحالية (النقدة = {SMART_COIN.priceSar} ريال، هامش {Math.round(SMART_COIN.markup * 100)}٪، أي تكلفة ≈ <span dir="ltr">${COIN_COST_USD.toFixed(4)}</span> للنقدة).
+        كل بند هنا هو <b>التكلفة علينا بالريال</b> (من سعر المزوّد الموثّق على الدولار = {p.usdToSar} ريال). ما يدفعه العميل يُحسب من مجموع التكلفة: يُقرَّب للأعلى إلى {fmtSar(p.stepHalalas)} ريال، ثم يُضاف الربح {p.marginPct}٪ (مقرّبًا كذلك)، وبجنبه السعر المشطوب بربح {p.wasMarginPct}٪. النسب والتقريب من «النقود والأسعار» في لوحة التحكم.
         السعر يُحسب في الخادم لكل طلب ويُحفظ مع المهمة؛ إذا تغيّر بعد فتح المستخدم للصفحة يُطلب منه تأكيد المبلغ الجديد قبل أي خصم.
       </p>
       <PricesAdmin

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
-import { LIBRARY_ADDON } from "@config/coins";
+import { fmtSar, LIBRARY_ADDON } from "@config/coins";
 import { LIBRARY_KIND, LIBRARY_LIMIT, type LibraryKind } from "@config/jawad/library";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
@@ -377,7 +377,7 @@ function AddDialog({ kind, how, owner, onClose, onAdded, onMaking }: { kind: Lib
             <Icon name="sparkles" size={16} />
             {busy ? "لحظة…" : quote == null ? "احسب السعر" : (
               <>
-                اصنعها <span className="inline-flex items-center gap-1">· <span dir="ltr">{quote}</span> <SmartCoin size={14} /></span>
+                اصنعها <span className="inline-flex items-center gap-1">· <span dir="ltr">{fmtSar(quote)}</span> ر.س <SmartCoin size={14} /></span>
                 {owner && <span className="text-[11px] opacity-80">(بلا خصم للمالك)</span>}
               </>
             )}
@@ -388,7 +388,7 @@ function AddDialog({ kind, how, owner, onClose, onAdded, onMaking }: { kind: Lib
           </button>
         )}
         {why && !busy && <p className="text-[11px] text-jw-muted">{why}</p>}
-        {how === "make" && <p className="text-[11px] text-jw-faint">تُرسم بـ GPT Image 2 ({kind === "character" ? "صورة طولية للشخصية كاملة على خلفية سادة" : "منظر واسع للمكان بلا أشخاص"}) وتظهر أيضًا في «أعمالي». إن فشل الرسم تُعاد نقودك.</p>}
+        {how === "make" && <p className="text-[11px] text-jw-faint">تُرسم بـ GPT Image 2 ({kind === "character" ? "صورة طولية للشخصية كاملة على خلفية سادة" : "منظر واسع للمكان بلا أشخاص"}) وتظهر أيضًا في «أعمالي». إن فشل الرسم يُعاد لك المبلغ.</p>}
       </div>
     </Dialog>
   );

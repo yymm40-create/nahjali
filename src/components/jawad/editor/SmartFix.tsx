@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generatorById } from "@config/jawad/generators";
 import { postJson } from "@/lib/fetch";
+import { fmtSar } from "@config/coins";
 import { clipLength, findClip, FIX_NOTE_MAX, flatten, formatTime, type Clip, type Fix, type Timeline as TL } from "@/lib/editor/model";
 import { canExport, exportVideo } from "./export";
 import { CONTINUITY, continuityRanges, EDIT_LIMITS, frameTimes, type ContinuityRange, type EditRange } from "@/lib/jawad/smart-edit";
@@ -490,7 +491,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
                 ) : (
                   fix.note && <p className="text-xs text-jw-muted">«{fix.note}»</p>
                 )}
-                {editable && (!q ? <p className="text-[11px] text-jw-faint">يحسب السعر…</p> : "coins" in q ? <p className="text-[11px] text-jw-muted">السعر: {q.coins} نقدة</p> : <p className="text-xs font-semibold text-jw-danger">⚠ {q.error}</p>)}
+                {editable && (!q ? <p className="text-[11px] text-jw-faint">يحسب السعر…</p> : "coins" in q ? <p className="text-[11px] text-jw-muted">السعر: {fmtSar(q.coins)} ر.س</p> : <p className="text-xs font-semibold text-jw-danger">⚠ {q.error}</p>)}
                 {(errors[c.id] || (fix.state === "failed" && fix.error)) && <p className="rounded-lg bg-jw-danger/10 p-2 text-xs font-semibold text-jw-danger">✕ ما انرسل: {errors[c.id] || fix.error}</p>}
               </li>
             );
@@ -503,7 +504,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
         )}
         <div className="flex flex-wrap items-center gap-3 border-t border-jw-line pt-3">
           <button type="button" className="jw-btn jw-btn-primary" disabled={!!busy || !written.length} onClick={sendAll}>
-            <Icon name="wand" size={16} /> {busy ?? (written.length ? `اصنع ${written.length} ${written.length === 1 ? "تعديل" : "تعديلات"}${priced.length === written.length ? ` · ${total} نقدة` : ""}` : "اكتب ملاحظة (٣ أحرف أو أكثر) لكل جزء")}
+            <Icon name="wand" size={16} /> {busy ?? (written.length ? `اصنع ${written.length} ${written.length === 1 ? "تعديل" : "تعديلات"}${priced.length === written.length ? ` · ${fmtSar(total)} ر.س` : ""}` : "اكتب ملاحظة (٣ أحرف أو أكثر) لكل جزء")}
           </button>
           <span className="text-[11px] text-jw-faint">تضغط مرة وحدة وترجع للتايم لاين؛ الإرسال يكمل في الخلفية، وكل جزء يوصل ينحط على الأخضر بنفسه.</span>
         </div>

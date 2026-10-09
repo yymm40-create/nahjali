@@ -6,9 +6,10 @@ import { postJson } from "@/lib/fetch";
 import { ALL_PERMS, PERMS, type Perm } from "@config/access";
 
 /** One email on «السماح»: a chip per section (✓ on, press again to close it), and × to take it off the list. */
-export function AccessRow({ email, perms, fixed, onRemoved }: { email: string; perms: Perm[]; fixed?: string; onRemoved?: () => void }) {
+export function AccessRow({ email, perms, unlimited = false, fixed, onRemoved }: { email: string; perms: Perm[]; unlimited?: boolean; fixed?: string; onRemoved?: () => void }) {
   const router = useRouter();
   const [on, setOn] = useState<Perm[]>(perms);
+  const [free, setFree] = useState(unlimited);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -52,6 +53,20 @@ export function AccessRow({ email, perms, fixed, onRemoved }: { email: string; p
             </button>
             <button
               type="button"
+              aria-pressed={free}
+              title="بلا حدود: ما ينخصم منه شي، حتى لو الموقع مدفوع"
+              className={`btn min-h-9 px-3 text-xs ${free ? "bg-gold text-on-gold" : "btn-ghost"}`}
+              disabled={busy}
+              onClick={async () => {
+                const next = !free;
+                setFree(next);
+                if (!(await send({ action: "set", email, perms: on, unlimited: next }))) setFree(!next);
+              }}
+            >
+              ♾️ {free ? "بلا حدود" : "يدفع"}
+            </button>
+            <button
+              type="button"
               className="btn min-h-9 bg-red-600 px-3 text-xs text-white"
               disabled={busy}
               aria-label={`شيل ${email} من القائمة`}
@@ -86,7 +101,7 @@ export function AccessRow({ email, perms, fixed, onRemoved }: { email: string; p
 }
 
 /** «السماح»: the whole list, and a field to add an email (it starts with everything open; untick what it shouldn't use). */
-export default function AccessList({ rows, fixed }: { rows: { email: string; perms: Perm[] }[]; fixed: { email: string; label: string }[] }) {
+export default function AccessList({ rows, fixed }: { rows: { email: string; perms: Perm[]; unlimited?: boolean }[]; fixed: { email: string; label: string }[] }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -126,7 +141,7 @@ export default function AccessList({ rows, fixed }: { rows: { email: string; per
           <AccessRow key={f.email} email={f.email} perms={ALL_PERMS} fixed={f.label} />
         ))}
         {rows.map((r) => (
-          <AccessRow key={`${r.email}:${r.perms.join(",")}`} email={r.email} perms={r.perms} />
+          <AccessRow key={`${r.email}:${r.perms.join(",")}:${r.unlimited ? 1 : 0}`} email={r.email} perms={r.perms} unlimited={r.unlimited} />
         ))}
       </ul>
       {!rows.length && <p className="text-center font-bold text-muted">ما فيه أحد في القائمة للحين.</p>}

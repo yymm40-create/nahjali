@@ -16,6 +16,7 @@
 
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
+import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt, type DeskWho } from "./jawad";
 import { WOMAN_WORDING } from "@config/content";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
@@ -240,7 +241,7 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   const messages = [...chat.messages];
   const at = Math.min(p.at, messages.length - 1);
   const base = new Map((messages[at]?.slides?.items ?? []).map((s) => [s.n, s]));
-  const who: DeskWho = { id: userId, email: o.email, owner: true, origin: o.origin ?? "" };
+  const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" };
   const c = { userId, chatId, owner: !!o.owner, who, t0, total: p.mode === "all" ? p.slides.length : Math.max(base.size, ...p.slides.map((s) => s.n)) };
   const done = new Set([...p.made.map((s) => s.n), ...p.failed.map((f) => f.n)]);
   const todo = p.slides.filter((s) => !done.has(s.n)).sort((a, b) => a.n - b.n);

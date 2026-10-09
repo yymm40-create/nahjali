@@ -1,3 +1,4 @@
+import { fmtSar } from "@config/coins";
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
@@ -32,7 +33,7 @@ export const POST = handle(async (req: Request) => {
   });
   if (r.kind === "quote") return NextResponse.json({ coins: r.coins, lines: r.lines, cut: r.cut });
   if (r.kind === "issues") return NextResponse.json({ error: r.issues[0]?.message ?? "الطلب غير صالح.", issues: r.issues }, { status: 422 });
-  if (r.kind === "price_changed") return NextResponse.json({ error: `تغيّر السعر إلى ${r.coins} نقدة. أكّد المبلغ الجديد.`, code: "price_changed", coins: r.coins, lines: r.lines }, { status: 409 });
+  if (r.kind === "price_changed") return NextResponse.json({ error: `تغيّر السعر إلى ${fmtSar(r.coins)} ر.س. أكّد المبلغ الجديد.`, code: "price_changed", coins: r.coins, lines: r.lines }, { status: 409 });
   const [job] = await jobViews([r.job]);
   return NextResponse.json({ job, created: r.kind === "created", balance: r.balance });
 });

@@ -1,3 +1,4 @@
+import type { Pricing } from "@config/coins";
 import type { RefKind, RefMeta, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import type { JobView, WorkItem } from "@/lib/jawad/labels";
 
@@ -18,6 +19,8 @@ export interface StudioProps {
   owner: boolean;
   allowed: boolean;
   balance: number | null;
+  /** the riyal pricing in force (config/coins.ts) */
+  pricing: Pricing;
   initialWorks: { items: WorkItem[]; next: string | null } | null;
 }
 

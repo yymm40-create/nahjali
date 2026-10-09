@@ -1,6 +1,7 @@
 // JAWAD AI · «المخرج الخارق»: rewrites the user's video prompt with the approved Super Director skill (Claude in the
 // background, never shown as a chat). A fixed price in coins is taken before the call and given back if it fails.
 
+import { fmtSar } from "@config/coins";
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -135,7 +136,7 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
   if (charged) {
     const { data, error } = await db().rpc("adjust_smart_coins", { p_user: user.id, p_delta: -coins, p_reason: "reserve", p_ref: ref, p_label: LABEL, p_allow_negative: false });
     if (error) throw error;
-    if (data == null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: تطوير البرومبت يحتاج ${coins} نقدة.`, 402);
+    if (data == null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: تطوير البرومبت يحتاج ${fmtSar(coins)} ر.س.`, 402);
     balance = data as number;
     const { data: same } = await db().from("smart_coin_ledger").select("ref,created_at").eq("user_id", user.id).like("ref", `director:${key}:%`).lt("delta", 0).order("created_at").order("ref");
     if (same?.[0]?.ref !== ref) {
@@ -165,7 +166,7 @@ export async function improvePrompt(user: { id: string }, owner: boolean, b: Dir
     console.error("jawad director failed", user.id, err);
     if (charged) await refund(user.id, coins, ref);
     if (err instanceof UserError) throw err;
-    throw new UserError(`تعذّر تطوير البرومبت الآن؛ جرّب مرة ثانية.${charged ? ` أعدنا لك ${coins} نقدة.` : ""}`, 502);
+    throw new UserError(`تعذّر تطوير البرومبت الآن؛ جرّب مرة ثانية.${charged ? ` أعدنا لك ${fmtSar(coins)} ر.س.` : ""}`, 502);
   }
 }
 

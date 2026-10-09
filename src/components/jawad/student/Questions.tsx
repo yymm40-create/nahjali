@@ -5,6 +5,7 @@
 // the student goes back to («ارجع وغيّر»).
 
 import { useState } from "react";
+import { fmtSar } from "@config/coins";
 import { FONTS, FORMATS, MAX_PAGES, OUTPUT_KINDS, STYLES, isPaged, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { PICTURE_KINDS } from "./autopilot";
 import { fontFacesUrl } from "./client";
@@ -74,7 +75,7 @@ export function Count({ label, value, options, max, unit, onChange }: { label: s
 /** «GPT Image 2 or Claude»: what each gives, and what drawing costs. */
 export function MethodChoice({ what, value, quality, perUnit, free, onChange }: { what: "page" | "slide"; value: boolean; quality: string; perUnit: { high: number; medium: number }; free: boolean; onChange: (draw: boolean, quality: string) => void }) {
   const unit = what === "slide" ? "الشريحة" : "الصفحة";
-  const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${perUnit[q]} نقدة لكل ${what === "slide" ? "شريحة" : "صفحة"}`);
+  const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${fmtSar(perUnit[q])} ر.س لكل ${what === "slide" ? "شريحة" : "صفحة"}`);
   return (
     <div className="space-y-2">
       <span className="text-sm font-semibold">كيف تنصنع {what === "slide" ? "الشرائح" : "الصفحات"}؟</span>
@@ -95,8 +96,8 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
           label="جودة الرسم"
           value={quality}
           options={[
-            { id: "high", label: `عالية${free ? "" : ` (${perUnit.high} نقدة)`}` },
-            { id: "medium", label: `متوسطة${free ? "" : ` (${perUnit.medium} نقدة)`}` },
+            { id: "high", label: `عالية${free ? "" : ` (${fmtSar(perUnit.high)} ر.س)`}` },
+            { id: "medium", label: `متوسطة${free ? "" : ` (${fmtSar(perUnit.medium)} ر.س)`}` },
           ]}
           onChange={(q) => onChange(true, q)}
         />

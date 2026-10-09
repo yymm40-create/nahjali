@@ -27,8 +27,11 @@ export const jawadSession = cache(async (): Promise<{ user: User | null; owner: 
 
 /** May this person use any part of JAWAD AI? (each section checks its own permission too: see src/lib/access.ts) */
 export async function canUseJawad(user: { email?: string | null } | null) {
-  return unlimitedFor(user?.email);
+  return hasAnyAccess(user?.email);
 }
+
+/** Makes for free («بلا حدود»): the owners, the all-opening code, an e-mail or a code the owner marked so. */
+export const freeFor = (user: { email?: string | null } | null) => unlimitedFor(user?.email);
 
 /** Should this visitor see the platform (rather than «قيد التطوير»)? Only those the dashboard's list lets in. */
 export const jawadVisibleTo = async (user: { email?: string | null } | null) => hasAnyAccess(user?.email);
@@ -53,18 +56,18 @@ export async function requireJawadOwnerPage(next: string) {
   return user;
 }
 
-/** API: the signed-in user allowed to use JAWAD AI, else 401/403. Everyone let in makes for free, without limits. */
+/** API: the signed-in user allowed to use JAWAD AI, else 401/403. `owner`: makes for free (the owners and the unlimited). */
 export async function requireJawadApiUser() {
   const user = await requireApiUser();
   if (!(await canUseJawad(user))) throw new UserError(JAWAD_MESSAGES.closed, 403);
-  return { user, owner: true };
+  return { user, owner: await unlimitedFor(user.email) };
 }
 
 /** API for one section: the signed-in user it is open to (the dashboard's list), else 401/403. */
 export async function requirePermApiUser(perm: Perm, closed: string = JAWAD_MESSAGES.closed) {
   const user = await requireApiUser();
   if (!(await can(user.email, perm))) throw new UserError(closed, 403);
-  return { user, owner: true };
+  return { user, owner: await unlimitedFor(user.email) };
 }
 
 /** API for «الطالب الذكي» (with the images and voices it makes). */

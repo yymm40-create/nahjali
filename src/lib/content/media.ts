@@ -6,6 +6,7 @@
 
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
+import { unlimitedFor } from "@/lib/access";
 import { getChat, saveChat, type MediaItem, type Turn } from "./chats";
 import { addProducedFromOutput, attachmentsOf, deleteProduced } from "./files";
 import { deskCheck, deskImage, deskVideo, DeskError, type DeskReceipt, type DeskWho } from "./jawad";
@@ -130,7 +131,7 @@ export async function stepMedia(userId: string, chatId: string, o: { retry?: str
       }
     }
   }
-  const c = { userId, chatId, owner: !!o.owner, who: { id: userId, email: o.email, owner: true, origin: o.origin ?? "" } as DeskWho };
+  const c = { userId, chatId, owner: !!o.owner, who: { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" } as DeskWho };
   let usd = 0;
 
   // the videos جواد is making

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { generatorById } from "@config/jawad/generators";
 import { isStem, SMART_SPLIT_ID, STEM_LABEL } from "@config/jawad/smart-split";
 import { isOpenStatus, stageLabel, type FilmItemView, type JobView, type OutputView, type WorkItem, type WorksFilter } from "@/lib/jawad/labels";
+import { fmtSar } from "@config/coins";
 import SmartCoin from "@/components/SmartCoin";
 import Dialog from "../Dialog";
 import SmartEdit from "./SmartEdit";
@@ -394,7 +395,7 @@ function JobCard({ j, onOpen, onReuse, onVariation, onUseAsRef, onCancel, onRetr
           ))}
           <span className="jw-chip">
             <SmartCoin size={12} />
-            <span dir="ltr">{j.priceCoins}</span>
+            <span dir="ltr">{fmtSar(j.priceCoins)} ر.س</span>
             {j.chargeState === "refunded" ? " · أُعيدت" : !j.charged ? " · بلا خصم" : ""}
           </span>
         </div>

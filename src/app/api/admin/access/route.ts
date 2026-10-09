@@ -9,7 +9,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Owners only — «السماح», the site's one list of who may use what:
- *   { action: "set", email, perms }   adds the email (or changes what it may use)
+ *   { action: "set", email, perms, unlimited? }   adds the email (or changes what it may use; `unlimited`: free, nothing is charged)
  *   { action: "remove", email }       takes it off the list (everything closes for it)
  *   { action: "code", code, enabled } «الكود السري»: a new code (closes it for all who came in by the old one), or on/off
  *   { action: "uncode", email }       closes it for one person who came in by the code
@@ -17,7 +17,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
   if (!isAdmin(user.email)) throw new UserError("غير مسموح.", 404);
-  const body = (await req.json().catch(() => ({}))) as { action?: string; email?: string; perms?: unknown; code?: unknown; enabled?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; email?: string; perms?: unknown; code?: unknown; enabled?: unknown; unlimited?: unknown };
   if (body.action === "code") return NextResponse.json(await setCode(body.code, body.enabled));
   if (typeof body.action === "string" && body.action.startsWith("codes_")) return NextResponse.json(await codes(body.action, body as Record<string, unknown>));
   const email = String(body.email ?? "").trim().toLowerCase();
@@ -29,7 +29,10 @@ export const POST = handle(async (req: Request) => {
   if (body.action === "set") {
     if (!Array.isArray(body.perms)) throw new UserError("طلب غير صحيح.", 400);
     const perms = [...new Set(body.perms.filter(isPerm))];
-    const { error } = await db.from("site_access").upsert({ email, perms, updated_at: new Date().toISOString() });
+    const row: Record<string, unknown> = { email, perms, updated_at: new Date().toISOString() };
+    if (typeof body.unlimited === "boolean") row.unlimited = body.unlimited;
+    const { error } = await db.from("site_access").upsert(row);
+    if (error?.message?.includes("unlimited")) throw new UserError("خانة «بلا حدود» ما انضافت للحين: شغّل ملف SQL رقم 0045 في Supabase.", 500);
     if (error) throw new UserError("جدول السماح ما انضاف للحين: شغّل ملف SQL رقم 0035 في Supabase.", 500);
   } else if (body.action === "uncode") {
     await db.from("site_code_grants").delete().eq("email", email);
@@ -71,8 +74,8 @@ const whole = (v: unknown, min: number, max: number) => {
 
 /**
  * «الأكواد» — many codes, each with its own sections and time, standing alone:
- *   codes_new     { label, code?, perms, expiresAt?, validHours?, maxUses? }   a new code (made for you when the text is empty)
- *   codes_set     { id, enabled }                                              switch ONE code off or on
+ *   codes_new     { label, code?, perms, expiresAt?, validHours?, maxUses?, unlimited? }   a new code (made for you when the text is empty; `unlimited`: free for whoever enters by it)
+ *   codes_set     { id, enabled?, unlimited? }                                  switch ONE code off or on, or its «بلا حدود»
  *   codes_delete  { id }                                                       remove a code (closes only what it opened)
  *   codes_unuse   { id, email }                                                close ONE person's entry of ONE code
  */
@@ -97,7 +100,7 @@ async function codes(action: string, b: Record<string, unknown>) {
     }
     const { data, error } = await db
       .from("site_codes")
-      .insert({ label, code, perms, expires_at: expiresAt, valid_hours: whole(b.validHours, 1, 8760), max_uses: whole(b.maxUses, 1, 10000), enabled: true })
+      .insert({ label, code, perms, expires_at: expiresAt, valid_hours: whole(b.validHours, 1, 8760), max_uses: whole(b.maxUses, 1, 10000), enabled: true, unlimited: b.unlimited === true })
       .select("id,code")
       .single();
     if (error) {
@@ -109,8 +112,11 @@ async function codes(action: string, b: Record<string, unknown>) {
   const id = String(b.id ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new UserError("كود غير معروف.", 400);
   if (action === "codes_set") {
-    if (typeof b.enabled !== "boolean") throw new UserError("طلب غير صحيح.", 400);
-    const { error } = await db.from("site_codes").update({ enabled: b.enabled }).eq("id", id);
+    const patch: Record<string, unknown> = {};
+    if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
+    if (typeof b.unlimited === "boolean") patch.unlimited = b.unlimited;
+    if (!Object.keys(patch).length) throw new UserError("طلب غير صحيح.", 400);
+    const { error } = await db.from("site_codes").update(patch).eq("id", id);
     if (error) throw new UserError(NO_TABLE, 500);
   } else if (action === "codes_delete") {
     const { error } = await db.from("site_codes").delete().eq("id", id);

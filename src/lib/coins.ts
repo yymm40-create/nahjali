@@ -4,7 +4,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { coinsFor } from "@config/coins";
+import { coinsFor, fmtSar, setPricing, type Pricing } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
 
 const db = () => createAdminClient();
@@ -16,10 +16,31 @@ export async function coinBalance(userId: string): Promise<number | null> {
   return data?.balance ?? 0;
 }
 
-/** Whether paid operations need coins (the owner's switch on /admin/limits; off during the free trial). */
+/**
+ * Whether paid operations are charged (the owner's switch on /admin/limits). ON unless the owner switched it off;
+ * only a site whose coin tables are missing stays free (nothing could be charged there anyway).
+ */
 export async function coinsRequired() {
-  const { data } = await db().from("film_limits").select("value").eq("scope", "all").eq("target", "").eq("key", "coins_required").maybeSingle();
-  return (data?.value ?? 0) > 0;
+  const { data, error } = await db().from("film_limits").select("value").eq("scope", "all").eq("target", "").eq("key", "coins_required").maybeSingle();
+  if (error) return false;
+  return (data?.value ?? 1) > 0;
+}
+
+// ── the pricing in force: the owner's settings (film_limits) over the defaults, read once a minute
+let pricingAt = 0;
+const PRICING_KEYS: Record<string, keyof Pricing> = { price_usd_sar_x100: "usdToSar", price_step_halalas: "stepHalalas", price_margin_pct: "marginPct", price_was_margin_pct: "wasMarginPct" };
+export async function loadPricing(force = false): Promise<Pricing> {
+  if (!force && Date.now() - pricingAt < 60_000) return (await import("@config/coins")).getPricing();
+  const { data } = await db().from("film_limits").select("key,value").eq("scope", "all").eq("target", "").in("key", Object.keys(PRICING_KEYS));
+  const p: Partial<Pricing> = {};
+  for (const r of (data ?? []) as { key: string; value: number }[]) {
+    const k = PRICING_KEYS[r.key];
+    if (k === "usdToSar") p.usdToSar = r.value / 100;
+    else if (k) p[k] = r.value;
+  }
+  setPricing(p);
+  pricingAt = Date.now();
+  return (await import("@config/coins")).getPricing();
 }
 
 async function adjust(userId: string, delta: number, reason: string, ref: string, label: string, allowNegative = false) {
@@ -36,10 +57,11 @@ export const grantCoins = (userId: string, amount: number, note: string) => adju
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
 export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string) {
   if ((await unlimitedFor(user.email)) || !(await coinsRequired())) return;
+  await loadPricing();
   const coins = coinsFor(estimateUsd);
   const left = await adjust(user.id, -coins, "reserve", jobId, label);
   if (left === null) {
-    throw new UserError(`رصيدك من النقود الذكية ما يكفي: هذي العملية تحتاج تقريبًا ${coins} نقدة.`, 402);
+    throw new UserError(`رصيدك ما يكفي: هذي العملية تحتاج تقريبًا ${fmtSar(coins)} ريال. اشحن رصيدك من صفحة «النقود الذكية».`, 402);
   }
 }
 
@@ -51,6 +73,7 @@ async function reserved(jobId: string) {
 
 /** On success: the held coins become the real charge (the difference is given back, or taken). */
 export async function settleCoins(jobId: string, costUsd: number) {
+  await loadPricing();
   await settleTeamCoins(jobId, costUsd);
   const r = await reserved(jobId);
   if (!r || r.held <= 0) return;
@@ -81,11 +104,12 @@ export async function teamCoinBalance(seriesId: string): Promise<number> {
   return (data?.balance as number | undefined) ?? 0;
 }
 
-const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذكي» ما يكفي: هذي العملية تحتاج تقريبًا ${coins} نقدة فريق. اطلب من صاحب المسلسل يشحن رصيد الفريق.`;
+const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذكي» ما يكفي: هذي العملية تحتاج تقريبًا ${fmtSar(coins)} ريال. اطلب من صاحب المسلسل يشحن رصيد الفريق.`;
 
 /** A team series' paid job: holds its estimated coins from the team's wallet (`who` pressed it). */
 export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string) {
   if (!(await coinsRequired())) return;
+  await loadPricing();
   const coins = coinsFor(estimateUsd);
   if ((await adjustTeam(seriesId, who.id, -coins, "reserve", jobId, label)) === null) throw new UserError(SHORT_TEAM(coins), 402);
 }
@@ -125,7 +149,7 @@ export async function fundTeam(owner: { id: string; email?: string | null }, ser
   const free = await unlimitedFor(owner.email);
   if (!free) {
     const left = await adjust(owner.id, -coins, "reserve", ref, "تحويل إلى نقود الفريق الذكي");
-    if (left === null) throw new UserError(`رصيدك من النقود الذكية ما يكفي لتحويل ${coins} نقدة.`, 402);
+    if (left === null) throw new UserError(`رصيدك من النقود الذكية ما يكفي لتحويل ${fmtSar(coins)} ر.س.`, 402);
   }
   try {
     return await adjustTeam(seriesId, owner.id, coins, "fund", ref, "تحويل من صاحب المسلسل", true);
@@ -153,7 +177,7 @@ export const grantTeamCoins = (seriesId: string, amount: number, note: string) =
 export async function holdCoins(userId: string, coins: number, ref: string, label: string) {
   if (coins <= 0) return;
   const left = await adjust(userId, -coins, "reserve", ref, label);
-  if (left === null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذه العملية تحتاج ${coins} نقدة.`, 402);
+  if (left === null) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذه العملية تحتاج ${fmtSar(coins)} ر.س.`, 402);
 }
 export async function releaseCoins(userId: string, coins: number, ref: string, label: string) {
   if (coins > 0) await adjust(userId, coins, "refund", ref, label, true);

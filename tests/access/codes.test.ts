@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ALL_PERMS, codeOpen, hasUnlimited, NAMED_ONLY, newCodeText, normalizePerms, OPEN_PERMS, permsByCodes, type CodeRow, type CodeUse } from "@config/access";
+import { ALL_PERMS, codeOpen, unlimitedByCodes, NAMED_ONLY, newCodeText, normalizePerms, OPEN_PERMS, permsByCodes, type CodeRow, type CodeUse } from "@config/access";
 
 const NOW = Date.parse("2026-10-08T12:00:00Z");
 const hour = 3600_000;
-const code = (id: string, o: Partial<CodeRow> = {}): CodeRow => ({ id, label: id, code: id.toUpperCase().repeat(4), perms: ["games"], expiresAt: null, validHours: null, maxUses: null, enabled: true, ...o });
+const code = (id: string, o: Partial<CodeRow> = {}): CodeRow => ({ id, label: id, code: id.toUpperCase().repeat(4), perms: ["games"], expiresAt: null, validHours: null, maxUses: null, enabled: true, unlimited: false, ...o });
 const use = (codeId: string, ago = 0): CodeUse => ({ codeId, email: "a@b.co", at: new Date(NOW - ago).toISOString() });
 
 describe("«الأكواد»: each code stands alone", () => {
@@ -46,11 +46,11 @@ describe("what the all-opening code gives", () => {
     expect(OPEN_PERMS.length).toBe(ALL_PERMS.length);
     expect(ALL_PERMS).toContain("games");
   });
-  it("any open section is free use of the paid generators (nothing is named-only now)", () => {
-    expect(hasUnlimited(new Set([]))).toBe(false);
-    expect(hasUnlimited(new Set(["games"]))).toBe(true);
-    expect(hasUnlimited(new Set(["games", "image"]))).toBe(true);
-    expect(hasUnlimited(new Set())).toBe(false);
+  it("makes for free only through a code the owner marked «بلا حدود», and only while it opens", () => {
+    expect(unlimitedByCodes([code("a")], [use("a")], NOW)).toBe(false);
+    expect(unlimitedByCodes([code("a", { unlimited: true })], [use("a")], NOW)).toBe(true);
+    expect(unlimitedByCodes([code("a", { unlimited: true, enabled: false })], [use("a")], NOW)).toBe(false);
+    expect(unlimitedByCodes([code("a", { unlimited: true })], [], NOW)).toBe(false);
   });
 });
 

@@ -29,8 +29,14 @@ export const isPerm = (v: unknown): v is Perm => typeof v === "string" && (ALL_P
 export const NAMED_ONLY: Perm[] = [];
 /** What the all-opening secret code opens (everything but the named-only sections). */
 export const OPEN_PERMS: Perm[] = ALL_PERMS.filter((p) => !NAMED_ONLY.includes(p));
-/** Free, unlimited use of the paid generators goes with any section except the named-only ones. */
-export const hasUnlimited = (perms: ReadonlySet<Perm>) => [...perms].some((p) => !NAMED_ONLY.includes(p));
+/**
+ * Who makes for FREE («بلا حدود»): the owners, whoever came in by the all-opening «الكود السري», an e-mail the owner
+ * marked unlimited in «السماح», or a code the owner marked unlimited. Everyone else pays in riyals from their wallet.
+ */
+export interface Access {
+  perms: Set<Perm>;
+  unlimited: boolean;
+}
 
 // ───────── the owner's codes («الأكواد»): many, each with its own sections and time ─────────
 
@@ -47,6 +53,8 @@ export interface CodeRow {
   /** at most this many different people (null: no limit) */
   maxUses: number | null;
   enabled: boolean;
+  /** whoever enters it makes for free, without a wallet */
+  unlimited: boolean;
 }
 export interface CodeUse {
   codeId: string;
@@ -74,6 +82,9 @@ export function permsByCodes(codes: CodeRow[], uses: CodeUse[], now = Date.now()
   }
   return out;
 }
+
+/** Whether one of the codes a person entered (and that still opens) makes them unlimited. */
+export const unlimitedByCodes = (codes: CodeRow[], uses: CodeUse[], now = Date.now()) => codes.some((c) => c.unlimited && codeOpen(c, uses.find((u) => u.codeId === c.id), now));
 
 /** Sections from the owner's form: only the known ones, no repeats. */
 export const normalizePerms = (v: unknown): Perm[] => (Array.isArray(v) ? [...new Set(v.filter(isPerm))] : []);

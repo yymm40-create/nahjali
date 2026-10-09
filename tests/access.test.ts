@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
   access: {} as Record<string, string[]>,
+  unlimited: new Set<string>(),
   grants: {} as Record<string, string>,
   secret: { code: "", code_id: "c1", enabled: false },
 }));
@@ -17,7 +18,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           return q;
         },
         maybeSingle: async () => {
-          if (table === "site_access") return { data: db.access[q._eq] ? { perms: db.access[q._eq] } : null };
+          if (table === "site_access") return { data: db.access[q._eq] ? { perms: db.access[q._eq], unlimited: db.unlimited.has(q._eq) } : null };
           if (table === "site_code_grants") return { data: db.grants[q._eq] ? { code_id: db.grants[q._eq] } : null };
           if (table === "site_secret") return { data: db.secret };
           return { data: null };
@@ -33,6 +34,7 @@ const { accessOf, can, forgetAccess, permForGenerator, unlimitedFor } = await im
 describe("«السماح»: one list for the whole site", () => {
   beforeEach(() => {
     db.access = {};
+    db.unlimited = new Set();
     db.grants = {};
     db.secret = { code: "", code_id: "c1", enabled: false };
     forgetAccess();
@@ -44,12 +46,16 @@ describe("«السماح»: one list for the whole site", () => {
     expect((await accessOf(null)).size).toBe(0);
   });
 
-  it("an email gets only what's ticked for it, free and without limits", async () => {
+  it("an email gets only what's ticked for it, and pays unless the owner marked it «بلا حدود»", async () => {
     db.access["a@b.c"] = ["image", "student"];
     expect(await can("A@b.c", "image")).toBe(true);
     expect(await can("a@b.c", "video")).toBe(false);
+    expect(await unlimitedFor("a@b.c")).toBe(false);
+    db.unlimited.add("a@b.c");
+    forgetAccess();
     expect(await unlimitedFor("a@b.c")).toBe(true);
     expect(await unlimitedFor("x@y.z")).toBe(false);
+    expect(await unlimitedFor("yymm40@gmail.com")).toBe(true);
   });
 
   it("«الكود السري» opens everything while that same code is on", async () => {

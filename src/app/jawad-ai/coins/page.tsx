@@ -5,7 +5,8 @@ import { requireJawadUser } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { GENERATORS } from "@config/jawad/generators";
 import Link from "next/link";
-import { LIBRARY_ADDON, SMART_COIN } from "@config/coins";
+import { LIBRARY_ADDON, SMART_COIN, fmtSar } from "@config/coins";
+import { coinsOf, wasOf } from "@config/jawad/generators";
 import { libraryAccess } from "@/lib/jawad/server/library-access";
 import { CONTACT_EMAIL } from "@config/site";
 
@@ -30,11 +31,11 @@ export default async function JawadCoins() {
       <section className="jw-panel flex flex-wrap items-center justify-between gap-4 p-5">
         <div>
           <h1 className="text-lg font-semibold">{SMART_COIN.name}</h1>
-          <p className="text-sm text-jw-muted">كل توليد يُخصم بسعره المعروض على زر «توليد»، والتوليد الفاشل يُعاد رصيده تلقائيًا.</p>
+          <p className="text-sm text-jw-muted">رصيدك بالريال. كل توليد يُخصم بسعره المعروض على زر «توليد»، والتوليد الفاشل يُعاد رصيده تلقائيًا.</p>
         </div>
         <p className="flex items-center gap-2 text-3xl font-bold tabular-nums">
           <SmartCoin size={30} />
-          <span dir="ltr">{owner ? "∞" : (balance ?? 0).toLocaleString("en")}</span>
+          <span dir="ltr">{owner ? "∞" : fmtSar(balance ?? 0)}</span>{!owner && <span className="text-base font-semibold text-jw-muted">ر.س</span>}
         </p>
       </section>
 
@@ -58,7 +59,7 @@ export default async function JawadCoins() {
                   return (
                     <li key={k.key} className="flex justify-between gap-2">
                       <span className="text-jw-muted">{k.label}</span>
-                      <span className="tabular-nums" dir="ltr">{c == null ? "—" : (c / 100).toFixed(2).replace(/\.00$/, "")}</span>
+                      <span className="tabular-nums" dir="ltr">{c == null ? "—" : (<>{fmtSar(coinsOf(c))} ر.س{wasOf(c) > coinsOf(c) && <s className="ms-1 text-xs text-jw-faint">{fmtSar(wasOf(c))}</s>}</>)}</span>
                     </li>
                   );
                 })}
@@ -67,7 +68,7 @@ export default async function JawadCoins() {
           ))}
           {!live.length && <p className="text-sm text-jw-muted">لا توجد مولدات متاحة حاليًا.</p>}
         </div>
-        <p className="mt-3 text-xs text-jw-faint">المجموع يُقرَّب لأعلى لأقرب نقدة.<span className="hide-in-app"> شحن الرصيد غير متاح من داخل المنصة حاليًا؛ للاستفسار: <span dir="ltr">{CONTACT_EMAIL}</span></span></p>
+        <p className="mt-3 text-xs text-jw-faint">الأسعار بالريال، مقرّبة لأعلى إلى أقرب نصف ريال. المشطوب هو السعر الأصلي قبل خصم الانطلاقة.<span className="hide-in-app"> شحن الرصيد غير متاح من داخل المنصة حاليًا؛ للاستفسار: <span dir="ltr">{CONTACT_EMAIL}</span></span></p>
       </section>
 
       <section className="jw-panel p-5">
@@ -83,7 +84,7 @@ export default async function JawadCoins() {
                 </span>
                 <span className="flex items-center gap-3">
                   <span className="text-xs text-jw-faint">{new Date(r.created_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "short", timeStyle: "short" })}</span>
-                  <span className={`tabular-nums ${r.delta < 0 ? "text-jw-danger" : "text-jw-ok"}`} dir="ltr">{r.delta > 0 ? `+${r.delta}` : r.delta}</span>
+                  <span className={`tabular-nums ${r.delta < 0 ? "text-jw-danger" : "text-jw-ok"}`} dir="ltr">{r.delta > 0 ? "+" : "-"}{fmtSar(Math.abs(r.delta))} ر.س</span>
                 </span>
               </li>
             ))}

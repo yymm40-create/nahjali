@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import TeamCoin from "@/components/TeamCoin";
 import { postJson } from "@/lib/fetch";
-import { TEAM_COIN } from "@config/coins";
+import { fmtSar, TEAM_COIN } from "@config/coins";
 
 type Row = { id: string; username: string | null; delta: number; reason: string; label: string; created_at: string };
 
@@ -31,7 +31,7 @@ export default function TeamWallet({ seriesId, owner, balance, ledger }: { serie
     setBusy(true);
     setError("");
     try {
-      await postJson(`/api/film/series/${seriesId}`, { action, coins: Number(coins) });
+      await postJson(`/api/film/series/${seriesId}`, { action, coins: Math.round(Number(coins) * 100) });
       setCoins("");
       router.refresh();
     } catch (e) {
@@ -46,7 +46,7 @@ export default function TeamWallet({ seriesId, owner, balance, ledger }: { serie
         <span className="team-coin-float shrink-0"><TeamCoin size={88} alive /></span>
         <div className="min-w-0">
           <p className="text-sm font-extrabold tracking-wide text-[#fde68a]">{TEAM_COIN.name}</p>
-          <p className="text-5xl font-black tabular-nums leading-tight" dir="ltr" style={{ textAlign: "right" }}>{balance.toLocaleString("en")}</p>
+          <p className="text-5xl font-black tabular-nums leading-tight" dir="ltr" style={{ textAlign: "right" }}>{fmtSar(balance)} <span className="text-lg">ر.س</span></p>
           <p className="text-xs font-bold text-white/80">كل شي ينصنع داخل المسلسل ينقص من هنا، مهما كان اللي ضغط من الفريق.</p>
         </div>
       </div>
@@ -55,7 +55,7 @@ export default function TeamWallet({ seriesId, owner, balance, ledger }: { serie
         <div className="space-y-2 rounded-2xl bg-white/10 p-3 backdrop-blur">
           <p className="text-xs font-extrabold text-white/85">حوّل من نقودك الذكية لنقود الفريق، أو رجّعها:</p>
           <div className="flex flex-wrap gap-2">
-            <input className="field min-w-0 flex-1 !bg-white/90 !text-[#2a0a3d]" inputMode="numeric" dir="ltr" placeholder="عدد النقود" value={coins} onChange={(e) => setCoins(e.target.value.replace(/[^\d]/g, "").slice(0, 6))} />
+            <input className="field min-w-0 flex-1 !bg-white/90 !text-[#2a0a3d]" inputMode="numeric" dir="ltr" placeholder="المبلغ بالريال" value={coins} onChange={(e) => setCoins(e.target.value.replace(/[^\d.]/g, "").slice(0, 7))} />
             <button type="button" className="btn btn-primary min-h-11 px-4" disabled={busy || !Number(coins)} onClick={() => move("team_fund")}>⬆️ اشحن الفريق</button>
             <button type="button" className="btn min-h-11 border border-white/40 bg-white/10 px-3 text-white" disabled={busy || !Number(coins)} onClick={() => move("team_withdraw")}>⬇️ رجّعها لي</button>
           </div>

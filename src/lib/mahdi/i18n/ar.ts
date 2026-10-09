@@ -1,3 +1,4 @@
+import { fmtSar } from "@config/coins";
 // Arabic texts of «لأجل المهدي». Every word the user sees comes from here, so another language can be added
 // later by writing a file with the same shape (see ./index.ts).
 
@@ -1006,9 +1007,9 @@ export const ar = {
     enhance: {
       title: "حسّن الصورة بالذكاء الاصطناعي",
       body: "GPT Image 2 يعدّل الإضاءة والميلان ويقصّ الخلفية، ويحافظ على تفاصيل الغلاف الحقيقية كما هي (العنوان والنصوص والرسومات والألوان).",
-      button: (coins: number) => `حسّن · ${coins} نقدة`,
+      button: (coins: number) => `حسّن · ${fmtSar(coins)} ر.س`,
       free: "حسّن الصورة",
-      confirm: (coins: number) => `يُخصم ${coins} نقدة من رصيدك، وتُعاد إذا تعذّر التحسين. نكمل؟`,
+      confirm: (coins: number) => `يُخصم ${fmtSar(coins)} ر.س من رصيدك، وتُعاد إذا تعذّر التحسين. نكمل؟`,
       confirmFree: "التحسين مجاني لك الآن. نكمل؟",
       yes: "نعم، حسّن",
       no: "لا",
@@ -1016,10 +1017,10 @@ export const ar = {
       done: "تم تحسين الصورة. اختر النسخة اللي تبيها.",
       useEnhanced: "المحسّنة",
       useOriginal: "الأصلية",
-      failed: (coins: number) => `تعذّر تحسين الصورة الآن؛ جرّب مرة ثانية.${coins ? ` أعدنا لك ${coins} نقدة.` : ""}`,
+      failed: (coins: number) => `تعذّر تحسين الصورة الآن؛ جرّب مرة ثانية.${coins ? ` أعدنا لك ${fmtSar(coins)} ر.س.` : ""}`,
       unavailable: "تحسين الصور غير متاح حاليًا.",
       tooMany: "حسّنت صورًا كثيرة اليوم؛ جرّب بكرة.",
-      noCoins: (coins: number) => `رصيدك من النقود الذكية ما يكفي: التحسين يحتاج ${coins} نقدة.`,
+      noCoins: (coins: number) => `رصيدك من النقود الذكية ما يكفي: التحسين يحتاج ${fmtSar(coins)} ر.س.`,
       buy: "اشحن النقود",
     },
     pdf: {

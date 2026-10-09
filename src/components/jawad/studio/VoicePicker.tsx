@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
+import { fmtSar } from "@config/coins";
 import { LIBRARY_ADDON } from "@config/coins";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
@@ -471,7 +472,7 @@ export function VoiceStudio({ mode, coins, provider = "elevenlabs", onClose, onS
   const price = (n: number | null) =>
     n === null ? "السعر غير محدد بعد" : n === 0 ? "" : (
       <span className="inline-flex items-center gap-1">
-        · <span dir="ltr">{n}</span> <SmartCoin size={14} />
+        · <span dir="ltr">{fmtSar(n)}</span> ر.س <SmartCoin size={14} />
       </span>
     );
 

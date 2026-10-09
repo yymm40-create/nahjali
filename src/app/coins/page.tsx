@@ -3,7 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { coinBalance, coinsRequired } from "@/lib/coins";
 import SmartCoin from "@/components/SmartCoin";
 import { IMAGE_ESTIMATE_USD } from "@/lib/film/images";
-import { SMART_COIN, coinsFor } from "@config/coins";
+import { SMART_COIN, coinsFor, fmtSar } from "@config/coins";
+import { loadPricing } from "@/lib/coins";
 import CoinsShop from "./CoinsShop";
 import { VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, type VideoResolution } from "@config/film";
 import { isAdmin } from "@config/site";
@@ -19,6 +20,7 @@ const runningUntil = (v: unknown) => (typeof v === "string" && new Date(v).getTi
 
 export default async function CoinsPage() {
   const user = await requireUser("/coins");
+  await loadPricing();
   const [balance, required, ledger, walletRow] = await Promise.all([
     coinBalance(user.id),
     coinsRequired(),
@@ -43,9 +45,9 @@ export default async function CoinsPage() {
       <section className="card space-y-2 p-6 text-center">
         <SmartCoin size={56} className="mx-auto" />
         <h1 className="display text-4xl">{SMART_COIN.name}</h1>
-        <p className="display text-5xl text-sky-500" dir="ltr">{owner ? "∞" : (balance ?? 0).toLocaleString("en")}</p>
+        <p className="display text-5xl text-sky-500" dir="ltr">{owner ? "∞" : `${fmtSar(balance ?? 0)} ر.س`}</p>
         <p className="text-sm font-bold text-muted">
-          {owner ? "أنت صاحب الموقع: بدون حد." : required ? "كل عملية في صناعة الأفلام تنخصم من رصيدك حسب تكلفتها، والعملية اللي تفشل ترجع لك." : "حاليًا الاستخدام مجاني في فترة التجربة، وما ينخصم شي من رصيدك."}
+          {owner ? "أنت صاحب الموقع: بدون حد." : required ? "رصيدك بالريال: كل عملية تنخصم من رصيدك بسعرها، والعملية اللي تفشل ترجع لك." : "حاليًا الاستخدام مجاني في فترة التجربة، وما ينخصم شي من رصيدك."}
         </p>
       </section>
 
@@ -55,7 +57,7 @@ export default async function CoinsPage() {
           {prices.map(([label, coins]) => (
             <li key={label} className="flex justify-between gap-2">
               <span>{label}</span>
-              <span className="flex items-center gap-1" dir="ltr"><SmartCoin size={16} />{coins}</span>
+              <span className="flex items-center gap-1" dir="ltr"><SmartCoin size={16} />{fmtSar(coins)} ر.س</span>
             </li>
           ))}
         </ul>
@@ -66,7 +68,7 @@ export default async function CoinsPage() {
               <div key={`${m}-${q}`} className="flex justify-between gap-2 border-b border-line p-2 last:border-0">
                 <span dir="ltr">{VIDEO_MODELS[m].label} · {q}</span>
                 <span className="flex items-center gap-1" dir="ltr">
-                  <SmartCoin size={16} />{coinsFor(videoEstimateUsd(m, q, 5))} · {coinsFor(videoEstimateUsd(m, q, 10))}
+                  <SmartCoin size={16} />{fmtSar(coinsFor(videoEstimateUsd(m, q, 5)))} · {fmtSar(coinsFor(videoEstimateUsd(m, q, 10)))} ر.س
                 </span>
               </div>
             )),
@@ -96,7 +98,7 @@ export default async function CoinsPage() {
           {(ledger.data ?? []).map((r, i) => (
             <div key={i} className="flex justify-between gap-2 text-sm font-bold">
               <span>{REASONS[r.reason] ?? r.reason}{r.label ? ` · ${r.label}` : ""}</span>
-              <span className={r.delta >= 0 ? "text-teal" : "text-red-500"} dir="ltr">{r.delta > 0 ? `+${r.delta}` : r.delta}</span>
+              <span className={r.delta >= 0 ? "text-teal" : "text-red-500"} dir="ltr">{r.delta > 0 ? "+" : "-"}{fmtSar(Math.abs(r.delta))} ر.س</span>
             </div>
           ))}
         </section>

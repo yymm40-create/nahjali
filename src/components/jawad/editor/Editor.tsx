@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { fmtSar } from "@config/coins";
 import InstallApp from "./InstallApp";
 import { detectScenes } from "./scene-detect";
 import { takeStartKit } from "./start-kit";
@@ -693,7 +694,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       try {
         const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId, target });
         addAssets([r.asset]);
-        flash(`⬆️ بدأ رفع الدقة${r.coins ? ` (${r.coins} نقدة)` : ""}… أعلمك إذا خلص.`);
+        flash(`⬆️ بدأ رفع الدقة${r.coins ? ` (${fmtSar(r.coins)} ر.س)` : ""}… أعلمك إذا خلص.`);
         watchUpscale(r.asset.id, assetId);
       } catch (e) {
         flash(e instanceof Error ? e.message : "ما بدأ رفع الدقة.", true);

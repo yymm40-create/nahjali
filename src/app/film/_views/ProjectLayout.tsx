@@ -2,6 +2,7 @@ import { requireFilmUser, requireProject } from "@/lib/film/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import TeamCoin from "@/components/TeamCoin";
+import { fmtSar } from "@config/coins";
 import { teamCoinBalance } from "@/lib/coins";
 import { memberRights } from "@/lib/film/team";
 import { rightsText } from "@/lib/film/team-rights";
@@ -70,7 +71,7 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
           </Link>
           {scene.team && (
             <span className="team-wallet inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold text-white" title="كل شي ينصنع في هذا المشهد ينقص من نقود الفريق الذكي">
-              <TeamCoin size={18} /> <span dir="ltr">{scene.team.balance.toLocaleString("en")}</span> نقدة فريق
+              <TeamCoin size={18} /> <span dir="ltr">{fmtSar(scene.team.balance)}</span> ر.س للفريق
             </span>
           )}
           {scene.team?.rights && <span className="chip text-xs">🔑 {scene.team.rights}</span>}

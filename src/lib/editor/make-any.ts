@@ -3,6 +3,7 @@
 // (the owner's prices); the job is then made by JAWAD AI's job system (its checks, its coins, its refunds), the result
 // lands in «أعمالي» and the page brings it into the project and places it. Server only.
 
+import { fmtSar } from "@config/coins";
 import type { Fit } from "./motion-build";
 import { giveAttempt, takeAttempt } from "@/lib/film/team";
 import { UserError } from "@/lib/api";
@@ -228,7 +229,7 @@ export async function startMake(user: { id: string; email?: string | null }, own
   }
   if (took && r.kind !== "created") await giveAttempt(team!, user.id).catch(() => {});
   if (r.kind === "issues") throw new UserError(r.issues[0]?.message ?? "الطلب غير صالح.", 422);
-  if (r.kind === "price_changed") throw new UserError(`تغيّر السعر إلى ${r.coins} نقدة؛ اطلبه من حيدرة مرة ثانية.`, 409);
+  if (r.kind === "price_changed") throw new UserError(`تغيّر السعر إلى ${fmtSar(r.coins)} ر.س؛ اطلبه من حيدرة مرة ثانية.`, 409);
   const [job] = await jobViews([r.job]);
   return { job };
 }

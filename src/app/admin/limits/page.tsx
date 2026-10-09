@@ -32,7 +32,7 @@ export default async function LimitsPage() {
         <Link href="/admin" className="text-sm font-bold text-muted">→ لوحة التحكم</Link>
         <h1 className="display text-4xl">النقود والأسعار</h1>
         <p className="text-sm font-bold text-muted">
-          النقود الذكية وأسعار حيدرة كت. مين يدخل وش (مجانًا بلا حدود): من <Link href="/admin/access" className="underline">🔐 السماح</Link>.
+          النقود الذكية بالريال: كل سعر = التكلفة (بسعر الدولار) مقرّبة للأعلى إلى نص ريال + نسبة الربح (مقرّبة كذلك)، وجنبه السعر المشطوب بالنسبة الكاملة. سعر الدولار والتقريب والنسبتان تحت في «الحدود»، والحاسبة في <Link href="/admin/pricing" className="underline">💰 التسعير</Link>. مين يدخل وش ومين «بلا حدود»: من <Link href="/admin/access" className="underline">🔐 السماح</Link>.
         </p>
       </header>
       {error && (

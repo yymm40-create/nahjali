@@ -7,7 +7,7 @@ import { headers } from "next/headers";
 import { gamesAllowed, getVisibility } from "@/lib/games/access";
 import { contentAllowed, getVisibility as contentVisibility } from "@/lib/content/access";
 import { designerAllowed, getVisibility as designerVisibility } from "@/lib/designer/access";
-import { jawadSession, jawadVisibleTo } from "@/lib/jawad/server/access";
+import { jawadSession, jawadVisibleTo, freeFor } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import InDevelopment from "@/components/jawad/InDevelopment";
 import JawadHeader from "@/components/jawad/JawadHeader";
@@ -66,7 +66,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       <a href="#jw-main" className="sr-only z-50 rounded-lg bg-jw-accent px-3 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
         تخطَّ إلى المحتوى
       </a>
-      <JawadHeader rt={bar} user={user} owner={owner} balance={balance} username={username} preview={!allowed} />
+      <JawadHeader rt={bar} user={user} owner={owner || (user ? await freeFor(user) : false)} balance={balance} username={username} preview={!allowed} />
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
     </div>
   );
