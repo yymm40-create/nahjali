@@ -115,27 +115,36 @@ export async function callClaudeJson<T>({
     return { role: t.role, content: blocks };
   }));
 
-  // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
-  const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-      ...(fallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}),
-    },
-    body: JSON.stringify({
-      model: asked.id,
-      max_tokens: maxTokens,
-      system: siteSystem(system, true, leader),
-      messages,
-      output_config: { ...(asked.effort ? { effort } : {}), format: { type: "json_schema", schema } },
-      ...(fallback ? { fallbacks: "default" } : {}),
-    }),
-  });
+  // Haiku has no server-side fallback model
+  const withFallback = fallback && asked.key !== "haiku";
+  const call = async (level: typeof effort) => {
+    // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
+    const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        ...(withFallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}),
+      },
+      body: JSON.stringify({
+        model: asked.id,
+        max_tokens: maxTokens,
+        system: siteSystem(system, true, leader),
+        messages,
+        output_config: { ...(asked.effort ? { effort: level } : {}), format: { type: "json_schema", schema } },
+        ...(withFallback ? { fallbacks: "default" } : {}),
+      }),
+    });
+    const b = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`Claude ${res.status}: ${b?.error?.message ?? "request failed"}`);
+    return b;
+  };
 
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Claude ${res.status}: ${body?.error?.message ?? "request failed"}`);
+  let body = await call(effort);
+  // the model's thinking shares the reply's token budget: a long request can use it all before the answer ends.
+  // Once more, thinking less, before giving up.
+  if (body.stop_reason === "max_tokens" && asked.effort && effort !== "low") body = await call("low");
   if (body.stop_reason === "max_tokens") throw new Error("Claude reply was cut off (max_tokens)");
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
 
@@ -189,5 +198,7 @@ export function claudeTrouble(e: unknown): string | null {
   if (/credit balance is too low/i.test(m)) return "رصيد مزوّد الذكاء الاصطناعي عند المنصة خلص، فما قدر الروبوت يشتغل الحين. صاحب المنصة لازم يشحن الرصيد.";
   if (/Claude (429|529)|overloaded|rate.?limit/i.test(m)) return "الذكاء الاصطناعي مشغول الحين؛ جرّب بعد دقيقة.";
   if (/image.*(exceeds|too large|dimensions)|Unable to download|Could not process image|invalid image/i.test(m)) return "الروبوت ما قدر يقرا الصورة المرفقة (كبيرة أو تالفة). جرّب صورة أصغر أو بصيغة PNG/JPG.";
+  if (/cut off \(max_tokens\)/i.test(m)) return "الرد طلع طويل جدًا وانقطع قبل ما يكتمل. اطلب شي واحد في المرة (أو قسّم طلبك لأجزاء)، أو جرّب موديل ثاني من زر 🧠.";
+  if (/prompt is too long|too many tokens|exceeds? the (context|maximum)/i.test(m)) return "المحادثة طالت أكثر من اللي يستوعبه الموديل. ابدأ محادثة جديدة (والمشروع ينحفظ في السجل).";
   return null;
 }

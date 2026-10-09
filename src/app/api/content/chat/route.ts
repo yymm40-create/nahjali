@@ -5,6 +5,7 @@ import { requireContentUser } from "@/lib/content/access";
 import { say } from "@/lib/content/chat";
 import { robotTurn } from "@/lib/claude-run";
 import { CONTENT } from "@config/content";
+import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -29,6 +30,7 @@ export const POST = handle(async (req: Request) => {
     if (e instanceof Error && e.message === "chat not found") throw new UserError("ما لقينا هذي المحادثة.", 404);
     if (e instanceof Error && e.message === "empty message") throw new UserError("اكتب رسالتك.");
     console.error("content chat", e);
-    throw new UserError("محمد باقر ما قدر يرد الحين؛ جرّب بعد شوي.", 502);
+    const raw = e instanceof Error ? e.message : String(e);
+    throw new UserError(`محمد باقر ما قدر يرد الحين؛ جرّب بعد شوي.${isAdmin(user.email) ? ` (تفصيل للرئيس: ${raw.slice(0, 300)})` : ""}`, 502);
   }
 });
