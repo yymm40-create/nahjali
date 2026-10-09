@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
@@ -177,11 +178,13 @@ export default function VideosWorkspace({
     }
   }
 
+  const [claude] = useClaudeModel();
+
   async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError("");
     try {
-      const { jobId, studioJobId, warning } = await postJson<{ jobId: string | null; studioJobId?: string; warning?: string }>(`/api/film/projects/${projectId}/director`, body);
+      const { jobId, studioJobId, warning } = await postJson<{ jobId: string | null; studioJobId?: string; warning?: string }>(`/api/film/projects/${projectId}/director`, { ...body, model: claude.id });
       if (warning) setNotice(warning);
       if (studioJobId && studioPath) {
         // «التعديل الذكي» in «حيدرة كت» (red/green tracks); else the video section with its own window ready

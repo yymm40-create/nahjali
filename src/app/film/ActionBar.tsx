@@ -1,6 +1,9 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
+import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
+import MicButton from "@/components/robots/MicButton";
+import { useClaudeModel } from "@/components/robots/claude-model";
 
 export type SendMode = "edit" | "direct";
 
@@ -54,6 +57,8 @@ export default function ActionBar({
       {mode && send && (
         <div className="space-y-2">
           {warning && <p className="rounded-2xl border-s-4 border-gold bg-gold/10 p-3 text-sm font-bold">⚠️ {warning}</p>}
+          <ClaudeModelPicker />
+          <MicButton onText={(t) => setText((v) => (v.trim() ? `${v.trim()} ${t}` : t).slice(0, 4000))} className="w-full" />
           <textarea
             className="field min-h-24"
             value={text}

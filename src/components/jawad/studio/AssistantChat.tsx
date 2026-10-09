@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ASSISTANT_LIMITS, ASSISTANT_NAME, type AssistantAnswer, type AssistantDraft, type AssistantSet, type ThumbnailSide } from "@config/jawad/assistant";
 import Icon from "../Icon";
+import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
+import MicButton from "@/components/robots/MicButton";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { uploadImage } from "./upload";
 import type { UploadView } from "./types";
 
@@ -139,6 +142,8 @@ export default function AssistantChat({
     return lines;
   }
 
+  const [claude] = useClaudeModel();
+
   async function send(raw?: string) {
     const message = (raw ?? text).trim();
     const ready = pending.filter((p) => p.status === "ready" && p.view);
@@ -155,6 +160,7 @@ export default function AssistantChat({
         messages: history,
         draft: getDraft(),
         attachments: ready.map((p) => ({ uploadId: p.view!.id })),
+        model: claude.id,
       });
       if (!r.ok) throw new Error(r.body.error ?? "تعذّر على جواد الرد الآن.");
       const views = ready.map((p) => p.view!);
@@ -277,6 +283,7 @@ export default function AssistantChat({
             ))}
           </ul>
         )}
+        <ClaudeModelPicker className="mb-1.5" disabled={busy} />
         <div className="flex items-end gap-2">
           {canAttach && (
             <>
@@ -286,6 +293,7 @@ export default function AssistantChat({
               </button>
             </>
           )}
+          <MicButton onText={(t) => setText((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={busy} className="!min-h-10" />
           <textarea
             ref={input}
             value={text}

@@ -6,7 +6,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isLeader, callClaudeJson, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
+import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { generatorById } from "@config/jawad/generators";
 import { ASSISTANT_LIMITS, ASSISTANT_SCHEMA, assistantSystem, checkAnswer, type AssistantAnswer, type AssistantDraft, type AssistantRaw, type AssistantRef } from "@config/jawad/assistant";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
@@ -24,6 +24,8 @@ export interface AssistantBody {
   messages?: unknown;
   draft?: unknown;
   attachments?: unknown;
+  /** the Claude model the person chose (config/claude-models.ts) */
+  model?: unknown;
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
@@ -40,7 +42,7 @@ const refLine = (r: AssistantRef) =>
   `@${r.name} — ${r.kind}${r.kind !== "audio" && r.width && r.height ? ` ${r.width}×${r.height}` : ""}${r.durationMs ? ` ${(r.durationMs / 1000).toFixed(1)}s` : ""}, role ${r.role}`;
 
 /** One turn of the assistant. */
-export async function assistantTurn(user: { id: string; email?: string | null }, owner: boolean, b: AssistantBody): Promise<AssistantAnswer & { attachments: { uploadId: string }[] }> {
+export async function assistantTurn(user: { id: string; email?: string | null }, owner: boolean, b: AssistantBody): Promise<AssistantAnswer & { attachments: { uploadId: string }[]; usd: number }> {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("المساعد جواد غير متاح حاليًا.", 503);
   const rt = await loadRuntime();
   if (!rt.migrated) throw new UserError("منصة JAWAD AI قيد التجهيز (قاعدة البيانات).", 503);
@@ -147,5 +149,5 @@ export async function assistantTurn(user: { id: string; email?: string | null },
   });
 
   const answer = checkAnswer(out.data, { defs, draft, attachments: attached.length });
-  return { ...answer, attachments: attached.map((u) => ({ uploadId: u.id })) };
+  return { ...answer, attachments: attached.map((u) => ({ uploadId: u.id })), usd: claudeCost(out.usage) };
 }

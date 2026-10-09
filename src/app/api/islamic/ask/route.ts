@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { claudeTrouble } from "@/lib/film/anthropic";
 import { ask, type Turn } from "@/lib/islamic/ask";
+import { robotTurn } from "@/lib/claude-run";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const maxDuration = 180;
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
   if (!isAdmin(user.email)) throw new UserError("هذا القسم في تجربة خاصة الحين.", 403);
-  const b = (await req.json().catch(() => ({}))) as { question?: unknown; history?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { question?: unknown; history?: unknown; model?: unknown };
   const question = String(b.question ?? "").trim();
   if (!question) throw new UserError("اكتب سؤالك.");
   const history = (Array.isArray(b.history) ? b.history : [])
@@ -19,7 +20,7 @@ export const POST = handle(async (req: Request) => {
     .map((t) => ({ role: t.role === "assistant" ? "assistant" : "user", text: String(t.text).slice(0, 6000) }) as Turn)
     .slice(-10);
   try {
-    return NextResponse.json(await ask(user.id, question, history, user.email));
+    return NextResponse.json(await robotTurn(user, b.model, "سؤال للذكاء الإسلامي", () => ask(user.id, question, history, user.email)));
   } catch (e) {
     const why = claudeTrouble(e);
     if (why) throw new UserError(why, 503);

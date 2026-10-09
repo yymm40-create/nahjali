@@ -6,6 +6,9 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
+import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
+import MicButton from "@/components/robots/MicButton";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { post } from "@/components/jawad/student/client";
 import type { Answer } from "@/lib/islamic/ask";
 
@@ -74,6 +77,8 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [msgs, busy]);
 
+  const [claude] = useClaudeModel();
+
   const send = async () => {
     const question = q.trim();
     if (!question || busy) return;
@@ -83,7 +88,7 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
     setQ("");
     setBusy(true);
     try {
-      const r = await post<Answer>("/api/islamic/ask", { question, history });
+      const r = await post<Answer>("/api/islamic/ask", { question, history, model: claude.id });
       setMsgs((m) => [...m, { role: "assistant", text: r.answer, sources: r.sources, found: r.found }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -148,6 +153,7 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
             )}
             <div ref={end} />
           </div>
+          <ClaudeModelPicker className="sticky bottom-[5.5rem]" disabled={busy} />
           <form
             className="sticky bottom-4 flex items-end gap-2 rounded-2xl border border-jw-line bg-jw-surface p-2 shadow-lg"
             onSubmit={(e) => {
@@ -155,6 +161,7 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
               void send();
             }}
           >
+            <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={busy} />
             <textarea
               className="jw-textarea min-h-12 flex-1 resize-none !border-0 !bg-transparent"
               rows={1}

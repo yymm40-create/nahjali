@@ -3,6 +3,7 @@ import { handle, UserError } from "@/lib/api";
 import { claudeTrouble } from "@/lib/film/anthropic";
 import { requireDesignerUser } from "@/lib/designer/access";
 import { say } from "@/lib/designer/chat";
+import { robotTurn } from "@/lib/claude-run";
 import { DESIGNER } from "@config/designer";
 import { isAdmin } from "@config/site";
 
@@ -14,14 +15,14 @@ const UUID = /^[0-9a-f-]{36}$/i;
 /** «المصمم الذكي» · a message to «كاظم» (with the ids of the person's uploads attached to it). */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireDesignerUser();
-  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; message?: unknown; attachments?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; message?: unknown; attachments?: unknown; model?: unknown };
   const message = String(b.message ?? "").trim();
   const attachments = Array.isArray(b.attachments) ? b.attachments : [];
   if (!message && !attachments.length) throw new UserError("اكتب رسالتك.");
   if (message.length > DESIGNER.messageMax) throw new UserError(`الرسالة أطول من ${DESIGNER.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    return NextResponse.json(await say(user.id, chatId, message, attachments, user.email));
+    return NextResponse.json(await robotTurn(user, b.model, "محادثة كاظم", () => say(user.id, chatId, message, attachments, user.email)));
   } catch (e) {
     if (e instanceof UserError) throw e;
     const why = claudeTrouble(e);

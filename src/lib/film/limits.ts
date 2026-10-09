@@ -9,7 +9,7 @@ export const LIMITS = {
   price_step_halalas: { label: "🔼 التقريب للأعلى (هللة)", hint: "كل سعر يُقرَّب للأعلى إلى هذا: 50 = نص ريال (0.45 → 0.50، 1.10 → 1.50)، 10 = عشر هللات، 100 = ريال كامل", default: 50, perUser: false },
   price_margin_pct: { label: "💰 نسبة الربح الحالية (٪)", hint: "تُضاف على التكلفة بعد تقريبها (وتُقرَّب هي أيضًا). 30 = عرض الإطلاق", default: 30, perUser: false },
   price_was_margin_pct: { label: "🏷️ نسبة الربح الكاملة (٪) — السعر المشطوب", hint: "السعر «كان» الذي يظهر مشطوبًا جنب السعر الحالي: نفس الحسبة بهذه النسبة", default: 60, perUser: false },
-  editor_price_claude: { label: "تكلفة طلب Claude في حيدرة كت (هللة)", hint: "تكلفة بالهللة، يُضاف عليها الربح عند الخصم؛ ٠ = مجاني", default: 0, perUser: false },
+  editor_price_claude: { label: "تكلفة الماسك الذكي في حيدرة كت (هللة)", hint: "تكلفة بالهللة، يُضاف عليها الربح عند الخصم؛ ٠ = مجاني. (محادثات حيدرة مع Claude صارت تُحسب باستخدامها الفعلي + ١٠٪ فقط، ولا تتأثر بهذا الرقم)", default: 0, perUser: false },
   editor_price_voice: { label: "سعر رد حيدرة بالصوت في حيدرة كت (هللة)", hint: "تكلفة بالهللة لكل رد ينقرأ بصوت حيدرة (ElevenLabs)؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_caption: { label: "سعر دقيقة الكابشن في حيدرة كت (هللة)", hint: "تكلفة بالهللة لكل دقيقة صوت (تُقرّب للأعلى)، بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_hook: { label: "سعر هوك بالصورة في حيدرة كت (هللة)", hint: "تكلفة بالهللة لصورة GPT Image 2 مفرّغة؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },

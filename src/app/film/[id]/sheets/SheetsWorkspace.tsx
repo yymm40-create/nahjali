@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import Markdown from "@/components/Markdown";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
@@ -111,12 +112,14 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
     if (openedAt.current === "sheets" && stage === "director") router.push(`${filmBase}/${projectId}/director`);
   }, [stage, projectId, router, filmBase]);
 
+  const [claude] = useClaudeModel();
+
   async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const { jobId, images, warning } = await postJson<{ jobId: string | null; images?: number; warning?: string }>(`/api/film/projects/${projectId}/sheets`, body);
+      const { jobId, images, warning } = await postJson<{ jobId: string | null; images?: number; warning?: string }>(`/api/film/projects/${projectId}/sheets`, { ...body, model: claude.id });
       if (jobId) setWriting(true);
       if (images) setPainting(true);
       if (warning) setNotice(warning);

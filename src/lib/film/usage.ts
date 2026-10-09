@@ -119,8 +119,10 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   // «النقود الذكية»: hold the operation's coins (when coins are required); a short balance cancels the job
   try {
     const label = COIN_LABELS[input.operation] ?? input.operation;
-    if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label);
-    else await reserveCoins(payer, job.id, input.estimateUsd, label);
+    // Claude's own work (the screenwriter, the sheets maker, the director's replies, سجاد) costs its real usage + 10%
+    const claude = input.service === "anthropic";
+    if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label, claude);
+    else await reserveCoins(payer, job.id, input.estimateUsd, label, claude);
   } catch (e) {
     await failJob(job.id, e);
     throw e;
@@ -130,8 +132,9 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
 
 /** Success: the job is done and its real cost replaces the estimate. */
 export async function succeedJob(jobId: string, actual: { costUsd: number; units?: number; providerTaskId?: string | null }) {
-  await settleCoins(jobId, actual.costUsd).catch((e) => console.error("coin settle failed", e));
   const db = createAdminClient();
+  const { data: kind } = await db.from("film_jobs").select("service").eq("id", jobId).maybeSingle();
+  await settleCoins(jobId, actual.costUsd, kind?.service === "anthropic").catch((e) => console.error("coin settle failed", e));
   const now = new Date().toISOString();
   await db
     .from("film_jobs")

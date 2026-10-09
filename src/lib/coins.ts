@@ -4,7 +4,8 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { coinStr, coinsFor, setPricing, type Pricing } from "@config/coins";
+import { claudeHalalas, coinStr, coinsFor, setPricing, type Pricing } from "@config/coins";
+import { typicalReplyUsd, type ClaudeModel } from "@config/claude-models";
 import { unlimitedFor } from "@/lib/access";
 
 const db = () => createAdminClient();
@@ -55,10 +56,11 @@ async function adjust(userId: string, delta: number, reason: string, ref: string
 export const grantCoins = (userId: string, amount: number, note: string) => adjust(userId, amount, "grant", note, note, true);
 
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
-export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string) {
+/** `claude`: the job is Claude's usage alone — priced at the real cost plus the platform's 10% (config/coins.ts `claudeHalalas`). */
+export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string, claude = false) {
   if ((await unlimitedFor(user.email)) || !(await coinsRequired())) return;
   await loadPricing();
-  const coins = coinsFor(estimateUsd);
+  const coins = (claude ? claudeHalalas : coinsFor)(estimateUsd);
   const left = await adjust(user.id, -coins, "reserve", jobId, label);
   if (left === null) {
     throw new UserError(`رصيدك ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اشحن رصيدك من صفحة «النقود الذكية».`, 402);
@@ -72,12 +74,12 @@ async function reserved(jobId: string) {
 }
 
 /** On success: the held coins become the real charge (the difference is given back, or taken). */
-export async function settleCoins(jobId: string, costUsd: number) {
+export async function settleCoins(jobId: string, costUsd: number, claude = false) {
   await loadPricing();
-  await settleTeamCoins(jobId, costUsd);
+  await settleTeamCoins(jobId, costUsd, claude);
   const r = await reserved(jobId);
   if (!r || r.held <= 0) return;
-  const diff = r.held - coinsFor(costUsd);
+  const diff = r.held - (claude ? claudeHalalas : coinsFor)(costUsd);
   if (diff !== 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
 }
 
@@ -107,10 +109,10 @@ export async function teamCoinBalance(seriesId: string): Promise<number> {
 const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذكي» ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اطلب من صاحب المسلسل يشحن رصيد الفريق.`;
 
 /** A team series' paid job: holds its estimated coins from the team's wallet (`who` pressed it). */
-export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string) {
+export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string, claude = false) {
   if (!(await coinsRequired())) return;
   await loadPricing();
-  const coins = coinsFor(estimateUsd);
+  const coins = (claude ? claudeHalalas : coinsFor)(estimateUsd);
   if ((await adjustTeam(seriesId, who.id, -coins, "reserve", jobId, label)) === null) throw new UserError(SHORT_TEAM(coins), 402);
 }
 
@@ -127,10 +129,10 @@ async function teamReserved(ref: string) {
   return rows.length ? { seriesId: rows[0].series_id, userId: rows[0].user_id, label: rows[0].label, held: -rows.reduce((s, r) => s + r.delta, 0) } : null;
 }
 
-async function settleTeamCoins(ref: string, costUsd: number) {
+async function settleTeamCoins(ref: string, costUsd: number, claude = false) {
   const r = await teamReserved(ref);
   if (!r || r.held <= 0) return;
-  const diff = r.held - coinsFor(costUsd);
+  const diff = r.held - (claude ? claudeHalalas : coinsFor)(costUsd);
   if (diff !== 0) await adjustTeam(r.seriesId, r.userId, diff, "settle", ref, r.label, true);
 }
 
@@ -181,4 +183,43 @@ export async function holdCoins(userId: string, coins: number, ref: string, labe
 }
 export async function releaseCoins(userId: string, coins: number, ref: string, label: string) {
   if (coins > 0) await adjust(userId, coins, "refund", ref, label, true);
+}
+
+// ───────────── a robot's conversation: Claude's real usage + 10% ─────────────
+
+export interface ClaudeBill {
+  /** nothing is charged (the owner, an unlimited account, or coins not required) */
+  free: boolean;
+  /** halalas charged after `settle` */
+  charged: number;
+  /** after the reply: takes the real usage (USD) at the platform's 10% — never throws over a short balance */
+  settle: (usd: number) => Promise<number>;
+}
+
+/**
+ * Before a robot answers: the balance must cover a typical reply of the chosen model (a clear refusal otherwise); after
+ * it, `settle(usd)` takes what the reply really cost + 10%. Free for the owner and unlimited accounts.
+ */
+export async function claudeMeter(who: { id: string; email?: string | null; owner?: boolean; team?: string | null }, model: ClaudeModel, label: string): Promise<ClaudeBill> {
+  const bill: ClaudeBill = { free: true, charged: 0, settle: async () => 0 };
+  if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
+  await loadPricing();
+  const need = claudeHalalas(typicalReplyUsd(model));
+  const balance = who.team ? await teamCoinBalance(who.team) : await coinBalance(who.id);
+  if (balance !== null && balance < need) {
+    throw new UserError(`رصيدك ما يكفي للمحادثة مع ${model.name}: الرد الواحد يحتاج تقريبًا ${coinStr(need)}. اشحن رصيدك من صفحة «النقود الذكية»، أو اختر موديل أرخص.`, 402);
+  }
+  const ref = `claude:${crypto.randomUUID()}`;
+  return {
+    free: false,
+    charged: 0,
+    settle: async (usd: number) => {
+      const coins = claudeHalalas(usd);
+      if (coins <= 0) return 0;
+      if (who.team) await adjustTeam(who.team, who.id, -coins, "settle", ref, label, true);
+      else await adjust(who.id, -coins, "settle", ref, label, true);
+      bill.charged = coins;
+      return coins;
+    },
+  };
 }

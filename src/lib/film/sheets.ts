@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
+import { currentClaude, withClaude } from "./claude-model";
 import { addMessage, buildTurns } from "./conversation";
 import { generateFilmImage, IMAGE_ESTIMATE_USD, IMAGE_SIZES } from "./images";
 import { failJob, JOB_STALE_MS, startJob, succeedJob } from "./usage";
@@ -172,7 +173,7 @@ async function queueReply(project: FilmProject, user: { id: string; email?: stri
     units: 0,
     unit: "tokens",
   });
-  if (created) after(() => runSheetReply(project.id, job.id));
+  if (created) { const picked = currentClaude().id; after(() => withClaude(picked, () => runSheetReply(project.id, job.id))); };
   return job.id;
 }
 

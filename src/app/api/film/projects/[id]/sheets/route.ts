@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handle } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
+import { withClaude } from "@/lib/film/claude-model";
 import { confirmSheetUpload, latestJob, runningImageJobs, sheetAction, sheetUploadUrl, takeSeriesCast, type MapChoice, type SheetAction } from "@/lib/film/sheets";
 
 // Replies and images are produced in the background (after()), within this route's time limit
@@ -28,7 +29,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     await takeSeriesCast(project, body.sheetId, body.castId);
     return NextResponse.json({ ok: true });
   }
-  return NextResponse.json(await sheetAction(project, user, body));
+  return NextResponse.json(await withClaude((body as { model?: unknown }).model, () => sheetAction(project, user, body)));
 });
 
 /** Polled while something is being written or generated. */
