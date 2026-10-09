@@ -109,3 +109,34 @@ export function hostOf(url: string) {
     return "";
   }
 }
+
+
+/** The kinds of document that are narrations (the hadith chapters, the duas and ziyarat): they come first in every answer. */
+export const NARRATION_KINDS = ["hadith-chapter", "dua"];
+
+/** What a kind of document is called when Claude is told where a passage comes from. */
+export const KIND_LABEL: Record<string, string> = { "hadith-chapter": "رواية", dua: "دعاء/زيارة", quran: "قرآن", commentary: "تفسير", fatwa: "فتوى", page: "صفحة" };
+
+/**
+ * The passages of one answer: up to `quota` narrations first (at most `perDoc` from one document), then the rest by
+ * their own rank, then any narrations left over, until `k`. A narration never loses its place to a shorter fatwa that
+ * merely repeats the words more densely.
+ */
+export function pickPassages<T extends { doc_id: string; chunk_id: number }>(narrations: T[], others: T[], k: number, perDoc: number, quota = Math.ceil(k * 0.67)): T[] {
+  const out: T[] = [];
+  const count: Record<string, number> = {};
+  const used = new Set<number>();
+  const take = (list: T[], limit: number) => {
+    for (const p of list) {
+      if (out.length >= limit) break;
+      if (used.has(p.chunk_id) || (count[p.doc_id] ?? 0) >= perDoc) continue;
+      used.add(p.chunk_id);
+      count[p.doc_id] = (count[p.doc_id] ?? 0) + 1;
+      out.push(p);
+    }
+  };
+  take(narrations, quota);
+  take(others, k);
+  take(narrations, k);
+  return out;
+}
