@@ -1,7 +1,7 @@
 import { checkUpscale, startUpscale } from "@/lib/editor/upscale";
 import { NextResponse } from "next/server";
 import { handOff, loadChat } from "@/lib/editor/chat";
-import { linkForFix } from "@/lib/editor/smart";
+import { approveFixesConfirm, approveFixesUrl, linkForFix } from "@/lib/editor/smart";
 import { handle, UserError } from "@/lib/api";
 import { requireEditorApiUser } from "@/lib/jawad/server/access";
 import { can } from "@/lib/access";
@@ -137,6 +137,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await assist(p, who, b, new URL(req.url).origin));
     case "fix_link":
       return NextResponse.json({ asset: await linkForFix(p, user, b) });
+    // حيدرة approved the smart edits of a film video: the exported version goes to سجاد (upload, then confirm)
+    case "fix_approve_url":
+      return NextResponse.json(await approveFixesUrl(p, user, b));
+    case "fix_approve_confirm":
+      return NextResponse.json(await approveFixesConfirm(p, user, b));
     case "chat":
       return NextResponse.json(await loadChat(p), noStore);
     case "handoff":

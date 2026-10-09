@@ -71,3 +71,39 @@ export async function linkForFix(p: EditorProject, user: User, b: { assetId?: un
   await db().from("editor_assets").update({ meta: { ...meta, jobId: studioJobId, outputId: out.id } }).eq("id", row.id);
   return (await assetViews(p.id)).find((a) => a.id === row.id)!;
 }
+
+/** The film a fixed video belongs to (through its film asset), and the generation it is. */
+async function filmOf(p: EditorProject, user: User, assetId: unknown) {
+  if (!isUuid(assetId)) throw new UserError("طلب غير صحيح.", 400);
+  const { data: row } = await db().from("editor_assets").select("id,origin,meta").eq("id", assetId).eq("project_id", p.id).maybeSingle();
+  const meta = (row?.meta ?? {}) as Record<string, unknown>;
+  if (!row || row.origin !== "film" || typeof meta.sourceId !== "string") throw new UserError("هذا الفيديو مو من فيلم؛ التعديل يبقى بينك وبين جواد هنا.", 400);
+  const { data: fa } = await db().from("film_assets").select("project_id,ref_key").eq("id", meta.sourceId).maybeSingle();
+  if (!fa) throw new UserError("فيديو الفيلم ما عاد موجود.", 404);
+  const film = await getOwnedProject(fa.project_id, user.id);
+  return { film, genId: String(fa.ref_key) };
+}
+
+const readPieces = (v: unknown) =>
+  (Array.isArray(v) ? v : []).slice(0, 12).map((x) => {
+    const r = (x ?? {}) as Record<string, unknown>;
+    return { from: Number(r.from) || 0, to: Number(r.to) || 0, mode: r.mode === "whole" ? ("whole" as const) : ("parts" as const), note: String(r.note ?? "").slice(0, 300) };
+  });
+
+/**
+ * حيدرة approved the edits: the exported version goes to سجاد, who puts it in its place in the film. Step one gives
+ * the upload; step two confirms it (with the pieces that changed, so سجاد knows which seconds).
+ */
+export async function approveFixesUrl(p: EditorProject, user: User, b: { assetId?: unknown; mime?: unknown }) {
+  stillOpen(p);
+  const { film, genId } = await filmOf(p, user, b.assetId);
+  const r = await directorAction(film, user, { action: "upload_video_url", genId, mime: String(b.mime ?? "video/mp4") });
+  return { filmProjectId: film.id, genId, upload: r.upload };
+}
+
+export async function approveFixesConfirm(p: EditorProject, user: User, b: { assetId?: unknown; path?: unknown; pieces?: unknown }) {
+  stillOpen(p);
+  const { film, genId } = await filmOf(p, user, b.assetId);
+  await directorAction(film, user, { action: "upload_video_confirm", genId, path: String(b.path ?? ""), by: "haidara", pieces: readPieces(b.pieces) });
+  return { filmProjectId: film.id, genId };
+}

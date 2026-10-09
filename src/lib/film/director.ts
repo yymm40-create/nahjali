@@ -174,7 +174,7 @@ export type DirectorAction =
   | { action: "upload_video_url"; genId: string; mime: string }
   // «ملاحظة للمونتاج»: what the person didn't like in a take, and where (for the montage, not a new generation)
   | { action: "montage_note"; assetId: string; text: string }
-  | { action: "upload_video_confirm"; genId: string; path: string }
+  | { action: "upload_video_confirm"; genId: string; path: string; by?: "haidara"; pieces?: { from: number; to: number; mode: "parts" | "whole"; note?: string }[] }
   // «الحوار من جهازي»: the person's own recording of a shot's dialogue (made in their own program or account)
   | { action: "upload_voice_url"; genId: string; mime: string }
   | { action: "upload_voice_confirm"; genId: string; path: string }
@@ -374,15 +374,25 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const file = list?.find((f) => f.name === name);
       const size = Number(file?.metadata?.size ?? 0);
       if (!file || size <= 0 || size > 2 * 1024 * 1024 * 1024) throw new UserError("ما وصل الفيديو أو حجمه أكبر من ٢ جيجا.", 400);
+      const pieces = (Array.isArray(input.pieces) ? input.pieces : [])
+        .filter((x) => x && Number.isFinite(Number(x.from)) && Number.isFinite(Number(x.to)))
+        .slice(0, 12)
+        .map((x) => ({ from: Number(x.from), to: Number(x.to), mode: x.mode === "whole" ? ("whole" as const) : ("parts" as const), note: String(x.note ?? "").slice(0, 300) }));
       const videos = await directorVideos(project.id);
       const older = videos.filter((x) => x.ref_key === input.genId && x.status === "approved").map((x) => x.id);
       if (older.length) await db().from("film_assets").update({ status: "rejected" }).in("id", older);
       const { error } = await db().from("film_assets").insert({
         project_id: project.id, kind: "video", ref_key: input.genId, version_id: v.id, storage_path: path, file_name: name,
-        mime: String(file.metadata?.mimetype ?? "video/mp4"), bytes: size, status: "approved", meta: { uploaded: true, edited: true },
+        mime: String(file.metadata?.mimetype ?? "video/mp4"), bytes: size, status: "approved", meta: { uploaded: true, edited: true, ...(input.by === "haidara" ? { by: "haidara", pieces } : {}) },
       });
       if (error) throw error;
-      await tellSajjad(project.id, `${input.genId} رجع للفيلم بنسخة معدّلة رفعها الشخص بنفسه (مكان القديمة).`);
+      // the loop closes at سجاد: حيدرة approved the edits and the version goes into its place, the changed seconds named
+      await tellSajjad(
+        project.id,
+        input.by === "haidara"
+          ? `حيدرة اعتمد التعديل الذكي على ${input.genId} وأرسل النسخة المعتمدة؛ وضعتها مكان القديمة. اللي تغيّر: ${pieces.length ? pieces.map((x) => `${x.from.toFixed(1)}–${x.to.toFixed(1)} ث (${x.mode === "whole" ? "كامل" : "جزء"})${x.note ? `: ${x.note}` : ""}`).join(" · ") : "—"}.`
+          : `${input.genId} رجع للفيلم بنسخة معدّلة رفعها الشخص بنفسه (مكان القديمة).`,
+      );
       await maybeFinish(project, versions, await directorVideos(project.id));
       return { jobId: null };
     }

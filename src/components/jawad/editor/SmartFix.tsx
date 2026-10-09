@@ -7,7 +7,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generatorById } from "@config/jawad/generators";
 import { postJson } from "@/lib/fetch";
-import { clipLength, findClip, FIX_NOTE_MAX, formatTime, type Clip, type Fix, type Timeline as TL } from "@/lib/editor/model";
+import { clipLength, findClip, FIX_NOTE_MAX, flatten, formatTime, type Clip, type Fix, type Timeline as TL } from "@/lib/editor/model";
+import { canExport, exportVideo } from "./export";
 import { CONTINUITY, continuityRanges, EDIT_LIMITS, frameTimes, type ContinuityRange, type EditRange } from "@/lib/jawad/smart-edit";
 import { fixCut, fixedOffset, pieceRange } from "@/lib/editor/smart-fix";
 import { stageLabel, type JobView, type OutputView } from "@/lib/jawad/labels";
@@ -49,6 +50,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   const red = tl.tracks.find((t) => t.role === "fix") ?? null;
   const pieces = useMemo(() => red?.clips ?? [], [red]);
   const [open, setOpen] = useState(false);
+  const [approving, setApproving] = useState<string | null>(null);
 
   const sel = selected.length === 1 ? findClip(tl, selected[0]) : null;
   const selAsset = sel?.clip.assetId ? assets.get(sel.clip.assetId) : undefined;
@@ -172,6 +174,29 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
     run({ type: "split", at: Math.round(player.ms), clipIds: [sel.clip.id] });
   };
   const counts = { all: pieces.length, making: making.length, done: pieces.filter((c) => c.fix?.state === "done").length };
+  // a film's video: once حيدرة is happy with the joins, the version goes to سجاد, who puts it in its place
+  const donePieces = pieces.filter((c) => c.fix?.state === "done");
+  const filmAsset = donePieces.map((c) => (c.assetId ? assets.get(c.assetId) : undefined)).find((a) => a?.origin === "film");
+  const approve = async () => {
+    if (!filmAsset || approving) return;
+    if (!canExport()) return flash("متصفحك ما يقدر يصدّر الفيديو؛ استخدم Chrome أو Edge.", true);
+    setApproving("نصدّر النسخة المعتمدة…");
+    try {
+      const list = [...assets.values()].map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio }));
+      const r = await exportVideo(flatten(tlRef.current), list, 720, (p) => setApproving(`نصدّر النسخة المعتمدة… ${Math.round(p * 100)}٪`), new AbortController().signal);
+      setApproving("نرسلها لسجاد…");
+      const { upload } = await postJson<{ upload: { path: string; token: string } }>(`/api/jawad/editor/projects/${projectId}`, { action: "fix_approve_url", assetId: filmAsset.id, mime: "video/mp4" });
+      const put = await fetch(upload.token, { method: "PUT", headers: { "content-type": "video/mp4" }, body: r.blob }).catch(() => null);
+      if (!put?.ok) throw new Error("تعذّر رفع النسخة؛ تأكد من الإنترنت وجرّب.");
+      const pcs = donePieces.filter((c) => c.assetId === filmAsset.id).map((c) => ({ ...pieceRange(c), mode: c.fix?.mode ?? "parts", note: c.fix?.note ?? "" }));
+      await postJson(`/api/jawad/editor/projects/${projectId}`, { action: "fix_approve_confirm", assetId: filmAsset.id, path: upload.path, pieces: pcs });
+      flash("✅ اعتمدت التعديلات: وصلت سجاد وحطها مكان القديمة في الفيلم");
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "تعذّر إرسال النسخة لسجاد.", true);
+    } finally {
+      setApproving(null);
+    }
+  };
 
   return (
     <>
@@ -201,6 +226,11 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
         {pieces.length > 0 && (
           <button type="button" className="jw-btn !min-h-8 !px-3 text-xs !border-jw-accent/50 text-jw-accent" onClick={() => setOpen(true)}>
             <Icon name="type" size={14} /> اكتب التعديلات وأرسلها
+          </button>
+        )}
+        {filmAsset && !making.length && (
+          <button type="button" className="jw-btn !min-h-8 !border-emerald-500/60 !px-3 text-xs text-emerald-700" disabled={!!approving} onClick={() => void approve()} title="تصدّر النسخة بالأجزاء الجديدة وترسلها لسجاد يحطها مكان القديمة في الفيلم">
+            {approving ? <><span className="jw-spinner" /> {approving}</> : <>✅ اعتمد التعديلات وأرسلها لسجاد</>}
           </button>
         )}
       </div>
