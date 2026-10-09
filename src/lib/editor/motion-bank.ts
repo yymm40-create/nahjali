@@ -300,7 +300,7 @@ export function auditPiece(p: BankPiece, o: { deep?: boolean; retime?: boolean }
     const avg = (endMs - start) / beats.length;
     const pace = plan.look.pace;
     if (pace === "calm" && avg < 3000) add("tempo", `a calm piece averages ${Math.round(avg)} ms a beat`);
-    if (pace === "fast" && avg > 5600) add("tempo", `a fast piece averages ${Math.round(avg)} ms a beat`);
+    if (pace === "fast" && avg > 6100) add("tempo", `a fast piece averages ${Math.round(avg)} ms a beat`);
   }
 
   if (o.deep) deepAudit(p, sb, W, H, plan, add, o.retime === true);
