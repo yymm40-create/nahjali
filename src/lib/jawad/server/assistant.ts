@@ -12,6 +12,7 @@ import { ASSISTANT_LIMITS, ASSISTANT_SCHEMA, assistantSystem, checkAnswer, type 
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { detectPlaybook, playbookGuide } from "@config/jawad/playbooks";
 import { examplesBrief, nearestExamples } from "@config/jawad/playbook-examples";
+import { FIGHT_METHOD, FIGHT_PLAYBOOK_ID, SCHOOLS_BRIEF, fightCasesBrief, nearestFightCases } from "@config/jawad/fight-scenes";
 import { TRANSFORM_METHOD, TRANSFORM_PLAYBOOK_ID, nearestTransformCases, transformCasesBrief } from "@config/jawad/video-transform";
 import { loadRuntime, sectionGenerators } from "./runtime";
 import { isUuid, uploadViews, type UploadRow } from "./uploads";
@@ -120,7 +121,12 @@ export async function assistantTurn(user: { id: string }, owner: boolean, b: Ass
   const guide = kind ? playbookGuide(kind, section.output) : "";
   // a real person's own clip transformed: the method and the worked before→after cases instead of the plain examples
   const transform = kind === TRANSFORM_PLAYBOOK_ID;
-  const examples = transform ? `${TRANSFORM_METHOD}\n\n${transformCasesBrief(nearestTransformCases(lastText, 3))}` : examplesBrief(nearestExamples(lastText, section.output, 3, earlier));
+  const fight = kind === FIGHT_PLAYBOOK_ID;
+  const examples = transform
+    ? `${TRANSFORM_METHOD}\n\n${transformCasesBrief(nearestTransformCases(lastText, 3))}`
+    : fight
+      ? `${FIGHT_METHOD}\n\nTHE SCHOOLS:\n${SCHOOLS_BRIEF}\n\n${fightCasesBrief(nearestFightCases(lastText, 3))}`
+      : examplesBrief(nearestExamples(lastText, section.output, 3, earlier));
   const claudeTurns: ClaudeTurn[] = turns.map((t, i) => {
     if (i < turns.length - 1) return { role: t.role, content: t.text };
     // The last message carries the form, the pictures, the recipe and the examples
