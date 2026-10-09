@@ -5,7 +5,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
+import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { checkCommands, context, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
@@ -301,7 +301,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
 
   let usd = 0;
   const ask = async (msgs: ClaudeTurn[]) => {
-    const r = await callClaudeJson<Answer>({ system: SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true });
+    const r = await callClaudeJson<Answer>({ system: SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email) });
     usd += claudeCost(r.usage);
     return r;
   };

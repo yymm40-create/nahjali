@@ -51,11 +51,13 @@ export async function askJson<T>(o: {
   schema: object;
   maxTokens?: number;
   effort?: "low" | "medium" | "high";
+  /** the owner is talking: صادق greets «القائد» and opens every detail of the platform to him */
+  leader?: boolean;
 }): Promise<{ data: T; usd: number }> {
   const body = await post(
     {
       max_tokens: o.maxTokens ?? 16000,
-      system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`),
+      system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, true, o.leader),
       messages: [{ role: "user", content: o.parts.map(toBlock) }],
       output_config: { effort: o.effort ?? "medium", format: { type: "json_schema", schema: o.schema } },
       fallbacks: "default",

@@ -57,7 +57,7 @@ export async function signUpload(userId: string, b: { kind?: unknown; mime?: unk
   const bytes = Number(b.bytes);
   const kind = UPLOAD_MIMES[mime];
   if (!kind || kind !== b.kind) throw new UserError("نوع الملف غير مقبول. المقبول: صور PNG/JPG/WEBP، فيديو MP4/MOV، صوت MP3/WAV.", 400);
-  if (!Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_UPLOAD_BYTES) throw new UserError("حجم الملف أكبر من ٥٠ ميجا.", 400);
+  if (!Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_UPLOAD_BYTES) throw new UserError("حجم الملف أكبر من ٢٠٠ ميجا.", 400);
   const { count } = await db().from("jawad_uploads").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "pending");
   if ((count ?? 0) >= MAX_PENDING) throw new UserError("عندك ملفات كثيرة قيد الرفع. انتظر حتى تكتمل.", 429);
 
@@ -90,7 +90,7 @@ export async function confirmUpload(userId: string, id: unknown): Promise<Upload
   const dl = await storage.from(JAWAD_BUCKET).download(row.storage_path);
   if (dl.error || !dl.data) throw new UserError("ما وصل الملف بعد؛ جرّب الرفع مرة ثانية.", 409);
   const buf = new Uint8Array(await dl.data.arrayBuffer());
-  if (buf.length > MAX_UPLOAD_BYTES) return reject(row, "حجم الملف أكبر من ٥٠ ميجا.");
+  if (buf.length > MAX_UPLOAD_BYTES) return reject(row, "حجم الملف أكبر من ٢٠٠ ميجا.");
   const s = sniff(buf);
   if (!s) return reject(row, "محتوى الملف لا يطابق أي نوع مقبول (امتداد الملف وحده لا يكفي).");
   if (s.kind !== row.kind) return reject(row, `محتوى الملف ${s.kind === "image" ? "صورة" : s.kind === "video" ? "فيديو" : "صوت"} وليس كما اخترت.`);
@@ -201,7 +201,7 @@ export async function uploadFromFilmAsset(userId: string, assetId: unknown) {
   const { data: blob, error: dl } = await storage.from(FILM_BUCKET).download(a.storage_path);
   if (dl || !blob) throw new UserError("تعذّر قراءة الملف؛ جرّب مرة ثانية.", 502);
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  if (bytes.length > MAX_UPLOAD_BYTES) throw new UserError("الملف أكبر من ٥٠ ميجا.", 400);
+  if (bytes.length > MAX_UPLOAD_BYTES) throw new UserError("الملف أكبر من ٢٠٠ ميجا.", 400);
   // What the file really is, from its bytes (the server checks it again when confirming)
   const s = sniff(bytes);
   const kind = s ? UPLOAD_MIMES[s.mime] : undefined;
@@ -221,7 +221,7 @@ export async function uploadFromFilmAsset(userId: string, assetId: unknown) {
 
 /** A picture made on the server for the user (a frame of their own video), stored as a checked reference. */
 export async function uploadFromBuffer(userId: string, bytes: Uint8Array, fileName: string) {
-  if (bytes.length > MAX_UPLOAD_BYTES) throw new UserError("الملف أكبر من ٥٠ ميجا.", 400);
+  if (bytes.length > MAX_UPLOAD_BYTES) throw new UserError("الملف أكبر من ٢٠٠ ميجا.", 400);
   const s = sniff(bytes);
   const kind = s ? UPLOAD_MIMES[s.mime] : undefined;
   if (!s || !kind) throw new UserError("ملف غير صالح.", 400);

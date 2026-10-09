@@ -19,7 +19,7 @@ export const POST = handle(async (req: Request) => {
   if (message.length > GAMES.messageMax) throw new UserError(`الرسالة أطول من ${GAMES.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    return NextResponse.json(await say(user.id, chatId, message));
+    return NextResponse.json(await say(user.id, chatId, message, user.email));
   } catch (e) {
     const why = claudeTrouble(e);
     if (why) throw new UserError(why, 503);

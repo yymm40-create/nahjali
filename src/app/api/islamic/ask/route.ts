@@ -19,7 +19,7 @@ export const POST = handle(async (req: Request) => {
     .map((t) => ({ role: t.role === "assistant" ? "assistant" : "user", text: String(t.text).slice(0, 6000) }) as Turn)
     .slice(-10);
   try {
-    return NextResponse.json(await ask(user.id, question, history));
+    return NextResponse.json(await ask(user.id, question, history, user.email));
   } catch (e) {
     const why = claudeTrouble(e);
     if (why) throw new UserError(why, 503);

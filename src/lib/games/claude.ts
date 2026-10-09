@@ -14,7 +14,7 @@ export interface Said {
 }
 
 /** The persona answers: `system` is its whole instruction (the site's own knowledge goes first, see siteSystem). */
-export async function talk(o: { system: string; turns: Turn[]; maxTokens: number; effort?: "low" | "medium" | "high"; timeoutMs?: number }): Promise<Said> {
+export async function talk(o: { system: string; turns: Turn[]; maxTokens: number; effort?: "low" | "medium" | "high"; timeoutMs?: number; leader?: boolean }): Promise<Said> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
   const messages = o.turns.map((t, i) => ({
@@ -25,7 +25,7 @@ export async function talk(o: { system: string; turns: Turn[]; maxTokens: number
   const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: o.maxTokens, system: siteSystem(o.system), messages, output_config: { effort: o.effort ?? "medium" } }),
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: o.maxTokens, system: siteSystem(o.system, true, o.leader), messages, output_config: { effort: o.effort ?? "medium" } }),
     signal: AbortSignal.timeout(o.timeoutMs ?? 170_000),
   });
   const body = await res.json().catch(() => ({}));

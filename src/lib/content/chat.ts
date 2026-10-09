@@ -6,7 +6,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
+import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { createEditorProject, requireEditorProject } from "@/lib/editor/server";
 import { appendChat } from "@/lib/editor/chat";
 import { CONTENT, isCarouselAspect, womanCheck, type CarouselAspect } from "@config/content";
@@ -176,7 +176,7 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
 }
 
 /** The person says something in a conversation (a new one when `chatId` is null). */
-export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown): Promise<Reply> {
+export async function say(userId: string, chatId: string | null, message: string, attachmentIds: unknown, email: string | null = null): Promise<Reply> {
   const said = message.trim().slice(0, CONTENT.messageMax);
   const { list: files } = await attachmentsOf(userId, attachmentIds);
   if (!said && !files.length) throw new Error("empty message");
@@ -199,7 +199,7 @@ export async function say(userId: string, chatId: string | null, message: string
     ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? "")) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
   const system = systemText(persona.text, parts, before?.record ?? "");
-  const r = await callClaudeJson<Answer>({ system, turns: turns.map((t) => toClaudeTurn(t, links)), schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium" });
+  const r = await callClaudeJson<Answer>({ system, turns: turns.map((t) => toClaudeTurn(t, links)), schema: ANSWER_SCHEMA, maxTokens: CONTENT.maxTokens, effort: "medium", leader: isLeader(email) });
   const a = r.data;
   let usd = claudeCost(r.usage);
   const questions = readQuestions(a.questions);

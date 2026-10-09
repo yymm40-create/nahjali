@@ -6,7 +6,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
+import { isLeader, callClaudeJson, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { generatorById } from "@config/jawad/generators";
 import { ASSISTANT_LIMITS, ASSISTANT_SCHEMA, assistantSystem, checkAnswer, type AssistantAnswer, type AssistantDraft, type AssistantRaw, type AssistantRef } from "@config/jawad/assistant";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
@@ -40,7 +40,7 @@ const refLine = (r: AssistantRef) =>
   `@${r.name} — ${r.kind}${r.kind !== "audio" && r.width && r.height ? ` ${r.width}×${r.height}` : ""}${r.durationMs ? ` ${(r.durationMs / 1000).toFixed(1)}s` : ""}, role ${r.role}`;
 
 /** One turn of the assistant. */
-export async function assistantTurn(user: { id: string }, owner: boolean, b: AssistantBody): Promise<AssistantAnswer & { attachments: { uploadId: string }[] }> {
+export async function assistantTurn(user: { id: string; email?: string | null }, owner: boolean, b: AssistantBody): Promise<AssistantAnswer & { attachments: { uploadId: string }[] }> {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("المساعد جواد غير متاح حاليًا.", 503);
   const rt = await loadRuntime();
   if (!rt.migrated) throw new UserError("منصة JAWAD AI قيد التجهيز (قاعدة البيانات).", 503);
@@ -140,6 +140,7 @@ export async function assistantTurn(user: { id: string }, owner: boolean, b: Ass
     maxTokens: 6000,
     effort: "medium",
     fallback: true,
+    leader: isLeader(user.email),
   }).catch((e) => {
     console.error("assistant", String(e instanceof Error ? e.message : e).slice(0, 300));
     throw new UserError("تعذّر على جواد الرد الآن؛ جرّب مرة ثانية.", 502);

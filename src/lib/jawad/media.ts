@@ -203,4 +203,5 @@ export const UPLOAD_EXT: Record<string, string> = {
   "audio/wav": "wav",
 };
 /** The storage limit per file (Supabase Free plan). */
-export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+/** A reference file: up to 200 MB (R2 holds it; the server reads it once to check what it is). */
+export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
