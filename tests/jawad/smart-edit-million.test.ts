@@ -13,7 +13,7 @@ describe(`${TOTAL.toLocaleString("en")} smart edits, corrected after every ${BAT
   const totals = { edits: 0, short: 0, clean: 0, broken: 0, caught: 0, corrected: 0, byFault: {} as Record<string, number> };
 
   for (let b = 0; b < TOTAL / BATCH; b++) {
-    it(`batch ${b + 1}: ${BATCH.toLocaleString("en")} edits written, checked, broken, caught and corrected`, () => {
+    it(`batch ${b + 1}: ${BATCH.toLocaleString("en")} edits written, checked, broken, caught and corrected`, async () => {
       let edits = 0;
       let short = 0;
       let clean = 0;
@@ -22,6 +22,8 @@ describe(`${TOTAL.toLocaleString("en")} smart edits, corrected after every ${BAT
       let corrected = 0;
       const failures: string[] = [];
       for (let i = 0; i < BATCH; i++) {
+        // the worker breathes every few thousand edits (its reporting channel must not time out)
+        if (i % 5000 === 0) await new Promise((r) => setTimeout(r, 0));
         const seed = b * BATCH + i + 1;
         const e = randomEdit(seed);
         if (!e) continue;

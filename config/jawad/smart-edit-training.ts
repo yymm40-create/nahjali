@@ -105,7 +105,7 @@ const DUR_RE = new Map<number, RegExp>();
 const durRe = (sec: number) => {
   let re = DUR_RE.get(sec);
   if (!re) {
-    re = new RegExp(`(^|[^\\d.])${sec}(\\.0)?[ -]?(s|sec|seconds?|second)([^\\p{L}]|$)`, "u");
+    re = new RegExp(`(^|[^\\d.])${sec}(\\.0)?[ -]?(sec|seconds?)([^\\p{L}]|$)`, "u");
     DUR_RE.set(sec, re);
   }
   return re;
@@ -155,7 +155,7 @@ export function checkEditPrompt(prompt: string, m: EditModel): EditProblem[] {
   } else if (contNames.some((n) => n.startsWith("before")) && !(low.includes("straight out of") || low.includes("flowing out of") || low.includes("first frame"))) {
     out.push({ kind: "landing", text: "Say that the clip continues straight out of the last moment before the cut." });
   }
-  if (!durRe(m.cut.seconds).test(low)) out.push({ kind: "duration", text: `The clip is ${m.cut.seconds} seconds long: say so (its length is the cut's, ${f1(m.cut.start)}–${f1(m.cut.end)} s of the original).` });
+  if (!durRe(m.cut.seconds).test(low)) out.push({ kind: "duration", text: `The clip is ${m.cut.seconds} seconds long: say so in words ("a ${m.cut.seconds}-second clip") (its length is the cut's, ${f1(m.cut.start)}–${f1(m.cut.end)} s of the original).` });
   if (m.sounds.length && !(low.includes("sound") && (low.includes("continu") || low.includes("running on") || low.includes("carries on")))) out.push({ kind: "sound", text: `The sound continues seamlessly through both joins (${m.sounds.map((x) => `@${x}`).join(" and ")}): the same voices, ambience, effects and music, no new music or sudden silence.` });
   const lowWords = m.lockWords.length ? ` ${low.replace(WORDS_RE, " ")} ` : "";
   const lost = m.lockWords.filter((w) => !lowWords.includes(` ${w.toLowerCase().replace(WORDS_RE, " ")} `));
@@ -325,7 +325,7 @@ export function editModelsBrief(m: EditModel, k = 2): string {
 export function randomEdit(seed: number): { model: EditModel; scene: EditScene } | null {
   const r = new Rng(seed * 2654435761 + 12345);
   const videoSec = r.int(EDIT_SECONDS.min, 30);
-  const len = r.next() < 0.6 ? r1(0.3 + r.next() * 3.6) : r1(EDIT_SECONDS.min + r.next() * (EDIT_SECONDS.max - EDIT_SECONDS.min));
+  const len = Math.min(videoSec, r.next() < 0.6 ? r1(0.3 + r.next() * 3.6) : r1(EDIT_SECONDS.min + r.next() * (EDIT_SECONDS.max - EDIT_SECONDS.min)));
   const from = r1(r.next() * Math.max(0, videoSec - len));
   const sounds: EditModel["sounds"] = r.next() < 0.5 ? ["sound_before", "sound_after"] : r.next() < 0.5 ? ["sound_after"] : [];
   const refs = Array.from({ length: r.int(0, 3) }, (_, i) => `image${i + 1}`);
