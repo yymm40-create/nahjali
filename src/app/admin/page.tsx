@@ -71,6 +71,7 @@ export default async function AdminHome() {
         ["الفيلم", "/admin/film"],
         ["صانع الألعاب", "/admin/games"],
         ["صانع المحتوى", "/admin/content"],
+        ["المصمم الذكي", "/admin/designer"],
       ],
     },
     {

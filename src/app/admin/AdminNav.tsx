@@ -30,6 +30,8 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
       { href: "/admin/islamic", icon: "🕌", label: "الذكاء الإسلامي" },
       { href: "/admin/games", icon: "🎮", label: "صانع الألعاب الذكي" },
       { href: "/admin/film", icon: "🎬", label: "صانع الأفلام الذكي" },
+      { href: "/admin/content", icon: "✍️", label: "صانع المحتوى" },
+      { href: "/admin/designer", icon: "🎨", label: "المصمم الذكي" },
       { href: "/admin/booklet", icon: "📖", label: "كتيب نهج علي" },
     ],
   },
