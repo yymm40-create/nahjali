@@ -1,6 +1,7 @@
 // «الطالب الذكي» — every kind of job and the code that runs it.
 
 import { extractHandler } from "./extract";
+import { islamicHandler } from "./islamic";
 import type { Handler } from "./jobs";
 import { finalHandler, planHandler, reviseHandler, styleHandler, trialHandler } from "./outputs";
 import { mediaHandler } from "./media";
@@ -12,6 +13,7 @@ export const HANDLERS: Record<string, Handler> = {
   extract: extractHandler,
   understand: understandHandler,
   research: researchHandler,
+  islamic: islamicHandler,
   plan: planHandler,
   trial: trialHandler,
   final: finalHandler,

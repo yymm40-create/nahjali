@@ -1,6 +1,6 @@
 "use client";
 
-import { SOURCE_ROLES, isResearchSource } from "@config/jawad/student";
+import { ISLAMIC_WAYS, SOURCE_ROLES, isIslamicSource, isResearchSource } from "@config/jawad/student";
 import { useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { putWithProgress } from "@/components/jawad/studio/upload";
@@ -37,13 +37,17 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
   // videos / recordings uploaded and waiting to be written (their price is shown before)
   const [media, setMedia] = useState<{ path: string; name: string; seconds: number }[]>([]);
   const [link, setLink] = useState("");
+  // «يسأل الذكاء الإسلامي»: a religious question goes to the owner's own trained library, not to the open web
+  const [islamicQ, setIslamicQ] = useState("");
+  const [islamicWay, setIslamicWay] = useState<(typeof ISLAMIC_WAYS)[number]["id"]>("auto");
   const fileRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const { busy, error, run } = useAsync();
-  const job = jobs.find((j) => (j.kind === "extract" || j.kind === "research" || j.kind === "media") && j.status !== "succeeded");
+  const job = jobs.find((j) => (j.kind === "extract" || j.kind === "research" || j.kind === "media" || j.kind === "islamic") && j.status !== "succeeded");
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
   const ready = sources.some((s) => s.status === "ready");
   const researched = sources.some((s) => s.kind === "text" && isResearchSource(s.name));
+  const askedIslamic = sources.filter((s) => s.kind === "text" && isIslamicSource(s.name)).length;
   // the research is paid once confirmed; then the reading goes on by itself
   const research = (
     <div className="jw-panel space-y-3 p-4">
@@ -58,6 +62,35 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
         run={async (b) => {
           const r = await p.act({ action: "research_material", focus, ...b });
           if (b.confirm) onContinue();
+          return r;
+        }}
+      />
+    </div>
+  );
+
+  /** «📖 اسأل الذكاء الإسلامي»: its answer, with its own references, becomes a source of this material. */
+  const islamic = (
+    <div className="jw-panel space-y-3 p-4">
+      <h2 className="font-semibold">📖 اسأل «الذكاء الإسلامي»</h2>
+      <p className="text-sm text-jw-muted">
+        أي شي ديني — آية، رواية، حكم، مسألة عقدية، سيرة — لا يكتبه صادق من عنده ولا يبحثه في الويب: يسأل «الذكاء الإسلامي» اللي يجاوب من مكتبة صاحب المنصة بمصادرها، وجوابه ينضاف لمادتك ومعه قائمة مصادره، وكل اللي يُبنى بعده (ملخص، كتاب، شرائح، اختبار) يقف عليه.
+      </p>
+      <textarea className="jw-textarea" rows={2} value={islamicQ} onChange={(e) => setIslamicQ(e.target.value)} placeholder="مثال: وش معنى «الصلاة معراج المؤمن»؟ أو: أدلة ولاية أمير المؤمنين عليه السلام" aria-label="السؤال للذكاء الإسلامي" />
+      <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="طريقة الجواب">
+        {ISLAMIC_WAYS.map((w) => (
+          <button key={w.id} type="button" role="radio" aria-checked={islamicWay === w.id} title={w.hint} className={`jw-chip text-xs ${islamicWay === w.id ? "!border-jw-accent !bg-jw-accent/15 font-bold" : ""}`} onClick={() => setIslamicWay(w.id)}>
+            {w.label}
+          </button>
+        ))}
+      </div>
+      {askedIslamic > 0 && <p className="text-sm text-jw-ok">✓ انضاف {askedIslamic} جواب من الذكاء الإسلامي لمادتك. تقدر تسأل سؤالًا ثانيًا أو تتابع.</p>}
+      <PaidButton
+        label={askedIslamic ? "اسأل سؤالًا ثانيًا" : "اسأل وضيفه لمادتي"}
+        what="سؤال «الذكاء الإسلامي» من مكتبته، وجوابه بمصادره يصير مصدرًا من مصادر المادة."
+        disabled={running || !islamicQ.trim()}
+        run={async (bb) => {
+          const r = await p.act({ action: "ask_islamic", question: islamicQ, mode: islamicWay, ...bb });
+          if (bb.confirm) setIslamicQ("");
           return r;
         }}
       />
@@ -107,6 +140,7 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
     <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
       <section className="space-y-4">
         {brief.mode === "research" && research}
+        {islamic}
         {brief.mode === "research" && <p className="text-center text-xs text-jw-faint">وتقدر تضيف ملفاتك أيضًا (اختياري):</p>}
         <div
           role="button"
