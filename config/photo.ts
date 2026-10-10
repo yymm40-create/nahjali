@@ -39,24 +39,93 @@ export const DEFAULT_PHOTO_VISIBILITY: PhotoVisibility = "owner";
 
 // ───────────────────────────── adjustments ─────────────────────────────
 
-/** The sliders of the picture (every one 0 = untouched; the ranges are what the page and her commands accept). */
-export const ADJUSTS = [
-  { key: "exposure", label: "السطوع", min: -100, max: 100, hint: "يفتّح أو يغمّق الصورة كلها" },
-  { key: "contrast", label: "التباين", min: -100, max: 100, hint: "الفرق بين الفاتح والغامق" },
-  { key: "highlights", label: "الإضاءات", min: -100, max: 100, hint: "المناطق الفاتحة فقط (تقليلها يرجّع تفاصيل السماء والبشرة المحروقة)" },
-  { key: "shadows", label: "الظلال", min: -100, max: 100, hint: "المناطق الغامقة فقط (رفعها يكشف التفاصيل المخفية)" },
-  { key: "saturation", label: "تشبّع الألوان", min: -100, max: 100, hint: "-100 أبيض وأسود" },
-  { key: "temperature", label: "الحرارة", min: -100, max: 100, hint: "سالب أبرد (أزرق)، موجب أدفأ (أصفر)" },
-  { key: "tint", label: "الصبغة", min: -100, max: 100, hint: "سالب أخضر، موجب بنفسجي مائل للأحمر" },
-  { key: "hue", label: "تدوير اللون", min: -180, max: 180, hint: "يدوّر ألوان الصورة كلها" },
-  { key: "sharpen", label: "الحدّة", min: 0, max: 100, hint: "يوضّح الحواف والتفاصيل" },
-  { key: "blur", label: "التمويه", min: 0, max: 100, hint: "يمّوه الصورة كلها (نسبة من حجمها)" },
-  { key: "vignette", label: "التظليل الحوافي", min: 0, max: 100, hint: "يغمّق الأطراف ليركّز على الوسط" },
-  { key: "grain", label: "الحبيبات", min: 0, max: 100, hint: "حبيبات فيلم تكسر النعومة الزائدة" },
+/** The panels the sliders sit in, in the order a colourist works: light, then colour, then detail, then the finish. */
+export const ADJUST_GROUPS = [
+  { id: "light", label: "الضوء", icon: "☀️", hint: "التعريض والتباين وأطراف المدى — أول ما يُضبط" },
+  { id: "color", label: "اللون", icon: "🎨", hint: "الحرارة والصبغة والتشبّع" },
+  { id: "hsl", label: "لون بلون (HSL)", icon: "🌈", hint: "كل عائلة لون على حدة: درجتها، تشبّعها، إضاءتها" },
+  { id: "detail", label: "التفاصيل", icon: "🔍", hint: "الوضوح والنسيج والحدّة والتمويه" },
+  { id: "effects", label: "اللمسات", icon: "✨", hint: "إزالة الضباب والتظليل والحبيبات" },
 ] as const;
+export type AdjustGroup = (typeof ADJUST_GROUPS)[number]["id"];
+
+/**
+ * The sliders of the picture (every one 0 = untouched; the ranges are what the page and her commands accept). A
+ * `step` under one is the fine grain a colourist needs — the page shows a number beside every slider and the person
+ * types it exactly. The HSL rows are eight colour families, each with its own hue, saturation and brightness, the way
+ * Lightroom's colour mixer works.
+ */
+export const ADJUSTS = [
+  { key: "exposure", group: "light", label: "التعريض", min: -100, max: 100, step: 0.5, hint: "يفتّح أو يغمّق الصورة كلها (ضعف الضوء عند +100)" },
+  { key: "contrast", group: "light", label: "التباين", min: -100, max: 100, step: 0.5, hint: "الفرق بين الفاتح والغامق" },
+  { key: "highlights", group: "light", label: "الإضاءات", min: -100, max: 100, step: 0.5, hint: "المناطق الفاتحة فقط (تقليلها يرجّع تفاصيل السماء والبشرة المحروقة)" },
+  { key: "shadows", group: "light", label: "الظلال", min: -100, max: 100, step: 0.5, hint: "المناطق الغامقة فقط (رفعها يكشف التفاصيل المخفية)" },
+  { key: "whites", group: "light", label: "البيض", min: -100, max: 100, step: 0.5, hint: "طرف الأبيض: وين تبدأ الصورة تحرق" },
+  { key: "blacks", group: "light", label: "السود", min: -100, max: 100, step: 0.5, hint: "طرف الأسود: عمق الظل الصافي" },
+  { key: "temperature", group: "color", label: "الحرارة", min: -100, max: 100, step: 0.5, hint: "سالب أبرد (أزرق)، موجب أدفأ (أصفر)" },
+  { key: "tint", group: "color", label: "الصبغة", min: -100, max: 100, step: 0.5, hint: "سالب أخضر، موجب بنفسجي مائل للأحمر" },
+  { key: "vibrance", group: "color", label: "الحيوية", min: -100, max: 100, step: 0.5, hint: "يرفع الألوان الباهتة ويحمي البشرة والألوان المشبّعة أصلًا" },
+  { key: "saturation", group: "color", label: "التشبّع", min: -100, max: 100, step: 0.5, hint: "كل الألوان بالتساوي (-100 أبيض وأسود)" },
+  { key: "hue", group: "color", label: "تدوير اللون", min: -180, max: 180, step: 0.5, hint: "يدوّر ألوان الصورة كلها" },
+  { key: "clarity", group: "detail", label: "الوضوح", min: -100, max: 100, step: 0.5, hint: "تباين موضعي في النِصف الأوسط — يعطي جسمًا بلا حرق" },
+  { key: "texture", group: "detail", label: "النسيج", min: -100, max: 100, step: 0.5, hint: "تفاصيل دقيقة (شعر، قماش، حجر) بلا هالات" },
+  { key: "sharpen", group: "detail", label: "الحدّة", min: 0, max: 100, step: 0.5, hint: "يوضّح الحواف والتفاصيل" },
+  { key: "blur", group: "detail", label: "التمويه", min: 0, max: 100, step: 0.5, hint: "يمّوه الصورة كلها (نسبة من حجمها)" },
+  { key: "dehaze", group: "effects", label: "إزالة الضباب", min: -100, max: 100, step: 0.5, hint: "يشيل الغبرة والضباب (سالب يضيفها)" },
+  { key: "vignette", group: "effects", label: "التظليل الحوافي", min: -100, max: 100, step: 0.5, hint: "يغمّق الأطراف ليركّز على الوسط (سالب يفتّحها)" },
+  { key: "grain", group: "effects", label: "الحبيبات", min: 0, max: 100, step: 0.5, hint: "حبيبات فيلم تكسر النعومة الزائدة" },
+  { key: "hRed", group: "hsl", label: "أحمر · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (أحمر)" },
+  { key: "hOrange", group: "hsl", label: "برتقالي · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (برتقالي)" },
+  { key: "hYellow", group: "hsl", label: "أصفر · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (أصفر)" },
+  { key: "hGreen", group: "hsl", label: "أخضر · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (أخضر)" },
+  { key: "hAqua", group: "hsl", label: "تركوازي · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (تركوازي)" },
+  { key: "hBlue", group: "hsl", label: "أزرق · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (أزرق)" },
+  { key: "hPurple", group: "hsl", label: "بنفسجي · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (بنفسجي)" },
+  { key: "hMagenta", group: "hsl", label: "أرجواني · الدرجة", min: -100, max: 100, step: 0.5, hint: "يميل اللون نفسه لجاره (أرجواني)" },
+  { key: "sRed", group: "hsl", label: "أحمر · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (أحمر)" },
+  { key: "sOrange", group: "hsl", label: "برتقالي · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (برتقالي)" },
+  { key: "sYellow", group: "hsl", label: "أصفر · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (أصفر)" },
+  { key: "sGreen", group: "hsl", label: "أخضر · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (أخضر)" },
+  { key: "sAqua", group: "hsl", label: "تركوازي · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (تركوازي)" },
+  { key: "sBlue", group: "hsl", label: "أزرق · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (أزرق)" },
+  { key: "sPurple", group: "hsl", label: "بنفسجي · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (بنفسجي)" },
+  { key: "sMagenta", group: "hsl", label: "أرجواني · التشبّع", min: -100, max: 100, step: 0.5, hint: "قوّة هذا اللون وحده (أرجواني)" },
+  { key: "lRed", group: "hsl", label: "أحمر · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (أحمر)" },
+  { key: "lOrange", group: "hsl", label: "برتقالي · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (برتقالي)" },
+  { key: "lYellow", group: "hsl", label: "أصفر · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (أصفر)" },
+  { key: "lGreen", group: "hsl", label: "أخضر · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (أخضر)" },
+  { key: "lAqua", group: "hsl", label: "تركوازي · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (تركوازي)" },
+  { key: "lBlue", group: "hsl", label: "أزرق · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (أزرق)" },
+  { key: "lPurple", group: "hsl", label: "بنفسجي · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (بنفسجي)" },
+  { key: "lMagenta", group: "hsl", label: "أرجواني · الإضاءة", min: -100, max: 100, step: 0.5, hint: "فتحة هذا اللون وحده (أرجواني)" },
+] as const;
+
+/** The eight colour families of the mixer, each with the hue it sits on. */
+export const HSL_BANDS = [
+  { id: "red", label: "أحمر", hue: 0, swatch: "#e23c3c" },
+  { id: "orange", label: "برتقالي", hue: 30, swatch: "#e8853a" },
+  { id: "yellow", label: "أصفر", hue: 60, swatch: "#d8c135" },
+  { id: "green", label: "أخضر", hue: 120, swatch: "#46a84e" },
+  { id: "aqua", label: "تركوازي", hue: 180, swatch: "#34a7a7" },
+  { id: "blue", label: "أزرق", hue: 225, swatch: "#3a6fd8" },
+  { id: "purple", label: "بنفسجي", hue: 270, swatch: "#7a4fd0" },
+  { id: "magenta", label: "أرجواني", hue: 315, swatch: "#c93f93" },
+] as const;
+export type HslBand = (typeof HSL_BANDS)[number]["id"];
+export const HSL_PARTS = [
+  { id: "h", label: "الدرجة", min: -100, max: 100, hint: "يميل اللون نفسه لجاره" },
+  { id: "s", label: "التشبّع", min: -100, max: 100, hint: "قوّة هذا اللون وحده" },
+  { id: "l", label: "الإضاءة", min: -100, max: 100, hint: "فتحة هذا اللون وحده" },
+] as const;
+export type HslPart = (typeof HSL_PARTS)[number]["id"];
+/** The key of one cell of the mixer («hRed», «sBlue», «lAqua»). */
+export const hslKey = (part: HslPart, band: HslBand) => `${part}${band[0].toUpperCase()}${band.slice(1)}`;
+
+
 export type AdjustKey = (typeof ADJUSTS)[number]["key"];
 export type Adjust = Record<AdjustKey, number>;
 export const NO_ADJUST: Adjust = Object.fromEntries(ADJUSTS.map((a) => [a.key, 0])) as Adjust;
+export const adjustDef = (key: AdjustKey) => ADJUSTS.find((a) => a.key === key)!;
 export const isAdjustKey = (v: unknown): v is AdjustKey => typeof v === "string" && ADJUSTS.some((a) => a.key === v);
 
 /** The looks (a ready combination of the sliders, scaled by a strength 0–100). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adjustPixels, effectiveAdjust, isIdentity } from "@/lib/photo/pixels";
+import { adjustPixels, bandWeight, effectiveAdjust, hslToRgb, isIdentity, rgbToHsl } from "@/lib/photo/pixels";
 import { ADJUSTS, FILTERS, NO_ADJUST, type Adjust } from "@config/photo";
 
 const px = (...rgb: number[]) => new Uint8ClampedArray(rgb.flatMap((v, i) => (i % 3 === 2 ? [v, 255] : [v])));
@@ -150,5 +150,127 @@ describe("looks", () => {
       }
     }
     expect(new Set(FILTERS.map((f) => f.id)).size).toBe(FILTERS.length);
+  });
+});
+
+// «خلّى التلوين حيل دقيق»: the colourist's own controls — the ends of the scale, vibrance, local contrast, haze, and a
+// mixer that touches ONE family of colour and leaves the rest alone.
+describe("the colourist's controls", () => {
+  const grad = (n = 64) => new Uint8ClampedArray(Array.from({ length: n * 4 }, (_, i) => (i % 4 === 3 ? 255 : Math.round(((i >> 2) / (n - 1)) * 255))));
+
+  it("every slider in the config does something to the pixels", () => {
+    for (const a of ADJUSTS) {
+      const at = a.max >= 60 ? 60 : a.max;
+      const d = grad();
+      const before = [...d];
+      adjustPixels(d, 8, 8, { ...NO_ADJUST, [a.key]: at } as Adjust);
+      // a mid-grey gradient with a touch of colour, so a colour family has something to grab
+      // one pixel on each family's own hue, so every cell of the mixer has something to grab
+      const col = new Uint8ClampedArray([200, 90, 60, 255, 210, 150, 40, 255, 210, 200, 40, 255, 60, 190, 70, 255, 40, 190, 190, 255, 60, 100, 210, 255, 130, 60, 200, 255, 200, 60, 150, 255]);
+      const colBefore = [...col];
+      adjustPixels(col, 4, 2, { ...NO_ADJUST, [a.key]: at } as Adjust);
+      expect([...d].join() !== before.join() || [...col].join() !== colBefore.join(), `${a.key} changed nothing`).toBe(true);
+    }
+  });
+
+  it("the whites lift the bright end and the blacks the dark end, each leaving the other alone", () => {
+    const [brightUp] = one(240, 240, 240, { whites: 60 });
+    const [darkKept] = one(16, 16, 16, { whites: 60 });
+    expect(brightUp).toBeGreaterThan(240);
+    expect(darkKept).toBeLessThanOrEqual(18);
+    const [darkUp] = one(16, 16, 16, { blacks: 60 });
+    const [brightKept] = one(240, 240, 240, { blacks: 60 });
+    expect(darkUp).toBeGreaterThan(16);
+    expect(brightKept).toBeGreaterThanOrEqual(239);
+  });
+
+  it("vibrance lifts a pale colour much more than a saturated one", () => {
+    const spread = (v: readonly number[]) => Math.max(v[0], v[1], v[2]) - Math.min(v[0], v[1], v[2]);
+    const paleGain = (spread(one(150, 130, 120, { vibrance: 80 })) - 30) / 30;
+    const strongGain = (spread(one(240, 20, 20, { vibrance: 80 })) - 220) / 220;
+    expect(paleGain).toBeGreaterThan(0.5);
+    expect(strongGain).toBeLessThan(paleGain / 5);
+  });
+
+  it("clarity and texture add local contrast, and give it back on the way down", () => {
+    for (const key of ["clarity", "texture"] as const) {
+      const up = grad();
+      const down = grad();
+      adjustPixels(up, 8, 8, { ...NO_ADJUST, [key]: 80 } as Adjust);
+      adjustPixels(down, 8, 8, { ...NO_ADJUST, [key]: -80 } as Adjust);
+      expect(variance(up), `${key} up`).toBeGreaterThan(variance(down));
+    }
+  });
+
+  it("dehaze adds contrast and colour; a negative one puts the veil back", () => {
+    const clear = grad();
+    const hazy = grad();
+    adjustPixels(clear, 8, 8, { ...NO_ADJUST, dehaze: 80 });
+    adjustPixels(hazy, 8, 8, { ...NO_ADJUST, dehaze: -80 });
+    expect(variance(clear)).toBeGreaterThan(variance(hazy));
+  });
+
+  it("the vignette darkens the edges, and a negative one lifts them", () => {
+    const n = 9;
+    const flat = () => new Uint8ClampedArray(Array.from({ length: n * n * 4 }, (_, i) => (i % 4 === 3 ? 255 : 128)));
+    const dark = flat();
+    const light = flat();
+    adjustPixels(dark, n, n, { ...NO_ADJUST, vignette: 80 });
+    adjustPixels(light, n, n, { ...NO_ADJUST, vignette: -80 });
+    expect(dark[0]).toBeLessThan(128);
+    expect(light[0]).toBeGreaterThan(128);
+    // the middle is untouched either way
+    const mid = (Math.floor(n / 2) * n + Math.floor(n / 2)) * 4;
+    expect(dark[mid]).toBe(128);
+    expect(light[mid]).toBe(128);
+  });
+
+  describe("the colour mixer (HSL), family by family", () => {
+    it("moves only the family it is asked for", () => {
+      // a red pixel and a blue one: pulling the blues leaves the red where it was
+      const red = one(220, 40, 40, { sBlue: -100, lBlue: -60, hBlue: 60 });
+      expect(red.slice(0, 3)).toEqual([220, 40, 40]);
+      const blue = one(40, 70, 220, { sBlue: -100 });
+      const spread = Math.max(blue[0], blue[1], blue[2]) - Math.min(blue[0], blue[1], blue[2]);
+      expect(spread).toBeLessThan(30);
+    });
+
+    it("its saturation, brightness and hue each move the right way", () => {
+      const base = [60, 120, 210] as const;
+      const dull = one(...base, { sBlue: -80 });
+      const rich = one(...base, { sBlue: 80 });
+      const sp = (v: readonly number[]) => Math.max(...v.slice(0, 3)) - Math.min(...v.slice(0, 3));
+      expect(sp(dull)).toBeLessThan(sp(base));
+      expect(sp(rich)).toBeGreaterThan(sp(base));
+      const dark = one(...base, { lBlue: -80 });
+      const bright = one(...base, { lBlue: 80 });
+      const lum = (v: readonly number[]) => 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+      expect(lum(dark)).toBeLessThan(lum(base));
+      expect(lum(bright)).toBeGreaterThan(lum(base));
+      // the hue of the family itself leans, without becoming grey
+      const leaned = one(...base, { hBlue: 100 });
+      expect(rgbToHsl(leaned[0] / 255, leaned[1] / 255, leaned[2] / 255)[0]).not.toBeCloseTo(rgbToHsl(base[0] / 255, base[1] / 255, base[2] / 255)[0], 1);
+    });
+
+    it("grey is never coloured by the mixer", () => {
+      for (const v of [0, 60, 128, 200, 255]) expect(one(v, v, v, { sRed: 100, sBlue: 100, hGreen: 100, lMagenta: -100 }).slice(0, 3)).toEqual([v, v, v]);
+    });
+
+    it("a family's weight is 1 at its own hue and 0 past 45°", () => {
+      expect(bandWeight(0, 0)).toBeCloseTo(1, 5);
+      expect(bandWeight(45, 0)).toBe(0);
+      expect(bandWeight(350, 0)).toBeGreaterThan(0);
+      expect(bandWeight(180, 0)).toBe(0);
+    });
+
+    it("hsl and rgb come back to themselves", () => {
+      for (const [r, g, b] of [[0.2, 0.5, 0.9], [1, 0, 0], [0.5, 0.5, 0.5], [0.07, 0.3, 0.12]]) {
+        const [h, s, l] = rgbToHsl(r, g, b);
+        const back = hslToRgb(h, s, l);
+        expect(back[0]).toBeCloseTo(r, 4);
+        expect(back[1]).toBeCloseTo(g, 4);
+        expect(back[2]).toBeCloseTo(b, 4);
+      }
+    });
   });
 });

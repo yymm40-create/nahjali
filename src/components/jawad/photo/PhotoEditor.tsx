@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ADJUSTS, FILTERS, PHOTO, RATIOS, SIZE_PRESETS, type AdjustKey } from "@config/photo";
+import { ADJUSTS, ADJUST_GROUPS, FILTERS, HSL_BANDS, HSL_PARTS, NO_ADJUST, PHOTO, RATIOS, SIZE_PRESETS, hslKey, type AdjustGroup, type AdjustKey, type HslBand } from "@config/photo";
 import { LAYER_EFFECTS } from "@config/designer";
 import { applyOp, docChanges, readDoc, type Op, type PhotoDoc, type PhotoLayer, type ShapeLayer, type TextLayer } from "@/lib/photo/doc";
 import { postJson } from "@/lib/fetch";
@@ -39,13 +39,16 @@ interface ProjectView {
 type Tab = "adjust" | "filters" | "crop" | "layers" | "zahraa";
 type Ask = { kind: "generate" | "cutout" | "edit"; prompt: string; aspect: string; target: "base" | "layer" | "file"; source: string };
 
-const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: "zahraa", icon: "✨", label: "زهراء" },
-  { id: "adjust", icon: "🎚️", label: "تعديل" },
-  { id: "filters", icon: "🎞️", label: "فلاتر" },
-  { id: "crop", icon: "✂️", label: "قص ومقاس" },
-  { id: "layers", icon: "🗂️", label: "طبقات" },
+/** The tool rail on the LEFT, the way a design app is laid out: a tool is pressed, its own panel opens on the right. */
+const TABS: { id: Tab; icon: string; label: string; hint: string }[] = [
+  { id: "zahraa", icon: "✨", label: "زهراء", hint: "اطلب أي تعديل بالكلام" },
+  { id: "adjust", icon: "🎚️", label: "التلوين", hint: "الضوء واللون والتفاصيل — مثل لايت روم" },
+  { id: "filters", icon: "🎞️", label: "لوكات", hint: "لوك جاهز بقوّة تتحكم فيها" },
+  { id: "crop", icon: "✂️", label: "قص ومقاس", hint: "النسبة والمقاس والتدوير" },
+  { id: "layers", icon: "🗂️", label: "طبقات", hint: "نص وأشكال وصور، وكل عنصر على حدة" },
 ];
+/** How far the picture is zoomed on the stage: «يناسب الشاشة» or a real number. */
+const ZOOMS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
 const MAX_HISTORY = 60;
 const STAGE_PREVIEW = 1100;
 
@@ -79,6 +82,11 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
   const [focus, setFocus] = useState({ x: 50, y: 50 });
   const [msg, setMsg] = useState("");
   const [typing, setTyping] = useState(false);
+  // the stage: «يناسب» or a zoom, and «قبل/بعد» held down to see the picture before any colouring
+  const [zoom, setZoom] = useState<number | "fit">("fit");
+  const [compare, setCompare] = useState(false);
+  const [band, setBand] = useState<HslBand>("red");
+  const [shut, setShut] = useState<Record<string, boolean>>({});
 
   const canvas = useRef<HTMLCanvasElement>(null);
   const docRef = useRef<PhotoDoc | null>(null);
@@ -145,15 +153,17 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     if (!doc || !canvas.current || !fonts.length) return;
     const token = ++renderToken.current;
     const c = canvas.current;
+    // «قبل»: the same project with every slider and look off, so the eye compares the real before and after
+    const shown = compare ? { ...doc, adjust: { ...NO_ADJUST }, filter: { id: "none", strength: 0 } } : doc;
     const raf = requestAnimationFrame(() => {
-      void ensureFonts(doc, fonts).then(() => {
+      void ensureFonts(shown, fonts).then(() => {
         if (token !== renderToken.current) return;
-        const k = Math.min(1, STAGE_PREVIEW / Math.max(doc.width, doc.height));
-        setBoxes(renderPhoto(c, doc, { scale: k, images, fonts }));
+        const k = Math.min(1, STAGE_PREVIEW / Math.max(shown.width, shown.height));
+        setBoxes(renderPhoto(c, shown, { scale: k, images, fonts }));
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [doc, images, fonts]);
+  }, [doc, images, fonts, compare]);
 
   // ── history
   const push = (d: PhotoDoc) => {
@@ -460,9 +470,23 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
       )}
 
       <div className="ph-body">
+        <nav className="ph-rail" role="tablist" aria-label="الأدوات">
+          {TABS.map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} title={t.hint} onClick={() => setTab(t.id)}>
+              <span aria-hidden>{t.icon}</span>
+              <small>{t.id === "zahraa" ? persona : t.label}</small>
+            </button>
+          ))}
+          <span className="ph-rail-gap" />
+          <button type="button" className="ph-rail-add" title="أضف صورة أساسية" onClick={() => pickBase.current?.click()}>
+            <span aria-hidden>📷</span>
+            <small>صورة</small>
+          </button>
+        </nav>
+
         <section className="ph-stage-col">
           <div className="ph-stage" onPointerDown={() => setSelected(null)}>
-            <div className="ph-canvas-wrap" ref={stage}>
+            <div className={`ph-canvas-wrap${zoom === "fit" ? " fit" : ""}`} ref={stage} style={zoom === "fit" ? undefined : { width: `${Math.round(Math.min(doc.width, STAGE_PREVIEW) * zoom)}px` }}>
               <canvas ref={canvas} className="ph-canvas" />
               {!doc.base && !doc.layers.length && <button type="button" className="ph-empty" onClick={() => pickBase.current?.click()}>📷 اضغط لإضافة صورة</button>}
               {canvas.current && boxes.map((b) => {
@@ -482,32 +506,83 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
               })}
             </div>
           </div>
+          <div className="ph-stage-bar">
+            <button type="button" className={zoom === "fit" ? "on" : ""} onClick={() => setZoom("fit")} title="يناسب الشاشة">⤢ يناسب</button>
+            <button type="button" onClick={() => setZoom((z) => (z === "fit" ? 0.75 : ZOOMS[Math.max(0, ZOOMS.indexOf(z) - 1)] ?? 0.25))} aria-label="تصغير">−</button>
+            <b>{zoom === "fit" ? "تلقائي" : `${Math.round(zoom * 100)}%`}</b>
+            <button type="button" onClick={() => setZoom((z) => (z === "fit" ? 1.5 : ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + 1)] ?? 4))} aria-label="تكبير">+</button>
+            <span className="ph-stage-gap" />
+            <button
+              type="button"
+              className={compare ? "on" : ""}
+              title="اضغط باستمرار لترى الصورة قبل التلوين"
+              onPointerDown={() => setCompare(true)}
+              onPointerUp={() => setCompare(false)}
+              onPointerLeave={() => setCompare(false)}
+              onKeyDown={(e) => e.key === " " && setCompare(true)}
+              onKeyUp={() => setCompare(false)}
+            >
+              👁️ قبل / بعد
+            </button>
+            <small className="ph-stage-size">{doc.width}×{doc.height}</small>
+          </div>
           <input ref={pickBase} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f, "base"); e.target.value = ""; }} />
           <input ref={picker} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f, "layer"); e.target.value = ""; }} />
         </section>
 
         <aside className="ph-panel">
-          <nav className="ph-tabs" role="tablist">
-            {TABS.map((t) => (
-              <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
-                <span>{t.icon}</span> {t.id === "zahraa" ? persona : t.label}
-              </button>
-            ))}
-          </nav>
+          <header className="ph-panel-head">
+            <b>{TABS.find((t) => t.id === tab)!.icon} {tab === "zahraa" ? persona : TABS.find((t) => t.id === tab)!.label}</b>
+            <small>{TABS.find((t) => t.id === tab)!.hint}</small>
+          </header>
 
           {tab === "adjust" && (
             <div className="ph-pane">
-              <p className="ph-hint">{doc.base ? "الشرائح تؤثر على الصورة الأساسية فقط، لا على النصوص." : "أضف صورة أساسية لتظهر آثار الشرائح."}</p>
-              {ADJUSTS.map((a) => (
-                <label key={a.key} className="ph-slider" title={a.hint}>
-                  <span>{a.label}<b>{doc.adjust[a.key]}</b></span>
-                  <input
-                    type="range" min={a.min} max={a.max} value={doc.adjust[a.key]}
-                    onChange={(e) => op({ op: "adjust", values: { [a.key as AdjustKey]: Number(e.target.value) } }, true)}
-                    onPointerUp={endGesture} onKeyUp={endGesture} onDoubleClick={() => op({ op: "adjust", values: { [a.key as AdjustKey]: 0 } })}
-                  />
-                </label>
-              ))}
+              <p className="ph-hint">{doc.base ? "الشرائح على الصورة الأساسية (لا على النصوص). اضغط مرتين على أي شريحة ترجع صفر، أو اكتب الرقم بيدك." : "أضف صورة أساسية لتظهر آثار الشرائح."}</p>
+              {ADJUST_GROUPS.map((g) => {
+                const rows = ADJUSTS.filter((a) => a.group === g.id);
+                const touched = rows.filter((a) => doc.adjust[a.key]).length;
+                const open = !shut[g.id];
+                return (
+                  <section key={g.id} className={`ph-group${open ? " open" : ""}`}>
+                    <button type="button" className="ph-group-head" aria-expanded={open} onClick={() => setShut((x) => ({ ...x, [g.id]: open }))}>
+                      <span aria-hidden>{g.icon}</span>
+                      <b>{g.label}</b>
+                      {touched > 0 && <i className="ph-dot" title={`${touched} معدّلة`}>{touched}</i>}
+                      <small>{g.hint}</small>
+                      <em aria-hidden>{open ? "▾" : "▸"}</em>
+                    </button>
+                    {open && (g.id === "hsl" ? (
+                      <div className="ph-mixer">
+                        <div className="ph-bands" role="tablist" aria-label="عائلات الألوان">
+                          {HSL_BANDS.map((b) => {
+                            const used = HSL_PARTS.some((p) => doc.adjust[hslKey(p.id, b.id) as AdjustKey]);
+                            return (
+                              <button key={b.id} type="button" role="tab" aria-selected={band === b.id} className={`${band === b.id ? "on" : ""}${used ? " used" : ""}`} style={{ ["--sw" as string]: b.swatch }} title={b.label} onClick={() => setBand(b.id)}>
+                                <span aria-hidden />
+                                <small>{b.label}</small>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {HSL_PARTS.map((part) => {
+                          const key = hslKey(part.id, band) as AdjustKey;
+                          const def = ADJUSTS.find((a) => a.key === key)!;
+                          return <Slide key={key} label={part.label} hint={def.hint} min={def.min} max={def.max} step={def.step} value={doc.adjust[key]} onLive={(v) => op({ op: "adjust", values: { [key]: v } }, true)} onDone={endGesture} />;
+                        })}
+                        <button type="button" className="ph-btn ph-quiet" onClick={() => op({ op: "adjust", values: Object.fromEntries(HSL_PARTS.map((p) => [hslKey(p.id, band), 0])) })}>صفّر هذا اللون</button>
+                      </div>
+                    ) : (
+                      <div className="ph-rows">
+                        {rows.map((a) => (
+                          <Slide key={a.key} label={a.label} hint={a.hint} min={a.min} max={a.max} step={a.step} value={doc.adjust[a.key]} onLive={(v) => op({ op: "adjust", values: { [a.key]: v } }, true)} onDone={endGesture} />
+                        ))}
+                        {touched > 0 && <button type="button" className="ph-btn ph-quiet" onClick={() => op({ op: "adjust", values: Object.fromEntries(rows.map((a) => [a.key, 0])) })}>صفّر {g.label}</button>}
+                      </div>
+                    ))}
+                  </section>
+                );
+              })}
               <button type="button" className="ph-btn" onClick={() => op({ op: "adjust_reset" })}>تصفير كل الشرائح والفلتر</button>
             </div>
           )}
@@ -704,3 +779,41 @@ function LayerSettings({ layer, fonts, patch, end, cutout, onCutout }: { layer: 
   );
 }
 
+/**
+ * One control of the colourist's panel: a slider for the hand and a NUMBER for the eye — the number is typed exactly
+ * (that is what «تلوين دقيق» means), the arrows step by the slider's own grain, and a double-click returns to zero.
+ */
+function Slide({ label, hint, min, max, step, value, onLive, onDone }: { label: string; hint: string; min: number; max: number; step: number; value: number; onLive: (v: number) => void; onDone: () => void }) {
+  const set = (v: number) => onLive(Math.max(min, Math.min(max, Math.round(v / step) * step)));
+  return (
+    <label className="ph-slide" title={hint}>
+      <span className="ph-slide-top">
+        <b>{label}</b>
+        <input
+          className="ph-num"
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={Number.isInteger(value) ? value : Math.round(value * 10) / 10}
+          aria-label={`${label} بالرقم`}
+          onChange={(e) => e.target.value !== "" && set(Number(e.target.value))}
+          onBlur={onDone}
+        />
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={label}
+        className={value ? "on" : ""}
+        onChange={(e) => onLive(Number(e.target.value))}
+        onPointerUp={onDone}
+        onKeyUp={onDone}
+        onDoubleClick={() => { onLive(0); onDone(); }}
+      />
+    </label>
+  );
+}
