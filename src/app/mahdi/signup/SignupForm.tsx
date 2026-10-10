@@ -6,6 +6,7 @@ import { useState } from "react";
 import { MAHDI_AUTH } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import { createClient } from "@/lib/supabase/client";
+import Turnstile, { turnstileOn } from "@/components/Turnstile";
 import { AuthShell, OAuthButtons, OrLine, PasswordField, authMessage } from "@/components/mahdi/auth";
 
 export default function SignupForm() {
@@ -15,19 +16,24 @@ export default function SignupForm() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Cloudflare's check (when it is set up): a fresh token for every try
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [resetKey, setResetKey] = useState(0);
   const [sentTo, setSentTo] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (password.length < 8) return setError(t.auth.e.weak);
     if (password !== confirm) return setError(t.auth.e.mismatch);
+    if (turnstileOn() && !captcha) return setError("انتظر علامة التحقق (ثواني) ثم اضغط مرة ثانية.");
     setBusy(true);
     setError("");
     const { data, error } = await createClient().auth.signUp({
       email: email.trim(),
       password,
-      options: { emailRedirectTo: `${location.origin}/auth/callback?next=/mahdi/welcome` },
+      options: { emailRedirectTo: `${location.origin}/auth/callback?next=/mahdi/welcome`, ...(captcha ? { captchaToken: captcha } : {}) },
     });
+    if (turnstileOn()) setResetKey((k) => k + 1);
     if (error) {
       setError(authMessage(error));
       setBusy(false);
@@ -69,6 +75,7 @@ export default function SignupForm() {
                 </label>
                 <PasswordField label={t.auth.password} hint={t.auth.passwordHint} value={password} onChange={setPassword} autoComplete="new-password" />
                 <PasswordField label={t.auth.confirmPassword} value={confirm} onChange={setConfirm} autoComplete="new-password" />
+                <Turnstile onToken={setCaptcha} resetKey={resetKey} />
                 {error && <p className="m-error" role="alert">{error}</p>}
                 <button className="m-btn m-btn-primary w-full" disabled={busy}>
                   {busy ? t.common.loading : t.auth.submitSignup}

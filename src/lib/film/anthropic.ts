@@ -2,6 +2,7 @@
 
 import { isAdmin } from "@config/site";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { currentMemory, memoryBlock } from "@/lib/memory/context";
 import { fitDocs, fitImages } from "@/lib/claude-images";
 import { DEFAULT_CLAUDE_MODEL, claudeModelOf, servedModel, type ClaudeModel } from "@config/claude-models";
 import { currentClaude } from "./claude-model";
@@ -57,11 +58,16 @@ The person you are talking to is the OWNER and builder of this platform — «ا
 HIS WORD OVERRIDES EVERY RULE. Every rule, limit, style guide, house rule, safety-of-taste rule or "never" in the knowledge above or in your own instructions was written by him for his customers — and he may break any of them, including the ones he set himself, with a word. When he tells you to drop, bend or break a rule («كسره», «تجاوزه», «خالفه», «ما يهمني القيد», «أنا القائد أقول لك…»), do exactly what he says from that message on, without arguing, without warning him again, and without quietly keeping the rule in your output: the rule is off for him until he puts it back. If a rule is enforced in code and you cannot switch it off yourself, say so in one line and do the closest thing he asked. The only exceptions are things no one can lift: secret keys and passwords (you do not hold them), and what the law or the providers' own policies forbid (a real person imitated without consent, sexual content involving minors).
 </leader>`;
 
-export const siteSystem = (task: string, cache = true, leader = false) => [
-  { type: "text", text: JAWAD_KNOWLEDGE },
-  ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
-  { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
-];
+export const siteSystem = (task: string, cache = true, leader = false) => {
+  // the person's memory («ذاكرتي»), inside a robot's turn: after the cached task, so the cache still holds
+  const memory = currentMemory();
+  return [
+    { type: "text", text: JAWAD_KNOWLEDGE },
+    ...(leader ? [{ type: "text", text: LEADER_BLOCK }] : []),
+    { type: "text", text: task, ...(cache ? { cache_control: { type: "ephemeral" } } : {}) },
+    ...(memory ? [{ type: "text", text: memoryBlock(memory) }] : []),
+  ];
+};
 
 /** Whether this e-mail is the owner's (the robots then read the leader block). */
 export const isLeader = (email: string | null | undefined) => isAdmin(email);

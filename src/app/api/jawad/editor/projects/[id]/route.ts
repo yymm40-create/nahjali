@@ -136,7 +136,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "grade_check":
       return NextResponse.json(await gradeCheck(p, who, b, new URL(req.url).origin));
     case "assistant":
-      return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرة", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd));
+      return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرة", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply }));
     case "fix_link":
       return NextResponse.json({ asset: await linkForFix(p, user, b) });
     // حيدرة approved the smart edits of a film video: the exported version goes to سجاد (upload, then confirm)

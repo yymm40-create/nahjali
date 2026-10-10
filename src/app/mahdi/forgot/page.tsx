@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { createClient } from "@/lib/supabase/client";
+import Turnstile, { turnstileOn } from "@/components/Turnstile";
 import { AuthShell, authMessage } from "@/components/mahdi/auth";
 
 /** Sends a reset link. The answer is the same whether or not the email is registered. */
@@ -12,14 +13,20 @@ export default function ForgotPage() {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  // Cloudflare's check (when it is set up): a fresh token for every try
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [resetKey, setResetKey] = useState(0);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (turnstileOn() && !captcha) return setError("انتظر علامة التحقق (ثواني) ثم اضغط مرة ثانية.");
     setBusy(true);
     setError("");
     const { error } = await createClient().auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${location.origin}/auth/callback?next=/mahdi/reset`,
+      ...(captcha ? { captchaToken: captcha } : {}),
     });
+    if (turnstileOn()) setResetKey((k) => k + 1);
     setBusy(false);
     // Rate limits and broken delivery are shown; "no such user" is never revealed
     if (error && (error.status === 429 || error.code === "email_address_not_authorized")) return setError(authMessage(error));
@@ -37,6 +44,7 @@ export default function ForgotPage() {
             <span className="m-label">{t.auth.email}</span>
             <input className="m-field" type="email" dir="ltr" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </label>
+          <Turnstile onToken={setCaptcha} resetKey={resetKey} />
           {error && <p className="m-error" role="alert">{error}</p>}
           <button className="m-btn m-btn-primary w-full" disabled={busy}>
             {busy ? t.common.loading : t.auth.forgotSubmit}
