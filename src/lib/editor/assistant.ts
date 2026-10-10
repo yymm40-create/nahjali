@@ -20,7 +20,7 @@ import { MAJED_SKILL } from "./majed";
 import { lintMotion, motionCommands, motionPlan, narrationMs, readStoryboard, SFX, storyboardNumbers, type Fit, type SfxKind } from "./motion-build";
 import { makeMotionArt } from "./generate";
 import { motionExamplesBrief, nearestMotionExamples } from "./motion-bank";
-import { planFrames, readFace, readTalk, talkArt, talkCommands } from "./talk-motion";
+import { planFrames, readFace, readTalk, talkArt, talkCommands, talkLayoutInText } from "./talk-motion";
 import { TALK_STYLES_SKILL, talkStyleInText } from "./talk-styles";
 import type { AssetView } from "./server";
 import { applyAll } from "./commands";
@@ -262,6 +262,16 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const named = styleInText(message);
   // the feeling named in the words (the storyboard keeps its own when it has one)
   const feeling = moodInText(message);
+  // THE FRAME THE PERSON ASKED FOR, in their own words («اقسمني نصين», «سو مربع صغير») or by a skill's name — and
+  // whether there is a FILMED clip with speech to put it on. Together they are an order, not a suggestion: such a
+  // request gets motion on the person's own video, never a full-screen storyboard that covers them.
+  const wantFrame = named?.talk ?? talkLayoutInText(message);
+  const spoken = new Set([...transcripts].filter(([, v]) => v && Object.keys(v).length).map(([id]) => id));
+  const onTl = tl.tracks.flatMap((t) => t.clips);
+  const talkingClip = onTl.find((c) => c.assetId && spoken.has(c.assetId)) ?? null;
+  // a filmed clip with no captions yet still forbids a full-screen storyboard: the captions come first («talk_motion»)
+  const filmedClip = talkingClip ?? onTl.find((c) => c.assetId && infos.get(c.assetId)?.kind === "video") ?? null;
+  const frameOrder = Boolean(wantFrame && filmedClip);
   // a motion request: the closest worked pieces of the site's bank (same feeling and skill, then the topic's words) ride with it as examples
   const motionAsk = Boolean((named && !named.talk) || feeling || /موشن|motion|إنفوجرافيك|انفوجرافيك|تايبوغرافي|كلمات طائرة/i.test(message));
   const examples = motionAsk ? motionExamplesBrief(nearestMotionExamples(message, { mood: feeling?.id, style: named && !named.talk ? named.id : undefined }, 2)) : "";
@@ -273,7 +283,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
         ] as ClaudeTurn[])
       : []),
     ...history,
-    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${examples ? `\n\n${examples}` : ""}${b.spoken === true ? SPOKEN : ""}${named ? (named.talk ? `\n\n(The person named «${named.ar}»: motion on their talking video — write "talk" with "layout":"${named.talk}" (or ONLY the talk_motion request when the clip has no "speech" yet); whatever else they asked in these words wins.)` : `\n\n(The person named the motion skill «${named.ar}»: build it with "style":"${named.id}"; whatever else they asked in these words wins over the skill.)`) : ""}` },
+    { role: "user", content: `TIMELINE:\n${JSON.stringify({ ...context(tl, assets, transcripts, b), voices: await ownVoiceNames(p.user_id).catch(() => []) })}\n\nREQUEST:\n${message}${examples ? `\n\n${examples}` : ""}${b.spoken === true ? SPOKEN : ""}${wantFrame ? `\n\n(THE PERSON ASKED FOR A FRAME ON THEIR OWN FILMED VIDEO${named?.talk ? ` — «${named.ar}»` : ""}: write "talk" with "layout":"${wantFrame}" and LEAVE "motion" EMPTY. A storyboard would cover them; their video stays on the screen and the graphics take only the part the frame leaves. ${talkingClip ? `The talking clip is ${talkingClip.id}.` : filmedClip ? `No clip has "speech" yet — send ONLY {"kind":"talk_motion","clipId":"${filmedClip.id}"} and nothing else (the page writes the captions and asks you again).` : ""} Whatever else they asked in these words wins.)` : named ? `\n\n(The person named the motion skill «${named.ar}»: build it with "style":"${named.id}"; whatever else they asked in these words wins over the skill.)` : ""}` },
   ];
   const merged = turns.reduce<ClaudeTurn[]>((m, t) => {
     const last = m[m.length - 1];
@@ -348,6 +358,24 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       /* keep the first answer's valid part */
     }
   }
+  // THE FRAME THE PERSON ASKED FOR HOLDS. A reel of them talking never becomes a full-screen storyboard: when the
+  // answer came back with one anyway, it is asked for again as cues on their video — and the storyboard is dropped.
+  const askedTalk = () => Boolean(answer.talk?.trim() || (answer.requests ?? []).some((q) => (q as { kind?: string }).kind === "talk_motion"));
+  if (frameOrder && answer.motion?.trim() && !askedTalk()) {
+    try {
+      const again = await ask([
+        ...merged,
+        { role: "assistant", content: r.raw },
+        { role: "user", content: `WRONG SHAPE: this is a FILMED REEL of the person talking (clip ${filmedClip!.id}), and they asked for «${wantFrame}» — their video must stay on the screen with the graphics only in the part the frame leaves. Send the whole answer again with "motion" EMPTY and ${talkingClip ? `"talk" (layout "${wantFrame}", the cues on the moments worth explaining, each carrying the words actually said)` : `ONLY the request {"kind":"talk_motion","clipId":"${filmedClip!.id}"}`}.` },
+      ]);
+      answer = again.data;
+      result = check(answer.commands ?? []);
+    } catch {
+      /* keep the first answer */
+    }
+  }
+  // their own video stays the reel: a storyboard is never built over it
+  if (frameOrder && askedTalk()) answer.motion = "";
   let valid = result.error ? result.cmds.slice(0, result.error.i) : result.cmds;
   // «موشن جرافيكس»: the storyboard laid out by the engine (sizes, places, timing, colours measured), after his commands
   let motionNote = "";
@@ -394,8 +422,8 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // «موشن على كلامه»: the cues laid over the talking video by the engine (icons and routes drawn here)
   const talk = answer.talk?.trim() ? readTalk(answer.talk, Math.max(...tl.tracks.flatMap((t) => t.clips.map((c) => c.start + (c.out - c.in) / c.speed)), 0)) : null;
   if (talk) {
-    // the skill named in the words decides the layout; the face found by the page places the box and the cues
-    if (named?.talk) talk.layout = named.talk;
+    // the frame the person named in their own words decides the layout; the face found by the page places it
+    if (wantFrame) talk.layout = wantFrame;
     // the look the person named in their words («ستايل دفتر», «كوميك») wins over the one chosen
     const namedStyle = talkStyleInText(message);
     if (namedStyle) talk.style = namedStyle.id;

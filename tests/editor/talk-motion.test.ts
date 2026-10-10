@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAll, type Command } from "@/lib/editor/commands";
 import { clipEnd, emptyTimeline, mainTrack, transformAt, type AssetInfo, type Ratio, type Timeline } from "@/lib/editor/model";
 import { lintMotion } from "@/lib/editor/motion-build";
-import { BRANDS, CUE_EVERY_MS, CUE_GAP_MS, cueTimes, readTalk, talkArt, talkCommands, talkLayout, windowsOf, type TalkPlan } from "@/lib/editor/talk-motion";
+import { BRANDS, CUE_EVERY_MS, CUE_GAP_MS, cueTimes, readTalk, talkLayoutInText, talkArt, talkCommands, talkLayout, windowsOf, type TalkPlan } from "@/lib/editor/talk-motion";
 
 // a talking video of 40 s, cut into pieces like after «قص السكتات», with captions every 2 s — then 100 plans on it
 const RATIOS: Ratio[] = ["9:16", "16:9", "1:1", "4:5"];
@@ -139,5 +139,39 @@ describe("the graphics are guests on the reel, not the reel", () => {
   it("the frame changes unless one frame was asked for", () => {
     expect(readTalk({ cues: [{ kind: "word", at: 1000, text: "كلمة" }] }, 30_000)!.layout).toBe("mix");
     expect(readTalk({ layout: "corner", cues: [{ kind: "word", at: 1000, text: "كلمة" }] }, 30_000)!.layout).toBe("corner");
+  });
+});
+
+// «مع اني قايله سو مربع صغير»: the frame the person asks for in their own words is read from the message itself, so
+// it is applied whatever the robot chose.
+describe("the frame the person asked for, in their own words", () => {
+  const cases: [string, string][] = [
+    ["اقسمني نصين وسو موشن", "split"],
+    ["قسّم الشاشة نصين", "split"],
+    ["ابي سبليت سكرين", "split"],
+    ["سو مربع صغير", "shrink"],
+    ["صغرني وحط الكلام فوق", "shrink"],
+    ["خليني صغير في الزاوية", "corner"],
+    ["حطني بدايرة بالزاويه", "corner"],
+    ["نوّع الإطار كل مرة", "mix"],
+    ["ابيه ثلاثي الابعاد فوق كلامي", "over3d"],
+    ["لا تصغرني خلني بملء الشاشة", "over"],
+  ];
+  for (const [said, layout] of cases) it(`«${said}» → ${layout}`, () => expect(talkLayoutInText(said)).toBe(layout));
+
+  it("the longest wording wins, so «بدون مربع» is not «مربع»", () => {
+    expect(talkLayoutInText("ابي الموشن بدون مربع")).toBe("over3d");
+  });
+
+  it("guesses nothing when no frame was named", () => {
+    expect(talkLayoutInText("ركب موشن على كلامي")).toBeNull();
+    expect(talkLayoutInText("")).toBeNull();
+  });
+
+  it("whatever it reads is a layout the engine builds", () => {
+    for (const [said] of cases) {
+      const p = readTalk({ layout: talkLayoutInText(said), cues: [{ kind: "word", at: 1000, text: "كلمة" }] }, 30_000)!;
+      expect(p.layout).toBe(talkLayoutInText(said));
+    }
   });
 });
