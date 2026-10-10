@@ -34,6 +34,7 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
       { href: "/admin/content", icon: "✍️", label: "صانع المحتوى" },
       { href: "/admin/designer", icon: "🎨", label: "المصمم الذكي" },
       { href: "/admin/photo", icon: "📸", label: "زهراء فوتو ماستر" },
+      { href: "/admin/kharq", icon: "🧠", label: "محمد الخارق" },
       { href: "/admin/credits", icon: "💳", label: "باقات الرصيد والشحن" },
       { href: "/admin/share", icon: "🎁", label: "انشرنا واربح" },
       { href: "/admin/course", icon: "🎓", label: "دورة الجواد" },
