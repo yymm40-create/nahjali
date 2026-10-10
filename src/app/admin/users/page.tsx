@@ -3,13 +3,16 @@ import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import { accessList } from "@/lib/access";
 import { PERMS } from "@config/access";
 import { isAdmin } from "@config/site";
+import Riyal from "@/components/Riyal";
 
 export const metadata = { title: "المستخدمون والصلاحيات · لوحة التحكم" };
 export const dynamic = "force-dynamic";
 
 const PER_PAGE = 50;
 const timeNow = () => Date.now();
-const fmt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh", dateStyle: "medium" }) : "—");
+const fmt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }) : "—");
+/** What came in (a top-up, the owner's grant, a gift) and what went out (generations), from the ledger. */
+const IN = new Set(["grant", "purchase"]);
 
 /** Everyone on the site: search, and each person's permissions one click away. */
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; filter?: string }> }) {
@@ -26,11 +29,21 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     .filter((u) => !q || u.email.includes(q) || u.name.toLowerCase().includes(q));
   if (filter === "custom") list = list.filter((u) => overrides.has(u.email));
   if (filter === "active") list = list.filter((u) => u.last && timeNow() - new Date(u.last).getTime() < 7 * 24 * 3600_000);
+  if (filter === "new") list = list.filter((u) => timeNow() - new Date(u.created).getTime() < 3 * 24 * 3600_000);
   list.sort((a, b) => (a.created < b.created ? 1 : -1));
   const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
   const shown = list.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const { data: wallets } = shown.length ? await db.from("smart_coin_wallets").select("user_id,balance,library_until").in("user_id", shown.map((u) => u.id)) : { data: [] };
   const wallet = new Map(((wallets ?? []) as { user_id: string; balance: number; library_until: string | null }[]).map((w) => [w.user_id, w]));
+  // each shown person's money: what came in and what was spent (generations net of refunds)
+  const { data: moves } = shown.length ? await db.from("smart_coin_ledger").select("user_id,delta,reason").in("user_id", shown.map((u) => u.id)).limit(20_000) : { data: [] };
+  const money = new Map<string, { got: number; spent: number }>();
+  for (const m of (moves ?? []) as { user_id: string; delta: number; reason: string }[]) {
+    const x = money.get(m.user_id) ?? { got: 0, spent: 0 };
+    if (IN.has(m.reason) && m.delta > 0) x.got += m.delta;
+    else if (!IN.has(m.reason)) x.spent -= m.delta;
+    money.set(m.user_id, x);
+  }
   const link = (o: Record<string, string | number>) => `/admin/users?${new URLSearchParams(Object.entries({ q, filter, page, ...o }).filter(([, v]) => v !== "" && v !== "all").map(([k, v]) => [k, String(v)]))}`;
 
   return (
@@ -46,18 +59,21 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           <option value="all">الكل</option>
           <option value="custom">اللي في قائمة السماح</option>
           <option value="active">دخلوا هالأسبوع</option>
+          <option value="new">سجّلوا آخر ٣ أيام</option>
         </select>
         <button className="btn btn-primary min-h-12 px-5">ابحث</button>
       </form>
 
       <div className="card overflow-x-auto p-0">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-line text-start text-muted">
               <th className="p-3 text-start">الشخص</th>
               <th className="p-3 text-start">سجّل</th>
               <th className="p-3 text-start">آخر دخول</th>
-              <th className="p-3 text-start">النقود</th>
+              <th className="p-3 text-start">الرصيد الحالي</th>
+              <th className="p-3 text-start">انشحن له</th>
+              <th className="p-3 text-start">صرف</th>
               <th className="p-3 text-start">صلاحيات خاصة</th>
               <th className="p-3" />
             </tr>
@@ -81,9 +97,11 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                   <td className="p-3 font-bold text-muted">{fmt(u.created)}</td>
                   <td className="p-3 font-bold text-muted">{fmt(u.last)}</td>
                   <td className="p-3 font-bold">
-                    {isAdmin(u.email) ? "∞" : (w?.balance ?? 0).toLocaleString("en")}
+                    {isAdmin(u.email) ? "∞" : <Riyal halalas={w?.balance ?? 0} size={14} />}
                     {library && <span className="chip ms-1 text-xs">📚 المكتبة</span>}
                   </td>
+                  <td className="p-3 font-bold text-muted"><Riyal halalas={money.get(u.id)?.got ?? 0} size={13} /></td>
+                  <td className="p-3 font-bold text-muted"><Riyal halalas={Math.max(0, money.get(u.id)?.spent ?? 0)} size={13} /></td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
                       {own ? (
@@ -105,7 +123,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             })}
             {!shown.length && (
               <tr>
-                <td colSpan={6} className="p-6 text-center font-bold text-muted">
+                <td colSpan={8} className="p-6 text-center font-bold text-muted">
                   ما لقينا أحد.
                 </td>
               </tr>
