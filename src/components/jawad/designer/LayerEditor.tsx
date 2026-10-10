@@ -135,20 +135,45 @@ export async function renderDesign(d: DesignView, fonts: FontDef[]): Promise<Blo
     const im = await loadImage(d.artworkUrl);
     ctx.drawImage(im, 0, 0, d.width, d.height);
   }
-  for (const l of d.layers) {
+  /** One layer alone, on the context given. */
+  const drawOne = async (t: CanvasRenderingContext2D, l: DesignView["layers"][number]) => {
     if (l.kind === "image") {
-      if (!l.url) continue;
+      if (!l.url) return;
       const im = await loadImage(l.url);
       const w = (l.w / 100) * d.width;
       const h = w * (im.naturalHeight / im.naturalWidth);
-      ctx.save();
-      ctx.translate((l.x / 100) * d.width, (l.y / 100) * d.height);
-      ctx.rotate((l.rotate * Math.PI) / 180);
-      if (l.flip) ctx.scale(-1, 1);
-      ctx.globalAlpha = l.opacity;
-      ctx.drawImage(im, -w / 2, -h / 2, w, h);
-      ctx.restore();
-    } else drawText(ctx, l, d.width, d.height, fonts.find((f) => f.id === l.font)?.family ?? "sans-serif");
+      t.save();
+      t.translate((l.x / 100) * d.width, (l.y / 100) * d.height);
+      t.rotate((l.rotate * Math.PI) / 180);
+      if (l.flip) t.scale(-1, 1);
+      t.globalAlpha = l.opacity;
+      t.drawImage(im, -w / 2, -h / 2, w, h);
+      t.restore();
+      return;
+    }
+    drawText(t, l, d.width, d.height, fonts.find((f) => f.id === l.font)?.family ?? "sans-serif");
+  };
+  const spare = () => {
+    const el = document.createElement("canvas");
+    el.width = d.width;
+    el.height = d.height;
+    return { el, ctx: el.getContext("2d")! };
+  };
+
+  for (const [i, l] of d.layers.entries()) {
+    const under = i > 0 ? d.layers[i - 1] : null;
+    // «داخل الطبقة اللي تحتها»: kept only where the layer under it has pixels — the person inside the frame
+    if (l.kind === "image" && l.clip && under) {
+      const cut = spare();
+      await drawOne(cut.ctx, l);
+      const mask = spare();
+      await drawOne(mask.ctx, under);
+      cut.ctx.globalCompositeOperation = "destination-in";
+      cut.ctx.drawImage(mask.el, 0, 0);
+      ctx.drawImage(cut.el, 0, 0);
+      continue;
+    }
+    await drawOne(ctx, l);
   }
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("toBlob"))), "image/png"));
 }

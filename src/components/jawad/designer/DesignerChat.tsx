@@ -17,8 +17,7 @@ import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, DELEGATE_LINE } from "@/lib/content/marks";
 import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
-import type { Layer } from "@/lib/designer/layers";
-import LayerEditor, { loadFont, type DesignView, type FontDef } from "./LayerEditor";
+import { loadFont, renderDesign, type DesignView, type FontDef } from "./LayerEditor";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; kind: "choice" | "source" | "directions" | "fonts"; options: string[]; multi: boolean }
@@ -156,7 +155,6 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const end = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
     if (loginHref) return;
@@ -310,11 +308,6 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   }
 
   /** The person's edits of the layers: shown at once, saved a moment later. */
-  const changeLayers = (layers: Layer[]) => {
-    putDesign((old) => (old ? { ...old, layers: layers.map((l) => ({ ...l, url: l.kind === "image" ? (old.layers.find((x) => x.id === l.id) as { url?: string | null } | undefined)?.url ?? null : undefined })) as DesignView["layers"] } : old));
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { if (chatId) void fetch("/api/designer/chats", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatId, layers }) }).catch(() => null); }, 800);
-  };
 
   const saveFinal = async (blob: Blob) => {
     if (!chatId) return;
@@ -426,8 +419,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                           {m.design.flag && <p className="dz-flag">⚠️ ملاحظة الفحص الآلي على الصورة: {m.design.flag}. تقدر تعيد رسمها.</p>}
                           {i === lastDesign ? (
                             <>
-                              <LayerEditor design={m.design} fonts={fonts} onChange={changeLayers} onSave={saveFinal} saving={saving} busy={!!busy} onRedraw={() => chatId && void runProduce(chatId, true)} />
-                              {photo && <button type="button" className="dz-opt" disabled={!!busy} onClick={() => void toZahraa()} title="تنتقل الصورة والنصوص وسجل المشروع إلى زهراء، وتقدر ترجعها لي بعد التعديل">🪄 عدّل في زهراء فوتو ماستر</button>}
+                              <DesignDone design={m.design} fonts={fonts} saving={saving} busy={!!busy} photo={!!photo} onSave={saveFinal} onRedraw={() => chatId && void runProduce(chatId, true)} onEdit={() => void toZahraa()} />
                             </>
                           ) : (
                             <p className="dz-muted">تصميم سابق في هذه المحادثة (المحرر يفتح على آخر تصميم).</p>
@@ -468,6 +460,65 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
             </form>
           )}
         </section>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «كاظم يصنع بس» — what a finished design shows: the design itself, «احفظ PNG», «أعد الرسم», and the ONE road to any
+ * change: «🪄 عدّل في زهراء فوتو ماستر». No editing lives here, by the owner's rule — every move, colour, font and
+ * word is changed at زهراء, and the words كاظم wrote stay REAL TEXT there, so nothing is lost by writing them now.
+ */
+function DesignDone({
+  design,
+  fonts,
+  saving,
+  busy,
+  photo,
+  onSave,
+  onRedraw,
+  onEdit,
+}: {
+  design: DesignView;
+  fonts: FontDef[];
+  saving: boolean;
+  busy: boolean;
+  photo: boolean;
+  onSave: (b: Blob) => void | Promise<void>;
+  onRedraw: () => void;
+  onEdit: () => void;
+}) {
+  const [working, setWorking] = useState(false);
+  const save = async () => {
+    setWorking(true);
+    try {
+      await onSave(await renderDesign(design, fonts));
+    } finally {
+      setWorking(false);
+    }
+  };
+  const words = design.layers.filter((l) => l.kind === "text").length;
+  return (
+    <div className="dz-done">
+      {design.finalUrl || design.artworkUrl ? <img className="dz-done-img" src={design.finalUrl ?? design.artworkUrl ?? ""} alt="التصميم" /> : null}
+      <p className="dz-muted">
+        {words > 0
+          ? `التصميم جاهز، وفيه ${words} نص حقيقي — كل تعديل (الكلمات، الخط، اللون، الأماكن، وضع صورة داخل برواز) يصير عند زهراء فوتو ماستر، والنصوص تبقى نصوصًا تعدّلها هناك.`
+          : "التصميم جاهز مفرّغًا بلا كتابة — تكتب كلماتك وتعدّل كل شي عند زهراء فوتو ماستر."}
+      </p>
+      <div className="dz-done-row">
+        {photo && (
+          <button type="button" className="dz-opt dz-opt-main" disabled={busy} onClick={onEdit} title="كل التعديلات عند زهراء: الكلمات والخطوط والألوان والأماكن، ووضع صورة داخل برواز">
+            🪄 عدّل في زهراء فوتو ماستر
+          </button>
+        )}
+        <button type="button" className="dz-mini" disabled={busy || saving || working} onClick={() => void save()}>
+          {working || saving ? "…" : "💾 احفظ PNG"}
+        </button>
+        <button type="button" className="dz-mini" disabled={busy} onClick={onRedraw}>
+          🔁 أعد الرسم
+        </button>
       </div>
     </div>
   );
