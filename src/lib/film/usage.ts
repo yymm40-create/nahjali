@@ -173,8 +173,8 @@ export async function failJob(jobId: string, error: unknown, providerCostUsd?: n
     .eq("state", "reserved");
 }
 
-/** A job still "running" after this long died with its server request; it is failed and released. */
-export const JOB_STALE_MS = 7 * 60_000;
+/** A job still "running" after this long died with its server request (the routes live up to 800 s); it is failed and released. */
+export const JOB_STALE_MS = 15 * 60_000;
 
 /** Total real + reserved cost of one project (shown on the project page). */
 export async function projectCost(projectId: string) {

@@ -49,11 +49,13 @@ describe("the deep research", () => {
     expect(calls.bodies[0].tools).toBeDefined();
   });
 
-  it("stops searching after its last round and asks for the notes without tools", async () => {
+  it("stops searching after its last round: the same tools, and told in words to write its notes", async () => {
     for (let i = 0; i < 10; i++) calls.replies.push({ stop_reason: "tool_use", usage, content: [{ type: "tool_use", id: `t${i}`, name: "search_library", input: { query: `بحث ${i}`, scope: "primary" } }] });
     const r = await research("سؤال", "", null);
     expect(calls.bodies.length).toBe(6);
-    expect(calls.bodies[5].tools).toBeUndefined();
+    // the request stays the same every round (its thinking is only valid in the same conversation)
+    expect(calls.bodies[5].tools).toEqual(calls.bodies[0].tools);
+    expect(JSON.stringify((calls.bodies[5].messages as unknown[]).at(-1))).toContain("هذه آخر جولة");
     expect(r.searches.length).toBe(5);
   });
 });

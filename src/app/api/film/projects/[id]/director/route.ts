@@ -6,7 +6,7 @@ import { withClaude } from "@/lib/film/claude-model";
 import { latestJob } from "@/lib/film/sheets";
 
 // Replies and videos are produced in the background (after()), within this route's time limit
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /** Every user action with the director (see DirectorAction). */
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {

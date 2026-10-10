@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sseBody } from "../helpers/claude-sse";
 import { callClaudeJson, claudeTrouble } from "@/lib/film/anthropic";
 import { withClaude } from "@/lib/film/claude-model";
 
-const ok = (stop: string, text = '{"a":1}') => ({ ok: true, json: async () => ({ stop_reason: stop, model: "claude-opus-5-5", content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 5 } }) });
+const ok = (stop: string, text = '{"a":1}') => ({ ok: true, body: sseBody({ stop_reason: stop, content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 5 } }) });
 
 describe("a long request that uses up the reply's token budget", () => {
   afterEach(() => vi.unstubAllGlobals());
