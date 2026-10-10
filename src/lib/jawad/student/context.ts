@@ -1,13 +1,15 @@
 // «الطالب الذكي» — what every output is built on: the approved text, the approved understanding, the approved research
 // (if the student asked for it) and the two source rules. Server only.
 
-import { briefLine, readBrief } from "@config/jawad/student";
-import { getProject, versionOf, type Output, type Project, type TextVersion } from "./db";
+import { briefLine, readBrief, rolesBrief } from "@config/jawad/student";
+import { getProject, sources, versionOf, type Output, type Project, type TextVersion } from "./db";
 import type { Research } from "./research";
 import type { Understanding } from "./understand";
 
 export interface Ctx {
   project: Project;
+  /** the rules of the source roles the student really used (empty when every source is the material) */
+  roles: string;
   text: TextVersion;
   understanding: Understanding;
   research: Research | null;
@@ -17,13 +19,14 @@ export interface Ctx {
 
 export async function loadCtx(userId: string, projectId: string): Promise<Ctx> {
   const project = await getProject(userId, projectId);
-  const [t, u, r] = await Promise.all([
+  const [t, u, r, list] = await Promise.all([
     versionOf<TextVersion>(project.id, "text", project.text_version),
     versionOf<Understanding>(project.id, "understanding", project.understanding_version),
     project.web_search && project.research_version ? versionOf<Research>(project.id, "research", project.research_version) : Promise.resolve(null),
+    sources(project.id).catch(() => []),
   ]);
   if (!t || !u) throw new Error("approved text / understanding missing");
-  return { project, text: t.content, understanding: u.content, research: r?.content ?? null, seg: new Map(t.content.segments.map((s) => [s.id.slice(0, 8), s])) };
+  return { project, roles: rolesBrief(list.map((x) => x.role)), text: t.content, understanding: u.content, research: r?.content ?? null, seg: new Map(t.content.segments.map((s) => [s.id.slice(0, 8), s])) };
 }
 
 export const basedOn = (c: Ctx) => ({ text: c.project.text_version, understanding: c.project.understanding_version, research: c.project.research_version });
@@ -39,7 +42,8 @@ export function scopeRules(c: Ctx) {
       : "NO RESEARCH: never output a block of type \"research\".",
     "QUOTES: a block of type \"quote\" must copy words that really are in the material, exactly.",
     "Every block lists in \"segments\" the ids of the material's segments it comes from (empty for additions).",
-  ];
+    c.roles,
+  ].filter(Boolean);
   return lines.join("\n");
 }
 

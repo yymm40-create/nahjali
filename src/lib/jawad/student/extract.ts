@@ -4,7 +4,7 @@
 // guessed silently.
 
 import { PDFDocument } from "pdf-lib";
-import { STUDENT } from "@config/jawad/student";
+import { STUDENT, readSourceRole, sourceRole } from "@config/jawad/student";
 import { askJson, claudeCeilingUsd } from "./claude";
 import { getFile, sdb, signFile, sources, touch, type Source } from "./db";
 import type { Handler, Job } from "./jobs";
@@ -53,7 +53,12 @@ async function pdfSlice(buf: Buffer, from: number, count: number) {
   return Buffer.from(await out.save()).toString("base64");
 }
 
-const sourceLabel = (s: Source, i: number) => (s.kind === "text" ? "النص المكتوب" : s.kind === "image" ? `صورة ${i + 1}` : `ملف PDF ${i + 1}`);
+const sourceLabel = (s: Source, i: number) => {
+  const what = s.kind === "text" ? "النص المكتوب" : s.kind === "image" ? `صورة ${i + 1}` : `ملف PDF ${i + 1}`;
+  const role = sourceRole(readSourceRole(s.role));
+  // the role is part of the label, so it travels with the text into every step and every prompt
+  return role && role.id !== "material" ? `${role.ar}: ${what}` : what;
+};
 
 async function insertSegments(rows: Record<string, unknown>[]) {
   if (!rows.length) return;

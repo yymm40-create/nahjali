@@ -1,11 +1,14 @@
 import { UserError } from "@/lib/api";
-import { FILM_LIMITS } from "@config/film";
+import { FILM_LIMITS, readFilmKind } from "@config/film";
 
 const clean = (s: unknown) => (typeof s === "string" ? s.replace(/[\p{Cc}\p{Cf}]/gu, (c) => (c === "\n" ? c : " ")).trim() : "");
 
 /** Validates the editable project fields; only the keys present in `body` are returned. */
 export function projectFields(body: Record<string, unknown>, { requireTitle }: { requireTitle: boolean }) {
-  const out: { title?: string; story?: string; fixed_facts?: string; target_duration_sec?: number | null } = {};
+  const out: { title?: string; story?: string; fixed_facts?: string; target_duration_sec?: number | null; kind?: string } = {};
+
+  // what is being made: a short scene or a whole film (a series has its own place)
+  if ("kind" in body) out.kind = readFilmKind(body.kind);
 
   if ("title" in body || requireTitle) {
     const title = clean(body.title).replace(/\s+/g, " ");

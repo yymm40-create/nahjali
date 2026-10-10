@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_PIECES, pieceOps, readPieces } from "@/lib/photo/decompose";
+import { SIZES, bestSize } from "@/lib/photo/repair";
 import { applyOps, newDoc } from "@/lib/photo/doc";
 
 // «أقدر أفرّغ العناصر الموجودة فيها»: the reading of a flat picture, checked — and what each piece becomes on the
@@ -89,5 +90,23 @@ describe("what a piece becomes on the canvas", () => {
     const out = applyOps(doc(), ops, { files, fonts: ["readex"] });
     expect(out.error).toBeNull();
     expect(out.doc.layers.map((l) => l.kind)).toEqual(["image", "text", "image"]);
+  });
+});
+
+// «يتوقّع الجزء الناقص … ولا يغيّر الخارج»: the hole is handed to GPT Image 2 at the shape nearest the picture's own,
+// and only the hole's pixels come back from its answer.
+describe("filling what was behind a lifted piece", () => {
+  it("asks at the accepted shape nearest the picture's own", () => {
+    expect(bestSize(1080, 1080)).toBe("1024x1024");
+    expect(bestSize(1080, 1920)).toBe("1024x1536");
+    expect(bestSize(1920, 1080)).toBe("1536x1024");
+    expect(bestSize(2480, 3508)).toBe("1024x1536");
+    expect(bestSize(1600, 900)).toBe("1536x1024");
+    for (const w of [300, 1000, 4000]) for (const h of [300, 1000, 4000]) expect(SIZES).toContain(bestSize(w, h));
+  });
+
+  it("never asks for a shape the endpoint does not take", () => {
+    expect(SIZES).toEqual(["1024x1024", "1024x1536", "1536x1024"]);
+    expect(bestSize(0, 0)).toBe("1024x1024");
   });
 });

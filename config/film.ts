@@ -84,6 +84,45 @@ export const STATUS_LABELS: Record<string, string> = {
   failed: "فشل",
 };
 
+/**
+ * WHAT IS BEING MADE. The maker used to know one shape only — a single scene — so a person who wanted a whole film
+ * got a scene, and a person who wanted one shot got a film's brief. The three shapes are now named at the start:
+ * a SHORT SCENE that stands on its own, a CINEMATIC FILM (several scenes with a beginning, a turn and an end — and
+ * every scene inside it is still made with the same tools), or a WHOLE SERIES, which has its own place («المسلسل
+ * الذكي») with episodes and a cast that stays the same.
+ */
+export const FILM_KINDS = [
+  {
+    id: "scene",
+    ar: "مشهد قصير",
+    icon: "🎬",
+    hint: "لقطة أو مشهد واحد يقف بنفسه (ريل، إعلان قصير، لحظة واحدة)",
+    /** what the screenwriter is told to write */
+    brief: "هذا مشهد قصير يقف بنفسه: مكان واحد ولحظة واحدة وهدف واحد. لا تكتب فصولًا ولا خطًا دراميًا طويلًا، ولا تفتح أحداثًا تحتاج مشاهد أخرى — المشهد يبدأ وينتهي هنا.",
+    seconds: [8, 60] as [number, number],
+  },
+  {
+    id: "film",
+    ar: "فيلم سينمائي",
+    icon: "🎥",
+    hint: "عمل كامل من عدّة مشاهد: بداية وتحوّل ونهاية، وكل مشهد يُصنع بنفس الأدوات",
+    brief: "هذا فيلم سينمائي كامل: اكتبه كعمل له بداية تُعرّف وتحوّل يقلب الحال ونهاية تُقنع، مقسّمًا إلى مشاهد مرقّمة، كل مشهد بمكانه ووقته وهدفه الدرامي وكيف يسلّم للذي بعده، مع خط الشخصية الرئيسية من أول مشهد لآخره. وضّح أي مشهد هو الذروة.",
+    seconds: [60, 900] as [number, number],
+  },
+  {
+    id: "series",
+    ar: "مسلسل كامل",
+    icon: "📺",
+    hint: "حلقات بشخصيات ثابتة — يفتح «المسلسل الذكي» بحلقاته وفريق التمثيل",
+    brief: "",
+    seconds: [0, 0] as [number, number],
+  },
+] as const;
+export type FilmKind = (typeof FILM_KINDS)[number]["id"];
+export const filmKind = (v: unknown) => FILM_KINDS.find((k) => k.id === v) ?? null;
+/** The shape a project is made in (a scene when nothing was chosen, which is how every old project was made). */
+export const readFilmKind = (v: unknown): Exclude<FilmKind, "series"> => (v === "film" ? "film" : "scene");
+
 export const FILM_LIMITS = {
   titleMax: 80,
   storyMax: 20000,
