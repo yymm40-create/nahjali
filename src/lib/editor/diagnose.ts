@@ -7,7 +7,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, claudeTrouble, type ClaudePart } from "@/lib/film/anthropic";
+import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { checkCommands, context } from "./assistant-core";
 import { COMMANDS_GUIDE } from "./assistant-commands";
 import { appendChat } from "./chat";
@@ -141,7 +141,7 @@ export async function diagnose(p: EditorProject, who: Who, b: { message?: unknow
 
   const r = await callClaudeJson<{ reply: string; commands: string[]; developerMessage: string }>({ system: SYSTEM, turns: [{ role: "user", content }], schema: SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
     console.error("editor diagnose", e);
-    throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يشخّص الحين؛ جرّب بعد شوي.", 502);
+    throw new UserError(claudeWhy(e, "ما قدر حيدرة يشخّص الحين؛ جرّب بعد شوي.", who.email), 502);
   });
   const dev = r.data.developerMessage.trim();
   // the fixes he proposes are tried on the timeline first; a broken one is dropped and said so
