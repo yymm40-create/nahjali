@@ -32,6 +32,16 @@ export const PALETTES: Palette[] = [
   { id: "riso", ar: "ريزو مرح", bg: "#fbefd9", text: "#22304a", accent: "#b8232b", second: "#0d6b66", pill: "#22304a", pillText: "#fbefd9" },
   { id: "studio", ar: "استوديو", bg: "#0e1b3d", text: "#ffffff", accent: "#4de1c1", second: "#ffd43b", pill: "#ff7a59", pillText: "#0e1b3d" },
   { id: "majlis", ar: "مجلس", bg: "#1f2a44", text: "#fffdf7", accent: "#d4af37", second: "#3fb5a8", pill: "#d4af37", pillText: "#1f2a44" },
+  { id: "mono", ar: "أسود وأبيض وأحمر", bg: "#111111", text: "#ffffff", accent: "#ff3b30", second: "#9e9e9e", pill: "#ffffff", pillText: "#111111" },
+  { id: "cyan", ar: "مخطط أزرق", bg: "#0f3d7a", text: "#eaf3ff", accent: "#ffd166", second: "#7fd1ff", pill: "#ffd166", pillText: "#0f3d7a" },
+  { id: "candy", ar: "حلويات", bg: "#fff0f6", text: "#3d1f33", accent: "#c2185b", second: "#00695c", pill: "#ffd43b", pillText: "#3d1f33" },
+  { id: "forest", ar: "غابة", bg: "#13291f", text: "#f2efe2", accent: "#9bc53d", second: "#e6a817", pill: "#9bc53d", pillText: "#13291f" },
+  { id: "sunset", ar: "غروب", bg: "#2b1055", text: "#fff1d6", accent: "#ff9e00", second: "#ff2e88", pill: "#ff9e00", pillText: "#2b1055" },
+  { id: "term", ar: "شاشة طرفية", bg: "#07120b", text: "#c9ffd8", accent: "#39ff88", second: "#1f8f52", pill: "#39ff88", pillText: "#07120b" },
+  { id: "cream", ar: "قشدي ترابي", bg: "#f3e9d2", text: "#2f2a1f", accent: "#8f4513", second: "#4a5043", pill: "#2f2a1f", pillText: "#f3e9d2" },
+  { id: "ink", ar: "حبر على أبيض", bg: "#fbfbf8", text: "#14213d", accent: "#d90429", second: "#4361ee", pill: "#14213d", pillText: "#fbfbf8" },
+  { id: "neonpal", ar: "نيون ليلي", bg: "#0b0620", text: "#e0fbff", accent: "#ff2bd6", second: "#00f5ff", pill: "#00f5ff", pillText: "#0b0620" },
+  { id: "gold", ar: "ذهب على أسود", bg: "#0a0a0a", text: "#f7f3e8", accent: "#d4af37", second: "#8c7853", pill: "#d4af37", pillText: "#0a0a0a" },
 ];
 export const paletteOf = (id: unknown) => PALETTES.find((p) => p.id === id || p.ar === id) ?? PALETTES[0];
 
