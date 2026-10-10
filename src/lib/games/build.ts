@@ -10,13 +10,14 @@ import { Script } from "node:vm";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskQuote, DeskError, type DeskWho } from "@/lib/content/jawad";
-import { isLeader } from "@/lib/film/anthropic";
+import { claudeTrouble, isLeader } from "@/lib/film/anthropic";
+import { isAdmin } from "@config/site";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { storage } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { artPath, editBrief, codeBrief, fixBrief, GAME_BUILD, GAME_CODE_RULES, GAME_PLAN_RULES, inlineScripts, keepErrors, pageProblems, pagePath, playPath, readPage, readPlan, SPRITE_BACKDROP, type AssetPlan, type GamePlan } from "@config/games-build";
+import { artPath, continueBrief, editBrief, codeBrief, fixBrief, joinParts, GAME_BUILD, GAME_CODE_RULES, GAME_PLAN_RULES, inlineScripts, keepErrors, pageProblems, pagePath, playPath, readPage, readPlan, SPRITE_BACKDROP, type AssetPlan, type GamePlan } from "@config/games-build";
 import { backgroundFile, coverFile, spriteFile } from "./art";
-import { talk } from "./claude";
+import { talk, type Said } from "./claude";
 import { cleanHistory, forModel, getChat } from "./chats";
 
 const db = () => createAdminClient();
@@ -34,11 +35,15 @@ interface ArtItem {
 
 /** What the next code step does. */
 interface CodeNote {
-  job: "write" | "fix" | "edit";
+  job: "write" | "fix" | "edit" | "continue";
   /** fix: what failed */
   problems?: string[];
-  /** fix: the job being fixed */
-  of?: "write" | "edit";
+  /** fix: the job being fixed; continue: the job being continued */
+  of?: "write" | "edit" | "fix";
+  /** continue: the write or edit it all belongs to */
+  base?: "write" | "edit";
+  /** continue: how many times this answer was continued so far */
+  parts?: number;
   /** edit: the client's words */
   change?: string;
 }
@@ -77,6 +82,8 @@ export interface BuildView {
   code: CodeState;
   /** a finished game is being changed */
   editing: boolean;
+  /** the code's writing stopped in the middle and is being continued from there */
+  more: boolean;
   art: ArtState;
   pictures: { done: number; failed: number; total: number };
   cover: string | null;
@@ -93,7 +100,7 @@ const stale = (at: string | null) => !at || Date.now() - new Date(at).getTime() 
 const readNote = (s: string): CodeNote => {
   try {
     const n = JSON.parse(s) as CodeNote;
-    return n && (n.job === "write" || n.job === "fix" || n.job === "edit") ? n : { job: "write" };
+    return n && (n.job === "write" || n.job === "fix" || n.job === "edit" || n.job === "continue") ? n : { job: "write" };
   } catch {
     return { job: "write" };
   }
@@ -118,6 +125,7 @@ export function viewOf(r: Row): BuildView {
     status: r.status,
     code: r.code_state,
     editing,
+    more: (r.code_state === "broken" || r.code_state === "writing") && readNote(r.code_note).job === "continue",
     art: r.art_state,
     pictures: { done: items.filter(([, a]) => a.state === "done").length, failed: items.filter(([, a]) => a.state === "failed").length, total: items.length },
     cover: cover?.state === "done" && cover.file ? artPath(r.id, cover.file) : null,
@@ -270,38 +278,48 @@ export async function stepCode(user: { id: string; email?: string | null }, id: 
   const plan = r.plan;
   const ids = plan.assets.map((a) => a.id);
   const errors = errorsOf(r);
-  const base = note.job === "fix" ? (note.of ?? "write") : note.job;
-  const brief = note.job === "fix" && r.draft ? fixBrief(plan, r.draft, note.problems ?? []) : base === "edit" && r.html ? editBrief(plan, r.html, note.change ?? "", errors) : codeBrief(plan);
+  // a continued answer goes on with the job it belongs to (a fix's own job, or the write/edit it fixes)
+  const job = note.job === "continue" ? (note.of ?? "write") : note.job;
+  const base: "write" | "edit" = note.job === "continue" ? (note.base ?? (job === "edit" ? "edit" : "write")) : note.job === "fix" ? (note.of === "edit" ? "edit" : "write") : note.job === "edit" ? "edit" : "write";
+  const going = note.job === "continue" && !!r.draft;
+  const brief = going ? continueBrief(plan, r.draft!) : note.job === "fix" && r.draft ? fixBrief(plan, r.draft, note.problems ?? []) : base === "edit" && r.html ? editBrief(plan, r.html, note.change ?? "", errors) : codeBrief(plan);
   const tries = r.code_tries + 1;
-  const again: CodeState = note.job === "fix" && r.draft ? "broken" : "pending";
+  const again: CodeState = (note.job === "fix" || going) && r.draft ? "broken" : "pending";
 
-  let text: string;
-  let usd = 0;
+  let said: Said;
   try {
-    const said = await pay(() => talk({ system: GAME_CODE_RULES, turns: [{ role: "user", text: brief }], maxTokens: GAME_BUILD.codeTokens, effort: "medium", timeoutMs: GAME_BUILD.timeoutMs, leader: isLeader(user.email), stream: true }));
-    text = said.text;
-    usd = said.usd;
+    said = await pay(() => talk({ system: GAME_CODE_RULES, turns: [{ role: "user", text: brief }], maxTokens: GAME_BUILD.codeTokens, effort: "medium", timeoutMs: GAME_BUILD.timeoutMs, leader: isLeader(user.email), stream: true, keepPartial: true }));
   } catch (e) {
     // nothing was tried (the balance, for one): the job waits as it was, and the person is told why
     if (e instanceof UserError) {
       await update(id, { code_state: again, last_error: e.message });
       throw e;
     }
-    // the model could not answer this time: the same job stays to be done (each try counts)
+    // the model could not answer this time (already tried again for a passing failure): the same job stays to be done
+    // (each try counts); the reason is said plainly, and the owner also sees the service's own words
     console.error("games build code", id, e);
-    await giveUpOr(r, tries, { code_state: again }, "ما قدر قنبر يكمل كود اللعبة هالمرة.");
+    const raw = e instanceof Error ? e.message : String(e);
+    await giveUpOr(r, tries, { code_state: again }, `${claudeTrouble(e) ?? "ما قدر قنبر يكمل كود اللعبة هالمرة، وبنعيد المحاولة."}${isAdmin(user.email) ? ` (تفصيل للرئيس: ${raw.slice(0, 300)})` : ""}`);
+    return viewOf((await rowOf(user.id, id)) ?? r);
+  }
+
+  const text = going ? joinParts(r.draft!, said.text) : said.text;
+  const spent = Number(r.usd ?? 0) + said.usd;
+  const parts = going ? (note.parts ?? 1) + 1 : 1;
+  // it stopped in the middle (out of length, or cut off): the next step goes on from there — it is not a failed try
+  if ((said.stop === "max_tokens" || said.stop === "cut") && parts <= GAME_BUILD.maxContinues && !/<\/html\s*>/i.test(said.text) && text.length < GAME_BUILD.maxHtml) {
+    await update(id, { code_state: "broken", draft: text, code_note: JSON.stringify({ job: "continue", of: job, base, parts, problems: note.problems, change: note.change } satisfies CodeNote), usd: spent, last_error: "" });
     return viewOf((await rowOf(user.id, id)) ?? r);
   }
 
   const page = readPage(text);
   const problems = page ? checkPage(page, ids) : [];
-  const spent = Number(r.usd ?? 0) + usd;
   if (page && !problems.length) {
     // a good page: served from now on (a fix or an edit also clears what players ran into)
     await update(id, { html: page, draft: null, version: r.version + 1, code_state: "done", code_note: "", code_tries: 0, last_error: "", errors: base === "edit" ? [] : r.errors, usd: spent });
     await finish(id);
   } else if (!page) {
-    await giveUpOr(r, tries, { code_state: again, usd: spent }, "رد قنبر طلع ناقص.");
+    await giveUpOr(r, tries, { code_state: again, usd: spent }, "رد قنبر طلع ناقص، وبنعيد المحاولة.");
   } else {
     await giveUpOr(r, tries, { code_state: "broken", draft: page, code_note: JSON.stringify({ job: "fix", of: base, problems, change: note.change } satisfies CodeNote), usd: spent }, "");
   }

@@ -19,6 +19,8 @@ export const GAME_BUILD = {
   maxHtml: 300_000,
   /** a page that fails the checks goes back this many times before the build stops */
   maxFixes: 2,
+  /** a reply that ran out of length (or was cut off) is continued from where it stopped this many times */
+  maxContinues: 3,
   /** a picture is tried this many times before the game goes on without it (it draws a shape instead) */
   assetTries: 2,
   /** a step left «working» longer than this was cut off (past the request's 800 s): it may be taken again */
@@ -129,6 +131,25 @@ export function fixBrief(plan: GamePlan, page: string, problems: string[]): stri
     `IT FAILED THESE CHECKS:\n${problems.map((p) => `- ${p}`).join("\n")}`,
     "Correct every problem and answer with the WHOLE corrected page (all of it, not a part).",
   ].join("\n\n");
+}
+
+/** The programmer's brief to go on with a page whose writing stopped in the middle (it ran out of length or was cut off). */
+export function continueBrief(plan: GamePlan, written: string): string {
+  return [
+    `THE SPEC OF THE GAME:\n${plan.spec}`,
+    `THE PICTURES (use only these placeholders):\n${plan.assets.length ? plan.assets.map(assetLine).join("\n") : "- none"}`,
+    `YOUR ANSWER SO FAR (it stopped in the middle, at its very last character):\n<<<WRITTEN\n${written}\nWRITTEN>>>`,
+    "Continue it from EXACTLY the next character after where it stopped (even in the middle of a word or a line), until the page is complete and ends with </html> and the closing ```. Answer with the continuation ONLY: do not repeat anything already written, no greeting, no explanation, no new ```html fence. Keep what is left as compact as you can.",
+  ].join("\n\n");
+}
+
+/** The answer so far and its continuation, as one: a repeated fence or a repeated last line at the seam is dropped. */
+export function joinParts(written: string, more: string): string {
+  let next = more.replace(/^\s*```html[^\n]*\n/i, "");
+  // the model sometimes starts again from the last line it saw: drop that overlap
+  const tail = written.slice(written.lastIndexOf("\n") + 1);
+  if (tail.trim().length >= 12 && next.startsWith(tail)) next = next.slice(tail.length);
+  return written + next;
 }
 
 /** The programmer's brief to change a finished game at the client's word (and to fix what players ran into). */
