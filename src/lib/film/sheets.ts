@@ -298,13 +298,19 @@ export async function sheetAction(project: FilmProject, user: { id: string; emai
       if (convo?.status !== "failed") throw new UserError("ما فيه شي يحتاج إعادة.", 409);
       const { data: last } = await db()
         .from("film_messages")
-        .select("id,role")
+        .select("id,role,content")
         .eq("project_id", project.id)
         .eq("stage", STAGE)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (!last || last.role !== "user") throw new UserError("ما فيه شي يحتاج إعادة.", 409);
+      // the old handoff request (it timed out): the handoff is now put together here, at once
+      if (String(last.content ?? "").startsWith(FINISH_REQUEST)) {
+        // (the failed job stays as it was: its balance was already given back)
+        await maybeFinish(project, user);
+        return { jobId: null };
+      }
       return { jobId: await queueReply(project, user, last.id) };
     }
 
@@ -553,18 +559,70 @@ async function approveMap(project: FilmProject, user: { id: string; email?: stri
 const FINISH_REQUEST = "كل صور الشيتات صارت معتمدة";
 
 /**
- * When every sheet has its approved picture, the handoff is (re)built in the background with the real
- * statuses, and the project moves on to the director.
+ * When every sheet has its approved picture, the handoff is (re)built and the project moves on to the director.
+ * It is assembled here from what was approved (the style lock, the map, every approved prompt word for word, the
+ * pictures and their names): asking the sheet maker to retype every prompt took longer than a request may live,
+ * and ended in «انتهى وقت الطلب». Nothing in it is written by a model, so it is exact, instant and costs nothing.
  */
-async function maybeFinish(project: FilmProject, user: { id: string; email?: string | null }) {
+async function maybeFinish(project: FilmProject, user: { id: string; email?: string | null }): Promise<string | null> {
+  void user;
   const versions = await sheetVersions(project.id);
   const assets = await sheetAssets(project.id);
-  const { map } = approvedMap(versions);
+  const { map, choices } = approvedMap(versions);
   const images = approvedImages(assets);
   if (!map.length || !map.every((m) => images[m.id])) return null;
-  const list = map.map((m) => `- ${m.id} (${m.name}) ${images[m.id].meta?.at_name ?? ""}: [[image:${images[m.id].id}]]`).join("\n");
-  const id = await addUserMessage(project.id, `${FINISH_REQUEST} ومرفقة هنا:\n${list}\n\nجهّز رسالة التسليم النهائية بحالاتها الصحيحة.`);
-  return queueReply(project, user, id);
+  const body = sheetHandoff(project, versions, map, choices, images);
+  const client = db();
+  const old = versions.filter((v) => v.kind === "sheet_handoff" && v.status !== "superseded").map((v) => v.id);
+  if (old.length) await client.from("film_versions").update({ status: "superseded" }).in("id", old);
+  const same = versions.filter((v) => v.kind === "sheet_handoff");
+  const { error } = await client.from("film_versions").insert({
+    project_id: project.id,
+    stage: STAGE,
+    kind: "sheet_handoff",
+    ref_key: "",
+    version: (same.at(-1)?.version ?? 0) + 1,
+    body,
+    data: { notes: "جُمعت من المعتمد مباشرة" },
+    status: "approved",
+    approved_at: new Date().toISOString(),
+    created_by: "assistant",
+  });
+  if (error) throw error;
+  if (project.stage === "sheets") await client.from("film_projects").update({ stage: "director" }).eq("id", project.id).eq("stage", "sheets");
+  return null;
+}
+
+const KIND_LABEL: Record<MapItem["kind"], string> = { master: "Master style board", character: "Character sheet", environment: "Environment sheet" };
+
+/** The sheet maker's final handoff (its Stage 7), assembled from the approved records. */
+export function sheetHandoff(project: Pick<FilmProject, "title">, versions: SheetVersion[], map: MapItem[], choices: Record<string, MapChoice>, images: Record<string, FilmAsset>) {
+  const style = latest(versions, "style");
+  const promptOf = (id: string) => versions.filter((v) => v.kind === "sheet_prompt" && v.ref_key === id && v.status === "approved").at(-1);
+  const out: string[] = [
+    `# تسليم صانع الشيت — ${project.title}`,
+    "## MASTER VISUAL STYLE LOCK",
+    style?.body?.trim() || "(the style approved with the master sheet)",
+    "## Approved sheet map",
+    ...map.map((m) => `- ${m.id} · ${m.name} (${KIND_LABEL[m.kind] ?? m.kind})${m.coverage ? ` — coverage: ${m.coverage}` : ""}`),
+    "## Final approved sheet prompts",
+  ];
+  for (const m of map) {
+    const p = promptOf(m.id);
+    out.push(`### ${m.id} — ${m.name}`);
+    if (choices[m.id] === "as_is") out.push("Supplied by the user as a finished picture (used as is; no prompt).");
+    else out.push(p?.data.prompt?.trim() || "(approved picture; its prompt is in the conversation)");
+  }
+  out.push(
+    "## Reference register",
+    ...map.map((m) => `- ${m.id} · ${m.name} · ${images[m.id]?.meta?.at_name ?? atName(m.name)} — ${m.id === MASTER_ID ? "STYLE reference only" : m.kind === "environment" ? "environment / spatial reference" : "identity reference"} — image approved`),
+    "## Status",
+    "Every planned sheet has an approved prompt (or a supplied picture) and an approved image. No outstanding work.",
+    "## How to use the references",
+    `Use ${MASTER_ID} (the master) only as the STYLE reference: never copy its example faces or clothing onto a character. Use each character sheet for that character's identity, proportions and outfit, and each environment sheet for that place's layout, materials and light. Refer to them by their @names.`,
+    "نهاية رسالة التسليم",
+  );
+  return out.join("\n\n");
 }
 
 /** Generates the picture of an approved sheet prompt, with its references (the master for style only). */
