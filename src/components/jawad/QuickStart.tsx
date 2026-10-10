@@ -47,7 +47,7 @@ const DRAFT = (userId: string | null, sectionId: string) => `jawad:draft:v1:${us
  * JAWAD AI's front door: write what you want, we open the right section with your words already in the prompt box.
  * Prompt-first (like the leading creative tools), with the sections one tap away for people who know where to go.
  */
-export default function QuickStart({ sections, userId, loginHref }: { sections: QuickSection[]; userId: string | null; loginHref: string | null }) {
+export default function QuickStart({ sections, userId, loginHref, hero = false }: { sections: QuickSection[]; userId: string | null; loginHref: string | null; /** inside the home's hero (its own title above, its own colours: home.css) */ hero?: boolean }) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<Kind | null>(null);
@@ -89,10 +89,10 @@ export default function QuickStart({ sections, userId, loginHref }: { sections: 
   }
 
   return (
-    <section className="jw-panel relative overflow-hidden p-4 sm:p-6" aria-labelledby="jw-quick">
-      <div className="pointer-events-none absolute -start-20 -top-24 size-72 rounded-full bg-jw-accent opacity-[0.1] blur-3xl" aria-hidden />
+    <section className={hero ? "hm-q" : "jw-panel relative overflow-hidden p-4 sm:p-6"} aria-labelledby={hero ? undefined : "jw-quick"} aria-label={hero ? "وش تبي تصنع اليوم؟" : undefined}>
+      {!hero && <div className="pointer-events-none absolute -start-20 -top-24 size-72 rounded-full bg-jw-accent opacity-[0.1] blur-3xl" aria-hidden />}
       <div className="relative space-y-3">
-        <h1 id="jw-quick" className="text-xl font-bold sm:text-2xl">وش تبي تصنع اليوم؟</h1>
+        {!hero && <h1 id="jw-quick" className="text-xl font-bold sm:text-2xl">وش تبي تصنع اليوم؟</h1>}
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="نوع الناتج">
           {available.map((k) => (
             <button

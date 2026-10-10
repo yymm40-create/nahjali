@@ -1,0 +1,67 @@
+/* «الجواد الذكي» — the home of a signed-in person, in the front page's colours (landing.css): a hero that asks what to make,
+   the latest works, every section as a bright card, the packages, and the ads. */
+.hm { min-height: calc(100dvh - var(--jw-header-h, 56px)); }
+.hm-hero { padding: 30px 0 30px; text-align: start; }
+.hm-hero .ld-in { display: grid; gap: 14px; justify-items: stretch; max-width: 900px; }
+.hm-hi { justify-self: start; }
+.hm-hero h1 { font-size: clamp(27px, 7vw, 46px); }
+
+/* the prompt box, in the hero's colours (QuickStart keeps its behaviour; its classes read these) */
+.hm-q {
+  --jw-surface: rgba(255, 255, 255, 0.07);
+  --jw-surface-2: rgba(255, 255, 255, 0.1);
+  --jw-bg-2: rgba(10, 6, 24, 0.6);
+  --jw-line: rgba(255, 255, 255, 0.16);
+  --jw-line-strong: rgba(255, 255, 255, 0.3);
+  --jw-ink: #fff;
+  --jw-muted: #c9bfe8;
+  --jw-faint: #a99fcb;
+  --jw-accent: #ff8a1f;
+  --jw-accent-soft: rgba(255, 138, 31, 0.18);
+  --jw-accent-line: rgba(255, 138, 31, 0.6);
+  --jw-on-accent: #2a1200;
+  padding: 16px;
+  border-radius: 24px;
+  background: rgba(18, 10, 42, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 30px 70px -30px rgba(139, 92, 246, 0.8);
+  backdrop-filter: blur(10px);
+}
+.hm-q textarea { background: rgba(10, 6, 24, 0.7) !important; color: #fff !important; border-radius: 18px !important; font-size: 16px !important; }
+.hm-q .jw-btn-primary { background: linear-gradient(180deg, #ffb52e, #ff8a1f 55%, #f26a0d) !important; color: #2a1200 !important; font-weight: 800; border-radius: 18px !important; min-height: 56px; font-size: 17px; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 14px 30px -10px rgba(255, 138, 31, 0.8); border: 0 !important; }
+.hm-q .jw-chip { border-radius: 999px; }
+
+.hm-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.hm-links a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--ld-line); color: #fff; font-size: 13.5px; font-weight: 700; text-decoration: none; }
+.hm-links a.hot { background: linear-gradient(90deg, #7c3aed, #ec4899); border-color: transparent; }
+
+.hm-sec { padding: 26px 0; }
+.hm-sec .ld-in { max-width: 1240px; }
+.hm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.hm-head h2 { font-size: clamp(20px, 5vw, 26px); font-weight: 800; }
+.hm-head a { color: var(--ld-gold); font-size: 13.5px; font-weight: 700; text-decoration: none; }
+
+/* the latest works: a strip that scrolls sideways */
+.hm-works { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
+.hm-work { flex: none; width: clamp(130px, 36vw, 180px); border-radius: 18px; overflow: hidden; text-decoration: none; color: inherit; background: #1a1130; border: 1px solid var(--ld-line); transition: transform 0.15s, border-color 0.15s; }
+.hm-work:hover { transform: translateY(-3px); border-color: var(--ld-pink); }
+.hm-work > span:first-child { position: relative; display: block; aspect-ratio: 1; }
+.hm-work img, .hm-work video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hm-work .hm-aud { display: grid; place-items: center; height: 100%; font-size: 40px; background: linear-gradient(135deg, #2a1050, #0b3a4a); }
+.hm-work .hm-play { position: absolute; bottom: 6px; inset-inline-end: 6px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.6); font-size: 11px; }
+.hm-work b { display: block; padding: 7px 10px; font-size: 12px; font-weight: 600; color: var(--ld-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* the sections: three or four across on a computer, two on a phone */
+.hm .ld-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 760px) { .hm .ld-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .hm .ld-tools { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.hm .ld-tool { padding: 18px 16px; }
+.hm .ld-ticon { width: 52px; height: 52px; font-size: 28px; }
+
+/* the packages: one line that leads to them */
+.hm-packs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 20px; border-radius: 24px; background: linear-gradient(120deg, rgba(124, 58, 237, 0.45), rgba(236, 72, 153, 0.35), rgba(255, 138, 31, 0.3)); border: 1px solid rgba(255, 255, 255, 0.16); }
+.hm-packs b { display: block; font-size: 19px; }
+.hm-packs span { color: #f3e8ff; font-size: 14px; }
+.hm-packs .ld-cta { min-height: 52px; font-size: 17px; }
+@media (max-width: 520px) { .hm-packs .ld-cta { flex: 1 1 100%; } }
+.hm-ads { padding-bottom: 40px; }
