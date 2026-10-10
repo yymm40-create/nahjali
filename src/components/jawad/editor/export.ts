@@ -20,7 +20,8 @@ import {
   type WrappedCanvas,
 } from "mediabunny";
 import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
-import { drawFrame, exportSize, layersAt, setExporting, type Frame } from "./render";
+import { drawFrame, layersAt, setExporting, type Frame } from "./render";
+import type { ExportPlan } from "@/lib/editor/export-plan";
 import { stretch } from "./stretch";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
@@ -56,14 +57,15 @@ export const canExport = () => typeof window !== "undefined" && "VideoEncoder" i
 export async function exportVideo(
   tl: Timeline,
   assets: ExportAsset[],
-  quality: 720 | 1080,
+  /** what the file will be (src/lib/editor/export-plan.ts): its size, its frame rate and its bitrates */
+  plan: Pick<ExportPlan, "width" | "height" | "fps" | "bitrate" | "audioBitrate">,
   onProgress: (p: number) => void,
   signal: AbortSignal,
 ): Promise<ExportResult> {
   const total = duration(tl);
   if (!total) throw new ExportError("التايملاين فاضي؛ أضف مقطعًا أول.");
-  const { width, height } = exportSize(tl, quality);
-  const fps = tl.fps;
+  const { width, height } = plan;
+  const fps = plan.fps;
   // the texts' fonts are on the page before the first frame is drawn
   await loadFontsOf(tl);
   const byId = new Map(assets.map((a) => [a.id, a]));
@@ -73,8 +75,8 @@ export async function exportVideo(
     }
   }
 
-  const videoCodec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width, height, quality: QUALITY_HIGH, frameRate: fps });
-  if (!videoCodec) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بدقة ${quality}p. جرّب Chrome أو Edge على الكمبيوتر، أو دقة أقل.`);
+  const videoCodec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width, height, bitrate: plan.bitrate, frameRate: fps });
+  if (!videoCodec) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بمقاس ${width}×${height}. اختر دقة أقل (أو جرّب Chrome أو Edge على الكمبيوتر).`);
 
   // sound: clips we can hear
   const hasSound = (c: Clip) => !c.text && !!c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio;
@@ -87,9 +89,9 @@ export async function exportVideo(
   canvas.height = height;
   const ctx = canvas.getContext("2d", { alpha: false })!;
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-  const video = new CanvasSource(canvas, { codec: videoCodec, bitrate: QUALITY_HIGH, keyFrameInterval: 2 });
+  const video = new CanvasSource(canvas, { codec: videoCodec, bitrate: plan.bitrate, keyFrameInterval: 2 });
   output.addVideoTrack(video, { frameRate: fps });
-  const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: QUALITY_HIGH }) : null;
+  const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: plan.audioBitrate }) : null;
   if (audio) output.addAudioTrack(audio);
 
   // one decoder input per file, opened lazily

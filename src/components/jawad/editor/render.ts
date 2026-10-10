@@ -617,10 +617,3 @@ export function clipBox(tl: Timeline, clip: Clip, ms: number, media: { width: nu
   return { cx: t.x * tl.width, cy: t.y * tl.height, w, h, rotate: t.rotate, t };
 }
 
-/** The output size for a timeline at a quality ("720" or "1080" on the short side), even numbers. */
-export function exportSize(tl: Pick<Timeline, "width" | "height">, quality: 720 | 1080) {
-  const short = Math.min(tl.width, tl.height);
-  const k = quality / short;
-  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
-  return { width: even(tl.width * k), height: even(tl.height * k) };
-}
