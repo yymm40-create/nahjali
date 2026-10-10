@@ -5,6 +5,7 @@
 import Link from "next/link";
 import Riyal from "@/components/Riyal";
 import { bonusPct, CREDITS, type Pack } from "@config/credits";
+import { giftOpen, SIGNUP_GIFT } from "@config/gift";
 import "./landing.css";
 
 export interface LandingTool {
@@ -25,7 +26,11 @@ export default function Landing({ loginHref, samples, tools, models, packs, feat
   const strip = samples.length ? [...samples, ...samples] : [];
   return (
     <div className="ld" dir="rtl">
-      <Link href={CREDITS.base} className="ld-promo">🎁 كل ما كبرت الباقة زاد رصيدك المجاني — <b>شوف الباقات</b></Link>
+      {giftOpen() ? (
+        <Link href={loginHref} className="ld-promo">🎁 سجّل الحين وخذ <b><Riyal halalas={SIGNUP_GIFT.halalas} size={14} /> مجانًا</b> في رصيدك — العرض لين ٦ الصبح بس</Link>
+      ) : (
+        <Link href={CREDITS.base} className="ld-promo">🎁 كل ما كبرت الباقة زاد رصيدك المجاني — <b>شوف الباقات</b></Link>
+      )}
 
       <header className="ld-hero">
         <div className="ld-in">
