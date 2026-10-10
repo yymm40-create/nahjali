@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ADJUSTS, ADJUST_GROUPS, FILTERS, HSL_BANDS, HSL_PARTS, NO_ADJUST, PHOTO, RATIOS, SIZE_PRESETS, hslKey, type AdjustGroup, type AdjustKey, type HslBand } from "@config/photo";
+import { ADJUSTS, ADJUST_GROUPS, FILTERS, HSL_BANDS, HSL_PARTS, NO_ADJUST, PHOTO, RATIOS, SIZE_PRESETS, hslKey, type AdjustKey, type HslBand } from "@config/photo";
 import { LAYER_EFFECTS } from "@config/designer";
 import { applyOp, docChanges, readDoc, type Op, type PhotoDoc, type PhotoLayer, type ShapeLayer, type TextLayer } from "@/lib/photo/doc";
 import { postJson } from "@/lib/fetch";
@@ -36,7 +36,18 @@ interface ProjectView {
   messages: Turn[];
   source: { kind: string; chatId?: string; label?: string } | null;
 }
-type Tab = "adjust" | "filters" | "crop" | "layers" | "zahraa";
+type Tab = "adjust" | "filters" | "crop" | "layers" | "pieces" | "zahraa";
+/** One piece of the picture, as the reading found it (the page shows it, the person ticks it). */
+interface Piece {
+  id: string;
+  kind: "text" | "picture" | "logo" | "shape";
+  name: string;
+  what: string;
+  box: { x: number; y: number; w: number; h: number };
+  text?: string;
+  color?: string;
+  align?: "right" | "center" | "left";
+}
 type Ask = { kind: "generate" | "cutout" | "edit"; prompt: string; aspect: string; target: "base" | "layer" | "file"; source: string };
 
 /** The tool rail on the LEFT, the way a design app is laid out: a tool is pressed, its own panel opens on the right. */
@@ -45,8 +56,10 @@ const TABS: { id: Tab; icon: string; label: string; hint: string }[] = [
   { id: "adjust", icon: "🎚️", label: "التلوين", hint: "الضوء واللون والتفاصيل — مثل لايت روم" },
   { id: "filters", icon: "🎞️", label: "لوكات", hint: "لوك جاهز بقوّة تتحكم فيها" },
   { id: "crop", icon: "✂️", label: "قص ومقاس", hint: "النسبة والمقاس والتدوير" },
+  { id: "pieces", icon: "🧩", label: "فكّك", hint: "يفصل عناصر الصورة: كل صورة وكل كلام طبقة بروحها" },
   { id: "layers", icon: "🗂️", label: "طبقات", hint: "نص وأشكال وصور، وكل عنصر على حدة" },
 ];
+const PIECE_ICON: Record<string, string> = { text: "🔤", picture: "🖼️", logo: "🏷️", shape: "▭" };
 /** How far the picture is zoomed on the stage: «يناسب الشاشة» or a real number. */
 const ZOOMS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
 const MAX_HISTORY = 60;
@@ -86,6 +99,11 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [compare, setCompare] = useState(false);
   const [band, setBand] = useState<HslBand>("red");
+  // «🧩 فكّك»: what the reading found, which pieces are ticked, and whether the holes are patched
+  const [pieces, setPieces] = useState<Piece[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [wipe, setWipe] = useState(true);
+  const [missed, setMissed] = useState<string[]>([]);
   const [shut, setShut] = useState<Record<string, boolean>>({});
 
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -337,6 +355,53 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     }
   }
 
+  // ── «🧩 فكّك عناصر الصورة»: read it, then lift out what was ticked
+  async function readPieces() {
+    setBusy("أقرأ عناصر الصورة…");
+    setMissed([]);
+    try {
+      await flushSave();
+      const r = await postJson<{ pieces: Piece[]; ready: boolean }>("/api/photo/decompose", { projectId, step: "read" });
+      setPieces(r.pieces);
+      setPicked(new Set(r.pieces.map((p) => p.id)));
+      if (!r.pieces.length) setNotice("ما لقيت عناصر أفصلها في هذي الصورة — تبدو صورة واحدة بلا شي مركّب عليها.");
+      else if (!r.ready) setNotice("قص الصور من الخلفية غير مفعّل على الخادم (FAL_KEY)؛ الكلام ينفصل نصًا، والصور بحدود مستطيلها.");
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function liftPieces() {
+    const take = (pieces ?? []).filter((p) => picked.has(p.id));
+    if (!take.length) return;
+    setBusy(`أفصل ${take.length} عنصر…`);
+    try {
+      await flushSave();
+      const r = await postJson<{ ops: Op[]; files: FileView[]; base: FileView | null; missed: string[] }>("/api/photo/decompose", { projectId, step: "lift", pieces: take, wipe });
+      const list = await reloadFiles();
+      const info = new Map(list.map((f) => [f.id, { w: f.width, h: f.height }]));
+      change((d) => {
+        let next = d;
+        for (const o of r.ops) {
+          const res = applyOp(next, o, { files: info, fonts: fontIds });
+          if (!("error" in res)) next = res.doc;
+        }
+        return next;
+      });
+      setMissed(r.missed);
+      setPieces(null);
+      setPicked(new Set());
+      setTab("layers");
+      setMessages((m) => [...m, { role: "assistant", text: `🧩 فصلت ${take.length} عنصر: ${take.map((p) => p.name).join("، ")}${r.missed.length ? ` (ما لقيت ${r.missed.join("، ")} بالضبط، فحطّيتها بحدود مستطيلها)` : ""}.`, note: true }]);
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function flushSave() {
     if (!docRef.current || !dirty.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -489,6 +554,19 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
             <div className={`ph-canvas-wrap${zoom === "fit" ? " fit" : ""}`} ref={stage} style={zoom === "fit" ? undefined : { width: `${Math.round(Math.min(doc.width, STAGE_PREVIEW) * zoom)}px` }}>
               <canvas ref={canvas} className="ph-canvas" />
               {!doc.base && !doc.layers.length && <button type="button" className="ph-empty" onClick={() => pickBase.current?.click()}>📷 اضغط لإضافة صورة</button>}
+              {pieces?.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`ph-piece${picked.has(p.id) ? " on" : ""}`}
+                  style={{ left: `${p.box.x - p.box.w / 2}%`, top: `${p.box.y - p.box.h / 2}%`, width: `${p.box.w}%`, height: `${p.box.h}%` }}
+                  title={`${p.name} — ${picked.has(p.id) ? "مفصول" : "اضغط لتفصله"}`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => setPicked((x) => { const n = new Set(x); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })}
+                >
+                  <small>{PIECE_ICON[p.kind]} {p.name}</small>
+                </button>
+              ))}
               {canvas.current && boxes.map((b) => {
                 const W = canvas.current!.width;
                 const H = canvas.current!.height;
@@ -647,6 +725,45 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
                 <label>لون الخلف<input type="color" value={doc.bg} onChange={(e) => op({ op: "bg", color: e.target.value }, true)} onBlur={endGesture} onPointerUp={endGesture} /></label>
                 <button type="button" className="ph-btn" onClick={() => pickBase.current?.click()}>📷 استبدل الصورة الأساسية</button>
               </div>
+            </div>
+          )}
+
+          {tab === "pieces" && (
+            <div className="ph-pane">
+              <p className="ph-hint">يقرأ الصورة ويفصل عناصرها: كل صورة وكل شعار يطلع طبقة بخلفية شفافة، والكلام يطلع <b>نصًا حقيقيًا</b> تعدّله وتغيّر خطه ولونه. تختار أنت وش تفصل — وما ينفصل شي إلا بطلبك.</p>
+              {!doc.base && <p className="ph-hint">⚠️ أضف صورة أساسية أول (📷 في شريط الأدوات).</p>}
+              {!pieces && (
+                <button type="button" className="ph-btn ph-primary" disabled={!doc.base || !!busy} onClick={() => void readPieces()}>🧩 اقرأ عناصر الصورة</button>
+              )}
+              {missed.length > 0 && <p className="ph-hint">ما لقيت بالضبط: {missed.join("، ")} — انفصلت بحدود مستطيلها، عدّلها بيدك.</p>}
+              {pieces && (
+                <>
+                  <div className="ph-row">
+                    <b>{pieces.length} عنصر</b>
+                    <button type="button" className="ph-btn ph-quiet" onClick={() => setPicked(new Set(pieces.map((p) => p.id)))}>اختر الكل</button>
+                    <button type="button" className="ph-btn ph-quiet" onClick={() => setPicked(new Set())}>ولا واحد</button>
+                  </div>
+                  <ul className="ph-pieces">
+                    {pieces.map((p) => (
+                      <li key={p.id} className={picked.has(p.id) ? "on" : ""}>
+                        <label>
+                          <input type="checkbox" checked={picked.has(p.id)} onChange={() => setPicked((x) => { const n = new Set(x); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} />
+                          <span aria-hidden>{PIECE_ICON[p.kind]}</span>
+                          <b>{p.name}</b>
+                        </label>
+                        <small dir="auto">{p.kind === "text" ? `«${(p.text ?? "").replace(/\n/g, " ").slice(0, 46)}»` : p.what}</small>
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="ph-check">
+                    <input type="checkbox" checked={wipe} onChange={(e) => setWipe(e.target.checked)} />
+                    امسح مواضعها من الصورة الأساسية (عشان ما يظهر العنصر مرتين لما تحركه)
+                  </label>
+                  <button type="button" className="ph-btn ph-primary" disabled={!picked.size || !!busy} onClick={() => void liftPieces()}>✂️ افصل المحدّد ({picked.size})</button>
+                  <button type="button" className="ph-btn ph-quiet" onClick={() => { setPieces(null); setPicked(new Set()); }}>إلغاء</button>
+                  <p className="ph-hint">الصور والشعارات تُقص بحدودها الحقيقية (تُحسب على الرصيد لكل عنصر)؛ الكلام مجاني لأنه يُعاد كتابته نصًا.</p>
+                </>
+              )}
             </div>
           )}
 
