@@ -120,7 +120,10 @@ describe("the names and the inputs", () => {
     expect(styleInText("ركّب موشن على كلامي بمهارة «المربع الصغير»")?.talk).toBe("shrink");
     expect(styleInText("ابي فوق كلامي ثلاثي الأبعاد")?.talk).toBe("over3d");
     expect(styleInText("ابيه ثري دي على كلامي")?.talk).toBe("over3d");
-    expect(MOTION_STYLES.filter((s) => s.talk).map((s) => s.ar)).toEqual(["المربع الصغير", "فوق كلامي ثلاثي الأبعاد"]);
+    expect(MOTION_STYLES.filter((s) => s.talk).map((s) => s.ar)).toEqual(["المربع الصغير", "فوق كلامي ثلاثي الأبعاد", "قص الشاشة نصين", "أنا صغير في الزاوية", "ريل متنوع"]);
+    expect(styleInText("قص الشاشة نصين")?.talk).toBe("split");
+    expect(styleInText("خليني صغير في الزاوية")?.talk).toBe("corner");
+    expect(styleInText("ريل متنوع")?.talk).toBe("mix");
   });
   it("reads the 3D layout and checks the face from the page", () => {
     expect(readTalk({ layout: "over3d", cues: [{ kind: "word", at: 100, text: "كلمة" }] }, 5000)!.layout).toBe("over3d");

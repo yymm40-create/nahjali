@@ -88,7 +88,7 @@ describe("the cues themselves", () => {
   it("draws each app's icon and the route once, as real SVG", () => {
     const p = readTalk({ cues: [{ kind: "brand", at: 0, brand: "tiktok" }, { kind: "brand", at: 3000, brand: "tiktok" }, { kind: "route", at: 6000, from: "الكويت", to: "الرياض" }] }, 20_000)!;
     const art = talkArt(p);
-    expect(art.map((a) => a.key).sort()).toEqual(["brand-tiktok", "route"]);
+    expect(art.map((a) => a.key).sort()).toEqual(["brand-tiktok", "panel-0", "route"]);
     for (const a of art) expect(a.svg).toMatch(/^<svg[\s\S]*<\/svg>$/);
   });
   it("without its picture, a brand cue still shows its name", () => {

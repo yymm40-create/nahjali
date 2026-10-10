@@ -8,6 +8,8 @@
 import type { Command } from "./commands";
 import { clipEnd, mainTrack, type Timeline } from "./model";
 import { brandPalette, capCues, contrast, emWidth, paletteOf, westernDigits, type Palette, type SfxCue } from "./motion-build";
+import type { AnimKind } from "./model";
+import { dividerSvg, inkOn, panelSvg, pickTalkStyle, type Hole, type TalkStyle } from "./talk-styles";
 
 export const BRANDS = ["instagram", "tiktok", "youtube", "x", "snapchat", "whatsapp", "facebook", "telegram", "linkedin", "threads"] as const;
 export type Brand = (typeof BRANDS)[number];
@@ -46,7 +48,14 @@ export interface FaceBox {
   w: number;
   h: number;
 }
-export type TalkLayout = "shrink" | "over" | "over3d";
+/**
+ * "shrink" / "over" / "over3d" as before; "split" (the screen cut in two: the person in one half, the designed panel
+ * with the word in the other, top and bottom taking turns); "corner" (the person in a circle in a corner, the panel
+ * fills the rest); "mix" (the frame changes from one moment to the next: split, box, corner, punch-in — never the same
+ * twice in a row, like the talking reels editors make).
+ */
+export type TalkLayout = "shrink" | "over" | "over3d" | "split" | "corner" | "mix";
+const LAYOUTS: TalkLayout[] = ["shrink", "over", "over3d", "split", "corner", "mix"];
 export interface TalkPlan {
   palette?: string;
   colors?: { bg?: string; text?: string; accent?: string; second?: string };
@@ -56,6 +65,8 @@ export interface TalkPlan {
    * the person stays full and the cues float in 3D (extruded slabs and tiles, a flip in, a slow tilt) where the face isn't
    */
   layout: TalkLayout;
+  /** the look of the panels, words and entrances (talk-styles.ts); picked from the reel when not given */
+  style?: string;
   /** where the face is (from the page); the box follows it and the cues keep off it */
   face?: FaceBox | null;
   cues: TalkCue[];
@@ -110,7 +121,8 @@ export function readTalk(raw: unknown, endMs: number): TalkPlan | null {
     .slice(0, 40);
   if (!cues.length) return null;
   const col = s.colors && typeof s.colors === "object" ? (s.colors as Record<string, string>) : undefined;
-  return { palette: clean(s.palette, 20) || undefined, ...(col ? { colors: col } : {}), layout: s.layout === "over" || s.layout === "over3d" ? s.layout : "shrink", cues };
+  const style = clean(s.style, 20) || undefined;
+  return { palette: clean(s.palette, 20) || undefined, ...(col ? { colors: col } : {}), ...(style ? { style } : {}), layout: LAYOUTS.includes(s.layout as TalkLayout) ? (s.layout as TalkLayout) : "shrink", cues };
 }
 
 /** When each cue shows: from its word until the next cue (or its own `until`), 1.6–3.5 s. */
@@ -140,7 +152,7 @@ export function talkLayout(W: number, H: number, face?: FaceBox | null, layout: 
   const base = tall
     ? { box: { x: 0.5, y: 0.8, scale: 0.36 }, area: { x: 0.5, y: 0.3, w: 0.84, h: 0.36 }, caption: 0.565 }
     : { box: { x: 0.79, y: 0.66, scale: 0.4 }, area: { x: 0.33, y: 0.45, w: 0.5, h: 0.6 }, caption: 0.92 };
-  if (!face || layout === "shrink") return base;
+  if (!face || (layout !== "over" && layout !== "over3d")) return base;
   // the person stays full: the cues go where the face isn't — above it, below it (never into the captions, which
   // sit from about 71% down) or beside it, whichever leaves the most room
   const capTop = 0.71;
@@ -208,6 +220,91 @@ export function boxTransform(full: { x: number; y: number; scale: number; rotate
   const y = box.y - (face.y - full.y) * k;
   const clamp = (v: number) => +Math.min(0.92, Math.max(0.08, v)).toFixed(4);
   return { ...full, x: clamp(x), y: clamp(y), scale: +(full.scale * k).toFixed(3) };
+}
+
+type Tx = { x: number; y: number; scale: number; rotate: number; opacity: number };
+
+// ───────── the frames: how the screen is laid out while a moment shows ─────────
+
+/** One moment's frame: the box, the screen cut in two (the person on top or below), a corner circle, a punch-in. */
+export type FrameMode = "shrink" | "split-top" | "split-bottom" | "corner" | "punch";
+/** «mix»: the turns the frame takes (never the same twice in a row). */
+const MIX: FrameMode[] = ["split-top", "shrink", "corner", "split-bottom", "punch", "split-top", "corner", "shrink", "split-bottom"];
+
+/** The frame of each shrink window for a layout. */
+export function frameModes(layout: TalkLayout, n: number): FrameMode[] {
+  return Array.from({ length: n }, (_, i) =>
+    layout === "split" ? (i % 2 ? "split-bottom" : "split-top") : layout === "corner" ? "corner" : layout === "mix" ? MIX[i % MIX.length] : "shrink",
+  );
+}
+
+type Area = { x: number; y: number; w: number; h: number };
+const FULL: Tx = { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 };
+const CORNER_BOX = { x: 0.73, y: 0.2, scale: 0.42 };
+/** The panels are drawn at half the frame's size (lighter files; the picture is scaled up on the frame). */
+const PANEL_K = 0.5;
+
+/** Where the person goes for a frame (from their full transform), and the cues' area, the captions' height, the panel. */
+export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox | null) {
+  const fy = face?.y ?? 0.4;
+  const fx = face?.x ?? 0.5;
+  const person = (full: Tx): Tx => {
+    if (mode === "shrink") return boxTransform(full, talkLayout(W, H, face, "shrink").box, face);
+    if (mode === "corner") return boxTransform(full, CORNER_BOX, face);
+    if (mode === "punch") {
+      // a punch-in on the face: bigger, the face where it was
+      const k = 1.18;
+      return { ...full, x: +(fx - (fx - full.x) * k).toFixed(4), y: +(fy - (fy - full.y) * k).toFixed(4), scale: +(full.scale * k).toFixed(3) };
+    }
+    // the screen cut in two: the person's face in the middle of their half (the other half is the panel)
+    const want = mode === "split-top" ? 0.25 : 0.75;
+    const y = full.y + (want - fy);
+    const half = full.scale / 2;
+    // the picture still covers its whole half
+    const lo = mode === "split-top" ? -Infinity : 1 - half;
+    const hi = mode === "split-top" ? half : Infinity;
+    return { ...full, y: +Math.min(hi, Math.max(lo, y)).toFixed(4) };
+  };
+  const PW = Math.round(W * PANEL_K);
+  const PH = Math.round(H * PANEL_K);
+  let area: Area;
+  let caption: number | null;
+  let panel: { w: number; h: number; x: number; y: number; hole: Hole | null; enter: AnimKind } | null = null;
+  let divider: number | null = null;
+  if (mode === "split-top" || mode === "split-bottom") {
+    const top = mode === "split-bottom";
+    // the cues inside their half, within the safe area (the bottom one is 16 % on a tall frame, 10 % on a wide one)
+    const limit = 1 - (H > W ? 0.16 : 0.1) - 0.01;
+    area = top ? { x: 0.5, y: 0.27, w: 0.84, h: 0.3 } : { x: 0.5, y: +((0.52 + limit) / 2).toFixed(4), w: 0.84, h: +(limit - 0.54).toFixed(4) };
+    caption = top ? 0.58 : 0.44;
+    panel = { w: PW, h: Math.round(PH / 2), x: 0.5, y: top ? 0.25 : 0.75, hole: null, enter: top ? "drop" : "rise" };
+    divider = 0.5;
+  } else if (mode === "corner") {
+    const t = person(FULL);
+    const k = CORNER_BOX.scale;
+    const cx = t.x + (fx - 0.5) * k;
+    const cy = t.y + (fy - 0.5) * k;
+    const d = Math.min(0.46 * W, Math.max(0.3 * W, face ? Math.max(face.w * W, face.h * H) * k * 2.6 : 0.4 * W));
+    panel = { w: PW, h: PH, x: 0.5, y: 0.5, hole: { x: cx * PW - (d * PANEL_K) / 2, y: cy * PH - (d * PANEL_K) / 2, w: d * PANEL_K, h: d * PANEL_K, round: true }, enter: "fade" };
+    const limit = 1 - (H > W ? 0.16 : 0.1) - 0.01;
+    // the area under the circle, and the captions under the area (a picture with its word stacks a little taller than it)
+    area = { x: 0.5, y: Math.min(limit - 0.27, cy + d / H / 2 + 0.22), w: 0.84, h: 0.34 };
+    caption = Math.min(limit, area.y + area.h / 2 + 0.1);
+  } else if (mode === "shrink") {
+    const L = talkLayout(W, H, face, "shrink");
+    const t = person(FULL);
+    const k = L.box.scale;
+    // the person's picture at its small size: the window cut in the panel
+    const pw = W * k * PANEL_K, ph = H * k * PANEL_K;
+    panel = { w: PW, h: PH, x: 0.5, y: 0.5, hole: { x: t.x * PW - pw / 2, y: t.y * PH - ph / 2, w: pw, h: ph, round: false }, enter: "fade" };
+    area = L.area;
+    caption = L.caption;
+  } else {
+    // punch-in: the person stays, the cues on cards where the face isn't
+    area = talkLayout(W, H, face ?? { x: 0.5, y: 0.4, w: 0.4, h: 0.3 }, "over").area;
+    caption = null;
+  }
+  return { mode, person, area, caption, panel, divider };
 }
 
 const SHRINK_MS = 320;
@@ -306,11 +403,32 @@ function brand3dSvg(b: Brand) {
   return slabSvg(ICON, ICON, "#1a1a1a", inner);
 }
 
+/** The plan's windows (when the frame changes) and the frame of each: shared by the art and the commands. */
+export function planFrames(plan: TalkPlan, W: number, H: number, endMs: number) {
+  const times = cueTimes(plan.cues, endMs);
+  const framed = plan.layout !== "over" && plan.layout !== "over3d";
+  const windows = framed ? windowsOf(times) : [];
+  const modes = frameModes(plan.layout, windows.length);
+  const geos = windows.map((_, i) => frameGeo(modes[i], W, H, plan.face));
+  const style = pickTalkStyle(plan.style, plan.cues.map((c) => c.text || c.to || c.value || c.emoji || "").join("|"));
+  /** the window a cue falls in (its frame), or -1 (the "over" layouts) */
+  const windowOf = (i: number) => windows.findIndex((w) => times[i].start >= w.start && times[i].start < w.end);
+  return { times, windows, modes, geos, style, windowOf };
+}
+
 /** The pictures the plan needs (each drawn once): key → SVG. */
-export function talkArt(plan: TalkPlan, W = 1080, H = 1920): { key: string; svg: string; w: number; h: number }[] {
+export function talkArt(plan: TalkPlan, W = 1080, H = 1920, endMs = 1e9): { key: string; svg: string; w: number; h: number }[] {
   const pal = paletteOfTalk(plan);
   const out = new Map<string, { key: string; svg: string; w: number; h: number }>();
   const d3 = plan.layout === "over3d";
+  // the designed panels behind each frame (one per window, its colour from the style's turn), and the split's divider
+  const F = planFrames(plan, W, H, endMs);
+  F.geos.forEach((g, i) => {
+    if (!g.panel) return;
+    const bg = F.style.panels[i % F.style.panels.length];
+    out.set(`panel-${i}`, { key: `panel-${i}`, svg: panelSvg(F.style, g.panel.w, g.panel.h, bg, i * 7919 + plan.cues.length), w: g.panel.w, h: g.panel.h });
+    if (g.divider != null) out.set("divider", { key: "divider", svg: dividerSvg(F.style, Math.round(W * PANEL_K)), w: Math.round(W * PANEL_K), h: 24 });
+  });
   // the 3D slabs behind the words and numbers: one per cue, sized from its words (talkCommands sizes the text the same)
   if (d3) {
     const L = talkLayout(W, H, plan.face, plan.layout);
@@ -331,7 +449,6 @@ export const paletteOfTalk = (plan: Pick<TalkPlan, "palette" | "colors">) => bra
 
 // ───────── the commands ─────────
 
-type Tx = { x: number; y: number; scale: number; rotate: number; opacity: number };
 
 /**
  * Everything the plan does to the timeline. `base`: commands before these in the same answer (for "$N"). `art`:
@@ -340,12 +457,13 @@ type Tx = { x: number; y: number; scale: number; rotate: number; opacity: number
 export function talkCommands(plan: TalkPlan, tl: Timeline, base = 0, art?: Map<string, string>): { commands: Command[]; sounds: SfxCue[]; windows: { start: number; end: number }[] } {
   const W = tl.width, H = tl.height;
   const L = talkLayout(W, H, plan.face, plan.layout);
-  const A = L.area;
   const pal = paletteOfTalk(plan);
   const main = mainTrack(tl);
   const end = Math.max(...tl.tracks.flatMap((t) => t.clips.map(clipEnd)), 0);
-  const times = cueTimes(plan.cues, end);
-  const windows = plan.layout === "shrink" ? windowsOf(times) : [];
+  const F = planFrames(plan, W, H, end);
+  const { times, windows, geos, style: st } = F;
+  // «over»/«over3d»: the cues' area is the one next to the face; a framed layout: each cue's area is its frame's
+  let A = L.area;
   const out: Command[] = [];
   const ref = () => `$${base + out.length}`;
   const sounds: SfxCue[] = [];
@@ -361,13 +479,30 @@ export function talkCommands(plan: TalkPlan, tl: Timeline, base = 0, art?: Map<s
     out.push({ type: "set_key", clipId: r, at, transform: { x, y, scale: +(scale * 0.97).toFixed(4), rotate: -4, opacity: 1 } });
     out.push({ type: "set_key", clipId: r, at: until - 1, transform: { x, y, scale: +(scale * 1.04).toFixed(4), rotate: 3, opacity: 1 } });
   };
-  const textCmd = (at: number, until: number, body: string, o: { x: number; y: number; size: number; color: string; box?: string | null; weight?: 400 | 700 | 900; bare?: boolean; anim: { in: string; out: string; inMs: number; outMs: number } }) => {
+  // the frame a cue is drawn in (a framed layout): its panel's colour decides the words' colours
+  let frameBg: string | null = null;
+  let frameI = -1;
+  const framed = windows.length > 0;
+  const textCmd = (at: number, until: number, body: string, o: { x: number; y: number; size: number; color: string; box?: string | null; weight?: 400 | 700 | 900; bare?: boolean; anim: { in: string; out: string; inMs: number; outMs: number }; title?: boolean }) => {
     // one line that fits the cue area's width (measured like the motion engine measures)
-    const fit = (0.96 * A.w * W) / (Math.max(0.5, emWidth(body, "cairo", o.weight ?? 900) + 0.7) * H);
+    const font = framed ? (o.title === false ? st.body : st.title) : "cairo";
+    const fit = (0.96 * A.w * W) / (Math.max(0.5, emWidth(body, font, o.weight ?? 900) + 0.7) * H);
     o = { ...o, size: Math.min(o.size, fit), ...(over && !o.box && !o.bare ? { box: `${pal.bg}e6`, color: pal.text } : {}) };
+    // on a designed panel: the words in the style's ink (or a colour that reads on this panel), on the style's card
+    if (framed && frameBg) {
+      if (o.box) {
+        if (st.card === "none") o = { ...o, box: null, color: inkOn(frameBg, st.accent) };
+        else if (st.card === "sticker") o = { ...o, box: "#ffffff", color: "#111111" };
+        // a highlighter stroke: the word on marker yellow, in dark ink
+        else if (st.card === "marker") o = { ...o, box: "#fde047", color: "#111111" };
+        else o = { ...o, box: st.accent, color: inkOn(st.accent, st.ink) };
+      } else if (!o.bare) o = { ...o, color: inkOn(frameBg, o.color === pal.accent ? st.accent : st.ink) };
+    }
+    // a framed reel: the entrances take turns from the style (never the same twice in a row)
+    const anim = framed && frameI >= 0 ? { ...o.anim, in: st.enter[(frameI + (o.title === false ? 1 : 0)) % st.enter.length], inMs: Math.max(o.anim.inMs, 320) } : o.anim;
     out.push({ type: "add_text", at, body, duration: until - at });
     const r = ref();
-    out.push({ type: "update_clip", clipId: r, patch: { text: { body, size: +o.size.toFixed(4), color: o.color, weight: o.weight ?? 900, font: "cairo", align: "center", box: o.box ?? null, highlight: null }, transform: { x: o.x, y: o.y, scale: 1, rotate: 0, opacity: 1 }, anim: o.anim as never } });
+    out.push({ type: "update_clip", clipId: r, patch: { text: { body, size: +o.size.toFixed(4), color: o.color, weight: o.weight ?? 900, font, align: "center", box: o.box ?? null, highlight: null }, transform: { x: o.x, y: o.y, scale: 1, rotate: 0, opacity: 1 }, anim: anim as never } });
     return r;
   };
   const imgCmd = (key: string, at: number, until: number, x: number, y: number, scale: number, anim: { in: string; out: string; inMs: number; outMs: number }) => {
@@ -399,15 +534,39 @@ export function talkCommands(plan: TalkPlan, tl: Timeline, base = 0, art?: Map<s
   const settle = { in: "settle", out: "fade", inMs: 280, outMs: 160 };
   const rise = { in: "rise", out: "fade", inMs: 260, outMs: 160 };
   const wipe = { in: "wipe", out: "fade", inMs: 700, outMs: 160 };
-  const label = (c: TalkCue, at: number, until: number, y: number) => c.text && textCmd(at + 60, until, c.text, { x: A.x, y, size: 0.075 * k, color: pal.text, anim: rise });
+  const label = (c: TalkCue, at: number, until: number, y: number) => c.text && textCmd(at + 60, until, c.text, { x: A.x, y, size: 0.075 * k, color: pal.text, anim: rise, title: false });
 
 
-  // 1) the background the person's box sits on
-  if (windows.length) out.push({ type: "set_background", color: pal.bg });
+  // 1) the background the person's box sits on, and the designed panel of each frame (the person shows through its window)
+  if (windows.length) out.push({ type: "set_background", color: st.panels[0] });
+  windows.forEach((w, i) => {
+    const g = geos[i];
+    if (!g.panel) return;
+    const a = Math.max(0, w.start - SHRINK_MS), b = w.end + SHRINK_MS;
+    const id = art?.get(`panel-${i}`);
+    if (id) {
+      out.push({ type: "add_clip", assetId: id, trackId: "new", at: a });
+      const r = ref();
+      out.push({ type: "trim_clip", clipId: r, edge: "end", to: b });
+      // a half-frame panel «contained» at 1 spans the frame's width (same aspect); the full one fills the frame
+      out.push({ type: "update_clip", clipId: r, patch: { fit: "contain", transform: { x: g.panel.x, y: g.panel.y, scale: 1, rotate: 0, opacity: 1 }, anim: { in: g.panel.enter, out: "fade", inMs: SHRINK_MS, outMs: SHRINK_MS } as never } });
+    }
+    const div = g.divider != null ? art?.get("divider") : null;
+    if (div) {
+      out.push({ type: "add_clip", assetId: div, trackId: "new", at: a });
+      const r = ref();
+      out.push({ type: "trim_clip", clipId: r, edge: "end", to: b });
+      out.push({ type: "update_clip", clipId: r, patch: { fit: "contain", transform: { x: 0.5, y: g.divider!, scale: 1, rotate: 0, opacity: 1 }, anim: { in: "wipe", out: "fade", inMs: 260, outMs: SHRINK_MS } as never } });
+    }
+  });
 
-  // 2) each cue's graphic, landing on its word
+  // 2) each cue's graphic, landing on its word (in its frame's area, on its frame's panel)
   plan.cues.forEach((c, i) => {
     const { start, end: until } = times[i];
+    frameI = framed ? F.windowOf(i) : -1;
+    const g = frameI >= 0 ? geos[frameI] : null;
+    A = g ? g.area : L.area;
+    frameBg = g?.panel ? st.panels[frameI % st.panels.length] : null;
     // a picture (or a big number) with its word under it, stacked from their real heights and centred in the area
     const LABEL = 0.075 * k;
     const stack = (iconH: number) => {
@@ -475,25 +634,26 @@ export function talkCommands(plan: TalkPlan, tl: Timeline, base = 0, art?: Map<s
     for (const clip of main.clips) {
       if (clip.text) continue;
       const full: Tx = { ...clip.transform };
-      // «المربع الصغير»: the box centred on the face (when the page found it), not on the middle of the picture
-      const small: Tx = boxTransform(full, L.box, plan.face);
       const a = clip.start, b = clipEnd(clip);
       const marks: [number, Tx][] = [];
-      for (const w of windows) {
-        if (w.end + SHRINK_MS <= a || w.start - SHRINK_MS >= b) continue;
+      windows.forEach((w, wi) => {
+        if (w.end + SHRINK_MS <= a || w.start - SHRINK_MS >= b) return;
+        // the person's place in this frame: the box centred on the face, a half of the screen, a corner, a punch-in
+        const small: Tx = geos[wi].person(full);
         for (const [t, tx] of [[w.start - SHRINK_MS, full], [w.start, small], [w.end, small], [w.end + SHRINK_MS, full]] as [number, Tx][]) if (t > a && t < b) marks.push([t, tx]);
         // a piece that starts or ends inside a window starts/ends small
         if (a >= w.start && a <= w.end) marks.push([a, small]);
         if (b - 1 >= w.start && b - 1 <= w.end) marks.push([b - 1, small]);
-      }
+      });
       for (const [t, tx] of marks.sort((x, y) => x[0] - y[0])) out.push({ type: "set_key", clipId: clip.id, at: Math.round(t), transform: tx });
     }
-    // the captions said during a window go up, above the box (never over the face)
+    // the captions said during a window move to where this frame leaves room for them (never over the face)
     for (const tr of tl.tracks) {
       if (tr.kind !== "text") continue;
       for (const c of tr.clips) {
-        if (!windows.some((w) => c.start < w.end && clipEnd(c) > w.start)) continue;
-        out.push({ type: "update_clip", clipId: c.id, patch: { transform: { ...c.transform, y: L.caption } } });
+        const wi = windows.findIndex((w) => c.start < w.end && clipEnd(c) > w.start);
+        if (wi < 0 || geos[wi].caption == null) continue;
+        out.push({ type: "update_clip", clipId: c.id, patch: { transform: { ...c.transform, y: geos[wi].caption! } } });
       }
     }
   }
