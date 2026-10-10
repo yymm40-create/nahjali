@@ -61,6 +61,7 @@ export default function SequenceTabs({ tl, run, readOnly }: { tl: Timeline; run:
                 y: e.clientY,
                 items: [
                   ...(open ? [] : [{ label: "افتحه", onClick: () => run({ type: "seq_open", id: s.id }) }]),
+                  ...(open ? [] : [{ label: "ضعه داخل التسلسل المفتوح", onClick: () => run({ type: "place_seq", id: s.id }) }]),
                   { label: "غيّر الاسم", onClick: () => { setDraft(s.name); setEditing(s.id); } },
                   { label: "نسخة منه", onClick: () => run({ type: "seq_duplicate", id: s.id }), disabled: seqs.length >= MAX_SEQS },
                   { label: "احذفه", onClick: () => confirm(`نحذف «${s.name}»؟ (تقدر تتراجع)`) && run({ type: "seq_delete", id: s.id }), disabled: seqs.length < 2, danger: true, sep: true },

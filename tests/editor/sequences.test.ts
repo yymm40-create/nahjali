@@ -56,3 +56,30 @@ describe("sequences", () => {
     expect(strict.seqs![0].tl!.tracks.flatMap((x) => x.clips)).toHaveLength(0);
   });
 });
+
+describe("putting a timeline inside another (place_seq)", () => {
+  it("puts a parked sequence into the open one as one clip of its length, and plays it", () => {
+    let t = apply(one(), { type: "seq_new", name: "ب" }, assets).timeline;
+    t = apply(t, { type: "add_clip", assetId: "b" }, assets).timeline;
+    const first = t.seqs![0].id;
+    const second = t.seqs![1].id;
+    t = apply(t, { type: "seq_open", id: first }, assets).timeline;
+    t = apply(t, { type: "place_seq", id: second }, assets).timeline;
+    const nested = allTracks(t).flatMap((x) => x.clips).filter((c) => c.seq === second);
+    expect(nested).toHaveLength(1);
+    expect(nested[0].start).toBe(4000);
+    expect(nested[0].out - nested[0].in).toBe(3000);
+  });
+  it("refuses itself, a loop, an unknown id and an empty sequence", () => {
+    let t = apply(one(), { type: "seq_new", name: "ب" }, assets).timeline;
+    const [s1, s2] = t.seqs!;
+    // the open one is the second (empty): an empty one can't be placed, itself can't be placed
+    expect(() => apply(t, { type: "place_seq", id: s2.id }, assets)).toThrow();
+    expect(() => apply(t, { type: "place_seq", id: "nope" }, assets)).toThrow();
+    t = apply(t, { type: "add_clip", assetId: "b" }, assets).timeline;
+    t = apply(t, { type: "place_seq", id: s1.id }, assets).timeline;
+    // now the second holds the first; opening the first and placing the second would loop
+    t = apply(t, { type: "seq_open", id: s1.id }, assets).timeline;
+    expect(() => apply(t, { type: "place_seq", id: s2.id }, assets)).toThrow(/حلقة/);
+  });
+});
