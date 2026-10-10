@@ -5,6 +5,7 @@
 import { requireApiUser, UserError } from "@/lib/api";
 import { can, hasAnyAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isPublicOpen } from "@/lib/launch";
 import { CONTENT_KV, DEFAULT_CONTENT_VISIBILITY, type ContentVisibility } from "@config/content";
 import { isAdmin } from "@config/site";
 
@@ -13,7 +14,9 @@ const CLOSED = "«صانع المحتوى» مقفل لحسابك حاليًا."
 export async function getVisibility(): Promise<ContentVisibility> {
   const { data } = await createAdminClient().from("content_kv").select("value").eq("key", CONTENT_KV.visibility).maybeSingle();
   const v = String(data?.value ?? "");
-  return v === "owner" || v === "codes" || v === "all" ? v : DEFAULT_CONTENT_VISIBILITY;
+  if (v === "owner" || v === "codes" || v === "all") return v;
+  // never set: open to everyone once the site is open (the launch switch), else the default
+  return (await isPublicOpen().catch(() => false)) ? "all" : DEFAULT_CONTENT_VISIBILITY;
 }
 
 export async function setVisibility(v: ContentVisibility) {

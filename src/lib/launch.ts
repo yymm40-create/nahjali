@@ -1,4 +1,4 @@
-// «فتح الموقع للجميع» — the owner's launch switch (/admin, stored in jawad_settings under "public_open"). Off: only those «السماح»
+// «فتح الموقع للجميع» — the owner's launch switch (/admin, stored in jawad_settings under "public_open"; on until he closes it). Off: only those «السماح»
 // lets in see JAWAD AI (the rest see «قيد التطوير»). On: every visitor sees the site and every signed-in person may use every
 // section (each generation paid from their wallet), except «الذكاء الإسلامي» (the owners only) and the hidden «نهج علي».
 // Server only.
@@ -12,7 +12,9 @@ const TTL = 15_000;
 export async function isPublicOpen(): Promise<boolean> {
   if (memo && Date.now() - memo.at < TTL) return memo.on;
   const { data, error } = await createAdminClient().from("jawad_settings").select("value").eq("key", KEY).maybeSingle();
-  const on = !error && (data?.value === true || (data?.value as { on?: unknown } | null)?.on === true);
+  // never set = open (the owner asked for the site open to everyone at launch); «اقفل» in /admin stores off
+  const v = data?.value as { on?: unknown } | boolean | null | undefined;
+  const on = !error && (data == null || v === true || (typeof v === "object" && v !== null && v.on !== false));
   memo = { at: Date.now(), on };
   return on;
 }

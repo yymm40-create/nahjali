@@ -21,6 +21,8 @@ vi.mock("@/lib/supabase/admin", () => ({
           if (table === "site_access") return { data: db.access[q._eq] ? { perms: db.access[q._eq], unlimited: db.unlimited.has(q._eq) } : null };
           if (table === "site_code_grants") return { data: db.grants[q._eq] ? { code_id: db.grants[q._eq] } : null };
           if (table === "site_secret") return { data: db.secret };
+          // these tests are about the list itself: the site closed (the launch switch off)
+          if (table === "jawad_settings") return { data: { value: { on: false } } };
           return { data: null };
         },
       };

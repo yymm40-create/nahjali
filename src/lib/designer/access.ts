@@ -5,6 +5,7 @@
 import { requireApiUser, UserError } from "@/lib/api";
 import { can, hasAnyAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isPublicOpen } from "@/lib/launch";
 import { DEFAULT_DESIGNER_VISIBILITY, DESIGNER_KV, type DesignerVisibility } from "@config/designer";
 import { isAdmin } from "@config/site";
 
@@ -13,7 +14,9 @@ const CLOSED = "«المصمم الذكي» مقفل لحسابك حاليًا."
 export async function getVisibility(): Promise<DesignerVisibility> {
   const { data } = await createAdminClient().from("designer_kv").select("value").eq("key", DESIGNER_KV.visibility).maybeSingle();
   const v = String(data?.value ?? "");
-  return v === "owner" || v === "codes" || v === "all" ? v : DEFAULT_DESIGNER_VISIBILITY;
+  if (v === "owner" || v === "codes" || v === "all") return v;
+  // never set: open to everyone once the site is open (the launch switch), else the default
+  return (await isPublicOpen().catch(() => false)) ? "all" : DEFAULT_DESIGNER_VISIBILITY;
 }
 
 export async function setVisibility(v: DesignerVisibility) {
