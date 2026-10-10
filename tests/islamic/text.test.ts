@@ -58,3 +58,28 @@ describe("«الذكاء الإسلامي» · الروايات أولًا", () 
     expect(pickPassages([], [P(9, "x"), P(8, "y")], 5, 3).map((p) => p.chunk_id)).toEqual([9, 8]);
   });
 });
+
+import { isIslamicMode, isPrimary, MODE_LABEL } from "@/lib/islamic/text";
+import { cleanTurns, titleOf } from "@/lib/islamic/chats";
+import { contextOf } from "@/lib/islamic/ask";
+
+describe("«الذكاء الإسلامي» · the ways to answer and the memory", () => {
+  it("tells the primary source (thaqalayn) from the complements, and knows the three ways", () => {
+    expect(isPrimary("https://thaqalayn.com/chapter/12")).toBe(true);
+    expect(isPrimary("https://www.almojib.com/q/5")).toBe(false);
+    expect(isPrimary("https://www.aqaed.com/faq/9")).toBe(false);
+    expect(["auto", "narration", "research"].every(isIslamicMode)).toBe(true);
+    expect(isIslamicMode("web")).toBe(false);
+    expect(MODE_LABEL.narration).toBe("الرواية فقط");
+  });
+  it("keeps a conversation's turns checked, and gives a follow-up its context", () => {
+    const t = cleanTurns([{ role: "user", text: "فضل الزيارة", mode: "research" }, { role: "assistant", text: "جواب", sources: [{ n: 1, url: "https://thaqalayn.com/x", title: "t", source: "s", kind: "hadith-chapter", primary: true }], found: true }, { role: "x", text: "y" }, null]);
+    expect(t).toHaveLength(2);
+    expect(t[0].mode).toBe("research");
+    expect(t[1].sources?.[0].primary).toBe(true);
+    expect(titleOf("  فضل   الزيارة ")).toBe("فضل الزيارة");
+    const c = contextOf(t);
+    expect(c).toContain("السائل: فضل الزيارة");
+    expect(c).toContain("الجواب: جواب");
+  });
+});
