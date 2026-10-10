@@ -178,3 +178,10 @@
 .cr-error { color: #ff9a9a; font-size: 14px; text-align: center; }
 .cr-foot { text-align: center; font-size: 13px; padding: 18px 0 8px; background: #07040f; }
 .cr-foot a { color: var(--cr-mute); }
+
+/* «مربع يحطون عليه صح» — the consent box before any money moves: the two policies are links that open in their own
+   tab (so what the person typed stays), and ticking is theirs whether they read them or not. */
+.agree { display: flex; align-items: flex-start; gap: 9px; margin: 2px 0 10px; font-size: 12.5px; line-height: 1.75; text-align: start; cursor: pointer; }
+.agree input { width: 20px; height: 20px; flex: 0 0 auto; margin-top: 2px; accent-color: #c9a227; cursor: pointer; }
+.agree a { text-decoration: underline; font-weight: 700; }
+.agree a:hover { opacity: 0.85; }

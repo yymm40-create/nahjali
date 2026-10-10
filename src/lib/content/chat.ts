@@ -140,7 +140,7 @@ export interface Reply {
   media: MediaItem[] | null;
 }
 
-const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" } as const;
+const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت", doc: "ملف PDF" } as const;
 
 /** What an answer of his looked like to the person beyond its words: the buttons he offered and the carousel's state. */
 function assistantNote(t: Turn): string {
@@ -170,8 +170,11 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
   const named = t.files.map((f) => `- ${KIND_AR[f.kind]}: «${f.name}»${f.durationMs ? ` (${Math.round(f.durationMs / 1000)} ث)` : ""} [id ${f.id}]`).join("\n");
   parts.push({ type: "text", text: `${t.text}\n\nالملفات المرفقة مع هذه الرسالة:\n${named}` });
   for (const f of t.files) {
-    const url = f.kind === "image" ? links.get(f.id) : undefined;
-    if (url) parts.push({ type: "image", url });
+    const url = links.get(f.id);
+    if (!url) continue;
+    // a picture is looked at; a PDF is READ (its own pages, by link), and a video or a sound is only named
+    if (f.kind === "image") parts.push({ type: "image", url });
+    else if (f.kind === "doc") parts.push({ type: "doc", url, name: f.name });
   }
   return { role: t.role, content: parts };
 }
@@ -186,7 +189,7 @@ export async function say(userId: string, chatId: string | null, message: string
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
   const turns = forModel(history);
   // pictures of this conversation, by short-lived link, so he can look at them
-  const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+  const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)));
   const persona = await getPersona();
   // what the person picked in the galleries (all their messages), and the closest worked examples
   const ids = chosenIds(history.filter((t) => t.role === "user").map((t) => t.text));

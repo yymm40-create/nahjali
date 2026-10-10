@@ -77,6 +77,8 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     const u = uploads.get(String(r.uploadId ?? ""));
     if (!u) return [];
     const role = (["first_frame", "last_frame", "reference"] as RefRole[]).includes(r.role as RefRole) ? (r.role as RefRole) : "reference";
+    // a generator's reference is a picture, a video or a sound — a PDF belongs in a robot's conversation, not here
+    if (u.kind === "doc") return [];
     return [{ uploadId: u.id, name: str(r.name, 24), kind: u.kind, role, width: u.width, height: u.height, durationMs: u.duration_ms }];
   });
   const attached = attachIds.flatMap((id) => (uploads.has(id) ? [uploads.get(id)!] : []));

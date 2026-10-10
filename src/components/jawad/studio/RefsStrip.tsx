@@ -168,6 +168,10 @@ export default function RefsStrip({ def, ev, refStyle, onRefStyle, refs, canUplo
         setDropError(`«${f.name}»: نوع غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، MP3/WAV).`);
         continue;
       }
+      if (s.kind === "doc") {
+        setDropError(`«${f.name}»: ملف PDF ما ينفع كمرجع للتوليد — أرفقه في محادثة أي روبوت وهو يقرأه.`);
+        continue;
+      }
       if (only && s.kind !== only) {
         setDropError(`«${f.name}»: هنا ${KIND_AR[only]} فقط.`);
         continue;

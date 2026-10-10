@@ -20,7 +20,7 @@ import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
 import type { Layer } from "@/lib/designer/layers";
 import LayerEditor, { loadFont, type DesignView, type FontDef } from "./LayerEditor";
 
-interface FileView { id: string; kind: "image" | "video" | "audio"; name: string; durationMs: number | null; url?: string | null }
+interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; kind: "choice" | "source" | "directions" | "fonts"; options: string[]; multi: boolean }
 interface Msg { role: "user" | "assistant"; text: string; files?: FileView[]; questions?: Question[]; design?: DesignView; error?: boolean }
 interface ChatItem { id: string; title: string }

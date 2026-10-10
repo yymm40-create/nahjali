@@ -5,6 +5,7 @@
 // بعد قليل إن شاء الله»; if it takes long, a WhatsApp chat with the owner, the message already written.
 
 import Link from "next/link";
+import AgreeTerms from "@/components/jawad/AgreeTerms";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
@@ -89,6 +90,8 @@ export default function CreditsShop({
   const [bank, setBank] = useState<Bank | null>(null);
   const [support, setSupport] = useState("");
   const [busy, setBusy] = useState(false);
+  // the terms are read (or at least agreed to) before any money moves
+  const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
 
   function buy() {
@@ -270,7 +273,8 @@ export default function CreditsShop({
                 <label>رقم الجوال (واتساب)<input dir="ltr" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" autoComplete="tel" /></label>
                 <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>
                 {error && <p className="cr-error" role="alert">{error}</p>}
-                <button type="button" className="cr-cta" disabled={busy || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">التالي: بيانات التحويل</span>}</button>
+                <AgreeTerms on={agree} onChange={setAgree} what="الشحن" />
+                <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">التالي: بيانات التحويل</span>}</button>
               </>
             )}
             {step === "bank" && order && bank && (

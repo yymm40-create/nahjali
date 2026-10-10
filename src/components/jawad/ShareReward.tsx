@@ -6,6 +6,7 @@
 // and the owner confirms from Telegram; the reward lands in the wallet once.
 
 import { useEffect, useState } from "react";
+import Riyal from "@/components/Riyal";
 import { instagramUrl, SHARE, shareSeenKey, type ShareStatus } from "@config/share";
 
 interface State {
@@ -83,7 +84,9 @@ export default function ShareReward({ version, loginHref }: { version: string; l
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-3xl" aria-hidden>🎁</p>
-                <h2 className="text-xl font-bold">انشرنا واحصل على {reward} ريال مجانًا</h2>
+                <h2 className="flex flex-wrap items-center gap-1.5 text-xl font-bold">
+                  انشرنا واحصل على <Riyal halalas={s.rewardSar * 100} size={22} /> مجانًا
+                </h2>
                 <p className="text-sm text-jw-muted">رصيد في محفظتك تصنع فيه صور وفيديوهات وأصوات في الجواد الذكي.</p>
               </div>
               <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={close} aria-label="أغلق">✕</button>

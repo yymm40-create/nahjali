@@ -2,7 +2,7 @@
 
 import { isAdmin } from "@config/site";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
-import { fitImages } from "@/lib/claude-images";
+import { fitDocs, fitImages } from "@/lib/claude-images";
 import { DEFAULT_CLAUDE_MODEL, claudeModelOf, servedModel, type ClaudeModel } from "@config/claude-models";
 import { currentClaude } from "./claude-model";
 
@@ -106,7 +106,15 @@ export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE
   throw last instanceof Error ? last : new Error(String(last));
 }
 
-export type ClaudePart = { type: "text"; text: string } | { type: "image"; url: string } | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" };
+/**
+ * A piece of one turn. A picture is looked at; a PDF («doc») is READ — its own pages go to Claude as a document, so a
+ * person can hand a lecture, a report or a form to any robot of the site and it answers from the file itself.
+ */
+export type ClaudePart =
+  | { type: "text"; text: string }
+  | { type: "image"; url: string }
+  | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" }
+  | { type: "doc"; url: string; name?: string };
 
 export interface ClaudeTurn {
   role: "user" | "assistant";
@@ -119,7 +127,9 @@ const toBlock = (p: ClaudePart) =>
     ? { type: "text", text: p.text }
     : p.type === "image64"
       ? { type: "image", source: { type: "base64", media_type: p.mediaType, data: p.data } }
-      : { type: "image", source: { type: "url", url: p.url } };
+      : p.type === "doc"
+        ? { type: "document", source: { type: "url", url: p.url }, ...(p.name ? { title: p.name.slice(0, 120) } : {}) }
+        : { type: "image", source: { type: "url", url: p.url } };
 
 /**
  * One Messages API call with a cached system prompt and a JSON-schema reply.
@@ -152,12 +162,12 @@ export async function callClaudeJson<T>({
   const asked = currentClaude();
 
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
-  const messages = await fitImages(turns.map((t, i) => {
+  const messages = await fitDocs(await fitImages(turns.map((t, i) => {
     const blocks: Record<string, unknown>[] = (typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content).map(toBlock);
     // Cache breakpoint on the latest turn: the next request reuses everything up to here
     if (i === turns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
     return { role: t.role, content: blocks };
-  }));
+  })));
 
   // Haiku has no server-side fallback model
   const withFallback = fallback && asked.key !== "haiku";
