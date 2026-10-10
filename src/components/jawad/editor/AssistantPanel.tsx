@@ -101,6 +101,7 @@ export default function AssistantPanel({
   onAssets,
   onSeparate,
   onSceneCut,
+  onUpscale,
   projectId,
   tl,
   selected,
@@ -126,6 +127,8 @@ export default function AssistantPanel({
   onSeparate: (clipId: string) => Promise<void>;
   /** cuts a video clip at every change of shot */
   onSceneCut: (clipId: string) => Promise<number>;
+  /** «رفع الدقة»: the clip's video sent to Topaz (a new file comes back and takes its place when it is ready) */
+  onUpscale?: (assetId: string, target: "4k" | "1080p") => Promise<void> | void;
   projectId: string;
   tl: Timeline;
   selected: string[];
@@ -531,6 +534,17 @@ export default function AssistantPanel({
           } else if (q.kind === "scene_cut") {
             setBusy("أقرأ المشاهد وأقطّع عند كل تغيّر…");
             await onSceneCut(q.clipId);
+          } else if (q.kind === "upscale") {
+            // «رفع الدقة»: the clip's own file is sent; it is paid by the second, so the reasons it can't run are said plainly
+            if (!onUpscale) throw new Error("رفع الدقة مو متاح في هذا المشروع.");
+            const f = findClip(tlRef.current, q.clipId);
+            const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+            if (!f || !a || a.kind !== "video") throw new Error("رفع الدقة للفيديو فقط — اختر مقطع فيديو.");
+            if (a.status !== "ready") throw new Error(`الملف «${a.name}» ما خلص رفع بعد؛ انتظر شوي وأعد الطلب.`);
+            if (!a.width || !a.height) throw new Error(`ما قدرت أقرا دقة «${a.name}».`);
+            if (Math.max(a.width, a.height) >= 3800) throw new Error(`«${a.name}» دقته ${a.width}×${a.height} — هذا 4K أصلًا، رفع الدقة ما يضيف له شي.`);
+            setBusy("أرسل المقطع لرفع الدقة…");
+            await onUpscale(a.id, q.quality === "1080p" && Math.max(a.width, a.height) < 1800 ? "1080p" : "4k");
           }
         } catch (e) {
           setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
