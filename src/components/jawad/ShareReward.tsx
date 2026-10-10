@@ -74,8 +74,8 @@ export default function ShareReward({ version, loginHref }: { version: string; l
 
   return (
     <>
-      <button type="button" className="sr-pill h-9 min-h-9 whitespace-nowrap px-3 text-xs font-bold" onClick={() => setOpen(true)} title="انشرنا في ستوري انستغرام واحصل على رصيد مجاني">
-        {pending ? "⏳ ننتظر التأكيد" : <>🎁 انشرنا +<Riyal halalas={Math.round(s.rewardSar * 100)} size={12} /></>}
+      <button type="button" className="sr-pill h-9 min-h-9 whitespace-nowrap px-2.5 text-xs font-bold sm:px-3" onClick={() => setOpen(true)} title="انشرنا في ستوري انستغرام واحصل على رصيد مجاني">
+        {pending ? <>⏳<span className="hidden sm:inline"> ننتظر التأكيد</span></> : <>🎁<span className="hidden sm:inline"> انشرنا</span> +<Riyal halalas={Math.round(s.rewardSar * 100)} size={12} /></>}
       </button>
       {/* drawn on the page itself: inside the header (blurred, sticky) a fixed window is held by the header, off centre */}
       {open && typeof document !== "undefined" && createPortal(

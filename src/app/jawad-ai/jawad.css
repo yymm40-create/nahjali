@@ -8,6 +8,8 @@ html:has(.jw),
 html:has(.jw) body {
   background: #0b0c0f;
   color-scheme: dark;
+  /* nothing may widen the page past the phone's screen (in-app browsers then shift it sideways over a black strip) */
+  overflow-x: clip;
 }
 
 .jw {
