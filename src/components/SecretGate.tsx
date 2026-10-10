@@ -56,15 +56,11 @@ export default function SecretGate() {
     window.addEventListener("secret:open", onOpen);
     const skip = SKIP.some((p) => path === p || path.startsWith(`${p}/`));
     const fromLink = new URLSearchParams(window.location.search).has("secret");
+    // no longer asked on its own (the owner's word): only from a «عندي كود سري» button, a ?secret link, or after signing in to enter it
     const t = setTimeout(() => {
-      if (fromLink || (!skip && (read(PENDING) || !read(ASKED)))) show();
+      if (fromLink || (!skip && read(PENDING))) show();
     }, 900);
-    if (!skip)
-      fetch("/api/access/code", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((s: { signedIn: boolean; open: boolean }) => setBar(s.signedIn && !s.open))
-        .catch(() => {});
-    else setTimeout(() => setBar(false), 0);
+    setTimeout(() => setBar(false), 0);
     return () => {
       clearTimeout(t);
       window.removeEventListener("secret:open", onOpen);

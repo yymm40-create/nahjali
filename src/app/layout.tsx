@@ -9,7 +9,6 @@ import Header from "@/components/Header";
 import SiteChrome from "@/components/SiteChrome";
 import NavFeedback from "@/components/NavFeedback";
 import NativeAppBridge from "@/components/NativeAppBridge";
-import AppUpdate from "@/components/AppUpdate";
 import NewVersion from "@/components/NewVersion";
 import { NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER } from "@config/site";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
@@ -48,7 +47,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {/* «سلمان»: the helper on every page (a question about the site, answered simply) */}
         <Salman />
         <NativeAppBridge />
-        <AppUpdate />
         <NewVersion />
         <SiteChrome
           top={
