@@ -16,6 +16,7 @@ export const SECTION_IMPLEMENTATIONS = {
   content: { label: "صانع المحتوى (محادثة مع «محمد باقر»: كاروسيل وريلز وموشن)", output: null },
   designer: { label: "المصمم الذكي (محادثة مع «كاظم»: بطاقات وبوسترات ومصغّرات بطبقات نصية)", output: null },
   photo: { label: "زهراء فوتو ماستر (برنامج تحرير الصور والتصميم المستقل مع الروبوت «زهراء»)", output: null },
+  kharq: { label: "محمد الخارق (محادثة عامة في أي موضوع، تفهم المطلوب بالضبط وتسلّم: كلامًا ورسائل وجداول وملفات PDF وصورًا وفيديو)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
 export const isImplementation = (s: string): s is SectionImplementation => s in SECTION_IMPLEMENTATIONS;
@@ -50,13 +51,15 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "designer", name: "المصمم الذكي", icon: "palette", implementation: "designer", sort: 90, enabled: false },
   // private: the page opens for the owner and for whoever holds the «photo» permission (the owner's switch in /admin/photo)
   { id: "photo", name: "زهراء فوتو ماستر", icon: "camera", implementation: "photo", sort: 95, enabled: false },
+  // private: the page opens for the owner and for whoever holds the «kharq» permission (the owner's switch in /admin/kharq)
+  { id: "kharq", name: "محمد الخارق", icon: "sparkles", implementation: "kharq", sort: 97, enabled: false },
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "student", "editor", "islamic", "games", "content", "designer", "photo"];
+export const RESERVED_SECTION_IDS = ["memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic", "games", "content", "designer", "photo"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq"];
 
 /** Where a section opens. The film maker, «الطالب الذكي» and «حيدرة كت» keep their own pages; studio sections open at /jawad-ai/<id>. */
 export const sectionPath = (s: { id: string; implementation: string }) =>
