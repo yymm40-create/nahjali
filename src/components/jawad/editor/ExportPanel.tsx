@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { duration, flatten, formatTime, type Timeline } from "@/lib/editor/model";
-import { postJson } from "@/lib/fetch";
+import { api, postJson } from "@/lib/fetch";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { desktop } from "./desktop";
@@ -106,18 +106,38 @@ export default function ExportPanel({
     try {
       await flush();
       let last = 0;
-      const r = await exportVideo(
-        flatten(tl),
-        assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio })),
-        plan,
-        (p) => {
-          if (p - last >= 0.005 || p === 1) {
-            last = p;
-            setPhase({ k: "running", p });
+      const run = (list: { id: string; kind: EditorAsset["kind"]; url: string | null; status: string; hasAudio: boolean }[]) =>
+        exportVideo(
+          flatten(tl),
+          list.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio })),
+          plan,
+          (p) => {
+            if (p - last >= 0.005 || p === 1) {
+              last = p;
+              setPhase({ k: "running", p });
+            }
+          },
+          ac.signal,
+        );
+      // The links to the files live a few hours: a long session (or a file moved between sequences) can leave one dead,
+      // and the browser then says only «Failed to fetch». The links are renewed first, and once more if it still fails.
+      const fresh = async () => (desktop() ? assets : (await api<{ assets: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`)).assets);
+      let r: ExportResult;
+      try {
+        r = await run(await fresh().catch(() => assets));
+      } catch (e) {
+        if (!(e instanceof TypeError || (e instanceof Error && /failed to fetch|networkerror|load failed/i.test(e.message)))) throw e;
+        last = 0;
+        setPhase({ k: "running", p: 0 });
+        try {
+          r = await run(await fresh());
+        } catch (e2) {
+          if (e2 instanceof TypeError || (e2 instanceof Error && /failed to fetch|networkerror|load failed/i.test(e2.message))) {
+            throw new ExportError("المتصفح ما قدر يقرأ أحد ملفات المشروع (الاتصال انقطع أو الملف ما عاد يُفتح). حدّث الصفحة (F5) وجرّب التصدير مرة ثانية؛ وإذا تكرر، شغّل بلاغ 🐞 وأرسله.");
           }
-        },
-        ac.signal,
-      );
+          throw e2;
+        }
+      }
       download(r.blob, name);
       setPhase({ k: "done", r, saved: null, purgeAt: null });
       // a copy with the project (deleted with it after 3 days); if it can't be stored → just not kept
