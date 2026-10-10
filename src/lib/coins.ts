@@ -63,7 +63,7 @@ export async function reserveCoins(user: { id: string; email?: string | null }, 
   const coins = (claude ? claudeHalalas : coinsFor)(estimateUsd);
   const left = await adjust(user.id, -coins, "reserve", jobId, label);
   if (left === null) {
-    throw new UserError(`رصيدك ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اشحن رصيدك من صفحة «النقود الذكية».`, 402);
+    throw new UserError(`رصيدك ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك).`, 402);
   }
 }
 
@@ -207,7 +207,7 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   const need = claudeHalalas(typicalReplyUsd(model));
   const balance = who.team ? await teamCoinBalance(who.team) : await coinBalance(who.id);
   if (balance !== null && balance < need) {
-    throw new UserError(`رصيدك ما يكفي للمحادثة مع «${model.name}»: الرد الواحد يحتاج تقريبًا ${coinStr(need)}. اشحن رصيدك من صفحة «النقود الذكية»، أو اختر موديل أرخص.`, 402);
+    throw new UserError(`رصيدك ما يكفي للمحادثة مع «${model.name}»: الرد الواحد يحتاج تقريبًا ${coinStr(need)}. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك)، أو اختر موديل أرخص.`, 402);
   }
   const ref = `claude:${crypto.randomUUID()}`;
   return {

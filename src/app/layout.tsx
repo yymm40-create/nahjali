@@ -1,7 +1,6 @@
 import UiSounds from "@/components/UiSounds";
 import SecretGate from "@/components/SecretGate";
-import NotesPin from "@/components/NotesPin";
-import { Suspense } from "react";
+import Salman from "@/components/Salman";
 import type { Metadata, Viewport } from "next";
 import { Baloo_Bhaijaan_2, Lalezar } from "next/font/google";
 import Link from "next/link";
@@ -12,17 +11,19 @@ import NavFeedback from "@/components/NavFeedback";
 import NativeAppBridge from "@/components/NativeAppBridge";
 import AppUpdate from "@/components/AppUpdate";
 import NewVersion from "@/components/NewVersion";
-import { OWN_CHROME_HEADER } from "@config/site";
+import { NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER } from "@config/site";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
 import "./globals.css";
 
 const body = Baloo_Bhaijaan_2({ variable: "--font-baloo", subsets: ["arabic", "latin"], weight: ["500", "700", "800"] });
 const display = Lalezar({ variable: "--font-lalezar", subsets: ["arabic", "latin"], weight: "400" });
 
-export const metadata: Metadata = {
-  title: "نهج علي | كتيب عادات طفلك بشخصيته الكرتونية",
-  description: "ارفع صورة طفلك، ونحوّلها لشخصية كرتونية تتعلّم الصلاة والقرآن والعادات الطيبة في كتيب ملوّن باسمه، جاهز للطباعة.",
-};
+export const metadata: Metadata = NAHJ_ALI_HIDDEN
+  ? { title: { default: "الجواد الذكي | JAWAD AI", template: "%s" }, description: "استوديو عربي لصناعة الصور والفيديو والصوت والتصاميم والأفلام بالذكاء الاصطناعي." }
+  : {
+      title: "نهج علي | كتيب عادات طفلك بشخصيته الكرتونية",
+      description: "ارفع صورة طفلك، ونحوّلها لشخصية كرتونية تتعلّم الصلاة والقرآن والعادات الطيبة في كتيب ملوّن باسمه، جاهز للطباعة.",
+    };
 
 export const viewport: Viewport = {
   themeColor: [
@@ -44,9 +45,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <NavFeedback />
         <UiSounds />
         <SecretGate />
-        <Suspense>
-          <NotesPin />
-        </Suspense>
+        {/* «سلمان»: the helper on every page (a question about the site, answered simply) */}
+        <Salman />
         <NativeAppBridge />
         <AppUpdate />
         <NewVersion />
@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   <Link href="/privacy" className="hover:text-ink">سياسة الخصوصية</Link>
                   <Link href="/terms" className="hover:text-ink">الشروط والأحكام</Link>
                 </div>
-                <p>نهج علي © ٢٠٢٦</p>
+                <p>{NAHJ_ALI_HIDDEN ? "الجواد الذكي" : "نهج علي"} © ٢٠٢٦</p>
               </footer>
             )
           }

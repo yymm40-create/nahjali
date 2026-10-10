@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUsername, suggestionFor } from "@/lib/username";
 import UsernameStep from "./UsernameStep";
 
-export const metadata = { title: "اسم المستخدم | نهج علي" };
+export const metadata = { title: "اسم المستخدم | الجواد الذكي" };
 export const dynamic = "force-dynamic";
 
 const safe = (n: unknown) => (typeof n === "string" && n.startsWith("/") && !n.startsWith("//") && !n.includes("\\") ? n : "/");

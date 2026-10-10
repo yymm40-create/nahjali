@@ -1,8 +1,39 @@
-import { CONTACT_EMAIL, LEGAL_UPDATED, SITE_NAME } from "@config/site";
+import { CONTACT_EMAIL, LEGAL_UPDATED, NAHJ_ALI_HIDDEN, SITE_NAME } from "@config/site";
 
 export const metadata = { title: "سياسة الخصوصية" };
 
-const SECTIONS: { title: string; body: string[] }[] = [
+/** «الجواد الذكي»'s privacy policy (while «نهج علي» is hidden, config/site.ts). */
+const JAWAD_SECTIONS: { title: string; body: string[] }[] = [
+  {
+    title: "اللي نحتفظ فيه",
+    body: [
+      "إيميلك واسمك من تسجيل الدخول، واسم المستخدم اللي تختاره.",
+      "الملفات اللي ترفعها والأعمال اللي تولّدها، عشان ترجع لها في «أعمالي». محفوظة في تخزين خاص، وروابطها مؤقتة.",
+      "محادثاتك مع روبوتات الموقع داخل مشاريعك.",
+      "عند شحن الرصيد: الاسم ورقم الجوال والمبلغ والباقة، عشان نتأكد من التحويل ونتواصل معك.",
+    ],
+  },
+  {
+    title: "معالجة طلباتك",
+    body: [
+      "لتنفيذ طلبك نرسل الوصف والملفات اللازمة لمزودي الذكاء الاصطناعي اللي يولّدون الصور والفيديو والصوت والنصوص، لهذا الغرض فقط.",
+      "ما نبيع بياناتك ولا نشاركها لأي غرض ثاني.",
+    ],
+  },
+  {
+    title: "حذف حسابك وبياناتك",
+    body: [`تقدر تحذف حسابك من صفحة «حذف حسابي»، أو تطلب حذف حسابك وكل ملفاتك براسلنا على ${CONTACT_EMAIL}، ونحذفها خلال ٧ أيام.`],
+  },
+  {
+    title: "الخدمات اللي نستخدمها",
+    body: [
+      "Supabase لتسجيل الدخول وحفظ البيانات، وVercel لاستضافة الموقع، وCloudflare لتخزين الملفات، وGoogle وApple لتسجيل الدخول، ومزودو الذكاء الاصطناعي لتنفيذ الطلبات.",
+      "ما نستخدم أدوات تتبّع إعلانية.",
+    ],
+  },
+];
+
+const BOOKLET_SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "الصورة الأصلية: تنحذف ولا نحتفظ فيها",
     body: [
@@ -46,6 +77,8 @@ const SECTIONS: { title: string; body: string[] }[] = [
     ],
   },
 ];
+
+const SECTIONS = NAHJ_ALI_HIDDEN ? JAWAD_SECTIONS : BOOKLET_SECTIONS;
 
 export default function PrivacyPage() {
   return (

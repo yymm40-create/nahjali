@@ -7,7 +7,7 @@ import SmartCoin from "./SmartCoin";
 import { coinBalance } from "@/lib/coins";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { SoundToggle } from "./UiSounds";
-import { isAdmin } from "@config/site";
+import { isAdmin, NAHJ_ALI_HIDDEN } from "@config/site";
 import { can } from "@/lib/access";
 import { SECTIONS } from "@config/sections";
 
@@ -25,10 +25,17 @@ export default async function Header() {
   return (
     <header className="sticky top-0 z-20 border-b border-line/60 bg-page/80 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-xl items-center justify-between gap-3 px-4 py-2">
-        <Link href="/" className="flex items-center gap-2" aria-label="نهج علي، الرئيسية">
-          <Image src="/brand/logo.png" alt="" width={44} height={50} priority className="h-12 w-auto drop-shadow" />
-          <span className="display gold-text text-2xl">نهج علي</span>
-        </Link>
+        {NAHJ_ALI_HIDDEN ? (
+          <Link href="/jawad-ai" className="flex items-center gap-2" aria-label="الجواد الذكي، الرئيسية">
+            <Image src="/jawad-ai/logo.png" alt="" width={44} height={44} priority className="h-11 w-auto drop-shadow" />
+            <span className="display text-2xl">الجواد الذكي</span>
+          </Link>
+        ) : (
+          <Link href="/" className="flex items-center gap-2" aria-label="نهج علي، الرئيسية">
+            <Image src="/brand/logo.png" alt="" width={44} height={50} priority className="h-12 w-auto drop-shadow" />
+            <span className="display gold-text text-2xl">نهج علي</span>
+          </Link>
+        )}
         <div className="flex items-center gap-2">
           <SoundToggle />
           {user && coins !== null && (
@@ -48,15 +55,15 @@ export default async function Header() {
                 ☰
               </summary>
               <nav className="card absolute end-0 mt-2 flex w-48 flex-col p-2 text-base font-extrabold">
-                {SECTIONS.filter((s) => !(s.underDevelopment && !bookletOpen)).map((s) => (
+                {SECTIONS.filter((s) => !NAHJ_ALI_HIDDEN && !(s.underDevelopment && !bookletOpen)).map((s) => (
                   <Link key={s.key} href={s.href} className={ITEM}>{s.icon} {s.title}</Link>
                 ))}
                 <Link href="/jawad-ai/student" className={ITEM}>🎒 الطالب الذكي</Link>
                 <Link href="/jawad-ai/editor" className={ITEM}>✂️ حيدرة كت</Link>
-                <Link href="/jawad-ai" className={ITEM}>✨ منصة الذكاء الاصطناعي</Link>
+                <Link href="/jawad-ai" className={ITEM}>✨ {NAHJ_ALI_HIDDEN ? "الجواد الذكي" : "منصة الذكاء الاصطناعي"}</Link>
                 <Link href="/download" className={`${ITEM} hide-in-app`}>📲 حمّل التطبيق</Link>
                 <hr className="my-1 border-line" />
-                {bookletOpen && <Link href="/my-booklets" className={ITEM}>📚 كتيباتي</Link>}
+                {bookletOpen && !NAHJ_ALI_HIDDEN && <Link href="/my-booklets" className={ITEM}>📚 كتيباتي</Link>}
                 {isAdmin(user.email) && (
                   <Link href="/admin" className={ITEM}>📊 لوحة التحكم</Link>
                 )}
@@ -65,7 +72,7 @@ export default async function Header() {
               </nav>
             </MenuDetails>
           ) : (
-            <Link href="/login" className="btn btn-ghost min-h-11 px-4 text-base">
+            <Link href={NAHJ_ALI_HIDDEN ? "/jawad-ai/login" : "/login"} className="btn btn-ghost min-h-11 px-4 text-base">
               دخول
             </Link>
           )}

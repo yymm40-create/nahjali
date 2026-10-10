@@ -3,6 +3,8 @@ import Link from "next/link";
 import AdsGrid from "@/components/jawad/AdsGrid";
 import Icon from "@/components/jawad/Icon";
 import QuickStart from "@/components/jawad/QuickStart";
+import Landing, { type LandingTool } from "@/components/jawad/Landing";
+import { loadCreditSettings } from "@/lib/credits/settings";
 import { liveAds } from "@/lib/jawad/server/ads";
 import { canUseJawad, jawadLogin, jawadSession } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
@@ -39,9 +41,37 @@ function thumb(w: WorkItem): { url: string; kind: "image" | "video" | "audio"; h
   return { url: o.url, kind: o.kind, href: `/jawad-ai/${w.sectionId}?tab=works`, label: w.prompt || w.generatorName };
 }
 
-/** JAWAD AI's home: say what you want and start, your latest works, then the sections. */
+// The visitor's front page: each tool as a card (the section's own name from the dashboard, a line, an icon and a colour)
+const TOOL: Record<string, { icon: string; line: string; tint: string }> = {
+  "studio:image": { icon: "🖼️", line: "صور من وصفك أو من صورك، بأي مقاس وجودة.", tint: "#f97316" },
+  "studio:video": { icon: "🎬", line: "فيديو من نص أو صورة، بحركة سينمائية وصوت.", tint: "#22d3ee" },
+  "studio:audio": { icon: "🎙️", line: "تعليق صوتي وأصوات وموسيقى ومؤثرات.", tint: "#14b8a6" },
+  film: { icon: "🎞️", line: "فيلم أو مسلسل من فكرتك، مشهد بمشهد.", tint: "#e9b546" },
+  editor: { icon: "✂️", line: "مونتاج من الجوال أو الكمبيوتر، مع «حيدرة».", tint: "#b8f53d" },
+  content: { icon: "✍️", line: "«محمد باقر»: كاروسيل وريلز ومحتوى يبيع.", tint: "#f472b6" },
+  designer: { icon: "🎨", line: "«كاظم»: بطاقات وإعلانات بخطوط عربية.", tint: "#a78bfa" },
+  photo: { icon: "📸", line: "«زهراء»: تحرير صورك وتصاميمك بلمسة محترف.", tint: "#fb7185" },
+  student: { icon: "🎒", line: "ملخصات وشرح واختبارات من مادتك.", tint: "#7c3aed" },
+  games: { icon: "🎮", line: "«قنبر»: صمّم لعبتك من فكرة.", tint: "#34d399" },
+};
+
+/** JAWAD AI's home: a visitor gets the front page; a signed-in person says what they want and starts, their latest works, then the sections. */
 export default async function JawadHome() {
   const [rt, ads, { user, owner }] = await Promise.all([loadRuntime(), liveAds(), jawadSession()]);
+  if (!user) {
+    const credits = await loadCreditSettings();
+    const tools: LandingTool[] = rt.sections
+      .filter((s) => s.enabled && s.implementation !== "islamic")
+      .map((s) => {
+        const t = TOOL[s.implementation];
+        return t ? { href: s.path, name: s.name, ...t } : null;
+      })
+      .filter((t): t is LandingTool => !!t);
+    const live = rt.generators.filter((g) => g.live);
+    const samples = [...new Set(live.map((g) => g.sampleUrl).filter((u): u is string => !!u && /\.(png|jpe?g|webp)(\?|$)/i.test(u)))].slice(0, 12);
+    const models = [...new Set(live.map((g) => g.name))].slice(0, 14);
+    return <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} />;
+  }
   const hasAds = Boolean(ads.main || ads.side_top || ads.side_bottom);
   const sections = rt.sections.filter((s) => s.enabled);
   const allowed = user ? await canUseJawad(user) : false;
@@ -111,22 +141,6 @@ export default async function JawadHome() {
               </li>
             );
           })}
-          {/* «كتيب نهج علي»: one of the site's works, reached from here now (the home page has two branches) */}
-          <li>
-            <Link href="/booklet" className="jw-panel group relative flex h-full items-start gap-3 overflow-hidden p-4 transition-all hover:-translate-y-0.5 hover:border-jw-line-strong" style={{ borderTopColor: "#e3a90f", borderTopWidth: 3 }}>
-              <span className="pointer-events-none absolute -end-10 -top-10 size-28 rounded-full opacity-[0.12] blur-2xl transition-opacity group-hover:opacity-25" style={{ background: "#e3a90f" }} aria-hidden />
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl text-xl" style={{ background: "color-mix(in srgb, #e3a90f 16%, transparent)" }} aria-hidden>
-                📖
-              </span>
-              <span className="min-w-0 space-y-1">
-                <span className="flex items-center gap-1 font-semibold">
-                  كتيب نهج علي
-                  <Icon name="chevronLeft" size={14} className="text-jw-faint transition-transform group-hover:-translate-x-0.5" />
-                </span>
-                <span className="block text-sm text-jw-muted">صورة طفلك تصير شخصية كرتونية تتعلّم الصلاة والقرآن والعادات الطيبة، في كتيب ملوّن باسمه.</span>
-              </span>
-            </Link>
-          </li>
         </ul>
       </section>
 

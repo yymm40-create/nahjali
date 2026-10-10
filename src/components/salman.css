@@ -1,0 +1,39 @@
+/* «سلمان» — the helper's button and chat. Self-contained colours (it sits on every page, light or dark). */
+.slm-fab { position: fixed; z-index: 70; inset-inline-end: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px 8px 10px; border: 0; border-radius: 999px; background: linear-gradient(135deg, #7c3aed, #ec4899); color: #fff; font: inherit; font-weight: 800; font-size: 15px; cursor: pointer; box-shadow: 0 12px 30px -8px rgba(124, 58, 237, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.35); transition: transform 0.15s; -webkit-tap-highlight-color: transparent; }
+.slm-fab:hover { transform: translateY(-2px); }
+.slm-fab:active { transform: scale(0.97); }
+/* above a page's own buying bar at the bottom of a phone */
+body:has(.cr-sticky:not(.hide)) .slm-fab { bottom: calc(92px + env(safe-area-inset-bottom)); }
+.slm-face { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.2); font-size: 20px; }
+.slm-face.sm { width: 38px; height: 38px; background: linear-gradient(135deg, #7c3aed, #ec4899); flex: none; }
+
+.slm-wrap { position: fixed; z-index: 90; inset: 0; display: grid; place-items: end center; background: rgba(5, 2, 14, 0.45); }
+@media (min-width: 700px) { .slm-wrap { inset: auto; inset-inline-end: 18px; bottom: 18px; background: none; place-items: end; } }
+.slm-box { display: grid; grid-template-rows: auto 1fr auto; width: min(420px, 100%); height: min(78dvh, 620px); border-radius: 24px 24px 0 0; overflow: hidden; background: #120a2a; color: #fff; border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8); font-size: 15px; line-height: 1.8; padding-bottom: env(safe-area-inset-bottom); }
+@media (min-width: 700px) { .slm-box { border-radius: 24px; height: min(72vh, 600px); } }
+.slm-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: linear-gradient(135deg, rgba(124, 58, 237, 0.55), rgba(236, 72, 153, 0.4)); }
+.slm-head div { display: grid; line-height: 1.4; flex: 1; min-width: 0; }
+.slm-head b { font-size: 17px; }
+.slm-head small { color: #e9ddff; font-size: 12px; }
+.slm-x { width: 36px; height: 36px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 15px; cursor: pointer; }
+.slm-list { overflow-y: auto; overscroll-behavior: contain; padding: 14px; display: grid; align-content: start; gap: 10px; }
+.slm-msg { display: grid; gap: 6px; max-width: 88%; }
+.slm-msg p { margin: 0; padding: 10px 13px; border-radius: 18px; white-space: pre-wrap; word-break: break-word; }
+.slm-msg.him { justify-self: start; }
+.slm-msg.him p { background: rgba(255, 255, 255, 0.09); border-start-start-radius: 6px; }
+.slm-msg.me { justify-self: end; }
+.slm-msg.me p { background: linear-gradient(135deg, #7c3aed, #a855f7); border-start-end-radius: 6px; }
+.slm-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.slm-links a { padding: 6px 12px; border-radius: 999px; background: linear-gradient(180deg, #ffb52e, #ff8a1f); color: #2a1200; font-weight: 800; font-size: 13px; text-decoration: none; }
+.slm-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.slm-quick button { padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.06); color: #fff; font: inherit; font-size: 13.5px; cursor: pointer; }
+.slm-typing { display: inline-flex; gap: 4px; }
+.slm-typing i { width: 7px; height: 7px; border-radius: 50%; background: #c9bfe8; animation: slm-dot 1s infinite; }
+.slm-typing i:nth-child(2) { animation-delay: 0.15s; }
+.slm-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes slm-dot { 50% { opacity: 0.3; transform: translateY(-3px); } }
+.slm-form { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); background: #0f0824; }
+.slm-form input { flex: 1; min-width: 0; min-height: 48px; padding: 10px 14px; border-radius: 16px; border: 1.5px solid rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.07); color: #fff; font: inherit; font-size: 16px; }
+.slm-form input:focus { outline: none; border-color: #ffc83d; }
+.slm-form button { width: 48px; min-height: 48px; border-radius: 16px; border: 0; background: linear-gradient(180deg, #ffb52e, #ff8a1f); color: #2a1200; font-size: 18px; font-weight: 800; cursor: pointer; transform: scaleX(-1); }
+.slm-form button:disabled { opacity: 0.5; cursor: default; }

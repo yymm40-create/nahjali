@@ -1,12 +1,18 @@
 // Public site details used on the privacy and terms pages. Edit freely.
 
-export const SITE_NAME = "عاداتي الخارقة";
+/**
+ * «نهج علي» (the booklet, its logo, its pages and its place in the dashboard) is hidden for JAWAD AI's public launch: the site is
+ * «الجواد الذكي» only. Nothing is deleted — its pages, data and code stay; `false` brings it all back.
+ */
+export const NAHJ_ALI_HIDDEN = true;
+
+export const SITE_NAME = NAHJ_ALI_HIDDEN ? "الجواد الذكي" : "عاداتي الخارقة";
 
 /** Shown on /privacy and /terms for questions and deletion requests. */
 export const CONTACT_EMAIL = "yymm40@gmail.com";
 
 /** Date shown as "last updated" on the legal pages. */
-export const LEGAL_UPDATED = "١ أكتوبر ٢٠٢٦";
+export const LEGAL_UPDATED = NAHJ_ALI_HIDDEN ? "١٠ أكتوبر ٢٠٢٦" : "١ أكتوبر ٢٠٢٦";
 
 /** «الرئيس»: the site's owner, above everyone. */
 export const OWNER_EMAILS = ["yymm40@gmail.com"];

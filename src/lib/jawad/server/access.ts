@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireApiUser, UserError } from "@/lib/api";
 import { can, hasAnyAccess, unlimitedFor, type Perm } from "@/lib/access";
 import { isAdmin } from "@config/site";
+import { isPublicOpen } from "@/lib/launch";
 import { JAWAD } from "@config/jawad/brand";
 
 export const JAWAD_MESSAGES = {
@@ -33,8 +34,8 @@ export async function canUseJawad(user: { email?: string | null } | null) {
 /** Makes for free («بلا حدود»): the owners, the all-opening code, an e-mail or a code the owner marked so. */
 export const freeFor = (user: { email?: string | null } | null) => unlimitedFor(user?.email);
 
-/** Should this visitor see the platform (rather than «قيد التطوير»)? Only those the dashboard's list lets in. */
-export const jawadVisibleTo = async (user: { email?: string | null } | null) => hasAnyAccess(user?.email);
+/** Should this visitor see the platform (rather than «قيد التطوير»)? Everyone once the site is open, else those the dashboard's list lets in. */
+export const jawadVisibleTo = async (user: { email?: string | null } | null) => (await isPublicOpen().catch(() => false)) || hasAnyAccess(user?.email);
 
 /** Where to sign in without leaving JAWAD AI, coming back to `next` afterwards. */
 export const jawadLogin = (next: string) => `${JAWAD.base}/login?next=${encodeURIComponent(next)}`;

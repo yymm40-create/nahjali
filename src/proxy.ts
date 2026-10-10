@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { BOOKLET_PATHS, JAWAD_PATH_HEADER, OWN_CHROME_HEADER } from "@config/site";
+import { BOOKLET_PATHS, JAWAD_PATH_HEADER, NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER } from "@config/site";
 import { can } from "@/lib/access";
 import { clientIp, rulesFor, take } from "@/lib/rate-limit";
 
@@ -27,6 +27,24 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/jawad-ai";
     return NextResponse.redirect(url);
+  }
+
+  // «نهج علي» is hidden (config/site.ts): its booklet pages, the old sign-in page and «تحت التطوير» lead to JAWAD AI
+  if (NAHJ_ALI_HIDDEN) {
+    const p = request.nextUrl.pathname;
+    if (BOOKLET_PATHS.some((b) => p === b || p.startsWith(b + "/"))) {
+      if (p.startsWith("/api/")) return NextResponse.json({ error: "غير موجود." }, { status: 404 });
+      const url = request.nextUrl.clone();
+      url.pathname = "/jawad-ai";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    if (p === "/login" || p === "/under-development" || p === "/admin/booklet" || p.startsWith("/admin/booklet/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = p === "/login" ? "/jawad-ai/login" : p.startsWith("/admin/") ? "/admin" : "/jawad-ai";
+      if (p !== "/login") url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   // «الجواد الذكي!» | JAWAD AI renders none of the main site's chrome, not even on the server (see the root layout).

@@ -11,7 +11,8 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 
 export const metadata = { title: "تسجيل الدخول" };
 
-const safe = (n: unknown) => (typeof n === "string" && (n === JAWAD.base || n.startsWith(`${JAWAD.base}/`)) && !n.includes("//") ? n : JAWAD.base);
+// back to JAWAD AI or to another page of the site (the dashboard…): only a path on this site, never another address
+const safe = (n: unknown) => (typeof n === "string" && n.startsWith("/") && !n.includes("//") && !n.includes("\\") ? n : JAWAD.base);
 
 /** Sign in without leaving JAWAD AI (same accounts as the rest of the site); afterwards back to where you were. */
 export default async function JawadLogin({ searchParams }: PageProps<"/jawad-ai/login">) {

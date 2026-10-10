@@ -1,6 +1,6 @@
 import DirectorView from "../../_views/Director";
 
-export const metadata = { title: "المخرج السينمائي | نهج علي" };
+export const metadata = { title: "المخرج السينمائي | الجواد الذكي" };
 export const dynamic = "force-dynamic";
 // Finished videos are copied to storage while the page loads
 export const maxDuration = 300;

@@ -39,7 +39,7 @@ const ITEMS: Item[] = [
     os: "android",
     icon: "🤖",
     title: "أندرويد",
-    what: "تطبيق نهج علي كامل: الكتيب، الجواد الذكي، الطالب الذكي، وحيدرة كت.",
+    what: "تطبيق الجواد الذكي كامل: الصور والفيديو، الطالب الذكي، وحيدرة كت.",
     note: "بعد التحميل افتح الملف، ولو سألك اسمح بالتثبيت من المتصفح.",
     href: DOWNLOADS.play ?? DOWNLOADS.android,
     button: DOWNLOADS.play ? "حمّل من Google Play" : "حمّل التطبيق",
@@ -48,7 +48,7 @@ const ITEMS: Item[] = [
     os: "ios",
     icon: "🍏",
     title: "آيفون وآيباد",
-    what: "تطبيق نهج علي كامل، قريبًا في App Store إن شاء الله.",
+    what: "تطبيق الجواد الذكي كامل، قريبًا في App Store إن شاء الله.",
     note: "لين ذاك الوقت: افتح الموقع في Safari ← زر المشاركة ← «إضافة إلى الشاشة الرئيسية»، ويصير عندك مثل التطبيق.",
     href: DOWNLOADS.ios,
     button: DOWNLOADS.ios ? "حمّل من App Store" : "قريبًا",
@@ -108,8 +108,8 @@ export default function Downloads() {
   return (
     <div className="mt-6 space-y-6">
       <header className="space-y-3 text-center">
-        <Image src="/brand/logo.png" alt="" width={104} height={118} className="mx-auto h-28 w-auto drop-shadow-lg" priority />
-        <h1 className="display text-4xl">حمّل نهج علي</h1>
+        <Image src="/jawad-ai/logo.png" alt="" width={112} height={112} className="mx-auto h-28 w-auto drop-shadow-lg" priority />
+        <h1 className="display text-4xl">حمّل الجواد الذكي</h1>
         <p className="text-lg font-bold text-muted">على جوالك وعلى كمبيوترك، بنفس حسابك وأعمالك.</p>
       </header>
 
@@ -173,7 +173,7 @@ export default function Downloads() {
         <h2 className="text-xl font-extrabold">أو استخدمه من المتصفح مباشرة</h2>
         <p className="font-bold text-muted">كل شي يشتغل من الموقع بدون تحميل.</p>
         <Link href="/" className="btn btn-secondary w-full">
-          افتح نهج علي
+          افتح الجواد الذكي
         </Link>
       </section>
     </div>

@@ -117,7 +117,7 @@ export default function AppShell({ children, familyMember = false }: { children:
       </aside>
 
       <div className="min-w-0">
-        {/* Every screen: back to «نهج علي», the community, the notifications and the account, always in the same place */}
+        {/* Every screen: back to the site, the community, the notifications and the account, always in the same place */}
         <header className="m-topbar" aria-label={t.bar.label}>
           <Link href="/" className="m-bar-site">
             <Icon name="chevronRight" size={18} strokeWidth={2.2} />

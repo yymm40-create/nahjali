@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { isCoOwner } from "@config/site";
+import { isCoOwner, NAHJ_ALI_HIDDEN } from "@config/site";
+import { isPublicOpen } from "@/lib/launch";
+import LaunchSwitch from "./LaunchSwitch";
 import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import { accessList } from "@/lib/access";
 import { coinsRequired } from "@/lib/coins";
 
-export const metadata = { title: "لوحة التحكم | نهج علي" };
+export const metadata = { title: "لوحة التحكم | الجواد الذكي" };
 export const dynamic = "force-dynamic";
 
 const DAY = 24 * 3600_000;
@@ -27,7 +29,7 @@ export default async function AdminHome() {
   const now = timeNow();
   const day = new Date(now - DAY).toISOString();
   const week = new Date(now - 7 * DAY).toISOString();
-  const [users, orders, ordersWeek, jobsDay, jobsWeek, editorProjects, studentProjects, filmProjects, mahdiLogsWeek, mahdiAssistant, coinsOn, allowed] = await Promise.all([
+  const [users, orders, ordersWeek, jobsDay, jobsWeek, editorProjects, studentProjects, filmProjects, mahdiLogsWeek, mahdiAssistant, coinsOn, allowed, open] = await Promise.all([
     listAllUsers().catch(() => null),
     count("orders"),
     count("orders", week),
@@ -40,6 +42,7 @@ export default async function AdminHome() {
     count("mahdi_assistant_messages", week),
     coinsRequired().catch(() => null),
     accessList(),
+    isPublicOpen().catch(() => false),
   ]);
   const signupsWeek = users ? users.filter((u) => new Date(u.created_at).getTime() > now - 7 * DAY).length : null;
   const activeWeek = users ? users.filter((u) => u.last_sign_in_at && new Date(u.last_sign_in_at).getTime() > now - 7 * DAY).length : null;
@@ -73,20 +76,21 @@ export default async function AdminHome() {
         ["صانع المحتوى", "/admin/content"],
         ["المصمم الذكي", "/admin/designer"],
         ["زهراء فوتو ماستر", "/admin/photo"],
+        ["💳 باقات الرصيد وطلبات الشحن", "/admin/credits"],
         ["دورة الجواد", "/admin/course"],
         ["مكان الدورات (فيديو محمي)", "/admin/learn"],
       ],
     },
-    {
+    ...(NAHJ_ALI_HIDDEN ? [] : [{
       icon: "📖",
       title: "كتيب نهج علي",
       href: "/admin/booklet",
       stats: [
         ["كل الطلبات", n(orders)],
         ["طلبات هالأسبوع", n(ordersWeek)],
-      ],
-      links: [["الأرقام والطلبات", "/admin/booklet"]],
-    },
+      ] as [string, string][],
+      links: [["الأرقام والطلبات", "/admin/booklet"]] as [string, string][],
+    }]),
     {
       icon: "🌙",
       title: "لأجل المهدي",
@@ -108,8 +112,10 @@ export default async function AdminHome() {
       <header className="space-y-1">
         <h1 className="display text-4xl">لوحة التحكم</h1>
         <p className="chip w-fit text-xs">{isCoOwner(me.email) ? "👑 رئيس مشارك: كل الصلاحيات، إلا حساب الرئيس" : "👑 الرئيس"}</p>
-        <p className="font-bold text-muted">نهج علي كله في مكان واحد: الأرقام الحية، الفروع، والصلاحيات.</p>
+        <p className="font-bold text-muted">الجواد الذكي كله في مكان واحد: الأرقام الحية، الفروع، والصلاحيات.</p>
       </header>
+
+      <LaunchSwitch initial={open} />
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {tiles.map(([icon, label, value]) => (

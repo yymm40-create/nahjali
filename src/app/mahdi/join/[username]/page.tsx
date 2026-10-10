@@ -33,10 +33,10 @@ export default async function Join({ params }: { params: Promise<{ username: str
   return (
     <main id="m-main" className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center gap-6 px-5 py-10">
       <div className="flex items-center gap-3">
-        <Image src="/brand/logo.png" alt="نهج علي" width={52} height={59} priority className="h-14 w-auto drop-shadow" />
+        <Image src="/jawad-ai/logo.png" alt="الجواد الذكي" width={52} height={52} priority className="h-14 w-auto drop-shadow" />
         <div>
           <p className="m-display m-gold m-shadow-text text-3xl leading-none">{t.brand}</p>
-          <p className="m-shadow-text text-sm">نهج علي</p>
+          <p className="m-shadow-text text-sm">الجواد الذكي</p>
         </div>
       </div>
 

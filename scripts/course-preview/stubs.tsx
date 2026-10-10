@@ -4,3 +4,4 @@ export default function Link({ href, children, ...rest }: { href: string; childr
   return <a href={href} {...rest}>{children}</a>;
 }
 export const useRouter = () => ({ push: (u: string) => console.log("push", u), refresh: () => {} });
+export const usePathname = () => (typeof location === "undefined" ? "/" : location.pathname);

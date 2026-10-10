@@ -30,6 +30,8 @@ export const isPerm = (v: unknown): v is Perm => typeof v === "string" && (ALL_P
 export const NAMED_ONLY: Perm[] = [];
 /** What the all-opening secret code opens (everything but the named-only sections). */
 export const OPEN_PERMS: Perm[] = ALL_PERMS.filter((p) => !NAMED_ONLY.includes(p));
+/** What every signed-in person may use once the owner opens the site (/admin «فتح الموقع للجميع»): every section but the booklet. */
+export const PUBLIC_PERMS: Perm[] = ALL_PERMS.filter((p) => p !== "booklet");
 /**
  * Who makes for FREE («بلا حدود»): the owners, whoever came in by the all-opening «الكود السري», an e-mail the owner
  * marked unlimited in «السماح», or a code the owner marked unlimited. Everyone else pays in riyals from their wallet.

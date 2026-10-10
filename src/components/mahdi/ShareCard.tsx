@@ -26,15 +26,15 @@ export function ShareCardView({ payload, name, closing, image }: { payload: Shar
 
 // ───────────────────────────── the pictures (canvas) ─────────────────────────────
 // Drawn in the browser so the Arabic text is shaped by it. Both pictures share one look: the chosen shrine behind,
-// a thin gold frame, the person's achievement on a dark panel, and an invitation to «لأجل المهدي» with the logo of
-// نهج علي and the site's address.
+// a thin gold frame, the person's achievement on a dark panel, and an invitation to «لأجل المهدي» with the site's logo
+// and the site's address.
 
 const GOLD = "#efcd7e";
 const GOLD_BRIGHT = "#f4da95";
 const INK = "#f7f0e3";
 const SOFT = "#e8dfcf";
 const NIGHT = "#0d0c0b";
-const LOGO = "/brand/logo.png";
+const LOGO = "/jawad-ai/logo.png";
 
 export interface PictureLook {
   fonts: { sans: string; display: string };
@@ -168,7 +168,7 @@ function achievement(g: CanvasRenderingContext2D, payload: SharePayload, closing
   return top + height;
 }
 
-/** «انضم إلى لأجل المهدي»: the logo of نهج علي beside a short line about the app and the site's address. */
+/** «انضم إلى لأجل المهدي»: the site's logo beside a short line about the app and the site's address. */
 async function invitation(g: CanvasRenderingContext2D, look: PictureLook, W: number, top: number, height: number) {
   const x = 90;
   const w = W - 180;
