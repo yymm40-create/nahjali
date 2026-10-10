@@ -10,6 +10,7 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
     title: "عام",
     items: [
       { href: "/admin", icon: "🏠", label: "نظرة عامة", exact: true },
+      { href: "/admin/stats", icon: "📊", label: "الإحصائيات" },
       { href: "/admin/access", icon: "🔐", label: "السماح والكود السري" },
       { href: "/admin/users", icon: "👥", label: "المستخدمون" },
       { href: "/admin/limits", icon: "🎚️", label: "النقود والأسعار" },
