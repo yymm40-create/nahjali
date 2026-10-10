@@ -6,8 +6,10 @@
 // and the owner confirms from Telegram; the reward lands in the wallet once.
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Riyal from "@/components/Riyal";
 import { instagramUrl, SHARE, shareSeenKey, type ShareStatus } from "@config/share";
+import "./share-reward.css";
 
 interface State {
   enabled: boolean;
@@ -72,65 +74,72 @@ export default function ShareReward({ version, loginHref }: { version: string; l
 
   return (
     <>
-      <button type="button" className="jw-btn h-9 min-h-9 whitespace-nowrap px-2.5 text-xs font-bold" onClick={() => setOpen(true)} title="انشرنا في ستوري انستغرام واحصل على رصيد مجاني">
+      <button type="button" className="sr-pill h-9 min-h-9 whitespace-nowrap px-3 text-xs font-bold" onClick={() => setOpen(true)} title="انشرنا في ستوري انستغرام واحصل على رصيد مجاني">
         {pending ? "⏳ ننتظر التأكيد" : <>🎁 انشرنا +<Riyal halalas={Math.round(s.rewardSar * 100)} size={12} /></>}
       </button>
-      {open && (
-        <div className="fixed inset-0 z-[95] grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="انشرنا واربح" dir="rtl" onClick={close}>
-          <div className="jw-panel w-full max-w-md space-y-4 p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-3xl" aria-hidden>🎁</p>
-                <h2 className="flex flex-wrap items-center gap-1.5 text-xl font-bold">
-                  انشرنا واحصل على <Riyal halalas={s.rewardSar * 100} size={22} /> مجانًا
-                </h2>
-                <p className="text-sm text-jw-muted">رصيد في محفظتك تصنع فيه صور وفيديوهات وأصوات في الجواد الذكي.</p>
+      {/* drawn on the page itself: inside the header (blurred, sticky) a fixed window is held by the header, off centre */}
+      {open && typeof document !== "undefined" && createPortal(
+        <div className="sr-back" role="dialog" aria-modal="true" aria-label="مسابقة انشرنا واربح" dir="rtl" onClick={close}>
+          <div className="sr-card" onClick={(e) => e.stopPropagation()}>
+            <span className="sr-shine" aria-hidden />
+            <span className="sr-confetti" aria-hidden>{"✦✧★✦✧★✦✧".split("").map((c, i) => <i key={i} style={{ ["--i" as string]: i }}>{c}</i>)}</span>
+            <button type="button" className="sr-x" onClick={close} aria-label="أغلق">✕</button>
+
+            <div className="sr-head">
+              <span className="sr-ribbon">🏆 مسابقة · هدايا مجانية</span>
+              <div className="sr-trophy" aria-hidden>🎁</div>
+              <h2>انشرنا واربح</h2>
+              <div className="sr-prize">
+                <span>جائزتك</span>
+                <b><Riyal halalas={Math.round(s.rewardSar * 100)} size={30} /></b>
+                <span>مجانًا في محفظتك</span>
               </div>
-              <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" onClick={close} aria-label="أغلق">✕</button>
+              <p>رصيد تصنع فيه صور وفيديوهات وأصوات في الجواد الذكي.</p>
             </div>
 
             {pending ? (
-              <p className="rounded-lg bg-jw-accent/10 p-3 text-sm">⏳ وصلنا طلبك باسم <b dir="ltr">@{s.claim!.handle}</b>. بنتأكد من الستوري وتنضاف لك المكافأة إن شاء الله. تقدر تعدّل اسم الحساب تحت لو كتبته غلط.</p>
+              <p className="sr-note">⏳ وصلنا طلبك باسم <b dir="ltr">@{s.claim!.handle}</b>. بنتأكد من الستوري وتنضاف لك الجائزة إن شاء الله. تقدر تعدّل اسم الحساب تحت لو كتبته غلط.</p>
             ) : s.claim?.status === "rejected" ? (
-              <p className="rounded-lg bg-jw-warn/10 p-3 text-sm">ما لقينا المنشن في الستوري المرة اللي فاتت. انشره مرة ثانية مع المنشن وأرسل من جديد.</p>
+              <p className="sr-note sr-warn">ما لقينا المنشن في الستوري المرة اللي فاتت. انشره مرة ثانية مع المنشن وأرسل من جديد.</p>
             ) : null}
 
-            <ol className="space-y-3 text-sm">
-              <li className="flex gap-2">
-                <b className="grid size-6 shrink-0 place-items-center rounded-full bg-jw-accent/20 text-jw-accent">١</b>
+            <ol className="sr-steps">
+              <li>
+                <b>١</b>
                 <span>
-                  انشر ستوري في انستغرام عن الجواد الذكي، وسوّ <b>منشن</b> لحسابنا{" "}
-                  <a href={instagramUrl(SHARE.account)} target="_blank" rel="noreferrer" className="font-bold text-jw-accent underline" dir="ltr">@{SHARE.account}</a>
-                  <span className="mt-1 flex flex-wrap gap-1.5">
-                    <a className="jw-chip text-xs" href={instagramUrl(SHARE.account)} target="_blank" rel="noreferrer">📸 افتح حسابنا</a>
-                    <button type="button" className="jw-chip text-xs" onClick={() => navigator.clipboard?.writeText(`@${SHARE.account}`).then(() => setMsg({ text: "انسخ المنشن ✅" })).catch(() => null)}>📋 انسخ المنشن</button>
+                  انشر ستوري في انستغرام عن الجواد الذكي، وسوّ <strong>منشن</strong> لحسابنا{" "}
+                  <a href={instagramUrl(SHARE.account)} target="_blank" rel="noreferrer" dir="ltr">@{SHARE.account}</a>
+                  <span className="sr-chips">
+                    <a href={instagramUrl(SHARE.account)} target="_blank" rel="noreferrer">📸 افتح حسابنا</a>
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(`@${SHARE.account}`).then(() => setMsg({ text: "انسخ المنشن ✅" })).catch(() => null)}>📋 انسخ المنشن</button>
                   </span>
                 </span>
               </li>
-              <li className="flex gap-2">
-                <b className="grid size-6 shrink-0 place-items-center rounded-full bg-jw-accent/20 text-jw-accent">٢</b>
-                <span className="flex-1">
+              <li>
+                <b>٢</b>
+                <span>
                   اكتب اسم حسابك في انستغرام (عشان نلقى الستوري)
-                  <input className="jw-input mt-1 w-full" dir="ltr" placeholder="your.account" value={handle} maxLength={60} onChange={(e) => setHandle(e.target.value)} />
+                  <input className="sr-input" dir="ltr" placeholder="your.account" value={handle} maxLength={60} onChange={(e) => setHandle(e.target.value)} />
                 </span>
               </li>
-              <li className="flex gap-2">
-                <b className="grid size-6 shrink-0 place-items-center rounded-full bg-jw-accent/20 text-jw-accent">٣</b>
+              <li>
+                <b>٣</b>
                 <span>اضغط «نشرت ✅». تقدر تطلع من الموقع وترجع؛ الزر يبقى فوق.</span>
               </li>
             </ol>
 
             {s.signedIn ? (
-              <button type="button" className="jw-btn jw-btn-primary w-full" disabled={busy || !handle.trim()} onClick={() => void shared()}>
-                {busy ? "…" : pending ? "حدّث اسم الحساب" : "نشرت ✅"}
+              <button type="button" className="sr-go" disabled={busy || !handle.trim()} onClick={() => void shared()}>
+                {busy ? "…" : pending ? "حدّث اسم الحساب" : "نشرت ✅ أبي جائزتي"}
               </button>
             ) : (
-              <a className="jw-btn jw-btn-primary w-full" href={loginHref}>سجّل دخولك أول عشان تنضاف المكافأة لحسابك</a>
+              <a className="sr-go" href={loginHref}>سجّل دخولك أول عشان تنضاف الجائزة لحسابك</a>
             )}
-            {msg && <p className={`text-sm ${msg.bad ? "text-jw-danger" : "text-jw-accent"}`}>{msg.text}</p>}
-            <p className="text-[11px] text-jw-muted">مكافأة وحدة لكل حساب، تنضاف بعد ما نتأكد من الستوري.</p>
+            {msg && <p className={`sr-msg ${msg.bad ? "bad" : ""}`}>{msg.text}</p>}
+            <p className="sr-small">جائزة وحدة لكل حساب، تنضاف بعد ما نتأكد من الستوري.</p>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
