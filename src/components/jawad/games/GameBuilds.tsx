@@ -20,6 +20,8 @@ export interface Build {
   summary: string;
   status: "building" | "ready" | "failed";
   code: "pending" | "writing" | "broken" | "done" | "failed";
+  /** the code's writing stopped in the middle and goes on from there */
+  more?: boolean;
   editing: boolean;
   art: "pending" | "drawing" | "done";
   pictures: { done: number; failed: number; total: number };
@@ -198,6 +200,7 @@ export function BuildSheet({ busy, onGo, onClose }: { busy: boolean; onGo: (pict
 
 const stage = (b: Build) => {
   if (b.status === "failed") return "";
+  if (b.more) return "يكمّل كتابة الكود من وين وقف…";
   if (b.editing) return b.code === "broken" ? "يصلّح أخطاء التعديل…" : "يطبّق تعديلك…";
   if (b.code === "pending") return "يجهّز كتابة الكود…";
   if (b.code === "writing") return "يكتب كود اللعبة…";

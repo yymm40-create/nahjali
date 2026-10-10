@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { GAMES_MODE_RULES, GAMES_PLATFORM_RULES } from "@config/games";
-import { assemble, codeBrief, editBrief, fixBrief, GAME_BUILD, GAME_CODE_RULES, keepErrors, pageProblems, playCsp, playPath, readPage, readPlan } from "@config/games-build";
+import { assemble, codeBrief, continueBrief, joinParts, editBrief, fixBrief, GAME_BUILD, GAME_CODE_RULES, keepErrors, pageProblems, playCsp, playPath, readPage, readPlan } from "@config/games-build";
 import { keyBackdrop, spriteFile } from "@/lib/games/art";
 import { checkPage, syntaxProblems } from "@/lib/games/build";
 import { modeOf } from "@/lib/games/chats";
-import { readStream } from "@/lib/games/claude";
+import { passing, PARTIAL_MIN, readStream } from "@/lib/games/claude";
 import { systemText } from "@/lib/games/persona";
 import { rulesFor } from "@/lib/rate-limit";
 
@@ -266,5 +266,53 @@ describe("a long reply read as it is written", () => {
 
   it("raises an error sent inside the stream", async () => {
     await expect(readStream(sse([{ type: "message_start", message: { usage: {} } }, { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }]))).rejects.toThrow(/Overloaded/);
+  });
+
+  it("keeps a long reply cut off in the middle when asked (and only then)", async () => {
+    const long = "x".repeat(PARTIAL_MIN + 10);
+    const broken = () => {
+      const raw = [
+        { type: "message_start", message: { usage: { input_tokens: 10 } } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "```html\n<html>" + long } },
+      ].map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
+      let sent = false;
+      // the line breaks after the first piece arrived
+      return new Response(new ReadableStream({ pull(c) { if (sent) c.error(new Error("terminated")); else { sent = true; c.enqueue(new TextEncoder().encode(raw)); } } }));
+    };
+    const r = await readStream(broken(), true);
+    expect(r.stop).toBe("cut");
+    expect(r.text.endsWith(long)).toBe(true);
+    expect(r.usage.output_tokens).toBeGreaterThan(1000);
+    await expect(readStream(broken())).rejects.toThrow(/terminated/);
+  });
+});
+
+describe("a reply that stopped in the middle", () => {
+  it("goes on from where it stopped, with the spec and what was written", () => {
+    const b = continueBrief({ title: "t", summary: "s", spec: SPEC, cover: "c", assets: [] }, "```html\n<html><body>");
+    expect(b).toContain(SPEC);
+    expect(b).toContain("<html><body>");
+    expect(b).toMatch(/continuation ONLY/);
+  });
+
+  it("joins the parts, dropping a repeated fence or last line", () => {
+    expect(joinParts("```html\n<html>\n<body>", "</body></html>\n```")).toBe("```html\n<html>\n<body></body></html>\n```");
+    expect(joinParts("a\nconst speed = 10;", "```html\n;\n</html>")).toBe("a\nconst speed = 10;;\n</html>");
+    expect(joinParts("a\nconst speed = 10; let", "const speed = 10; let lives = 3;")).toBe("a\nconst speed = 10; let lives = 3;");
+    expect(readPage(joinParts("```html\n<!doctype html><html><body><script>let a =", " 1;</script></body></html>\n```"))).toBe("<!doctype html><html><body><script>let a = 1;</script></body></html>");
+  });
+
+  it("tries again only a passing failure", () => {
+    expect(passing(new Error("Claude 529: Overloaded"))).toBe(true);
+    expect(passing(new Error("Claude 500: Internal server error"))).toBe(true);
+    expect(passing(new Error("Claude stream: Overloaded"))).toBe(true);
+    expect(passing(new TypeError("fetch failed"))).toBe(true);
+    expect(passing(new Error("Claude 400: invalid_request_error"))).toBe(false);
+    expect(passing(new Error("Claude 401: invalid x-api-key"))).toBe(false);
+    expect(passing(new Error("Claude declined this request"))).toBe(false);
+  });
+
+  it("is continued a few times before it counts as broken", () => {
+    expect(GAME_BUILD.maxContinues).toBeGreaterThanOrEqual(2);
   });
 });

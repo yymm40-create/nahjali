@@ -78,11 +78,11 @@ const CLAUDE_WAITS = [900, 2600];
 /** One attempt never hangs for ever: it is dropped at this and tried again (the routes allow 300 s). */
 export const CLAUDE_TIMEOUT_MS = 110_000;
 /** The answers worth trying again: busy, rate-limited, or the provider's own stumble. */
-const AGAIN = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+export const AGAIN = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
 /** A connection that broke on the way (nothing was answered), so trying again is not asking twice. */
-const brokenLink = (e: unknown) => /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|terminated|other side closed|aborted|The operation was aborted|timeout/i.test(e instanceof Error ? `${e.message} ${(e as { cause?: { message?: string } }).cause?.message ?? ""}` : String(e));
+export const brokenLink = (e: unknown) => /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|terminated|other side closed|aborted|The operation was aborted|timeout/i.test(e instanceof Error ? `${e.message} ${(e as { cause?: { message?: string } }).cause?.message ?? ""}` : String(e));
 
-const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * One request to Claude, tried again when the answer is «busy» or the line broke — the recurring «جرّب بعد شوي» the
