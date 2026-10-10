@@ -1,4 +1,9 @@
-// «حيدرة كت» — motion that follows the speaker's words (Majed Alzaabi's talking reels): while the person talks, the
+// «حيدرة كت» — motion that follows the speaker's words. A FILMED reel is not a motion piece: the person's video is the
+// reel and the graphics are guests on it — they open only where there is something to explain (about one moment every
+// five seconds, never two inside 2.4 s, nothing in the last second), the words they SAY are written on the panel (an
+// emoji with no words is dropped), the frame takes turns («mix»), and the video itself MOVES so the whole FACE sits in
+// the half or the circle the frame leaves for it.
+// The rest, as before: (Majed Alzaabi's talking reels): while the person talks, the
 // moment they say a thing it appears — «تاكسي» → the word with its picture, «بروح الرياض» → a line drawn to Riyadh,
 // «انستا» → Instagram's icon — and the person shrinks into a box at the bottom for those seconds, then comes back full
 // screen. حيدرة writes only the cues (which word, what to show) from the transcript; this engine lays them out,
@@ -60,7 +65,7 @@ export interface TalkPlan {
   palette?: string;
   colors?: { bg?: string; text?: string; accent?: string; second?: string };
   /**
-   * "shrink" (default, «المربع الصغير»): the person becomes a box at the bottom while a cue shows (the box centred on
+   * "mix" (DEFAULT: the frame changes from moment to moment) · "shrink" («المربع الصغير»): the person becomes a box at the bottom while a cue shows (the box centred on
    * the face) · "over": the person stays full, the cues on boxes beside the face · "over3d" («فوق كلامي ثلاثي الأبعاد»):
    * the person stays full and the cues float in 3D (extruded slabs and tiles, a flip in, a slow tilt) where the face isn't
    */
@@ -84,7 +89,31 @@ export function readFace(v: unknown): FaceBox | null {
 
 const clean = (v: unknown, max: number) => (typeof v === "string" ? westernDigits(v.replace(/\s+/g, " ").trim()).slice(0, max) : "");
 
-/** حيدرة's cues (a JSON string), checked: known kinds, times inside the piece, in order, at least 0.9 s apart. */
+/** At least this long between two moments: the one before is read, and the person is seen talking in between. */
+export const CUE_GAP_MS = 2400;
+/** The reel is the person, not the graphics: about one moment every this long (a 30 s reel → six, not twenty). */
+export const CUE_EVERY_MS = 5000;
+/** Nothing in the last stretch: a panel that opens on the last word is a panel nobody reads. */
+export const CUE_TAIL_MS = 1000;
+
+/**
+ * The moments kept, spaced, counted and trimmed: the graphics are guests on a filmed reel, so a cue too close to the
+ * one before it, past the reel's share (one every `CUE_EVERY_MS`), or in its last second goes. The cues must arrive
+ * sorted.
+ */
+export function spaceCues(cues: TalkCue[], endMs: number): TalkCue[] {
+  const cap = Math.max(1, Math.min(40, Math.round(endMs / CUE_EVERY_MS)));
+  const out: TalkCue[] = [];
+  for (const c of cues) {
+    if (out.length >= cap) break;
+    if (c.at > endMs - CUE_TAIL_MS) break;
+    if (out.length && c.at - out[out.length - 1].at < CUE_GAP_MS) continue;
+    out.push(c);
+  }
+  return out;
+}
+
+/** حيدرة's cues (a JSON string), checked: known kinds, the words written, times inside the piece, in order, spaced. */
 export function readTalk(raw: unknown, endMs: number): TalkPlan | null {
   let o: unknown = raw;
   if (typeof raw === "string") {
@@ -97,7 +126,7 @@ export function readTalk(raw: unknown, endMs: number): TalkPlan | null {
   if (!o || typeof o !== "object") return null;
   const s = o as Record<string, unknown>;
   const kinds: CueKind[] = ["word", "emoji", "brand", "route", "pin", "stat"];
-  const cues = (Array.isArray(s.cues) ? s.cues : [])
+  const all = (Array.isArray(s.cues) ? s.cues : [])
     .filter((c): c is Record<string, unknown> => !!c && typeof c === "object" && kinds.includes((c as { kind?: CueKind }).kind as CueKind))
     .map((c): TalkCue => {
       const brand = BRANDS.find((b) => b === String(c.brand ?? "").toLowerCase());
@@ -114,15 +143,14 @@ export function readTalk(raw: unknown, endMs: number): TalkPlan | null {
       };
     })
     .filter((c) => Number.isFinite(c.at) && c.at >= 0 && c.at < endMs)
-    .filter((c) => (c.kind === "brand" ? !!c.brand : c.kind === "route" || c.kind === "pin" ? !!c.to : c.kind === "stat" ? !!c.value : !!c.text || !!c.emoji))
-    .sort((a, b) => a.at - b.at)
-    // one thing at a time: a cue too close to the one before waits for it to be read (0.9 s)
-    .filter((c, i, all) => i === 0 || c.at - all[i - 1].at >= 900)
-    .slice(0, 40);
+    // what is SAID is WRITTEN: an emoji with no words beside it is not an explanation, so it goes
+    .filter((c) => (c.kind === "brand" ? !!c.brand : c.kind === "route" || c.kind === "pin" ? !!c.to : c.kind === "stat" ? !!c.value : !!c.text))
+    .sort((a, b) => a.at - b.at);
+  const cues = spaceCues(all, endMs);
   if (!cues.length) return null;
   const col = s.colors && typeof s.colors === "object" ? (s.colors as Record<string, string>) : undefined;
   const style = clean(s.style, 20) || undefined;
-  return { palette: clean(s.palette, 20) || undefined, ...(col ? { colors: col } : {}), ...(style ? { style } : {}), layout: LAYOUTS.includes(s.layout as TalkLayout) ? (s.layout as TalkLayout) : "shrink", cues };
+  return { palette: clean(s.palette, 20) || undefined, ...(col ? { colors: col } : {}), ...(style ? { style } : {}), layout: LAYOUTS.includes(s.layout as TalkLayout) ? (s.layout as TalkLayout) : "mix", cues };
 }
 
 /** When each cue shows: from its word until the next cue (or its own `until`), 1.6–3.5 s. */
@@ -246,24 +274,26 @@ const PANEL_K = 0.5;
 
 /** Where the person goes for a frame (from their full transform), and the cues' area, the captions' height, the panel. */
 export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox | null) {
+  // where the face is when the picture is at full size (the page finds it; 0.4 down the middle is the usual framing)
   const fy = face?.y ?? 0.4;
   const fx = face?.x ?? 0.5;
+  // how tall and wide a face is, when the page didn't measure it (a head is about a fifth of a reel's height)
+  const fh = face?.h ?? 0.22;
+  const fw = face?.w ?? 0.3;
   const person = (full: Tx): Tx => {
     if (mode === "shrink") return boxTransform(full, talkLayout(W, H, face, "shrink").box, face);
-    if (mode === "corner") return boxTransform(full, CORNER_BOX, face);
+    if (mode === "corner") return boxTransform(full, cornerBox(W, H, face), face);
     if (mode === "punch") {
-      // a punch-in on the face: bigger, the face where it was
+      // a punch-in on the face: bigger, the face where it was, the picture still covering the whole frame
       const k = 1.18;
-      return { ...full, x: +(fx - (fx - full.x) * k).toFixed(4), y: +(fy - (fy - full.y) * k).toFixed(4), scale: +(full.scale * k).toFixed(3) };
+      const s = full.scale * k;
+      const keep = (c: number) => +clampTo(c, 1 - s / 2, s / 2).toFixed(4);
+      return { ...full, x: keep(fx - (fx - full.x) * k), y: keep(fy - (fy - full.y) * k), scale: +s.toFixed(3) };
     }
-    // the screen cut in two: the person's face in the middle of their half (the other half is the panel)
-    const want = mode === "split-top" ? 0.25 : 0.75;
-    const y = full.y + (want - fy);
-    const half = full.scale / 2;
-    // the picture still covers its whole half
-    const lo = mode === "split-top" ? -Infinity : 1 - half;
-    const hi = mode === "split-top" ? half : Infinity;
-    return { ...full, y: +Math.min(hi, Math.max(lo, y)).toFixed(4) };
+    // THE SCREEN CUT IN TWO: the picture MOVES so the whole FACE sits in the person's half — never their chest with
+    // the face cut off by the divider, and never so far that the half shows an empty edge.
+    const band = mode === "split-top" ? { lo: 0, hi: 0.5 } : { lo: 0.5, hi: 1 };
+    return { ...full, y: +faceInBand(full, { x: fx, y: fy, w: fw, h: fh }, band).toFixed(4) };
   };
   const PW = Math.round(W * PANEL_K);
   const PH = Math.round(H * PANEL_K);
@@ -280,12 +310,14 @@ export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox |
     panel = { w: PW, h: Math.round(PH / 2), x: 0.5, y: top ? 0.25 : 0.75, hole: null, enter: top ? "drop" : "rise" };
     divider = 0.5;
   } else if (mode === "corner") {
+    const box = cornerBox(W, H, face);
     const t = person(FULL);
-    const k = CORNER_BOX.scale;
-    const cx = t.x + (fx - 0.5) * k;
-    const cy = t.y + (fy - 0.5) * k;
-    const d = Math.min(0.46 * W, Math.max(0.3 * W, face ? Math.max(face.w * W, face.h * H) * k * 2.6 : 0.4 * W));
-    panel = { w: PW, h: PH, x: 0.5, y: 0.5, hole: { x: cx * PW - (d * PANEL_K) / 2, y: cy * PH - (d * PANEL_K) / 2, w: d * PANEL_K, h: d * PANEL_K, round: true }, enter: "fade" };
+    const k = box.scale;
+    // where the face really landed (the box clamps near an edge), and the circle around it, kept on the frame
+    const d = cornerSize(W, H, face);
+    const cx = clampTo(t.x + (fx - 0.5) * k, d / W / 2 + 0.03, 1 - d / W / 2 - 0.03);
+    const cy = clampTo(t.y + (fy - 0.5) * k, d / H / 2 + 0.03, 1 - d / H / 2 - 0.03);
+    panel = { w: PW, h: PH, x: 0.5, y: 0.5, hole: clipHole({ x: cx * PW - (d * PANEL_K) / 2, y: cy * PH - (d * PANEL_K) / 2, w: d * PANEL_K, h: d * PANEL_K, round: true }, PW, PH), enter: "fade" };
     const limit = 1 - (H > W ? 0.16 : 0.1) - 0.01;
     // the area under the circle, and the captions under the area (a picture with its word stacks a little taller than it)
     area = { x: 0.5, y: Math.min(limit - 0.27, cy + d / H / 2 + 0.22), w: 0.84, h: 0.34 };
@@ -296,7 +328,7 @@ export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox |
     const k = L.box.scale;
     // the person's picture at its small size: the window cut in the panel
     const pw = W * k * PANEL_K, ph = H * k * PANEL_K;
-    panel = { w: PW, h: PH, x: 0.5, y: 0.5, hole: { x: t.x * PW - pw / 2, y: t.y * PH - ph / 2, w: pw, h: ph, round: false }, enter: "fade" };
+    panel = { w: PW, h: PH, x: 0.5, y: 0.5, hole: clipHole({ x: t.x * PW - pw / 2, y: t.y * PH - ph / 2, w: pw, h: ph, round: false }, PW, PH), enter: "fade" };
     area = L.area;
     caption = L.caption;
   } else {
@@ -305,6 +337,52 @@ export function frameGeo(mode: FrameMode, W: number, H: number, face?: FaceBox |
     caption = null;
   }
   return { mode, person, area, caption, panel, divider };
+}
+
+/** A hole is cut IN the panel, so it never hangs off it: what falls outside the frame is trimmed away. */
+export function clipHole(h: Hole, PW: number, PH: number): Hole {
+  const x = Math.max(0, Math.min(h.x, PW));
+  const y = Math.max(0, Math.min(h.y, PH));
+  return { ...h, x: +x.toFixed(2), y: +y.toFixed(2), w: +Math.max(0, Math.min(h.x + h.w, PW) - x).toFixed(2), h: +Math.max(0, Math.min(h.y + h.h, PH) - y).toFixed(2) };
+}
+
+/** «أنا صغير في الزاوية»: the circle's size in px — from the face when it is known, tied to the frame's SHORT side. */
+export function cornerSize(W: number, H: number, face?: FaceBox | null): number {
+  const u = Math.min(W, H);
+  const want = face ? Math.max(face.w * W, face.h * H) * CORNER_BOX.scale * 2.6 : 0.34 * u;
+  return Math.min(0.44 * u, Math.max(0.26 * u, want));
+}
+
+/** The corner the person sits in: the usual top corner, moved in when the circle would hang off an edge. */
+export function cornerBox(W: number, H: number, face?: FaceBox | null) {
+  const d = cornerSize(W, H, face);
+  return {
+    x: clampTo(CORNER_BOX.x, d / W / 2 + 0.04, 1 - d / W / 2 - 0.04),
+    y: clampTo(CORNER_BOX.y, d / H / 2 + 0.04, 1 - d / H / 2 - 0.04),
+    scale: CORNER_BOX.scale,
+  };
+}
+
+const clampTo = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
+
+/**
+ * The `y` that puts the whole face inside `band` (a half of the frame) — centred in it when it fits, and never moved
+ * so far that the picture stops covering that half. The face moves with the picture, so this is one shift, not a crop.
+ */
+export function faceInBand(full: Tx, face: FaceBox, band: { lo: number; hi: number }, margin = 0.035): number {
+  const dy = face.y - full.y;
+  // the face centred in the band
+  const want = (band.lo + band.hi) / 2 - dy;
+  // the picture covers the whole frame at its full size, so a shift of d still covers the band while
+  // d ≤ band.lo (its top stays at or above the band) and d ≥ band.hi − 1 (its bottom stays at or below it)
+  const coverLo = full.y + (band.hi - 1);
+  const coverHi = full.y + band.lo;
+  // the whole face inside the band, with a little air
+  const faceLo = band.lo + margin + face.h / 2 - dy;
+  const faceHi = band.hi - margin - face.h / 2 - dy;
+  const lo = Math.max(coverLo, Math.min(faceLo, faceHi));
+  const hi = Math.min(coverHi, Math.max(faceLo, faceHi));
+  return clampTo(want, lo, hi);
 }
 
 const SHRINK_MS = 320;

@@ -98,3 +98,72 @@ describe("the frames of a reel", () => {
     });
   }
 });
+
+describe("the person's face is never cut by the frame", () => {
+  const FULL = { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 };
+  /** where the face lands on the frame after the person's transform (the face moves with the picture) */
+  const faceOn = (t: { x: number; y: number; scale: number }, face: { x: number; y: number; w: number; h: number }) => {
+    const k = t.scale / FULL.scale;
+    return { y: t.y + (face.y - FULL.y) * k, h: face.h * k, x: t.x + (face.x - FULL.x) * k, w: face.w * k };
+  };
+  const faces = [
+    { x: 0.5, y: 0.2, w: 0.3, h: 0.2 },
+    { x: 0.5, y: 0.3, w: 0.26, h: 0.18 },
+    { x: 0.5, y: 0.4, w: 0.3, h: 0.22 },
+    { x: 0.5, y: 0.55, w: 0.34, h: 0.26 },
+    { x: 0.35, y: 0.62, w: 0.28, h: 0.2 },
+    { x: 0.7, y: 0.75, w: 0.3, h: 0.24 },
+    { x: 0.5, y: 0.5, w: 0.5, h: 0.42 },
+  ];
+  for (const ratio of ["9:16", "16:9", "1:1", "4:5"] as const) {
+    const tl = emptyTimeline(ratio as Ratio);
+    for (const face of faces) {
+      it(`${ratio} · a face at ${face.y}: whole in its half when the screen is cut in two`, () => {
+        for (const mode of ["split-top", "split-bottom"] as const) {
+          const band = mode === "split-top" ? { lo: 0, hi: 0.5 } : { lo: 0.5, hi: 1 };
+          const t = frameGeo(mode, tl.width, tl.height, face).person(FULL);
+          const f = faceOn(t, face);
+          // the whole face inside the person's half
+          expect(f.y - f.h / 2, `${mode} top`).toBeGreaterThanOrEqual(band.lo - 0.001);
+          expect(f.y + f.h / 2, `${mode} bottom`).toBeLessThanOrEqual(band.hi + 0.001);
+          // and the picture still covers that half (no empty edge showing)
+          expect(t.y - t.scale / 2, `${mode} cover top`).toBeLessThanOrEqual(band.lo + 0.001);
+          expect(t.y + t.scale / 2, `${mode} cover bottom`).toBeGreaterThanOrEqual(band.hi - 0.001);
+        }
+      });
+      it(`${ratio} · a face at ${face.y}: whole in the box, the corner and the punch-in`, () => {
+        for (const mode of ["shrink", "corner", "punch"] as const) {
+          const geo = frameGeo(mode, tl.width, tl.height, face);
+          const t = geo.person(FULL);
+          const f = faceOn(t, face);
+          // on the frame, never off an edge
+          expect(f.y - f.h / 2, `${mode} top`).toBeGreaterThanOrEqual(-0.001);
+          expect(f.y + f.h / 2, `${mode} bottom`).toBeLessThanOrEqual(1.001);
+          expect(f.x - f.w / 2, `${mode} start`).toBeGreaterThanOrEqual(-0.001);
+          expect(f.x + f.w / 2, `${mode} end`).toBeLessThanOrEqual(1.001);
+          // a punch-in never shows an empty edge either
+          if (mode === "punch") {
+            expect(t.y - t.scale / 2).toBeLessThanOrEqual(0.001);
+            expect(t.y + t.scale / 2).toBeGreaterThanOrEqual(0.999);
+          }
+          // the window the person shows through sits inside the panel it is cut in
+          if (geo.panel?.hole) {
+            const h = geo.panel.hole;
+            expect(h.x, `${mode} hole x`).toBeGreaterThanOrEqual(-1);
+            expect(h.y, `${mode} hole y`).toBeGreaterThanOrEqual(-1);
+            expect(h.x + h.w, `${mode} hole end`).toBeLessThanOrEqual(geo.panel.w + 1);
+            expect(h.y + h.h, `${mode} hole bottom`).toBeLessThanOrEqual(geo.panel.h + 1);
+          }
+        }
+      });
+    }
+  }
+  it("a face the page could not find is still handled (the usual framing)", () => {
+    const tl = emptyTimeline("9:16");
+    for (const mode of ["split-top", "split-bottom", "shrink", "corner", "punch"] as const) {
+      const t = frameGeo(mode, tl.width, tl.height).person(FULL);
+      expect(Number.isFinite(t.y), mode).toBe(true);
+      expect(t.scale, mode).toBeGreaterThan(0);
+    }
+  });
+});
