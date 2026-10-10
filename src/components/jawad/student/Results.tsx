@@ -43,9 +43,11 @@ export function PdfFrame({ o, name }: { o: OutputView; name: string }) {
   return (
     <>
       {/* phones show an embedded PDF blank or as one page: a button opens it in the phone's own viewer */}
-      <a href={src} target="_blank" rel="noopener" className="jw-btn jw-btn-primary w-full sm:hidden">
-        <Icon name="download" size={16} /> افتح الملف 📄
-      </a>
+      <div className="sm:hidden">
+        <a href={src} target="_blank" rel="noopener" className="jw-btn jw-btn-primary w-full">
+          <Icon name="download" size={16} /> افتح الملف 📄
+        </a>
+      </div>
       <iframe title="معاينة" src={src} className="hidden h-[70vh] w-full rounded-lg border border-jw-line bg-white sm:block" />
     </>
   );

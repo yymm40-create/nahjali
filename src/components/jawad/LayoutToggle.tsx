@@ -27,10 +27,13 @@ export default function LayoutToggle() {
     } catch {}
     document.querySelector(".jw")?.classList.toggle("jw-wide", v);
   };
+  // the wrapper hides it on phones: `.jw-btn` sets its own display, which would win over a `hidden` on the button
   return (
-    <button type="button" onClick={toggle} aria-pressed={wide} className="jw-btn jw-btn-quiet hidden h-9 min-h-9 gap-1.5 px-2.5 text-xs lg:inline-flex" title={wide ? "ارجع لعرض الجوال (عمود في النص)" : "استغل عرض الشاشة كله"}>
-      <span aria-hidden>{wide ? "🖥️" : "📱"}</span>
-      <span>{wide ? "عرض الديسكتوب" : "عرض الجوال"}</span>
-    </button>
+    <span className="hidden lg:contents">
+      <button type="button" onClick={toggle} aria-pressed={wide} className="jw-btn jw-btn-quiet h-9 min-h-9 gap-1.5 px-2.5 text-xs" title={wide ? "ارجع لعرض الجوال (عمود في النص)" : "استغل عرض الشاشة كله"}>
+        <span aria-hidden>{wide ? "🖥️" : "📱"}</span>
+        <span>{wide ? "عرض الديسكتوب" : "عرض الجوال"}</span>
+      </button>
+    </span>
   );
 }
