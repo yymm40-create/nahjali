@@ -1,0 +1,198 @@
+/* «انشرنا واربح» — the contest window in gold: a dark velvet card with a gold frame, a glowing gift, a prize plate,
+   floating sparkles and a gold button. Every class starts with `sr-`. */
+
+.sr-pill {
+  border-radius: 999px;
+  color: #3b2400;
+  background: linear-gradient(180deg, #ffe08a, #f5b82e 55%, #d99413);
+  box-shadow: 0 0 0 1px #fff3c2 inset, 0 2px 10px rgb(245 184 46 / 0.45);
+  animation: sr-glow 2.4s ease-in-out infinite;
+}
+@keyframes sr-glow { 50% { box-shadow: 0 0 0 1px #fff3c2 inset, 0 2px 18px rgb(245 184 46 / 0.8); } }
+
+.sr-back {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: radial-gradient(60% 50% at 50% 40%, rgb(120 80 0 / 0.35), transparent 70%), rgb(5 4 2 / 0.78);
+  backdrop-filter: blur(4px);
+  animation: sr-fade 0.25s ease-out;
+}
+@keyframes sr-fade { from { opacity: 0; } }
+
+.sr-back, .sr-back * { box-sizing: border-box; }
+.sr-card {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: auto;
+  padding: 22px 18px 18px;
+  border-radius: 26px;
+  color: #fdf3d6;
+  text-align: right;
+  background:
+    radial-gradient(80% 40% at 50% 0%, rgb(255 205 90 / 0.28), transparent 70%),
+    linear-gradient(180deg, #2a1d06, #140d02);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  box-shadow: 0 0 0 2px #e9b546, 0 0 0 5px rgb(233 181 70 / 0.25), 0 24px 60px rgb(0 0 0 / 0.6), 0 0 80px rgb(245 184 46 / 0.25);
+  animation: sr-pop 0.4s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes sr-pop { from { transform: scale(0.85) translateY(12px); opacity: 0; } }
+
+.sr-shine {
+  pointer-events: none;
+  position: absolute;
+  inset: -40% -60%;
+  background: linear-gradient(115deg, transparent 42%, rgb(255 240 190 / 0.12) 50%, transparent 58%);
+  animation: sr-sweep 4.5s ease-in-out infinite;
+}
+@keyframes sr-sweep { from { transform: translateX(-30%); } 60%, to { transform: translateX(30%); } }
+
+.sr-confetti { pointer-events: none; position: absolute; inset: 0; }
+.sr-confetti i {
+  position: absolute;
+  /* along the two sides of the card, away from the words */
+  top: calc(4% + var(--i) * 11%);
+  right: calc(var(--side, 0) * 1%);
+  font-style: normal;
+  font-size: 13px;
+  color: #ffd76a;
+  opacity: 0.6;
+  animation: sr-float calc(3s + var(--i) * 0.4s) ease-in-out infinite alternate;
+}
+.sr-confetti i:nth-child(odd) { right: auto; left: 8px; }
+.sr-confetti i:nth-child(even) { right: 8px; }
+@keyframes sr-float { to { transform: translateY(14px) rotate(25deg); opacity: 0.25; } }
+
+.sr-x {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgb(233 181 70 / 0.5);
+  background: rgb(0 0 0 / 0.35);
+  color: #ffe7a3;
+  cursor: pointer;
+}
+
+.sr-head { position: relative; text-align: center; display: grid; justify-items: center; gap: 6px; }
+.sr-ribbon {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #3b2400;
+  background: linear-gradient(90deg, #f5c04a, #fff0b3, #f5c04a);
+}
+.sr-trophy {
+  margin-top: 8px;
+  font-size: 64px;
+  line-height: 1;
+  filter: drop-shadow(0 6px 18px rgb(245 184 46 / 0.65));
+  animation: sr-bob 2.6s ease-in-out infinite;
+}
+@keyframes sr-bob { 50% { transform: translateY(-6px) rotate(-4deg); } }
+.sr-head h2 {
+  margin: 0;
+  font-size: clamp(26px, 7vw, 34px);
+  font-weight: 900;
+  background: linear-gradient(180deg, #fff6d0, #f5c04a 60%, #c98b10);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.sr-prize {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgb(245 192 74 / 0.6);
+  background: linear-gradient(180deg, rgb(245 192 74 / 0.18), rgb(245 192 74 / 0.05));
+}
+.sr-prize span { font-size: 12px; font-weight: 700; color: #f2d993; }
+.sr-prize b { font-size: 30px; font-weight: 900; color: #ffe08a; display: inline-flex; align-items: center; }
+.sr-head > p { margin: 0; font-size: 13px; color: #e6d3a1; }
+
+.sr-note { position: relative; margin: 14px 0 0; padding: 10px 12px; border-radius: 14px; font-size: 13px; background: rgb(245 192 74 / 0.12); border: 1px solid rgb(245 192 74 / 0.35); }
+.sr-warn { background: rgb(255 120 80 / 0.12); border-color: rgb(255 140 90 / 0.45); }
+
+.sr-steps { position: relative; list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; font-size: 14px; }
+.sr-steps li { display: flex; gap: 10px; align-items: flex-start; }
+.sr-steps li > b {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-weight: 900;
+  color: #3b2400;
+  background: linear-gradient(180deg, #ffe08a, #e9a91f);
+}
+.sr-steps li > span { flex: 1; min-width: 0; line-height: 1.7; }
+.sr-steps a { color: #ffd76a; font-weight: 800; text-decoration: underline; }
+.sr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.sr-chips a, .sr-chips button {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #ffe7a3;
+  background: rgb(245 192 74 / 0.12);
+  border: 1px solid rgb(245 192 74 / 0.45);
+  cursor: pointer;
+}
+.sr-input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(245 192 74 / 0.55);
+  background: rgb(0 0 0 / 0.35);
+  color: #fff5d6;
+  font: inherit;
+}
+.sr-input:focus { outline: 2px solid #f5c04a; outline-offset: 1px; }
+
+.sr-go {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 54px;
+  margin-top: 16px;
+  border: 0;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #3b2400;
+  text-decoration: none;
+  cursor: pointer;
+  background: linear-gradient(180deg, #fff0b3, #f5c04a 45%, #d48f0c);
+  box-shadow: 0 0 0 1px #fff6d0 inset, 0 8px 24px rgb(245 184 46 / 0.45);
+}
+.sr-go:disabled { opacity: 0.55; cursor: not-allowed; }
+.sr-msg { margin: 10px 0 0; font-size: 13px; color: #ffe08a; text-align: center; }
+.sr-msg.bad { color: #ff9b85; }
+.sr-small { margin: 10px 0 0; font-size: 11px; color: #bfa874; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-pill, .sr-back, .sr-card, .sr-shine, .sr-confetti i, .sr-trophy { animation: none; }
+}
