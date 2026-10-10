@@ -114,8 +114,21 @@ export function hostOf(url: string) {
 /** The kinds of document that are narrations (the hadith chapters, the duas and ziyarat): they come first in every answer. */
 export const NARRATION_KINDS = ["hadith-chapter", "dua"];
 
+/** What the thaqalayn library holds (the narrations, the duas and ziyarat, the Quran and its commentary): the primary source. */
+export const PRIMARY_KINDS = ["hadith-chapter", "dua", "quran", "commentary"];
+/** The complements (almojib's and aqaed's answers, articles, interviews, biographies, other sites' pages). */
+export const COMPLEMENT_KINDS = ["qa", "article", "interview", "biography", "page", "fatwa"];
+
+/** A passage of the primary source (thaqalayn), told by its address. */
+export const isPrimary = (url: string) => hostOf(url).includes("thaqalayn");
+
+/** How the person wants the answer: decided by the model («auto»), the narrations only, or a deep research with analysis. */
+export type IslamicMode = "auto" | "narration" | "research";
+export const isIslamicMode = (v: unknown): v is IslamicMode => v === "auto" || v === "narration" || v === "research";
+export const MODE_LABEL: Record<IslamicMode, string> = { auto: "تلقائي", narration: "الرواية فقط", research: "بحث وتحليل" };
+
 /** What a kind of document is called when Claude is told where a passage comes from. */
-export const KIND_LABEL: Record<string, string> = { "hadith-chapter": "رواية", dua: "دعاء/زيارة", quran: "قرآن", commentary: "تفسير", fatwa: "فتوى", page: "صفحة" };
+export const KIND_LABEL: Record<string, string> = { "hadith-chapter": "رواية", dua: "دعاء/زيارة", quran: "قرآن", commentary: "تفسير", fatwa: "فتوى", page: "صفحة", qa: "سؤال وجواب", article: "مقال", interview: "حوار", biography: "ترجمة" };
 
 /**
  * The passages of one answer: up to `quota` narrations first (at most `perDoc` from one document), then the rest by

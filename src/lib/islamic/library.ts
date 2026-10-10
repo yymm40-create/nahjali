@@ -9,7 +9,7 @@ import { aqaed } from "./adapters/aqaed";
 import { site } from "./adapters/site";
 import { thaqalayn } from "./adapters/thaqalayn";
 import { pool, type ReadDoc, type Reader } from "./adapters/types";
-import { chunkText, hostOf, NARRATION_KINDS, normalizeArabic, pickPassages, queryWords, tsQuery } from "./text";
+import { chunkText, COMPLEMENT_KINDS, hostOf, NARRATION_KINDS, normalizeArabic, pickPassages, PRIMARY_KINDS, queryWords, tsQuery } from "./text";
 
 export type Adapter = "thaqalayn" | "almojib" | "aqaed" | "site";
 const READERS: Record<Adapter, Reader> = { thaqalayn, almojib, aqaed, site };
@@ -251,6 +251,27 @@ export async function search(question: string, k = ISLAMIC.passages, extra: stri
   const others = rest.found.filter((p) => !isNar(p));
   const passages = pickPassages(narrations, others, k, ISLAMIC.perDoc);
   return { passages, words: wide, narrations: passages.filter(isNar).length };
+}
+
+/**
+ * One search of the deep research: the primary source only (thaqalayn: narrations, duas, the Quran, commentary) or the
+ * complements only (almojib, aqaed and the other sites), from the most precise to the widest, at most `k` passages.
+ */
+export async function searchScoped(query: string, scope: "primary" | "complements", k = 8, extra: string[] = []): Promise<Passage[]> {
+  const words = queryWords(query);
+  const more = [...new Set(extra.flatMap((w) => normalizeArabic(w).split(" ")).filter((w) => w.length >= 2 && !words.includes(w)))].slice(0, 10);
+  if (!words.length && !more.length) return [];
+  const kinds = scope === "primary" ? PRIMARY_KINDS : COMPLEMENT_KINDS;
+  const r = await searchTier(words.length ? words : more, [...words, ...more], kindsOff ? null : kinds, kindsOff ? k * 4 : k);
+  if (!r.found.length && r.lastError) throw new UserError("تعذّر البحث في المكتبة الحين؛ جرّب بعد شوي.", 503);
+  // without SQL 0043 the kinds are told apart afterwards
+  const inScope = r.found.filter((p) => kinds.includes(p.kind) || (scope === "complements" && !PRIMARY_KINDS.includes(p.kind)));
+  const perDoc = new Map<string, number>();
+  return inScope.filter((p) => {
+    const n = perDoc.get(p.doc_id) ?? 0;
+    perDoc.set(p.doc_id, n + 1);
+    return n < ISLAMIC.perDoc;
+  }).slice(0, k);
 }
 
 export async function kvGet(key: string): Promise<string> {
