@@ -36,7 +36,8 @@ import { startMake } from "@/lib/editor/make-any";
 import { smartMask } from "@/lib/editor/smart-mask";
 
 // listening to a long clip can take a while
-export const maxDuration = 300;
+// حيدرة's long answers (a big timeline, a few correction rounds) may run as long as the platform allows
+export const maxDuration = 800;
 
 type Ctx = { params: Promise<{ id: string }> };
 const noStore = { headers: { "Cache-Control": "no-store" } };
