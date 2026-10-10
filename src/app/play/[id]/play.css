@@ -1,0 +1,16 @@
+/* A game's play page: the game fills the screen under a slim bar (the site's name, the title, share, full screen). */
+.pl { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr; background: #0b0718; color: #fff; }
+.pl-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; padding-top: max(6px, env(safe-area-inset-top)); background: linear-gradient(90deg, #1b1037, #2a1050); border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-size: 14px; min-width: 0; }
+.pl-brand { display: inline-flex; align-items: center; gap: 6px; color: #ffd166; font-weight: 900; text-decoration: none; white-space: nowrap; font-size: 13px; }
+.pl-brand img { width: 26px; height: 26px; object-fit: contain; }
+.pl-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
+.pl-btn { flex: none; min-height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.12); color: #fff; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.pl-btn.hot { background: linear-gradient(180deg, #ffb52e, #ff8a1f); color: #2a1200; }
+.pl-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+.pl-toast { position: fixed; inset-inline: 0; bottom: calc(16px + env(safe-area-inset-bottom)); margin: auto; width: max-content; max-width: 90vw; padding: 8px 14px; border-radius: 12px; background: rgba(0, 0, 0, 0.8); color: #fff; font-size: 14px; font-weight: 700; z-index: 5; }
+@media (max-width: 420px) { .pl-brand b { display: none; } .pl-btn { padding: 0 10px; } }
+.pl-wait { min-height: 100dvh; display: grid; place-items: center; background: radial-gradient(circle at 50% 30%, #2a1050, #0b0718 70%); color: #fff; text-align: center; padding: 24px; }
+.pl-wait span { font-size: 56px; }
+.pl-wait h1 { font-size: 26px; font-weight: 900; margin: 8px 0; }
+.pl-wait p { color: #cfc5ef; margin: 0 0 18px; }
+.pl-wait a { display: inline-block; padding: 12px 20px; border-radius: 999px; background: linear-gradient(180deg, #ffb52e, #ff8a1f); color: #2a1200; font-weight: 900; text-decoration: none; }

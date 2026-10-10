@@ -3,7 +3,7 @@
 
 import { OPTIONS_RULE } from "@/lib/chat-options";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { GAMES_KV, GAMES_PLATFORM_RULES, QANBAR_PERSONA } from "@config/games";
+import { GAMES_KV, GAMES_MODE_RULES, GAMES_PLATFORM_RULES, QANBAR_PERSONA, type GamesMode } from "@config/games";
 
 const db = () => createAdminClient();
 const MAX = 60_000;
@@ -29,9 +29,10 @@ export async function resetPersona() {
 }
 
 /**
- * The whole system text: persona, then what the platform requires (the rules and the clickable answers every chat
- * ends with), then the library notes (when games were named).
+ * The whole system text: persona, then what the platform requires (the rules, the way the person chose — the game built
+ * here or a prompt to take elsewhere — and the clickable answers every chat ends with), then the library notes (when games
+ * were named).
  */
-export function systemText(persona: string, libraryBlock = "") {
-  return [persona, GAMES_PLATFORM_RULES, OPTIONS_RULE, libraryBlock].filter(Boolean).join("\n\n");
+export function systemText(persona: string, libraryBlock = "", mode: GamesMode = "") {
+  return [persona, GAMES_PLATFORM_RULES, mode ? GAMES_MODE_RULES[mode] : "", OPTIONS_RULE, libraryBlock].filter(Boolean).join("\n\n");
 }

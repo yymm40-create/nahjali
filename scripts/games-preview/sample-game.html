@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>قفزة الصحراء</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1b0f2e; overflow: hidden; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color: #fff; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100dvh; touch-action: none; display: block; }
+  .screen { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; gap: 12px; padding: 24px; background: rgba(20, 8, 40, 0.72); }
+  .screen h1 { margin: 0; font-size: 40px; }
+  .screen p { margin: 0; font-size: 17px; line-height: 1.8; color: #f3e8ff; }
+  .big { min-width: 200px; min-height: 64px; border: 0; border-radius: 20px; font: inherit; font-size: 24px; font-weight: 900; color: #2a1200; background: linear-gradient(180deg, #ffd166, #ff9f1c); box-shadow: 0 6px 0 #b45309; cursor: pointer; }
+  .big:disabled { opacity: 0.5; }
+  .hud { position: fixed; top: 10px; inset-inline: 10px; display: flex; justify-content: space-between; font-size: 20px; font-weight: 900; pointer-events: none; text-shadow: 0 2px 4px #000; }
+  .icon { position: fixed; top: 48px; inset-inline-start: 10px; width: 56px; height: 56px; border-radius: 16px; border: 0; background: rgba(0,0,0,.35); color: #fff; font-size: 24px; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud" id="hud"><span id="score">0</span><span id="lives">❤️❤️❤️</span></div>
+<button class="icon hide" id="mute" aria-label="الصوت">🔊</button>
+<div class="screen" id="start"><h1>قفزة الصحراء</h1><p>المس الشاشة أو اضغط المسافة عشان تقفز.<br>تفادى الصبار واجمع أطول مسافة!</p><button class="big" id="go" disabled>ابدأ</button></div>
+<div class="screen hide" id="over"><h1>انتهت!</h1><p id="result"></p><button class="big" id="again">العب مرة ثانية</button></div>
+<script>
+(function () {
+  var cv = document.getElementById("game"), cx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1;
+  function size() { dpr = Math.min(window.devicePixelRatio || 1, 2); W = window.innerWidth; H = window.innerHeight; cv.width = W * dpr; cv.height = H * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  window.addEventListener("resize", size); size();
+  var pics = {}, left = 2;
+  function load(id, src) { var im = new Image(); var done = false; function end(ok) { if (done) return; done = true; pics[id] = ok ? im : null; if (--left <= 0) ready(); } im.onload = function () { end(true); }; im.onerror = function () { end(false); }; setTimeout(function () { end(im.complete && im.naturalWidth > 0); }, 6000); im.src = src; }
+  function ready() { document.getElementById("go").disabled = false; }
+  load("hero", "{{asset:hero}}"); load("bg", "{{asset:bg}}");
+  var best = 0; try { best = Number(localStorage.getItem("best")) || 0; } catch (e) {}
+  var ac = null, muted = false;
+  function beep(f, d) { if (!ac || muted) return; var o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; g.gain.value = 0.08; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d); }
+  var st = "start", y = 0, vy = 0, obs = [], speed = 260, dist = 0, lives = 3, t0 = 0, paused = false, hurt = 0;
+  function ground() { return H * 0.78; }
+  function jump() { if (st !== "play") return; if (y === 0) { vy = -Math.max(520, H * 1.1); beep(660, 0.08); } }
+  function begin() { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } st = "play"; y = 0; vy = 0; obs = []; speed = 260; dist = 0; lives = 3; t0 = 0; hurt = 0; document.getElementById("start").classList.add("hide"); document.getElementById("over").classList.add("hide"); document.getElementById("mute").classList.remove("hide"); hud(); }
+  function end() { st = "over"; best = Math.max(best, Math.floor(dist)); try { localStorage.setItem("best", String(best)); } catch (e) {} document.getElementById("result").textContent = "المسافة: " + Math.floor(dist) + " م — أفضل نتيجة: " + best + " م"; document.getElementById("over").classList.remove("hide"); beep(180, 0.3); }
+  function hud() { document.getElementById("score").textContent = Math.floor(dist) + " م"; document.getElementById("lives").textContent = "❤️".repeat(lives); }
+  document.getElementById("go").onclick = begin; document.getElementById("again").onclick = begin;
+  document.getElementById("mute").onclick = function (e) { e.stopPropagation(); muted = !muted; this.textContent = muted ? "🔇" : "🔊"; };
+  cv.addEventListener("pointerdown", function (e) { e.preventDefault(); jump(); });
+  window.addEventListener("keydown", function (e) { if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") { e.preventDefault(); if (st === "play") jump(); else begin(); } });
+  document.addEventListener("visibilitychange", function () { paused = document.hidden; });
+  var last = 0;
+  function frame(t) {
+    requestAnimationFrame(frame);
+    var dt = Math.min(0.05, (t - (last || t)) / 1000); last = t;
+    if (paused) return;
+    var g = ground(), hs = Math.min(W, H) * 0.16;
+    if (pics.bg) cx.drawImage(pics.bg, 0, 0, W, H); else { var gr = cx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#ff9e7a"); gr.addColorStop(1, "#ffd59e"); cx.fillStyle = gr; cx.fillRect(0, 0, W, H); }
+    cx.fillStyle = "#c2884d"; cx.fillRect(0, g, W, H - g);
+    if (st === "play") {
+      t0 += dt; dist += speed * dt / 40; speed = 260 + Math.floor(t0 / 10) * 40;
+      vy += Math.max(1400, H * 2.6) * dt; y = Math.min(0, y + vy * dt); if (y === 0) vy = 0;
+      if (!obs.length || obs[obs.length - 1].x < W - Math.max(260, speed * 1.1)) obs.push({ x: W + 40, w: hs * 0.45, h: hs * (0.6 + Math.random() * 0.5) });
+      for (var i = obs.length - 1; i >= 0; i--) { var o = obs[i]; o.x -= speed * dt; if (o.x < -80) obs.splice(i, 1); }
+      var hx = W * 0.75, hy = g - hs + y;
+      if (hurt > 0) hurt -= dt;
+      for (var j = 0; j < obs.length; j++) { var c = obs[j]; if (hurt <= 0 && hx - hs * 0.3 < c.x + c.w && hx + hs * 0.3 > c.x && hy + hs > g - c.h) { lives--; hurt = 1.2; beep(220, 0.15); if (lives <= 0) { end(); } } }
+      hud();
+    }
+    for (var k = 0; k < obs.length; k++) { var b = obs[k]; cx.fillStyle = "#2f7d32"; cx.fillRect(b.x, g - b.h, b.w, b.h); }
+    var px = W * 0.75 - hs / 2, py = g - hs + y;
+    if (hurt > 0 && Math.floor(hurt * 10) % 2) return;
+    if (pics.hero) cx.drawImage(pics.hero, px, py, hs, hs); else { cx.font = hs * 0.9 + "px serif"; cx.textBaseline = "top"; cx.fillText("🐪", px, py); }
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

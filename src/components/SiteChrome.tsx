@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 /** Sections that bring their own header, layout and footer (they are full apps of their own). */
-const OWN_CHROME = ["/mahdi", "/jawad-ai"];
+const OWN_CHROME = ["/mahdi", "/jawad-ai", "/play"];
 
 /** The site's banner, header, centred column and footer — except inside sections with their own chrome. */
 export default function SiteChrome({ top, bottom, children }: { top: React.ReactNode; bottom: React.ReactNode; children: React.ReactNode }) {

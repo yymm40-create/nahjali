@@ -3,7 +3,8 @@
 // platform — receives it, picks his generator, checks the options against his registry, prices it, makes it as an
 // ordinary JAWAD AI job (so it is in «أعمالي», follows the site's prices, refunds on failure and keeps the one
 // provider key and the one ledger), and answers with a receipt and the result. Baqir's «content» permission is what
-// lets his requests in (src/lib/jawad/server/jobs.ts, via: "content"). Server only.
+// lets his requests in (src/lib/jawad/server/jobs.ts, via: "content"); «قنبر» draws a game's pictures through the same desk
+// (src/lib/games/build.ts), behind the door of «صانع الألعاب» he already passed. Server only.
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -108,8 +109,8 @@ const receiptOf = (def: GeneratorDef, job: JobRow): DeskReceipt => ({
   jobId: job.id,
 });
 
-/** جواد receives a request and makes the job (nothing is waited for: the work runs after, or at once for a picture). */
-async function receive(who: DeskWho, req: DeskRequest): Promise<{ def: GeneratorDef; job: JobRow }> {
+/** The generator and the job's body for a request (the price still to learn: expectedCoins -1). */
+async function bodyOf(req: DeskRequest): Promise<{ def: GeneratorDef; body: GenerateBody }> {
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(req.key)) throw new DeskError("طلب غير صحيح.", "bad key");
   if (!req.prompt.trim()) throw new DeskError("طلب بلا وصف.", "empty prompt");
   const def = generatorById(DESK_GENERATOR[req.kind]);
@@ -129,6 +130,23 @@ async function receive(who: DeskWho, req: DeskRequest): Promise<{ def: Generator
     refs: refs.map((r) => ({ uploadId: r.uploadId, role: "reference", name: r.name })),
     expectedCoins: -1,
   };
+  return { def, body };
+}
+
+/** What a request would cost the person now, in halalas (nothing is made or taken); null when it can't be priced. */
+export async function deskQuote(who: DeskWho, req: Omit<DeskRequest, "key">): Promise<number | null> {
+  try {
+    const { body } = await bodyOf({ ...req, key: `quote-${crypto.randomUUID()}` });
+    const r = await createJob({ id: who.id, email: who.email }, who.owner, body, who.origin, { via: "content" });
+    return r.kind === "price_changed" ? r.coins : null;
+  } catch {
+    return null;
+  }
+}
+
+/** جواد receives a request and makes the job (nothing is waited for: the work runs after, or at once for a picture). */
+async function receive(who: DeskWho, req: DeskRequest): Promise<{ def: GeneratorDef; job: JobRow }> {
+  const { def, body } = await bodyOf(req);
   const user = { id: who.id, email: who.email };
   try {
     // the first ask learns the price (nothing is made or taken), the second makes the job at exactly that price

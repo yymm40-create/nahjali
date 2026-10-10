@@ -57,6 +57,8 @@ export async function proxy(request: NextRequest) {
     requestHeaders.set(OWN_CHROME_HEADER, "jawad-ai");
     requestHeaders.set(JAWAD_PATH_HEADER, request.nextUrl.pathname);
   }
+  // a game «صانع الألعاب» built, opened by its link: the game alone, full screen
+  if (request.nextUrl.pathname.startsWith("/play/")) requestHeaders.set(OWN_CHROME_HEADER, "play");
   const forward = { request: { headers: requestHeaders } };
 
   let response = NextResponse.next(forward);
