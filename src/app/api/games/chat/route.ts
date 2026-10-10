@@ -5,6 +5,7 @@ import { requireGamesUser } from "@/lib/games/access";
 import { say } from "@/lib/games/chat";
 import { robotTurn } from "@/lib/claude-run";
 import { GAMES } from "@config/games";
+import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -26,6 +27,7 @@ export const POST = handle(async (req: Request) => {
     if (why) throw new UserError(why, 503);
     if (e instanceof Error && e.message === "chat not found") throw new UserError("ما لقينا هذي المحادثة.", 404);
     console.error("games chat", e);
-    throw new UserError("قنبر ما قدر يرد الحين؛ جرّب بعد شوي.", 502);
+    const raw = e instanceof Error ? e.message : String(e);
+    throw new UserError(`قنبر ما قدر يرد الحين؛ جرّب بعد شوي.${isAdmin(user.email) ? ` (تفصيل للرئيس: ${raw.slice(0, 300)})` : ""}`, 502);
   }
 });

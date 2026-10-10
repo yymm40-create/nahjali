@@ -21,6 +21,8 @@ import type { Command } from "@/lib/editor/commands";
 import { coinStr } from "@config/coins";
 import { postJson } from "@/lib/fetch";
 import { MOODS, MOTION_STYLES, styleInText } from "@/lib/editor/motion-styles";
+import SkillGallery, { askFor, type Picked } from "./SkillGallery";
+import { TALK_STYLES } from "@/lib/editor/talk-styles";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
 import Icon from "../Icon";
@@ -43,6 +45,7 @@ interface Msg {
   suggestions?: { prompt: string; why: string }[];
   /** clickable answers under حيدرة's last reply (with «✍️ اكتب إجابة مختلفة») */
   quick?: string[];
+  options?: { label: string; choices: string[]; multi: boolean }[];
   /** «اصنع لي…» that cost coins: shown with their price, started by a tap */
   plans?: { plan: MakePlan; state: "ask" | "started" | "failed" }[];
   error?: boolean;
@@ -98,6 +101,7 @@ export default function AssistantPanel({
   onAssets,
   onSeparate,
   onSceneCut,
+  onUpscale,
   projectId,
   tl,
   selected,
@@ -123,6 +127,8 @@ export default function AssistantPanel({
   onSeparate: (clipId: string) => Promise<void>;
   /** cuts a video clip at every change of shot */
   onSceneCut: (clipId: string) => Promise<number>;
+  /** «رفع الدقة»: the clip's video sent to Topaz (a new file comes back and takes its place when it is ready) */
+  onUpscale?: (assetId: string, target: "4k" | "1080p") => Promise<void> | void;
   projectId: string;
   tl: Timeline;
   selected: string[];
@@ -147,24 +153,25 @@ export default function AssistantPanel({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [claude] = useClaudeModel();
-  // «🎬 مهارات الموشن»: the named motion skills as chips (one press writes the start of the request)
-  const [showSkills, setShowSkills] = useState(false);
+  // «🎬 اختر بالصورة»: the gallery of every motion kind, talking-reel look and feeling, as pictures
+  const [gallery, setGallery] = useState<null | "motion" | "talk" | "look" | "mood">(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
-  // «🎭 المشاعر»: the feeling of the piece, added to what is written (or the start of a request)
-  const pickMood = (ar: string) => {
-    setText((t) => (t.trim() ? `${t.replace(/\s*بمزاج «[^»]*»/, "")} بمزاج «${ar}»` : `موشن جرافيكس بمزاج «${ar}» عن: `));
-    setTimeout(() => textRef.current?.focus(), 0);
-  };
-  const pickSkill = (ar: string) => {
-    const talk = MOTION_STYLES.find((m) => m.ar === ar)?.talk;
-    setText(talk ? `ركّب موشن على كلامي بمهارة «${ar}»` : `موشن جرافيكس بمهارة «${ar}» عن: `);
-    setShowSkills(false);
+  /** the words of a pick written in the box, the cursor at their end (nothing is sent until the person presses) */
+  const writeInBox = (words: string, replace = true) => {
+    setText((t) => (replace || !t.trim() ? words : `${t.trim()} ${words}`));
     setTimeout(() => {
       const el = textRef.current;
       if (!el) return;
       el.focus();
       el.setSelectionRange(el.value.length, el.value.length);
     }, 0);
+  };
+  const pickFromGallery = (p: Picked) => writeInBox(askFor(p), p.kind !== "look");
+  // «🎭 المشاعر» and the skills: a press writes the start of the request in the box (the person adds their topic)
+  const pickMood = (ar: string) => writeInBox(`موشن جرافيكس بمزاج «${ar}» عن: `, false);
+  const pickSkill = (ar: string) => {
+    const talk = MOTION_STYLES.find((m) => m.ar === ar)?.talk;
+    writeInBox(talk ? `ركّب موشن على كلامي بمهارة «${ar}»` : `موشن جرافيكس بمهارة «${ar}» عن: `);
   };
   const [busy, setBusyState] = useState<string | null>(null);
   // the latest «busy», for code that runs between renders (a voice message's send used to see the old one and drop
@@ -424,7 +431,7 @@ export default function AssistantPanel({
       }
       const found = await talkFace(message).catch(() => null);
       setBusy("حيدرة يشتغل على التايملاين…");
-      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
+      const r = await postJson<{ reply: string; commands: Command[]; suggestions: { prompt: string; why: string }[]; quick?: string[]; options?: { label: string; choices: string[]; multi: boolean }[]; requests?: MakeRequest[]; checkClipId?: string | null; assets?: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`, {
         action: "assistant",
         model: claude.id,
         message,
@@ -452,7 +459,7 @@ export default function AssistantPanel({
         done = applied ? r.commands.length : 0;
         if (applied) now = (applied as { timeline: Timeline }).timeline;
       }
-      setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions, ...(r.quick?.length ? { quick: r.quick } : {}) }]);
+      setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions, ...(r.quick?.length ? { quick: r.quick } : {}), ...(r.options?.length ? { options: r.options } : {}) }]);
       // a colour change: حيدرة looks at the result (pictures and scopes) and corrects it until it is right
       if (r.checkClipId && done) await checkColour(r.checkClipId, message, now);
       // what Claude asked to be made: made one by one, then placed (each its own undo)
@@ -527,6 +534,17 @@ export default function AssistantPanel({
           } else if (q.kind === "scene_cut") {
             setBusy("أقرأ المشاهد وأقطّع عند كل تغيّر…");
             await onSceneCut(q.clipId);
+          } else if (q.kind === "upscale") {
+            // «رفع الدقة»: the clip's own file is sent; it is paid by the second, so the reasons it can't run are said plainly
+            if (!onUpscale) throw new Error("رفع الدقة مو متاح في هذا المشروع.");
+            const f = findClip(tlRef.current, q.clipId);
+            const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+            if (!f || !a || a.kind !== "video") throw new Error("رفع الدقة للفيديو فقط — اختر مقطع فيديو.");
+            if (a.status !== "ready") throw new Error(`الملف «${a.name}» ما خلص رفع بعد؛ انتظر شوي وأعد الطلب.`);
+            if (!a.width || !a.height) throw new Error(`ما قدرت أقرا دقة «${a.name}».`);
+            if (Math.max(a.width, a.height) >= 3800) throw new Error(`«${a.name}» دقته ${a.width}×${a.height} — هذا 4K أصلًا، رفع الدقة ما يضيف له شي.`);
+            setBusy("أرسل المقطع لرفع الدقة…");
+            await onUpscale(a.id, q.quality === "1080p" && Math.max(a.width, a.height) < 1800 ? "1080p" : "4k");
           }
         } catch (e) {
           setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
@@ -562,7 +580,7 @@ export default function AssistantPanel({
     },
     [],
   );
-  /** 🎤 a voice message: press to talk, press again to send. */
+  /** 🎤 a voice message: press to talk, press again — the words are WRITTEN IN THE BOX to read, fix and send. */
   const voiceMessage = async () => {
     if (recRef.current) return recRef.current.stop();
     try {
@@ -585,9 +603,8 @@ export default function AssistantPanel({
       const said = await hear(projectId, r).finally(() => setBusy(null));
       diagNote(`🎤 رسالة صوتية: انكتب ${said.length} حرف${said ? ` «${said.slice(0, 60)}»` : ""}`);
       if (!said) return voiceError(new Error("سجّلت بس ما فهمت كلام في التسجيل. قرّب من المايك وجرّب مرة ثانية."));
-      // the words go into the conversation even if something stops them being sent (so they are never lost)
-      const answer = await sendRef.current(said);
-      if (answer === null && !sendingRef.current) setText(said);
+      // nothing is sent by itself: the words are added to whatever is written, and the person presses «أرسل» when ready
+      writeInBox(said, false);
     } catch (e) {
       recRef.current = null;
       setRecording(false);
@@ -741,8 +758,8 @@ export default function AssistantPanel({
                   {m.icon} {m.ar}
                 </button>
               ))}
-              <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => setShowSkills(true)}>
-                كل المهارات ({MOTION_STYLES.length})
+              <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs !border-jw-accent !text-jw-accent" onClick={() => setGallery("motion")}>
+                🖼️ شوف كل المهارات بالصور ({MOTION_STYLES.length})
               </button>
             </div>
             <p className="text-[11px] text-jw-muted">🎭 بأي شعور؟</p>
@@ -779,6 +796,7 @@ export default function AssistantPanel({
                 ))}
               </div>
             ) : null}
+            {m.options?.length && i === msgs.length - 1 && !busy ? <OptionGroups groups={m.options} disabled={readOnly} onSend={(words) => void send(words)} /> : null}
             {m.quick?.length && i === msgs.length - 1 && !busy ? (
               <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="اختر إجابة">
                 {m.quick.map((q) => (
@@ -916,23 +934,22 @@ export default function AssistantPanel({
           ))}
         </div>
       )}
-      <div className="border-t border-jw-line px-2 pt-1.5">
-        <button type="button" className="text-[11px] font-semibold text-jw-accent" onClick={() => setShowSkills((v) => !v)} aria-expanded={showSkills} disabled={readOnly}>
-          🎬 مهارات الموشن {showSkills ? "▴" : "▾"}
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-jw-line px-2 pt-1.5">
+        <span className="text-[11px] text-jw-muted">🖼️ اختر بالصورة:</span>
+        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("motion")}>
+          🎬 موشن ({MOTION_STYLES.filter((m) => !m.talk).length})
         </button>
-        {showSkills && (
-          <div className="mt-1.5 space-y-1.5 pb-1">
-            <p className="text-[11px] leading-5 text-jw-muted">اختر مهارة واكتب موضوعك، أو اكتب اسمها في أي طلب. وأي شي تطلبه زيادة (لون، سرعة، بدون أصوات…) يمشي على المهارة.</p>
-            <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-              {MOTION_STYLES.map((m) => (
-                <button key={m.id} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" title={m.hint} onClick={() => pickSkill(m.ar)}>
-                  {m.icon} {m.ar}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("talk")}>
+          🗣️ على كلامك ({MOTION_STYLES.filter((m) => m.talk).length})
+        </button>
+        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("look")}>
+          🎨 ستايل اللوحات ({TALK_STYLES.length})
+        </button>
+        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("mood")}>
+          🎭 مشاعر ({MOODS.length})
+        </button>
       </div>
+      <SkillGallery open={!!gallery} startTab={gallery ?? "motion"} onClose={() => setGallery(null)} onPick={pickFromGallery} />
       <ClaudeModelPicker className="border-t border-jw-line px-2 pt-1.5" disabled={!!busy} />
       <form
         className="flex items-end gap-2 p-2"
@@ -979,8 +996,8 @@ export default function AssistantPanel({
               disabled={readOnly || !!talk || (!!busy && !recording)}
               onClick={() => void voiceMessage()}
               aria-pressed={recording}
-              aria-label={recording ? "أرسل التسجيل" : "سجّل رسالة صوتية"}
-              title="🎤 رسالة صوتية: اضغط وتكلّم، واضغط مرة ثانية للإرسال"
+              aria-label={recording ? "أوقف التسجيل واكتب كلامي" : "سجّل بصوتك ويُكتب كلامك"}
+              title="🎤 سجّل بصوتك: اضغط وتكلّم، واضغط مرة ثانية — كلامك ينكتب في المربع، تعدّله وترسله"
             >
               <Icon name="mic" />
             </button>
@@ -1019,6 +1036,63 @@ export default function AssistantPanel({
 const noSubscribe = () => () => {};
 
 /** A reply as written: **bold**, and ```blocks``` (the designer's prompts) shown as copyable English blocks. */
+/**
+ * «الخيارات» — the groups حيدرة asks with: each a short question and its choices as buttons (several at once when it
+ * says so). The person's picks go back as ONE message, so a whole brief is answered with presses, not typing.
+ */
+function OptionGroups({ groups, disabled, onSend }: { groups: { label: string; choices: string[]; multi: boolean }[]; disabled?: boolean; onSend: (words: string) => void }) {
+  const [picked, setPicked] = useState<Record<number, string[]>>({});
+  const toggle = (gi: number, c: string, multi: boolean) =>
+    setPicked((p) => {
+      const now = p[gi] ?? [];
+      if (!multi) return { ...p, [gi]: now[0] === c ? [] : [c] };
+      return { ...p, [gi]: now.includes(c) ? now.filter((x) => x !== c) : [...now, c] };
+    });
+  const answered = groups.filter((_, gi) => (picked[gi] ?? []).length).length;
+  const words = groups
+    .map((g, gi) => ((picked[gi] ?? []).length ? `${g.label.replace(/[:؟?]\s*$/, "")}: ${(picked[gi] ?? []).join("، ")}` : ""))
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div className="mt-2 space-y-2 border-t border-jw-line pt-2">
+      {groups.map((g, gi) => (
+        <div key={gi} className="space-y-1">
+          <p className="text-[11px] font-semibold text-jw-ink">
+            {g.label}
+            {g.multi && <span className="ms-1 font-normal text-jw-faint">(أكثر من واحد)</span>}
+          </p>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={g.label}>
+            {g.choices.map((c) => {
+              const on = (picked[gi] ?? []).includes(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={disabled}
+                  className={`jw-chip !px-2.5 !py-1 !text-xs ${on ? "!border-jw-accent !bg-jw-accent/15 !text-jw-ink" : ""}`}
+                  onClick={() => toggle(gi, c, g.multi)}
+                >
+                  {on ? "✓ " : ""}
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <button type="button" className="jw-btn jw-btn-primary !min-h-8 text-xs" disabled={disabled || !answered} onClick={() => onSend(words)}>
+          أرسل إجاباتي {answered ? `(${answered}/${groups.length})` : ""}
+        </button>
+        <button type="button" className="jw-chip !px-2.5 !py-1 !text-xs !border-dashed" disabled={disabled} onClick={() => onSend("اختر أنت كل شي وكمّل")}>
+          اختر أنت وكمّل
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MsgText({ text }: { text: string }) {
   const parts = text.split(/```\n?([\s\S]*?)\n?```/g);
   return (

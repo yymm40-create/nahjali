@@ -277,6 +277,231 @@ export function backgroundSvg(pal: Palette, i: number, w: number, h: number, the
       for (let k = 0; k < 6; k++) parts.push(`<circle cx="${f1(w * 0.08 + k * u * 0.025)}" cy="${f1(h - m)}" r="${f1(u * 0.005)}" fill="${k < 1 + (i % 5) ? pal.accent : ink}" opacity="${k < 1 + (i % 5) ? 1 : 0.25}"/>`);
       break;
     }
+    case "blueprint": {
+      // engineer's paper: a fine grid with bolder tenth lines, a dimension line and a circled detail
+      const g = u * 0.035;
+      parts.push(`<defs><pattern id="bp" width="${f1(g)}" height="${f1(g)}" patternUnits="userSpaceOnUse"><path d="M${f1(g)} 0 L0 0 0 ${f1(g)}" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.1"/></pattern></defs><rect width="${w}" height="${h}" fill="url(#bp)"/>`);
+      for (let k = 1; k * g * 5 < Math.max(w, h); k++) {
+        parts.push(`<line x1="0" y1="${f1(k * g * 5)}" x2="${w}" y2="${f1(k * g * 5)}" stroke="#ffffff" stroke-width="1" opacity="0.22"/>`);
+        parts.push(`<line x1="${f1(k * g * 5)}" y1="0" x2="${f1(k * g * 5)}" y2="${h}" stroke="#ffffff" stroke-width="1" opacity="0.22"/>`);
+      }
+      const dy = h * (i % 2 ? 0.9 : 0.1);
+      parts.push(`<path d="M${f1(w * 0.12)} ${f1(dy)} h ${f1(w * 0.3)} M${f1(w * 0.12)} ${f1(dy - u * 0.016)} v ${f1(u * 0.032)} M${f1(w * 0.42)} ${f1(dy - u * 0.016)} v ${f1(u * 0.032)}" stroke="${pal.accent}" stroke-width="${f1(u * 0.004)}" fill="none"/>`);
+      parts.push(`<circle cx="${f1(gx * w)}" cy="${f1(gy * h)}" r="${f1(u * 0.13)}" fill="none" stroke="${pal.second}" stroke-width="${f1(u * 0.003)}" opacity="0.55" stroke-dasharray="${f1(u * 0.02)} ${f1(u * 0.016)}"/>`);
+      break;
+    }
+    case "comic": {
+      // halftone dots that grow downward, a thick ink border and a burst behind the words
+      let dots = "";
+      for (let y = u * 0.02; y < h; y += u * 0.045) for (let x = ((y / (u * 0.045)) % 2 ? u * 0.045 / 2 : 0); x < w; x += u * 0.045) dots += `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(u * 0.004 + u * 0.008 * (y / h))}"/>`;
+      parts.push(`<g fill="${ink}" opacity="0.1">${dots}</g>`);
+      const bx = gx * w, by = gy * h;
+      const pts = Array.from({ length: 22 }, (_, k) => {
+        const a = (k / 22) * Math.PI * 2, rr = (k % 2 ? 0.2 : 0.34) * u;
+        return `${f1(bx + Math.cos(a) * rr)},${f1(by + Math.sin(a) * rr)}`;
+      }).join(" ");
+      parts.push(`<polygon points="${pts}" fill="${pal.pill}" opacity="0.3"/>`);
+      parts.push(`<rect x="${f1(u * 0.02)}" y="${f1(u * 0.02)}" width="${f1(w - u * 0.04)}" height="${f1(h - u * 0.04)}" fill="none" stroke="${ink}" stroke-width="${f1(u * 0.016)}"/>`);
+      break;
+    }
+    case "neon": {
+      // night, a glowing horizon grid running to the vanishing point, and scanlines
+      const hz = h * 0.6;
+      parts.push(`<defs><filter id="ng" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${f1(u * 0.01)}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="nsc" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="#ffffff" opacity="0.05"/></pattern></defs>`);
+      parts.push(glowAt(w / 2, hz, Math.max(w, h) * 0.5, pal.accent, 0.7));
+      let gl = "";
+      for (let k = 0; k < 10; k++) gl += `<line x1="0" y1="${f1(hz + (h - hz) * (k / 9) ** 1.9)}" x2="${w}" y2="${f1(hz + (h - hz) * (k / 9) ** 1.9)}" stroke="${pal.second}" stroke-width="${f1(u * 0.003)}" opacity="0.45"/>`;
+      for (let k = -7; k <= 7; k++) gl += `<line x1="${f1(w / 2 + k * u * 0.03)}" y1="${f1(hz)}" x2="${f1(w / 2 + k * u * 0.5)}" y2="${h}" stroke="${pal.accent}" stroke-width="${f1(u * 0.0025)}" opacity="0.35"/>`;
+      parts.push(`<g filter="url(#ng)">${gl}</g>`, `<rect width="${w}" height="${h}" fill="url(#nsc)"/>`);
+      break;
+    }
+    case "collage": {
+      // torn paper strips laid over each other, with tape at their corners
+      for (let k = 0; k < 3; k++) {
+        const y0 = h * (0.12 + k * 0.3 + r() * 0.05);
+        const edge = Array.from({ length: 12 }, (_, q) => `${f1((w * q) / 11)},${f1(y0 + (r() - 0.5) * u * 0.04)}`).join(" L ");
+        parts.push(`<path d="M0 ${f1(y0 + u * 0.18)} L ${edge} L ${w} ${f1(y0 + u * 0.18)} Z" fill="${[pal.second, pal.accent, pal.pill][k]}" opacity="0.16"/>`);
+      }
+      for (const [tx, ty, rot] of [[0.18, 0.1, -18], [0.84, 0.46, 12], [0.4, 0.88, 6]] as const) parts.push(`<rect x="${f1(tx * w)}" y="${f1(ty * h)}" width="${f1(u * 0.14)}" height="${f1(u * 0.045)}" transform="rotate(${rot} ${f1(tx * w)} ${f1(ty * h)})" fill="${ink}" opacity="0.12"/>`);
+      parts.push(paletteTexture("paper", pal, w, h, i + 1));
+      break;
+    }
+    case "sketch": {
+      // a hand-drawn page: crayon squiggles, a star, an arrow and a dashed border
+      const crayon = [pal.accent, pal.second, pal.pill];
+      for (let k = 0; k < 5; k++) {
+        const x = r() * w * 0.8 + w * 0.1, y = r() * h * 0.8 + h * 0.1, c = crayon[k % 3];
+        parts.push(
+          k % 3 === 0
+            ? `<path d="M${f1(x)} ${f1(y)} q ${f1(u * 0.04)} ${f1(-u * 0.06)} ${f1(u * 0.08)} 0 t ${f1(u * 0.08)} 0" fill="none" stroke="${c}" stroke-width="${f1(u * 0.009)}" stroke-linecap="round" opacity="0.5"/>`
+            : k % 3 === 1
+              ? `<path d="M${f1(x)} ${f1(y - u * 0.05)} l ${f1(u * 0.015)} ${f1(u * 0.035)} ${f1(u * 0.038)} ${f1(u * 0.004)} -${f1(u * 0.028)} ${f1(u * 0.025)} ${f1(u * 0.01)} ${f1(u * 0.038)} -${f1(u * 0.035)} -${f1(u * 0.02)} -${f1(u * 0.035)} ${f1(u * 0.02)} ${f1(u * 0.01)} -${f1(u * 0.038)} -${f1(u * 0.028)} -${f1(u * 0.025)} ${f1(u * 0.038)} -${f1(u * 0.004)} z" fill="none" stroke="${c}" stroke-width="${f1(u * 0.008)}" stroke-linejoin="round" opacity="0.5"/>`
+              : `<path d="M${f1(x)} ${f1(y)} c ${f1(u * 0.05)} ${f1(-u * 0.02)} ${f1(u * 0.1)} ${f1(-u * 0.02)} ${f1(u * 0.15)} 0 m -${f1(u * 0.03)} -${f1(u * 0.022)} l ${f1(u * 0.03)} ${f1(u * 0.022)} -${f1(u * 0.03)} ${f1(u * 0.02)}" fill="none" stroke="${c}" stroke-width="${f1(u * 0.008)}" stroke-linecap="round" opacity="0.5"/>`,
+        );
+      }
+      parts.push(`<rect x="${f1(u * 0.03)}" y="${f1(u * 0.03)}" width="${f1(w - u * 0.06)}" height="${f1(h - u * 0.06)}" rx="${f1(u * 0.03)}" fill="none" stroke="${ink}" stroke-width="${f1(u * 0.007)}" stroke-dasharray="${f1(u * 0.05)} ${f1(u * 0.02)}" opacity="0.3"/>`);
+      break;
+    }
+    case "gradient": {
+      // soft blurred colour blobs, the app-store look
+      parts.push(`<defs><filter id="gb" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${f1(u * 0.1)}"/></filter></defs>`);
+      const blobs = [[gx, gy, pal.accent], [1 - gx, 1 - gy, pal.second], [0.5, gy > 0.5 ? 0.15 : 0.85, pal.pill]] as const;
+      for (const [bx, by, col] of blobs) parts.push(`<circle cx="${f1(bx * w)}" cy="${f1(by * h)}" r="${f1(u * 0.42)}" fill="${col}" opacity="0.5" filter="url(#gb)"/>`);
+      break;
+    }
+    case "terminal": {
+      // a console: scanlines, a prompt line of blocks and a blinking cursor block
+      parts.push(`<defs><pattern id="tsc" width="3" height="3" patternUnits="userSpaceOnUse"><rect width="3" height="1" fill="${pal.accent}" opacity="0.07"/></pattern></defs><rect width="${w}" height="${h}" fill="url(#tsc)"/>`);
+      const ty = h * 0.08;
+      parts.push(`<text x="${f1(w * 0.08)}" y="${f1(ty)}" font-family="monospace" font-size="${f1(u * 0.035)}" fill="${pal.accent}" opacity="0.75">~/jawad $</text>`);
+      for (let k = 0; k < 4 + (i % 4); k++) parts.push(`<rect x="${f1(w * 0.08 + k * u * 0.05)}" y="${f1(h - u * 0.09)}" width="${f1(u * 0.035)}" height="${f1(u * 0.012)}" fill="${pal.second}" opacity="0.5"/>`);
+      parts.push(`<rect x="${f1(w * 0.08 + (4 + (i % 4)) * u * 0.05)}" y="${f1(h - u * 0.095)}" width="${f1(u * 0.022)}" height="${f1(u * 0.022)}" fill="${pal.accent}"/>`);
+      parts.push(`<rect x="${f1(u * 0.025)}" y="${f1(u * 0.025)}" width="${f1(w - u * 0.05)}" height="${f1(h - u * 0.05)}" fill="none" stroke="${pal.accent}" stroke-width="1" opacity="0.3"/>`);
+      break;
+    }
+    case "mosaic": {
+      // a tiled floor: squares turned 45°, the islamic tile grid, and a soft light
+      const t = u * 0.085;
+      let tiles = "";
+      for (let y = -t; y < h + t; y += t) for (let x = -t; x < w + t; x += t) {
+        const k = ((Math.round(x / t + y / t) % 3) + 3) % 3;
+        tiles += `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(t * 0.72)}" height="${f1(t * 0.72)}" transform="rotate(45 ${f1(x + t * 0.36)} ${f1(y + t * 0.36)})" fill="${[pal.accent, pal.second, pal.pill][k]}" opacity="0.1"/>`;
+      }
+      parts.push(tiles, glowAt(gx * w, gy * h, Math.max(w, h) * 0.45, pal.pill, 0.5));
+      break;
+    }
+    case "isometric": {
+      // an isometric field: three sets of parallel lines and a floating cube
+      const g = u * 0.07;
+      let gl = "";
+      for (let k = -20; k < 40; k++) {
+        gl += `<line x1="${f1(k * g)}" y1="0" x2="${f1(k * g + h * 0.577)}" y2="${h}" stroke="${ink}" stroke-width="1" opacity="0.08"/>`;
+        gl += `<line x1="${f1(k * g)}" y1="0" x2="${f1(k * g - h * 0.577)}" y2="${h}" stroke="${ink}" stroke-width="1" opacity="0.08"/>`;
+      }
+      for (let y = 0; y < h; y += g) gl += `<line x1="0" y1="${f1(y)}" x2="${w}" y2="${f1(y)}" stroke="${ink}" stroke-width="1" opacity="0.05"/>`;
+      parts.push(gl);
+      const cs = u * 0.12, cx2 = gx * w, cy2 = gy * h;
+      parts.push(`<g opacity="0.5"><polygon points="${f1(cx2)},${f1(cy2 - cs * 0.6)} ${f1(cx2 + cs * 0.52)},${f1(cy2 - cs * 0.3)} ${f1(cx2)},${f1(cy2)} ${f1(cx2 - cs * 0.52)},${f1(cy2 - cs * 0.3)}" fill="${pal.accent}"/><polygon points="${f1(cx2 - cs * 0.52)},${f1(cy2 - cs * 0.3)} ${f1(cx2)},${f1(cy2)} ${f1(cx2)},${f1(cy2 + cs * 0.6)} ${f1(cx2 - cs * 0.52)},${f1(cy2 + cs * 0.3)}" fill="${pal.second}"/><polygon points="${f1(cx2 + cs * 0.52)},${f1(cy2 - cs * 0.3)} ${f1(cx2)},${f1(cy2)} ${f1(cx2)},${f1(cy2 + cs * 0.6)} ${f1(cx2 + cs * 0.52)},${f1(cy2 + cs * 0.3)}" fill="${pal.pill}"/></g>`);
+      break;
+    }
+    case "fluid": {
+      // liquid: two long waves across the frame and soft bubbles
+      for (let k = 0; k < 2; k++) {
+        const y0 = h * (0.3 + k * 0.42);
+        const a = u * 0.05;
+        parts.push(`<path d="M0 ${f1(y0)} C ${f1(w * 0.25)} ${f1(y0 - a)} ${f1(w * 0.42)} ${f1(y0 + a)} ${f1(w * 0.6)} ${f1(y0)} S ${f1(w * 0.88)} ${f1(y0 - a)} ${w} ${f1(y0)} L ${w} ${h} L 0 ${h} Z" fill="${k ? pal.second : pal.accent}" opacity="0.14"/>`);
+      }
+      for (let k = 0; k < 9; k++) parts.push(`<circle cx="${f1(r() * w)}" cy="${f1(r() * h)}" r="${f1(u * (0.01 + r() * 0.03))}" fill="none" stroke="${pal.pill}" stroke-width="${f1(u * 0.0025)}" opacity="0.4"/>`);
+      break;
+    }
+    case "stamp": {
+      // official paper: a tilted round stamp, a serial number and a ruled footer
+      const sx = w * 0.76, sy = h * (i % 2 ? 0.82 : 0.16), rr = u * 0.12;
+      parts.push(`<g transform="rotate(-14 ${f1(sx)} ${f1(sy)})" opacity="0.35"><circle cx="${f1(sx)}" cy="${f1(sy)}" r="${f1(rr)}" fill="none" stroke="${pal.accent}" stroke-width="${f1(u * 0.008)}"/><circle cx="${f1(sx)}" cy="${f1(sy)}" r="${f1(rr * 0.74)}" fill="none" stroke="${pal.accent}" stroke-width="${f1(u * 0.003)}"/><rect x="${f1(sx - rr * 0.6)}" y="${f1(sy - rr * 0.14)}" width="${f1(rr * 1.2)}" height="${f1(rr * 0.28)}" fill="${pal.accent}"/></g>`);
+      parts.push(`<text x="${f1(w * 0.08)}" y="${f1(h * 0.07)}" font-family="monospace" font-size="${f1(u * 0.028)}" fill="${ink}" opacity="0.4">No. ${String(1000 + i * 7).slice(0, 4)}</text>`);
+      for (let k = 0; k < 3; k++) parts.push(`<line x1="${f1(w * 0.08)}" y1="${f1(h * 0.93 + k * u * 0.018)}" x2="${f1(w * 0.52)}" y2="${f1(h * 0.93 + k * u * 0.018)}" stroke="${ink}" stroke-width="1" opacity="0.2"/>`);
+      parts.push(paletteTexture("paper", pal, w, h, i + 1));
+      break;
+    }
+    case "ticket": {
+      // a torn ticket: perforated edges, a dashed stub line and a barcode
+      const d = u * 0.02;
+      let holes = "";
+      for (let y = d; y < h; y += d * 2) holes += `<circle cx="0" cy="${f1(y)}" r="${f1(d * 0.5)}" fill="${pal.bg}"/><circle cx="${w}" cy="${f1(y)}" r="${f1(d * 0.5)}" fill="${pal.bg}"/>`;
+      parts.push(`<rect x="${f1(d)}" y="${f1(d)}" width="${f1(w - d * 2)}" height="${f1(h - d * 2)}" fill="${pal.accent}" opacity="0.07"/>`, holes);
+      parts.push(`<line x1="${f1(w * 0.08)}" y1="${f1(h * 0.78)}" x2="${f1(w * 0.92)}" y2="${f1(h * 0.78)}" stroke="${ink}" stroke-width="${f1(u * 0.004)}" stroke-dasharray="${f1(u * 0.025)} ${f1(u * 0.02)}" opacity="0.35"/>`);
+      let bars = "";
+      for (let k = 0; k < 26; k++) bars += `<rect x="${f1(w * 0.1 + k * u * 0.016)}" y="${f1(h * 0.85)}" width="${f1(u * (k % 3 ? 0.004 : 0.008))}" height="${f1(u * 0.05)}" fill="${ink}" opacity="0.5"/>`;
+      parts.push(bars);
+      break;
+    }
+    case "xray": {
+      // outlines only: concentric rings and crosshairs, like a scan
+      for (let k = 1; k <= 4; k++) parts.push(`<circle cx="${f1(gx * w)}" cy="${f1(gy * h)}" r="${f1(u * 0.09 * k)}" fill="none" stroke="${pal.second}" stroke-width="1" opacity="${(0.4 - k * 0.06).toFixed(2)}"/>`);
+      parts.push(`<line x1="${f1(gx * w)}" y1="0" x2="${f1(gx * w)}" y2="${h}" stroke="${pal.accent}" stroke-width="1" opacity="0.3"/>`, `<line x1="0" y1="${f1(gy * h)}" x2="${w}" y2="${f1(gy * h)}" stroke="${pal.accent}" stroke-width="1" opacity="0.3"/>`);
+      for (let k = 0; k < 14; k++) parts.push(`<line x1="${f1(w * 0.04)}" y1="${f1(h * 0.1 + k * u * 0.05)}" x2="${f1(w * 0.07)}" y2="${f1(h * 0.1 + k * u * 0.05)}" stroke="${ink}" stroke-width="1" opacity="0.25"/>`);
+      break;
+    }
+    case "marble": {
+      // stone: long veins drifting across a quiet field
+      for (let k = 0; k < 7; k++) {
+        const y0 = h * (0.05 + k * 0.14 + r() * 0.04);
+        const pts = Array.from({ length: 6 }, (_, q) => `${f1((w * (q + 1)) / 6)} ${f1(y0 + (r() - 0.5) * u * 0.1)}`).join(" L ");
+        parts.push(`<path d="M0 ${f1(y0)} L ${pts}" fill="none" stroke="${k % 2 ? pal.accent : pal.second}" stroke-width="${f1(u * (0.0015 + r() * 0.004))}" opacity="0.25"/>`);
+      }
+      parts.push(glowAt(gx * w, gy * h, Math.max(w, h) * 0.6, pal.pill, 0.35));
+      break;
+    }
+    case "duotone": {
+      // two inks only: a hard diagonal split of the frame and a dotted edge
+      parts.push(`<polygon points="0,0 ${w},0 0,${h}" fill="${pal.second}" opacity="0.18"/>`, `<polygon points="${w},0 ${w},${h} 0,${h}" fill="${pal.accent}" opacity="0.14"/>`);
+      let dd = "";
+      for (let k = 0; k < 40; k++) dd += `<circle cx="${f1((w * k) / 39)}" cy="${f1(h * 0.5 - (w * ((k / 39) - 0.5)) * (h / w))}" r="${f1(u * 0.006)}" fill="${ink}" opacity="0.2"/>`;
+      parts.push(dd);
+      break;
+    }
+    case "scoreboard": {
+      // a stadium board: a dotted matrix, a thick top bar and a row of lamps
+      parts.push(`<rect x="0" y="0" width="${w}" height="${f1(u * 0.05)}" fill="${pal.accent}"/>`);
+      let md = "";
+      for (let y = u * 0.09; y < h * 0.94; y += u * 0.03) for (let x = u * 0.03; x < w; x += u * 0.03) md += `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(u * 0.004)}"/>`;
+      parts.push(`<g fill="${ink}" opacity="0.1">${md}</g>`);
+      for (let k = 0; k < 8; k++) parts.push(`<circle cx="${f1(w * 0.1 + k * u * 0.06)}" cy="${f1(h - u * 0.05)}" r="${f1(u * 0.012)}" fill="${k % 2 ? pal.second : pal.pill}" opacity="${k <= i % 8 ? 0.9 : 0.25}"/>`);
+      break;
+    }
+    case "halftone": {
+      // one huge dot gradient sweeping the frame, print-shop style
+      let dots = "";
+      const step = u * 0.05;
+      for (let y = 0; y < h + step; y += step) for (let x = 0; x < w + step; x += step) {
+        const d = Math.hypot(x / w - gx, y / h - gy);
+        const rr = Math.max(0, (0.55 - d) / 0.55) * step * 0.62;
+        if (rr > 0.4) dots += `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(rr)}"/>`;
+      }
+      parts.push(`<g fill="${pal.accent}" opacity="0.5">${dots}</g>`);
+      parts.push(`<rect x="0" y="${f1(h * 0.5 - u * 0.004)}" width="${w}" height="${f1(u * 0.008)}" fill="${pal.second}" opacity="0.35"/>`);
+      break;
+    }
+    case "circuit": {
+      // a printed board: traces turning at right angles with pads at their ends
+      let tr = "";
+      for (let k = 0; k < 9; k++) {
+        const y0 = h * (0.08 + k * 0.1);
+        const x1 = w * (0.1 + (k % 3) * 0.22);
+        tr += `<path d="M0 ${f1(y0)} H ${f1(x1)} V ${f1(y0 + u * 0.07)} H ${f1(x1 + u * 0.16)}" fill="none" stroke="${pal.second}" stroke-width="${f1(u * 0.004)}" opacity="0.45"/>`;
+        tr += `<circle cx="${f1(x1 + u * 0.16)}" cy="${f1(y0 + u * 0.07)}" r="${f1(u * 0.011)}" fill="none" stroke="${pal.accent}" stroke-width="${f1(u * 0.004)}" opacity="0.6"/>`;
+      }
+      parts.push(tr, `<rect x="${f1(u * 0.03)}" y="${f1(u * 0.03)}" width="${f1(w - u * 0.06)}" height="${f1(h - u * 0.06)}" fill="none" stroke="${pal.second}" stroke-width="1" opacity="0.25"/>`);
+      break;
+    }
+    case "origami": {
+      // folded paper: triangular facets, each a slightly different shade
+      const cols = [pal.accent, pal.second, pal.pill];
+      for (let k = 0; k < 8; k++) {
+        const x1 = r() * w, y1 = r() * h;
+        const p2 = `${f1(x1)},${f1(y1)} ${f1(x1 + u * (0.2 + r() * 0.3))},${f1(y1 + u * (0.05 + r() * 0.2))} ${f1(x1 - u * (0.1 + r() * 0.25))},${f1(y1 + u * (0.15 + r() * 0.3))}`;
+        parts.push(`<polygon points="${p2}" fill="${cols[k % 3]}" opacity="${(0.08 + r() * 0.12).toFixed(2)}"/>`);
+      }
+      parts.push(`<line x1="0" y1="${f1(h * 0.5)}" x2="${w}" y2="${f1(h * 0.42)}" stroke="${ink}" stroke-width="1" opacity="0.12"/>`);
+      break;
+    }
+    case "spotlight": {
+      // a stage: one cone of light from above and a dark floor
+      parts.push(`<defs><linearGradient id="sp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${pal.pill}" stop-opacity="0.35"/><stop offset="1" stop-color="${pal.pill}" stop-opacity="0"/></linearGradient></defs>`);
+      parts.push(`<polygon points="${f1(w * (0.38 + gx * 0.12))},0 ${f1(w * (0.62 + gx * 0.12))},0 ${f1(w * 0.92)},${h} ${f1(w * 0.08)},${h}" fill="url(#sp)"/>`);
+      parts.push(`<ellipse cx="${f1(w * 0.5)}" cy="${f1(h * 0.96)}" rx="${f1(w * 0.42)}" ry="${f1(u * 0.05)}" fill="${pal.pill}" opacity="0.14"/>`);
+      parts.push(`<rect x="0" y="${f1(h * 0.9)}" width="${w}" height="${f1(h * 0.1)}" fill="#000" opacity="0.4"/>`);
+      break;
+    }
+    case "weave": {
+      // woven cloth: threads crossing over and under
+      const t = u * 0.045;
+      let wv = "";
+      for (let y = 0; y < h; y += t * 2) wv += `<rect x="0" y="${f1(y)}" width="${w}" height="${f1(t)}" fill="${pal.second}" opacity="0.12"/>`;
+      for (let x = 0; x < w; x += t * 2) wv += `<rect x="${f1(x)}" y="0" width="${f1(t)}" height="${h}" fill="${pal.accent}" opacity="0.1"/>`;
+      parts.push(wv, paletteTexture("riso", pal, w, h, i + 1));
+      break;
+    }
     case "film": {
       // letterbox bars and a vignette
       const bar = h * 0.09;
@@ -312,6 +537,27 @@ const STYLE: Record<MotionTheme, { band: "tilt" | "highlight" | "underline" | "r
   none: { band: "none", ring: "disc", rail: "none", quote: "none", outro: "none", corners: false },
   grid: { band: "brackets", ring: "box", rail: "brackets", quote: "rules", outro: "brackets", corners: false },
   film: { band: "none", ring: "disc", rail: "none", quote: "none", outro: "rule", corners: false },
+  blueprint: { band: "brackets", ring: "double", rail: "numbers", quote: "rules", outro: "frame", corners: true },
+  comic: { band: "tilt", ring: "burst", rail: "squares", quote: "marks", outro: "burst", corners: false },
+  neon: { band: "underline", ring: "arcs", rail: "line", quote: "rules", outro: "rings", corners: true },
+  collage: { band: "highlight", ring: "box", rail: "squares", quote: "highlight", outro: "blobs", corners: false },
+  sketch: { band: "wave", ring: "star", rail: "numbers", quote: "marks", outro: "frame", corners: true },
+  gradient: { band: "none", ring: "disc", rail: "line", quote: "none", outro: "blobs", corners: false },
+  terminal: { band: "brackets", ring: "box", rail: "brackets", quote: "rules", outro: "brackets", corners: true },
+  mosaic: { band: "arch", ring: "star", rail: "squares", quote: "arch", outro: "rings", corners: true },
+  isometric: { band: "tilt", ring: "square", rail: "numbers", quote: "rules", outro: "frame", corners: false },
+  fluid: { band: "wave", ring: "blob", rail: "line", quote: "marks", outro: "blobs", corners: true },
+  stamp: { band: "brackets", ring: "double", rail: "squares", quote: "marks", outro: "frame", corners: false },
+  ticket: { band: "rules", ring: "box", rail: "numbers", quote: "rules", outro: "rule", corners: true },
+  xray: { band: "underline", ring: "arcs", rail: "brackets", quote: "rules", outro: "rings", corners: false },
+  marble: { band: "arch", ring: "double", rail: "line", quote: "arch", outro: "frame", corners: true },
+  duotone: { band: "highlight", ring: "disc", rail: "squares", quote: "highlight", outro: "burst", corners: false },
+  scoreboard: { band: "rules", ring: "bars", rail: "numbers", quote: "rules", outro: "burst", corners: true },
+  halftone: { band: "tilt", ring: "disc", rail: "line", quote: "highlight", outro: "rings", corners: false },
+  circuit: { band: "brackets", ring: "square", rail: "squares", quote: "rules", outro: "rings", corners: true },
+  origami: { band: "arch", ring: "star", rail: "line", quote: "arch", outro: "frame", corners: false },
+  spotlight: { band: "underline", ring: "burst", rail: "line", quote: "marks", outro: "burst", corners: false },
+  weave: { band: "highlight", ring: "box", rail: "squares", quote: "highlight", outro: "rule", corners: true },
 };
 
 /**

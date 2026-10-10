@@ -12,6 +12,7 @@ import { postJson } from "@/lib/fetch";
 import { coinStr } from "@config/coins";
 import { clipLength, findClip, FIX_NOTE_MAX, flatten, formatTime, type Clip, type Fix, type Timeline as TL } from "@/lib/editor/model";
 import { canExport, exportVideo } from "./export";
+import { exportPlan } from "@/lib/editor/export-plan";
 import { CONTINUITY, continuityRanges, EDIT_LIMITS, frameTimes, type ContinuityRange, type EditRange } from "@/lib/jawad/smart-edit";
 import { fixCut, fixedOffset, pieceRange } from "@/lib/editor/smart-fix";
 import { stageLabel, type JobView, type OutputView } from "@/lib/jawad/labels";
@@ -265,7 +266,9 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
     setApproving("نصدّر النسخة المعتمدة…");
     try {
       const list = [...assets.values()].map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio }));
-      const r = await exportVideo(flatten(tlRef.current), list, 720, (p) => setApproving(`نصدّر النسخة المعتمدة… ${Math.round(p * 100)}٪`), new AbortController().signal);
+      // the version سجاد gets: the project's own shape at 720p, the usual rate
+      const plan = exportPlan(tlRef.current, { res: 720, quality: "high", fps: "project" });
+      const r = await exportVideo(flatten(tlRef.current), list, plan, (p) => setApproving(`نصدّر النسخة المعتمدة… ${Math.round(p * 100)}٪`), new AbortController().signal);
       setApproving("نرسلها لسجاد…");
       const { upload } = await postJson<{ upload: { path: string; token: string } }>(`/api/jawad/editor/projects/${projectId}`, { action: "fix_approve_url", assetId: filmAsset.id, mime: "video/mp4" });
       const put = await fetch(upload.token, { method: "PUT", headers: { "content-type": "video/mp4" }, body: r.blob }).catch(() => null);

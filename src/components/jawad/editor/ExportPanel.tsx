@@ -7,7 +7,23 @@ import Dialog from "../Dialog";
 import Icon from "../Icon";
 import { desktop } from "./desktop";
 import { canExport, download, exportVideo, ExportError, type ExportResult } from "./export";
-import { exportSize } from "./render";
+import {
+  exportName,
+  exportPlan,
+  fmtBytes,
+  QUALITY_AR,
+  QUALITY_LIST,
+  RES_AR,
+  RES_HINT,
+  RES_LIST,
+  sourceFromTimeline,
+  sourceLine,
+  type ExportFps,
+  type ExportQuality,
+  type ExportRes,
+  type SourceInfo,
+} from "@/lib/editor/export-plan";
+import { measureSource } from "./source-info";
 import { sendInParts } from "./parts";
 import type { EditorAsset } from "./types";
 import { toSRT } from "./captions";
@@ -39,8 +55,17 @@ export default function ExportPanel({
   flush: () => Promise<void>;
   onExported: (purgeAt: string) => void;
 }) {
-  const [quality, setQuality] = useState<720 | 1080>(1080);
+  const [res, setRes] = useState<ExportRes>(1080);
+  const [quality, setQuality] = useState<ExportQuality>("high");
+  const [fpsFrom, setFpsFrom] = useState<ExportFps>("project");
+  // the typed bitrate («مخصص»), kept while the person edits it
+  const [mbps, setMbps] = useState(12);
   const [phase, setPhase] = useState<Phase>({ k: "idle" });
+  // «نفس المصدر»: the biggest video of the timeline — its size from the project's own files, its frame rate and
+  // bitrate measured in the browser once (the first time a «نفس المصدر» choice is made)
+  const [source, setSource] = useState<SourceInfo | null>(() => sourceFromTimeline(tl, assets));
+  const measured = useRef(false);
+  const wantSource = res === "source" || quality === "source" || fpsFrom === "source";
   // «احفظ المشروع في جهازي»: what it is doing, or what went wrong
   const [packing, setPacking] = useState<{ busy: boolean; text: string; bad?: boolean } | null>(null);
   const srt = toSRT(tl);
@@ -57,9 +82,18 @@ export default function ExportPanel({
   };
   const abort = useRef<AbortController | null>(null);
   const total = duration(tl);
-  const heavy = total > 15 * 60_000 || (quality === 1080 && total > 8 * 60_000);
-  const size = exportSize(tl, quality);
-  const name = `${title || "مونتاج"} ${quality}p`;
+  const plan = exportPlan(tl, { res, quality, fps: fpsFrom }, source);
+  const name = exportName(title, plan);
+  // the file's own frame rate and bitrate, read from the file itself (only when «نفس المصدر» is wanted)
+  const matchSource = async () => {
+    if (measured.current) return;
+    measured.current = true;
+    const base = sourceFromTimeline(tl, assets);
+    if (!base) return;
+    const file = assets.find((a) => a.kind === "video" && a.width === base.width && a.height === base.height && a.status === "ready" && a.url);
+    const more = file?.url ? await measureSource(file.url).catch(() => null) : null;
+    setSource(more ? { ...base, fps: more.fps ?? base.fps, mbps: more.mbps ?? base.mbps } : base);
+  };
 
   const start = async () => {
     if (!canExport()) {
@@ -75,7 +109,7 @@ export default function ExportPanel({
       const r = await exportVideo(
         flatten(tl),
         assets.map((a) => ({ id: a.id, kind: a.kind, url: a.status === "ready" ? a.url : null, hasAudio: a.hasAudio })),
-        quality,
+        plan,
         (p) => {
           if (p - last >= 0.005 || p === 1) {
             last = p;
@@ -126,19 +160,123 @@ export default function ExportPanel({
       <div className="space-y-4 p-4">
         {phase.k === "idle" || phase.k === "error" ? (
           <>
-            <div className="jw-seg" role="radiogroup" aria-label="الدقة">
-              {([720, 1080] as const).map((q) => (
-                <button key={q} type="button" role="radio" aria-checked={quality === q} onClick={() => setQuality(q)}>
-                  {q}p {q === 1080 ? "(أوضح)" : "(أسرع وأخف)"}
-                </button>
-              ))}
+            <div className="space-y-1.5">
+              <span className="jw-label">الدقة</span>
+              <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="الدقة">
+                {RES_LIST.map((r) => (
+                  <button
+                    key={String(r)}
+                    type="button"
+                    role="radio"
+                    aria-checked={res === r}
+                    title={RES_HINT[String(r)]}
+                    className={`rounded-lg border px-2 py-1.5 text-start text-xs ${res === r ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`}
+                    onClick={() => {
+                      setRes(r);
+                      if (r === "source") void matchSource();
+                    }}
+                  >
+                    <b className="block">{RES_AR[String(r)]}</b>
+                    <span className="block text-[10px] leading-4 text-jw-muted">{RES_HINT[String(r)]}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="text-sm text-jw-muted">
-              المدة <b className="text-jw-ink" dir="ltr">{formatTime(total)}</b> · المقاس <b className="text-jw-ink" dir="ltr">{size.width}×{size.height}</b> · MP4
+
+            <div className="space-y-1.5">
+              <span className="jw-label">جودة الصورة (البت ريت)</span>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="جودة الصورة">
+                {QUALITY_LIST.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    role="radio"
+                    aria-checked={quality === q}
+                    className={`jw-chip !px-2.5 !py-1 !text-xs ${quality === q ? "!border-jw-accent !bg-jw-accent/15" : ""}`}
+                    onClick={() => {
+                      setQuality(q);
+                      if (q === "source") void matchSource();
+                    }}
+                  >
+                    {QUALITY_AR[q]}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={typeof quality === "object"}
+                  className={`jw-chip !px-2.5 !py-1 !text-xs ${typeof quality === "object" ? "!border-jw-accent !bg-jw-accent/15" : ""}`}
+                  onClick={() => setQuality({ mbps })}
+                >
+                  مخصص
+                </button>
+              </div>
+              {typeof quality === "object" && (
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    step={1}
+                    className="jw-input !min-h-8 w-20 text-xs"
+                    value={mbps}
+                    onChange={(e) => {
+                      const v = Math.min(200, Math.max(1, Number(e.target.value) || 1));
+                      setMbps(v);
+                      setQuality({ mbps: v });
+                    }}
+                    aria-label="البت ريت بالميجابت في الثانية"
+                  />
+                  <span className="text-jw-muted">ميجابت/ثانية — أعلى رقم = جودة أعلى وملف أكبر</span>
+                </label>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="jw-label">الفريم ريت</span>
+              <div className="jw-seg" role="radiogroup" aria-label="الفريم ريت">
+                <button type="button" role="radio" aria-checked={fpsFrom === "project"} onClick={() => setFpsFrom("project")}>
+                  مثل المشروع ({Math.round(tl.fps)})
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={fpsFrom === "source"}
+                  onClick={() => {
+                    setFpsFrom("source");
+                    void matchSource();
+                  }}
+                >
+                  نفس المصدر{source?.fps ? ` (${Math.round(source.fps)})` : ""}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="w-full rounded-xl border border-jw-accent/50 bg-jw-accent/5 p-2 text-start text-xs leading-5"
+              onClick={() => {
+                setRes("source");
+                setQuality("source");
+                setFpsFrom("source");
+                void matchSource();
+              }}
+            >
+              <b className="text-jw-accent">🎯 المدخل = المخرج</b>
+              <span className="block text-jw-muted">ضغطة واحدة: نفس دقة المقطع الأصلي وفريم ريته وبت ريته — بلا تصغير ولا نزول جودة.</span>
+            </button>
+
+            <p className="rounded-lg bg-jw-surface-2 p-2.5 text-sm leading-6">
+              الملف الطالع: <b className="text-jw-ink" dir="ltr">{plan.width}×{plan.height}</b> · <b className="text-jw-ink" dir="ltr">{plan.fps} ف/ث</b> · <b className="text-jw-ink" dir="ltr">{plan.mbps} ميجابت/ث</b> · MP4
+              <span className="block text-xs text-jw-muted">
+                المدة <span dir="ltr">{formatTime(total)}</span> · الحجم تقريبًا <span dir="ltr">{fmtBytes(plan.bytes)}</span>
+              </span>
+              <span className="block text-xs text-jw-faint">المصدر: {sourceLine(source)}</span>
             </p>
-            {heavy && (
+            {plan.noSource && wantSource && <p className="rounded-lg bg-jw-warn/10 p-2 text-xs text-jw-warn">ما فيه مقطع فيديو في التايملاين أطابق مقاسه، فاستخدمت مقاس المشروع.</p>}
+            {plan.heavy && (
               <p className="rounded-lg bg-jw-warn/10 p-2 text-xs text-jw-warn">
-                <Icon name="alert" size={13} className="inline" /> المشروع طويل؛ التصدير يصير على جهازك وقد يأخذ وقتًا ويحتاج ذاكرة. اختر 720p لو جهازك ضعيف، وخلّ الصفحة مفتوحة.
+                <Icon name="alert" size={13} className="inline" /> هذا التصدير ثقيل (دقة عالية أو مشروع طويل): يصير على جهازك ويأخذ وقتًا ويحتاج ذاكرة. لو جهازك ضعيف اختر دقة أقل، وخلّ الصفحة مفتوحة.
               </p>
             )}
             <p className="text-xs text-jw-faint">التصدير يصير داخل متصفحك (بدون انتظار سيرفر). خلّ الصفحة مفتوحة حتى يخلص.</p>

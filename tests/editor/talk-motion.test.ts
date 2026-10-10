@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAll, type Command } from "@/lib/editor/commands";
 import { clipEnd, emptyTimeline, mainTrack, transformAt, type AssetInfo, type Ratio, type Timeline } from "@/lib/editor/model";
 import { lintMotion } from "@/lib/editor/motion-build";
-import { BRANDS, cueTimes, readTalk, talkArt, talkCommands, talkLayout, windowsOf, type TalkPlan } from "@/lib/editor/talk-motion";
+import { BRANDS, CUE_EVERY_MS, CUE_GAP_MS, cueTimes, readTalk, talkLayoutInText, talkArt, talkCommands, talkLayout, windowsOf, type TalkPlan } from "@/lib/editor/talk-motion";
 
 // a talking video of 40 s, cut into pieces like after «قص السكتات», with captions every 2 s — then 100 plans on it
 const RATIOS: Ratio[] = ["9:16", "16:9", "1:1", "4:5"];
@@ -77,7 +77,8 @@ describe("the cues themselves", () => {
     const p = readTalk({ cues: [{ kind: "brand", at: 1000, brand: "Instagram" }, { kind: "brand", at: 3000, brand: "myspace" }, { kind: "route", at: 3500, to: "الرياض" }, { kind: "word", at: 3900, text: "قريب جدا" }, { kind: "stat", at: 9000 }, { kind: "word", at: 20_000, text: "بعيد" }] }, 10_000)!;
     expect(p.cues.map((c) => c.kind)).toEqual(["brand", "route"]);
     expect(p.cues[0].brand).toBe("instagram");
-    expect(p.layout).toBe("shrink");
+    // a filmed reel varies its frame unless asked otherwise
+    expect(p.layout).toBe("mix");
   });
   it("each cue stays 1.6–3.5 s, and close cues share one shrink", () => {
     const t = cueTimes([{ kind: "word", at: 0, text: "أ" }, { kind: "word", at: 1000, text: "ب" }, { kind: "word", at: 9000, text: "ج" }], 20_000);
@@ -88,7 +89,11 @@ describe("the cues themselves", () => {
   it("draws each app's icon and the route once, as real SVG", () => {
     const p = readTalk({ cues: [{ kind: "brand", at: 0, brand: "tiktok" }, { kind: "brand", at: 3000, brand: "tiktok" }, { kind: "route", at: 6000, from: "الكويت", to: "الرياض" }] }, 20_000)!;
     const art = talkArt(p);
-    expect(art.map((a) => a.key).sort()).toEqual(["brand-tiktok", "route"]);
+    // one drawing per thing, whatever the frames ask for (a cut screen adds its divider)
+    const keys = art.map((a) => a.key).sort();
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toContain("brand-tiktok");
+    expect(keys).toContain("route");
     for (const a of art) expect(a.svg).toMatch(/^<svg[\s\S]*<\/svg>$/);
   });
   it("without its picture, a brand cue still shows its name", () => {
@@ -96,5 +101,77 @@ describe("the cues themselves", () => {
     const p = readTalk({ cues: [{ kind: "brand", at: 2000, brand: "youtube", text: "يوتيوب" }] }, 40_000)!;
     const out = applyAll(tl, talkCommands(p, tl, 0, new Map()).commands, infos).timeline;
     expect(out.tracks.flatMap((t) => t.clips).filter((c) => c.text?.body === "يوتيوب").length).toBeGreaterThan(0);
+  });
+});
+
+// «قاعد يخربط»: the graphics are guests on a filmed reel — only where there is something to explain, with the words
+// that were said written on them, and the frame changing from one moment to the next.
+describe("the graphics are guests on the reel, not the reel", () => {
+  const packed = (n: number, every = 1200) => ({ cues: Array.from({ length: n }, (_, i) => ({ kind: "word", at: 600 + i * every, text: `كلمة ${i}` })) });
+
+  it("never two moments inside the reading gap", () => {
+    const p = readTalk(packed(30), 60_000)!;
+    for (let i = 1; i < p.cues.length; i++) expect(p.cues[i].at - p.cues[i - 1].at).toBeGreaterThanOrEqual(CUE_GAP_MS);
+  });
+
+  it("about one moment every five seconds — a 30 s reel is six, not twenty", () => {
+    for (const sec of [10, 20, 30, 60, 120]) {
+      const p = readTalk(packed(80, 2600), sec * 1000)!;
+      expect(p.cues.length).toBeLessThanOrEqual(Math.round((sec * 1000) / CUE_EVERY_MS));
+      // and the person is seen talking with nothing on them for most of the reel
+      const shown = cueTimes(p.cues, sec * 1000).reduce((n, t) => n + (t.end - t.start), 0);
+      expect(shown).toBeLessThan(sec * 1000 * 0.75);
+    }
+  });
+
+  it("nothing opens on the last word", () => {
+    const p = readTalk({ cues: [{ kind: "word", at: 1000, text: "أول" }, { kind: "word", at: 19_600, text: "آخر" }] }, 20_000)!;
+    expect(p.cues.map((c) => c.at)).toEqual([1000]);
+  });
+
+  it("what is said is written: an emoji with no words is dropped", () => {
+    const p = readTalk({ cues: [{ kind: "emoji", at: 1000, emoji: "🚕" }, { kind: "emoji", at: 6000, emoji: "🚕", text: "تاكسي" }] }, 30_000)!;
+    expect(p.cues.length).toBe(1);
+    expect(p.cues[0].text).toBe("تاكسي");
+    expect(readTalk({ cues: [{ kind: "emoji", at: 1000, emoji: "🔥" }] }, 30_000)).toBeNull();
+  });
+
+  it("the frame changes unless one frame was asked for", () => {
+    expect(readTalk({ cues: [{ kind: "word", at: 1000, text: "كلمة" }] }, 30_000)!.layout).toBe("mix");
+    expect(readTalk({ layout: "corner", cues: [{ kind: "word", at: 1000, text: "كلمة" }] }, 30_000)!.layout).toBe("corner");
+  });
+});
+
+// «مع اني قايله سو مربع صغير»: the frame the person asks for in their own words is read from the message itself, so
+// it is applied whatever the robot chose.
+describe("the frame the person asked for, in their own words", () => {
+  const cases: [string, string][] = [
+    ["اقسمني نصين وسو موشن", "split"],
+    ["قسّم الشاشة نصين", "split"],
+    ["ابي سبليت سكرين", "split"],
+    ["سو مربع صغير", "shrink"],
+    ["صغرني وحط الكلام فوق", "shrink"],
+    ["خليني صغير في الزاوية", "corner"],
+    ["حطني بدايرة بالزاويه", "corner"],
+    ["نوّع الإطار كل مرة", "mix"],
+    ["ابيه ثلاثي الابعاد فوق كلامي", "over3d"],
+    ["لا تصغرني خلني بملء الشاشة", "over"],
+  ];
+  for (const [said, layout] of cases) it(`«${said}» → ${layout}`, () => expect(talkLayoutInText(said)).toBe(layout));
+
+  it("the longest wording wins, so «بدون مربع» is not «مربع»", () => {
+    expect(talkLayoutInText("ابي الموشن بدون مربع")).toBe("over3d");
+  });
+
+  it("guesses nothing when no frame was named", () => {
+    expect(talkLayoutInText("ركب موشن على كلامي")).toBeNull();
+    expect(talkLayoutInText("")).toBeNull();
+  });
+
+  it("whatever it reads is a layout the engine builds", () => {
+    for (const [said] of cases) {
+      const p = readTalk({ layout: talkLayoutInText(said), cues: [{ kind: "word", at: 1000, text: "كلمة" }] }, 30_000)!;
+      expect(p.layout).toBe(talkLayoutInText(said));
+    }
   });
 });
