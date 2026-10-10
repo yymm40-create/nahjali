@@ -29,7 +29,7 @@ export const POST = handle(async (req: Request) => {
   const kept = chatId ? await getChat(user.id, chatId) : null;
   const before: ChatTurn[] = kept ? kept.messages : cleanTurns(b.history, 40);
   try {
-    const r = await robotTurn(user, b.model, mode === "research" ? "بحث وتحليل في الذكاء الإسلامي" : "سؤال للذكاء الإسلامي", () => ask(user.id, question, before, user.email, mode));
+    const r = await robotTurn(user, b.model, mode === "research" ? "بحث وتحليل في الذكاء الإسلامي" : "سؤال للذكاء الإسلامي", () => ask(user.id, question, before, user.email, mode), { said: question, reply: (x) => x.answer });
     const messages: ChatTurn[] = [...before, { role: "user", text: question, mode }, { role: "assistant", text: r.answer, mode, sources: r.sources, found: r.found }];
     const id = await saveChat(user.id, kept?.id ?? null, messages, r.usd);
     return NextResponse.json({ ...r, chatId: id });

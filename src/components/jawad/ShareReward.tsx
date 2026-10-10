@@ -16,8 +16,6 @@ interface State {
   claim: { status: ShareStatus; handle: string; rewardSar: number } | null;
 }
 
-const fmt = (n: number) => n.toLocaleString("ar-SA", { maximumFractionDigits: 2 });
-
 export default function ShareReward({ version, loginHref }: { version: string; loginHref: string }) {
   const [s, setS] = useState<State | null>(null);
   const [open, setOpen] = useState(false);
@@ -71,12 +69,11 @@ export default function ShareReward({ version, loginHref }: { version: string; l
 
   if (!s?.enabled || s.claim?.status === "approved") return null;
   const pending = s.claim?.status === "pending";
-  const reward = fmt(s.rewardSar);
 
   return (
     <>
       <button type="button" className="jw-btn h-9 min-h-9 whitespace-nowrap px-2.5 text-xs font-bold" onClick={() => setOpen(true)} title="انشرنا في ستوري انستغرام واحصل على رصيد مجاني">
-        {pending ? "⏳ ننتظر التأكيد" : `🎁 انشرنا +${reward}`}
+        {pending ? "⏳ ننتظر التأكيد" : <>🎁 انشرنا +<Riyal halalas={Math.round(s.rewardSar * 100)} size={12} /></>}
       </button>
       {open && (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="انشرنا واربح" dir="rtl" onClick={close}>

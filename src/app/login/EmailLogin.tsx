@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Turnstile, { turnstileOn } from "@/components/Turnstile";
 
 /**
  * TEMPORARY: email magic-link sign-in for testing until Google sign-in is configured.
@@ -11,15 +12,24 @@ export default function EmailLogin({ next }: { next: string }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState("");
+  // Cloudflare's check (when it is set up): a fresh token for every try
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [resetKey, setResetKey] = useState(0);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
+    if (turnstileOn() && !captcha) {
+      setError("انتظر علامة التحقق تحت (ثواني) ثم اضغط مرة ثانية.");
+      return;
+    }
     setState("sending");
     setError("");
     const { error } = await createClient().auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`, ...(captcha ? { captchaToken: captcha } : {}) },
     });
+    // the token is used: a fresh one for the next try
+    if (turnstileOn()) setResetKey((k) => k + 1);
     if (error) {
       console.error("signInWithOtp failed", error.status, error.code, error.message);
       if (process.env.NODE_ENV !== "production") {
@@ -56,6 +66,7 @@ export default function EmailLogin({ next }: { next: string }) {
         placeholder="you@example.com"
         className="field"
       />
+      <Turnstile onToken={setCaptcha} resetKey={resetKey} />
       <button className="btn btn-secondary w-full" disabled={state === "sending"}>
         {state === "sending" ? "نرسل…" : "أرسل لي رابط الدخول"}
       </button>

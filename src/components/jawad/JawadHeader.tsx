@@ -10,6 +10,7 @@ import LayoutToggle from "./LayoutToggle";
 import LoginLink from "./LoginLink";
 import ReportButton from "./ReportButton";
 import ShareReward from "./ShareReward";
+import MemoryMenu from "./MemoryMenu";
 import SectionsBar from "./SectionsBar";
 
 /** JAWAD AI's compact header: the identity (back to JAWAD AI's home), a way back to نهج علي's home, the balance and the account; then the sections bar. */
@@ -31,6 +32,7 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
             {/* on a computer: the whole width, or a phone-wide column */}
             {!preview && <ShareReward version={version} loginHref={`${JAWAD.base}/login?next=${encodeURIComponent(JAWAD.base)}`} />}
             {boss && <ReportButton />}
+            {user && !preview && <MemoryMenu />}
             {!preview && <LayoutToggle />}
             <SoundToggle />
             {user ? (

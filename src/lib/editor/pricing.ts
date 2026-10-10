@@ -1,6 +1,7 @@
 // «حيدرة كت»'s prices, set by the owner from /admin/limits (film_limits). Everything is free while
 // the prices are 0 or «النقود الذكية مطلوبة» is off; a price is held before the paid call and given back if it fails.
 
+import { remembering, type Memo } from "@/lib/claude-run";
 import { claudeMeter, coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
 import { getLimit, type LimitKey } from "@/lib/film/limits";
 import { sellHalalas } from "@config/coins";
@@ -38,10 +39,11 @@ export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_pric
  * first, and afterwards the reply's real usage + 10% is taken (the owner and unlimited accounts pay nothing). A failed
  * call takes nothing. `usdOf` reads the real cost from what `run` returned.
  */
-export async function claudeCharged<T>(who: Who, modelId: unknown, label: string, run: () => Promise<T>, usdOf: (r: T) => number): Promise<T & { model: string; coins: number }> {
+export async function claudeCharged<T>(who: Who, modelId: unknown, label: string, run: () => Promise<T>, usdOf: (r: T) => number, memo?: Memo<T>): Promise<T & { model: string; coins: number }> {
   const model = claudeModelOf(modelId);
   const bill = await claudeMeter(who, model, label);
-  const out = await withClaude(model.id, run);
+  // the person's memory («ذاكرتي») is read by حيدرة too, and learns from the turn
+  const out = await withClaude(model.id, () => remembering(who.id, run, memo));
   const coins = await bill.settle(usdOf(out)).catch((e) => {
     console.error("claude settle failed", e);
     return 0;

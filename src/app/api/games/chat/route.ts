@@ -22,7 +22,7 @@ export const POST = handle(async (req: Request) => {
   if (message.length > GAMES.messageMax) throw new UserError(`الرسالة أطول من ${GAMES.messageMax} حرف.`);
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   try {
-    return NextResponse.json(await robotTurn(user, b.model, "محادثة قنبر", () => say(user.id, chatId, message, user.email, modeOf(b.mode) || null)));
+    return NextResponse.json(await robotTurn(user, b.model, "محادثة قنبر", () => say(user.id, chatId, message, user.email, modeOf(b.mode) || null), { said: message, reply: (r) => r.text }));
   } catch (e) {
     const why = claudeTrouble(e);
     if (why) throw new UserError(why, 503);

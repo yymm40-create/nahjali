@@ -11,5 +11,7 @@ export const maxDuration = 120;
 export const POST = handle(async (req: Request) => {
   const { user, owner } = await requireJawadApiUser();
   const body = (await req.json().catch(() => ({}))) as AssistantBody;
-  return NextResponse.json(await robotTurn(user, body.model, "محادثة جواد", () => assistantTurn(user, owner, body)));
+  // what the person just said, for the memory («ذاكرتي»)
+  const said = (Array.isArray(body.messages) ? body.messages : []).filter((m): m is { role: string; text: string } => !!m && typeof m === "object" && (m as { role?: unknown }).role === "user" && typeof (m as { text?: unknown }).text === "string").at(-1)?.text ?? "";
+  return NextResponse.json(await robotTurn(user, body.model, "محادثة جواد", () => assistantTurn(user, owner, body), { said, reply: (r) => r.reply }));
 });
