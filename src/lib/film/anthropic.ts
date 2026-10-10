@@ -112,6 +112,122 @@ export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE
   throw last instanceof Error ? last : new Error(String(last));
 }
 
+/** A stream that sends nothing for this long is dropped (and tried again): a reply being written keeps sending. */
+export const CLAUDE_IDLE_MS = 90_000;
+
+type StreamBody = Record<string, unknown> & { stop_reason?: string; content?: { type: string; text?: string }[]; usage?: ClaudeUsage; model?: string };
+
+/**
+ * The same request as `claudeFetch`, answered as a stream: the reply arrives piece by piece while it is written, so a
+ * long one (a director's shot map, every sheet's prompt) is never cut by a clock on the whole answer — only a line
+ * that goes quiet for CLAUDE_IDLE_MS is dropped and tried again. Returns the message as the non-streamed API would.
+ */
+export async function claudeStream(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS): Promise<StreamBody> {
+  let last: unknown;
+  const payload = JSON.stringify({ ...(JSON.parse(init.body) as Record<string, unknown>), stream: true });
+  for (let i = 0; i < tries; i++) {
+    if (i) await nap(CLAUDE_WAITS[Math.min(i - 1, CLAUDE_WAITS.length - 1)]);
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const quiet = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => ctrl.abort(new Error("Claude stream went quiet (timeout)")), idleMs);
+    };
+    try {
+      quiet();
+      const res = await fetch(url, { ...init, body: payload, signal: ctrl.signal });
+      if (!res.ok || !res.body) {
+        const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+        const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
+        last = new Error(`Claude ${res.status}: ${why}`);
+        if (!AGAIN.has(res.status) || i === tries - 1) throw last;
+        const after = Number(res.headers?.get?.("retry-after") ?? "");
+        if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
+        continue;
+      }
+      const out = await readStream(res.body, quiet);
+      clearTimeout(timer);
+      return out;
+    } catch (e) {
+      clearTimeout(timer);
+      last = e;
+      if (e instanceof Error && /^Claude \d/.test(e.message)) {
+        // an error the API sent inside the stream: busy/overloaded is tried again, anything else is final
+        if (!/overloaded|rate_limit|api_error|529|500|503/i.test(e.message) || i === tries - 1) throw e;
+        continue;
+      }
+      if (!brokenLink(e) || i === tries - 1) throw e;
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
+
+/** Puts a streamed message back together (its text, why it stopped, its usage and model). */
+export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}): Promise<StreamBody> {
+  const blocks: { type: string; text?: string }[] = [];
+  const msg: StreamBody = { content: blocks };
+  let usage: Record<string, unknown> = {};
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  const handle = (raw: string) => {
+    const data = raw.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart()).join("\n");
+    if (!data) return;
+    let ev: Record<string, unknown>;
+    try {
+      ev = JSON.parse(data) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    switch (ev.type) {
+      case "message_start": {
+        const m = (ev.message ?? {}) as { model?: string; usage?: Record<string, unknown> };
+        msg.model = m.model;
+        usage = { ...usage, ...(m.usage ?? {}) };
+        break;
+      }
+      case "content_block_start": {
+        const b = (ev.content_block ?? {}) as { type: string; text?: string };
+        blocks[Number(ev.index)] = { type: b.type, ...(b.type === "text" ? { text: b.text ?? "" } : {}) };
+        break;
+      }
+      case "content_block_delta": {
+        const d = (ev.delta ?? {}) as { type?: string; text?: string };
+        const b = blocks[Number(ev.index)];
+        if (d.type === "text_delta" && b) b.text = (b.text ?? "") + (d.text ?? "");
+        break;
+      }
+      case "message_delta": {
+        const d = (ev.delta ?? {}) as { stop_reason?: string };
+        if (d.stop_reason) msg.stop_reason = d.stop_reason;
+        // the counts here are running totals: they replace what came before (input counts stay when absent)
+        for (const [k, v] of Object.entries((ev.usage ?? {}) as Record<string, unknown>)) if (v != null) usage[k] = v;
+        break;
+      }
+      case "error": {
+        const e = (ev.error ?? {}) as { type?: string; message?: string };
+        throw new Error(`Claude stream: ${e.type ?? "error"}: ${e.message ?? ""}`.replace(/^Claude stream:/, "Claude 500:"));
+      }
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    alive();
+    buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let cut: number;
+    while ((cut = buf.indexOf("\n\n")) >= 0) {
+      handle(buf.slice(0, cut));
+      buf = buf.slice(cut + 2);
+    }
+  }
+  if (buf.trim()) handle(buf);
+  if (!msg.stop_reason) throw new Error("Claude stream ended before the reply did (terminated)");
+  msg.content = blocks.filter(Boolean);
+  msg.usage = usage as unknown as ClaudeUsage;
+  return msg;
+}
+
 /**
  * A piece of one turn. A picture is looked at; a PDF («doc») is READ — its own pages go to Claude as a document, so a
  * person can hand a lecture, a report or a form to any robot of the site and it answers from the file itself.
@@ -179,7 +295,8 @@ export async function callClaudeJson<T>({
   const withFallback = fallback && asked.key !== "haiku";
   const call = async (level: typeof effort) => {
     // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
-    const { body: b } = await claudeFetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
+    // streamed: a long reply is never cut by a clock on the whole answer (only a line gone quiet is dropped)
+    const b = await claudeStream(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
       method: "POST",
       headers: {
         "x-api-key": key,
@@ -195,8 +312,8 @@ export async function callClaudeJson<T>({
         output_config: { ...(asked.effort ? { effort: level } : {}), format: { type: "json_schema", schema } },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
-    }, CLAUDE_TRIES, timeoutMs);
-    return b as Record<string, unknown> & { stop_reason?: string; content?: { type: string; text?: string }[]; usage?: ClaudeUsage; model?: string };
+    }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0));
+    return b;
   };
 
   let body = await call(effort);

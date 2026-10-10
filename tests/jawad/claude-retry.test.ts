@@ -1,9 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { sseBody } from "../helpers/claude-sse";
 import { callClaudeJson, claudeTrouble, claudeWhy, CLAUDE_TRIES } from "@/lib/film/anthropic";
 
 // «مستفز تكرر هالشي»: a busy minute or a dropped line used to come back as «جرّب بعد شوي» at once. Now the request is
 // tried again by itself, and whatever is left is NAMED — and for the owner the raw line comes with it.
-const ok = (text = '{"a":1}') => ({ ok: true, headers: { get: () => null }, json: async () => ({ stop_reason: "end_turn", model: "claude-opus-5-5", content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 5 } }) });
+const ok = (text = '{"a":1}') => ({ ok: true, headers: { get: () => null }, body: sseBody({ stop_reason: "end_turn", content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 5 } }) });
 const bad = (status: number, message = "boom") => ({ ok: false, status, headers: { get: () => null }, json: async () => ({ error: { message } }) });
 
 const call = () => callClaudeJson<{ a: number }>({ system: "s", turns: [{ role: "user", content: "hi" }], schema: { type: "object" }, maxTokens: 100 });

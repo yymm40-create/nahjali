@@ -5,7 +5,7 @@ import { withClaude } from "@/lib/film/claude-model";
 import { confirmSheetUpload, latestJob, runningImageJobs, sheetAction, sheetUploadUrl, takeSeriesCast, type MapChoice, type SheetAction } from "@/lib/film/sheets";
 
 // Replies and images are produced in the background (after()), within this route's time limit
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 type Body =
   | SheetAction
