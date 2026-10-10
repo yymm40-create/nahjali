@@ -61,9 +61,11 @@ export async function research(question: string, context: string, email: string 
     { role: "user", content: `${context ? `سياق المحادثة قبل السؤال:\n${context}\n\n` : ""}سؤال السائل: ${question}` },
   ];
 
-  for (let round = 0; round < RESEARCH.rounds; round++) {
-    const last = round === RESEARCH.rounds - 1 || searches.length >= RESEARCH.searches;
-    const { body } = await claudeFetch(
+  // Every round sends the same system and tools: the model's earlier thinking is sent back with its replies and is
+  // only valid in the same conversation (dropping the tool in the last round made the API refuse it as «bound to a
+  // different conversation»). The last round is told in words to stop searching instead.
+  const ask = () =>
+    claudeFetch(
       `${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`,
       {
         method: "POST",
@@ -72,8 +74,7 @@ export async function research(question: string, context: string, email: string 
           model: model.id,
           max_tokens: 8000,
           system: siteSystem(SYSTEM, true, isLeader(email)),
-          // the last round may not search again: it writes its notes
-          ...(last ? {} : { tools: [TOOL] }),
+          tools: [TOOL],
           messages,
           ...(model.effort ? { output_config: { effort: "medium" } } : {}),
         }),
@@ -81,6 +82,16 @@ export async function research(question: string, context: string, email: string 
       undefined,
       240_000,
     );
+
+  for (let round = 0; round < RESEARCH.rounds; round++) {
+    const last = round === RESEARCH.rounds - 1 || searches.length >= RESEARCH.searches;
+    const { body } = await ask().catch(async (e) => {
+      // a thinking block the API won't take back (another model answered a round, for one): the earlier replies go
+      // back without their thinking, and the research goes on
+      if (!/signature|thinking/i.test(e instanceof Error ? e.message : String(e))) throw e;
+      for (const m of messages) if (m.role === "assistant" && Array.isArray(m.content)) m.content = (m.content as { type: string }[]).filter((b) => b.type !== "thinking" && b.type !== "redacted_thinking");
+      return ask();
+    });
     usd += claudeCost(withModel(body.usage as ClaudeUsage, body.model, model));
     const content = (body.content ?? []) as { type: string; id?: string; name?: string; input?: { query?: string; scope?: string }; text?: string }[];
     const text = content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("").trim();
@@ -112,7 +123,14 @@ export async function research(question: string, context: string, email: string 
         return { id: c.id!, text: lines.length ? lines.join("\n\n────\n\n") : "لا شيء بهذه الكلمات؛ جرّب ألفاظًا أخرى أو المصدر الآخر." };
       }),
     );
-    messages.push({ role: "user", content: results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.text })) });
+    const next = round + 1 === RESEARCH.rounds - 1 || searches.length >= RESEARCH.searches;
+    messages.push({
+      role: "user",
+      content: [
+        ...results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.text })),
+        ...(next ? [{ type: "text", text: "هذه آخر جولة: لا تبحث مرة ثانية، اكتب ملاحظاتك الآن مما وجدته." }] : []),
+      ],
+    });
   }
 
   // the writer gets them with the same numbers the researcher saw (the primary source is searched first)
