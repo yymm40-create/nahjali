@@ -52,7 +52,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       <a href="#jw-main" className="sr-only z-50 rounded-lg bg-jw-accent px-3 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
         تخطَّ إلى المحتوى
       </a>
-      <JawadHeader rt={bar} user={user} owner={owner || (user ? await freeFor(user) : false)} balance={balance} username={username} preview={!allowed} />
+      <JawadHeader rt={bar} user={user} owner={owner || (user ? await freeFor(user) : false)} boss={owner} balance={balance} username={username} preview={!allowed} version={(process.env.VERCEL_GIT_COMMIT_SHA ?? "dev").slice(0, 7)} />
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
     </div>
   );

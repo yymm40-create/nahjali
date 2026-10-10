@@ -4,6 +4,7 @@ import { loadSettings } from "@/lib/course/settings";
 import { orderButtons, orderText, ownerChat, telegramReady, tgAnswer, tgEdit, tgSend, webhookSecret } from "@/lib/course/telegram";
 import { confirmCreditOrder, getCreditOrder, rejectCreditOrder } from "@/lib/credits/orders";
 import { creditButtons, creditText } from "@/lib/credits/telegram";
+import { approveClaim, claimButtons, claimText, getClaim, rejectClaim } from "@/lib/share/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -17,7 +18,8 @@ interface Update {
  * Telegram calls this (the bot's webhook). Only Telegram can: every call carries the secret made from the bot's token.
  *  - "/start" from anyone: the bot answers with that chat's own number (the owner puts it in Vercel as TELEGRAM_CHAT_ID);
  *  - a press on «✅ أكّد الدفع» / «❌ ارفض» under an order: only from the owner's chat; the buyer is unlocked (and gets the gift) at once;
- *  - «✅ أكّد وأضف الرصيد» / «❌ ارفض» under a top-up («cok» / «cno»): the balance lands in the buyer's wallet at once.
+ *  - «✅ أكّد وأضف الرصيد» / «❌ ارفض» under a top-up («cok» / «cno»): the balance lands in the buyer's wallet at once;
+ *  - «✅ أكّد وأعطه المكافأة» / «❌ ارفض» under a share («sok» / «sno»): the reward lands in their wallet once.
  */
 export async function POST(req: Request) {
   if (!telegramReady() || req.headers.get("x-telegram-bot-api-secret-token") !== webhookSecret()) return NextResponse.json({ ok: false }, { status: 401 });
@@ -37,6 +39,30 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true });
       }
       const [act, id] = q.data.split(":");
+      if ((act === "sok" || act === "sno") && /^[0-9a-f-]{36}$/i.test(id ?? "")) {
+        const cur = await getClaim(id);
+        if (!cur) {
+          await tgAnswer(q.id, "ما لقيت الطلب.");
+          return NextResponse.json({ ok: true });
+        }
+        const edit = async (text: string, c = cur) => {
+          if (q.message?.message_id && chat) await tgEdit(chat, q.message.message_id, text, claimButtons(c, true));
+        };
+        try {
+          if (act === "sok") {
+            const r = await approveClaim(id, "تيليجرام");
+            await tgAnswer(q.id, r.already ? "مؤكد من قبل" : "تم ✅ انضافت المكافأة");
+            await edit(claimText(r.claim, `✅ <b>تم — انضاف ${r.claim.rewardHalalas / 100} ريال لرصيده</b>`), r.claim);
+          } else {
+            const c = await rejectClaim(id, "تيليجرام");
+            await tgAnswer(q.id, "تم الرفض");
+            await edit(claimText(c, "❌ <b>مرفوض</b>"), c);
+          }
+        } catch (e) {
+          await tgAnswer(q.id, e instanceof Error ? e.message.slice(0, 150) : "تعذّر التنفيذ");
+        }
+        return NextResponse.json({ ok: true });
+      }
       if ((act === "cok" || act === "cno") && /^[0-9a-f-]{36}$/i.test(id ?? "")) {
         const cur = await getCreditOrder(id);
         if (!cur) {
