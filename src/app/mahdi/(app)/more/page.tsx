@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BookletCard from "@/components/mahdi/BookletCard";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { MAHDI_LIMITS, type MahdiTheme } from "@config/mahdi";
@@ -89,6 +90,7 @@ export default function MorePage() {
           </Link>
         ))}
       </nav>
+      <BookletCard />
       <FeedbackCard place="more" />
       <InstallCard />
 

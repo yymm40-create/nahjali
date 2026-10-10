@@ -79,7 +79,8 @@ export async function composeBooklet(template: Template, input: ComposeInput): P
     };
 
     await addSlots(false);
-    layers.push({ input: await sharp(await fs.readFile(templateFilePath(template.id, tplPage.overlay))).resize(pxW, pxH).png().toBuffer(), left: 0, top: 0 });
+    const overlay = tplPage.overlaySvg ? Buffer.from(tplPage.overlaySvg) : await fs.readFile(templateFilePath(template.id, tplPage.overlay));
+    layers.push({ input: await sharp(overlay).resize(pxW, pxH).png().toBuffer(), left: 0, top: 0 });
     await addSlots(true);
 
     for (const t of tplPage.texts) {
@@ -97,7 +98,9 @@ export async function composeBooklet(template: Template, input: ComposeInput): P
       });
     }
 
-    const base = tplPage.scene
+    const base = tplPage.sceneSvg
+      ? sharp(Buffer.from(tplPage.sceneSvg)).resize(pxW, pxH).flatten({ background: "#ffffff" })
+      : tplPage.scene
       ? sharp(await fs.readFile(templateFilePath(template.id, `scenes/${tplPage.scene}.jpg`))).resize(pxW, pxH)
       : sharp({ create: { width: pxW, height: pxH, channels: 3, background: "#fff8e8" } });
     const jpg = await base.composite(layers).jpeg({ quality: 88, mozjpeg: true, chromaSubsampling: "4:4:4" }).toBuffer();
@@ -134,21 +137,34 @@ function loadFont(kind: TemplateText["font"]) {
   return fontCache.get(kind)!;
 }
 
-/** Shapes one line; glyphs come back in visual (left-to-right) order, ready to lay out. */
+/** Numbers inside Arabic text («٣٠ نجمة», «١ من ٢»): kept left to right, the way they are read. */
+const NUMBER_RUN = /([0-9٠-٩۰-۹]+(?:[.,:٫٬/][0-9٠-٩۰-۹]+)*)/;
+const RTL = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/;
+
+/**
+ * Shapes one line; glyphs come back in visual (left-to-right) order, ready to lay out. An Arabic line is cut at its
+ * numbers (a small bidi): each piece shaped in its own direction, the pieces laid right to left.
+ */
 async function shapeLine(font: HbFont, text: string) {
   const hb = await import("harfbuzzjs");
-  const buffer = new hb.Buffer();
-  buffer.addText(text);
-  buffer.guessSegmentProperties();
-  hb.shape(font, buffer);
+  const rtl = RTL.test(text);
+  const pieces = rtl ? text.split(NUMBER_RUN).filter((p) => p !== "") : [text];
+  const ordered = rtl ? [...pieces].reverse() : pieces;
   let x = 0;
   const paths: string[] = [];
-  const positions = buffer.getGlyphPositions();
-  for (const [i, glyph] of buffer.getGlyphInfos().entries()) {
-    const p = positions[i];
-    if (glyph.codepoint === 0) continue; // character not in the font (e.g. an emoji): skip it, no empty box
-    paths.push(`<path transform="translate(${x + p.xOffset} ${p.yOffset})" d="${font.glyphToPath(glyph.codepoint)}"/>`);
-    x += p.xAdvance;
+  for (const piece of ordered) {
+    const buffer = new hb.Buffer();
+    buffer.addText(piece);
+    buffer.guessSegmentProperties();
+    if (rtl) buffer.setDirection(new RegExp(`^${NUMBER_RUN.source}$`).test(piece) ? hb.Direction.LTR : hb.Direction.RTL);
+    hb.shape(font, buffer);
+    const positions = buffer.getGlyphPositions();
+    for (const [i, glyph] of buffer.getGlyphInfos().entries()) {
+      const p = positions[i];
+      if (glyph.codepoint === 0) continue; // character not in the font (e.g. an emoji): skip it, no empty box
+      paths.push(`<path transform="translate(${x + p.xOffset} ${p.yOffset})" d="${font.glyphToPath(glyph.codepoint)}"/>`);
+      x += p.xAdvance;
+    }
   }
   return { paths: paths.join(""), width: x };
 }

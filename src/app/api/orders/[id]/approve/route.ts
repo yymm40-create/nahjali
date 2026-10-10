@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getOwnedOrder, handle, MESSAGES, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { claimOrder, deleteSourcePhoto, setOrderStatus } from "@/lib/orders";
-import { getTemplate } from "@/lib/templates";
+import { templateFor } from "@/lib/tables-booklet/server";
 
 /** Approves one generated character and queues all template poses for generation. */
 export const POST = handle(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -21,7 +21,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
     .maybeSingle();
   if (!character?.base_image_path) throw new UserError("اختر شخصية صحيحة.", 400);
 
-  const template = await getTemplate(order.template_id);
+  const template = await templateFor(order);
   if (!template) throw new Error(`Template not found: ${order.template_id}`);
 
   // Lock the order first so a double-click can't approve twice

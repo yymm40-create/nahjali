@@ -19,7 +19,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Drives the background work from the browser: asks the server to generate one pose at a time,
  * then to compose the PDF. Safe to open in two tabs — the server locks each step.
  */
-export default function ProgressRunner({ orderId }: { orderId: string }) {
+export default function ProgressRunner({ orderId, base = `/order/${orderId}`, listHref = "/my-booklets" }: { orderId: string; base?: string; listHref?: string }) {
   const router = useRouter();
   const [state, setState] = useState<StatusResponse | null>(null);
   const [error, setError] = useState("");
@@ -37,7 +37,7 @@ export default function ProgressRunner({ orderId }: { orderId: string }) {
           if (cancelled) return;
           setState(s);
 
-          if (s.status === "ready") return router.replace(`/order/${orderId}/download`);
+          if (s.status === "ready") return router.replace(`${base}/download`);
           if (s.status === "failed") return;
 
           if (s.status === "generating_poses") {
@@ -63,7 +63,7 @@ export default function ProgressRunner({ orderId }: { orderId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [orderId, router, round]);
+  }, [orderId, router, round, base]);
 
   const total = state?.poses.total || 6;
   const done = state?.poses.done ?? 0;
@@ -77,7 +77,7 @@ export default function ProgressRunner({ orderId }: { orderId: string }) {
           بعض صور الشخصية ما طلعت بشكل صحيح بعد أكثر من محاولة. تواصل معنا ونحل المشكلة لك، وما راح تخسر طلبك.
         </p>
         <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`كتيب ${orderId}`)}`} className="btn btn-primary w-full" dir="ltr">{CONTACT_EMAIL}</a>
-        <Link href="/my-booklets" className="btn btn-ghost w-full">↩ ارجع إلى كتيباتي</Link>
+        <Link href={listHref} className="btn btn-ghost w-full">↩ ارجع إلى كتيباتي</Link>
       </div>
     );
   }

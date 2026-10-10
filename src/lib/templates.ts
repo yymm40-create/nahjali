@@ -36,6 +36,9 @@ export interface TemplatePage {
   overlay: string;
   slots: TemplateSlot[];
   texts: TemplateText[];
+  /** A page drawn by code (a designed booklet of tables): its shapes layer and its background, as SVG */
+  overlaySvg?: string;
+  sceneSvg?: string;
 }
 
 export interface Template {

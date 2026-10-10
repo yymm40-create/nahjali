@@ -8,6 +8,7 @@ import type { Order, Pose } from "@/lib/types";
 import { POSES, posePrompt } from "@config/prompts";
 import { STYLES } from "@config/styles";
 import { POSE_MAX_RETRIES } from "@config/pricing";
+import { whoOf } from "@/lib/tables-booklet/server";
 
 import { storage } from "@/lib/storage";
 export const maxDuration = 300;
@@ -63,7 +64,7 @@ async function generatePose(order: Order, characterPath: string, pose: Pose) {
   const db = createAdminClient();
   try {
     if (!POSES[pose.pose_key]) throw new Error(`No pose "${pose.pose_key}" in config/prompts.ts`);
-    const prompt = posePrompt(pose.pose_key, order.style, order.child_gender ?? "boy");
+    const prompt = posePrompt(pose.pose_key, order.style, order.child_gender ?? "boy", whoOf(order));
     const ref = await storage.from(BUCKETS.generated).download(characterPath);
     if (ref.error) throw ref.error;
 

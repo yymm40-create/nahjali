@@ -3,20 +3,28 @@ import { getOwnedOrder, handle, MESSAGES, requireApiUser, UserError } from "@/li
 import { BUCKETS, createAdminClient } from "@/lib/supabase/admin";
 import { claimOrder, getApprovedCharacter, setOrderStatus } from "@/lib/orders";
 import { composeBooklet } from "@/lib/compose";
-import { getTemplate } from "@/lib/templates";
-import type { Pose } from "@/lib/types";
+import { specOf, templateFor } from "@/lib/tables-booklet/server";
+import type { Order, OrderStatus, Pose } from "@/lib/types";
 
 import { storage } from "@/lib/storage";
 export const maxDuration = 120;
 
-/** Builds the PDF once every pose is done, stores it, and marks the order ready. */
+/** Builds the PDF once every pose is done (or at once for a designed booklet without a picture), stores it, and marks the order ready. */
 export const POST = handle(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const user = await requireApiUser();
   const { id } = await params;
   const order = await getOwnedOrder(id, user.id);
   if (order.status === "ready") return NextResponse.json({ ok: true });
-  if (!["generating_poses", "composing"].includes(order.status)) throw new UserError(MESSAGES.wrongStep, 409);
 
+  // «كتيب الجداول الذكي» without a picture: drawn at once, nothing to wait for
+  const design = specOf(order)?.design;
+  if (design && !design.photo) {
+    if (!["paid", "composing"].includes(order.status)) throw new UserError(MESSAGES.wrongStep, 409);
+    await composeNow(order, ["paid"], {});
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!["generating_poses", "composing"].includes(order.status)) throw new UserError(MESSAGES.wrongStep, 409);
   const character = await getApprovedCharacter(order.id);
   if (!character) throw new Error("Order has no approved character");
   const db = createAdminClient();
@@ -25,20 +33,23 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
     throw new UserError(MESSAGES.wrongStep, 409);
   }
 
-  const claimed = await claimOrder(order.id, ["generating_poses"], "composing");
+  const images: Record<string, Buffer> = {};
+  for (const p of poses) {
+    const file = await storage.from(BUCKETS.generated).download(p.image_path!);
+    if (file.error) throw file.error;
+    images[p.pose_key] = Buffer.from(await file.data.arrayBuffer());
+  }
+  await composeNow(order, ["generating_poses"], images);
+  return NextResponse.json({ ok: true });
+});
+
+/** Draws the PDF from the pictures, stores it, and marks the order ready (back a step when it fails, to be retried). */
+async function composeNow(order: Order, from: OrderStatus[], images: Record<string, Buffer>) {
+  const claimed = await claimOrder(order.id, from, "composing");
   if (!claimed) throw new UserError(MESSAGES.busy, 409);
-
   try {
-    const template = await getTemplate(order.template_id);
+    const template = await templateFor(order);
     if (!template) throw new Error(`Template not found: ${order.template_id}`);
-
-    const images: Record<string, Buffer> = {};
-    for (const p of poses) {
-      const file = await storage.from(BUCKETS.generated).download(p.image_path!);
-      if (file.error) throw file.error;
-      images[p.pose_key] = Buffer.from(await file.data.arrayBuffer());
-    }
-
     const pdf = await composeBooklet(template, {
       style: order.style,
       childName: order.child_name ?? "",
@@ -48,14 +59,11 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
     const path = `${order.user_id}/${order.id}/booklet.pdf`;
     const up = await storage.from(BUCKETS.booklets).upload(path, pdf, { contentType: "application/pdf", upsert: true });
     if (up.error) throw up.error;
-
-    await db.from("booklets").upsert({ order_id: order.id, pdf_path: path }, { onConflict: "order_id" });
+    await createAdminClient().from("booklets").upsert({ order_id: order.id, pdf_path: path }, { onConflict: "order_id" });
     await setOrderStatus(order.id, "ready");
   } catch (err) {
-    // Poses are all done, so composing can simply be retried
-    await setOrderStatus(order.id, "generating_poses");
+    // the pictures are all there, so composing can simply be retried
+    await setOrderStatus(order.id, from[0]);
     throw err;
   }
-
-  return NextResponse.json({ ok: true });
-});
+}

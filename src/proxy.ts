@@ -32,10 +32,10 @@ export async function proxy(request: NextRequest) {
   // «نهج علي» is hidden (config/site.ts): its booklet pages, the old sign-in page and «تحت التطوير» lead to JAWAD AI
   if (NAHJ_ALI_HIDDEN) {
     const p = request.nextUrl.pathname;
-    if (BOOKLET_PATHS.some((b) => p === b || p.startsWith(b + "/"))) {
-      if (p.startsWith("/api/")) return NextResponse.json({ error: "غير موجود." }, { status: 404 });
+    // the booklet lives on as «كتيب الجداول الذكي» in JAWAD AI: its old pages lead there (its API stays open, it is shared)
+    if (BOOKLET_PATHS.some((b) => !b.startsWith("/api/") && (p === b || p.startsWith(b + "/")))) {
       const url = request.nextUrl.clone();
-      url.pathname = "/jawad-ai";
+      url.pathname = "/jawad-ai/booklet";
       url.search = "";
       return NextResponse.redirect(url);
     }

@@ -26,7 +26,7 @@ export function rulesFor(path: string, method: string): Rule[] {
   // a game's player reports an error it hit: a few, never a flood (anyone with a game's link can)
   if (path.startsWith("/api/games/play/") && method === "POST") out.push({ key: "game-error", max: 10, windowMs: 10 * 60_000 });
   // what costs money (Claude, pictures, videos, voices): plenty for a person, a wall for a script
-  const paid = ["/api/film/", "/api/jawad/", "/api/games/", "/api/islamic/ask", "/api/content/", "/api/mahdi/assistant", "/api/orders"];
+  const paid = ["/api/film/", "/api/jawad/", "/api/games/", "/api/booklet/", "/api/islamic/ask", "/api/content/", "/api/mahdi/assistant", "/api/orders"];
   // (a big video goes up in parts, each signed by the editor's project route: a fast line asks for several a second)
   const parts = path.startsWith("/api/jawad/editor/projects/");
   if (method !== "GET" && !parts && paid.some((p) => path.startsWith(p))) out.push({ key: "paid", max: 90, windowMs: 60_000 });
