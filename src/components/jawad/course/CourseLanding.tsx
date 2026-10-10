@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import AgreeTerms from "@/components/jawad/AgreeTerms";
 import Coined from "@/components/Coined";
 import Riyal from "@/components/Riyal";
 import { COURSE, countdown, embedOf, offersAt, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
@@ -110,6 +111,8 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
   const [order, setOrder] = useState<OrderView | null>(null);
   const [bank, setBank] = useState<Bank | null>(null);
   const [busy, setBusy] = useState(false);
+  // the terms are agreed to before the subscription starts
+  const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
   const [group, setGroup] = useState("");
 
@@ -392,7 +395,8 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
                 <label>رقم الجوال (واتساب)<input dir="ltr" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" autoComplete="tel" /></label>
                 <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>
                 {error && <p className="cr-error" role="alert">{error}</p>}
-                <button type="button" className="cr-cta" disabled={busy || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">التالي: بيانات التحويل</span>}</button>
+                <AgreeTerms on={agree} onChange={setAgree} what="الاشتراك" />
+                <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">التالي: بيانات التحويل</span>}</button>
               </>
             )}
             {sheet.step === "bank" && order && bank && (

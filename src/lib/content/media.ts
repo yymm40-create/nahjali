@@ -34,8 +34,8 @@ async function refsOf(userId: string, item: MediaItem) {
   // video and sound references (جواد's registry checks the counts and lengths and answers if it cannot use them)
   const seen = { image: 0, video: 0, audio: 0 };
   return list
-    .filter((a) => item.kind === "video" || a.kind === "image")
-    .map((a) => ({ uploadId: a.id, name: `${a.kind}${++seen[a.kind]}` }));
+    .filter((a) => a.kind !== "doc" && a.kind !== "audio" && (item.kind === "video" || a.kind === "image"))
+    .map((a) => ({ uploadId: a.id, name: `${a.kind}${++seen[a.kind as "image" | "video"]}` }));
 }
 
 function fail(item: MediaItem, e: unknown, owner: boolean) {

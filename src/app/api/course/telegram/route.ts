@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { coinStr } from "@config/coins";
 import { confirmOrder, getOrder, rejectOrder } from "@/lib/course/orders";
 import { loadSettings } from "@/lib/course/settings";
 import { orderButtons, orderText, ownerChat, telegramReady, tgAnswer, tgEdit, tgSend, webhookSecret } from "@/lib/course/telegram";
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
           if (act === "sok") {
             const r = await approveClaim(id, "تيليجرام");
             await tgAnswer(q.id, r.already ? "مؤكد من قبل" : "تم ✅ انضافت المكافأة");
-            await edit(claimText(r.claim, `✅ <b>تم — انضاف ${r.claim.rewardHalalas / 100} ريال لرصيده</b>`), r.claim);
+            await edit(claimText(r.claim, `✅ <b>تم — انضاف ${coinStr(r.claim.rewardHalalas)} لرصيده</b>`), r.claim);
           } else {
             const c = await rejectClaim(id, "تيليجرام");
             await tgAnswer(q.id, "تم الرفض");

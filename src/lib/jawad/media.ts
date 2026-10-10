@@ -6,6 +6,7 @@ export type Sniffed =
   | { kind: "image"; mime: "image/png" | "image/jpeg" | "image/webp" }
   | { kind: "video"; mime: "video/mp4" | "video/quicktime" }
   | { kind: "audio"; mime: "audio/mpeg" | "audio/wav" }
+  | { kind: "doc"; mime: "application/pdf" }
   | null;
 
 const ascii = (b: Uint8Array, at: number, len: number) => String.fromCharCode(...b.subarray(at, at + len));
@@ -24,6 +25,8 @@ export function sniff(b: Uint8Array): Sniffed {
     if (/^(M4A |M4B |M4P |F4A )$/.test(brand)) return null;
     return { kind: "video", mime: "video/mp4" };
   }
+  // a PDF: the robots read it themselves (a lecture, a report, a form to follow)
+  if (ascii(b, 0, 5) === "%PDF-") return { kind: "doc", mime: "application/pdf" };
   if (ascii(b, 0, 3) === "ID3") return { kind: "audio", mime: "audio/mpeg" };
   if (b[0] === 0xff && (b[1] & 0xe0) === 0xe0 && ((b[1] >> 1) & 0x3) !== 0) return { kind: "audio", mime: "audio/mpeg" };
   return null;
@@ -184,7 +187,8 @@ export function probe(b: Uint8Array, s: NonNullable<Sniffed>): Probe {
 }
 
 /** Every type the studio accepts for upload (each generator narrows it further). */
-export const UPLOAD_MIMES: Record<string, "image" | "video" | "audio"> = {
+export const UPLOAD_MIMES: Record<string, "image" | "video" | "audio" | "doc"> = {
+  "application/pdf": "doc",
   "image/png": "image",
   "image/jpeg": "image",
   "image/webp": "image",
@@ -194,6 +198,7 @@ export const UPLOAD_MIMES: Record<string, "image" | "video" | "audio"> = {
   "audio/wav": "audio",
 };
 export const UPLOAD_EXT: Record<string, string> = {
+  "application/pdf": "pdf",
   "image/png": "png",
   "image/jpeg": "jpg",
   "image/webp": "webp",

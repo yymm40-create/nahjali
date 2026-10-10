@@ -1,17 +1,17 @@
 // JAWAD AI — browser side of a reference upload: check the bytes, ask for a one-time URL, upload with progress,
 // then let the server check the stored file (the check that counts).
-import type { RefKind } from "@config/jawad/types";
+import type { RefKind, UploadKind } from "@config/jawad/types";
 import { MAX_UPLOAD_BYTES, sniff, UPLOAD_MIMES } from "@/lib/jawad/media";
 
 export interface LocalProbe {
   mime: string;
-  kind: RefKind;
+  kind: UploadKind;
   width: number | null;
   height: number | null;
   durationMs: number | null;
 }
 
-const KIND_AR: Record<RefKind, string> = { image: "صورة", video: "فيديو", audio: "صوت" };
+const KIND_AR: Record<UploadKind, string> = { image: "صورة", video: "فيديو", audio: "صوت", doc: "ملف PDF" };
 
 /** Reads what the file really is (first bytes) and its pixels / duration from the browser's own decoder. */
 export async function probeFile(file: File, expected?: RefKind): Promise<LocalProbe> {
@@ -20,6 +20,8 @@ export async function probeFile(file: File, expected?: RefKind): Promise<LocalPr
   const s = sniff(head);
   if (!s || !UPLOAD_MIMES[s.mime]) throw new Error("نوع الملف غير مقبول (المقبول: PNG/JPG/WEBP، MP4/MOV، MP3/WAV).");
   if (expected && s.kind !== expected) throw new Error(`هذا الملف ${KIND_AR[s.kind]} وليس ${KIND_AR[expected]}.`);
+  // a PDF has no pixels and no length to read
+  if (s.kind === "doc") return { mime: s.mime, kind: s.kind, width: null, height: null, durationMs: null };
   const url = URL.createObjectURL(file);
   try {
     if (s.kind === "image") {

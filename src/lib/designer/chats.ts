@@ -10,7 +10,7 @@ const db = () => createAdminClient();
 /** A file the person attached to a message (one of their JAWAD AI uploads). */
 export interface Attachment {
   id: string;
-  kind: "image" | "video" | "audio";
+  kind: "image" | "video" | "audio" | "doc";
   name: string;
   durationMs: number | null;
 }
@@ -68,7 +68,7 @@ const objs = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.fi
 function readFiles(v: unknown): Attachment[] | undefined {
   const out = objs(v)
     .filter((f) => typeof f.id === "string")
-    .map((f) => ({ id: f.id as string, kind: (f.kind === "video" || f.kind === "audio" ? f.kind : "image") as Attachment["kind"], name: str(f.name, 200), durationMs: typeof f.durationMs === "number" ? f.durationMs : null }))
+    .map((f) => ({ id: f.id as string, kind: (f.kind === "video" || f.kind === "audio" || f.kind === "doc" ? f.kind : "image") as Attachment["kind"], name: str(f.name, 200), durationMs: typeof f.durationMs === "number" ? f.durationMs : null }))
     .slice(0, DESIGNER.maxAttachments);
   return out.length ? out : undefined;
 }

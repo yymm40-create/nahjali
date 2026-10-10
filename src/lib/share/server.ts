@@ -2,6 +2,7 @@
 // the owner with «✅ أكّد» / «❌ ارفض», and the reward added to the wallet once. Server only.
 
 import { UserError } from "@/lib/api";
+import { coinStr } from "@config/coins";
 import { grantCoins } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esc, ownerChat, telegramFull, tgSend } from "@/lib/course/telegram";
@@ -73,7 +74,7 @@ const text = (c: Claim, state = "") =>
     state || "📣 <b>«نشرت» — انشرنا واربح</b>",
     `📸 انستغرام: <b>@${esc(c.handle)}</b>`,
     `✉️ ${esc(c.email ?? "")}`,
-    `🎁 المكافأة: ${c.rewardHalalas / 100} ريال`,
+    `🎁 المكافأة: ${coinStr(c.rewardHalalas)}`,
     ...(state ? [] : [`تأكد إن عنده ستوري فيه منشن لـ @${SHARE.account}، وبعدين اضغط أكّد.`]),
   ].join("\n");
 

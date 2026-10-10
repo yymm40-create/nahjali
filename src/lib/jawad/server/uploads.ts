@@ -7,7 +7,7 @@ import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { RefKind, RefMeta, RefRole } from "@config/jawad/types";
+import type { RefKind, RefMeta, RefRole, UploadKind } from "@config/jawad/types";
 import { MAX_UPLOAD_BYTES, probe, sniff, UPLOAD_EXT, UPLOAD_MIMES } from "../media";
 import { FILM_BUCKET } from "@/lib/film/types";
 import { JAWAD_BUCKET } from "./runtime";
@@ -17,7 +17,7 @@ import { storage } from "@/lib/storage";
 export interface UploadRow {
   id: string;
   user_id: string;
-  kind: RefKind;
+  kind: UploadKind;
   storage_path: string;
   file_name: string;
   mime: string | null;
@@ -33,7 +33,7 @@ export interface UploadRow {
 
 export interface UploadView {
   id: string;
-  kind: RefKind;
+  kind: UploadKind;
   fileName: string;
   mime: string;
   bytes: number;
@@ -93,10 +93,13 @@ export async function confirmUpload(userId: string, id: unknown): Promise<Upload
   if (buf.length > MAX_UPLOAD_BYTES) return reject(row, "حجم الملف أكبر من ٢٠٠ ميجا.");
   const s = sniff(buf);
   if (!s) return reject(row, "محتوى الملف لا يطابق أي نوع مقبول (امتداد الملف وحده لا يكفي).");
-  if (s.kind !== row.kind) return reject(row, `محتوى الملف ${s.kind === "image" ? "صورة" : s.kind === "video" ? "فيديو" : "صوت"} وليس كما اخترت.`);
+  if (s.kind !== row.kind) return reject(row, `محتوى الملف ${s.kind === "image" ? "صورة" : s.kind === "video" ? "فيديو" : s.kind === "doc" ? "ملف PDF" : "صوت"} وليس كما اخترت.`);
 
   let meta: { width?: number; height?: number; durationMs?: number; fps?: number } = {};
-  if (s.kind === "image") {
+  if (s.kind === "doc") {
+    // nothing to measure in a PDF: the pages are read by whoever is given it
+    meta = {};
+  } else if (s.kind === "image") {
     const m = await sharp(Buffer.from(buf)).metadata().catch(() => null);
     if (!m?.width || !m.height) return reject(row, "تعذّر قراءة الصورة؛ قد تكون تالفة.");
     // EXIF orientations 5–8 swap the displayed width and height
@@ -132,6 +135,8 @@ export async function refsFor(userId: string, wanted: { uploadId: string; role: 
   const byId = new Map(rows.map((r) => [r.id, r]));
   const meta = wanted.map((w) => {
     const r = byId.get(w.uploadId)!;
+    // a PDF is read in a conversation, never used as a generator's reference
+    if (r.kind === "doc") throw new UserError("ملف PDF ما ينفع كمرجع للتوليد — أرفقه في محادثة أي روبوت وهو يقرأه.", 400);
     return {
       id: r.id,
       kind: r.kind,

@@ -3,6 +3,13 @@
 
 export type OutputKind = "image" | "video" | "audio";
 export type RefKind = "image" | "video" | "audio";
+/**
+ * What an upload can BE. A generator's reference is still only a picture, a video or a sound (`RefKind`), but a
+ * person can also attach a PDF to any robot's conversation — a lecture, a report, a form to follow — and the robot
+ * reads its pages itself (migration 0051).
+ */
+export type UploadKind = RefKind | "doc";
+export const isUploadKind = (v: unknown): v is UploadKind => v === "image" || v === "video" || v === "audio" || v === "doc";
 /** What a reference does: the first/last frame of a video, or a free reference. */
 export type RefRole = "first_frame" | "last_frame" | "reference";
 

@@ -99,7 +99,7 @@ export interface Reply {
   split: string | null;
 }
 
-const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" } as const;
+const KIND_AR = { image: "صورة", video: "فيديو", audio: "صوت" , doc: "ملف PDF" } as const;
 
 /** What an answer of his looked like to the person beyond its words: the buttons he offered and the design's state. */
 function assistantNote(t: Turn): string {
@@ -123,8 +123,11 @@ function toClaudeTurn(t: Turn, links: Map<string, string>): ClaudeTurn {
   const named = t.files.map((f) => `- ${KIND_AR[f.kind]}: «${f.name}» [id ${f.id}]`).join("\n");
   parts.push({ type: "text", text: `${t.text}\n\nالملفات المرفقة مع هذه الرسالة:\n${named}` });
   for (const f of t.files) {
-    const url = f.kind === "image" ? links.get(f.id) : undefined;
-    if (url) parts.push({ type: "image", url });
+    const url = links.get(f.id);
+    if (!url) continue;
+    // a picture is looked at; a PDF is READ (its pages go with the request)
+    if (f.kind === "image") parts.push({ type: "image", url });
+    else if (f.kind === "doc") parts.push({ type: "doc", url, name: f.name });
   }
   return { role: t.role, content: parts };
 }
@@ -139,7 +142,7 @@ export async function say(userId: string, chatId: string | null, message: string
   const history = cleanHistory([...(before?.messages ?? []), { role: "user", text: said || "(صور مرفقة)", files: files.length ? files : undefined }]);
   const turns = forModel(history);
   // pictures of this conversation, by short-lived link, so he can look at them (a template to copy, a photo)
-  const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image").map((f) => f.id)));
+  const links = await uploadLinks(userId, turns.flatMap((t) => (t.files ?? []).filter((f) => f.kind === "image" || f.kind === "doc").map((f) => f.id)));
   const persona = await getPersona();
   const system = systemText(persona.text, [], before?.record ?? "");
   const r = await callClaudeJson<Answer>({ system, turns: turns.map((t) => toClaudeTurn(t, links)), schema: ANSWER_SCHEMA, maxTokens: DESIGNER.maxTokens, effort: "medium", leader: isLeader(email) });

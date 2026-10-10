@@ -15,7 +15,7 @@ import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, DELEGATE_LINE, moodLine, motionLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 
-interface FileView { id: string; kind: "image" | "video" | "audio"; name: string; durationMs: number | null; url?: string | null }
+interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
 interface FailView { n: number; reason: string; detail?: string; text: string }
 interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string }
@@ -58,7 +58,7 @@ const STARTS = [
   { ic: "🔁", t: "أعد توظيف محتوى", d: "محتوى واحد إلى عدة مخرجات مترابطة", m: "عندي محتوى وأبي أعيد توظيفه في أكثر من مخرج. اسألني عن اللي تحتاجه.", c: "#fbbf24" },
 ];
 
-const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧" } as const;
+const KIND_IC = { image: "🖼️", video: "🎞️", audio: "🎧", doc: "📄" } as const;
 
 /** The answer's light markdown (headings, lists, tables, bold, rules; colours as swatches) as elements. */
 function Rich({ text }: { text: string }) {
@@ -689,7 +689,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
               )}
               <ClaudeModelPicker className="ct-claude" disabled={!!busy} />
               <div className="ct-compose-row">
-                <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav" onChange={(e) => void attach(e.target.files)} />
+                <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav,application/pdf" onChange={(e) => void attach(e.target.files)} />
                 <button type="button" className="ct-attach" aria-label="أرفق ملفات" title="أرفق صور أو فيديو أو صوت" disabled={uploading || !!busy} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
                 <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={!!busy || uploading} className="ct-attach" />
                 <textarea
