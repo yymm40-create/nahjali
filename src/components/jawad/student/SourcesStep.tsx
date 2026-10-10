@@ -1,6 +1,6 @@
 "use client";
 
-import { isResearchSource } from "@config/jawad/student";
+import { SOURCE_ROLES, isResearchSource } from "@config/jawad/student";
 import { useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { putWithProgress } from "@/components/jawad/studio/upload";
@@ -129,7 +129,7 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
             📤
           </span>
           <b className="text-lg">اسحب ملفاتك هنا أو اضغط للاختيار</b>
-          <span className="text-sm text-jw-muted">صور أو PDF، أو فيديو وتسجيل صوتي (يُفرَّغ كلامه نصًا) — عدة ملفات مرة وحدة</span>
+          <span className="text-sm text-jw-muted">صور أو PDF، أو فيديو وتسجيل صوتي (يُفرَّغ كلامه نصًا) — عدة ملفات مرة وحدة. <b>صورة وحدة تكفي</b> إذا هي كل اللي عندك، وأي مجال: مدرسة، جامعة، عمل، طب، نظام، أو هواية.</span>
           <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp,video/*,audio/*" multiple className="hidden" onChange={(e) => upload(e.target.files)} />
         </div>
         {uploads.length > 0 && (
@@ -203,6 +203,7 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
         <div className="jw-panel space-y-2 p-4">
           <h2 className="font-semibold">مدخلات المادة ({sources.length})</h2>
           {sources.length === 0 && <p className="text-sm text-jw-muted">لا شيء بعد. 💡 صوّر كل صفحة صورة واضحة ومستقيمة، أو ارفع ملف PDF، ثم اضغط «استخرج النص».</p>}
+          {sources.length > 0 && <p className="text-xs leading-6 text-jw-muted">حدّد وش يكون كل ملف: <b>📘 مادة علمية</b> (منها المعلومات) · <b>📐 نموذج أتبعه</b> (شكله وأقسامه وترتيبه بس، بلا معلوماته) · <b>🔗 مرجع إضافي</b>. فمثلًا: نموذج التقرير 📐 + فيديو المحاضرة أو صورة الصفحة 📘.</p>}
           <ol className="space-y-2">
             {sources.map((s, i) => (
               <li key={s.id} className="flex items-center gap-2 rounded-lg bg-jw-surface-2 p-2 text-sm">
@@ -229,6 +230,25 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
                 <button type="button" className="jw-btn jw-btn-quiet jw-btn-icon" aria-label="حذف" onClick={() => confirm("حذف هذا المدخل ونصه المستخرج؟") && run(() => p.act({ action: "source_remove", sourceId: s.id }))} disabled={busy || running}>
                   <Icon name="trash" size={14} />
                 </button>
+                {/* WHAT this file is: the material itself, a shape to follow, or background */}
+                <div className="flex w-full flex-wrap gap-1 pt-1">
+                  {SOURCE_ROLES.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      title={r.hint}
+                      aria-pressed={(s.role ?? "material") === r.id}
+                      className={`jw-chip text-[11px] ${(s.role ?? "material") === r.id ? "jw-chip-on" : ""}`}
+                      disabled={busy || running}
+                      onClick={() => run(async () => {
+                        const r2 = (await p.act({ action: "source_role", sourceId: s.id, role: r.id })) as { needsMigration?: string };
+                        if (r2?.needsMigration) throw new Error(`شغّل ملف SQL رقم ${r2.needsMigration} في Supabase أول، عشان أحفظ دور كل ملف.`);
+                      })}
+                    >
+                      {r.icon} {r.ar}
+                    </button>
+                  ))}
+                </div>
               </li>
             ))}
           </ol>

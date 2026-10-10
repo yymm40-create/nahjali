@@ -39,6 +39,8 @@ export interface Source {
   body: string | null;
   status: "pending" | "ready" | "rejected";
   pages_done: number;
+  /** what this source IS to the student: the material, a shape to follow, or background (migration 0050) */
+  role?: string;
 }
 
 export interface Segment {

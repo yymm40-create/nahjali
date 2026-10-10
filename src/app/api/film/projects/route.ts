@@ -23,8 +23,10 @@ export const POST = handle(async (req: Request) => {
   const research = body.research === "yes" || body.research === "no" ? { asked: body.research, items: [] } : null;
   const row: Record<string, unknown> = { user_id: user.id, ...fields, ...(research ? { research } : {}) };
   let made = await db.from("film_projects").insert(row).select("id").single();
-  if (made.error && research) {
-    delete row.research;
+  // the columns that came with a migration: without it the film is still made, one piece lighter («kind» → a scene)
+  for (const drop of ["kind", "research"]) {
+    if (!made.error || !(drop in row)) continue;
+    delete row[drop];
     made = await db.from("film_projects").insert(row).select("id").single();
   }
   if (made.error || !made.data) throw made.error ?? new Error("insert failed");

@@ -6,7 +6,7 @@ import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { claudeHalalas, coinsFor } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
-import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
+import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
@@ -59,7 +59,7 @@ export async function projectState(user: User, id: string) {
   return {
     prices,
     project: { ...p, brief: readBrief(p.brief), expiresAt: new Date(new Date(p.last_activity_at).getTime() + STUDENT.keepDays * 86400_000).toISOString() },
-    sources: srcs.map((s) => ({ id: s.id, ord: s.ord, kind: s.kind, name: s.name, mime: s.mime, bytes: s.bytes, pages: s.pages, pagesDone: s.pages_done, status: s.status, body: s.kind === "text" ? s.body : null })),
+    sources: srcs.map((s) => ({ id: s.id, ord: s.ord, kind: s.kind, name: s.name, mime: s.mime, bytes: s.bytes, pages: s.pages, pagesDone: s.pages_done, status: s.status, role: readSourceRole(s.role), body: s.kind === "text" ? s.body : null })),
     segments: segs.map((s) => ({ id: s.id, sid: s.id.slice(0, 8), sourceId: s.source_id, page: s.page, part: s.part, label: s.label, raw: s.raw_text, text: s.text, uncertain: s.uncertain, status: s.status })),
     coverage: cov,
     textVersion: textV ? { version: textV.version, at: textV.created_at } : null,
@@ -260,6 +260,18 @@ export async function projectAction(user: User, id: string, b: Body) {
       // the full text changed: it must be approved again
       await touch(p.id, { stage: p.text_version ? "review" : p.stage });
       return { ok: true };
+    }
+    case "source_role": {
+      // «هذا نموذج أمشي عليه، وهذا المادة» — what the file IS, not just that it is there
+      const sid = String(b.sourceId ?? "");
+      const role = readSourceRole(b.role);
+      const list = await sources(p.id);
+      if (!list.some((x) => x.id === sid)) throw new UserError("ما لقينا هذا الملف في مادتك.");
+      const { error } = await db.from("student_sources").update({ role }).eq("id", sid);
+      // without migration 0050 the column is not there yet: the project still works, every source as material
+      if (error) return { ok: false, needsMigration: "0050" };
+      if (p.text_version) await touch(p.id, { stage: "review" });
+      return { ok: true, role };
     }
     case "source_order": {
       const ids = (b.ids as string[]) ?? [];

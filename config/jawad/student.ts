@@ -88,6 +88,55 @@ export function briefLine(b: Brief) {
   return `What the student wants this material for: ${purpose}.`;
 }
 
+// ───────────────────────────── what each source IS ─────────────────────────────
+
+/**
+ * «ساعات أعطيه ملف يكون إليه يمشي، وملف ثاني أو يوتيوب يكون المادة العلمية» — so each file, recording, link or pasted
+ * text says what it IS. A TEMPLATE is a shape to follow, not information to copy; the MATERIAL is where every fact
+ * comes from; a REFERENCE is background used only when it adds something. One picture is a whole material if that is
+ * all the person has, and the subject may be anything — a school book, a university course, a work report, a medical
+ * file, a legal text, a hobby.
+ */
+export const SOURCE_ROLES = [
+  {
+    id: "material",
+    ar: "مادة علمية",
+    icon: "📘",
+    hint: "منها كل المعلومات (كتاب، محاضرة، فيديو، صورة وحدة تكفي)",
+    rule: "MATERIAL: this is where the facts come from. Everything written for the student must trace back to it.",
+  },
+  {
+    id: "template",
+    ar: "نموذج أتبعه",
+    icon: "📐",
+    hint: "شكل أمشي عليه: أقسامه وترتيبه وعناوينه وطوله — بلا نقل معلوماته",
+    rule: "TEMPLATE (a shape to follow, NOT a source of facts): follow its structure exactly — the same sections in the same order, the same headings and their wording style, the same numbering, the same depth and length per section, the same tone and the same way of citing. Do NOT copy its subject matter, its examples or its numbers into the student's work, and never present its content as the material's. If the template and the material disagree about the shape, the template wins; if they disagree about a fact, the material wins.",
+  },
+  {
+    id: "reference",
+    ar: "مرجع إضافي",
+    icon: "🔗",
+    hint: "خلفية أستفيد منها إذا أضافت شي",
+    rule: "REFERENCE: background only. Use it when it adds something the material lacks, and mark what came from it.",
+  },
+] as const;
+export type SourceRole = (typeof SOURCE_ROLES)[number]["id"];
+export const sourceRole = (v: unknown) => SOURCE_ROLES.find((r) => r.id === v) ?? null;
+/** Anything read as a role the pipeline knows (a source from before the roles existed is the material). */
+export const readSourceRole = (v: unknown): SourceRole => (v === "template" || v === "reference" ? v : "material");
+
+/**
+ * The rules of the roles that are really present, for the writer. Nothing is said about a role nobody used, so a
+ * plain project (every source the material) reads exactly as it did before.
+ */
+export function rolesBrief(roles: unknown[]): string {
+  const present = [...new Set(roles.map(readSourceRole))];
+  // nothing to say when there is no role but the material (which is what a plain project is)
+  if (!present.some((r) => r !== "material")) return "";
+  const lines = SOURCE_ROLES.filter((r) => present.includes(r.id)).map((r) => `- ${r.rule}`);
+  return ["EACH SOURCE HAS A ROLE, written in its label («نموذج أتبعه», «مادة علمية», «مرجع إضافي»):", ...lines].join("\n");
+}
+
 export type OutputKind = "summary" | "explain" | "transcript" | "book" | "slides" | "audio" | "quiz";
 
 export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] = [

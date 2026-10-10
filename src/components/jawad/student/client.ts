@@ -85,7 +85,7 @@ export interface ProjectState {
   };
   /** coins for one page / slide drawn by GPT Image 2 (free: nothing is charged) */
   prices: { free: boolean; page: { high: number; medium: number }; slide: { high: number; medium: number } };
-  sources: { id: string; ord: number; kind: "text" | "image" | "pdf"; name: string; mime: string; bytes: number; pages: number; pagesDone: number; status: string; body: string | null }[];
+  sources: { id: string; ord: number; kind: "text" | "image" | "pdf"; name: string; mime: string; bytes: number; pages: number; pagesDone: number; status: string; role?: string; body: string | null }[];
   segments: SegmentView[];
   coverage: { missing: string[]; duplicate: string[]; total: number; approved: number; complete: boolean };
   textVersion: { version: number; at: string } | null;
