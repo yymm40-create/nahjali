@@ -6,6 +6,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { postJson } from "@/lib/fetch";
 import Icon from "@/components/jawad/Icon";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
@@ -168,6 +169,19 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
     }
   };
   const lastQuestion = [...msgs].reverse().find((m) => m.role === "user")?.text ?? "";
+  // «اعمل منها مادة دراسية»: the answer and its sources go to «الطالب الذكي», which opens on a new material
+  const [toStudent, setToStudent] = useState(false);
+  async function makeMaterial(question: string, m: { text: string; sources?: { n: number; title: string; source: string; url: string }[] }) {
+    setToStudent(true);
+    try {
+      const r = await postJson<{ url: string }>("/api/islamic/student", { question, answer: m.text, sources: m.sources ?? [] });
+      window.location.assign(r.url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذّر تحويل الجواب لمادة دراسية.");
+      setToStudent(false);
+    }
+  }
+
   const lastAnswer = msgs.map((m) => m.role).lastIndexOf("assistant");
 
   return (
@@ -240,6 +254,10 @@ export default function IslamicChat({ name, loginHref }: { name: string; loginHr
                     <div className="flex flex-wrap gap-2 border-t border-jw-line pt-3">
                       {m.mode !== "narration" && <button type="button" className="jw-chip text-xs" onClick={() => void send(lastQuestion, "narration")}>📜 أبي الرواية فقط</button>}
                       {m.mode !== "research" && <button type="button" className="jw-chip text-xs" onClick={() => void send(lastQuestion, "research")}>🔎 سوّ بحث وتحليل عميق</button>}
+                      {/* «الذكاء الإسلامي» → «الطالب الذكي»: the answer with its sources becomes study material */}
+                      <button type="button" className="jw-chip text-xs" disabled={toStudent} title="يفتح «الطالب الذكي» على مادة مصدرها هذا الجواب بمصادره، تطلع منها ملخص أو كتاب أو شرائح أو اختبار" onClick={() => void makeMaterial(lastQuestion, m)}>
+                        {toStudent ? "…" : "🎓 اعمل منها مادة دراسية"}
+                      </button>
                     </div>
                   )}
                 </article>

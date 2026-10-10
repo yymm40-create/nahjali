@@ -328,6 +328,17 @@ export const STUDENT_ASSISTANT = { name: "صادق", icon: "🧑‍🎓" } as co
 export const RESEARCH_PREFIX = "بحث صادق";
 export const isResearchSource = (name: string) => name.startsWith(RESEARCH_PREFIX) || name.startsWith("بحث كلاود");
 
+/** A source written by «الذكاء الإسلامي» when صادق asked it (its answer with the library's own references). */
+export const ISLAMIC_PREFIX = "الذكاء الإسلامي";
+export const isIslamicSource = (name: string) => name.startsWith(ISLAMIC_PREFIX);
+
+/** The ways «الذكاء الإسلامي» can be asked, as the student picks them. */
+export const ISLAMIC_WAYS = [
+  { id: "auto", label: "جواب مباشر", hint: "يجيب من مكتبته بأوضح طريق" },
+  { id: "narration", label: "نصوص وروايات", hint: "يرجّع النصوص الأصلية كما هي بمصادرها" },
+  { id: "research", label: "بحث موسّع", hint: "يبحث في مكتبته بعمق ويكتب بحثًا مرتبًا (أغلى وأطول)" },
+] as const;
+
 // ───────────────────────────── the student's own choices for a file ─────────────────────────────
 
 /** Outputs with a design (style, fonts): the design step is shown when one of them is chosen. */

@@ -14,7 +14,7 @@ import { coinsRequired, refundCoins, releaseCoins, reserveCoins, settleCoins } f
 import { claudeHalalas, coinsFor } from "@config/coins";
 
 /** The steps that are Claude's usage alone (reading the material, researching): priced at the real cost + 10%. */
-export const CLAUDE_ONLY_KINDS = new Set(["understand", "research"]);
+export const CLAUDE_ONLY_KINDS = new Set(["understand", "research", "islamic"]);
 import { unlimitedFor } from "@/lib/access";
 import { STUDENT } from "@config/jawad/student";
 import { sdb } from "./db";

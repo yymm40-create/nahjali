@@ -9,6 +9,7 @@ import { unlimitedFor } from "@/lib/access";
 import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
+import { islamicAsk, islamicCeiling } from "./islamic";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
 import { CLAUDE_ONLY_KINDS, checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
@@ -371,6 +372,11 @@ export async function projectAction(user: User, id: string, b: Body) {
       const where = text(b.where, 2000) || readBrief(p.brief).where;
       const reads = researchPlaces(where).links.length > 0;
       return paid(user, b, { projectId: p.id, kind: "research", usd: researchCeiling() + (reads ? fetchCeilingUsd() : 0), input: { asMaterial: true, focus: text(b.focus, 2000), where }, stage: "صادق يبحث ويكتب مادتك" });
+    }
+    case "ask_islamic": {
+      // «الطالب الذكي» يسأل «الذكاء الإسلامي»: جوابه بمصادره يصير مصدرًا من مصادر المادة
+      const { question, mode } = islamicAsk(b);
+      return paid(user, b, { projectId: p.id, kind: "islamic", usd: islamicCeiling(mode), input: { question, mode, email: user.email ?? "" }, stage: `صادق يسأل الذكاء الإسلامي: ${question.slice(0, 60)}` });
     }
     case "research_approve": {
       const r = await latestVersion(p.id, "research");
