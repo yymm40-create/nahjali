@@ -83,12 +83,12 @@ const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * robots used to hand back was almost always one of these. `retry-after` is honoured when the API sends it; a reply
  * the API really refuses (a bad request, no credit, a key) is raised at once, because trying again changes nothing.
  */
-export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE_TRIES): Promise<{ res: Response; body: Record<string, unknown> }> {
+export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE_TRIES, timeoutMs = CLAUDE_TIMEOUT_MS): Promise<{ res: Response; body: Record<string, unknown> }> {
   let last: unknown;
   for (let i = 0; i < tries; i++) {
     if (i) await nap(CLAUDE_WAITS[Math.min(i - 1, CLAUDE_WAITS.length - 1)]);
     try {
-      const res = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(CLAUDE_TIMEOUT_MS) });
+      const res = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
       const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
       if (res.ok) return { res, body };
       const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
@@ -133,6 +133,7 @@ export async function callClaudeJson<T>({
   effort = "medium",
   fallback = false,
   leader = false,
+  timeoutMs,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -143,6 +144,8 @@ export async function callClaudeJson<T>({
   fallback?: boolean;
   /** the owner is talking: the robot greets «القائد» and opens every detail of the platform to him */
   leader?: boolean;
+  /** the longest one attempt may take (default CLAUDE_TIMEOUT_MS); a long conversation like حيدرة's asks for more */
+  timeoutMs?: number;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -176,7 +179,7 @@ export async function callClaudeJson<T>({
         output_config: { ...(asked.effort ? { effort: level } : {}), format: { type: "json_schema", schema } },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
-    });
+    }, CLAUDE_TRIES, timeoutMs);
     return b as Record<string, unknown> & { stop_reason?: string; content?: { type: string; text?: string }[]; usage?: ClaudeUsage; model?: string };
   };
 

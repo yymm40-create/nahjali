@@ -334,7 +334,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
 
   let usd = 0;
   const ask = async (msgs: ClaudeTurn[]) => {
-    const r = await callClaudeJson<Answer>({ system: SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email) });
+    const r = await callClaudeJson<Answer>({ system: SYSTEM, turns: msgs, schema: SCHEMA, maxTokens: 16000, effort: "medium", fallback: true, leader: isLeader(who.email), timeoutMs: 420_000 });
     usd += claudeCost(r.usage);
     return r;
   };
