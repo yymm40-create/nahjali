@@ -98,6 +98,8 @@ const CLIP_DEFAULTS = { keys: [], seq: null as string | null, crop: null, blend:
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
   | { type: "add_clip"; assetId: string; trackId?: string; at?: number }
+  /** another timeline of the project put into the open one as one clip («Nest» of an existing sequence) */
+  | { type: "place_seq"; id: string; trackId?: string; at?: number }
   /** a video's sound on its own sound track, in step with it (the video goes quiet) */
   | { type: "extract_audio"; clipId: string }
   | { type: "add_text"; at: number; body?: string; duration?: number }
@@ -308,6 +310,35 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         place(track, c);
       }
       return { timeline: t, label: a.kind === "audio" ? "أضفت صوتًا" : a.kind === "image" ? "أضفت صورة" : "أضفت مقطعًا", select: [c.id] };
+    }
+
+    case "place_seq": {
+      if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      const seqs = seqsOf(t);
+      const from = seqs.find((x) => x.id === cmd.id) ?? fail("ما لقينا هذا التسلسل؛ خذ رقمه من قائمة «sequences».");
+      const openId = seqs.find((x) => !x.tl)?.id ?? FIRST_SEQ;
+      if (from.id === openId) fail("هذا هو التسلسل المفتوح نفسه؛ ما ينحط داخل نفسه.");
+      // a loop is refused: the sequence must not (at any depth) already hold the open one
+      const holds = (id: string, seen: Set<string>): boolean => {
+        if (id === openId) return true;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        const x = seqs.find((s) => s.id === id);
+        return !!x?.tl && x.tl.tracks.some((tr) => tr.clips.some((c) => c.seq && holds(c.seq, seen)));
+      };
+      if (from.tl && from.tl.tracks.some((tr) => tr.clips.some((c) => c.seq && holds(c.seq, new Set([from.id]))))) fail("هذا التسلسل يحتوي التسلسل المفتوح؛ دمجه يسوي حلقة.");
+      const len = Math.max(LIMITS.minClipMs, seqLength(t, from.id) || 0);
+      if (len <= LIMITS.minClipMs && !(from.tl && from.tl.tracks.some((tr) => tr.clips.length))) fail(`«${from.name}» فاضي؛ ما فيه شي ينحط.`);
+      const c: Clip = { id: newId("c"), assetId: null, start: 0, in: 0, out: len, speed: 1, volume: 1, fit: "cover", transform: { ...DEFAULT_TRANSFORM }, text: null, ...CLIP_DEFAULTS, seq: from.id, keys: [] };
+      const main = mainTrack(t)!;
+      const track = cmd.trackId === "new" ? newTrack(t, "video") : cmd.trackId ? editable(t, cmd.trackId) : main.locked ? newTrack(t, "video") : main;
+      if (track.kind !== "video") fail("التسلسل يروح في مسار صورة.");
+      if (magnet(t, track)) insertMain(track, c, cmd.at ?? Infinity);
+      else {
+        c.start = cmd.at ?? (track === main ? track.clips.reduce((m, x) => Math.max(m, clipEnd(x)), 0) : 0);
+        place(track, c);
+      }
+      return { timeline: t, label: `وضعت «${from.name}» داخل التسلسل`, select: [c.id] };
     }
 
     case "add_text": {
