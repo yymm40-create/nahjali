@@ -195,6 +195,174 @@ const gptImage2: GeneratorDef = {
   notes: ["كل طلب متزامن: يرجع بالصور مباشرة (base64) ونحفظها في تخزيننا."],
 };
 
+// ───────────────────────────── Nano Banana (fal.ai) · Seedream 5.0 Lite (ModelArk) ─────────────────────────────
+// Checked on 2026-10-10: fal's model pages and OpenAPI schemas (fal-ai/nano-banana, nano-banana-2, nano-banana-pro and
+// their /edit endpoints; prices from fal's model pages), and BytePlus's image generation API (POST /images/generations,
+// Seedream 5.0 lite = seedream-5-0-260128). Each is priced per image; prompts and references are not charged by them.
+
+export interface SimpleImageSpec {
+  id: string;
+  name: string;
+  provider: { id: "fal" | "byteplus-modelark"; label: string };
+  model: { id: string; family: string; version: string };
+  /** fal: the edit endpoint used when there are reference pictures */
+  editModel?: string;
+  aspects: string[];
+  /** the resolutions offered and what one image costs at each (USD); one entry = no choice */
+  tiers: { value: string; label: string; usd: number }[];
+  maxRefs: number;
+  maxCount: number;
+  promptMax: number;
+  sources: GeneratorDef["sources"];
+  verification: GeneratorDef["verification"];
+}
+
+const ASPECT_HINT: Record<string, string> = { "1:1": "مربع", "16:9": "أفقي", "9:16": "عمودي", "3:2": "أفقي", "2:3": "عمودي", "4:3": "أفقي", "3:4": "عمودي", "21:9": "سينمائي عريض", "4:5": "عمودي", "5:4": "أفقي" };
+
+/** A picture generator sold per image (fal's Nano Banana family, ModelArk's Seedream). */
+export function simpleImage(spec: SimpleImageSpec): GeneratorDef {
+  const modes: ModeDef[] = [
+    { id: "text_to_image", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
+    { id: "image_reference", label: "بصور مرجعية", refStyle: "references", refs: { image: { min: 1, max: spec.maxRefs } }, promptRequired: true },
+  ];
+  const tierOf = (v: unknown) => spec.tiers.find((t) => t.value === v) ?? spec.tiers[0];
+  const def: GeneratorDef = {
+    id: spec.id,
+    name: spec.name,
+    output: "image",
+    defaultSection: "images",
+    provider: spec.provider,
+    model: spec.model,
+    api:
+      spec.provider.id === "fal"
+        ? { name: "fal.ai queue", endpoint: `POST ${spec.model.id}${spec.editModel ? ` · POST ${spec.editModel}` : ""}`, tracking: "sync", progress: "none", cancel: "none" }
+        : { name: "ModelArk Image generation API", endpoint: "POST /api/v3/images/generations", tracking: "sync", progress: "none", cancel: "none" },
+    modes,
+    options: [
+      { key: "aspect", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "1:1", values: spec.aspects.map((a) => ({ value: a, label: a, ...(ASPECT_HINT[a] ? { hint: ASPECT_HINT[a] } : {}) })) },
+      ...(spec.tiers.length > 1 ? [{ key: "resolution", label: "الدقة", kind: "choice" as const, ltr: true, default: spec.tiers[0].value, values: spec.tiers.map((t) => ({ value: t.value, label: t.label })) }] : []),
+      { key: "count", label: "عدد الصور", kind: "int", min: 1, max: spec.maxCount, default: 1, unit: "صورة" },
+    ],
+    files: { image: IMAGE_FILE },
+    prompt: { label: "البرومبت", placeholder: "صف الصورة التي تريدها…", max: spec.promptMax, arabic: true },
+    refLabel: (_kind, n) => `Image ${n}`,
+    priceKeys: spec.tiers.map((t) => ({ key: `img:${t.value}`, label: `صورة${spec.tiers.length > 1 ? ` · ${t.label}` : ""}`, defaultCenti: centiFor(t.usd), basis: `سعر المزوّد المنشور: $${t.usd} للصورة` })),
+    modeFor: (_style, refs) => (refs.length ? modes[1] : modes[0]),
+    rules: () => ({ options: opt(def.options), issues: [], notes: [] }),
+    price(d, _mode, table) {
+      const t = tierOf(d.settings.resolution);
+      const per = table[`img:${t.value}`];
+      if (per == null) return { ok: false, reason: "سعر هذا الإعداد غير محدد بعد." };
+      const n = Math.max(1, Math.min(spec.maxCount, Number(d.settings.count) || 1));
+      return total([{ label: `${n} × صورة`, centi: n * per }], def.costUsd(d, modes[0]));
+    },
+    costUsd(d) {
+      return Math.max(1, Math.min(spec.maxCount, Number(d.settings.count) || 1)) * tierOf(d.settings.resolution).usd;
+    },
+    sources: spec.sources,
+    verification: spec.verification,
+    notes: ["كل طلب متزامن: يرجع بالصور مباشرة ونحفظها في تخزيننا."],
+  };
+  return def;
+}
+
+const NB_ASPECTS = ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "21:9"];
+const FAL_CHECKED = "2026-10-10";
+const falSources = (slug: string) => [
+  { label: `fal.ai — ${slug} (schema, endpoints)`, url: `https://fal.ai/models/${slug}/api`, checked: FAL_CHECKED },
+  { label: `fal.ai — ${slug} (price)`, url: `https://fal.ai/models/${slug}`, checked: FAL_CHECKED },
+];
+const falRefsNote = { item: "عدد الصور المرجعية", status: "unverified" as const, note: "نقطة التعديل تقبل قائمة image_urls بلا حد منشور؛ نسمح بعدد محافظ." };
+
+const nanoBanana = simpleImage({
+  id: "google-nano-banana",
+  name: "Nano Banana",
+  provider: { id: "fal", label: "Google (fal.ai)" },
+  model: { id: "fal-ai/nano-banana", family: "Nano Banana (Gemini 2.5 Flash Image)", version: "fal" },
+  editModel: "fal-ai/nano-banana/edit",
+  aspects: NB_ASPECTS,
+  tiers: [{ value: "1K", label: "1K", usd: 0.039 }],
+  maxRefs: 6,
+  maxCount: 4,
+  promptMax: 5000,
+  sources: falSources("fal-ai/nano-banana"),
+  verification: [
+    { item: "النسب", status: "verified", note: "aspect_ratio: 21:9 · 16:9 · 3:2 · 4:3 · 5:4 · 1:1 · 4:5 · 3:4 · 2:3 · 9:16." },
+    { item: "السعر", status: "verified", note: "$0.039 للصورة (صفحة النموذج في fal)." },
+    falRefsNote,
+  ],
+});
+
+const nanoBanana2 = simpleImage({
+  id: "google-nano-banana-2",
+  name: "Nano Banana 2",
+  provider: { id: "fal", label: "Google (fal.ai)" },
+  model: { id: "fal-ai/nano-banana-2", family: "Nano Banana 2", version: "fal" },
+  editModel: "fal-ai/nano-banana-2/edit",
+  aspects: NB_ASPECTS,
+  tiers: [
+    { value: "1K", label: "1K", usd: 0.08 },
+    { value: "2K", label: "2K", usd: 0.12 },
+    { value: "4K", label: "4K", usd: 0.16 },
+  ],
+  maxRefs: 8,
+  maxCount: 4,
+  promptMax: 5000,
+  sources: falSources("fal-ai/nano-banana-2"),
+  verification: [
+    { item: "النسب والدقة", status: "verified", note: "aspect_ratio بالنسب المعروضة؛ resolution: 0.5K · 1K · 2K · 4K (نعرض 1K و2K و4K)." },
+    { item: "السعر", status: "verified", note: "$0.08 للصورة عند 1K؛ 2K ×1.5 و4K ×2 (صفحة النموذج في fal)." },
+    falRefsNote,
+  ],
+});
+
+const nanoBananaPro = simpleImage({
+  id: "google-nano-banana-pro",
+  name: "Nano Banana Pro",
+  provider: { id: "fal", label: "Google (fal.ai)" },
+  model: { id: "fal-ai/nano-banana-pro", family: "Nano Banana Pro (Gemini 3 Pro Image)", version: "fal" },
+  editModel: "fal-ai/nano-banana-pro/edit",
+  aspects: NB_ASPECTS,
+  tiers: [
+    { value: "1K", label: "1K", usd: 0.15 },
+    { value: "2K", label: "2K", usd: 0.15 },
+    { value: "4K", label: "4K", usd: 0.3 },
+  ],
+  maxRefs: 8,
+  maxCount: 4,
+  promptMax: 5000,
+  sources: falSources("fal-ai/nano-banana-pro"),
+  verification: [
+    { item: "النسب والدقة", status: "verified", note: "aspect_ratio بالنسب المعروضة؛ resolution: 1K · 2K · 4K." },
+    { item: "السعر", status: "verified", note: "$0.15 للصورة عند 1K و2K، و$0.30 عند 4K (صفحة النموذج في fal)." },
+    falRefsNote,
+  ],
+});
+
+/** Seedream 5.0 Lite at 2K: the pixel size of each ratio (the size parameter takes width×height). */
+export const SEEDREAM_SIZES: Record<string, [number, number]> = {
+  "1:1": [2048, 2048], "16:9": [2560, 1440], "9:16": [1440, 2560], "3:2": [2496, 1664], "2:3": [1664, 2496], "4:3": [2304, 1728], "3:4": [1728, 2304], "21:9": [3024, 1296],
+};
+
+const seedreamLite = simpleImage({
+  id: "byteplus-seedream-5-lite",
+  name: "Seedream 5.0 Lite",
+  provider: { id: "byteplus-modelark", label: "BytePlus ModelArk" },
+  model: { id: "seedream-5-0-260128", family: "Seedream 5.0 Lite", version: "260128" },
+  aspects: Object.keys(SEEDREAM_SIZES),
+  tiers: [{ value: "2K", label: "2K", usd: 0.035 }],
+  maxRefs: 10,
+  maxCount: 4,
+  promptMax: 3000,
+  sources: [{ label: "BytePlus — ModelArk Image generation API", url: "https://docs.byteplus.com/en/docs/ModelArk/1541523", checked: FAL_CHECKED }],
+  verification: [
+    { item: "اسم النموذج", status: "verified", note: "seedream-5-0-260128 (Seedream 5.0 lite) على نقطة images/generations." },
+    { item: "السعر", status: "unverified", note: "$0.035 للصورة كما تنشره مواقع الوسطاء؛ صفحة أسعار BytePlus لم تُقرأ مباشرة — راجعه في /jawad-ai/admin/prices." },
+    { item: "المقاسات", status: "unverified", note: "مقاسات 2K بالبكسل كما في وثائق Seedream 4.x؛ 5.0 lite يوثّق 2K و3K." },
+    { item: "عدد الصور المرجعية", status: "unverified", note: "Seedream 4.x يقبل حتى 14؛ نسمح بـ10." },
+  ],
+});
+
 // ───────────────────────────── BytePlus ModelArk · Seedance ─────────────────────────────
 
 /** Output pixel sizes per resolution and ratio (ModelArk "Create a video generation task", width/height table). */
@@ -988,7 +1156,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, seedance("2.5"), seedance("2.0"), miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, seedreamLite, seedance("2.5"), seedance("2.0"), miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

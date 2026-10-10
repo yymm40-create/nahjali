@@ -107,3 +107,26 @@ export async function arkListTasks(model: string, pageSize = 50) {
 export async function arkCancelTask(id: string) {
   await ark(`/contents/generations/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
+
+/** Seedream (ModelArk images API): one picture per call, `refs` as links; returns the downloaded image. */
+export async function arkImage(o: { model: string; prompt: string; size: [number, number]; refs: string[] }) {
+  const body = await ark("/images/generations", {
+    method: "POST",
+    body: JSON.stringify({
+      model: o.model,
+      prompt: o.prompt,
+      size: `${o.size[0]}x${o.size[1]}`,
+      ...(o.refs.length ? { image: o.refs.length === 1 ? o.refs[0] : o.refs } : {}),
+      sequential_image_generation: "disabled",
+      response_format: "url",
+      watermark: false,
+    }),
+    timeoutMs: 180_000,
+  });
+  const data = (body.data ?? []) as { url?: string; size?: string }[];
+  const url = data.find((d) => d.url)?.url;
+  if (!url) throw new ProviderError("rejected", "ما رجع المزوّد بصورة؛ جرّب وصف ثاني.", `ModelArk image: ${JSON.stringify(body).slice(0, 400)}`);
+  const r = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+  if (!r.ok) throw new ProviderError("rejected", "تعذّر تنزيل الصورة من المزوّد.", `ModelArk image download ${r.status}`);
+  return { bytes: Buffer.from(await r.arrayBuffer()), mime: r.headers.get("content-type") ?? "image/jpeg" };
+}

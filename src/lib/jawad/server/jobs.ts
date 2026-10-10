@@ -20,7 +20,7 @@ import { after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
+import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
 import type { HabibiDialect } from "../voice-text";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
@@ -31,7 +31,9 @@ import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { refsFor, type UploadRow } from "./uploads";
 import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
-import { arkCancelTask, arkCreateTask, arkGetTask, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
+import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
+import { falImages } from "./providers/fal";
+import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
 import { resolveVoice } from "./voices";
@@ -346,7 +348,8 @@ export async function runJob(jobId: string) {
     const { rows } = await refsFor(job.user_id, job.refs.map((r) => ({ uploadId: r.uploadId, role: r.role }))).catch(() => {
       throw new ProviderError("rejected", "أحد المراجع حُذف قبل الإرسال. لم يُخصم منك شيء.", "reference missing at submit");
     });
-    if (def.provider.id === "byteplus-modelark") await submitVideo(job, def, rows);
+    // ModelArk's videos are tasks followed later; its pictures (Seedream) answer at once like the others
+    if (def.provider.id === "byteplus-modelark" && def.output === "video") await submitVideo(job, def, rows);
     else await runSync(job, def, rows);
   } catch (e) {
     await failFromError(job!, def, e);
@@ -374,6 +377,38 @@ async function download(path: string) {
 }
 
 /** Saves one result (`name`: what it is, when a job makes several kinds, e.g. «الفصل الذكي»'s tracks). */
+/** A picture generator of fal or ModelArk: the references go as short-lived links, each image is kept with its real size. */
+async function runSimpleImage(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+  const s = job.inputs.settings;
+  const prompt = job.inputs.modelPrompt ?? job.prompt;
+  const count = Math.max(1, Math.min(4, Number(s.count) || 1));
+  const links = await Promise.all(
+    refs.map(async (r) => {
+      const { data, error } = await storage.from(JAWAD_BUCKET).createSignedUrl(r.storage_path, 3600);
+      if (error || !data) throw new ProviderError("rejected", "تعذّر تجهيز الصور المرجعية.", `sign ref: ${error?.message ?? "no url"}`);
+      return data.signedUrl;
+    }),
+  );
+  let images: { bytes: Buffer; mime: string }[];
+  if (def.provider.id === "fal") {
+    const editModel = def.api.endpoint.split(" · POST ")[1];
+    images = await falImages({ model: def.model.id, editModel, prompt, aspect: String(s.aspect), resolution: def.options.some((o) => o.key === "resolution") ? String(s.resolution) : undefined, count, refs: links });
+  } else {
+    const size = SEEDREAM_SIZES[String(s.aspect)] ?? SEEDREAM_SIZES["1:1"];
+    // one picture per call: the calls side by side
+    images = await Promise.all(Array.from({ length: count }, () => arkImage({ model: def.model.id, prompt, size, refs: links })));
+  }
+  await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
+  for (const [i, im] of images.entries()) {
+    const meta = await sharp(im.bytes).metadata().catch(() => null);
+    const ext = meta?.format === "jpeg" ? "jpg" : meta?.format === "webp" ? "webp" : "png";
+    const mime = ext === "jpg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
+    await saveOutput(job, i, im.bytes, mime, ext, { width: meta?.width ?? null, height: meta?.height ?? null });
+  }
+  if (job.inputs.library) await keepMadeItem(job).catch((e) => event(job.id, "library_keep_failed", { error: String(e instanceof Error ? e.message : e).slice(0, 300) }));
+  await finishJob(job, "succeeded", { costUsd: def.costUsd({ settings: s, prompt, refs: [] } as never, def.modes[0]) ?? undefined, units: { images: images.length } });
+}
+
 async function saveOutput(job: JobRow, idx: number, file: Buffer, mime: string, ext: string, dims: { width?: number | null; height?: number | null; durationMs?: number | null }, name?: string) {
   const path = `${job.user_id}/outputs/${job.id}/${name ?? idx}.${ext}`;
   const up = await storage.from(JAWAD_BUCKET).upload(path, file, { contentType: mime, upsert: true });
@@ -392,6 +427,9 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   const s = job.inputs.settings;
   await db().from("jawad_jobs").update({ status: "running", submit_state: "accepted", provider_status: "generating" }).eq("id", job.id);
   await event(job.id, "submitted");
+
+  // the pictures sold per image (Google's Nano Banana family on fal, Seedream on ModelArk)
+  if (def.output === "image" && def.provider.id !== "openai") return runSimpleImage(job, def, refs);
 
   if (def.output === "image") {
     const res = await openaiImage({

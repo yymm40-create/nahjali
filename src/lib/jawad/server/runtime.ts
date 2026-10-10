@@ -66,6 +66,8 @@ export const PROVIDER_KEYS: Record<GeneratorDef["provider"]["id"], string[]> = {
   minimax: ["FAL_KEY"],
   // «صوت الجواد»: our own Habibi endpoint, or Chatterbox through fal
   jawad: ["HABIBI_URL", "FAL_KEY"],
+  // Google's Nano Banana family through fal.ai
+  fal: ["FAL_KEY"],
 };
 export const keyConfigured = (d: GeneratorDef) => PROVIDER_KEYS[d.provider.id].some((k) => Boolean(process.env[k]));
 
