@@ -121,19 +121,24 @@ export default function ExportPanel({
         );
       // The links to the files live a few hours: a long session (or a file moved between sequences) can leave one dead,
       // and the browser then says only «Failed to fetch». The links are renewed first, and once more if it still fails.
-      const fresh = async () => (desktop() ? assets : (await api<{ assets: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`)).assets);
+      // (in the desktop program too: its own files keep their haidara-media:// link from the server, and the files that live
+      // online — made by the AI, or uploaded from the site — get fresh links like anywhere else)
+      const fresh = async () => (await api<{ assets: EditorAsset[] }>(`/api/jawad/editor/projects/${projectId}`)).assets;
+      // a file that couldn't be read (only those words: any other error is shown as it is, so it can be fixed)
+      const unreadable = (e: unknown) => e instanceof Error && /failed to fetch|networkerror|load failed|network error|ERR_|fetch.*(fail|abort)/i.test(e.message);
       let r: ExportResult;
       try {
         r = await run(await fresh().catch(() => assets));
       } catch (e) {
-        if (!(e instanceof TypeError || (e instanceof Error && /failed to fetch|networkerror|load failed/i.test(e.message)))) throw e;
+        if (!unreadable(e)) throw e;
         last = 0;
         setPhase({ k: "running", p: 0 });
         try {
           r = await run(await fresh());
         } catch (e2) {
-          if (e2 instanceof TypeError || (e2 instanceof Error && /failed to fetch|networkerror|load failed/i.test(e2.message))) {
-            throw new ExportError("المتصفح ما قدر يقرأ أحد ملفات المشروع (الاتصال انقطع أو الملف ما عاد يُفتح). حدّث الصفحة (F5) وجرّب التصدير مرة ثانية؛ وإذا تكرر، شغّل بلاغ 🐞 وأرسله.");
+          if (unreadable(e2)) {
+            const local = desktop() ? " إذا الملف من جهازك، تأكد إنه باقي في مكانه وما انتقل أو انحذف." : "";
+            throw new ExportError(`المتصفح ما قدر يقرأ أحد ملفات المشروع (الاتصال انقطع أو الملف ما عاد يُفتح).${local} حدّث الصفحة (F5) وجرّب التصدير مرة ثانية؛ وإذا تكرر، شغّل بلاغ 🐞 وأرسله. (${(e2 as Error).message.slice(0, 120)})`);
           }
           throw e2;
         }
