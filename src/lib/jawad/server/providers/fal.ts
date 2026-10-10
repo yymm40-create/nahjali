@@ -78,3 +78,28 @@ export async function falFile(u: string) {
   if (!r.ok) throw new ProviderError("rejected", "تعذّر تنزيل نتيجة الفصل.", `download ${r.status}`);
   return Buffer.from(await r.arrayBuffer());
 }
+
+/** A picture model of fal (Google's Nano Banana family): its images, downloaded. `refs` → its edit endpoint. */
+export async function falImages(o: { model: string; editModel?: string; prompt: string; aspect: string; resolution?: string; count: number; refs: string[] }) {
+  const edit = o.refs.length > 0 && o.editModel;
+  const out = await falRun<{ images?: { url: string; content_type?: string; width?: number; height?: number }[] }>(
+    edit ? o.editModel! : o.model,
+    {
+      prompt: o.prompt,
+      num_images: o.count,
+      aspect_ratio: o.aspect,
+      output_format: "png",
+      ...(o.resolution ? { resolution: o.resolution } : {}),
+      ...(edit ? { image_urls: o.refs } : {}),
+    },
+    270_000,
+  ).catch((e) => {
+    if (e instanceof ProviderError && /الفصل/.test(e.userMessage)) throw new ProviderError(e.outcome, e.outcome === "unknown" ? "التوليد أخذ وقت أطول من المتوقع؛ جرّب مرة ثانية." : "تعذّر التوليد عند المزوّد؛ جرّب مرة ثانية.", e.detail);
+    throw e;
+  });
+  const list = out.images ?? [];
+  if (!list.length) throw new ProviderError("rejected", "ما رجع المزوّد بصورة؛ جرّب وصف ثاني.", `fal ${o.model}: no images`);
+  return Promise.all(
+    list.map(async (im) => ({ bytes: await falFile(im.url), mime: im.content_type ?? "image/png", width: im.width ?? null, height: im.height ?? null })),
+  );
+}
