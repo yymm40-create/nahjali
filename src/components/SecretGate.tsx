@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const ASKED = "secret-asked";
 const PENDING = "secret-pending";
-const SKIP = ["/mahdi", "/login", "/auth", "/admin", "/jawad-ai/login", "/privacy", "/terms", "/editor-test"];
+const SKIP = ["/mahdi", "/login", "/auth", "/admin", "/jawad-ai/login", "/privacy", "/terms", "/editor-test", "/play"];
 const read = (k: string) => {
   try {
     return localStorage.getItem(k);

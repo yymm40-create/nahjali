@@ -18,8 +18,8 @@ interface Msg {
 const KEY = "jw-salman";
 const HELLO: Msg = { role: "assistant", text: "هلا والله 👋 أنا سلمان، مساعدك في الجواد الذكي. اسألني عن أي شي في الموقع ما فهمته، وأشرحه لك ببساطة." };
 const QUICK = ["كيف أشحن رصيدي؟", "كيف أسوي صورة؟", "وش الفرق بين الأقسام؟", "كم سعر التوليد؟"];
-// pages with their own full-screen tools (the editor's project) or their own app (لأجل المهدي) keep the screen to themselves
-const HIDDEN = [/^\/mahdi(\/|$)/, /^\/jawad-ai\/editor\/[^/]+/];
+// pages with their own full-screen tools (the editor's project, a game being played) or their own app (لأجل المهدي) keep the screen to themselves
+const HIDDEN = [/^\/mahdi(\/|$)/, /^\/jawad-ai\/editor\/[^/]+/, /^\/play\//];
 
 function load(): Msg[] {
   try {
