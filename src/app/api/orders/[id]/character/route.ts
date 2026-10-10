@@ -6,6 +6,7 @@ import { checkRateLimit, logGeneration, withHairCheck } from "@/lib/generation";
 import { generateFromReference } from "@/lib/openai";
 import { characterPrompt } from "@config/prompts";
 import { STYLES } from "@config/styles";
+import { whoOf } from "@/lib/tables-booklet/server";
 
 import { storage } from "@/lib/storage";
 // Image generation can take a couple of minutes
@@ -42,7 +43,7 @@ export const POST = handle(async (_req: Request, { params }: { params: Promise<{
     const gender = order.child_gender ?? "boy";
     // A girl's picture is only kept when no hair at all is visible
     image = await withHairCheck(gender, "character", order.id, order.quality, () =>
-      generateFromReference(photo, characterPrompt(order.style, gender), order.quality, { cutout: false, styleReference: STYLES[order.style].referenceImage }),
+      generateFromReference(photo, characterPrompt(order.style, gender, whoOf(order)), order.quality, { cutout: false, styleReference: STYLES[order.style].referenceImage }),
     );
     await logGeneration(order.id, "character", order.quality, true);
   } catch (err) {

@@ -11,7 +11,7 @@ export const PERMS = [
   { key: "editor", label: "✂️ حيدرة كت", hint: "المحرر نفسه" },
   { key: "editor_ai", label: "🤖 حيدرة (الذكاء الاصطناعي)", hint: "المحادثة مع حيدرة وكل ما يصنعه (كابشن، تلوين، صناعة…)" },
   { key: "student", label: "🎓 الطالب الذكي", hint: "بكل ما فيه (صوره وأصواته معه)" },
-  { key: "booklet", label: "📖 كتيب نهج علي", hint: "بلا حد للتجارب" },
+  { key: "booklet", label: "📘 كتيب الجداول الذكي", hint: "الكتيب الجاهز وتصميم الجداول مع نور" },
   { key: "games", label: "🎮 صانع الألعاب الذكي", hint: "قنبر: محادثة تصميم الألعاب. يدخل في «الكود السري» الشامل، وينفتح بإيميل أو بكود؛ ومفتاحه الثلاثي في /admin/games" },
   { key: "content", label: "✍️ صانع المحتوى", hint: "محمد باقر: كاروسيل بـ GPT Image 2، سكربتات الريلز، وتسليم الريلز والموشن لحيدرة. يدخل في «الكود السري» الشامل؛ ومفتاحه الثلاثي في /admin/content" },
   { key: "designer", label: "🎨 المصمم الذكي", hint: "كاظم: بطاقات زواج ومولود، دعوات وإعلانات حسينية، ومصغّرات يوتيوب؛ الصورة بـ GPT Image 2 والكلمات طبقات نصية تُعدَّل. يدخل في «الكود السري» الشامل؛ ومفتاحه الثلاثي في /admin/designer" },
@@ -31,8 +31,8 @@ export const isPerm = (v: unknown): v is Perm => typeof v === "string" && (ALL_P
 export const NAMED_ONLY: Perm[] = [];
 /** What the all-opening secret code opens (everything but the named-only sections). */
 export const OPEN_PERMS: Perm[] = ALL_PERMS.filter((p) => !NAMED_ONLY.includes(p));
-/** What every signed-in person may use once the owner opens the site (/admin «فتح الموقع للجميع»): every section but the booklet. */
-export const PUBLIC_PERMS: Perm[] = ALL_PERMS.filter((p) => p !== "booklet");
+/** What every signed-in person may use once the owner opens the site (/admin «فتح الموقع للجميع»): every section (the booklet is «كتيب الجداول الذكي» in JAWAD AI now). */
+export const PUBLIC_PERMS: Perm[] = ALL_PERMS;
 /**
  * Who makes for FREE («بلا حدود»): the owners, whoever came in by the all-opening «الكود السري», an e-mail the owner
  * marked unlimited in «السماح», or a code the owner marked unlimited. Everyone else pays in riyals from their wallet.

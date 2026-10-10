@@ -42,6 +42,7 @@ const TOOL: Record<string, { icon: string; line: string; tint: string }> = {
   content: { icon: "✍️", line: "«محمد باقر»: كاروسيل وريلز ومحتوى يبيع.", tint: "#f472b6" },
   designer: { icon: "🎨", line: "«كاظم»: بطاقات وإعلانات بخطوط عربية.", tint: "#a78bfa" },
   photo: { icon: "📸", line: "«زهراء»: تحرير صورك وتصاميمك بلمسة محترف.", tint: "#fb7185" },
+  booklet: { icon: "📘", line: "«نور»: كتيب جداول وتحفيز بصورة طفلك أو صورتك.", tint: "#38bdf8" },
   student: { icon: "🎒", line: "ملخصات وشرح واختبارات من مادتك.", tint: "#7c3aed" },
   games: { icon: "🎮", line: "«قنبر»: صمّم لعبتك وخلّ الموقع يبنيها وتلعبها برابط.", tint: "#34d399" },
   islamic: { icon: "🕌", line: "أسئلتك الدينية بإجابات من مصادرها.", tint: "#10b981" },

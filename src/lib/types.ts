@@ -27,6 +27,8 @@ export interface Order {
   child_gender: Gender | null;
   style: StyleKey;
   parent_message: string | null;
+  /** «كتيب الجداول الذكي»: who the booklet is for, and its design (see src/lib/tables-booklet/server.ts) */
+  spec?: unknown;
   created_at: string;
   updated_at: string;
 }

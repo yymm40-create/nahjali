@@ -8,6 +8,19 @@ export type Gender = "boy" | "girl";
 /** Shared rules that keep every character child-friendly and fully stylized. */
 const STYLIZE = `A fully stylized cartoon CHILD character (about 5–8 years old), NOT a realistic human: no photorealism, no realistic skin pores, no photographic lighting. Big expressive eyes, warm friendly expression, modest and wholesome.`;
 
+/**
+ * «كتيب الجداول الذكي» also makes booklets for grown-ups: who the character is (a child by default). A grown-up is drawn
+ * as a stylized cartoon adult of about their age, never realistic; a woman is dressed and covered exactly like a girl.
+ */
+export interface Who {
+  adult: boolean;
+  age?: number;
+}
+const stylize = (who?: Who) =>
+  who?.adult
+    ? `A fully stylized cartoon ADULT character (about ${Math.max(18, Math.min(80, who.age ?? 30))} years old), NOT a realistic human: no photorealism, no realistic skin pores, no photographic lighting. Friendly expressive eyes, warm expression, modest and wholesome.`
+    : STYLIZE;
+
 /** Girls: always a full Zainabiya abaya, face and hands only, no makeup, and NOT ONE hair visible. */
 const GIRL_DRESS = `She wears a modest black Iraqi Zainabiya abaya: one loose black cloak draped from the top of the head down to the ankles, worn over a snug underscarf that tightly frames the face; ALL hair, ears and neck fully covered; long loose sleeves to the wrists; only the face and the hands are visible. Absolutely no makeup, no lipstick, no jewelry — a natural child's face.`;
 
@@ -29,7 +42,11 @@ export const HAIR_CHECK = {
 /** Boys keep the SAME clothes as in the uploaded photo on every page (owner's request) and never wear a cap. */
 const BOY_DRESS = `He wears exactly the same clothes as the child in the FIRST reference image (same garments, colours and patterns), simplified in the cartoon style. Do not change his outfit. Nothing on his head: no cap, no hat, no kufi.`;
 
-const dress = (gender: Gender) => (gender === "girl" ? GIRL_DRESS : BOY_DRESS);
+/** The outfit; a grown-up's says "person" where a child's says "child" (the rules themselves are the same). */
+const dress = (gender: Gender, who?: Who) => {
+  const d = gender === "girl" ? GIRL_DRESS : BOY_DRESS;
+  return who?.adult ? d.replace("a natural child's face", "a natural face").replace("the child in the FIRST", "the person in the FIRST") : d;
+};
 
 const FRAMING = `Single character only, full body visible from head to feet, standing on the ground, centered, small empty margin around the character. No other people or creatures, no text, no logos, no props cut off by the frame.`;
 
@@ -40,14 +57,14 @@ const STYLE_REFERENCE_NOTE = `The LAST reference image is a STYLE REFERENCE ONLY
 export const hasStyleReference = (style: StyleKey) => Boolean(STYLES[style].referenceImage);
 
 /** Base character made from the child's photo (shown to the parent for approval). */
-export function characterPrompt(style: StyleKey, gender: Gender) {
+export function characterPrompt(style: StyleKey, gender: Gender, who?: Who) {
   return [
-    `Turn the child in the FIRST reference photo into a stylized animated movie character (a complete cartoon re-design, not a filtered photo).`,
+    `Turn the ${who?.adult ? "person" : "child"} in the FIRST reference photo into a stylized animated movie character (a complete cartoon re-design, not a filtered photo).`,
     gender === "boy"
       ? `Keep them clearly recognizable: same face shape, skin tone, eye colour and features, hair colour and hairstyle.`
       : `Keep her clearly recognizable from her FACE ONLY: same face shape, skin tone, eye colour and facial features. Take nothing from her hair or clothes in the photo.`,
-    STYLIZE,
-    dress(gender),
+    stylize(who),
+    dress(gender, who),
     `Pose: standing relaxed with a warm happy smile, facing the viewer.`,
     FRAMING,
     `Plain flat light grey background.`,
@@ -76,13 +93,13 @@ export const POSES: Record<string, { action: string }> = {
 };
 
 /** One pose, made from the APPROVED character image (first reference). */
-export function posePrompt(poseKey: string, style: StyleKey, gender: Gender) {
+export function posePrompt(poseKey: string, style: StyleKey, gender: Gender, who?: Who) {
   const pose = POSES[poseKey];
   if (!pose) throw new Error(`Unknown pose "${poseKey}" (config/prompts.ts → POSES)`);
   return [
-    `Use the exact same child character as the FIRST reference image: identical face, skin tone, proportions and the same stylized cartoon rendering. Do not make the character more realistic.`,
-    STYLIZE,
-    dress(gender),
+    `Use the exact same ${who?.adult ? "" : "child "}character as the FIRST reference image: identical face, skin tone, proportions and the same stylized cartoon rendering. Do not make the character more realistic.`,
+    stylize(who),
+    dress(gender, who),
     `Pose: ${pose.action}.`,
     FRAMING,
     GREEN_SCREEN,

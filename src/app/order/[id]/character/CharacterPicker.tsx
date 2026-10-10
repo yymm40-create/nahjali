@@ -9,13 +9,15 @@ import Spinner from "@/components/Spinner";
 
 interface Props {
   orderId: string;
+  /** where this order's steps live (the old booklet pages, or «كتيب الجداول الذكي» in JAWAD AI) */
+  base?: string;
   status: OrderStatus;
   characters: { id: string; attempt: number; url: string }[];
   attemptsLeft: number;
   autoGenerate: boolean;
 }
 
-export default function CharacterPicker({ orderId, status, characters, attemptsLeft, autoGenerate }: Props) {
+export default function CharacterPicker({ orderId, status, characters, attemptsLeft, autoGenerate, base = `/order/${orderId}` }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState(characters.at(-1)?.id ?? "");
   const [generating, setGenerating] = useState(status === "generating_character");
@@ -28,7 +30,7 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
     setError("");
     try {
       await postJson(`/api/orders/${orderId}/character`);
-      router.replace(`/order/${orderId}/character`);
+      router.replace(`${base}/character`);
       router.refresh();
       // stays «generating» until the page re-renders with the new character (the list's key remounts this component)
     } catch (e) {
@@ -61,7 +63,7 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
     setError("");
     try {
       await postJson(`/api/orders/${orderId}/approve`, { characterId: selected });
-      router.push(`/order/${orderId}/progress`);
+      router.push(`${base}/progress`);
     } catch (e) {
       setError((e as Error).message);
       setApproving(false);
@@ -121,7 +123,7 @@ export default function CharacterPicker({ orderId, status, characters, attemptsL
       </button>
       {attemptsLeft <= 0 && <p className="text-center text-sm font-bold text-muted">خلّصت محاولاتك، اعتمد واحدة من الشخصيات فوق.</p>}
       {attemptsLeft > 0 && (
-        <Link href={`/order/${orderId}/upload`} className="block text-center font-bold underline">
+        <Link href={`${base}/upload`} className="block text-center font-bold underline">
           أبي أغيّر الصورة
         </Link>
       )}

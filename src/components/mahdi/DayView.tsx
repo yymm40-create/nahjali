@@ -8,6 +8,7 @@ import { fmtDateLong, fmtHijri, fmtPct, fmtRelativeDay, t } from "@/lib/mahdi/i1
 import { bySort, CHALLENGE_GROUP, habitStatus, pickPhrase } from "@/lib/mahdi/client/derive";
 import type { Project } from "@/lib/mahdi/types";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
+import BookletCard from "./BookletCard";
 import ReadingCard from "./ReadingCard";
 import DayTasks from "./DayTasks";
 import DayBars from "./DayBars";
@@ -108,6 +109,7 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
       )}
 
       {home && <ReadingCard />}
+      {home && <BookletCard />}
       {isToday && <DayTasks />}
 
       {projects.length === 0 ? (

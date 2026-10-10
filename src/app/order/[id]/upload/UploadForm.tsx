@@ -18,7 +18,8 @@ async function shrinkImage(file: File, maxSide = 1600): Promise<Blob> {
   );
 }
 
-export default function UploadForm({ orderId, attemptsLeft }: { orderId: string; attemptsLeft: number }) {
+/** `base`: where this order's steps live (the old booklet pages, or «كتيب الجداول الذكي» in JAWAD AI). */
+export default function UploadForm({ orderId, attemptsLeft, base = `/order/${orderId}` }: { orderId: string; attemptsLeft: number; base?: string }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
@@ -48,7 +49,7 @@ export default function UploadForm({ orderId, attemptsLeft }: { orderId: string;
       const form = new FormData();
       form.append("photo", blob, "photo.jpg");
       await api(`/api/orders/${orderId}/upload`, { method: "POST", body: form });
-      router.push(`/order/${orderId}/character?generate=1`);
+      router.push(`${base}/character?generate=1`);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

@@ -1,0 +1,106 @@
+/* «كتيب الجداول الذكي» — a bright sky of paper: soft blue with floating stars, white cards with a chunky outline, and the
+   booklet's steps (photo, character, download) on light paper. Every class starts with `tb-`. */
+
+.tb {
+  --tb-ink: #14234a;
+  --tb-sky: #bfe6ff;
+  --tb-sea: #7cc4f5;
+  --tb-sun: #ffb703;
+  --tb-rose: #ff6b8b;
+  --tb-card: #ffffff;
+  --tb-soft: #f1f8ff;
+  position: relative;
+  min-height: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px));
+  padding: 20px 16px 48px;
+  color: var(--tb-ink);
+  background:
+    radial-gradient(circle at 12% 18%, #ffffff 0 2px, transparent 3px) 0 0 / 90px 90px,
+    radial-gradient(circle at 70% 60%, #ffffffaa 0 1.5px, transparent 2.5px) 0 0 / 70px 70px,
+    linear-gradient(180deg, var(--tb-sky), var(--tb-sea));
+}
+.tb > * { max-width: 760px; margin-inline: auto; }
+.tb * { box-sizing: border-box; }
+
+.tb-hero { text-align: center; margin-bottom: 18px; }
+.tb-hero-ic { display: inline-grid; place-items: center; width: 74px; height: 74px; font-size: 40px; border-radius: 24px; background: var(--tb-card); border: 3px solid var(--tb-ink); box-shadow: 0 6px 0 var(--tb-ink); animation: tb-bob 3s ease-in-out infinite; }
+.tb-hero h1 { margin: 12px 0 6px; font-size: clamp(28px, 7vw, 44px); font-weight: 900; line-height: 1.15; }
+.tb-hero p { margin: 0 auto; max-width: 560px; font-weight: 700; opacity: 0.85; }
+@keyframes tb-bob { 50% { transform: translateY(-6px) rotate(-3deg); } }
+
+.tb-card, .tb-paper, .tb-summary { background: var(--tb-card); border: 3px solid var(--tb-ink); border-radius: 22px; box-shadow: 0 6px 0 var(--tb-ink); padding: 18px; margin-bottom: 16px; }
+.tb-card h2 { margin: 0 0 12px; font-size: 22px; font-weight: 900; }
+.tb-center { text-align: center; display: grid; gap: 12px; justify-items: center; }
+.tb-paper { background: #fffdf6; }
+.tb-back { display: inline-block; margin-bottom: 12px; font-weight: 800; color: var(--tb-ink); text-decoration: underline; }
+
+.tb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 18px; border-radius: 14px; border: 2.5px solid var(--tb-ink); background: var(--tb-card); color: var(--tb-ink); font-weight: 900; cursor: pointer; box-shadow: 0 3px 0 var(--tb-ink); transition: transform 0.12s, box-shadow 0.12s; }
+.tb-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: none; }
+.tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tb-primary { background: var(--tb-sun); }
+.tb-big { display: flex; width: 100%; min-height: 64px; font-size: 22px; margin-bottom: 16px; }
+.tb-row { display: flex; gap: 10px; justify-content: space-between; margin-top: 16px; flex-wrap: wrap; }
+
+.tb-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tb-choices.tb-col { grid-template-columns: 1fr; }
+.tb-choice { display: grid; gap: 4px; justify-items: center; text-align: center; padding: 14px 12px; border-radius: 18px; border: 2.5px solid var(--tb-ink); background: var(--tb-soft); color: var(--tb-ink); cursor: pointer; transition: transform 0.15s, background 0.15s; }
+.tb-choice:hover { transform: translateY(-2px); }
+.tb-choice.on { background: var(--tb-sun); box-shadow: 0 4px 0 var(--tb-ink); }
+.tb-choice i { font-style: normal; font-size: 34px; }
+.tb-choice b { font-size: 18px; font-weight: 900; }
+.tb-choice span { font-size: 13px; font-weight: 700; opacity: 0.8; }
+
+.tb-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; font-weight: 800; }
+.tb-fields label, label.tb-fields { display: grid; gap: 6px; }
+.tb-fields input { width: 100%; min-height: 46px; padding: 8px 12px; border-radius: 12px; border: 2.5px solid var(--tb-ink); font: inherit; font-weight: 700; color: var(--tb-ink); background: #fff; }
+.tb-hint { font-size: 14px; font-weight: 700; opacity: 0.8; margin: 8px 0; }
+.tb-error { background: #ffe1e6; border: 2.5px solid #b4234a; color: #7a0f2c; border-radius: 14px; padding: 10px 14px; font-weight: 800; }
+.tb-price { font-weight: 900; font-size: 18px; margin: 14px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tb-price small { font-size: 13px; opacity: 0.7; }
+
+.tb-styles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tb-style { display: grid; gap: 4px; padding: 8px; border-radius: 16px; border: 2.5px solid var(--tb-ink); background: var(--tb-soft); color: var(--tb-ink); cursor: pointer; text-align: center; }
+.tb-style img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
+.tb-style b { font-weight: 900; }
+.tb-style span { font-size: 12px; font-weight: 700; opacity: 0.8; }
+.tb-style.on { background: var(--tb-sun); box-shadow: 0 4px 0 var(--tb-ink); }
+
+.tb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tb-list li { display: flex; gap: 6px; }
+.tb-list a, .tb-list li > button:first-child { flex: 1; display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 2px solid var(--tb-ink); background: var(--tb-soft); color: var(--tb-ink); font: inherit; text-align: start; cursor: pointer; }
+.tb-list span { font-size: 13px; font-weight: 800; opacity: 0.75; white-space: nowrap; }
+.tb-x { width: 44px; border-radius: 14px; border: 2px solid var(--tb-ink); background: #fff; color: var(--tb-ink); cursor: pointer; font-weight: 900; }
+
+.tb-chat { display: flex; flex-direction: column; gap: 12px; }
+.tb-chat-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; background: var(--tb-card); border: 3px solid var(--tb-ink); border-radius: 18px; padding: 8px 10px; }
+.tb-chat-top b { font-weight: 900; }
+.tb-msgs { display: grid; gap: 12px; }
+.tb-msg { display: flex; gap: 8px; align-items: flex-start; }
+.tb-msg > div, .tb-msg > p { min-width: 0; }
+.tb-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; font-weight: 600; padding: 12px 14px; border-radius: 18px; border: 2.5px solid var(--tb-ink); background: var(--tb-card); }
+.tb-msg.me { flex-direction: row-reverse; }
+.tb-msg.me p { background: var(--tb-sun); }
+.tb-msg.err p { background: #ffe1e6; }
+.tb-av { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 2.5px solid var(--tb-ink); background: #ffd6e0; font-style: normal; font-size: 20px; }
+.tb-typing { animation: tb-pulse 1.2s ease-in-out infinite; }
+@keyframes tb-pulse { 50% { opacity: 0.5; } }
+
+.tb-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tb-opt { min-height: 40px; padding: 6px 14px; border-radius: 999px; border: 2.5px solid var(--tb-ink); background: var(--tb-soft); color: var(--tb-ink); font: inherit; font-weight: 800; cursor: pointer; box-shadow: 0 3px 0 var(--tb-ink); }
+.tb-opt:hover:not(:disabled) { background: #fff3c4; }
+.tb-opt:disabled { opacity: 0.5; }
+.tb-opt-write { background: #fff; border-style: dashed; box-shadow: none; }
+.tb-chip { display: inline-flex; align-items: center; gap: 4px; }
+.tb-sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--tb-ink); }
+
+.tb-summary { border-color: var(--tb-ink); background: linear-gradient(180deg, #fff, #fff8e1); }
+.tb-summary h3 { margin: 0 0 8px; font-size: 20px; font-weight: 900; }
+.tb-summary ul { margin: 0 0 8px; padding-inline-start: 20px; display: grid; gap: 4px; font-weight: 700; }
+.tb-summary p { margin: 6px 0; font-weight: 700; }
+.tb-summary .tb-btn { width: 100%; margin-top: 12px; min-height: 54px; font-size: 19px; }
+
+.tb-send { position: sticky; bottom: 8px; display: flex; gap: 8px; align-items: flex-end; background: var(--tb-card); border: 3px solid var(--tb-ink); border-radius: 18px; padding: 8px; }
+.tb-send textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; font: inherit; font-weight: 600; color: var(--tb-ink); background: transparent; padding: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-hero-ic, .tb-typing { animation: none; }
+}

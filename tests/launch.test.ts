@@ -55,8 +55,8 @@ describe("«سلمان»", () => {
 });
 
 describe("the launch", () => {
-  it("opens every section but the booklet", () => {
-    expect(PUBLIC_PERMS).not.toContain("booklet");
+  it("opens every section, the booklet of tables included (it lives in JAWAD AI now)", () => {
+    expect(PUBLIC_PERMS).toContain("booklet");
     expect(PUBLIC_PERMS).toContain("video");
     expect(PUBLIC_PERMS).toContain("photo");
   });
