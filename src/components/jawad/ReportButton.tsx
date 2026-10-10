@@ -18,6 +18,11 @@ const push = (kind: string, text: string) => {
   if (log.length > MAX) log.shift();
 };
 
+/** When the page last came back (woke from sleep, shown again, back online); requests failing just after are the device's. */
+let woke = 0;
+const TICK_MS = 5000;
+const WAKE_GRACE_MS = 20000;
+
 export default function ReportButton() {
   const path = usePathname();
   const [open, setOpen] = useState(false);
@@ -53,11 +58,29 @@ export default function ReportButton() {
         }
         return res;
       } catch (e) {
-        push("طلب انقطع", `${url.replace(location.origin, "")} → ${(e as Error).message}`);
+        // stopped on purpose: not a fault
+        if ((e as Error).name === "AbortError" || args[1]?.signal?.aborted) throw e;
+        // the device, not the site: no network, the page hidden, or just woken from sleep (timers fire before the network is back)
+        const device = !navigator.onLine || document.hidden || Date.now() - woke < WAKE_GRACE_MS;
+        push(device ? "انقطع الاتصال من الجهاز (نوم أو نت)" : "طلب انقطع", `${url.replace(location.origin, "")} → ${(e as Error).message}`);
         throw e;
       }
     };
+    // when the device sleeps the page's clock jumps: a gap far longer than the tick means it just woke
+    let lastTick = Date.now();
+    const clock = setInterval(() => {
+      const now = Date.now();
+      if (now - lastTick > TICK_MS * 4) woke = now;
+      lastTick = now;
+    }, TICK_MS);
+    const onVisible = () => { if (!document.hidden) woke = Date.now(); };
+    const onOnline = () => { woke = Date.now(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
     return () => {
+      clearInterval(clock);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRej);
       console.error = origErr;

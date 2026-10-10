@@ -92,6 +92,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
   useEffect(() => {
     if (!writing && !painting) return;
     const timer = setInterval(async () => {
+      if (document.hidden) return;
       try {
         const s = await api<{ status: string | null; imagesRunning: number }>(`/api/film/projects/${projectId}/sheets`);
         const w = s.status === "running";
