@@ -167,3 +167,41 @@ describe("the person's face is never cut by the frame", () => {
     }
   });
 });
+
+// «يحط الشاشة كاملة ويغطيني»: the panel of a box or a corner covers the frame and shows the person through a window
+// cut in it — so that window must exist, have a real size, and have the person's FACE inside it.
+describe("the designed panel never covers the person", () => {
+  const FULL = { x: 0.5, y: 0.5, scale: 1, rotate: 0, opacity: 1 };
+  const faces = [
+    { x: 0.5, y: 0.2, w: 0.3, h: 0.2 },
+    { x: 0.5, y: 0.4, w: 0.3, h: 0.22 },
+    { x: 0.35, y: 0.62, w: 0.28, h: 0.2 },
+    { x: 0.7, y: 0.75, w: 0.3, h: 0.24 },
+    { x: 0.5, y: 0.5, w: 0.5, h: 0.42 },
+  ];
+  for (const ratio of ["9:16", "16:9", "1:1", "4:5"] as const) {
+    const tl = emptyTimeline(ratio as Ratio);
+    for (const face of [...faces, null]) {
+      it(`${ratio} · a face at ${face?.y ?? "unknown"}: the window is open on the face`, () => {
+        for (const mode of ["shrink", "corner"] as const) {
+          const geo = frameGeo(mode, tl.width, tl.height, face);
+          const hole = geo.panel?.hole;
+          expect(hole, `${mode} has a window`).toBeTruthy();
+          // a window with no size would leave the panel covering everything
+          expect(hole!.w / geo.panel!.w, `${mode} window width`).toBeGreaterThan(0.1);
+          expect(hole!.h / geo.panel!.h, `${mode} window height`).toBeGreaterThan(0.1);
+          // the face shows through it
+          const t = geo.person(FULL);
+          const k = t.scale / FULL.scale;
+          const f = face ?? { x: 0.5, y: 0.4, w: 0.3, h: 0.22 };
+          const fx = t.x + (f.x - 0.5) * k;
+          const fy = t.y + (f.y - 0.5) * k;
+          expect(fx, `${mode} face right of the window`).toBeGreaterThanOrEqual(hole!.x / geo.panel!.w - 0.001);
+          expect(fx, `${mode} face left of the window`).toBeLessThanOrEqual((hole!.x + hole!.w) / geo.panel!.w + 0.001);
+          expect(fy, `${mode} face under the window top`).toBeGreaterThanOrEqual(hole!.y / geo.panel!.h - 0.001);
+          expect(fy, `${mode} face above the window bottom`).toBeLessThanOrEqual((hole!.y + hole!.h) / geo.panel!.h + 0.001);
+        }
+      });
+    }
+  }
+});

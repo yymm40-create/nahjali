@@ -89,6 +89,51 @@ export function readFace(v: unknown): FaceBox | null {
 
 const clean = (v: unknown, max: number) => (typeof v === "string" ? westernDigits(v.replace(/\s+/g, " ").trim()).slice(0, max) : "");
 
+/**
+ * The words of each frame, as people actually ask for it («اقسمني نصين», «سو مربع صغير», «صغرني في الزاوية»), in the
+ * order that settles a message naming more than one: «خليني صغير في الزاوية» is the corner, not just «صغير».
+ */
+const FRAME_WORDS: { layout: TalkLayout; words: string[] }[] = [
+  { layout: "over", words: ["بملء الشاشه", "خلني كامل", "لا تصغرني", "ما تصغرني", "بدون تصغير"] },
+  { layout: "over3d", words: ["ثلاثي الابعاد", "ثري دي", "3d", "بدون مربع", "بدون ما يصغرني"] },
+  { layout: "corner", words: ["الزاويه", "زاويه", "دايره صغيره", "دايره", "بابل", "corner"] },
+  { layout: "split", words: ["نصين", "نص ونص", "نصفين", "اقسم", "اقسمني", "قسم", "قسمني", "تقسيم", "شق الشاشه", "نص الشاشه", "مقسومه", "سبليت", "split"] },
+  { layout: "shrink", words: ["مربع صغير", "مربع", "صغرني", "خليني صغير", "تصغير", "بكتشر ان بكتشر", "pip", "بوكس"] },
+  { layout: "mix", words: ["نوع الاطار", "متنوع", "غير الاطار", "كل مره شكل", "mix"] },
+];
+
+const flat = (t: string) =>
+  t
+    .replace(/[\u064b-\u0652\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase();
+
+/** A wording is in the message: a word of it, or a word carrying one of Arabic's stuck-on prefixes («بالزاوية»). */
+function said(words: string[], text: string): boolean {
+  const t = ` ${text} `;
+  const tokens = text.split(" ");
+  return words.some((w) => {
+    const f = flat(w);
+    if (f.includes(" ")) return t.includes(` ${f} `);
+    return tokens.some((k) => k === f || (k.length > f.length && k.length <= f.length + 3 && k.endsWith(f)));
+  });
+}
+
+/**
+ * The frame the person asked for IN THEIR OWN WORDS — «اقسمني نصين» is a split, «سو مربع صغير» is the box, whatever
+ * the robot chose. A message naming two frames takes the more particular one (the order above); a message naming none
+ * gives null, and nothing is guessed.
+ */
+export function talkLayoutInText(text: string): TalkLayout | null {
+  if (!text) return null;
+  const t = flat(text);
+  return FRAME_WORDS.find((f) => said(f.words, t))?.layout ?? null;
+}
+
 /** At least this long between two moments: the one before is read, and the person is seen talking in between. */
 export const CUE_GAP_MS = 2400;
 /** The reel is the person, not the graphics: about one moment every this long (a 30 s reel → six, not twenty). */
