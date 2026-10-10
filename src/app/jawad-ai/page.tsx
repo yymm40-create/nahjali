@@ -6,9 +6,12 @@ import { loadCreditSettings } from "@/lib/credits/settings";
 import { liveAds } from "@/lib/jawad/server/ads";
 import { canUseJawad, jawadLogin, jawadSession } from "@/lib/jawad/server/access";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
+import { barSections } from "@/lib/jawad/server/bar";
 import { worksPage } from "@/lib/jawad/server/works";
 import type { WorkItem } from "@/lib/jawad/labels";
 import { JAWAD } from "@config/jawad/brand";
+import { COURSE } from "@config/course";
+import { LEARN } from "@config/learn";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +65,8 @@ export default async function JawadHome() {
     return <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} />;
   }
   const hasAds = Boolean(ads.main || ads.side_top || ads.side_bottom);
-  const sections = rt.sections.filter((s) => s.enabled);
+  // every branch this person may open (the same as the top bar), the owner's hidden ones too
+  const sections = (await barSections(rt, user, owner)).filter((s) => s.enabled || owner);
   const allowed = await canUseJawad(user);
   const recent = allowed ? (await worksPage(user.id, "all", null).catch(() => null))?.items.map(thumb).filter((t): t is NonNullable<typeof t> => Boolean(t)).slice(0, 10) ?? [] : [];
   const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string };
@@ -74,7 +78,12 @@ export default async function JawadHome() {
       owner={owner}
       userId={user.id}
       sections={sections.map((s) => ({ id: s.id, name: s.name, path: s.path, output: s.output, implementation: s.implementation }))}
-      tools={sections.map((s) => ({ href: s.path, name: s.name, ...(TOOL[s.implementation] ?? { icon: "✨", line: BLURB[s.implementation] ?? "", tint: "#8b5cf6" }) }))}
+      tools={[
+        ...sections.map((s) => ({ href: s.path, name: s.name, ...(TOOL[s.implementation] ?? { icon: "✨", line: BLURB[s.implementation] ?? "", tint: "#8b5cf6" }) })),
+        // the branches outside the registry: the course and the lessons of those who bought it
+        { href: COURSE.base, name: COURSE.name, icon: "🎓", line: "تعلّم تصنع بالذكاء الاصطناعي خطوة بخطوة.", tint: "#fbbf24" },
+        { href: LEARN.base, name: "دوراتي", icon: "📺", line: "دروس الدورات اللي اشتركت فيها.", tint: "#60a5fa" },
+      ]}
       recent={recent}
       ads={hasAds ? <AdsGrid ads={ads} emptyHint={owner ? <Link href="/jawad-ai/admin/ads" className="text-xs underline">خانة فارغة: أضف إعلانًا</Link> : null} /> : null}
     />
