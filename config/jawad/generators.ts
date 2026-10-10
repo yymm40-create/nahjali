@@ -213,6 +213,14 @@ export interface SimpleImageSpec {
   maxRefs: number;
   maxCount: number;
   promptMax: number;
+  /** what each reference picture adds (USD), when the provider charges for inputs (FLUX 2: per megapixel) */
+  refUsd?: number;
+  /** what the reference pictures do (default «بصور مرجعية») */
+  refsLabel?: string;
+  /** the name of the tier choice (default «الدقة») */
+  tierLabel?: string;
+  /** the prompt's language: Arabic is understood (default true) */
+  arabic?: boolean;
   sources: GeneratorDef["sources"];
   verification: GeneratorDef["verification"];
 }
@@ -223,8 +231,9 @@ const ASPECT_HINT: Record<string, string> = { "1:1": "مربع", "16:9": "أفق
 export function simpleImage(spec: SimpleImageSpec): GeneratorDef {
   const modes: ModeDef[] = [
     { id: "text_to_image", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
-    { id: "image_reference", label: "بصور مرجعية", refStyle: "references", refs: { image: { min: 1, max: spec.maxRefs } }, promptRequired: true },
+    { id: "image_reference", label: spec.refsLabel ?? "بصور مرجعية", refStyle: "references", refs: { image: { min: 1, max: spec.maxRefs } }, promptRequired: true },
   ];
+  const refsOf = (d: { refs: unknown[] }) => Math.min(spec.maxRefs, d.refs.length);
   const tierOf = (v: unknown) => spec.tiers.find((t) => t.value === v) ?? spec.tiers[0];
   const def: GeneratorDef = {
     id: spec.id,
@@ -240,24 +249,42 @@ export function simpleImage(spec: SimpleImageSpec): GeneratorDef {
     modes,
     options: [
       { key: "aspect", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "1:1", values: spec.aspects.map((a) => ({ value: a, label: a, ...(ASPECT_HINT[a] ? { hint: ASPECT_HINT[a] } : {}) })) },
-      ...(spec.tiers.length > 1 ? [{ key: "resolution", label: "الدقة", kind: "choice" as const, ltr: true, default: spec.tiers[0].value, values: spec.tiers.map((t) => ({ value: t.value, label: t.label })) }] : []),
+      ...(spec.tiers.length > 1 ? [{ key: "resolution", label: spec.tierLabel ?? "الدقة", kind: "choice" as const, ltr: !spec.tierLabel, default: spec.tiers[0].value, values: spec.tiers.map((t) => ({ value: t.value, label: t.label })) }] : []),
       { key: "count", label: "عدد الصور", kind: "int", min: 1, max: spec.maxCount, default: 1, unit: "صورة" },
     ],
     files: { image: IMAGE_FILE },
-    prompt: { label: "البرومبت", placeholder: "صف الصورة التي تريدها…", max: spec.promptMax, arabic: true },
+    prompt: {
+      label: "البرومبت",
+      placeholder: "صف الصورة التي تريدها…",
+      max: spec.promptMax,
+      arabic: spec.arabic ?? true,
+      ...(spec.arabic === false ? { arabicNote: `${spec.name} يفهم الإنجليزية أفضل؛ اكتب البرومبت بالإنجليزية (الكلام المكتوب داخل الصورة يُكتب بين علامتي تنصيص).` } : {}),
+    },
     refLabel: (_kind, n) => `Image ${n}`,
-    priceKeys: spec.tiers.map((t) => ({ key: `img:${t.value}`, label: `صورة${spec.tiers.length > 1 ? ` · ${t.label}` : ""}`, defaultCenti: centiFor(t.usd), basis: `سعر المزوّد المنشور: $${t.usd} للصورة` })),
+    priceKeys: [
+      ...spec.tiers.map((t) => ({ key: `img:${t.value}`, label: `صورة${spec.tiers.length > 1 ? ` · ${t.label}` : ""}`, defaultCenti: centiFor(t.usd), basis: `سعر المزوّد المنشور: $${t.usd} للصورة` })),
+      ...(spec.refUsd ? [{ key: "ref", label: "كل صورة مرجعية", defaultCenti: centiFor(spec.refUsd), basis: `سعر المزوّد للمدخلات: $${spec.refUsd} للصورة المرجعية (سقف)` }] : []),
+    ],
     modeFor: (_style, refs) => (refs.length ? modes[1] : modes[0]),
-    rules: () => ({ options: opt(def.options), issues: [], notes: [] }),
+    // a prompt in Arabic is still sent (a note, not a block): these models just follow English better
+    rules: (d) => ({ options: opt(def.options), issues: [], notes: spec.arabic === false && hasArabic(d.prompt) ? [def.prompt.arabicNote!] : [] }),
     price(d, _mode, table) {
       const t = tierOf(d.settings.resolution);
       const per = table[`img:${t.value}`];
       if (per == null) return { ok: false, reason: "سعر هذا الإعداد غير محدد بعد." };
       const n = Math.max(1, Math.min(spec.maxCount, Number(d.settings.count) || 1));
-      return total([{ label: `${n} × صورة`, centi: n * per }], def.costUsd(d, modes[0]));
+      const lines = [{ label: `${n} × صورة`, centi: n * per }];
+      const refs = refsOf(d);
+      if (spec.refUsd && refs) {
+        const rk = table.ref;
+        if (rk == null) return { ok: false, reason: "سعر الصور المرجعية غير محدد بعد." };
+        lines.push({ label: `${refs} × صورة مرجعية`, centi: n * refs * rk });
+      }
+      return total(lines, def.costUsd(d, modes[0]));
     },
     costUsd(d) {
-      return Math.max(1, Math.min(spec.maxCount, Number(d.settings.count) || 1)) * tierOf(d.settings.resolution).usd;
+      const n = Math.max(1, Math.min(spec.maxCount, Number(d.settings.count) || 1));
+      return n * (tierOf(d.settings.resolution).usd + (spec.refUsd ?? 0) * refsOf(d));
     },
     sources: spec.sources,
     verification: spec.verification,
@@ -336,6 +363,63 @@ const nanoBananaPro = simpleImage({
     { item: "النسب والدقة", status: "verified", note: "aspect_ratio بالنسب المعروضة؛ resolution: 1K · 2K · 4K." },
     { item: "السعر", status: "verified", note: "$0.15 للصورة عند 1K و2K، و$0.30 عند 4K (صفحة النموذج في fal)." },
     falRefsNote,
+  ],
+});
+
+// ───────────────────────────── FLUX 2 Pro · Ideogram 3 (fal.ai) ─────────────────────────────
+// Checked on 2026-10-10: fal's model pages (prices) and OpenAPI schemas. Neither takes an aspect ratio: their image_size
+// presets are sent instead (FAL_IMAGE_SIZES); FLUX 2 Pro makes one picture per request.
+
+const FLUX_ASPECTS = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+/** fal's image_size presets for a ratio (FLUX 2 and Ideogram). */
+export const FAL_IMAGE_SIZES: Record<string, string> = { "1:1": "square_hd", "16:9": "landscape_16_9", "9:16": "portrait_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3" };
+
+const flux2Pro = simpleImage({
+  id: "bfl-flux-2-pro",
+  name: "FLUX.2 Pro",
+  provider: { id: "fal", label: "Black Forest Labs (fal.ai)" },
+  model: { id: "fal-ai/flux-2-pro", family: "FLUX.2 [pro]", version: "fal" },
+  editModel: "fal-ai/flux-2-pro/edit",
+  aspects: FLUX_ASPECTS,
+  // the presets are about one megapixel: the first megapixel is $0.03
+  tiers: [{ value: "1MP", label: "1MP", usd: 0.03 }],
+  refUsd: 0.03,
+  refsLabel: "تعديل صورك أو دمجها",
+  maxRefs: 4,
+  maxCount: 1,
+  promptMax: 5000,
+  arabic: false,
+  sources: falSources("fal-ai/flux-2-pro"),
+  verification: [
+    { item: "المقاسات", status: "verified", note: "image_size: square_hd · landscape_16_9 · portrait_16_9 · landscape_4_3 · portrait_4_3 (نحوّل النسبة لها)." },
+    { item: "السعر", status: "verified", note: "$0.03 لأول ميجابكسل، و$0.015 لكل ميجابكسل إضافي من المدخلات والمخرجات (صفحة النموذج في fal)." },
+    { item: "الصور المرجعية", status: "unverified", note: "نقطة /edit تأخذ image_urls بلا حد منشور؛ نسمح بـ4، ونسعّر كل صورة مرجعية بسقف $0.03 (حتى ميجابكسلين)." },
+    { item: "عدد الصور", status: "verified", note: "لا يوجد num_images: صورة واحدة لكل طلب." },
+  ],
+});
+
+const ideogram3 = simpleImage({
+  id: "ideogram-v3",
+  name: "Ideogram 3",
+  provider: { id: "fal", label: "Ideogram (fal.ai)" },
+  model: { id: "fal-ai/ideogram/v3", family: "Ideogram 3.0", version: "fal" },
+  aspects: FLUX_ASPECTS,
+  tiers: [
+    { value: "BALANCED", label: "متوازن", usd: 0.06 },
+    { value: "TURBO", label: "سريع", usd: 0.03 },
+    { value: "QUALITY", label: "أعلى جودة", usd: 0.09 },
+  ],
+  tierLabel: "السرعة والجودة",
+  refsLabel: "ستايل من صورك",
+  maxRefs: 3,
+  maxCount: 4,
+  promptMax: 5000,
+  arabic: false,
+  sources: falSources("fal-ai/ideogram/v3"),
+  verification: [
+    { item: "المقاسات", status: "verified", note: "image_size: square_hd · landscape_16_9 · portrait_16_9 · landscape_4_3 · portrait_4_3." },
+    { item: "السرعة والسعر", status: "verified", note: "rendering_speed: TURBO $0.03 · BALANCED $0.06 · QUALITY $0.09 للصورة (صفحة النموذج في fal)." },
+    { item: "الصور المرجعية", status: "verified", note: "image_urls صور ستايل فقط (JPEG/PNG/WebP، مجموعها ≤ 10MB)، لا تعديل للصورة نفسها." },
   ],
 });
 
@@ -569,6 +653,85 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
   };
   return def;
 }
+
+// ───────────────────────────── Kling 3.0 Pro (fal.ai) ─────────────────────────────
+// Checked on 2026-10-10: fal's model pages and OpenAPI schemas (fal-ai/kling-video/v3/pro/text-to-video and
+// /image-to-video). Priced per second of video: $0.112 without sound, $0.168 with it. A task on fal's queue, followed
+// like ModelArk's (submit, then the status until the video is ready).
+
+export const KLING_SECOND_USD = { audio: 0.168, silent: 0.112 } as const;
+
+const klingModes: ModeDef[] = [
+  { id: "text_to_video", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
+  { id: "first_frame", label: "إطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: true },
+  { id: "first_last_frame", label: "إطار أول وأخير", refStyle: "frames", refs: { image: { min: 2, max: 2 } }, roles: ["first_frame", "last_frame"], promptRequired: true },
+];
+
+const kling3: GeneratorDef = {
+  id: "kling-3-pro",
+  name: "Kling 3.0",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "fal", label: "Kuaishou Kling (fal.ai)" },
+  model: { id: "fal-ai/kling-video/v3/pro/text-to-video", family: "Kling 3.0 Pro", version: "v3" },
+  api: { name: "fal.ai queue", endpoint: "POST fal-ai/kling-video/v3/pro/text-to-video · POST fal-ai/kling-video/v3/pro/image-to-video", tracking: "async", progress: "none", cancel: "none" },
+  modes: klingModes,
+  options: [
+    { key: "ratio", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "16:9", values: RATIO_VALUES.filter((r) => ["16:9", "9:16", "1:1"].includes(r.value)) },
+    { key: "duration", label: "المدة", kind: "int", min: 3, max: 15, default: 5, unit: "ثانية" },
+    { key: "audio", label: "صوت متزامن مع الفيديو", kind: "bool", default: true, hint: "مؤثرات وموسيقى وكلام (الكلام بالإنجليزية أو الصينية)" },
+  ],
+  files: { image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 10 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 } },
+  prompt: {
+    label: "البرومبت",
+    placeholder: "Describe the scene, the motion and the camera…",
+    max: 2500,
+    arabic: false,
+    arabicNote: "Kling يفهم الإنجليزية أفضل، وكلامه المنطوق بالإنجليزية أو الصينية فقط؛ اكتب البرومبت بالإنجليزية.",
+  },
+  priceKeys: [
+    { key: "sec:audio", label: "كل ثانية · مع الصوت", defaultCenti: centiFor(KLING_SECOND_USD.audio), basis: `سعر المزوّد المنشور: $${KLING_SECOND_USD.audio} للثانية مع الصوت` },
+    { key: "sec:silent", label: "كل ثانية · بدون صوت", defaultCenti: centiFor(KLING_SECOND_USD.silent), basis: `سعر المزوّد المنشور: $${KLING_SECOND_USD.silent} للثانية بدون صوت` },
+  ],
+  modeFor(style, refs) {
+    if (!refs.length) return klingModes[0];
+    return refs.length >= 2 ? klingModes[2] : klingModes[1];
+  },
+  rules(d, mode) {
+    const notes: string[] = [];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (mode.refStyle === "frames") {
+      states.ratio = { fixed: { value: "adaptive", reason: "النسبة تتبع صورة الإطار الأول" } };
+      notes.push("في وضع الإطارات يتبع الفيديو نسبة صورة الإطار الأول.");
+    }
+    if (hasArabic(d.prompt)) notes.push(kling3.prompt.arabicNote!);
+    return { options: opt(kling3.options, states), issues: [], notes };
+  },
+  price(d, mode, table) {
+    const audio = d.settings.audio !== false;
+    const per = table[audio ? "sec:audio" : "sec:silent"];
+    if (per == null) return { ok: false, reason: "سعر هذا الإعداد غير محدد بعد." };
+    const sec = Math.max(3, Math.min(15, Math.round(Number(d.settings.duration) || 5)));
+    return total([{ label: `${sec} ث${audio ? " · مع الصوت" : ""}`, centi: per * sec }], kling3.costUsd(d, mode));
+  },
+  costUsd(d) {
+    const sec = Math.max(3, Math.min(15, Math.round(Number(d.settings.duration) || 5)));
+    return sec * (d.settings.audio !== false ? KLING_SECOND_USD.audio : KLING_SECOND_USD.silent);
+  },
+  sources: [
+    ...falSources("fal-ai/kling-video/v3/pro/text-to-video"),
+    { label: "fal.ai — fal-ai/kling-video/v3/pro/image-to-video (schema)", url: "https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video/api", checked: FAL_CHECKED },
+  ],
+  verification: [
+    { item: "الأوضاع", status: "verified", note: "نص (text-to-video) · إطار أول (start_image_url) · إطار أول وأخير (+ end_image_url) عبر image-to-video." },
+    { item: "النسب", status: "verified", note: "aspect_ratio: 16:9 · 9:16 · 1:1 في وضع النص؛ وضع الإطارات بلا نسبة (تتبع الصورة)." },
+    { item: "المدة", status: "verified", note: "من 3 إلى 15 ثانية." },
+    { item: "الصوت", status: "verified", note: "generate_audio؛ الكلام المنطوق بالإنجليزية أو الصينية، وغيرهما يُترجم للإنجليزية." },
+    { item: "السعر", status: "verified", note: "$0.112 للثانية بدون صوت، $0.168 مع الصوت (صفحة النموذج في fal)." },
+    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+  ],
+  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
 
 // ───────────────────────────── OpenAI · GPT-4o mini TTS ─────────────────────────────
 
@@ -1156,7 +1319,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, seedreamLite, seedance("2.5"), seedance("2.0"), miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), kling3, miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */
