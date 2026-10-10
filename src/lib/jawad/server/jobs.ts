@@ -32,7 +32,7 @@ import { refsFor, type UploadRow } from "./uploads";
 import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
-import { falImages } from "./providers/fal";
+import { falImages, falSubmit, falTask } from "./providers/fal";
 import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
 import { elevenMusic, elevenMusicWithReference, elevenSoundEffect, elevenSpeech } from "./providers/elevenlabs";
@@ -65,7 +65,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -350,6 +350,7 @@ export async function runJob(jobId: string) {
     });
     // ModelArk's videos are tasks followed later; its pictures (Seedream) answer at once like the others
     if (def.provider.id === "byteplus-modelark" && def.output === "video") await submitVideo(job, def, rows);
+    else if (def.provider.id === "fal" && def.output === "video") await submitFalVideo(job, def, rows);
     else await runSync(job, def, rows);
   } catch (e) {
     await failFromError(job!, def, e);
@@ -614,6 +615,40 @@ async function submitVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   }
 }
 
+/** Kling on fal's queue: the frames go as short-lived links; the request is then followed like a ModelArk task. */
+async function submitFalVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+  const s = job.inputs.settings;
+  const signed = refs.length ? (await storage.from(JAWAD_BUCKET).createSignedUrls(refs.map((r) => r.storage_path), 3 * 3600)).data ?? [] : [];
+  const url = (role: RefRole) => {
+    const i = job.refs.findIndex((r) => r.role === role);
+    return i >= 0 ? signed[i]?.signedUrl ?? null : null;
+  };
+  const first = url("first_frame") ?? signed[0]?.signedUrl ?? null;
+  const last = url("last_frame") ?? (refs.length > 1 ? signed[1]?.signedUrl ?? null : null);
+  if (refs.length && !first) throw new ProviderError("rejected", "تعذّر تجهيز صورة الإطار.", "no signed url for frame");
+  const model = first ? def.model.id.replace(/text-to-video$/, "image-to-video") : def.model.id;
+  const input: Record<string, unknown> = {
+    prompt: job.inputs.modelPrompt ?? job.prompt,
+    duration: String(Math.max(3, Math.min(15, Math.round(Number(s.duration) || 5)))),
+    generate_audio: s.audio !== false,
+    ...(first ? { start_image_url: first, ...(last ? { end_image_url: last } : {}) } : { aspect_ratio: String(s.ratio) }),
+  };
+  const id = await falSubmit(model, input);
+  await db()
+    .from("jawad_jobs")
+    .update({ provider_task_id: id, submit_state: "accepted", status: "running", provider_status: "queued", lease_until: null, inputs: { ...job.inputs, falModel: model } })
+    .eq("id", job.id);
+  await event(job.id, "submitted", { task: id, model });
+  // a short video is often ready within a few minutes: keep watching while this request is alive
+  const until = Date.now() + WATCH_MS;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 10_000));
+    const fresh = await loadJob(job.id);
+    if (!fresh || !OPEN.includes(fresh.status)) return;
+    await advanceJob(fresh, { force: true });
+  }
+}
+
 export async function loadJob(id: string) {
   const { data } = await db().from("jawad_jobs").select("*").eq("id", id).maybeSingle();
   return (data as JobRow) ?? null;
@@ -645,7 +680,8 @@ async function saveVideo(job: JobRow, task: ArkTask) {
     const mime = sn?.kind === "video" ? sn.mime : "video/mp4";
     await saveOutput(claimed, 0, file, mime, mime === "video/quicktime" ? "mov" : "mp4", dims);
     // The real cost from the provider's token count (rate of the resolution, with or without video input)
-    const usd = task.tokens != null ? (task.tokens * videoRate(job)) / 1e6 : null;
+    const def = generatorById(job.generator_id);
+    const usd = def?.provider.id === "fal" ? def.costUsd({ settings: job.inputs.settings, prompt: job.prompt, instructions: "", refs: [] }, def.modes[0]) : task.tokens != null ? (task.tokens * videoRate(job)) / 1e6 : null;
     await finishJob(claimed, "succeeded", { costUsd: usd, units: { tokens: task.tokens, duration: task.duration, ratio: task.ratio, resolution: task.resolution } });
   } catch (e) {
     const attempts = (claimed.inputs.saveAttempts ?? 0) + 1;
@@ -674,6 +710,11 @@ function videoRate(job: JobRow) {
 /** A task we sent but never got an answer for: find it among the account's recent tasks (never send a second one). */
 async function reconcileUnknown(job: JobRow) {
   const sent = new Date(job.submitted_at ?? job.created_at).getTime();
+  // fal's queue cannot be searched: after a while the job is given up (and refunded)
+  if (generatorById(job.generator_id)?.provider.id === "fal") {
+    if (Date.now() - sent > UNKNOWN_GIVE_UP_MS) await finishJob(job, "failed", { message: "لم يتأكد وصول الطلب إلى المزوّد، ولم يُخصم منك شيء. جرّب مرة ثانية.", detail: "fal submission unknown" });
+    return;
+  }
   const tasks = await arkListTasks(job.model_id).catch(() => null);
   const mine = providerUserId(job.user_id);
   const candidates = (tasks ?? [])
@@ -735,10 +776,18 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
   if (!job.provider_task_id) return;
   if (job.status === "saving" && !leaseOver) return;
   if (!o.force && Date.now() - new Date(job.updated_at).getTime() < 6000) return;
-  const task = await arkGetTask(job.provider_task_id).catch((e) => {
-    console.error("jawad task check failed", job.id, e);
-    return null;
-  });
+  const fal = def?.provider.id === "fal";
+  const task: ArkTask | null = fal
+    ? await falTask(String(job.inputs.falModel ?? def!.model.id), job.provider_task_id)
+        .then((t) => ({ id: job.provider_task_id!, model: job.model_id, status: t.status, videoUrl: t.videoUrl, error: t.error, tokens: null, createdAt: null, safetyIdentifier: null, duration: null, ratio: null, resolution: null }))
+        .catch((e) => {
+          console.error("jawad fal check failed", job.id, e);
+          return null;
+        })
+    : await arkGetTask(job.provider_task_id).catch((e) => {
+        console.error("jawad task check failed", job.id, e);
+        return null;
+      });
   const sent = new Date(job.submitted_at ?? job.created_at).getTime();
   if (!task) {
     if (Date.now() - sent > VIDEO_STALE_MS) await finishJob(job, "failed", { message: "انتهى وقت التوليد. لم يُخصم منك شيء.", detail: "stale; task unreadable" });
@@ -750,7 +799,7 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
     return;
   }
   if (Date.now() - sent > VIDEO_STALE_MS) {
-    await arkCancelTask(task.id).catch(() => null);
+    if (!fal) await arkCancelTask(task.id).catch(() => null);
     await finishJob(job, "failed", { message: "انتهى وقت التوليد. لم يُخصم منك شيء.", detail: `stale in ${task.status}` });
     return;
   }

@@ -1,6 +1,7 @@
 // fal.ai — models run on fal's queue (submit, then poll until done). Used by «حيدرة كت» for separating music and
 // sound effects (Meta's SAM-Audio). Server only; needs FAL_KEY.
 
+import { FAL_IMAGE_SIZES } from "@config/jawad/generators";
 import { ProviderError, rejectedMessage } from "./common";
 
 const QUEUE = "https://queue.fal.run";
@@ -82,18 +83,22 @@ export async function falFile(u: string) {
 /** A picture model of fal (Google's Nano Banana family): its images, downloaded. `refs` → its edit endpoint. */
 export async function falImages(o: { model: string; editModel?: string; prompt: string; aspect: string; resolution?: string; count: number; refs: string[] }) {
   const edit = o.refs.length > 0 && o.editModel;
-  const out = await falRun<{ images?: { url: string; content_type?: string; width?: number; height?: number }[] }>(
-    edit ? o.editModel! : o.model,
-    {
-      prompt: o.prompt,
-      num_images: o.count,
-      aspect_ratio: o.aspect,
-      output_format: "png",
-      ...(o.resolution ? { resolution: o.resolution } : {}),
-      ...(edit ? { image_urls: o.refs } : {}),
-    },
-    270_000,
-  ).catch((e) => {
+  // each family names its inputs its own way: Nano Banana (aspect_ratio, resolution), FLUX 2 (image_size, one picture),
+  // Ideogram 3 (image_size, rendering_speed, image_urls as style references)
+  const size = FAL_IMAGE_SIZES[o.aspect] ?? "square_hd";
+  const input: Record<string, unknown> = o.model.startsWith("fal-ai/flux-2")
+    ? { prompt: o.prompt, image_size: edit ? "auto" : size, output_format: "png", ...(edit ? { image_urls: o.refs } : {}) }
+    : o.model.startsWith("fal-ai/ideogram")
+      ? { prompt: o.prompt, image_size: size, num_images: o.count, ...(o.resolution ? { rendering_speed: o.resolution } : {}), ...(o.refs.length ? { image_urls: o.refs } : {}) }
+      : {
+          prompt: o.prompt,
+          num_images: o.count,
+          aspect_ratio: o.aspect,
+          output_format: "png",
+          ...(o.resolution ? { resolution: o.resolution } : {}),
+          ...(edit ? { image_urls: o.refs } : {}),
+        };
+  const out = await falRun<{ images?: { url: string; content_type?: string; width?: number; height?: number }[] }>(edit ? o.editModel! : o.model, input, 270_000).catch((e) => {
     if (e instanceof ProviderError && /الفصل/.test(e.userMessage)) throw new ProviderError(e.outcome, e.outcome === "unknown" ? "التوليد أخذ وقت أطول من المتوقع؛ جرّب مرة ثانية." : "تعذّر التوليد عند المزوّد؛ جرّب مرة ثانية.", e.detail);
     throw e;
   });
@@ -102,4 +107,48 @@ export async function falImages(o: { model: string; editModel?: string; prompt: 
   return Promise.all(
     list.map(async (im) => ({ bytes: await falFile(im.url), mime: im.content_type ?? "image/png", width: im.width ?? null, height: im.height ?? null })),
   );
+}
+
+// ───────────────────────────── videos on fal's queue (Kling) ─────────────────────────────
+
+/** The app a model belongs to ("fal-ai/kling-video/v3/pro/text-to-video" → "fal-ai/kling-video"): its queue's requests live there. */
+const appOf = (model: string) => model.split("/").slice(0, 2).join("/");
+
+/** Sends a video to fal's queue; returns the request's id (what is followed later). */
+export async function falSubmit(model: string, input: Record<string, unknown>): Promise<string> {
+  if (!falReady()) throw new ProviderError("rejected", "مفتاح fal.ai غير موجود على الخادم.", "FAL_KEY missing");
+  let res: Response;
+  try {
+    res = await fetch(`${QUEUE}/${model}`, { method: "POST", headers: headers(), body: JSON.stringify(input), signal: AbortSignal.timeout(60_000) });
+  } catch (e) {
+    // sent but no answer: it may be queued (never sent twice)
+    throw new ProviderError("unknown", "ما تأكدنا من وصول الطلب للمزوّد.", `fal ${model} submit: ${e instanceof Error ? e.message : e}`);
+  }
+  if (!res.ok) throw new ProviderError("rejected", rejectedMessage(res.status, await res.text()), `fal ${model} submit ${res.status}`);
+  const id = ((await res.json()) as { request_id?: string }).request_id;
+  if (!id) throw new ProviderError("unknown", "ما رجع المزوّد برقم للطلب.", `fal ${model}: no request_id`);
+  return id;
+}
+
+export interface FalTask {
+  status: "queued" | "running" | "succeeded" | "failed";
+  videoUrl: string | null;
+  error: string | null;
+}
+
+/** Where a request on fal's queue stands; a finished one carries its video's link. */
+export async function falTask(model: string, id: string): Promise<FalTask> {
+  const base = `${QUEUE}/${appOf(model)}/requests/${encodeURIComponent(id)}`;
+  const st = await fetch(`${base}/status`, { headers: headers(), signal: AbortSignal.timeout(30_000) });
+  if (!st.ok) throw new Error(`fal status ${st.status}: ${(await st.text()).slice(0, 300)}`);
+  const s = (await st.json()) as { status?: string; error?: string };
+  if (s.status === "IN_QUEUE") return { status: "queued", videoUrl: null, error: null };
+  if (s.status === "IN_PROGRESS") return { status: "running", videoUrl: null, error: null };
+  if (s.status !== "COMPLETED") return { status: "failed", videoUrl: null, error: s.error ?? String(s.status) };
+  // completed: the result holds the video, or the reason it failed
+  const out = await fetch(base, { headers: headers(), signal: AbortSignal.timeout(30_000) });
+  const body = (await out.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!out.ok) return { status: "failed", videoUrl: null, error: JSON.stringify(body.detail ?? body).slice(0, 500) };
+  const url = falUrl(body, "video");
+  return url ? { status: "succeeded", videoUrl: url, error: null } : { status: "failed", videoUrl: null, error: `no video in ${Object.keys(body).join(",")}` };
 }
