@@ -1,6 +1,6 @@
 import VoicesView from "../../_views/Voices";
 
-export const metadata = { title: "الأصوات | نهج علي" };
+export const metadata = { title: "الأصوات | الجواد الذكي" };
 export const dynamic = "force-dynamic";
 
 // The page itself is shared with «الجواد الذكي!» (src/app/jawad-ai/film): same projects, stages and approvals.

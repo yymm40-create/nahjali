@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { confirmOrder, getOrder, rejectOrder } from "@/lib/course/orders";
 import { loadSettings } from "@/lib/course/settings";
 import { orderButtons, orderText, ownerChat, telegramReady, tgAnswer, tgEdit, tgSend, webhookSecret } from "@/lib/course/telegram";
+import { confirmCreditOrder, getCreditOrder, rejectCreditOrder } from "@/lib/credits/orders";
+import { creditButtons, creditText } from "@/lib/credits/telegram";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -14,7 +16,8 @@ interface Update {
 /**
  * Telegram calls this (the bot's webhook). Only Telegram can: every call carries the secret made from the bot's token.
  *  - "/start" from anyone: the bot answers with that chat's own number (the owner puts it in Vercel as TELEGRAM_CHAT_ID);
- *  - a press on «✅ أكّد الدفع» / «❌ ارفض» under an order: only from the owner's chat; the buyer is unlocked (and gets the gift) at once.
+ *  - a press on «✅ أكّد الدفع» / «❌ ارفض» under an order: only from the owner's chat; the buyer is unlocked (and gets the gift) at once;
+ *  - «✅ أكّد وأضف الرصيد» / «❌ ارفض» under a top-up («cok» / «cno»): the balance lands in the buyer's wallet at once.
  */
 export async function POST(req: Request) {
   if (!telegramReady() || req.headers.get("x-telegram-bot-api-secret-token") !== webhookSecret()) return NextResponse.json({ ok: false }, { status: 401 });
@@ -34,6 +37,30 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true });
       }
       const [act, id] = q.data.split(":");
+      if ((act === "cok" || act === "cno") && /^[0-9a-f-]{36}$/i.test(id ?? "")) {
+        const cur = await getCreditOrder(id);
+        if (!cur) {
+          await tgAnswer(q.id, "ما لقيت الطلب.");
+          return NextResponse.json({ ok: true });
+        }
+        const edit = async (text: string, o = cur) => {
+          if (q.message?.message_id && chat) await tgEdit(chat, q.message.message_id, text, creditButtons(o, true));
+        };
+        try {
+          if (act === "cok") {
+            const r = await confirmCreditOrder(id, "تيليجرام");
+            await tgAnswer(q.id, r.already ? "مؤكد من قبل" : "تم ✅ انضاف الرصيد");
+            await edit(creditText(r.order, `✅ <b>تم التأكيد — انضاف ${r.order.credit} لرصيده</b>`), r.order);
+          } else {
+            const o = await rejectCreditOrder(id, "تيليجرام");
+            await tgAnswer(q.id, "تم الرفض");
+            await edit(creditText(o, "❌ <b>مرفوض</b>"), o);
+          }
+        } catch (e) {
+          await tgAnswer(q.id, e instanceof Error ? e.message.slice(0, 150) : "تعذّر التنفيذ");
+        }
+        return NextResponse.json({ ok: true });
+      }
       if ((act === "ok" || act === "no") && /^[0-9a-f-]{36}$/i.test(id ?? "")) {
         const s = await loadSettings();
         const cur = await getOrder(id);

@@ -5,7 +5,8 @@
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
-import { ALL_PERMS, isPerm, OPEN_PERMS, permsByCodes, unlimitedByCodes, type Access, type CodeRow, type CodeUse, type Perm } from "@config/access";
+import { ALL_PERMS, isPerm, OPEN_PERMS, PUBLIC_PERMS, permsByCodes, unlimitedByCodes, type Access, type CodeRow, type CodeUse, type Perm } from "@config/access";
+import { isPublicOpen } from "@/lib/launch";
 
 export type { Perm };
 
@@ -48,18 +49,20 @@ async function load(email: string): Promise<Access> {
   const hit = memo.get(email);
   if (hit && Date.now() - hit.at < TTL) return hit.access;
   const db = createAdminClient();
-  const [{ data }, grant, live, uses] = await Promise.all([
+  const [{ data }, grant, live, uses, open] = await Promise.all([
     db.from("site_access").select("*").eq("email", email).maybeSingle(),
     db.from("site_code_grants").select("code_id").eq("email", email).maybeSingle(),
     liveCodeId(),
     db.from("site_code_uses").select("code_id,email,at").eq("email", email),
+    isPublicOpen().catch(() => false),
   ]);
   // came in by «الكود السري», and that very code is still on: everything (but what only opens by name)
   const byCode = Boolean(live && grant.data?.code_id === live);
   const mine: CodeUse[] = (uses.data ?? []).map((u) => ({ codeId: u.code_id as string, email: u.email as string, at: u.at as string }));
   // the owner's codes this person entered: each opens only its own sections, while it lives (a missing table = none)
   const codes = mine.length ? ((await db.from("site_codes").select("*").in("id", mine.map((u) => u.codeId))).data ?? []).map(codeFromRow) : [];
-  const perms = new Set<Perm>([...(byCode ? OPEN_PERMS : []), ...((data?.perms as string[] | undefined) ?? []).filter(isPerm), ...permsByCodes(codes, mine)]);
+  // the site is open to everyone (the owner's launch switch): every section, paid from the wallet
+  const perms = new Set<Perm>([...(open ? PUBLIC_PERMS : []), ...(byCode ? OPEN_PERMS : []), ...((data?.perms as string[] | undefined) ?? []).filter(isPerm), ...permsByCodes(codes, mine)]);
   // free («بلا حدود»): the all-opening code, the e-mail marked so, or an unlimited code that still opens
   const unlimited = byCode || Boolean(data?.unlimited) || unlimitedByCodes(codes, mine);
   const access = { perms, unlimited };

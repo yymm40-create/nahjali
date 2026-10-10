@@ -5,7 +5,7 @@ export const contentType = "image/png";
 // Follows the logo uploaded from the admin page
 export const revalidate = 600;
 
-/** JAWAD AI's own browser-tab icon (the rest of the site keeps «نهج علي»'s). */
+/** JAWAD AI's browser-tab icon (the whole site's too, see src/app/icon.tsx). */
 export default async function Icon() {
   return new Response(new Uint8Array(await logoPng(64)), { headers: { "Content-Type": "image/png" } });
 }

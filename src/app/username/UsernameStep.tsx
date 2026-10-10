@@ -8,7 +8,7 @@ import { cleanUsername, USERNAME_RE } from "@/lib/username-rules";
 export default function UsernameStep({
   suggestion,
   next,
-  intro = "لكل حساب في نهج علي اسم مميز ما يتكرر، يعرفك فيه غيرك ويضيفك به إخوتك. المسافة تصير _ .",
+  intro = "لكل حساب في الجواد الذكي اسم مميز ما يتكرر، يعرفك فيه غيرك ويضيفك به إخوتك. المسافة تصير _ .",
 }: {
   suggestion: string;
   next: string;

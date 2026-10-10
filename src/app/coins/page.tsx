@@ -10,7 +10,7 @@ import { VIDEO_MODELS, VIDEO_RESOLUTIONS, videoEstimateUsd, type VideoModel, typ
 import { isAdmin } from "@config/site";
 import Riyal from "@/components/Riyal";
 
-export const metadata = { title: "النقود الذكية | نهج علي" };
+export const metadata = { title: "النقود الذكية | الجواد الذكي" };
 export const dynamic = "force-dynamic";
 
 const REASONS: Record<string, string> = { grant: "إضافة", reserve: "حجز", settle: "تسوية", refund: "إرجاع", purchase: "شراء" };

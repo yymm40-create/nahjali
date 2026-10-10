@@ -391,7 +391,7 @@ html:has(.mahdi-root[data-mtheme="night"]) body { background: #0a0b0d; }
 .m-side-item[aria-current="page"] { color: var(--m-ink); background: color-mix(in srgb, var(--m-gold) 14%, var(--m-surface-2)); }
 .m-side-item[aria-current="page"] svg { color: var(--m-gold-text); }
 
-/* Every screen: the bar at the top (back to «نهج علي», the assistant, the notifications) */
+/* Every screen: the bar at the top (back to the site, the assistant, the notifications) */
 .m-topbar {
   position: sticky;
   top: 0;

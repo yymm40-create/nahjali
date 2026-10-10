@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NAHJ_ALI_HIDDEN } from "@config/site";
 
 /** The dashboard's sections, by branch. */
 const GROUPS: { title: string; items: { href: string; icon: string; label: string; exact?: boolean }[] }[] = [
@@ -10,7 +11,6 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
     items: [
       { href: "/admin", icon: "🏠", label: "نظرة عامة", exact: true },
       { href: "/admin/access", icon: "🔐", label: "السماح والكود السري" },
-      { href: "/admin/notes", icon: "📝", label: "الملاحظات" },
       { href: "/admin/users", icon: "👥", label: "المستخدمون" },
       { href: "/admin/limits", icon: "🎚️", label: "النقود والأسعار" },
       { href: "/admin/pricing", icon: "🧮", label: "الأسعار والأرباح" },
@@ -33,8 +33,9 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
       { href: "/admin/content", icon: "✍️", label: "صانع المحتوى" },
       { href: "/admin/designer", icon: "🎨", label: "المصمم الذكي" },
       { href: "/admin/photo", icon: "📸", label: "زهراء فوتو ماستر" },
+      { href: "/admin/credits", icon: "💳", label: "باقات الرصيد والشحن" },
       { href: "/admin/course", icon: "🎓", label: "دورة الجواد" },
-      { href: "/admin/booklet", icon: "📖", label: "كتيب نهج علي" },
+      ...(NAHJ_ALI_HIDDEN ? [] : [{ href: "/admin/booklet", icon: "📖", label: "كتيب نهج علي" }]),
     ],
   },
   {

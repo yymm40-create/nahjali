@@ -18,7 +18,9 @@ export function rulesFor(path: string, method: string): Rule[] {
   // the secret codes: a few tries, then a pause (guessing a code takes millions)
   if (path === "/api/access/code" && method === "POST") out.push({ key: "code", max: 8, windowMs: 10 * 60_000 });
   // the course's payment: a person starts an order and presses «تم التحويل» a few times, never dozens (each press can buzz the owner's phone)
-  if ((path === "/api/course/order" || path === "/api/course/transferred") && method === "POST") out.push({ key: "course", max: 20, windowMs: 10 * 60_000 });
+  if ((path === "/api/course/order" || path === "/api/course/transferred" || path === "/api/credits/order" || path === "/api/credits/transferred") && method === "POST") out.push({ key: "course", max: 20, windowMs: 10 * 60_000 });
+  // «سلمان» answers anyone (signed in or not) and each answer costs a little: a person asks a few, never dozens
+  if (path === "/api/salman" && method === "POST") out.push({ key: "salman", max: 25, windowMs: 10 * 60_000 });
   // what costs money (Claude, pictures, videos, voices): plenty for a person, a wall for a script
   const paid = ["/api/film/", "/api/jawad/", "/api/games/", "/api/islamic/ask", "/api/content/", "/api/mahdi/assistant", "/api/orders"];
   // (a big video goes up in parts, each signed by the editor's project route: a fast line asks for several a second)

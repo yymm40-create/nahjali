@@ -1,6 +1,6 @@
 import SeriesHomeView from "../_views/SeriesHome";
 
-export const metadata = { title: "المسلسل الذكي | نهج علي" };
+export const metadata = { title: "المسلسل الذكي | الجواد الذكي" };
 export const dynamic = "force-dynamic";
 
 // Shared with «الجواد الذكي!» (src/app/jawad-ai/film/series).

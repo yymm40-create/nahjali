@@ -1,6 +1,6 @@
 import VideosView from "../../_views/Videos";
 
-export const metadata = { title: "توليد الفيديو | نهج علي" };
+export const metadata = { title: "توليد الفيديو | الجواد الذكي" };
 export const dynamic = "force-dynamic";
 // Finished videos are copied to storage while the page loads
 export const maxDuration = 300;

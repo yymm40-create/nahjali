@@ -34,10 +34,13 @@ export default async function JawadCoins() {
           <h1 className="text-lg font-semibold">{SMART_COIN.name}</h1>
           <p className="text-sm text-jw-muted">رصيدك بالريال. كل توليد يُخصم بسعره المعروض على زر «توليد»، والتوليد الفاشل يُعاد رصيده تلقائيًا.</p>
         </div>
-        <p className="flex items-center gap-2 text-3xl font-bold tabular-nums">
-          <SmartCoin size={30} />
-          {owner ? <span dir="ltr">∞</span> : <Riyal halalas={balance ?? 0} size={30} />}
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="flex items-center gap-2 text-3xl font-bold tabular-nums">
+            <SmartCoin size={30} />
+            {owner ? <span dir="ltr">∞</span> : <Riyal halalas={balance ?? 0} size={30} />}
+          </p>
+          {!owner && <Link href="/jawad-ai/credits" className="rounded-2xl bg-gradient-to-b from-amber-300 to-orange-500 px-5 py-3 text-base font-bold text-[#2a1200] shadow-lg">💳 اشحن رصيدك</Link>}
+        </div>
       </section>
 
       <Link href="/jawad-ai/library" className="jw-panel flex flex-wrap items-center justify-between gap-3 p-5 hover:border-jw-accent/50">

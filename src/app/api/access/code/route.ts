@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isPublicOpen } from "@/lib/launch";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { codeFromRow, forgetAccess, hasAnyAccess } from "@/lib/access";
@@ -54,5 +55,7 @@ export const POST = handle(async (req: Request) => {
 /** Whether this visitor already has something open (so the question isn't asked again). */
 export const GET = handle(async () => {
   const user = await requireApiUser().catch(() => null);
-  return NextResponse.json({ signedIn: Boolean(user), open: user ? await hasAnyAccess(user.email) : false });
+  // the site open to everyone (the owner's launch switch): nobody is asked for the code
+  const everyone = await isPublicOpen().catch(() => false);
+  return NextResponse.json({ signedIn: Boolean(user), open: everyone || (user ? await hasAnyAccess(user.email) : false) });
 });
