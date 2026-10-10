@@ -4,7 +4,7 @@
 // Browser only.
 
 import { adjustPixels, effectiveAdjust, isIdentity } from "@/lib/photo/pixels";
-import { orientedSize, type PhotoDoc, type ShapeLayer } from "@/lib/photo/doc";
+import { orientedSize, type PhotoDoc, type ShapeLayer, type PhotoLayer } from "@/lib/photo/doc";
 import { drawText, loadFont, wrapLines, type FontDef } from "@/components/jawad/designer/LayerEditor";
 
 export interface RenderOpts {
@@ -132,37 +132,63 @@ export function renderPhoto(canvas: HTMLCanvasElement, doc: PhotoDoc, o: RenderO
   }
   const boxes: Box[] = [];
   if (o.baseOnly) return boxes;
-  for (const l of doc.layers) {
+  /** One layer alone, on the context given, and the box the page draws its handles in. */
+  const drawOne = (c: CanvasRenderingContext2D, l: PhotoLayer): Box => {
     if (l.kind === "shape") {
-      drawShape(ctx, l, W, H);
-      boxes.push({ id: l.id, cx: (l.x / 100) * W, cy: (l.y / 100) * H, w: (l.w / 100) * W, h: Math.max(((l.h / 100) * H), 12), rotate: l.rotate });
-    } else if (l.kind === "image") {
-      const im = o.images.get(l.fileId);
-      if (!im) continue;
-      const w = (l.w / 100) * W;
-      const h = w * (im.naturalHeight / im.naturalWidth);
-      ctx.save();
-      ctx.translate((l.x / 100) * W, (l.y / 100) * H);
-      ctx.rotate((l.rotate * Math.PI) / 180);
-      if (l.flip) ctx.scale(-1, 1);
-      ctx.globalAlpha = l.opacity;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(im, -w / 2, -h / 2, w, h);
-      ctx.restore();
-      boxes.push({ id: l.id, cx: (l.x / 100) * W, cy: (l.y / 100) * H, w, h, rotate: l.rotate });
-    } else {
-      const family = o.fonts.find((f) => f.id === l.font)?.family ?? "sans-serif";
-      const size = Math.max(4, (l.size / 100) * H);
-      if (!o.skipText) drawText(ctx, l, W, H, family);
-      // the box: the lines the text wraps into
-      ctx.save();
-      ctx.font = `${l.weight} ${size}px "${family}", sans-serif`;
-      ctx.direction = "rtl";
-      const lines = wrapLines(ctx, l.text, (l.w / 100) * W);
-      ctx.restore();
-      boxes.push({ id: l.id, cx: (l.x / 100) * W, cy: (l.y / 100) * H, w: (l.w / 100) * W, h: size * l.lineHeight * lines.length, rotate: l.rotate });
+      drawShape(c, l, W, H);
+      return { id: l.id, cx: (l.x / 100) * W, cy: (l.y / 100) * H, w: (l.w / 100) * W, h: Math.max((l.h / 100) * H, 12), rotate: l.rotate };
     }
-  }
+    if (l.kind === "image") {
+      const im = o.images.get(l.fileId);
+      const ratio = im ? im.naturalHeight / im.naturalWidth : 1;
+      const w = (l.w / 100) * W;
+      const h = w * ratio;
+      if (im) {
+        c.save();
+        c.translate((l.x / 100) * W, (l.y / 100) * H);
+        c.rotate((l.rotate * Math.PI) / 180);
+        if (l.flip) c.scale(-1, 1);
+        c.globalAlpha = l.opacity;
+        c.imageSmoothingQuality = "high";
+        c.drawImage(im, -w / 2, -h / 2, w, h);
+        c.restore();
+      }
+      return { id: l.id, cx: (l.x / 100) * W, cy: (l.y / 100) * H, w, h, rotate: l.rotate };
+    }
+    const family = o.fonts.find((f) => f.id === l.font)?.family ?? "sans-serif";
+    const size = Math.max(4, (l.size / 100) * H);
+    if (!o.skipText) drawText(c, l, W, H, family);
+    c.save();
+    c.font = `${l.weight} ${size}px "${family}", sans-serif`;
+    c.direction = "rtl";
+    const lines = wrapLines(c, l.text, (l.w / 100) * W);
+    c.restore();
+    return { id: l.id, cx: (l.x / 100) * W, cy: (l.y / 100) * H, w: (l.w / 100) * W, h: size * l.lineHeight * lines.length, rotate: l.rotate };
+  };
+  const spare = () => {
+    const t = document.createElement("canvas");
+    t.width = W;
+    t.height = H;
+    return { el: t, ctx: t.getContext("2d")! };
+  };
+
+  doc.layers.forEach((l, i) => {
+    const under = i > 0 ? doc.layers[i - 1] : null;
+    // «داخل الطبقة اللي تحتها»: the layer is drawn alone, then kept ONLY where the layer under it has pixels — so a
+    // picture inside a frame, a shape or a word never spills past its edges (Photoshop's clipping mask)
+    if ((l.kind === "image" || l.kind === "shape") && l.clip && under) {
+      const cut = spare();
+      const box = drawOne(cut.ctx, l);
+      const mask = spare();
+      drawOne(mask.ctx, under);
+      cut.ctx.globalCompositeOperation = "destination-in";
+      cut.ctx.drawImage(mask.el, 0, 0);
+      ctx.drawImage(cut.el, 0, 0);
+      boxes.push(box);
+      return;
+    }
+    boxes.push(drawOne(ctx, l));
+  });
   return boxes;
 }
 

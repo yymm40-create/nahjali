@@ -856,6 +856,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
                 {[...doc.layers].reverse().map((l) => (
                   <li key={l.id} className={l.id === selected ? "on" : ""} onClick={() => setSelected(l.id)}>
                     <span>{l.kind === "text" ? "🔤" : l.kind === "shape" ? "▭" : "🖼️"}</span>
+                    {l.kind !== "text" && l.clip && <span title="داخل الطبقة اللي تحتها">✂️</span>}
                     <b>{l.kind === "text" ? l.text.replace(/\n/g, " ").slice(0, 22) : l.kind === "shape" ? "شكل" : "صورة"}</b>
                     <button type="button" aria-label="للأمام" onClick={(e) => { e.stopPropagation(); op({ op: "order", id: l.id, to: "up" }); }}>▲</button>
                     <button type="button" aria-label="للخلف" onClick={(e) => { e.stopPropagation(); op({ op: "order", id: l.id, to: "down" }); }}>▼</button>
@@ -941,6 +942,11 @@ function LayerSettings({ layer, fonts, patch, end, cutout, onCutout }: { layer: 
         {s.shape === "rect" && num("استدارة الزوايا", "radius", s.radius, 0, 50, 0.5)}
         {num("تدوير", "rotate", s.rotate, -180, 180)}
         {num("شفافية", "opacity", s.opacity, 0, 1, 0.05)}
+        <div className="ph-chips">
+          <button type="button" className={s.clip ? "on" : ""} title="الشكل يظهر فقط داخل حدود الطبقة اللي تحته" onClick={() => patch({ clip: !s.clip })}>
+            {s.clip ? "✂️ داخل الطبقة تحته ✓" : "✂️ خلّه داخل الطبقة تحته"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -951,6 +957,9 @@ function LayerSettings({ layer, fonts, patch, end, cutout, onCutout }: { layer: 
       {num("شفافية", "opacity", layer.opacity, 0, 1, 0.05)}
       <div className="ph-chips">
         <button type="button" onClick={() => patch({ flip: !layer.flip })}>↔️ اقلب</button>
+        <button type="button" className={layer.clip ? "on" : ""} title="الصورة تظهر فقط داخل حدود الطبقة اللي تحتها (برواز، شكل، أو كلمة) — تحرّكها وتكبّرها جوّه بحرية، واللي يطلع برا ما يظهر" onClick={() => patch({ clip: !layer.clip })}>
+          {layer.clip ? "✂️ داخل الطبقة تحتها ✓" : "✂️ خلّها داخل الطبقة تحتها"}
+        </button>
         <button type="button" disabled={!cutout} title={cutout ? "جواد يقصّ الخلفية ويرجّع العنصر شفافًا (يُخصم من الرصيد)" : "غير مفعّل على الخادم"} onClick={onCutout}>✂️ اقصص الخلفية</button>
       </div>
     </div>

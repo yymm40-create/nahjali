@@ -191,3 +191,9 @@
   .dz-blob, .dz-title, .dz-dots span, .dz-msg, .dz-card, .dz-brush.busy { animation: none !important; }
   .dz-spin { animation-duration: 3s !important; }
 }
+
+/* «كاظم يصنع بس»: a finished design — the picture, and the one road to any change (زهراء) */
+.dz-done { display: grid; gap: 10px; }
+.dz-done-img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 14px; border: 1px solid var(--jw-line); background: var(--jw-bg-2); }
+.dz-done-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dz-opt-main { font-weight: 700; background: color-mix(in srgb, var(--jw-gold) 22%, var(--jw-surface-2)); border-color: color-mix(in srgb, var(--jw-gold) 55%, transparent); }

@@ -16,7 +16,7 @@ import { parseVerdict } from "@/lib/designer/tests";
 describe("«كاظم»", () => {
   it("has his persona, and always the platform's rules, tools, fonts and the style library after it", () => {
     expect(KAZEM_PERSONA.length).toBeGreaterThan(3000);
-    for (const line of ["أنت «كاظم»", "ليس فوانيس وزخارف", "محرر الطبقات", "المرحلة الثالثة: الملخص قبل التنفيذ"]) expect(KAZEM_PERSONA).toContain(line);
+    for (const line of ["أنت «كاظم»", "ليس فوانيس وزخارف", "زهراء فوتو ماستر", "المرحلة الثالثة: الملخص قبل التنفيذ"]) expect(KAZEM_PERSONA).toContain(line);
     const t = systemText("PERSONA", ["EX"], "REC");
     expect(t.indexOf("PERSONA")).toBeLessThan(t.indexOf(DESIGNER_PLATFORM_RULES));
     expect(t.indexOf(DESIGNER_PLATFORM_RULES)).toBeLessThan(t.indexOf(DESIGNER_TOOLS));

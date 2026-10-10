@@ -66,7 +66,7 @@ export async function splitUpload(userId: string, chatId: string, uploadId: stri
   const tm = await sharp(trimmed).metadata();
   const file = await addFile({ userId, chatId, bytes: trimmed, name: `cutout-${uploadId.slice(0, 8)}`, role: "cutout", width: tm.width ?? width, height: tm.height ?? height, meta: { from: uploadId } });
 
-  const layer: ImageLayer = { id: layerId(), kind: "image", fileId: file.id, x: 50, y: 50, w: Math.round(((tm.width ?? width) / width) * 100), rotate: 0, opacity: 1, flip: false };
+  const layer: ImageLayer = { id: layerId(), kind: "image", fileId: file.id, x: 50, y: 50, w: Math.round(((tm.width ?? width) / width) * 100), rotate: 0, opacity: 1, flip: false, clip: false };
   const old = chat.messages[at].design!;
   const aspect = isDesignAspect(old.aspect) && old.layers.length ? old.aspect : nearestAspect(width, height);
   const design: Design = { ...old, aspect, width, height, artwork: art.id, layers: [layer, ...old.layers.filter((l) => l.kind === "text")], state: "ready" };

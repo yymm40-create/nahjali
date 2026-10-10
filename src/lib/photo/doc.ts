@@ -32,6 +32,8 @@ export interface ShapeLayer {
   /** the corners' roundness (rect), percent of the canvas width */
   radius: number;
   rotate: number;
+  /** «داخل الطبقة اللي تحتها»: shown only where the layer directly under it has pixels (a clipping mask). */
+  clip: boolean;
 }
 export type PhotoLayer = TextLayer | ImageLayer | ShapeLayer;
 
@@ -105,6 +107,7 @@ export function readShape(v: unknown): ShapeLayer | null {
     strokeW: clamp(o.strokeW ?? o.stroke_w, 0, 20, 0),
     radius: clamp(o.radius, 0, 50, 0),
     rotate: clamp(o.rotate, -180, 180, 0),
+    clip: o.clip === true,
   };
 }
 

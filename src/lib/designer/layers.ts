@@ -46,6 +46,12 @@ export interface ImageLayer {
   rotate: number;
   opacity: number;
   flip: boolean;
+  /**
+   * «داخل الطبقة اللي تحتها» (Photoshop's clipping mask): this layer is shown ONLY where the layer directly under it
+   * has pixels, so a person's picture sits inside a designed frame, a shape or a letter and never spills past its
+   * edges. It can be moved and scaled freely inside it; what leaves the shape simply does not show.
+   */
+  clip: boolean;
 }
 
 export type Layer = TextLayer | ImageLayer;
@@ -121,7 +127,7 @@ export function readImageLayer(v: unknown): ImageLayer | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   if (o.kind !== "image" || typeof o.fileId !== "string") return null;
-  return { id: str(o.id, 40) || layerId(), kind: "image", fileId: o.fileId, x: clamp(o.x, 0, 100, 50), y: clamp(o.y, 0, 100, 50), w: clamp(o.w, 5, 200, 50), rotate: clamp(o.rotate, -180, 180, 0), opacity: clamp(o.opacity, 0, 1, 1), flip: o.flip === true };
+  return { id: str(o.id, 40) || layerId(), kind: "image", fileId: o.fileId, x: clamp(o.x, 0, 100, 50), y: clamp(o.y, 0, 100, 50), w: clamp(o.w, 5, 200, 50), rotate: clamp(o.rotate, -180, 180, 0), opacity: clamp(o.opacity, 0, 1, 1), flip: o.flip === true, clip: o.clip === true };
 }
 
 /** The layers from the model or from storage, checked, at most DESIGNER.maxLayers (image layers first: they lie under the text). */
