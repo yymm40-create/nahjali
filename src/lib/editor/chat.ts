@@ -4,7 +4,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callClaudeJson, claudeCost, claudeTrouble, type ClaudeTurn } from "@/lib/film/anthropic";
+import { callClaudeJson, claudeCost, claudeWhy, type ClaudeTurn } from "@/lib/film/anthropic";
 import { claudeCharged, type Who } from "./pricing";
 import { stillOpen, type EditorProject } from "./server";
 
@@ -118,7 +118,7 @@ export async function handOff(p: EditorProject, who: Who, b: { messages?: unknow
       fallback: true,
     }).catch((e) => {
       console.error("editor handoff", e);
-      throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يكتب الهاندوف الحين؛ جرّب بعد شوي.", 502);
+      throw new UserError(claudeWhy(e, "ما قدر حيدرة يكتب الهاندوف الحين؛ جرّب بعد شوي.", who.email), 502);
     }),
     (x) => claudeCost(x.usage),
   );

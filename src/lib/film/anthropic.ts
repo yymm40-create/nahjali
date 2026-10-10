@@ -66,6 +66,46 @@ export const siteSystem = (task: string, cache = true, leader = false) => [
 /** Whether this e-mail is the owner's (the robots then read the leader block). */
 export const isLeader = (email: string | null | undefined) => isAdmin(email);
 
+/** How many times a request is tried in all, and the waits between the tries (ms). */
+export const CLAUDE_TRIES = 3;
+const CLAUDE_WAITS = [900, 2600];
+/** One attempt never hangs for ever: it is dropped at this and tried again (the routes allow 300 s). */
+export const CLAUDE_TIMEOUT_MS = 110_000;
+/** The answers worth trying again: busy, rate-limited, or the provider's own stumble. */
+const AGAIN = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+/** A connection that broke on the way (nothing was answered), so trying again is not asking twice. */
+const brokenLink = (e: unknown) => /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|terminated|other side closed|aborted|The operation was aborted|timeout/i.test(e instanceof Error ? `${e.message} ${(e as { cause?: { message?: string } }).cause?.message ?? ""}` : String(e));
+
+const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * One request to Claude, tried again when the answer is «busy» or the line broke — the recurring «جرّب بعد شوي» the
+ * robots used to hand back was almost always one of these. `retry-after` is honoured when the API sends it; a reply
+ * the API really refuses (a bad request, no credit, a key) is raised at once, because trying again changes nothing.
+ */
+export async function claudeFetch(url: string, init: RequestInit, tries = CLAUDE_TRIES): Promise<{ res: Response; body: Record<string, unknown> }> {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    if (i) await nap(CLAUDE_WAITS[Math.min(i - 1, CLAUDE_WAITS.length - 1)]);
+    try {
+      const res = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(CLAUDE_TIMEOUT_MS) });
+      const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      if (res.ok) return { res, body };
+      const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
+      last = new Error(`Claude ${res.status}: ${why}`);
+      if (!AGAIN.has(res.status) || i === tries - 1) throw last;
+      const after = Number(res.headers?.get?.("retry-after") ?? "");
+      if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
+    } catch (e) {
+      last = e;
+      // a request the API answered with a «no» is final; a broken line is tried again
+      if (!brokenLink(e) && e instanceof Error && /^Claude \d/.test(e.message)) throw e;
+      if (!brokenLink(e) || i === tries - 1) throw e;
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
+
 export type ClaudePart = { type: "text"; text: string } | { type: "image"; url: string } | { type: "image64"; data: string; mediaType: "image/jpeg" | "image/png" };
 
 export interface ClaudeTurn {
@@ -120,7 +160,7 @@ export async function callClaudeJson<T>({
   const withFallback = fallback && asked.key !== "haiku";
   const call = async (level: typeof effort) => {
     // ANTHROPIC_BASE_URL only for a local test server; production talks to the API directly
-    const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
+    const { body: b } = await claudeFetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
       method: "POST",
       headers: {
         "x-api-key": key,
@@ -137,9 +177,7 @@ export async function callClaudeJson<T>({
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
     });
-    const b = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`Claude ${res.status}: ${b?.error?.message ?? "request failed"}`);
-    return b;
+    return b as Record<string, unknown> & { stop_reason?: string; content?: { type: string; text?: string }[]; usage?: ClaudeUsage; model?: string };
   };
 
   let body = await call(effort);
@@ -149,8 +187,20 @@ export async function callClaudeJson<T>({
   if (body.stop_reason === "max_tokens") throw new Error("Claude reply was cut off (max_tokens)");
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
 
-  const raw = (body.content ?? []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
-  return { data: JSON.parse(raw) as T, raw, usage: withModel(body.usage as ClaudeUsage, body.model, asked) };
+  const textOf = (b: Awaited<ReturnType<typeof call>>) => (b.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
+  let raw = textOf(body);
+  try {
+    return { data: JSON.parse(raw) as T, raw, usage: withModel(body.usage as ClaudeUsage, body.model, asked) };
+  } catch {
+    // a reply that isn't the JSON asked for: once more before giving up (it is almost always a one-off)
+    body = await call(effort);
+    raw = textOf(body);
+    try {
+      return { data: JSON.parse(raw) as T, raw, usage: withModel(body.usage as ClaudeUsage, body.model, asked) };
+    } catch {
+      throw new Error(`Claude reply was not the JSON asked for (${raw.slice(0, 120)})`);
+    }
+  }
 }
 
 /**
@@ -164,7 +214,7 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
   const asked = currentClaude();
   let usd = 0;
   for (let round = 0; round < 3; round++) {
-    const res = await fetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
+    const { body } = await claudeFetch(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -176,9 +226,8 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
         ...(asked.effort ? { output_config: { effort: "low" } } : {}),
       }),
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`Claude ${res.status}: ${body?.error?.message ?? "request failed"}`);
-    usd += claudeCost(withModel(body.usage as ClaudeUsage, body.model, asked)) + (Number(body.usage?.server_tool_use?.web_search_requests) || 0) * 0.01;
+    const used = body.usage as (ClaudeUsage & { server_tool_use?: { web_search_requests?: number } }) | undefined;
+    usd += claudeCost(withModel(used as ClaudeUsage, body.model, asked)) + (Number(used?.server_tool_use?.web_search_requests) || 0) * 0.01;
     if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
     if (body.stop_reason === "pause_turn") {
       messages.push({ role: "assistant", content: body.content });
@@ -193,6 +242,16 @@ export async function callClaudeSearch({ system, prompt, maxUses = 4, maxTokens 
   throw new Error("Claude search did not finish");
 }
 
+/**
+ * The line the person reads when a request to Claude failed: the real reason when we know it (`claudeTrouble`), the
+ * robot's own words when we don't — and for the OWNER the raw error too, always, so «جرّب بعد شوي» is never a dead
+ * end he has to guess at.
+ */
+export function claudeWhy(e: unknown, say: string, email?: string | null): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  return `${claudeTrouble(e) ?? say}${isLeader(email) ? ` (تفصيل للرئيس: ${raw.slice(0, 300)})` : ""}`;
+}
+
 /** A Claude failure the person should hear about as it is (the account's credit ran out, the API is overloaded). */
 export function claudeTrouble(e: unknown): string | null {
   const m = e instanceof Error ? e.message : String(e);
@@ -201,5 +260,13 @@ export function claudeTrouble(e: unknown): string | null {
   if (/image.*(exceeds|too large|dimensions)|Unable to download|Could not process image|invalid image/i.test(m)) return "الروبوت ما قدر يقرا الصورة المرفقة (كبيرة أو تالفة). جرّب صورة أصغر أو بصيغة PNG/JPG.";
   if (/cut off \(max_tokens\)/i.test(m)) return "الرد طلع طويل جدًا وانقطع قبل ما يكتمل. اطلب شي واحد في المرة (أو قسّم طلبك لأجزاء)، أو جرّب موديل ثاني من زر 🧠.";
   if (/prompt is too long|too many tokens|exceeds? the (context|maximum)/i.test(m)) return "المحادثة طالت أكثر من اللي يستوعبه الموديل. ابدأ محادثة جديدة (والمشروع ينحفظ في السجل).";
+  if (/ANTHROPIC_API_KEY is not set/i.test(m)) return "مفتاح الذكاء الاصطناعي ناقص على السيرفر، فما قدر الروبوت يشتغل. صاحب المنصة يضيف ANTHROPIC_API_KEY في إعدادات الخادم.";
+  if (/Claude 401|Claude 403|authentication_error|invalid x-api-key|permission/i.test(m)) return "مفتاح الذكاء الاصطناعي مرفوض (منتهي أو ما عنده صلاحية). صاحب المنصة يجدّد المفتاح.";
+  if (/declined this request|refusal/i.test(m)) return "الموديل رفض هذا الطلب بالذات. صِغ الطلب بصيغة ثانية (أو جرّب موديل ثاني من زر 🧠).";
+  if (/was not the JSON asked for/i.test(m)) return "الرد رجع بصيغة غلط مرتين. جرّب مرة ثانية، وإذا تكرر قسّم طلبك أو بدّل الموديل من زر 🧠.";
+  if (/Claude 5\d\d|api_error|internal server error/i.test(m)) return "خدمة الذكاء الاصطناعي عندها خلل الحين (جرّبنا ثلاث مرات). جرّب بعد دقيقة أو بدّل الموديل من زر 🧠.";
+  if (/fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|terminated|other side closed|aborted|timeout/i.test(m)) return "الاتصال بخدمة الذكاء الاصطناعي انقطع (جرّبنا ثلاث مرات). جرّب مرة ثانية؛ وإذا كان طلبك فيه صور أو مقاطع كثيرة، خفّفها.";
+  if (/Claude 413|too large|entity too large/i.test(m)) return "الطلب كبير جدًا على الخدمة (صور أو لقطات كثيرة). شِل بعض المرفقات وجرّب.";
+  if (/Claude 400|invalid_request_error/i.test(m)) return `الخدمة رفضت صيغة الطلب (${m.replace(/^Claude 400: /, "").slice(0, 120)}). جرّب بعد تبسيط الطلب أو شيل المرفقات.`;
   return null;
 }

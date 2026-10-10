@@ -5,7 +5,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
+import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeWhy, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { checkCommands, context, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
@@ -331,7 +331,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // the conversation is metered by the route (claudeCharged): the person's model, the real usage + 10%
   const r = await ask(merged).catch((e) => {
     console.error("editor assistant", e);
-    throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يرد الحين؛ جرّب بعد شوي.", 502);
+    throw new UserError(claudeWhy(e, "ما قدر حيدرة يرد الحين؛ جرّب بعد شوي.", who.email), 502);
   });
 
   const check = (raw: string[]) => checkCommands(tl, raw, infos);
@@ -529,7 +529,7 @@ export async function designHook(who: Who, h: HookInputs): Promise<{ design: Hoo
   }
   const r = await callClaudeJson<HookDesign>({ system: DESIGN_SYSTEM, turns: [{ role: "user", content: designPrompt(h, research) }], schema: DESIGN_SCHEMA, maxTokens: 16000, effort: "high", fallback: true }).catch((e) => {
     console.error("hook design", e);
-    throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يصمم الهوك الحين؛ جرّب بعد شوي.", 502);
+    throw new UserError(claudeWhy(e, "ما قدر حيدرة يصمم الهوك الحين؛ جرّب بعد شوي.", who.email), 502);
   });
   usd += claudeCost(r.usage);
   return { design: checkDesign(r.data, h), usd };
@@ -574,7 +574,7 @@ export async function gradeCheck(p: EditorProject, who: Who, b: { clipId?: unkno
   const r = await claudeCharged(who, b.model, "حيدرة يشيك التلوين في حيدرة كت", () =>
     callClaudeJson<{ ok: boolean; verdict: string; commands: string[] }>({ system: SYSTEM, turns: [{ role: "user", content: [{ type: "text", text }, ...lookParts(look), ...cases] }], schema: CHECK_SCHEMA, maxTokens: 12000, effort: "medium", fallback: true }).catch((e) => {
       console.error("grade check", e);
-      throw new UserError(claudeTrouble(e) ?? "ما قدر حيدرة يشيك الحين.", 502);
+      throw new UserError(claudeWhy(e, "ما قدر حيدرة يشيك الحين.", who.email), 502);
     }),
     (x) => claudeCost(x.usage),
   );
