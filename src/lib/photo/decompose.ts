@@ -19,6 +19,7 @@ import { PHOTO } from "@config/photo";
 import { addFile, fileBytes, type PhotoFile } from "./files";
 import { getProject, saveProject } from "./projects";
 import { readDoc, type Op } from "./doc";
+import { FILL_USD, RETEXT_USD, predictFill, renderWords, repairReady } from "./repair";
 import { fontIds } from "./persona";
 
 /** What one piece of a flat picture is. */
@@ -187,6 +188,16 @@ async function cutPiece(base: Buffer, mask: Buffer, W: number, H: number): Promi
   return sharp(cut).trim({ threshold: 1 }).png().toBuffer();
 }
 
+/** The union of the lifted pieces' masks, soft at its edges (what has to be filled in again). */
+async function union(masks: Buffer[], W: number, H: number): Promise<Buffer> {
+  let out = await sharp(masks[0]).resize(W, H, { fit: "fill" }).greyscale().toBuffer();
+  for (const m of masks.slice(1)) {
+    const next = await sharp(m).resize(W, H, { fit: "fill" }).greyscale().toBuffer();
+    out = await sharp(out).composite([{ input: next, blend: "lighten" }]).greyscale().toBuffer();
+  }
+  return sharp(out).blur(Math.max(0.5, Math.round(Math.min(W, H) * 0.004))).greyscale().toBuffer();
+}
+
 /** The base with the lifted pieces wiped out: their places are covered by a soft, blurred copy of the picture. */
 async function patched(base: Buffer, masks: Buffer[], W: number, H: number): Promise<Buffer> {
   if (!masks.length) return base;
@@ -233,13 +244,18 @@ export async function lookInside(userId: string, email: string | null, projectId
   return { pieces: readPieces(r.data), usd: Math.round(usd * 10000) / 10000 };
 }
 
+/** How the place a piece left is filled again. */
+export type Fill = "predict" | "blur" | "none";
+
 export interface Cut {
   ops: Op[];
   files: PhotoFile[];
-  /** the new base, when the holes were patched */
+  /** the new base, when the holes were filled */
   base: PhotoFile | null;
   /** the pieces that could not be found in the picture */
   missed: string[];
+  /** how the holes were really filled (a prediction that could not run falls back to the soft patch) */
+  filled: Fill;
   usd: number;
 }
 
@@ -248,7 +264,7 @@ export interface Cut {
  * SAM 3's outline (its box when the outline cannot be found) and added as its own layer, and the base is replaced by
  * one with their places wiped, so nothing shows twice.
  */
-export async function liftOut(userId: string, email: string | null, projectId: string, pieces: Piece[], wipe = true): Promise<Cut> {
+export async function liftOut(userId: string, email: string | null, projectId: string, pieces: Piece[], wipe: Fill = "predict"): Promise<Cut> {
   const picked = pieces.slice(0, MAX_PIECES);
   if (!picked.length) throw new UserError("اختر عنصرًا واحدًا على الأقل.", 400);
   const project = await getProject(userId, projectId);
@@ -259,7 +275,8 @@ export async function liftOut(userId: string, email: string | null, projectId: s
   const cutOut = picked.filter((p) => p.kind !== "text");
   if (cutOut.length && !falReady()) throw new UserError("قص العناصر من الصورة غير مفعّل على الخادم حاليًا (FAL_KEY).", 503);
 
-  const usd = cutOut.length * PIECE_USD;
+  const wantPredict = wipe === "predict" && repairReady();
+  const usd = cutOut.length * PIECE_USD + (wantPredict ? FILL_USD : 0);
   const job = `piece-${randomUUID()}`;
   if (usd > 0) await reserveCoins({ id: userId, email }, job, usd, "فكّ عناصر الصورة");
   try {
@@ -289,16 +306,89 @@ export async function liftOut(userId: string, email: string | null, projectId: s
     }
 
     let base: PhotoFile | null = null;
-    if (wipe) {
-      const clean = await patched(pic.bytes, masks, pic.W, pic.H);
-      base = await addFile({ userId, projectId: project.id, bytes: clean, name: "الخلفية بعد التفكيك", role: "base", meta: { from: baseId, wiped: picked.map((p) => p.id) } });
+    let filled: Fill = "none";
+    if (wipe !== "none" && masks.length) {
+      const holes = await union(masks, pic.W, pic.H);
+      // «يتوقّع الجزء الناقص»: GPT Image 2 draws what was BEHIND the piece, and only the hole's own pixels are taken
+      // from its answer — so the rest of the picture is the original, byte for byte
+      const predicted = wantPredict ? await predictFill(pic.bytes, holes, pic.W, pic.H) : null;
+      filled = predicted ? "predict" : "blur";
+      const clean = predicted ?? (await patched(pic.bytes, masks, pic.W, pic.H));
+      base = await addFile({ userId, projectId: project.id, bytes: clean, name: predicted ? "الخلفية مكمّلة" : "الخلفية بعد التفكيك", role: "base", meta: { from: baseId, wiped: picked.map((p) => p.id), fill: filled } });
       // the base changes FIRST, so the lifted pieces land over the cleaned picture
       ops.unshift({ op: "use_as_base", file: base.id } as Op);
     }
-    if (usd > 0) await settleCoins(job, usd);
-    return { ops, files, base, missed, usd: Math.round(usd * 10000) / 10000 };
+    const spent = usd - (wantPredict && filled !== "predict" ? FILL_USD : 0);
+    if (usd > 0) await settleCoins(job, Math.max(0, spent));
+    return { ops, files, base, missed, filled, usd: Math.round(Math.max(0, spent) * 10000) / 10000 };
   } catch (e) {
     if (usd > 0) await refundCoins(job);
+    throw e;
+  }
+}
+
+export interface Retyped {
+  ops: Op[];
+  /** the new words as a transparent picture, in the original's own typeface */
+  file: PhotoFile | null;
+  /** the base with the old words taken out */
+  base: PhotoFile | null;
+  filled: Fill;
+  usd: number;
+}
+
+/**
+ * «شنو تبي تغيّر؟» — a word that is PART of the picture (not a layer) is retyped: the old words are wiped from the
+ * base (the prediction fills what was behind them) and the NEW words are drawn in the same typeface, weight, colour
+ * and effects (a crop of the original rides along as the reference), then placed in the very same spot. The person's
+ * words are drawn as they wrote them, in their own language — nothing is translated or re-spelled.
+ */
+export async function retype(userId: string, email: string | null, projectId: string, piece: Piece, words: string, fill: Fill = "predict"): Promise<Retyped> {
+  const text = words.replace(/\r/g, "").slice(0, 300).trim();
+  if (!text) throw new UserError("اكتب الكلام الجديد.", 400);
+  if (!repairReady()) throw new UserError("إعادة كتابة الكلام داخل الصورة غير مفعّلة على الخادم (OPENAI_API_KEY).", 503);
+  const project = await getProject(userId, projectId);
+  if (!project) throw new UserError("ما لقينا هذا المشروع.", 404);
+  const doc = readDoc(project.doc);
+  const baseId = doc.base?.fileId;
+  if (!baseId) throw new UserError("ما فيه صورة أساسية.", 409);
+
+  const usd = RETEXT_USD + (fill === "predict" ? FILL_USD : 0);
+  const job = `retext-${randomUUID()}`;
+  await reserveCoins({ id: userId, email }, job, usd, "إعادة كتابة كلام في الصورة");
+  try {
+    const pic = await pictureOf(userId, baseId);
+    // the original words, cropped a little wider than their box, are the typeface's reference
+    const pad = 0.04;
+    const box = piece.box;
+    const left = Math.max(0, Math.round(((box.x - box.w / 2) / 100 - pad) * pic.W));
+    const top = Math.max(0, Math.round(((box.y - box.h / 2) / 100 - pad) * pic.H));
+    const right = Math.min(pic.W, Math.round(((box.x + box.w / 2) / 100 + pad) * pic.W));
+    const bottom = Math.min(pic.H, Math.round(((box.y + box.h / 2) / 100 + pad) * pic.H));
+    const crop = await sharp(pic.bytes).extract({ left, top, width: Math.max(8, right - left), height: Math.max(8, bottom - top) }).png().toBuffer();
+
+    const drawn = await renderWords(crop, text);
+    if (!drawn) throw new UserError("ما قدرت أرسم الكلام الجديد بنفس الخط؛ جرّب مرة ثانية.", 502);
+    const file = await addFile({ userId, projectId: project.id, bytes: drawn, name: `كلام: ${text.slice(0, 24)}`, role: "layer", meta: { retype: piece.id, words: text, from: baseId } });
+
+    const ops: Op[] = [];
+    let base: PhotoFile | null = null;
+    let filled: Fill = "none";
+    if (fill !== "none") {
+      const mask = await boxMask(pic.W, pic.H, box, Math.max(2, Math.round(Math.min(pic.W, pic.H) * 0.006)));
+      const holes = await union([mask], pic.W, pic.H);
+      const predicted = fill === "predict" ? await predictFill(pic.bytes, holes, pic.W, pic.H) : null;
+      filled = predicted ? "predict" : "blur";
+      const clean = predicted ?? (await patched(pic.bytes, [mask], pic.W, pic.H));
+      base = await addFile({ userId, projectId: project.id, bytes: clean, name: "الخلفية بعد شيل الكلام", role: "base", meta: { from: baseId, retype: piece.id, fill: filled } });
+      ops.push({ op: "use_as_base", file: base.id } as Op);
+    }
+    ops.push({ op: "add_image", file: file.id, x: box.x, y: box.y, w: Math.max(2, Math.min(200, box.w)) } as Op);
+    const spent = usd - (fill === "predict" && filled !== "predict" ? FILL_USD : 0);
+    await settleCoins(job, Math.max(0, spent));
+    return { ops, file, base, filled, usd: Math.round(Math.max(0, spent) * 10000) / 10000 };
+  } catch (e) {
+    await refundCoins(job);
     throw e;
   }
 }

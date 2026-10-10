@@ -102,8 +102,11 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
   // «🧩 فكّك»: what the reading found, which pieces are ticked, and whether the holes are patched
   const [pieces, setPieces] = useState<Piece[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [wipe, setWipe] = useState(true);
+  const [fill, setFill] = useState<"predict" | "blur" | "none">("predict");
   const [missed, setMissed] = useState<string[]>([]);
+  const [predicts, setPredicts] = useState(true);
+  // «شنو تبي تغيّر؟»: the text piece whose words are being retyped, and what the person is typing
+  const [retext, setRetext] = useState<{ piece: Piece; words: string } | null>(null);
   const [shut, setShut] = useState<Record<string, boolean>>({});
 
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -361,9 +364,11 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     setMissed([]);
     try {
       await flushSave();
-      const r = await postJson<{ pieces: Piece[]; ready: boolean }>("/api/photo/decompose", { projectId, step: "read" });
+      const r = await postJson<{ pieces: Piece[]; ready: boolean; predicts: boolean }>("/api/photo/decompose", { projectId, step: "read" });
       setPieces(r.pieces);
       setPicked(new Set(r.pieces.map((p) => p.id)));
+      setPredicts(r.predicts);
+      if (!r.predicts) setFill("blur");
       if (!r.pieces.length) setNotice("ما لقيت عناصر أفصلها في هذي الصورة — تبدو صورة واحدة بلا شي مركّب عليها.");
       else if (!r.ready) setNotice("قص الصور من الخلفية غير مفعّل على الخادم (FAL_KEY)؛ الكلام ينفصل نصًا، والصور بحدود مستطيلها.");
     } catch (e) {
@@ -379,7 +384,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     setBusy(`أفصل ${take.length} عنصر…`);
     try {
       await flushSave();
-      const r = await postJson<{ ops: Op[]; files: FileView[]; base: FileView | null; missed: string[] }>("/api/photo/decompose", { projectId, step: "lift", pieces: take, wipe });
+      const r = await postJson<{ ops: Op[]; files: FileView[]; base: FileView | null; missed: string[]; filled: string }>("/api/photo/decompose", { projectId, step: "lift", pieces: take, fill });
       const list = await reloadFiles();
       const info = new Map(list.map((f) => [f.id, { w: f.width, h: f.height }]));
       change((d) => {
@@ -394,7 +399,36 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
       setPieces(null);
       setPicked(new Set());
       setTab("layers");
-      setMessages((m) => [...m, { role: "assistant", text: `🧩 فصلت ${take.length} عنصر: ${take.map((p) => p.name).join("، ")}${r.missed.length ? ` (ما لقيت ${r.missed.join("، ")} بالضبط، فحطّيتها بحدود مستطيلها)` : ""}.`, note: true }]);
+      const how = r.filled === "predict" ? " وكمّلت الخلفية مكانها (توقّع الجزء الناقص)" : r.filled === "blur" ? " ورقّعت مواضعها برقعة ناعمة" : "";
+      setMessages((m) => [...m, { role: "assistant", text: `🧩 فصلت ${take.length} عنصر: ${take.map((p) => p.name).join("، ")}${how}${r.missed.length ? ` (ما لقيت ${r.missed.join("، ")} بالضبط، فحطّيتها بحدود مستطيلها)` : ""}.`, note: true }]);
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /** «شنو تبي تغيّر؟» — the words inside the picture are redrawn in their own typeface and put back in their place. */
+  async function sendRetext() {
+    const r0 = retext;
+    if (!r0 || !r0.words.trim()) return;
+    setBusy("أعيد كتابة الكلام بنفس الخط…");
+    try {
+      await flushSave();
+      const r = await postJson<{ ops: Op[]; filled: string }>("/api/photo/decompose", { projectId, step: "retext", piece: r0.piece, text: r0.words, fill });
+      const list = await reloadFiles();
+      const info = new Map(list.map((f) => [f.id, { w: f.width, h: f.height }]));
+      change((d) => {
+        let next = d;
+        for (const o of r.ops) {
+          const res = applyOp(next, o, { files: info, fonts: fontIds });
+          if (!("error" in res)) next = res.doc;
+        }
+        return next;
+      });
+      setPieces((ps) => (ps ?? []).filter((p) => p.id !== r0.piece.id));
+      setRetext(null);
+      setMessages((m) => [...m, { role: "assistant", text: `✏️ «${r0.piece.name}» صارت «${r0.words.trim()}» بنفس الخط${r.filled === "predict" ? "، والخلفية مكانها مكمّلة" : ""}.`, note: true }]);
     } catch (e) {
       setNotice((e as Error).message);
     } finally {
@@ -565,6 +599,19 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
                   onClick={() => setPicked((x) => { const n = new Set(x); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })}
                 >
                   <small>{PIECE_ICON[p.kind]} {p.name}</small>
+                  {p.kind === "text" && (
+                    <i
+                      className="ph-piece-pen"
+                      role="button"
+                      tabIndex={0}
+                      title="غيّر هذا الكلام بنفس الخط"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); setRetext({ piece: p, words: p.text ?? "" }); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setRetext({ piece: p, words: p.text ?? "" }); } }}
+                    >
+                      ✏️
+                    </i>
+                  )}
                 </button>
               ))}
               {canvas.current && boxes.map((b) => {
@@ -750,18 +797,32 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
                           <input type="checkbox" checked={picked.has(p.id)} onChange={() => setPicked((x) => { const n = new Set(x); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} />
                           <span aria-hidden>{PIECE_ICON[p.kind]}</span>
                           <b>{p.name}</b>
+                          {p.kind === "text" && <button type="button" className="ph-pen" title="غيّر الكلام بنفس الخط" onClick={(e) => { e.preventDefault(); setRetext({ piece: p, words: p.text ?? "" }); }}>✏️ غيّره</button>}
                         </label>
                         <small dir="auto">{p.kind === "text" ? `«${(p.text ?? "").replace(/\n/g, " ").slice(0, 46)}»` : p.what}</small>
                       </li>
                     ))}
                   </ul>
-                  <label className="ph-check">
-                    <input type="checkbox" checked={wipe} onChange={(e) => setWipe(e.target.checked)} />
-                    امسح مواضعها من الصورة الأساسية (عشان ما يظهر العنصر مرتين لما تحركه)
-                  </label>
+                  <b className="ph-small">مكان العنصر بعد ما ينفصل</b>
+                  <div className="ph-chips">
+                    <button type="button" className={fill === "predict" ? "on" : ""} disabled={!predicts} title={predicts ? "جي بي تي ايمج ٢ يتوقّع اللي كان خلف العنصر ويكمّله، وما يتغيّر شي خارج مكانه" : "غير مفعّل على الخادم (OPENAI_API_KEY)"} onClick={() => setFill("predict")}>🪄 يتوقّع الناقص ويكمّله</button>
+                    <button type="button" className={fill === "blur" ? "on" : ""} onClick={() => setFill("blur")}>رقعة ناعمة (مجاني)</button>
+                    <button type="button" className={fill === "none" ? "on" : ""} onClick={() => setFill("none")}>اتركه كما هو</button>
+                  </div>
+                  {retext && (
+                    <div className="ph-ask">
+                      <b>شنو تبي تغيّر في «{retext.piece.name}»؟</b>
+                      <small>اكتب الكلام الجديد — يُرسم بنفس الخط ونفس اللون ونفس التأثيرات، ويُحط بنفس المكان.</small>
+                      <textarea dir="auto" rows={2} className="ph-input" value={retext.words} maxLength={300} onChange={(e) => setRetext({ ...retext, words: e.target.value })} />
+                      <div className="ph-row">
+                        <button type="button" className="ph-btn ph-primary" disabled={!retext.words.trim() || !!busy} onClick={() => void sendRetext()}>✏️ غيّره بنفس الخط</button>
+                        <button type="button" className="ph-btn ph-quiet" onClick={() => setRetext(null)}>إلغاء</button>
+                      </div>
+                    </div>
+                  )}
                   <button type="button" className="ph-btn ph-primary" disabled={!picked.size || !!busy} onClick={() => void liftPieces()}>✂️ افصل المحدّد ({picked.size})</button>
                   <button type="button" className="ph-btn ph-quiet" onClick={() => { setPieces(null); setPicked(new Set()); }}>إلغاء</button>
-                  <p className="ph-hint">الصور والشعارات تُقص بحدودها الحقيقية (تُحسب على الرصيد لكل عنصر)؛ الكلام مجاني لأنه يُعاد كتابته نصًا.</p>
+                  <p className="ph-hint">الصور والشعارات تُقص بحدودها الحقيقية (تُحسب على الرصيد لكل عنصر)؛ الكلام مجاني لأنه يُعاد كتابته نصًا. وإكمال الخلفية بالتوقّع يُحسب مرة واحدة للعملية كلها — وإذا ما نجح، تُستخدم الرقعة الناعمة ولا يُخصم.</p>
                 </>
               )}
             </div>
