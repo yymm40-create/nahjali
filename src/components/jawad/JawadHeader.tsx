@@ -9,11 +9,12 @@ import { SoundToggle } from "@/components/UiSounds";
 import LayoutToggle from "./LayoutToggle";
 import LoginLink from "./LoginLink";
 import ReportButton from "./ReportButton";
+import ShareReward from "./ShareReward";
 import SectionsBar from "./SectionsBar";
 
 /** JAWAD AI's compact header: the identity (back to JAWAD AI's home), a way back to نهج علي's home, the balance and the account; then the sections bar. */
 /** `preview`: JAWAD AI is still in development for this visitor — identity and account only, no sections or balance. */
-export default function JawadHeader({ rt, user, owner, balance, username, preview = false }: { rt: Runtime; user: User | null; owner: boolean; balance: number | null; username: string | null; preview?: boolean }) {
+export default function JawadHeader({ rt, user, owner, balance, username, preview = false, version = "dev", boss = false }: { rt: Runtime; user: User | null; owner: boolean; /** the site's owner himself (not a free guest): the problem button is his */ boss?: boolean; balance: number | null; username: string | null; preview?: boolean; version?: string }) {
   const sections = rt.sections.filter((s) => s.enabled || owner).map((s) => ({ id: s.id, name: s.name, icon: s.icon, path: s.path, hidden: !s.enabled }));
   return (
     <header className="sticky top-0 z-30">
@@ -28,7 +29,8 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           </Link>
           <div className="flex items-center gap-2">
             {/* on a computer: the whole width, or a phone-wide column */}
-            {owner && <ReportButton />}
+            {!preview && <ShareReward version={version} loginHref={`${JAWAD.base}/login?next=${encodeURIComponent(JAWAD.base)}`} />}
+            {boss && <ReportButton />}
             {!preview && <LayoutToggle />}
             <SoundToggle />
             {user ? (

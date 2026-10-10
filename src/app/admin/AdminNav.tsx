@@ -35,6 +35,7 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
       { href: "/admin/designer", icon: "🎨", label: "المصمم الذكي" },
       { href: "/admin/photo", icon: "📸", label: "زهراء فوتو ماستر" },
       { href: "/admin/credits", icon: "💳", label: "باقات الرصيد والشحن" },
+      { href: "/admin/share", icon: "🎁", label: "انشرنا واربح" },
       { href: "/admin/course", icon: "🎓", label: "دورة الجواد" },
       ...(NAHJ_ALI_HIDDEN ? [] : [{ href: "/admin/booklet", icon: "📖", label: "كتيب نهج علي" }]),
     ],
