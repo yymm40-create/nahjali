@@ -48,6 +48,8 @@ export default function FilmStage({ projectId, title, stage, videosOpen, cost, p
   useEffect(() => {
     let live = true;
     const tick = async () => {
+      // nobody is looking (another tab, the device asleep): wait for the next tick
+      if (document.hidden) return;
       try {
         const p = await api<Progress>(`/api/film/projects/${projectId}/progress`);
         if (live) setProgress(p);
