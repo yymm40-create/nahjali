@@ -10,7 +10,7 @@ import { allText, basedOn, loadCtx, researchText, scopeRules, understandingText,
 import { getOutput, saveOutput, type Output } from "./db";
 import type { Handler, Job, StepResult } from "./jobs";
 import { emptyImage, type DocPlan, type SermonPoem, type SermonTopic } from "./model";
-import { hasReference, searchRef, type RefPage } from "@/lib/khateeb/reference";
+import { readyRefs, searchRef, type RefKind, type RefPage } from "@/lib/khateeb/reference";
 import { norm } from "@/lib/khateeb/tafsir";
 
 const str = { type: "string" };
@@ -134,66 +134,82 @@ export function onPage(text: string, page: { text: string }): string {
     .trim();
 }
 
-/** The method's step 4 from the owner's reference: words are searched for, the best pages read, and lines picked that are really on them. */
-async function poemsStep(job: Job): Promise<StepResult> {
+const KIND_LABEL: Record<RefKind, string> = { poetry: "أشعار", source: "مصدر" };
+
+/**
+ * The library's references searched for the sermon's theme (the method's step 4 for poetry, and the sources the preacher
+ * chose): words are searched for, the best pages read, and passages picked that are really on them — each is checked word for
+ * word against its page, or dropped. `kind`: poetry (verses) or source (stories, wisdom, lessons).
+ */
+async function refsStep(job: Job): Promise<StepResult> {
   const o = await getOutput(job.user_id, job.output_id!);
   const plan = o.plan as DocPlan | null;
   const sp = plan?.sermon;
   const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
   if (!plan || !sp || !topic) throw new Error("اختر موضوع الخطبة أول.");
-  if (!(await hasReference())) throw new Error("ما فيه مرجع أشعار جاهز: ارفعه واقرأه من لوحة الجواد (الخطيب الذكي).");
+  const kind: RefKind = job.input.kind === "source" ? "source" : "poetry";
+  const ids = (Array.isArray(job.input.refIds) ? job.input.refIds : []).map(String);
+  const ready = (await readyRefs(kind)).filter((r) => !ids.length || ids.includes(r.id));
+  if (!ready.length) throw new Error(kind === "source" ? "ما فيه مصدر جاهز في المكتبة (أو ما اخترت واحد): أضفه من لوحة الجواد (الخطيب الذكي)." : "ما فيه مرجع أشعار جاهز: ارفعه واقرأه من لوحة الجواد (الخطيب الذكي).");
   const ask = String(job.input.ask ?? "").trim().slice(0, 500);
-  const purpose = [String(o.settings.poemsFor ?? "").trim(), ask].filter(Boolean).join("؛ ");
+  const purpose = [kind === "poetry" ? String(o.settings.poemsFor ?? "").trim() : "", ask].filter(Boolean).join("؛ ");
   const c = await loadCtx(job.user_id, o.project_id);
-  const theme = `the sermon's pivot idea: ${topic.title}\nits treatment: ${topic.idea}\nthe takhallus point: ${topic.kooriz}\nthe key verse: ${topic.verse.ref}\nthe poetry asked for: ${purpose || "(none said: lines that serve the idea)"}`;
+  const theme = `the sermon's pivot idea: ${topic.title}\nits treatment: ${topic.idea}\nthe takhallus point: ${topic.kooriz}\nthe key verse: ${topic.verse.ref}\nthe occasion: ${String(o.settings.occasion ?? "").trim() || "(not said)"}\nwhat is asked for: ${purpose || "(nothing said: what serves the idea)"}`;
+  const prose = kind === "source";
 
   const kw = await askJson<{ keywords: string[] }>({
-    system: "You help find lines of Arabic poetry in a reference by searching its text. Give 8–12 single Arabic words (roots or common forms, no particles, no phrases) that would appear in verses on this theme: the idea itself, its opposite, and the images the classical poets used for it. Words only.",
+    system: prose
+      ? "You help find stories, sayings and lessons in a reference book by searching its text. Give 8–12 single Arabic words (roots or common forms, no particles, no phrases) that would appear in a story or lesson on this theme: the idea itself, its opposite, and the characters and situations that carry it. Words only."
+      : "You help find lines of Arabic poetry in a reference by searching its text. Give 8–12 single Arabic words (roots or common forms, no particles, no phrases) that would appear in verses on this theme: the idea itself, its opposite, and the images the classical poets used for it. Words only.",
     parts: [{ type: "text", text: theme }],
     schema: KEYWORDS_SCHEMA,
     maxTokens: 600,
     effort: "low",
   });
-  const pages = (await searchRef(kw.data.keywords, 10)).filter((p) => p.text.trim());
-  if (!pages.length) throw new Error("ما لقينا في المرجع أبياتًا قريبة من هذا الموضوع. جرّب غرضًا ثانيًا (مثل: الصبر، العلم) أو أضف أبياتك بنفسك.");
+  const pages = (await searchRef(kw.data.keywords, prose ? 12 : 10, { kind, ids: ready.map((r) => r.id) })).filter((p) => p.text.trim());
+  if (!pages.length) throw new Error(prose ? "ما لقينا في المصادر المختارة شي قريب من هذا الموضوع. جرّب كلمات ثانية في «اطلب عن…» أو اختر مصادر أكثر." : "ما لقينا في المرجع أبياتًا قريبة من هذا الموضوع. جرّب غرضًا ثانيًا (مثل: الصبر، العلم) أو أضف أبياتك بنفسك.");
 
   const tagged = pages.map((p, i) => ({ tag: `P${i + 1}`, p }));
   const r = await askJson<{ items: { tag: string; text: string; poet: string; why: string }[] }>({
-    system: `You choose lines of poetry for a sermon from the pages of a reference book. Pick at most 8 passages (each 1–4 verses) that really serve the theme. Copy each passage WORD FOR WORD from its page, with its diacritics as printed — never change, complete, fix or invent a word; a line you cannot copy exactly is not picked. "tag" is the page's tag; "poet" is the poet's name ONLY when the page prints it (else an empty string); "why" is one short line in Arabic on how it serves the sermon. Prefer fewer, strong lines over many.\n${scopeRules(c)}`,
-    parts: [{ type: "text", text: `THE THEME:\n${theme}\n\nTHE PAGES:\n${tagged.map(({ tag, p }) => `<page tag="${tag}">\n${p.text.slice(0, 6000)}\n</page>`).join("\n")}` }],
+    system: prose
+      ? `You choose material for a sermon from the pages of reference books: stories, sayings and lessons that really serve the theme. This is an ANALYSIS across the pages given (they come from several places in the books): pick at most 6 passages, the strongest and the most different from each other. Each passage is one continuous piece of a page, up to about 200 words, copied WORD FOR WORD from it, with its diacritics as printed — never change, shorten inside, complete, fix or invent a word; a passage you cannot copy exactly is not picked. "tag" is the page's tag; "poet" is the passage's own heading or number as the page prints it (e.g. «الشاهد (27)» and its title), else an empty string; "why" is one short line in Arabic on how it serves the sermon.\n${scopeRules(c)}`
+      : `You choose lines of poetry for a sermon from the pages of a reference book. Pick at most 8 passages (each 1–4 verses) that really serve the theme. Copy each passage WORD FOR WORD from its page, with its diacritics as printed — never change, complete, fix or invent a word; a line you cannot copy exactly is not picked. "tag" is the page's tag; "poet" is the poet's name ONLY when the page prints it (else an empty string); "why" is one short line in Arabic on how it serves the sermon. Prefer fewer, strong lines over many.\n${scopeRules(c)}`,
+    parts: [{ type: "text", text: `THE THEME:\n${theme}\n\nTHE PAGES:\n${tagged.map(({ tag, p }) => `<page tag="${tag}" book="${p.title}">\n${p.text.slice(0, 6000)}\n</page>`).join("\n")}` }],
     schema: PICK_SCHEMA,
-    maxTokens: 6000,
+    maxTokens: 8000,
     effort: "low",
   });
 
-  const poems: SermonPoem[] = [];
+  const picked: SermonPoem[] = [];
   const seen = new Set<string>();
-  for (const it of r.data.items.slice(0, 8)) {
+  for (const it of r.data.items.slice(0, prose ? 6 : 8)) {
     const page: RefPage | undefined = tagged.find((t) => t.tag === it.tag)?.p;
     if (!page) continue;
     const text = onPage(it.text, page);
     const key = norm(text);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    poems.push({ text, poet: it.poet.trim().slice(0, 100), page: page.label, ref: page.title, why: it.why.trim().slice(0, 300) });
+    picked.push({ text, poet: it.poet.trim().slice(0, 160), page: page.label, ref: page.title, why: it.why.trim().slice(0, 300) });
   }
-  if (!poems.length) throw new Error("الأبيات اللي اختارها الشيخ ما طابقت نص المرجع حرفيًا فما اعتمدناها. جرّب مرة ثانية، أو أضف أبياتك بنفسك.");
+  if (!picked.length) throw new Error(prose ? "المقاطع اللي اختارها الشيخ ما طابقت نص المصدر حرفيًا فما اعتمدناها. جرّب مرة ثانية." : "الأبيات اللي اختارها الشيخ ما طابقت نص المرجع حرفيًا فما اعتمدناها. جرّب مرة ثانية، أو أضف أبياتك بنفسك.");
 
   const usd = kw.usd + r.usd;
   const fresh = (await getOutput(job.user_id, job.output_id!)).plan as DocPlan;
   if (!fresh.sermon || fresh.sermon.chosen !== sp.chosen) return { done: true, usd, stage: "تغيّر الموضوع أثناء الجلب" };
-  const next: DocPlan = { ...fresh, sermon: { ...fresh.sermon, poems } };
+  const next: DocPlan = { ...fresh, sermon: { ...fresh.sermon, ...(prose ? { sources: picked } : { poems: picked }) } };
   await saveOutput(o.id, { plan: next, plan_approved: false, error: null }, { kind: "plan_edit", snapshot: next, userId: o.user_id });
-  return { done: true, usd, stage: "الأبيات جاهزة" };
+  return { done: true, usd, stage: prose ? "مقاطع المصادر جاهزة" : "الأبيات جاهزة" };
 }
 
 export const poemsHandler: Handler = {
-  label: "اختيار الأبيات من المرجع",
-  step: poemsStep,
+  label: "الاستخراج من مكتبة المراجع",
+  step: refsStep,
   onFail: async (job, message) => {
     if (job.output_id) await saveOutput(job.output_id, { error: message });
   },
 };
+
+export { KIND_LABEL as REF_KIND_LABEL };
 
 /** What the writer of one part is told: the chosen topic, the verse as the Quran has it, the tafsir, the takhallus point, the poetry asked for, and this part's role. */
 export function sermonBrief(plan: DocPlan, o: Output, i: number): string {
@@ -216,6 +232,9 @@ export function sermonBrief(plan: DocPlan, o: Output, i: number): string {
       : poemsFor || poems
         ? `POETRY (step 4)${poemsFor ? `, the purpose asked for: ${poemsFor}` : ""}:${poems ? `\nthe preacher's own lines, to be used as written, with their poet when he gives one:\n${poems}` : ""}\nUse only these lines, and the owner's collection in the rules; if none suits, use no poetry — never make up a line or put a line in a poet's name from memory.`
         : "POETRY: use only lines from the owner's collection in the rules, when one suits; never make up a line or put a line in a poet's name from memory.",
+    sp?.sources?.length
+      ? `PASSAGES FROM THE LIBRARY'S SOURCES, checked word for word against their pages — the preacher approved them. They are the only outside stories, sayings and lessons you may use: retell each FAITHFULLY (its people, its events, its words), add no detail it does not have, and say where it comes from in the sermon (e.g. «ورُوي في كتاب …») with its page; a saying that is quoted is quoted EXACTLY in a "quote" block with its reference and page:\n${sp.sources.map((p, k) => `${k + 1}. ${p.poet ? `[${p.poet}] ` : ""}${p.text}\n   المرجع: ${p.ref}، ص${p.page}${p.why ? ` · ${p.why}` : ""}`).join("\n\n")}`
+      : "",
     part ? `THIS PART — ${part.title}: ${part.role}.` : "",
   ]
     .filter(Boolean)

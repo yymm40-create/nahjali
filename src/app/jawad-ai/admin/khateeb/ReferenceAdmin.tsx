@@ -11,6 +11,8 @@ import { api, postJson } from "@/lib/fetch";
 interface Ref {
   id: string;
   title: string;
+  kind: "poetry" | "source";
+  origin: string;
   pages: number;
   done: number;
   status: "uploading" | "reading" | "ready" | "failed";
@@ -19,12 +21,16 @@ interface Ref {
 }
 
 const STATUS: Record<Ref["status"], string> = { uploading: "ما اكتمل الرفع", reading: "يُقرأ", ready: "جاهز", failed: "فشل" };
+const KIND: Record<Ref["kind"], string> = { poetry: "أشعار", source: "مصدر (قصص وحكم وعبر…)" };
 
 export default function ReferenceAdmin() {
   const [refs, setRefs] = useState<Ref[] | null>(null);
   const [ready, setReady] = useState(true);
   const [msg, setMsg] = useState<{ t: string; bad?: boolean } | null>(null);
   const [title, setTitle] = useState("");
+  const [kind, setKind] = useState<Ref["kind"]>("poetry");
+  const [link, setLink] = useState("");
+  const [importing, setImporting] = useState(false);
   const [up, setUp] = useState<number | null>(null);
   const [driving, setDriving] = useState<string | null>(null);
   const stop = useRef(false);
@@ -75,7 +81,7 @@ export default function ReferenceAdmin() {
   const upload = async (f: File) => {
     setMsg(null);
     try {
-      const s = await postJson<{ id: string; signedUrl: string }>("/api/khateeb/reference", { action: "start", title: title.trim() || f.name.replace(/\.pdf$/i, ""), bytes: f.size });
+      const s = await postJson<{ id: string; signedUrl: string }>("/api/khateeb/reference", { action: "start", title: title.trim() || f.name.replace(/\.pdf$/i, ""), bytes: f.size, kind });
       await putWithProgress(s.signedUrl, f, "application/pdf", (x) => setUp(x));
       setUp(null);
       const r = (await postJson<{ ref: Ref }>("/api/khateeb/reference", { action: "confirm", id: s.id })).ref;
@@ -87,6 +93,22 @@ export default function ReferenceAdmin() {
       setMsg({ t: e instanceof Error ? e.message : "تعذّر الرفع.", bad: true });
     } finally {
       if (file.current) file.current.value = "";
+    }
+  };
+
+  const importBook = async () => {
+    setMsg(null);
+    setImporting(true);
+    try {
+      const r = (await postJson<{ ref: Ref }>("/api/khateeb/reference", { action: "import", input: link, title: title.trim(), kind: "source" })).ref;
+      setRefs((l) => [r, ...(l ?? [])]);
+      setLink("");
+      setTitle("");
+      setMsg({ t: `انضاف «${r.title}» (${r.pages.toLocaleString("ar")} صفحة) وهو جاهز، ما احتاج قراءة ولا تكلفة.` });
+    } catch (e) {
+      setMsg({ t: e instanceof Error ? e.message : "تعذّر الاستيراد.", bad: true });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -102,13 +124,27 @@ export default function ReferenceAdmin() {
 
   return (
     <section className="jw-panel space-y-3 p-4">
-      <h2 className="font-semibold">📚 مرجع الأشعار (PDF مصوّر)</h2>
+      <h2 className="font-semibold">📚 مكتبة المراجع (أشعار ومصادر)</h2>
       <p className="text-sm text-jw-muted">
-        ارفع المرجع كاملًا بأي عدد صفحات: يرتفع للموقع مباشرة (مو عن طريق المحادثة)، ويقرأه الشيخ صفحة صفحة (كل ٣ صفحات مع بعض) ويحفظ نص كل صفحة ورقمها. وقت الخطبة يطلب منه أبياتًا عن موضوعها فيستخرجها من المرجع بنصها ورقم صفحتها. القراءة تكلّف حسب الصفحات (على حساب المنصة)، وتقدر تسكّر الصفحة وترجع وتكمّل.
+        المراجع نوعان: <b>أشعار</b> (يستخرج منها الشيخ أبياتًا) و<b>مصادر</b> (قصص وحكم وعبر، مثل «من شواهد المبلغين»: يستخرج منها الشيخ ما يخدم الخطبة). الخطيب يختار منها وقت الخطبة. ارفع المرجع (PDF مصوّر) كاملًا بأي عدد صفحات: يرتفع للموقع مباشرة (مو عن طريق المحادثة)، ويقرأه الشيخ صفحة صفحة (كل ٣ صفحات مع بعض) ويحفظ نص كل صفحة ورقمها. وقت الخطبة يطلب منه أبياتًا عن موضوعها فيستخرجها من المرجع بنصها ورقم صفحتها. القراءة تكلّف حسب الصفحات (على حساب المنصة)، وتقدر تسكّر الصفحة وترجع وتكمّل.
       </p>
       {msg && <p className={`rounded-lg p-3 text-sm font-bold ${msg.bad ? "bg-jw-danger/10 text-jw-danger" : "bg-jw-ok/10 text-jw-ok"}`} role="status">{msg.t}</p>}
       {!ready && <p className="rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-3 text-sm">شغّل ملف <span dir="ltr">supabase/migrations/0067_khateeb_reference.sql</span> في Supabase أول.</p>}
+      <div className="space-y-2 rounded-lg border border-jw-line p-3">
+        <p className="text-sm font-bold">🌐 مصدر جاهز من شبكة الإمامين الحسنين (بدون رفع ولا قراءة ولا تكلفة)</p>
+        <p className="text-xs text-jw-muted">الصق رابط الكتاب من alhassanain.org أو رقمه (مثل «من شواهد المبلغين»: ٣٤٣)، ويدخل بنصه ورقم كل صفحة.</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <input className="jw-input min-w-0 flex-1" dir="ltr" value={link} onChange={(e) => setLink(e.target.value)} placeholder="343 أو http://alhassanain.org/arabic/?com=book&id=343" aria-label="رابط الكتاب أو رقمه" />
+          <button type="button" className="jw-btn jw-btn-primary" disabled={!ready || importing || !link.trim()} onClick={() => void importBook()}>{importing ? "يستورد…" : "استورد الكتاب"}</button>
+        </div>
+      </div>
       <div className="flex flex-wrap items-end gap-2">
+        <label className="space-y-1 text-xs text-jw-muted">نوع المرجع
+          <select className="jw-input" value={kind} onChange={(e) => setKind(e.target.value as Ref["kind"])} aria-label="نوع المرجع">
+            <option value="poetry">أشعار</option>
+            <option value="source">مصدر (قصص وحكم وعبر…)</option>
+          </select>
+        </label>
         <label className="space-y-1 text-xs text-jw-muted">اسم المرجع
           <input className="jw-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: ديوان …" />
         </label>
@@ -123,7 +159,7 @@ export default function ReferenceAdmin() {
         {(refs ?? []).map((r) => (
           <li key={r.id} className="rounded-lg border border-jw-line p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <b>{r.title}</b>
+              <b>{r.title} <span className="jw-chip text-xs font-normal">{KIND[r.kind]}</span></b>
               <span className="jw-chip text-xs">{STATUS[r.status]}{r.pages ? ` · ${r.done.toLocaleString("ar")} من ${r.pages.toLocaleString("ar")} صفحة` : ""}</span>
             </div>
             {r.pages > 0 && <progress className="my-2 h-2 w-full" value={r.done} max={r.pages} />}

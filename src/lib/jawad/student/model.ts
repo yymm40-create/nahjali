@@ -49,11 +49,14 @@ export interface SermonTafsir {
   manual: boolean;
 }
 
-/** Lines taken from the owner's reference (مرجع الأشعار), copied exactly, with the page they are on. */
+/**
+ * Lines or a passage taken from a reference of the library, copied exactly, with the page they are on: poetry from a
+ * reference of poems, or a story / saying / lesson from a source («من شواهد المبلغين»).
+ */
 export interface SermonPoem {
-  /** the verse(s), word for word */
+  /** the verse(s) or the passage, word for word */
   text: string;
-  /** the poet, only when the page prints him */
+  /** the poet (poetry), or the passage's own heading (a source), only when the page prints it */
   poet: string;
   /** the number printed on the page (or its place in the file) */
   page: string;
@@ -64,8 +67,10 @@ export interface SermonPoem {
 }
 
 export interface SermonPlan {
-  /** the poetry the preacher approved from the reference (the method's step 4) */
+  /** the poetry the preacher approved from the references of poems (the method's step 4) */
   poems?: SermonPoem[];
+  /** the stories, wisdom and lessons the preacher approved from the library's sources */
+  sources?: SermonPoem[];
   topics: SermonTopic[];
   /** the topic the preacher picked (-1 = not yet) */
   chosen: number;

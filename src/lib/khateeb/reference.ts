@@ -8,6 +8,7 @@ import { storage } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { askJson } from "@/lib/jawad/student/claude";
 import { STUDENT } from "@config/jawad/student";
+import { fetchBook } from "./alhassanain";
 import { norm } from "./tafsir";
 
 const db = () => createAdminClient();
@@ -18,9 +19,16 @@ const missing = (e: { code?: string; message?: string } | null) => !!e && (e.cod
 /** Pages read in one call (a small PDF of the next pages goes to Claude). */
 export const REF_PAGES_PER_CALL = 3;
 
+/** What a reference is: poetry (lines to quote) or a source (stories, wisdom, lessons: facts to draw on). */
+export type RefKind = "poetry" | "source";
+export const readRefKind = (v: unknown): RefKind => (v === "source" ? "source" : "poetry");
+
 export interface Ref {
   id: string;
   title: string;
+  kind: RefKind;
+  /** where it came from when it was not uploaded (a library's page) */
+  origin: string;
   pages: number;
   done: number;
   status: "uploading" | "reading" | "ready" | "failed";
@@ -32,6 +40,8 @@ export interface Ref {
 const view = (r: Record<string, unknown>): Ref => ({
   id: String(r.id),
   title: String(r.title ?? ""),
+  kind: readRefKind(r.kind),
+  origin: String(r.origin ?? ""),
   pages: Number(r.pages ?? 0),
   done: Number(r.done ?? 0),
   status: (r.status as Ref["status"]) ?? "uploading",
@@ -54,11 +64,11 @@ async function row(id: string): Promise<Record<string, unknown>> {
 }
 
 /** A new reference: its row, and where the browser uploads the PDF to. */
-export async function startRef(title: string, bytes: number): Promise<{ id: string; signedUrl: string }> {
+export async function startRef(title: string, bytes: number, kind: RefKind = "poetry"): Promise<{ id: string; signedUrl: string }> {
   if (!(bytes > 0) || bytes > 500 * 1024 * 1024) throw new UserError("حجم الملف لازم يكون أقل من ٥٠٠ ميجا.");
-  const { data, error } = await db().from("khateeb_refs").insert({ title: title.trim().slice(0, 200) || "مرجع الأشعار" }).select("id").single();
+  const { data, error } = await db().from("khateeb_refs").insert({ title: title.trim().slice(0, 200) || (kind === "source" ? "مصدر" : "مرجع الأشعار"), kind }).select("id").single();
   if (error || !data) {
-    if (missing(error)) throw new UserError(REF_NOT_READY, 503);
+    if (missing(error) || error?.code === "42703") throw new UserError(REF_NOT_READY, 503);
     throw error ?? new Error("no ref");
   }
   const path = `khateeb/ref/${data.id}.pdf`;
@@ -143,6 +153,29 @@ export async function stepRef(id: string): Promise<Ref> {
   return view(await row(id));
 }
 
+/** A book of شبكة الإمامين الحسنين brought in as it is (its text and page numbers), ready at once: nothing is read from pictures, nothing is charged. */
+export async function importBook(id: number, kind: RefKind, title: string): Promise<Ref> {
+  const book = await fetchBook(id);
+  const { data, error } = await db()
+    .from("khateeb_refs")
+    .insert({ title: (title.trim() || book.title || `كتاب ${id}`).slice(0, 200), kind, origin: book.url, pages: book.pages.length, done: book.pages.length, status: "ready" })
+    .select("id")
+    .single();
+  if (error || !data) {
+    if (missing(error) || error?.code === "42703") throw new UserError(REF_NOT_READY, 503);
+    throw error ?? new Error("no ref");
+  }
+  for (let i = 0; i < book.pages.length; i += 100) {
+    const rows = book.pages.slice(i, i + 100).map((p, k) => ({ ref_id: data.id, page: i + k + 1, label: p.label.slice(0, 20), text: p.text.slice(0, 40_000), norm: norm(p.text.slice(0, 40_000)) }));
+    const { error: e2 } = await db().from("khateeb_ref_pages").upsert(rows, { onConflict: "ref_id,page" });
+    if (e2) {
+      await db().from("khateeb_refs").delete().eq("id", data.id);
+      throw e2;
+    }
+  }
+  return view(await row(data.id as string));
+}
+
 export async function deleteRef(id: string) {
   const r = await row(id);
   await db().from("khateeb_refs").delete().eq("id", id);
@@ -171,21 +204,26 @@ export async function savePage(id: string, page: number, text: string) {
   if (error) throw error;
 }
 
-/** Whether any reference is ready to be searched. */
-export async function hasReference(): Promise<boolean> {
-  const { count, error } = await db().from("khateeb_refs").select("id", { count: "exact", head: true }).eq("status", "ready");
-  return !error && (count ?? 0) > 0;
+/** The references that are ready (what a preacher may choose from), of one kind or all. */
+export async function readyRefs(kind?: RefKind): Promise<{ id: string; title: string; kind: RefKind; pages: number }[]> {
+  const { data, error } = await db().from("khateeb_refs").select("id,title,kind,pages").eq("status", "ready").order("created_at", { ascending: true });
+  if (error) return [];
+  return (data ?? []).map((r) => ({ id: String(r.id), title: String(r.title), kind: readRefKind(r.kind), pages: Number(r.pages) })).filter((r) => !kind || r.kind === kind);
 }
 
 /**
  * The pages that hold these words, best first: the ones with the most of the words, from every reference that is read. The
  * search is over the text without marks and alef spellings, so «الصبر» finds «ٱلصَّبْرِ».
  */
-export async function searchRef(keywords: string[], limit = 12): Promise<RefPage[]> {
+export async function searchRef(keywords: string[], limit = 12, only?: { kind?: RefKind; ids?: string[] }): Promise<RefPage[]> {
   const words = [...new Set(keywords.map((k) => norm(k)).filter((k) => k.length >= 3))].slice(0, 16);
   if (!words.length) return [];
-  const { data: refs } = await db().from("khateeb_refs").select("id,title").eq("status", "ready");
-  const titles = new Map((refs ?? []).map((r) => [String(r.id), String(r.title)]));
+  const { data: refs } = await db().from("khateeb_refs").select("id,title,kind").eq("status", "ready");
+  const titles = new Map(
+    (refs ?? [])
+      .filter((r) => (!only?.kind || readRefKind(r.kind) === only.kind) && (!only?.ids?.length || only.ids.includes(String(r.id))))
+      .map((r) => [String(r.id), String(r.title)] as const),
+  );
   if (!titles.size) return [];
   const { data, error } = await db()
     .from("khateeb_ref_pages")
