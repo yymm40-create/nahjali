@@ -860,8 +860,10 @@ export type BlendMode = keyof typeof BLEND_MODES;
 
 /**
  * A key: «كروما» takes out a colour (green or blue screen, any colour picked): `tolerance` how far from it still goes,
- * `soft` the soft edge, `spill` the colour's glow taken off the edges, `choke` shrinks the matte. «لوما» takes out the
- * dark parts (or the bright ones, `invert`): below `low` gone, above `high` kept, `soft` between. `show` = the matte.
+ * `soft` the soft edge, `spill` the colour's glow taken off the edges (despill), `choke` shrinks the matte, `clean`
+ * («تنظيف الخلفية», Ultra Key's Clip Black) clears what is left of the screen, `fill` («سد الفراغات», Clip White) fills
+ * the holes in the person. «لوما» takes out the dark parts (or the bright ones, `invert`): below `low` gone, above
+ * `high` kept, `soft` between. `show` = the matte. The maths: key-math.ts.
  */
 export interface Keyer {
   kind: "chroma" | "luma";
@@ -870,12 +872,14 @@ export interface Keyer {
   soft: number;
   spill: number;
   choke: number;
+  clean: number;
+  fill: number;
   low: number;
   high: number;
   invert: boolean;
   show: boolean;
 }
-export const NEW_KEY: Keyer = { kind: "chroma", color: "#00ff00", tolerance: 0.3, soft: 0.15, spill: 0.6, choke: 0, low: 0.1, high: 0.35, invert: false, show: false };
+export const NEW_KEY: Keyer = { kind: "chroma", color: "#00b140", tolerance: 0.4, soft: 0.15, spill: 0.6, choke: 0, clean: 0.15, fill: 0.15, low: 0.1, high: 0.35, invert: false, show: false };
 export function readKey(v: unknown): Keyer | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -886,6 +890,8 @@ export function readKey(v: unknown): Keyer | null {
     soft: num(o.soft, 0, 1, NEW_KEY.soft),
     spill: num(o.spill, 0, 1, NEW_KEY.spill),
     choke: num(o.choke, 0, 1, 0),
+    clean: num(o.clean, 0, 1, NEW_KEY.clean),
+    fill: num(o.fill, 0, 1, NEW_KEY.fill),
     low: num(o.low, 0, 1, NEW_KEY.low),
     high: num(o.high, 0, 1, NEW_KEY.high),
     invert: o.invert === true,

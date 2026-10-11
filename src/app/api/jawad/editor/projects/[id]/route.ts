@@ -8,6 +8,7 @@ import { requireEditorApiUser } from "@/lib/jawad/server/access";
 import { can } from "@/lib/access";
 import type { Command } from "@/lib/editor/commands";
 import { importSfx } from "@/lib/editor/sfx-library";
+import { keyCheck } from "@/lib/editor/key-check";
 import {
   addLocalAsset,
   assetViewsById,
@@ -142,6 +143,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     // حيدرة checks a colour change it made (pictures and scopes), and corrects it until it is right
     case "grade_check":
       return NextResponse.json(await gradeCheck(p, who, b, new URL(req.url).origin));
+    // «🤖 حيدرة يضبط الكي»: he looks at the frame, the matte and the result, and corrects the key's settings
+    case "key_check":
+      return NextResponse.json(await keyCheck(p, who, b));
     case "assistant":
       return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرة", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply }));
     case "fix_link":
