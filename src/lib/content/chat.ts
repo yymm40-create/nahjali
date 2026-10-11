@@ -5,6 +5,7 @@
 // Server only.
 
 import { isSalesAsk, nearestSalesExamples, SALES_METHOD, salesExamplesBrief } from "@config/content-sales";
+import { isMahdiAsk, MAHDI_BRIEF } from "@config/mahdi/app-knowledge";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
@@ -202,6 +203,8 @@ export async function say(userId: string, chatId: string | null, message: string
     contentExamplesBrief(nearestContentExamples(ask, 3)),
     // selling: the method (the four steps) and the closest worked sales examples, when that is what the person wants
     ...(isSalesAsk(`${ask} ${before?.record ?? ""}`) ? [SALES_METHOD, salesExamplesBrief(nearestSalesExamples(ask, 3))] : []),
+    // the app «لأجل المهدي» (every feature, its audiences, its content rules and ready ideas), when the conversation is about it
+    ...(isMahdiAsk(`${history.filter((t) => t.role === "user").map((t) => t.text).join(" ")} ${before?.record ?? ""}`) ? [MAHDI_BRIEF] : []),
     ids.template || /كاروسيل|شرائح|carousel/i.test(ask + (before?.record ?? "")) ? templateExamplesBrief(nearestTemplateExamples(ask, ids.template && ids.template !== "none" ? ids.template : null, 2)) : "",
   ].filter(Boolean);
   const system = systemText(persona.text, parts, before?.record ?? "");
