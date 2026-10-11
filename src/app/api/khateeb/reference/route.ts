@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { requireJawadOwner } from "@/lib/jawad/server/access";
-import { confirmRef, deleteRef, getPage, listRefs, savePage, startRef, stepRef } from "@/lib/khateeb/reference";
+import { bookIdOf } from "@/lib/khateeb/alhassanain";
+import { confirmRef, deleteRef, getPage, importBook, listRefs, readRefKind, savePage, startRef, stepRef } from "@/lib/khateeb/reference";
 
 export const dynamic = "force-dynamic";
 // a few scanned pages are read by one call: the platform's longest wait, like the other long jobs
@@ -20,7 +21,7 @@ export const GET = handle(async () => {
 });
 
 /**
- * `{ action: "start", title, bytes }` → where to upload the PDF · `"confirm", id` → the file is counted and reading starts ·
+ * `{ action: "import", input, kind?, title? }` → a book of alhassanain.org (its number or link) brought in as text · `{ action: "start", title, bytes, kind? }` → where to upload the PDF · `"confirm", id` → the file is counted and reading starts ·
  * `"step", id` → the next pages are read (called again until it is ready) · `"page", id, page` → one page's text ·
  * `"save_page", id, page, text` → a page corrected · `"delete", id`.
  */
@@ -29,7 +30,12 @@ export const POST = handle(async (req: Request) => {
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   switch (b.action) {
     case "start":
-      return NextResponse.json(await startRef(String(b.title ?? ""), Number(b.bytes)));
+      return NextResponse.json(await startRef(String(b.title ?? ""), Number(b.bytes), readRefKind(b.kind)));
+    case "import": {
+      const id = bookIdOf(String(b.input ?? ""));
+      if (!id) throw new UserError("الصق رابط الكتاب من alhassanain.org أو رقمه.", 400);
+      return NextResponse.json({ ref: await importBook(id, readRefKind(b.kind), String(b.title ?? "")) });
+    }
     case "confirm":
       return NextResponse.json({ ref: await confirmRef(idOf(b.id)) });
     case "step":

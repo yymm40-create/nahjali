@@ -20,6 +20,7 @@
     "aws4fetch": "^1.0.20",
     "docx": "^9.9.0",
     "harfbuzzjs": "^1.6.2",
+    "jszip": "^3.10.2",
     "mediabunny": "^1.61.3",
     "next": "16.3.8",
     "openai": "^7.25.0",

@@ -679,7 +679,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const i = Math.round(Number(b.index));
       if (!Number.isInteger(i) || i < 0 || i >= sp.topics.length) throw new UserError("اختر واحدًا من المواضيع.");
       // another topic has another verse: its tafsir is fetched again
-      await savePlan(o, user.id, { ...sp, chosen: i, tafsir: i === sp.chosen ? sp.tafsir : null, poems: i === sp.chosen ? sp.poems : undefined });
+      await savePlan(o, user.id, { ...sp, chosen: i, tafsir: i === sp.chosen ? sp.tafsir : null, poems: i === sp.chosen ? sp.poems : undefined, sources: i === sp.chosen ? sp.sources : undefined });
       return { ok: true };
     }
     // the preacher's own words on a topic, or another verse for it (its words are fetched from the Quran)
@@ -714,16 +714,21 @@ export async function outputAction(user: User, id: string, b: Body) {
       return { ok: true };
     }
     // the method's step 4: lines for the sermon picked from the owner's reference (a paid job), or the ones the preacher keeps
-    case "sermon_poems": {
+    case "sermon_poems":
+    case "sermon_sources": {
       const sp = sermonOf(o);
       if (sp.chosen < 0) throw new UserError("اختر موضوع الخطبة أول.");
       const ask = text(b.ask, 500);
-      return run("poems", await estimate(user.id, o, "poems"), { ask }, "اختيار الأبيات من المرجع");
+      const refIds = (Array.isArray(b.refIds) ? b.refIds : []).map((x) => String(x)).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 30);
+      const sources = b.action === "sermon_sources";
+      return run("poems", await estimate(user.id, o, "poems"), { ask, refIds, kind: sources ? "source" : "poetry" }, sources ? "الاستخراج من مصادر المكتبة" : "اختيار الأبيات من المرجع");
     }
-    case "sermon_poems_keep": {
+    case "sermon_poems_keep":
+    case "sermon_sources_keep": {
       const sp = sermonOf(o);
       const keep = new Set((Array.isArray(b.keep) ? b.keep : []).map((n) => Math.round(Number(n))));
-      await savePlan(o, user.id, { ...sp, poems: (sp.poems ?? []).filter((_, k) => keep.has(k)) });
+      const key = b.action === "sermon_sources_keep" ? "sources" : "poems";
+      await savePlan(o, user.id, { ...sp, [key]: (sp[key] ?? []).filter((_, k) => keep.has(k)) });
       return { ok: true };
     }
     // the tafsir of the chosen verse from مجمع البيان (a paid job: the pages are read and put in plain words)

@@ -4,6 +4,8 @@ import { DEFAULT_METHOD, MAJMA, SERMON_PARTS, ablibraryUrl, khateebRules } from 
 import { contentText, messages, readFields } from "@/lib/khateeb/ablibrary";
 import { align, candidates, norm, openingWords, plain } from "@/lib/khateeb/tafsir";
 import { onPage, sermonBrief } from "@/lib/jawad/student/sermon";
+import { bookIdOf, parsePages, textOf, titleOf } from "@/lib/khateeb/alhassanain";
+import { readRefKind } from "@/lib/khateeb/reference";
 import type { DocPlan } from "@/lib/jawad/student/model";
 import type { Output } from "@/lib/jawad/student/db";
 
@@ -200,6 +202,63 @@ describe("مرجع الأشعار", () => {
     expect(read("src/lib/jawad/student/handlers.ts")).toContain("poems: poemsHandler");
     expect(read("src/lib/jawad/student/jobs.ts")).toMatch(/CLAUDE_ONLY_KINDS = new Set\(\[[^\]]*"poems"/);
     expect(read("src/lib/jawad/student/actions.ts")).toContain('case "sermon_poems"');
+  });
+});
+
+describe("a book of شبكة الإمامين الحسنين brought in as text", () => {
+  it("takes a book's number from a number or from a link of that site only", () => {
+    expect(bookIdOf("343")).toBe(343);
+    expect(bookIdOf(" 343 ")).toBe(343);
+    expect(bookIdOf("http://alhassanain.org/arabic/?com=book&id=343&page=124")).toBe(343);
+    expect(bookIdOf("https://www.alhassanain.org/arabic/?com=book&id=77")).toBe(77);
+    expect(bookIdOf("https://evil.example/arabic/?com=book&id=343")).toBeNull();
+    expect(bookIdOf("http://alhassanain.org.evil.example/?id=1")).toBeNull();
+    expect(bookIdOf("abc")).toBeNull();
+    expect(bookIdOf("")).toBeNull();
+  });
+
+  const html = `<html><head><title>شبكة الإمامين الحسنين عليهما السلام الثقافية - من شواهد المبلغين</title></head><body>
+<a name='1'></a><p>من شواهد المـُبلِّغين</p>
+<a name='2'></a><p></p>
+<a name='123'></a><p class=x>(الشاهد (27) )</p><p>أبكي لسبي عمَّتي زينب</p><p>قال<br>عليه&zwnj;السلام<br>: لا &amp; لو كان حاضراً لبكى.</p><script>var x=1</script>
+<a name='124'></a><p>الصفحة التالية</p></body></html>`;
+
+  it("cuts the book at its page marks, drops pages with no text, and keeps the page numbers", () => {
+    const pages = parsePages(html);
+    expect(pages.map((p) => p.label)).toEqual(["1", "123", "124"]);
+    expect(pages[1].text).toContain("(الشاهد (27) )");
+    expect(pages[1].text).toContain("أبكي لسبي عمَّتي زينب");
+    expect(pages[1].text).not.toContain("var x");
+    expect(pages[1].text).toContain("لا & لو كان");
+  });
+
+  it("makes text of tags and entities, and finds the book's title", () => {
+    expect(textOf("<p>أول</p><p>ثاني&nbsp;&#1575;&#x644;</p>")).toBe("أول\nثاني ال");
+    expect(titleOf(html)).toBe("من شواهد المبلغين");
+  });
+
+  it("reads a reference's kind as poetry unless it says source", () => {
+    expect(readRefKind("source")).toBe("source");
+    expect(readRefKind("poetry")).toBe("poetry");
+    expect(readRefKind(undefined)).toBe("poetry");
+    expect(readRefKind("other")).toBe("poetry");
+  });
+
+  it("gives the writer the library's passages to retell faithfully, with their pages", () => {
+    const plan = { title: "ت", subtitle: "", chapters: [], sermon: { topics: [], chosen: -1, tafsir: null, sources: [{ text: "نقل عن الخطيب قصة", poet: "الشاهد (27) أبكي لسبي عمتي زينب", page: "124", ref: "من شواهد المبلغين", why: "يخدم الموضوع" }] } } as unknown as DocPlan;
+    const b = sermonBrief(plan, { settings: {} } as unknown as Output, 1);
+    expect(b).toContain("FAITHFULLY");
+    expect(b).toContain("نقل عن الخطيب قصة");
+    expect(b).toContain("المرجع: من شواهد المبلغين، ص124");
+    expect(b).toContain("الشاهد (27)");
+  });
+
+  it("is chosen from the library by the preacher, and imported by the owner", () => {
+    const read = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    expect(read("src/app/api/khateeb/reference/route.ts")).toContain('case "import"');
+    expect(read("src/lib/jawad/student/actions.ts")).toContain('case "sermon_sources"');
+    expect(read("src/app/api/khateeb/library/route.ts")).toContain("requireStudentApiUser");
+    expect(read("supabase/migrations/0068_khateeb_ref_kind.sql")).toContain("'source'");
   });
 });
 

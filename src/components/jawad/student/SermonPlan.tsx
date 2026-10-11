@@ -4,9 +4,10 @@
 // one, and may change its words or its verse), ٣ the verse's tafsir from مجمع البيان (the book's own pages put in plain words, or
 // pasted by the preacher), ٤ the poetry, ٥ the four parts the sermon is written in.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SERMON_PARTS } from "@config/jawad/khateeb";
-import type { DocPlan, SermonTopic } from "@/lib/jawad/student/model";
+import { api } from "@/lib/fetch";
+import type { DocPlan, SermonPoem, SermonTopic } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
 import { ErrorLine, PaidButton, useAsync } from "./ui";
 
@@ -73,10 +74,60 @@ function TopicCard({ t, i, chosen, act, busy }: { t: SermonTopic; i: number; cho
   );
 }
 
+interface LibRef {
+  id: string;
+  title: string;
+  kind: "poetry" | "source";
+  pages: number;
+}
+
+/** The library's references a preacher may choose from (the ones the owner brought in and that are read). */
+function useLibrary(): LibRef[] {
+  const [refs, setRefs] = useState<LibRef[]>([]);
+  useEffect(() => {
+    let live = true;
+    api<{ refs: LibRef[] }>("/api/khateeb/library")
+      .then((r) => live && setRefs(r.refs))
+      .catch(() => null);
+    return () => {
+      live = false;
+    };
+  }, []);
+  return refs;
+}
+
+/** Passages taken from the library (word for word, with the page), each removable. */
+function Passages({ list, keepAction, act, busy }: { list: SermonPoem[]; keepAction: string; act: Act; busy: boolean }) {
+  const { run } = useAsync();
+  if (!list.length) return null;
+  return (
+    <ol className="space-y-2">
+      {list.map((p, k) => (
+        <li key={`${k}-${p.page}`} className="jw-panel space-y-1 p-3 text-sm">
+          {p.poet ? <p className="text-xs font-bold text-jw-muted">{p.poet}</p> : null}
+          <p className="whitespace-pre-wrap text-base leading-loose" dir="rtl">{p.text}</p>
+          <p className="text-xs text-jw-muted">
+            المرجع: {p.ref}، ص{p.page}
+            {p.why ? ` · ${p.why}` : ""}
+          </p>
+          <button type="button" className="jw-btn !min-h-8 text-xs" disabled={busy} onClick={() => run(() => act({ action: keepAction, keep: list.map((_, j) => j).filter((j) => j !== k) }))}>
+            شيل هذا
+          </button>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function SermonPlan({ o, plan, act, running }: { o: OutputView; plan: DocPlan; act: Act; running: boolean }) {
   const sp = plan.sermon;
   const [manual, setManual] = useState({ source: "", url: "", text: "" });
   const [ask, setAsk] = useState("");
+  const [askSrc, setAskSrc] = useState("");
+  const lib = useLibrary();
+  // the references the preacher turned off (all are on until he does)
+  const [off, setOff] = useState<string[]>([]);
+  const chosen = (kind: LibRef["kind"]) => lib.filter((r) => r.kind === kind && !off.includes(r.id)).map((r) => r.id);
   const [open, setOpen] = useState(false);
   const { busy, error, run } = useAsync();
   if (!sp) return <p className="text-sm text-jw-muted">أعد إعداد الخطة لتظهر المواضيع.</p>;
@@ -152,29 +203,43 @@ export default function SermonPlan({ o, plan, act, running }: { o: OutputView; p
         </p>
         {topic && (
           <>
-            {(sp.poems ?? []).length > 0 && (
-              <ol className="space-y-2">
-                {(sp.poems ?? []).map((p, k) => (
-                  <li key={`${k}-${p.page}`} className="jw-panel space-y-1 p-3 text-sm">
-                    <p className="whitespace-pre-wrap text-base leading-loose" dir="rtl">{p.text}</p>
-                    <p className="text-xs text-jw-muted">
-                      {p.poet ? `${p.poet} · ` : ""}المرجع: {p.ref}، ص{p.page}
-                      {p.why ? ` · ${p.why}` : ""}
-                    </p>
-                    <button type="button" className="jw-btn !min-h-8 text-xs" disabled={busy || running} onClick={() => run(() => act({ action: "sermon_poems_keep", keep: (sp.poems ?? []).map((_, j) => j).filter((j) => j !== k) }))}>
-                      شيل هذا البيت
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
+            <Passages list={sp.poems ?? []} keepAction="sermon_poems_keep" act={act} busy={busy || running} />
             <label className="block space-y-1 text-xs text-jw-muted">اطلب أبياتًا عن… (اختياري)
               <input className="jw-input" value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="مثال: أبيات في الصبر على البلاء، أو في فضل العلم" />
             </label>
-            <PaidButton label={(sp.poems ?? []).length ? "استخرج أبياتًا من جديد" : "استخرج أبياتًا من المرجع"} primary={!(sp.poems ?? []).length} what="يبحث الشيخ في مرجع الأشعار عن أبيات تخدم الموضوع، وينقلها بنصها الحرفي مع رقم الصفحة، وما يعتمد بيت ما لقاه مكتوب في الصفحة." disabled={running} run={(b) => act({ action: "sermon_poems", ask, ...b })} />
+            <PaidButton label={(sp.poems ?? []).length ? "استخرج أبياتًا من جديد" : "استخرج أبياتًا من المرجع"} primary={!(sp.poems ?? []).length} what="يبحث الشيخ في مرجع الأشعار عن أبيات تخدم الموضوع، وينقلها بنصها الحرفي مع رقم الصفحة، وما يعتمد بيت ما لقاه مكتوب في الصفحة." disabled={running} run={(b) => act({ action: "sermon_poems", ask, refIds: chosen("poetry"), ...b })} />
           </>
         )}
       </section>
+
+      {topic && (
+        <section className="space-y-3">
+          <h4 className="font-semibold">مصادر المكتبة · قصص وحكم وعبر</h4>
+          {lib.filter((r) => r.kind === "source").length === 0 ? (
+            <p className="text-sm text-jw-muted">ما فيه مصادر جاهزة في المكتبة للحين (صاحب المنصة يضيفها من لوحة الجواد).</p>
+          ) : (
+            <>
+              <p className="text-sm text-jw-muted">اختر المصادر اللي تبيها، والشيخ يحلل من مجموعها ويستخرج المقاطع اللي تخدم موضوعك بنصها الحرفي مع رقم الصفحة، وتنكتب في الخطبة بمصدرها.</p>
+              <ul className="space-y-1">
+                {lib.filter((r) => r.kind === "source").map((r) => (
+                  <li key={r.id}>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={!off.includes(r.id)} onChange={(e) => setOff((x) => (e.target.checked ? x.filter((y) => y !== r.id) : [...x, r.id]))} />
+                      <span>{r.title}</span>
+                      <span className="text-xs text-jw-faint">({r.pages.toLocaleString("ar")} صفحة)</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <Passages list={sp.sources ?? []} keepAction="sermon_sources_keep" act={act} busy={busy || running} />
+              <label className="block space-y-1 text-xs text-jw-muted">اطلب عن… (اختياري)
+                <input className="jw-input" value={askSrc} onChange={(e) => setAskSrc(e.target.value)} placeholder="مثال: قصص في الصبر على المصيبة، أو في بكاء الأئمة" />
+              </label>
+              <PaidButton label={(sp.sources ?? []).length ? "استخرج من المصادر من جديد" : "استخرج من المصادر المختارة"} primary={!(sp.sources ?? []).length} what="يبحث الشيخ في المصادر المختارة عن قصص وحكم وعبر تخدم الموضوع، وينقلها بنصها الحرفي مع رقم الصفحة، وما يعتمد مقطع ما لقاه مكتوب في صفحته." disabled={running || chosen("source").length === 0} run={(b) => act({ action: "sermon_sources", ask: askSrc, refIds: chosen("source"), ...b })} />
+            </>
+          )}
+        </section>
+      )}
 
       <section className="space-y-2">
         <h4 className="font-semibold">الخطوة ٥ · أجزاء الخطبة</h4>
