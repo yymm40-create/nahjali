@@ -49,7 +49,23 @@ export interface SermonTafsir {
   manual: boolean;
 }
 
+/** Lines taken from the owner's reference (مرجع الأشعار), copied exactly, with the page they are on. */
+export interface SermonPoem {
+  /** the verse(s), word for word */
+  text: string;
+  /** the poet, only when the page prints him */
+  poet: string;
+  /** the number printed on the page (or its place in the file) */
+  page: string;
+  /** the reference's name */
+  ref: string;
+  /** why it suits the sermon */
+  why: string;
+}
+
 export interface SermonPlan {
+  /** the poetry the preacher approved from the reference (the method's step 4) */
+  poems?: SermonPoem[];
   topics: SermonTopic[];
   /** the topic the preacher picked (-1 = not yet) */
   chosen: number;

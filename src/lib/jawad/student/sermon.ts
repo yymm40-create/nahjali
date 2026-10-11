@@ -9,7 +9,9 @@ import { askJson, claudeCeilingUsd } from "./claude";
 import { allText, basedOn, loadCtx, researchText, scopeRules, understandingText, type Ctx } from "./context";
 import { getOutput, saveOutput, type Output } from "./db";
 import type { Handler, Job, StepResult } from "./jobs";
-import { emptyImage, type DocPlan, type SermonTopic } from "./model";
+import { emptyImage, type DocPlan, type SermonPoem, type SermonTopic } from "./model";
+import { hasReference, searchRef, type RefPage } from "@/lib/khateeb/reference";
+import { norm } from "@/lib/khateeb/tafsir";
 
 const str = { type: "string" };
 const int = { type: "integer" };
@@ -103,6 +105,96 @@ export const tafsirHandler: Handler = {
   },
 };
 
+// ───────────────────────────── the poetry (the method's step 4) ─────────────────────────────
+
+const strs = { type: "array", items: str };
+const KEYWORDS_SCHEMA = { type: "object", properties: { keywords: strs }, required: ["keywords"], additionalProperties: false };
+const PICK_SCHEMA = {
+  type: "object",
+  properties: { items: { type: "array", items: { type: "object", properties: { tag: str, text: str, poet: str, why: str }, required: ["tag", "text", "poet", "why"], additionalProperties: false } } },
+  required: ["items"],
+  additionalProperties: false,
+};
+
+/** What lines may cost at most (a few words to search with, then the best pages read and lines picked). */
+export const poemsCeilingUsd = () => claudeCeilingUsd(50_000, 5000) + claudeCeilingUsd(1000, 800);
+
+/** The lines of `text` that are really on the page (compared without marks and alef spellings); the others are dropped. */
+export function onPage(text: string, page: { text: string }): string {
+  const here = norm(page.text);
+  const whole = norm(text);
+  if (whole && here.includes(whole)) return text.trim();
+  return text
+    .split("\n")
+    .filter((l) => {
+      const n = norm(l);
+      return n.length >= 6 && here.includes(n);
+    })
+    .join("\n")
+    .trim();
+}
+
+/** The method's step 4 from the owner's reference: words are searched for, the best pages read, and lines picked that are really on them. */
+async function poemsStep(job: Job): Promise<StepResult> {
+  const o = await getOutput(job.user_id, job.output_id!);
+  const plan = o.plan as DocPlan | null;
+  const sp = plan?.sermon;
+  const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
+  if (!plan || !sp || !topic) throw new Error("اختر موضوع الخطبة أول.");
+  if (!(await hasReference())) throw new Error("ما فيه مرجع أشعار جاهز: ارفعه واقرأه من لوحة الجواد (الخطيب الذكي).");
+  const ask = String(job.input.ask ?? "").trim().slice(0, 500);
+  const purpose = [String(o.settings.poemsFor ?? "").trim(), ask].filter(Boolean).join("؛ ");
+  const c = await loadCtx(job.user_id, o.project_id);
+  const theme = `the sermon's pivot idea: ${topic.title}\nits treatment: ${topic.idea}\nthe takhallus point: ${topic.kooriz}\nthe key verse: ${topic.verse.ref}\nthe poetry asked for: ${purpose || "(none said: lines that serve the idea)"}`;
+
+  const kw = await askJson<{ keywords: string[] }>({
+    system: "You help find lines of Arabic poetry in a reference by searching its text. Give 8–12 single Arabic words (roots or common forms, no particles, no phrases) that would appear in verses on this theme: the idea itself, its opposite, and the images the classical poets used for it. Words only.",
+    parts: [{ type: "text", text: theme }],
+    schema: KEYWORDS_SCHEMA,
+    maxTokens: 600,
+    effort: "low",
+  });
+  const pages = (await searchRef(kw.data.keywords, 10)).filter((p) => p.text.trim());
+  if (!pages.length) throw new Error("ما لقينا في المرجع أبياتًا قريبة من هذا الموضوع. جرّب غرضًا ثانيًا (مثل: الصبر، العلم) أو أضف أبياتك بنفسك.");
+
+  const tagged = pages.map((p, i) => ({ tag: `P${i + 1}`, p }));
+  const r = await askJson<{ items: { tag: string; text: string; poet: string; why: string }[] }>({
+    system: `You choose lines of poetry for a sermon from the pages of a reference book. Pick at most 8 passages (each 1–4 verses) that really serve the theme. Copy each passage WORD FOR WORD from its page, with its diacritics as printed — never change, complete, fix or invent a word; a line you cannot copy exactly is not picked. "tag" is the page's tag; "poet" is the poet's name ONLY when the page prints it (else an empty string); "why" is one short line in Arabic on how it serves the sermon. Prefer fewer, strong lines over many.\n${scopeRules(c)}`,
+    parts: [{ type: "text", text: `THE THEME:\n${theme}\n\nTHE PAGES:\n${tagged.map(({ tag, p }) => `<page tag="${tag}">\n${p.text.slice(0, 6000)}\n</page>`).join("\n")}` }],
+    schema: PICK_SCHEMA,
+    maxTokens: 6000,
+    effort: "low",
+  });
+
+  const poems: SermonPoem[] = [];
+  const seen = new Set<string>();
+  for (const it of r.data.items.slice(0, 8)) {
+    const page: RefPage | undefined = tagged.find((t) => t.tag === it.tag)?.p;
+    if (!page) continue;
+    const text = onPage(it.text, page);
+    const key = norm(text);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    poems.push({ text, poet: it.poet.trim().slice(0, 100), page: page.label, ref: page.title, why: it.why.trim().slice(0, 300) });
+  }
+  if (!poems.length) throw new Error("الأبيات اللي اختارها الشيخ ما طابقت نص المرجع حرفيًا فما اعتمدناها. جرّب مرة ثانية، أو أضف أبياتك بنفسك.");
+
+  const usd = kw.usd + r.usd;
+  const fresh = (await getOutput(job.user_id, job.output_id!)).plan as DocPlan;
+  if (!fresh.sermon || fresh.sermon.chosen !== sp.chosen) return { done: true, usd, stage: "تغيّر الموضوع أثناء الجلب" };
+  const next: DocPlan = { ...fresh, sermon: { ...fresh.sermon, poems } };
+  await saveOutput(o.id, { plan: next, plan_approved: false, error: null }, { kind: "plan_edit", snapshot: next, userId: o.user_id });
+  return { done: true, usd, stage: "الأبيات جاهزة" };
+}
+
+export const poemsHandler: Handler = {
+  label: "اختيار الأبيات من المرجع",
+  step: poemsStep,
+  onFail: async (job, message) => {
+    if (job.output_id) await saveOutput(job.output_id, { error: message });
+  },
+};
+
 /** What the writer of one part is told: the chosen topic, the verse as the Quran has it, the tafsir, the takhallus point, the poetry asked for, and this part's role. */
 export function sermonBrief(plan: DocPlan, o: Output, i: number): string {
   const sp = plan.sermon;
@@ -119,9 +211,11 @@ export function sermonBrief(plan: DocPlan, o: Output, i: number): string {
     sp?.tafsir
       ? `THE TAFSIR OF THE VERSE (${sp.tafsir.source}) — the only source of the verse's meaning; take the verse's message from it, and when you rest on it say so briefly (قال الطبرسي في مجمع البيان …) with its page; never add another interpretation:\n${sp.tafsir.simple}`
       : "NO TAFSIR WAS GIVEN for the verse: say nothing about its meaning beyond its plain wording, and never interpret it from your own knowledge.",
-    poemsFor || poems
-      ? `POETRY (step 4)${poemsFor ? `, the purpose asked for: ${poemsFor}` : ""}:${poems ? `\nthe preacher's own lines, to be used as written, with their poet when he gives one:\n${poems}` : ""}\nUse only these lines, and the owner's collection in the rules; if none suits, use no poetry — never make up a line or put a line in a poet's name from memory.`
-      : "POETRY: use only lines from the owner's collection in the rules, when one suits; never make up a line or put a line in a poet's name from memory.",
+    sp?.poems?.length
+      ? `LINES FROM THE OWNER'S REFERENCE, checked word for word against their pages — the preacher approved them (step 4). Use them where they serve, each in a "quote" block with its text EXACTLY as given and its title = the poet when named, then the reference and its page exactly as written under the line (المرجع: …، ص…), so that the page number is printed in the finished sermon:\n${sp.poems.map((p, k) => `${k + 1}. ${p.text}\n   ${p.poet ? `الشاعر: ${p.poet} · ` : ""}المرجع: ${p.ref}، ص${p.page}${p.why ? ` · ${p.why}` : ""}`).join("\n")}\nUse no line from outside these, the preacher's own lines below, and the owner's collection in the rules.${poems ? `\nthe preacher's own lines, to be used as written, with their poet when he gives one:\n${poems}` : ""}`
+      : poemsFor || poems
+        ? `POETRY (step 4)${poemsFor ? `, the purpose asked for: ${poemsFor}` : ""}:${poems ? `\nthe preacher's own lines, to be used as written, with their poet when he gives one:\n${poems}` : ""}\nUse only these lines, and the owner's collection in the rules; if none suits, use no poetry — never make up a line or put a line in a poet's name from memory.`
+        : "POETRY: use only lines from the owner's collection in the rules, when one suits; never make up a line or put a line in a poet's name from memory.",
     part ? `THIS PART — ${part.title}: ${part.role}.` : "",
   ]
     .filter(Boolean)

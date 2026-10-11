@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { DEFAULT_METHOD, MAJMA, SERMON_PARTS, ablibraryUrl, khateebRules } from "@config/jawad/khateeb";
 import { contentText, messages, readFields } from "@/lib/khateeb/ablibrary";
 import { align, candidates, norm, openingWords, plain } from "@/lib/khateeb/tafsir";
-import { sermonBrief } from "@/lib/jawad/student/sermon";
+import { onPage, sermonBrief } from "@/lib/jawad/student/sermon";
 import type { DocPlan } from "@/lib/jawad/student/model";
 import type { Output } from "@/lib/jawad/student/db";
 
@@ -156,3 +156,50 @@ describe("the sermon's steps are wired", () => {
     expect(read("src/components/jawad/student/autopilot.ts")).toMatch(/sp\.chosen < 0\) return null/);
   });
 });
+
+describe("مرجع الأشعار", () => {
+  const read = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+  const page = { text: "# قصيدة في الصبر\nإذا ضاق الزمان فكن صبورًا … فإن الصبر مفتاح الفرجِ\nوما نيل المنى بالتمني … ولكن تؤخذ الدنيا غِلابا" };
+
+  it("keeps only the lines that are really on the page (without marks and alef spellings)", () => {
+    expect(onPage("إِذَا ضَاقَ الزَّمَانُ فَكُنْ صَبُورًا فَإِنَّ الصَّبْرَ مِفْتَاحُ الْفَرَجِ", page)).toContain("ضَاقَ");
+    // a line the model made up is dropped (the true one beside it stays), and so is a passage whose every line is made up
+    expect(onPage("إذا ضاق الزمان فكن صبورا ... فإن الصبر مفتاح الفرج\nبيت لم يطبعه الكتاب أبدا في هذه الصفحة", page)).toBe("إذا ضاق الزمان فكن صبورا ... فإن الصبر مفتاح الفرج");
+    expect(onPage("بيت ملفق لا وجود له في الصفحة إطلاقا", page)).toBe("");
+    expect(onPage("إذا ضاق الزمان فكن صبورا … فإن الصبر مفتاح الفرج\nوما نيل المنى بالتمني … ولكن تؤخذ الدنيا غلابا", page).split("\n")).toHaveLength(2);
+  });
+
+  it("tells the writer the lines with their page, to print it in the finished sermon", () => {
+    const plan = {
+      title: "ت",
+      subtitle: "",
+      chapters: [],
+      sermon: { topics: [], chosen: -1, tafsir: null, poems: [{ text: "بيت أول", poet: "المتنبي", page: "٣٤", ref: "ديوان المتنبي", why: "يخدم الصبر" }] },
+    } as unknown as DocPlan;
+    const b = sermonBrief(plan, { settings: {} } as unknown as Output, 1);
+    expect(b).toContain("بيت أول");
+    expect(b).toContain("المرجع: ديوان المتنبي، ص٣٤");
+    expect(b).toContain("الشاعر: المتنبي");
+    expect(b).toContain("page number is printed");
+  });
+
+  it("is uploaded straight to storage, read page by page, owner only", () => {
+    const route = read("src/app/api/khateeb/reference/route.ts");
+    expect(route.match(/requireJawadOwner\(\)/g)).toHaveLength(2);
+    expect(route).toContain('case "step"');
+    const ref = read("src/lib/khateeb/reference.ts");
+    expect(ref).toContain("createSignedUploadUrl");
+    expect(ref).toContain("REF_PAGES_PER_CALL");
+    // the file never goes through a request body of ours: no page limit but the storage's own
+    expect(ref).not.toMatch(/maxPages|MAX_REF_PAGES/);
+    const sql = read("supabase/migrations/0067_khateeb_reference.sql");
+    for (const t of ["khateeb_refs", "khateeb_ref_pages", "enable row level security"]) expect(sql).toContain(t);
+  });
+
+  it("is searched by a job the preacher asks for (a paid one), wired like the tafsir", () => {
+    expect(read("src/lib/jawad/student/handlers.ts")).toContain("poems: poemsHandler");
+    expect(read("src/lib/jawad/student/jobs.ts")).toMatch(/CLAUDE_ONLY_KINDS = new Set\(\[[^\]]*"poems"/);
+    expect(read("src/lib/jawad/student/actions.ts")).toContain('case "sermon_poems"');
+  });
+});
+
