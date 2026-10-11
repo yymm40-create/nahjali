@@ -39,7 +39,8 @@ const clamp = (x: number, y: number) => ({
 
 export default function RobotGuide() {
   const path = usePathname() ?? "";
-  const robot = robotFor(path);
+  // inside a project of «حيدرة كت» his own chat bubble is there already (Editor.tsx), so no second one
+  const robot = /^\/jawad-ai\/editor\/[^/]+/.test(path) ? null : robotFor(path);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [folded, setFolded] = useState(false);

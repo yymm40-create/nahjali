@@ -20,6 +20,9 @@ import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack,
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
+import MovableBubble from "@/components/MovableBubble";
+import RobotFace from "@/components/RobotFace";
+import "./haidara-pop.css";
 import Guard from "./Guard";
 import SmartFix from "./SmartFix";
 import { PluginTools } from "./plugins";
@@ -142,7 +145,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [exporting, setExporting] = useState(false);
   const [captioning, setCaptioning] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
-  const [assisting, setAssisting] = useState(true);
+  const [assisting, setAssisting] = useState(false);
   const [chat, setChat] = useState(false);
   // the left side's section (a computer): the library, a clip's settings, the ready styles, the project
   const [rail, setRail] = useState<"media" | "inspector" | "styles" | "project">("media");
@@ -1399,7 +1402,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   ) : null;
 
   // حيدرة along the whole side (top to bottom): the editor makes room for him on that side
-  const sideChat = wide && assisting && !chatBig && !big && chatMode !== "dock" && !layout.float.chat;
+  // حيدرة is a popup over the work now (never a column beside it)
+  const sideChat = false as boolean;
   const chatPad = chatMode === "half" ? "50%" : `${chatW + 12}px`;
   const toolBtn = "flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-40 lg:flex-row lg:gap-1.5 lg:text-xs";
 
@@ -1556,24 +1560,20 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {/* Claude (right) · the preview · the left side: a section and its rail (a computer); sheets on a phone */}
       <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
-        {/* Claude: beside the work on a computer from the start, over it on a phone when asked */}
-        <aside className={`${chat ? "jw-chat-full fixed inset-0 z-[60] flex h-dvh pb-[env(safe-area-inset-bottom)]" : "hidden"} jw-glass-lg flex-col bg-jw-surface lg:relative lg:z-auto lg:h-auto lg:pb-0 ${assisting && !big ? "lg:flex" : "lg:hidden"} lg:my-2 lg:shrink-0 lg:rounded-2xl ${chatBig ? "lg:!fixed lg:inset-4 lg:!z-[60] lg:!my-0 lg:flex lg:!bg-jw-surface lg:shadow-2xl lg:backdrop-blur-none" : ""} ${sideChat ? `lg:!absolute lg:inset-y-2 lg:!my-0 lg:!z-30 ${THEMES[theme].mirror ? "lg:end-2" : "lg:start-2"}` : ""} ${floatCls("chat")}`} style={chatBig ? undefined : sideChat ? { width: chatMode === "half" ? "calc(50% - 16px)" : chatW } : placeStyle("chat", { width: chatW })} ref={sizeChat} aria-label="حيدرة">
-          {floatBar("chat")}
-          {/* its edge: drag to make the conversation wider or narrower (double-click: the usual width) */}
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="غيّر عرض محادثة حيدرة"
-            title="اسحب لتكبير المحادثة أو تصغيرها"
-            className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${THEMES[theme].mirror ? "start-0" : "end-0"}`}
-            onPointerDown={dragChat}
-            onDoubleClick={() => setChatW(400)}
-          />
-          <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-          <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} mode={chatMode} onMode={wide ? setChatMode : undefined} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
-          </div>
-        </aside>
-        {chatBig && <button type="button" aria-label="رجّع المحادثة لمكانها" className="fixed inset-0 z-[59] hidden bg-black/50 lg:block" onClick={() => setChatBig(false)} />}
+        {/* حيدرة: a small bubble with his face (dragged anywhere, folded to the side); pressed, his conversation pops up
+            in his own black-and-lime window over the work, and «صغّر» folds it back to the bubble */}
+        {!assisting && (
+          <MovableBubble id="haidara-chat" corner="left" size={52} label="حيدرة: كلّمني وأعدّل لك المونتاج" gradient="linear-gradient(135deg, #c6ff1a, #3f5a00)" onPress={() => openClaude(true)}>
+            <RobotFace id="haidara" size={38} />
+          </MovableBubble>
+        )}
+        {assisting && (
+          <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرة" dir="rtl">
+            <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
+              <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
+            </div>
+          </aside>
+        )}
 
         <section ref={stageRef} className={`relative flex min-w-0 flex-1 flex-col ${full ? "fixed inset-0 z-[70] bg-black" : ""} ${floatCls("preview")}`} style={full ? undefined : placeStyle("preview")} aria-label="المعاينة">
           {floatBar("preview")}
