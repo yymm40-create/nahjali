@@ -16,6 +16,7 @@ import { CLAUDE_ONLY_KINDS, checkKey, createJob, jobView, projectJobs, advanceJo
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "./model";
 import { estimate } from "./outputs";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
+import { chosenPages, drawNote } from "./draw";
 import { slideImageUsd } from "./slide-images";
 import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
@@ -139,11 +140,11 @@ export async function createProject(user: User & { app_metadata?: Record<string,
 // ───────────────────────────── paid steps ─────────────────────────────
 
 /** Quote first (nothing runs), then run with the same key once the student confirmed. */
-async function paid(user: User, b: Body, o: { projectId: string; outputId?: string; kind: string; usd: number; input?: Record<string, unknown>; stage?: string; started?: () => Promise<void> }) {
+async function paid(user: User, b: Body, o: { projectId: string; outputId?: string; kind: string; usd: number; input?: Record<string, unknown>; stage?: string; started?: () => Promise<void>; /** said to the student with the price, before they agree */ note?: string }) {
   // nothing is charged (the owner, a free guest, or while coins are switched off): no price to agree to
   const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
   const coins = o.usd > 0 && !free ? (CLAUDE_ONLY_KINDS.has(o.kind) ? claudeHalalas : coinsFor)(o.usd) : 0;
-  if (!b.confirm) return { quote: coins, balance: await coinBalance(user.id) };
+  if (!b.confirm) return { quote: coins, balance: await coinBalance(user.id), ...(o.note ? { note: o.note } : {}) };
   const key = checkKey(b.key);
   const { job, created } = await createJob(user, { projectId: o.projectId, outputId: o.outputId ?? null, kind: o.kind, key, input: o.input, estimateUsd: o.usd, stage: o.stage });
   // the job itself runs after this response, so the status set here comes before anything it writes
@@ -593,8 +594,8 @@ export async function outputAction(user: User, id: string, b: Body) {
   await touch(p.id);
   // `extra` (the student's request, approval taken back) is saved only once the job really started: a refused job
   // (busy, short balance) leaves the output exactly as it was
-  const run = (kind: string, usd: number, input: Record<string, unknown> = {}, stage?: string, status?: string, extra: Record<string, unknown> = {}) =>
-    paid(user, b, { projectId: p.id, outputId: o.id, kind, usd, input, stage, started: status ? () => saveOutput(o.id, { ...extra, status, error: null }) : undefined });
+  const run = (kind: string, usd: number, input: Record<string, unknown> = {}, stage?: string, status?: string, extra: Record<string, unknown> = {}, note?: string) =>
+    paid(user, b, { projectId: p.id, outputId: o.id, kind, usd, input, stage, note, started: status ? () => saveOutput(o.id, { ...extra, status, error: null }) : undefined });
 
   switch (b.action) {
     // «محادثة مع صادق»: one message, answered now (paid by its real use, like every robot's turn)
@@ -725,8 +726,12 @@ export async function outputAction(user: User, id: string, b: Body) {
       const quality = b.quality === "medium" ? "medium" : "high";
       const page = Number.isInteger(b.page) ? Number(b.page) : -1;
       const note = text(b.note, 2000);
-      const usd = page >= 0 ? pageUsd(quality) : picturesPlan(o, quality).usd;
-      return run("pictures", usd, { quality, page, note }, "صفحات مصممة بـ GPT Image 2");
+      const plan = picturesPlan(o, quality);
+      // the student's number rules: a written output with a chosen page count is drawn as exactly that many pages, never more
+      const want = chosenPages(o.kind, o.settings);
+      if (page < 0 && want > 0 && plan.pages.length !== want) throw new UserError(`عدد الصفحات اللي اخترته ${want} لكن الرسم طلع ${plan.pages.length}؛ ما رسمنا شي. جرّب تعيد إعداد الناتج.`);
+      const usd = page >= 0 ? pageUsd(quality) : plan.usd;
+      return run("pictures", usd, { quality, page, note }, "صفحات مصممة بـ GPT Image 2", undefined, {}, page >= 0 ? "ستُرسم هذي الصفحة وحدها بـ GPT Image 2" : drawNote(plan.pages.length, plan.todo));
     }
     case "quiz_attempt": {
       const c = o.content as { questions: { type: string; answer: string }[] } | null;

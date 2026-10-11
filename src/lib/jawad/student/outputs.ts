@@ -23,6 +23,7 @@ import { colorsOf } from "./render/css";
 import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
 import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
+import { capSlides } from "./draw";
 
 /** Slides made as pictures with GPT Image 2 (the student's choice), and at which quality. */
 const asPictures = (o: Output) => o.kind === "slides" && o.settings.render === "image";
@@ -268,6 +269,9 @@ async function planStep(job: Job): Promise<StepResult> {
       r = await ask(`\nYour first map had ${first.data.slides.length} slides; the student asked for EXACTLY ${want}. Return exactly ${want} slides.`);
       r = { ...r, usd: r.usd + first.usd };
     }
+    // still more than the student's number after the second ask: it is cut to their number in code (the closing slide kept),
+    // never left to the model — every slide may be drawn and paid for
+    if (want && r.data.slides.length > want) r = { ...r, data: { ...r.data, slides: capSlides(r.data.slides, want) } };
     const valid = new Set(c.seg.keys());
     const plan: SlidePlan = { title: r.data.title, subtitle: r.data.subtitle, slides: r.data.slides.map((sl) => ({ ...sl, segments: sl.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: sl.visual } })) };
     await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, files: {}, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });

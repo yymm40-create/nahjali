@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { autoSettings } from "@/lib/jawad/student/defaults";
+import { mayAutoDraw } from "@/lib/jawad/student/draw";
 import { newKey, post, type OutputView, type ProjectState } from "./client";
 
 /** Written outputs that can also be drawn as pages by GPT Image 2 (lib/jawad/student/pictures.ts). */
@@ -54,7 +55,8 @@ export function nextAuto(s: ProjectState): AutoAction | null {
       for (const o of [...s.outputs].sort((a, b) => a.ord - b.ord)) {
         // pages drawn by GPT Image 2, when that was the student's choice: after the written output is done
         const draw = String(o.settings.pictures ?? "");
-        if (o.status === "done" && (draw === "high" || draw === "medium") && PICTURE_KINDS.includes(o.kind) && !o.files.includes("pictures_pdf")) {
+        // only when the student CHOSE the page count (then exactly that many are drawn); otherwise the button under the output shows the count and the price first
+        if (o.status === "done" && (draw === "high" || draw === "medium") && PICTURE_KINDS.includes(o.kind) && mayAutoDraw(o.kind, o.settings) && !o.files.includes("pictures_pdf")) {
           return { label: `${o.title}: رسم الصفحات بـ GPT Image 2`, run: () => outPaid(o.id, { action: "pictures", quality: draw }) };
         }
         if (o.status === "done" || o.status === "waiting") continue;
