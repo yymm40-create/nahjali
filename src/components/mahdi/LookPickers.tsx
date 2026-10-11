@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { MAHDI_THEMES, type MahdiTheme } from "@config/mahdi";
+import { MAHDI_THEMES, type GoalsStyle, type MahdiTheme } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import type { Shrine } from "@/lib/mahdi/types";
 import Icon from "./Icon";
@@ -42,60 +42,92 @@ export function ShrinePicker({ shrines, value, onChange }: { shrines: Shrine[]; 
   );
 }
 
-interface Swatch {
-  bg: string;
-  card: string;
-  ink: string;
-  muted: string;
-  primary: string;
-  primaryInk: string;
-  font: string;
-  radius: number;
-  border: string;
-  shadow: string;
-  sample: string;
+/** A tiny drawing of how a design shows the day (its goals style), in the design's own colours. */
+function GoalsMark({ style }: { style: GoalsStyle }) {
+  const c = "var(--m-gold)";
+  const tr = "var(--m-track)";
+  const arc = (r: number, v: number, col = c, w = 5) => {
+    const C = 2 * Math.PI * r;
+    return (
+      <>
+        <circle cx="20" cy="20" r={r} fill="none" stroke={tr} strokeWidth={w} />
+        <circle cx="20" cy="20" r={r} fill="none" stroke={col} strokeWidth={w} strokeLinecap="round" strokeDasharray={`${v * C} ${C}`} transform="rotate(-90 20 20)" />
+      </>
+    );
+  };
+  const box = (body: React.ReactNode) => (
+    <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+      {body}
+    </svg>
+  );
+  switch (style) {
+    case "rings3":
+      return box(<>{arc(17, 0.5, "#fa114f", 4)}{arc(11, 0.67, "#a6ff00", 4)}{arc(5, 0.8, "#00e5ff", 4)}</>);
+    case "bar":
+    case "segments":
+      return box(<>{[8, 18, 28].map((y, k) => <g key={y}><rect x="2" y={y} width="36" height="6" rx="3" fill={tr} /><rect x="2" y={y} width={[18, 26, 12][k]} height="6" rx="3" fill={c} /></g>)}</>);
+    case "liquid":
+      return box(<><rect x="8" y="3" width="24" height="34" rx="8" fill={tr} /><rect x="8" y="18" width="24" height="19" rx="8" fill={c} /></>);
+    case "heatmap":
+      return box(<>{Array.from({ length: 25 }, (_, k) => <rect key={k} x={2 + (k % 5) * 7.5} y={2 + Math.floor(k / 5) * 7.5} width="6" height="6" rx="1.5" fill={c} opacity={[0.25, 0.5, 0.75, 1, 0.15][(k * 3) % 5]} />)}</>);
+    case "garden":
+      return box(<><path d="M14 38 L16 28 H24 L26 38Z" fill="#c9774a" /><path d="M20 28 V10" stroke="#3f8f3a" strokeWidth="2.5" /><path d="M20 20 C12 17 10 12 12 9 C18 10 20 15 20 20Z" fill="#5cb85c" /><circle cx="20" cy="8" r="4" fill="#ffd166" /></>);
+    case "path":
+      return box(<>{[[20, 6], [30, 18], [14, 30]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r="5.5" fill={k < 2 ? "#58cc02" : "#ffc800"} />)}</>);
+    case "flame":
+      return <span className="text-3xl leading-none" aria-hidden="true">🔥</span>;
+    case "gauge":
+      return box(<><path d="M5 30 A15 15 0 0 1 35 30" fill="none" stroke={tr} strokeWidth="6" strokeLinecap="round" /><path d="M5 30 A15 15 0 0 1 28 17" fill="none" stroke={c} strokeWidth="6" strokeLinecap="round" /></>);
+    case "rpg":
+      return <span className="text-3xl leading-none" aria-hidden="true">🧕</span>;
+    case "stickers":
+      return box(<><rect x="4" y="6" width="20" height="14" fill="#ffe08a" transform="rotate(-6 14 13)" /><rect x="16" y="20" width="20" height="14" fill="#bde0fe" transform="rotate(5 26 27)" /></>);
+    case "star":
+      return box(<polygon points="20,2 25,10 35,7 32,17 38,22 30,27 31,37 21,33 13,38 11,28 2,25 8,17 4,8 14,10" fill={c} stroke="var(--m-gold-2)" strokeWidth="1.5" />);
+    case "number":
+      return <b className="text-3xl leading-none" style={{ fontFamily: "var(--m-display)" }}>٣</b>;
+    case "chip":
+      return box(<>{[[20, 12], [10, 28], [30, 28]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r="8" fill="none" stroke={c} strokeWidth="3" />)}</>);
+    case "bento":
+      return box(<><rect x="2" y="2" width="20" height="36" rx="6" fill={c} /><rect x="24" y="2" width="14" height="17" rx="5" fill="var(--m-gold-2)" /><rect x="24" y="21" width="14" height="17" rx="5" fill={tr} /></>);
+    default:
+      return box(arc(15, 0.6));
+  }
 }
 
-/** Each look drawn in its own letters, corners, outlines and colours (a small screen of it). */
-const SWATCH: Record<MahdiTheme, Swatch> = {
-  aurora: { bg: "radial-gradient(60% 50% at 90% 0%, #fbcfe8, transparent 70%), radial-gradient(60% 50% at 0% 20%, #ddd6fe, transparent 70%), #f6f0ff", card: "rgba(255,255,255,.9)", ink: "#1d1534", muted: "#6b6185", primary: "linear-gradient(120deg,#7c3aed,#ec4899 60%,#f97316)", primaryInk: "#fff", font: "var(--font-readex)", radius: 18, border: "1px solid rgba(124,58,237,.12)", shadow: "0 10px 24px -14px rgba(91,33,182,.4)", sample: "يومك ٨٠٪" },
-  neon: { bg: "radial-gradient(50% 40% at 90% 0%, rgba(34,211,238,.35), transparent 70%), radial-gradient(50% 40% at 0% 60%, rgba(255,61,168,.3), transparent 70%), #07070d", card: "rgba(20,20,34,.85)", ink: "#f2f4ff", muted: "#a3a8c3", primary: "linear-gradient(120deg,#c6ff3d,#22d3ee)", primaryInk: "#07070d", font: "var(--font-lalezar)", radius: 12, border: "1px solid rgba(140,255,220,.25)", shadow: "0 0 18px -6px rgba(34,211,238,.6)", sample: "يومك ٨٠٪" },
-  pop: { bg: "radial-gradient(#e9d7a8 1.2px, transparent 1.4px) 0 0 / 14px 14px, #fff4dc", card: "#fff", ink: "#121212", muted: "#4a4337", primary: "#ccff00", primaryInk: "#121212", font: "var(--font-baloo)", radius: 10, border: "2px solid #121212", shadow: "3px 3px 0 #121212", sample: "يومك ٨٠٪" },
-  cinematic: { bg: "linear-gradient(180deg,#5b4a2e,#0d0c0b 70%)", card: "rgba(30,26,22,0.85)", ink: "#f7f0e3", muted: "#cbc1b0", primary: "linear-gradient(180deg,#f4da95,#e2bc66)", primaryInk: "#1c1406", font: "var(--font-amiri)", radius: 14, border: "1px solid rgba(255,234,196,.2)", shadow: "0 10px 24px -14px #000", sample: "يومك ٨٠٪" },
-  minimal: { bg: "#faf6ee", card: "#ffffff", ink: "#1f1b16", muted: "#675e52", primary: "linear-gradient(180deg,#ddbe72,#bf9746)", primaryInk: "#1f1505", font: "var(--font-amiri)", radius: 14, border: "1px solid #e8ddcb", shadow: "none", sample: "يومك ٨٠٪" },
-  night: { bg: "radial-gradient(80% 60% at 50% 0%, #3a3020, #0a0b0d 70%)", card: "#121418", ink: "#ede7db", muted: "#a8a195", primary: "linear-gradient(180deg,#f0d48b,#ddb963)", primaryInk: "#17110a", font: "var(--font-amiri)", radius: 14, border: "1px solid #272b32", shadow: "none", sample: "يومك ٨٠٪" },
-};
-
-/** The four looks, each previewed as a small screen in its own style. (An older look someone still has stays shown.) */
+/** The designs, each previewed in its own letters, colours, corners and way of drawing the day. */
 export function ThemePicker({ value, onChange }: { value: MahdiTheme; onChange: (t: MahdiTheme) => void }) {
   const list = MAHDI_THEMES.filter((th) => !th.legacy || th.key === value);
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" role="radiogroup" aria-label={t.more.theme}>
-      {list.map((th) => {
-        const s = SWATCH[th.key];
-        return (
-          <button key={th.key} type="button" role="radio" aria-checked={value === th.key} onClick={() => onChange(th.key)} className="m-option space-y-2 p-2 text-start">
-            <span className="block h-36 overflow-hidden rounded-xl p-2.5" style={{ background: s.bg, fontFamily: s.font, color: s.ink }} aria-hidden="true">
-              <span className="block text-lg leading-tight font-bold">{th.label}</span>
-              <span className="mt-2 flex gap-1.5">
-                {[0.8, 0.45].map((v, i) => (
-                  <span key={i} className="grid flex-1 place-items-center p-1.5" style={{ background: s.card, border: s.border, borderRadius: s.radius, boxShadow: s.shadow }}>
-                    <svg width="34" height="34" viewBox="0 0 36 36">
-                      <circle cx="18" cy="18" r="14" fill="none" stroke={s.muted} strokeOpacity=".25" strokeWidth="5" />
-                      <circle cx="18" cy="18" r="14" fill="none" stroke={th.key === "pop" ? "#ff3d9a" : th.key === "neon" ? "#c6ff3d" : th.key === "aurora" ? "#8b5cf6" : "#e2bc66"} strokeWidth="5" strokeLinecap="round" strokeDasharray={`${v * 88} 88`} transform="rotate(-90 18 18)" />
-                    </svg>
-                  </span>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" role="radiogroup" aria-label={t.more.theme}>
+      {list.map((th) => (
+        <button key={th.key} type="button" role="radio" aria-checked={value === th.key} onClick={() => onChange(th.key)} className="m-option overflow-hidden p-1.5 text-start">
+          <span className="mahdi-root m-sample block h-32 overflow-hidden p-2.5" data-mtheme={th.key} style={{ borderRadius: 12, fontFamily: "var(--m-font)" }} aria-hidden="true">
+            <span className="flex items-center gap-1.5">
+              <b className="flex-1 truncate text-sm" style={{ fontFamily: "var(--m-display)", fontWeight: "var(--m-display-weight)" as unknown as number, color: "var(--m-ink)" }}>{th.label}</b>
+              {th.n > 0 && <span className="m-num text-[10px]" style={{ color: "var(--m-muted)" }}>{th.n}</span>}
+            </span>
+            <span className="mt-1.5 flex items-center gap-2">
+              <span className="grid place-items-center p-1.5" style={{ background: "var(--m-surface)", border: "var(--m-border-w) solid var(--m-line)", borderRadius: "calc(var(--m-radius) * 0.6)", boxShadow: "var(--m-shadow)", color: "var(--m-ink)" }}>
+                <GoalsMark style={th.goals} />
+              </span>
+              <span className="flex flex-1 flex-col gap-1">
+                {[0.8, 0.5].map((w, k) => (
+                  <span key={k} className="block h-1.5 rounded-full" style={{ width: `${w * 100}%`, background: k ? "var(--m-muted)" : "var(--m-ink)", opacity: k ? 0.5 : 0.8 }} />
                 ))}
               </span>
-              <span className="mt-2 block py-1 text-center text-xs font-bold" style={{ background: s.primary, color: s.primaryInk, borderRadius: s.radius, border: th.key === "pop" ? s.border : undefined, boxShadow: th.key === "pop" ? s.shadow : undefined }}>
-                {s.sample}
-              </span>
             </span>
-            <span className="block px-1 font-semibold">{th.label}</span>
-            <span className="block px-1 pb-1 text-sm m-muted">{th.description}</span>
-          </button>
-        );
-      })}
+            <span className="mt-2 block py-1 text-center text-[11px] font-bold" style={{ background: "var(--m-primary-bg)", color: "var(--m-gold-ink)", border: "var(--m-primary-border)", boxShadow: "var(--m-primary-shadow)", borderRadius: "calc(var(--m-radius) * 0.5)" }}>
+              ٣ من ٦ ✓
+            </span>
+          </span>
+          <span className="block px-1 pt-2 font-semibold leading-snug">
+            {th.n > 0 && <span className="m-num m-gold">{th.n}. </span>}
+            {th.label}
+          </span>
+          <span className="block px-1 pb-1 text-xs m-muted">{th.description}</span>
+        </button>
+      ))}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Amiri, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { Almarai, Amiri, Cairo, Changa, IBM_Plex_Sans_Arabic, Lemonada, Marhey, Rubik, Tajawal } from "next/font/google";
 import localFont from "next/font/local";
 import RegisterSW from "@/components/mahdi/RegisterSW";
 import ThemeRoot from "@/components/mahdi/ThemeRoot";
@@ -14,6 +14,14 @@ const display = Amiri({ variable: "--font-amiri", subsets: ["arabic"], weight: [
 // the letters of the looks «شفق» (Readex Pro), «نيون» (Lalezar) and «بوب» (Baloo Bhaijaan 2) — OFL, in assets/fonts
 const readex = localFont({ variable: "--font-readex", src: "../../../assets/fonts/student/ReadexPro.ttf", weight: "160 700", display: "swap" });
 const lalezar = localFont({ variable: "--font-lalezar", src: "../../../assets/fonts/Lalezar-Regular.ttf", weight: "400", display: "swap" });
+// the letters of the other designs: loaded only on the screen that uses them (no preload)
+const rubik = Rubik({ variable: "--font-rubik", subsets: ["arabic", "latin"], weight: ["400", "600", "800"], preload: false });
+const tajawal = Tajawal({ variable: "--font-tajawal", subsets: ["arabic"], weight: ["400", "700", "900"], preload: false });
+const cairo = Cairo({ variable: "--font-cairo", subsets: ["arabic"], weight: ["400", "700", "900"], preload: false });
+const almarai = Almarai({ variable: "--font-almarai", subsets: ["arabic"], weight: ["400", "700", "800"], preload: false });
+const lemonada = Lemonada({ variable: "--font-lemonada", subsets: ["arabic"], weight: ["400", "600"], preload: false });
+const changa = Changa({ variable: "--font-changa", subsets: ["arabic"], weight: ["400", "700"], preload: false });
+const marhey = Marhey({ variable: "--font-marhey", subsets: ["arabic"], weight: ["400", "700"], preload: false });
 const baloo = localFont({ variable: "--font-baloo", src: "../../../assets/fonts/BalooBhaijaan2.ttf", weight: "400 800", display: "swap" });
 
 export const metadata: Metadata = {
@@ -39,7 +47,7 @@ export default async function MahdiLayout({ children }: { children: React.ReactN
       initialTheme={profile?.theme ?? DEFAULT_THEME}
       initialVariant={profile?.themeVariant ?? ""}
       initialShrine={pickShrine(shrines, profile?.shrineId)}
-      fontClass={`${sans.variable} ${display.variable} ${readex.variable} ${lalezar.variable} ${baloo.variable}`}
+      fontClass={`${sans.variable} ${display.variable} ${readex.variable} ${lalezar.variable} ${baloo.variable} ${rubik.variable} ${tajawal.variable} ${cairo.variable} ${almarai.variable} ${lemonada.variable} ${changa.variable} ${marhey.variable}`}
       skipLabel={t.common.skipToContent}
     >
       <RegisterSW />

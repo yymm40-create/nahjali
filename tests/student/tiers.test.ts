@@ -71,7 +71,8 @@ describe("«الذكاء الإسلامي» in «الطالب الذكي» is fo
 
   it("is told to Claude as it is: on the material tier, in every mode", () => {
     const k = read("config/jawad/knowledge.ts");
-    expect(k).toContain("ONE PAGE OF THREE TIERS");
+    // the first page became three simple steps (#320); the question to «الذكاء الإسلامي» stays on the material step
+    expect(k).toContain("THREE SIMPLE STEPS");
     expect(k).toContain("THE QUESTION TO «الذكاء الإسلامي» IS ON THE «المادة» TIER FOR EVERYONE AND IN EVERY MODE");
   });
 });

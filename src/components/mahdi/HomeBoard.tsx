@@ -7,13 +7,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { dayGoals, daySeries, dayScore, dayStreak, startOfWeek, versionAt, weekScore, goalProgress, type Instance } from "@/lib/mahdi/engine";
+import { dayGoals, daySeries, dayScore, dayStreak, startOfWeek, weekScore, goalProgress } from "@/lib/mahdi/engine";
 import { fmtDateLong, fmtHijri, fmtNum, fmtPct, t } from "@/lib/mahdi/i18n";
 import { bySort, CHALLENGE_GROUP, pickPhrase } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { WIDGETS, homeWidgets, moveWidget, widgetDef, type WidgetId } from "@/lib/mahdi/home-widgets";
-import type { Habit, Profile, Project } from "@/lib/mahdi/types";
+import type { Profile, Project } from "@/lib/mahdi/types";
 import BookletCard from "./BookletCard";
 import DayBars from "./DayBars";
 import DayPriorities from "./DayPriorities";
@@ -21,11 +21,14 @@ import DayTasks from "./DayTasks";
 import HabitRow from "./HabitRow";
 import HealthCard from "./health/HealthCard";
 import Icon from "./Icon";
-import LogSheet from "./LogSheet";
 import ProgressRing from "./ProgressRing";
 import ProjectForm from "./ProjectForm";
 import { useMahdi } from "./Provider";
 import ReadingCard from "./ReadingCard";
+import DesignGoals from "./home/DesignGoals";
+import DesignQuick from "./home/DesignQuick";
+import { useLook } from "./ThemeRoot";
+import { designOf } from "@config/mahdi";
 import Sheet from "./Sheet";
 import { StoriesBar } from "./social/Stories";
 import { useReading } from "./useReading";
@@ -104,7 +107,7 @@ export default function HomeBoard() {
 
       <div className="m-board">
         {list.map((id) => (
-          <Widget key={id} id={id} />
+          <Widget key={id} id={id} list={list} />
         ))}
       </div>
       {list.length === 0 && (
@@ -122,17 +125,20 @@ export default function HomeBoard() {
 }
 
 /** One card, in its place on the board. */
-function Widget({ id }: { id: WidgetId }) {
+function Widget({ id, list }: { id: WidgetId; list: WidgetId[] }) {
+  // the design draws the two goals its own way (one card for both) and lays out the habits to tap its own way
+  const design = designOf(useLook().theme);
+  const joined = design.goals !== "ring" && (id === "habits" || (id === "reading" && !list.includes("habits")));
   const size = widgetDef(id).size;
-  const cls = size === "half" ? "" : id === "quick" || id === "projects" ? "m-w-full m-w-wide" : "m-w-full";
+  const cls = joined ? "m-w-full m-w-wide" : size === "half" ? "" : id === "quick" || id === "projects" ? "m-w-full m-w-wide" : "m-w-full";
   const body = (() => {
     switch (id) {
       case "habits":
-        return <HabitsGoal />;
+        return joined ? <DesignGoals style={design.goals} /> : <HabitsGoal />;
       case "reading":
-        return <ReadingGoal />;
+        return joined ? <DesignGoals style={design.goals} /> : design.goals !== "ring" ? null : <ReadingGoal />;
       case "quick":
-        return <QuickHabits />;
+        return <DesignQuick style={design.quick} />;
       case "priorities":
         return <DayPriorities />;
       case "tasks":
@@ -205,85 +211,6 @@ function ReadingGoal() {
       <p className="m-num text-sm font-semibold">{goal ? `${unit(goal.metric, goal.done)} من ${unit(goal.metric, goal.target)}` : "حدّد هدفك اليومي"}</p>
       {summary.streak > 0 && <span className="m-flame m-num">📖 {summary.streak}</span>}
     </Link>
-  );
-}
-
-// ───────────────────────────── «اضغط وأنجز» ─────────────────────────────
-
-function QuickHabits() {
-  const { state, allHabits } = useMahdi();
-  const { day, today } = useToday();
-  const projects = useMemo(() => state.snap.projects.filter((p) => !p.archivedAt).sort(bySort), [state.snap.projects]);
-  const byId = useMemo(() => new Map(allHabits.map((h) => [h.id, h])), [allHabits]);
-  const items = day
-    .map((i) => ({ i, h: byId.get(i.itemId) }))
-    .filter((x): x is { i: Instance; h: Habit } => Boolean(x.h))
-    .sort((a, b) => Number(a.i.progress >= 1) - Number(b.i.progress >= 1) || a.h.sortOrder - b.h.sortOrder);
-  const left = items.filter((x) => x.i.progress < 1).length;
-  return (
-    <section className="m-card m-widget space-y-3" aria-label="اضغط وأنجز">
-      <div className="flex items-center justify-between gap-2">
-        <p className="m-widget-title">
-          <Icon name="check" size={18} className="m-gold" /> اضغط وأنجز
-        </p>
-        <span className="m-chip m-num">{items.length ? (left ? `باقي ${left}` : "كملت كلها 🎉") : "ما فيه عادات اليوم"}</span>
-      </div>
-      {items.length > 0 ? (
-        <div className="m-quick">
-          {items.map(({ i, h }) => (
-            <QuickButton key={i.key} habit={h} inst={i} date={today} project={projects.find((p) => p.id === h.projectId)} />
-          ))}
-        </div>
-      ) : (
-        <Link href="/mahdi/projects" className="m-btn m-btn-ghost w-full">
-          <Icon name="plus" /> {t.home.emptyHabits}
-        </Link>
-      )}
-    </section>
-  );
-}
-
-/** One habit as a big button: a check is done or undone in one tap, a count goes +1, an amount opens the number pad. */
-function QuickButton({ habit, inst, date, project }: { habit: Habit; inst: Instance; date: string; project?: Project }) {
-  const { store, state, toast } = useMahdi();
-  const [open, setOpen] = useState(false);
-  const v = versionAt({ ...habit, logs: {} }, date);
-  if (!v) return null;
-  const dayValue = state.logs[habit.id]?.[date] ?? 0;
-  const done = inst.progress >= 1 || (v.measure === "check" && dayValue >= 1);
-  const commit = (value: number) => {
-    const prev = store.setLog(habit.id, date, value);
-    try {
-      navigator.vibrate?.(done ? 6 : [10, 30, 10]);
-    } catch {}
-    toast(t.habit.logged(habit.name), { label: t.habit.undo, run: () => store.setLog(habit.id, date, prev) }, habit.id);
-  };
-  const tap = () => {
-    if (v.measure === "check") commit(dayValue >= 1 ? 0 : 1);
-    else if (v.measure === "count") commit(dayValue + 1);
-    else setOpen(true);
-  };
-  return (
-    <>
-      <button
-        type="button"
-        className={`m-quick-btn p-${project?.color ?? "gold"}`}
-        data-done={done}
-        aria-pressed={v.measure === "check" ? done : undefined}
-        aria-label={v.measure === "check" ? (done ? t.habit.markUndone(habit.name) : t.habit.markDone(habit.name)) : `${habit.name}: ${fmtNum(inst.value)} / ${fmtNum(inst.target)}`}
-        onClick={tap}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setOpen(true);
-        }}
-      >
-        <span className="m-quick-ic" aria-hidden="true">{done ? "✓" : habit.icon || "•"}</span>
-        <span className="line-clamp-2">{habit.name}</span>
-        {v.measure !== "check" && <span className="m-num text-xs opacity-80">{fmtNum(inst.value)} / {fmtNum(inst.target)}</span>}
-        {!done && inst.progress > 0 && <span className="m-quick-fill" style={{ transform: `scaleX(${inst.progress})` }} aria-hidden="true" />}
-      </button>
-      <LogSheet open={open} onClose={() => setOpen(false)} habit={habit} version={v} inst={inst} date={date} commit={commit} dayValue={dayValue} />
-    </>
   );
 }
 

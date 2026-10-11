@@ -7,11 +7,23 @@ import { BOTTOM, navGroups } from "@/components/mahdi/nav";
 const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
 
 describe("«لأجل المهدي» redesign: four looks", () => {
-  it("offers exactly four, each a different look", () => {
-    expect(PICKED_THEMES.map((x) => x.key)).toEqual(["aurora", "neon", "pop", "cinematic"]);
-    expect(new Set(PICKED_THEMES.map((x) => x.themeColor)).size).toBe(4);
+  it("offers the twenty designs and «الحرم», each a different look and a different way to draw the day", () => {
+    expect(PICKED_THEMES.filter((x) => x.n > 0).map((x) => x.n)).toEqual(Array.from({ length: 20 }, (_, k) => k + 1));
+    expect(PICKED_THEMES.some((x) => x.key === "cinematic")).toBe(true);
+    expect(new Set(PICKED_THEMES.map((x) => x.label)).size).toBe(PICKED_THEMES.length);
+    expect(new Set(PICKED_THEMES.map((x) => x.goals)).size).toBeGreaterThanOrEqual(15);
+    expect(new Set(PICKED_THEMES.map((x) => x.quick)).size).toBe(7);
     expect(DEFAULT_THEME).toBe("aurora");
-    expect(LIGHT_THEMES).toEqual(expect.arrayContaining(["aurora", "pop"]));
+    expect(LIGHT_THEMES).toEqual(expect.arrayContaining(["aurora", "pop", "bars", "mono"]));
+  });
+
+  it("every design has its own block of tokens, and the home draws every goals and habits style", () => {
+    const css = read("src/app/mahdi/mahdi.css");
+    for (const th of PICKED_THEMES) expect(css, th.key).toContain(`.mahdi-root[data-mtheme="${th.key}"] {`);
+    const goals = read("src/components/mahdi/home/DesignGoals.tsx");
+    for (const g of new Set(PICKED_THEMES.map((x) => x.goals))) if (g !== "ring") expect(goals, g).toContain(`case "${g}":`);
+    const quick = read("src/components/mahdi/home/DesignQuick.tsx");
+    for (const q of new Set(PICKED_THEMES.map((x) => x.quick))) expect(quick, q).toContain(`case "${q}":`);
   });
 
   it("each look has its own letters, colours and corners in the CSS", () => {
@@ -34,7 +46,7 @@ describe("«لأجل المهدي» redesign: four looks", () => {
 
   it("the older looks still work for whoever has them, and the database accepts the new ones", () => {
     expect(MAHDI_THEMES.filter((x) => x.legacy).map((x) => x.key)).toEqual(["minimal", "night"]);
-    const sql = read("supabase/migrations/0062_mahdi_redesign.sql");
+    const sql = read("supabase/migrations/0063_mahdi_designs.sql");
     for (const k of MAHDI_THEMES.map((x) => x.key)) expect(sql).toContain(`'${k}'`);
     expect(sql).toContain("home_widgets");
     // before the migration a new look is saved as the nearest older one instead of failing

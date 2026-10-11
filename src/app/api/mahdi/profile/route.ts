@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { MAHDI_LIMITS } from "@config/mahdi";
+import { LIGHT_THEMES, MAHDI_LIMITS, type MahdiTheme } from "@config/mahdi";
 import { MILESTONES } from "@config/mahdi-rewards";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireUser, UserError } from "@/lib/mahdi/server/api";
@@ -50,17 +50,18 @@ async function profileFields(supabase: SupabaseClient, body: Record<string, unkn
 }
 
 /**
- * Until migration 0062 runs, the database knows only the older looks and has no home layout: a new look is saved as
+ * Until migrations 0062 and 0063 run, the database knows only the older looks and has no home layout: a new look is saved as
  * the nearest older one and the layout is left out, instead of failing the whole save.
  */
 async function beforeMigration<R extends { error: { code?: string } | null }>(write: (f: Record<string, unknown>) => PromiseLike<R>, fields: Record<string, unknown>): Promise<R> {
   const first = await write(fields);
   const code = first.error?.code;
   if (code !== "23514" && code !== "42703" && code !== "PGRST204") return first;
-  const older: Record<string, string> = { aurora: "minimal", pop: "minimal", neon: "night" };
+  // a design the database doesn't know yet (migrations 0062 / 0063): the older light or dark look, by its colours
+  const older = (k: string) => (k === "cinematic" || k === "minimal" || k === "night" ? k : LIGHT_THEMES.includes(k as MahdiTheme) ? "minimal" : "night");
   const { home_widgets: _drop, ...rest } = fields;
   void _drop;
-  if (typeof rest.theme === "string" && older[rest.theme]) rest.theme = older[rest.theme];
+  if (typeof rest.theme === "string") rest.theme = older(rest.theme);
   return write(rest);
 }
 
