@@ -20,6 +20,9 @@ export interface PlayerLike {
   subscribe(fn: (ms: number, playing: boolean) => void): () => void;
 }
 
+/** The window event the editor's zoom keys send: detail "in" | "out" | "fit". */
+export const TL_ZOOM = "jw:tl-zoom";
+
 interface Props {
   tl: TL;
   assets: Map<string, EditorAsset>;
@@ -204,6 +207,20 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const t = setTimeout(fit, 0);
     return () => clearTimeout(t);
   }, [total, fit]);
+
+  // the zoom keys («⌨️ الاختصارات»: = / − / \ or Ctrl+= …), around the playhead
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<"in" | "out" | "fit">).detail;
+      if (d === "fit") return fit();
+      const el = scroller.current;
+      const ms = player?.ms ?? 0;
+      const x = el ? Math.min(el.clientWidth - 20, Math.max(20, X0 + (ms * pps) / 1000 - el.scrollLeft)) : 0;
+      zoomTo(d === "in" ? pps * 1.6 : pps / 1.6, el ? { ms, x } : undefined);
+    };
+    window.addEventListener(TL_ZOOM, on);
+    return () => window.removeEventListener(TL_ZOOM, on);
+  }, [pps, zoomTo, fit, X0, player]);
 
   // Ctrl/⌘ + wheel (and a trackpad pinch) zooms around the pointer; two fingers on a phone too
   useEffect(() => {

@@ -124,8 +124,12 @@ export interface Backdrop {
   steady: number;
   /** show the cut-out itself (white = kept, black = removed) to tune it */
   show: boolean;
+  /** «Despill»: how much of the old background's colour cast is taken off the person's edges, 0 (none) … 1 */
+  despill: number;
+  /** the cast's colour ("#rrggbb"), or "" = found from the background on each frame */
+  spillColor: string;
 }
-export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40, feather: 0.3, shrink: 0, steady: 0.5, show: false };
+export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40, feather: 0.3, shrink: 0, steady: 0.5, show: false, despill: 0, spillColor: "" };
 
 /** A backdrop as stored or sent, kept inside its bounds (older projects get the default edge settings). */
 export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAULT_BACKDROP): Backdrop {
@@ -138,6 +142,8 @@ export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAUL
     shrink: Math.round(n(v.shrink, -1, 1, base.shrink) * 100) / 100,
     steady: Math.round(n(v.steady, 0, 1, base.steady) * 100) / 100,
     show: v.show === undefined ? base.show : v.show === true,
+    despill: Math.round(n(v.despill, 0, 1, base.despill ?? 0) * 100) / 100,
+    spillColor: v.spillColor === "" ? "" : typeof v.spillColor === "string" && /^#[0-9a-f]{6}$/i.test(v.spillColor) ? v.spillColor.toLowerCase() : (base.spillColor ?? ""),
   };
 }
 

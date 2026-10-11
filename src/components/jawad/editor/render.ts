@@ -374,7 +374,7 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
       ctx.fillRect(-w / 2, -h / 2, w, h);
     }
     ctx.filter = filter || "none";
-    ctx.drawImage(cutout(f, f.mask, clip.bg.feather ?? 0.3), -w / 2, -h / 2, w, h);
+    ctx.drawImage(cutout(f, f.mask, clip.bg.feather ?? 0.3, clip.bg.despill ?? 0, clip.bg.spillColor ?? ""), -w / 2, -h / 2, w, h);
   } else if (clip.fx.length || look.tfx.length) {
     // «المؤثرات»: the clip's own effects (and a transition's passing one), on its own time
     const plan = fxPlan(look.tfx.length ? [...clip.fx, ...look.tfx] : clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
@@ -427,7 +427,7 @@ function softMask(mask: CanvasImageSource, feather: number, w: number, h: number
   return soft;
 }
 
-function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3) {
+function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3, despill = 0, spillColor = "") {
   scratch ??= document.createElement("canvas");
   const k = Math.min(1, 1280 / Math.max(f.width, f.height));
   const w = Math.max(1, Math.round(f.width * k));
@@ -440,6 +440,8 @@ function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3) {
   c.globalCompositeOperation = "source-over";
   c.clearRect(0, 0, w, h);
   c.drawImage(f.img, 0, 0, w, h);
+  // «Despill»: the background's colour, from the picture before it is cut (when not chosen)
+  const before = despill > 0 && !spillColor ? c.getImageData(0, 0, w, h).data : null;
   c.globalCompositeOperation = "destination-in";
   c.imageSmoothingQuality = "high";
   // «نعومة الحواف»: the edge softened before it cuts (0 = as the model drew it)
@@ -448,7 +450,71 @@ function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3) {
   c.drawImage(mask, 0, 0, w, h);
   c.filter = "none";
   c.globalCompositeOperation = "source-over";
+  if (despill > 0) {
+    const img = c.getImageData(0, 0, w, h);
+    const cast = spillColor ? hexRgb(spillColor) : backgroundColour(before!, img.data);
+    if (cast) {
+      despillPixels(img.data, cast, despill);
+      c.putImageData(img, 0, 0);
+    }
+  }
   return scratch;
+}
+
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** The average colour of what the cut took away (every 4th pixel where nothing is kept); null when none is. */
+export function backgroundColour(before: Uint8ClampedArray, cut: Uint8ClampedArray): [number, number, number] | null {
+  let r = 0,
+    g = 0,
+    b = 0,
+    n = 0;
+  for (let i = 0; i < cut.length; i += 16) {
+    if (cut[i + 3] > 8) continue;
+    r += before[i];
+    g += before[i + 1];
+    b += before[i + 2];
+    n++;
+  }
+  return n > 20 ? [r / n, g / n, b / n] : null;
+}
+
+/**
+ * «Despill»: the background's colour cast taken off the kept pixels — in YCbCr, the share of each pixel's colour along
+ * the cast's direction is removed, brightness kept (as the chroma key's spill). Full strength on the soft edge, a third
+ * inside the person (the glow bounced on the skin and clothes).
+ */
+export function despillPixels(px: Uint8ClampedArray, cast: [number, number, number], amount: number) {
+  const [R, G, B] = cast;
+  let kb = -0.168736 * R - 0.331264 * G + 0.5 * B;
+  let kr = 0.5 * R - 0.418688 * G - 0.081312 * B;
+  const len = Math.hypot(kb, kr);
+  // a grey background has no cast to take off
+  if (len < 6) return;
+  kb /= len;
+  kr /= len;
+  for (let i = 0; i < px.length; i += 4) {
+    const a = px[i + 3];
+    if (a === 0) continue;
+    // canvas pixels are not premultiplied in getImageData: the colour is the real colour
+    const r = px[i],
+      g = px[i + 1],
+      b = px[i + 2];
+    const y = 0.299 * r + 0.587 * g + 0.114 * b;
+    let cb = -0.168736 * r - 0.331264 * g + 0.5 * b;
+    let cr = 0.5 * r - 0.418688 * g - 0.081312 * b;
+    const along = cb * kb + cr * kr;
+    if (along <= 0) continue;
+    const k = amount * (a < 250 ? 1 : 0.35) * along;
+    cb -= kb * k;
+    cr -= kr * k;
+    px[i] = y + 1.402 * cr;
+    px[i + 1] = y - 0.344136 * cb - 0.714136 * cr;
+    px[i + 2] = y + 1.772 * cb;
+  }
 }
 
 /** Splits a text into lines that fit `max` pixels (words kept whole; a very long word gets its own line). */
