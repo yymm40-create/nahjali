@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { MAHDI_BASE } from "@config/mahdi";
 import Icon from "./Icon";
 
 /**
@@ -48,6 +49,8 @@ export default function AccountMenu({ name, email, owner }: { name: string; emai
           <Link href="/jawad-ai/coins" className={item}><Icon name="wallet" size={16} /> النقود الذكية</Link>
           <Link href="/jawad-ai/film" className={item}><Icon name="film" size={16} /> مشاريع أفلامي</Link>
           <Link href="/download" className={`${item} hide-in-app`}>📲 حمّل التطبيق</Link>
+          {/* the sister app: «لأجل المهدي» (it has its own way back here, «العودة إلى الجواد الذكي») */}
+          <Link href={MAHDI_BASE} className={item}>📿 لأجل المهدي</Link>
           {owner && <Link href="/jawad-ai/admin" className={item}><Icon name="settings" size={16} /> إدارة JAWAD AI</Link>}
           {owner && <Link href="/admin" className={item}><Icon name="settings" size={16} /> لوحة التحكم (كل الفروع)</Link>}
           <button
