@@ -7,6 +7,8 @@ export const SHARE = {
   account: "jawad.ai.studio",
   /** the reward when the owner has set none, in riyals */
   defaultRewardSar: 10,
+  /** the offer is stopped (the owner's word, 11 October 2026): no window, no button, no new claims. Claims already sent can still be confirmed in /admin/share. Set to false to bring it back. */
+  paused: true,
 } as const;
 
 export const instagramUrl = (handle: string) => `https://www.instagram.com/${handle.replace(/^@/, "")}/`;

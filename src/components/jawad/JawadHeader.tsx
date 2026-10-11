@@ -10,6 +10,7 @@ import LayoutToggle from "./LayoutToggle";
 import LoginLink from "./LoginLink";
 import ReportButton from "./ReportButton";
 import ShareReward from "./ShareReward";
+import CoursePromo from "./CoursePromo";
 import MemoryMenu from "./MemoryMenu";
 import SectionsBar from "./SectionsBar";
 
@@ -30,6 +31,7 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           </Link>
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             {/* on a computer: the whole width, or a phone-wide column */}
+            <CoursePromo version={version} />
             {!preview && <ShareReward version={version} loginHref={`${JAWAD.base}/login?next=${encodeURIComponent(JAWAD.base)}`} />}
             {boss && <ReportButton />}
             {user && !preview && <MemoryMenu />}

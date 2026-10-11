@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SHARE } from "@config/share";
 import { countdown, DEFAULT_SETTINGS, embedOf, offerFor, offersAt, readSettings, savingPct, cleanPhone, waLink, COURSE, type CourseSettings } from "@config/course";
 
 const H = 3_600_000;
@@ -144,3 +145,27 @@ describe("phone numbers, WhatsApp, count down and the video", () => {
     expect(COURSE.maxOpen).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("what the course sells", () => {
+  it("promises the strongest film at the lowest price, two days of film and a third of training", () => {
+    expect(DEFAULT_SETTINGS.headline).toContain("اصنع فيلمك الأقوى");
+    expect(DEFAULT_SETTINGS.days).toHaveLength(3);
+    expect(DEFAULT_SETTINGS.days[0].title).toContain("الفيلم السينمائي");
+    expect(DEFAULT_SETTINGS.days[1].title).toContain("الفيلم السينمائي");
+    expect(DEFAULT_SETTINGS.days[2].title).toContain("تدريب");
+  });
+
+  it("gives way to today's words when storage still holds the old defaults, and keeps the owner's own", () => {
+    const old = readSettings({ headline: "تشتغل على الجواد الذكي بثقة في ٣ أيام: تسوي صورك وفيديوهاتك وتصاميمك بنفسك، وتعرف وين تصرف رصيدك", days: [{ title: "اليوم الأول: تعرّف على الجواد", points: ["أ"] }] });
+    expect(old.headline).toBe(DEFAULT_SETTINGS.headline);
+    expect(old.days).toEqual(DEFAULT_SETTINGS.days);
+    const mine = readSettings({ headline: "كلامي أنا", days: [{ title: "يومي", points: ["أ"] }] });
+    expect(mine.headline).toBe("كلامي أنا");
+    expect(mine.days).toEqual([{ title: "يومي", points: ["أ"] }]);
+  });
+
+  it("keeps «انشرنا واربح» stopped", () => {
+    expect(SHARE.paused).toBe(true);
+  });
+});
+

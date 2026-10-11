@@ -70,13 +70,13 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   prices: { comboA: 40, liveB: 40, recordedB: 80, liveC: 80, recordedC: 100 },
   was: { live: 80, recorded: 150 },
   bonus: { comboA: 0, recordedB: 0, recordedC: 0 },
-  headline: "تشتغل على الجواد الذكي بثقة في ٣ أيام: تسوي صورك وفيديوهاتك وتصاميمك بنفسك، وتعرف وين تصرف رصيدك",
-  subhead: "دورة عملية عن الجواد الذكي نفسه: الموقع وأقسامه وروبوتاته وعروضه، من أول خطوة لين تسوي شغلك أنت.",
-  problem: "تفتح الأدوات الذكية وتضيع بين عشرات الخيارات، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل أسرع بتكلفة أقل.",
+  headline: "اصنع فيلمك الأقوى بأقل الأسعار وأسهل الطرق والتقنيات (وأعلى جودة)",
+  subhead: "دورة عملية في ٣ أيام: يومين نمشي فيهم على صناعة الفيلم السينمائي خطوة بخطوة بالجواد الذكي، واليوم الثالث تدريب تسوي فيه فيلمك أنت بنفسك.",
+  problem: "تبي تسوي فيلم، لكن الطرق كثيرة والأدوات غالية، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل لأقوى نتيجة بأقل تكلفة وأسهل خطوات.",
   days: [
-    { title: "اليوم الأول: تعرّف على الجواد", points: ["الأقسام وكيف تتنقل بينها", "النقود الذكية: كيف تُحسب الأسعار وكيف توفّر", "صناعة الصور والفيديو والصوت خطوة بخطوة"] },
-    { title: "اليوم الثاني: الأفلام والمونتاج", points: ["صانع الأفلام: من الفكرة للمشهد", "التعديل الذكي وحيدرة كت", "كيف تتجنب الأخطاء اللي تحرق الرصيد"] },
-    { title: "اليوم الثالث: الروبوتات والعروض", points: ["محمد باقر لمحتواك، وكاظم لتصاميمك، وزهراء لتحرير صورك", "التنقل بين الروبوتات وحفظ شغلك", "خطة استخدام تناسبك وعروض الموقع"] },
+    { title: "اليوم الأول: صناعة الفيلم السينمائي (١)", points: ["من الفكرة للسيناريو واللقطات", "الشخصيات والمشاهد بشكل ثابت من أول الفيلم لآخره", "كيف تختار الأرخص بدون ما تنزل الجودة"] },
+    { title: "اليوم الثاني: صناعة الفيلم السينمائي (٢)", points: ["توليد المشاهد وتركيبها في فيلم واحد", "الصوت والمونتاج والتعديل الذكي", "كيف تتجنب الأخطاء اللي تحرق الرصيد"] },
+    { title: "اليوم الثالث: تدريب عملي", points: ["تصنع فيلمك أنت بنفسك، وأنا معك خطوة بخطوة", "أسئلتك وملاحظاتي على شغلك", "خطة تكمل فيها بعد الدورة"] },
   ],
   risks: ["الدورة مدى الحياة، مباشرة كانت أو مسجلة", "مجموعة خاصة للمتابعة والأسئلة بعد الدورة", "تواصل مباشر معي لو واجهتك مشكلة"],
   videoPath: null,
@@ -89,6 +89,19 @@ export const DEFAULT_SETTINGS: CourseSettings = {
 };
 
 // ───────────────────────────── reading ─────────────────────────────
+
+/**
+ * The words the course shipped with before (the dashboard saves the WHOLE settings, so a copy of an old default may sit in
+ * storage though the owner never wrote it): read as «not written», they give way to today's defaults. What the owner wrote
+ * himself is never touched.
+ */
+const OLD_DEFAULTS = {
+  headline: ["تشتغل على الجواد الذكي بثقة في ٣ أيام: تسوي صورك وفيديوهاتك وتصاميمك بنفسك، وتعرف وين تصرف رصيدك"],
+  subhead: ["دورة عملية عن الجواد الذكي نفسه: الموقع وأقسامه وروبوتاته وعروضه، من أول خطوة لين تسوي شغلك أنت."],
+  problem: ["تفتح الأدوات الذكية وتضيع بين عشرات الخيارات، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل أسرع بتكلفة أقل."],
+  /** the first day's title of the old three days */
+  day1: ["اليوم الأول: تعرّف على الجواد"],
+} as const;
 
 const num = (v: unknown, lo: number, hi: number, d: number) => {
   const n = Number(v);
@@ -136,10 +149,10 @@ export function readSettings(raw: unknown): CourseSettings {
     },
     was: { live: num(wa.live, 1, 100000, d.was.live), recorded: num(wa.recorded, 1, 100000, d.was.recorded) },
     bonus: { comboA: num(bo.comboA, 0, 100000, 0), recordedB: num(bo.recordedB, 0, 100000, 0), recordedC: num(bo.recordedC, 0, 100000, 0) },
-    headline: text(o.headline, 240, d.headline) || d.headline,
-    subhead: text(o.subhead, 400, d.subhead),
-    problem: text(o.problem, 800, d.problem),
-    days: days.length ? days : d.days,
+    headline: ((t) => (!t || (OLD_DEFAULTS.headline as readonly string[]).includes(t) ? d.headline : t))(text(o.headline, 240)),
+    subhead: ((t) => (!t || (OLD_DEFAULTS.subhead as readonly string[]).includes(t) ? d.subhead : t))(text(o.subhead, 400)),
+    problem: ((t) => (!t || (OLD_DEFAULTS.problem as readonly string[]).includes(t) ? d.problem : t))(text(o.problem, 800)),
+    days: days.length && !(OLD_DEFAULTS.day1 as readonly string[]).includes(days[0].title) ? days : d.days,
     risks: (Array.isArray(o.risks) ? o.risks : d.risks).map((r) => text(r, 200)).filter(Boolean).slice(0, 10),
     videoPath: typeof o.videoPath === "string" && /^course\/[0-9a-f-]{36}\.(mp4)$/.test(o.videoPath) ? o.videoPath : null,
     videoUrl: link(o.videoUrl),

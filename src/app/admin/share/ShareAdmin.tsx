@@ -49,6 +49,7 @@ export default function ShareAdmin() {
       <section className="card space-y-3 p-4">
         <h2 className="text-xl font-extrabold">⚙️ العرض</h2>
         <p className="text-sm font-bold text-muted">نافذة تطلع للجمهور مرة مع كل تحديث للموقع، وزر «🎁 انشرنا» يبقى فوق. اللي ينشر ستوري فيه منشن لـ <a className="underline" href={instagramUrl(SHARE.account)} target="_blank" rel="noreferrer" dir="ltr">@{SHARE.account}</a> يضغط «نشرت» باسم حسابه، ويوصلك في تيليجرام بزر تأكيد. مكافأة وحدة لكل حساب.</p>
+        {SHARE.paused && <p className="rounded-lg bg-gold/20 p-3 text-sm font-extrabold">⏸️ العرض موقوف بأمر منك (ما يطلع للجمهور، ولا زر فوق). الطلبات اللي وصلت قبل الإيقاف تقدر تأكدها من تحت. لو تبي ترجّعه قول لي.</p>}
         <div className="flex flex-wrap items-end gap-2">
           <button className={`rounded-full border px-4 py-2 text-sm font-bold ${d.settings.enabled ? "border-teal bg-teal/15 text-teal" : "border-line text-muted"}`} onClick={() => act({ action: "settings", enabled: !d.settings.enabled }, "انحفظ")}>
             {d.settings.enabled ? "✓ شغّال" : "متوقف"}
