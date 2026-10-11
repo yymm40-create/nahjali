@@ -5,6 +5,7 @@
 // and صادق picks: design-pick.ts), one box for special requests (they come first), then «ابدأ»: with صادق on,
 // everything is planned, made and approved by him (the page's autopilot); off, the student opens each output.
 
+import { useBranch } from "./branch";
 import { useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { DESIGNED_KINDS, OUTPUT_KINDS, OUTPUT_STATUS, emptyWish, type DesignWish, type OutputKind } from "@config/jawad/student";
@@ -29,6 +30,7 @@ const SUGGEST: Record<string, OutputKind[]> = {
 };
 
 function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void; onCancel?: () => void }) {
+  const { assistant: A } = useBranch();
   const { project, prices, outputs } = p.state;
   const have = outputs.map((o) => o.kind);
   const [phase, setPhase] = useState<"pick" | "ask" | "design">("pick");
@@ -52,8 +54,8 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
               <button key={k.kind} type="button" aria-pressed={on} onClick={() => setPick(on ? pick.filter((x) => x !== k.kind) : [...pick, k.kind])} className={`relative flex items-start gap-3 rounded-2xl border bg-white p-3 text-start transition-all ${on ? "border-transparent ring-4 ring-violet-300" : "border-jw-line hover:-translate-y-0.5"}`}>
                 <Tile emoji={KIND_LOOK[k.kind].emoji} grad={KIND_LOOK[k.kind].grad} size={40} />
                 <span className="min-w-0">
-                  <b className="block">{k.name}</b>
-                  <span className="block text-xs text-jw-muted">{k.blurb}</span>
+                  <b className="block">{k.name.replaceAll("صادق", A)}</b>
+                  <span className="block text-xs text-jw-muted">{k.blurb.replaceAll("صادق", A)}</span>
                 </span>
                 {on && (
                   <span className="absolute top-2 left-2 grid size-6 place-items-center rounded-full text-white" style={{ background: "var(--st-grad)" }}>
@@ -88,7 +90,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
   const startButtons = (skipDesign: boolean) => (
     <>
       <ErrorLine error={error} />
-      <p className="text-xs text-jw-faint">طلباتك لها الأولوية على اختيارات صادق. كل خطوة مدفوعة تنخصم بسعرها وقت تنفيذها، وترجع لك إذا فشلت.</p>
+      <p className="text-xs text-jw-faint">طلباتك لها الأولوية على اختيارات {A}. كل خطوة مدفوعة تنخصم بسعرها وقت تنفيذها، وترجع لك إذا فشلت.</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-8" disabled={busy} onClick={() => begin(skipDesign)}>
           {busy ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : <Icon name="sparkles" size={18} />} ابدأ
@@ -106,10 +108,10 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-bold">🎨 التصميم: كيف تبيه يطلع؟</h2>
-            <p className="text-sm text-jw-muted">أنت تحدد الشكل النهائي، وصادق يلتزم فيه. أو تخطّ وخلّه يختار.</p>
+            <p className="text-sm text-jw-muted">أنت تحدد الشكل النهائي، و{A} يلتزم فيه. أو تخطّ وخلّه يختار.</p>
           </div>
           <button type="button" className="jw-btn" disabled={busy} onClick={() => begin(true)}>
-            تخطَّ — خلّ صادق يختار
+            تخطَّ — خلّ {A} يختار
           </button>
         </div>
         <DesignStep wish={wish} set={setWish} />
@@ -128,7 +130,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
         <div key={k} className="jw-panel space-y-3 p-4">
           <div className="flex items-center gap-2">
             <Tile emoji={KIND_LOOK[k].emoji} grad={KIND_LOOK[k].grad} size={34} />
-            <h2 className="font-bold">{OUTPUT_KINDS.find((o) => o.kind === k)!.name}</h2>
+            <h2 className="font-bold">{OUTPUT_KINDS.find((o) => o.kind === k)!.name.replaceAll("صادق", A)}</h2>
           </div>
           <Questions kind={k} s={of(k)} set={set(k)} chosen={pick} prices={prices} level={project.level} />
         </div>
@@ -158,6 +160,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
 }
 
 export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch, researching, working }: { p: ProjectHook; autoOn: boolean; onStart: () => void; onCreated: () => void; onResearch: () => void; researching: boolean; working: boolean }) {
+  const { assistant: A } = useBranch();
   const { outputs, jobs } = p.state;
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
@@ -170,7 +173,7 @@ export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch,
         <span className="text-4xl" aria-hidden>
           🔎
         </span>
-        <h2 className="text-lg font-bold">صادق يبحث في الويب ليكمل مادتك</h2>
+        <h2 className="text-lg font-bold">{A} يبحث في الويب ليكمل مادتك</h2>
         <p className="text-sm text-jw-muted">دقائق قليلة، وبعدها تختار نواتجك.</p>
         <JobStatus job={job} />
         {!working && !jobs.some((j) => j.kind === "research" && (j.status === "queued" || j.status === "running")) && (
@@ -192,7 +195,7 @@ export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch,
     <div className="space-y-4">
       <section className="jw-panel space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold">{allDone ? "جاهز ✅ — نزّل ملفاتك" : working || running ? "صادق يصنع نواتجك…" : autoOn ? "نواتجك" : "افتح كل ناتج: راجع خطته واعتمدها، وبعدها يتصنع"}</h2>
+          <h2 className="text-lg font-bold">{allDone ? "جاهز ✅ — نزّل ملفاتك" : working || running ? `${A} يصنع نواتجك…` : autoOn ? "نواتجك" : "افتح كل ناتج: راجع خطته واعتمدها، وبعدها يتصنع"}</h2>
           <div className="flex gap-2">
             {stuck && (
               <button type="button" className="jw-btn jw-btn-primary" onClick={onStart}>
@@ -213,7 +216,7 @@ export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch,
                   <Tile emoji={KIND_LOOK[o.kind].emoji} grad={KIND_LOOK[o.kind].grad} size={36} />
                   <span className="min-w-0 flex-1">
                     <b className="block truncate">{o.title}</b>
-                    <span className={`block text-xs ${o.status === "done" ? "text-jw-ok" : o.status === "failed" ? "text-jw-danger" : "text-jw-muted"}`}>{job ? job.stage || "جارٍ…" : o.kind === "chat" ? "اضغط وناقش صادق" : o.status === "plan_review" && !fitsPages(readCapacity(o.settings)) ? "⚖️ المادة ما توافق عدد الصفحات — يحتاج قرارك" : o.status === "done" ? "جاهز — اضغط للتنزيل" : (OUTPUT_STATUS[o.status] ?? o.status)}</span>
+                    <span className={`block text-xs ${o.status === "done" ? "text-jw-ok" : o.status === "failed" ? "text-jw-danger" : "text-jw-muted"}`}>{job ? job.stage || "جارٍ…" : o.kind === "chat" ? `اضغط وناقش ${A}` : o.status === "plan_review" && !fitsPages(readCapacity(o.settings)) ? "⚖️ المادة ما توافق عدد الصفحات — يحتاج قرارك" : o.status === "done" ? "جاهز — اضغط للتنزيل" : (OUTPUT_STATUS[o.status] ?? o.status)}</span>
                   </span>
                   {job && <span className="jw-spinner" aria-hidden />}
                 </button>

@@ -4,12 +4,14 @@
 // material, read and understood by the assistant on its own (the page's autopilot), and the student arrives at the
 // outputs. Shown here: where it is, and a way to start it again if something stopped it.
 
+import { useBranch } from "./branch";
 import { isResearchSource } from "@config/jawad/student";
 import { useState } from "react";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, JobStatus, PaidButton } from "./ui";
 
 export default function ResearchRun({ p, working, error, onGo, onFiles }: { p: ProjectHook; working: string | null; error: string | null; onGo: () => void; onFiles: () => void }) {
+  const { assistant: A } = useBranch();
   const { project, sources, jobs } = p.state;
   const job = jobs.find((j) => (j.kind === "research" || j.kind === "extract" || j.kind === "understand") && j.status !== "succeeded");
   const written = sources.some((s) => s.kind === "text" && isResearchSource(s.name));
@@ -18,7 +20,7 @@ export default function ResearchRun({ p, working, error, onGo, onFiles }: { p: P
   const [where, setWhere] = useState(project.brief.where);
 
   const at = !written ? 0 : project.stage === "understanding" ? 2 : 1;
-  const steps = ["🔎 صادق يبحث ويكتب مادتك", "📖 يقرأ المادة", "🧠 يفهمها", "✨ تختار نواتجك"];
+  const steps = [`🔎 ${A} يبحث ويكتب مادتك`, "📖 يقرأ المادة", "🧠 يفهمها", "✨ تختار نواتجك"];
   const stopped = !working && !searching && !job;
 
   return (
@@ -42,8 +44,8 @@ export default function ResearchRun({ p, working, error, onGo, onFiles }: { p: P
       {!written && !searching && (
         <div className="space-y-3 rounded-2xl bg-jw-surface-2 p-4">
           <b className="block">ابدأ البحث</b>
-          <textarea className="jw-textarea" rows={2} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش تبي صادق يبحث عنه؟" aria-label="ما يبحث عنه صادق" />
-          <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => setWhere(e.target.value)} placeholder="وين يبحث؟ (اختياري) روابط أو مصادر يلتزم فيها" aria-label="وين يبحث صادق" />
+          <textarea className="jw-textarea" rows={2} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder={`وش تبي ${A} يبحث عنه؟`} aria-label={`ما يبحث عنه ${A}`} />
+          <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => setWhere(e.target.value)} placeholder="وين يبحث؟ (اختياري) روابط أو مصادر يلتزم فيها" aria-label={`وين يبحث ${A}`} />
           <PaidButton
             label="ابحث واكتب مادتي"
             what="بحث في الويب وكتابة المادة بمصادرها، ثم قراءتها وفهمها."

@@ -4,12 +4,14 @@
 // the material tier. No school level, audience or purpose any more (the owner's choice): each output has its own level
 // (خفيف · متوسط · عميق · أعمق) and page count in «النواتج».
 
+import { useBranch } from "./branch";
 import { useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, useAsync } from "./ui";
 
 export default function BriefStep({ p, onSaved }: { p: ProjectHook; onSaved?: () => void }) {
+  const { assistant: A } = useBranch();
   const { project } = p.state;
   const [title, setTitle] = useState(project.title);
   const [focus, setFocus] = useState(project.brief.focus);
@@ -42,8 +44,8 @@ export default function BriefStep({ p, onSaved }: { p: ProjectHook; onSaved?: ()
       </label>
       {research && (
         <div className="space-y-2">
-          <textarea className="jw-textarea" rows={2} value={focus} onChange={(e) => (setFocus(e.target.value), setSaved(false))} placeholder="وش يبحث عنه صادق؟" aria-label="ما يبحث عنه صادق" />
-          <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => (setWhere(e.target.value), setSaved(false))} placeholder="وين يبحث؟ (اختياري) روابط أو مصادر يلتزم فيها" aria-label="وين يبحث صادق" />
+          <textarea className="jw-textarea" rows={2} value={focus} onChange={(e) => (setFocus(e.target.value), setSaved(false))} placeholder={`وش يبحث عنه ${A}؟`} aria-label={`ما يبحث عنه ${A}`} />
+          <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => (setWhere(e.target.value), setSaved(false))} placeholder="وين يبحث؟ (اختياري) روابط أو مصادر يلتزم فيها" aria-label={`وين يبحث ${A}`} />
         </div>
       )}
       {saved && !busy && <span className="text-sm text-jw-ok">✓ انحفظ</span>}

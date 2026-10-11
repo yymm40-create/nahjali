@@ -3,6 +3,7 @@
 // «محادثة مع صادق» — an output of «الطالب الذكي» that is a conversation kept with the material: the student asks,
 // discusses, is quizzed or prepared, and صادق searches the web when asked (its links under the answer).
 
+import { useBranch } from "./branch";
 import { useEffect, useRef, useState } from "react";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { useClaudeModel } from "@/components/robots/claude-model";
@@ -27,6 +28,7 @@ const messagesOf = (o: OutputView): Msg[] => {
 };
 
 export default function SadiqChat({ p, o }: { p: ProjectHook; o: OutputView }) {
+  const { assistant: A } = useBranch();
   const [model] = useClaudeModel();
   const [list, setList] = useState<Msg[]>(() => messagesOf(o));
   const [draft, setDraft] = useState("");
@@ -45,7 +47,7 @@ export default function SadiqChat({ p, o }: { p: ProjectHook; o: OutputView }) {
       const r = (await p.actOutput(o.id, { action: "chat", message: said, model: model.id })) as { messages?: Msg[] } | undefined;
       if (r?.messages) setList(r.messages);
     } catch (e) {
-      setList((l) => [...l, { role: "assistant", text: e instanceof Error ? e.message : "صادق ما قدر يرد الحين؛ جرّب بعد شوي.", error: true }]);
+      setList((l) => [...l, { role: "assistant", text: e instanceof Error ? e.message : `${A} ما قدر يرد الحين؛ جرّب بعد شوي.`, error: true }]);
     } finally {
       setBusy(false);
     }
@@ -57,14 +59,14 @@ export default function SadiqChat({ p, o }: { p: ProjectHook; o: OutputView }) {
         <h2 id={`o-${o.id}`} className="text-lg font-bold">💬 {o.title}</h2>
         <ClaudeModelPicker disabled={busy} />
       </header>
-      <p className="text-xs text-jw-muted">ناقش صادق في مادتك: يشرح، يلخّص، يسألك، يجهّزك للدرس أو للمناظرة، ويبحث لك في الويب لو طلبت. المحادثة محفوظة هنا مع مادتك.</p>
+      <p className="text-xs text-jw-muted">ناقش {A} في مادتك: يشرح، يلخّص، يسألك، يجهّزك للدرس أو للمناظرة، ويبحث لك في الويب لو طلبت. المحادثة محفوظة هنا مع مادتك.</p>
 
       <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-jw-line bg-white/60 p-3">
         {!list.length && <p className="py-6 text-center text-sm text-jw-faint">ابدأ بسؤال أو اختر واحد من تحت 👇</p>}
         {list.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
             <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-7 ${m.role === "user" ? "bg-violet-100" : m.error ? "bg-red-50 text-jw-danger" : "border border-jw-line bg-white"}`}>
-              {m.role === "assistant" && !m.error && <b className="mb-1 flex items-center gap-1 text-xs text-violet-700"><RobotFace id="sadiq" size={20} /> صادق</b>}
+              {m.role === "assistant" && !m.error && <b className="mb-1 flex items-center gap-1 text-xs text-violet-700"><RobotFace id="sadiq" size={20} /> {A}</b>}
               {m.text}
               {!!m.sources?.length && (
                 <span className="mt-2 block space-y-0.5 border-t border-jw-line pt-1 text-xs">
@@ -78,7 +80,7 @@ export default function SadiqChat({ p, o }: { p: ProjectHook; o: OutputView }) {
             </div>
           </div>
         ))}
-        {busy && <p className="text-end text-xs text-jw-muted">صادق يكتب… <span className="jw-spinner" /></p>}
+        {busy && <p className="text-end text-xs text-jw-muted">{A} يكتب… <span className="jw-spinner" /></p>}
         <div ref={end} />
       </div>
 
@@ -98,7 +100,7 @@ export default function SadiqChat({ p, o }: { p: ProjectHook; o: OutputView }) {
           className="jw-input min-h-[44px] flex-1 resize-none"
           rows={2}
           maxLength={4000}
-          placeholder="اكتب لصادق… (اطلب «ابحث» لو تبيه يبحث في الويب)"
+          placeholder={`اكتب ل${A}… (اطلب «ابحث» لو تبيه يبحث في الويب)`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

@@ -5,12 +5,14 @@
 // in EVERY mode (files, or «صادق يبحث لي»): it used to live only inside the files step, so whoever went the research
 // way never saw it.
 
+import { useBranch } from "./branch";
 import { ISLAMIC_WAYS, isIslamicSource } from "@config/jawad/student";
 import { useState } from "react";
 import type { ProjectHook } from "./StudentProject";
 import { PaidButton } from "./ui";
 
 export default function IslamicAsk({ p }: { p: ProjectHook }) {
+  const { assistant: A } = useBranch();
   const { sources, jobs } = p.state;
   const [question, setQuestion] = useState("");
   const [way, setWay] = useState<(typeof ISLAMIC_WAYS)[number]["id"]>("auto");
@@ -20,7 +22,7 @@ export default function IslamicAsk({ p }: { p: ProjectHook }) {
     <div className="jw-panel space-y-3 p-4">
       <h2 className="font-semibold">📖 اسأل «الذكاء الإسلامي»</h2>
       <p className="text-sm text-jw-muted">
-        أي شي ديني — آية، رواية، حكم، مسألة عقدية، سيرة — لا يكتبه صادق من عنده ولا يبحثه في الويب: يسأل «الذكاء الإسلامي» اللي يجاوب من مكتبة صاحب المنصة بمصادرها، وجوابه ينضاف لمادتك ومعه قائمة مصادره، وكل اللي يُبنى بعده (ملخص، كتاب، شرائح، اختبار) يقف عليه.
+        أي شي ديني — آية، رواية، حكم، مسألة عقدية، سيرة — لا يكتبه {A} من عنده ولا يبحثه في الويب: يسأل «الذكاء الإسلامي» اللي يجاوب من مكتبة صاحب المنصة بمصادرها، وجوابه ينضاف لمادتك ومعه قائمة مصادره، وكل اللي يُبنى بعده (ملخص، كتاب، شرائح، اختبار) يقف عليه.
       </p>
       <textarea className="jw-textarea" rows={2} value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="مثال: وش معنى «الصلاة معراج المؤمن»؟ أو: أدلة ولاية أمير المؤمنين عليه السلام" aria-label="السؤال للذكاء الإسلامي" />
       <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="طريقة الجواب">

@@ -1,5 +1,6 @@
 "use client";
 
+import { useBranch } from "./branch";
 import { SOURCE_ROLES, isResearchSource } from "@config/jawad/student";
 import { useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
@@ -30,6 +31,7 @@ function lengthOf(f: File) {
 
 /** «المادة»: files, pasted text, or Claude's research — then one press reads and understands it all (`onContinue`). */
 export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onContinue: () => void }) {
+  const { assistant: A } = useBranch();
   const { sources, jobs, project } = p.state;
   const brief = project.brief;
   const [focus, setFocus] = useState(brief.focus || project.title);
@@ -48,10 +50,10 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
   // the research is paid once confirmed; then the reading goes on by itself
   const research = (
     <div className="jw-panel space-y-3 p-4">
-      <h2 className="font-semibold">🔎 صادق يبحث ويكتب مادتك</h2>
+      <h2 className="font-semibold">🔎 {A} يبحث ويكتب مادتك</h2>
       <p className="text-sm text-jw-muted">يبحث في مصادر موثوقة (مناهج، موسوعات، جامعات) ويكتب المعلومات لمستواك وغرضك، مع ذكر المصادر.</p>
-      <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبيها؟" aria-label="ما يبحث عنه صادق" />
-      {researched && <p className="text-sm text-jw-ok">✓ كتب صادق المادة من البحث. تقدر تبحث عن شي ثاني أو تتابع.</p>}
+      <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبيها؟" aria-label={`ما يبحث عنه ${A}`} />
+      {researched && <p className="text-sm text-jw-ok">✓ كتب {A} المادة من البحث. تقدر تبحث عن شي ثاني أو تتابع.</p>}
       <PaidButton
         label={researched ? "ابحث عن شي إضافي" : "ابحث واكتب مادتي"}
         what="بحث في الويب وكتابة المادة بمصادرها."
@@ -259,7 +261,7 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
 
         <div className="jw-panel space-y-3 p-4">
           <h2 className="font-semibold">الخطوة الجاية</h2>
-          <p className="text-sm text-jw-muted">يقرأ صادق كل شي أضفته (الصور وصفحات PDF حرفيًا)، ويفهم المادة، وبعدها يعرض عليك فهمه تعتمده.</p>
+          <p className="text-sm text-jw-muted">يقرأ {A} كل شي أضفته (الصور وصفحات PDF حرفيًا)، ويفهم المادة، وبعدها يعرض عليك فهمه تعتمده.</p>
           <JobStatus job={job} />
           <div className={running || busy || !ready ? "" : "st-attention rounded-xl"}>
             {pending.length > 0 ? (

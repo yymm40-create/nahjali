@@ -13,6 +13,7 @@ const TABS = [
   { href: "/jawad-ai/admin/voices", label: "خانات الأصوات" },
   { href: "/jawad-ai/admin/jobs", label: "المهام والسجلات" },
   { href: "/jawad-ai/admin/student", label: "إحصائيات الطالب الذكي" },
+  { href: "/jawad-ai/admin/khateeb", label: "الخطيب الذكي" },
 ];
 
 export default function AdminNav() {

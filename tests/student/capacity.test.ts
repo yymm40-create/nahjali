@@ -168,7 +168,7 @@ describe("a material bigger than the pages is compacted into them, not asked abo
     expect(outputs).toContain("compactionLine(countWords(segText(c, ch.segments)), words)");
     const ask = read("src/components/jawad/student/CapacityAsk.tsx");
     expect(ask).toContain("isCompacted(c)");
-    expect(ask).toContain("يضغط صادق مادتك");
+    expect(ask).toContain("يضغط {A} مادتك");
   });
 
   it("keeps the order the owner described: the outputs and pages first, then the text, then the approval, then the pictures", () => {

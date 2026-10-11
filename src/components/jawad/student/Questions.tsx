@@ -4,6 +4,7 @@
 // design step (style, the student's ideas, fonts, page frame). Used by «النواتج» before «ابدأ», and again by an output
 // the student goes back to («ارجع وغيّر»).
 
+import { useBranch } from "./branch";
 import { useState } from "react";
 import { coinStr } from "@config/coins";
 import { COUNTED_KINDS, chosenPages } from "@/lib/jawad/student/draw";
@@ -65,6 +66,7 @@ export function Choice<T extends string | number>({ label, value, options, onCha
 
 /** A number from a few chips, or any other number typed (0 = «حسب المادة»). */
 export function Count({ label, value, options, max, unit, onChange }: { label: string; value: number; options: number[]; max: number; unit: string; onChange: (n: number) => void }) {
+  const { assistant: A } = useBranch();
   const [typing, setTyping] = useState(() => value > 0 && !options.includes(value));
   return (
     <div className="space-y-1">
@@ -82,13 +84,14 @@ export function Count({ label, value, options, max, unit, onChange }: { label: s
           <input type="number" inputMode="numeric" min={1} max={max} className="jw-input !w-24 !py-1.5" value={value || ""} onChange={(e) => onChange(Math.max(0, Math.min(max, Math.round(Number(e.target.value) || 0))))} aria-label={`${label} (رقم)`} placeholder={unit} />
         )}
       </div>
-      {value > 0 && <p className="text-[11px] text-jw-faint">يلتزم صادق بالعدد بالضبط: {value.toLocaleString("ar")} {unit}.</p>}
+      {value > 0 && <p className="text-[11px] text-jw-faint">يلتزم {A} بالعدد بالضبط: {value.toLocaleString("ar")} {unit}.</p>}
     </div>
   );
 }
 
 /** «GPT Image 2 or Claude»: what each gives, and what drawing costs. */
 export function MethodChoice({ what, value, quality, perUnit, free, onChange }: { what: "page" | "slide" | "map"; value: boolean; quality: string; perUnit: { high: number; medium: number }; free: boolean; onChange: (draw: boolean, quality: string) => void }) {
+  const { assistant: A } = useBranch();
   const unit = what === "slide" ? "الشريحة" : what === "map" ? "الخريطة" : "الصفحة";
   const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${coinStr(perUnit[q])} لكل ${what === "slide" ? "شريحة" : what === "map" ? "خريطة" : "صفحة"}`);
   return (
@@ -96,14 +99,14 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
       <span className="text-sm font-semibold">كيف تنصنع {what === "slide" ? "الشرائح" : what === "map" ? "الخريطة" : "الصفحات"}؟</span>
       <div className="grid gap-2 sm:grid-cols-2">
         <button type="button" aria-pressed={!value} onClick={() => onChange(false, quality)} className={`rounded-2xl border bg-white p-3 text-start ${!value ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
-          <b className="block">🧩 صادق يصممها</b>
+          <b className="block">🧩 {A} يصممها</b>
           <span className="block text-xs text-jw-muted">
             {what === "slide" ? "ملف PPTX تقدر تعدّل نصه بنفسك + PDF." : what === "map" ? "صورة PNG عالية الدقة (4K تقريبًا) + PDF، وتعدّل فروعها بنفسك قبل الرسم." : "PDF بخط عربي حقيقي، نصه قابل للنسخ والبحث."} بدون أخطاء في الكلمات. الأرخص: بدون تكلفة إضافية.
           </span>
         </button>
         <button type="button" aria-pressed={value} onClick={() => onChange(true, quality)} className={`rounded-2xl p-3 text-start text-white ${value ? "ring-4 ring-pink-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#7c3aed,#db2777 55%,#f97316)" }}>
           <b className="block">🪄 GPT Image 2 يرسمها</b>
-          <span className="block text-xs text-white/90">كل {unit} لوحة فنية مرسومة، أجمل بكثير{what === "map" ? " (يرسمها على تصميم صادق نفسه، وتاخذ الاثنين)" : ""}. النص يصير صورة (ما ينعدل)، وقد يغلط في كلمة أحيانًا وتقدر تعيد رسمها. <Coined text={price(quality === "medium" ? "medium" : "high")} />.</span>
+          <span className="block text-xs text-white/90">كل {unit} لوحة فنية مرسومة، أجمل بكثير{what === "map" ? ` (يرسمها على تصميم ${A} نفسه، وتاخذ الاثنين)` : ""}. النص يصير صورة (ما ينعدل)، وقد يغلط في كلمة أحيانًا وتقدر تعيد رسمها. <Coined text={price(quality === "medium" ? "medium" : "high")} />.</span>
         </button>
       </div>
       {value && (
@@ -122,6 +125,7 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
 }
 
 export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"]; level?: string }) {
+  const { assistant: A } = useBranch();
   // the level of each output (the owner's words): light, medium, deep, deepest — instead of a school level for the whole material
   const density = <Choice label="المستوى" value={String(s.density)} options={LEVEL_OPTIONS} onChange={(density) => set({ density })} />;
   const pages = PICTURE_KINDS.includes(kind) && (
@@ -216,7 +220,7 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
     case "mindmap":
       return (
         <>
-          <Choice label="نوع الخريطة" value={String(s.mapType ?? "auto")} options={[{ id: "auto", label: "صادق يختار حسب المادة" }, ...MAP_TYPES.map((t) => ({ id: t.id, label: t.name }))]} onChange={(mapType) => set({ mapType })} />
+          <Choice label="نوع الخريطة" value={String(s.mapType ?? "auto")} options={[{ id: "auto", label: `${A} يختار حسب المادة` }, ...MAP_TYPES.map((t) => ({ id: t.id, label: t.name }))]} onChange={(mapType) => set({ mapType })} />
           <p className="text-[11px] text-jw-faint">{s.mapType && s.mapType !== "auto" ? MAP_TYPES.find((t) => t.id === s.mapType)?.hint : "يختار الشكل اللي يناسب كل جزء: شعاعية للحفظ، شجرية للتصنيف، مفاهيمية للعلاقات، تسلسلية للخطوات."}</p>
           <Choice label="كم خريطة؟" value={String(s.scope ?? "one")} options={[{ id: "one", label: "خريطة وحدة للمادة كلها" }, { id: "sections", label: "خريطة شاملة + خريطة لكل قسم" }]} onChange={(scope) => set({ scope })} />
           <p className="text-[11px] text-jw-faint">الدرجة حسب مستواك ({MAP_GRADES[gradeOf(level)].name}): {MAP_GRADES[gradeOf(level)].says}.</p>
@@ -228,14 +232,15 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
         </>
       );
     case "chat":
-      return <p className="text-sm text-jw-muted">ما يحتاج إعدادات: تنفتح لك محادثة مع صادق على مادتك، تناقشه فيها وتسأله، ويبحث لك لو طلبت.</p>;
+      return <p className="text-sm text-jw-muted">ما يحتاج إعدادات: تنفتح لك محادثة مع {A} على مادتك، تناقشه فيها وتسأله، ويبحث لك لو طلبت.</p>;
     default:
-      return <p className="text-sm text-jw-muted">ما يحتاج أسئلة: المادة كاملة كما قرأها صادق، PDF ونص.</p>;
+      return <p className="text-sm text-jw-muted">ما يحتاج أسئلة: المادة كاملة كما قرأها {A}، PDF ونص.</p>;
   }
 }
 
 /** «التصميم»: the student decides how it looks (a style, their ideas, fonts, a page frame), or skips and صادق picks. */
 export function DesignStep({ wish, set }: { wish: DesignWish; set: (w: DesignWish) => void }) {
+  const { assistant: A } = useBranch();
   const [fonts, setFonts] = useState(Boolean(wish.heading || wish.body));
   const patch = (x: Partial<DesignWish>) => set({ ...wish, ...x });
   return (
@@ -245,7 +250,7 @@ export function DesignStep({ wish, set }: { wish: DesignWish; set: (w: DesignWis
         <span className="text-sm font-semibold">الأسلوب</span>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="الأسلوب">
           <button type="button" role="radio" aria-checked={!wish.style} onClick={() => patch({ style: "" })} className={`rounded-2xl border bg-white p-3 text-start ${!wish.style ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
-            <b className="flex items-center gap-1"><RobotFace id="sadiq" size={20} /> صادق يختار</b>
+            <b className="flex items-center gap-1"><RobotFace id="sadiq" size={20} /> {A} يختار</b>
             <span className="block text-xs text-jw-muted">يختار الأنسب لمادتك وعمرك، ويطبّق أفكارك اللي تكتبها تحت.</span>
           </button>
           {STYLES.map((st) => (
@@ -264,7 +269,7 @@ export function DesignStep({ wish, set }: { wish: DesignWish; set: (w: DesignWis
         </div>
       </div>
       <label className="block space-y-1">
-        <span className="text-sm font-semibold">أفكارك للتصميم (اختياري) — يطبّقها صادق كما هي</span>
+        <span className="text-sm font-semibold">أفكارك للتصميم (اختياري) — يطبّقها {A} كما هي</span>
         <textarea className="jw-textarea" rows={3} value={wish.ideas} onChange={(e) => patch({ ideas: e.target.value })} placeholder="مثال: ألوان كحلي وذهبي، عناوين كبيرة، جدول في كل فصل، صورة في بداية كل فصل، شكل رسمي للتقديم…" />
       </label>
       <div className="flex flex-wrap gap-2">

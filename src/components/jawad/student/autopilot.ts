@@ -94,7 +94,7 @@ export function nextAuto(s: ProjectState): AutoAction | null {
  * in; "material" reads what was added and understands it, then stops for the student to approve the understanding;
  * "all" goes on to the end. Stops by itself on any error, or when the student is needed.
  */
-export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => Promise<void>) {
+export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => Promise<void>, A = "صادق") {
   const [mode, setMode] = useState<null | { scope: "step" | "material" | "all"; stage: string }>(null);
   const [doing, setDoing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,14 +133,14 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
     if (!next) {
       // say why it stopped (a child would think the button did nothing)
       const failed = state.outputs.find((o) => o.status === "failed");
-      if (["sources", "review"].includes(state.project.stage) && !state.sources.some((x) => x.status === "ready")) setError("أضف مادتك أولًا (صور أو PDF أو نص)، وبعدها اضغط صادق مرة ثانية.");
-      else if (failed) setError(`تعثّر «${failed.title}». افتحه واضغط «أعد المحاولة»، وبعدها شغّل صادق مرة ثانية.`);
+      if (["sources", "review"].includes(state.project.stage) && !state.sources.some((x) => x.status === "ready")) setError(`أضف مادتك أولًا (صور أو PDF أو نص)، وبعدها اضغط ${A} مرة ثانية.`);
+      else if (failed) setError(`تعثّر «${failed.title}». افتحه واضغط «أعد المحاولة»، وبعدها شغّل ${A} مرة ثانية.`);
       stop();
       return;
     }
     last.current = last.current.label === next.label ? { label: next.label, n: last.current.n + 1 } : { label: next.label, n: 1 };
     if (last.current.n > 2) {
-      setError(`توقف صادق عند «${next.label}»: الخطوة لم تكتمل. راجعها ثم أعد التشغيل.`);
+      setError(`توقف ${A} عند «${next.label}»: الخطوة لم تكتمل. راجعها ثم أعد التشغيل.`);
       stop();
       return;
     }
@@ -159,7 +159,7 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
       });
     }, 400);
     return () => clearTimeout(t);
-  }, [mode, busy, state, refresh, stop, tick]);
+  }, [mode, busy, state, refresh, stop, tick, A]);
 
   return { mode, doing, error, start, stop };
 }

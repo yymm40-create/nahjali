@@ -1,10 +1,11 @@
 "use client";
 
+import { useBranch } from "./branch";
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Icon from "@/components/jawad/Icon";
 import Riyal from "@/components/Riyal";
-import { STUDENT, isResearchSource } from "@config/jawad/student";
+import { isResearchSource } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
 import OutputsStep from "./OutputsStep";
 import { useAutopilot } from "./autopilot";
@@ -31,8 +32,9 @@ const GROUPS = [
 const stepOf = (stage: ProjectState["project"]["stage"]): StepId => (stage === "review" ? "sources" : stage === "scope" ? "outputs" : stage);
 
 export default function StudentProject({ initial }: { initial: ProjectState }) {
+  const { assistant: A, base } = useBranch();
   const p = useProject(initial);
-  const auto = useAutopilot(p.state, p.busy, p.refresh);
+  const auto = useAutopilot(p.state, p.busy, p.refresh, A);
   const { project } = p.state;
   const step = stepOf(project.stage);
   const reached = STEPS.findIndex((s) => s.id === step);
@@ -92,7 +94,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   }, [view]);
 
   const HINT: Record<"start" | "outputs", string> = {
-    start: project.brief.mode === "research" ? "خلّ صادق يبحث ويكتب مادتك (أو أضف ملفاتك)، ثم اعتمد فهمه." : "حط محتوى مادتك (PDF، صور، يوتيوب، تسجيل، نص)، صادق يفرّغه ويقرأه، ثم اعتمد فهمه.",
+    start: project.brief.mode === "research" ? `خلّ ${A} يبحث ويكتب مادتك (أو أضف ملفاتك)، ثم اعتمد فهمه.` : `حط محتوى مادتك (PDF، صور، يوتيوب، تسجيل، نص)، ${A} يفرّغه ويقرأه، ثم اعتمد فهمه.`,
     outputs: autoOn ? "اختر نواتجك، ولكل ناتج مستواه (خفيف · متوسط · عميق · أعمق) وعدد صفحاته، واضغط «ابدأ»." : "اختر نواتجك ولكل واحد مستواه وعدد صفحاته، واضغط «ابدأ»، وبعدها افتح كل ناتج: راجع خطته واعتمدها قبل التصنيع.",
   };
   const group: "start" | "outputs" = view === "outputs" ? "outputs" : "start";
@@ -108,7 +110,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6" data-st-stage={view} data-st-project={project.id}>
       <header className="st-rise flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Link href={STUDENT.base} className="jw-btn jw-btn-icon" aria-label="موادي">
+          <Link href={base} className="jw-btn jw-btn-icon" aria-label="موادي">
             <Icon name="chevronRight" size={18} />
           </Link>
           <div className="min-w-0">
@@ -139,7 +141,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
               if (!confirm("حذف هذه المادة وكل ملفاتها ونواتجها نهائيًا؟")) return;
               try {
                 await p.act({ action: "delete" });
-                window.location.href = STUDENT.base;
+                window.location.href = base;
               } catch (e) {
                 alert(`ما انحذفت المادة: ${e instanceof Error ? e.message : String(e)}`);
               }
@@ -172,7 +174,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
         {auto.mode ? (
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl p-3 text-white" style={{ background: "var(--st-grad)" }} role="status" aria-live="polite">
             <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden />
-            <span className="font-semibold">🤖 صادق يكمل {auto.mode.scope === "step" ? "هذه الخطوة" : "كل الخطوات"} تلقائيًا{auto.doing ? `: ${auto.doing}` : ""}</span>
+            <span className="font-semibold">🤖 {A} يكمل {auto.mode.scope === "step" ? "هذه الخطوة" : "كل الخطوات"} تلقائيًا{auto.doing ? `: ${auto.doing}` : ""}</span>
             <button type="button" className="rounded-full bg-white px-4 py-1 text-sm font-bold text-pink-600" onClick={auto.stop}>
               أوقف
             </button>
