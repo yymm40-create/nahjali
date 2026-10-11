@@ -7,8 +7,11 @@ import { handle, UserError } from "@/lib/api";
 import { requireEditorApiUser } from "@/lib/jawad/server/access";
 import { can } from "@/lib/access";
 import type { Command } from "@/lib/editor/commands";
+import { importSfx } from "@/lib/editor/sfx-library";
 import {
   addLocalAsset,
+  assetViewsById,
+  stillOpen,
   confirmAsset,
   deleteAsset,
   deleteProject,
@@ -87,6 +90,10 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json({ ok: true });
     case "import":
       return NextResponse.json({ assets: await importAssets(p, b) });
+    // «مكتبة المؤثرات»: ready sound effects put in the project (free; the shared files are only pointed at)
+    case "import_sfx":
+      stillOpen(p);
+      return NextResponse.json({ assets: await assetViewsById(p.id, await importSfx(p, b)) });
     case "export_sign":
       return NextResponse.json(await signExportUpload(p, b));
     case "exported":
