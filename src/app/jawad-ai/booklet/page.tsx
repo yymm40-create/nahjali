@@ -9,7 +9,7 @@ import "./booklet.css";
 export const dynamic = "force-dynamic";
 export const metadata = { title: TB.name };
 
-/** «كتيب الجداول الذكي»: who the booklet is for, then the ready booklet or tables designed with «نور». */
+/** «كتيب الجداول الذكي»: who the booklet is for, then the ready booklet or tables designed with «عباس» أو «زينب». */
 export default async function BookletPage() {
   const [{ user, owner }, rt] = await Promise.all([jawadSession(), loadRuntime()]);
   const section = rt.sections.find((s) => s.implementation === "booklet");

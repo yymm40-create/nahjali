@@ -1,4 +1,4 @@
-// «كتيب الجداول الذكي» — the server side: the conversations with «نور» (who designs the tables with the person), and
+// «كتيب الجداول الذكي» — the server side: the conversations with «عباس» or «زينب» (who designs the tables with the person), and
 // starting a booklet — the ready one (the original booklet with the child's picture) or a designed one — as an order of
 // the booklet machinery (photo → character → poses → PDF), paid from the wallet at once. Server only.
 
@@ -13,7 +13,7 @@ import type { Order } from "@/lib/types";
 import { coinsFor } from "@config/coins";
 import { ATTEMPTS_ALLOWED } from "@config/pricing";
 import { isStyle } from "@config/styles";
-import { audienceLine, bookletUsd, cleanSpec, legacyGender, NOOR_RULES, posesOf, READY_POSES, readAudience, readSpec, TB, type Audience, type BookletSpec } from "@config/tables-booklet";
+import { audienceLine, bookletUsd, cleanSpec, legacyGender, bookletRules, posesOf, robotFor, READY_POSES, readAudience, readSpec, TB, type Audience, type BookletSpec } from "@config/tables-booklet";
 import { bookletTemplate } from "./layout";
 
 const db = () => createAdminClient();
@@ -46,7 +46,7 @@ export const whoOf = (order: Order & { spec?: unknown }) => {
   return a ? { adult: a.kind === "adult", age: a.age } : undefined;
 };
 
-// ───────────────────────────── the conversations with «نور» ─────────────────────────────
+// ───────────────────────────── the conversations with the designer ─────────────────────────────
 
 export interface BookletChat {
   id: string;
@@ -102,7 +102,7 @@ function turnsOf(list: Turn[]): Turn[] {
   return cut;
 }
 
-/** The person says something to «نور» (a new conversation when `chatId` is null, with who the booklet is for). */
+/** The person says something to the designer (a new conversation when `chatId` is null, with who the booklet is for). */
 export async function sayToNoor(user: { id: string; email?: string | null }, chatId: string | null, rawAudience: unknown, message: string): Promise<{ chat: BookletChat; usd: number }> {
   const said = message.trim().slice(0, TB.messageMax);
   if (!said) throw new UserError("اكتب رسالتك.");
@@ -111,7 +111,7 @@ export async function sayToNoor(user: { id: string; email?: string | null }, cha
   const audience = before?.audience ?? readAudience(rawAudience);
   if (!audience) throw new UserError("اختر لمين الكتيب أول (العمر والاسم).");
   const history: Turn[] = [...(before?.messages ?? []), { role: "user", text: said }];
-  const r = await talk({ system: [NOOR_RULES, audienceLine(audience), OPTIONS_RULE].join("\n\n"), turns: turnsOf(history), maxTokens: TB.maxTokens });
+  const r = await talk({ system: [bookletRules(audience), audienceLine(audience), OPTIONS_RULE].join("\n\n"), turns: turnsOf(history), maxTokens: TB.maxTokens });
   const messages: Turn[] = [...history, { role: "assistant", text: r.text }];
   const spec = readSpec(r.text) ?? before?.spec ?? null;
   const row = { messages, spec, updated_at: new Date().toISOString() };
@@ -152,7 +152,7 @@ export async function startBooklet(user: { id: string; email?: string | null }, 
   if (b.kind === "ready") {
     const a = readAudience(b.audience);
     if (!a) throw new UserError("اكتب الاسم والعمر.");
-    if (a.kind !== "child") throw new UserError("الكتيب الجاهز للأطفال؛ للكبار صمّم جداولك مع نور.");
+    if (a.kind !== "child") throw new UserError(`الكتيب الجاهز للأطفال؛ للكبار صمّم جداولك مع ${robotFor(a).name}.`);
     if (!isStyle(b.style)) throw new UserError("اختر الستايل.");
     audience = a;
     style = b.style;
@@ -161,7 +161,7 @@ export async function startBooklet(user: { id: string; email?: string | null }, 
     chatId = typeof b.chatId === "string" && /^[0-9a-f-]{36}$/i.test(b.chatId) ? b.chatId : null;
     const chat = chatId ? await getChat(user.id, chatId) : null;
     if (!chat?.audience) throw new UserError("ما لقينا هذي المحادثة.", 404);
-    if (!chat.spec) throw new UserError("كمّل التصميم مع نور أول، لين تكتب لك ملخص الكتيب.");
+    if (!chat.spec) { const r = robotFor(chat.audience); throw new UserError(`كمّل التصميم مع ${r.name} أول، لين ${r.female ? "تكتب" : "يكتب"} لك ملخص الكتيب.`); }
     audience = chat.audience;
     design = chat.spec;
     style = design.style;

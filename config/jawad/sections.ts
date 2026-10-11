@@ -15,7 +15,7 @@ export const SECTION_IMPLEMENTATIONS = {
   games: { label: "صانع الألعاب الذكي (محادثة مع «قنبر» لتصميم الألعاب)", output: null },
   content: { label: "صانع المحتوى (محادثة مع «محمد باقر»: كاروسيل وريلز وموشن)", output: null },
   designer: { label: "المصمم الذكي (محادثة مع «كاظم»: بطاقات وبوسترات ومصغّرات بطبقات نصية)", output: null },
-  booklet: { label: "كتيب الجداول الذكي (الكتيب الجاهز للطفل أو جداول يصممها الشخص مع «نور»)", output: null },
+  booklet: { label: "كتيب الجداول الذكي (الكتيب الجاهز للطفل أو جداول يصممها الشخص مع «عباس» أو «زينب»)", output: null },
   photo: { label: "زهراء فوتو ماستر (برنامج تحرير الصور والتصميم المستقل مع الروبوت «زهراء»)", output: null },
   kharq: { label: "محمد الخارق (محادثة عامة في أي موضوع، تفهم المطلوب بالضبط وتسلّم: كلامًا ورسائل وجداول وملفات PDF وصورًا وفيديو)", output: null },
 } as const;
@@ -53,7 +53,7 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   // private: the page opens for the owner and for whoever holds the «photo» permission (the owner's switch in /admin/photo)
   { id: "photo", name: "زهراء فوتو ماستر", icon: "camera", implementation: "photo", sort: 95, enabled: false },
   // private: the page opens for the owner and for whoever holds the «kharq» permission (the owner's switch in /admin/kharq)
-  // open to everyone: the ready kids' booklet, or tables designed with «نور» (src/app/jawad-ai/booklet)
+  // open to everyone: the ready kids' booklet, or tables designed with «عباس» أو «زينب» (src/app/jawad-ai/booklet)
   { id: "booklet", name: "كتيب الجداول الذكي", icon: "book", implementation: "booklet", sort: 55, enabled: true },
   { id: "kharq", name: "محمد الخارق", icon: "sparkles", implementation: "kharq", sort: 97, enabled: false },
 ];

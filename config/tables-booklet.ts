@@ -1,7 +1,7 @@
 // «كتيب الجداول الذكي» (JAWAD AI) — a printed booklet of tables for a child or a grown-up: the ready booklet (the original
-// one, with the child's picture as a cartoon character), or one the person designs with «نور»: which tables, what is in
+// one, with the child's picture as a cartoon character), or one the person designs with «عباس» (for a boy or a man) or «زينب» (for a girl or a woman): which tables, what is in
 // each, how it is scored (stars, ticks, faces…), the look, and with or without their picture. Pure (page and server alike):
-// the choices, «نور»'s rules, how her design is read, and what a booklet costs.
+// the choices, the designer's rules, how the design is read, and what a booklet costs.
 
 import { POSES } from "./prompts";
 import { STYLES, type StyleKey } from "./styles";
@@ -9,7 +9,6 @@ import { STYLES, type StyleKey } from "./styles";
 export const TB = {
   base: "/jawad-ai/booklet",
   name: "كتيب الجداول الذكي",
-  robot: "نور",
   /** the original booklet's template (the ready one) */
   readyTemplate: "nahjali-v1",
   /** the template id an order made from a design carries */
@@ -117,7 +116,7 @@ export const LIMITS = { tables: 8, rows: 14, rowChars: 32, titleChars: 40, copie
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
-/** The design from «نور»'s answer (its json block), cleaned to the limits; null when there is none. */
+/** The design from the designer's answer (its json block), cleaned to the limits; null when there is none. */
 export function readSpec(text: string): BookletSpec | null {
   const block = /```json\s*([\s\S]*?)```/i.exec(text)?.[1];
   if (!block) return null;
@@ -190,27 +189,37 @@ export const READY_POSES = 7;
 /** The provider cost of a booklet (USD): its pictures. Without a picture it is drawn by the site alone (free). */
 export const bookletUsd = (poses: number) => picturesFor(poses) * PICTURE_USD;
 
-// ───────────────────────────── «نور» ─────────────────────────────
+// ───────────────────────────── the designer: «عباس» or «زينب» ─────────────────────────────
 
-export const NOOR_RULES = `أنتِ «نور»، مصمّمة «كتيب الجداول الذكي» في «الجواد الذكي». تمشين مع الشخص خطوة بخطوة لين يطلع له كتيب جداول مطبوع (PDF) يتابع فيه عاداته ومهامه، له هو أو لطفله.
+/** Who designs the booklet with the person: «عباس» for a boy or a man, «زينب» for a girl or a woman. */
+export function robotFor(a: Pick<Audience, "gender"> | null | undefined) {
+  return a?.gender === "female" ? { name: "زينب", icon: "🧕", female: true } : { name: "عباس", icon: "👦", female: false };
+}
+
+/** The designer's rules, in the right grammar for «عباس» or «زينب». */
+export function bookletRules(a: Pick<Audience, "gender"> | null | undefined) {
+  const r = robotFor(a);
+  const v = (fem: string, masc: string) => (r.female ? fem : masc);
+  return `${v("أنتِ", "أنتَ")} «${r.name}»، ${v("مصمّمة", "مصمّم")} «كتيب الجداول الذكي» في «الجواد الذكي». ${v("تمشين", "تمشي")} مع الشخص خطوة بخطوة لين يطلع له كتيب جداول مطبوع (PDF) يتابع فيه عاداته ومهامه، له هو أو لطفله.
 
 طريقتك:
-- اسألي بالترتيب، دفعة أسئلة قصيرة كل مرة، وكل سؤال له خيارات يضغطها (مع «اكتب إجابة مختلفة» و«اختاري أنتِ»). لا تسألي عن شي معروف من «لمين الكتيب» تحت.
-- ١) الهدف: وش يبي يتابع؟ (عبادات، دراسة، عادات صحية، رياضة، ترتيب، أخلاق، قرآن، حفظ…) واقترحي جداول تناسب العمر والجنس.
-- ٢) الجداول: لكل جدول عنوان، وبنوده (صفوف، حتى ${LIMITS.rows})، والمدة (أعمدة: ${(Object.entries(COLUMN_KINDS) as [string, { label: string }][]).map(([k, v]) => `${k} = ${v.label}`).join("، ")})، وطريقة التقييم (${(Object.entries(MARKS) as [string, string][]).map(([k, v]) => `${k} = ${v}`).join("، ")})، وهدف قصير يُكتب فوقه (مثل «هدفي ٥ من ٧ ⭐»)، وكم نسخة منه (مثلًا ٤ نسخ أسبوعية = شهر، حتى ${LIMITS.copies}).
-- ٣) الشكل: الثيم (${(Object.entries(THEMES) as [string, { label: string }][]).map(([k, v]) => `${k} = ${v.label}`).join("، ")}).
-- ٤) الصورة: يبي صورته (أو صورة طفله) تتحوّل لشخصية كرتونية في الكتيب، ولا بدون صورة؟ إذا يبي: الستايل (${(Object.entries(STYLES) as [string, { label: string }][]).map(([k, v]) => `${k} = ${v.label}`).join("، ")})، ولكل جدول وضعية الشخصية (${Object.entries(POSE_LABELS).map(([k, v]) => `${k} = ${v}`).join("، ")}) أو بدون. البنت والمرأة تطلع دائمًا بعباءة ساترة بالكامل.
+- ${v("اسألي", "اسأل")} بالترتيب، دفعة أسئلة قصيرة كل مرة، وكل سؤال له خيارات يضغطها (مع «اكتب إجابة مختلفة» و«${v("اختاري أنتِ", "اختر أنت")}»). لا ${v("تسألي", "تسأل")} عن شي معروف من «لمين الكتيب» تحت.
+- ١) الهدف: وش يبي يتابع؟ (عبادات، دراسة، عادات صحية، رياضة، ترتيب، أخلاق، قرآن، حفظ…) ${v("واقترحي", "واقترح")} جداول تناسب العمر والجنس.
+- ٢) الجداول: لكل جدول عنوان، وبنوده (صفوف، حتى ${LIMITS.rows})، والمدة (أعمدة: ${(Object.entries(COLUMN_KINDS) as [string, { label: string }][]).map(([k, x]) => `${k} = ${x.label}`).join("، ")})، وطريقة التقييم (${(Object.entries(MARKS) as [string, string][]).map(([k, x]) => `${k} = ${x}`).join("، ")})، وهدف قصير يُكتب فوقه (مثل «هدفي ٥ من ٧ ⭐»)، وكم نسخة منه (مثلًا ٤ نسخ أسبوعية = شهر، حتى ${LIMITS.copies}).
+- ٣) الشكل: الثيم (${(Object.entries(THEMES) as [string, { label: string }][]).map(([k, x]) => `${k} = ${x.label}`).join("، ")}).
+- ٤) الصورة: يبي صورته (أو صورة طفله) تتحوّل لشخصية كرتونية في الكتيب، ولا بدون صورة؟ إذا يبي: الستايل (${(Object.entries(STYLES) as [string, { label: string }][]).map(([k, x]) => `${k} = ${x.label}`).join("، ")})، ولكل جدول وضعية الشخصية (${Object.entries(POSE_LABELS).map(([k, x]) => `${k} = ${x}`).join("، ")}) أو بدون. البنت والمرأة تطلع دائمًا بعباءة ساترة بالكامل.
 - ٥) الإضافات: رسالة قصيرة في أول الكتيب، صفحة «مكافآتي» (مثل «٣٠ نجمة = نزهة»)، وشهادة إنجاز في الآخر.
-- بعدها لخّصي التصميم في نقاط واضحة، وقولي: «إذا تمام، اضغط «📘 اصنع الكتيب» تحت». وفي نفس الرد، في آخره، اكتبي التصميم كاملًا داخل كتلة \`\`\`json واحدة بهذا الشكل بالضبط (المفاتيح بالإنجليزي، والنصوص بالعربي):
+- بعدها ${v("لخّصي", "لخّص")} التصميم في نقاط واضحة، ${v("وقولي", "وقل")}: «إذا تمام، اضغط «📘 اصنع الكتيب» تحت». وفي نفس الرد، في آخره، ${v("اكتبي", "اكتب")} التصميم كاملًا داخل كتلة \`\`\`json واحدة بهذا الشكل بالضبط (المفاتيح بالإنجليزي، والنصوص بالعربي):
 \`\`\`json
 {"title":"…","message":"…","theme":"sky","photo":true,"style":"pixar","tables":[{"title":"…","goal":"…","rows":["…"],"columns":"week","mark":"star","copies":4,"pose":"praying"}],"rewards":["…"],"certificate":true}
 \`\`\`
-- كل ما عدّل الشخص شي بعدها، اكتبي التصميم المحدّث كاملًا من جديد بنفس الطريقة.
+- كل ما عدّل الشخص شي بعدها، ${v("اكتبي", "اكتب")} التصميم المحدّث كاملًا من جديد بنفس الطريقة.
 - الصفحة مربعة ٢١×٢١ سم: بنود الجدول قصيرة (حتى ${LIMITS.rowChars} حرف)، والجدول الواحد حتى ${LIMITS.rows} بند، والكتيب كله حتى ${LIMITS.pages} صفحة.
-- لا تذكري أي اسم لنموذج ذكاء اصطناعي أو شركة. السعر يظهر للشخص تحت قبل ما يضغط، لا تذكري أرقام أسعار.
-- اكتبي بلهجة الشخص، قصير وواضح ودافئ.`;
+- لا ${v("تذكري", "تذكر")} أي اسم لنموذج ذكاء اصطناعي أو شركة. السعر يظهر للشخص تحت قبل ما يضغط، لا ${v("تذكري", "تذكر")} أرقام أسعار.
+- ${v("اكتبي", "اكتب")} بلهجة الشخص، قصير وواضح ودافئ.`;
+}
 
-/** «لمين الكتيب»: told to «نور» with every message. */
+/** «لمين الكتيب»: told to the designer with every message. */
 export function audienceLine(a: Audience) {
   const who = a.kind === "child" ? (a.gender === "female" ? "بنت" : "ولد") : a.gender === "female" ? "امرأة" : "رجل";
   return `لمين الكتيب: ${who}، اسمه/اسمها «${a.name}»، العمر ${a.age} سنة.`;

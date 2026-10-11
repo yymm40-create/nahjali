@@ -6,7 +6,7 @@ import { TB } from "@config/tables-booklet";
 
 export const dynamic = "force-dynamic";
 
-/** «اصنع الكتيب»: the ready booklet (`kind: "ready"`) or the one designed with «نور» (`kind: "custom"`), paid from the balance. */
+/** «اصنع الكتيب»: the ready booklet (`kind: "ready"`) or the one designed with «عباس» أو «زينب» (`kind: "custom"`), paid from the balance. */
 export const POST = handle(async (req: Request) => {
   const user = await requireBookletUser();
   const b = (await req.json().catch(() => ({}))) as StartRequest;
