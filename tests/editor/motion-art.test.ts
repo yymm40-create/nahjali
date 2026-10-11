@@ -10,12 +10,14 @@ const board = (i: number): Storyboard => ({
   beats: KINDS.map((kind, k) => ({ kind, title: `عنوان ${k}`, text: "جملة قصيرة تشرح الفكرة", items: ["أول نقطة", "ثاني نقطة", "ثالث نقطة"], value: "٧٠٪", label: "من الناس", by: "الإمام علي (ع)", left: { title: "قبل", text: "كان كذا" }, right: { title: "بعد", text: "صار كذا" }, handle: "@nahjali" })),
 });
 const RATIOS: Ratio[] = ["9:16", "16:9", "1:1", "4:5"];
+/** The same piece asked for in a named skill («الشرح العلمي»): then the engine draws its own art language too. */
+const styled = (i: number): Storyboard => ({ ...board(i), style: "explainer" });
 
 describe("«موشن جرافيكس» art: drawn by the engine, no generator", () => {
   it("draws a background and a decoration for every beat, as valid SVG of the frame's shape", () => {
     for (const [i, ratio] of RATIOS.entries()) {
       const tl = emptyTimeline(ratio);
-      const plan = motionPlan(board(i), tl.width, tl.height);
+      const plan = motionPlan(styled(i), tl.width, tl.height);
       expect(plan.art.length).toBe(plan.beats.length * 2);
       for (const a of plan.art) {
         expect(a.svg.startsWith("<svg")).toBe(true);
@@ -52,7 +54,7 @@ describe("«موشن جرافيكس» art: drawn by the engine, no generator", (
   it("places the art as clips under the words, with a transition into each next beat, and the piece passes the lint", () => {
     for (const [i, ratio] of RATIOS.entries()) {
       const tl = emptyTimeline(ratio);
-      const sb = board(i);
+      const sb = styled(i);
       const plan = motionPlan(sb, tl.width, tl.height);
       const infos = new Map<string, AssetInfo>();
       const ids = new Map<string, string>();

@@ -238,9 +238,10 @@ describe("GPT Image 2 only on request", () => {
     expect(askedForPicture("سو لي موشن جرافيكس بمهارة الريل السريع عن الصدقة")).toBe(false);
     expect(askedForPicture("خلفية حلوة للموشن")).toBe(false);
   });
-  it("حيدرة is told so, and told how to arrange backgrounds himself", () => {
-    expect(MOTION_SKILL).toContain("THE DRAWING TOOLS");
-    expect(MOTION_SKILL).toContain("never GPT Image 2 unless the person asks");
+  it("حيدرة is told so, and told how to compose backgrounds himself", () => {
+    expect(MOTION_SKILL).toContain("WHAT THE EDITOR GIVES YOU");
+    expect(MOTION_SKILL).toContain("the background you compose per beat");
+    expect(MOTION_SKILL).toMatch(/A generated picture only when the person asks for one in so many words/);
     expect(MOTION_SKILL).not.toContain("pictures and icons made with make image");
   });
 });
