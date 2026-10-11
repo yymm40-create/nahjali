@@ -21,6 +21,8 @@ export function rulesFor(path: string, method: string): Rule[] {
   if ((path === "/api/course/order" || path === "/api/course/transferred" || path === "/api/credits/order" || path === "/api/credits/transferred") && method === "POST") out.push({ key: "course", max: 20, windowMs: 10 * 60_000 });
   // «سلمان» answers anyone (signed in or not) and each answer costs a little: a person asks a few, never dozens
   if (path === "/api/salman" && method === "POST") out.push({ key: "salman", max: 25, windowMs: 10 * 60_000 });
+  // «عباس سبع القنطرة» (the coach of «الصحة العلوية») is free for the person: a conversation, never a flood
+  if (path === "/api/mahdi/health/coach" && method === "POST") out.push({ key: "coach", max: 30, windowMs: 10 * 60_000 });
   // a page opened (the owner's statistics): one per page, never a flood
   if (path === "/api/visit") out.push({ key: "visit", max: 60, windowMs: 60_000 });
   // a game's player reports an error it hit: a few, never a flood (anyone with a game's link can)
