@@ -74,6 +74,8 @@ export interface DocxOpts {
   page: "A4" | "A5";
   /** the page count asked for: chapters flow on, cover and contents only when there is room (as in the PDF) */
   pages?: number;
+  /** a sermon to read aloud: no cover, no contents, no chapter labels, the parts flow on in a larger type */
+  plain?: boolean;
   images?: Record<string, Buffer>;
   sources?: { url: string; title: string; accessedAt: string }[];
 }
@@ -88,10 +90,11 @@ export async function docDocx(doc: Doc, design: Design, o: DocxOpts) {
   const accent = fontById(design.fonts.accent);
   const font = (f: typeof head) => ({ ascii: f.family, hAnsi: f.family, cs: f.family, eastAsia: f.family });
   const a4 = o.page !== "A5";
-  const pt = a4 ? 12.5 : 11;
+  const pt = o.plain ? (a4 ? 14.5 : 12.5) : a4 ? 12.5 : 11;
   const half = (n: number) => Math.round(n * 2);
-  const fixed = (o.pages ?? 0) > 0;
-  const front = fixed ? frontPages(o.pages!, doc.chapters.length) : { cover: true, toc: doc.chapters.length > 1 };
+  const plain = Boolean(o.plain);
+  const fixed = (o.pages ?? 0) > 0 || plain;
+  const front = plain ? { cover: false, toc: false } : fixed ? frontPages(o.pages!, doc.chapters.length) : { cover: true, toc: doc.chapters.length > 1 };
 
   const P = (children: ParagraphChild[], opts: Partial<ConstructorParameters<typeof Paragraph>[0] & object> = {}) => new Paragraph({ bidirectional: true, children, ...opts });
   const box = (fill: string, color: string) => ({
@@ -205,7 +208,7 @@ export async function docDocx(doc: Doc, design: Design, o: DocxOpts) {
     children.push(P([new PageBreak()]));
   }
   doc.chapters.forEach((ch, i) => {
-    children.push(P(runs(doc.chapters.length > 1 ? `الفصل ${(i + 1).toLocaleString("ar")}` : "", { color: hex(c.muted), size: half(pt * 0.85), sizeComplexScript: half(pt * 0.85) }), { pageBreakBefore: !fixed && i > 0, spacing: { before: fixed && i > 0 ? 360 : 0, after: 0 }, keepNext: true }));
+    if (!plain) children.push(P(runs(doc.chapters.length > 1 ? `الفصل ${(i + 1).toLocaleString("ar")}` : "", { color: hex(c.muted), size: half(pt * 0.85), sizeComplexScript: half(pt * 0.85) }), { pageBreakBefore: !fixed && i > 0, spacing: { before: fixed && i > 0 ? 360 : 0, after: 0 }, keepNext: true }));
     children.push(P(runs(ch.title), { heading: HeadingLevel.HEADING_1 }));
     for (const b of ch.blocks) children.push(...block(b));
   });

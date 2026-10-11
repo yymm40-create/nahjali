@@ -3,6 +3,7 @@
 // what it made, so a stopped run continues where it was and a failed part is made again alone.
 
 import { minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
+import { readSermonLength, SERMON_MAX_PARTS } from "@config/jawad/khateeb";
 import { defaultDesign, isPaged, outputName, pagesOf, readBrief, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
 import { methodLine, studyAudience } from "@config/jawad/study-methods";
 import { ELEVEN_PRICE } from "@config/jawad/generators";
@@ -70,6 +71,14 @@ const pageSize = (o: Output): PageSize => (o.settings.page === "A5" ? "A5" : "A4
 
 /** Words each chapter should have when the student asked for a page count (weighted by the material it covers). */
 function chapterWords(c: Ctx, o: Output, plan: DocPlan) {
+  // a sermon has a length to SAY (short, medium, long), not a page count: its words are shared among its parts, each part
+  // counting a little over the material it rests on (an opening or a closing rests on none and still needs its words)
+  if (o.kind === "sermon") {
+    const total = readSermonLength(o.settings.length).words * (Number(o.settings._wordScale) || 1);
+    const weights = plan.chapters.map((ch) => segChars(c, ch.segments) + 800);
+    const sum = weights.reduce((a, b) => a + b, 0) || 1;
+    return weights.map((w) => Math.max(60, Math.round((total * w) / sum)));
+  }
   const pages = pagesOf(o.settings);
   if (!pages || !isPaged(o.kind) || (o.kind === "book" && o.settings.writing === "verbatim")) return null;
   const k = Number(o.settings._wordScale) || 1;
@@ -232,21 +241,27 @@ async function planStep(job: Job): Promise<StepResult> {
     return { done: true, stage: "الخطة جاهزة" };
   }
 
-  if (o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") {
+  if (o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "sermon") {
+    const sermon = o.kind === "sermon";
     const what =
-      o.kind === "summary"
+      o.kind === "sermon"
+        ? "a SERMON for the minbar (خطبة المنبر), written to be SPOKEN ALOUD by the preacher: its parts come in the order, and with the names, that the owner's METHOD (in the rules below) gives them; plain Arabic for the ear, short sentences, warm and firm; every religious statement (a verse, a narration, a ruling, a line of poetry, an attribution) only from the sources and the poems given. The chapters here are the sermon's PARTS in their order — not chapters of a book"
+        : o.kind === "summary"
         ? "a SUMMARY: keep the essential ideas and the source's structure (no claim of covering every word)"
         : o.kind === "preread"
           ? "a PRE-READING SHEET for BEFORE the lesson (قراءة ما قبل الدرس): it prepares the student to meet the material — the big picture and why it matters, the map of what is coming, the key terms, guiding questions to answer during the lesson, what to focus on, and a short self-check for afterwards. It does NOT replace the lesson or summarise every detail"
           : o.kind === "explain"
           ? "a NEW EXPLANATION: re-present the concepts in language suited to the level, unpack the terms"
           : `a READING BOOK / BOOKLET (${o.settings.writing === "summary" ? "a summary book" : "an explanatory book"})`;
-    const pages = pagesOf(o.settings);
-    const pagesLine = pages
+    const pages = sermon ? 0 : pagesOf(o.settings);
+    const sermonLength = readSermonLength(o.settings.length);
+    const pagesLine = sermon
+      ? `\nLENGTH (the preacher's choice: ${sermonLength.label}): the sermon is about ${sermonLength.words} words in all (about ${sermonLength.minutes} minutes spoken). Plan at most ${SERMON_MAX_PARTS} parts, sized for that length; the material may be shorter or longer than that — choose what serves the sermon.`
+      : pages
       ? `\nPAGE COUNT (the student's, kept exactly): the finished file is EXACTLY ${pages} page${pages > 1 ? "s" : ""} (${pageSize(o)}), about ${wordBudget(pages, pageSize(o), [1]).total} words of body text in all${frontPages(pages, 2).cover ? ", plus a cover" : ", with the title at the top of the first page (no cover)"}. Plan at most ${maxChapters(pages)} chapter${maxChapters(pages) > 1 ? "s" : ""}, sized for that length: choose what matters most when the material is longer than the pages, and go deeper when it is shorter.`
       : "";
     const r = await askJson<{ title: string; subtitle: string; chapters: { title: string; purpose: string; segments: string[]; imageIdea: string }[] }>({
-      system: `You plan ${what} of the student's material, in Arabic.\n${methodLine(o.kind, studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\n Return a title (the document's main title), a subtitle (one line under it saying what it is and for whom) and ordered chapters with clear, short titles; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). Density: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.${pagesLine}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
+      system: `You plan ${what} of the student's material, in Arabic.\n${sermon ? "" : methodLine(o.kind as "summary", studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\n Return a title (the document's main title), a subtitle (one line under it saying what it is and for whom) and ordered chapters with clear, short titles; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). Density: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.${pagesLine}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
       parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
       schema: DOC_PLAN_SCHEMA,
     });
@@ -254,7 +269,7 @@ async function planStep(job: Job): Promise<StepResult> {
     const plan: DocPlan = {
       title: r.data.title,
       subtitle: r.data.subtitle,
-      chapters: r.data.chapters.slice(0, pages ? maxChapters(pages) : undefined).map((ch) => ({ title: ch.title, purpose: ch.purpose, segments: ch.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: pages && pages < 3 ? "" : ch.imageIdea } })),
+      chapters: r.data.chapters.slice(0, sermon ? SERMON_MAX_PARTS : pages ? maxChapters(pages) : undefined).map((ch) => ({ title: ch.title, purpose: ch.purpose, segments: ch.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: sermon || (pages && pages < 3) ? "" : ch.imageIdea } })),
     };
     // BEFORE anything is written: does the material fill the pages the student asked for? Kept with the output, so the plan
     // review asks the student when it doesn't (and the autopilot waits for the answer instead of writing padding or a squeeze)
@@ -371,9 +386,12 @@ async function writeChapter(c: Ctx, o: Output, plan: DocPlan, i: number, revise?
     }
     return { chapter: { title: ch.title, blocks }, usd: 0 };
   }
-  const kind = o.kind === "summary" ? "a summary chapter" : o.kind === "preread" ? "a part of a PRE-READING sheet (before the lesson: big picture, key terms with short meanings, guiding questions, what to watch for; brief and inviting, not a full summary)" : o.kind === "explain" ? "an explanation chapter (simpler, terms unpacked, examples from the material)" : `a chapter of a reading book (${o.settings.writing === "summary" ? "summary book" : "explanatory book"})`;
+  const sermon = o.kind === "sermon";
+  const kind = sermon ? "a part of a SERMON for the minbar" : o.kind === "summary" ? "a summary chapter" : o.kind === "preread" ? "a part of a PRE-READING sheet (before the lesson: big picture, key terms with short meanings, guiding questions, what to watch for; brief and inviting, not a full summary)" : o.kind === "explain" ? "an explanation chapter (simpler, terms unpacked, examples from the material)" : `a chapter of a reading book (${o.settings.writing === "summary" ? "summary book" : "explanatory book"})`;
   const r = await askJson<{ blocks: Block[] }>({
-    system: `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\n${methodLine(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" ? o.kind : "book", studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists. Structure: the chapter's title is given; inside it use "h" sub-headings for its parts (short, clear), then the body under each.${words ? `\nLENGTH (the student asked for a fixed page count, kept exactly): this chapter is about ${words} words in all (within 10%) — count them; ${words < 150 ? "keep it to the essentials, few blocks" : "spread them over its parts"}.${compactionLine(countWords(segText(c, ch.segments)), words)}` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
+    system: sermon
+      ? `You write ${kind} in Arabic for the preacher, as blocks. ${BLOCK_GUIDE}\nThis is a PART OF A SERMON that the preacher will READ ALOUD from the minbar: write it as flowing spoken paragraphs ("p" blocks), in plain, correct Arabic for the ear — short sentences, natural pauses, and direct address to the listeners where the method calls for it. Use a "quote" block (text = the words exactly as they are in the sources or the poems, title = their reference as given) for every verse, narration or line of poetry, and never write one from memory or in your own words. No tables, cards, steps, margin notes or review questions. Do not repeat the part's title as a heading (it is given); use an "h" block only when the method names sub-parts inside this part.${words ? `\nLENGTH: this part is about ${words} words in all (within 10%) — count them.` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`
+      : `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\n${methodLine(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" ? o.kind : "book", studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists. Structure: the chapter's title is given; inside it use "h" sub-headings for its parts (short, clear), then the body under each.${words ? `\nLENGTH (the student asked for a fixed page count, kept exactly): this chapter is about ${words} words in all (within 10%) — count them; ${words < 150 ? "keep it to the essentials, few blocks" : "spread them over its parts"}.${compactionLine(countWords(segText(c, ch.segments)), words)}` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
     parts: [
       {
         type: "text",
@@ -457,11 +475,13 @@ async function renderDoc(o: Output, c: Ctx, doc: Doc, plan: DocPlan, trial: bool
   const design = designOf(o);
   const { out } = await imageData(plan.chapters.map((ch) => ch.image.path));
   const pages = trial ? 0 : pagesOf(o.settings);
-  const opts = { fontFaces: await fontFacesData(designFonts(design)), images: out, sources: c.research?.sources ?? [], page: pageSize(o), trial, pages };
+  // a sermon is plain pages to read from at the minbar: no cover, no contents, big type
+  const plain = o.kind === "sermon";
+  const opts = { fontFaces: await fontFacesData(designFonts(design)), images: out, sources: c.research?.sources ?? [], page: pageSize(o), trial, pages, plain };
   const full = withImages(doc, plan);
   const numbered = o.settings.numbered !== false;
   const r = pages ? await fitPdf((scale) => docHtml(full, design, { ...opts, scale }), pages, { numbered }) : { ...(await htmlToPdf(docHtml(full, design, opts), { numbered })), pages: 0 };
-  const cover = pages ? frontPages(pages, full.chapters.length).cover : true;
+  const cover = plain ? false : pages ? frontPages(pages, full.chapters.length).cover : true;
   const pdf = design.frame !== false ? await framePdf(r.pdf, { color: colorsOf(design, design.main).accent, size: pageSize(o), skipFirst: cover }) : r.pdf;
   const path = filePath(o, trial ? "trial.pdf" : "book.pdf");
   await putFile(path, pdf, "application/pdf");
@@ -477,7 +497,7 @@ async function renderDocx(o: Output, c: Ctx, doc: Doc, plan: DocPlan) {
       images[p] = await getFile(p);
     } catch {}
   }
-  const buf = await docDocx(withImages(doc, plan), designOf(o), { page: pageSize(o), pages: pagesOf(o.settings), images, sources: c.research?.sources ?? [] });
+  const buf = await docDocx(withImages(doc, plan), designOf(o), { page: pageSize(o), pages: pagesOf(o.settings), images, sources: c.research?.sources ?? [], plain: o.kind === "sermon" });
   const path = filePath(o, "document.docx");
   await putFile(path, buf, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   return path;

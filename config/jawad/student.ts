@@ -138,9 +138,11 @@ export function rolesBrief(roles: unknown[]): string {
   return ["EACH SOURCE HAS A ROLE, written in its label («نموذج أتبعه», «مادة علمية», «مرجع إضافي»):", ...lines].join("\n");
 }
 
-export type OutputKind = "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat" | "mindmap";
+export type OutputKind = "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat" | "mindmap" | "sermon";
 
 export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] = [
+  // only in the hidden «الخطيب الذكي» (see config/jawad/khateeb.ts): never offered to the student
+  { kind: "sermon", name: "خطبة المنبر", blurb: "خطبة تُقرأ على المنبر، تكتبها على طريقة صاحب المنصة وبأدلة الذكاء الإسلامي، بطولٍ تختاره (قصيرة، متوسطة، طويلة)، ملف PDF وملف Word قابل للتعديل." },
   { kind: "summary", name: "ملخص", blurb: "الأفكار الجوهرية بالمستوى والتفصيل الذي تختاره." },
   { kind: "explain", name: "شرح جديد", blurb: "شرح المادة بطريقة أسهل أو أنسب لجمهورك." },
   { kind: "preread", name: "قراءة ما قبل الدرس", blurb: "ورقة تحضير قبل الدرس: الصورة الكبيرة، المصطلحات، وأسئلة تدخل فيها الدرس، بأقوى طرق التحضير لعمرك." },
@@ -346,10 +348,13 @@ export const ISLAMIC_WAYS = [
 // ───────────────────────────── the student's own choices for a file ─────────────────────────────
 
 /** Outputs with a design (style, fonts): the design step is shown when one of them is chosen. */
-export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book", "slides", "quiz", "mindmap"];
+export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book", "sermon", "slides", "quiz", "mindmap"];
 
 /** Written outputs made as pages (PDF, and Word when asked): they take a page count, a file format and a design. */
 export const PAGED_KINDS = ["summary", "explain", "preread", "book"] as const;
+/** Everything written as a document of chapters (the paged ones and the sermon, which has a length to speak instead of a page count). */
+export const DOC_KINDS: readonly string[] = ["summary", "explain", "preread", "book", "sermon"];
+export const isDoc = (k: string) => DOC_KINDS.includes(k);
 export const isPaged = (k: string) => (PAGED_KINDS as readonly string[]).includes(k);
 
 /** The page count the student asked for (0 = as the material needs). Kept exactly in the PDF. */

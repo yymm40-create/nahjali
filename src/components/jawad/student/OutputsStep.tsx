@@ -9,6 +9,7 @@ import { useBranch } from "./branch";
 import { useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { DESIGNED_KINDS, OUTPUT_KINDS, OUTPUT_STATUS, emptyWish, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { kindOffered } from "@config/jawad/khateeb";
 import { defaults, DesignStep, Questions } from "./Questions";
 import { KIND_LOOK, Tile } from "./look";
 import { fitsPages, readCapacity } from "@/lib/jawad/student/capacity";
@@ -30,12 +31,14 @@ const SUGGEST: Record<string, OutputKind[]> = {
 };
 
 function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void; onCancel?: () => void }) {
-  const { assistant: A } = useBranch();
+  const { assistant: A, branch } = useBranch();
   const { project, prices, outputs } = p.state;
+  // «الخطيب الذكي» offers the sermon first (and the student's outputs after it); «الطالب الذكي» never offers it
+  const kinds = OUTPUT_KINDS.filter((k) => kindOffered(branch, k.kind));
   const have = outputs.map((o) => o.kind);
   const [phase, setPhase] = useState<"pick" | "ask" | "design">("pick");
   const [wish, setWish] = useState<DesignWish>(emptyWish);
-  const [pick, setPick] = useState<OutputKind[]>(() => (SUGGEST[project.brief.purpose] ?? ["summary"]).filter((k) => !have.includes(k)));
+  const [pick, setPick] = useState<OutputKind[]>(() => (branch === "khateeb" ? (["sermon"] as OutputKind[]) : SUGGEST[project.brief.purpose] ?? ["summary"]).filter((k) => !have.includes(k)));
   const [answers, setAnswers] = useState<Record<string, S>>({});
   const [special, setSpecial] = useState("");
   const { busy, error, run } = useAsync();
@@ -48,7 +51,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
         <h2 className="text-lg font-bold">وش تبي نصنع؟</h2>
         <p className="text-sm text-jw-muted">اخترنا لك اللي يناسب غرضك. اضغط لتضيف أو تشيل.</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {OUTPUT_KINDS.filter((k) => !have.includes(k.kind)).map((k) => {
+          {kinds.filter((k) => !have.includes(k.kind)).map((k) => {
             const on = pick.includes(k.kind);
             return (
               <button key={k.kind} type="button" aria-pressed={on} onClick={() => setPick(on ? pick.filter((x) => x !== k.kind) : [...pick, k.kind])} className={`relative flex items-start gap-3 rounded-2xl border bg-white p-3 text-start transition-all ${on ? "border-transparent ring-4 ring-violet-300" : "border-jw-line hover:-translate-y-0.5"}`}>

@@ -9,6 +9,7 @@ import { useState } from "react";
 import { coinStr } from "@config/coins";
 import { COUNTED_KINDS, chosenPages } from "@/lib/jawad/student/draw";
 import { FONTS, FORMATS, MAX_PAGES, OUTPUT_KINDS, STYLES, isPaged, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
 import { MAP_GRADES, MAP_TYPES, gradeOf } from "@/lib/jawad/student/mindmap";
 import { PICTURE_KINDS } from "./autopilot";
 import { fontFacesUrl } from "./client";
@@ -36,6 +37,9 @@ export function defaults(kind: OutputKind, level: string): S {
       return { density: young ? "low" : "medium", pages: 0, page: "A4", format: "pdf", pictures: "" };
     case "book":
       return { writing: "explain", page: "A4", pages: 0, density: "medium", format: "pdf", pictures: "" };
+    // the sermon: a length to say (short, medium, long) instead of a page count; the PDF and the editable Word file both
+    case "sermon":
+      return { length: "medium", page: "A4", format: "both" };
     case "slides":
       return { density: "medium", count: 0, aspect: "16:9", notesMode: "both", render: "editable", imageQuality: "high" };
     case "audio":
@@ -148,6 +152,14 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
     </>
   );
   switch (kind) {
+    case "sermon":
+      return (
+        <>
+          <Choice label="طول الخطبة" value={readSermonLength(s.length).id} options={SERMON_LENGTHS.map((l) => ({ id: l.id, label: `${l.label} · نحو ${l.minutes.toLocaleString("ar")} دقيقة` }))} onChange={(length) => set({ length })} />
+          <Choice label="صيغة الملف" value={String(s.format ?? "both")} options={FORMATS.map((f) => ({ id: f.id, label: f.label }))} onChange={(format) => set({ format })} />
+          <Choice label="المقاس" value={String(s.page)} options={[{ id: "A4", label: "A4" }, { id: "A5", label: "A5 (صغير)" }]} onChange={(page) => set({ page })} />
+        </>
+      );
     case "summary":
     case "explain":
     case "preread":
@@ -178,7 +190,7 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
         </>
       );
     case "audio": {
-      const texts = chosen.filter((k) => k === "summary" || k === "explain" || k === "preread" || k === "book");
+      const texts = chosen.filter((k) => k === "summary" || k === "explain" || k === "preread" || k === "book" || k === "sermon");
       return (
         <>
           <Choice label="وش يقرأ؟" value={String(s.source)} options={[{ id: "text", label: "المادة كاملة" }, ...texts.map((k) => ({ id: k, label: OUTPUT_KINDS.find((o) => o.kind === k)!.name }))]} onChange={(source) => set({ source })} />

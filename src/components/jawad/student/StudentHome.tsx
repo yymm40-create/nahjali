@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { OUTPUT_KINDS, SOURCE_MODES, type SourceMode } from "@config/jawad/student";
+import { kindOffered } from "@config/jawad/khateeb";
 import { newKey, post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
@@ -180,7 +181,7 @@ export default function StudentHome({
       <section className="space-y-5" aria-labelledby="make">
         <h2 id="make" className="st-section-title text-xl">ماذا تصنع من مادتك؟</h2>
         <ul className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          {OUTPUT_KINDS.map((k, i) => (
+          {OUTPUT_KINDS.filter((k) => kindOffered(branch, k.kind)).map((k, i) => (
             <li key={k.kind} className="jw-panel st-rise space-y-3 p-4 transition-transform hover:-translate-y-1" style={{ animationDelay: `${i * 0.06}s` }}>
               <KindSample kind={k.kind} />
               <div className="flex items-center gap-2">

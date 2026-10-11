@@ -11,6 +11,7 @@ export const KIND_LOOK: Record<string, { emoji: string; grad: string }> = {
   preread: { emoji: "🧭", grad: "linear-gradient(135deg,#14b8a6,#0ea5e9)" },
   mindmap: { emoji: "🧠", grad: "linear-gradient(135deg,#22c55e,#0ea5e9 55%,#a855f7)" },
   chat: { emoji: "💬", grad: "linear-gradient(135deg,#8b5cf6,#d946ef)" },
+  sermon: { emoji: "🕌", grad: "linear-gradient(135deg,#0f766e,#d4a017)" },
 };
 
 export const STEP_LOOK = [

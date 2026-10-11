@@ -32,7 +32,8 @@ describe("«خريطة ذهنية» is an output of «الطالب الذكي»"
   });
 
   it("has its migration (the database allows the kind)", () => {
-    const sql = read("supabase/migrations/0061_student_mindmap.sql");
+    // the latest migration that sets the list (0066 added the sermon)
+    const sql = read("supabase/migrations/0066_khateeb_sermon.sql");
     expect(sql).toContain("'mindmap'");
     for (const k of OUTPUT_KINDS) expect(sql, k.kind).toContain(`'${k.kind}'`);
   });
