@@ -165,3 +165,60 @@ describe("«عباس سبع القنطرة» changes the plan", () => {
     expect(r.plan!.food!.proteinG).toBe(150);
   });
 });
+
+describe("the exercise guide", () => {
+  it("every exercise has its technique, and every muscle named exists", async () => {
+    const { GUIDE, MUSCLES } = await import("@config/mahdi/exercise-guide");
+    const ids = new Set(MUSCLES.map((m) => m.id));
+    for (const e of EXERCISES) {
+      const g = GUIDE[e.id];
+      expect(g, e.id).toBeTruthy();
+      expect(g.steps.length, e.id).toBeGreaterThanOrEqual(2);
+      expect(g.primary.length, e.id).toBeGreaterThan(0);
+      for (const m of [...g.primary, ...g.secondary]) expect(ids.has(m), `${e.id}: ${m}`).toBe(true);
+    }
+    for (const id of Object.keys(GUIDE)) expect(exerciseById(id), id).toBeTruthy();
+  });
+});
+
+describe("the tracker", () => {
+  it("keeps a day inside bounds", async () => {
+    const { cleanDay } = await import("@/lib/mahdi/health/tracker");
+    const d = cleanDay({ date: "2026-10-11", sets: { bench: [{ kg: 60, reps: 8 }, { kg: -5, reps: 0 }], "BAD id": [{ kg: 1, reps: 1 }] }, food: { proteinG: 140, nope: 3 }, cardioMin: 9999, done: true, bodyKg: 80.44 })!;
+    expect(d.sets).toEqual({ bench: [{ kg: 60, reps: 8 }] });
+    expect(d.food).toEqual({ proteinG: 140 });
+    expect(d.cardioMin).toBe(600);
+    expect(d.bodyKg).toBe(80.4);
+    expect(cleanDay({ date: "yesterday" })).toBeNull();
+  });
+  it("estimated max, records and the suggestion for next time", async () => {
+    const { e1rm, record, suggestion, history } = await import("@/lib/mahdi/health/tracker");
+    expect(e1rm({ kg: 100, reps: 5 })).toBe(116.5);
+    const days = [
+      { date: "2026-10-01", sets: { bench: [{ kg: 60, reps: 10 }, { kg: 60, reps: 12 }] }, cardioMin: 0, done: true, food: {}, bodyKg: null },
+      { date: "2026-10-04", sets: { bench: [{ kg: 62.5, reps: 8 }] }, cardioMin: 0, done: true, food: {}, bodyKg: null },
+    ];
+    expect(record(days, "bench")).toEqual({ kg: 60, reps: 12 }); // 60×12 ≈ 84 kg max, 62.5×8 ≈ 79
+    expect(history(days, "bench").map((p) => p.date)).toEqual(["2026-10-01", "2026-10-04"]);
+    expect(suggestion([{ kg: 60, reps: 12 }, { kg: 60, reps: 12 }], "8–12", false)).toContain("62.5");
+    expect(suggestion([{ kg: 60, reps: 10 }, { kg: 60, reps: 12 }], "8–12", false)).toContain("نفس الوزن");
+    expect(suggestion(undefined, "8–12", false)).toContain("أول مرة");
+  });
+  it("counts hard sets per muscle: main 1, helping ½", async () => {
+    const { setsByMuscle } = await import("@/lib/mahdi/health/tracker");
+    const m = setsByMuscle([{ date: "2026-10-01", sets: { bench: [{ kg: 60, reps: 10 }, { kg: 60, reps: 10 }, { kg: 60, reps: 0 }] }, cardioMin: 0, done: false, food: {}, bodyKg: null }]);
+    expect(m.pec).toBe(2);
+    expect(m["front-delt"]).toBe(1);
+  });
+});
+
+describe("«عباس سبع القنطرة» starts again and keeps the habits linked", () => {
+  it("restart, and a rebuilt plan keeps its links", () => {
+    const base = P({ days: [0, 2, 4] });
+    const plan = { ...makePlan(base, "ready"), links: { protein: "11111111-1111-1111-1111-111111111111" } };
+    const r = applyCoach(base, plan, { restart: true, profile: [{ field: "place", value: "body" }] });
+    expect(r.restart).toBe(true);
+    expect(r.plan!.links).toEqual(plan.links);
+    expect(cleanPlan(r.plan)!.links).toEqual(plan.links);
+  });
+});

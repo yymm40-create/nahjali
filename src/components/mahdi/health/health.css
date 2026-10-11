@@ -292,3 +292,148 @@
 .gym-chat-send { display: flex; align-items: flex-end; gap: 0.4rem; padding: 0.6rem; border-top: 1px solid #2a3038; }
 .gym-chat-send .gym-input { min-height: 44px; padding: 0.5rem 0.7rem; resize: none; font-weight: 600; }
 .gym-chat-note { font-size: 0.68rem; color: #9aa3ad; text-align: center; padding: 0 0.6rem 0.5rem; }
+
+/* ── the app frame ── */
+.gym-app {
+  min-height: 100dvh;
+  background: #07090b;
+  color: #f3f4f1;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+.gym-top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: calc(0.55rem + env(safe-area-inset-top)) 1rem 0.55rem;
+  background: rgba(7, 9, 11, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #1d2229;
+}
+.gym-brand { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 900; font-size: 1.1rem; text-decoration: none; color: #f3f4f1; }
+.gym-brand em { font-style: normal; color: #c6ff1a; }
+.gym-back { font-size: 0.78rem; font-weight: 800; color: #9aa3ad; text-decoration: none; padding: 0.35rem 0.6rem; border: 1px solid #2a3038; border-radius: 999px; }
+.gym-main { max-width: 760px; margin: 0.8rem auto 0; border-radius: 1.4rem; }
+@media (max-width: 640px) { .gym-main { margin: 0; border-radius: 0; } }
+.gym-tabs {
+  position: fixed;
+  z-index: 45;
+  inset-inline: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));
+  background: rgba(10, 12, 15, 0.96);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid #1d2229;
+}
+.gym-tabs a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #9aa3ad;
+  text-decoration: none;
+  padding: 0.35rem 0;
+  border-radius: 0.8rem;
+}
+.gym-tabs a span { font-size: 1.25rem; filter: grayscale(0.6); }
+.gym-tabs a[aria-current="page"] { color: #c6ff1a; background: rgba(198, 255, 26, 0.08); }
+.gym-tabs a[aria-current="page"] span { filter: none; }
+.gym-app .gym-chat { bottom: calc(80px + env(safe-area-inset-bottom)); height: min(600px, calc(100dvh - 160px)); }
+
+/* ── the tracker ── */
+.gym-rest {
+  position: sticky;
+  top: 60px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.9rem;
+  background: #c6ff1a;
+  color: #0c0e11;
+  font-weight: 800;
+}
+.gym-rest b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.gym-rest span { flex: 1; }
+.gym-rest .gym-btn { margin-inline-start: auto; color: #0c0e11; border-color: #0c0e1155; }
+
+.gym-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.3rem; }
+.gym-week button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.4rem 0;
+  border-radius: 0.8rem;
+  border: 1px solid #2a3038;
+  background: #13161b;
+  color: #f3f4f1;
+  cursor: pointer;
+}
+.gym-week button small { font-size: 0.62rem; color: #9aa3ad; }
+.gym-week button b { font-weight: 900; }
+.gym-week button i { width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+.gym-week button i.plan { border: 1.5px solid #c6ff1a88; }
+.gym-week button i.on { background: #c6ff1a; }
+.gym-week button[aria-pressed="true"] { border-color: #c6ff1a; background: rgba(198, 255, 26, 0.1); }
+
+.gym-sets { display: grid; grid-template-columns: 28px 1fr 1fr 40px; gap: 0.35rem; align-items: center; }
+.gym-sets .h { font-size: 0.68rem; color: #9aa3ad; font-weight: 800; text-align: center; }
+.gym-sets .row { display: contents; }
+.gym-sets .n { text-align: center; font-weight: 900; color: #9aa3ad; }
+.gym-sets .gym-input { min-height: 40px; text-align: center; font-size: 1rem; }
+.gym-sets .row.done .n { color: #c6ff1a; }
+.gym-sets .row.done .gym-input { border-color: #c6ff1a66; }
+.gym-sets .row.done .gym-icon-btn { background: #c6ff1a; color: #0c0e11; border-color: #c6ff1a; }
+
+.gym-food { border: 1px solid #2a3038; background: #13161b; border-radius: 1rem; padding: 0.7rem 0.8rem; display: grid; gap: 0.45rem; }
+.gym-food .top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.gym-food .top span { font-size: 0.82rem; color: #9aa3ad; font-variant-numeric: tabular-nums; }
+.gym-food .top em { font-style: normal; font-weight: 900; color: #f3f4f1; font-size: 1.05rem; }
+.gym-food .bar { height: 10px; border-radius: 5px; background: #232830; overflow: hidden; }
+.gym-food .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff7a1a, #c6ff1a); border-radius: 5px; transition: width 0.3s; }
+.gym-food .bar i.full { background: #c6ff1a; }
+.gym-food .gym-chip { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+.gym-food .gym-input { min-height: 34px; }
+
+/* ── learn ── */
+.gym-bodymap { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; align-items: start; border: 1px solid #2a3038; border-radius: 1.1rem; background: radial-gradient(circle at 50% 30%, #1a2016, #101317); padding: 0.6rem; }
+.gym-bodymap figure { margin: 0; text-align: center; }
+.gym-bodymap figcaption { font-size: 0.7rem; color: #9aa3ad; }
+.gym-body { width: 100%; max-height: 300px; }
+.gym-bodymap .legend { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: #9aa3ad; margin: 0; }
+.gym-bodymap .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.gym-bodymap .legend i.main { background: #c6ff1a; }
+.gym-bodymap .legend i.help { background: #ff7a1a; margin-inline-start: 0.6rem; }
+.gym-list-ex { display: grid; gap: 0.4rem; }
+.gym-list-ex a { position: relative; display: block; padding: 0.6rem 0.8rem; border: 1px solid #2a3038; border-radius: 0.9rem; background: #13161b; text-decoration: none; }
+.gym-list-ex a b { display: block; font-weight: 800; }
+.gym-list-ex a small { font-size: 0.72rem; color: #9aa3ad; }
+.gym-list-ex .tag { position: absolute; inset-inline-end: 0.6rem; top: 0.6rem; font-size: 0.65rem; font-weight: 900; background: #c6ff1a; color: #0c0e11; padding: 0.1rem 0.45rem; border-radius: 999px; }
+.gym-steps { display: grid; gap: 0.5rem; list-style: none; padding: 0; margin: 0; }
+.gym-steps li { display: flex; gap: 0.6rem; align-items: flex-start; line-height: 1.8; font-size: 0.92rem; }
+.gym-steps b { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #c6ff1a; color: #0c0e11; font-weight: 900; font-size: 0.8rem; margin-top: 0.2rem; }
+
+/* ── progress ── */
+.gym-mbar { display: grid; grid-template-columns: 9.5rem 1fr 2.2rem; align-items: center; gap: 0.5rem; font-size: 0.78rem; }
+.gym-mbar span { color: #c9cfd6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gym-mbar div { height: 8px; border-radius: 4px; background: #232830; overflow: hidden; }
+.gym-mbar i { display: block; height: 100%; background: #ff7a1a; border-radius: 4px; }
+.gym-mbar i.full { background: #c6ff1a; }
+.gym-mbar b { text-align: end; font-variant-numeric: tabular-nums; }
+.gym-hist { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 0.4rem; }
+.gym-hist div { border: 1px solid #2a3038; border-radius: 0.7rem; padding: 0.4rem; text-align: center; background: #13161b; }
+.gym-hist span { display: block; font-size: 0.68rem; color: #9aa3ad; }
+.gym-hist b { display: block; font-weight: 900; }
+.gym-hist small { font-size: 0.65rem; color: #9aa3ad; }
+.gym-days7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.3rem; height: 44px; align-items: end; }
+.gym-days7 i { display: block; border-radius: 4px 4px 2px 2px; background: #ff7a1a; }
+.gym-days7 i.full { background: #c6ff1a; }

@@ -4,7 +4,9 @@
 // signs are only ever ticked by the person, a deficit in pregnancy is impossible (the engine never makes one), and
 // in pregnancy only pregnancy-safe exercises are accepted. Pure: the prompt, the schema, and applying his actions.
 
+import { GUIDE, MUSCLES } from "@config/mahdi/exercise-guide";
 import { RESEARCH, REF } from "@config/mahdi/health-research";
+import type { DayLog } from "./tracker";
 import {
   EXERCISES,
   FOCUS,
@@ -30,14 +32,14 @@ export const COACH = {
   maxChars: 1500,
 } as const;
 
-export const COACH_SCREENS = ["track", "about", "goal", "train", "mode", "plan", "habits"] as const;
+export const COACH_SCREENS = ["track", "about", "goal", "train", "mode", "plan", "habits", "today", "progress", "learn"] as const;
 const PROFILE_FIELDS = ["track", "sex", "age", "heightCm", "weightKg", "activity", "goals", "stage", "pregWeek", "babyMonths", "wasActive", "level", "place", "days", "minutes", "meals"] as const;
 const FOOD_FIELDS = ["kcal", "proteinG", "waterCups", "produce", "steps"] as const;
 
 export const COACH_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "profile", "food", "edits", "go", "choices"],
+  required: ["reply", "profile", "food", "edits", "go", "restart", "choices"],
   properties: {
     reply: { type: "string", description: "What عباس says, in Gulf Arabic: short, warm, a coach." },
     profile: {
@@ -76,7 +78,8 @@ export const COACH_SCHEMA = {
         },
       },
     },
-    go: { type: "string", enum: ["", ...COACH_SCREENS], description: "Move the page to this step, or empty." },
+    go: { type: "string", enum: ["", ...COACH_SCREENS], description: "Move the page to this step or page, or empty." },
+    restart: { type: "boolean", description: "Start the setup again from its first question (the answers stay filled in, the person goes through them)." },
     choices: { type: "array", maxItems: 4, items: { type: "string" }, description: "Up to 4 short replies the person can tap." },
   },
 } as const;
@@ -87,6 +90,7 @@ export interface CoachAnswer {
   food: { field: string; value: number }[];
   edits: { op: string; weekday: number; exId: string; newExId: string; sets: number }[];
   go: string;
+  restart: boolean;
   choices: string[];
 }
 
@@ -117,7 +121,8 @@ WHAT YOU DO: you help the person through the branch: explain anything they did n
 - "profile": the wizard's answers. Fields: track (gym|food|both), sex (male|female), age, heightCm, weightKg (before pregnancy when pregnant), activity (${Object.keys(REF.activity).join("|")}), goals (comma list of ${GOALS.join("|")} — several allowed), stage (none|pregnant|postpartum|breastfeeding; women only), pregWeek, babyMonths, wasActive (true|false), level (beginner|intermediate|advanced), place (gym = a full gym · home = a home gym with dumbbells/bench/bands/pull-up bar · body = no equipment at all), days (comma list of weekdays 0=Sunday…6=Saturday), minutes (session length), meals. Changing them rebuilds the plan from the research.
 - "food": the nutrition targets the person keeps (kcal, proteinG, waterCups, produce, steps). Only within the research's safe ranges.
 - "edits": the training table: swap an exercise for another, remove one, add one, or change its sets. Use ONLY ids from the catalogue below that fit the person's place; in pregnancy and the first 3 months after birth ONLY pregnancy-safe ones.
-- "go": move the page to a step (track, about, goal, train, mode, plan, habits).
+- "go": move the person to a step of the setup (track, about, goal, train, mode) or a page of the app: today (the day's workout and food tracker), plan (the table and targets), habits (put the plan into «لأجل المهدي»'s habits), progress (weights, records, sets per muscle, nutrition and body weight over time), learn (the muscles and how to do each exercise).
+- "restart": true when the person wants to start over / change everything from the beginning: you set what you already know in "profile" and the setup opens at its first question so they go through it again.
 - "choices": up to 4 short replies to tap.
 When you change something, say in the reply what you changed. When the person only asks, change nothing (empty arrays).
 
@@ -130,10 +135,18 @@ ${research}
 EXERCISE CATALOGUE (id | name | muscle | where | safety):
 ${catalogue}
 
+HOW TO DO EACH EXERCISE (explain from this; muscles by id):
+${Object.entries(GUIDE).map(([id, g]) => `${id}: main ${g.primary.join("+")}${g.secondary.length ? `, helping ${g.secondary.join("+")}` : ""} | ${g.steps.join(" ")} | mistakes: ${g.mistakes.join(" ")}`).join("\n")}
+
+THE MUSCLES (explain them in plain words like this):
+${MUSCLES.map((m) => `${m.id} = ${m.name} (${m.aka}): ${m.where} ${m.does}`).join("\n")}
+
+THE APP: «الصحة العلوية» is an app of its own inside «لأجل المهدي», with tabs: «اليوم» (log every set as weight × reps, a rest timer, «خلصت تمرين اليوم», cardio, the day's protein/water/produce/calories/steps, a weigh-in), «خطتي» (the table and targets; «أدخلها في عاداتي» makes habits that the tracker then fills by itself), «التقدم» (sets per muscle this week vs 10, strength charts and records per exercise, body weight, nutrition days), «تعلّم» (the body map, every muscle, every exercise's technique page). Use the TRACKER below to coach: praise records, notice skipped muscles or missed protein, suggest the next weights (all sets at the top of the range → a little more weight).
+
 TRAINING FOCUSES: ${Object.entries(FOCUS).map(([k, v]) => `${k}=${v.name}`).join(", ")}. WEEKDAYS: ${WEEKDAYS.map((d, i) => `${i}=${d}`).join(", ")}.`;
 
 /** The person's current state, sent after the task. */
-export function coachState(profile: HealthProfile, plan: HealthPlan | null, screen: string): string {
+export function coachState(profile: HealthProfile, plan: HealthPlan | null, screen: string, recent: DayLog[] = []): string {
   const w = plan?.workout;
   const table = w?.blocked
     ? `BLOCKED: ${w.blocked}`
@@ -141,11 +154,13 @@ export function coachState(profile: HealthProfile, plan: HealthPlan | null, scre
   return `NOW — page step: ${screen || "home"}
 PROFILE: ${JSON.stringify({ ...profile, goals: profile.goals.join(","), days: profile.days.join(",") })}
 (place: ${LABELS.place[profile.place]})
-PLAN: ${plan ? `mode ${plan.mode}; food ${JSON.stringify(plan.food)}\nTABLE:\n${table || "(none)"}` : "not made yet"}`;
+PLAN: ${plan ? `mode ${plan.mode}; food ${JSON.stringify(plan.food)}\nTABLE:\n${table || "(none)"}` : "not made yet"}
+TRACKER (last 14 days, what they actually did):
+${recent.length ? recent.slice(-14).map((d) => `${d.date}: ${d.done ? "workout done" : ""} ${Object.entries(d.sets).map(([id, ss]) => `${id} ${ss.map((x) => `${x.kg}x${x.reps}`).join("/")}`).join("; ")}${d.cardioMin ? ` cardio ${d.cardioMin}min` : ""} food ${JSON.stringify(d.food)}${d.bodyKg ? ` weight ${d.bodyKg}kg` : ""}`).join("\n") : "(nothing logged yet)"}`;
 }
 
 /** Applies what عباس decided to the profile and the plan; anything outside the rules is dropped. */
-export function applyCoach(profile: HealthProfile, plan: HealthPlan | null, a: Partial<CoachAnswer>): { profile: HealthProfile; plan: HealthPlan | null; go: string; changed: boolean } {
+export function applyCoach(profile: HealthProfile, plan: HealthPlan | null, a: Partial<CoachAnswer>): { profile: HealthProfile; plan: HealthPlan | null; go: string; restart: boolean; changed: boolean } {
   let changed = false;
   let p = profile;
   const sets: Record<string, unknown> = {};
@@ -163,7 +178,8 @@ export function applyCoach(profile: HealthProfile, plan: HealthPlan | null, a: P
     changed = JSON.stringify(p) !== JSON.stringify(profile);
   }
   let next = plan;
-  if (next && changed) next = makePlan(p, next.mode);
+  // rebuilt from the research; the habits already made from it stay linked
+  if (next && changed) next = { ...makePlan(p, next.mode), links: next.links };
 
   if (next?.food && a.food?.length) {
     const food = { ...next.food };
@@ -202,5 +218,5 @@ export function applyCoach(profile: HealthProfile, plan: HealthPlan | null, a: P
     next = { ...next, workout: { ...w, days } };
   }
   const go = (COACH_SCREENS as readonly string[]).includes(a.go ?? "") ? (a.go as string) : "";
-  return { profile: p, plan: next ? { ...next, profile: p } : next, go, changed };
+  return { profile: p, plan: next ? { ...next, profile: p } : next, go, restart: a.restart === true, changed };
 }

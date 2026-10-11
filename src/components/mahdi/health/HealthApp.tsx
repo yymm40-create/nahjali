@@ -1,14 +1,14 @@
 "use client";
 
-// «الصحة العلوية»: the gym and the nutrition plan of «لأجل المهدي». The person enters who they are and what they want
+// «الصحة العلوية» · the setup (/mahdi/health/setup) and the plan's parts. The person enters who they are and what they want
 // (gym only, nutrition only, or both), picks a complete ready plan or builds it with us one step at a time, and then
 // chooses how it goes into their habits (by days, by exercises or weekly, plus the nutrition habits) in a project of
 // its own. Everything is computed on the device from the research (no AI, no cost); the plan is saved to the account.
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMahdi } from "@/components/mahdi/Provider";
-import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
+import { useHealth, type SetupStep } from "./HealthProvider";
 import {
   DEFAULT_PROFILE,
   EXERCISES,
@@ -39,12 +39,11 @@ import {
   type PlanDay,
 } from "@/lib/mahdi/health/plan";
 import RobotFace from "@/components/RobotFace";
-import MovableBubble from "@/components/MovableBubble";
 import "./health.css";
 
 /** «عباس سبع القنطرة»: the coach of «الصحة العلوية»; a word on every screen (to a man or to a woman). */
-const COACH = "عباس سبع القنطرة";
-function coachLine(screen: Screen, f: boolean, preg: boolean): string {
+export const COACH = "عباس سبع القنطرة";
+export function coachLine(screen: Screen, f: boolean, preg: boolean): string {
   const g = (m: string, w: string) => (f ? w : m);
   switch (screen) {
     case "track":
@@ -70,7 +69,7 @@ function coachLine(screen: Screen, f: boolean, preg: boolean): string {
   }
 }
 
-function Coach({ line }: { line: string }) {
+export function Coach({ line }: { line: string }) {
   if (!line) return null;
   return (
     <div className="gym-coach">
@@ -83,27 +82,10 @@ function Coach({ line }: { line: string }) {
   );
 }
 
-type Screen = "home" | "track" | "about" | "goal" | "train" | "mode" | "build-food" | "build-day" | "plan" | "habits";
+type Screen = "home" | SetupStep | "plan" | "habits";
 const WIZARD: Screen[] = ["track", "about", "goal", "train", "mode"];
 
-const keyOf = (uid: string) => `mahdi-health:${uid}`;
-const readLocal = (uid: string): HealthPlan | null => {
-  try {
-    return JSON.parse(localStorage.getItem(keyOf(uid)) ?? "null") as HealthPlan | null;
-  } catch {
-    return null;
-  }
-};
-const writeLocal = (uid: string, p: HealthPlan | null) => {
-  try {
-    if (p) localStorage.setItem(keyOf(uid), JSON.stringify(p));
-    else localStorage.removeItem(keyOf(uid));
-  } catch {
-    /* private window */
-  }
-};
-
-function Barbell() {
+export function Barbell() {
   return (
     <svg className="barbell" viewBox="0 0 220 60" aria-hidden="true">
       <rect x="10" y="27" width="200" height="6" rx="3" fill="#c6ff1a" />
@@ -115,7 +97,7 @@ function Barbell() {
   );
 }
 
-function Choice({ on, onClick, big, title, hint }: { on: boolean; onClick: () => void; big?: string; title: string; hint?: string }) {
+export function Choice({ on, onClick, big, title, hint }: { on: boolean; onClick: () => void; big?: string; title: string; hint?: string }) {
   return (
     <button type="button" className="gym-choice" aria-pressed={on} onClick={onClick}>
       {big && <span className="big">{big}</span>}
@@ -125,7 +107,7 @@ function Choice({ on, onClick, big, title, hint }: { on: boolean; onClick: () =>
   );
 }
 
-function Stepper({ label, value, set, step = 1, min, max, unit }: { label: string; value: number; set: (n: number) => void; step?: number; min: number; max: number; unit?: string }) {
+export function Stepper({ label, value, set, step = 1, min, max, unit }: { label: string; value: number; set: (n: number) => void; step?: number; min: number; max: number; unit?: string }) {
   const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n * 10) / 10));
   return (
     <label className="gym-field">
@@ -141,52 +123,18 @@ function Stepper({ label, value, set, step = 1, min, max, unit }: { label: strin
 }
 
 export default function HealthApp() {
-  const { state, store, toast } = useMahdi();
-  const uid = state.snap.profile.userId;
-  const [plan, setPlan] = useState<HealthPlan | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [screen, setScreen] = useState<Screen>("home");
-  const [p, setP] = useState<HealthProfile>(DEFAULT_PROFILE);
+  const router = useRouter();
+  const { loaded, plan, save, profile: p, setProfile: setP, step: screen, setStep } = useHealth();
   const [dayIdx, setDayIdx] = useState(0);
   const [foodIdx, setFoodIdx] = useState(0);
-  const saveTimer = useRef<number | null>(null);
   const top = useRef<HTMLDivElement>(null);
 
-  // the saved plan: on the device at once, then the account's copy
-  useEffect(() => {
-    const local = readLocal(uid);
-    let live = true;
-    mahdiFetch<{ ready: boolean; plan: HealthPlan | null }>("/api/mahdi/health")
-      .then((r) => {
-        if (!live) return;
-        const best = r.plan && (!local || r.plan.savedAt >= local.savedAt) ? r.plan : local;
-        setPlan(best);
-        if (best) setP(best.profile);
-      })
-      .catch(() => {
-        if (!live) return;
-        setPlan(local);
-        if (local) setP(local.profile);
-      })
-      .finally(() => live && setLoaded(true));
-    return () => {
-      live = false;
-    };
-  }, [uid]);
-
   const go = (s: Screen) => {
-    setScreen(s);
+    if (s === "plan") return router.push("/mahdi/health/plan");
+    if (s === "home") return router.push("/mahdi/health");
+    if (s === "habits") return router.push("/mahdi/health/habits");
+    setStep(s);
     top.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  const save = (next: HealthPlan) => {
-    const stamped = { ...next, savedAt: new Date().toISOString() };
-    setPlan(stamped);
-    writeLocal(uid, stamped);
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      mahdiFetch("/api/mahdi/health", { method: "PUT", json: { plan: stamped } }).catch(() => {});
-    }, 800);
   };
 
   const set = <K extends keyof HealthProfile>(k: K, v: HealthProfile[K]) => setP((o) => ({ ...o, [k]: v }));
@@ -205,15 +153,12 @@ export default function HealthApp() {
     }
   };
 
-  if (!loaded) return <div className="gym grid place-items-center"><p className="gym-dim">لحظة… 🏋️</p></div>;
+  if (!loaded) return <p className="gym-dim py-10 text-center">لحظة… 🏋️</p>;
 
   const wizardAt = WIZARD.indexOf(screen);
 
   return (
-    <div className="gym space-y-4" dir="rtl" ref={top}>
-      <p className="gym-doctor" role="note">
-        🩺 <b>عندك مشاكل صحية؟</b> ارجع لطبيبك للتأكد قبل ما تبدأ. وتذكّر: الذكاء الاصطناعي قد يخطئ.
-      </p>
+    <div className="space-y-4" ref={top}>
       {wizardAt >= 0 && (
         <div className="gym-bar" aria-label={`الخطوة ${wizardAt + 1} من ${WIZARD.length}`}>
           <b className="on" />
@@ -224,39 +169,7 @@ export default function HealthApp() {
         </div>
       )}
 
-      {screen !== "home" && <Coach line={coachLine(screen, female, preg)} />}
-
-      {screen === "home" && (
-        <>
-          <section className="gym-hero space-y-3">
-            <Barbell />
-            <span className="gym-eyebrow">🏋️ الصحة العلوية</span>
-            <h1 className="gym-title">
-              جسمك <em>أمانة</em>،<br />خلّه قوي.
-            </h1>
-            <p className="gym-small max-w-md">جدول جيم ونظام تغذية مبني على توصيات منظمة الصحة العالمية والكليات الطبية والمجلات العالمية، للرجل والمرأة، الحامل وغير الحامل. وبعدها يدخل في عاداتك ويتابع معك كل يوم.</p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="gym-btn" onClick={() => go("track")}>
-                {plan ? "خطة جديدة" : "يلا نبدأ 💪"}
-              </button>
-              <Link href="/mahdi/health/research" className="gym-btn ghost">
-                📚 البحث والمصادر
-              </Link>
-            </div>
-          </section>
-
-          <section className="gym-card flex items-start gap-3">
-            <RobotFace id="sabaa" size={64} />
-            <div className="space-y-1">
-              <b className="text-lg font-black">هلا! أنا {COACH} 🦁</b>
-              <p className="gym-small">مدربك في «الصحة العلوية». أسوي لك جدول تمارين ونظام تغذية على مقاسك من توصيات المنظمات الطبية العالمية، للرجل والمرأة والحامل والمرضعة، وأدخله في عاداتك عشان تتابعه كل يوم. ما أبي منك إلا الالتزام!</p>
-            </div>
-          </section>
-
-          {plan && <PlanSummary plan={plan} onOpen={() => go("plan")} onHabits={() => go("habits")} onEdit={() => go("track")} />}
-          <Disclaimer />
-        </>
-      )}
+      <Coach line={coachLine(screen, female, preg)} />
 
       {screen === "track" && (
         <section className="space-y-4">
@@ -478,164 +391,11 @@ export default function HealthApp() {
         </section>
       )}
 
-      {screen === "plan" && plan && <PlanView plan={plan} save={save} onHabits={() => go("habits")} onHome={() => go("home")} />}
-
-      {screen === "habits" && plan && (
-        <ToHabits
-          plan={plan}
-          projects={state.snap.projects.filter((x) => !x.archivedAt)}
-          back={() => go("plan")}
-          apply={async (body) => {
-            try {
-              const r = await store.mutate<{ made: number; projectId: string }>("/api/mahdi/health/apply", "POST", { plan, ...body });
-              toast(`تمت إضافة ${r.made} عادة 💪`);
-              return r.projectId;
-            } catch (e) {
-              toast((e as Error).message);
-              return null;
-            }
-          }}
-        />
-      )}
-
-      <CoachChat
-        uid={uid}
-        female={female}
-        screen={screen}
-        profile={p}
-        plan={plan}
-        onResult={(r) => {
-          setP(r.profile);
-          if (r.plan && plan) save(r.plan);
-          if (r.go && (plan || !["plan", "habits"].includes(r.go))) go(r.go as Screen);
-        }}
-      />
     </div>
   );
 }
 
-interface CoachMsg {
-  role: "user" | "assistant";
-  text: string;
-  changed?: boolean;
-  error?: boolean;
-}
-
-/** «عباس سبع القنطرة» on the side: a small movable bubble that opens his chat; he can change the plan directly. */
-function CoachChat({ uid, female, screen, profile, plan, onResult }: { uid: string; female: boolean; screen: Screen; profile: HealthProfile; plan: HealthPlan | null; onResult: (r: { profile: HealthProfile; plan: HealthPlan | null; go: string }) => void }) {
-  const key = `mahdi-health-chat:${uid}`;
-  const hello: CoachMsg = {
-    role: "assistant",
-    text: female
-      ? "هلا يا بطلة 🦁 أنا عباس سبع القنطرة. أي شي ما فهمتيه أو تبين تغيرينه في خطتك قولي لي، وأنا أعدله لك على طول."
-      : "هلا يا بطل 🦁 أنا عباس سبع القنطرة. أي شي ما فهمته أو تبي تغيره في خطتك قول لي، وأنا أعدله لك على طول.",
-  };
-  const [open, setOpen] = useState(false);
-  const [list, setList] = useState<CoachMsg[]>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(key) ?? "null") as CoachMsg[] | null;
-      return Array.isArray(saved) && saved.length ? saved : [hello];
-    } catch {
-      return [hello];
-    }
-  });
-  const [choices, setChoices] = useState<string[]>(["ما فهمت الخطة، اشرح لي", "ما عندي أدوات، عدّل الجدول", "أبي أنزل وزن وأبني عضل", "عندي إصابة في ركبتي"]);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(list.slice(-40)));
-    } catch {
-      /* private window */
-    }
-    end.current?.scrollIntoView({ block: "nearest" });
-  }, [list, key, busy]);
-
-  const send = async (text: string) => {
-    const said = text.trim();
-    if (!said || busy) return;
-    const next = [...list, { role: "user" as const, text: said }];
-    setList(next);
-    setDraft("");
-    setChoices([]);
-    setBusy(true);
-    try {
-      const r = await mahdiFetch<{ reply: string; choices: string[]; profile: HealthProfile; plan: HealthPlan | null; go: string; changed: boolean }>("/api/mahdi/health/coach", {
-        method: "POST",
-        json: { messages: next.filter((m) => !m.error).map(({ role, text }) => ({ role, text })), profile, plan, screen },
-      });
-      setList((l) => [...l, { role: "assistant", text: r.reply, changed: r.changed }]);
-      setChoices(r.choices ?? []);
-      onResult(r);
-    } catch (e) {
-      setList((l) => [...l, { role: "assistant", text: (e as Error).message || "عباس ما قدر يرد الحين، جرّب بعد شوي.", error: true }]);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <MovableBubble id="mahdi-coach" corner="left" size={52} label="عباس سبع القنطرة: اسألني" gradient="linear-gradient(135deg, #c6ff1a, #5c7a00)" hidden={open} onPress={() => setOpen(true)}>
-        <RobotFace id="sabaa" size={38} />
-      </MovableBubble>
-      {open && (
-        <aside className="gym-chat" role="dialog" aria-modal="false" aria-label="محادثة عباس سبع القنطرة" dir="rtl">
-          <header>
-            <RobotFace id="sabaa" size={38} />
-            <div>
-              <b>{COACH}</b>
-              <small>مدربك · يعدّل خطتك مباشرة</small>
-            </div>
-            <button type="button" className="gym-icon-btn" onClick={() => setOpen(false)} aria-label="إغلاق">✕</button>
-          </header>
-          <div className="gym-chat-list" aria-live="polite">
-            {list.map((m, i) => (
-              <div key={i} className={`gym-msg ${m.role}${m.error ? " err" : ""}`}>
-                {m.text}
-                {m.changed && <span className="gym-msg-tag">✓ عدّلت خطتك</span>}
-              </div>
-            ))}
-            {busy && <div className="gym-msg assistant">عباس يكتب… 🏋️</div>}
-            <div ref={end} />
-          </div>
-          {!!choices.length && !busy && (
-            <div className="gym-chips px-3 pb-2">
-              {choices.map((c) => (
-                <button key={c} type="button" className="gym-chip" onClick={() => void send(c)}>
-                  {c}
-                </button>
-              ))}
-            </div>
-          )}
-          <form className="gym-chat-send" onSubmit={(e) => (e.preventDefault(), void send(draft))}>
-            <textarea
-              className="gym-input"
-              rows={2}
-              maxLength={1500}
-              placeholder="اكتب لعباس…"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send(draft);
-                }
-              }}
-            />
-            <button type="submit" className="gym-btn sm" disabled={busy || !draft.trim()}>
-              إرسال
-            </button>
-          </form>
-          <p className="gym-chat-note">عباس مساعد ذكي وقد يخطئ؛ عندك مشكلة صحية؟ ارجع لطبيبك.</p>
-        </aside>
-      )}
-    </>
-  );
-}
-
-function Nav({ back, next, nextLabel = "التالي ←" }: { back?: () => void; next?: () => void; nextLabel?: string }) {
+export function Nav({ back, next, nextLabel = "التالي ←" }: { back?: () => void; next?: () => void; nextLabel?: string }) {
   return (
     <div className="flex items-center justify-between gap-2 pt-2">
       {back ? (
@@ -652,11 +412,11 @@ function Nav({ back, next, nextLabel = "التالي ←" }: { back?: () => void
   );
 }
 
-function Disclaimer() {
+export function Disclaimer() {
   return <p className="gym-small text-center">هذي توصيات عامة للأصحاء من المصادر العالمية، ما تغني عن طبيبك. عندك مرض أو إصابة أو حمل؟ استشر طبيبك قبل ما تبدأ.</p>;
 }
 
-function PlanSummary({ plan, onOpen, onHabits, onEdit }: { plan: HealthPlan; onOpen: () => void; onHabits: () => void; onEdit: () => void }) {
+export function PlanSummary({ plan, onOpen, onHabits, onEdit }: { plan: HealthPlan; onOpen: () => void; onHabits: () => void; onEdit: () => void }) {
   const w = plan.workout;
   return (
     <section className="gym-card hot space-y-3">
@@ -716,7 +476,7 @@ function BuildFood({ idx, plan, n, save, back, next }: { idx: number; plan: Heal
   );
 }
 
-function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: PlanDay; save: (p: HealthPlan) => void; editable?: boolean }) {
+export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: PlanDay; save: (p: HealthPlan) => void; editable?: boolean }) {
   const [adding, setAdding] = useState("");
   const w = plan.workout!;
   const p = plan.profile;
@@ -804,7 +564,7 @@ function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: PlanDay
   );
 }
 
-function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; save: (p: HealthPlan) => void; onHabits: () => void; onHome: () => void }) {
+export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; save: (p: HealthPlan) => void; onHabits: () => void; onHome: () => void }) {
   const [edit, setEdit] = useState(false);
   const n = plan.profile.track === "gym" ? null : nutrition(plan.profile);
   const w = plan.workout;
@@ -889,7 +649,7 @@ function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; save: (p
   );
 }
 
-function ToHabits({ plan, projects, back, apply }: { plan: HealthPlan; projects: { id: string; name: string; icon: string }[]; back: () => void; apply: (b: { gym: GymWay | null; food: FoodHabit[]; where: string; projectId?: string }) => Promise<string | null> }) {
+export function ToHabits({ plan, projects, back, apply }: { plan: HealthPlan; projects: { id: string; name: string; icon: string }[]; back: () => void; apply: (b: { gym: GymWay | null; food: FoodHabit[]; where: string; projectId?: string }) => Promise<string | null> }) {
   const hasGym = !!plan.workout && !plan.workout.blocked && plan.workout.days.length > 0;
   const foodList = foodHabitsFor(plan);
   const [gym, setGym] = useState<GymWay | null>(hasGym ? "days" : null);
