@@ -27,6 +27,7 @@ import { useMahdi } from "./Provider";
 import ReadingCard from "./ReadingCard";
 import DesignGoals from "./home/DesignGoals";
 import DesignQuick from "./home/DesignQuick";
+import Tick, { TICK_SHAPES, useTickPref } from "./home/Tick";
 import { shownPlace, useLook } from "./ThemeRoot";
 import ShrineArt from "./ShrineArt";
 import { designOf } from "@config/mahdi";
@@ -303,6 +304,33 @@ function ByProject() {
 
 // ───────────────────────────── arranging ─────────────────────────────
 
+/** «شكل علامة الصح»: one shape for each project (تلقائي), or the same shape for all. Kept on this device. */
+function TickPicker() {
+  const [pref, setPref] = useTickPref();
+  const opts = [{ id: "auto" as const, name: "تلقائي" }, ...TICK_SHAPES];
+  return (
+    <div className="space-y-2">
+      <p className="m-eyebrow">شكل علامة الصح</p>
+      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="شكل علامة الصح">
+        {opts.map((o) => (
+          <button key={o.id} type="button" role="radio" aria-checked={pref === o.id} className="m-card flex flex-col items-center gap-1 p-2 text-sm font-semibold" style={pref === o.id ? { outline: "2px solid var(--m-gold)" } : undefined} onClick={() => setPref(o.id)}>
+            {o.id === "auto" ? (
+              <span className="flex gap-0.5" aria-hidden="true">
+                {TICK_SHAPES.slice(0, 3).map((s) => (
+                  <Tick key={s.id} shape={s.id} size={18} />
+                ))}
+              </span>
+            ) : (
+              <Tick shape={o.id} size={30} />
+            )}
+            {o.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** «رتّب رئيسيتك»: each card on or off, and up or down; «الافتراضي» brings the standard home back. */
 function Arrange({ list, onChange }: { list: WidgetId[]; onChange: (l: WidgetId[]) => void }) {
   const off = WIDGETS.filter((w) => !list.includes(w.id));
@@ -345,6 +373,7 @@ function Arrange({ list, onChange }: { list: WidgetId[]; onChange: (l: WidgetId[
           </ul>
         </>
       )}
+      <TickPicker />
       <button type="button" className="m-btn m-btn-quiet w-full" onClick={() => onChange(homeWidgets(null))}>
         <Icon name="undo" size={18} /> رجّع الرئيسية الافتراضية
       </button>

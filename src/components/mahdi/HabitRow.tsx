@@ -9,6 +9,8 @@ import Icon from "./Icon";
 import LogSheet from "./LogSheet";
 import ProgressRing from "./ProgressRing";
 import { useMahdi } from "./Provider";
+import { bySort } from "@/lib/mahdi/client/derive";
+import Tick, { shapeFor, useTickPref } from "./home/Tick";
 
 /**
  * One habit on a day. The round button logs in one tap (done ↔ not done, or +1); amounts open a number pad.
@@ -16,6 +18,8 @@ import { useMahdi } from "./Provider";
  */
 export default function HabitRow({ habit, inst, date, project }: { habit: Habit; inst: Instance; date: ISODate; project?: Project }) {
   const { store, state, toast } = useMahdi();
+  const [pref] = useTickPref();
+  const shape = shapeFor(pref, habit.projectId, state.snap.projects.filter((p) => !p.archivedAt).sort(bySort));
   const [open, setOpen] = useState(false);
   const [bump, setBump] = useState(0);
   const v = versionAt({ ...habit, logs: {} }, date);
@@ -65,8 +69,8 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
       <button type="button" onClick={tap} className="m-tap" data-done={done || todayDone} aria-label={tapLabel} aria-pressed={v.measure === "check" ? todayDone : undefined}>
         <ProgressRing value={inst.progress} size={52} stroke={4} color={color}>
           {done || todayDone ? (
-            <span className="m-tap-check grid size-9 place-items-center rounded-full" style={{ background: color, color: "#fff" }}>
-              <Icon name="check" size={20} strokeWidth={2.6} />
+            <span className="m-tap-check grid size-9 place-items-center" style={{ "--pc": color } as React.CSSProperties}>
+              <Tick shape={shape} size={34} />
             </span>
           ) : v.measure === "check" ? (
             <span className="block size-9 rounded-full border-2" style={{ borderColor: "var(--m-line)" }} />
