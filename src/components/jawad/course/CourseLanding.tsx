@@ -312,7 +312,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
 
       <section className="cr-band cr-alt">
         <div className="cr-in">
-          <h2 className="cr-h">وش بتتعلم في ٣ أيام</h2>
+          <h2 className="cr-h">وش بنسوي في ٣ أيام</h2>
           <ol className="cr-line">
             {s.days.map((d, i) => (
               <li key={i}>

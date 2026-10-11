@@ -44,7 +44,7 @@ export async function shareSettings(): Promise<ShareSettings & { ready: boolean 
   if (error) return { enabled: false, rewardSar: SHARE.defaultRewardSar, ready: !missing(error) };
   const kv = Object.fromEntries((data ?? []).map((r) => [r.key as string, String(r.value)]));
   const reward = Number(kv.reward);
-  return { enabled: kv.enabled !== "off", rewardSar: Number.isFinite(reward) && reward > 0 ? reward : SHARE.defaultRewardSar, ready: true };
+  return { enabled: !SHARE.paused && kv.enabled !== "off", rewardSar: Number.isFinite(reward) && reward > 0 ? reward : SHARE.defaultRewardSar, ready: true };
 }
 
 export async function saveShareSettings(s: Partial<ShareSettings>) {
