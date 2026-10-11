@@ -117,7 +117,10 @@ export default function Inspector({
   onUpscale,
   onSync,
   syncing = false,
+  page = false,
 }: {
+  /** «واجهات البرامج»: the big page (the grading tools at a comfortable size, laid out across the screen) */
+  page?: boolean;
   tl: Timeline;
   selected: string[];
   assets: Map<string, EditorAsset>;
@@ -528,7 +531,7 @@ export default function Inspector({
 
       {current === "color" && (
         <div className="space-y-3">
-          <GradePanel clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} projectId={projectId ?? null} targets={{ track: gradeable(tl, track.clips.map((c) => c.id), clip.id), all: allGradeable(tl, clip.id) }} media={a?.url && (a.kind === "video" || a.kind === "image") ? { url: a.url, kind: a.kind } : null} />
+          <GradePanel page={page} clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} projectId={projectId ?? null} targets={{ track: gradeable(tl, track.clips.map((c) => c.id), clip.id), all: allGradeable(tl, clip.id) }} media={a?.url && (a.kind === "video" || a.kind === "image") ? { url: a.url, kind: a.kind } : null} />
           {clip.color && (
             <details className="rounded-lg border border-jw-line p-2">
               <summary className="cursor-pointer text-[11px] text-jw-muted">الألوان السريعة القديمة (هذا المقطع فيه منها)</summary>
