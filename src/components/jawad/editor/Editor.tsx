@@ -204,6 +204,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [tlH, setTlH] = useState<number | null>(null);
   // the conversation over the whole editor (a computer), and its text size (kept on this device)
   const [chatBig, setChatBig] = useState(false);
+  // JAWAD AI's two top bars (the header and the sections bar) on a computer: tiny by default, one press brings them out,
+  // and they can be hidden completely (a small tab stays to bring them back); kept on this device
+  const [bars, setBarsState] = useState<"mini" | "open" | "off">("mini");
+  const setBars = (v: "mini" | "open" | "off") => {
+    setBarsState(v);
+    try {
+      localStorage.setItem("jw-editor-bars", v);
+    } catch {
+      /* not kept */
+    }
+  };
   // «حيدرة فوق التايملاين»: on a computer his conversation sits right over the timeline (instead of a popup) so edits are
   // asked and seen in the same place; kept on this device
   const [chatDock, setChatDockState] = useState(false);
@@ -412,6 +423,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         const z = Number(localStorage.getItem("jw-editor-chat-zoom"));
         if (z >= 0.85 && z <= 1.6) setChatZoom(z);
         if (localStorage.getItem("jw-editor-chat-dock")) setChatDockState(true);
+        const bs = localStorage.getItem("jw-editor-bars");
+        if (bs === "open" || bs === "off") setBarsState(bs);
         const cm = localStorage.getItem("jw-editor-chat-mode");
         if (cm === "tall" || cm === "half") setChatModeState(cm);
         setPz(readPreviewZoom(localStorage.getItem(PREVIEW_ZOOM_KEY)));
@@ -1602,9 +1615,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (T.mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
       data-ed-theme={ws ? "ws" : theme}
       data-ed-page={bigPage ? "big" : undefined}
+      data-ed-bars={bars}
       // a phone: the editor takes the whole screen (JAWAD AI's header steps aside, sections.css)
       data-ed-full=""
-      style={{ ...(ws ? (wsVars(ws) as React.CSSProperties) : {}), ...(T.font ? { fontFamily: `"${familyOf(T.font!)}", var(--jw-font)` } : {}), ...(sideChat ? ({ "--jw-chat-pad": chatPad } as React.CSSProperties) : {}) }}
+      style={{ ...(bars !== "open" ? ({ "--jw-header-h": "0px", "--jw-bar-h": "0px" } as React.CSSProperties) : {}), ...(ws ? (wsVars(ws) as React.CSSProperties) : {}), ...(T.font ? { fontFamily: `"${familyOf(T.font!)}", var(--jw-font)` } : {}), ...(sideChat ? ({ "--jw-chat-pad": chatPad } as React.CSSProperties) : {}) }}
       // files dropped anywhere else (the preview, the panels) go at the playhead
       onDragOver={(e) => {
         if (!readOnly && e.dataTransfer.types.includes("Files")) e.preventDefault();
@@ -1616,6 +1630,27 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (files.length) dropFiles(files, at(), null);
       }}
     >
+      {/* JAWAD AI's header and sections bar, folded: a thin strip (mini), the real bars (open), or a tiny tab (off) */}
+      {bars === "off" ? (
+        <button type="button" className="ed-bars-tab" onClick={() => setBars("mini")} aria-label="أظهر شريط الجواد" title="أظهر شريط الجواد">
+          <Icon name="chevronDown" size={12} />
+        </button>
+      ) : (
+        <div className="ed-bars-strip">
+          {bars === "mini" ? (
+            <button type="button" onClick={() => setBars("open")} title="اطلع شريط الجواد والأقسام (صناعة الصور والفيديو وغيرها)">
+              <Icon name="chevronDown" size={12} /> JAWAD AI · الأقسام
+            </button>
+          ) : (
+            <button type="button" onClick={() => setBars("mini")} title="صغّر الشريطين">
+              <Icon name="chevronUp" size={12} /> صغّر
+            </button>
+          )}
+          <button type="button" onClick={() => setBars("off")} title="خبّي الشريطين تماماً">
+            <Icon name="x" size={11} /> إخفاء
+          </button>
+        </div>
+      )}
       {/* top bar */}
       <div className="jw-glass relative z-30 mx-2 mt-2 flex items-center gap-2 rounded-2xl px-2 py-1.5">
         <Link href={backHref} onClick={forgetOpen} className="jw-btn jw-btn-quiet jw-btn-icon shrink-0" aria-label="اطلع من المشروع" title="اطلع من المشروع">

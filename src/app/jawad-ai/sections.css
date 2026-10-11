@@ -521,3 +521,64 @@
     animation: none;
   }
 }
+
+/* «حيدرة كت» on a computer: JAWAD AI's header and sections bar fold into a thin strip inside the editor (open: the real
+   bars; off: a tiny tab) — Editor.tsx's `bars` */
+.ed-bars-strip,
+.ed-bars-tab {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .jw:has([data-ed-bars="mini"]) > header,
+  .jw:has([data-ed-bars="off"]) > header {
+    display: none;
+  }
+  .ed-bars-strip {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    height: 20px;
+    padding: 0 10px;
+    font-size: 10px;
+    line-height: 1;
+    color: var(--jw-muted);
+    background: var(--jw-surface);
+    border-bottom: 1px solid var(--jw-line);
+  }
+  .ed-bars-strip button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+    padding: 0 6px;
+    background: none;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+  }
+  .ed-bars-strip button:hover {
+    color: var(--jw-ink);
+  }
+  .ed-bars-tab {
+    position: absolute;
+    top: 0;
+    inset-inline-start: 50%;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 12px;
+    transform: translateX(-50%);
+    border: 0;
+    border-radius: 0 0 8px 8px;
+    background: var(--jw-surface-3);
+    color: var(--jw-muted);
+    cursor: pointer;
+    opacity: 0.55;
+  }
+  .ed-bars-tab:hover {
+    opacity: 1;
+    color: var(--jw-ink);
+  }
+}
