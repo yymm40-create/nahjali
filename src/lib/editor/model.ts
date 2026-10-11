@@ -39,6 +39,12 @@ export interface TextStyle {
   font: string;
   /** captions: the word being said right now in this colour (null = plain text) */
   highlight: string | null;
+  /** «توهج»: a soft glow of this colour behind the words (null/absent = none) */
+  glow?: string | null;
+  /** «تدرّج»: the words filled from `color` at the top to this colour at the bottom (null/absent = one colour) */
+  grad?: string | null;
+  /** «عمق ثلاثي»: the words extruded as a 3D block, 0 (flat) … 1 (deep), its sides a darker shade */
+  depth?: number;
 }
 
 /** A caption's spoken word: from `s` to `e` ms after the clip starts. */
@@ -165,6 +171,8 @@ export const ANIMS = {
   flash: { label: "فلاش", icon: "✨", ms: 220 },
   words: { label: "كلمة كلمة", icon: "🔤", ms: 900, only: "text" },
   kashida: { label: "مطّ", icon: "〰️", ms: 650, only: "text" },
+  decode: { label: "فك الشفرة", icon: "🔐", ms: 700, only: "text" },
+  count: { label: "عدّاد", icon: "🔢", ms: 900, only: "text" },
   kenburns: { label: "كين بيرنز", icon: "🎞️", ms: 0, only: "media" },
 } as const satisfies Record<string, { label: string; icon: string; ms: number; only?: "text" | "media" }>;
 export type AnimKind = keyof typeof ANIMS;
@@ -201,8 +209,12 @@ export interface AnimLook {
   words: number | null;
   /** kashida stretch 0–1 */
   kashida: number;
+  /** «فك الشفرة»: the share of the letters already decoded 0–1 (null = all) */
+  decode: number | null;
+  /** «عدّاد»: the numbers counted up 0–1 (null = their full value) */
+  count: number | null;
 }
-export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, kashida: 0 };
+export const STILL: AnimLook = { alpha: 1, dx: 0, dy: 0, scale: 1, rotate: 0, squash: 1, blur: 0, show: null, flash: 0, smear: 0, tear: 0, seed: 0, words: null, kashida: 0, decode: null, count: null };
 
 const outCubic = (p: number) => 1 - (1 - p) ** 3;
 const outExpo = (p: number) => (p >= 1 ? 1 : 1 - 2 ** (-10 * p));
@@ -215,6 +227,15 @@ function animStep(k: AnimKind, p: number, l: AnimLook, ms: number, entering: boo
   switch (k) {
     case "fade":
       l.alpha *= outCubic(q);
+      break;
+    case "decode":
+      // random letters settle into the real ones, from the start of the line
+      l.decode = q;
+      l.seed = Math.floor(ms / 50);
+      break;
+    case "count":
+      // the numbers roll up from zero (ease-out: fast, then slowing onto the value)
+      l.count = 1 - (1 - q) ** 3;
       break;
     case "pop":
       l.scale *= Math.max(0.001, outBack(q));
@@ -766,6 +787,9 @@ function readText(v: unknown): TextStyle | null {
     align: pick(o.align, ["center", "right", "left"] as const, "center"),
     font: isFont(o.font) ? o.font : "readex",
     highlight: o.highlight == null ? null : color(o.highlight, "#facc15"),
+    ...(o.glow == null ? {} : { glow: color(o.glow, "#ffffff") }),
+    ...(o.grad == null ? {} : { grad: color(o.grad, "#ffffff") }),
+    ...(o.depth == null || !Number(o.depth) ? {} : { depth: num(o.depth, 0, 1, 0) }),
   };
 }
 
@@ -1074,4 +1098,33 @@ export function pack(clips: Clip[], keepOrder = false) {
     at += clipLength(c);
   }
   return sorted;
+}
+
+/** «فك الشفرة»: the text with its first `q` share of letters real and the rest random glyphs (spaces kept). */
+export function decodeText(body: string, q: number, seed: number) {
+  if (q >= 1) return body;
+  const chars = [...body];
+  const letters = chars.filter((c) => !/\s/.test(c)).length;
+  const real = Math.floor(letters * Math.max(0, q));
+  const arabic = /[؀-ۿ]/.test(body);
+  const pool = arabic ? "ابتثجحخدذرزسشصضطظعغفقكلمنهوي" : "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&@";
+  let n = 0;
+  return chars
+    .map((c, i) => {
+      if (/\s/.test(c)) return c;
+      if (n++ < real) return c;
+      return pool[(i * 7919 + seed * 104729 + n * 31) % pool.length];
+    })
+    .join("");
+}
+
+/** «عدّاد»: every number in the text at `q` of its value (same decimals and thousands commas; Arabic-Indic digits become Western). */
+export function countText(body: string, q: number) {
+  if (q >= 1) return body;
+  const western = body.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+  return western.replace(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g, (m) => {
+    const dec = (m.split(".")[1] ?? "").length;
+    const now = Number(m.replace(/,/g, "")) * Math.max(0, q);
+    return m.includes(",") ? now.toLocaleString("en", { minimumFractionDigits: dec, maximumFractionDigits: dec }) : now.toFixed(dec);
+  });
 }
