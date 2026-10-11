@@ -116,8 +116,30 @@ export interface Backdrop {
   color: string;
   /** blur strength 1–100 */
   blur: number;
+  /** «نعومة الحواف»: how soft the cut-out's edge is, 0 (sharp) … 1 (very soft) */
+  feather: number;
+  /** «شدّ / توسيع الحافة»: −1 widens the cut-out (keeps more around the person) … 1 tightens it (cuts closer) */
+  shrink: number;
+  /** «تثبيت ضد الرجفة»: how much each frame's cut-out follows the frames before it, 0 (none) … 1 (very steady) */
+  steady: number;
+  /** show the cut-out itself (white = kept, black = removed) to tune it */
+  show: boolean;
 }
-export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40 };
+export const DEFAULT_BACKDROP: Backdrop = { mode: "blur", color: "#16a34a", blur: 40, feather: 0.3, shrink: 0, steady: 0.5, show: false };
+
+/** A backdrop as stored or sent, kept inside its bounds (older projects get the default edge settings). */
+export function readBackdrop(v: Record<string, unknown>, base: Backdrop = DEFAULT_BACKDROP): Backdrop {
+  const n = (x: unknown, lo: number, hi: number, d: number) => (Number.isFinite(Number(x)) && x !== null && x !== "" ? Math.min(hi, Math.max(lo, Number(x))) : d);
+  return {
+    mode: v.mode === "remove" || v.mode === "color" || v.mode === "blur" ? v.mode : base.mode,
+    color: typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color : base.color,
+    blur: Math.round(n(v.blur, 1, 100, base.blur)),
+    feather: Math.round(n(v.feather, 0, 1, base.feather) * 100) / 100,
+    shrink: Math.round(n(v.shrink, -1, 1, base.shrink) * 100) / 100,
+    steady: Math.round(n(v.steady, 0, 1, base.steady) * 100) / 100,
+    show: v.show === undefined ? base.show : v.show === true,
+  };
+}
 
 /** A sound effect on a clip (Web Audio nodes, the same in the preview and the export). */
 export const SOUND_EFFECTS = {
@@ -998,11 +1020,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
     fx: kind === "video" ? readFx(o.fx) : [],
     bg:
       kind === "video" && o.bg && typeof o.bg === "object"
-        ? {
-            mode: pick((o.bg as Record<string, unknown>).mode, ["remove", "blur", "color"] as const, "blur"),
-            color: color((o.bg as Record<string, unknown>).color, DEFAULT_BACKDROP.color),
-            blur: int((o.bg as Record<string, unknown>).blur, 1, 100, DEFAULT_BACKDROP.blur),
-          }
+        ? readBackdrop(o.bg as Record<string, unknown>)
         : null,
   };
 }

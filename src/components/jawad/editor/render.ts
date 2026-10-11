@@ -359,7 +359,12 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
   const filter = [colorFilter(clip.color), blur].filter(Boolean).join(" ");
   ctx.imageSmoothingQuality = "high";
   const base = ctx.globalAlpha;
-  if (clip.bg && f.mask) {
+  if (clip.bg && f.mask && clip.bg.show) {
+    // «اعرض الماسك»: white where the person is kept, black where the picture is removed
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.drawImage(softMask(f.mask, clip.bg.feather ?? 0.3, w, h), -w / 2, -h / 2, w, h);
+  } else if (clip.bg && f.mask) {
     // the background first (blurred, a colour, or nothing), then the person cut out on top
     if (clip.bg.mode === "blur") {
       ctx.filter = `${filter} blur(${((clip.bg.blur / 100) * Math.max(w, h) * 0.03).toFixed(1)}px)`;
@@ -369,7 +374,7 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
       ctx.fillRect(-w / 2, -h / 2, w, h);
     }
     ctx.filter = filter || "none";
-    ctx.drawImage(cutout(f, f.mask), -w / 2, -h / 2, w, h);
+    ctx.drawImage(cutout(f, f.mask, clip.bg.feather ?? 0.3), -w / 2, -h / 2, w, h);
   } else if (clip.fx.length || look.tfx.length) {
     // «المؤثرات»: the clip's own effects (and a transition's passing one), on its own time
     const plan = fxPlan(look.tfx.length ? [...clip.fx, ...look.tfx] : clip.fx, Math.max(0, ms - clip.start) / 1000, clipLength(clip) / 1000);
@@ -401,7 +406,28 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
 
 let scratch: HTMLCanvasElement | null = null;
 /** The picture with everything but the person made transparent (at up to 1280 px; drawn back at the clip's size). */
-function cutout(f: Frame, mask: CanvasImageSource) {
+let soft: HTMLCanvasElement | null = null;
+/** The mask in white at the drawn size, its edge softened by «نعومة الحواف» (0 sharp … 1 very soft). */
+function softMask(mask: CanvasImageSource, feather: number, w: number, h: number) {
+  soft ??= document.createElement("canvas");
+  const k = Math.min(1, 1280 / Math.max(w, h));
+  const sw = Math.max(1, Math.round(w * k));
+  const sh = Math.max(1, Math.round(h * k));
+  if (soft.width !== sw || soft.height !== sh) {
+    soft.width = sw;
+    soft.height = sh;
+  }
+  const c = soft.getContext("2d")!;
+  c.clearRect(0, 0, sw, sh);
+  c.imageSmoothingQuality = "high";
+  const px = Math.max(0, feather) * Math.max(sw, sh) * 0.012;
+  c.filter = px > 0.3 ? `blur(${px.toFixed(1)}px)` : "none";
+  c.drawImage(mask, 0, 0, sw, sh);
+  c.filter = "none";
+  return soft;
+}
+
+function cutout(f: Frame, mask: CanvasImageSource, feather = 0.3) {
   scratch ??= document.createElement("canvas");
   const k = Math.min(1, 1280 / Math.max(f.width, f.height));
   const w = Math.max(1, Math.round(f.width * k));
@@ -416,7 +442,11 @@ function cutout(f: Frame, mask: CanvasImageSource) {
   c.drawImage(f.img, 0, 0, w, h);
   c.globalCompositeOperation = "destination-in";
   c.imageSmoothingQuality = "high";
+  // «نعومة الحواف»: the edge softened before it cuts (0 = as the model drew it)
+  const px = Math.max(0, feather) * Math.max(w, h) * 0.012;
+  c.filter = px > 0.3 ? `blur(${px.toFixed(1)}px)` : "none";
   c.drawImage(mask, 0, 0, w, h);
+  c.filter = "none";
   c.globalCompositeOperation = "source-over";
   return scratch;
 }

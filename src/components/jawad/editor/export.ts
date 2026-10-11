@@ -186,7 +186,7 @@ export async function exportVideo(
             const b = images.get(a.id)!;
             f = { img: b, width: b.width, height: b.height };
           } else f = await frameAt(l.clip, a, l.ms);
-          if (f && l.clip.bg) f = { ...f, mask: masker.maskOf(l.clip.id, f.img, f.width, f.height) };
+          if (f && l.clip.bg) f = { ...f, mask: masker.maskOf(l.clip.id, f.img, f.width, f.height, { shrink: l.clip.bg.shrink, steady: l.clip.bg.steady, t: l.ms }) };
           now.set(l.clip.id, f);
         }
         // drawFrame draws in the timeline's units; one scale maps them to the output size
