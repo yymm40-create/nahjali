@@ -228,6 +228,11 @@ export default function MorePage() {
         >
           <Icon name="logout" /> {t.auth.logout}
         </button>
+        {/* the apps for this phone and for the computer; hidden inside the app itself, which is already downloaded */}
+        <Link href="/download" className="m-btn m-btn-ghost hide-in-app w-full justify-start">
+          📲 {t.more.getApp}
+        </Link>
+        <p className="m-hint hide-in-app">{t.more.getAppHint}</p>
         <Link href="/" className="m-btn m-btn-quiet w-full justify-start">
           <Icon name="chevronRight" /> {t.backToSite}
         </Link>

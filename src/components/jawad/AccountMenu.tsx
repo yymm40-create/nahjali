@@ -6,7 +6,11 @@ import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 
-/** The account button: works, coins, the owner's admin, sign out (which stays inside JAWAD AI). */
+/**
+ * The account button: the library, coins, films, «📲 حمّل التطبيق» (the phone's app first on a phone, see /download —
+ * hidden inside the app itself, which is already downloaded), the owner's admin, and sign out (which stays inside
+ * JAWAD AI).
+ */
 export default function AccountMenu({ name, email, owner }: { name: string; email: string; owner: boolean }) {
   const router = useRouter();
   const ref = useRef<HTMLDetailsElement>(null);
@@ -43,6 +47,7 @@ export default function AccountMenu({ name, email, owner }: { name: string; emai
           <Link href="/jawad-ai/library" className={item}><Icon name="layers" size={16} /> مكتبتي</Link>
           <Link href="/jawad-ai/coins" className={item}><Icon name="wallet" size={16} /> النقود الذكية</Link>
           <Link href="/jawad-ai/film" className={item}><Icon name="film" size={16} /> مشاريع أفلامي</Link>
+          <Link href="/download" className={`${item} hide-in-app`}>📲 حمّل التطبيق</Link>
           {owner && <Link href="/jawad-ai/admin" className={item}><Icon name="settings" size={16} /> إدارة JAWAD AI</Link>}
           {owner && <Link href="/admin" className={item}><Icon name="settings" size={16} /> لوحة التحكم (كل الفروع)</Link>}
           <button
