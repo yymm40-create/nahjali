@@ -1,0 +1,144 @@
+/*
+ * «الخطيب الذكي» — the Husseini minbar's look over «الطالب الذكي»'s pages: ivory paper, the emerald green of Ahl al-Bayt,
+ * aged gold, black for the mourning banners, and the Amiri naskh for headings. Scoped to .st.kh (the khateeb layout),
+ * so the student branch keeps its colours. The violet/pink utilities the shared widgets use are remapped to the
+ * same green and gold.
+ */
+
+.jw .st.kh {
+  --jw-bg: #f8f3e6;
+  --jw-bg-2: #fffdf7;
+  --jw-surface: rgba(255, 253, 246, 0.88);
+  --jw-surface-2: #f3ecd9;
+  --jw-surface-3: #e8dfc5;
+  --jw-line: rgba(74, 58, 22, 0.13);
+  --jw-line-strong: rgba(74, 58, 22, 0.24);
+  --jw-ink: #1b1a14;
+  --jw-muted: #5c5644;
+  --jw-faint: #8c856e;
+  --jw-accent: #0f6b4a;
+  --jw-accent-soft: rgba(15, 107, 74, 0.11);
+  --jw-accent-line: rgba(15, 107, 74, 0.45);
+  --jw-gold: #b8892b;
+  --st-grad: linear-gradient(120deg, #0b5a3e 0%, #0f6b4a 45%, #b8892b 100%);
+  --st-grad-cool: linear-gradient(120deg, #1b1a14 0%, #0f6b4a 60%, #b8892b 100%);
+  --st-shadow: 0 10px 30px -12px rgba(60, 44, 10, 0.3), 0 2px 6px -2px rgba(60, 44, 10, 0.12);
+
+  /* the hardcoded violet and pink of the shared widgets, turned green and gold */
+  --color-violet-50: #eef6f1;
+  --color-violet-100: #dcece3;
+  --color-violet-200: #b7d8c6;
+  --color-violet-300: #86bda0;
+  --color-violet-500: #1f8a5f;
+  --color-violet-600: #0f6b4a;
+  --color-violet-700: #0b5a3e;
+  --color-pink-50: #fbf4e4;
+  --color-pink-200: #ecd8a6;
+  --color-pink-300: #dcbd70;
+  --color-pink-400: #c9a04a;
+  --color-pink-600: #96701f;
+
+  background:
+    radial-gradient(900px 500px at 100% -10%, rgba(15, 107, 74, 0.16), transparent 60%),
+    radial-gradient(700px 450px at -10% 25%, rgba(184, 137, 43, 0.16), transparent 60%),
+    linear-gradient(180deg, #fbf7ec 0%, #f4ecd8 100%);
+}
+
+/* the eight-pointed star lattice of the mosques' tiles, faint in gold, fixed behind the page */
+.st.kh::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'%3E%3Cg fill='none' stroke='%23b8892b' stroke-opacity='.28' stroke-width='1'%3E%3Cpath d='M36 14l6.4 15.6L58 36l-15.6 6.4L36 58l-6.4-15.6L14 36l15.6-6.4z'/%3E%3Crect x='20.4' y='20.4' width='31.2' height='31.2' transform='rotate(45 36 36)'/%3E%3Ccircle cx='36' cy='36' r='5'/%3E%3Cpath d='M0 0l8 8M72 0l-8 8M0 72l8-8M72 72l-8-8'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0.25) 100%);
+}
+
+.st.kh h1,
+.st.kh h2,
+.st.kh .st-section-title {
+  font-family: var(--font-amiri), var(--font-readex), serif;
+  letter-spacing: 0;
+}
+
+/* buttons, step dots and the loading line: green and gold instead of pink and violet */
+.st.kh .jw-btn-primary {
+  box-shadow: 0 10px 24px -10px rgba(15, 107, 74, 0.6);
+}
+.st.kh .jw-btn-primary:hover {
+  box-shadow: 0 14px 30px -10px rgba(15, 107, 74, 0.7);
+}
+.st.kh .jw-seg button[aria-checked="true"],
+.st.kh .jw-seg button[aria-selected="true"] {
+  box-shadow: 0 6px 16px -8px rgba(15, 107, 74, 0.6);
+}
+.st.kh .jw-spinner {
+  border-color: rgba(15, 107, 74, 0.2);
+  border-top-color: #b8892b;
+}
+.st.kh .st-step.current .dot {
+  box-shadow: 0 0 0 6px rgba(184, 137, 43, 0.18), 0 10px 24px -8px rgba(15, 107, 74, 0.6);
+}
+.st.kh .st-loading {
+  background-image: linear-gradient(90deg, transparent, #0f6b4a, #b8892b, #1b1a14, transparent);
+}
+.st.kh .st-tier.current {
+  box-shadow: 0 0 0 3px rgba(15, 107, 74, 0.3), 0 10px 28px -12px rgba(15, 107, 74, 0.35);
+}
+.st.kh .st-tier-n {
+  background: rgba(15, 107, 74, 0.1);
+  color: #0b5a3e;
+}
+.st.kh .st-tier-body {
+  border-top-color: rgba(15, 107, 74, 0.2);
+}
+
+/* the black mourning band across the top of the page, with its gold line */
+.kh-band {
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(180deg, #111 0%, #1d1b16 100%);
+  border-bottom: 2px solid #b8892b;
+  color: #e8cf8a;
+  font-family: var(--font-amiri), serif;
+  text-align: center;
+  font-size: 15px;
+  padding: 6px 12px;
+  letter-spacing: 0;
+}
+
+/* the minbar scene in the hero: the lanterns breathe */
+.kh-lamp {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: kh-sway 7s ease-in-out infinite;
+}
+.kh-glow {
+  animation: kh-glow 4s ease-in-out infinite;
+}
+@keyframes kh-sway {
+  0%,
+  100% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes kh-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kh-lamp,
+  .kh-glow {
+    animation: none;
+  }
+}

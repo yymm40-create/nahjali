@@ -5,7 +5,7 @@
 type Head = "round" | "square" | "capsule" | "hex" | "tv";
 type Eyes = "dots" | "visor" | "big" | "screen" | "lens";
 type Antenna = "single" | "double" | "dish" | "none" | "bolt";
-type Extra = "cap" | "beret" | "hood" | "headphones" | "clapper" | "bow" | "crescent" | "scissors" | "spark" | "glasses" | "camera" | "pen" | "joystick" | "book" | "dumbbell" | "none";
+type Extra = "cap" | "beret" | "hood" | "headphones" | "clapper" | "bow" | "crescent" | "scissors" | "spark" | "glasses" | "camera" | "pen" | "joystick" | "book" | "dumbbell" | "turban" | "none";
 
 interface Look {
   a: string;
@@ -33,6 +33,8 @@ export const ROBOT_LOOKS: Record<string, Look> = {
   zainab: { a: "#7a4f98", b: "#3a2255", head: "round", eyes: "big", antenna: "none", extra: "hood" },
   booklet: { a: "#3d7ab0", b: "#1d3f6a", head: "capsule", eyes: "big", antenna: "double", extra: "book" },
   // «عباس سبع القنطرة»: the coach of «الصحة العلوية» in «لأجل المهدي» — dark iron, a dumbbell in hand
+  // «الشيخ»: the preacher of «الخطيب الذكي» — dark green metal, a white turban and a black aba over the shoulders
+  sheikh: { a: "#2f6a55", b: "#143528", head: "round", eyes: "big", antenna: "none", extra: "turban" },
   sabaa: { a: "#74822f", b: "#3d4619", head: "square", eyes: "visor", antenna: "bolt", extra: "dumbbell" },
 };
 
@@ -212,6 +214,18 @@ function extra(x: Extra, b: string) {
           <rect x="14" y="1.5" width="4" height="10" rx="1.2" fill={GOLD} stroke={INK} strokeWidth="0.8" />
         </g>
       );
+    case "turban":
+      return (
+        <>
+          {/* the aba: a black cloak over both shoulders, open at the front, with a gold hem */}
+          <path d="M6 63c0-6 5-10 12-11l7-.6L29 63z" fill="#121116" />
+          <path d="M58 63c0-6-5-10-12-11l-7-.6L35 63z" fill="#121116" />
+          <path d="M25 51.4 29 63M39 51.4 35 63" stroke={GOLD} strokeWidth="1" opacity="0.85" />
+          {/* the white turban, wound round the head */}
+          <path d="M10.5 23c0-9.5 9.5-16.5 21.5-16.5S53.5 13.5 53.5 23c0 2-1.4 3.2-3.4 3.2H13.9c-2 0-3.4-1.2-3.4-3.2z" fill="#f6f2e7" stroke={INK} strokeWidth="0.8" />
+          <path d="M14 20.5c7-3.4 29-3.4 36 0M17 14.5c6-3.6 24-3.6 30 0M12.5 24.6c8-2.2 31-2.2 39 0" fill="none" stroke="#cdc5ad" strokeWidth="1.1" />
+        </>
+      );
     default:
       return null;
   }
@@ -220,7 +234,7 @@ function extra(x: Extra, b: string) {
 /**
  * A robot's face — sober and weighty, never comic: a heavy squared head in one deep metal with a gold trim, level glowing
  * eyes behind dark glass, a flat mouth-groove (not a smile), and a broad collar under it.
- * `id`: salman · jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet · sabaa.
+ * `id`: salman · jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet · sabaa · sheikh.
  */
 export default function RobotFace({ id, size = 40, className = "", title }: { id: string; size?: number; className?: string; title?: string }) {
   const l = ROBOT_LOOKS[id] ?? ROBOT_LOOKS.salman;

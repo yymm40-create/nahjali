@@ -264,7 +264,7 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
 
 /** «التصميم»: the student decides how it looks (a style, their ideas, fonts, a page frame), or skips and صادق picks. */
 export function DesignStep({ wish, set }: { wish: DesignWish; set: (w: DesignWish) => void }) {
-  const { assistant: A } = useBranch();
+  const { assistant: A, face } = useBranch();
   const [fonts, setFonts] = useState(Boolean(wish.heading || wish.body));
   const patch = (x: Partial<DesignWish>) => set({ ...wish, ...x });
   return (
@@ -274,7 +274,7 @@ export function DesignStep({ wish, set }: { wish: DesignWish; set: (w: DesignWis
         <span className="text-sm font-semibold">الأسلوب</span>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="الأسلوب">
           <button type="button" role="radio" aria-checked={!wish.style} onClick={() => patch({ style: "" })} className={`rounded-2xl border bg-white p-3 text-start ${!wish.style ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
-            <b className="flex items-center gap-1"><RobotFace id="sadiq" size={20} /> {A} يختار</b>
+            <b className="flex items-center gap-1"><RobotFace id={face} size={20} /> {A} يختار</b>
             <span className="block text-xs text-jw-muted">يختار الأنسب لمادتك وعمرك، ويطبّق أفكارك اللي تكتبها تحت.</span>
           </button>
           {STYLES.map((st) => (

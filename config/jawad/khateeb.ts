@@ -38,7 +38,7 @@ export interface BranchLook {
 }
 
 export const STUDENT_LOOK: Omit<BranchLook, "base"> = { branch: STUDENT_BRANCH, name: "الطالب الذكي", assistant: "صادق", face: "sadiq" };
-export const KHATEEB_LOOK: Omit<BranchLook, "base"> = { branch: KHATEEB.branch, name: KHATEEB.name, assistant: "الشيخ", face: "sadiq" };
+export const KHATEEB_LOOK: Omit<BranchLook, "base"> = { branch: KHATEEB.branch, name: KHATEEB.name, assistant: "الشيخ", face: "sheikh" };
 
 // ───────────────────────────── the owner's words ─────────────────────────────
 
