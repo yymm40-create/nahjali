@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Icon from "@/components/jawad/Icon";
+import Riyal from "@/components/Riyal";
 import { STUDENT, isResearchSource } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
 import { PURPOSES } from "@config/jawad/student";
@@ -130,7 +131,8 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
               p.act({ action: "auto", on }).catch(() => null);
             }}
           />
-          {p.state.balance !== null && <span className="jw-chip !px-3 !py-1 !text-sm">🪙 {p.state.balance}</span>}
+          {/* the balance as a price anywhere else on the site: the coin's own logo and the formatted amount, never an emoji and raw halalas */}
+          {p.state.balance !== null && <span className="jw-chip !px-3 !py-1 !text-sm" aria-label="رصيدك"><Riyal halalas={p.state.balance} size={16} /></span>}
           <button
             type="button"
             className="jw-btn jw-btn-quiet jw-btn-icon !text-jw-danger"
