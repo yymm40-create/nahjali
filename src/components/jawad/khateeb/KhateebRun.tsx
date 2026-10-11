@@ -28,44 +28,49 @@ export default function KhateebRun({ initial }: { initial: ProjectState }) {
   const o = outputs.find((x) => x.kind === "sermon");
   const sp = sermonOf(o);
   const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
-  const finished = o?.status === "done" || o?.status === "review";
+  const hasText = o?.status === "done" || o?.status === "review";
+  // the written text waits for the preacher's approval before the PDF / Word are made
+  const draft = hasText && Boolean((o?.content as { draft?: boolean } | null)?.draft);
+  const finished = hasText && !draft;
   const running = jobs.find((j) => j.status === "queued" || j.status === "running");
 
   // he starts by himself when the page opens (and carries on where he stopped); after a stop, «كمّل» starts him again
   const { start } = auto;
   const started = useRef(false);
   useEffect(() => {
-    if (started.current || finished) return;
+    if (started.current || hasText) return;
     started.current = true;
     start("all");
-  }, [finished, start]);
+  }, [hasText, start]);
 
-  const researched = sources.some((x) => isResearchSource(x.name));
+  const own = Boolean(ask.draftText);
+  const researched = own ? sources.length > 0 : sources.some((x) => isResearchSource(x.name));
   const understood = project.stage === "outputs";
   const planned = o?.planApproved ?? false;
   const steps: { emoji: string; title: string; state: State; detail: string }[] = [
-    { emoji: "📜", title: "يبحث في نصوص الموضوع", state: researched ? "done" : "now", detail: researched ? "كتب نصوص الموضوع من مصادرها" : "" },
+    { emoji: "📜", title: own ? "يقرأ نص خطبتك" : "يبحث في نصوص الموضوع", state: researched ? "done" : "now", detail: researched ? (own ? "نصك هو المادة، ويطابقه على القواعد" : "كتب نصوص الموضوع من مصادرها") : "" },
     { emoji: "🧠", title: "يقرأ النصوص ويفهمها", state: understood ? "done" : researched ? "now" : "wait", detail: understood && p.state.understanding ? p.state.understanding.content.topic : "" },
     { emoji: "📖", title: "الآية المفتاح", state: topic ? "done" : understood ? "now" : "wait", detail: topic ? `${topic.title} — ${topic.verse.ref}` : "" },
     {
       emoji: "📚",
       title: "التفسير من مجمع البيان",
       state: sp?.tafsir ? "done" : sp?.tafsirMissing ? "skip" : topic ? "now" : "wait",
-      detail: sp?.tafsir ? sp.tafsir.source : sp?.tafsirMissing ? "ما لقى صفحات تفسير الآية، فالخطبة بدون تفسير لها" : "",
+      detail: sp?.tafsir ? sp.tafsir.source : sp?.tafsirMissing ? (ask.tafsir.length ? "ما لقى صفحات تفسير الآية، فالخطبة بدون تفسير لها" : "بدون تفسير (حسب اختيارك)") : "",
     },
     {
       emoji: "🪶",
       title: "الأبيات (الشطرين) من مراجع الشعر",
-      state: !ask.poetry ? "skip" : sp?.poems ? (sp.poems.length ? "done" : "skip") : topic ? "now" : "wait",
-      detail: !ask.poetry ? "ما طلبتها" : sp?.poems ? (sp.poems.length ? `${sp.poems.length} مقطع بنصه ورقم صفحته` : "ما لقى أبياتًا مناسبة في المراجع") : "",
+      state: !ask.poetryIds.length ? "skip" : sp?.poems ? (sp.poems.length ? "done" : "skip") : topic ? "now" : "wait",
+      detail: !ask.poetryIds.length ? "ما اخترت مراجع شعر" : sp?.poems ? (sp.poems.length ? `${sp.poems.length} مقطع بنصه ورقم صفحته` : "ما لقى أبياتًا مناسبة في المراجع") : "",
     },
     {
       emoji: "📕",
-      title: "القصص والشواهد من المصادر",
-      state: !ask.sources ? "skip" : sp?.sources ? (sp.sources.length ? "done" : "skip") : topic ? "now" : "wait",
-      detail: !ask.sources ? "ما طلبتها" : sp?.sources ? (sp.sources.length ? `${sp.sources.length} مقطع بنصه ورقم صفحته` : "ما لقى شواهد مناسبة في المصادر") : "",
+      title: "الروايات والقصص من كتب المكتبة",
+      state: !ask.sourceIds.length ? "skip" : sp?.sources ? (sp.sources.length ? "done" : "skip") : topic ? "now" : "wait",
+      detail: !ask.sourceIds.length ? "ما اخترت كتبًا" : sp?.sources ? (sp.sources.length ? `${sp.sources.length} مقطع بنصه ورقم صفحته` : "ما لقى شواهد مناسبة في المصادر") : "",
     },
-    { emoji: "🕌", title: "يكتب الخطبة على منهج المرجعية", state: finished ? "done" : planned ? "now" : "wait", detail: finished ? "المقدمة · صلب المجلس · الخاتمة والتخلّص · الرثاء" : "" },
+    { emoji: "✍️", title: "يكتب نص الخطبة على منهج المرجعية", state: hasText ? "done" : planned ? "now" : "wait", detail: hasText ? "المقدمة · صلب المجلس · الخاتمة والتخلّص · الرثاء" : "" },
+    { emoji: "🕌", title: "يصنع الملف بعد اعتمادك للنص", state: finished ? "done" : draft ? "now" : "wait", detail: draft ? "بانتظارك: اقرأ النص تحت واعتمده" : finished ? SERMON_FORMATS.find((f) => f.id === ask.format)?.label ?? "" : "" },
   ];
   // only the first step not done yet is "now"
   const first = steps.findIndex((s) => s.state === "now");
@@ -126,7 +131,7 @@ export default function KhateebRun({ initial }: { initial: ProjectState }) {
       {/* what the Sheikh is doing */}
       <section className="jw-panel st-rise space-y-4 p-5" aria-labelledby="run" aria-live="polite">
         <h2 id="run" className="st-section-title flex items-center gap-2 text-xl">
-          <RobotFace id={face} size={34} /> {finished ? `${A} خلّص خطبتك` : `${A} يحضّر خطبتك`}
+          <RobotFace id={face} size={34} /> {finished ? `${A} خلّص خطبتك` : draft ? `${A} كتب النص — اقرأه واعتمده` : `${A} يحضّر خطبتك`}
         </h2>
         <ol className="space-y-2">
           {steps.map((s) => (
@@ -142,7 +147,7 @@ export default function KhateebRun({ initial }: { initial: ProjectState }) {
             </li>
           ))}
         </ol>
-        {!finished &&
+        {!hasText &&
           (auto.mode ? (
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="text-jw-muted">{auto.doing ? `${A} ${auto.doing}…` : `${A} شغّال…`}</span>
@@ -160,8 +165,61 @@ export default function KhateebRun({ initial }: { initial: ProjectState }) {
 
       <ErrorLine error={p.error} />
 
-      {/* the finished sermon: its files, and asking for a change */}
-      {o && finished && <OutputPanel key={o.id} p={p} o={o} onRemade={() => start("all")} />}
+      {/* what the Sheikh took, before the text: the preacher reads it all, then approves */}
+      {hasText && topic && (
+        <section className="jw-panel st-rise space-y-3 p-5" aria-label="ما أخذه الشيخ">
+          <h2 className="st-section-title text-lg">ما أخذه {A} للخطبة</h2>
+          <div className="space-y-1 text-sm">
+            <p>
+              <b>الآية المفتاح:</b> {topic.verse.ref}
+            </p>
+            <p className="rounded-xl bg-white/70 p-3 leading-8">{topic.verse.text}</p>
+            <p>
+              <b>الزاوية:</b> {topic.title} — <span className="text-jw-muted">{topic.idea}</span>
+            </p>
+            <p>
+              <b>نقطة التخلّص:</b> <span className="text-jw-muted">{topic.kooriz}</span>
+            </p>
+            <p>
+              <b>التفسير:</b> {sp?.tafsir ? sp.tafsir.source : "بدون"}
+            </p>
+            {(sp?.poems?.length ?? 0) > 0 && (
+              <details>
+                <summary className="cursor-pointer font-bold">الأبيات ({sp!.poems!.length})</summary>
+                <ul className="mt-1 space-y-2">
+                  {sp!.poems!.map((x, i) => (
+                    <li key={i} className="rounded-xl bg-white/70 p-3 whitespace-pre-line">
+                      {x.text}
+                      <span className="mt-1 block text-xs text-jw-muted">
+                        {x.poet ? `${x.poet} · ` : ""}
+                        {x.ref}، ص{x.page}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {(sp?.sources?.length ?? 0) > 0 && (
+              <details>
+                <summary className="cursor-pointer font-bold">الروايات والقصص ({sp!.sources!.length})</summary>
+                <ul className="mt-1 space-y-2">
+                  {sp!.sources!.map((x, i) => (
+                    <li key={i} className="rounded-xl bg-white/70 p-3 whitespace-pre-line">
+                      {x.text}
+                      <span className="mt-1 block text-xs text-jw-muted">
+                        {x.ref}، ص{x.page}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* the text (to read, and to ask for changes), then its files */}
+      {o && hasText && <OutputPanel key={o.id} p={p} o={o} onRemade={() => start("all")} />}
     </div>
   );
 }

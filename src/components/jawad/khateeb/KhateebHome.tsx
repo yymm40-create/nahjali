@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import RobotFace from "@/components/RobotFace";
-import { SERMON_FORMATS, SERMON_LENGTHS, sermonFocus, type SermonAsk } from "@config/jawad/khateeb";
+import { SERMON_FORMATS, SERMON_LENGTHS, TAFSIR_SOURCES, sermonFocus, type SermonAsk } from "@config/jawad/khateeb";
 import { useBranch } from "@/components/jawad/student/branch";
 import { post } from "@/components/jawad/student/client";
 import { ErrorLine } from "@/components/jawad/student/ui";
@@ -27,14 +27,20 @@ interface Item {
 const STEPS = [
   { emoji: "📜", title: "يبحث في نصوص الموضوع", text: "الآيات والروايات والسيرة والمصيبة، من مصادر مدرسة أهل البيت بمصادرها" },
   { emoji: "📖", title: "الآية المفتاح وتفسيرها", text: "الآية من القرآن نصًا، وتفسيرها من «مجمع البيان» للطبرسي بأرقام الصفحات" },
-  { emoji: "🪶", title: "الأبيات (الشطرين)", text: "يبحث في مراجع الشعر عن أبيات الموضوع، بنصها ورقم صفحتها" },
-  { emoji: "🕌", title: "الخطبة كاملة", text: "المقدمة · صلب المجلس · الخاتمة والتخلّص · الرثاء — PDF و Word" },
+  { emoji: "🪶", title: "الأبيات والروايات", text: "من مراجع الشعر وكتب المكتبة اللي تختارها، بنصها ورقم صفحتها" },
+  { emoji: "🕌", title: "النص ثم الملف", text: "تقرأ النص والآيات وكل شي وتعتمده، وبعدها يصير PDF و Word" },
 ];
 
-export default function KhateebHome({ projects, refs }: { projects: Item[] | null; refs: { poetry: number; sources: number } }) {
+export default function KhateebHome({ projects, refs, surahs }: { projects: Item[] | null; refs: { id: string; title: string; kind: "poetry" | "source"; pages: number }[]; surahs: { number: number; name: string; ayat: number }[] }) {
   const { assistant: A, base, face, name } = useBranch();
   const router = useRouter();
-  const [ask, setAsk] = useState<SermonAsk>({ topic: "", goal: "", occasion: "", length: "medium", format: "both", poems: "", poetry: refs.poetry > 0, sources: refs.sources > 0 });
+  const poetryRefs = refs.filter((r) => r.kind === "poetry");
+  const sourceRefs = refs.filter((r) => r.kind === "source");
+  const [ask, setAsk] = useState<SermonAsk>({ topic: "", goal: "", occasion: "", length: "medium", format: "both", draftText: "", verse: null, tafsir: TAFSIR_SOURCES.map((t) => t.id), narrations: "", sourceIds: [], poetryIds: [], poems: "" });
+  // the three questions of the first page: his own sermon text or the Sheikh's, his verse or the Sheikh's, his narrations or the books'
+  const [own, setOwn] = useState(false);
+  const [ownVerse, setOwnVerse] = useState(false);
+  const [ownNarr, setOwnNarr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (p: Partial<SermonAsk>) => setAsk((a) => ({ ...a, ...p }));
@@ -42,7 +48,9 @@ export default function KhateebHome({ projects, refs }: { projects: Item[] | nul
   const go = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ask.topic.trim()) return setError("اكتب موضوع الخطبة.");
-    if (!ask.goal.trim()) return setError("اكتب الغاية من الخطبة: وش تبي المستمع يطلع فيه.");
+    if (!own && !ask.goal.trim()) return setError("اكتب الغاية من الخطبة: وش تبي المستمع يطلع فيه.");
+    if (own && ask.draftText.trim().length < 200) return setError("الصق نص خطبتك كامل (أو اختر «الشيخ صادق يكتب من الصفر»).");
+    if (ownVerse && !ask.verse) return setError("اختر السورة ورقم الآية.");
     setBusy(true);
     setError(null);
     try {
@@ -51,7 +59,7 @@ export default function KhateebHome({ projects, refs }: { projects: Item[] | nul
         level: "",
         audience: "",
         branch: "khateeb",
-        brief: { purpose: "understand", purposeNote: "", mode: "research", focus: sermonFocus(ask), where: "", auto: true, sermon: ask },
+        brief: { purpose: "understand", purposeNote: "", mode: own ? "files" : "research", focus: sermonFocus(ask), where: "", auto: true, sermon: { ...ask, draftText: own ? ask.draftText : "", verse: ownVerse ? ask.verse : null, narrations: ownNarr ? ask.narrations : "" } },
       });
       router.push(`${base}/${r.id}`);
     } catch (err) {
@@ -94,8 +102,8 @@ export default function KhateebHome({ projects, refs }: { projects: Item[] | nul
           <input className="jw-input w-full" value={ask.topic} onChange={(e) => set({ topic: e.target.value })} placeholder="مثل: الصبر في حياة السيدة زينب (ع)" maxLength={500} required />
         </label>
         <label className="block space-y-1.5">
-          <b className="text-sm">الغاية</b>
-          <textarea className="jw-textarea min-h-20 w-full" value={ask.goal} onChange={(e) => set({ goal: e.target.value })} placeholder="وش تبي المستمع يطلع فيه؟ مثل: أن الصبر موقف وقوة، مو ضعف" maxLength={1000} required />
+          <b className="text-sm">الغاية {own && <span className="font-normal text-jw-muted">(اختياري)</span>}</b>
+          <textarea className="jw-textarea min-h-20 w-full" value={ask.goal} onChange={(e) => set({ goal: e.target.value })} placeholder="وش تبي المستمع يطلع فيه؟ مثل: أن الصبر موقف وقوة، مو ضعف" maxLength={1000} />
         </label>
         <label className="block space-y-1.5">
           <b className="text-sm">المناسبة (اختياري)</b>
@@ -125,20 +133,78 @@ export default function KhateebHome({ projects, refs }: { projects: Item[] | nul
           </fieldset>
         </div>
 
+        {/* 1 · the sermon's text */}
         <fieldset className="space-y-2">
-          <legend className="mb-1.5 text-sm font-bold">من وين ياخذ الشيخ؟</legend>
-          <Check on={ask.poetry} disabled={!refs.poetry} onChange={(poetry) => set({ poetry })} label="الأبيات (الشطرين) من مراجع الشعر" hint={refs.poetry ? `${refs.poetry} مرجع جاهز` : "ما فيه مرجع شعر جاهز بعد"} />
-          <Check on={ask.sources} disabled={!refs.sources} onChange={(sources) => set({ sources })} label="القصص والشواهد من المصادر" hint={refs.sources ? `${refs.sources} مصدر جاهز` : "ما فيه مصدر جاهز بعد"} />
+          <legend className="mb-1.5 text-sm font-bold">١ · نص الخطبة</legend>
+          <Choose on={!own} onPick={() => setOwn(false)} title={`${A} يكتب الخطبة من الصفر`} hint="من نصوص الموضوع، على منهج «المرجعية المأمونة»" />
+          <Choose on={own} onPick={() => setOwn(true)} title="عندي نص خطبة جاهز" hint={`${A} يطابقه على القواعد ويرتبه، ويبقي أفكارك وكلماتك`} />
+          {own && <textarea className="jw-textarea min-h-40 w-full" value={ask.draftText} onChange={(e) => set({ draftText: e.target.value })} placeholder="الصق نص خطبتك هنا" maxLength={60000} />}
         </fieldset>
 
-        <details>
-          <summary className="cursor-pointer text-sm font-bold">عندك أبيات تبيها في الخطبة؟ (اختياري)</summary>
-          <textarea className="jw-textarea mt-2 min-h-24 w-full" value={ask.poems} onChange={(e) => set({ poems: e.target.value })} placeholder="اكتب الأبيات، وكل بيت في سطر، واسم الشاعر إذا تعرفه" maxLength={4000} />
-        </details>
+        {/* 2 · the key verse */}
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 text-sm font-bold">٢ · الآية القرآنية</legend>
+          <Choose on={!ownVerse} onPick={() => setOwnVerse(false)} title={`${A} يختار الآية حسب الموضوع`} hint="والآية تنجاب من القرآن بنصها، ما تنكتب من الذاكرة" />
+          <Choose on={ownVerse} onPick={() => setOwnVerse(true)} title="عندي آية معينة" hint="تختار السورة والآيات (حتى ٤ آيات)" />
+          {ownVerse && (
+            <div className="flex flex-wrap items-center gap-2">
+              {surahs.length ? (
+                <select className="jw-select" aria-label="السورة" value={ask.verse?.surah ?? ""} onChange={(e) => set({ verse: { surah: Number(e.target.value), from: ask.verse?.from ?? 1, to: ask.verse?.to ?? 1 } })}>
+                  <option value="">السورة…</option>
+                  {surahs.map((x) => (
+                    <option key={x.number} value={x.number}>
+                      {x.number}. {x.name} ({x.ayat} آية)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input className="jw-input !w-28" inputMode="numeric" aria-label="رقم السورة" placeholder="رقم السورة" value={ask.verse?.surah ?? ""} onChange={(e) => set({ verse: { surah: Number(e.target.value) || 0, from: ask.verse?.from ?? 1, to: ask.verse?.to ?? 1 } })} />
+              )}
+              <input className="jw-input !w-24" inputMode="numeric" aria-label="من آية" placeholder="من آية" value={ask.verse?.from ?? ""} onChange={(e) => set({ verse: { surah: ask.verse?.surah ?? 0, from: Number(e.target.value) || 0, to: Math.max(Number(e.target.value) || 0, ask.verse?.to ?? 0) } })} />
+              <input className="jw-input !w-24" inputMode="numeric" aria-label="إلى آية" placeholder="إلى آية" value={ask.verse?.to ?? ""} onChange={(e) => set({ verse: { surah: ask.verse?.surah ?? 0, from: ask.verse?.from ?? 0, to: Number(e.target.value) || 0 } })} />
+            </div>
+          )}
+        </fieldset>
+
+        {/* 3 · the tafsir */}
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 text-sm font-bold">٣ · من وين ياخذ {A} تفسير الآية؟</legend>
+          {TAFSIR_SOURCES.map((t) => (
+            <Check key={t.id} on={ask.tafsir.includes(t.id)} disabled={false} onChange={(on) => set({ tafsir: on ? [...ask.tafsir, t.id] : ask.tafsir.filter((x) => x !== t.id) })} label={t.label} hint="بأرقام الصفحات" />
+          ))}
+          <p className="text-xs text-jw-muted">{ask.tafsir.length ? "" : "بدون تفسير: ما يتكلم الشيخ عن معنى الآية، بس يذكر نصها. "}تفاسير ثانية تنضاف هنا بعدين.</p>
+        </fieldset>
+
+        {/* 4 · narrations */}
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 text-sm font-bold">٤ · الروايات والقصص</legend>
+          <Check on={ownNarr} disabled={false} onChange={setOwnNarr} label="عندي روايات أضيفها" hint="تكتبها بنفسك مع اسم الكتاب، وتنحط في الخطبة كما هي" />
+          {ownNarr && <textarea className="jw-textarea min-h-28 w-full" value={ask.narrations} onChange={(e) => set({ narrations: e.target.value })} placeholder="اكتب الرواية، وتحتها اسم الكتاب والصفحة" maxLength={20000} />}
+          <p className="pt-1 text-xs font-bold">أو يبحث {A} في كتب من المكتبة:</p>
+          {sourceRefs.length ? (
+            sourceRefs.map((r) => <Check key={r.id} on={ask.sourceIds.includes(r.id)} disabled={false} onChange={(on) => set({ sourceIds: on ? [...ask.sourceIds, r.id] : ask.sourceIds.filter((x) => x !== r.id) })} label={r.title} hint={`${r.pages} صفحة`} />)
+          ) : (
+            <p className="rounded-2xl border border-jw-line bg-white p-3 text-xs text-jw-muted">ما فيه كتب في المكتبة بعد. تنضاف من لوحة الجواد ← الخطيب الذكي ← المراجع (برابط الكتاب، مثل الثقلين).</p>
+          )}
+        </fieldset>
+
+        {/* 5 · poetry */}
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 text-sm font-bold">٥ · الأبيات (الشطرين)</legend>
+          {poetryRefs.length ? (
+            poetryRefs.map((r) => <Check key={r.id} on={ask.poetryIds.includes(r.id)} disabled={false} onChange={(on) => set({ poetryIds: on ? [...ask.poetryIds, r.id] : ask.poetryIds.filter((x) => x !== r.id) })} label={r.title} hint={`${r.pages} صفحة`} />)
+          ) : (
+            <p className="rounded-2xl border border-jw-line bg-white p-3 text-xs text-jw-muted">ما فيه مرجع شعر في المكتبة بعد.</p>
+          )}
+          <details>
+            <summary className="cursor-pointer text-sm font-bold">عندك أبيات تبيها في الخطبة؟ (اختياري)</summary>
+            <textarea className="jw-textarea mt-2 min-h-24 w-full" value={ask.poems} onChange={(e) => set({ poems: e.target.value })} placeholder="اكتب الأبيات، وكل بيت في سطر، واسم الشاعر إذا تعرفه" maxLength={4000} />
+          </details>
+        </fieldset>
 
         <ErrorLine error={error} />
         <button type="submit" className="jw-btn jw-btn-primary !min-h-12 w-full !text-base sm:w-auto sm:!px-10" disabled={busy}>
-          {busy ? <span className="jw-spinner" aria-hidden /> : <Icon name="plus" size={18} />} ابدأ — {A} يحضّر الخطبة
+          {busy ? <span className="jw-spinner" aria-hidden /> : <Icon name="plus" size={18} />} ابدأ — {A} يحضّر النص، وتعتمده قبل الملف
         </button>
       </form>
 
@@ -182,6 +248,18 @@ export default function KhateebHome({ projects, refs }: { projects: Item[] | nul
         )}
       </section>
     </div>
+  );
+}
+
+function Choose({ on, onPick, title, hint }: { on: boolean; onPick: () => void; title: string; hint: string }) {
+  return (
+    <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border bg-white p-3 ${on ? "border-jw-accent-line" : "border-jw-line"}`}>
+      <input type="radio" className="size-5 accent-[var(--jw-accent)]" checked={on} onChange={onPick} />
+      <span className="min-w-0">
+        <b className="block text-sm">{title}</b>
+        <span className="block text-[11px] text-jw-muted">{hint}</span>
+      </span>
+    </label>
   );
 }
 

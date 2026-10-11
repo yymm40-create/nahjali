@@ -41,18 +41,24 @@ export async function sermonPlanStep(o: Output, c: Ctx, base: string, studentFir
   // «الخطيب الذكي»'s own journey: the preacher gave his topic and his goal — the three proposals are angles on THAT topic
   const topic = String(o.settings.topic ?? "").trim();
   const goal = String(o.settings.goal ?? "").trim();
+  // the key verse the preacher gave: the three angles all open with it (their numbers are set below, after the model answers)
+  const given = Number(o.settings.verseSurah) >= 1 ? { surah: Number(o.settings.verseSurah), from: Number(o.settings.verseFrom) || 1, to: Number(o.settings.verseTo) || Number(o.settings.verseFrom) || 1 } : null;
+  const draft = String(o.settings.draftText ?? "").trim();
   const asked = topic
     ? `\nTHE PREACHER ALREADY CHOSE HIS TOPIC: «${topic}»${goal ? `, and its GOAL (what the listeners should leave with): «${goal}»` : ""}. All three proposals must be on THIS topic and serve this goal — three angles of treatment, not three other subjects — and the FIRST must be the closest to what he asked (it is the one taken unless he changes it).`
     : "";
+  const fixed = given ? `\nTHE PREACHER GAVE THE KEY VERSE HIMSELF: surah ${given.surah}, verses ${given.from}–${given.to}. Use exactly these numbers for all three proposals (they differ in the angle that opens from this verse and in the takhallus point, not in the verse).` : "";
+  const own = draft ? `\nTHE PREACHER ALREADY HAS A SERMON TEXT of his own (below, as «HIS TEXT»): the three angles are the three ways his text's idea can be put in the method's frame; do not propose other subjects.` : "";
   const r = await askJson<{ title: string; subtitle: string; topics: { title: string; idea: string; surah: number; ayahFrom: number; ayahTo: number; kooriz: string }[] }>({
-    system: `You are preparing a SERMON for the minbar by the owner's method «المرجعية المأمونة» (in the rules below). This is its STEP 2, the thematic brainstorm and the Quranic link: propose THREE distinct minbar topics that suit the occasion, drawn ONLY from the historical text of the material (never from your own memory of history) — deep ideas joined to the Quran, not a plain retelling.\nFor each topic give: title = the pivot idea (فكرة المحور), short · idea = the subject of its treatment (موضوع المعالجة), 2–3 sentences · surah and ayahFrom/ayahTo = the verse that suits to be its key and its opening: ONLY the surah's number and the verse numbers (at most ${SERMON_MAX_AYAT} verses) — NEVER write the verse's words, the site fetches them from the Quran · kooriz = the takhallus point (نقطة التخلص), 1–2 sentences, that joins the topic to the calamity of martyrdom in the material.\nAlso return the sermon's working title and a one-line subtitle (the occasion). The three topics must differ from each other in idea and in verse. The sermon will be ${length.label} (about ${length.minutes} minutes spoken).${asked}\n${studentFirst}\n${scopeRules(c)}`,
-    parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
+    system: `You are preparing a SERMON for the minbar by the owner's method «المرجعية المأمونة» (in the rules below). This is its STEP 2, the thematic brainstorm and the Quranic link: propose THREE distinct minbar topics that suit the occasion, drawn ONLY from the historical text of the material (never from your own memory of history) — deep ideas joined to the Quran, not a plain retelling.\nFor each topic give: title = the pivot idea (فكرة المحور), short · idea = the subject of its treatment (موضوع المعالجة), 2–3 sentences · surah and ayahFrom/ayahTo = the verse that suits to be its key and its opening: ONLY the surah's number and the verse numbers (at most ${SERMON_MAX_AYAT} verses) — NEVER write the verse's words, the site fetches them from the Quran · kooriz = the takhallus point (نقطة التخلص), 1–2 sentences, that joins the topic to the calamity of martyrdom in the material.\nAlso return the sermon's working title and a one-line subtitle (the occasion). The three topics must differ from each other in idea and in verse. The sermon will be ${length.label} (about ${length.minutes} minutes spoken).${asked}${fixed}${own}\n${studentFirst}\n${scopeRules(c)}`,
+    parts: [{ type: "text", text: `${base}${draft ? `\n\nHIS TEXT:\n${draft.slice(0, 60_000)}` : ""}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
     schema: TOPICS_SCHEMA,
     effort: "medium",
   });
 
   // the verses as the Quran has them (a number that is not a verse drops its topic)
-  const verses = await Promise.all(r.data.topics.slice(0, 3).map((t) => passage(t.surah, t.ayahFrom, t.ayahTo).catch(() => null)));
+  const verses = await Promise.all(r.data.topics.slice(0, 3).map((t) => (given ? passage(given.surah, given.from, given.to) : passage(t.surah, t.ayahFrom, t.ayahTo)).catch(() => null)));
+  if (given && !verses.some(Boolean)) throw new Error("هذي الآية ما لقيناها في القرآن: راجع رقم السورة والآية اللي كتبتها.");
   const topics: SermonTopic[] = [];
   r.data.topics.slice(0, 3).forEach((t, i) => {
     const verse = verses[i];
@@ -85,6 +91,11 @@ async function tafsirStep(job: Job): Promise<StepResult> {
   const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
   if (!plan || !sp || !topic) throw new Error("اختر موضوع الخطبة أول.");
   const { verse } = topic;
+  // the preacher unticked the tafsir: none is taken, and the sermon says nothing of the verse's meaning beyond its words
+  if (o.settings.tafsir !== undefined && !String(o.settings.tafsir).split(",").includes("majma")) {
+    await saveOutput(o.id, { plan: { ...plan, sermon: { ...sp, tafsirMissing: true } }, error: null });
+    return { done: true, stage: "بدون تفسير (حسب اختيارك)" };
+  }
   const f = await findTafsir(verse.surah, verse.from, verse.text);
   if (!f) {
     // marked, so the Sheikh's own journey goes on without it (the sermon then says nothing beyond the verse's plain words)
@@ -250,6 +261,12 @@ export function sermonBrief(plan: DocPlan, o: Output, i: number): string {
         : "POETRY: use only lines from the owner's collection in the rules, when one suits; never make up a line or put a line in a poet's name from memory.",
     sp?.sources?.length
       ? `PASSAGES FROM THE LIBRARY'S SOURCES, checked word for word against their pages — the preacher approved them. They are the only outside stories, sayings and lessons you may use: retell each FAITHFULLY (its people, its events, its words), add no detail it does not have, and say where it comes from in the sermon (e.g. «ورُوي في كتاب …») with its page; a saying that is quoted is quoted EXACTLY in a "quote" block with its reference and page:\n${sp.sources.map((p, k) => `${k + 1}. ${p.poet ? `[${p.poet}] ` : ""}${p.text}\n   المرجع: ${p.ref}، ص${p.page}${p.why ? ` · ${p.why}` : ""}`).join("\n\n")}`
+      : "",
+    String(s.narrations ?? "").trim()
+      ? `NARRATIONS THE PREACHER GAVE (his own, with the book he names): use them where they serve, each in a "quote" block, EXACTLY as written and with the book he gave; never add to them, shorten inside them or put a book he did not name:\n${String(s.narrations).trim()}`
+      : "",
+    String(s.draftText ?? "").trim()
+      ? `THE PREACHER'S OWN SERMON TEXT (below). Do NOT write the sermon from nothing: FIT HIS TEXT to the method. Keep his ideas, his order of thought and his own words as far as they go; rearrange it into this part's role and polish its language for the ear; keep its length. Where it quotes a verse, a narration or a line of poetry, replace the quote with the verified one given above when it is the same, and when it is a quote you were not given, keep it as he wrote it in a "quote" block and add no source for it. Do not add facts, stories or sayings that are neither in his text nor in the material given.\n<his_text>\n${String(s.draftText).trim().slice(0, 60_000)}\n</his_text>`
       : "",
     part ? `THIS PART — ${part.title}: ${part.role}.` : "",
   ]

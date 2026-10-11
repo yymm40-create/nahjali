@@ -5,14 +5,24 @@ import { nextKhateeb } from "@/components/jawad/khateeb/next";
 import type { OutputView, ProjectState } from "@/components/jawad/student/client";
 import type { SermonPlan } from "@/lib/jawad/student/model";
 
-const ASK = { topic: "الصبر في حياة السيدة زينب", goal: "أن الصبر قوة وموقف", occasion: "وفاة السيدة زينب", length: "short", format: "pdf", poems: "", poetry: true, sources: false };
+const P1 = "11111111-1111-1111-1111-111111111111";
+const S1 = "22222222-2222-2222-2222-222222222222";
+const ASK = { topic: "الصبر في حياة السيدة زينب", goal: "أن الصبر قوة وموقف", occasion: "وفاة السيدة زينب", length: "short", format: "pdf", draftText: "", verse: null, tafsir: ["majma"], narrations: "", sourceIds: [], poetryIds: [P1], poems: "" };
 
 describe("«الخطيب الذكي»: the preacher's request", () => {
   it("is read back checked, and is nothing without a topic", () => {
     expect(readSermonAsk(ASK)).toEqual(ASK);
     expect(readSermonAsk({ ...ASK, topic: "  " })).toBeNull();
     expect(readSermonAsk(null)).toBeNull();
-    expect(readSermonAsk({ topic: "الكرم", length: "huge", format: "exe" })).toMatchObject({ length: "medium", format: "both", poetry: true, sources: true });
+    expect(readSermonAsk({ topic: "الكرم", length: "huge", format: "exe" })).toMatchObject({ length: "medium", format: "both", tafsir: ["majma"], poetryIds: [], sourceIds: [], verse: null });
+  });
+  it("keeps the verse the preacher gave, the tafsir he ticked, his own text and his chosen books", () => {
+    const a = readSermonAsk({ ...ASK, draftText: "نص", verse: { surah: 33, from: 33, to: 33 }, tafsir: [], sourceIds: [S1, "not-an-id"], narrations: "رواية" })!;
+    expect(a.verse).toEqual({ surah: 33, from: 33, to: 33 });
+    expect(a.tafsir).toEqual([]);
+    expect(a.sourceIds).toEqual([S1]);
+    expect(sermonSettings(a)).toMatchObject({ draftText: "نص", verseSurah: 33, verseFrom: 33, narrations: "رواية", tafsir: "" });
+    expect(readSermonAsk({ ...ASK, verse: { surah: 500, from: 1 } })!.verse).toBeNull();
   });
   it("is kept in the material's brief (and the student's brief has none)", () => {
     expect(readBrief({ mode: "research", sermon: ASK }).sermon).toEqual(ASK);
@@ -50,6 +60,9 @@ describe("«الخطيب الذكي»: the Sheikh's own journey, step by step", 
     expect(label(state("outputs"))).toBe("يجهّز الخطبة");
     expect(label(state("outputs", [sermon({ status: "settings", plan: null })]))).toBe("خطبة المنبر: إعداد الخطة");
   });
+  it("reads the preacher's own sermon text instead of researching, when he gave one", () => {
+    expect(label(state("sources", [], {}, { ...ASK, draftText: "نص خطبتي ".repeat(40) }))).toBe("يقرأ نصك");
+  });
   it("takes the closest topic, then the tafsir, then the lines, then approves the plan", () => {
     expect(label(state("outputs", [sermon({}, {})]))).toBe("يعتمد موضوعك وآيته");
     expect(label(state("outputs", [sermon({}, { chosen: 0 })]))).toBe("يجيب التفسير من مجمع البيان");
@@ -57,16 +70,19 @@ describe("«الخطيب الذكي»: the Sheikh's own journey, step by step", 
     // no lines found is marked as an empty list: he goes on without them; the sources were not asked for
     expect(label(state("outputs", [sermon({}, { chosen: 0, tafsirMissing: true, poems: [] })]))).toBe("يعتمد خطة الخطبة");
   });
-  it("searches the sources too when they were asked for", () => {
-    expect(label(state("outputs", [sermon({}, { chosen: 0, tafsirMissing: true, poems: [] })], {}, { ...ASK, sources: true }))).toBe("يبحث عن القصص والشواهد في المصادر");
+  it("searches the books he chose too", () => {
+    expect(label(state("outputs", [sermon({}, { chosen: 0, tafsirMissing: true, poems: [] })], {}, { ...ASK, sourceIds: [S1] }))).toBe("يبحث عن القصص والروايات في كتب المكتبة");
   });
   it("waits while a job of the sermon is running", () => {
     const jobs = [{ id: "j", kind: "tafsir", outputId: "o1", status: "running", stage: "", progress: {}, error: null, coins: 0 }] as ProjectState["jobs"];
     expect(label(state("outputs", [sermon({}, { chosen: 0 })], { jobs }))).toBeNull();
   });
-  it("writes it, then approves it", () => {
+  it("writes the text, then WAITS for the preacher to approve it before the files are made", () => {
     expect(label(state("outputs", [sermon({ status: "ready", planApproved: true }, { chosen: 0 })]))).toBe("خطبة المنبر: التصنيع");
-    expect(label(state("outputs", [sermon({ status: "review", planApproved: true }, { chosen: 0 })]))).toBe("خطبة المنبر: الاعتماد");
+    // the written text (a draft) is shown to him: nothing moves on by itself, not even the approval
+    expect(label(state("outputs", [sermon({ status: "review", planApproved: true, content: { draft: true, chapters: [] } }, { chosen: 0 })]))).toBeNull();
+    // the files, once he approved the text
+    expect(label(state("outputs", [sermon({ status: "review", planApproved: true, content: { chapters: [] } }, { chosen: 0 })]))).toBe("خطبة المنبر: الاعتماد");
     expect(label(state("outputs", [sermon({ status: "done", planApproved: true }, { chosen: 0 })]))).toBeNull();
   });
 });

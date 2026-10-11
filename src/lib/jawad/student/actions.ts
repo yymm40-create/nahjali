@@ -532,7 +532,8 @@ function cleanSettings(kind: Output["kind"], s: Body) {
   const out: Body = {};
   for (const [k, v] of Object.entries(s)) {
     if (k.startsWith("_") || k === "design") continue;
-    if (typeof v === "string") out[k] = v.slice(0, 4000);
+    // «الخطيب الذكي»: the preacher's own sermon text and narrations are long
+    if (typeof v === "string") out[k] = v.slice(0, k === "draftText" ? 60_000 : k === "narrations" ? 20_000 : 4000);
     else if (typeof v === "number" && Number.isFinite(v)) out[k] = Math.max(0, Math.min(500, v));
     else if (typeof v === "boolean") out[k] = v;
     else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === "string").slice(0, 10);
@@ -805,8 +806,14 @@ export async function outputAction(user: User, id: string, b: Body) {
       // slides / audio: the change goes into the plan (slide map / reading text), which is approved again
       return run("plan", await estimate(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning", { requests, approved: false });
     }
+    // «خطبة المنبر»: the text is written and shown FIRST; its PDF and Word file are made only after the preacher approves it
+    case "sermon_files": {
+      if (o.kind !== "sermon" || o.status !== "review" || !(o.content as { draft?: boolean } | null)?.draft) throw new UserError(NOT_NOW);
+      return run("final", 0, { render: true }, "صنع ملف الخطبة", "running");
+    }
     case "approve": {
       if (o.status !== "review") throw new UserError(NOT_NOW);
+      if (o.kind === "sermon" && (o.content as { draft?: boolean } | null)?.draft) throw new UserError("اعتمد النص أول ليُصنع الملف.");
       await saveOutput(o.id, { status: "done", approved: true, stale: false });
       // outputs that read this one (audio of a summary) can start now, or must be re-approved if they were built before
       for (const d of (await outputs(p.id)).filter((x) => x.depends_on === o.id)) {

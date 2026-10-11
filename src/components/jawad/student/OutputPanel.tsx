@@ -96,6 +96,8 @@ export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: Out
 }
 
 function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onRemade?: () => void }) {
+  // «خطبة المنبر»: the written text, waiting for the preacher to approve it before its files are made
+  const sermonDraft = o.kind === "sermon" && Boolean((o.content as { draft?: boolean } | null)?.draft);
   const { assistant: A } = useBranch();
   const { jobs, segments, sources, outputs, research } = p.state;
   const job = jobs.find((j) => j.outputId === o.id);
@@ -297,8 +299,9 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
 
           {o.status === "review" ? (
             <Gate
-              next={outputs.some((x) => x.dependsOn === o.id) ? "يُعتمد الناتج، ويبدأ ما يعتمد عليه (مثل الصوت الذي يقرؤه)." : "يُعتمد الناتج ويبقى في المادة."}
-              onApprove={() => act({ action: "approve" })}
+              next={sermonDraft ? `يُصنع ملف الخطبة (${[o.settings.format !== "docx" ? "PDF" : "", o.settings.format !== "pdf" ? "Word قابل للتعديل" : ""].filter(Boolean).join(" و ")}) من هذا النص بالضبط. تقدر ترجع وتطلب تعديلًا بعدها.` : outputs.some((x) => x.dependsOn === o.id) ? "يُعتمد الناتج، ويبدأ ما يعتمد عليه (مثل الصوت الذي يقرؤه)." : "يُعتمد الناتج ويبقى في المادة."}
+              approveLabel={sermonDraft ? "اعتمد النص وصنع الملف" : "اعتمد"}
+              onApprove={() => act({ action: sermonDraft ? "sermon_files" : "approve" })}
               editHint={o.kind === "slides" || o.kind === "audio" || o.kind === "mindmap" ? `ما الذي تريد تعديله؟ (يعدّل ${A} الخطة لتعتمدها من جديد)` : "ما الذي تريد تعديله؟ يُعدَّل موضعيًا دون إعادة اختراع المحتوى."}
               onEdit={(note) => <RequestButton o={o} note={note} kind="edit" act={act} running={running} />}
               onOther={(note) => <RequestButton o={o} note={note} kind="other" act={act} running={running} />}

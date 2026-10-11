@@ -74,7 +74,9 @@ const pageSize = (o: Output): PageSize => (o.settings.page === "A5" ? "A5" : "A4
 function chapterWords(c: Ctx, o: Output, plan: DocPlan) {
   // a sermon has a length to SAY (short, medium, long), not a page count: its words are shared among its four parts as the method sets them
   if (o.kind === "sermon") {
-    const total = readSermonLength(o.settings.length).words * (Number(o.settings._wordScale) || 1);
+    // the preacher's own text keeps its own length; otherwise the length he picked
+    const own = countWords(String(o.settings.draftText ?? ""));
+    const total = (own > 100 ? own : readSermonLength(o.settings.length).words) * (Number(o.settings._wordScale) || 1);
     return plan.chapters.map((_, i) => Math.max(60, Math.round(total * (SERMON_PARTS[i]?.share ?? 0.15))));
   }
   const pages = pagesOf(o.settings);
@@ -773,6 +775,11 @@ async function finalStep(job: Job): Promise<StepResult> {
       return { done: false, usd: img.usd, stage: `صورة الفصل ${img.k + 1}` };
     }
   }
+  // «خطبة المنبر»: the text first — the preacher reads it, asks for changes, and approves it; only then are the files made
+  if (o.kind === "sermon" && !job.input.render) {
+    await saveOutput(o.id, { status: "review", files: {}, content: { ...doc, draft: true } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
+    return { done: true, stage: "نص الخطبة جاهز: راجعه واعتمده ليُصنع الملف" };
+  }
   const want = pagesOf(o.settings);
   const pdf = await renderDoc(o, c, doc, plan, false);
   if (want && pdf.pages !== want && words && !revise) {
@@ -787,7 +794,9 @@ async function finalStep(job: Job): Promise<StepResult> {
   const files: Record<string, string> = { ...o.files, pdf: pdf.path };
   if (wantsDocx(o.settings)) files.docx = await renderDocx(o, c, doc, plan);
   else delete files.docx;
-  await saveOutput(o.id, { status: "review", files, content: { ...doc, pages: pdf.pages || undefined } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
+  const { draft: _draft, ...whole } = doc as Doc & { draft?: boolean };
+  void _draft;
+  await saveOutput(o.id, { status: "review", files, content: { ...whole, pages: pdf.pages || undefined } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
   return { done: true, stage: want && pdf.pages !== want ? `${outputName(o.kind)} جاهز (${pdf.pages} صفحة؛ أقرب ما وصل له من ${want})` : `${outputName(o.kind)} جاهز` };
 }
 
@@ -853,7 +862,8 @@ async function failed(job: Job, message: string) {
     trial: "trial_offer",
     style: o.status,
     revise: o.files && Object.keys(o.files).length ? "review" : o.plan_approved ? "ready" : "failed",
-    final: o.plan_approved ? "ready" : "failed",
+    // the files of an approved sermon text failed: back to its text, to approve again
+    final: o.kind === "sermon" && job.input.render ? "review" : o.plan_approved ? "ready" : "failed",
   };
   await saveOutput(o.id, { status: back[job.kind] ?? "failed", error: message });
 }
