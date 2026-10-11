@@ -22,6 +22,8 @@ export function autoSettings(kind: string, level: string): Record<string, unknow
       return { density: young ? "low" : "medium", aspect: "16:9", notesMode: "both", count: 0, render: "editable", design: defaultDesign(randomStyle()) };
     case "audio":
       return { source: "text", mode: "single" };
+    case "mindmap":
+      return { mapType: "auto", scope: young ? "one" : "sections", render: "editable", imageQuality: "high", recall: true, design: defaultDesign(randomStyle()) };
     case "quiz":
       return { difficulty: young ? "easy" : "medium", count: 10, types: young ? ["mcq", "tf"] : ["mcq", "tf", "short"], usage: "both" };
     default:

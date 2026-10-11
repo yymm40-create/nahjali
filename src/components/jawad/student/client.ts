@@ -31,7 +31,7 @@ export interface SegmentView {
 
 export interface OutputView {
   id: string;
-  kind: "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat";
+  kind: "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat" | "mindmap";
   ord: number;
   title: string;
   settings: Record<string, unknown> & { design?: Design; _styleDraft?: Design | null };
@@ -84,7 +84,7 @@ export interface ProjectState {
     expiresAt: string;
   };
   /** coins for one page / slide drawn by GPT Image 2 (free: nothing is charged) */
-  prices: { free: boolean; page: { high: number; medium: number }; slide: { high: number; medium: number } };
+  prices: { free: boolean; page: { high: number; medium: number }; slide: { high: number; medium: number }; map: { high: number; medium: number } };
   sources: { id: string; ord: number; kind: "text" | "image" | "pdf"; name: string; mime: string; bytes: number; pages: number; pagesDone: number; status: string; role?: string; body: string | null }[];
   segments: SegmentView[];
   coverage: { missing: string[]; duplicate: string[]; total: number; approved: number; complete: boolean };

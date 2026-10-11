@@ -36,7 +36,7 @@ const output = (o: Partial<OutputView>): OutputView => ({
 const state = (stage: ProjectState["project"]["stage"], outputs: OutputView[] = []): ProjectState =>
   ({
     project: { id: "p", title: "", level: "", audience: "", stage, text_version: 1, understanding_version: 1, research_version: 0, allow_additions: true, web_search: false, brief: readBrief({}), expiresAt: "" },
-    prices: { free: true, page: { high: 0, medium: 0 }, slide: { high: 0, medium: 0 } },
+    prices: { free: true, page: { high: 0, medium: 0 }, slide: { high: 0, medium: 0 }, map: { high: 0, medium: 0 } },
     sources: [], segments: [], coverage: { missing: [], duplicate: [], total: 0, approved: 0, complete: true }, textVersion: null, understanding: null, research: null, outputs, jobs: [], balance: null,
   }) as ProjectState;
 

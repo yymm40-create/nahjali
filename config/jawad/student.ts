@@ -138,7 +138,7 @@ export function rolesBrief(roles: unknown[]): string {
   return ["EACH SOURCE HAS A ROLE, written in its label («نموذج أتبعه», «مادة علمية», «مرجع إضافي»):", ...lines].join("\n");
 }
 
-export type OutputKind = "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat";
+export type OutputKind = "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat" | "mindmap";
 
 export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] = [
   { kind: "summary", name: "ملخص", blurb: "الأفكار الجوهرية بالمستوى والتفصيل الذي تختاره." },
@@ -148,6 +148,7 @@ export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] =
   { kind: "book", name: "كتاب أو ملزمة PDF", blurb: "ملف قراءة مصمم بخط عربي واضح وأسلوب تختاره." },
   { kind: "slides", name: "عرض تقديمي PPTX", blurb: "شرائح قابلة للتعديل، مع نسخة PDF مطابقة." },
   { kind: "audio", name: "تسجيل صوتي", blurb: "قراءة صوتية بـ ElevenLabs، ملف واحد أو عدة ملفات." },
+  { kind: "mindmap", name: "خريطة ذهنية", blurb: "خريطة احترافية بدرجتها حسب عمرك (شعاعية، شجرية، مفاهيمية أو تسلسلية)، صورة عالية الجودة يصممها صادق أو يرسمها GPT Image 2، مع نسخة فارغة تسمّع فيها." },
   { kind: "quiz", name: "اختبار", blurb: "أسئلة من المادة بصعوبة وعدد وأنواع تحددها." },
   { kind: "chat", name: "محادثة مع صادق", blurb: "تناقش صادق في الموضوع وتسأله، ويبحث لك لو طلبت؛ المحادثة محفوظة مع مادتك." },
 ];
@@ -345,7 +346,7 @@ export const ISLAMIC_WAYS = [
 // ───────────────────────────── the student's own choices for a file ─────────────────────────────
 
 /** Outputs with a design (style, fonts): the design step is shown when one of them is chosen. */
-export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book", "slides", "quiz"];
+export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book", "slides", "quiz", "mindmap"];
 
 /** Written outputs made as pages (PDF, and Word when asked): they take a page count, a file format and a design. */
 export const PAGED_KINDS = ["summary", "explain", "preread", "book"] as const;

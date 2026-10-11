@@ -8,6 +8,7 @@ import { useState } from "react";
 import { coinStr } from "@config/coins";
 import { COUNTED_KINDS, chosenPages } from "@/lib/jawad/student/draw";
 import { FONTS, FORMATS, MAX_PAGES, OUTPUT_KINDS, STYLES, isPaged, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { MAP_GRADES, MAP_TYPES, gradeOf } from "@/lib/jawad/student/mindmap";
 import { PICTURE_KINDS } from "./autopilot";
 import { fontFacesUrl } from "./client";
 import type { ProjectHook } from "./StudentProject";
@@ -30,6 +31,8 @@ export function defaults(kind: OutputKind, level: string): S {
       return { count: 0, aspect: "16:9", notesMode: "both", render: "editable", imageQuality: "high" };
     case "audio":
       return { source: "text", mode: "single" };
+    case "mindmap":
+      return { mapType: "auto", scope: young ? "one" : "sections", render: "editable", imageQuality: "high", recall: true };
     case "quiz":
       return { count: 10, difficulty: young ? "easy" : "medium", types: young ? ["mcq", "tf"] : ["mcq", "tf", "short"], usage: "both" };
     default:
@@ -77,22 +80,22 @@ export function Count({ label, value, options, max, unit, onChange }: { label: s
 }
 
 /** «GPT Image 2 or Claude»: what each gives, and what drawing costs. */
-export function MethodChoice({ what, value, quality, perUnit, free, onChange }: { what: "page" | "slide"; value: boolean; quality: string; perUnit: { high: number; medium: number }; free: boolean; onChange: (draw: boolean, quality: string) => void }) {
-  const unit = what === "slide" ? "الشريحة" : "الصفحة";
-  const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${coinStr(perUnit[q])} لكل ${what === "slide" ? "شريحة" : "صفحة"}`);
+export function MethodChoice({ what, value, quality, perUnit, free, onChange }: { what: "page" | "slide" | "map"; value: boolean; quality: string; perUnit: { high: number; medium: number }; free: boolean; onChange: (draw: boolean, quality: string) => void }) {
+  const unit = what === "slide" ? "الشريحة" : what === "map" ? "الخريطة" : "الصفحة";
+  const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${coinStr(perUnit[q])} لكل ${what === "slide" ? "شريحة" : what === "map" ? "خريطة" : "صفحة"}`);
   return (
     <div className="space-y-2">
-      <span className="text-sm font-semibold">كيف تنصنع {what === "slide" ? "الشرائح" : "الصفحات"}؟</span>
+      <span className="text-sm font-semibold">كيف تنصنع {what === "slide" ? "الشرائح" : what === "map" ? "الخريطة" : "الصفحات"}؟</span>
       <div className="grid gap-2 sm:grid-cols-2">
         <button type="button" aria-pressed={!value} onClick={() => onChange(false, quality)} className={`rounded-2xl border bg-white p-3 text-start ${!value ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
           <b className="block">🧩 صادق يصممها</b>
           <span className="block text-xs text-jw-muted">
-            {what === "slide" ? "ملف PPTX تقدر تعدّل نصه بنفسك + PDF." : "PDF بخط عربي حقيقي، نصه قابل للنسخ والبحث."} بدون أخطاء في الكلمات. الأرخص: بدون تكلفة إضافية.
+            {what === "slide" ? "ملف PPTX تقدر تعدّل نصه بنفسك + PDF." : what === "map" ? "صورة PNG عالية الدقة (4K تقريبًا) + PDF، وتعدّل فروعها بنفسك قبل الرسم." : "PDF بخط عربي حقيقي، نصه قابل للنسخ والبحث."} بدون أخطاء في الكلمات. الأرخص: بدون تكلفة إضافية.
           </span>
         </button>
         <button type="button" aria-pressed={value} onClick={() => onChange(true, quality)} className={`rounded-2xl p-3 text-start text-white ${value ? "ring-4 ring-pink-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#7c3aed,#db2777 55%,#f97316)" }}>
           <b className="block">🪄 GPT Image 2 يرسمها</b>
-          <span className="block text-xs text-white/90">كل {unit} لوحة فنية مرسومة، أجمل بكثير. النص يصير صورة (ما ينعدل)، وقد يغلط في كلمة أحيانًا وتقدر تعيد رسمها. <Coined text={price(quality === "medium" ? "medium" : "high")} />.</span>
+          <span className="block text-xs text-white/90">كل {unit} لوحة فنية مرسومة، أجمل بكثير{what === "map" ? " (يرسمها على تصميم صادق نفسه، وتاخذ الاثنين)" : ""}. النص يصير صورة (ما ينعدل)، وقد يغلط في كلمة أحيانًا وتقدر تعيد رسمها. <Coined text={price(quality === "medium" ? "medium" : "high")} />.</span>
         </button>
       </div>
       {value && (
@@ -110,7 +113,7 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
   );
 }
 
-export function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"] }) {
+export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"]; level?: string }) {
   const density = <Choice label="قد إيش التفصيل؟" value={String(s.density)} options={[{ id: "low", label: "مختصر" }, { id: "medium", label: "متوسط" }, { id: "high", label: "مفصل" }]} onChange={(density) => set({ density })} />;
   const pages = PICTURE_KINDS.includes(kind) && (
     <>
@@ -200,6 +203,20 @@ export function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; 
         </>
       );
     }
+    case "mindmap":
+      return (
+        <>
+          <Choice label="نوع الخريطة" value={String(s.mapType ?? "auto")} options={[{ id: "auto", label: "صادق يختار حسب المادة" }, ...MAP_TYPES.map((t) => ({ id: t.id, label: t.name }))]} onChange={(mapType) => set({ mapType })} />
+          <p className="text-[11px] text-jw-faint">{s.mapType && s.mapType !== "auto" ? MAP_TYPES.find((t) => t.id === s.mapType)?.hint : "يختار الشكل اللي يناسب كل جزء: شعاعية للحفظ، شجرية للتصنيف، مفاهيمية للعلاقات، تسلسلية للخطوات."}</p>
+          <Choice label="كم خريطة؟" value={String(s.scope ?? "one")} options={[{ id: "one", label: "خريطة وحدة للمادة كلها" }, { id: "sections", label: "خريطة شاملة + خريطة لكل قسم" }]} onChange={(scope) => set({ scope })} />
+          <p className="text-[11px] text-jw-faint">الدرجة حسب مستواك ({MAP_GRADES[gradeOf(level)].name}): {MAP_GRADES[gradeOf(level)].says}.</p>
+          <MethodChoice what="map" value={s.render === "image"} quality={String(s.imageQuality || "high")} perUnit={prices.map} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q })} />
+          <button type="button" role="switch" aria-checked={s.recall !== false} onClick={() => set({ recall: s.recall === false })} className={`w-full rounded-2xl border p-3 text-start ${s.recall !== false ? "border-transparent bg-emerald-50 ring-4 ring-emerald-200" : "border-jw-line bg-white"}`}>
+            <b className="block">{s.recall !== false ? "✓ " : ""}🧠 نسخة التسميع (أقوى طريقة للحفظ)</b>
+            <span className="block text-xs text-jw-muted">نفس الخريطة بفروع فاضية: تملاها من ذاكرتك وتقارن بالأصل، وتعيدها بعد يوم وأسبوع وشهر. مجانية.</span>
+          </button>
+        </>
+      );
     case "chat":
       return <p className="text-sm text-jw-muted">ما يحتاج إعدادات: تنفتح لك محادثة مع صادق على مادتك، تناقشه فيها وتسأله، ويبحث لك لو طلبت.</p>;
     default:

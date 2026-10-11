@@ -14,6 +14,8 @@ import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, sav
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
 import { CLAUDE_ONLY_KINDS, checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "./model";
+import { clampMap, type MindPlan } from "./mindmap";
+import { mapImageUsd } from "./mindmap-make";
 import { estimate } from "./outputs";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
 import { chosenPages, drawNote } from "./draw";
@@ -43,7 +45,7 @@ const NOT_NOW = "هذه الخطوة غير متاحة الآن.";
 async function drawPrices(user: User) {
   const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
   const c = (usd: number) => (free ? 0 : coinsFor(usd));
-  return { free, page: { high: c(pageUsd("high")), medium: c(pageUsd("medium")) }, slide: { high: c(slideImageUsd("high")), medium: c(slideImageUsd("medium")) } };
+  return { free, page: { high: c(pageUsd("high")), medium: c(pageUsd("medium")) }, slide: { high: c(slideImageUsd("high")), medium: c(slideImageUsd("medium")) }, map: { high: c(mapImageUsd("high")), medium: c(mapImageUsd("medium")) } };
 }
 
 export async function projectState(user: User, id: string) {
@@ -524,7 +526,7 @@ function cleanSettings(kind: Output["kind"], s: Body) {
     else if (typeof v === "boolean") out[k] = v;
     else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === "string").slice(0, 10);
   }
-  if (kind === "book" || kind === "slides" || kind === "summary" || kind === "explain" || kind === "preread" || kind === "quiz") {
+  if (kind === "book" || kind === "slides" || kind === "summary" || kind === "explain" || kind === "preread" || kind === "quiz" || kind === "mindmap") {
     const d = cleanDesign(s.design);
     if (d) out.design = d;
   }
@@ -575,6 +577,19 @@ function cleanPlan(o: Output, plan: unknown): unknown {
   }
   if (o.kind === "quiz") {
     return { rows: arr(p.rows, (x) => ({ topic: s(x.topic, 300), segments: Array.isArray(x.segments) ? x.segments.slice(0, 200).map((t) => s(t, 8)) : [], counts: Object.fromEntries(["mcq", "tf", "short", "essay", "long", "custom"].map((k) => [k, Math.max(0, Math.min(100, Number((x.counts as Record<string, unknown>)?.[k]) || 0))])) })) } satisfies QuizPlan;
+  }
+  if (o.kind === "mindmap") {
+    // the student's outline, in the widest bounds (the student may add more than صادق's grade gives); the pictures are
+    // the server's own (never paths from the browser), and one whose map changed is drawn again (its signature differs)
+    const before = (prev as unknown as MindPlan).maps ?? [];
+    const maps = (Array.isArray(p.maps) ? p.maps : []).slice(0, 9).map((x, i) => {
+      const { rendered: _r, picture: _p, ...m } = clampMap(x, "graduate");
+      void _r;
+      void _p;
+      return { ...m, rendered: before[i]?.rendered ?? null, picture: before[i]?.picture ?? null };
+    });
+    if (!maps.some((m) => m.branches.length)) throw new UserError("الخريطة فاضية: اكتب فرعًا واحدًا على الأقل.");
+    return { maps } satisfies MindPlan;
   }
   if (o.kind === "audio") {
     const before = (prev as unknown as AudioPlan).files ?? [];
@@ -687,6 +702,10 @@ export async function outputAction(user: User, id: string, b: Body) {
       if (o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "quiz") {
         const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
         return run("revise", await estimate(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
+      }
+      // a mind map drawn by GPT Image 2: one map drawn again with the request
+      if (o.kind === "mindmap" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
+        return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الخريطة من جديد", "running", { requests, approved: false });
       }
       // slides made as pictures: one slide is drawn again with the request
       if (o.kind === "slides" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
