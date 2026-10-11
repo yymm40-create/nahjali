@@ -31,6 +31,8 @@ export interface ProfileRow {
   view_mode?: "list" | "compact";
   /** the home cards in order (migration 0062; null = the standard home) */
   home_widgets?: string[] | null;
+  /** where the drawn shrine shows (migration 0064; null = as the design does) */
+  shrine_place?: string | null;
 }
 export interface ProjectRow {
   id: string;
@@ -99,6 +101,7 @@ export const profileFromRow = (r: ProfileRow): Profile => ({
   frame: r.frame ?? "",
   viewMode: r.view_mode ?? "list",
   homeWidgets: r.home_widgets ?? null,
+  shrinePlace: r.shrine_place ?? "auto",
 });
 
 export const projectFromRow = (r: ProjectRow): Project => ({

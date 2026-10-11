@@ -5,7 +5,7 @@ import BookletCard from "@/components/mahdi/BookletCard";
 import HealthCard from "@/components/mahdi/health/HealthCard";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { MAHDI_LIMITS, type MahdiTheme } from "@config/mahdi";
+import { MAHDI_LIMITS, designOf, type MahdiTheme } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +16,7 @@ import InstallCard from "@/components/mahdi/InstallCard";
 import UsernameForm from "@/components/mahdi/UsernameForm";
 import Icon from "@/components/mahdi/Icon";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
+import { SHRINE_PLACES, type ShrinePlace } from "@/lib/mahdi/shrine-art";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { useLook } from "@/components/mahdi/ThemeRoot";
 import Robot from "@/components/mahdi/Robot";
@@ -63,6 +64,11 @@ export default function MorePage() {
     const before = look.theme;
     look.setTheme(th);
     save({ theme: th }, () => look.setTheme(before));
+  };
+  const choosePlace = (pl: ShrinePlace | "auto") => {
+    const before = look.place;
+    look.setPlace(pl);
+    save({ shrinePlace: pl }, () => look.setPlace(before));
   };
   const chooseShrine = (s: Shrine) => {
     const before = look.shrine;
@@ -162,6 +168,16 @@ export default function MorePage() {
       <section id="look" className="m-card scroll-mt-20 space-y-4 p-5">
         <h2 className="font-semibold">{t.more.theme}</h2>
         <ThemePicker value={look.theme} onChange={chooseTheme} />
+        <h2 className="pt-2 font-semibold">رسمة الحرم: وين تطلع؟</h2>
+        <p className="text-sm m-muted">الحرم مرسوم بستايل تصميمك نفسه، وتختار وين يظهر.</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="رسمة الحرم">
+          {SHRINE_PLACES.map((pl) => (
+            <button key={pl.id} type="button" role="radio" aria-checked={look.place === pl.id} className="m-option p-3 text-start" onClick={() => choosePlace(pl.id)}>
+              <span className="block font-semibold">{pl.label}</span>
+              <span className="block text-xs m-muted">{pl.id === "auto" ? `${pl.hint}: ${SHRINE_PLACES.find((x) => x.id === designOf(look.theme).place)?.label}` : pl.hint}</span>
+            </button>
+          ))}
+        </div>
         <h2 className="pt-2 font-semibold">{t.more.shrine}</h2>
         <ShrinePicker shrines={shrines} value={look.shrine?.id ?? profile.shrineId} onChange={chooseShrine} />
         {look.shrine?.isArtwork && <p className="m-hint">{t.more.artwork}</p>}

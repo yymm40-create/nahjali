@@ -8,6 +8,7 @@ import { profileFromRow, type ProfileRow } from "@/lib/mahdi/server/rows";
 import { getShrines } from "@/lib/mahdi/server/snapshot";
 import { syncPublicProfile } from "@/lib/mahdi/server/public";
 import { parseWidgets } from "@/lib/mahdi/home-widgets";
+import { readPlace } from "@/lib/mahdi/shrine-art";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseBool, parseIntIn, parseTheme, parseTimeZone, requireName } from "@/lib/mahdi/server/validate";
 
@@ -26,6 +27,8 @@ async function profileFields(supabase: SupabaseClient, body: Record<string, unkn
   if ("hijriOffset" in body) out.hijri_offset = parseIntIn(body.hijriOffset, -2, 2);
   // the home screen the person arranged (the widgets, in order)
   if ("homeWidgets" in body) out.home_widgets = parseWidgets(body.homeWidgets);
+  // where the drawn shrine shows (the person's choice over the design's)
+  if ("shrinePlace" in body) out.shrine_place = readPlace(body.shrinePlace);
   // Rewards: only what the user has unlocked
   if ("frame" in body || "themeVariant" in body || "viewMode" in body) {
     const unlocked = new Set((await supabase.from("mahdi_user_rewards").select("milestone_id")).data?.map((r) => r.milestone_id) ?? []);
@@ -59,8 +62,9 @@ async function beforeMigration<R extends { error: { code?: string } | null }>(wr
   if (code !== "23514" && code !== "42703" && code !== "PGRST204") return first;
   // a design the database doesn't know yet (migrations 0062 / 0063): the older light or dark look, by its colours
   const older = (k: string) => (k === "cinematic" || k === "minimal" || k === "night" ? k : LIGHT_THEMES.includes(k as MahdiTheme) ? "minimal" : "night");
-  const { home_widgets: _drop, ...rest } = fields;
+  const { home_widgets: _drop, shrine_place: _place, ...rest } = fields;
   void _drop;
+  void _place;
   if (typeof rest.theme === "string") rest.theme = older(rest.theme);
   return write(rest);
 }
