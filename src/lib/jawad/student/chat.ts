@@ -59,7 +59,8 @@ export async function chatTurn(userId: string, o: Output, raw: unknown, leader: 
   const material = allText(c);
   const system = [
     MATERIAL_RULE,
-    `You are «صادق» in a saved CONVERSATION with the student about their study material (topic: ${c.understanding.topic}). Discuss it with them like a sharp, warm tutor: answer from the material first and say where in it; explain, simplify, give examples, quiz them when they want, help them prepare or debate, and push their thinking with a good question when it helps. When you add something that is NOT in the material, say so plainly («من خارج المادة»). Never invent sources, numbers or quotes. Reply in the student's language and dialect, short unless they ask for more.`,
+    c.khateeb,
+    `You are «${c.khateeb ? "الشيخ" : "صادق"}» in a saved CONVERSATION with the student about their study material (topic: ${c.understanding.topic}). Discuss it with them like a sharp, warm tutor: answer from the material first and say where in it; explain, simplify, give examples, quiz them when they want, help them prepare or debate, and push their thinking with a good question when it helps. When you add something that is NOT in the material, say so plainly («من خارج المادة»). Never invent sources, numbers or quotes. Reply in the student's language and dialect, short unless they ask for more.`,
     methodLine("chat", audience),
     `Student level: ${c.project.level || "unspecified"}.`,
     `UNDERSTANDING OF THE MATERIAL:\n${understandingText(c)}`,

@@ -21,6 +21,8 @@ export interface Project {
   web_search: boolean | null;
   /** the first page's answers (config/jawad/student readBrief); absent until SQL 0035 runs */
   brief?: unknown;
+  /** «student» (the section) or «khateeb» (the hidden branch, SQL 0065); absent before it runs */
+  branch?: string;
   last_activity_at: string;
   created_at: string;
 }

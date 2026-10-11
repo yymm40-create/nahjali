@@ -1,0 +1,60 @@
+import { describe, expect, it } from "vitest";
+import { cleanSlug, DEFAULT_METHOD, isKhateeb, KHATEEB, KHATEEB_LOOK, khateebRules, readBranch, STUDENT_LOOK } from "@config/jawad/khateeb";
+import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
+import { rulesFor } from "@/lib/rate-limit";
+import { readFileSync } from "node:fs";
+
+describe("«الخطيب الذكي»: the link's word", () => {
+  it("takes letters, digits and dashes, six to forty long, and nothing else", () => {
+    expect(cleanSlug("My-Minbar-9")).toBe("my-minbar-9");
+    expect(cleanSlug("abc")).toBe("");
+    expect(cleanSlug("a b c d e f")).toBe("");
+    expect(cleanSlug("../admin")).toBe("");
+    expect(cleanSlug("-abcdef")).toBe("");
+    expect(cleanSlug("a".repeat(41))).toBe("");
+    expect(cleanSlug(null)).toBe("");
+  });
+});
+
+describe("«الخطيب الذكي»: the branch", () => {
+  it("is told apart from the student's by its name only", () => {
+    expect(isKhateeb("khateeb")).toBe(true);
+    expect(isKhateeb("student")).toBe(false);
+    expect(readBranch("anything")).toBe("student");
+    expect(readBranch(undefined)).toBe("student");
+    expect(KHATEEB_LOOK.assistant).toBe("الشيخ");
+    expect(STUDENT_LOOK.assistant).toBe("صادق");
+    expect(KHATEEB.base).toBe("/jawad-ai/khateeb");
+  });
+
+  it("tells the writer who he is, and binds him to the owner's method and poems only when they exist", () => {
+    const plain = khateebRules(DEFAULT_METHOD, "");
+    expect(plain).toContain("«الشيخ»");
+    expect(plain).not.toContain("<method>");
+    expect(plain).not.toContain("<poems>");
+    const full = khateebRules("١. المقدمة\n٢. الموعظة", "إذا ما رأيت ... ");
+    expect(full).toContain("<method>\n١. المقدمة\n٢. الموعظة\n</method>");
+    expect(full).toContain("<poems>");
+    expect(full).toMatch(/never make up a line/);
+  });
+
+  it("limits the guessing of its password", () => {
+    expect(rulesFor("/api/khateeb/enter", "POST").some((r) => r.key === "khateeb" && r.max <= 10)).toBe(true);
+  });
+
+  it("is listed in no menu and no sitemap, and is told to Claude as a secret", () => {
+    expect(JAWAD_KNOWLEDGE).toContain("«الخطيب الذكي»");
+    expect(JAWAD_KNOWLEDGE).toMatch(/NEVER mention it[^.]*anyone but the owner/);
+    for (const f of ["config/jawad/sections.ts", "src/components/jawad/QuickStart.tsx", "src/components/jawad/JawadHeader.tsx"]) {
+      expect(readFileSync(new URL(`../${f}`, import.meta.url), "utf8")).not.toContain("khateeb");
+    }
+  });
+
+  it("opens only after the link's word and the password, and the pages are not indexed", () => {
+    const door = readFileSync(new URL("../src/lib/khateeb/door.ts", import.meta.url), "utf8");
+    expect(door.indexOf("notFound();")).toBeLessThan(door.indexOf("await doorOpen("));
+    expect(door.indexOf("await doorOpen(")).toBeLessThan(door.indexOf("await requireJawadUser("));
+    const page = readFileSync(new URL("../src/app/jawad-ai/khateeb/[slug]/page.tsx", import.meta.url), "utf8");
+    expect(page).toContain("index: false");
+  });
+});

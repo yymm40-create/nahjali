@@ -3,6 +3,7 @@
 // «الطالب الذكي» — finished outputs: written documents (with additions and research marked), the verbatim transcript,
 // slides and books as PDF previews, audio players, and the interactive quiz.
 
+import { useBranch } from "./branch";
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { QUESTION_TYPES, fontById, type Design } from "@config/jawad/student";
@@ -66,6 +67,7 @@ export function PdfFrame({ o, name }: { o: OutputView; name: string }) {
 }
 
 function BlockView({ b, research }: { b: Block; research: Research | null }) {
+  const { assistant: A } = useBranch();
   const base = "text-[15px] leading-8";
   switch (b.t) {
     case "h":
@@ -92,7 +94,7 @@ function BlockView({ b, research }: { b: Block; research: Research | null }) {
     case "addition":
       return (
         <div className="rounded-lg border border-dashed border-jw-warn p-3">
-          <span className="text-xs font-bold text-jw-warn">إضافة من صادق — ليست من المادة</span>
+          <span className="text-xs font-bold text-jw-warn">إضافة من {A} — ليست من المادة</span>
           <p className={base}>{b.text}</p>
         </div>
       );
@@ -355,6 +357,7 @@ function Flashcards({ o, qs }: { o: OutputView; qs: Question[] }) {
 }
 
 export function QuizPlay({ o }: { o: OutputView }) {
+  const { assistant: A } = useBranch();
   const qs = ((o.content as { questions: Question[] } | null)?.questions ?? []) as Question[];
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [result, setResult] = useState<{ score: number | null; right: number; total: number } | null>(null);
@@ -382,7 +385,7 @@ export function QuizPlay({ o }: { o: OutputView }) {
     return (
       <div className="space-y-4">
         {modes}
-        <p className="text-sm text-jw-muted">يسألك صادق سؤال سؤال، ويصحّح لك على طول، وفي الآخر يقول لك <b>كم مستوى فهمك</b> وين نقاط ضعفك. بدون أي تكلفة.</p>
+        <p className="text-sm text-jw-muted">يسألك {A} سؤال سؤال، ويصحّح لك على طول، وفي الآخر يقول لك <b>كم مستوى فهمك</b> وين نقاط ضعفك. بدون أي تكلفة.</p>
         <UnderstandingTest o={o} qs={qs} />
       </div>
     );
@@ -445,7 +448,7 @@ export function QuizPlay({ o }: { o: OutputView }) {
             <PaidButton
               label={`اختبار جديد يركّز على أخطائي (${wrong.length})`}
               primary={false}
-              what="يكتب صادق أسئلة جديدة عن النقاط التي أخطأت فيها، بدل الأسئلة الحالية."
+              what={`يكتب ${A} أسئلة جديدة عن النقاط التي أخطأت فيها، بدل الأسئلة الحالية.`}
               run={async (b) => {
                 const r = await post(`/api/jawad/student/outputs/${o.id}`, { action: "request", kind: "other", note: `اختبار جديد يركّز على ما أخطأت فيه، وهو: ${wrong.map((q) => q.question).join(" | ").slice(0, 3000)}`, ...b });
                 window.dispatchEvent(new Event("st-refresh"));
@@ -469,13 +472,14 @@ export function QuizPlay({ o }: { o: OutputView }) {
  * switch, and the downloads (each picture, and all of them as one PDF).
  */
 export function MindmapResult({ o }: { o: OutputView }) {
+  const { assistant: A } = useBranch();
   const [view, setView] = useState<"map" | "art" | "blank">(() => (o.files.some((f) => f.startsWith("art_")) ? "art" : "map"));
   const n = o.files.filter((f) => /^map_\d+$/.test(f)).length;
   const has = (k: string) => o.files.some((f) => f.startsWith(`${k}_`));
   const t = encodeURIComponent(o.updatedAt);
   const views = [
     has("art") && { id: "art" as const, label: "🪄 رسم GPT Image 2" },
-    { id: "map" as const, label: "🧩 تصميم صادق" },
+    { id: "map" as const, label: `🧩 تصميم ${A}` },
     has("blank") && { id: "blank" as const, label: "🧠 نسخة التسميع" },
   ].filter(Boolean) as { id: "map" | "art" | "blank"; label: string }[];
   return (

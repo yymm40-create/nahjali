@@ -6,6 +6,7 @@
 // reached is open, the ones behind it are folded and open again with a press, the ones ahead are locked until it is
 // reached. It used to be three pages the student went between.
 
+import { useBranch } from "./branch";
 import type { ReactNode } from "react";
 import Icon from "@/components/jawad/Icon";
 import BriefStep from "./BriefStep";
@@ -18,8 +19,8 @@ import UnderstandingStep from "./UnderstandingStep";
 export type TierId = "sources" | "understanding";
 
 export const TIERS: { id: TierId; n: number; label: string; emoji: string; hint: string }[] = [
-  { id: "sources", n: 1, label: "المادة ومحتواها", emoji: "📤", hint: "اسم المادة، وملفاتك: PDF، صور، يوتيوب، تسجيل، نص — أو صادق يبحث لك." },
-  { id: "understanding", n: 2, label: "الفهم", emoji: "🧠", hint: "صادق فرّغ وقرأ كل شي: اقرأ فهمه، واعتمده أو صحّحه." },
+  { id: "sources", n: 1, label: "المادة ومحتواها", emoji: "📤", hint: "اسم المادة، وملفاتك: PDF، صور، يوتيوب، تسجيل، نص — أو {A} يبحث لك." },
+  { id: "understanding", n: 2, label: "الفهم", emoji: "🧠", hint: "{A} فرّغ وقرأ كل شي: اقرأ فهمه، واعتمده أو صحّحه." },
 ];
 
 /** Which tier a material is at: 0 material, 1 understanding; 2 once it has gone on to the outputs (from StudentProject's
@@ -50,6 +51,7 @@ export default function StartTiers({
   onFiles: () => void;
   onContinue: () => void;
 }) {
+  const { assistant: A } = useBranch();
   const at = tierReached(reached);
   const body = (id: TierId): ReactNode => {
     if (id === "sources") {
@@ -68,7 +70,7 @@ export default function StartTiers({
       );
     }
     return researching ? (
-      <p className="jw-panel p-4 text-center text-sm text-jw-muted">يفهم صادق مادتك تلقائيًا بعد ما يكتبها من البحث، وتشوف فهمه هنا.</p>
+      <p className="jw-panel p-4 text-center text-sm text-jw-muted">يفهم {A} مادتك تلقائيًا بعد ما يكتبها من البحث، وتشوف فهمه هنا.</p>
     ) : (
       <UnderstandingStep p={p} />
     );
@@ -91,7 +93,7 @@ export default function StartTiers({
                 <b className="block text-base">
                   {t.emoji} {t.label}
                 </b>
-                <span className="block text-xs text-jw-muted">{locked ? "تنفتح بعد ما تكمل المرتبة اللي قبلها." : t.hint}</span>
+                <span className="block text-xs text-jw-muted">{locked ? "تنفتح بعد ما تكمل المرتبة اللي قبلها." : t.hint.replaceAll("{A}", A)}</span>
               </span>
               {!locked && <Icon name="chevronDown" size={16} className={isOpen ? "rotate-180" : ""} />}
             </button>

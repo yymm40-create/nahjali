@@ -1,10 +1,11 @@
 "use client";
 
+import { useBranch } from "./branch";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
-import { OUTPUT_KINDS, SOURCE_MODES, STUDENT, type SourceMode, STUDENT_ASSISTANT } from "@config/jawad/student";
+import { OUTPUT_KINDS, SOURCE_MODES, type SourceMode } from "@config/jawad/student";
 import { newKey, post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
@@ -13,8 +14,8 @@ import RobotFace from "@/components/RobotFace";
 const STAGE_INDEX: Record<string, number> = { sources: 0, review: 0, understanding: 1, scope: 2, outputs: 2 };
 
 const HOW = [
-  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "اسم المادة ومحتواها", text: "اكتب اسمها، وحط ملفاتك: PDF، صور، يوتيوب، تسجيل، نص — أو خلّ صادق يبحث لك." },
-  { emoji: "🧠", grad: STEP_LOOK[1].grad, title: "اعتمد الفهم", text: "صادق يفرّغ ويقرأ كل شي، ويقول لك وش فهم، وأنت تعتمد." },
+  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "اسم المادة ومحتواها", text: "اكتب اسمها، وحط ملفاتك: PDF، صور، يوتيوب، تسجيل، نص — أو خلّ {A} يبحث لك." },
+  { emoji: "🧠", grad: STEP_LOOK[1].grad, title: "اعتمد الفهم", text: "{A} يفرّغ ويقرأ كل شي، ويقول لك وش فهم، وأنت تعتمد." },
   { emoji: "✨", grad: STEP_LOOK[2].grad, title: "اختر النواتج", text: "ملخص، شرح، اختبار، عرض، صوت… ولكل واحد مستواه (خفيف، متوسط، عميق) وعدد صفحاته." },
 ];
 
@@ -31,6 +32,7 @@ export default function StudentHome({
   loginHref?: string | null;
   projects: { id: string; title: string; level: string; stage: string; last_activity_at: string; expiresAt: string }[] | null;
 }) {
+  const { assistant: A, base, face, branch } = useBranch();
   const router = useRouter();
   const formRef = useRef<HTMLElement>(null);
   const [title, setTitle] = useState("");
@@ -60,12 +62,13 @@ export default function StudentHome({
       return;
     }
     return run(async () => {
-      if (mode === "research" && !title.trim() && !focus.trim()) throw new Error("اكتب اسم المادة أو المعلومات اللي تبي صادق يبحث عنها.");
+      if (mode === "research" && !title.trim() && !focus.trim()) throw new Error(`اكتب اسم المادة أو المعلومات اللي تبي ${A} يبحث عنها.`);
       const r = await post<{ id: string }>("/api/jawad/student/projects", {
         title: title.trim() || focus.trim().slice(0, 80) || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`,
         // no school level or purpose to pick any more (the owner's choice): each output has its own level instead
         level: "",
         audience: "",
+        branch,
         brief: { purpose: "understand", purposeNote: "", mode, focus: focus.trim(), where: where.trim(), auto },
       });
       // «صادق يبحث لي»: no material page — the research starts now, and the page carries on by itself to the outputs
@@ -74,7 +77,7 @@ export default function StudentHome({
       setGoing(true);
       // the query keeps both choices even before SQL 0035 (no brief saved)
       const q = [mode === "research" ? "go=research" : "", auto ? "" : "auto=0"].filter(Boolean).join("&");
-      router.push(`${STUDENT.base}/${r.id}${q ? `?${q}` : ""}`);
+      router.push(`${base}/${r.id}${q ? `?${q}` : ""}`);
     });
   };
 
@@ -84,15 +87,28 @@ export default function StudentHome({
       <section className="st-rise grid items-center gap-8 lg:grid-cols-[1.2fr_1fr]">
         <div className="space-y-5">
           <span className="jw-chip !px-3 !py-1 !text-sm">✨ {name} · JAWAD AI</span>
-          <h1 className="text-4xl leading-tight font-extrabold sm:text-5xl">
-            ذاكر <span className="st-gradient-text">بذكاء</span>،
-            <br />
-            واصنع من مادتك أي شيء
-          </h1>
-          <p className="max-w-xl text-lg text-jw-muted">ارفع دروسك، ويحوّلها صادق إلى ملخصات وكتب مصممة وعروض تقديمية وتسجيلات صوتية واختبارات — وأنت تعتمد كل خطوة.</p>
+          {branch === "khateeb" ? (
+            <>
+              <h1 className="text-4xl leading-tight font-extrabold sm:text-5xl">
+                حضّر <span className="st-gradient-text">خطبتك</span>،
+                <br />
+                واصنع من مادتك أي شيء
+              </h1>
+              <p className="max-w-xl text-lg text-jw-muted">ارفع مادتك، أو خلّ {A} يبحث ويسأل «الذكاء الإسلامي» من مكتبته بمصادرها، ويكتب لك خطبة المنبر على المنهج — وأنت تعتمد كل خطوة.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-4xl leading-tight font-extrabold sm:text-5xl">
+                ذاكر <span className="st-gradient-text">بذكاء</span>،
+                <br />
+                واصنع من مادتك أي شيء
+              </h1>
+              <p className="max-w-xl text-lg text-jw-muted">ارفع دروسك، ويحوّلها {A} إلى ملخصات وكتب مصممة وعروض تقديمية وتسجيلات صوتية واختبارات — وأنت تعتمد كل خطوة.</p>
+            </>
+          )}
           {/* «صادق»: the section's assistant, by name */}
           <p className="inline-flex items-center gap-2 rounded-full border border-jw-line bg-jw-surface px-4 py-1.5 text-sm font-bold">
-            <RobotFace id="sadiq" size={22} /> معك {STUDENT_ASSISTANT.name}، مساعدك الذكي: يقرأ ويفهم ويبحث ويصنع
+            <RobotFace id={face} size={22} /> معك {A}، مساعدك الذكي: يقرأ ويفهم ويبحث ويصنع
           </p>
           <div className="flex flex-wrap gap-3">
             <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-7 !text-base" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
@@ -154,7 +170,7 @@ export default function StudentHome({
                 <span className="text-3xl font-black text-jw-surface-3">{i + 1}</span>
               </div>
               <b className="block text-lg">{h.title}</b>
-              <p className="text-sm text-jw-muted">{h.text}</p>
+              <p className="text-sm text-jw-muted">{h.text.replaceAll("{A}", A)}</p>
             </li>
           ))}
         </ol>
@@ -169,9 +185,9 @@ export default function StudentHome({
               <KindSample kind={k.kind} />
               <div className="flex items-center gap-2">
                 <Tile emoji={KIND_LOOK[k.kind].emoji} grad={KIND_LOOK[k.kind].grad} size={34} />
-                <b>{k.name}</b>
+                <b>{k.name.replaceAll("صادق", A)}</b>
               </div>
-              <p className="text-xs text-jw-muted">{k.blurb}</p>
+              <p className="text-xs text-jw-muted">{k.blurb.replaceAll("صادق", A)}</p>
             </li>
           ))}
           <li className="st-rise flex flex-col justify-center gap-2 rounded-[22px] p-5 text-white shadow-xl" style={{ background: "linear-gradient(135deg,#7c3aed,#db2777 55%,#f97316)" }}>
@@ -209,13 +225,13 @@ export default function StudentHome({
             ))}
           </div>
           {mode !== "files" && (
-            <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="وش المعلومات اللي تبي صادق يبحث عنها؟ مثال: دورة حياة الخلية بمنهج الصف الثاني متوسط، مع أمثلة" aria-label="ما يبحث عنه صادق" />
+            <textarea className="jw-textarea" rows={3} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder={`وش المعلومات اللي تبي ${A} يبحث عنها؟ مثال: دورة حياة الخلية بمنهج الصف الثاني متوسط، مع أمثلة`} aria-label={`ما يبحث عنه ${A}`} />
           )}
           {mode === "research" && (
             <div className="space-y-1">
               <span className="text-sm font-semibold">وين يبحث؟ (اختياري)</span>
-              <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => setWhere(e.target.value)} placeholder="الصق رابط موقع أو أكثر، أو اكتب المصدر (مثل: منهج وزارة التربية). يلتزم فيها صادق ولا يبحث في غيرها." aria-label="وين يبحث صادق" />
-              <p className="text-[11px] text-jw-faint">بعد «ابدأ» يبحث صادق ويكتب المادة ويفهمها لحاله، وتوصل على طول لاختيار النواتج. البحث يُخصم بسعره الفعلي.</p>
+              <textarea className="jw-textarea" rows={2} value={where} onChange={(e) => setWhere(e.target.value)} placeholder={`الصق رابط موقع أو أكثر، أو اكتب المصدر (مثل: منهج وزارة التربية). يلتزم فيها ${A} ولا يبحث في غيرها.`} aria-label={`وين يبحث ${A}`} />
+              <p className="text-[11px] text-jw-faint">بعد «ابدأ» يبحث {A} ويكتب المادة ويفهمها لحاله، وتوصل على طول لاختيار النواتج. البحث يُخصم بسعره الفعلي.</p>
             </div>
           )}
         </div>
@@ -244,7 +260,7 @@ export default function StudentHome({
               const i = STAGE_INDEX[p.stage] ?? 0;
               return (
                 <li key={p.id}>
-                  <Link href={`${STUDENT.base}/${p.id}`} className="jw-panel block space-y-3 p-5 transition-transform hover:-translate-y-1">
+                  <Link href={`${base}/${p.id}`} className="jw-panel block space-y-3 p-5 transition-transform hover:-translate-y-1">
                     <div className="flex items-center gap-3">
                       <Tile emoji={STEP_LOOK[i].emoji} grad={STEP_LOOK[i].grad} size={40} />
                       <div className="min-w-0">
@@ -273,6 +289,7 @@ export default function StudentHome({
 
 /** «صادق يكمل تلقائيًا»: on, he reads, understands and makes everything by himself; off, the student moves each step. */
 export function AutoSwitch({ on, onChange, compact = false }: { on: boolean; onChange: (on: boolean) => void; compact?: boolean }) {
+  const { assistant: A } = useBranch();
   return (
     <button
       type="button"
@@ -285,7 +302,7 @@ export function AutoSwitch({ on, onChange, compact = false }: { on: boolean; onC
         <span className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-all ${on ? "right-0.5" : "right-5"}`} />
       </span>
       <span className="min-w-0">
-        <b className="block text-sm">🤖 {STUDENT_ASSISTANT.name} يكمل الخطوات تلقائيًا: {on ? "شغّال" : "طافي"}</b>
+        <b className="block text-sm">🤖 {A} يكمل الخطوات تلقائيًا: {on ? "شغّال" : "طافي"}</b>
         {!compact && <span className="block text-[11px] text-jw-muted">{on ? "يقرأ ويفهم ويصنع لحاله، وأنت تشوف النتيجة." : "أنت تنتقل كل خطوة بنفسك: تراجع الفهم وخطة كل ناتج وتعتمدها قبل التصنيع."}</span>}
       </span>
     </button>

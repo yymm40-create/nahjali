@@ -5,11 +5,13 @@
 // the material honestly makes (the plan is made again for it), or approve the plan as it is and have the number kept
 // (padding it, or squeezing the material) — instead of finding out from a finished file.
 
+import { useBranch } from "./branch";
 import { capacityLine, isCompacted, readCapacity } from "@/lib/jawad/student/capacity";
 import type { OutputView } from "./client";
 import { PaidButton } from "./ui";
 
 export default function CapacityAsk({ o, additionsAllowed, act, running }: { o: OutputView; additionsAllowed: boolean; act: (b: Record<string, unknown>) => Promise<unknown>; running: boolean }) {
+  const { assistant: A } = useBranch();
   const c = readCapacity(o.settings);
   if (!c || c.verdict === "fits" || o.status !== "plan_review") return null;
   // a material BIGGER than the pages is not a question: the student chose the number, so the text is compacted into it —
@@ -17,7 +19,7 @@ export default function CapacityAsk({ o, additionsAllowed, act, running }: { o: 
   if (isCompacted(c)) {
     return (
       <div className="space-y-2 rounded-2xl border border-jw-line bg-jw-surface-2 p-4" role="note" aria-label="ضغط المادة">
-        <p className="font-bold">🗜️ يضغط صادق مادتك في {c.pages.toLocaleString("ar")} صفحة</p>
+        <p className="font-bold">🗜️ يضغط {A} مادتك في {c.pages.toLocaleString("ar")} صفحة</p>
         <p className="text-sm">{capacityLine(c, additionsAllowed)}</p>
         <div className="flex flex-wrap items-center gap-2">
           <PaidButton
@@ -30,7 +32,7 @@ export default function CapacityAsk({ o, additionsAllowed, act, running }: { o: 
               return act({ action: "plan", ...b });
             }}
           />
-          <span className="text-xs text-jw-muted">أو اعتمد الخطة تحت، ويلتزم صادق بـ {c.pages.toLocaleString("ar")} صفحة بالضبط.</span>
+          <span className="text-xs text-jw-muted">أو اعتمد الخطة تحت، ويلتزم {A} بـ {c.pages.toLocaleString("ar")} صفحة بالضبط.</span>
         </div>
       </div>
     );
@@ -39,7 +41,7 @@ export default function CapacityAsk({ o, additionsAllowed, act, running }: { o: 
   const settings = Object.fromEntries(Object.entries(o.settings).filter(([k]) => k !== "_capacity"));
   return (
     <div className="space-y-3 rounded-2xl border border-jw-warn/50 bg-jw-warn/10 p-4" role="note" aria-label="هل المادة تكفي للصفحات؟">
-      <p className="font-bold">⚖️ قبل ما يكتب صادق: هل المادة تكفي للصفحات؟</p>
+      <p className="font-bold">⚖️ قبل ما يكتب {A}: هل المادة تكفي للصفحات؟</p>
       <p className="text-sm">{capacityLine(c, additionsAllowed)}</p>
       <div className="flex flex-wrap items-center gap-2">
         <PaidButton
@@ -52,7 +54,7 @@ export default function CapacityAsk({ o, additionsAllowed, act, running }: { o: 
             return act({ action: "plan", ...b });
           }}
         />
-        <span className="text-xs text-jw-muted">أو اعتمد الخطة تحت كما هي، ويلتزم صادق بـ {c.pages.toLocaleString("ar")} صفحة بالضبط.</span>
+        <span className="text-xs text-jw-muted">أو اعتمد الخطة تحت كما هي، ويلتزم {A} بـ {c.pages.toLocaleString("ar")} صفحة بالضبط.</span>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import { can, hasAnyAccess, unlimitedFor, type Perm } from "@/lib/access";
 import { isAdmin } from "@config/site";
 import { isPublicOpen } from "@/lib/launch";
 import { JAWAD } from "@config/jawad/brand";
+import { anyDoorOpen } from "@/lib/khateeb/gate";
 
 export const JAWAD_MESSAGES = {
   closed: "منصة JAWAD AI قيد التطوير حاليًا.",
@@ -71,8 +72,17 @@ export async function requirePermApiUser(perm: Perm, closed: string = JAWAD_MESS
   return { user, owner: await unlimitedFor(user.email) };
 }
 
-/** API for «الطالب الذكي» (with the images and voices it makes). */
-export const requireStudentApiUser = () => requirePermApiUser("student", "«الطالب الذكي» مقفل لحسابك حاليًا.");
+/**
+ * API for «الطالب الذكي» (with the images and voices it makes): the signed-in user the section is open to — or one who
+ * gave the password of «الخطيب الذكي» on this device (that branch has no permission of its own: its link and its
+ * password are the door). `student`: the section itself is open to them; otherwise only the hidden branch is.
+ */
+export async function requireStudentApiUser() {
+  const user = await requireApiUser();
+  const student = await can(user.email, "student");
+  if (!student && !(await anyDoorOpen())) throw new UserError("«الطالب الذكي» مقفل لحسابك حاليًا.", 403);
+  return { user, owner: await unlimitedFor(user.email), student };
+}
 
 /** API for «حيدرة كت». */
 export const requireEditorApiUser = () => requirePermApiUser("editor", "«حيدرة كت» مقفل لحسابك حاليًا.");

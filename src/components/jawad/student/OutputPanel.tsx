@@ -1,5 +1,6 @@
 "use client";
 
+import { useBranch } from "./branch";
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { settingsLine } from "@/lib/jawad/student/summary";
@@ -93,6 +94,7 @@ export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: Out
 }
 
 function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onRemade?: () => void }) {
+  const { assistant: A } = useBranch();
   const { jobs, segments, sources, outputs, research } = p.state;
   const job = jobs.find((j) => j.outputId === o.id);
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
@@ -204,12 +206,12 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
           )}
           {o.status === "plan_review" && (
             <Gate
-              next={o.kind === "mindmap" ? (o.settings.render === "image" ? "يرسمها صادق صورة عالية الدقة، وبعدها يرسمها GPT Image 2 على تصميمه." : "يرسمها صادق صورة عالية الدقة مع نسخة التسميع.") : designed ? "يُعرض عليك خيار نسخة تجريبية مدفوعة ترى فيها الخط والتصميم، أو المتابعة مباشرة للتصنيع الكامل." : o.kind === "audio" ? "يُرسل النص كما يظهر هنا إلى ElevenLabs." : "يُكتب الناتج كاملًا على هذه الخطة."}
+              next={o.kind === "mindmap" ? (o.settings.render === "image" ? `يرسمها ${A} صورة عالية الدقة، وبعدها يرسمها GPT Image 2 على تصميمه.` : `يرسمها ${A} صورة عالية الدقة مع نسخة التسميع.`) : designed ? "يُعرض عليك خيار نسخة تجريبية مدفوعة ترى فيها الخط والتصميم، أو المتابعة مباشرة للتصنيع الكامل." : o.kind === "audio" ? "يُرسل النص كما يظهر هنا إلى ElevenLabs." : "يُكتب الناتج كاملًا على هذه الخطة."}
               disabled={planDirty}
               onApprove={() => act({ action: "plan_approve" })}
               editHint="اكتب التعديل الذي تريده على الخطة (أو عدّلها يدويًا أعلاه):"
-              onEdit={(note) => <PaidButton label="أرسل التعديل" what="يعيد صادق الخطة مع تعديلك." disabled={running} run={(b) => act({ action: "plan", note, kind: "edit", ...b })} />}
-              onOther={(note) => <PaidButton label="أرسل الطلب" what="يعيد صادق الخطة مع طلبك الجديد." disabled={running} run={(b) => act({ action: "plan", note, kind: "other", ...b })} />}
+              onEdit={(note) => <PaidButton label="أرسل التعديل" what={`يعيد ${A} الخطة مع تعديلك.`} disabled={running} run={(b) => act({ action: "plan", note, kind: "edit", ...b })} />}
+              onOther={(note) => <PaidButton label="أرسل الطلب" what={`يعيد ${A} الخطة مع طلبك الجديد.`} disabled={running} run={(b) => act({ action: "plan", note, kind: "other", ...b })} />}
             />
           )}
         </div>
@@ -294,7 +296,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
             <Gate
               next={outputs.some((x) => x.dependsOn === o.id) ? "يُعتمد الناتج، ويبدأ ما يعتمد عليه (مثل الصوت الذي يقرؤه)." : "يُعتمد الناتج ويبقى في المادة."}
               onApprove={() => act({ action: "approve" })}
-              editHint={o.kind === "slides" || o.kind === "audio" || o.kind === "mindmap" ? "ما الذي تريد تعديله؟ (يعدّل صادق الخطة لتعتمدها من جديد)" : "ما الذي تريد تعديله؟ يُعدَّل موضعيًا دون إعادة اختراع المحتوى."}
+              editHint={o.kind === "slides" || o.kind === "audio" || o.kind === "mindmap" ? `ما الذي تريد تعديله؟ (يعدّل ${A} الخطة لتعتمدها من جديد)` : "ما الذي تريد تعديله؟ يُعدَّل موضعيًا دون إعادة اختراع المحتوى."}
               onEdit={(note) => <RequestButton o={o} note={note} kind="edit" act={act} running={running} />}
               onOther={(note) => <RequestButton o={o} note={note} kind="other" act={act} running={running} />}
             />

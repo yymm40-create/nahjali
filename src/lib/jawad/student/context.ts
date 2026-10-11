@@ -2,6 +2,8 @@
 // (if the student asked for it) and the two source rules. Server only.
 
 import { briefLine, isIslamicSource, readBrief, rolesBrief } from "@config/jawad/student";
+import { isKhateeb, khateebRules } from "@config/jawad/khateeb";
+import { khateebWords } from "@/lib/khateeb/gate";
 import { getProject, sources, versionOf, type Output, type Project, type TextVersion } from "./db";
 import type { Research } from "./research";
 import type { Understanding } from "./understand";
@@ -12,6 +14,8 @@ export interface Ctx {
   roles: string;
   /** «الذكاء الإسلامي» answered something in this material: its words are quoted, never reworded */
   islamic: boolean;
+  /** the hidden «الخطيب الذكي»: who the assistant is there, the owner's method and the poems he keeps (empty in «الطالب الذكي») */
+  khateeb: string;
   text: TextVersion;
   understanding: Understanding;
   research: Research | null;
@@ -28,7 +32,8 @@ export async function loadCtx(userId: string, projectId: string): Promise<Ctx> {
     sources(project.id).catch(() => []),
   ]);
   if (!t || !u) throw new Error("approved text / understanding missing");
-  return { project, roles: rolesBrief(list.map((x) => x.role)), islamic: list.some((x) => isIslamicSource(x.name)), text: t.content, understanding: u.content, research: r?.content ?? null, seg: new Map(t.content.segments.map((s) => [s.id.slice(0, 8), s])) };
+  const khateeb = isKhateeb(project.branch) ? await khateebWords().then((w) => khateebRules(w.method, w.poems)).catch(() => khateebRules("", "")) : "";
+  return { project, roles: rolesBrief(list.map((x) => x.role)), khateeb, islamic: list.some((x) => isIslamicSource(x.name)), text: t.content, understanding: u.content, research: r?.content ?? null, seg: new Map(t.content.segments.map((s) => [s.id.slice(0, 8), s])) };
 }
 
 export const basedOn = (c: Ctx) => ({ text: c.project.text_version, understanding: c.project.understanding_version, research: c.project.research_version });
@@ -36,6 +41,7 @@ export const basedOn = (c: Ctx) => ({ text: c.project.text_version, understandin
 /** The student's two answers, as rules for the writer. */
 export function scopeRules(c: Ctx) {
   const lines = [
+    c.khateeb,
     c.project.allow_additions
       ? "ADDITIONS ALLOWED: you may add explanations, examples or background from your own knowledge, but each such addition must be its own block of type \"addition\" (never mixed into the material's blocks), and must be accurate and suited to the level."
       : "MATERIAL ONLY: use only what is in the material. Do not add facts, examples, numbers, names or explanations that are not in it. Rephrasing and simplifying what IS in it is fine. Never output a block of type \"addition\".",
