@@ -22,14 +22,14 @@ describe("«الخطيب الذكي»: the branch", () => {
     expect(isKhateeb("student")).toBe(false);
     expect(readBranch("anything")).toBe("student");
     expect(readBranch(undefined)).toBe("student");
-    expect(KHATEEB_LOOK.assistant).toBe("الشيخ");
+    expect(KHATEEB_LOOK.assistant).toBe("الشيخ صادق");
     expect(STUDENT_LOOK.assistant).toBe("صادق");
     expect(KHATEEB.base).toBe("/jawad-ai/khateeb");
   });
 
   it("tells the writer who he is, and binds him to the owner's method and poems only when they exist", () => {
     const plain = khateebRules("", "");
-    expect(plain).toContain("«الشيخ»");
+    expect(plain).toContain("«الشيخ صادق»");
     expect(plain).not.toContain("<method>");
     expect(plain).not.toContain("<poems>");
     const full = khateebRules("١. المقدمة\n٢. الموعظة", "إذا ما رأيت ... ");

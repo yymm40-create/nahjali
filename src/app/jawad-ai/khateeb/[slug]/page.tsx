@@ -3,6 +3,7 @@ import KhateebGate from "@/components/jawad/khateeb/KhateebGate";
 import KhateebHome from "@/components/jawad/khateeb/KhateebHome";
 import { listProjects } from "@/lib/jawad/student/actions";
 import { enterKhateeb } from "@/lib/khateeb/door";
+import { listSurahs } from "@/lib/khateeb/quran";
 import { readyRefs } from "@/lib/khateeb/reference";
 import { KHATEEB } from "@config/jawad/khateeb";
 
@@ -14,7 +15,7 @@ export default async function KhateebPage({ params }: { params: Promise<{ slug: 
   const { slug } = await params;
   const door = await enterKhateeb(slug);
   if (door.gate) return <KhateebGate slug={slug} />;
-  const [projects, refs] = await Promise.all([listProjects(door.user.id, KHATEEB.branch).catch(() => null), readyRefs().catch(() => [])]);
+  const [projects, refs, surahs] = await Promise.all([listProjects(door.user.id, KHATEEB.branch).catch(() => null), readyRefs().catch(() => []), listSurahs().catch(() => [])]);
   if (!projects) notFound();
-  return <KhateebHome projects={projects} refs={{ poetry: refs.filter((r) => r.kind === "poetry").length, sources: refs.filter((r) => r.kind === "source").length }} />;
+  return <KhateebHome projects={projects} refs={refs} surahs={surahs} />;
 }

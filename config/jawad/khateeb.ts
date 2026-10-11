@@ -38,7 +38,7 @@ export interface BranchLook {
 }
 
 export const STUDENT_LOOK: Omit<BranchLook, "base"> = { branch: STUDENT_BRANCH, name: "الطالب الذكي", assistant: "صادق", face: "sadiq" };
-export const KHATEEB_LOOK: Omit<BranchLook, "base"> = { branch: KHATEEB.branch, name: KHATEEB.name, assistant: "الشيخ", face: "sheikh" };
+export const KHATEEB_LOOK: Omit<BranchLook, "base"> = { branch: KHATEEB.branch, name: KHATEEB.name, assistant: "الشيخ صادق", face: "sheikh" };
 
 // ───────────────────────────── the owner's words ─────────────────────────────
 
@@ -83,7 +83,7 @@ export function khateebRules(method: string, poems: string): string {
   const m = method.trim();
   const p = poems.trim();
   return [
-    "THIS IS «الخطيب الذكي» — the branch for the one who writes the sermon of the minbar. Your name here is «الشيخ» (never صادق, never Claude or any model). You write for a preacher who will say these words aloud on the minbar: sound, careful, plain Arabic for the ear, and nothing religious that is not in the sources given (a verse, a narration, a ruling, a poem, an attribution).",
+    "THIS IS «الخطيب الذكي» — the branch for the one who writes the sermon of the minbar. Your name here is «الشيخ صادق» (never Claude or any model). You write for a preacher who will say these words aloud on the minbar: sound, careful, plain Arabic for the ear, and nothing religious that is not in the sources given (a verse, a narration, a ruling, a poem, an attribution).",
     m ? `THE OWNER'S METHOD FOR WRITING A SERMON — follow it in every sermon work, its order, its parts, its wording style and its length, exactly; where it speaks, it wins over your own taste:\n<method>\n${m}\n</method>` : "",
     p ? `THE OWNER'S COLLECTION OF POEMS AND VERSES (words kept by the owner): when a poem or a line suits the sermon, take it from here exactly as written and say whose it is as written; never make up a line and never put a line in someone's name that is not here:\n<poems>\n${p}\n</poems>` : "",
   ]
@@ -148,6 +148,12 @@ export const SERMON_FORMATS = [
   { id: "docx", label: "Word" },
 ] as const;
 
+/** The tafsirs the Sheikh can take a verse's meaning from. One for now; the list is where the owner adds more (each needs its reader in src/lib/khateeb). */
+export const TAFSIR_SOURCES = [{ id: "majma", label: "مجمع البيان في تفسير القرآن — الطبرسي" }] as const;
+export type TafsirId = (typeof TAFSIR_SOURCES)[number]["id"];
+
+const UUID = /^[0-9a-f-]{36}$/i;
+
 export interface SermonAsk {
   /** the topic the preacher wants to speak on */
   topic: string;
@@ -157,12 +163,20 @@ export interface SermonAsk {
   occasion: string;
   length: SermonLength;
   format: (typeof SERMON_FORMATS)[number]["id"];
+  /** a ready sermon text of the preacher's own: «adapt» — the Sheikh fits it to the method; empty = «write» from the material */
+  draftText: string;
+  /** the key verse the preacher gives (null = the Sheikh finds it by the topic) */
+  verse: { surah: number; from: number; to: number } | null;
+  /** the tafsirs the verse's meaning is taken from (empty = no tafsir) */
+  tafsir: TafsirId[];
+  /** narrations the preacher gives (to be used as written, with the book he names) */
+  narrations: string;
+  /** the library's books of sources (stories, wisdom, narrations) the Sheikh may search; empty = none */
+  sourceIds: string[];
+  /** the library's poetry references the Sheikh may search for lines; empty = none */
+  poetryIds: string[];
   /** the preacher's own lines, used as written */
   poems: string;
-  /** search the library's poetry references for lines */
-  poetry: boolean;
-  /** search the library's sources for stories and lessons */
-  sources: boolean;
 }
 
 /** A request read back (null when there is none, or no topic). */
@@ -172,20 +186,41 @@ export function readSermonAsk(v: unknown): SermonAsk | null {
   const s = (x: unknown, n: number) => String(x ?? "").trim().slice(0, n);
   const topic = s(b.topic, 500);
   if (!topic) return null;
+  const ids = (x: unknown) => (Array.isArray(x) ? [...new Set(x.map(String).filter((i) => UUID.test(i)))].slice(0, 30) : []);
+  const vv = (b.verse && typeof b.verse === "object" ? b.verse : null) as Record<string, unknown> | null;
+  const surah = Math.round(Number(vv?.surah));
+  const from = Math.round(Number(vv?.from));
+  const to = Math.round(Number(vv?.to)) || from;
   return {
     topic,
     goal: s(b.goal, 1000),
     occasion: s(b.occasion, 300),
     length: readSermonLength(b.length).id,
     format: SERMON_FORMATS.find((f) => f.id === b.format)?.id ?? "both",
+    draftText: s(b.draftText, 60_000),
+    verse: vv && surah >= 1 && surah <= 114 && from >= 1 && from <= 286 ? { surah, from, to: Math.max(from, Math.min(to, 286)) } : null,
+    tafsir: Array.isArray(b.tafsir) ? TAFSIR_SOURCES.map((t) => t.id).filter((id) => (b.tafsir as unknown[]).includes(id)) : TAFSIR_SOURCES.map((t) => t.id),
+    narrations: s(b.narrations, 20_000),
+    sourceIds: ids(b.sourceIds),
+    poetryIds: ids(b.poetryIds),
     poems: s(b.poems, 4000),
-    poetry: b.poetry !== false,
-    sources: b.sources !== false,
   };
 }
 
 /** The sermon output's settings from a request (what its plan, its writer and its file read). */
-export const sermonSettings = (a: SermonAsk) => ({ topic: a.topic, goal: a.goal, occasion: a.occasion, length: a.length, format: a.format, poems: a.poems, poemsFor: a.goal });
+export const sermonSettings = (a: SermonAsk) => ({
+  topic: a.topic,
+  goal: a.goal,
+  occasion: a.occasion,
+  length: a.length,
+  format: a.format,
+  poems: a.poems,
+  poemsFor: a.goal,
+  draftText: a.draftText,
+  narrations: a.narrations,
+  tafsir: a.tafsir.join(","),
+  ...(a.verse ? { verseSurah: a.verse.surah, verseFrom: a.verse.from, verseTo: a.verse.to } : {}),
+});
 
 /** What the Sheikh researches for the topic (the material's research). */
 export const sermonFocus = (a: SermonAsk) => [`موضوع الخطبة: ${a.topic}`, a.goal ? `الغاية منها: ${a.goal}` : "", a.occasion ? `المناسبة: ${a.occasion}` : ""].filter(Boolean).join("\n");
