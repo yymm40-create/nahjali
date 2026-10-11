@@ -1,0 +1,9 @@
+/* A small movable floating button (MovableBubble): a round face, a «–» to fold it into a thin side tab. */
+.mb-wrap { position: fixed; z-index: 70; touch-action: none; user-select: none; }
+.mb-btn { display: grid; place-items: center; border: 2px solid rgba(255, 255, 255, 0.65); border-radius: 50%; cursor: grab; color: #fff; font: inherit; font-size: 20px; touch-action: none; box-shadow: 0 8px 22px -8px rgba(0, 0, 0, 0.6); -webkit-tap-highlight-color: transparent; padding: 0; }
+.mb-btn:active { cursor: grabbing; }
+.mb-fold { position: absolute; top: -6px; inset-inline-start: -6px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(10, 10, 16, 0.85); color: #fff; font-weight: 900; font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
+.mb-tab { position: fixed; z-index: 70; width: 26px; height: 40px; border: 0; cursor: pointer; font-size: 15px; color: #fff; opacity: 0.85; display: grid; place-items: center; padding: 0; }
+.mb-tab.left { left: 0; border-radius: 0 12px 12px 0; }
+.mb-tab.right { right: 0; border-radius: 12px 0 0 12px; }
+.mb-tab:hover { opacity: 1; }
