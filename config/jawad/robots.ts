@@ -131,7 +131,8 @@ export const ROBOTS: Record<string, RobotIntro> = {
 /** Which robot lives on this page of JAWAD AI (null when none does). */
 export function robotFor(path: string): RobotIntro | null {
   const p = path.replace(/\/+$/, "") || "/";
-  if (p === "/jawad-ai") return ROBOTS.salman;
+  // the home page: سلمان has his own button on every page already (src/components/Salman.tsx), so no second one
+  if (p === "/jawad-ai") return null;
   const m = /^\/jawad-ai\/([^/]+)/.exec(p);
   const seg = m?.[1] ?? "";
   const byPage: Record<string, string> = {
