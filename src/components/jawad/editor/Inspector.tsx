@@ -647,6 +647,20 @@ function TextControls({ text, locked, setText }: { text: TextStyle; locked: bool
         <input type="checkbox" disabled={locked} checked={!!text.box} onChange={(e) => setText({ box: e.target.checked ? "#000000b3" : null }, "box")} className="accent-[var(--jw-accent)]" />
         خلفية خلف الكلام
       </label>
+      {/* the keyword's finish (Motion Video Director): a glow behind it, a two-colour gradient, 3D depth */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" disabled={locked} checked={!!text.glow} onChange={(e) => setText({ glow: e.target.checked ? "#ffd84a" : null }, "glow")} className="accent-[var(--jw-accent)]" />
+          توهج
+          {text.glow && <input type="color" disabled={locked} value={text.glow.slice(0, 7)} onChange={(e) => setText({ glow: e.target.value }, "glow")} className="h-6 w-8 rounded border border-jw-line bg-transparent" aria-label="لون التوهج" />}
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" disabled={locked} checked={!!text.grad} onChange={(e) => setText({ grad: e.target.checked ? "#a7dce6" : null }, "grad")} className="accent-[var(--jw-accent)]" />
+          تدرّج
+          {text.grad && <input type="color" disabled={locked} value={text.grad.slice(0, 7)} onChange={(e) => setText({ grad: e.target.value }, "grad")} className="h-6 w-8 rounded border border-jw-line bg-transparent" aria-label="لون التدرج" />}
+        </label>
+      </div>
+      <Slider label="عمق ثلاثي الأبعاد" value={Math.round((text.depth ?? 0) * 100)} min={0} max={100} step={5} disabled={locked} onChange={(v) => setText({ depth: v / 100 }, "depth")} format={(v) => (v ? `${v}%` : "بدون")} />
       <FontPicker value={text.font} disabled={locked} onPick={(f) => setText({ font: f }, "font")} />
       <div className="jw-seg" role="radiogroup" aria-label="السماكة">
         {([400, 700, 900] as const).map((w) => (

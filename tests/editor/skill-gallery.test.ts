@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MOODS, MOTION_STYLES, moodInText, styleInText } from "@/lib/editor/motion-styles";
-import { TALK_STYLES, talkStyleInText } from "@/lib/editor/talk-styles";
+import { MOODS, MOTION_STYLES, motionStyleOf } from "@/lib/editor/motion-styles";
+import { TALK_STYLES } from "@/lib/editor/talk-styles";
 import { framePreviewSvg, previewSvg, talkPreviewSvg } from "@/lib/editor/motion-preview";
-import { askFor } from "@/components/jawad/editor/SkillGallery";
+import { MOTION_TEN, askForTen, tenInText } from "@/lib/editor/motion-ten";
 
 describe("the gallery's pictures", () => {
   it("draws one for every motion kind, with no broken numbers", () => {
@@ -54,23 +54,35 @@ describe("the gallery's pictures", () => {
   });
 });
 
-describe("what a pick writes in the box", () => {
-  it("is a sentence the engine reads back as that very skill", () => {
-    for (const s of MOTION_STYLES.filter((x) => !x.talk)) {
-      const words = askFor({ kind: "skill", id: s.id, ar: s.ar, talk: false });
-      expect(styleInText(words)?.id, s.id).toBe(s.id);
-      expect(words, s.id).toContain("موشن جرافيكس");
+// «خلنهم ١٠ أساليب فقط لكنهم مختلفين تماما» — the picker of «أساليب الموشن»
+describe("the ten motion styles", () => {
+  it("are exactly ten, numbered 1–10, each on a real engine look, with unique names", () => {
+    expect(MOTION_TEN).toHaveLength(10);
+    expect(MOTION_TEN.map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(new Set(MOTION_TEN.map((s) => s.ar)).size).toBe(10);
+    for (const s of MOTION_TEN) {
+      const base = motionStyleOf(s.base);
+      expect(base, s.id).toBeTruthy();
+      // the talking-video style rides on a talking layout, the others on full pieces
+      expect(Boolean(base?.talk), s.id).toBe(s.talk);
     }
   });
-  it("names the talking-video skill and its layout", () => {
-    for (const s of MOTION_STYLES.filter((x) => x.talk)) {
-      const words = askFor({ kind: "skill", id: s.id, ar: s.ar, talk: true });
-      expect(styleInText(words)?.talk, s.id).toBe(s.talk);
-      expect(words, s.id).toContain("على كلامي");
-    }
+  it("are completely different: no two share a base look, and the energies span 1 to 5", () => {
+    expect(new Set(MOTION_TEN.map((s) => s.base)).size).toBe(10);
+    const energies = new Set(MOTION_TEN.map((s) => s.energy));
+    for (const e of [1, 2, 3, 4, 5]) expect(energies.has(e as 1)).toBe(true);
   });
-  it("names the look and the feeling so the server picks them up", () => {
-    for (const s of TALK_STYLES) expect(talkStyleInText(askFor({ kind: "look", id: s.id, ar: s.ar }))?.id, s.id).toBe(s.id);
-    for (const m of MOODS) expect(moodInText(askFor({ kind: "mood", id: m.id, ar: m.ar }))?.id, m.id).toBe(m.id);
+  it("include the four recipes of the Motion Video Director skill", () => {
+    const ids = MOTION_TEN.map((s) => s.id);
+    for (const id of ["premium-talk", "story-doc", "saas-launch", "brand-kinetic"]) expect(ids).toContain(id);
+  });
+  it("draw a picture each, and what a pick sends is read back as that very style", () => {
+    for (const s of MOTION_TEN) {
+      const svg = s.talk ? framePreviewSvg(motionStyleOf(s.base)!.talk!) : previewSvg({ style: s.base });
+      expect(svg, s.id).toMatch(/^<svg[\s\S]*<\/svg>$/);
+      const words = askForTen(s, "تطبيق يرتّب المواعيد");
+      expect(tenInText(words)?.id, s.id).toBe(s.id);
+      expect(words, s.id).toContain(s.talk ? "فيديو كلامي" : "موشن جرافيكس");
+    }
   });
 });

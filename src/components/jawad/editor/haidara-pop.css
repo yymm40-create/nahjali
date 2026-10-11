@@ -38,3 +38,68 @@
 @media (max-width: 640px) {
   .hd-pop { inset-inline: 8px; width: auto; height: min(78dvh, calc(100dvh - 70px)); }
 }
+
+/* «🎬 أساليب الموشن»: ten cards, then the chosen one with its topic — black and lime like حيدرة's window */
+.sp-back {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+}
+.sp-box {
+  width: min(760px, 100%);
+  max-height: min(88dvh, 900px);
+  overflow-y: auto;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(198, 255, 26, 0.4);
+  background: radial-gradient(120% 40% at 100% 0%, rgba(198, 255, 26, 0.1), transparent 60%), #0f1216;
+  color: #f3f4f1;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.9);
+}
+.sp-head { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.9rem 1rem; background: rgba(15, 18, 22, 0.95); border-bottom: 1px solid #2a3038; }
+.sp-head b { font-size: 1.05rem; font-weight: 900; }
+.sp-head span { flex: 1; font-size: 0.75rem; color: #9aa3ad; }
+.sp-x { width: 32px; height: 32px; border-radius: 0.6rem; border: 1px solid #2a3038; background: #1a1f26; color: #f3f4f1; cursor: pointer; }
+.sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.6rem; padding: 0.9rem; }
+.sp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: start;
+  padding: 0.45rem;
+  border-radius: 1rem;
+  border: 1px solid #2a3038;
+  background: #151920;
+  color: #f3f4f1;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.sp-card:hover { transform: translateY(-2px); border-color: #c6ff1a; }
+.sp-pic { width: 100%; aspect-ratio: 9 / 12; object-fit: cover; border-radius: 0.7rem; background: #0b0d10; }
+.sp-pic.big { width: 120px; flex-shrink: 0; }
+.sp-name { font-weight: 900; font-size: 0.88rem; }
+.sp-one { font-size: 0.72rem; color: #9aa3ad; line-height: 1.6; }
+.sp-energy { display: flex; align-items: center; gap: 3px; margin-top: auto; }
+.sp-energy i { width: 12px; height: 5px; border-radius: 3px; background: #2a3038; }
+.sp-energy i.on { background: #c6ff1a; }
+.sp-energy em { font-style: normal; font-size: 0.65rem; color: #c6ff1a; margin-inline-start: 0.35rem; }
+.sp-detail { padding: 1rem; display: grid; gap: 0.8rem; }
+.sp-back-btn { justify-self: start; font-size: 0.8rem; font-weight: 800; color: #9aa3ad; background: none; border: 0; cursor: pointer; }
+.sp-detail-top { display: flex; gap: 0.9rem; align-items: flex-start; }
+.sp-title { display: block; font-size: 1.2rem; font-weight: 900; margin-bottom: 0.2rem; }
+.sp-when { font-size: 0.82rem; line-height: 1.7; margin: 0.4rem 0; }
+.sp-field { display: grid; gap: 0.35rem; }
+.sp-field span { font-size: 0.82rem; font-weight: 800; }
+.sp-field textarea { width: 100%; border-radius: 0.8rem; border: 1px solid #2a3038; background: #0b0d10; color: #f3f4f1; padding: 0.6rem 0.75rem; font: inherit; resize: none; }
+.sp-field textarea:focus { outline: 2px solid #c6ff1a; }
+.sp-go { min-height: 48px; border-radius: 0.9rem; border: 0; background: #c6ff1a; color: #0c0e11; font-weight: 900; font-size: 1rem; cursor: pointer; }
+.sp-go:disabled { opacity: 0.4; cursor: default; }
+.sp-hint { font-size: 0.72rem; color: #9aa3ad; text-align: center; }
+@media (max-width: 480px) {
+  .sp-grid { grid-template-columns: 1fr 1fr; }
+  .sp-pic.big { width: 90px; }
+}

@@ -20,9 +20,9 @@ import type { Chat } from "@/lib/editor/chat";
 import type { Command } from "@/lib/editor/commands";
 import { coinStr } from "@config/coins";
 import { postJson } from "@/lib/fetch";
-import { MOODS, MOTION_STYLES, styleInText } from "@/lib/editor/motion-styles";
-import SkillGallery, { askFor, type Picked } from "./SkillGallery";
-import { TALK_STYLES } from "@/lib/editor/talk-styles";
+import { styleInText } from "@/lib/editor/motion-styles";
+import StylePicker from "./StylePicker";
+import { MOTION_TEN } from "@/lib/editor/motion-ten";
 import { faceOnFrame, type FaceBox } from "@/lib/editor/talk-motion";
 import { faceIn } from "./face";
 import Icon from "../Icon";
@@ -154,7 +154,7 @@ export default function AssistantPanel({
   const [text, setText] = useState("");
   const [claude] = useClaudeModel();
   // «🎬 اختر بالصورة»: the gallery of every motion kind, talking-reel look and feeling, as pictures
-  const [gallery, setGallery] = useState<null | "motion" | "talk" | "look" | "mood">(null);
+  const [gallery, setGallery] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   /** the words of a pick written in the box, the cursor at their end (nothing is sent until the person presses) */
   const writeInBox = (words: string, replace = true) => {
@@ -165,13 +165,6 @@ export default function AssistantPanel({
       el.focus();
       el.setSelectionRange(el.value.length, el.value.length);
     }, 0);
-  };
-  const pickFromGallery = (p: Picked) => writeInBox(askFor(p), p.kind !== "look");
-  // «🎭 المشاعر» and the skills: a press writes the start of the request in the box (the person adds their topic)
-  const pickMood = (ar: string) => writeInBox(`موشن جرافيكس بمزاج «${ar}» عن: `, false);
-  const pickSkill = (ar: string) => {
-    const talk = MOTION_STYLES.find((m) => m.ar === ar)?.talk;
-    writeInBox(talk ? `ركّب موشن على كلامي بمهارة «${ar}»` : `موشن جرافيكس بمهارة «${ar}» عن: `);
   };
   const [busy, setBusyState] = useState<string | null>(null);
   // the latest «busy», for code that runs between renders (a voice message's send used to see the old one and drop
@@ -751,25 +744,14 @@ export default function AssistantPanel({
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-jw-muted">🎬 موشن جرافيكس بمهارة جاهزة:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {MOTION_STYLES.slice(0, 6).map((m) => (
-                <button key={m.id} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" title={m.hint} onClick={() => pickSkill(m.ar)}>
-                  {m.icon} {m.ar}
-                </button>
-              ))}
-              <button type="button" disabled={readOnly} className="jw-chip !px-2.5 !py-1 !text-xs !border-jw-accent !text-jw-accent" onClick={() => setGallery("motion")}>
-                🖼️ شوف كل المهارات بالصور ({MOTION_STYLES.length})
-              </button>
-            </div>
-            <p className="text-[11px] text-jw-muted">🎭 بأي شعور؟</p>
-            <div className="flex flex-wrap gap-1.5">
-              {MOODS.map((m) => (
-                <button key={m.id} type="button" disabled={readOnly || !!busy} className="jw-chip !px-2.5 !py-1 !text-xs" title={m.hint} onClick={() => pickMood(m.ar)}>
-                  {m.icon} {m.ar}
-                </button>
-              ))}
-            </div>
+            {/* «أساليب الموشن»: ten styles, each different, in one picker (no rows of chips) */}
+            <button type="button" disabled={readOnly} onClick={() => setGallery(true)} className="flex w-full items-center gap-3 rounded-2xl border border-jw-accent/40 bg-jw-accent/10 p-3 text-start">
+              <span className="text-2xl" aria-hidden>🎬</span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-sm">موشن جرافيكس بأسلوب جاهز</b>
+                <span className="block text-[11px] text-jw-muted">{MOTION_TEN.map((m) => m.icon).join(" ")} — {MOTION_TEN.length} أساليب مختلفة، اختر واحد وقل عن وش</span>
+              </span>
+            </button>
           </div>
         )}
         {msgs.map((m, i) => (
@@ -934,22 +916,12 @@ export default function AssistantPanel({
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-jw-line px-2 pt-1.5">
-        <span className="text-[11px] text-jw-muted">🖼️ اختر بالصورة:</span>
-        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("motion")}>
-          🎬 موشن ({MOTION_STYLES.filter((m) => !m.talk).length})
-        </button>
-        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("talk")}>
-          🗣️ على كلامك ({MOTION_STYLES.filter((m) => m.talk).length})
-        </button>
-        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("look")}>
-          🎨 ستايل اللوحات ({TALK_STYLES.length})
-        </button>
-        <button type="button" className="jw-chip !px-2 !py-0.5 !text-[11px]" disabled={readOnly} onClick={() => setGallery("mood")}>
-          🎭 مشاعر ({MOODS.length})
+      <div className="flex items-center gap-1.5 border-t border-jw-line px-2 pt-1.5">
+        <button type="button" className="jw-chip !px-2.5 !py-0.5 !text-[11px] !border-jw-accent/50" disabled={readOnly} onClick={() => setGallery(true)}>
+          🎬 أساليب الموشن ({MOTION_TEN.length})
         </button>
       </div>
-      <SkillGallery open={!!gallery} startTab={gallery ?? "motion"} onClose={() => setGallery(null)} onPick={pickFromGallery} />
+      <StylePicker open={gallery} disabled={readOnly || !!busy} onClose={() => setGallery(false)} onSend={(words) => void send(words)} />
       <ClaudeModelPicker className="border-t border-jw-line px-2 pt-1.5" disabled={!!busy} />
       <form
         className="flex items-end gap-2 p-2"

@@ -12,7 +12,7 @@ let exporting = false;
 export const setExporting = (on: boolean) => {
   exporting = on;
 };
-import { animAt, clipEnd, clipLength, colorFilter, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode } from "@/lib/editor/model";
+import { animAt, clipEnd, clipLength, colorFilter, countText, decodeText, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode } from "@/lib/editor/model";
 
 export interface Frame {
   img: CanvasImageSource;
@@ -458,8 +458,11 @@ const popScale = (a: number) => 0.55 + 0.45 * (1 + 2.70158 * (a - 1) ** 3 + 1.70
 function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number) {
   const s0 = clip.text!;
   if (!s0.body.trim()) return;
-  // «مطّ»: the words stretched with the kashida, settling back
-  const s = look.kashida > 0 ? { ...s0, body: kashida(s0.body, Math.round(look.kashida * 5)) } : s0;
+  // «مطّ»: the words stretched with the kashida, settling back; «عدّاد» rolls the numbers up; «فك الشفرة» decodes
+  let body = look.kashida > 0 ? kashida(s0.body, Math.round(look.kashida * 5)) : s0.body;
+  if (look.count != null) body = countText(body, look.count);
+  if (look.decode != null) body = decodeText(body, look.decode, look.seed);
+  const s = body === s0.body ? s0 : { ...s0, body };
   const tokens = s.body.split(/\s+/).filter(Boolean);
   const timed = !!s.highlight && clip.words.length > 0 && clip.words.length === tokens.length;
   // a caption with timed words lights the word being said; «كلمة كلمة» brings the words in one by one
@@ -501,7 +504,32 @@ function drawText(ctx: CanvasRenderingContext2D, clip: Clip, t: Transform, look:
     });
   };
   if (look.smear > 0) for (let k = 4; k >= 1; k--) write(k * 0.05 * W * look.smear, 0.2 * look.smear, s.color, false);
-  write(0, 1, s.color, true);
+  // «عمق ثلاثي»: the block extruded down-right in a darker shade, back to front
+  const depth = Math.round(Math.min(1, Math.max(0, Number(s.depth) || 0)) * 14);
+  if (depth > 0) {
+    const step = Math.max(1, size * 0.018);
+    for (let k = depth; k >= 1; k--) {
+      ctx.save();
+      ctx.translate(k * step, k * step);
+      write(0, 1, shade(s.color, 0.45 + 0.25 * (1 - k / depth)), false);
+      ctx.restore();
+    }
+  }
+  // «توهج»: a blurred copy of the words in the glow colour behind them
+  if (s.glow) {
+    ctx.save();
+    ctx.shadowColor = s.glow;
+    ctx.shadowBlur = size * 0.7;
+    write(0, 0.9, s.glow, false);
+    ctx.restore();
+  }
+  // «تدرّج»: the words filled top to bottom from their colour to the second one
+  if (s.grad) {
+    const g = ctx.createLinearGradient(0, top - lh / 2, 0, top + (lines.length - 0.5) * lh);
+    g.addColorStop(0, s.color);
+    g.addColorStop(1, s.grad);
+    write(0, 1, g as unknown as string, true);
+  } else write(0, 1, s.color, true);
   if (look.flash > 0) write(0, Math.min(1, look.flash), "#ffffff", false);
   ctx.restore();
 }
@@ -582,6 +610,15 @@ function drawCaption(ctx: CanvasRenderingContext2D, clip: Clip, tokens: string[]
     }
   });
   ctx.restore();
+}
+
+/** A colour darker by `k` (0 = black … 1 = itself), for the sides of extruded words. */
+function shade(hex: string, k: number) {
+  const m = /^#?([0-9a-f]{6})/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const c = (v: number) => Math.round(v * k).toString(16).padStart(2, "0");
+  return `#${c((n >> 16) & 255)}${c((n >> 8) & 255)}${c(n & 255)}`;
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {

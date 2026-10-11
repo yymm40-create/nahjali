@@ -17,6 +17,8 @@ import { TR_LIST } from "./transitions";
 import { MOTION_SKILL } from "./motion";
 import { askedForPicture, MOODS_SKILL, MOTION_STYLES_SKILL, moodInText, motionStyleOf, styleInText } from "./motion-styles";
 import { MAJED_SKILL } from "./majed";
+import { DIRECTOR_SKILL } from "./director";
+import { MOTION_TEN_SKILL, tenInText } from "./motion-ten";
 import { lintMotion, motionCommands, motionPlan, narrationMs, readStoryboard, SFX, storyboardNumbers, type Fit, type SfxKind } from "./motion-build";
 import { makeMotionArt } from "./generate";
 import { motionExamplesBrief, nearestMotionExamples } from "./motion-bank";
@@ -156,8 +158,13 @@ TRANSITION IDS (by group): ${TR_LIST.map((t) => t.id).join(", ")}.
 
 ${KNOW_HOW}
 
+${DIRECTOR_SKILL}
+
 ${MOTION_SKILL}
 
+${MOTION_TEN_SKILL}
+
+THE ENGINE'S LOOKS (the bases the ten styles ride on; use one directly only when the person names it):
 ${MOTION_STYLES_SKILL}
 
 ${MOODS_SKILL}
@@ -259,7 +266,9 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // «سجاد» handed over the film (or the episode): everything about it, read fresh
   const brief = p.film_project_id || p.episode_id ? await sajjadBrief({ filmProjectId: p.film_project_id, episodeId: p.episode_id }) : null;
   // «مهارات الموشن»: a skill the person named in this message (its look and craft; their other words win)
-  const named = styleInText(message);
+  // one of the ten styles first (its base look carries the engine's part), then an older look by its own name
+  const ten = tenInText(message);
+  const named = (ten ? motionStyleOf(ten.base) : undefined) ?? styleInText(message);
   // the feeling named in the words (the storyboard keeps its own when it has one)
   const feeling = moodInText(message);
   // THE FRAME THE PERSON ASKED FOR, in their own words («اقسمني نصين», «سو مربع صغير») or by a skill's name — and
