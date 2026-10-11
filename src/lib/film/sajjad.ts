@@ -22,7 +22,7 @@ import type { FilmProject } from "./types";
 
 const db = () => createAdminClient();
 
-export const SAJJAD = { name: "سجاد", icon: "🧑‍🏫" } as const;
+export const SAJJAD = { name: "سجاد", icon: "🤖" } as const;
 const MAX_MESSAGES = 80;
 const MAX_MEMORY = 150;
 const ESTIMATE_USD = 0.15;

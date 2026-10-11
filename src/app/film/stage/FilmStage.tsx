@@ -19,6 +19,7 @@ import ImpactCard from "./ImpactCard";
 import LibraryDrawer from "./LibraryDrawer";
 import Meter, { RunningList } from "./Meter";
 import "./stage.css";
+import RobotFace from "@/components/RobotFace";
 
 const order = (s: Stage) => FILM_STAGES.findIndex((x) => x.key === s);
 
@@ -126,7 +127,7 @@ export default function FilmStage({ projectId, title, stage, videosOpen, cost, p
             })}
           </nav>
           <div className="flex gap-2">
-            <button type="button" className="fs-tool flex-1 justify-center" onClick={() => openSajjad()}>🧑‍🏫 اسأل سجاد</button>
+            <button type="button" className="fs-tool flex-1 justify-center" onClick={() => openSajjad()}><RobotFace id="sajjad" size={18} /> اسأل سجاد</button>
             <Link href={filmBase} className="fs-tool justify-center">← أفلامي</Link>
           </div>
         </div>

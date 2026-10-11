@@ -5,6 +5,7 @@ import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { credits } from "@/lib/film/credits";
 import { useFilmBase } from "../FilmBase";
+import RobotFace from "@/components/RobotFace";
 
 type Who = { name: string; existing: boolean; note: string };
 type Understanding = { title: string; story: string; understanding: string; characters: Who[]; places: Who[]; questions: { question: string; options: string[] }[]; number: number };
@@ -65,7 +66,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
   return (
     <div className="space-y-3 rounded-2xl border-2 border-[#e2a72c] bg-white/80 p-3">
       <header className="flex items-center justify-between gap-2">
-        <p className="font-black">🧑‍🏫 {sceneId ? "جهّز المشهد مع سجاد" : "مشهد جديد مع سجاد"}</p>
+        <p className="font-black"><RobotFace id="sajjad" size={18} /> {sceneId ? "جهّز المشهد مع سجاد" : "مشهد جديد مع سجاد"}</p>
         <button type="button" className="text-xs font-bold underline" onClick={onClose}>إغلاق</button>
       </header>
 
@@ -80,7 +81,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
               <span className="block text-xs font-bold text-muted">وسجاد يفهمه ويتأكد</span>
             </button>
             <button type="button" aria-pressed={mode === "sajjad"} className={`rounded-2xl border-2 p-3 text-start ${mode === "sajjad" ? "border-[#1f63f0] bg-[#1f63f0]/10" : "border-line"}`} onClick={() => setMode("sajjad")}>
-              <span className="block text-2xl" aria-hidden>🧑‍🏫</span>
+              <span className="block text-2xl" aria-hidden><RobotFace id="sajjad" size={32} /></span>
               <span className="block text-sm font-black">خل سجاد يكتبه</span>
               <span className="block text-xs font-bold text-muted">من المسلسل والحلقة</span>
             </button>
@@ -95,7 +96,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
             />
           )}
           <button type="button" className="btn btn-primary min-h-11 w-full" disabled={!mode || !!busy || (mode === "mine" && text.trim().length < 10)} onClick={() => understand()}>
-            {busy ? "سجاد يقرا…" : mode === "sajjad" ? `🧑‍🏫 سجاد، اكتبه · ${credits(0.15)}` : `🧑‍🏫 سجاد، افهمه · ${credits(0.15)}`}
+            {busy ? "سجاد يقرا…" : <><RobotFace id="sajjad" size={18} /> {mode === "sajjad" ? `سجاد، اكتبه · ${credits(0.15)}` : `سجاد، افهمه · ${credits(0.15)}`}</>}
           </button>
         </>
       ) : (

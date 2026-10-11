@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { openSajjad } from "../SajjadPanel";
+import RobotFace from "@/components/RobotFace";
 
 export type AlertView = { id: string; sceneId: string; where: string; severity: "high" | "medium" | "low"; title: string; text: string; fix: string; at: string };
 
@@ -90,7 +91,7 @@ export default function ContinuityAlerts({ seriesId, alerts, sceneId, scenes = [
       <p className="text-xs font-bold text-muted">🛠️ {a.fix}</p>
       {canAct && (
         <div className="flex flex-wrap gap-1.5 pt-1">
-          <button type="button" className="btn btn-primary min-h-8 px-3 text-xs" disabled={busy === a.id} onClick={() => mend(a)}>🧑‍🏫 خل سجاد يصلحه</button>
+          <button type="button" className="btn btn-primary min-h-8 px-3 text-xs" disabled={busy === a.id} onClick={() => mend(a)}><RobotFace id="sajjad" size={18} /> خل سجاد يصلحه</button>
           <button type="button" className="btn btn-secondary min-h-8 px-3 text-xs" disabled={busy === a.id} onClick={() => status(a, "done")}>تم ✅</button>
           <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" disabled={busy === a.id} onClick={() => status(a, "dismissed")}>تجاهل</button>
           {inPopup && null}
@@ -124,7 +125,7 @@ export default function ContinuityAlerts({ seriesId, alerts, sceneId, scenes = [
         <div className="fixed inset-0 z-[290] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={closePopup} role="dialog" aria-label="تنبيه من سجاد">
           <div className="max-h-[85dvh] w-full max-w-lg space-y-3 overflow-y-auto rounded-3xl bg-[#fffbeb] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
-              <span className="text-3xl" aria-hidden>🧑‍🏫</span>
+              <span className="text-3xl" aria-hidden><RobotFace id="sajjad" size={40} /></span>
               <div>
                 <p className="text-lg font-black">سجاد لاحظ فجوات بين المشاهد</p>
                 <p className="text-xs font-bold text-muted">{popup.length} تنبيه جديد — صلّحها الحين أو ارجع لها بعدين من «رقابة الاستمرارية».</p>

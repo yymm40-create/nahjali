@@ -11,6 +11,7 @@ import { PICTURE_KINDS } from "./autopilot";
 import { fontFacesUrl } from "./client";
 import type { ProjectHook } from "./StudentProject";
 import Coined from "@/components/Coined";
+import RobotFace from "@/components/RobotFace";
 
 type S = Record<string, unknown>;
 
@@ -208,7 +209,7 @@ export function DesignStep({ wish, set }: { wish: DesignWish; set: (w: DesignWis
         <span className="text-sm font-semibold">الأسلوب</span>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="الأسلوب">
           <button type="button" role="radio" aria-checked={!wish.style} onClick={() => patch({ style: "" })} className={`rounded-2xl border bg-white p-3 text-start ${!wish.style ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
-            <b className="block">🧑‍🎓 صادق يختار</b>
+            <b className="flex items-center gap-1"><RobotFace id="sadiq" size={20} /> صادق يختار</b>
             <span className="block text-xs text-jw-muted">يختار الأنسب لمادتك وعمرك، ويطبّق أفكارك اللي تكتبها تحت.</span>
           </button>
           {STYLES.map((st) => (

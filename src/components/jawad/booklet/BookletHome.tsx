@@ -15,6 +15,7 @@ import { api, postJson } from "@/lib/fetch";
 import { splitOptions } from "@/lib/chat-options";
 import { COLUMN_KINDS, MARKS, pagesOf, robotFor, THEMES, TB, type Audience, type BookletSpec } from "@config/tables-booklet";
 import { STYLES, type StyleKey } from "@config/styles";
+import RobotFace from "@/components/RobotFace";
 
 interface Msg { role: "user" | "assistant"; text: string; error?: boolean }
 interface ChatItem { id: string; title: string; orderId: string | null }
@@ -275,7 +276,7 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
         <section className="tb-chat">
           <header className="tb-chat-top">
             <button type="button" className="tb-btn" onClick={() => (setView("home"), void load())}>→ كتيباتي</button>
-            <b>{robot.icon} {robot.name} · {chat?.audience ? `كتيب ${chat.audience.name}` : "كتيب جديد"}</b>
+            <b><RobotFace id={robot.icon} size={26} /> {robot.name} · {chat?.audience ? `كتيب ${chat.audience.name}` : "كتيب جديد"}</b>
             <ClaudeModelPicker className="tb-claude" disabled={!!busy} />
           </header>
           <div className="tb-msgs">
@@ -284,7 +285,7 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
               const { body, options } = m.role === "assistant" && !m.error ? splitOptions(shown(m.text)) : { body: m.text, options: [] as string[] };
               return (
                 <div key={i} className={`tb-msg ${m.role === "user" ? "me" : "noor"} ${m.error ? "err" : ""}`}>
-                  {m.role === "assistant" && <i className="tb-av">{robot.icon}</i>}
+                  {m.role === "assistant" && <i className="tb-av"><RobotFace id={robot.icon} size={34} /></i>}
                   <div>
                     <p>{body}</p>
                     {last && <QuickReplies cls="tb" options={options} disabled={!!busy} onPick={(o) => void send(o)} onWrite={() => box.current?.focus()} />}
@@ -292,7 +293,7 @@ export default function BookletHome({ loginHref, name }: { loginHref: string | n
                 </div>
               );
             })}
-            {busy === "chat" && <div className="tb-msg noor"><i className="tb-av">{robot.icon}</i><p className="tb-typing">{robot.name} {robot.female ? "تكتب" : "يكتب"}…</p></div>}
+            {busy === "chat" && <div className="tb-msg noor"><i className="tb-av"><RobotFace id={robot.icon} size={34} /></i><p className="tb-typing">{robot.name} {robot.female ? "تكتب" : "يكتب"}…</p></div>}
             <div ref={end} />
           </div>
           {chat?.spec && <Summary spec={chat.spec} price={price} done={chat.orderId} busy={busy === "start"} onMake={() => void start({ kind: "custom", chatId: chat.id })} />}

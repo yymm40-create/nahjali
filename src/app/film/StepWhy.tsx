@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FILM_WHY } from "@config/film-why";
 import { openSajjad } from "./SajjadPanel";
+import RobotFace from "@/components/RobotFace";
 
 const KEY = (k: string) => `film:why-hidden:${k}`;
 
@@ -51,7 +52,7 @@ export default function StepWhy({ step, sajjad = true }: { step: string; sajjad?
         <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => remember(false)}>فهمت ✓</button>
         {sajjad && (
           <button type="button" className="btn btn-secondary min-h-8 px-3 text-xs" onClick={() => openSajjad(`اشرح لي خطوة «${w.title}» أكثر: ليش موجودة، وش فايدتها لشغلي الحالي بالذات، ووش الأفضل أسوي فيها الحين؟`)}>
-            🧑‍🏫 اسأل سجاد عنها
+            <RobotFace id="sajjad" size={18} /> اسأل سجاد عنها
           </button>
         )}
       </div>

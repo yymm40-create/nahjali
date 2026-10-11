@@ -44,27 +44,43 @@ export default async function FilmHomeView({ base }: { base: string }) {
           <p>تكتب فكرتك، والمشهد يُصنع معك خطوة خطوة في صفحة وحدة، وأنت اللي تعتمد كل شي.</p>
         </header>
 
-        <section className="fs-posters" aria-label="وش تبي تصنع؟">
-          <Link href={`${base}/new`} className="fs-poster new">
-            <span className="ic" aria-hidden>🎬</span>
-            <span className="st">جديد</span>
-            <h3>مشهد جديد</h3>
-            <p>فكرتك بسطرين، والسيناريست يبدأ معك.</p>
-          </Link>
-          <Link href={`${base}/series`} className="fs-poster series">
-            <span className="ic" aria-hidden>📺</span>
-            <span className="st">مع سجاد</span>
-            <h3>المسلسل الذكي</h3>
-            <p>حلقات ومشاهد، لحالك أو مع فريقك.</p>
-          </Link>
-          {projects.map((p, i) => (
-            <Link key={p.id} href={`${base}/${p.id}`} className="fs-poster" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s` }}>
-              <span className="ic" aria-hidden>{stageIcon(p.stage)}</span>
-              <span className="st">{stageLabel(p.stage)}</span>
-              <h3 className="line-clamp-3">{p.title}</h3>
-              <p>آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
+        {/* what to start — kept apart from the person's own projects */}
+        <section className="space-y-3" aria-labelledby="fs-start">
+          <h2 id="fs-start" className="fs-group">وش تبي تصنع؟</h2>
+          <div className="fs-posters fs-starts">
+            <Link href={`${base}/new`} className="fs-poster new">
+              <span className="ic" aria-hidden>🎬</span>
+              <span className="st">جديد</span>
+              <h3>مشهد جديد</h3>
+              <p>فكرتك بسطرين، والسيناريست يبدأ معك.</p>
             </Link>
-          ))}
+            <Link href={`${base}/series`} className="fs-poster series">
+              <span className="ic" aria-hidden>📺</span>
+              <span className="st">مع سجاد</span>
+              <h3>المسلسل الذكي</h3>
+              <p>حلقات ومشاهد، لحالك أو مع فريقك.</p>
+            </Link>
+          </div>
+        </section>
+
+        <section className="space-y-3" aria-labelledby="fs-mine">
+          <h2 id="fs-mine" className="fs-group">
+            مشاريعي {projects.length > 0 && <small>({projects.length})</small>}
+          </h2>
+          {projects.length ? (
+            <div className="fs-posters">
+              {projects.map((p, i) => (
+                <Link key={p.id} href={`${base}/${p.id}`} className="fs-poster" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s` }}>
+                  <span className="ic" aria-hidden>{stageIcon(p.stage)}</span>
+                  <span className="st">{stageLabel(p.stage)}</span>
+                  <h3 className="line-clamp-3">{p.title}</h3>
+                  <p>آخر تعديل {new Date(p.updated_at).toLocaleDateString("ar-SA")}</p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="fs-glass p-4 text-sm font-bold text-muted">ما عندك مشاريع للحين. ابدأ «مشهد جديد» فوق، ومشاريعك تطلع هنا.</p>
+          )}
         </section>
 
         <section className="fs-glass space-y-3 p-4" aria-label="كيف يمشي المشهد">

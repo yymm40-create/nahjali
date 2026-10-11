@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { credits } from "@/lib/film/credits";
 import { openSajjad } from "../SajjadPanel";
+import RobotFace from "@/components/RobotFace";
 
 export type CastView = { id: string; kind: "style" | "character" | "place"; name: string; description: string; status: "none" | "generating" | "ready" | "failed"; error: string | null; url: string | null };
 
@@ -62,7 +63,7 @@ export default function SeriesGround({ seriesId, canEdit, about, bible, style, c
           <h2 className="display text-2xl">📖 أساس المسلسل</h2>
           {canEdit && !editing && (
             <span className="flex gap-2">
-              <button type="button" className="btn btn-primary min-h-10 px-4 text-sm" onClick={develop}>🧑‍🏫 طوّره مع سجاد</button>
+              <button type="button" className="btn btn-primary min-h-10 px-4 text-sm" onClick={develop}><RobotFace id="sajjad" size={18} /> طوّره مع سجاد</button>
               <button type="button" className="btn btn-ghost min-h-10 px-3 text-sm" onClick={() => setEditing(true)}>✏️ بنفسي</button>
             </span>
           )}
@@ -101,7 +102,7 @@ export default function SeriesGround({ seriesId, canEdit, about, bible, style, c
           <h2 className="display text-2xl">🎭 الشخصيات والبيئات</h2>
           {canEdit && (
             <button type="button" className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => openSajjad("اقترح الشخصيات الرئيسية والبيئات الأساسية من وصف المسلسل، بوصف دقيق لشكل كل وحدة، وأضفها.")}>
-              🧑‍🏫 خل سجاد يقترحها
+              <RobotFace id="sajjad" size={18} /> خل سجاد يقترحها
             </button>
           )}
         </header>

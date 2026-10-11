@@ -724,6 +724,10 @@ html:has(.fs) body,
 .fs-hero h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 900; line-height: 1.25; }
 .fs-hero p { color: var(--fs-muted); font-weight: 700; margin-top: 6px; }
 .fs-posters { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+/* the film home: «وش تبي تصنع؟» (the two ways to start, bigger) apart from «مشاريعي» */
+.fs-group { display: flex; align-items: baseline; gap: 8px; font-size: 1.15rem; font-weight: 900; padding-inline-start: 10px; border-inline-start: 4px solid var(--fs-ember); }
+.fs-group small { font-size: 0.8rem; color: var(--fs-muted); font-weight: 800; }
+.fs-starts { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .fs-poster {
   position: relative;
   aspect-ratio: 2 / 3;
