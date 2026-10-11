@@ -101,14 +101,18 @@ export interface TaskRow {
   habit_id: string | null;
   sort_order: number;
   done_at: string | null;
+  priority?: boolean | null;
 }
-export const taskFromRow = (r: TaskRow): DayTask => ({ id: r.id, date: r.task_date, title: r.title, at: r.at_time ? r.at_time.slice(0, 5) : null, habitId: r.habit_id, sortOrder: r.sort_order, doneAt: r.done_at });
+export const taskFromRow = (r: TaskRow): DayTask => ({ id: r.id, date: r.task_date, title: r.title, at: r.at_time ? r.at_time.slice(0, 5) : null, habitId: r.habit_id, sortOrder: r.sort_order, doneAt: r.done_at, priority: Boolean(r.priority) });
 
 /** One day's tasks (through RLS: the user's own), timed ones first by time, then in the order they were added. */
 export async function loadTasks(supabase: SupabaseClient, date: string): Promise<DayTask[]> {
-  const { data, error } = await supabase.from("mahdi_day_tasks").select("id,task_date,title,at_time,habit_id,sort_order,done_at").eq("task_date", date).order("sort_order").order("created_at").limit(200);
+  const read = (cols: string) => supabase.from("mahdi_day_tasks").select(cols).eq("task_date", date).order("sort_order").order("created_at").limit(200);
+  let { data, error } = await read("id,task_date,title,at_time,habit_id,sort_order,done_at,priority");
+  // before SQL 0058 there is no «priority» column: the tasks still load (no priorities)
+  if (error?.code === "42703") ({ data, error } = await read("id,task_date,title,at_time,habit_id,sort_order,done_at"));
   if (error) throw error;
-  return (data as TaskRow[]).map(taskFromRow);
+  return (data as unknown as TaskRow[]).map(taskFromRow);
 }
 
 const DEFAULT_NOTIFICATIONS: NotificationSettings = { mode: "off", times: ["20:00"], quietStart: "23:00", quietEnd: "07:00", habitReminders: true };

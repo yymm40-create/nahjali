@@ -10,6 +10,7 @@ import type { Project } from "@/lib/mahdi/types";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import BookletCard from "./BookletCard";
 import ReadingCard from "./ReadingCard";
+import DayPriorities from "./DayPriorities";
 import DayTasks from "./DayTasks";
 import DayBars from "./DayBars";
 import HabitForm from "./HabitForm";
@@ -110,6 +111,7 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
 
       {home && <ReadingCard />}
       {home && <BookletCard />}
+      {isToday && <DayPriorities />}
       {isToday && <DayTasks />}
 
       {projects.length === 0 ? (
