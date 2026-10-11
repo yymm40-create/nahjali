@@ -54,6 +54,7 @@ import {
   type Crop,
   readSound,
   DEFAULT_BACKDROP,
+  readBackdrop,
   type Word,
   type CaptionStyle,
   CAPTION_STYLES,
@@ -596,12 +597,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (clip.text || track.kind !== "video") fail("عزل الشخص للصور والفيديو فقط.");
         if (p.bg === null) clip.bg = null;
         else {
-          const next = { ...(clip.bg ?? DEFAULT_BACKDROP), ...p.bg };
-          clip.bg = {
-            mode: next.mode === "remove" || next.mode === "color" ? next.mode : "blur",
-            color: /^#[0-9a-f]{6}$/i.test(next.color) ? next.color : DEFAULT_BACKDROP.color,
-            blur: Math.round(Math.min(100, Math.max(1, Number(next.blur) || DEFAULT_BACKDROP.blur))),
-          };
+          clip.bg = readBackdrop(p.bg as Record<string, unknown>, clip.bg ?? DEFAULT_BACKDROP);
         }
       }
       if (p.transition !== undefined) {

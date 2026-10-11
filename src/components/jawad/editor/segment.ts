@@ -36,6 +36,8 @@ export class Masker {
   private seg: ImageSegmenter | null = null;
   private input = document.createElement("canvas");
   private masks = new Map<string, HTMLCanvasElement>();
+  /** «تثبيت ضد الرجفة»: each clip's last person map and its time (a jump in time starts afresh) */
+  private past = new Map<string, { t: number; data: Float32Array }>();
   failed = false;
 
   constructor(private onReady?: () => void) {}
@@ -60,8 +62,12 @@ export class Masker {
     );
   }
 
-  /** The person mask of a picture (null until the segmenter is ready). */
-  maskOf(key: string, img: CanvasImageSource, width: number, height: number): HTMLCanvasElement | null {
+  /**
+   * The person mask of a picture (null until the segmenter is ready). `edge`: «شدّ / توسيع الحافة» (shrink −1 … 1)
+   * and «تثبيت ضد الرجفة» (steady 0 … 1: the map follows the frames before it, at time `t` ms, so the edge stops
+   * flickering from one frame to the next).
+   */
+  maskOf(key: string, img: CanvasImageSource, width: number, height: number, edge: { shrink?: number; steady?: number; t?: number } = {}): HTMLCanvasElement | null {
     if (!this.seg || !width || !height) return null;
     const k = SIZE / Math.max(width, height);
     const w = Math.max(16, Math.round(width * k));
@@ -79,7 +85,20 @@ export class Masker {
       // one mask: the person; several (multiclass models): the first is the background
       const m = masks[0];
       const person = masks.length === 1;
-      const data = m.getAsFloat32Array();
+      let data = m.getAsFloat32Array();
+      // anti-flicker: blend with the previous frame's map when this frame follows it closely in time
+      const steady = Math.min(1, Math.max(0, edge.steady ?? 0)) * 0.8;
+      const prev = this.past.get(key);
+      if (steady > 0 && prev && edge.t !== undefined && prev.data.length === data.length && Math.abs(edge.t - prev.t) <= 250) {
+        const mixed = new Float32Array(data.length);
+        for (let i = 0; i < data.length; i++) mixed[i] = prev.data[i] * steady + data[i] * (1 - steady);
+        data = mixed;
+      } else data = Float32Array.from(data);
+      if (edge.t !== undefined) this.past.set(key, { t: edge.t, data });
+      // the edge: tighter (cut closer to the person) or wider (keep more around them)
+      const shrink = Math.min(1, Math.max(-1, edge.shrink ?? 0));
+      const lo = Math.min(0.85, Math.max(0.05, 0.35 + shrink * 0.25));
+      const hi = Math.min(0.97, lo + 0.5);
       let out = this.masks.get(key);
       if (!out) {
         out = document.createElement("canvas");
@@ -93,8 +112,8 @@ export class Masker {
       const img2 = octx.createImageData(m.width, m.height);
       for (let i = 0; i < data.length; i++) {
         const v = person ? data[i] : 1 - data[i];
-        // a firm but soft edge
-        const a = v <= 0.35 ? 0 : v >= 0.85 ? 1 : (v - 0.35) * 2;
+        // a firm but soft edge, between the two thresholds
+        const a = v <= lo ? 0 : v >= hi ? 1 : (v - lo) / (hi - lo);
         img2.data[i * 4] = 255;
         img2.data[i * 4 + 1] = 255;
         img2.data[i * 4 + 2] = 255;
@@ -109,5 +128,6 @@ export class Masker {
 
   forget(key: string) {
     this.masks.delete(key);
+    this.past.delete(key);
   }
 }

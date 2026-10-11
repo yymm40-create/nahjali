@@ -63,7 +63,7 @@ export class Player {
   playing = false;
   /** «عزل الشخص»: person masks, loaded the first time a clip asks for one */
   private masker = new Masker(() => this.draw());
-  private maskAt = new Map<string, { t: number; mask: HTMLCanvasElement | null }>();
+  private maskAt = new Map<string, { t: number; sig: string; mask: HTMLCanvasElement | null }>();
   /** the sound: one context, the decoded files, and what is scheduled now */
   private ac: AudioContext | null = null;
   private anchor = { ctx: 0, ms: 0 };
@@ -508,15 +508,17 @@ export class Player {
       void this.masker.load();
       return null;
     }
+    const bg = this.tl.tracks.flatMap((k) => k.clips).find((c) => c.id === id)?.bg;
+    const sig = `${bg?.shrink ?? 0}:${bg?.steady ?? 0}`;
     const had = this.maskAt.get(id);
-    if (had && had.t === t && had.mask) return had.mask;
+    if (had && had.t === t && had.sig === sig && had.mask) return had.mask;
     let mask: HTMLCanvasElement | null = null;
     try {
-      mask = this.masker.maskOf(id, f.img, f.width, f.height);
+      mask = this.masker.maskOf(id, f.img, f.width, f.height, { shrink: bg?.shrink, steady: bg?.steady, t });
     } catch {
       mask = null;
     }
-    this.maskAt.set(id, { t, mask });
+    this.maskAt.set(id, { t, sig, mask });
     return mask;
   }
 

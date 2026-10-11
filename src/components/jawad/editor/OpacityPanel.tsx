@@ -29,20 +29,6 @@ const USE: Partial<Record<BlendMode, string>> = {
 };
 
 export default function OpacityPanel({ clip, opacity, locked, set, onOpacity, media }: { clip: Clip; opacity: number; locked: boolean; set: (p: ClipPatch, key: string) => void; onOpacity: (v: number) => void; media: boolean }) {
-  const k = clip.key;
-  const setKey = (p: Partial<Keyer>, key: string) => set({ key: p }, `key:${key}`);
-  const pick = async () => {
-    // the browser's own eyedropper (Chrome, Edge): a click anywhere on the screen, e.g. on the preview's green
-    const E = (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper;
-    if (!E) return;
-    try {
-      const r = await new E().open();
-      if (/^#[0-9a-f]{6}$/i.test(r.sRGBHex)) setKey({ color: r.sRGBHex.toLowerCase() }, "color");
-    } catch {
-      /* closed */
-    }
-  };
-  const canPick = typeof window !== "undefined" && "EyeDropper" in window;
   return (
     <div className="space-y-3">
       <div className="space-y-1">
@@ -71,7 +57,28 @@ export default function OpacityPanel({ clip, opacity, locked, set, onOpacity, me
         {USE[clip.blend] && <p className="rounded-lg bg-jw-surface-2 px-2 py-1.5 text-[11px] text-jw-muted">{USE[clip.blend]}</p>}
       </div>
 
-      {media && (
+      {media && <KeyControls clip={clip} locked={locked} set={set} />}
+    </div>
+  );
+}
+
+/** «الكي»: a colour (green/blue screen, or any colour picked from the screen) or the dark/bright parts made see-through. */
+export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean; set: (p: ClipPatch, key: string) => void }) {
+  const k = clip.key;
+  const setKey = (p: Partial<Keyer>, key: string) => set({ key: p }, `key:${key}`);
+  const pick = async () => {
+    // the browser's own eyedropper (Chrome, Edge): a click anywhere on the screen, e.g. on the preview's green
+    const E = (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper;
+    if (!E) return;
+    try {
+      const r = await new E().open();
+      if (/^#[0-9a-f]{6}$/i.test(r.sRGBHex)) setKey({ color: r.sRGBHex.toLowerCase() }, "color");
+    } catch {
+      /* closed */
+    }
+  };
+  const canPick = typeof window !== "undefined" && "EyeDropper" in window;
+  return (
         <div className="space-y-2 rounded-lg border border-jw-line p-2">
           <p className="text-xs font-semibold">الكي (Keying)</p>
           <div className="jw-seg" role="radiogroup" aria-label="نوع الكي">
@@ -132,8 +139,6 @@ export default function OpacityPanel({ clip, opacity, locked, set, onOpacity, me
           )}
           {!k && <p className="text-[11px] text-jw-faint">كروما: صوّرت قدام شاشة خضراء أو زرقاء؟ تختفي ويبان اللي تحت المقطع. لوما: يشيل الأسود (أو الأبيض) — للنار والدخان والنصوص على خلفية سوداء.</p>}
         </div>
-      )}
-    </div>
   );
 }
 

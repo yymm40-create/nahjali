@@ -30,6 +30,7 @@ import {
   type TextStyle,
   type Timeline,
   type Transform,
+  NEW_KEY,
 } from "@/lib/editor/model";
 import type { ClipPatch, Command } from "@/lib/editor/commands";
 import Icon from "../Icon";
@@ -39,7 +40,7 @@ import FxPanel from "./FxPanel";
 import GradePanel from "./GradePanel";
 import { allGradeable, gradeable, pasteGradeCommands } from "@/lib/editor/grade-paste";
 import { copyGrade, pasteableGrade } from "./clipboard";
-import OpacityPanel from "./OpacityPanel";
+import OpacityPanel, { KeyControls } from "./OpacityPanel";
 import TransitionPanel from "./TransitionPanel";
 import { TR_CATS, TR_LIST, type TrCat } from "@/lib/editor/transitions";
 import { clipSound } from "./voice";
@@ -547,7 +548,7 @@ export default function Inspector({
       {current === "opacity" && <OpacityPanel clip={clip} opacity={t.opacity} locked={locked} set={set} onOpacity={(v) => move({ opacity: v }, "opacity")} media={!text} />}
       {current === "backdrop" && (
         <div className="space-y-3">
-          <p className="text-xs leading-6 text-jw-muted">نلقى الشخص في الصورة ونغيّر اللي وراه. يشتغل على جهازك مجانًا (أول مرة يتحمّل نموذج صغير).</p>
+          <p className="text-xs leading-6 text-jw-muted">نلقى الشخص في الصورة ونغيّر اللي وراه، أو نشيل لون معيّن (شاشة خضراء أو أي لون). يشتغل على جهازك مجانًا.</p>
           <div className="grid grid-cols-2 gap-1.5">
             {(
               [
@@ -557,13 +558,17 @@ export default function Inspector({
                 ["color", "لون بدلها"],
               ] as const
             ).map(([mode, label]) => {
-              const on = mode === null ? !clip.bg : clip.bg?.mode === mode;
+              const on = mode === null ? !clip.bg && !clip.key : clip.bg?.mode === mode;
               return (
-                <button key={label} type="button" disabled={locked} aria-pressed={on} className={`rounded-lg border px-2 py-2 text-xs ${on ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set({ bg: mode === null ? null : { mode } }, "bg:mode")}>
+                <button key={label} type="button" disabled={locked} aria-pressed={on} className={`rounded-lg border px-2 py-2 text-xs ${on ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set(mode === null ? { bg: null, key: null } : { bg: { mode }, key: null }, "bg:mode")}>
                   {label}
                 </button>
               );
             })}
+            {/* «Key»: a colour picked and removed (a green screen, a wall, a sky) — the editor's keyer, here too */}
+            <button type="button" disabled={locked} aria-pressed={!!clip.key} className={`col-span-2 rounded-lg border px-2 py-2 text-xs ${clip.key ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set(clip.key ? { key: null } : { bg: null, key: { ...NEW_KEY, kind: "chroma" } }, "bg:key")}>
+              🎨 شيل لون (Key) — اختر لون ويختفي
+            </button>
           </div>
           {clip.bg?.mode === "blur" && <Slider label="قوة التغبيش" value={clip.bg.blur} min={1} max={100} step={1} disabled={locked} onChange={(v) => set({ bg: { blur: v } }, "bg:blur")} />}
           {clip.bg?.mode === "color" && (
@@ -577,7 +582,20 @@ export default function Inspector({
               مكان الخلفية يصير شفاف، فيبان اللي تحت هذا المقطع في التايملاين. لتحط صورة أو فيديو خلف الشخص: حط هذا المقطع في مسار فوق (اسحبه للأعلى) والخلفية الجديدة في الرئيسي تحته.
             </p>
           )}
-          {clip.bg && <p className="text-[11px] text-jw-faint">يناسب لقطات الشخص الواحد من الأمام (مثل السيلفي والبودكاست).</p>}
+          {clip.bg && (
+            <div className="space-y-2 rounded-lg border border-jw-line p-2">
+              <p className="text-xs font-semibold">✂️ حواف القص</p>
+              <Slider label="نعومة الحواف" value={Math.round((clip.bg.feather ?? 0.3) * 100)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ bg: { feather: v / 100 } }, "bg:feather")} format={(v) => (v ? `${v}%` : "حادة")} />
+              <Slider label="شدّ ← → توسيع الحافة" value={Math.round(-(clip.bg.shrink ?? 0) * 100)} min={-100} max={100} step={1} disabled={locked} onChange={(v) => set({ bg: { shrink: -v / 100 } }, "bg:shrink")} format={(v) => (v === 0 ? "عادي" : v < 0 ? `أضيق ${-v}%` : `أوسع ${v}%`)} />
+              <Slider label="تثبيت ضد الرجفة (Flicker)" value={Math.round((clip.bg.steady ?? 0.5) * 100)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ bg: { steady: v / 100 } }, "bg:steady")} format={(v) => (v ? `${v}%` : "بدون")} />
+              <label className="flex items-center gap-1.5 text-xs">
+                <input type="checkbox" checked={!!clip.bg.show} disabled={locked} onChange={(e) => set({ bg: { show: e.target.checked } }, "bg:show")} /> اعرض الماسك (أبيض يبقى، أسود ينشال)
+              </label>
+              <p className="text-[11px] leading-5 text-jw-faint">الحافة ترجف أو تقص من الشعر؟ زِد «التثبيت»، ووسّع الحافة شوي، ونعّمها. يقص زيادة حول الشخص؟ شدّها.</p>
+            </div>
+          )}
+          {clip.key && <KeyControls clip={clip} locked={locked} set={set} />}
+          {clip.bg && <p className="text-[11px] text-jw-faint">عزل الشخص يناسب لقطات الشخص الواحد من الأمام (مثل السيلفي والبودكاست). لشاشة خضراء أو جدار بلون واحد استخدم «شيل لون».</p>}
         </div>
       )}
 
