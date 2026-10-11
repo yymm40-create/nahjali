@@ -32,6 +32,8 @@ export interface Profile {
   viewMode: "list" | "compact";
   /** the home cards the person arranged, in order (null = the standard home) */
   homeWidgets: string[] | null;
+  /** where the drawn shrine shows: «auto» (as the design does), backdrop, banner, horizon, photo or off */
+  shrinePlace: string;
 }
 
 export interface Project {

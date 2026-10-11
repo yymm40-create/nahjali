@@ -1607,3 +1607,26 @@ html:has(.mahdi-root[data-mtheme="pop"]) body { background: #fff4dc; }
 .m-swipe-btn:active { transform: scale(0.9); }
 .m-swipe-ok { width: 76px; height: 76px; background: var(--m-success); color: #fff; font-size: 2rem; font-weight: 900; }
 .m-sticker { display: inline-block; padding: 10px 14px; color: #2d2a26; font-size: 1.05rem; box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.08); }
+
+/* ═════════════ the holy shrines, drawn (components/mahdi/ShrineArt) ═════════════ */
+/* behind every page: the shrine standing at the top of the screen behind the greeting (where no card covers it), in the design's drawing style */
+.m-shrine-backdrop { position: absolute; inset-inline: 0; top: calc(env(safe-area-inset-top, 0px) + 40px); width: 100%; height: min(36vh, 340px); color: var(--m-gold); opacity: 0.5; -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%); mask-image: linear-gradient(180deg, #000 55%, transparent 100%); }
+.mahdi-root[data-mlight] .m-shrine-backdrop { opacity: 0.32; }
+.mahdi-root[data-mtheme="buttons"] .m-shrine-backdrop,
+.mahdi-root[data-mtheme="flame"] .m-shrine-backdrop { color: #000; opacity: 0.2; }
+/* the photo made earlier, in the design's colours: grey, tinted with the design's two colours, fading into the page */
+.m-backdrop img.m-photo-tinted { opacity: 0.7 !important; filter: grayscale(1) contrast(1.08) !important; -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 32%, transparent 72%) !important; mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 32%, transparent 72%) !important; }
+.mahdi-root[data-mlight] .m-backdrop img.m-photo-tinted { opacity: 0.55 !important; }
+.m-photo-tint { position: absolute; inset: 0; background: linear-gradient(160deg, var(--m-gold), var(--m-gold-2)); mix-blend-mode: color; opacity: 0.8; -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 32%, transparent 72%); mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.75) 32%, transparent 72%); }
+/* on the home: a banner, or a quiet skyline under the greeting */
+.m-shrine-banner { position: relative; overflow: hidden; border-radius: var(--m-radius); border: var(--m-border-w) solid var(--m-line); background: linear-gradient(180deg, color-mix(in srgb, var(--m-gold-2) 22%, var(--m-surface-solid)), var(--m-surface-solid)); box-shadow: var(--m-shadow); color: var(--m-gold); }
+.m-shrine-banner svg { display: block; width: 100%; height: 190px; }
+.m-shrine-banner .m-shrine-name { position: absolute; top: 12px; inset-inline-start: 14px; font-size: 0.8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--m-surface-solid) 80%, transparent); color: var(--m-ink); }
+.mahdi-root[data-mtheme="buttons"] .m-shrine-banner { color: #ffffff; background: rgba(255, 255, 255, 0.12); }
+.mahdi-root[data-mtheme="flame"] .m-shrine-banner { color: #2a0618; background: linear-gradient(180deg, #ffb44a, #e0336e); }
+.mahdi-root[data-mtheme="zakhrafa"] .m-shrine-banner { background: radial-gradient(70% 90% at 50% 100%, rgba(212, 175, 55, 0.28), transparent 70%), #10322d; }
+.m-shrine-horizon { display: block; width: 100%; height: 130px; color: var(--m-gold); opacity: 0.8; margin-top: -6px; }
+.mahdi-root[data-mtheme="mono"] .m-shrine-horizon,
+.mahdi-root[data-mtheme="bars"] .m-shrine-horizon,
+.mahdi-root[data-mtheme="timeline"] .m-shrine-horizon { color: var(--m-ink); opacity: 0.55; }
+.m-sample-shrine { display: block; width: 100%; height: 34px; margin-top: 4px; color: var(--m-gold); }

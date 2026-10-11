@@ -5,6 +5,7 @@ import { MAHDI_THEMES, type GoalsStyle, type MahdiTheme } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import type { Shrine } from "@/lib/mahdi/types";
 import Icon from "./Icon";
+import ShrineArt from "./ShrineArt";
 
 /** The shrine choices; those without a picture yet show «قريبًا» and can't be chosen. */
 export function ShrinePicker({ shrines, value, onChange }: { shrines: Shrine[]; value: string; onChange: (s: Shrine) => void }) {
@@ -102,7 +103,7 @@ export function ThemePicker({ value, onChange }: { value: MahdiTheme; onChange: 
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" role="radiogroup" aria-label={t.more.theme}>
       {list.map((th) => (
         <button key={th.key} type="button" role="radio" aria-checked={value === th.key} onClick={() => onChange(th.key)} className="m-option overflow-hidden p-1.5 text-start">
-          <span className="mahdi-root m-sample block h-32 overflow-hidden p-2.5" data-mtheme={th.key} style={{ borderRadius: 12, fontFamily: "var(--m-font)" }} aria-hidden="true">
+          <span className="mahdi-root m-sample block h-40 overflow-hidden p-2.5" data-mtheme={th.key} style={{ borderRadius: 12, fontFamily: "var(--m-font)" }} aria-hidden="true">
             <span className="flex items-center gap-1.5">
               <b className="flex-1 truncate text-sm" style={{ fontFamily: "var(--m-display)", fontWeight: "var(--m-display-weight)" as unknown as number, color: "var(--m-ink)" }}>{th.label}</b>
               {th.n > 0 && <span className="m-num text-[10px]" style={{ color: "var(--m-muted)" }}>{th.n}</span>}
@@ -117,7 +118,8 @@ export function ThemePicker({ value, onChange }: { value: MahdiTheme; onChange: 
                 ))}
               </span>
             </span>
-            <span className="mt-2 block py-1 text-center text-[11px] font-bold" style={{ background: "var(--m-primary-bg)", color: "var(--m-gold-ink)", border: "var(--m-primary-border)", boxShadow: "var(--m-primary-shadow)", borderRadius: "calc(var(--m-radius) * 0.5)" }}>
+            <ShrineArt shrineId="imam-ali" style={th.art} className="m-sample-shrine" />
+            <span className="mt-1 block py-1 text-center text-[11px] font-bold" style={{ background: "var(--m-primary-bg)", color: "var(--m-gold-ink)", border: "var(--m-primary-border)", boxShadow: "var(--m-primary-shadow)", borderRadius: "calc(var(--m-radius) * 0.5)" }}>
               ٣ من ٦ ✓
             </span>
           </span>

@@ -27,7 +27,8 @@ import { useMahdi } from "./Provider";
 import ReadingCard from "./ReadingCard";
 import DesignGoals from "./home/DesignGoals";
 import DesignQuick from "./home/DesignQuick";
-import { useLook } from "./ThemeRoot";
+import { shownPlace, useLook } from "./ThemeRoot";
+import ShrineArt from "./ShrineArt";
 import { designOf } from "@config/mahdi";
 import Sheet from "./Sheet";
 import { StoriesBar } from "./social/Stories";
@@ -64,6 +65,11 @@ export default function HomeBoard() {
   const [arranging, setArranging] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const hasProjects = state.snap.projects.some((p) => !p.archivedAt);
+  // the holy shrine drawn on the home (a banner, or a skyline under the greeting), when that is where it shows
+  const look = useLook();
+  const design = designOf(look.theme);
+  const where = shownPlace(look.place, design.place);
+  const shrineName = look.shrine?.name ?? "";
 
   const save = async (next: WidgetId[]) => {
     setList(next);
@@ -81,6 +87,12 @@ export default function HomeBoard() {
 
   return (
     <div className="space-y-5">
+      {where === "banner" && (
+        <div className="m-shrine-banner">
+          <ShrineArt shrineId={look.shrine?.id ?? profile.shrineId} style={design.art} sky label={shrineName ? `رسمة ${shrineName}` : "رسمة الحرم"} />
+          {shrineName && <span className="m-shrine-name">{shrineName}</span>}
+        </div>
+      )}
       <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="m-num text-sm m-muted">
@@ -94,6 +106,7 @@ export default function HomeBoard() {
           <Icon name="grip" size={18} /> رتّب
         </button>
       </header>
+      {where === "horizon" && <ShrineArt shrineId={look.shrine?.id ?? profile.shrineId} style={design.art} className="m-shrine-horizon" label={shrineName ? `رسمة ${shrineName}` : undefined} />}
 
       {!hasProjects ? (
         <section className="m-card space-y-3 p-6 text-center">

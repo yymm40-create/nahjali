@@ -47,6 +47,7 @@ export default async function MahdiLayout({ children }: { children: React.ReactN
       initialTheme={profile?.theme ?? DEFAULT_THEME}
       initialVariant={profile?.themeVariant ?? ""}
       initialShrine={pickShrine(shrines, profile?.shrineId)}
+      initialPlace={profile?.shrinePlace}
       fontClass={`${sans.variable} ${display.variable} ${readex.variable} ${lalezar.variable} ${baloo.variable} ${rubik.variable} ${tajawal.variable} ${cairo.variable} ${almarai.variable} ${lemonada.variable} ${changa.variable} ${marhey.variable}`}
       skipLabel={t.common.skipToContent}
     >
