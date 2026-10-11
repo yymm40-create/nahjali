@@ -1630,3 +1630,12 @@ html:has(.mahdi-root[data-mtheme="pop"]) body { background: #fff4dc; }
 .mahdi-root[data-mtheme="bars"] .m-shrine-horizon,
 .mahdi-root[data-mtheme="timeline"] .m-shrine-horizon { color: var(--m-ink); opacity: 0.55; }
 .m-sample-shrine { display: block; width: 100%; height: 34px; margin-top: 4px; color: var(--m-gold); }
+
+
+/* ───── «لأجل المهدي»: habits by project, and the check mark in shapes ───── */
+.m-qgroup { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; font-weight: 800; padding-block: 0.15rem; }
+.m-tick { display: block; flex: none; animation: m-pop 0.32s cubic-bezier(0.2, 1.4, 0.4, 1); }
+/* where a shape draws the done state itself, the box behind it steps aside (in every design) */
+.m-qrow[data-done="true"] .m-qbox.m-shaped,
+.m-xp[data-done="true"] .m-xp-box.m-shaped { background: transparent !important; border-color: transparent !important; box-shadow: none !important; animation: none; }
+.m-circle[data-done="true"] .m-circle-face.m-shaped { background: var(--m-bg) !important; animation: none; }

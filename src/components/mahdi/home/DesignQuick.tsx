@@ -10,6 +10,9 @@ import type { QuickStyle } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import Icon from "../Icon";
 import LogSheet from "../LogSheet";
+import { useMahdi } from "../Provider";
+import { bySort, CHALLENGE_GROUP } from "@/lib/mahdi/client/derive";
+import Tick, { shapeFor, useTickPref } from "./Tick";
 import { useHabitTap, useDay, XP_PER, type DayHabit } from "./useDay";
 
 const WEEKDAYS = ["س", "ح", "ن", "ث", "ر", "خ", "ج"];
@@ -28,8 +31,53 @@ function Tap({ h, date, children }: { h: DayHabit; date: string; children: (x: R
 
 const amount = (h: DayHabit) => (h.inst.target > 1 ? `${h.inst.value}/${h.inst.target}` : "");
 
+interface Group {
+  key: string;
+  name: string;
+  icon: string;
+  color: string;
+  href: string;
+  habits: DayHabit[];
+  done: number;
+}
+
+/** Today's habits by project, in the projects' own order (worship with worship, sports with sports…). */
+function groupsOf(habits: DayHabit[]): Group[] {
+  const order = new Map<string, number>();
+  const groups = new Map<string, Group>();
+  for (const h of habits) {
+    const id = h.habit.projectId;
+    let g = groups.get(id);
+    if (!g) {
+      const isChallenge = id === CHALLENGE_GROUP;
+      g = { key: id, name: isChallenge ? t.challenges.title : h.project?.name ?? "عادات", icon: isChallenge ? "🕌" : h.project?.icon ?? "", color: h.project?.color ?? "gold", href: isChallenge ? "/mahdi/challenges" : `/mahdi/projects/${id}`, habits: [], done: 0 };
+      groups.set(id, g);
+      order.set(id, h.project?.sortOrder ?? 9999);
+    }
+    g.habits.push(h);
+    if (h.inst.progress >= 1) g.done++;
+  }
+  return [...groups.values()].sort((a, b) => order.get(a.key)! - order.get(b.key)!);
+}
+
+/** A project's heading over its habits: its colour dot, name, and how many are done. */
+function GroupHead({ g }: { g: Group }) {
+  return (
+    <h3 className={`m-qgroup p-${g.color}`}>
+      <span className="m-dot" style={{ background: "var(--pc)" }} aria-hidden="true" />
+      <Link href={g.href} className="min-w-0 flex-1 truncate">
+        {g.icon && <span aria-hidden="true">{g.icon} </span>}
+        {g.name}
+      </Link>
+      <span className="m-num m-chip">{g.done}/{g.habits.length}</span>
+    </h3>
+  );
+}
+
 export default function DesignQuick({ style }: { style: QuickStyle }) {
   const d = useDay();
+  const { state } = useMahdi();
+  const [pref] = useTickPref();
   const left = d.habits.filter((h) => h.inst.progress < 1).length;
   if (!d.habits.length) {
     return (
@@ -49,81 +97,103 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
       <span className="m-chip m-num">{left ? `باقي ${left}` : "كملت كلها 🎉"}</span>
     </div>
   );
-  const sorted = [...d.habits].sort((a, b) => Number(a.inst.progress >= 1) - Number(b.inst.progress >= 1));
+  // by project, in the projects' order; each project's check has its own shape (or the one the person chose)
+  const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
+  const groups = groupsOf(d.habits);
+  const shapeOf = (h: DayHabit) => shapeFor(pref, h.habit.projectId, projects);
+  const sorted = groups.flatMap((g) => [...g.habits].sort((a, b) => Number(a.inst.progress >= 1) - Number(b.inst.progress >= 1)));
 
   switch (style) {
     case "tiles":
       return (
         <section className="m-card m-widget space-y-3">
           {head}
-          <div className="m-quick">
-            {sorted.map((h) => (
-              <Tap key={h.inst.key} h={h} date={d.today}>
-                {(x) => (
-                  <button type="button" className={`m-quick-btn p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
-                    <span className="m-quick-ic" aria-hidden="true">{x.done ? "✓" : h.habit.icon || "•"}</span>
-                    <span className="line-clamp-2">{h.habit.name}</span>
-                    {amount(h) && <span className="m-num text-xs opacity-80">{amount(h)}</span>}
-                    {!x.done && h.inst.progress > 0 && <span className="m-quick-fill" style={{ transform: `scaleX(${h.inst.progress})` }} aria-hidden="true" />}
-                  </button>
-                )}
-              </Tap>
-            ))}
-          </div>
+          {groups.map((g) => (
+            <div key={g.key} className="space-y-2">
+              <GroupHead g={g} />
+              <div className="m-quick">
+                {[...g.habits].sort((a, b) => Number(a.inst.progress >= 1) - Number(b.inst.progress >= 1)).map((h) => (
+                  <Tap key={h.inst.key} h={h} date={d.today}>
+                    {(x) => (
+                      <button type="button" className={`m-quick-btn p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
+                        <span className="m-quick-ic" aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={30} /> : h.habit.icon || "•"}</span>
+                        <span className="line-clamp-2">{h.habit.name}</span>
+                        {amount(h) && <span className="m-num text-xs opacity-80">{amount(h)}</span>}
+                        {!x.done && h.inst.progress > 0 && <span className="m-quick-fill" style={{ transform: `scaleX(${h.inst.progress})` }} aria-hidden="true" />}
+                      </button>
+                    )}
+                  </Tap>
+                ))}
+              </div>
+            </div>
+          ))}
         </section>
       );
     case "list":
       return (
-        <section className="m-card m-widget space-y-1">
+        <section className="m-card m-widget space-y-3">
           {head}
-          <ul className="m-qlist">
-            {d.habits.map((h) => (
-              <Tap key={h.inst.key} h={h} date={d.today}>
-                {(x) => (
-                  <li>
-                    <button type="button" className={`m-qrow p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
-                      <span className="m-qbox" aria-hidden="true">{x.done ? "✓" : ""}</span>
-                      <span className="min-w-0 flex-1 truncate text-start">{h.habit.icon && <span aria-hidden="true">{h.habit.icon} </span>}{h.habit.name}</span>
-                      {amount(h) && <span className="m-num text-xs m-muted">{amount(h)}</span>}
-                    </button>
-                  </li>
-                )}
-              </Tap>
-            ))}
-          </ul>
+          {groups.map((g) => (
+            <div key={g.key} className="space-y-1">
+              <GroupHead g={g} />
+              <ul className="m-qlist">
+                {g.habits.map((h) => (
+                  <Tap key={h.inst.key} h={h} date={d.today}>
+                    {(x) => (
+                      <li>
+                        <button type="button" className={`m-qrow p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
+                          <span className={`m-qbox ${x.done ? "m-shaped" : ""}`} aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={shapeOf(h) === "big" ? 28 : 26} /> : ""}</span>
+                          <span className="min-w-0 flex-1 truncate text-start">{h.habit.icon && <span aria-hidden="true">{h.habit.icon} </span>}{h.habit.name}</span>
+                          {amount(h) && <span className="m-num text-xs m-muted">{amount(h)}</span>}
+                        </button>
+                      </li>
+                    )}
+                  </Tap>
+                ))}
+              </ul>
+            </div>
+          ))}
         </section>
       );
     case "circles":
       return (
-        <section className="space-y-3">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {d.habits.map((h) => (
-              <Tap key={h.inst.key} h={h} date={d.today}>
-                {(x) => (
-                  <button type="button" className="m-circle" data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
-                    <span className="m-circle-ring" style={{ "--p": `${Math.min(1, h.inst.progress) * 360}deg` } as React.CSSProperties}>
-                      <span className="m-circle-face" aria-hidden="true">{x.done ? "✓" : h.habit.icon || "•"}</span>
-                    </span>
-                    <b className="text-sm">{h.habit.name}</b>
-                    {amount(h) && <span className="m-num text-xs opacity-80">{amount(h)}</span>}
-                  </button>
-                )}
-              </Tap>
-            ))}
-          </div>
+        <section className="space-y-4">
+          {groups.map((g) => (
+            <div key={g.key} className="space-y-2">
+              <GroupHead g={g} />
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {g.habits.map((h) => (
+                  <Tap key={h.inst.key} h={h} date={d.today}>
+                    {(x) => (
+                      <button type="button" className={`m-circle p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
+                        <span className="m-circle-ring" style={{ "--p": `${Math.min(1, h.inst.progress) * 360}deg` } as React.CSSProperties}>
+                          <span className={`m-circle-face ${x.done ? "m-shaped" : ""}`} aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={54} /> : h.habit.icon || "•"}</span>
+                        </span>
+                        <b className="text-sm">{h.habit.name}</b>
+                        {amount(h) && <span className="m-num text-xs opacity-80">{amount(h)}</span>}
+                      </button>
+                    )}
+                  </Tap>
+                ))}
+              </div>
+            </div>
+          ))}
         </section>
       );
     case "cells":
       return (
-        <section className="space-y-2">
-          {d.habits.map((h) => (
+        <section className="space-y-4">
+          {groups.map((g) => (
+            <div key={g.key} className="space-y-2">
+              <GroupHead g={g} />
+              {g.habits.map((h) => (
             <Tap key={h.inst.key} h={h} date={d.today}>
               {(x) => (
                 <button type="button" className="m-card m-cells w-full p-3 text-start" data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
                   <span className="flex items-center gap-2">
                     <span aria-hidden="true">{h.habit.icon}</span>
                     <b className="min-w-0 flex-1 truncate text-sm">{h.habit.name}</b>
-                    <small className="m-num m-muted">{x.done ? "تم اليوم ✓" : amount(h) || "اضغط"}</small>
+                    <small className="m-num m-muted flex items-center gap-1">{x.done ? <><Tick shape={shapeOf(h)} size={16} /> تم اليوم</> : amount(h) || "اضغط"}</small>
                   </span>
                   <span className="mt-2 flex gap-1" aria-hidden="true">
                     {h.week.map((on, k) => (
@@ -136,6 +206,8 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
                 </button>
               )}
             </Tap>
+              ))}
+            </div>
           ))}
         </section>
       );
@@ -153,7 +225,7 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
                   <span className={`w-1 rounded-full p-${h.project?.color ?? "gold"}`} style={{ background: "var(--pc)", opacity: x.done ? 1 : 0.35 }} />
                   <button type="button" className={`m-tl my-1 flex flex-1 items-center gap-2 p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
                     <b className="min-w-0 flex-1 truncate text-start">{h.habit.icon && <span aria-hidden="true">{h.habit.icon} </span>}{h.habit.name}</b>
-                    <span className="m-num text-sm">{x.done ? "✓" : amount(h)}</span>
+                    <span className="m-num text-sm">{x.done ? <Tick shape={shapeOf(h)} size={22} /> : amount(h)}</span>
                   </button>
                 </div>
               )}
@@ -164,20 +236,25 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
     }
     case "xp":
       return (
-        <section className="space-y-2">
+        <section className="space-y-4">
           <p className="flex text-sm m-muted">
             <b className="flex-1" style={{ color: "var(--m-ink)" }}>مهام اليوم</b>+{XP_PER} خبرة لكل عادة
           </p>
-          {d.habits.map((h) => (
-            <Tap key={h.inst.key} h={h} date={d.today}>
-              {(x) => (
-                <button type="button" className="m-xp flex w-full items-center gap-2 p-2.5" data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
-                  <span className="m-xp-box" aria-hidden="true">{x.done ? "✓" : ""}</span>
-                  <span className="min-w-0 flex-1 truncate text-start">{h.habit.icon} {h.habit.name}</span>
-                  <small className="m-num" style={{ color: "var(--m-gold)" }}>+{XP_PER}</small>
-                </button>
-              )}
-            </Tap>
+          {groups.map((g) => (
+            <div key={g.key} className="space-y-2">
+              <GroupHead g={g} />
+              {g.habits.map((h) => (
+                <Tap key={h.inst.key} h={h} date={d.today}>
+                  {(x) => (
+                    <button type="button" className={`m-xp flex w-full items-center gap-2 p-2.5 p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
+                      <span className={`m-xp-box ${x.done ? "m-shaped" : ""}`} aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={26} /> : ""}</span>
+                      <span className="min-w-0 flex-1 truncate text-start">{h.habit.icon} {h.habit.name}</span>
+                      <small className="m-num" style={{ color: "var(--m-gold)" }}>+{XP_PER}</small>
+                    </button>
+                  )}
+                </Tap>
+              ))}
+            </div>
           ))}
         </section>
       );
