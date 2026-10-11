@@ -37,6 +37,8 @@ export interface Workspace {
   scale: number;
   /** where the sections sit: a column at the side, or page tabs under the work */
   rail: "side" | "pages";
+  /** the panels on the other side (the library and settings where this program keeps them) */
+  mirror?: boolean;
   tl: "classic" | "pro";
   /** the menu bar: [group, its name in this program] */
   menus: [MenuGroup, string][];
@@ -64,6 +66,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "resolve",
+    mirror: true,
     ar: "دافنشي ريزولف",
     en: "DaVinci Resolve",
     icon: "🎨",
@@ -94,6 +97,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "avid",
+    mirror: true,
     ar: "أفيد ميديا كومبوزر",
     en: "Avid Media Composer",
     icon: "🅰️",
@@ -139,6 +143,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "vegas",
+    mirror: true,
     ar: "فيغاس برو",
     en: "VEGAS Pro",
     icon: "🟦",
@@ -184,6 +189,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "hitfilm",
+    mirror: true,
     ar: "هيت فيلم",
     en: "HitFilm",
     icon: "🟧",
@@ -199,6 +205,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "edius",
+    mirror: true,
     ar: "إديوس",
     en: "EDIUS",
     icon: "🔷",
@@ -214,6 +221,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "kdenlive",
+    mirror: true,
     ar: "كيدن لايف",
     en: "Kdenlive",
     icon: "🐧",
@@ -290,6 +298,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "lumafusion",
+    mirror: true,
     ar: "لوما فيوجن",
     en: "LumaFusion",
     icon: "🟠",
@@ -305,6 +314,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "imovie",
+    mirror: true,
     ar: "آي موفي",
     en: "iMovie",
     icon: "⭐",
@@ -320,6 +330,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: "clipchamp",
+    mirror: true,
     ar: "كليب تشامب",
     en: "Clipchamp",
     icon: "🟪",
