@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DOWNLOADS } from "@config/downloads";
+import { MAHDI_BASE } from "@config/mahdi";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { ar } from "@/lib/mahdi/i18n/ar";
 
@@ -49,5 +50,18 @@ describe("the download page itself", () => {
   it("is in what Claude knows about the site, with the account button as its door", () => {
     expect(JAWAD_KNOWLEDGE).toContain("/download");
     expect(JAWAD_KNOWLEDGE).toContain("حمّل التطبيق");
+  });
+});
+
+// «حطّ رابط لأجل المهدي»: the way into the sister app from where the person presses their name.
+describe("the link to «لأجل المهدي» in JAWAD AI's account menu", () => {
+  it("is there, goes to the app's own base, and is not hidden inside the apps", () => {
+    const menu = read("src/components/jawad/AccountMenu.tsx");
+    expect(menu).toContain('import { MAHDI_BASE } from "@config/mahdi"');
+    const line = menu.split("\n").find((l) => l.includes("href={MAHDI_BASE}"))!;
+    expect(line).toContain("لأجل المهدي");
+    // it is the app's own page, so it stays when JAWAD AI is opened inside the phone app too
+    expect(line).not.toContain("hide-in-app");
+    expect(MAHDI_BASE).toBe("/mahdi");
   });
 });

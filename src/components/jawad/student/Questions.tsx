@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { coinStr } from "@config/coins";
+import { COUNTED_KINDS, chosenPages } from "@/lib/jawad/student/draw";
 import { FONTS, FORMATS, MAX_PAGES, OUTPUT_KINDS, STYLES, isPaged, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { PICTURE_KINDS } from "./autopilot";
 import { fontFacesUrl } from "./client";
@@ -112,7 +113,15 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
 export function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"] }) {
   const density = <Choice label="قد إيش التفصيل؟" value={String(s.density)} options={[{ id: "low", label: "مختصر" }, { id: "medium", label: "متوسط" }, { id: "high", label: "مفصل" }]} onChange={(density) => set({ density })} />;
   const pages = PICTURE_KINDS.includes(kind) && (
-    <MethodChoice what="page" value={Boolean(s.pictures)} quality={String(s.pictures || "high")} perUnit={prices.page} free={prices.free} onChange={(draw, q) => set({ pictures: draw ? q : "" })} />
+    <>
+      <MethodChoice what="page" value={Boolean(s.pictures)} quality={String(s.pictures || "high")} perUnit={prices.page} free={prices.free} onChange={(draw, q) => set({ pictures: draw ? q : "" })} />
+      {/* the number of pages drawn is the number chosen above; with none chosen nothing is drawn by itself */}
+      {s.pictures && !chosenPages(kind, s) && (
+        <p className="rounded-xl border border-jw-warn/40 bg-jw-warn/10 p-3 text-sm" role="note">
+          ⚠️ ما حدّدت عدد الصفحات. {COUNTED_KINDS.includes(kind) ? "اختر الرقم فوق وبيُرسم بالضبط" : "هذا الناتج ما له عدد صفحات تختاره"} — وبدونه ما يبدأ الرسم وحده: تضغط «ارسمها الآن» تحت الناتج، ويقول لك كم صفحة بتنرسم وكم تكلّف قبل ما توافق.
+        </p>
+      )}
+    </>
   );
   // the written files: how many pages (kept exactly), the paper size and the file type (PDF / Word)
   const paged = isPaged(kind) && (

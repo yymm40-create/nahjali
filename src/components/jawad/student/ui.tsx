@@ -36,7 +36,7 @@ export function PaidButton({
   primary?: boolean;
   what: string;
 }) {
-  const [quote, setQuote] = useState<{ coins: number; balance: number | null } | null>(null);
+  const [quote, setQuote] = useState<{ coins: number; balance: number | null; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const key = useRef<string>("");
@@ -45,14 +45,14 @@ export function PaidButton({
     setBusy(true);
     setError(null);
     try {
-      const r = (await run({ confirm: false })) as { quote?: number; balance?: number | null };
+      const r = (await run({ confirm: false })) as { quote?: number; balance?: number | null; note?: string };
       key.current = newKey();
       // free steps start right away: nothing to agree to
       if (!r.quote) {
         await run({ confirm: true, key: key.current });
         return;
       }
-      setQuote({ coins: r.quote ?? 0, balance: r.balance ?? null });
+      setQuote({ coins: r.quote ?? 0, balance: r.balance ?? null, note: r.note ?? "" });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -83,6 +83,8 @@ export function PaidButton({
         {quote && (
           <div className="space-y-4 p-4">
             <p className="text-sm text-jw-muted">{what}</p>
+            {/* what exactly will be made, said by the server before the student agrees (e.g. «ستُرسم ٥ صفحات») */}
+            {quote.note && <p className="rounded-xl bg-jw-surface-2 p-3 text-sm font-bold">{quote.note}</p>}
             <div className="jw-panel flex items-center justify-between gap-3 p-3">
               <span>التكلفة {quote.coins ? "(الحد الأعلى)" : ""}</span>
               <b className="text-lg">{quote.coins ? <Riyal halalas={quote.coins} size={18} /> : "مجانًا"}</b>

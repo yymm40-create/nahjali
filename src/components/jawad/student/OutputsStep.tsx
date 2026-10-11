@@ -10,6 +10,7 @@ import Icon from "@/components/jawad/Icon";
 import { DESIGNED_KINDS, OUTPUT_KINDS, OUTPUT_STATUS, emptyWish, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { defaults, DesignStep, Questions } from "./Questions";
 import { KIND_LOOK, Tile } from "./look";
+import { fitsPages, readCapacity } from "@/lib/jawad/student/capacity";
 import OutputPanel from "./OutputPanel";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, JobStatus, useAsync } from "./ui";
@@ -212,7 +213,7 @@ export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch,
                   <Tile emoji={KIND_LOOK[o.kind].emoji} grad={KIND_LOOK[o.kind].grad} size={36} />
                   <span className="min-w-0 flex-1">
                     <b className="block truncate">{o.title}</b>
-                    <span className={`block text-xs ${o.status === "done" ? "text-jw-ok" : o.status === "failed" ? "text-jw-danger" : "text-jw-muted"}`}>{job ? job.stage || "جارٍ…" : o.kind === "chat" ? "اضغط وناقش صادق" : o.status === "done" ? "جاهز — اضغط للتنزيل" : (OUTPUT_STATUS[o.status] ?? o.status)}</span>
+                    <span className={`block text-xs ${o.status === "done" ? "text-jw-ok" : o.status === "failed" ? "text-jw-danger" : "text-jw-muted"}`}>{job ? job.stage || "جارٍ…" : o.kind === "chat" ? "اضغط وناقش صادق" : o.status === "plan_review" && !fitsPages(readCapacity(o.settings)) ? "⚖️ المادة ما توافق عدد الصفحات — يحتاج قرارك" : o.status === "done" ? "جاهز — اضغط للتنزيل" : (OUTPUT_STATUS[o.status] ?? o.status)}</span>
                   </span>
                   {job && <span className="jw-spinner" aria-hidden />}
                 </button>

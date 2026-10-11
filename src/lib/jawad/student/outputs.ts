@@ -23,6 +23,8 @@ import { colorsOf } from "./render/css";
 import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
 import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
+import { capSlides } from "./draw";
+import { capacityOf } from "./capacity";
 
 /** Slides made as pictures with GPT Image 2 (the student's choice), and at which quality. */
 const asPictures = (o: Output) => o.kind === "slides" && o.settings.render === "image";
@@ -248,7 +250,11 @@ async function planStep(job: Job): Promise<StepResult> {
       subtitle: r.data.subtitle,
       chapters: r.data.chapters.slice(0, pages ? maxChapters(pages) : undefined).map((ch) => ({ title: ch.title, purpose: ch.purpose, segments: ch.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: pages && pages < 3 ? "" : ch.imageIdea } })),
     };
-    await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });
+    // BEFORE anything is written: does the material fill the pages the student asked for? Kept with the output, so the plan
+    // review asks the student when it doesn't (and the autopilot waits for the answer instead of writing padding or a squeeze)
+    const capacity = capacityOf(o.kind, countWords(allText(c)) + countWords(researchText(c)), pages, pageSize(o));
+    const kept = Object.fromEntries(Object.entries(o.settings).filter(([k]) => k !== "_capacity"));
+    await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, based_on: basedOn(c), settings: capacity ? { ...kept, _capacity: capacity } : kept }, { kind: "plan", snapshot: plan, userId: o.user_id });
     return { done: true, usd: r.usd, stage: "الخطة جاهزة" };
   }
 
@@ -268,6 +274,9 @@ async function planStep(job: Job): Promise<StepResult> {
       r = await ask(`\nYour first map had ${first.data.slides.length} slides; the student asked for EXACTLY ${want}. Return exactly ${want} slides.`);
       r = { ...r, usd: r.usd + first.usd };
     }
+    // still more than the student's number after the second ask: it is cut to their number in code (the closing slide kept),
+    // never left to the model — every slide may be drawn and paid for
+    if (want && r.data.slides.length > want) r = { ...r, data: { ...r.data, slides: capSlides(r.data.slides, want) } };
     const valid = new Set(c.seg.keys());
     const plan: SlidePlan = { title: r.data.title, subtitle: r.data.subtitle, slides: r.data.slides.map((sl) => ({ ...sl, segments: sl.segments.filter((x) => valid.has(x)), image: { ...emptyImage(), prompt: sl.visual } })) };
     await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, files: {}, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });
