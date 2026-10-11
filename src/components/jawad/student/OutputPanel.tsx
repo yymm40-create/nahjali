@@ -89,9 +89,9 @@ function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDo
 }
 
 /** One output, from its settings to its approved files. */
-export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onRemade?: () => void }) {
-  // «محادثة مع صادق»: a conversation, not a document
-  if (o.kind === "chat") return <SadiqChat p={p} o={o} />;
+export default function OutputPanel({ p, o, onRemade, onMake }: { p: ProjectHook; o: OutputView; onRemade?: () => void; onMake?: () => void }) {
+  // «محادثة مع صادق»: a conversation, not a document (he can make outputs from it: onMake runs them)
+  if (o.kind === "chat") return <SadiqChat p={p} o={o} onMake={onMake} />;
   return <DocOutputPanel p={p} o={o} onRemade={onRemade} />;
 }
 

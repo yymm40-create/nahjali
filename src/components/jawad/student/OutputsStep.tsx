@@ -13,6 +13,7 @@ import { kindOffered } from "@config/jawad/khateeb";
 import { defaults, DesignStep, Questions } from "./Questions";
 import { KIND_LOOK, Tile } from "./look";
 import { fitsPages, readCapacity } from "@/lib/jawad/student/capacity";
+import MergePdf from "./MergePdf";
 import OutputPanel from "./OutputPanel";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, JobStatus, useAsync } from "./ui";
@@ -227,9 +228,10 @@ export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch,
             );
           })}
         </ul>
+        <MergePdf p={p} />
         {stuck && sorted.some((o) => o.status === "failed") && <p className="text-sm text-jw-danger">تعثّر ناتج. افتحه وشوف السبب، أو اضغط «كمّل» يحاول مرة ثانية.</p>}
       </section>
-      {selected && <OutputPanel key={selected.id} p={p} o={selected} onRemade={() => autoOn && onStart()} />}
+      {selected && <OutputPanel key={selected.id} p={p} o={selected} onRemade={() => autoOn && onStart()} onMake={onStart} />}
     </div>
   );
 }
