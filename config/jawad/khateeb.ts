@@ -177,6 +177,8 @@ export interface SermonAsk {
   poetryIds: string[];
   /** the preacher's own lines, used as written */
   poems: string;
+  /** anything special or particular he wants (followed first, inside the method) */
+  special: string;
 }
 
 /** A request read back (null when there is none, or no topic). */
@@ -204,6 +206,7 @@ export function readSermonAsk(v: unknown): SermonAsk | null {
     sourceIds: ids(b.sourceIds),
     poetryIds: ids(b.poetryIds),
     poems: s(b.poems, 4000),
+    special: s(b.special, 2000),
   };
 }
 
@@ -218,6 +221,8 @@ export const sermonSettings = (a: SermonAsk) => ({
   poemsFor: a.goal,
   draftText: a.draftText,
   narrations: a.narrations,
+  // his special request: the student's "extra" is followed first by every writer step
+  ...(a.special ? { extra: a.special } : {}),
   tafsir: a.tafsir.join(","),
   ...(a.verse ? { verseSurah: a.verse.surah, verseFrom: a.verse.from, verseTo: a.verse.to } : {}),
 });
