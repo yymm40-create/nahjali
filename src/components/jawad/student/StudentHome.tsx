@@ -11,6 +11,7 @@ import { newKey, post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
 import RobotFace from "@/components/RobotFace";
+import { MinbarScene, Turban } from "@/components/jawad/khateeb/KhateebArt";
 
 const STAGE_INDEX: Record<string, number> = { sources: 0, review: 0, understanding: 1, scope: 2, outputs: 2 };
 
@@ -87,7 +88,7 @@ export default function StudentHome({
       {/* ───────── hero ───────── */}
       <section className="st-rise grid items-center gap-8 lg:grid-cols-[1.2fr_1fr]">
         <div className="space-y-5">
-          <span className="jw-chip !px-3 !py-1 !text-sm">✨ {name} · JAWAD AI</span>
+          <span className="jw-chip !px-3 !py-1 !text-sm">{branch === "khateeb" ? "🕌" : "✨"} {name} · JAWAD AI</span>
           {branch === "khateeb" ? (
             <>
               <h1 className="text-4xl leading-tight font-extrabold sm:text-5xl">
@@ -96,6 +97,17 @@ export default function StudentHome({
                 واصنع من مادتك أي شيء
               </h1>
               <p className="max-w-xl text-lg text-jw-muted">ارفع مادتك، أو خلّ {A} يبحث ويسأل «الذكاء الإسلامي» من مكتبته بمصادرها، ويكتب لك خطبة المنبر على المنهج — وأنت تعتمد كل خطوة.</p>
+              {/* the pulpit's preachers: the white turban of the sheikh, the black of the sayyid */}
+              <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-jw-muted">
+                <span className="inline-flex items-center gap-1.5">
+                  <Turban /> للمشايخ
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Turban sayyid /> وللسادة
+                </span>
+                <span>خطباء المنبر الحسيني، على منهج «المرجعية المنبرية»</span>
+              </p>
+              <MinbarScene className="mx-auto block w-full max-w-sm lg:hidden" />
             </>
           ) : (
             <>
@@ -127,37 +139,41 @@ export default function StudentHome({
             )}
           </div>
         </div>
-        <div className="relative hidden h-72 lg:block" aria-hidden style={{ perspective: 900 }}>
-          <div className="st-float absolute top-6 right-10" style={{ animationDuration: "8s" }}>
-            <div className="st-book" style={{ transform: "scale(1.5)" }}>
-              <span className="back" />
-              <span className="pages" />
-              <span className="cover" />
+        {branch === "khateeb" ? (
+          <MinbarScene className="hidden w-full max-w-md justify-self-center lg:block" />
+        ) : (
+          <div className="relative hidden h-72 lg:block" aria-hidden style={{ perspective: 900 }}>
+            <div className="st-float absolute top-6 right-10" style={{ animationDuration: "8s" }}>
+              <div className="st-book" style={{ transform: "scale(1.5)" }}>
+                <span className="back" />
+                <span className="pages" />
+                <span className="cover" />
+              </div>
+            </div>
+            <div className="st-float absolute top-40 left-6" style={{ animationDelay: "-3s" }}>
+              <div className="st-pencil">
+                <span className="face" />
+                <span className="face b" />
+                <span className="face c" />
+                <span className="tip" />
+                <span className="eraser" />
+              </div>
+            </div>
+            <div className="st-float absolute top-2 left-16" style={{ animationDelay: "-5s", animationDuration: "10s" }}>
+              <div className="st-cube">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+            <div className="st-float absolute right-44 bottom-2" style={{ animationDelay: "-2s" }}>
+              <div className="st-star" />
             </div>
           </div>
-          <div className="st-float absolute top-40 left-6" style={{ animationDelay: "-3s" }}>
-            <div className="st-pencil">
-              <span className="face" />
-              <span className="face b" />
-              <span className="face c" />
-              <span className="tip" />
-              <span className="eraser" />
-            </div>
-          </div>
-          <div className="st-float absolute top-2 left-16" style={{ animationDelay: "-5s", animationDuration: "10s" }}>
-            <div className="st-cube">
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
-          <div className="st-float absolute right-44 bottom-2" style={{ animationDelay: "-2s" }}>
-            <div className="st-star" />
-          </div>
-        </div>
+        )}
       </section>
 
       {/* ───────── how it works ───────── */}
