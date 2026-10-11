@@ -173,7 +173,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const bigPage = !!ws && PAGE_INFO[page].big;
   const [picking, setPicking] = useState(false);
   /** the look in use: a workspace's, or one of the four themes */
-  const T = ws ? { label: ws.ar, icon: ws.icon, hint: ws.hint, rail: ws.rail, mirror: false, scale: ws.scale, font: ws.font, swatch: [ws.pal.bg, ws.pal.accent, ws.pal.s1, ws.pal.s3] } : THEMES[theme];
+  const T = ws ? { label: ws.ar, icon: ws.icon, hint: ws.hint, rail: ws.rail, mirror: !!ws.mirror, scale: ws.scale, font: ws.font, swatch: [ws.pal.bg, ws.pal.accent, ws.pal.s1, ws.pal.s3] } : THEMES[theme];
   // «كبّر الشاشة»: the preview takes the room of the side panels (and of the timeline on a phone) until shrunk again
   const [big, setBig] = useState(false);
   // Claude's width on a computer (dragged by its edge; kept on this device)
