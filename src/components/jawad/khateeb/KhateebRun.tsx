@@ -4,7 +4,7 @@
 // what «الشيخ» is doing, step by step, by himself (next.ts), and the finished sermon with its files at the end.
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import Riyal from "@/components/Riyal";
 import RobotFace from "@/components/RobotFace";
@@ -14,6 +14,7 @@ import { useBranch } from "@/components/jawad/student/branch";
 import { useProject, type ProjectState } from "@/components/jawad/student/client";
 import { useAutopilot } from "@/components/jawad/student/autopilot";
 import OutputPanel from "@/components/jawad/student/OutputPanel";
+import SadiqChat from "@/components/jawad/student/SadiqChat";
 import { ErrorLine } from "@/components/jawad/student/ui";
 import { nextKhateeb, sermonOf } from "./next";
 
@@ -26,6 +27,9 @@ export default function KhateebRun({ initial }: { initial: ProjectState }) {
   const { project, sources, outputs, jobs } = p.state;
   const ask = project.brief.sermon!;
   const o = outputs.find((x) => x.kind === "sermon");
+  const chat = outputs.find((x) => x.kind === "chat");
+  const [openingChat, setOpeningChat] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const sp = sermonOf(o);
   const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
   const hasText = o?.status === "done" || o?.status === "review";
@@ -220,6 +224,41 @@ export default function KhateebRun({ initial }: { initial: ProjectState }) {
 
       {/* the text (to read, and to ask for changes), then its files */}
       {o && hasText && <OutputPanel key={o.id} p={p} o={o} onRemade={() => start("all")} />}
+
+      {/* the end: a conversation with the Sheikh, for what the preacher wants that is special or particular */}
+      {hasText && (
+        <section className="jw-panel st-rise space-y-3 p-5" aria-labelledby="chat">
+          <h2 id="chat" className="st-section-title flex items-center gap-2 text-lg">
+            <RobotFace id={face} size={30} /> تبي أشغّل لك المحادثة مع {A}؟
+          </h2>
+          {chat ? (
+            <SadiqChat key={chat.id} p={p} o={chat} />
+          ) : (
+            <>
+              <p className="text-sm text-jw-muted">تكمل له وش تبي: شي خاص أو معين في الخطبة. وهو ماشي على قوانينه وطريقتنا، ويشوف الآية والتفسير والأبيات والنص.</p>
+              <button
+                type="button"
+                className="jw-btn jw-btn-primary"
+                disabled={openingChat}
+                onClick={async () => {
+                  setOpeningChat(true);
+                  setChatError(null);
+                  try {
+                    await p.act({ action: "outputs_add", kinds: ["chat"] });
+                  } catch (e) {
+                    setChatError(e instanceof Error ? e.message : String(e));
+                  } finally {
+                    setOpeningChat(false);
+                  }
+                }}
+              >
+                {openingChat ? <span className="jw-spinner" aria-hidden /> : <Icon name="plus" size={16} />} نعم، شغّل المحادثة
+              </button>
+              <ErrorLine error={chatError} />
+            </>
+          )}
+        </section>
+      )}
     </div>
   );
 }

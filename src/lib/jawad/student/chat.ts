@@ -9,7 +9,8 @@ import { readBrief } from "@config/jawad/student";
 import { methodLine, studyAudience } from "@config/jawad/study-methods";
 import { MATERIAL_RULE } from "./claude";
 import { allText, loadCtx, researchText, understandingText } from "./context";
-import { saveOutput, type Output } from "./db";
+import { outputs, saveOutput, type Output } from "./db";
+import { docText, type Doc, type DocPlan } from "./model";
 
 export interface ChatMsg {
   role: "user" | "assistant";
@@ -57,10 +58,34 @@ export async function chatTurn(userId: string, o: Output, raw: unknown, leader: 
   }
 
   const material = allText(c);
+  // «الخطيب الذكي»: the conversation is about the preacher's sermon — what was taken for it, and its text when written
+  let sermon = "";
+  if (c.khateeb) {
+    const so = (await outputs(o.project_id).catch(() => [])).find((x) => x.kind === "sermon");
+    const sp = (so?.plan as DocPlan | null)?.sermon;
+    const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
+    if (so && topic && sp) {
+      const text = so.content ? docText(so.content as Doc) : "";
+      sermon = [
+        "THE PREACHER'S SERMON (what the Sheikh took for it; talk about THIS, and refine it with the preacher):",
+        `Topic: ${String(so.settings.topic ?? "")} · goal: ${String(so.settings.goal ?? "")}`,
+        `Angle: ${topic.title} — ${topic.idea}\nTakhallus point: ${topic.kooriz}`,
+        `Key verse (${topic.verse.ref}): ${topic.verse.text}`,
+        sp.tafsir ? `Tafsir (${sp.tafsir.source}): ${sp.tafsir.simple}` : "No tafsir was taken.",
+        sp.poems?.length ? `Lines taken:\n${sp.poems.map((x) => `${x.text} (${x.ref}، ص${x.page})`).join("\n")}` : "",
+        sp.sources?.length ? `Passages taken from the books:\n${sp.sources.map((x) => `${x.text} (${x.ref}، ص${x.page})`).join("\n")}` : "",
+        text ? `THE SERMON'S TEXT SO FAR:\n${text.slice(0, 60_000)}` : "The sermon's text is not written yet.",
+        "In this conversation: follow the owner's method and rules above exactly as in the sermon. You may discuss, advise, suggest wording or a passage the preacher asks for, and answer what he wants that is special or particular — but a verse, a narration or a line of poetry is only ever one given above or in the material, never from memory. To CHANGE the sermon's text itself, tell him to press «عدّل» on the sermon's text and write the change there (that revises the text and shows it to him again).",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+  }
   const system = [
     MATERIAL_RULE,
     c.khateeb,
-    `You are «${c.khateeb ? "الشيخ" : "صادق"}» in a saved CONVERSATION with the student about their study material (topic: ${c.understanding.topic}). Discuss it with them like a sharp, warm tutor: answer from the material first and say where in it; explain, simplify, give examples, quiz them when they want, help them prepare or debate, and push their thinking with a good question when it helps. When you add something that is NOT in the material, say so plainly («من خارج المادة»). Never invent sources, numbers or quotes. Reply in the student's language and dialect, short unless they ask for more.`,
+    sermon,
+    `You are «${c.khateeb ? "الشيخ صادق" : "صادق"}» in a saved CONVERSATION with the ${c.khateeb ? "preacher" : "student"} about their study material (topic: ${c.understanding.topic}). Discuss it with them like a sharp, warm tutor: answer from the material first and say where in it; explain, simplify, give examples, quiz them when they want, help them prepare or debate, and push their thinking with a good question when it helps. When you add something that is NOT in the material, say so plainly («من خارج المادة»). Never invent sources, numbers or quotes. Reply in the student's language and dialect, short unless they ask for more.`,
     methodLine("chat", audience),
     `Student level: ${c.project.level || "unspecified"}.`,
     `UNDERSTANDING OF THE MATERIAL:\n${understandingText(c)}`,

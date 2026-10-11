@@ -7,7 +7,7 @@ import type { SermonPlan } from "@/lib/jawad/student/model";
 
 const P1 = "11111111-1111-1111-1111-111111111111";
 const S1 = "22222222-2222-2222-2222-222222222222";
-const ASK = { topic: "الصبر في حياة السيدة زينب", goal: "أن الصبر قوة وموقف", occasion: "وفاة السيدة زينب", length: "short", format: "pdf", draftText: "", verse: null, tafsir: ["majma"], narrations: "", sourceIds: [], poetryIds: [P1], poems: "" };
+const ASK = { topic: "الصبر في حياة السيدة زينب", goal: "أن الصبر قوة وموقف", occasion: "وفاة السيدة زينب", length: "short", format: "pdf", draftText: "", verse: null, tafsir: ["majma"], narrations: "", sourceIds: [], poetryIds: [P1], poems: "", special: "" };
 
 describe("«الخطيب الذكي»: the preacher's request", () => {
   it("is read back checked, and is nothing without a topic", () => {
@@ -22,6 +22,7 @@ describe("«الخطيب الذكي»: the preacher's request", () => {
     expect(a.tafsir).toEqual([]);
     expect(a.sourceIds).toEqual([S1]);
     expect(sermonSettings(a)).toMatchObject({ draftText: "نص", verseSurah: 33, verseFrom: 33, narrations: "رواية", tafsir: "" });
+    expect(sermonSettings(readSermonAsk({ ...ASK, special: "ركّز على الأم" })!)).toMatchObject({ extra: "ركّز على الأم" });
     expect(readSermonAsk({ ...ASK, verse: { surah: 500, from: 1 } })!.verse).toBeNull();
   });
   it("is kept in the material's brief (and the student's brief has none)", () => {

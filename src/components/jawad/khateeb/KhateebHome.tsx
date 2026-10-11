@@ -36,7 +36,7 @@ export default function KhateebHome({ projects, refs, surahs }: { projects: Item
   const router = useRouter();
   const poetryRefs = refs.filter((r) => r.kind === "poetry");
   const sourceRefs = refs.filter((r) => r.kind === "source");
-  const [ask, setAsk] = useState<SermonAsk>({ topic: "", goal: "", occasion: "", length: "medium", format: "both", draftText: "", verse: null, tafsir: TAFSIR_SOURCES.map((t) => t.id), narrations: "", sourceIds: [], poetryIds: [], poems: "" });
+  const [ask, setAsk] = useState<SermonAsk>({ topic: "", goal: "", occasion: "", length: "medium", format: "both", draftText: "", verse: null, tafsir: TAFSIR_SOURCES.map((t) => t.id), narrations: "", sourceIds: [], poetryIds: [], poems: "", special: "" });
   // the three questions of the first page: his own sermon text or the Sheikh's, his verse or the Sheikh's, his narrations or the books'
   const [own, setOwn] = useState(false);
   const [ownVerse, setOwnVerse] = useState(false);
@@ -200,6 +200,13 @@ export default function KhateebHome({ projects, refs, surahs }: { projects: Item
             <summary className="cursor-pointer text-sm font-bold">عندك أبيات تبيها في الخطبة؟ (اختياري)</summary>
             <textarea className="jw-textarea mt-2 min-h-24 w-full" value={ask.poems} onChange={(e) => set({ poems: e.target.value })} placeholder="اكتب الأبيات، وكل بيت في سطر، واسم الشاعر إذا تعرفه" maxLength={4000} />
           </details>
+        </fieldset>
+
+        {/* 6 · anything special, and the conversation */}
+        <fieldset className="space-y-2">
+          <legend className="mb-1.5 text-sm font-bold">٦ · تبي شي خاص أو معين؟</legend>
+          <textarea className="jw-textarea min-h-20 w-full" value={ask.special} onChange={(e) => set({ special: e.target.value })} placeholder={`اكتب لـ${A} وش تبي بالضبط (اختياري). يمشي عليه ضمن قواعدنا وطريقتنا.`} maxLength={2000} />
+          <p className="text-xs text-jw-muted">وفي آخر الخطبة تقدر تشغّل محادثة مع {A} وتكمل له وش تبي، وهو ماشي على قوانينه وطريقتنا.</p>
         </fieldset>
 
         <ErrorLine error={error} />
