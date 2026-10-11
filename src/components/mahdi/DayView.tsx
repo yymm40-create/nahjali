@@ -9,6 +9,7 @@ import { bySort, CHALLENGE_GROUP, habitStatus, pickPhrase } from "@/lib/mahdi/cl
 import type { Project } from "@/lib/mahdi/types";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import BookletCard from "./BookletCard";
+import HealthCard from "./health/HealthCard";
 import ReadingCard from "./ReadingCard";
 import DayPriorities from "./DayPriorities";
 import DayTasks from "./DayTasks";
@@ -110,6 +111,7 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
       )}
 
       {home && <ReadingCard />}
+      {home && <HealthCard />}
       {home && <BookletCard />}
       {isToday && <DayPriorities />}
       {isToday && <DayTasks />}
