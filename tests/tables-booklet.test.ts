@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookletUsd, cleanSpec, legacyGender, LIMITS, pagesOf, posesOf, readAudience, readSpec } from "@config/tables-booklet";
+import { bookletRules, bookletUsd, cleanSpec, robotFor, legacyGender, LIMITS, pagesOf, posesOf, readAudience, readSpec } from "@config/tables-booklet";
 import { characterPrompt, posePrompt } from "@config/prompts";
 import { bookletTemplate } from "@/lib/tables-booklet/layout";
 
@@ -24,7 +24,7 @@ describe("«كتيب الجداول الذكي» — who it is for", () => {
   });
 });
 
-describe("«نور»'s design", () => {
+describe("the designer's design («عباس» or «زينب»)", () => {
   const reply = 'تمام، هذا ملخص كتيبك.\n```json\n{"title":"كتيب زينب","theme":"mint","photo":true,"style":"anime","tables":[{"title":"صلاتي","rows":["الفجر","الظهر","العصر","المغرب","العشاء"],"columns":"week","mark":"star","copies":4,"pose":"praying"},{"title":"","rows":["x"]},{"title":"قراءتي","rows":["  سورة   الملك "],"columns":"bogus","mark":"heart","pose":"flying"}],"rewards":["٣٠ نجمة = نزهة"]}\n```';
 
   it("is read from the json block and cleaned to the limits", () => {
@@ -67,5 +67,21 @@ describe("«نور»'s design", () => {
     const noPhoto = bookletTemplate({ ...s, photo: false });
     expect(noPhoto.pages.flatMap((p) => p.slots)).toEqual([]);
     expect(noPhoto.poses).toEqual([]);
+  });
+});
+
+describe("the designer: «عباس» for a boy or a man, «زينب» for a girl or a woman", () => {
+  it("is named and speaks by the gender of who the booklet is for", () => {
+    expect(robotFor({ gender: "male" }).name).toBe("عباس");
+    expect(robotFor({ gender: "female" }).name).toBe("زينب");
+    expect(robotFor(null).name).toBe("عباس");
+    const him = bookletRules({ gender: "male" });
+    const her = bookletRules({ gender: "female" });
+    expect(him).toMatch(/^أنتَ «عباس»، مصمّم/);
+    expect(her).toMatch(/^أنتِ «زينب»، مصمّمة/);
+    expect(him).not.toMatch(/اسألي|اكتبي|نور/);
+    expect(her).toMatch(/اسألي/);
+    expect(her).not.toMatch(/نور/);
+    for (const r of [him, her]) expect(r).toContain("```json");
   });
 });

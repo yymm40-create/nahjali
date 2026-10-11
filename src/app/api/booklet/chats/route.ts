@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
-/** My conversations with «نور» and my booklets; or one conversation (`?id=`) with its booklet's price; or the ready booklet's price (`?ready=1`). */
+/** My conversations with «عباس» أو «زينب» and my booklets; or one conversation (`?id=`) with its booklet's price; or the ready booklet's price (`?ready=1`). */
 export const GET = handle(async (req: Request) => {
   const user = await requireBookletUser();
   const q = new URL(req.url).searchParams;
