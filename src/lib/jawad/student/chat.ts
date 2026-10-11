@@ -11,12 +11,15 @@ import { MATERIAL_RULE } from "./claude";
 import { allText, loadCtx, researchText, understandingText } from "./context";
 import { outputs, saveOutput, type Output } from "./db";
 import { docText, type Doc, type DocPlan } from "./model";
+import { chatMakeKinds, makeRules, splitOffer, type Offer } from "./offer";
 
 export interface ChatMsg {
   role: "user" | "assistant";
   text: string;
   at: string;
   sources?: string[];
+  /** what صادق offered to make in this message (a card with a button; nothing is made until it is pressed) */
+  offer?: Offer;
 }
 
 export const chatOf = (o: Pick<Output, "content">): ChatMsg[] => {
@@ -58,10 +61,11 @@ export async function chatTurn(userId: string, o: Output, raw: unknown, leader: 
   }
 
   const material = allText(c);
+  const made = await outputs(o.project_id).catch(() => []);
   // «الخطيب الذكي»: the conversation is about the preacher's sermon — what was taken for it, and its text when written
   let sermon = "";
   if (c.khateeb) {
-    const so = (await outputs(o.project_id).catch(() => [])).find((x) => x.kind === "sermon");
+    const so = made.find((x) => x.kind === "sermon");
     const sp = (so?.plan as DocPlan | null)?.sermon;
     const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
     if (so && topic && sp) {
@@ -87,6 +91,7 @@ export async function chatTurn(userId: string, o: Output, raw: unknown, leader: 
     sermon,
     `You are «${c.khateeb ? "الشيخ صادق" : "صادق"}» in a saved CONVERSATION with the ${c.khateeb ? "preacher" : "student"} about their study material (topic: ${c.understanding.topic}). Discuss it with them like a sharp, warm tutor: answer from the material first and say where in it; explain, simplify, give examples, quiz them when they want, help them prepare or debate, and push their thinking with a good question when it helps. When you add something that is NOT in the material, say so plainly («من خارج المادة»). Never invent sources, numbers or quotes. Reply in the student's language and dialect, short unless they ask for more.`,
     methodLine("chat", audience),
+    makeRules(made),
     `Student level: ${c.project.level || "unspecified"}.`,
     `UNDERSTANDING OF THE MATERIAL:\n${understandingText(c)}`,
     `MATERIAL${material.length > MATERIAL_MAX ? " (the beginning; ask about a part to get it in detail)" : ""}:\n${material.slice(0, MATERIAL_MAX)}`,
@@ -102,7 +107,9 @@ export async function chatTurn(userId: string, o: Output, raw: unknown, leader: 
   usd += r.usd;
 
   const now = new Date().toISOString();
-  const messages: ChatMsg[] = [...before, { role: "user", text: said, at: now }, { role: "assistant", text: r.text, at: now, ...(sources.length ? { sources } : {}) }];
+  // his markers become an offer under his words (a button), never an action by themselves
+  const { text: answer, offer } = splitOffer(r.text, chatMakeKinds());
+  const messages: ChatMsg[] = [...before, { role: "user", text: said, at: now }, { role: "assistant", text: answer, at: now, ...(sources.length ? { sources } : {}), ...(offer ? { offer } : {}) }];
   await saveOutput(o.id, { content: { messages }, status: "done", approved: true, error: null });
   return { messages, usd };
 }

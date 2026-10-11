@@ -26,7 +26,9 @@ import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
 import { autoSettings } from "./defaults";
 import { pickDesigns } from "./design-pick";
-import { chatTurn } from "./chat";
+import { chatOf, chatTurn } from "./chat";
+import { mergeOutputs } from "./merge";
+import { startBody } from "./offer";
 import { robotTurn } from "@/lib/claude-run";
 import { isAdmin } from "@config/site";
 import { LINK_CEILING_HOURS, MEDIA_MAX_BYTES, MEDIA_TYPES, SCRIBE_USD_PER_HOUR, mediaLink, mediaUsd } from "./media";
@@ -468,6 +470,12 @@ export async function projectAction(user: User, id: string, b: Body) {
       await touch(p.id);
       return { ok: true };
     }
+    // «ادمج النواتج في PDF واحد»: the finished PDFs in one file (free), all of them or the ticked ones
+    case "merge_pdf": {
+      if (p.stage !== "outputs") throw new UserError("أكمل اعتماد المراحل السابقة أولًا.");
+      const ids = Array.isArray(b.ids) ? (b.ids as unknown[]).map(String).slice(0, 60) : undefined;
+      return mergeOutputs(user.id, p, ids);
+    }
     case "outputs_order": {
       const ids = (b.ids as string[]) ?? [];
       const list = await outputs(p.id);
@@ -644,6 +652,30 @@ export async function outputAction(user: User, id: string, b: Body) {
     case "chat": {
       const r = await robotTurn(user, b.model, "محادثة مع صادق (الطالب الذكي)", () => chatTurn(user.id, o, b.message, isAdmin(user.email)));
       return { messages: r.messages, coins: r.coins };
+    }
+    // «صادق يصنع من المحادثة»: the student presses the card under his message. Nothing was made or charged before.
+    case "chat_make": {
+      if (o.kind !== "chat") throw new UserError(NOT_NOW);
+      const messages = chatOf(o);
+      const at = Number(b.index);
+      const m = Number.isInteger(at) ? messages[at] : undefined;
+      if (!m?.offer || m.offer.state !== "open") throw new UserError("هذا الاقتراح انتهى. اطلب من صادق مرة ثانية.");
+      const offer = m.offer;
+      const set = (state: "open" | "made" | "dismissed") => saveOutput(o.id, { content: { messages: messages.map((x, i) => (i === at && x.offer ? { ...x, offer: { ...x.offer, state } } : x)) } });
+      if (b.dismiss) {
+        await set("dismissed");
+        return { ok: true };
+      }
+      // closed first, so a second press cannot make everything twice; opened again if the making is refused
+      await set("made");
+      try {
+        if (offer.items.length) await projectAction(user, p.id, startBody(offer));
+        const merged = offer.merge ? await mergeOutputs(user.id, p) : null;
+        return { ok: true, made: offer.items.map((i) => i.kind), merged };
+      } catch (e) {
+        await set("open");
+        throw e;
+      }
     }
     case "settings": {
       const settings = cleanSettings(o.kind, (b.settings ?? {}) as Body);
