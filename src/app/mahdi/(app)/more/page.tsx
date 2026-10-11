@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { MAHDI_LIMITS, designOf, type MahdiTheme } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { rememberPick } from "@/lib/mahdi/client/look-pick";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile, Shrine } from "@/lib/mahdi/types";
 import Avatar from "@/components/mahdi/Avatar";
@@ -67,11 +68,10 @@ export default function MorePage() {
     const before = look.theme;
     look.setTheme(th);
     const kept = await save({ theme: th }, () => look.setTheme(before));
-    // the page shows what the account really has, not the pick: otherwise a reload shows a different look
-    if (kept && kept.theme !== th) {
-      look.setTheme(kept.theme);
-      toast(t.more.themeNotKept);
-    }
+    if (!kept) return;
+    // the pick stays on this device as well: if the account could not keep it, a refresh still shows it
+    rememberPick(profile.userId, th, kept.theme);
+    if (kept.theme !== th) toast(t.more.themeOnDevice);
   };
   const choosePlace = (pl: ShrinePlace | "auto") => {
     const before = look.place;

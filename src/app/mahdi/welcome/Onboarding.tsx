@@ -5,6 +5,7 @@ import { useState } from "react";
 import { DEFAULT_SHRINE, MAHDI_LIMITS, PROJECT_SUGGESTIONS, type MahdiTheme } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import { rememberPick } from "@/lib/mahdi/client/look-pick";
 import type { Shrine } from "@/lib/mahdi/types";
 import Icon from "@/components/mahdi/Icon";
 import { ShrinePicker, ThemePicker } from "@/components/mahdi/LookPickers";
@@ -28,12 +29,12 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
     setBusy(true);
     setError("");
     try {
-      const { profile: saved } = await mahdiFetch<{ profile: { theme: MahdiTheme } }>("/api/mahdi/profile", {
+      const { profile: saved } = await mahdiFetch<{ profile: { theme: MahdiTheme; userId: string } }>("/api/mahdi/profile", {
         method: "POST",
         json: { displayName: name.trim(), shrineId, theme: look.theme, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh" },
       });
-      // the look the account really kept (the page shows that one from now on)
-      if (saved.theme !== look.theme) look.setTheme(saved.theme);
+      // the pick stays on this device too, in case the account could not keep it
+      rememberPick(saved.userId, look.theme, saved.theme);
       setStep(2);
     } catch (e) {
       setError((e as Error).message);
