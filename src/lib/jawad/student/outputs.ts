@@ -24,7 +24,7 @@ import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, sli
 import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 import { capSlides } from "./draw";
-import { capacityOf } from "./capacity";
+import { capacityOf, compactionLine } from "./capacity";
 
 /** Slides made as pictures with GPT Image 2 (the student's choice), and at which quality. */
 const asPictures = (o: Output) => o.kind === "slides" && o.settings.render === "image";
@@ -367,7 +367,7 @@ async function writeChapter(c: Ctx, o: Output, plan: DocPlan, i: number, revise?
   }
   const kind = o.kind === "summary" ? "a summary chapter" : o.kind === "preread" ? "a part of a PRE-READING sheet (before the lesson: big picture, key terms with short meanings, guiding questions, what to watch for; brief and inviting, not a full summary)" : o.kind === "explain" ? "an explanation chapter (simpler, terms unpacked, examples from the material)" : `a chapter of a reading book (${o.settings.writing === "summary" ? "summary book" : "explanatory book"})`;
   const r = await askJson<{ blocks: Block[] }>({
-    system: `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\n${methodLine(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" ? o.kind : "book", studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists. Structure: the chapter's title is given; inside it use "h" sub-headings for its parts (short, clear), then the body under each.${words ? `\nLENGTH (the student asked for a fixed page count, kept exactly): this chapter is about ${words} words in all (within 10%) — count them; ${words < 150 ? "keep it to the essentials, few blocks" : "spread them over its parts"}.` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
+    system: `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\n${methodLine(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" ? o.kind : "book", studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists. Structure: the chapter's title is given; inside it use "h" sub-headings for its parts (short, clear), then the body under each.${words ? `\nLENGTH (the student asked for a fixed page count, kept exactly): this chapter is about ${words} words in all (within 10%) — count them; ${words < 150 ? "keep it to the essentials, few blocks" : "spread them over its parts"}.${compactionLine(countWords(segText(c, ch.segments)), words)}` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
     parts: [
       {
         type: "text",
