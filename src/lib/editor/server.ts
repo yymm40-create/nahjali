@@ -609,6 +609,15 @@ export async function importAssets(p: EditorProject, b: { items?: unknown }) {
   return added.map((r) => view(r, urls.get(r.id) ?? null));
 }
 
+/** Assets of a project as the page shows them (with their links), by id — e.g. effects just put in from «مكتبة المؤثرات». */
+export async function assetViewsById(projectId: string, ids: string[]) {
+  if (!ids.length) return [];
+  const { data } = await db().from("editor_assets").select("*").eq("project_id", projectId).in("id", ids);
+  const rows = (data ?? []) as AssetRow[];
+  const urls = await sign(rows);
+  return rows.map((r) => view(r, urls.get(r.id) ?? null));
+}
+
 // ---------- export and the 3-day deletion ----------
 
 /** A one-time URL to keep a copy of the exported video with the project (it is deleted with the rest). */

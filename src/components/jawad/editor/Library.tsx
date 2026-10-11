@@ -7,6 +7,7 @@ import Icon from "../Icon";
 import { ASSET_DRAG } from "./Timeline";
 import type { EditorAsset, ImportItem } from "./types";
 import type { UploadItem } from "./useUploads";
+import SfxLibrary from "./SfxLibrary";
 import { useDesktop } from "./desktop";
 
 const KIND_ICON = { video: "video", audio: "music", image: "image" } as const;
@@ -35,7 +36,7 @@ export default function Library({
   onDelete: (a: EditorAsset) => void;
   readOnly: boolean;
 }) {
-  const [tab, setTab] = useState<"files" | "works">("files");
+  const [tab, setTab] = useState<"files" | "works" | "sfx">("files");
   const onDesktop = useDesktop();
   const input = useRef<HTMLInputElement>(null);
 
@@ -48,6 +49,9 @@ export default function Library({
           </button>
           <button type="button" role="tab" aria-selected={tab === "works"} onClick={() => setTab("works")}>
             من أعمالي
+          </button>
+          <button type="button" role="tab" aria-selected={tab === "sfx"} onClick={() => setTab("sfx")}>
+            🔊 مؤثرات
           </button>
         </div>
       </div>
@@ -152,7 +156,7 @@ export default function Library({
           )}
         </div>
       ) : (
-        <Works projectId={projectId} onImported={onImported} readOnly={readOnly} />
+        tab === "works" ? <Works projectId={projectId} onImported={onImported} readOnly={readOnly} /> : <SfxLibrary projectId={projectId} onImported={onImported} readOnly={readOnly} />
       )}
     </div>
   );
