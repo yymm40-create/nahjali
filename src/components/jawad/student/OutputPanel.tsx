@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
+import { settingsLine } from "@/lib/jawad/student/summary";
 import { DENSITIES, DESIGNED_KINDS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
@@ -148,8 +149,14 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
 
       {/* ───────── settings ───────── */}
       {o.kind !== "transcript" && editingSettings && (
-        <details open={o.status === "settings" || o.status === "failed"} className="space-y-3">
-          <summary className="cursor-pointer font-semibold">الإعدادات {settingsDirty && <span className="text-xs text-jw-warn">(غير محفوظة)</span>}</summary>
+        // already chosen once, on the outputs page: shown folded as one line of what the student picked, never asked again
+        // (open only to fix a failure, or while the student is changing something)
+        <details open={o.status === "failed" || settingsDirty} className="space-y-3">
+          <summary className="cursor-pointer font-semibold">
+            الإعدادات
+            {settingsLine(o.kind, settings) && <span className="ms-2 text-sm font-normal text-jw-muted">✓ اخترتها: {settingsLine(o.kind, settings)}</span>}
+            {settingsDirty && <span className="ms-2 text-xs text-jw-warn">(غير محفوظة)</span>}
+          </summary>
           <div className="space-y-3 pt-2">
             <KindSettings o={o} s={settings} set={set} outputs={outputs} />
             {/* the design and fonts are Claude's choice (design-pick.ts), never asked */}
