@@ -11,15 +11,29 @@ export const MAHDI_AUTH = {
   apple: false,
 };
 
-export type MahdiTheme = "cinematic" | "minimal" | "night";
+export type MahdiTheme = "cinematic" | "aurora" | "neon" | "pop" | "minimal" | "night";
 
-/** The three looks. The shrine is chosen separately. */
-export const MAHDI_THEMES: { key: MahdiTheme; label: string; description: string; themeColor: string }[] = [
-  { key: "cinematic", label: "الحرم السينمائي", description: "صورة الحرم حاضرة بقوة، إضاءة ذهبية وزجاج خفيف.", themeColor: "#0d0c0b" },
-  { key: "minimal", label: "السكينة", description: "فاتح وهادئ: عاجي وذهبي خفيف ومساحات مريحة.", themeColor: "#faf6ee" },
-  { key: "night", label: "زيارة الليل", description: "داكن فاخر بإضاءة الحرم الذهبية، كزيارة ليلية هادئة.", themeColor: "#0b0c0e" },
+/**
+ * The four looks the person chooses between — four different apps in style, writing, letters and colours (researched
+ * for 15–20 year olds: bento cards, saturated colours, big tap targets, playful motion; see components/mahdi/HomeBoard):
+ * «الحرم» (the shrine in the background, gold, a classical Arabic display face), «شفق» (light, a violet-pink-orange
+ * gradient, soft round cards, a modern geometric face), «نيون» (dark, glowing neon lines on glass, a bold poster
+ * face), «بوب» (cream paper, thick black outlines and hard shadows, acid colours, a round playful face).
+ * «السكينة» and «زيارة الليل» are the older looks: kept for whoever chose them, no longer offered.
+ */
+export const MAHDI_THEMES: { key: MahdiTheme; label: string; description: string; themeColor: string; legacy?: true }[] = [
+  { key: "aurora", label: "شفق", description: "فاتح ومبهج: تدرّج بنفسجي وردي برتقالي، بطاقات ناعمة دائرية وخط عصري.", themeColor: "#f6f0ff" },
+  { key: "neon", label: "نيون", description: "داكن بإضاءات نيون تلمع على زجاج، وعناوين عريضة كأنها ملصق.", themeColor: "#07070d" },
+  { key: "pop", label: "بوب", description: "جريء ومرح: ورق كريمي، حدود سوداء عريضة وظلال صلبة وألوان فاقعة.", themeColor: "#fff4dc" },
+  { key: "cinematic", label: "الحرم", description: "صورة الحرم حاضرة، إضاءة ذهبية وخط عربي كلاسيكي.", themeColor: "#0d0c0b" },
+  { key: "minimal", label: "السكينة", description: "فاتح وهادئ: عاجي وذهبي خفيف ومساحات مريحة.", themeColor: "#faf6ee", legacy: true },
+  { key: "night", label: "زيارة الليل", description: "داكن فاخر بإضاءة الحرم الذهبية، كزيارة ليلية هادئة.", themeColor: "#0b0c0e", legacy: true },
 ];
-export const DEFAULT_THEME: MahdiTheme = "cinematic";
+/** The looks offered in the picker (the four). */
+export const PICKED_THEMES = MAHDI_THEMES.filter((x) => !x.legacy);
+/** Light looks (the browser chrome, the status bar). */
+export const LIGHT_THEMES: MahdiTheme[] = ["aurora", "pop", "minimal"];
+export const DEFAULT_THEME: MahdiTheme = "aurora";
 export const DEFAULT_SHRINE = "imam-ali";
 
 /** Project accent colours (keys stored in the database). */

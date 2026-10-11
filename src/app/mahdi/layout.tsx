@@ -1,15 +1,20 @@
 import type { Metadata, Viewport } from "next";
 import { Amiri, IBM_Plex_Sans_Arabic } from "next/font/google";
+import localFont from "next/font/local";
 import RegisterSW from "@/components/mahdi/RegisterSW";
 import ThemeRoot from "@/components/mahdi/ThemeRoot";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { getShrines, pickShrine } from "@/lib/mahdi/server/snapshot";
 import { t } from "@/lib/mahdi/i18n";
-import { DEFAULT_THEME, MAHDI_THEMES } from "@config/mahdi";
+import { DEFAULT_THEME, LIGHT_THEMES, MAHDI_THEMES } from "@config/mahdi";
 import "./mahdi.css";
 
 const sans = IBM_Plex_Sans_Arabic({ variable: "--font-plex", subsets: ["arabic", "latin"], weight: ["400", "500", "600", "700"] });
 const display = Amiri({ variable: "--font-amiri", subsets: ["arabic"], weight: ["400", "700"] });
+// the letters of the looks «شفق» (Readex Pro), «نيون» (Lalezar) and «بوب» (Baloo Bhaijaan 2) — OFL, in assets/fonts
+const readex = localFont({ variable: "--font-readex", src: "../../../assets/fonts/student/ReadexPro.ttf", weight: "160 700", display: "swap" });
+const lalezar = localFont({ variable: "--font-lalezar", src: "../../../assets/fonts/Lalezar-Regular.ttf", weight: "400", display: "swap" });
+const baloo = localFont({ variable: "--font-baloo", src: "../../../assets/fonts/BalooBhaijaan2.ttf", weight: "400 800", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: t.brand, template: `%s · ${t.brand}` },
@@ -22,8 +27,8 @@ export const metadata: Metadata = {
 
 export async function generateViewport(): Promise<Viewport> {
   const { profile } = await getMahdiSession();
-  const theme = MAHDI_THEMES.find((x) => x.key === (profile?.theme ?? DEFAULT_THEME))!;
-  return { themeColor: theme.themeColor, viewportFit: "cover", colorScheme: theme.key === "minimal" ? "light" : "dark" };
+  const theme = MAHDI_THEMES.find((x) => x.key === (profile?.theme ?? DEFAULT_THEME)) ?? MAHDI_THEMES[0];
+  return { themeColor: theme.themeColor, viewportFit: "cover", colorScheme: LIGHT_THEMES.includes(theme.key) ? "light" : "dark" };
 }
 
 /** «لأجل المهدي»: its own look and fonts, separate from the rest of the site. */
@@ -34,7 +39,7 @@ export default async function MahdiLayout({ children }: { children: React.ReactN
       initialTheme={profile?.theme ?? DEFAULT_THEME}
       initialVariant={profile?.themeVariant ?? ""}
       initialShrine={pickShrine(shrines, profile?.shrineId)}
-      fontClass={`${sans.variable} ${display.variable}`}
+      fontClass={`${sans.variable} ${display.variable} ${readex.variable} ${lalezar.variable} ${baloo.variable}`}
       skipLabel={t.common.skipToContent}
     >
       <RegisterSW />

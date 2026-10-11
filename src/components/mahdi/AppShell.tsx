@@ -2,28 +2,21 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { bySort } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import AssistantFloat from "./AssistantFloat";
 import { FeedbackPrompt, FeedbackSheet } from "./Feedback";
 import HabitForm from "./HabitForm";
-import Icon, { type IconName } from "./Icon";
+import Icon from "./Icon";
+import { BOTTOM, navGroups } from "./nav";
 import ProjectForm from "./ProjectForm";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
 import Toasts from "./Toasts";
 import Avatar from "./Avatar";
 import RewardReveal from "./RewardReveal";
-
-const NAV: { href: string; label: string; side?: string; icon: IconName; match: (p: string) => boolean }[] = [
-  { href: "/mahdi", label: t.nav.home, icon: "home", match: (p) => p === "/mahdi" || p.startsWith("/mahdi/day") },
-  { href: "/mahdi/projects", label: t.nav.projects, side: t.nav.side.projects, icon: "projects", match: (p) => p.startsWith("/mahdi/projects") || p.startsWith("/mahdi/habits") },
-  { href: "/mahdi/reading", label: t.nav.reading, side: t.nav.side.reading, icon: "book", match: (p) => p.startsWith("/mahdi/reading") },
-  { href: "/mahdi/progress", label: t.nav.progress, side: t.nav.side.progress, icon: "progress", match: (p) => p.startsWith("/mahdi/progress") },
-  { href: "/mahdi/community", label: t.nav.community, side: t.nav.side.community, icon: "globe", match: (p) => p.startsWith("/mahdi/community") || p.startsWith("/mahdi/challenges") || p.startsWith("/mahdi/share") },
-];
 
 /** Tells the top bar to ask again how many notifications are unread (after reading them). */
 export const INBOX_EVENT = "mahdi:inbox";
@@ -86,63 +79,76 @@ export default function AppShell({ children, familyMember = false }: { children:
     else setMenu(true);
   };
 
-  return (
-    <div className="lg:grid lg:min-h-dvh lg:grid-cols-[272px_1fr]">
-      {/* Desktop: side navigation */}
-      <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-e px-4 py-6 lg:flex" style={{ borderColor: "var(--m-line)", background: "color-mix(in srgb, var(--m-surface-solid) 70%, transparent)" }}>
-        <Link href="/mahdi" className="px-2">
-          <span className="m-display m-gold block text-3xl">{t.brand}</span>
-        </Link>
-        <nav aria-label={t.nav.main} className="flex flex-col gap-1">
-          {NAV.map((n) => (
-            <Link key={n.href} href={n.href} className="m-side-item" aria-current={n.match(pathname) ? "page" : undefined}>
-              <Icon name={n.icon} /> {n.side ?? n.label}
+  const groups = navGroups(state.snap.username ?? null);
+  const [drawer, setDrawer] = useState(false);
+  const menuList = (onPick?: () => void) => (
+    <nav aria-label={t.nav.main}>
+      {groups.map((g) => (
+        <div key={g.title} className="m-drawer-group">
+          <p>{g.title}</p>
+          {g.items.map((n) => (
+            <Link key={n.href} href={n.href} className="m-drawer-item" aria-current={n.match(pathname) ? "page" : undefined} onClick={onPick}>
+              <span className="m-drawer-ic" style={{ "--ic": n.color } as React.CSSProperties}>
+                <Icon name={n.icon} size={19} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{n.label}</span>
+              {n.href === "/mahdi/inbox" && unread > 0 && <span className="m-badge m-num static" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
             </Link>
           ))}
-        </nav>
-        <button type="button" className="m-btn m-btn-primary" onClick={onAdd}>
-          <Icon name="plus" /> {inProject ? t.add.habitIn(inProject.name) : t.nav.add}
+        </div>
+      ))}
+      <div className="m-drawer-group">
+        <p>أخرى</p>
+        <button type="button" className="m-drawer-item w-full" onClick={() => { onPick?.(); setFeedback(true); }}>
+          <span className="m-drawer-ic" style={{ "--ic": "#0ea5e9" } as React.CSSProperties}><Icon name="chat" size={19} /></span>
+          <span className="flex-1 text-start">{t.feedback.cta}</span>
         </button>
-        <div className="mt-auto space-y-3">
-          <Link href="/mahdi/more" className="m-soft flex items-center gap-3 p-3" aria-label={t.nav.account}>
-            <Avatar profile={profile} size={40} />
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">{t.mawla(profile.displayName)}</span>
-            </span>
-          </Link>
-          <button type="button" className="m-side-item w-full text-sm" onClick={() => setFeedback(true)}>
-            <Icon name="chat" size={18} /> {t.feedback.cta}
+        <Link href="/" className="m-drawer-item" onClick={onPick}>
+          <span className="m-drawer-ic" style={{ "--ic": "#475569" } as React.CSSProperties}><Icon name="chevronRight" size={19} /></span>
+          <span className="flex-1">{t.bar.siteLong}</span>
+        </Link>
+      </div>
+    </nav>
+  );
+
+  return (
+    <div className="lg:grid lg:min-h-dvh lg:grid-cols-[288px_1fr]">
+      {/* Computer: the same full menu, always open */}
+      <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto border-e lg:flex" style={{ borderColor: "var(--m-line)", background: "color-mix(in srgb, var(--m-surface-solid) 78%, transparent)" }}>
+        <div className="flex items-center gap-3 px-5 pt-6 pb-2">
+          <Link href="/mahdi" className="m-brand flex-1 text-2xl">{t.brand}</Link>
+        </div>
+        <div className="px-4 py-2">
+          <button type="button" className="m-btn m-btn-primary w-full" onClick={onAdd}>
+            <Icon name="plus" /> {inProject ? t.add.habitIn(inProject.name) : t.nav.add}
           </button>
         </div>
+        {menuList()}
+        <Link href="/mahdi/more" className="m-soft m-4 mt-auto flex items-center gap-3 p-3" aria-label={t.nav.account}>
+          <Avatar profile={profile} size={40} />
+          <span className="min-w-0 truncate text-sm font-semibold">{t.mawla(profile.displayName)}</span>
+        </Link>
       </aside>
 
       <div className="min-w-0">
-        {/* Every screen: back to the site, the community, the notifications and the account, always in the same place */}
+        {/* Every screen: the menu (☰) on the right, the name, then the notifications and the account */}
         <header className="m-topbar" aria-label={t.bar.label}>
-          <Link href="/" className="m-bar-site">
-            <Icon name="chevronRight" size={18} strokeWidth={2.2} />
-            <span className="lg:hidden">{t.bar.site}</span>
-            <span className="hidden lg:inline">{t.bar.siteLong}</span>
-          </Link>
-          <Link href="/mahdi" className="m-display m-gold min-w-0 truncate text-lg max-sm:hidden lg:hidden">{t.brand}</Link>
-          <span className="flex-1" />
-          <Link href="/mahdi/community" className="m-bar-btn" aria-current={NAV[4].match(pathname) ? "page" : undefined}>
-            <Icon name="globe" size={24} />
-            <span>{t.bar.community}</span>
-          </Link>
+          <button type="button" className="m-menu-btn lg:hidden" onClick={() => setDrawer(true)} aria-label="القائمة" aria-haspopup="dialog" aria-expanded={drawer}>
+            <Icon name="menu" size={22} strokeWidth={2.2} />
+          </button>
+          <Link href="/mahdi" className="m-brand min-w-0 flex-1 truncate lg:hidden">{t.brand}</Link>
+          <span className="hidden flex-1 lg:block" />
           <Link
             href="/mahdi/inbox"
-            className="m-bar-btn relative"
+            className="m-menu-btn relative"
             aria-label={unread ? t.bar.inboxUnread(unread) : t.bar.inbox}
             aria-current={pathname.startsWith("/mahdi/inbox") ? "page" : undefined}
           >
-            <Icon name="bell" size={24} />
-            <span>{t.bar.inbox}</span>
+            <Icon name="bell" size={22} />
             {unread > 0 && <span className="m-badge m-num" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
           </Link>
-          <Link href="/mahdi/more" className="m-bar-btn" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
-            <Avatar profile={profile} size={26} />
-            <span>{t.bar.account}</span>
+          <Link href="/mahdi/more" className="shrink-0 rounded-full" aria-label={t.nav.account} aria-current={pathname.startsWith("/mahdi/more") ? "page" : undefined}>
+            <Avatar profile={profile} size={40} />
           </Link>
         </header>
         {familyMember && (
@@ -158,12 +164,12 @@ export default function AppShell({ children, familyMember = false }: { children:
         </main>
       </div>
 
-      {/* Phones: bottom navigation with the "+" in the middle (the community and the account are in the top bar) */}
+      {/* Phones: a floating bar — four places around the «+»; everything else is in the menu (☰) */}
       <nav aria-label={t.nav.main} className="m-bottom-nav lg:hidden">
         <div className="mx-auto grid h-full max-w-xl grid-cols-5 items-center px-1">
-          {NAV.slice(0, 2).map((n) => (
+          {BOTTOM.slice(0, 2).map((n) => (
             <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
-              <Icon name={n.icon} /> {n.label}
+              <Icon name={n.icon} /> {n === BOTTOM[1] ? t.nav.projects : n === BOTTOM[0] ? t.nav.home : n.label}
             </Link>
           ))}
           <div className="grid place-items-center">
@@ -171,13 +177,25 @@ export default function AppShell({ children, familyMember = false }: { children:
               <Icon name="plus" size={28} strokeWidth={2.2} />
             </button>
           </div>
-          {NAV.slice(2, 4).map((n) => (
+          {BOTTOM.slice(2, 4).map((n) => (
             <Link key={n.href} href={n.href} className="m-nav-item" aria-current={n.match(pathname) ? "page" : undefined}>
-              <Icon name={n.icon} /> {n.label}
+              <Icon name={n.icon} /> {n === BOTTOM[2] ? t.nav.reading : t.nav.community}
             </Link>
           ))}
         </div>
       </nav>
+
+      <Drawer open={drawer} onClose={() => setDrawer(false)} head={
+        <Link href="/mahdi/more" className="flex items-center gap-3" onClick={() => setDrawer(false)}>
+          <Avatar profile={profile} size={52} />
+          <span className="min-w-0">
+            <span className="m-brand block text-xl">{t.brand}</span>
+            <span className="block truncate text-sm font-semibold m-muted">{t.mawla(profile.displayName)}</span>
+          </span>
+        </Link>
+      }>
+        {menuList(() => setDrawer(false))}
+      </Drawer>
 
       <Sheet open={menu} onClose={() => setMenu(false)} title={t.add.title}>
         <div className="grid gap-3">
@@ -236,5 +254,37 @@ function SyncBanner() {
       <span>{!state.online ? t.common.offline : state.syncError}</span>
       {state.pending.length > 0 && <span className="m-muted ms-auto">{t.common.syncing(state.pending.length)}</span>}
     </div>
+  );
+}
+
+/** The side menu (☰): a dialog that slides in from the right, closed by a tap outside, Escape, or picking a place. */
+function Drawer({ open, onClose, head, children }: { open: boolean; onClose: () => void; head: React.ReactNode; children: React.ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    else if (!open && d.open) d.close();
+  }, [open]);
+  return (
+    <dialog
+      ref={ref}
+      className="m-drawer"
+      aria-label="القائمة"
+      onClose={onClose}
+      onClick={(e) => {
+        // a tap on the dark outside (the dialog itself, not its content) closes it
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="m-drawer-head flex items-start gap-2">
+        <div className="min-w-0 flex-1">{head}</div>
+        <button type="button" className="m-icon-btn" onClick={onClose} aria-label={t.common.close}>
+          <Icon name="close" size={22} />
+        </button>
+      </div>
+      {children}
+      <div className="h-6" />
+    </dialog>
   );
 }

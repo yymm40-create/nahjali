@@ -30,6 +30,8 @@ export interface Profile {
   hijriOffset: number;
   frame: string;
   viewMode: "list" | "compact";
+  /** the home cards the person arranged, in order (null = the standard home) */
+  homeWidgets: string[] | null;
 }
 
 export interface Project {

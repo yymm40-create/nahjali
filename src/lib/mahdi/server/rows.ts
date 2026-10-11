@@ -29,6 +29,8 @@ export interface ProfileRow {
   hijri_offset: number;
   frame?: string;
   view_mode?: "list" | "compact";
+  /** the home cards in order (migration 0062; null = the standard home) */
+  home_widgets?: string[] | null;
 }
 export interface ProjectRow {
   id: string;
@@ -96,6 +98,7 @@ export const profileFromRow = (r: ProfileRow): Profile => ({
   hijriOffset: r.hijri_offset,
   frame: r.frame ?? "",
   viewMode: r.view_mode ?? "list",
+  homeWidgets: r.home_widgets ?? null,
 });
 
 export const projectFromRow = (r: ProjectRow): Project => ({

@@ -7,6 +7,7 @@ import { check, mahdiRoute, readJson, requireUser, UserError } from "@/lib/mahdi
 import { profileFromRow, type ProfileRow } from "@/lib/mahdi/server/rows";
 import { getShrines } from "@/lib/mahdi/server/snapshot";
 import { syncPublicProfile } from "@/lib/mahdi/server/public";
+import { parseWidgets } from "@/lib/mahdi/home-widgets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseBool, parseIntIn, parseTheme, parseTimeZone, requireName } from "@/lib/mahdi/server/validate";
 
@@ -23,6 +24,8 @@ async function profileFields(supabase: SupabaseClient, body: Record<string, unkn
   if ("weekStart" in body) out.week_start = parseIntIn(body.weekStart, 0, 6);
   if ("showHijri" in body) out.show_hijri = parseBool(body.showHijri);
   if ("hijriOffset" in body) out.hijri_offset = parseIntIn(body.hijriOffset, -2, 2);
+  // the home screen the person arranged (the widgets, in order)
+  if ("homeWidgets" in body) out.home_widgets = parseWidgets(body.homeWidgets);
   // Rewards: only what the user has unlocked
   if ("frame" in body || "themeVariant" in body || "viewMode" in body) {
     const unlocked = new Set((await supabase.from("mahdi_user_rewards").select("milestone_id")).data?.map((r) => r.milestone_id) ?? []);
@@ -46,6 +49,21 @@ async function profileFields(supabase: SupabaseClient, body: Record<string, unkn
   return out;
 }
 
+/**
+ * Until migration 0062 runs, the database knows only the older looks and has no home layout: a new look is saved as
+ * the nearest older one and the layout is left out, instead of failing the whole save.
+ */
+async function beforeMigration<R extends { error: { code?: string } | null }>(write: (f: Record<string, unknown>) => PromiseLike<R>, fields: Record<string, unknown>): Promise<R> {
+  const first = await write(fields);
+  const code = first.error?.code;
+  if (code !== "23514" && code !== "42703" && code !== "PGRST204") return first;
+  const older: Record<string, string> = { aurora: "minimal", pop: "minimal", neon: "night" };
+  const { home_widgets: _drop, ...rest } = fields;
+  void _drop;
+  if (typeof rest.theme === "string" && older[rest.theme]) rest.theme = older[rest.theme];
+  return write(rest);
+}
+
 /** Onboarding: creates the user's «لأجل المهدي» profile (name, shrine, look, time zone). */
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireUser(req);
@@ -53,10 +71,9 @@ export const POST = mahdiRoute(async (req: Request) => {
   // written with the server's own key: the earned columns (frame, variant, view) are checked above and are not
   // writable with a person's key (supabase/migrations/0029)
   const admin = createAdminClient();
-  const query = profile
-    ? admin.from("mahdi_profiles").update(fields).eq("user_id", user.id)
-    : admin.from("mahdi_profiles").insert({ user_id: user.id, ...fields });
-  const row = check(await query.select("*").single());
+  const write = (f: Record<string, unknown>) =>
+    (profile ? admin.from("mahdi_profiles").update(f).eq("user_id", user.id) : admin.from("mahdi_profiles").insert({ user_id: user.id, ...f })).select("*").single();
+  const row = check(await beforeMigration(write, fields));
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });
 });
 
@@ -66,7 +83,8 @@ export const PATCH = mahdiRoute(async (req: Request) => {
   if (!profile) throw new UserError(t.errors.noProfile, 403);
   const fields = await profileFields(supabase, await readJson(req), false);
   if (Object.keys(fields).length === 0) return NextResponse.json({ profile });
-  const row = check(await createAdminClient().from("mahdi_profiles").update(fields).eq("user_id", user.id).select("*").single());
+  const admin = createAdminClient();
+  const row = check(await beforeMigration((f) => admin.from("mahdi_profiles").update(f).eq("user_id", user.id).select("*").single(), fields));
   if ("display_name" in fields || "frame" in fields) await syncPublicProfile(user.id);
   return NextResponse.json({ profile: profileFromRow(row as ProfileRow) });
 });
