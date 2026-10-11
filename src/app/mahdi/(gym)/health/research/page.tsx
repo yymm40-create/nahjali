@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RESEARCH, SOURCES, sourceById } from "@config/mahdi/health-research";
-import "@/components/mahdi/health/health.css";
 
 export const metadata: Metadata = { title: "الصحة العلوية: البحث والمصادر" };
 
 /** The research «الصحة العلوية» is built on: every recommendation with its source. */
 export default function HealthResearchPage() {
   return (
-    <div className="gym space-y-4" dir="rtl">
+    <div className="space-y-4">
       <section className="gym-hero space-y-2">
         <span className="gym-eyebrow">📚 البحث</span>
         <h1 className="gym-title">

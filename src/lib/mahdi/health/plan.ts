@@ -493,6 +493,8 @@ export interface HealthPlan {
   /** the nutrition targets as the person kept or changed them */
   food: { kcal: number; proteinG: number; waterCups: number; produce: number; steps: number } | null;
   workout: Workout | null;
+  /** the habits made from this plan («لأجل المهدي»): spec key (day-0, ex-bench, weekly, cardio, protein…) → habit id */
+  links?: Record<string, string>;
   savedAt: string;
 }
 
@@ -683,7 +685,11 @@ export function cleanPlan(v: unknown): HealthPlan | null {
     }
     wk = { ...wk, days: days.sort((a, b) => a.weekday - b.weekday), weeklyCardioMin: n(w.weeklyCardioMin, 0, 1000, wk.weeklyCardioMin) };
   }
-  return { profile, mode: fresh.mode, food, workout: wk, savedAt: new Date().toISOString() };
+  const links: Record<string, string> = {};
+  if (o.links && typeof o.links === "object")
+    for (const [k, id] of Object.entries(o.links as Record<string, unknown>).slice(0, 200))
+      if (/^[a-z0-9-]{1,50}$/.test(k) && typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)) links[k] = id;
+  return { profile, mode: fresh.mode, food, workout: wk, links, savedAt: new Date().toISOString() };
 }
 
 /** fat and carbs of the day from the calories and protein the person kept */

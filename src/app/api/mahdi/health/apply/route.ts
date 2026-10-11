@@ -59,10 +59,11 @@ export const POST = mahdiRoute(async (req: Request) => {
 
   const start = todayIn(profile.timeZone);
   let made = 0;
+  const links: Record<string, string> = {};
   for (const s of specs as HabitSpec[]) {
     const projectId = target[s.group];
     if (!projectId) continue;
-    check(
+    links[s.key] = check(
       await supabase.rpc("mahdi_create_habit", {
         p_project: projectId,
         p_name: s.name.slice(0, MAHDI_LIMITS.habitNameMax),
@@ -77,8 +78,8 @@ export const POST = mahdiRoute(async (req: Request) => {
         p_freq: s.freq,
         p_days: s.days,
       }),
-    );
+    ) as string;
     made++;
   }
-  return NextResponse.json({ made, projectId: target.gym || target.food, snapshot: await loadSnapshot(supabase, profile) });
+  return NextResponse.json({ made, links, projectId: target.gym || target.food, snapshot: await loadSnapshot(supabase, profile) });
 });

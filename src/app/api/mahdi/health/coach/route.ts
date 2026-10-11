@@ -3,6 +3,7 @@ import { callClaudeJson, claudeWhy, isLeader } from "@/lib/film/anthropic";
 import { withClaude } from "@/lib/film/claude-model";
 import { applyCoach, cleanCoachTurns, COACH, COACH_SCHEMA, COACH_TASK, coachState, type CoachAnswer } from "@/lib/mahdi/health/coach";
 import { cleanPlan, cleanProfile } from "@/lib/mahdi/health/plan";
+import { cleanDay, type DayLog } from "@/lib/mahdi/health/tracker";
 import { mahdiRoute, readJson, requireProfile, UserError } from "@/lib/mahdi/server/api";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +23,11 @@ export const POST = mahdiRoute(async (req: Request) => {
   const profile = cleanProfile(b.profile);
   const plan = b.plan ? cleanPlan(b.plan) : null;
   const screen = typeof b.screen === "string" ? b.screen.slice(0, 20) : "";
+  const recent = (Array.isArray(b.recent) ? b.recent.slice(-14) : []).map(cleanDay).filter((d): d is DayLog => !!d);
   try {
     const r = await withClaude(COACH.model, () =>
       callClaudeJson<CoachAnswer>({
-        system: `${COACH_TASK}\n\n${coachState(profile, plan, screen)}`,
+        system: `${COACH_TASK}\n\n${coachState(profile, plan, screen, recent)}`,
         turns: turns.map((t) => ({ role: t.role, content: t.text })),
         schema: COACH_SCHEMA,
         maxTokens: 6000,
@@ -40,6 +42,7 @@ export const POST = mahdiRoute(async (req: Request) => {
       profile: done.profile,
       plan: done.plan,
       go: done.go,
+      restart: done.restart,
       changed: done.changed,
     });
   } catch (e) {
