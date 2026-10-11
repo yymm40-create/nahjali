@@ -6,12 +6,90 @@ import { drawWithFx, fxPlan } from "./fx";
 import { transitionLook, type TrLook, type TrMask } from "@/lib/editor/transitions";
 import { gradeLayers } from "./grade-gl";
 import { keyFrame } from "./key-gl";
+import { keyPixels } from "@/lib/editor/key-math";
 
 /** set while the export draws: the grade always shows (no before/after view) */
 let exporting = false;
 export const setExporting = (on: boolean) => {
   exporting = on;
 };
+
+/**
+ * «جودة العرض» (Resolve's Timeline Proxy / Premiere's Playback Resolution): the preview draws its pictures at a half,
+ * a quarter or an eighth of their size, so grading, keying and effects cost the device far less. The export (and a
+ * saved frame) always draws at full size.
+ */
+let previewScale = 1;
+export const setPreviewScale = (q: number) => {
+  previewScale = [1, 0.5, 0.25, 0.125].includes(q) ? q : 1;
+};
+export const getPreviewScale = () => (exporting ? 1 : previewScale);
+
+/**
+ * «الكي» seen from outside: while a clip's key is tuned, the render keeps a copy of that clip's picture as it goes
+ * INTO the key (after its grade) and where it was drawn on the canvas, so «🎯 اختر من الشاشة» can take the true
+ * colour under a click and «🪄 كشف تلقائي» / «🤖 حيدرة» can study the frame. `bypass` shows the clip without its key
+ * (the natural colours on the screen while picking).
+ */
+export const keyTap: { id: string | null; bypass: boolean; img: HTMLCanvasElement | null; m: DOMMatrix | null; w: number; h: number } = { id: null, bypass: false, img: null, m: null, w: 0, h: 0 };
+const TAP_SIDE = 960;
+function tapCopy(f: Frame) {
+  const k = Math.min(1, TAP_SIDE / Math.max(f.width, f.height));
+  const c = (keyTap.img ??= document.createElement("canvas"));
+  const w = Math.max(1, Math.round(f.width * k)),
+    h = Math.max(1, Math.round(f.height * k));
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.clearRect(0, 0, w, h);
+  g.drawImage(f.img, 0, 0, w, h);
+}
+
+/** The key on the CPU (the same maths), when the device has no WebGL2: at up to 640 px. */
+let cpuKey: HTMLCanvasElement | null = null;
+function keyOnCpu(f: Frame, k: NonNullable<Clip["key"]>) {
+  if (k.kind !== "chroma") return null;
+  const s = Math.min(1, 640 / Math.max(f.width, f.height));
+  const w = Math.max(1, Math.round(f.width * s)),
+    h = Math.max(1, Math.round(f.height * s));
+  const c = (cpuKey ??= document.createElement("canvas"));
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.clearRect(0, 0, w, h);
+  g.drawImage(f.img, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h);
+  keyPixels(d.data, w, h, k, k.show);
+  g.putImageData(d, 0, 0);
+  return c;
+}
+
+/** Small copies of the pictures for a lighter preview (one canvas per clip, reused every frame). */
+const small = new Map<string, HTMLCanvasElement>();
+function lighter(id: string, f: Frame): Frame {
+  const q = getPreviewScale();
+  if (q >= 1) return f;
+  const w = Math.max(2, Math.round(f.width * q)),
+    h = Math.max(2, Math.round(f.height * q));
+  let c = small.get(id);
+  if (!c) {
+    if (small.size > 24) small.clear();
+    c = document.createElement("canvas");
+    small.set(id, c);
+  }
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  const g = c.getContext("2d")!;
+  g.clearRect(0, 0, w, h);
+  g.drawImage(f.img, 0, 0, w, h);
+  return { ...f, img: c, width: w, height: h };
+}
 import { animAt, clipEnd, clipLength, colorFilter, countText, decodeText, kashida, transformAt, transitionAt, wordAt, type AnimLook, type Clip, type TextStyle, type Timeline, type Track, type Transform, type ClipFx, type BlendMode } from "@/lib/editor/model";
 
 export interface Frame {
@@ -324,22 +402,33 @@ function showFromRight(ctx: CanvasRenderingContext2D, look: Drawn, w: number, h:
 const jitter = (seed: number, i: number) => (((seed * 7919 + i * 104729) % 1000) / 1000) - 0.5;
 
 function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Transform, look: Drawn, W: number, H: number, ms: number) {
+  // «جودة العرض»: a lighter picture for the preview (its size on the timeline stays the same)
+  const full = { w: f.width, h: f.height };
+  f = lighter(clip.id, f);
   // «التلوين»: the frame graded on the GPU first (the picture then goes through everything else as usual)
   if (clip.grades.length) {
     const g = gradeLayers(f.img, f.width, f.height, clip.grades, Math.max(0, ms - clip.start), exporting);
     if (g) f = { ...f, img: g.img };
   }
+  const tapped = !exporting && keyTap.id === clip.id;
+  if (tapped) tapCopy(f);
   // «الكي»: the green screen (or the dark/bright parts) made see-through, after the grade (a log keys better decoded)
-  if (clip.key) {
-    const k = keyFrame(f.img, f.width, f.height, clip.key);
-    if (k) f = { ...f, img: k };
+  if (clip.key && !(tapped && keyTap.bypass)) {
+    const k = keyFrame(f.img, f.width, f.height, clip.key) ?? keyOnCpu(f, clip.key);
+    if (k) f = { ...f, img: k, width: k.width, height: k.height };
   }
-  const b = baseSize(clip.fit, f.width, f.height, W, H);
+  // (the clip keeps its full size on the canvas whatever size its picture was drawn at)
+  const b = baseSize(clip.fit, full.w, full.h, W, H);
   const w = b.w * t.scale * look.scale;
   const h = b.h * t.scale * look.scale;
   ctx.save();
   blendWith(ctx, clip.blend);
   place(ctx, t, look, W, H);
+  if (tapped) {
+    keyTap.m = ctx.getTransform();
+    keyTap.w = w;
+    keyTap.h = h;
+  }
   showFromRight(ctx, look, w, h);
   // «القص»: the hidden sides cut away (the picture keeps its size and place, like Premiere's Crop)
   if (clip.crop) {

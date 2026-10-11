@@ -1,10 +1,13 @@
 // «الكي» on the GPU (WebGL2), like Premiere's Ultra Key and Luma Key: a frame comes back with the keyed parts
 // see-through, for the render to draw over what is under the clip (the preview and the export alike).
-// Chroma: how far each pixel's colour (its Cb/Cr, so its brightness doesn't matter: shadows on a green screen still
-// go) is from the key colour → the matte, softened, then choked (the edge pulled in), and the key colour's glow taken
-// off what stays (its share along the key's direction removed, the brightness kept). Luma: the matte from brightness.
+// Chroma: the formulas of key-math.ts (trained on a thousand shots in tests/editor/key-training.test.ts), line for
+// line — the colour evened out over 5 taps, the screen found by its hue, its saturation and its colour strength
+// against the screen's (so its shadows still go and a dark shirt stays), the clean-up («تنظيف الخلفية» / «سد
+// الفراغات»), the choke, and the despill (the screen's channel limited to the brightest of the other two).
+// Luma: the matte from brightness.
 
 import type { Keyer } from "@/lib/editor/model";
+import { keyParams } from "@/lib/editor/key-math";
 
 const VS = `#version 300 es
 in vec2 p;
@@ -17,54 +20,88 @@ in vec2 uv;
 out vec4 o;
 uniform sampler2D tex;
 uniform int mode;
-uniform vec2 keyC;
-uniform float tol, soft, spill, choke, lo, hi;
+uniform float keyH, keyS, keyC, hTol, hSoft, sLo, sSoft, cLo, cSoft, clip0, clip1, spill, choke;
+uniform int lead;
+uniform vec3 keyRgb;
+uniform float soft, lo, hi;
 uniform bool inv, show;
 uniform vec2 px;
 
-vec3 ycc(vec3 c) {
-  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  return vec3(y, (c.b - y) / 1.8556, (c.r - y) / 1.5748);
+vec3 hsv(vec3 c) {
+  float mx = max(c.r, max(c.g, c.b));
+  float mn = min(c.r, min(c.g, c.b));
+  float d = mx - mn;
+  float h = 0.0;
+  if (d > 1e-6) {
+    if (mx == c.r) h = mod((c.g - c.b) / d, 6.0);
+    else if (mx == c.g) h = (c.b - c.r) / d + 2.0;
+    else h = (c.r - c.g) / d + 4.0;
+    h /= 6.0;
+    if (h < 0.0) h += 1.0;
+  }
+  return vec3(h, mx > 1e-6 ? d / mx : 0.0, mx);
 }
-vec3 rgb(vec3 v) {
-  float r = v.x + 1.5748 * v.z;
-  float b = v.x + 1.8556 * v.y;
-  float g = (v.x - 0.2126 * r - 0.0722 * b) / 0.7152;
-  return vec3(r, g, b);
+vec3 tap(vec2 at) {
+  return texture(tex, at).rgb * 0.4 + (texture(tex, at + vec2(px.x, 0.0)).rgb + texture(tex, at - vec2(px.x, 0.0)).rgb + texture(tex, at + vec2(0.0, px.y)).rgb + texture(tex, at - vec2(0.0, px.y)).rgb) * 0.15;
 }
 float matte(vec2 at) {
-  vec3 c = texture(tex, at).rgb;
-  vec3 v = ycc(c);
   float a;
   if (mode == 0) {
-    float d = distance(v.yz, keyC);
-    float t0 = tol * 0.35;
-    a = smoothstep(t0, t0 + soft * 0.25 + 0.0005, d);
+    vec3 v = hsv(tap(at));
+    float dh = abs(v.x - keyH);
+    dh = min(dh, 1.0 - dh);
+    float hueW = 1.0 - smoothstep(hTol, hTol + hSoft, dh);
+    float satW = smoothstep(sLo - sSoft, sLo, v.y / keyS);
+    float valW = smoothstep(0.035, 0.09, v.z) * smoothstep(cLo - cSoft, cLo, (v.y * v.z) / keyC);
+    a = 1.0 - hueW * satW * valW;
+    a = clamp((a - clip0) / max(0.02, clip1 - clip0), 0.0, 1.0);
   } else {
+    float y = dot(texture(tex, at).rgb, vec3(0.2126, 0.7152, 0.0722));
     float h = max(hi, lo + 0.002);
     float s = soft * 0.15;
-    a = smoothstep(lo - s, h + s, v.x);
+    a = smoothstep(lo - s, h + s, y);
+    if (inv) a = 1.0 - a;
   }
-  return inv ? 1.0 - a : a;
+  return a;
+}
+vec3 despill(vec3 c) {
+  if (spill <= 0.0) return c;
+  if (lead >= 0) {
+    float limit = lead == 0 ? max(c.g, c.b) : lead == 1 ? max(c.r, c.b) : max(c.r, c.g);
+    float v = lead == 0 ? c.r : lead == 1 ? c.g : c.b;
+    float over = v - limit;
+    if (over > 0.0) {
+      v -= over * spill;
+      if (lead == 0) c.r = v; else if (lead == 1) c.g = v; else c.b = v;
+    }
+    return c;
+  }
+  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float ky = dot(keyRgb, vec3(0.2126, 0.7152, 0.0722));
+  vec2 k = vec2((keyRgb.b - ky) / 1.8556, (keyRgb.r - ky) / 1.5748);
+  if (length(k) < 0.02) return c;
+  k = normalize(k);
+  vec2 cc = vec2((c.b - y) / 1.8556, (c.r - y) / 1.5748);
+  float along = dot(cc, k);
+  if (along <= 0.0) return c;
+  cc -= k * along * spill;
+  float r = y + 1.5748 * cc.y;
+  float b = y + 1.8556 * cc.x;
+  float g = (y - 0.2126 * r - 0.0722 * b) / 0.7152;
+  return clamp(vec3(r, g, b), 0.0, 1.0);
 }
 void main() {
   vec2 at = vec2(uv.x, 1.0 - uv.y);
   float a = matte(at);
-  if (choke > 0.0) {
-    // the edge pulled in: the matte is the smallest around (up to 6 px)
-    float r = choke * 6.0;
-    a = min(a, min(min(matte(at + vec2(r, 0.0) * px), matte(at - vec2(r, 0.0) * px)), min(matte(at + vec2(0.0, r) * px), matte(at - vec2(0.0, r) * px))));
-  }
-  vec3 c = texture(tex, at).rgb;
-  if (mode == 0 && spill > 0.0) {
-    // the key colour's glow on what stays: its share along the key's direction taken off, brightness kept
-    vec3 v = ycc(c);
-    vec2 k = normalize(keyC + 1e-5);
-    float along = dot(v.yz, k);
-    if (along > 0.0) v.yz -= k * along * spill;
-    c = clamp(rgb(v), 0.0, 1.0);
+  if (mode == 0 && choke > 0.0) {
+    // the edge pulled in: toward the smallest matte around (up to 4 px)
+    float r = max(1.0, floor(choke * 4.0 + 0.5));
+    float m = min(min(matte(at + vec2(r, 0.0) * px), matte(at - vec2(r, 0.0) * px)), min(matte(at + vec2(0.0, r) * px), matte(at - vec2(0.0, r) * px)));
+    a = a + (min(a, m) - a) * min(1.0, choke * 2.0);
   }
   if (show) { o = vec4(vec3(a), 1.0); return; }
+  vec3 c = texture(tex, at).rgb;
+  if (mode == 0) c = despill(c);
   o = vec4(c * a, a);
 }`;
 
@@ -109,23 +146,13 @@ function setup(): Gl | null {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const u: Gl["u"] = {};
-    for (const n of ["tex", "mode", "keyC", "tol", "soft", "spill", "choke", "lo", "hi", "inv", "show", "px"]) u[n] = gl.getUniformLocation(prog, n);
+    for (const n of ["tex", "mode", "keyH", "keyS", "keyC", "hTol", "hSoft", "sLo", "sSoft", "cLo", "cSoft", "clip0", "clip1", "spill", "choke", "lead", "keyRgb", "soft", "lo", "hi", "inv", "show", "px"]) u[n] = gl.getUniformLocation(prog, n);
     G = { gl, canvas, u, tex };
   } catch (e) {
     console.warn("key-gl", e);
     failed = true;
   }
   return G;
-}
-
-/** The key colour's chroma (Cb, Cr) from "#rrggbb". */
-export function keyChroma(hex: string): [number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  const r = ((n >> 16) & 255) / 255,
-    g = ((n >> 8) & 255) / 255,
-    b = (n & 255) / 255;
-  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return [(b - y) / 1.8556, (r - y) / 1.5748];
 }
 
 const MAX_SIDE = 1920;
@@ -149,14 +176,25 @@ export function keyFrame(img: CanvasImageSource, sw: number, sh: number, k: Keye
   } catch {
     return null;
   }
-  const [cb, cr] = keyChroma(k.color);
+  const P = keyParams(k);
   gl.uniform1i(u.tex, 0);
   gl.uniform1i(u.mode, k.kind === "luma" ? 1 : 0);
-  gl.uniform2f(u.keyC, cb, cr);
-  gl.uniform1f(u.tol, k.tolerance);
+  gl.uniform1f(u.keyH, P.hue);
+  gl.uniform1f(u.keyS, P.sat);
+  gl.uniform1f(u.keyC, P.chroma);
+  gl.uniform1f(u.hTol, P.hTol);
+  gl.uniform1f(u.hSoft, P.hSoft);
+  gl.uniform1f(u.sLo, P.sLo);
+  gl.uniform1f(u.sSoft, P.sSoft);
+  gl.uniform1f(u.cLo, P.cLo);
+  gl.uniform1f(u.cSoft, P.cSoft);
+  gl.uniform1f(u.clip0, P.clip0);
+  gl.uniform1f(u.clip1, P.clip1);
+  gl.uniform1f(u.spill, P.spill);
+  gl.uniform1f(u.choke, P.choke);
+  gl.uniform1i(u.lead, P.lead);
+  gl.uniform3f(u.keyRgb, P.rgb[0], P.rgb[1], P.rgb[2]);
   gl.uniform1f(u.soft, k.soft);
-  gl.uniform1f(u.spill, k.spill);
-  gl.uniform1f(u.choke, k.choke);
   gl.uniform1f(u.lo, k.low);
   gl.uniform1f(u.hi, k.high);
   gl.uniform1i(u.inv, k.invert ? 1 : 0);

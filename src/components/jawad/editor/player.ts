@@ -6,7 +6,7 @@
 // hold an element, so long projects stay light.
 
 import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline } from "@/lib/editor/model";
-import { drawFrame, layersAt, type Frame } from "./render";
+import { drawFrame, getPreviewScale, layersAt, setPreviewScale, type Frame } from "./render";
 import { gradeView } from "./grade-gl";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
@@ -90,10 +90,7 @@ export class Player {
     this.tl = tl;
     this.assets = new Map(assets.map((a) => [a.id, a]));
     this.spans = voiceSpans(tl, (c) => !c.text && !!this.assets.get(c.assetId ?? "")?.hasAudio);
-    if (this.canvas.width !== tl.width || this.canvas.height !== tl.height) {
-      this.canvas.width = tl.width;
-      this.canvas.height = tl.height;
-    }
+    this.fit();
     this.ms = Math.min(this.ms, duration(tl));
     // an edit while playing: the sound is scheduled again from here
     try {
@@ -522,9 +519,29 @@ export class Player {
     return mask;
   }
 
+  /** The canvas at the project's size × «جودة العرض» (drawn in the project's units whatever its pixels). */
+  private fit() {
+    const q = getPreviewScale();
+    const w = Math.max(2, Math.round(this.tl.width * q)),
+      h = Math.max(2, Math.round(this.tl.height * q));
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
+    this.ctx.setTransform(w / this.tl.width, 0, 0, h / this.tl.height, 0, 0);
+  }
+
+  /** «جودة العرض»: كاملة، نص، ربع، ثمن. */
+  setQuality(q: number) {
+    setPreviewScale(q);
+    this.fit();
+    this.draw();
+  }
+
   draw() {
     // one frame that can't be drawn (a picture the browser isn't ready to give) must never break the page
     try {
+      this.fit();
       drawFrame(this.ctx, this.tl, this.shown(), this.frameOf);
     } catch (e) {
       console.warn("editor draw", e);
@@ -537,7 +554,10 @@ export class Player {
    */
   async frameBlob(): Promise<Blob | null> {
     const was = gradeView.mode;
+    const q = getPreviewScale();
     gradeView.mode = "on";
+    // (always the full size, whatever «جودة العرض» the preview uses)
+    setPreviewScale(1);
     try {
       this.draw();
       return await new Promise<Blob | null>((ok) => this.canvas.toBlob(ok, "image/png"));
@@ -545,6 +565,7 @@ export class Player {
       return null;
     } finally {
       gradeView.mode = was;
+      setPreviewScale(q);
       this.draw();
     }
   }

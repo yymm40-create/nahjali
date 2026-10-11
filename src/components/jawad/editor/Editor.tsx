@@ -42,6 +42,7 @@ import { Player } from "./player";
 import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
 import ShortcutsPage from "./ShortcutsPage";
+import KeyStudio from "./KeyStudio";
 import { TL_ZOOM } from "./Timeline";
 import { BIG_STEP, comboOf, KEYS_STORE, keyTable, readProgram, type ActionId, type ProgramId } from "@/lib/editor/shortcuts";
 import Timeline from "./Timeline";
@@ -1860,6 +1861,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </div>
       )}
 
+      <KeyStudio player={player} canvas={canvasEl} tl={tl} projectId={project.id} run={run} flash={flash} />
       <ShortcutsPage
         open={!!keysOpen}
         first={keysOpen === "first"}
@@ -1963,6 +1965,57 @@ function Transport({ player, total, name }: { player: Player | null; total: numb
       <button type="button" className="ms-1 grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" onClick={saveFrame} disabled={!total || saving} aria-label="احفظ الفريم صورة" title="احفظ الفريم صورة (PNG)">
         <Icon name="camera" size={15} />
       </button>
+      <QualityPick player={player} />
     </div>
+  );
+}
+
+/** «جودة العرض»: the preview at full size, a half, a quarter or an eighth (kept on this device; the export is full). */
+const QUALITIES: [number, string][] = [
+  [1, "كاملة"],
+  [0.5, "نص"],
+  [0.25, "ربع"],
+  [0.125, "ثمن"],
+];
+function QualityPick({ player }: { player: Player | null }) {
+  const [q, setQ] = useState(1);
+  useEffect(() => {
+    let v = 1;
+    try {
+      v = Number(localStorage.getItem("jw-editor-q")) || 1;
+    } catch {
+      /* the normal size */
+    }
+    if (QUALITIES.some(([x]) => x === v) && v !== 1) {
+      const t = setTimeout(() => setQ(v), 0);
+      player?.setQuality(v);
+      return () => clearTimeout(t);
+    }
+  }, [player]);
+  return (
+    <label className="ms-1 flex items-center gap-1 rounded-full border border-jw-line px-2 py-0.5 text-[11px] text-jw-muted" title="جودة العرض: أقل = أخف على جهازك. التصدير دايم بالجودة الكاملة.">
+      <span dir="rtl">الجودة</span>
+      <select
+        className="bg-transparent text-jw-ink focus:outline-none"
+        value={q}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          setQ(v);
+          player?.setQuality(v);
+          try {
+            localStorage.setItem("jw-editor-q", String(v));
+          } catch {
+            /* not kept */
+          }
+        }}
+        aria-label="جودة العرض"
+      >
+        {QUALITIES.map(([v, ar]) => (
+          <option key={v} value={v}>
+            {ar}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

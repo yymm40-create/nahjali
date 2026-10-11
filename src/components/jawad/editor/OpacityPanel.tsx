@@ -6,6 +6,7 @@
 
 import { BLEND_MODES, NEW_KEY, type BlendMode, type Clip, type Keyer } from "@/lib/editor/model";
 import type { ClipPatch } from "@/lib/editor/commands";
+import { keyAsk, type KeyOp } from "./KeyStudio";
 
 const FAMILIES: [string, BlendMode[]][] = [
   ["", ["normal"]],
@@ -62,22 +63,16 @@ export default function OpacityPanel({ clip, opacity, locked, set, onOpacity, me
   );
 }
 
-/** «الكي»: a colour (green/blue screen, or any colour picked from the screen) or the dark/bright parts made see-through. */
+/**
+ * «الكي»: a colour (green/blue screen, or any colour) or the dark/bright parts made see-through. Turning the chroma on
+ * finds the screen by itself (🪄); «🎯 اختر من الشاشة» shows the clip's natural colours to click on; «🤖 حيدرة
+ * يضبط» lets him look at the matte and correct it (KeyStudio.tsx).
+ */
 export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean; set: (p: ClipPatch, key: string) => void }) {
   const k = clip.key;
   const setKey = (p: Partial<Keyer>, key: string) => set({ key: p }, `key:${key}`);
-  const pick = async () => {
-    // the browser's own eyedropper (Chrome, Edge): a click anywhere on the screen, e.g. on the preview's green
-    const E = (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper;
-    if (!E) return;
-    try {
-      const r = await new E().open();
-      if (/^#[0-9a-f]{6}$/i.test(r.sRGBHex)) setKey({ color: r.sRGBHex.toLowerCase() }, "color");
-    } catch {
-      /* closed */
-    }
-  };
-  const canPick = typeof window !== "undefined" && "EyeDropper" in window;
+  const ask = (op: KeyOp) => setTimeout(() => keyAsk(clip.id, op), 0);
+  const btn = "rounded-full border border-jw-line px-2.5 py-1 text-[11px] hover:border-jw-accent disabled:opacity-40";
   return (
         <div className="space-y-2 rounded-lg border border-jw-line p-2">
           <p className="text-xs font-semibold">الكي (Keying)</p>
@@ -89,20 +84,44 @@ export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean
                 ["luma", "لوما (الإضاءة)"],
               ] as [Keyer["kind"] | null, string][]
             ).map(([kind, label]) => (
-              <button key={label} type="button" role="radio" aria-checked={(k?.kind ?? null) === kind} disabled={locked} onClick={() => set({ key: kind ? { ...(k ?? NEW_KEY), kind } : null }, "key:kind")}>
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                aria-checked={(k?.kind ?? null) === kind}
+                disabled={locked}
+                onClick={() => {
+                  set({ key: kind ? { ...(k ?? NEW_KEY), kind } : null }, "key:kind");
+                  // a new chroma key: the screen found by itself
+                  if (kind === "chroma" && k?.kind !== "chroma") ask("auto");
+                }}
+              >
                 {label}
               </button>
             ))}
           </div>
           {k?.kind === "chroma" && (
             <>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" disabled={locked} className={btn} onClick={() => ask("auto")} title="يلقى لون الشاشة والسماحية من الفريم">
+                  🪄 كشف تلقائي
+                </button>
+                <button type="button" disabled={locked} className={btn} onClick={() => ask("pick")} title="تطلع ألوان الفيديو الأصلية؛ اضغط على الشاشة">
+                  🎯 اختر من الشاشة
+                </button>
+                <button type="button" disabled={locked} className={`${btn} border-jw-accent/60`} onClick={() => ask("ai")} title="حيدرة يشوف الماسك والنتيجة ويصلّح الإعدادات (من رصيدك مثل محادثته)">
+                  🤖 حيدرة يضبط الكي
+                </button>
+              </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] text-jw-muted">لون الشاشة</span>
                 <input type="color" value={k.color} disabled={locked} onChange={(e) => setKey({ color: e.target.value }, "color")} aria-label="لون الشاشة" className="h-7 w-9 cursor-pointer rounded border border-jw-line bg-transparent" />
+                <span className="text-[10px] tabular-nums text-jw-faint" dir="ltr">
+                  {k.color}
+                </span>
                 {(
                   [
-                    ["#00ff00", "أخضر"],
-                    ["#00b140", "أخضر استوديو"],
+                    ["#00b140", "أخضر"],
                     ["#0047bb", "أزرق"],
                   ] as const
                 ).map(([c, label]) => (
@@ -110,16 +129,14 @@ export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean
                     <span className="h-3 w-3 rounded-full" style={{ background: c }} /> {label}
                   </button>
                 ))}
-                {canPick && (
-                  <button type="button" disabled={locked} className="rounded-full border border-jw-line px-2 py-0.5 text-[11px]" onClick={() => void pick()} title="اضغط على لون الشاشة في المعاينة">
-                    🎯 اختر من الشاشة
-                  </button>
-                )}
               </div>
               <Range label="السماحية (كم يشيل حول اللون)" value={k.tolerance} disabled={locked} onChange={(v) => setKey({ tolerance: v }, "tolerance")} />
+              <Range label="تنظيف الخلفية (يشيل بقايا الشاشة)" value={k.clean ?? 0.15} disabled={locked} onChange={(v) => setKey({ clean: v }, "clean")} />
+              <Range label="سد الفراغات (يصلّح الثقوب في الشخص)" value={k.fill ?? 0.15} disabled={locked} onChange={(v) => setKey({ fill: v }, "fill")} />
               <Range label="نعومة الحافة" value={k.soft} disabled={locked} onChange={(v) => setKey({ soft: v }, "soft")} />
-              <Range label="Despill — إزالة الانعكاس الأخضر" value={k.spill} disabled={locked} onChange={(v) => setKey({ spill: v }, "spill")} />
               <Range label="شدّ الحافة (Choke)" value={k.choke} disabled={locked} onChange={(v) => setKey({ choke: v }, "choke")} />
+              <Range label="Despill — إزالة الانعكاس الأخضر" value={k.spill} disabled={locked} onChange={(v) => setKey({ spill: v }, "spill")} />
+              <p className="text-[11px] leading-5 text-jw-faint">فعّل «اعرض الماسك»: الشاشة لازم تطلع سودا كلها والشخص أبيض. بقايا رمادية في الخلفية؟ زِد «تنظيف الخلفية». ثقوب في الشخص؟ زِد «سد الفراغات». حافة خضرا؟ زِد الـDespill أو شد الحافة.</p>
             </>
           )}
           {k?.kind === "luma" && (

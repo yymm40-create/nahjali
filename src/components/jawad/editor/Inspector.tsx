@@ -38,6 +38,7 @@ import { soundFile } from "./audio";
 import FontPicker from "./FontPicker";
 import FxPanel from "./FxPanel";
 import GradePanel from "./GradePanel";
+import { keyAsk } from "./KeyStudio";
 import { allGradeable, gradeable, pasteGradeCommands } from "@/lib/editor/grade-paste";
 import { copyGrade, pasteableGrade } from "./clipboard";
 import OpacityPanel, { KeyControls } from "./OpacityPanel";
@@ -566,7 +567,11 @@ export default function Inspector({
               );
             })}
             {/* «Key»: a colour picked and removed (a green screen, a wall, a sky) — the editor's keyer, here too */}
-            <button type="button" disabled={locked} aria-pressed={!!clip.key} className={`col-span-2 rounded-lg border px-2 py-2 text-xs ${clip.key ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => set(clip.key ? { key: null } : { bg: null, key: { ...NEW_KEY, kind: "chroma" } }, "bg:key")}>
+            <button type="button" disabled={locked} aria-pressed={!!clip.key} className={`col-span-2 rounded-lg border px-2 py-2 text-xs ${clip.key ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => {
+                set(clip.key ? { key: null } : { bg: null, key: { ...NEW_KEY, kind: "chroma" } }, "bg:key");
+                // the screen found by itself
+                if (!clip.key) setTimeout(() => keyAsk(clip.id, "auto"), 0);
+              }}>
               🎨 شيل لون (Key) — اختر لون ويختفي
             </button>
           </div>
