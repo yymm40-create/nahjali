@@ -10,6 +10,11 @@ export const KHATEEB = {
   icon: "🕌",
   /** where the secret link lives: /jawad-ai/khateeb/<the owner's word> */
   base: "/jawad-ai/khateeb",
+  /**
+   * The link's word until the owner sets his own (the owner's word, 11 October 2026: «ما يندخل إلا من رابط» — not from
+   * JAWAD AI's menus nor from «لأجل المهدي», and no password unless he sets one).
+   */
+  defaultSlug: "minbar-070f27a3",
   /** the cookie that says the password was given */
   cookie: "jw-khz",
   /** how long the password's word is kept on a device (days) */

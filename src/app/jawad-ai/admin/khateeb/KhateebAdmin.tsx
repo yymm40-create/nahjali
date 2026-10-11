@@ -77,8 +77,8 @@ export default function KhateebAdmin({ initial }: { initial: Settings }) {
       </section>
 
       <section className="jw-panel space-y-3 p-4">
-        <h2 className="font-semibold">🔑 كلمة السر</h2>
-        <p className="text-sm text-jw-muted">{s.hasPassword ? "فيه كلمة سر مضبوطة (ما تنعرض). اكتب كلمة جديدة لتغييرها، ومن كان داخل يحتاج يدخل بها من جديد." : "ما فيه كلمة سر للحين: القسم مقفل على الكل لين تحط واحدة."}</p>
+        <h2 className="font-semibold">🔑 كلمة السر (اختيارية)</h2>
+        <p className="text-sm text-jw-muted">{s.hasPassword ? "فيه كلمة سر مضبوطة (ما تنعرض). اكتب كلمة جديدة لتغييرها، ومن كان داخل يحتاج يدخل بها من جديد." : "بدون كلمة سر: أي أحد عنده الرابط يدخل (بعد تسجيل دخوله). لو تبي تقفله بكلمة سر، اكتبها هنا."}</p>
         <div className="flex flex-wrap items-end gap-2">
           <input className="jw-input max-w-xs" type="text" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة السر الجديدة" aria-label="كلمة السر الجديدة" />
           <button type="button" className="jw-btn jw-btn-primary" disabled={busy || password.length < 4 || !s.ready} onClick={async () => (await save({ password }, "انحفظت كلمة السر.")) && setPassword("")}>احفظ كلمة السر</button>
