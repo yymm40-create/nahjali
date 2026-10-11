@@ -11,28 +11,69 @@ export const MAHDI_AUTH = {
   apple: false,
 };
 
-export type MahdiTheme = "cinematic" | "aurora" | "neon" | "pop" | "minimal" | "night";
+export type MahdiTheme =
+  | "rings" | "bars" | "liquid" | "buttons" | "heatmap" | "bento" | "pop" | "garden" | "path" | "flame"
+  | "gauge" | "swipe" | "timeline" | "cells" | "rpg" | "aurora" | "neon" | "journal" | "zakhrafa" | "mono"
+  | "cinematic" | "minimal" | "night";
+
+/** How a design draws the day's two goals (habits, reading) at the top of the home. */
+export type GoalsStyle = "ring" | "rings3" | "bar" | "liquid" | "heatmap" | "bento" | "segments" | "garden" | "path" | "flame" | "gauge" | "rpg" | "stickers" | "star" | "number" | "chip";
+/** How a design lays out the habits to tap. */
+export type QuickStyle = "tiles" | "list" | "circles" | "cells" | "swipe" | "timeline" | "xp";
+
+export interface MahdiDesign {
+  key: MahdiTheme;
+  /** its number in the gallery the owner chose from (1–20; 0 = «الحرم», the shrine look) */
+  n: number;
+  label: string;
+  description: string;
+  /** the app or school it learns from (researched: components/mahdi/HomeBoard) */
+  from: string;
+  themeColor: string;
+  light: boolean;
+  goals: GoalsStyle;
+  quick: QuickStyle;
+  legacy?: true;
+}
 
 /**
- * The four looks the person chooses between — four different apps in style, writing, letters and colours (researched
- * for 15–20 year olds: bento cards, saturated colours, big tap targets, playful motion; see components/mahdi/HomeBoard):
- * «الحرم» (the shrine in the background, gold, a classical Arabic display face), «شفق» (light, a violet-pink-orange
- * gradient, soft round cards, a modern geometric face), «نيون» (dark, glowing neon lines on glass, a bold poster
- * face), «بوب» (cream paper, thick black outlines and hard shadows, acid colours, a round playful face).
- * «السكينة» and «زيارة الليل» are the older looks: kept for whoever chose them, no longer offered.
+ * The designs the person chooses between: twenty different apps in style, letters, colours, corners — and in how the
+ * day is drawn (rings, a filling bar, a glass that fills, a heatmap, a plant that grows, a path, a gauge, one card to
+ * swipe, a timeline…). Built from research on the trackers that won (Streaks and (Not Boring) Habits: Apple Design
+ * Awards; Duolingo's streak; Finch; Habitica; Apple's activity rings; GitHub's heatmap) and on the psychology of
+ * progress (goal gradient, endowed progress, Fogg's celebration, self-determination theory, Lally's 66 days).
+ * «الحرم» keeps the shrine; «السكينة» and «زيارة الليل» are older looks kept for whoever chose them.
  */
-export const MAHDI_THEMES: { key: MahdiTheme; label: string; description: string; themeColor: string; legacy?: true }[] = [
-  { key: "aurora", label: "شفق", description: "فاتح ومبهج: تدرّج بنفسجي وردي برتقالي، بطاقات ناعمة دائرية وخط عصري.", themeColor: "#f6f0ff" },
-  { key: "neon", label: "نيون", description: "داكن بإضاءات نيون تلمع على زجاج، وعناوين عريضة كأنها ملصق.", themeColor: "#07070d" },
-  { key: "pop", label: "بوب", description: "جريء ومرح: ورق كريمي، حدود سوداء عريضة وظلال صلبة وألوان فاقعة.", themeColor: "#fff4dc" },
-  { key: "cinematic", label: "الحرم", description: "صورة الحرم حاضرة، إضاءة ذهبية وخط عربي كلاسيكي.", themeColor: "#0d0c0b" },
-  { key: "minimal", label: "السكينة", description: "فاتح وهادئ: عاجي وذهبي خفيف ومساحات مريحة.", themeColor: "#faf6ee", legacy: true },
-  { key: "night", label: "زيارة الليل", description: "داكن فاخر بإضاءة الحرم الذهبية، كزيارة ليلية هادئة.", themeColor: "#0b0c0e", legacy: true },
+export const MAHDI_THEMES: MahdiDesign[] = [
+  { key: "rings", n: 1, label: "حلقات النشاط", from: "Apple Fitness", description: "داكن بثلاث حلقات متداخلة: العادات والقراءة والأسبوع، تقفلها كل يوم.", themeColor: "#000000", light: false, goals: "rings3", quick: "list" },
+  { key: "bars", n: 2, label: "الشريط اللي يتعبّى", from: "Things · Todoist", description: "فاتح ونظيف، أشرطة عريضة تتعبّى وتقارن أهدافك بنظرة.", themeColor: "#fbfbfd", light: true, goals: "bar", quick: "list" },
+  { key: "liquid", n: 3, label: "الكوب اللي يمتلي", from: "Plant Nanny · WaterMinder", description: "مائي، أهدافك كؤوس يرتفع فيها الماء مع إنجازك.", themeColor: "#eaf5ff", light: true, goals: "liquid", quick: "tiles" },
+  { key: "buttons", n: 4, label: "الأزرار الكبيرة", from: "Streaks", description: "كل عادة زر دائري ضخم بحلقة حوله: ضغطة وتكمل.", themeColor: "#ff6b4a", light: false, goals: "chip", quick: "circles" },
+  { key: "heatmap", n: 5, label: "خريطة الحرارة", from: "GitHub · Loop", description: "داكن، مربعات أيامك من أسابيع تبيّن ثباتك.", themeColor: "#0d1117", light: false, goals: "heatmap", quick: "cells" },
+  { key: "bento", n: 6, label: "بنتو ملوّن", from: "اتجاه ٢٠٢٥–٢٠٢٦", description: "بطاقات ملوّنة بأحجام مختلفة، كل معلومة بحجم أهميتها.", themeColor: "#f4f1ea", light: true, goals: "bento", quick: "tiles" },
+  { key: "pop", n: 7, label: "نيو بروتال", from: "ستايل Gen Z", description: "جريء: حدود سوداء عريضة، ظلال صلبة، وألوان فاقعة.", themeColor: "#fff4dc", light: true, goals: "segments", quick: "tiles" },
+  { key: "garden", n: 8, label: "النبتة تكبر", from: "Finch · Forest", description: "إنجازك يكبّر نبتتك مرحلة بعد مرحلة.", themeColor: "#e3f6e0", light: true, goals: "garden", quick: "tiles" },
+  { key: "path", n: 9, label: "طريق المراحل", from: "Duolingo", description: "أيامك عُقد على طريق، تشوف وين وصلت ووين باقي.", themeColor: "#ffffff", light: true, goals: "path", quick: "list" },
+  { key: "flame", n: 10, label: "الشعلة الكبيرة", from: "Duolingo · Snapchat", description: "رقم سلسلتك بطل الشاشة، وأيام أسبوعك تحته.", themeColor: "#b8174f", light: false, goals: "flame", quick: "list" },
+  { key: "gauge", n: 11, label: "العدّاد", from: "Oura · لوحة السيارة", description: "داكن، يومك درجة على عدّاد نصف دائري.", themeColor: "#0f1220", light: false, goals: "gauge", quick: "list" },
+  { key: "swipe", n: 12, label: "البطاقة اللي تسحبها", from: "Headspace", description: "عادة وحدة قدامك: سويتها أو بعدين، بدون تشتيت.", themeColor: "#f6f2ff", light: true, goals: "bar", quick: "swipe" },
+  { key: "timeline", n: 13, label: "الخط الزمني لليوم", from: "Structured · Tiimo", description: "يومك مرتب بالأوقات من الفجر لليل.", themeColor: "#fffaf5", light: true, goals: "bar", quick: "timeline" },
+  { key: "cells", n: 14, label: "خلايا البطارية", from: "Habitify · Productive", description: "كل عادة شريط خلايا لأيام أسبوعها.", themeColor: "#f7f8fa", light: true, goals: "chip", quick: "cells" },
+  { key: "rpg", n: 15, label: "شخصية تلعب", from: "Habitica", description: "كل عادة نقاط خبرة ترفع مستوى شخصيتك.", themeColor: "#2b1d4e", light: false, goals: "rpg", quick: "xp" },
+  { key: "aurora", n: 16, label: "شفق زجاجي", from: "iOS · Arc", description: "فاتح ومبهج: تدرّج بنفسجي وردي برتقالي على زجاج.", themeColor: "#f6f0ff", light: true, goals: "ring", quick: "tiles" },
+  { key: "neon", n: 17, label: "نيون", from: "ألعاب · Cyberpunk", description: "داكن بإضاءات نيون تلمع، وعناوين عريضة كالملصق.", themeColor: "#07070d", light: false, goals: "ring", quick: "list" },
+  { key: "journal", n: 18, label: "الدفتر", from: "Bullet Journal · Daylio", description: "ورق مسطّر وخط يد وستيكرات.", themeColor: "#fdf8ee", light: true, goals: "stickers", quick: "list" },
+  { key: "zakhrafa", n: 19, label: "الزخرفة الإسلامية", from: "العمارة الإسلامية", description: "ذهبي وفيروزي، نجمة ثمانية تمتلي مع إنجازك.", themeColor: "#0b1f1c", light: false, goals: "star", quick: "tiles" },
+  { key: "mono", n: 20, label: "الأرقام الكبيرة", from: "(Not Boring) Habits · Things", description: "هادئ جدًا: رقم كبير وقائمة نظيفة، بلا زحمة.", themeColor: "#ffffff", light: true, goals: "number", quick: "list" },
+  { key: "cinematic", n: 0, label: "الحرم", from: "لأجل المهدي", description: "صورة الحرم حاضرة، إضاءة ذهبية وخط عربي كلاسيكي.", themeColor: "#0d0c0b", light: false, goals: "ring", quick: "tiles" },
+  { key: "minimal", n: 0, label: "السكينة", from: "لأجل المهدي", description: "فاتح وهادئ: عاجي وذهبي خفيف ومساحات مريحة.", themeColor: "#faf6ee", light: true, goals: "ring", quick: "tiles", legacy: true },
+  { key: "night", n: 0, label: "زيارة الليل", from: "لأجل المهدي", description: "داكن فاخر بإضاءة الحرم الذهبية.", themeColor: "#0b0c0e", light: false, goals: "ring", quick: "tiles", legacy: true },
 ];
-/** The looks offered in the picker (the four). */
+/** The designs offered in the picker (the twenty and «الحرم»). */
 export const PICKED_THEMES = MAHDI_THEMES.filter((x) => !x.legacy);
 /** Light looks (the browser chrome, the status bar). */
-export const LIGHT_THEMES: MahdiTheme[] = ["aurora", "pop", "minimal"];
+export const LIGHT_THEMES: MahdiTheme[] = MAHDI_THEMES.filter((x) => x.light).map((x) => x.key);
+export const designOf = (k: string | null | undefined) => MAHDI_THEMES.find((x) => x.key === k) ?? MAHDI_THEMES.find((x) => x.key === "aurora")!;
 export const DEFAULT_THEME: MahdiTheme = "aurora";
 export const DEFAULT_SHRINE = "imam-ali";
 
