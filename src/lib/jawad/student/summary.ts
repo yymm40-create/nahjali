@@ -7,7 +7,7 @@ import { MAP_TYPES } from "./mindmap";
 
 type S = Record<string, unknown>;
 
-const DENSITY: Record<string, string> = { low: "مختصر", medium: "تفصيل متوسط", high: "مفصل" };
+const DENSITY: Record<string, string> = { low: "مستوى خفيف", medium: "مستوى متوسط", high: "مستوى عميق", max: "مستوى أعمق" };
 const DIFFICULTY: Record<string, string> = { easy: "سهل", medium: "متوسط", hard: "صعب" };
 const USAGE: Record<string, string> = { interactive: "أحلّه هنا", sheet: "ورقة أطبعها", both: "هنا وورقة" };
 const NOTES: Record<string, string> = { slide: "الشرح على الشريحة", notes: "الشرح في ملاحظات المحاضر", both: "الشرح على الشريحة وفي الملاحظات" };

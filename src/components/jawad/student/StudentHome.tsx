@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
-import { LEVELS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, type PurposeId, type SourceMode, STUDENT_ASSISTANT } from "@config/jawad/student";
+import { OUTPUT_KINDS, SOURCE_MODES, STUDENT, type SourceMode, STUDENT_ASSISTANT } from "@config/jawad/student";
 import { newKey, post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
@@ -13,10 +13,9 @@ import RobotFace from "@/components/RobotFace";
 const STAGE_INDEX: Record<string, number> = { sources: 0, review: 0, understanding: 1, scope: 2, outputs: 2 };
 
 const HOW = [
-  { emoji: "🎯", grad: "linear-gradient(135deg,#f59e0b,#f97316)", title: "قل لنا طلبك", text: "اسم المادة، لمن، ووش الغرض — أو خلّ صادق يبحث لك." },
-  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "أضف مادتك", text: "صور أو PDF أو نص، ويقرؤها صادق بنفسه." },
-  { emoji: "🧠", grad: STEP_LOOK[1].grad, title: "اعتمد الفهم", text: "صادق يقول لك وش فهم، وأنت تعتمد." },
-  { emoji: "✨", grad: STEP_LOOK[2].grad, title: "اختر وابدأ", text: "اختر نواتجك وأجب أسئلة قصيرة، والباقي عليه." },
+  { emoji: "📤", grad: STEP_LOOK[0].grad, title: "اسم المادة ومحتواها", text: "اكتب اسمها، وحط ملفاتك: PDF، صور، يوتيوب، تسجيل، نص — أو خلّ صادق يبحث لك." },
+  { emoji: "🧠", grad: STEP_LOOK[1].grad, title: "اعتمد الفهم", text: "صادق يفرّغ ويقرأ كل شي، ويقول لك وش فهم، وأنت تعتمد." },
+  { emoji: "✨", grad: STEP_LOOK[2].grad, title: "اختر النواتج", text: "ملخص، شرح، اختبار، عرض، صوت… ولكل واحد مستواه (خفيف، متوسط، عميق) وعدد صفحاته." },
 ];
 
 export default function StudentHome({
@@ -35,11 +34,6 @@ export default function StudentHome({
   const router = useRouter();
   const formRef = useRef<HTMLElement>(null);
   const [title, setTitle] = useState("");
-  const [level, setLevel] = useState<string>("ثانوي");
-  const [other, setOther] = useState("");
-  const [audience, setAudience] = useState("");
-  const [purpose, setPurpose] = useState<PurposeId>("exam");
-  const [purposeNote, setPurposeNote] = useState("");
   const [mode, setMode] = useState<SourceMode>("files");
   const [focus, setFocus] = useState("");
   const [where, setWhere] = useState("");
@@ -66,13 +60,13 @@ export default function StudentHome({
       return;
     }
     return run(async () => {
-      if (purpose === "other" && !purposeNote.trim()) throw new Error("اكتب غرضك من المادة.");
       if (mode === "research" && !title.trim() && !focus.trim()) throw new Error("اكتب اسم المادة أو المعلومات اللي تبي صادق يبحث عنها.");
       const r = await post<{ id: string }>("/api/jawad/student/projects", {
         title: title.trim() || focus.trim().slice(0, 80) || `مادة ${new Date().toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`,
-        level: level === "آخر" ? other : level,
-        audience,
-        brief: { purpose, purposeNote: purposeNote.trim(), mode, focus: focus.trim(), where: where.trim(), auto },
+        // no school level or purpose to pick any more (the owner's choice): each output has its own level instead
+        level: "",
+        audience: "",
+        brief: { purpose: "understand", purposeNote: "", mode, focus: focus.trim(), where: where.trim(), auto },
       });
       // «صادق يبحث لي»: no material page — the research starts now, and the page carries on by itself to the outputs
       // (a refusal — not enough coins — is shown on the next page, where it can be started again)
@@ -197,45 +191,15 @@ export default function StudentHome({
           <h2 id="new-material" className="text-2xl font-bold">
             مادة جديدة
           </h2>
-          <p className="text-sm text-jw-muted">قل لنا طلبك بضغطات قليلة، وصادق يكمل.</p>
+          <p className="text-sm text-jw-muted">اكتب اسم المادة واختر من وين المحتوى، وبعدها تحط ملفاتك.</p>
           {left !== null && <p className={`text-xs font-bold ${left ? "text-jw-accent" : "text-jw-danger"}`}>{left ? `متبقٍّ لك ${left === 1 ? "مادة واحدة" : "مادتان"} من ٢ — اكتب اسمًا واضحًا قبل «ابدأ»` : "استخدمت المادتين المتاحتين لحسابك."}</p>}
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="jw-label" htmlFor="st-title">اسم المادة أو الموضوع</label>
-            <input id="st-title" className="jw-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: علوم — الفصل الثالث: الخلية" />
-          </div>
-          <div>
-            <label className="jw-label" htmlFor="st-aud">لمن؟ (اختياري)</label>
-            <input id="st-aud" className="jw-input" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="لي، لطلاب صفي، لأولياء الأمور…" />
-          </div>
+        <div>
+          <label className="jw-label" htmlFor="st-title">اسم المادة</label>
+          <input id="st-title" className="jw-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: علوم — الفصل الثالث: الخلية" />
         </div>
         <div className="space-y-2">
-          <span className="jw-label">المستوى التعليمي</span>
-          <p className="text-center text-xs text-jw-muted">💡 اختر صفّك، فيكتب صادق بكلمات تناسب عمرك.</p>
-          <div className="jw-seg justify-center" role="radiogroup" aria-label="المستوى التعليمي">
-            {[...LEVELS, "آخر"].map((l) => (
-              <button key={l} type="button" role="radio" aria-checked={level === l} onClick={() => setLevel(l)}>
-                {l}
-              </button>
-            ))}
-          </div>
-          {level === "آخر" && <input className="jw-input" value={other} onChange={(e) => setOther(e.target.value)} placeholder="اكتب المستوى والتخصص" aria-label="المستوى والتخصص" />}
-        </div>
-        <div className="space-y-2">
-          <span className="jw-label">وش غرضك منها؟</span>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="الغرض">
-            {PURPOSES.map((x) => (
-              <button key={x.id} type="button" role="radio" aria-checked={purpose === x.id} onClick={() => setPurpose(x.id)} className={`rounded-2xl border p-3 text-start transition-all ${purpose === x.id ? "border-transparent bg-white ring-4 ring-violet-300" : "border-jw-line bg-white hover:-translate-y-0.5"}`}>
-                <b className="block text-sm">{x.label}</b>
-                <span className="block text-[11px] text-jw-muted">{x.hint}</span>
-              </button>
-            ))}
-          </div>
-          <input className="jw-input" value={purposeNote} onChange={(e) => setPurposeNote(e.target.value)} placeholder={purpose === "other" ? "اكتب غرضك" : "تفاصيل تبي صادق يعرفها (اختياري)"} aria-label="تفاصيل الغرض" />
-        </div>
-        <div className="space-y-2">
-          <span className="jw-label">من وين المعلومات؟</span>
+          <span className="jw-label">من وين المحتوى؟</span>
           <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="مصدر المعلومات">
             {SOURCE_MODES.map((x) => (
               <button key={x.id} type="button" role="radio" aria-checked={mode === x.id} onClick={() => setMode(x.id)} className={`rounded-2xl border p-3 text-start transition-all ${mode === x.id ? "border-transparent bg-white ring-4 ring-violet-300" : "border-jw-line bg-white hover:-translate-y-0.5"}`}>

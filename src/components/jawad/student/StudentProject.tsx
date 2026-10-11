@@ -6,7 +6,6 @@ import Icon from "@/components/jawad/Icon";
 import Riyal from "@/components/Riyal";
 import { STUDENT, isResearchSource } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
-import { PURPOSES } from "@config/jawad/student";
 import OutputsStep from "./OutputsStep";
 import { useAutopilot } from "./autopilot";
 import StartTiers, { type TierId } from "./StartTiers";
@@ -19,7 +18,7 @@ import { ErrorLine } from "./ui";
 // read and approved by the assistant, and the research the request asked for runs after the understanding. Every tier
 // reached can be opened again. `StepId` stays the finer position inside the first page (which tier is the current one).
 const STEPS = [
-  { id: "brief", label: "الطلب", emoji: "🎯" },
+  { id: "brief", label: "الطلب", emoji: "🎯" }, // kept for the step numbers; the request is now only the name (in «المادة»)
   { id: "sources", label: "المادة", emoji: STEP_LOOK[0].emoji },
   { id: "understanding", label: "الفهم", emoji: STEP_LOOK[1].emoji },
   { id: "outputs", label: "النواتج", emoji: STEP_LOOK[2].emoji },
@@ -93,8 +92,8 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   }, [view]);
 
   const HINT: Record<"start" | "outputs", string> = {
-    start: project.brief.mode === "research" ? "اكتب طلبك، وخلّ صادق يبحث ويكتب مادتك (أو أضف ملفاتك)، ثم اعتمد فهمه — كله هنا في صفحة وحدة." : "اكتب طلبك، أضف صورك أو ملفاتك أو نصك، ثم اعتمد فهم صادق — كله هنا في صفحة وحدة.",
-    outputs: autoOn ? "اختر نواتجك، أجب الأسئلة القصيرة، واضغط «ابدأ»." : "اختر نواتجك واضغط «ابدأ»، وبعدها افتح كل ناتج: راجع خطته واعتمدها قبل التصنيع.",
+    start: project.brief.mode === "research" ? "خلّ صادق يبحث ويكتب مادتك (أو أضف ملفاتك)، ثم اعتمد فهمه." : "حط محتوى مادتك (PDF، صور، يوتيوب، تسجيل، نص)، صادق يفرّغه ويقرأه، ثم اعتمد فهمه.",
+    outputs: autoOn ? "اختر نواتجك، ولكل ناتج مستواه (خفيف · متوسط · عميق · أعمق) وعدد صفحاته، واضغط «ابدأ»." : "اختر نواتجك ولكل واحد مستواه وعدد صفحاته، واضغط «ابدأ»، وبعدها افتح كل ناتج: راجع خطته واعتمدها قبل التصنيع.",
   };
   const group: "start" | "outputs" = view === "outputs" ? "outputs" : "start";
   const gi = GROUPS.findIndex((g) => g.id === group);
@@ -104,7 +103,6 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
     setOpen((o) => ({ ...o, [id]: on }));
     if (on) setView(id);
   };
-  const purpose = PURPOSES.find((x) => x.id === project.brief.purpose);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6" data-st-stage={view} data-st-project={project.id}>
@@ -116,8 +114,7 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold">{project.title || "مادة"}</h1>
             <p className="text-xs text-jw-faint">
-              {project.level ? `${project.level} · ` : ""}
-              {purpose ? `${purpose.id === "other" ? project.brief.purposeNote || purpose.label : purpose.label} · ` : ""}تُحذف {new Date(project.expiresAt).toLocaleDateString("ar")} إن لم تُستخدم
+              تُحذف {new Date(project.expiresAt).toLocaleDateString("ar")} إن لم تُستخدم
             </p>
           </div>
         </div>
