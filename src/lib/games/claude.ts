@@ -103,12 +103,17 @@ export async function readStream(res: Response, keepPartial = false): Promise<{ 
  */
 export async function talk(o: { system: string; turns: Turn[]; maxTokens: number; effort?: "low" | "medium" | "high"; timeoutMs?: number; leader?: boolean; stream?: boolean; keepPartial?: boolean }): Promise<Said> {
   const deadline = Date.now() + (o.timeoutMs ?? 170_000);
+  let ask = o;
   for (let i = 0; ; i++) {
     try {
-      return await talkOnce(o, deadline - Date.now());
+      return await talkOnce(ask, deadline - Date.now());
     } catch (e) {
       const left = deadline - Date.now();
-      if (i >= 2 || !passing(e) || left < 45_000) throw e;
+      // an empty answer: the model's thinking used the whole reply budget before a word was written (or the line gave
+      // nothing). Asked again, thinking less, so the text gets the room.
+      const empty = /empty answer/i.test(e instanceof Error ? e.message : String(e));
+      if (empty) ask = { ...ask, effort: "low" };
+      if (i >= 2 || !(passing(e) || empty) || left < 45_000) throw e;
       console.warn("claude talk: trying again", e instanceof Error ? e.message : e);
       await nap(i ? 6000 : 2000);
     }
