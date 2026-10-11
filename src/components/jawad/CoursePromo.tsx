@@ -81,7 +81,7 @@ export default function CoursePromo({ version }: { version: string }) {
             <button type="button" className="sr-x" onClick={close} aria-label="أغلق">✕</button>
 
             <div className="sr-head">
-              <span className="sr-ribbon">🎬 {COURSE.name} · ٣ أيام</span>
+              <span className="sr-ribbon">🎬 {COURSE.name} — ٣ أيام</span>
               <div className="sr-trophy" aria-hidden>🎓</div>
               <h2>{p.headline}</h2>
               {p.offer ? (
