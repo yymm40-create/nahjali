@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { KHATEEB, METHOD_MAX, POEMS_MAX } from "@config/jawad/khateeb";
+import ReferenceAdmin from "./ReferenceAdmin";
 
 interface Settings {
   slug: string;
@@ -90,6 +91,8 @@ export default function KhateebAdmin({ initial }: { initial: Settings }) {
         <textarea className="jw-textarea" rows={14} value={method} maxLength={METHOD_MAX} onChange={(e) => setMethod(e.target.value)} aria-label="طريقة صياغة الخطبة" />
         <button type="button" className="jw-btn jw-btn-primary" disabled={busy || method === s.method} onClick={() => save({ method }, "انحفظت الطريقة.")}>احفظ الطريقة</button>
       </section>
+
+      <ReferenceAdmin />
 
       <section className="jw-panel space-y-3 p-4">
         <h2 className="font-semibold">🪶 الأشعار والأبيات</h2>

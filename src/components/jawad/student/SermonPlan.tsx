@@ -76,6 +76,7 @@ function TopicCard({ t, i, chosen, act, busy }: { t: SermonTopic; i: number; cho
 export default function SermonPlan({ o, plan, act, running }: { o: OutputView; plan: DocPlan; act: Act; running: boolean }) {
   const sp = plan.sermon;
   const [manual, setManual] = useState({ source: "", url: "", text: "" });
+  const [ask, setAsk] = useState("");
   const [open, setOpen] = useState(false);
   const { busy, error, run } = useAsync();
   if (!sp) return <p className="text-sm text-jw-muted">أعد إعداد الخطة لتظهر المواضيع.</p>;
@@ -141,13 +142,38 @@ export default function SermonPlan({ o, plan, act, running }: { o: OutputView; p
         </section>
       )}
 
-      <section className="space-y-2">
+      <section className="space-y-3">
         <h4 className="font-semibold">الخطوة ٤ · الشواهد الأدبية</h4>
         <p className="text-sm text-jw-muted">
           {poemsFor || poems
-            ? `${poemsFor ? `الغرض: ${poemsFor}. ` : ""}${poems ? "وأبياتك اللي كتبتها تُستخدم كما هي." : ""} ويستشهد الشيخ بمجموعة الأشعار عند صاحب المنصة لو ناسبت.`
-            : "ما حددت أبياتًا ولا غرضًا: يستشهد الشيخ بمجموعة الأشعار عند صاحب المنصة لو ناسبت. تقدر تضيف أبياتك أو غرضك (حكمة، طلب العلم، الصبر…) من «إعدادات الناتج» فوق وتعيد الخطة."}
+            ? `${poemsFor ? `الغرض: ${poemsFor}. ` : ""}${poems ? "وأبياتك اللي كتبتها تُستخدم كما هي. " : ""}`
+            : "ما حددت أبياتًا ولا غرضًا. "}
+          تقدر تطلب من الشيخ يستخرج أبياتًا من مرجع الأشعار: يلقاها بنصها الحرفي مع رقم صفحتها، وتنكتب في الخطبة بالصفحة.
         </p>
+        {topic && (
+          <>
+            {(sp.poems ?? []).length > 0 && (
+              <ol className="space-y-2">
+                {(sp.poems ?? []).map((p, k) => (
+                  <li key={`${k}-${p.page}`} className="jw-panel space-y-1 p-3 text-sm">
+                    <p className="whitespace-pre-wrap text-base leading-loose" dir="rtl">{p.text}</p>
+                    <p className="text-xs text-jw-muted">
+                      {p.poet ? `${p.poet} · ` : ""}المرجع: {p.ref}، ص{p.page}
+                      {p.why ? ` · ${p.why}` : ""}
+                    </p>
+                    <button type="button" className="jw-btn !min-h-8 text-xs" disabled={busy || running} onClick={() => run(() => act({ action: "sermon_poems_keep", keep: (sp.poems ?? []).map((_, j) => j).filter((j) => j !== k) }))}>
+                      شيل هذا البيت
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <label className="block space-y-1 text-xs text-jw-muted">اطلب أبياتًا عن… (اختياري)
+              <input className="jw-input" value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="مثال: أبيات في الصبر على البلاء، أو في فضل العلم" />
+            </label>
+            <PaidButton label={(sp.poems ?? []).length ? "استخرج أبياتًا من جديد" : "استخرج أبياتًا من المرجع"} primary={!(sp.poems ?? []).length} what="يبحث الشيخ في مرجع الأشعار عن أبيات تخدم الموضوع، وينقلها بنصها الحرفي مع رقم الصفحة، وما يعتمد بيت ما لقاه مكتوب في الصفحة." disabled={running} run={(b) => act({ action: "sermon_poems", ask, ...b })} />
+          </>
+        )}
       </section>
 
       <section className="space-y-2">

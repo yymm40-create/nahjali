@@ -4,7 +4,7 @@
 
 import { minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
 import { readSermonLength, SERMON_PARTS } from "@config/jawad/khateeb";
-import { sermonBrief, sermonPlanStep, tafsirCeilingUsd } from "./sermon";
+import { poemsCeilingUsd, sermonBrief, sermonPlanStep, tafsirCeilingUsd } from "./sermon";
 import { defaultDesign, isPaged, outputName, pagesOf, readBrief, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
 import { methodLine, studyAudience } from "@config/jawad/study-methods";
 import { ELEVEN_PRICE } from "@config/jawad/generators";
@@ -100,6 +100,7 @@ export async function estimate(userId: string, o: Output, action: string, chapte
   const chars = allChars(c) + (c.research ? 20_000 : 0);
   // «خطبة المنبر»: the verse's tafsir read from the book and put in plain words
   if (action === "tafsir") return tafsirCeilingUsd();
+  if (action === "poems") return poemsCeilingUsd();
   if (action === "plan") {
     if (o.kind === "book" && o.settings.writing === "verbatim") return 0;
     if (o.kind === "audio") {

@@ -679,7 +679,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const i = Math.round(Number(b.index));
       if (!Number.isInteger(i) || i < 0 || i >= sp.topics.length) throw new UserError("اختر واحدًا من المواضيع.");
       // another topic has another verse: its tafsir is fetched again
-      await savePlan(o, user.id, { ...sp, chosen: i, tafsir: i === sp.chosen ? sp.tafsir : null });
+      await savePlan(o, user.id, { ...sp, chosen: i, tafsir: i === sp.chosen ? sp.tafsir : null, poems: i === sp.chosen ? sp.poems : undefined });
       return { ok: true };
     }
     // the preacher's own words on a topic, or another verse for it (its words are fetched from the Quran)
@@ -711,6 +711,19 @@ export async function outputAction(user: User, id: string, b: Body) {
       const source = text(b.source, 300) || "تفسير أدخله الخطيب";
       const url = /^https:\/\//.test(String(b.url ?? "")) ? text(b.url, 500) : "";
       await savePlan(o, user.id, { ...sp, tafsir: { source, url, excerpt: body, simple: body, manual: true } });
+      return { ok: true };
+    }
+    // the method's step 4: lines for the sermon picked from the owner's reference (a paid job), or the ones the preacher keeps
+    case "sermon_poems": {
+      const sp = sermonOf(o);
+      if (sp.chosen < 0) throw new UserError("اختر موضوع الخطبة أول.");
+      const ask = text(b.ask, 500);
+      return run("poems", await estimate(user.id, o, "poems"), { ask }, "اختيار الأبيات من المرجع");
+    }
+    case "sermon_poems_keep": {
+      const sp = sermonOf(o);
+      const keep = new Set((Array.isArray(b.keep) ? b.keep : []).map((n) => Math.round(Number(n))));
+      await savePlan(o, user.id, { ...sp, poems: (sp.poems ?? []).filter((_, k) => keep.has(k)) });
       return { ok: true };
     }
     // the tafsir of the chosen verse from مجمع البيان (a paid job: the pages are read and put in plain words)
