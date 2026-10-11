@@ -57,9 +57,9 @@ export type ActionId =
 
 export const ACTIONS: { id: ActionId; ar: string; group: string }[] = [
   { id: "play", ar: "شغّل / وقّف", group: "التشغيل" },
-  { id: "pause", ar: "وقّف", group: "التشغيل" },
-  { id: "playFwd", ar: "شغّل لقدّام", group: "التشغيل" },
-  { id: "back", ar: "وقّف وارجع ثانية", group: "التشغيل" },
+  { id: "pause", ar: "وقّف (K)", group: "التشغيل" },
+  { id: "playFwd", ar: "شغّل لقدّام؛ كل ضغطة أسرع ×٢ حتى ×٨ (L)", group: "التشغيل" },
+  { id: "back", ar: "شغّل للورا؛ كل ضغطة أسرع ×٢ حتى ×٨ (J)", group: "التشغيل" },
   { id: "frameBack", ar: "فريم للورا", group: "التنقل" },
   { id: "frameFwd", ar: "فريم لقدّام", group: "التنقل" },
   { id: "bigBack", ar: "قفزة للورا", group: "التنقل" },
@@ -100,6 +100,9 @@ export const ACTIONS: { id: ActionId; ar: string; group: string }[] = [
 export const KEYMAPS: Record<ProgramId, Partial<Record<ActionId, string[]>>> = {
   jawad: {
     play: ["Space"],
+    pause: ["K"],
+    playFwd: ["L"],
+    back: ["J"],
     frameBack: ["Left"],
     frameFwd: ["Right"],
     bigBack: ["Shift+Left"],

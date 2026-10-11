@@ -46,6 +46,7 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
     playheadMs: Number(extra.playhead) || 0,
     selected: Array.isArray(extra.selected) ? extra.selected.slice(0, 50) : [],
     magnetic: tl.magnetic,
+    ...(tl.magnetAll ? { magnetAll: true } : {}),
     ...(tl.seqs?.length ? { sequences: tl.seqs.map((x) => ({ id: x.id, name: x.name, ...(x.tl ? {} : { open: true }) })) } : {}),
     tracks: tl.tracks.map((t) => ({
       id: t.id,

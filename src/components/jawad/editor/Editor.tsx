@@ -48,6 +48,12 @@ import "./workspaces.css";
 import { PAGE_INFO, WORKSPACES, WS_BY_ID, wsVars, type PageId } from "./workspaces";
 import { TL_ZOOM } from "./Timeline";
 import { BIG_STEP, comboOf, KEYS_STORE, keyTable, readProgram, type ActionId, type ProgramId } from "@/lib/editor/shortcuts";
+import { rateLabel } from "@/lib/editor/shuttle";
+import { PREVIEW_ZOOM_KEY, PREVIEW_ZOOMS, previewSize, readPreviewZoom, type PreviewZoom } from "@/lib/editor/preview-zoom";
+import { describeDevice, PERF_MODES, PERF_SHARES, type DeviceReport, type PerfPrefs } from "@/lib/editor/perf";
+import { benchDevice, deviceNow, loadPerf, perfPlan, savePerf } from "./perf-bench";
+import { resetKeyGl } from "./key-gl";
+import { resetGradeGl } from "./grade-gl";
 import Timeline from "./Timeline";
 import type { EditorAsset, EditorProjectView } from "./types";
 import { useUploads, type Placement } from "./useUploads";
@@ -320,6 +326,26 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     },
     [sizePreview],
   );
+  // «تكبير المعاينة»: the picture at a chosen share of the stage («ملء» … ٤٠٠٪), scrolled around when larger than it
+  const [pz, setPz] = useState<PreviewZoom>("fit");
+  const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
+  const stageRo = useRef<ResizeObserver | null>(null);
+  const stageInner = useCallback((el: HTMLDivElement | null) => {
+    stageRo.current?.disconnect();
+    stageRo.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setStageBox({ w: el.clientWidth - 16, h: el.clientHeight - 16 }));
+    ro.observe(el);
+    stageRo.current = ro;
+  }, []);
+  const pickZoom = (z: PreviewZoom) => {
+    setPz(z);
+    try {
+      localStorage.setItem(PREVIEW_ZOOM_KEY, z);
+    } catch {
+      /* not kept */
+    }
+  };
   const [full, setFull] = useState(false);
   const toggleFull = () => {
     const el = stage.current;
@@ -372,6 +398,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (z >= 0.85 && z <= 1.6) setChatZoom(z);
         const cm = localStorage.getItem("jw-editor-chat-mode");
         if (cm === "tall" || cm === "half") setChatModeState(cm);
+        setPz(readPreviewZoom(localStorage.getItem(PREVIEW_ZOOM_KEY)));
         const kp = readProgram(localStorage.getItem(KEYS_STORE));
         if (kp) setKeysFrom(kp);
         else if (window.matchMedia("(min-width: 1024px) and (pointer: fine)").matches) setKeysOpen("first");
@@ -1188,11 +1215,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return player?.toggle();
       case "pause":
         return player?.playing ? player.pause() : undefined;
+      // «J K L»: L forward, J backward, each press again twice as fast (×2, ×4, ×8); K stops
       case "playFwd":
-        return player?.playing ? undefined : player?.play();
+        return player?.shuttle(1);
       case "back":
-        player?.pause();
-        return player?.seek(Math.max(0, ms - 1000));
+        return player?.shuttle(-1);
       case "frameBack":
       case "frameFwd":
         return player?.seek(ms + (1000 / fps) * (action === "frameFwd" ? 1 : -1));
@@ -1767,8 +1794,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         <section ref={stageRef} className={`relative flex min-w-0 flex-1 flex-col ${full ? "fixed inset-0 z-[70] bg-black" : ""} ${floatCls("preview")}`} style={full ? undefined : placeStyle("preview")} aria-label="المعاينة">
           {floatBar("preview")}
-          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
-            <canvas ref={canvas} width={tl.width} height={tl.height} className="jw-screen max-h-full max-w-full rounded-xl" style={{ aspectRatio: `${tl.width} / ${tl.height}` }} />
+          <div ref={stageInner} className={`relative flex min-h-0 flex-1 p-2 ${pz === "fit" || full ? "items-center justify-center overflow-hidden" : "jw-scroll overflow-auto"}`}>
+            <canvas
+              ref={canvas}
+              width={tl.width}
+              height={tl.height}
+              className={`jw-screen rounded-xl ${pz === "fit" || full ? "max-h-full max-w-full" : "m-auto shrink-0"}`}
+              style={pz === "fit" || full ? { aspectRatio: `${tl.width} / ${tl.height}` } : { aspectRatio: `${tl.width} / ${tl.height}`, ...sizeOf(previewSize(stageBox.w, stageBox.h, tl.width, tl.height, pz)) }}
+            />
             <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
             <button
               type="button"
@@ -1780,6 +1813,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
               <Icon name={big ? "shrink" : "expand"} size={16} />
               <span className="hidden sm:inline">{big ? "صغّر الشاشة" : "كبّر الشاشة"}</span>
             </button>
+            {!full && (
+              <label className="jw-glass absolute end-3 top-14 z-20 hidden items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold lg:flex" title="تكبير المعاينة: الصورة بنسبة من الشاشة؛ أكبر من الشاشة تتحرك فيها بالسحب">
+                <span aria-hidden>🔍</span>
+                <select className="bg-transparent text-jw-ink focus:outline-none" value={pz} onChange={(e) => pickZoom(readPreviewZoom(e.target.value))} aria-label="تكبير المعاينة">
+                  {PREVIEW_ZOOMS.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.ar}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {/* the video alone on the whole screen, with play / pause */}
             <span className="absolute start-3 top-3 z-20 flex items-center gap-1.5">
               <button type="button" className="jw-glass jw-3d flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold" onClick={toggleFull} aria-pressed={full} title={full ? "اطلع من ملء الشاشة (Esc)" : "الفيديو على الشاشة كاملة"}>
@@ -1908,6 +1953,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         <button type="button" className={`${toolBtn} hidden lg:flex ${tl.magnetic ? "text-jw-accent" : ""}`} onClick={() => run({ type: "set_magnetic", on: !tl.magnetic })} disabled={readOnly} title="المغناطيس: المسار الرئيسي بدون فراغات" aria-pressed={tl.magnetic}>
           <Icon name="magnet" size={16} /> مغناطيس
         </button>
+        {tl.magnetic && (
+          <button type="button" className={`${toolBtn} hidden lg:flex ${tl.magnetAll ? "text-jw-accent" : ""}`} onClick={() => run({ type: "set_magnet_all", on: !tl.magnetAll })} disabled={readOnly} title="مغناطيس كل المسارات: الحذف يشيل نفس الثواني من كل المسارات (فوق وتحت) ويسحب اللي بعدها" aria-pressed={tl.magnetAll}>
+            <Icon name="magnet" size={16} /> كل المسارات
+          </button>
+        )}
       </div>
 
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
@@ -2003,7 +2053,7 @@ function SheetGrip({ onClose, title }: { onClose: () => void; title: string }) {
 
 /** Play/pause and the time (they follow the player without re-rendering the editor). */
 function Transport({ player, total, name }: { player: Player | null; total: number; name: string }) {
-  const [state, setState] = useState({ ms: 0, playing: false });
+  const [state, setState] = useState({ ms: 0, playing: false, rate: 1 });
   const [saving, setSaving] = useState(false);
   // «احفظ الفريم»: the frame where the video is stopped, as a PNG at the project's size
   const saveFrame = async () => {
@@ -2030,7 +2080,7 @@ function Transport({ player, total, name }: { player: Player | null; total: numb
       const now = performance.now();
       if (playing && now - last < 90) return;
       last = now;
-      setState({ ms, playing });
+      setState({ ms, playing, rate: player.rate });
     });
   }, [player]);
   return (
@@ -2047,11 +2097,111 @@ function Transport({ player, total, name }: { player: Player | null; total: numb
       <span className="ms-1 text-xs tabular-nums text-jw-muted">
         <b className="text-jw-ink">{formatTime(state.ms)}</b> / {formatTime(total)}
       </span>
+      {state.playing && state.rate !== 1 && (
+        <span className="rounded-full bg-jw-accent/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-jw-accent" title="سرعة التشغيل (J / K / L)">
+          {rateLabel(state.rate)}
+        </span>
+      )}
       <button type="button" className="ms-1 grid h-8 w-8 place-items-center rounded-full text-jw-muted hover:text-jw-ink disabled:opacity-40" onClick={saveFrame} disabled={!total || saving} aria-label="احفظ الفريم صورة" title="احفظ الفريم صورة (PNG)">
         <Icon name="camera" size={15} />
       </button>
       <QualityPick player={player} />
+      <PerfPick />
     </div>
+  );
+}
+
+/** A size for a style, from the preview's measure. */
+const sizeOf = (p: { w: number; h: number }) => ({ width: p.w, height: p.h, maxWidth: "none", maxHeight: "none" });
+
+/**
+ * «⚙️ الأداء»: which part of the computer does what — automatic (measured), the graphics card, the processor or the
+ * integrated graphics — and how much of it the editor may take; «قيّم جهازي» times the same keying work on both and
+ * shows the decision for the timeline and for the export.
+ */
+function PerfPick() {
+  const [open, setOpen] = useState(false);
+  const [prefs, setPrefs] = useState<PerfPrefs>(() => ({ mode: "auto", share: 100 }));
+  const [device, setDevice] = useState<DeviceReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setPrefs(loadPerf()), 0);
+    return () => clearTimeout(t);
+  }, []);
+  const change = (p: PerfPrefs) => {
+    setPrefs(p);
+    savePerf(p);
+    // the GL contexts are made again with the new power preference on the next frame
+    resetKeyGl();
+    resetGradeGl();
+  };
+  const bench = async () => {
+    setBusy(true);
+    try {
+      setDevice(await benchDevice());
+    } catch (e) {
+      diagNote(`قياس الجهاز ما نجح: ${e instanceof Error ? e.message : String(e)}`);
+      setDevice(deviceNow());
+    } finally {
+      setBusy(false);
+    }
+  };
+  const d = device ?? (open ? deviceNow() : null);
+  const plans = open ? [perfPlan("timeline"), perfPlan("render")] : [];
+  return (
+    <span className="relative">
+      <button type="button" className={`ms-1 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${open ? "border-jw-accent text-jw-accent" : "border-jw-line text-jw-muted"}`} onClick={() => setOpen((v) => !v)} aria-expanded={open} title="الأداء: المعالج أو كرت الشاشة، ونسبة الاستخدام">
+        <span aria-hidden>⚙️</span>
+        <span dir="rtl">{PERF_MODES.find((m) => m.id === prefs.mode)?.ar ?? "الأداء"}</span>
+      </button>
+      {open && (
+        <div className="jw-glass-lg absolute bottom-full end-0 z-40 mb-2 w-[22rem] max-w-[90vw] space-y-2 rounded-2xl p-3 text-start text-xs shadow-2xl" dir="rtl" role="dialog" aria-label="الأداء">
+          <div className="flex items-center justify-between">
+            <b>⚙️ الأداء</b>
+            <button type="button" className="text-jw-muted hover:text-jw-ink" onClick={() => setOpen(false)} aria-label="أغلق">
+              ✕
+            </button>
+          </div>
+          <div className="jw-seg flex flex-wrap gap-1" role="radiogroup" aria-label="من يشتغل">
+            {PERF_MODES.map((m) => (
+              <button key={m.id} type="button" role="radio" aria-checked={prefs.mode === m.id} title={m.hint} className={`rounded-full border px-2.5 py-1 ${prefs.mode === m.id ? "border-jw-accent bg-jw-accent/15 text-jw-ink" : "border-jw-line text-jw-muted"}`} onClick={() => change({ ...prefs, mode: m.id })}>
+                {m.ar}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] leading-5 text-jw-faint">{PERF_MODES.find((m) => m.id === prefs.mode)?.hint}</p>
+          <label className="flex items-center justify-between gap-2">
+            <span>نسبة استخدام الجهاز</span>
+            <select className="jw-input !min-h-8 w-24 text-xs" value={prefs.share} onChange={(e) => change({ ...prefs, share: Number(e.target.value) })} aria-label="نسبة استخدام الجهاز">
+              {PERF_SHARES.map((v) => (
+                <option key={v} value={v}>
+                  {v}٪
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="space-y-1 border-t border-jw-line pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-jw-muted">جهازك</span>
+              <button type="button" className="jw-btn jw-3d !min-h-7 !px-2 text-[11px]" onClick={bench} disabled={busy}>
+                {busy ? "أقيس…" : "🧪 قيّم جهازي"}
+              </button>
+            </div>
+            {d && <p className="text-[11px] leading-5" dir="auto">{describeDevice(d)}</p>}
+            {d?.bench && (
+              <p className="text-[11px] leading-5 text-jw-muted">
+                القياس (٢٤ فريم كي): الكرت {Number.isFinite(d.bench.gpuMs) ? `${Math.round(d.bench.gpuMs)} ملّي ثانية` : "ما اشتغل"} · المعالج {Math.round(d.bench.cpuMs)} ملّي ثانية
+              </p>
+            )}
+            <ul className="list-disc space-y-0.5 ps-4 text-[11px] leading-5">
+              {plans.flatMap((p) => p.why).map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </span>
   );
 }
 

@@ -511,6 +511,12 @@ export interface Timeline {
   background: string;
   /** the main track closes its gaps by itself (CapCut's «المغناطيس»); off = clips stay where they are put */
   magnetic: boolean;
+  /**
+   * «مغناطيس كل المسارات»: a delete takes the same seconds out of EVERY track (what is above and below the clip goes
+   * with it) and everything after moves back on every track, so picture, sound and texts stay in step (only with
+   * `magnetic`; absent in older projects = off).
+   */
+  magnetAll: boolean;
   /** beat marks (timeline ms) the cuts snap to */
   markers: number[];
   tracks: Track[];
@@ -654,6 +660,7 @@ export function emptyTimeline(ratio: Ratio = "9:16"): Timeline {
     fps: 30,
     background: "#000000",
     magnetic: true,
+    magnetAll: false,
     markers: [],
     tracks: [
       { id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] },
@@ -863,7 +870,10 @@ export type BlendMode = keyof typeof BLEND_MODES;
  * `soft` the soft edge, `spill` the colour's glow taken off the edges (despill), `choke` shrinks the matte, `clean`
  * («تنظيف الخلفية», Ultra Key's Clip Black) clears what is left of the screen, `fill` («سد الفراغات», Clip White) fills
  * the holes in the person. «لوما» takes out the dark parts (or the bright ones, `invert`): below `low` gone, above
- * `high` kept, `soft` between. `show` = the matte. The maths: key-math.ts.
+ * `high` kept, `soft` between. `show` = the matte. `hair` («حواف الشعر») is how much the edge's alpha comes from the
+ * colour difference instead of the hue (soft, see-through hair strands instead of eaten or hard ones), `steady`
+ * («ثبات ضد الرجفة») how much the matte follows the previous frame's where the change is small (video noise
+ * flickering at the edge) — a real move always passes through. The maths: key-math.ts.
  */
 export interface Keyer {
   kind: "chroma" | "luma";
@@ -876,10 +886,12 @@ export interface Keyer {
   fill: number;
   low: number;
   high: number;
+  hair: number;
+  steady: number;
   invert: boolean;
   show: boolean;
 }
-export const NEW_KEY: Keyer = { kind: "chroma", color: "#00b140", tolerance: 0.4, soft: 0.15, spill: 0.6, choke: 0, clean: 0.15, fill: 0.15, low: 0.1, high: 0.35, invert: false, show: false };
+export const NEW_KEY: Keyer = { kind: "chroma", color: "#00b140", tolerance: 0.4, soft: 0.15, spill: 0.6, choke: 0, clean: 0.15, fill: 0.15, low: 0.1, high: 0.35, hair: 0.5, steady: 0.5, invert: false, show: false };
 export function readKey(v: unknown): Keyer | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -894,6 +906,8 @@ export function readKey(v: unknown): Keyer | null {
     fill: num(o.fill, 0, 1, NEW_KEY.fill),
     low: num(o.low, 0, 1, NEW_KEY.low),
     high: num(o.high, 0, 1, NEW_KEY.high),
+    hair: num(o.hair, 0, 1, NEW_KEY.hair),
+    steady: num(o.steady, 0, 1, NEW_KEY.steady),
     invert: o.invert === true,
     show: o.show === true,
   };
@@ -1069,7 +1083,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);
   const height = int(o.height, 144, 4096, 1920);
-  const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic: o.magnetic !== false, markers: readMarkers(o.markers), tracks };
+  const out: Timeline = { v: EDITOR_VERSION, width: width - (width % 2), height: height - (height % 2), fps: pick<number>(Number(o.fps), [24, 25, 30, 60], 30), background: color(o.background, "#000000"), magnetic: o.magnetic !== false, magnetAll: o.magnetic !== false && o.magnetAll === true, markers: readMarkers(o.markers), tracks };
   const main = mainTrack(out);
   if (main && out.magnetic) main.clips = pack(main.clips);
   // the other timelines (one level: theirs are dropped), exactly one of them the open one

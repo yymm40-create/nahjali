@@ -4,7 +4,8 @@
 // side, a key frame every second so seeking is instant) and kept on this device (the browser's private file system):
 // the preview plays the copy, the export always uses the original 4K. Nothing is uploaded and nothing is paid.
 
-import { ALL_FORMATS, BlobSource, Conversion, Input, Mp4OutputFormat, Output, QUALITY_MEDIUM, StreamTarget, UrlSource, type StreamTargetChunk } from "mediabunny";
+import { ALL_FORMATS, BlobSource, Conversion, Input, Mp4OutputFormat, Output, QUALITY_MEDIUM, StreamTarget, UrlSource, type StreamTargetChunk, canEncodeVideo } from "mediabunny";
+import { wantedEncode } from "./perf-bench";
 
 /** The long side of the light copy (the preview never needs more: the canvas is the project's size). */
 export const PROXY_SIDE = 1920;
@@ -51,6 +52,10 @@ export async function makeProxy(assetId: string, source: Blob | string, onProgre
   });
   const input = new Input({ source: typeof source === "string" ? new UrlSource(source) : new BlobSource(source), formats: ALL_FORMATS });
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: new StreamTarget(writable, { chunked: true }) });
+  // «الأداء»: the encoder's hardware hint only when the browser confirms it works for this size (else none: a hint
+  // Chromium can't meet is an error)
+  const want = wantedEncode();
+  const hw = want !== "no-preference" && (await canEncodeVideo("avc", { width: PROXY_SIDE, height: PROXY_SIDE, bitrate: QUALITY_MEDIUM, hardwareAcceleration: want }).catch(() => false)) ? want : "no-preference";
   try {
     const conv = await Conversion.init({
       input,
@@ -61,7 +66,7 @@ export async function makeProxy(assetId: string, source: Blob | string, onProgre
         const k = Math.min(1, PROXY_SIDE / long);
         // even sizes (H.264 wants them)
         const w = Math.max(2, Math.round((track.displayWidth * k) / 2) * 2);
-        return { width: w, codec: "avc", bitrate: QUALITY_MEDIUM, keyFrameInterval: 1, forceTranscode: true, hardwareAcceleration: "prefer-hardware" };
+        return { width: w, codec: "avc", bitrate: QUALITY_MEDIUM, keyFrameInterval: 1, forceTranscode: true, hardwareAcceleration: hw };
       },
       audio: { codec: "aac" },
     });

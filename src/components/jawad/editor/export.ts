@@ -11,6 +11,7 @@ import {
   CanvasSink,
   CanvasSource,
   getFirstEncodableAudioCodec,
+  canEncodeVideo,
   getFirstEncodableVideoCodec,
   Input,
   Mp4OutputFormat,
@@ -19,6 +20,8 @@ import {
   UrlSource,
   type WrappedCanvas,
 } from "mediabunny";
+import { wantedEncode } from "./perf-bench";
+import type { HwHint } from "@/lib/editor/perf";
 import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
 import { drawFrame, layersAt, setExporting, type Frame } from "./render";
 import type { ExportPlan } from "@/lib/editor/export-plan";
@@ -75,7 +78,14 @@ export async function exportVideo(
     }
   }
 
+  // «الأداء»: the encoder's hardware hint, only when the browser confirms an encoder with it exists for this very size
+  // and codec (a hint it can't meet is an error in Chromium; «no-preference» never is)
+  let hw: HwHint = "no-preference";
   const videoCodec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width, height, bitrate: plan.bitrate, frameRate: fps });
+  if (videoCodec) {
+    const want = wantedEncode();
+    if (want !== "no-preference" && (await canEncodeVideo(videoCodec, { width, height, bitrate: plan.bitrate, frameRate: fps, hardwareAcceleration: want }).catch(() => false))) hw = want;
+  }
   if (!videoCodec) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بمقاس ${width}×${height}. اختر دقة أقل (أو جرّب Chrome أو Edge على الكمبيوتر).`);
 
   // sound: clips we can hear
@@ -89,7 +99,7 @@ export async function exportVideo(
   canvas.height = height;
   const ctx = canvas.getContext("2d", { alpha: false })!;
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-  const video = new CanvasSource(canvas, { codec: videoCodec, bitrate: plan.bitrate, keyFrameInterval: 2 });
+  const video = new CanvasSource(canvas, { codec: videoCodec, bitrate: plan.bitrate, keyFrameInterval: 2, hardwareAcceleration: hw });
   output.addVideoTrack(video, { frameRate: fps });
   const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: plan.audioBitrate }) : null;
   if (audio) output.addAudioTrack(audio);

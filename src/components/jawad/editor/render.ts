@@ -6,7 +6,8 @@ import { drawWithFx, fxPlan } from "./fx";
 import { transitionLook, type TrLook, type TrMask } from "@/lib/editor/transitions";
 import { gradeLayers } from "./grade-gl";
 import { keyFrame } from "./key-gl";
-import { keyPixels } from "@/lib/editor/key-math";
+import { keyMatte, keyParams, despill as despillKey } from "@/lib/editor/key-math";
+import { perfPlan } from "./perf-bench";
 
 /** set while the export draws: the grade always shows (no before/after view) */
 let exporting = false;
@@ -47,9 +48,13 @@ function tapCopy(f: Frame) {
   g.drawImage(f.img, 0, 0, w, h);
 }
 
-/** The key on the CPU (the same maths), when the device has no WebGL2: at up to 640 px. */
+/**
+ * The key on the CPU (the same maths), when the device has no WebGL2 or «الأداء» says the processor: at up to 640 px,
+ * with each clip's previous matte kept for «ثبات» (the frame after it only).
+ */
 let cpuKey: HTMLCanvasElement | null = null;
-function keyOnCpu(f: Frame, k: NonNullable<Clip["key"]>) {
+const cpuPrev = new Map<string, { m: Float32Array; ms: number; w: number; h: number }>();
+function keyOnCpu(f: Frame, k: NonNullable<Clip["key"]>, cont?: { id: string; ms: number } | null) {
   if (k.kind !== "chroma") return null;
   const s = Math.min(1, 640 / Math.max(f.width, f.height));
   const w = Math.max(1, Math.round(f.width * s)),
@@ -63,7 +68,28 @@ function keyOnCpu(f: Frame, k: NonNullable<Clip["key"]>) {
   g.clearRect(0, 0, w, h);
   g.drawImage(f.img, 0, 0, w, h);
   const d = g.getImageData(0, 0, w, h);
-  keyPixels(d.data, w, h, k, k.show);
+  const P = keyParams(k);
+  const had = cont ? cpuPrev.get(cont.id) : undefined;
+  const prev = had && had.w === w && had.h === h && Math.abs(had.ms - cont!.ms) <= 130 && had.ms !== cont!.ms ? had.m : null;
+  const matte = keyMatte(d.data, w, h, P, prev);
+  if (cont) {
+    if (cpuPrev.size >= 6 && !had) cpuPrev.delete(cpuPrev.keys().next().value!);
+    cpuPrev.set(cont.id, { m: matte, ms: cont.ms, w, h });
+  }
+  const px = d.data;
+  for (let i = 0, j = 0; j < w * h; i += 4, j++) {
+    const a = matte[j];
+    if (k.show) {
+      px[i] = px[i + 1] = px[i + 2] = Math.round(a * 255);
+      px[i + 3] = 255;
+      continue;
+    }
+    const col = despillKey([px[i] / 255, px[i + 1] / 255, px[i + 2] / 255], P);
+    px[i] = Math.round(col[0] * 255);
+    px[i + 1] = Math.round(col[1] * 255);
+    px[i + 2] = Math.round(col[2] * 255);
+    px[i + 3] = Math.round(a * px[i + 3]);
+  }
   g.putImageData(d, 0, 0);
   return c;
 }
@@ -414,7 +440,10 @@ function drawMedia(ctx: CanvasRenderingContext2D, f: Frame, clip: Clip, t: Trans
   if (tapped) tapCopy(f);
   // «الكي»: the green screen (or the dark/bright parts) made see-through, after the grade (a log keys better decoded)
   if (clip.key && !(tapped && keyTap.bypass)) {
-    const k = keyFrame(f.img, f.width, f.height, clip.key) ?? keyOnCpu(f, clip.key);
+    // «الأداء»: the GPU unless the plan says the processor; the preview's working size follows the share
+    const plan = perfPlan(exporting ? "render" : "timeline");
+    const cont = { id: clip.id, ms };
+    const k = (plan.useGpu ? keyFrame(f.img, f.width, f.height, clip.key, cont, plan.maxSide) : null) ?? keyOnCpu(f, clip.key, cont);
     if (k) f = { ...f, img: k, width: k.width, height: k.height };
   }
   // (the clip keeps its full size on the canvas whatever size its picture was drawn at)

@@ -11,6 +11,7 @@ import { gradeView } from "./grade-gl";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
 import { clipSound, soundKey } from "./voice";
+import { nextRate } from "@/lib/editor/shuttle";
 
 export interface PlayerAsset {
   id: string;
@@ -61,6 +62,8 @@ export class Player {
   private listeners = new Set<(ms: number, playing: boolean) => void>();
   ms = 0;
   playing = false;
+  /** «J K L»: the speed and direction of playing (1 = normal forward; −1 backward; ±2, ±4, ±8 faster) */
+  rate = 1;
   /** «عزل الشخص»: person masks, loaded the first time a clip asks for one */
   private masker = new Masker(() => this.draw());
   private maskAt = new Map<string, { t: number; sig: string; mask: HTMLCanvasElement | null }>();
@@ -128,11 +131,14 @@ export class Player {
     this.emit();
   }
 
-  /** Called from a tap or a key (the browser lets sound start only then). */
-  play() {
+  /** Called from a tap or a key (the browser lets sound start only then). `rate` = the shuttle speed (1 = normal). */
+  play(rate = 1) {
     const end = duration(this.tl);
     if (!end) return;
-    if (this.ms >= end - 30) this.ms = 0;
+    this.rate = rate || 1;
+    if (this.rate > 0 && this.ms >= end - 30) this.ms = 0;
+    if (this.rate < 0 && this.ms <= 0) this.ms = end;
+    if (this.playing) this.stopSound();
     this.playing = true;
     this.clock = { perf: performance.now(), ms: this.ms };
     if (!this.ac) {
@@ -156,6 +162,7 @@ export class Player {
 
   pause() {
     this.playing = false;
+    this.rate = 1;
     cancelAnimationFrame(this.raf);
     for (const m of this.media.values()) m.pause();
     this.stopSound();
@@ -255,7 +262,7 @@ export class Player {
   /** Every clip heard in the next few seconds gets its sound scheduled once (volume, fades and ducking as ramps). */
   private schedule() {
     const ac = this.ac;
-    if (!ac || !this.playing) return;
+    if (!ac || !this.playing || this.rate !== 1) return;
     const ms = this.ms;
     for (const track of this.tl.tracks) {
       if (track.muted || track.kind === "text") continue;
@@ -311,6 +318,14 @@ export class Player {
     else this.play();
   }
 
+  /**
+   * «J» / «L»: plays that way; pressed again while already playing that way, twice as fast (up to ×8); the other
+   * key turns around at normal speed. Backward plays the pictures only (no sound), like every editor's shuttle.
+   */
+  shuttle(dir: 1 | -1) {
+    this.play(nextRate(this.rate, this.playing, dir));
+  }
+
   destroy() {
     this.pause();
     void this.ac?.close().catch(() => {});
@@ -322,17 +337,18 @@ export class Player {
 
   private tick = (now: number) => {
     if (!this.playing) return;
-    // the sound's clock leads (the pictures follow it); without Web Audio, the page's clock
-    if (this.ac && this.ac.state === "running") this.ms = Math.max(this.anchor.ms, Math.round(this.anchor.ms + (this.ac.currentTime - this.anchor.ctx) * 1000));
+    // the sound's clock leads (the pictures follow it); without Web Audio — or shuttling at another speed — the
+    // page's clock
+    if (this.rate === 1 && this.ac && this.ac.state === "running") this.ms = Math.max(this.anchor.ms, Math.round(this.anchor.ms + (this.ac.currentTime - this.anchor.ctx) * 1000));
     else {
-      this.ms = Math.round(this.clock.ms + (now - this.clock.perf));
+      this.ms = Math.round(this.clock.ms + (now - this.clock.perf) * this.rate);
       if (this.ac) this.reanchor();
     }
     this.clock = { perf: now, ms: this.ms };
     this.schedule();
     const end = duration(this.tl);
-    if (this.ms >= end) {
-      this.ms = end;
+    if (this.ms >= end || this.ms <= 0 && this.rate < 0) {
+      this.ms = this.rate < 0 ? 0 : end;
       this.draw();
       this.pause();
       return;
@@ -382,17 +398,21 @@ export class Player {
         m.muted = track.muted || gain <= 0;
         m.volume = Math.min(1, Math.max(0, gain));
         const at = (on ? sourceTime(clip, ms) : held.has(clip.id) ? sourceTime(clip, held.get(clip.id)!) : clip.in) / 1000;
-        let rate = clip.speed;
-        if (on && this.playing) {
+        // forward the element plays (faster when shuttling, up to the browser's limit); backward it is stepped frame
+        // by frame like a scrub (no browser plays a video backward)
+        const live = on && this.playing && this.rate > 0;
+        let rate = clip.speed * (this.rate > 0 ? this.rate : 1);
+        if (live) {
           // a picture a little behind or ahead catches up by playing a touch faster or slower (a jump only when far off:
           // jumping every few seconds is what made the preview stutter)
           const off = m.currentTime - at;
-          if (hard || Math.abs(off) > DRIFT_S * clip.speed) seekTo(m, at);
-          else if (Math.abs(off) > NUDGE_S) rate = clip.speed * (1 - Math.max(-0.03, Math.min(0.03, off * 0.5)));
+          if (hard || Math.abs(off) > DRIFT_S * rate) seekTo(m, at);
+          else if (Math.abs(off) > NUDGE_S * this.rate) rate *= 1 - Math.max(-0.03, Math.min(0.03, off * 0.5));
           if (m.paused) m.play().catch(() => {});
         }
+        rate = Math.min(16, Math.max(0.0625, rate));
         if (Math.abs(m.playbackRate - rate) > 0.001) m.playbackRate = rate;
-        if (!(on && this.playing)) {
+        if (!live) {
           if (!m.paused) m.pause();
           if (Math.abs(m.currentTime - at) > 0.02) seekTo(m, at);
         }

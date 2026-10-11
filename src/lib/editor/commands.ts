@@ -143,6 +143,8 @@ export type Command =
   | { type: "set_ratio"; ratio: Ratio }
   | { type: "set_background"; color: string }
   | { type: "set_magnetic"; on: boolean }
+  /** «مغناطيس كل المسارات»: a delete cuts the same seconds out of every track and closes them (needs the magnet on) */
+  | { type: "set_magnet_all"; on: boolean }
   /** puts the main track's clips one after another from 0 (used by «ركّب النسخة الأولى» too) */
   | { type: "close_gaps"; trackId?: string }
   /**
@@ -461,6 +463,15 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
     case "delete": {
       const ids = new Set(cmd.clipIds);
       if (!ids.size) fail("اختر مقطعًا أول.");
+      if (t.magnetic && t.magnetAll) {
+        // «مغناطيس كل المسارات»: the deleted clips' seconds go out of every track — what is above and below them too
+        // — and everything after moves back on every track (remove_ranges, with the clips' own spans)
+        const gone = t.tracks.flatMap((track) => track.clips.filter((c) => ids.has(c.id)).map((c) => ({ track, c })));
+        if (!gone.length) fail("ما لقينا المقاطع المحددة.");
+        for (const { track } of gone) if (track.locked) fail(`المسار «${track.name}» مقفول؛ افتح القفل أول.`);
+        const r = apply(t, { type: "remove_ranges", ranges: gone.map(({ c }) => [c.start, clipEnd(c)] as [number, number]) }, assets);
+        return { ...r, label: gone.length > 1 ? `حذفت ${gone.length} مقاطع من كل المسارات` : "حذفت المقطع من كل المسارات", select: [] };
+      }
       let n = 0;
       for (const track of t.tracks) {
         const gone = track.clips.filter((c) => ids.has(c.id));
@@ -696,7 +707,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const n: Clip = { id: newId("c"), assetId: null, start: lo, in: 0, out: Math.max(LIMITS.minClipMs, hi - lo), speed: 1, volume: 1, fit: "cover", transform: { ...DEFAULT_TRANSFORM }, text: null, ...CLIP_DEFAULTS, seq: id, keys: [] };
       if (magnet(t, at)) insertMain(at, n, lo);
       else place(at, n);
-      t.seqs = [...seqs, { id, name, tl: { v: t.v, width: t.width, height: t.height, fps: t.fps, background: t.background, magnetic: false, markers: [], tracks: inner } }];
+      t.seqs = [...seqs, { id, name, tl: { v: t.v, width: t.width, height: t.height, fps: t.fps, background: t.background, magnetic: false, magnetAll: false, markers: [], tracks: inner } }];
       return { timeline: t, label: `دمجت ${ids.size} في «${name}» (Nest)`, select: [n.id] };
     }
 
@@ -704,7 +715,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       const seqs = seqsOf(t);
       if (seqs.length >= MAX_SEQS) fail(`أكثر شي ${MAX_SEQS} تسلسل في المشروع.`);
       const name = (cmd.name ?? "").trim().slice(0, 40) || `تسلسل ${seqs.length + 1}`;
-      const fresh: Timeline = { v: t.v, width: t.width, height: t.height, fps: t.fps, background: t.background, magnetic: true, markers: [], tracks: [{ id: newId("t"), kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] }] };
+      const fresh: Timeline = { v: t.v, width: t.width, height: t.height, fps: t.fps, background: t.background, magnetic: true, magnetAll: false, markers: [], tracks: [{ id: newId("t"), kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] }] };
       const id = newId("s");
       return { timeline: { ...fresh, seqs: [...parked(t, seqs), { id, name, tl: null }] }, label: `تسلسل جديد «${name}»`, select: [] };
     }
@@ -992,9 +1003,20 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
 
     case "set_magnetic": {
       t.magnetic = cmd.on;
+      if (!cmd.on) t.magnetAll = false;
       const main = mainTrack(t);
       if (main && cmd.on) main.clips = pack(main.clips);
       return { timeline: t, label: cmd.on ? "شغّلت المغناطيس" : "أطفأت المغناطيس" };
+    }
+
+    case "set_magnet_all": {
+      if (cmd.on && !t.magnetic) {
+        t.magnetic = true;
+        const main = mainTrack(t);
+        if (main) main.clips = pack(main.clips);
+      }
+      t.magnetAll = cmd.on;
+      return { timeline: t, label: cmd.on ? "شغّلت مغناطيس كل المسارات" : "رجّعت المغناطيس للمسار الرئيسي" };
     }
 
     case "remove_ranges": {

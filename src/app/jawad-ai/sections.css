@@ -166,6 +166,15 @@
     linear-gradient(90deg, rgba(37, 99, 235, 0.045) 1px, transparent 1px) 0 0 / 28px 28px,
     var(--jw-bg);
 }
+/* the editor is a tool, not a page: dragging selects clips, never the words of the interface (texts typed or read stay selectable) */
+.jw [data-jw-section="editor"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.jw [data-jw-section="editor"] :is(input, textarea, select, [contenteditable="true"], .jw-select-text, .jw-select-text *, pre, code) {
+  -webkit-user-select: text;
+  user-select: text;
+}
 .jw [data-jw-section="editor"]::before {
   background: linear-gradient(90deg, #2563eb, #0ea5e9, #6366f1) top / 100% 3px no-repeat;
 }

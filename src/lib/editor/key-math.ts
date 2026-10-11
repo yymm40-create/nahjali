@@ -9,6 +9,15 @@
 // black. Then the matte is cleaned like Ultra Key's «Clip black / Clip white» («تنظيف الخلفية» / «سد الفراغات»),
 // choked, softened, and the screen's colour cast taken off what stays by limiting the screen's own channel
 // (Keylight's despill: green never higher than the brightest of red and blue).
+//
+// HAIR («حواف الشعر»): a strand of hair over the screen is a MIX — mostly screen, a little hair — and by its hue it is
+// still the screen, so a hue matte eats it or keeps it hard. The big keyers get the edge's alpha from the COLOUR
+// DIFFERENCE instead (Keylight, Primatte, Ultra Key's matte generation, the GPU pipelines matte → choke → despill):
+// how much the screen's channel still leads the other two, against the screen's own lead — a 30 % hair pixel keeps
+// 30 % alpha. A shadow on the screen keeps the screen's saturation, a mix with hair lowers it, so the difference
+// alpha is let in only as far as the saturation dropped (the shadows still go).
+// STEADY («ثبات ضد الرجفة»): the matte flickers where video noise moves a pixel across the threshold each frame; the
+// matte is pulled toward the previous frame's where the change is small, and a real move (a big change) passes.
 
 export interface KeyLike {
   color: string;
@@ -18,6 +27,10 @@ export interface KeyLike {
   choke: number;
   clean?: number;
   fill?: number;
+  /** the colour-difference edge (hair), 0–1; absent = 0.5 */
+  hair?: number;
+  /** the pull toward the previous frame's matte, 0–1; absent = 0.5 */
+  steady?: number;
 }
 
 export type RGB = [number, number, number];
@@ -69,6 +82,9 @@ export function keyParams(k: KeyLike) {
   const lead = ch[d] - Math.max(...rest) > 0.3 * ch[d] ? d : -1;
   const clean = Math.min(1, Math.max(0, k.clean ?? 0.15));
   const fill = Math.min(1, Math.max(0, k.fill ?? 0.15));
+  // the screen's lead: how far its channel is above the brightest of the other two (the colour difference the hair
+  // edge is measured against); 0 when the key has no leading channel (the hair edge then stays off)
+  const diff = lead >= 0 ? ch[lead] - Math.max(...rest) : 0;
   return {
     hue: h,
     // a key picked off a nearly grey colour still needs some saturation to compare with
@@ -90,6 +106,9 @@ export function keyParams(k: KeyLike) {
     choke: Math.min(1, Math.max(0, k.choke)),
     lead,
     rgb: [r, g, b] as RGB,
+    hair: lead >= 0 && diff > 0.05 ? Math.min(1, Math.max(0, k.hair ?? 0.5)) : 0,
+    diff: Math.max(0.05, diff),
+    steady: Math.min(1, Math.max(0, k.steady ?? 0.5)),
   };
 }
 export type KeyP = ReturnType<typeof keyParams>;
@@ -103,10 +122,43 @@ export function screenness(r: number, g: number, b: number, P: KeyP) {
   return hueW * satW * valW;
 }
 
+/**
+ * The hair edge's alpha from the colour difference: how much less the screen's channel leads here than on the
+ * screen itself, let in as far as the saturation dropped below the screen's (a shadow keeps it; a mix with hair,
+ * skin or cloth lowers it). 0 where the pixel is plainly the screen.
+ */
+export function hairAlpha(r: number, g: number, b: number, P: KeyP) {
+  if (P.hair <= 0) return 0;
+  const c = [r, g, b];
+  const o = P.lead === 0 ? Math.max(g, b) : P.lead === 1 ? Math.max(r, b) : Math.max(r, g);
+  const lead = c[P.lead] - o;
+  const cd = Math.min(1, Math.max(0, 1 - lead / P.diff));
+  const [, s, v] = hsv(r, g, b);
+  const drop = smooth(0.04, 0.25, 1 - s / P.sat);
+  return cd * drop * smooth(0.035, 0.09, v);
+}
+
 /** The pixel's alpha (1 = kept) after «تنظيف الخلفية» and «سد الفراغات». */
 export function alphaOf(r: number, g: number, b: number, P: KeyP) {
-  const a = 1 - screenness(r, g, b, P);
+  const core = 1 - screenness(r, g, b, P);
+  // the hair edge only adds (a pixel the hue already keeps stays kept)
+  const a = P.hair > 0 && core < 0.98 ? core + (Math.max(core, hairAlpha(r, g, b, P)) - core) * P.hair : core;
   return Math.min(1, Math.max(0, (a - P.clip0) / Math.max(0.02, P.clip1 - P.clip0)));
+}
+
+/**
+ * «ثبات ضد الرجفة»: the matte pulled toward the previous frame's where the change is small (noise flicker), left
+ * alone where it is big (a real move). In place on `cur`; `prev` must be the same size.
+ */
+export function steadyMatte(cur: Float32Array, prev: Float32Array | null | undefined, steady: number) {
+  if (!prev || prev.length !== cur.length || steady <= 0) return cur;
+  const k = Math.min(1, steady) * 0.8;
+  for (let i = 0; i < cur.length; i++) {
+    const d = prev[i] - cur[i];
+    const ad = Math.abs(d);
+    if (ad < 0.45) cur[i] += d * k * (1 - smooth(0.12, 0.45, ad));
+  }
+  return cur;
 }
 
 /** The screen's cast taken off a kept pixel (in place). */
@@ -148,8 +200,31 @@ export function despill(c: RGB, P: KeyP): RGB {
  * the pixel and its four neighbours (video noise and compression blocks), the matte, the choke (the smallest matte
  * around, up to 4 px), then the despill. `show` writes the matte itself (white kept, black gone).
  */
-export function keyPixels(px: Uint8ClampedArray, w: number, h: number, k: KeyLike, show = false) {
+export function keyPixels(px: Uint8ClampedArray, w: number, h: number, k: KeyLike, show = false, prev: Float32Array | null = null) {
   const P = keyParams(k);
+  const matte = keyMatte(px, w, h, P, prev);
+  for (let i = 0, j = 0; j < w * h; i += 4, j++) {
+    const a = matte[j];
+    if (show) {
+      px[i] = px[i + 1] = px[i + 2] = Math.round(a * 255);
+      px[i + 3] = 255;
+      continue;
+    }
+    const c = despill([px[i] / 255, px[i + 1] / 255, px[i + 2] / 255], P);
+    px[i] = Math.round(c[0] * 255);
+    px[i + 1] = Math.round(c[1] * 255);
+    px[i + 2] = Math.round(c[2] * 255);
+    px[i + 3] = Math.round(a * px[i + 3]);
+  }
+  return px;
+}
+
+/**
+ * The final matte of a picture (1 = kept), ready for the next frame's `prev`: the colour evened out over 5 taps, the
+ * core and the hair edge, the clean-up, the choke, then the pull toward `prev` (the previous frame's matte, when it
+ * is the frame before this one).
+ */
+export function keyMatte(px: Uint8ClampedArray, w: number, h: number, P: KeyP, prev: Float32Array | null = null): Float32Array {
   const at = (x: number, y: number) => ((Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))) * 4);
   const m = new Float32Array(w * h);
   for (let y = 0; y < h; y++)
@@ -181,20 +256,7 @@ export function keyPixels(px: Uint8ClampedArray, w: number, h: number, k: KeyLik
         matte[y * w + x] = v + (lo - v) * Math.min(1, P.choke * 2);
       }
   }
-  for (let i = 0, j = 0; j < w * h; i += 4, j++) {
-    const a = matte[j];
-    if (show) {
-      px[i] = px[i + 1] = px[i + 2] = Math.round(a * 255);
-      px[i + 3] = 255;
-      continue;
-    }
-    const c = despill([px[i] / 255, px[i + 1] / 255, px[i + 2] / 255], P);
-    px[i] = Math.round(c[0] * 255);
-    px[i + 1] = Math.round(c[1] * 255);
-    px[i + 2] = Math.round(c[2] * 255);
-    px[i + 3] = Math.round(a * px[i + 3]);
-  }
-  return px;
+  return steadyMatte(matte, prev, P.steady);
 }
 /** The noise filter's taps: the pixel and its four neighbours. */
 const TAPS: [number, number, number][] = [
