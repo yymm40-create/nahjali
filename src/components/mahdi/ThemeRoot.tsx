@@ -58,7 +58,7 @@ export default function ThemeRoot({
           {skipLabel}
         </a>
         <div className="m-backdrop" aria-hidden="true">
-          {shrine?.imageUrl && theme !== "minimal" && (
+          {shrine?.imageUrl && (theme === "cinematic" || theme === "night") && (
             <Image
               src={shrine.imageUrl}
               alt=""

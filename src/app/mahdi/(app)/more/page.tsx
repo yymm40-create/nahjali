@@ -159,7 +159,7 @@ export default function MorePage() {
         </div>
       </section>
 
-      <section className="m-card space-y-4 p-5">
+      <section id="look" className="m-card scroll-mt-20 space-y-4 p-5">
         <h2 className="font-semibold">{t.more.theme}</h2>
         <ThemePicker value={look.theme} onChange={chooseTheme} />
         <h2 className="pt-2 font-semibold">{t.more.shrine}</h2>

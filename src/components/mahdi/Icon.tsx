@@ -4,6 +4,7 @@ const PATHS = {
   projects: "M4 7.5 12 4l8 3.5-8 3.5zM4 12l8 3.5 8-3.5M4 16.5 12 20l8-3.5",
   progress: "M5 20V11M12 20V5M19 20v-6M3.5 20h17",
   more: "M5 12h.01M12 12h.01M19 12h.01",
+  menu: "M4 7h16M4 12h16M4 17h16",
   plus: "M12 5v14M5 12h14",
   minus: "M5 12h14",
   check: "m5 12.5 4.5 4.5L19 7.5",
