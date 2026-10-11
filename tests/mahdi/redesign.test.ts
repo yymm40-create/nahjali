@@ -53,12 +53,13 @@ describe("«لأجل المهدي» redesign: four looks", () => {
     expect(read("src/app/api/mahdi/profile/route.ts")).toContain("beforeMigration");
   });
 
-  it("the page shows the look the account really kept, so a reload never shows another one", () => {
-    const more = read("src/app/mahdi/(app)/more/page.tsx");
-    expect(more).toContain("kept.theme !== th");
-    expect(more).toContain("look.setTheme(kept.theme)");
-    expect(read("src/app/mahdi/welcome/Onboarding.tsx")).toContain("saved.theme !== look.theme");
-    expect(read("src/lib/mahdi/i18n/ar.ts")).toContain("themeNotKept");
+  it("the picked style stays on the device too, and the layout reads it before the first paint", () => {
+    expect(read("src/app/mahdi/(app)/more/page.tsx")).toContain("rememberPick(profile.userId, th, kept.theme)");
+    expect(read("src/app/mahdi/welcome/Onboarding.tsx")).toContain("rememberPick(saved.userId, look.theme, saved.theme)");
+    const layout = read("src/app/mahdi/layout.tsx");
+    expect(layout).toContain("resolveTheme(");
+    expect(layout).toContain("PICK_COOKIE");
+    expect(read("src/lib/mahdi/i18n/ar.ts")).toContain("themeOnDevice");
   });
 });
 

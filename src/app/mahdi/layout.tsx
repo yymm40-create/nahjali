@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { Almarai, Amiri, Cairo, Changa, IBM_Plex_Sans_Arabic, Lemonada, Marhey, Rubik, Tajawal } from "next/font/google";
 import localFont from "next/font/local";
 import RegisterSW from "@/components/mahdi/RegisterSW";
@@ -6,6 +7,7 @@ import ThemeRoot from "@/components/mahdi/ThemeRoot";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { getShrines, pickShrine } from "@/lib/mahdi/server/snapshot";
 import { t } from "@/lib/mahdi/i18n";
+import { PICK_COOKIE, resolveTheme } from "@/lib/mahdi/look-pick";
 import { DEFAULT_THEME, LIGHT_THEMES, MAHDI_THEMES } from "@config/mahdi";
 import "./mahdi.css";
 
@@ -34,17 +36,19 @@ export const metadata: Metadata = {
 };
 
 export async function generateViewport(): Promise<Viewport> {
-  const { profile } = await getMahdiSession();
-  const theme = MAHDI_THEMES.find((x) => x.key === (profile?.theme ?? DEFAULT_THEME)) ?? MAHDI_THEMES[0];
+  const [{ profile }, jar] = await Promise.all([getMahdiSession(), cookies()]);
+  // the style the person picked (kept on the device too, in case the account could not keep it)
+  const picked = resolveTheme(profile?.theme ?? DEFAULT_THEME, profile?.userId, jar.get(PICK_COOKIE)?.value);
+  const theme = MAHDI_THEMES.find((x) => x.key === picked) ?? MAHDI_THEMES[0];
   return { themeColor: theme.themeColor, viewportFit: "cover", colorScheme: LIGHT_THEMES.includes(theme.key) ? "light" : "dark" };
 }
 
 /** «لأجل المهدي»: its own look and fonts, separate from the rest of the site. */
 export default async function MahdiLayout({ children }: { children: React.ReactNode }) {
-  const [{ profile }, shrines] = await Promise.all([getMahdiSession(), getShrines().catch(() => [])]);
+  const [{ profile }, shrines, jar] = await Promise.all([getMahdiSession(), getShrines().catch(() => []), cookies()]);
   return (
     <ThemeRoot
-      initialTheme={profile?.theme ?? DEFAULT_THEME}
+      initialTheme={resolveTheme(profile?.theme ?? DEFAULT_THEME, profile?.userId, jar.get(PICK_COOKIE)?.value)}
       initialVariant={profile?.themeVariant ?? ""}
       initialShrine={pickShrine(shrines, profile?.shrineId)}
       initialPlace={profile?.shrinePlace}
