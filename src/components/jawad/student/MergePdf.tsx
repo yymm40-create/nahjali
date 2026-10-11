@@ -4,10 +4,10 @@
 // the order the outputs are listed (free; made again each time, so it holds the outputs as they are now). The file
 // downloads by itself, and its link stays on the page in case the browser held the download back.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import type { OutputView } from "./client";
-import { mergeParts } from "@/lib/jawad/student/merge-parts";
+import { mergeParts, togetherReady } from "@/lib/jawad/student/merge-parts";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, useAsync } from "./ui";
 
@@ -44,6 +44,58 @@ export function MergedNote({ m }: { m: MergedView }) {
       {!!m.skipped.length && <p className="text-xs text-jw-faint">ما دخل (ما له PDF أو ما اكتمل): {m.skipped.join("، ")}.</p>}
       {!!m.failed.length && <p className="text-xs text-jw-danger">ما قدرت أقرأ ملف: {m.failed.join("، ")}.</p>}
       <p className="text-xs text-jw-faint">الرابط يعمل ١٠ دقائق؛ اضغط الزر مرة ثانية يطلع لك جديد.</p>
+    </div>
+  );
+}
+
+const doneKey = "st-together";
+const doneBatches = (): Set<string> => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(doneKey) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+};
+const rememberBatch = (b: string) => {
+  try {
+    localStorage.setItem(doneKey, JSON.stringify([...doneBatches(), b].slice(-50)));
+  } catch {
+    /* kept for this visit only */
+  }
+};
+
+/**
+ * «اجمعها في PDF واحد»: when every output of a batch made that way has finished, the one PDF is put together and
+ * downloaded by itself (once per batch); the manual button above stays for any time after.
+ */
+export function TogetherPdf({ p }: { p: ProjectHook }) {
+  const { busy, error, run } = useAsync();
+  const [done, setDone] = useState<MergedView | null>(null);
+  const started = useRef(new Set<string>());
+  const ready = togetherReady(p.state.outputs.map((o) => ({ id: o.id, kind: o.kind, status: o.status, settings: o.settings })), doneBatches());
+  const batch = ready?.batch ?? "";
+  const ids = ready?.ids.join(",") ?? "";
+  useEffect(() => {
+    if (!batch || started.current.has(batch)) return;
+    started.current.add(batch);
+    void run(async () => {
+      const r = (await p.act({ action: "merge_pdf", ids: ids.split(",") })) as unknown as MergedView;
+      rememberBatch(batch);
+      setDone(r);
+      download(r.url);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch, ids]);
+  if (!batch && !done) return null;
+  return (
+    <div className="space-y-2">
+      {busy && (
+        <p className="flex items-center gap-2 text-sm text-jw-muted">
+          <span className="jw-spinner" aria-hidden /> النواتج خلصت — أجمعها لك في PDF واحد…
+        </p>
+      )}
+      <ErrorLine error={error} />
+      {done && <MergedNote m={done} />}
     </div>
   );
 }

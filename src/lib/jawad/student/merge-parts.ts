@@ -39,3 +39,31 @@ export function mergeParts(list: MergeItem[], ids?: string[]): { parts: MergePar
   return { parts, skipped };
 }
 
+
+/** The outputs that make a PDF (a recording, a conversation and a mind map do not), so "all in one PDF" has meaning for them. */
+export const PDF_KINDS = ["summary", "explain", "preread", "transcript", "book", "slides", "quiz"] as const;
+export const pdfKinds = (kinds: readonly string[]) => kinds.filter((k) => (PDF_KINDS as readonly string[]).includes(k));
+/** "In one PDF" is offered from two outputs that can make one. */
+export const canTogether = (kinds: readonly string[]) => pdfKinds(kinds).length >= 2;
+
+/** The mark a batch of outputs made "in one PDF" carries in its settings (the page watches for the batch to finish). */
+export const TOGETHER_KEY = "_together";
+
+type Tagged = Pick<MergeItem, "id" | "kind" | "status"> & { settings: Record<string, unknown> };
+
+/**
+ * A batch made "in one PDF" whose outputs have all finished and not yet been put together: its id and outputs, or null.
+ * `done` holds the batches already put together (kept on the device by the page).
+ */
+export function togetherReady(list: Tagged[], done: ReadonlySet<string> = new Set()): { batch: string; ids: string[] } | null {
+  const batches = new Map<string, Tagged[]>();
+  for (const o of list) {
+    const b = String(o.settings?.[TOGETHER_KEY] ?? "");
+    if (b) batches.set(b, [...(batches.get(b) ?? []), o]);
+  }
+  for (const [batch, members] of batches) {
+    if (done.has(batch) || members.length < 2) continue;
+    if (members.every((m) => FINISHED.has(m.status))) return { batch, ids: members.map((m) => m.id) };
+  }
+  return null;
+}

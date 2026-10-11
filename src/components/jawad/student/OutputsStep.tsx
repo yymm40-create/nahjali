@@ -13,7 +13,8 @@ import { kindOffered } from "@config/jawad/khateeb";
 import { defaults, DesignStep, Questions } from "./Questions";
 import { KIND_LOOK, Tile } from "./look";
 import { fitsPages, readCapacity } from "@/lib/jawad/student/capacity";
-import MergePdf from "./MergePdf";
+import { canTogether } from "@/lib/jawad/student/merge-parts";
+import MergePdf, { TogetherPdf } from "./MergePdf";
 import OutputPanel from "./OutputPanel";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, JobStatus, useAsync } from "./ui";
@@ -42,6 +43,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
   const [pick, setPick] = useState<OutputKind[]>(() => (branch === "khateeb" ? (["sermon"] as OutputKind[]) : SUGGEST[project.brief.purpose] ?? ["summary"]).filter((k) => !have.includes(k)));
   const [answers, setAnswers] = useState<Record<string, S>>({});
   const [special, setSpecial] = useState("");
+  const [together, setTogether] = useState(false);
   const { busy, error, run } = useAsync();
   const of = (k: OutputKind) => ({ ...defaults(k, project.level), ...answers[k] });
   const set = (k: OutputKind) => (patch: S) => setAnswers((a) => ({ ...a, [k]: { ...of(k), ...patch } }));
@@ -70,6 +72,15 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
             );
           })}
         </div>
+        {canTogether(pick) && (
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-jw-line bg-white p-3 text-sm">
+            <input type="checkbox" className="mt-1" checked={together} onChange={(e) => setTogether(e.target.checked)} />
+            <span>
+              <b>📎 اجمعها كلها في PDF واحد</b>
+              <span className="block text-xs text-jw-muted">يصنع {A} النواتج اللي لها PDF مع بعض، وإذا خلصت كلها يطلع لك ملف واحد بالترتيب وينزل لحاله.</span>
+            </span>
+          </label>
+        )}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="jw-btn jw-btn-primary" disabled={!pick.length} onClick={() => setPhase("ask")}>
             التالي ({pick.length})
@@ -88,7 +99,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
   const designed = pick.some((k) => DESIGNED_KINDS.includes(k));
   const begin = (skipDesign: boolean) =>
     run(async () => {
-      await p.act({ action: "start", outputs: pick.map((k) => ({ kind: k, settings: of(k) })), special, design: skipDesign ? emptyWish() : wish });
+      await p.act({ action: "start", outputs: pick.map((k) => ({ kind: k, settings: of(k) })), special, design: skipDesign ? emptyWish() : wish, together: together && canTogether(pick) });
       onStart();
     });
   const startButtons = (skipDesign: boolean) => (
@@ -228,6 +239,7 @@ export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch,
             );
           })}
         </ul>
+        <TogetherPdf p={p} />
         <MergePdf p={p} />
         {stuck && sorted.some((o) => o.status === "failed") && <p className="text-sm text-jw-danger">تعثّر ناتج. افتحه وشوف السبب، أو اضغط «كمّل» يحاول مرة ثانية.</p>}
       </section>

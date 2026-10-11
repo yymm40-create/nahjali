@@ -110,6 +110,7 @@ export default function SadiqChat({ p, o, onMake }: { p: ProjectHook; o: OutputV
                       </span>
                     </span>
                   ))}
+                  {m.offer.together && <b className="block text-sm">📎 وتطلع كلها في PDF واحد</b>}
                   {m.offer.merge && <b className="block text-sm">📎 ادمج النواتج الجاهزة في PDF واحد</b>}
                   {m.offer.state === "open" && (
                     <span className="flex flex-wrap gap-2">
