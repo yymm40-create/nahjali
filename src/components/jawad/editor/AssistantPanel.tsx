@@ -115,6 +115,8 @@ export default function AssistantPanel({
   onBig,
   mode = "dock",
   onMode,
+  docked,
+  onDock,
   zoom,
   onZoom,
   diag,
@@ -144,6 +146,9 @@ export default function AssistantPanel({
   /** حيدرة's place on a computer: beside the preview, the whole side, or half the screen */
   mode?: "dock" | "tall" | "half";
   onMode?: (m: "dock" | "tall" | "half") => void;
+  /** «فوق التايملاين»: he sits over the timeline (docked), and this button puts him there / back to the popup */
+  docked?: boolean;
+  onDock?: () => void;
   /** its text size (1 = normal) */
   zoom?: number;
   onZoom?: (z: number) => void;
@@ -696,6 +701,13 @@ export default function AssistantPanel({
                 {label}
               </button>
             ))}
+          </span>
+        )}
+        {onDock && (
+          <span className="hidden lg:contents">
+            <button type="button" className={`jw-btn !min-h-8 !px-2 text-[11px] ${docked ? "!border-jw-accent/60 text-jw-accent" : "jw-btn-quiet"}`} onClick={onDock} aria-pressed={!!docked} title={docked ? "رجّع حيدرة نافذة عائمة" : "حط حيدرة فوق التايملاين وعدّل عليه مباشرة"}>
+              <Icon name="frames" size={14} /> {docked ? "نافذة" : "فوق التايملاين"}
+            </button>
           </span>
         )}
         {onBig && (

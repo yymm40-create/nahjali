@@ -10,7 +10,7 @@ import Icon, { type IconName } from "../Icon";
 import { PAGE_INFO, type MenuGroup, type PageId, type Workspace } from "./workspaces";
 
 /** What an item does: a shortcut's job, a page, or one of the editor's windows. */
-export type MenuAct = { key: ActionId } | { page: PageId } | { open: "captions" | "shortcuts" | "layout" | "haidara" | "themes" | "styles" | "project" | "media" };
+export type MenuAct = { key: ActionId } | { page: PageId } | { open: "captions" | "shortcuts" | "layout" | "haidara" | "haidaraDock" | "themes" | "styles" | "project" | "media" };
 
 const ITEMS: Record<MenuGroup, ([string, MenuAct] | "-")[]> = {
   file: [["استورد ملفات…", { key: "import" }], ["احفظ", { key: "save" }], "-", ["المشروع (المقاس والخلفية)", { open: "project" }], ["صدّر الفيديو…", { key: "export" }]],
@@ -24,7 +24,7 @@ const ITEMS: Record<MenuGroup, ([string, MenuAct] | "-")[]> = {
   effects: [["المؤثرات", { page: "fx" }], ["الحركة (كي فريم)", { page: "motion" }], ["أساليب جاهزة", { open: "styles" }]],
   view: [["وضع التركيز (الشاشة والتايملاين)", { key: "focus" }], ["المعاينة ملء الشاشة", { key: "full" }], "-", ["كبّر التايملاين", { key: "zoomIn" }], ["صغّر التايملاين", { key: "zoomOut" }], ["كل التايملاين في الشاشة", { key: "zoomFit" }]],
   playback: [["شغّل / وقّف", { key: "play" }], ["فريم لقدّام", { key: "frameFwd" }], ["فريم للورا", { key: "frameBack" }], ["أول الفيديو", { key: "start" }], ["آخر الفيديو", { key: "end" }]],
-  window: [["الوسائط", { open: "media" }], ["حيدرة", { open: "haidara" }], ["رتّب واجهتي…", { open: "layout" }], ["الثيمات والواجهات…", { open: "themes" }], ["الاختصارات…", { open: "shortcuts" }]],
+  window: [["الوسائط", { open: "media" }], ["حيدرة", { open: "haidara" }], ["حيدرة فوق التايملاين (تعديل مباشر)", { open: "haidaraDock" }], ["رتّب واجهتي…", { open: "layout" }], ["الثيمات والواجهات…", { open: "themes" }], ["الاختصارات…", { open: "shortcuts" }]],
   help: [["الاختصارات…", { open: "shortcuts" }], ["اسأل حيدرة", { open: "haidara" }]],
 };
 
