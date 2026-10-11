@@ -29,6 +29,7 @@ import { pickDesigns } from "./design-pick";
 import { chatOf, chatTurn } from "./chat";
 import { mergeOutputs } from "./merge";
 import { startBody } from "./offer";
+import { canTogether, pdfKinds, TOGETHER_KEY } from "./merge-parts";
 import { robotTurn } from "@/lib/claude-run";
 import { isAdmin } from "@config/site";
 import { LINK_CEILING_HOURS, MEDIA_MAX_BYTES, MEDIA_TYPES, SCRIBE_USD_PER_HOUR, mediaLink, mediaUsd } from "./media";
@@ -458,6 +459,14 @@ export async function projectAction(user: User, id: string, b: Body) {
       });
       const { data: made, error } = await db.from("student_outputs").insert(rows).select("id,kind");
       if (error) throw error;
+      // «اجمعها في PDF واحد»: the outputs that make a PDF carry one batch mark; the page puts them in a single PDF when all are finished
+      if (b.together === true && canTogether(kinds)) {
+        const batch = crypto.randomUUID().slice(0, 12);
+        for (const m of made ?? []) {
+          const r = rows.find((x) => x.kind === m.kind);
+          if (r && pdfKinds([String(m.kind)]).length) await saveOutput(m.id as string, { settings: { ...r.settings, [TOGETHER_KEY]: batch } });
+        }
+      }
       // a recording of the summary / explanation / book made here: it waits for that text
       const audio = list.find((w) => w.kind === "audio");
       const reads = String((audio?.settings as Body | undefined)?.source ?? "");

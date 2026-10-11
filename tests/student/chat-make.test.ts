@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import { OUTPUT_KINDS } from "@config/jawad/student";
 import { chatMakeKinds, makeRules, OFFER_MAX, splitOffer, startBody } from "@/lib/jawad/student/offer";
-import { mergeParts, type MergeItem } from "@/lib/jawad/student/merge-parts";
+import { canTogether, mergeParts, TOGETHER_KEY, togetherReady, type MergeItem } from "@/lib/jawad/student/merge-parts";
 
 // «صادق يصنع من المحادثة» and «ادمج النواتج في PDF واحد»: reading his markers into an offer, what he may offer, and the
 // combined file.
@@ -89,6 +89,41 @@ describe("«ادمج النواتج في PDF واحد»: which outputs go in", (
   });
   it("can be limited to the outputs the student ticked", () => {
     expect(mergeParts(list, ["quiz", "sum"]).parts.map((p) => p.id)).toEqual(["sum", "quiz"]);
+  });
+});
+
+describe("«اجمعها كلها في PDF واحد»", () => {
+  it("is offered from two outputs that make a PDF", () => {
+    expect(canTogether(["summary", "quiz"])).toBe(true);
+    expect(canTogether(["summary", "audio", "chat", "mindmap"])).toBe(false);
+    expect(canTogether(["book"])).toBe(false);
+  });
+  it("he can offer it in the chat, and the offer keeps it only when it means something", () => {
+    const two = splitOffer('تمام.\n[[MAKE]]{"outputs":[{"kind":"summary","note":""},{"kind":"quiz","note":""}],"together":true}');
+    expect(two.offer?.together).toBe(true);
+    expect(startBody(two.offer!)).toMatchObject({ action: "start", together: true });
+    // one PDF output (or a recording with one) cannot be "together"
+    const one = splitOffer('تمام.\n[[MAKE]]{"outputs":[{"kind":"summary","note":""},{"kind":"audio","note":""}],"together":true}');
+    expect(one.offer?.together).toBeUndefined();
+    expect("together" in startBody(one.offer!)).toBe(false);
+    expect(splitOffer('تمام.\n[[MAKE]]{"outputs":[{"kind":"summary","note":""},{"kind":"quiz","note":""}]}').offer?.together).toBeUndefined();
+  });
+  it("is taught to him", () => {
+    expect(makeRules([])).toContain('"together":true');
+  });
+  const tag = (id: string, status: string, batch?: string) => ({ id, kind: "summary" as const, status, settings: batch ? { [TOGETHER_KEY]: batch } : {} });
+  it("waits until every output of the batch has finished", () => {
+    expect(togetherReady([tag("a", "done", "b1"), tag("b", "running", "b1")])).toBeNull();
+    expect(togetherReady([tag("a", "done", "b1"), tag("b", "done", "b1"), tag("c", "running")])).toEqual({ batch: "b1", ids: ["a", "b"] });
+    expect(togetherReady([tag("a", "done", "b1"), tag("b", "review", "b1")])?.batch).toBe("b1");
+  });
+  it("puts a batch together once, and ignores outputs not made that way", () => {
+    const list = [tag("a", "done", "b1"), tag("b", "done", "b1"), tag("c", "done", "b2"), tag("d", "done", "b2")];
+    expect(togetherReady(list, new Set(["b1"]))?.batch).toBe("b2");
+    expect(togetherReady(list, new Set(["b1", "b2"]))).toBeNull();
+    expect(togetherReady([tag("a", "done"), tag("b", "done")])).toBeNull();
+    // a batch of one is nothing to put together
+    expect(togetherReady([tag("a", "done", "b9")])).toBeNull();
   });
 });
 
