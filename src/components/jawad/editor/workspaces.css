@@ -1,0 +1,63 @@
+/* «واجهات البرامج»: the editor in the look of another program. Its colours come as the site's tokens on the
+   editor (workspaces.ts → wsVars); here the shapes: flat panels, the program's corners, the accent on what is on. */
+[data-ed-theme="ws"] {
+  color: var(--jw-ink);
+}
+[data-ed-theme="ws"] .jw-glass,
+[data-ed-theme="ws"] .jw-glass-lg {
+  background: var(--jw-surface) !important;
+  border: 1px solid var(--jw-line);
+  border-radius: var(--ws-radius) !important;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+[data-ed-theme="ws"] .jw-3d,
+[data-ed-theme="ws"] .jw-3d:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+[data-ed-theme="ws"] .jw-btn,
+[data-ed-theme="ws"] .jw-chip,
+[data-ed-theme="ws"] .jw-input,
+[data-ed-theme="ws"] .jw-textarea {
+  border-radius: var(--ws-radius);
+}
+[data-ed-theme="ws"] .jw-btn-primary,
+[data-ed-theme="ws"] .jw-rail-on,
+[data-ed-theme="ws"] .jw-play {
+  background: var(--jw-accent);
+  color: var(--jw-on-accent);
+  box-shadow: none;
+}
+[data-ed-theme="ws"] .jw-screen {
+  border-radius: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.ws-menubar,
+.ws-pages,
+.ws-menu {
+  background: var(--jw-surface);
+  border: 1px solid var(--jw-line);
+  border-radius: var(--ws-radius);
+  color: var(--jw-ink);
+}
+.ws-menu {
+  font-size: 12px;
+}
+.ws-page {
+  border-radius: var(--ws-radius);
+  color: var(--jw-muted);
+}
+.ws-page:hover {
+  color: var(--jw-ink);
+  background: var(--jw-surface-2);
+}
+.ws-page.on {
+  background: var(--jw-accent);
+  color: var(--jw-on-accent);
+  font-weight: 700;
+}
+/* the big page: the settings take most of the screen, at a comfortable size */
+[data-ed-page="big"] [aria-label="الإعدادات"] {
+  font-size: 1.04em;
+}

@@ -16,7 +16,7 @@ import SequenceTabs from "./SequenceTabs";
 import { DEFAULT_LAYOUT, firstRect, onScreen, PANELS, readLayout, saveLayout, type Layout, type PanelId } from "./layout";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
 import { gradeView, setGradeView } from "./grade-gl";
-import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL } from "@/lib/editor/model";
+import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL, type TrackKind } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
@@ -43,6 +43,9 @@ import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
 import ShortcutsPage from "./ShortcutsPage";
 import KeyStudio from "./KeyStudio";
+import MenuBar, { type MenuAct } from "./MenuBar";
+import "./workspaces.css";
+import { PAGE_INFO, WORKSPACES, WS_BY_ID, wsVars, type PageId } from "./workspaces";
 import { TL_ZOOM } from "./Timeline";
 import { BIG_STEP, comboOf, KEYS_STORE, keyTable, readProgram, type ActionId, type ProgramId } from "@/lib/editor/shortcuts";
 import Timeline from "./Timeline";
@@ -162,7 +165,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [ui, setUi] = useState(1);
   // the look (kept on this device): colours, shapes and where the sections sit
   const [theme, setTheme] = useState<ThemeId>("future");
+  // «واجهات البرامج»: the editor dressed as one of twenty editors (its colours, menus and pages; kept on this device)
+  const [wsId, setWsId] = useState<string | null>(null);
+  const ws = wsId ? (WS_BY_ID.get(wsId) ?? null) : null;
+  // the page of a workspace: «التلوين» and the other big pages give the tools most of the screen
+  const [page, setPage] = useState<PageId>("edit");
+  const bigPage = !!ws && PAGE_INFO[page].big;
   const [picking, setPicking] = useState(false);
+  /** the look in use: a workspace's, or one of the four themes */
+  const T = ws ? { label: ws.ar, icon: ws.icon, hint: ws.hint, rail: ws.rail, mirror: false, scale: ws.scale, font: ws.font, swatch: [ws.pal.bg, ws.pal.accent, ws.pal.s1, ws.pal.s3] } : THEMES[theme];
   // «كبّر الشاشة»: the preview takes the room of the side panels (and of the timeline on a phone) until shrunk again
   const [big, setBig] = useState(false);
   // Claude's width on a computer (dragged by its edge; kept on this device)
@@ -281,7 +292,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const sx = e.clientX;
     const w0 = layout.panelW;
     // the panel grows toward the middle: which way that is depends on its side
-    const dir = (layout.order.indexOf("panel") > layout.order.indexOf("preview") ? 1 : -1) * (THEMES[theme].mirror ? -1 : 1);
+    const dir = (layout.order.indexOf("panel") > layout.order.indexOf("preview") ? 1 : -1) * (T.mirror ? -1 : 1);
     let w = w0;
     const move = (ev: PointerEvent) => {
       w = Math.min(720, Math.max(260, w0 + (ev.clientX - sx) * dir));
@@ -350,6 +361,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (localStorage.getItem("jw-editor-tl") === "pro") setTlLook("pro");
         const th = localStorage.getItem("jw-editor-theme");
         if (th && th in THEMES) setTheme(th as ThemeId);
+        const wsSaved = localStorage.getItem("jw-editor-ws");
+        if (wsSaved && WS_BY_ID.has(wsSaved)) {
+          setWsId(wsSaved);
+          setTlLook(WS_BY_ID.get(wsSaved)!.tl);
+        }
         const w = Number(localStorage.getItem("jw-editor-chat-w"));
         if (w >= 300 && w <= 900) setChatW(w);
         const z = Number(localStorage.getItem("jw-editor-chat-zoom"));
@@ -371,16 +387,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     // every size in the editor follows the page's base size, so the whole thing grows or shrinks together
     const root = document.documentElement;
     // (a phone keeps the normal size: the children's bigger look would push things off its narrow screen)
-    const k = ui * (wide ? THEMES[theme].scale : Math.min(1, THEMES[theme].scale));
+    const k = ui * (wide ? T.scale : Math.min(1, T.scale));
     root.style.fontSize = k === 1 ? "" : `${Math.round(k * 100)}%`;
     return () => {
       root.style.fontSize = "";
     };
-  }, [ui, theme, wide]);
+  }, [ui, T.scale, wide]);
   useEffect(() => {
-    const f = THEMES[theme].font;
+    const f = T.font;
     if (f) void loadFont(f, 400).then(() => loadFont(f, 700));
-  }, [theme]);
+  }, [T.font]);
   const pickKeys = (p: ProgramId) => {
     setKeysFrom(p);
     try {
@@ -399,9 +415,25 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   };
   const pickTheme = (th: ThemeId) => {
     setTheme(th);
+    setWsId(null);
+    setPage("edit");
     setPicking(false);
     try {
       localStorage.setItem("jw-editor-theme", th);
+      localStorage.removeItem("jw-editor-ws");
+    } catch {
+      /* not kept */
+    }
+  };
+  const pickWs = (id: string) => {
+    const w = WS_BY_ID.get(id);
+    if (!w) return;
+    setWsId(id);
+    setPage("edit");
+    setTlLook(w.tl);
+    setPicking(false);
+    try {
+      localStorage.setItem("jw-editor-ws", id);
     } catch {
       /* not kept */
     }
@@ -446,7 +478,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     e.preventDefault();
     const startX = e.clientX;
     const startW = chatW;
-    const dir = THEMES[theme].mirror ? 1 : -1;
+    const dir = T.mirror ? 1 : -1;
     let w = startW;
     const move = (ev: PointerEvent) => {
       w = Math.round(Math.min(Math.max(300, window.innerWidth * 0.6), Math.max(300, startW + dir * (ev.clientX - startX))));
@@ -1127,17 +1159,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   const keyMap = useMemo(() => keyTable(keysFrom ?? "jawad"), [keysFrom]);
   // the clip a trim acts on: the chosen one under the playhead, else the top clip there on an unlocked track
-  const clipAtHead = () => {
+  const clipAtHead = (ok: (c: Clip, kind: TrackKind) => boolean = () => true) => {
     const ms = at();
     const t = tlRef.current;
     const hit = (id: string) => {
       const f = findClip(t, id);
-      return f && !f.track.locked && ms > f.clip.start && ms < clipEnd(f.clip) ? f.clip.id : null;
+      return f && !f.track.locked && ms >= f.clip.start && ms < clipEnd(f.clip) && ok(f.clip, f.track.kind) ? f.clip.id : null;
     };
     for (const id of selected) if (hit(id)) return hit(id);
     for (const tr of [...t.tracks].reverse()) {
       if (tr.locked || tr.hidden) continue;
-      const c = tr.clips.find((c) => ms > c.start && ms < clipEnd(c));
+      const c = tr.clips.find((c) => ms >= c.start && ms < clipEnd(c) && ok(c, tr.kind));
       if (c) return c.id;
     }
     return null;
@@ -1235,6 +1267,39 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       case "export":
         return duration(tlRef.current) ? setExporting(true) : flash("ما فيه شي تصدّره للحين.", true);
     }
+  };
+  // «واجهات البرامج»: a page, and what a menu item does
+  const openPage = (p: PageId) => {
+    if (p === "captions") return setCaptioning(true);
+    if (p === "deliver") return duration(tlRef.current) ? setExporting(true) : flash("ما فيه شي تصدّره للحين.", true);
+    const info = PAGE_INFO[p];
+    if (p === "media") setRail("media");
+    if (info.tab) {
+      // the clip to work on: the chosen one, or the one under the playhead
+      // (a picture or a video for colour and effects; anything with sound for the sound page)
+      const fits = (c: Clip, kind: TrackKind) => (info.tab === "sound" ? !c.text && (kind === "audio" || !!assets.find((x) => x.id === c.assetId)?.hasAudio) : info.tab === "motion" ? true : !c.text && kind === "video");
+      const sel = selected.length === 1 ? findClip(tlRef.current, selected[0]) : null;
+      const id = sel && fits(sel.clip, sel.track.kind) ? sel.clip.id : clipAtHead(fits);
+      if (!id) {
+        flash("اختر مقطع (أو حط المؤشر عليه) وبعدين افتح الصفحة.", true);
+        return;
+      }
+      setWantTab(info.tab);
+      setTab(info.tab);
+      pick([id]);
+      setRail("inspector");
+    }
+    setPage(p);
+  };
+  const menuAct = (a: MenuAct) => {
+    if ("key" in a) return keyDo(a.key, keysFrom ?? "jawad");
+    if ("page" in a) return openPage(a.page);
+    if (a.open === "captions") setCaptioning(true);
+    else if (a.open === "shortcuts") setKeysOpen("page");
+    else if (a.open === "layout") setLayoutOpen(true);
+    else if (a.open === "haidara") openClaude();
+    else if (a.open === "themes") setPicking(true);
+    else setRail(a.open === "media" ? "media" : a.open === "styles" ? "styles" : "project");
   };
   useEffect(() => {
     keys.current = (e: KeyboardEvent) => {
@@ -1499,7 +1564,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the settings panel's edge that faces the picture: drag to make it wider
   const panelAfter = layout.order.indexOf("panel") > layout.order.indexOf("preview");
   const panelEdge = !floated("panel") && wide ? (
-    <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== THEMES[theme].mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
+    <div role="separator" aria-orientation="vertical" aria-label="غيّر عرض اللوحة" title="اسحب لتعريض اللوحة (ضغطتين: العرض الأصلي)" className={`absolute inset-y-6 z-10 hidden w-2 cursor-col-resize rounded-full hover:bg-jw-accent/40 lg:block ${panelAfter !== T.mirror ? "start-0" : "end-0"}`} onPointerDown={dragPanel} onDoubleClick={() => putLayout({ ...layout, panelW: 320 })} />
   ) : null;
 
   // حيدرة along the whole side (top to bottom): the editor makes room for him on that side
@@ -1510,11 +1575,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
   return (
     <div
-      className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (THEMES[theme].mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
-      data-ed-theme={theme}
+      className={`relative flex h-dvh min-h-[480px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--jw-header-h,56px)-var(--jw-bar-h,0px))] lg:min-h-[520px] ${sideChat ? (T.mirror ? "lg:pe-[var(--jw-chat-pad)]" : "lg:ps-[var(--jw-chat-pad)]") : ""}`}
+      data-ed-theme={ws ? "ws" : theme}
+      data-ed-page={bigPage ? "big" : undefined}
       // a phone: the editor takes the whole screen (JAWAD AI's header steps aside, sections.css)
       data-ed-full=""
-      style={{ ...(THEMES[theme].font ? { fontFamily: `"${familyOf(THEMES[theme].font!)}", var(--jw-font)` } : {}), ...(sideChat ? ({ "--jw-chat-pad": chatPad } as React.CSSProperties) : {}) }}
+      style={{ ...(ws ? (wsVars(ws) as React.CSSProperties) : {}), ...(T.font ? { fontFamily: `"${familyOf(T.font!)}", var(--jw-font)` } : {}), ...(sideChat ? ({ "--jw-chat-pad": chatPad } as React.CSSProperties) : {}) }}
       // files dropped anywhere else (the preview, the panels) go at the playhead
       onDragOver={(e) => {
         if (!readOnly && e.dataTransfer.types.includes("Files")) e.preventDefault();
@@ -1560,10 +1626,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         {/* the look */}
         <div className="relative shrink-0">
           <button type="button" className="jw-btn jw-3d" onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="الثيم: شكل المحرر وترتيبه">
-            <Icon name="palette" size={16} /> <span className="hidden md:inline">{THEMES[theme].label}</span>
+            <Icon name="palette" size={16} /> <span className="hidden md:inline">{T.label}</span>
           </button>
           {picking && (
-            <div role="menu" aria-label="الثيمات" className="jw-glass absolute end-0 top-full z-50 mt-2 grid w-[22rem] max-w-[90vw] grid-cols-2 gap-2 rounded-2xl p-2">
+            <div role="menu" aria-label="الثيمات" className="jw-glass jw-scroll absolute end-0 top-full z-50 mt-2 grid max-h-[78vh] w-[24rem] max-w-[90vw] grid-cols-2 gap-2 overflow-y-auto rounded-2xl p-2">
               {(Object.keys(THEMES) as ThemeId[]).map((k) => (
                 <button key={k} type="button" role="menuitemradio" aria-checked={theme === k} onClick={() => pickTheme(k)} className={`overflow-hidden rounded-xl border-2 text-start ${theme === k ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`}>
                   <span className="flex h-14" style={{ background: THEMES[k].swatch[0] }}>
@@ -1577,6 +1643,23 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   </span>
                 </button>
               ))}
+              <div className="col-span-2 mt-1 border-t border-jw-line pt-2">
+                <b className="block px-1 text-xs">🖥️ واجهات البرامج ({WORKSPACES.length})</b>
+                <span className="block px-1 pb-1.5 text-[10px] text-jw-muted">ألوان كل برنامج وقوائمه وصفحاته — اضغط «التلوين» مثلًا وتطلع لك صفحة كبيرة</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {WORKSPACES.map((w) => (
+                    <button key={w.id} type="button" role="menuitemradio" aria-checked={wsId === w.id} onClick={() => pickWs(w.id)} className={`flex items-center gap-2 rounded-lg border-2 p-1.5 text-start ${wsId === w.id ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`} title={w.hint}>
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm" style={{ background: w.pal.bg, boxShadow: `inset 0 -4px 0 ${w.pal.accent}` }} aria-hidden>
+                        {w.icon}
+                      </span>
+                      <span className="min-w-0">
+                        <b className="block truncate text-[11px]">{w.ar}</b>
+                        <span className="block truncate text-[9px] text-jw-muted" dir="ltr">{w.en}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="col-span-2">
                 <InstallApp />
               </div>
@@ -1637,6 +1720,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </button>
       </div>
 
+      {ws && wide && <MenuBar ws={ws} page={page} keysFrom={keysFrom ?? "jawad"} onAct={menuAct} />}
+
       {save === "conflict" && (
         <div className="flex flex-wrap items-center gap-2 bg-jw-danger/15 px-3 py-2 text-xs">
           <span className="flex-1">انحفظت نسخة أحدث من هذا المشروع من نافذة ثانية.</span>
@@ -1663,7 +1748,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       )}
 
       {/* Claude (right) · the preview · the left side: a section and its rail (a computer); sheets on a phone */}
-      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${THEMES[theme].mirror ? "flex-row-reverse" : ""}`}>
+      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${T.mirror ? "flex-row-reverse" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* حيدرة: a small bubble with his face (dragged anywhere, folded to the side); pressed, his conversation pops up
             in his own black-and-lime window over the work, and «صغّر» folds it back to the bubble */}
@@ -1743,7 +1828,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
         <aside
           className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[58dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "inspector" || rail === "project" ? floatCls("panel") : ""}`}
-          style={placeStyle("panel", { width: layout.panelW })}
+          style={placeStyle("panel", bigPage ? { width: "60%", maxWidth: 1240 } : { width: layout.panelW })}
           ref={rail === "inspector" || rail === "project" ? sizePanel : undefined}
           aria-label="الإعدادات"
         >
@@ -1751,7 +1836,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           {panelEdge}
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
-            <Guard name="الإعدادات"><Inspector projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 
@@ -1764,10 +1849,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
 
         {/* the rail of sections at the side (the blue and nature looks) */}
-        {THEMES[theme].rail === "side" && !big && railNav("side")}
+        {T.rail === "side" && !big && railNav("side")}
       </div>
 
-      {THEMES[theme].rail === "clouds" && !big && railNav("clouds")}
+      {T.rail === "clouds" && !big && railNav("clouds")}
 
       {/* transport and tools */}
       <div className="jw-glass mx-2 my-1 flex items-center gap-1 rounded-2xl px-2 py-1" dir="rtl">
@@ -1826,7 +1911,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       </div>
 
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
-      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`} style={tlH && wide && !big ? { height: tlH, minHeight: 0 } : undefined}>
+      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big || bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`} style={tlH && wide && !big && !bigPage ? { height: tlH, minHeight: 0 } : undefined}>
         {/* its top edge: drag to make the timeline taller or shorter (double-click: the usual height) */}
         {wide && !big && (
           <div role="separator" aria-orientation="horizontal" aria-label="غيّر ارتفاع التايملاين" title="اسحب لتطويل التايملاين أو تقصيره (ضغطتين: الارتفاع الأصلي)" className="absolute inset-x-8 top-0 z-20 h-2 cursor-row-resize rounded-full hover:bg-jw-accent/40" onPointerDown={dragTimeline} onDoubleClick={resetTimeline} />
@@ -1841,7 +1926,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </div>
       </div>
 
-      {THEMES[theme].rail === "pages" && !big && railNav("pages")}
+      {T.rail === "pages" && !big && railNav("pages")}
 
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
