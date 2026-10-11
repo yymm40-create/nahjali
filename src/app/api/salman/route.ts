@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { handle, UserError } from "@/lib/api";
 import { createClient } from "@/lib/supabase/server";
-import { callClaudeJson, isLeader } from "@/lib/film/anthropic";
+import { callClaudeJson, claudeWhy, isLeader } from "@/lib/film/anthropic";
 import { withClaude } from "@/lib/film/claude-model";
 import { cleanLinks, cleanTurns, SALMAN, SALMAN_SCHEMA, SALMAN_TASK } from "@/lib/salman";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// he reads the whole platform knowledge with every question: room for a slow first read
+export const maxDuration = 120;
 
 /**
  * «سلمان»: one answer about the site. Body: { messages: [{ role, text }…], page }. Open to everyone (signed in or not): it costs the
@@ -27,7 +28,8 @@ export const POST = handle(async (req: Request) => {
         system: `${SALMAN_TASK}\nPAGE: ${page || "/"}\nSIGNED IN: ${user ? "yes" : "no"}`,
         turns: turns.map((t) => ({ role: t.role, content: t.text })),
         schema: SALMAN_SCHEMA,
-        maxTokens: 1500,
+        // the model thinks before answering and that shares this budget: 1,500 cut the answer off before it was written
+        maxTokens: 6000,
         effort: "low",
         leader: isLeader(user?.email),
       }),
@@ -35,6 +37,7 @@ export const POST = handle(async (req: Request) => {
     return NextResponse.json({ reply: String(r.data.reply ?? "").trim().slice(0, 2000) || "ما فهمت عليك، تقدر تعيد السؤال بطريقة ثانية؟", links: cleanLinks(r.data.links) });
   } catch (e) {
     console.error("salman", e);
-    throw new UserError("سلمان مشغول شوي، جرّب بعد لحظات.", 503);
+    // the real reason when it is known (busy, credit…), and for the owner the raw line too
+    throw new UserError(claudeWhy(e, "سلمان مشغول شوي، جرّب بعد لحظات.", user?.email), 503);
   }
 });

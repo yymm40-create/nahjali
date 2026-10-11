@@ -10,6 +10,7 @@ import { barSections } from "@/lib/jawad/server/bar";
 import { giveSignupGift } from "@/lib/gift";
 import InDevelopment from "@/components/jawad/InDevelopment";
 import JawadHeader from "@/components/jawad/JawadHeader";
+import RobotGuide from "@/components/jawad/RobotGuide";
 import { JAWAD_PATH_HEADER } from "@config/site";
 import { JAWAD } from "@config/jawad/brand";
 import "./jawad.css";
@@ -54,6 +55,8 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       </a>
       <JawadHeader rt={bar} user={user} owner={owner || (user ? await freeFor(user) : false)} boss={owner} balance={balance} username={username} preview={!allowed} version={(process.env.VERCEL_GIT_COMMIT_SHA ?? "dev").slice(0, 7)} />
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
+      {/* the page's robot introduces itself (a movable bubble afterwards) */}
+      {!preview && <RobotGuide />}
     </div>
   );
 }
