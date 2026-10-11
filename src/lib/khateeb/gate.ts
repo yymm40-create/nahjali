@@ -35,7 +35,7 @@ async function rows(): Promise<{ kv: Record<string, string>; ready: boolean }> {
 
 export async function loadSettings(): Promise<Settings> {
   const { kv, ready } = await rows();
-  return { ...EMPTY, slug: cleanSlug(kv.slug), hasPassword: !!kv.password, version: Number(kv.version) || 0, method: kv.method?.trim() ? kv.method : DEFAULT_METHOD, poems: kv.poems ?? "", ready };
+  return { ...EMPTY, slug: cleanSlug(kv.slug) || KHATEEB.defaultSlug, hasPassword: !!kv.password, version: Number(kv.version) || 0, method: kv.method?.trim() ? kv.method : DEFAULT_METHOD, poems: kv.poems ?? "", ready };
 }
 
 /** Just the words the writer is told with (the method and the poems). */
@@ -93,8 +93,8 @@ export async function saveSettings(p: { slug?: unknown; password?: unknown; meth
 /** The password given at the door: the cookie to set when it is right, else null. */
 export async function check(slug: string, password: string): Promise<{ value: string; maxAge: number } | null> {
   const { kv } = await rows();
-  const word = cleanSlug(kv.slug);
-  if (!word || word !== cleanSlug(slug) || !kv.password) return null;
+  const word = cleanSlug(kv.slug) || KHATEEB.defaultSlug;
+  if (word !== cleanSlug(slug) || !kv.password) return null;
   if (!matches(String(password ?? "").slice(0, PASSWORD_MAX), kv.password)) return null;
   return { value: sign(word, Number(kv.version) || 0), maxAge: KHATEEB.cookieDays * 86400 };
 }
@@ -108,21 +108,24 @@ const sign = (slug: string, version: number) => `${version}.${createHmac("sha256
 export async function doorOpen(slug: string): Promise<boolean> {
   const word = cleanSlug(slug);
   if (!word) return false;
+  const { kv } = await rows();
+  if ((cleanSlug(kv.slug) || KHATEEB.defaultSlug) !== word) return false;
+  // no password set: the link alone opens it
+  if (!kv.password) return true;
   const got = (await cookies()).get(KHATEEB.cookie)?.value ?? "";
   if (!got) return false;
-  const { kv } = await rows();
-  if (!kv.password || cleanSlug(kv.slug) !== word) return false;
   const want = sign(word, Number(kv.version) || 0);
   return got.length === want.length && timingSafeEqual(Buffer.from(got), Buffer.from(want));
 }
 
 /** For the branch's own API calls (the cookie alone, whatever the link's word is now): is the door open on this device? */
 export async function anyDoorOpen(): Promise<boolean> {
+  const { kv } = await rows();
+  // no password set: the branch is open to whoever has the link (its pages are reached only by it)
+  if (!kv.password) return true;
   const got = (await cookies()).get(KHATEEB.cookie)?.value ?? "";
   if (!got) return false;
-  const { kv } = await rows();
-  const word = cleanSlug(kv.slug);
-  if (!word || !kv.password) return false;
+  const word = cleanSlug(kv.slug) || KHATEEB.defaultSlug;
   const want = sign(word, Number(kv.version) || 0);
   return got.length === want.length && timingSafeEqual(Buffer.from(got), Buffer.from(want));
 }

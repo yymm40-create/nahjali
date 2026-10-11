@@ -117,4 +117,11 @@ describe("«خطبة المنبر»", () => {
     expect(src).toContain("readSermonLength(o.settings.length).words");
     expect(src).toContain("SERMON_PARTS[i]?.share");
   });
+
+  it("has a link of its own from the start, with no password unless the owner sets one", () => {
+    expect(cleanSlug(KHATEEB.defaultSlug)).toBe(KHATEEB.defaultSlug);
+    const gate = readFileSync(new URL("../src/lib/khateeb/gate.ts", import.meta.url), "utf8");
+    expect(gate).toContain("if (!kv.password) return true;");
+    expect(gate).toContain("cleanSlug(kv.slug) || KHATEEB.defaultSlug");
+  });
 });

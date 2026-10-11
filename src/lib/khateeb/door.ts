@@ -9,7 +9,7 @@ import { doorOpen, loadSettings } from "./gate";
 /** `gate: true` = the page is the password's (nothing else may be shown); else the signed-in person. */
 export async function enterKhateeb(slug: string, path = ""): Promise<{ gate: true } | { gate: false; user: NonNullable<Awaited<ReturnType<typeof requireJawadUser>>["user"]>; owner: boolean }> {
   const s = await loadSettings();
-  if (!s.ready || !s.slug || !s.hasPassword || s.slug !== cleanSlug(slug)) notFound();
+  if (!s.slug || s.slug !== cleanSlug(slug)) notFound();
   if (!(await doorOpen(slug))) return { gate: true };
   const { user, owner } = await requireJawadUser(`${KHATEEB.base}/${slug}${path}`);
   return { gate: false, user, owner };
