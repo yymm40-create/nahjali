@@ -39,7 +39,7 @@ export const GET = mahdiRoute(async (req: Request) => {
   return NextResponse.json({ tasks: await loadTasks(supabase, todayIn(profile.timeZone)).catch(() => []) });
 });
 
-/** A new task for today: `{ title, at?: "HH:MM" | null, habitId?: string | null }`. */
+/** A new task for today: `{ title, at?: "HH:MM" | null, habitId?: string | null, priority?: boolean }` (a priority: «أولويات اليوم»). */
 export const POST = mahdiRoute(async (req: Request) => {
   const { supabase, user, profile } = await requireProfile(req);
   const body = await readJson(req);
@@ -47,9 +47,12 @@ export const POST = mahdiRoute(async (req: Request) => {
   const { count, error: e1 } = await supabase.from("mahdi_day_tasks").select("id", { count: "exact", head: true }).eq("task_date", today);
   fail(e1);
   if ((count ?? 0) >= MAX_PER_DAY) throw new UserError(t.tasks.tooMany(MAX_PER_DAY), 429);
+  const priority = body.priority === true;
   const { error } = await supabase
     .from("mahdi_day_tasks")
-    .insert({ user_id: user.id, task_date: today, title: title(body.title), at_time: timeOf(body.at), habit_id: await habitOf(supabase, body.habitId), sort_order: count ?? 0 });
+    .insert({ user_id: user.id, task_date: today, title: title(body.title), at_time: priority ? null : timeOf(body.at), habit_id: await habitOf(supabase, body.habitId), sort_order: count ?? 0, ...(priority ? { priority: true } : {}) });
+  // before SQL 0058 a priority can't be kept
+  if (priority && error?.code === "42703") throw new UserError(t.priorities.notReady, 503);
   fail(error);
   return NextResponse.json({ tasks: await loadTasks(supabase, today) });
 });

@@ -28,7 +28,8 @@ const permission = () => (typeof Notification === "undefined" ? "unsupported" : 
 export default function DayTasks() {
   const { state, store, timeline, toast } = useMahdi();
   const { snap, today } = state;
-  const tasks = useMemo(() => [...snap.tasks].filter((x) => x.date === today).sort(byTime), [snap.tasks, today]);
+  // «أولويات اليوم» live in the same list, shown above (DayPriorities)
+  const tasks = useMemo(() => [...snap.tasks].filter((x) => x.date === today && !x.priority).sort(byTime), [snap.tasks, today]);
   const habits = useMemo(() => snap.habits.filter((h) => habitStatus(h, today) !== "paused"), [snap.habits, today]);
   const [title, setTitle] = useState("");
   const [timed, setTimed] = useState(false);

@@ -98,6 +98,8 @@ export interface DayTask {
   habitId: string | null;
   sortOrder: number;
   doneAt: string | null;
+  /** «أولويات اليوم» (the list above the tasks) rather than «مهام اليوم» */
+  priority?: boolean;
 }
 
 /** One logged value sent to the server ("set this day's total to value"). */
