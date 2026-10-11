@@ -3,7 +3,8 @@ import { ROBOTS, robotFor } from "@config/jawad/robots";
 
 describe("the robots introducing themselves", () => {
   it("finds the robot of each page", () => {
-    expect(robotFor("/jawad-ai")?.name).toBe("سلمان");
+    // سلمان keeps only his own button
+    expect(robotFor("/jawad-ai")).toBeNull();
     expect(robotFor("/jawad-ai/images")?.name).toBe("جواد");
     expect(robotFor("/jawad-ai/film/abc/sheets")?.name).toBe("سجاد");
     expect(robotFor("/jawad-ai/editor/123")?.name).toBe("حيدرة");
