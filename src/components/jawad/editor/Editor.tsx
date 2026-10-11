@@ -173,7 +173,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the whole editor's size (people pick it; kept on this device)
   const [ui, setUi] = useState(1);
   // the look (kept on this device): colours, shapes and where the sections sit
-  const [theme, setTheme] = useState<ThemeId>("future");
+  const [theme] = useState<ThemeId>("future");
   // «واجهات البرامج»: the editor dressed as one of twenty editors (its colours, menus and pages; kept on this device)
   const [wsId, setWsId] = useState<string | null>(null);
   const ws = wsId ? (WS_BY_ID.get(wsId) ?? null) : null;
@@ -402,11 +402,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         const v = Number(localStorage.getItem("jw-editor-ui"));
         if (v >= 0.7 && v <= 1.4) setUi(v);
         if (localStorage.getItem("jw-editor-tl") === "pro") setTlLook("pro");
-        const th = localStorage.getItem("jw-editor-theme");
-        if (th && th in THEMES) setTheme(th as ThemeId);
-        // the pro look is the editor's look on a computer, unless the person chose one of the four themes themselves
-        const wsSaved = localStorage.getItem("jw-editor-ws");
-        if (window.matchMedia(wideQuery).matches && (wsSaved !== null ? wsSaved !== "" : !th)) {
+        // the pro look is THE look of the editor on a computer (the older themes and their picker are gone; a phone keeps its own)
+        if (window.matchMedia(wideQuery).matches) {
           setWsId(PRO.id);
           setTlLook(PRO.tl);
         }
@@ -455,31 +452,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     setTlLook(v);
     try {
       localStorage.setItem("jw-editor-tl", v);
-    } catch {
-      /* not kept */
-    }
-  };
-  const pickTheme = (th: ThemeId) => {
-    setTheme(th);
-    setWsId(null);
-    setPage("edit");
-    setPicking(false);
-    try {
-      localStorage.setItem("jw-editor-theme", th);
-      localStorage.removeItem("jw-editor-ws");
-    } catch {
-      /* not kept */
-    }
-  };
-  const pickWs = (id: string) => {
-    const w = WS_BY_ID.get(id);
-    if (!w) return;
-    setWsId(id);
-    setPage("edit");
-    setTlLook(w.tl);
-    setPicking(false);
-    try {
-      localStorage.setItem("jw-editor-ws", id);
     } catch {
       /* not kept */
     }
@@ -1351,7 +1323,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       setChatDock(on);
       openClaude(on ? true : assisting);
     }
-    else if (a.open === "themes") setPicking(true);
     else setRail(a.open === "media" ? "media" : a.open === "styles" ? "styles" : "project");
   };
   useEffect(() => {
@@ -1687,42 +1658,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         <button type="button" className="jw-btn jw-3d hidden shrink-0 text-xs lg:inline-flex" onClick={() => setKeysOpen("page")} title="الاختصارات: اختصارات بريمير ودافنشي وكاب كت وفاينل كت تشتغل هنا">
           <Icon name="keyboard" size={15} /> <span className="hidden xl:inline">الاختصارات</span>
         </button>
-        {/* the look */}
+        {/* the app's install button (the look is the pro look; the older themes are gone) */}
         <div className="relative shrink-0">
-          <button type="button" className="jw-btn jw-3d" onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="الثيم: شكل المحرر وترتيبه">
-            <Icon name="palette" size={16} /> <span className="hidden md:inline">{T.label}</span>
+          <button type="button" className="jw-btn jw-3d" onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="ثبّت حيدرة كت كتطبيق">
+            <Icon name="download" size={16} /> <span className="hidden md:inline">التطبيق</span>
           </button>
           {picking && (
-            <div role="menu" aria-label="الثيمات" className="jw-glass jw-scroll absolute end-0 top-full z-50 mt-2 grid max-h-[78vh] w-[24rem] max-w-[90vw] grid-cols-2 gap-2 overflow-y-auto rounded-2xl p-2">
-              {wide && (
-                <button type="button" role="menuitemradio" aria-checked={wsId === PRO.id} onClick={() => pickWs(PRO.id)} className={`col-span-2 overflow-hidden rounded-xl border-2 text-start ${wsId === PRO.id ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`}>
-                  <span className="flex h-14" style={{ background: PRO.pal.bg }}>
-                    {[PRO.pal.s1, PRO.pal.s3, PRO.pal.accent].map((c) => (
-                      <span key={c} className="m-1.5 flex-1 rounded" style={{ background: c }} />
-                    ))}
-                  </span>
-                  <span className="block bg-jw-surface px-2 py-1.5">
-                    <b className="block text-xs">{PRO.icon} {PRO.ar}</b>
-                    <span className="block text-[10px] leading-4 text-jw-muted">{PRO.hint}</span>
-                  </span>
-                </button>
-              )}
-              {(Object.keys(THEMES) as ThemeId[]).map((k) => (
-                <button key={k} type="button" role="menuitemradio" aria-checked={!ws && theme === k} onClick={() => pickTheme(k)} className={`overflow-hidden rounded-xl border-2 text-start ${!ws && theme === k ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`}>
-                  <span className="flex h-14" style={{ background: THEMES[k].swatch[0] }}>
-                    {THEMES[k].swatch.slice(1).map((c) => (
-                      <span key={c} className="m-1.5 flex-1 rounded-lg" style={{ background: c }} />
-                    ))}
-                  </span>
-                  <span className="block bg-jw-surface px-2 py-1.5">
-                    <b className="block text-xs">{THEMES[k].icon} {THEMES[k].label}</b>
-                    <span className="block text-[10px] leading-4 text-jw-muted">{THEMES[k].hint}</span>
-                  </span>
-                </button>
-              ))}
-              <div className="col-span-2">
-                <InstallApp />
-              </div>
+            <div role="menu" aria-label="التطبيق" className="jw-glass absolute end-0 top-full z-50 mt-2 w-[20rem] max-w-[90vw] rounded-2xl p-2">
+              <InstallApp />
             </div>
           )}
         </div>
