@@ -17,6 +17,14 @@ import RobotFace from "@/components/RobotFace";
 
 type S = Record<string, unknown>;
 
+/** The level of a written output, from the lightest to the deepest. */
+export const LEVEL_OPTIONS = [
+  { id: "low", label: "خفيف" },
+  { id: "medium", label: "متوسط" },
+  { id: "high", label: "عميق" },
+  { id: "max", label: "أعمق" },
+];
+
 /** The first answer of every question (what the assistant would choose). */
 export function defaults(kind: OutputKind, level: string): S {
   const young = /ابتدائي|متوسط/.test(level);
@@ -28,7 +36,7 @@ export function defaults(kind: OutputKind, level: string): S {
     case "book":
       return { writing: "explain", page: "A4", pages: 0, density: "medium", format: "pdf", pictures: "" };
     case "slides":
-      return { count: 0, aspect: "16:9", notesMode: "both", render: "editable", imageQuality: "high" };
+      return { density: "medium", count: 0, aspect: "16:9", notesMode: "both", render: "editable", imageQuality: "high" };
     case "audio":
       return { source: "text", mode: "single" };
     case "mindmap":
@@ -114,7 +122,8 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange }: 
 }
 
 export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"]; level?: string }) {
-  const density = <Choice label="قد إيش التفصيل؟" value={String(s.density)} options={[{ id: "low", label: "مختصر" }, { id: "medium", label: "متوسط" }, { id: "high", label: "مفصل" }]} onChange={(density) => set({ density })} />;
+  // the level of each output (the owner's words): light, medium, deep, deepest — instead of a school level for the whole material
+  const density = <Choice label="المستوى" value={String(s.density)} options={LEVEL_OPTIONS} onChange={(density) => set({ density })} />;
   const pages = PICTURE_KINDS.includes(kind) && (
     <>
       <MethodChoice what="page" value={Boolean(s.pictures)} quality={String(s.pictures || "high")} perUnit={prices.page} free={prices.free} onChange={(draw, q) => set({ pictures: draw ? q : "" })} />
@@ -157,6 +166,7 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
     case "slides":
       return (
         <>
+          {density}
           <Count label="كم شريحة؟" value={Number(s.count) || 0} options={[8, 12, 20]} max={200} unit="شريحة" onChange={(count) => set({ count })} />
           <Choice label="الشرح وين؟" value={String(s.notesMode)} options={[{ id: "slide", label: "على الشريحة" }, { id: "notes", label: "في ملاحظات المحاضر" }, { id: "both", label: "الاثنين" }]} onChange={(notesMode) => set({ notesMode })} />
           <Choice label="الشكل" value={String(s.aspect)} options={[{ id: "16:9", label: "عريض 16:9" }, { id: "4:3", label: "4:3" }]} onChange={(aspect) => set({ aspect })} />
@@ -183,7 +193,7 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
       return (
         <>
           <Choice label="كم سؤال؟" value={Number(s.count)} options={[5, 10, 20, 30].map((n) => ({ id: n, label: n.toLocaleString("ar") }))} onChange={(count) => set({ count })} />
-          <Choice label="الصعوبة" value={String(s.difficulty)} options={[{ id: "easy", label: "سهل" }, { id: "medium", label: "متوسط" }, { id: "hard", label: "صعب" }]} onChange={(difficulty) => set({ difficulty })} />
+          <Choice label="المستوى" value={String(s.difficulty)} options={[{ id: "easy", label: "خفيف (سهل)" }, { id: "medium", label: "متوسط" }, { id: "hard", label: "عميق (صعب)" }]} onChange={(difficulty) => set({ difficulty })} />
           <div className="space-y-1">
             <span className="text-sm font-semibold">أنواع الأسئلة</span>
             <div className="flex flex-wrap gap-2">

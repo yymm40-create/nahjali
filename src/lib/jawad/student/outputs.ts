@@ -77,6 +77,7 @@ function chapterWords(c: Ctx, o: Output, plan: DocPlan) {
 }
 
 const DENSITY: Record<string, string> = {
+  max: "the deepest: everything in the material in full depth — every idea, detail and nuance explained, with examples, links between ideas, and the why behind each point; long and thorough",
   high: "very detailed: keep every idea, explain fully, many examples from the material",
   medium: "balanced: the main ideas with enough explanation",
   low: "few words: the essentials only, short sentences",

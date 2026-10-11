@@ -9,9 +9,9 @@ const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url),
 // as one line instead of asking again.
 describe("what the student chose is shown as a line, not asked again", () => {
   it("says a written output's choices in the order they were asked", () => {
-    expect(settingsLine("summary", { pages: 20, density: "high", format: "pdf", page: "A4" })).toBe("20 صفحة · مفصل · PDF");
-    expect(settingsLine("explain", { pages: 0, density: "low", format: "docx" })).toBe("عدد الصفحات حسب المادة · مختصر · Word (DOCX) قابل للتعديل");
-    expect(settingsParts("book", { writing: "summary", pages: 40, density: "medium", format: "both" })).toEqual(["كتاب ملخص", "40 صفحة", "تفصيل متوسط", "الاثنين"]);
+    expect(settingsLine("summary", { pages: 20, density: "high", format: "pdf", page: "A4" })).toBe("20 صفحة · مستوى عميق · PDF");
+    expect(settingsLine("explain", { pages: 0, density: "low", format: "docx" })).toBe("عدد الصفحات حسب المادة · مستوى خفيف · Word (DOCX) قابل للتعديل");
+    expect(settingsParts("book", { writing: "summary", pages: 40, density: "medium", format: "both" })).toEqual(["كتاب ملخص", "40 صفحة", "مستوى متوسط", "الاثنين"]);
     // a book that is the text as it is has no page count or density to speak of
     expect(settingsParts("book", { writing: "verbatim", pages: 99, density: "high", format: "pdf" })).toEqual(["النص كامل كما هو", "PDF"]);
   });

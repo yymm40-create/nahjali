@@ -15,16 +15,16 @@ import SourcesStep from "./SourcesStep";
 import type { ProjectHook } from "./StudentProject";
 import UnderstandingStep from "./UnderstandingStep";
 
-export type TierId = "brief" | "sources" | "understanding";
+export type TierId = "sources" | "understanding";
 
 export const TIERS: { id: TierId; n: number; label: string; emoji: string; hint: string }[] = [
-  { id: "brief", n: 1, label: "الطلب", emoji: "🎯", hint: "اسم المادة، غرضك منها، ومستواك." },
-  { id: "sources", n: 2, label: "المادة", emoji: "📤", hint: "ملفاتك أو نصك أو تفريغ فيديو، وسؤال «الذكاء الإسلامي»، أو صادق يبحث لك." },
-  { id: "understanding", n: 3, label: "الفهم", emoji: "🧠", hint: "اقرأ كيف فهم صادق مادتك، واعتمده أو صحّحه." },
+  { id: "sources", n: 1, label: "المادة ومحتواها", emoji: "📤", hint: "اسم المادة، وملفاتك: PDF، صور، يوتيوب، تسجيل، نص — أو صادق يبحث لك." },
+  { id: "understanding", n: 2, label: "الفهم", emoji: "🧠", hint: "صادق فرّغ وقرأ كل شي: اقرأ فهمه، واعتمده أو صحّحه." },
 ];
 
-/** Which tier a material is at: 0 request, 1 material, 2 understanding; 3 once it has gone on to the outputs. */
-export const tierReached = (reached: number) => Math.max(1, Math.min(3, reached));
+/** Which tier a material is at: 0 material, 1 understanding; 2 once it has gone on to the outputs (from StudentProject's
+ *  steps, where 1 is the material, 2 the understanding and 3 the outputs). */
+export const tierReached = (reached: number) => Math.max(0, Math.min(2, reached - 1));
 
 export default function StartTiers({
   p,
@@ -52,16 +52,19 @@ export default function StartTiers({
 }) {
   const at = tierReached(reached);
   const body = (id: TierId): ReactNode => {
-    if (id === "brief") return <BriefStep p={p} />;
     if (id === "sources") {
       // the way of research: its own run — and the question to «الذكاء الإسلامي» is still here, never hidden by it
       return researching ? (
         <div className="space-y-4">
+          <BriefStep p={p} />
           <ResearchRun p={p} working={working} error={error} onGo={onGo} onFiles={onFiles} />
           <IslamicAsk p={p} />
         </div>
       ) : (
-        <SourcesStep p={p} onContinue={onContinue} />
+        <div className="space-y-4">
+          <BriefStep p={p} />
+          <SourcesStep p={p} onContinue={onContinue} />
+        </div>
       );
     }
     return researching ? (

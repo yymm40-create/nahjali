@@ -8,24 +8,29 @@ const dir = "src/components/jawad/student";
 // «خل صفحة كتابة المعلومات (المادة والغرض والمستوى) وصفحة سحب الملفات كلها في صفحة واحدة في البداية، وصفحة التفريغ
 // معهم، كلهم في صفحة واحدة بس زي المراتب» — and the Islamic question was seen only by whoever went the files way.
 describe("«الطالب الذكي» — the first page is ONE page of tiers", () => {
-  it("has the request, the material and the understanding as three tiers, in that order", () => {
-    expect(TIERS.map((t) => t.id)).toEqual(["brief", "sources", "understanding"]);
-    expect(TIERS.map((t) => t.n)).toEqual([1, 2, 3]);
-    // the request tier names what the person writes there: the subject, the purpose and the level are BriefStep's fields
+  // «لا تخليه من البداية يختار ثانوي جامعي… اسم المادة ويحط الملف حقه… بعدين يفرغ… يعتمد الفهم بعدين النواتج مباشرة»
+  it("has the material (its name and its content) and the understanding as two tiers, in that order", () => {
+    expect(TIERS.map((t) => t.id)).toEqual(["sources", "understanding"]);
+    expect(TIERS.map((t) => t.n)).toEqual([1, 2]);
+    // the material tier starts with the subject's name; no school level, audience or purpose any more
     const brief = read(`${dir}/BriefStep.tsx`);
-    for (const field of ["اسم المادة", "المستوى التعليمي", "وش غرضك منها"]) expect(brief, field).toContain(field);
+    expect(brief).toContain("اسم المادة");
+    for (const gone of ["المستوى التعليمي", "وش غرضك منها", "لمن؟"]) expect(brief, gone).not.toContain(gone);
+    const home = read(`${dir}/StudentHome.tsx`);
+    for (const gone of ["المستوى التعليمي", "وش غرضك منها", "لمن؟ (اختياري)"]) expect(home, gone).not.toContain(gone);
+    expect(read(`${dir}/StartTiers.tsx`)).toContain("<BriefStep p={p} />");
     // and the material tier is where the files, the paste and the transcription of a video are
     const sources = read(`${dir}/SourcesStep.tsx`);
     for (const piece of ["اسحب ملفاتك هنا", "فرّغ الكلام", "فرّغ الرابط", "الصق نصًا"]) expect(sources, piece).toContain(piece);
   });
 
   it("opens the tier the material has reached, locks the ones ahead, and folds the ones behind", () => {
-    // StudentProject counts 0 request · 1 material · 2 understanding · 3 outputs: a tier is never reached before the material
-    expect(tierReached(0)).toBe(1);
-    expect(tierReached(1)).toBe(1);
-    expect(tierReached(2)).toBe(2);
-    expect(tierReached(3)).toBe(3);
-    expect(tierReached(9)).toBe(3);
+    // StudentProject counts 1 material · 2 understanding · 3 outputs; the tiers are 0 material · 1 understanding
+    expect(tierReached(0)).toBe(0);
+    expect(tierReached(1)).toBe(0);
+    expect(tierReached(2)).toBe(1);
+    expect(tierReached(3)).toBe(2);
+    expect(tierReached(9)).toBe(2);
     const tiers = read(`${dir}/StartTiers.tsx`);
     expect(tiers).toContain("const locked = i > at;");
     expect(tiers).toContain("disabled={locked}");
