@@ -1,29 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { PAGE_INFO, WORKSPACES, wsVars } from "@/components/jawad/editor/workspaces";
+import { PAGE_INFO, PRO, WORKSPACES, wsVars } from "@/components/jawad/editor/workspaces";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 
-describe("«واجهات البرامج»", () => {
-  it("twenty editors, each its own", () => {
-    expect(WORKSPACES).toHaveLength(20);
-    expect(new Set(WORKSPACES.map((w) => w.id)).size).toBe(20);
-    expect(new Set(WORKSPACES.map((w) => w.pal.accent)).size).toBeGreaterThan(14);
-  });
-  it("every page and font is one the editor has", () => {
-
-    for (const w of WORKSPACES) {
-      expect(w.pages.length).toBeGreaterThan(2);
-      for (const [p] of w.pages) expect(PAGE_INFO[p]).toBeTruthy();
-      if (w.font) expect(FONT_BY_ID.has(w.font)).toBe(true);
-      expect(w.menus.length).toBeGreaterThan(2);
+describe("«الواجهة الاحترافية»", () => {
+  it("one design of ours: neutral greys (no hue) and one accent", () => {
+    expect(WORKSPACES).toEqual([PRO]);
+    for (const c of [PRO.pal.bg, PRO.pal.s1, PRO.pal.s2, PRO.pal.s3, PRO.pal.line, PRO.pal.ink, PRO.pal.muted]) {
+      const n = parseInt(c.slice(1), 16);
+      const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(1);
     }
+    expect(PRO.pal.accent).toBe("#e8a33d");
   });
-  it("the colour page is a big page wherever it is", () => {
+  it("its pages are the editor's, the colour page a big one", () => {
+    expect(PRO.pages.map(([p]) => p)).toEqual(["media", "edit", "fx", "color", "audio", "deliver"]);
+    for (const [p] of PRO.pages) expect(PAGE_INFO[p]).toBeTruthy();
     expect(PAGE_INFO.color.big).toBe(true);
-    expect(WORKSPACES.filter((w) => w.pages.some(([p]) => p === "color")).length).toBeGreaterThanOrEqual(18);
+    expect(FONT_BY_ID.has(PRO.font!)).toBe(true);
   });
   it("sets the site's tokens", () => {
-    const v = wsVars(WORKSPACES[0]);
-    expect(v["--jw-accent"]).toBe(WORKSPACES[0].pal.accent);
-    expect(v["--jw-surface"]).toBe(WORKSPACES[0].pal.s1);
+    const v = wsVars(PRO);
+    expect(v["--jw-accent"]).toBe(PRO.pal.accent);
+    expect(v["--jw-surface"]).toBe(PRO.pal.s1);
   });
 });

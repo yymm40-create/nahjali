@@ -365,6 +365,15 @@ export default function Inspector({
     }
   };
 
+  // «غرفة التلوين»: the grading tools alone, filling the room (the wheels, the curves and the rest side by side)
+  if (page && current === "color" && !missing) {
+    return (
+      <div className="h-full min-h-0">
+        <GradePanel page clip={clip} thumb={a ? (thumbs?.[a.id] ?? null) : null} locked={locked} run={run} flash={flash} player={player} projectId={projectId ?? null} targets={{ track: gradeable(tl, track.clips.map((c) => c.id), clip.id), all: allGradeable(tl, clip.id) }} media={a?.url && (a.kind === "video" || a.kind === "image") ? { url: a.url, kind: a.kind } : null} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 p-3">
       <div className="flex items-center gap-2">

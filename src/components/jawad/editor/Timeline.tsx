@@ -118,7 +118,7 @@ export const timecode = (ms: number, fps: number) => {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}:${p(f)}`;
 };
-const PRO_TONE = { video: "#4f5bd5", image: "#b9822f", audio: "#2f8a5c", text: "#a3478f" } as const;
+const PRO_TONE = { video: "#2f4f6e", image: "#3a5470", audio: "#2f6b4f", text: "#7346b0" } as const;
 
 export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic" }: Props) {
   const pro = look === "pro";

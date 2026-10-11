@@ -43,9 +43,12 @@ import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
 import ShortcutsPage from "./ShortcutsPage";
 import KeyStudio from "./KeyStudio";
-import MenuBar, { type MenuAct } from "./MenuBar";
+import MenuBar, { PageTabs, type MenuAct } from "./MenuBar";
+import CommandBar from "./CommandBar";
+import ClipStrip from "./ClipStrip";
+import ScopesPanel from "./ScopesPanel";
 import "./workspaces.css";
-import { PAGE_INFO, WORKSPACES, WS_BY_ID, wsVars, type PageId } from "./workspaces";
+import { PAGE_INFO, PRO, WS_BY_ID, wsVars, type PageId } from "./workspaces";
 import { TL_ZOOM } from "./Timeline";
 import { BIG_STEP, comboOf, KEYS_STORE, keyTable, readProgram, type ActionId, type ProgramId } from "@/lib/editor/shortcuts";
 import { rateLabel } from "@/lib/editor/shuttle";
@@ -177,6 +180,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the page of a workspace: «التلوين» and the other big pages give the tools most of the screen
   const [page, setPage] = useState<PageId>("edit");
   const bigPage = !!ws && PAGE_INFO[page].big;
+  // «غرفة التلوين»: the colour page as a whole room — the picture and the scopes above, the wheels, curves and the rest below
+  const colorRoom = bigPage && page === "color" && wide;
   const [picking, setPicking] = useState(false);
   /** the look in use: a workspace's, or one of the four themes */
   const T = ws ? { label: ws.ar, icon: ws.icon, hint: ws.hint, rail: ws.rail, mirror: !!ws.mirror, scale: ws.scale, font: ws.font, swatch: [ws.pal.bg, ws.pal.accent, ws.pal.s1, ws.pal.s3] } : THEMES[theme];
@@ -387,10 +392,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (localStorage.getItem("jw-editor-tl") === "pro") setTlLook("pro");
         const th = localStorage.getItem("jw-editor-theme");
         if (th && th in THEMES) setTheme(th as ThemeId);
+        // the pro look is the editor's look on a computer, unless the person chose one of the four themes themselves
         const wsSaved = localStorage.getItem("jw-editor-ws");
-        if (wsSaved && WS_BY_ID.has(wsSaved)) {
-          setWsId(wsSaved);
-          setTlLook(WS_BY_ID.get(wsSaved)!.tl);
+        if (window.matchMedia(wideQuery).matches && (wsSaved !== null ? wsSaved !== "" : !th)) {
+          setWsId(PRO.id);
+          setTlLook(PRO.tl);
         }
         const w = Number(localStorage.getItem("jw-editor-chat-w"));
         if (w >= 300 && w <= 900) setChatW(w);
@@ -1208,7 +1214,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const big = BIG_STEP[from];
     const step = big.ms ?? (big.frames! * 1000) / fps;
     const need = (ok: boolean, msg: string) => (ok ? true : (flash(msg, true), false));
-    const busy = readOnly && !["play", "pause", "playFwd", "back", "frameBack", "frameFwd", "bigBack", "bigFwd", "start", "end", "prevEdit", "nextEdit", "nextMarker", "prevMarker", "copy", "selectAll", "deselect", "zoomIn", "zoomOut", "zoomFit", "full"].includes(action);
+    const busy = readOnly && !["play", "pause", "playFwd", "back", "frameBack", "frameFwd", "bigBack", "bigFwd", "start", "end", "prevEdit", "nextEdit", "nextMarker", "prevMarker", "copy", "selectAll", "deselect", "zoomIn", "zoomOut", "zoomFit", "full", "focus"].includes(action);
     if (busy) return;
     switch (action) {
       case "play":
@@ -1287,6 +1293,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return void window.dispatchEvent(new CustomEvent(TL_ZOOM, { detail: action === "zoomIn" ? "in" : action === "zoomOut" ? "out" : "fit" }));
       case "full":
         return toggleFull();
+      case "focus":
+        return setBig((v) => !v);
       case "save":
         return void flush();
       case "import":
@@ -1644,11 +1652,22 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         <span className={`hidden shrink-0 text-[11px] sm:inline ${save === "error" || save === "conflict" ? "text-jw-danger" : "text-jw-faint"}`} aria-live="polite">
           {SAVE_TEXT[save]}
         </span>
+        {ws && wide && (
+          <>
+            <PageTabs ws={ws} page={page} onAct={menuAct} />
+            <CommandBar disabled={readOnly} onSend={(text) => pluginCtx().ask(text)} />
+          </>
+        )}
         <PluginTools
           ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} className="lg:hidden" />
         {/* «⌨️ الاختصارات»: every key, and whose program wins a clash */}
+        {ws && wide && (
+          <button type="button" className={`jw-btn jw-3d hidden shrink-0 text-xs lg:inline-flex ${big ? "pro-on" : ""}`} onClick={() => setBig((v) => !v)} aria-pressed={big} title="وضع التركيز: الشاشة والتايملاين بس (⇧F)">
+            <Icon name="focus" size={15} /> <span className="hidden xl:inline">تركيز</span>
+          </button>
+        )}
         <button type="button" className="jw-btn jw-3d hidden shrink-0 text-xs lg:inline-flex" onClick={() => setKeysOpen("page")} title="الاختصارات: اختصارات بريمير ودافنشي وكاب كت وفاينل كت تشتغل هنا">
-          ⌨️ <span className="hidden xl:inline">الاختصارات</span>
+          <Icon name="keyboard" size={15} /> <span className="hidden xl:inline">الاختصارات</span>
         </button>
         {/* the look */}
         <div className="relative shrink-0">
@@ -1657,8 +1676,21 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </button>
           {picking && (
             <div role="menu" aria-label="الثيمات" className="jw-glass jw-scroll absolute end-0 top-full z-50 mt-2 grid max-h-[78vh] w-[24rem] max-w-[90vw] grid-cols-2 gap-2 overflow-y-auto rounded-2xl p-2">
+              {wide && (
+                <button type="button" role="menuitemradio" aria-checked={wsId === PRO.id} onClick={() => pickWs(PRO.id)} className={`col-span-2 overflow-hidden rounded-xl border-2 text-start ${wsId === PRO.id ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`}>
+                  <span className="flex h-14" style={{ background: PRO.pal.bg }}>
+                    {[PRO.pal.s1, PRO.pal.s3, PRO.pal.accent].map((c) => (
+                      <span key={c} className="m-1.5 flex-1 rounded" style={{ background: c }} />
+                    ))}
+                  </span>
+                  <span className="block bg-jw-surface px-2 py-1.5">
+                    <b className="block text-xs">{PRO.icon} {PRO.ar}</b>
+                    <span className="block text-[10px] leading-4 text-jw-muted">{PRO.hint}</span>
+                  </span>
+                </button>
+              )}
               {(Object.keys(THEMES) as ThemeId[]).map((k) => (
-                <button key={k} type="button" role="menuitemradio" aria-checked={theme === k} onClick={() => pickTheme(k)} className={`overflow-hidden rounded-xl border-2 text-start ${theme === k ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`}>
+                <button key={k} type="button" role="menuitemradio" aria-checked={!ws && theme === k} onClick={() => pickTheme(k)} className={`overflow-hidden rounded-xl border-2 text-start ${!ws && theme === k ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`}>
                   <span className="flex h-14" style={{ background: THEMES[k].swatch[0] }}>
                     {THEMES[k].swatch.slice(1).map((c) => (
                       <span key={c} className="m-1.5 flex-1 rounded-lg" style={{ background: c }} />
@@ -1670,23 +1702,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                   </span>
                 </button>
               ))}
-              <div className="col-span-2 mt-1 border-t border-jw-line pt-2">
-                <b className="block px-1 text-xs">🖥️ واجهات البرامج ({WORKSPACES.length})</b>
-                <span className="block px-1 pb-1.5 text-[10px] text-jw-muted">ألوان كل برنامج وقوائمه وصفحاته — اضغط «التلوين» مثلًا وتطلع لك صفحة كبيرة</span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {WORKSPACES.map((w) => (
-                    <button key={w.id} type="button" role="menuitemradio" aria-checked={wsId === w.id} onClick={() => pickWs(w.id)} className={`flex items-center gap-2 rounded-lg border-2 p-1.5 text-start ${wsId === w.id ? "border-jw-accent" : "border-transparent hover:border-jw-line-strong"}`} title={w.hint}>
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm" style={{ background: w.pal.bg, boxShadow: `inset 0 -4px 0 ${w.pal.accent}` }} aria-hidden>
-                        {w.icon}
-                      </span>
-                      <span className="min-w-0">
-                        <b className="block truncate text-[11px]">{w.ar}</b>
-                        <span className="block truncate text-[9px] text-jw-muted" dir="ltr">{w.en}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
               <div className="col-span-2">
                 <InstallApp />
               </div>
@@ -1747,7 +1762,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </button>
       </div>
 
-      {ws && wide && <MenuBar ws={ws} page={page} keysFrom={keysFrom ?? "jawad"} onAct={menuAct} />}
+      {ws && wide && !big && <MenuBar ws={ws} keysFrom={keysFrom ?? "jawad"} onAct={menuAct} />}
 
       {save === "conflict" && (
         <div className="flex flex-wrap items-center gap-2 bg-jw-danger/15 px-3 py-2 text-xs">
@@ -1774,8 +1789,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         )
       )}
 
+      {colorRoom && !big && <ClipStrip tl={tl} assets={assetMap} thumbs={thumbs} selected={selected} onPick={pick} player={player} />}
+
       {/* Claude (right) · the preview · the left side: a section and its rail (a computer); sheets on a phone */}
-      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${T.mirror ? "flex-row-reverse" : ""}`}>
+      <div className={`flex min-h-0 flex-1 gap-0 lg:gap-2 lg:px-2 ${T.mirror ? "flex-row-reverse" : ""} ${colorRoom && !big ? "lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[minmax(0,1fr)_minmax(320px,49%)]" : ""}`}>
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* حيدرة: a small bubble with his face (dragged anywhere, folded to the side); pressed, his conversation pops up
             in his own black-and-lime window over the work, and «صغّر» folds it back to the bubble */}
@@ -1802,7 +1819,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
               className={`jw-screen rounded-xl ${pz === "fit" || full ? "max-h-full max-w-full" : "m-auto shrink-0"}`}
               style={pz === "fit" || full ? { aspectRatio: `${tl.width} / ${tl.height}` } : { aspectRatio: `${tl.width} / ${tl.height}`, ...sizeOf(previewSize(stageBox.w, stageBox.h, tl.width, tl.height, pz)) }}
             />
-            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
+            <Guard name="الإمساك"><Handles tl={tl} canvas={canvasEl} selected={colorRoom ? [] : selected} onSelect={pick} assets={assetMap} run={run} readOnly={readOnly} player={player} /></Guard>
             <button
               type="button"
               className={`jw-glass jw-3d absolute end-3 top-3 z-20 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold ${full ? "hidden" : "flex"}`}
@@ -1845,6 +1862,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           )}
         </section>
 
+        {colorRoom && !big && (
+          <div className="hidden min-h-0 lg:block" style={{ order: 2 }}>
+            <ScopesPanel canvas={canvasEl} player={player} tick={tl} />
+          </div>
+        )}
+
         <aside
           className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "media" ? floatCls("panel") : ""}`}
           style={placeStyle("panel", { width: layout.panelW })}
@@ -1872,15 +1895,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
 
         <aside
-          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[58dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "inspector" || rail === "project" ? floatCls("panel") : ""}`}
-          style={placeStyle("panel", bigPage ? { width: "60%", maxWidth: 1240 } : { width: layout.panelW })}
+          className={`${sheet === "inspector" ? "fixed inset-x-0 bottom-0 z-50 flex h-[58dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${(rail === "inspector" || rail === "project") && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:shrink-0 lg:rounded-2xl ${colorRoom ? "lg:col-span-2 lg:!m-0 lg:min-h-0 lg:!w-auto" : "lg:w-80"} ${rail === "inspector" || rail === "project" ? floatCls("panel") : ""}`}
+          style={placeStyle("panel", colorRoom ? {} : bigPage ? { width: "60%", maxWidth: 1240 } : { width: layout.panelW })}
           ref={rail === "inspector" || rail === "project" ? sizePanel : undefined}
           aria-label="الإعدادات"
         >
           {(rail === "inspector" || rail === "project") && floatBar("panel")}
           {panelEdge}
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
-          <div className="jw-scroll min-h-0 flex-1 overflow-y-auto">
+          <div className={`jw-scroll min-h-0 flex-1 ${colorRoom && one ? "overflow-hidden" : "overflow-y-auto"}`}>
+            {colorRoom && !one && <p className="room-empty p-6 text-center">اختر لقطة من الشريط فوق عشان تلوّنها.</p>}
             <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
@@ -1961,7 +1985,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       </div>
 
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
-      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big || bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`} style={tlH && wide && !big && !bigPage ? { height: tlH, minHeight: 0 } : undefined}>
+      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? (ws ? "hidden lg:flex lg:h-[36%] lg:min-h-[200px]" : "hidden lg:flex lg:h-[16%] lg:min-h-[110px]") : colorRoom ? "hidden" : bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`} style={tlH && wide && !big && !bigPage ? { height: tlH, minHeight: 0 } : undefined}>
         {/* its top edge: drag to make the timeline taller or shorter (double-click: the usual height) */}
         {wide && !big && (
           <div role="separator" aria-orientation="horizontal" aria-label="غيّر ارتفاع التايملاين" title="اسحب لتطويل التايملاين أو تقصيره (ضغطتين: الارتفاع الأصلي)" className="absolute inset-x-8 top-0 z-20 h-2 cursor-row-resize rounded-full hover:bg-jw-accent/40" onPointerDown={dragTimeline} onDoubleClick={resetTimeline} />
@@ -1976,7 +2000,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </div>
       </div>
 
-      {T.rail === "pages" && !big && railNav("pages")}
+      {T.rail === "pages" && !big && !colorRoom && railNav("pages")}
 
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
