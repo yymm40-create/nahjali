@@ -1,5 +1,17 @@
 /** JAWAD AI's line icons (24×24, stroke = currentColor). */
 const PATHS: Record<string, string> = {
+  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-4.5-4.5",
+  keyboard: "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M7 14h10",
+  focus: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 12h6",
+  compare: "M4 5h16v14H4zM12 5v14",
+  marker: "M6 3h12v18l-6-4-6 4z",
+  cursor: "M5 3l14 8-6 2-2 6z",
+  hand: "M8 12V6a1.5 1.5 0 0 1 3 0v5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6.5a1.5 1.5 0 0 1 3 0V13M17 11.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4.5 15a1.5 1.5 0 0 1 2.4-1.8L8 14",
+  link: "M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4L11.5 6M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5",
+  waveform: "M3 12h2M7 8v8M11 4v16M15 7v10M19 10v4",
+  node: "M3 8h7v8H3zM14 8h7v8h-7zM10 12h4",
+  mask: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7c2 0 3.5 2.2 3.5 5S14 17 12 17s-3.5-2.2-3.5-5S10 7 12 7z",
+  robot: "M5 9h14v10H5zM12 9V5M9.5 13.5h.01M14.5 13.5h.01M10 16.5h4M12 4.2h.01",
   image: "M4 5h16v14H4zM4 16l4.5-4.5L13 16l3-3 4 4M9 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z",
   video: "M3 6h12v12H3zM15 10l6-3.5v11L15 14",
   film: "M4 3h16v18H4zM8 3v18M16 3v18M4 7.5h4M4 12h4M4 16.5h4M16 7.5h4M16 12h4M16 16.5h4",

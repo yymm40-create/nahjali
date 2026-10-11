@@ -572,9 +572,10 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
   );
 
   return (
-    <div className="space-y-2">
+    <div className={page ? "room" : "space-y-2"}>
       {!gpu && <p className="rounded-lg bg-jw-warn/10 p-2 text-[11px] text-jw-warn">متصفحك ما يقدر يلوّن على كرت الشاشة (WebGL2). جرّب Chrome.</p>}
 
+      <div className={page ? "room-head" : "space-y-2"}>
       {/* copy this grading and paste it onto other clips (one, a whole track, or every picture) */}
       {(() => {
         const have = pasteableGrade();
@@ -662,24 +663,28 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
           <input className="jw-input w-full !py-1 text-xs" value={g.name} placeholder={`اسم الطبقة (مثلًا: البشرة)`} maxLength={30} disabled={D} onChange={(e) => set({ name: e.target.value }, "name")} />
         )}
       </div>
+      </div>
 
       {page && (
-        <div className="grid gap-4 rounded-xl border border-jw-line p-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <div>
-            <p className="mb-2 flex items-center justify-between text-sm font-bold">
-              عجلات الألوان <span className="text-[11px] font-normal text-jw-muted">Lift · Gamma · Gain · Offset</span>
+        <>
+          <div className="room-cell">
+            <p className="room-title">
+              العجلات الأساسية <span>Lift · Gamma · Gain · Offset</span>
             </p>
-            {wheels(132)}
+            {wheels(176)}
           </div>
-          <div className="min-w-0">
-            <p className="mb-1 text-sm font-bold">المنحنيات</p>
+          <div className="room-cell">
+            <p className="room-title">المنحنيات</p>
             {curveTabs}
-            <div className="mx-auto aspect-square w-[min(100%,300px,34vh)]">{curveEditor}</div>
+            <div className="room-curve">
+              <div>{curveEditor}</div>
+            </div>
           </div>
-        </div>
+        </>
       )}
-      <div className={page ? "gap-4 rounded-xl border border-jw-line px-3 text-[13px] xl:columns-2 2xl:columns-3 [&>section]:break-inside-avoid" : "rounded-xl border border-jw-line px-2"}>
-        <Section id="log" title="تحويل اللوج (Input)" hint="صوّرت بلوج؟ اختر كاميرتك: ترجع الألوان والتباين مثل CST في دافنشي" open={page || open.includes("log")} onToggle={toggle} badge={g.log !== "none"} onReset={() => resetKeys(["log", "logGamut", "logRange", "compress"])}>
+      <div className={page ? "room-cell space-y-2" : "space-y-2"}>
+      <div className="rounded-xl border border-jw-line px-2">
+        <Section id="log" title="تحويل اللوج (Input)" hint="صوّرت بلوج؟ اختر كاميرتك: ترجع الألوان والتباين مثل CST في دافنشي" open={open.includes("log")} onToggle={toggle} badge={g.log !== "none"} onReset={() => resetKeys(["log", "logGamut", "logRange", "compress"])}>
           <select className="jw-input w-full !py-1.5 text-xs" value={g.log} disabled={D} onChange={(e) => set({ log: e.target.value as LogId }, "log")} aria-label="الكاميرا واللوج">
             {[...new Set(LOGS.map((l) => l.brand))].map((brand) => (
               <optgroup key={brand || "-"} label={brand || "عام"}>
@@ -707,7 +712,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
           )}
         </Section>
 
-        <Section id="basic" title="تصحيح أساسي" hint="توازن الأبيض، الإضاءة، التشبع" open={page || open.includes("basic")} onToggle={toggle} badge={!isOff(g, ["temp", "tint", "exposure", "contrast", "highlights", "shadows", "whites", "blacks", "saturation", "vibrance"])} onReset={() => resetKeys(["temp", "tint", "exposure", "contrast", "highlights", "shadows", "whites", "blacks", "saturation", "vibrance"])}>
+        <Section id="basic" title="تصحيح أساسي" hint="توازن الأبيض، الإضاءة، التشبع" open={open.includes("basic")} onToggle={toggle} badge={!isOff(g, ["temp", "tint", "exposure", "contrast", "highlights", "shadows", "whites", "blacks", "saturation", "vibrance"])} onReset={() => resetKeys(["temp", "tint", "exposure", "contrast", "highlights", "shadows", "whites", "blacks", "saturation", "vibrance"])}>
           <Slider label="الحرارة" value={Math.round(g.temp * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ temp: v / 100 }, "temp")} format={signed} center bg="linear-gradient(90deg,#3b82f6,#e5e7eb,#f59e0b)" />
           <Slider label="الصبغة" value={Math.round(g.tint * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ tint: v / 100 }, "tint")} format={signed} center bg="linear-gradient(90deg,#22c55e,#e5e7eb,#d946ef)" />
           <Slider label="التعريض" value={+g.exposure.toFixed(2)} min={-3} max={3} step={0.05} disabled={D} onChange={(v) => set({ exposure: v }, "exposure")} format={(v) => signed(+v.toFixed(2))} center />
@@ -720,7 +725,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
           <Slider label="الحيوية" value={Math.round(g.vibrance * 100)} min={-100} max={100} step={1} disabled={D} onChange={(v) => set({ vibrance: v / 100 }, "vibrance")} format={signed} center />
         </Section>
 
-        <Section id="creative" title="إبداعي (لوكات و LUT)" hint="لوكات جاهزة، ملف LUT، تلوين الظلال والأضواء" open={page || open.includes("creative")} onToggle={toggle} badge={!!g.look || !!g.lut || !isOff(g, ["split"])} onReset={() => resetKeys(["look", "lut", "lutAmount", "split", "sharpen"])}>
+        <Section id="creative" title="إبداعي (لوكات و LUT)" hint="لوكات جاهزة، ملف LUT، تلوين الظلال والأضواء" open={open.includes("creative")} onToggle={toggle} badge={!!g.look || !!g.lut || !isOff(g, ["split"])} onReset={() => resetKeys(["look", "lut", "lutAmount", "split", "sharpen"])}>
           <div className="flex flex-wrap gap-1">
             {LOOKS.map((l) => (
               <button key={l.id} type="button" disabled={D} aria-pressed={g.look === l.id} title={l.hint} className={`rounded-full border px-2 py-0.5 text-[11px] ${g.look === l.id ? "border-jw-accent bg-jw-accent/15 text-jw-accent" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { grade: { ...applyLook(g, l), layer: L } } })}>
@@ -758,7 +763,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
           {wheels(84)}
         </Section>}
 
-        <Section id="hsl" title="ثانوي HSL" hint="اختر لون من الصورة (البشرة، السماء…) وغيّره بروحه" open={page || open.includes("hsl")} onToggle={toggle} badge={g.secondaries.length > 0} onReset={() => resetKeys(["secondaries"])}>
+        <Section id="hsl" title="ثانوي HSL" hint="اختر لون من الصورة (البشرة، السماء…) وغيّره بروحه" open={open.includes("hsl")} onToggle={toggle} badge={g.secondaries.length > 0} onReset={() => resetKeys(["secondaries"])}>
           <div className="flex flex-wrap gap-1">
             {g.secondaries.map((s, i) => (
               <button key={i} type="button" className={`rounded-full px-2.5 py-0.5 text-[11px] ${sec === i ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted"} ${!s.on ? "line-through" : ""}`} onClick={() => setSec(i)}>
@@ -815,11 +820,11 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
           )}
         </Section>
 
-        <Section id="mask" title="ماسك (Power Window)" hint="التلوين يطبّق جوا الشكل بس (أو برّاه)، ويتحرك مع الوقت" open={page || open.includes("mask")} onToggle={toggle} badge={!!g.mask} onReset={() => resetKeys(["mask"])}>
+        <Section id="mask" title="ماسك (Power Window)" hint="التلوين يطبّق جوا الشكل بس (أو برّاه)، ويتحرك مع الوقت" open={open.includes("mask")} onToggle={toggle} badge={!!g.mask} onReset={() => resetKeys(["mask"])}>
           <MaskEditor mask={g.mask} thumb={thumb} disabled={D} clipT={clipT} inClip={inClip} tools={tools} onChange={(m) => set({ mask: m }, "mask")} />
         </Section>
 
-        <Section id="film" title="فيلم والإطار" hint="هالة، حبيبات، زوايا، وقوة الطبقة" open={page || open.includes("film")} onToggle={toggle} badge={!isOff(g, ["halation", "grain", "vignette"])} onReset={() => resetKeys(["halation", "grain", "vignette", "pivot", "amount"])}>
+        <Section id="film" title="فيلم والإطار" hint="هالة، حبيبات، زوايا، وقوة الطبقة" open={open.includes("film")} onToggle={toggle} badge={!isOff(g, ["halation", "grain", "vignette"])} onReset={() => resetKeys(["halation", "grain", "vignette", "pivot", "amount"])}>
           <Slider label="هالة الفيلم" value={Math.round(g.halation.amount * 100)} min={0} max={100} step={1} disabled={D} onChange={(v) => set({ halation: { ...g.halation, amount: v / 100 } }, "halation")} />
           {g.halation.amount > 0 && (
             <div className="grid grid-cols-2 gap-x-2">
@@ -849,6 +854,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
         <button type="button" className="jw-btn jw-btn-quiet !min-h-8 flex-1 text-xs" disabled={D || !layers.length} onClick={() => { run({ type: "update_clip", clipId: clip.id, patch: { grade: null } }); setLi(0); }}>
           <Icon name="retry" size={13} /> شيل التلوين كله
         </button>
+      </div>
       </div>
 
       {/* big wheels / curves for precise work: over the timeline, the picture stays in view */}

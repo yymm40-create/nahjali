@@ -1,11 +1,12 @@
 "use client";
 
-// The menu bar and the page tabs of «واجهات البرامج» (workspaces.ts): each program's own menu names, the same
-// working items behind them (every item does something here, with its shortcut from «⌨️ الاختصارات»), and its pages —
-// a big page (التلوين، المؤثرات، الصوت، الحركة) gives the tools most of the screen.
+// The menu row and the page tabs of the pro look (workspaces.ts): the menus' items (every one does something here, with
+// its shortcut from «⌨️ الاختصارات») and the pages — a big page (التلوين، المؤثرات، الصوت) gives the tools most of the
+// screen. The tabs sit in the top bar, the menus in a slim row under it.
 
 import { useEffect, useRef, useState } from "react";
 import { KEYMAPS, showCombo, type ActionId, type ProgramId } from "@/lib/editor/shortcuts";
+import Icon, { type IconName } from "../Icon";
 import { PAGE_INFO, type MenuGroup, type PageId, type Workspace } from "./workspaces";
 
 /** What an item does: a shortcut's job, a page, or one of the editor's windows. */
@@ -21,7 +22,7 @@ const ITEMS: Record<MenuGroup, ([string, MenuAct] | "-")[]> = {
   color: [["صفحة التلوين", { page: "color" }]],
   audio: [["صفحة الصوت", { page: "audio" }]],
   effects: [["المؤثرات", { page: "fx" }], ["الحركة (كي فريم)", { page: "motion" }], ["أساليب جاهزة", { open: "styles" }]],
-  view: [["المعاينة ملء الشاشة", { key: "full" }], "-", ["كبّر التايملاين", { key: "zoomIn" }], ["صغّر التايملاين", { key: "zoomOut" }], ["كل التايملاين في الشاشة", { key: "zoomFit" }]],
+  view: [["وضع التركيز (الشاشة والتايملاين)", { key: "focus" }], ["المعاينة ملء الشاشة", { key: "full" }], "-", ["كبّر التايملاين", { key: "zoomIn" }], ["صغّر التايملاين", { key: "zoomOut" }], ["كل التايملاين في الشاشة", { key: "zoomFit" }]],
   playback: [["شغّل / وقّف", { key: "play" }], ["فريم لقدّام", { key: "frameFwd" }], ["فريم للورا", { key: "frameBack" }], ["أول الفيديو", { key: "start" }], ["آخر الفيديو", { key: "end" }]],
   window: [["الوسائط", { open: "media" }], ["حيدرة", { open: "haidara" }], ["رتّب واجهتي…", { open: "layout" }], ["الثيمات والواجهات…", { open: "themes" }], ["الاختصارات…", { open: "shortcuts" }]],
   help: [["الاختصارات…", { open: "shortcuts" }], ["اسأل حيدرة", { open: "haidara" }]],
@@ -29,7 +30,24 @@ const ITEMS: Record<MenuGroup, ([string, MenuAct] | "-")[]> = {
 
 const mac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-export default function MenuBar({ ws, page, keysFrom, onAct }: { ws: Workspace; page: PageId; keysFrom: ProgramId; onAct: (a: MenuAct) => void }) {
+const PAGE_ICON: Record<PageId, IconName> = { media: "folder", cut: "scissors", edit: "frames", fx: "sparkles", motion: "diamond", color: "palette", audio: "audio", captions: "type", deliver: "download" };
+
+/** The pages as tabs (the top bar's middle): an icon and a name, the open one lit from below in the accent. */
+export function PageTabs({ ws, page, onAct }: { ws: Workspace; page: PageId; onAct: (a: MenuAct) => void }) {
+  return (
+    <nav className="pro-tabs" aria-label="الصفحات">
+      {ws.pages.map(([p, name]) => (
+        <button key={p} type="button" aria-pressed={page === p} className={page === p ? "on" : ""} onClick={() => onAct({ page: p })} title={PAGE_INFO[p].big ? `${name}: صفحة كاملة، الأدوات بحجم مريح` : name}>
+          <Icon name={PAGE_ICON[p]} size={15} />
+          {name}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** The menus: a slim row under the top bar, each opening a list with its shortcuts. */
+export default function MenuBar({ ws, keysFrom, onAct }: { ws: Workspace; keysFrom: ProgramId; onAct: (a: MenuAct) => void }) {
   const [open, setOpen] = useState<number | null>(null);
   const bar = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -52,53 +70,28 @@ export default function MenuBar({ ws, page, keysFrom, onAct }: { ws: Workspace; 
     onAct(a);
   };
   return (
-    <div className="ws-bars mx-2 mt-1 hidden flex-col gap-1 lg:flex">
-      <div ref={bar} className="ws-menubar flex items-center gap-0.5 px-1 text-[12px]" role="menubar" aria-label={`قوائم ${ws.ar}`}>
-        <span className="me-1 select-none px-1.5 text-[11px] font-bold text-jw-muted" title={`واجهة بنمط ${ws.en}`}>
-          {ws.icon} {ws.en}
-        </span>
-        {ws.menus.map(([g, name], i) => (
-          <div key={`${g}${i}`} className="relative">
-            <button
-              type="button"
-              role="menuitem"
-              aria-haspopup="menu"
-              aria-expanded={open === i}
-              className={`rounded px-2 py-1 ${open === i ? "bg-jw-accent text-jw-on-accent" : "hover:bg-jw-surface-2"}`}
-              onClick={() => setOpen(open === i ? null : i)}
-              onPointerEnter={() => open !== null && setOpen(i)}
-            >
-              {name.split(" · ")[0]}
-            </button>
-            {open === i && (
-              <div role="menu" className="ws-menu absolute start-0 top-full z-[70] mt-0.5 min-w-60 py-1 shadow-2xl">
-                {ITEMS[g].map((it, j) =>
-                  it === "-" ? (
-                    <div key={j} className="my-1 border-t border-jw-line" />
-                  ) : (
-                    <button key={j} type="button" role="menuitem" className="flex w-full items-center gap-4 px-3 py-1.5 text-start hover:bg-jw-accent hover:text-jw-on-accent" onClick={() => go(it[1])}>
-                      <span className="flex-1">{it[0]}</span>
-                      {"key" in it[1] && (
-                        <kbd className="text-[10px] opacity-70" dir="ltr">
-                          {keyOf(it[1].key)}
-                        </kbd>
-                      )}
-                    </button>
-                  ),
-                )}
-                {name.includes(" · ") && <p className="mt-1 border-t border-jw-line px-3 pt-1 text-[10px] text-jw-muted" dir="ltr">{name.split(" · ")[1]}</p>}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <nav className="ws-pages flex items-center gap-0.5 overflow-x-auto p-0.5" aria-label="الصفحات">
-        {ws.pages.map(([p, name]) => (
-          <button key={p + name} type="button" aria-pressed={page === p} className={`ws-page flex shrink-0 items-center gap-1.5 px-3 py-1 text-[12px] ${page === p ? "on" : ""}`} onClick={() => go({ page: p })} title={PAGE_INFO[p].big ? `${PAGE_INFO[p].ar}: صفحة كبيرة، الأدوات بحجم مريح` : PAGE_INFO[p].ar}>
+    <div ref={bar} className="pro-menus" role="menubar" aria-label="القوائم">
+      {ws.menus.map(([g, name], i) => (
+        <div key={`${g}${i}`} className="relative">
+          <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={open === i} className={open === i ? "on" : ""} onClick={() => setOpen(open === i ? null : i)} onPointerEnter={() => open !== null && setOpen(i)}>
             {name}
           </button>
-        ))}
-      </nav>
+          {open === i && (
+            <div role="menu" className="pro-menu">
+              {ITEMS[g].map((it, j) =>
+                it === "-" ? (
+                  <div key={j} className="sep" />
+                ) : (
+                  <button key={j} type="button" role="menuitem" onClick={() => go(it[1])}>
+                    <span className="flex-1">{it[0]}</span>
+                    {"key" in it[1] && <kbd dir="ltr">{keyOf(it[1].key)}</kbd>}
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

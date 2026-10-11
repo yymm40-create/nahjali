@@ -51,6 +51,7 @@ export type ActionId =
   | "zoomOut"
   | "zoomFit"
   | "full"
+  | "focus"
   | "import"
   | "export"
   | "save";
@@ -91,6 +92,7 @@ export const ACTIONS: { id: ActionId; ar: string; group: string }[] = [
   { id: "zoomOut", ar: "صغّر التايملاين", group: "العرض" },
   { id: "zoomFit", ar: "التايملاين كله في الشاشة", group: "العرض" },
   { id: "full", ar: "المعاينة ملء الشاشة", group: "العرض" },
+  { id: "focus", ar: "وضع التركيز (الشاشة والتايملاين بس)", group: "العرض" },
   { id: "save", ar: "احفظ الحين", group: "المشروع" },
   { id: "import", ar: "استورد ملفات", group: "المشروع" },
   { id: "export", ar: "صدّر الفيديو", group: "المشروع" },
@@ -121,6 +123,7 @@ export const KEYMAPS: Record<ProgramId, Partial<Record<ActionId, string[]>>> = {
     pasteAttrs: ["Mod+Alt+V"],
     selectAll: ["Mod+A"],
     deselect: ["Escape"],
+    focus: ["Shift+F", "`"],
     save: ["Mod+S"],
   },
   premiere: {

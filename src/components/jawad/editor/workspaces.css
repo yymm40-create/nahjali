@@ -1,79 +1,510 @@
-/* «واجهات البرامج»: the editor in the look of another program. Its colours come as the site's tokens on the
-   editor (workspaces.ts → wsVars); here the shapes: flat panels, the program's corners, the accent on what is on. */
+/* «الواجهة الاحترافية»: حيدرة كت dressed as a cinema suite. The colours come as the site's tokens on the editor
+   (workspaces.ts → wsVars: neutral greys with NO hue, one amber accent); here the shapes — flat panels with small
+   corners, quiet gradients on what can be pressed, segmented switches, fixed-width numbers, thin faders. Everything
+   below is scoped to [data-ed-theme="ws"], so the four older themes are untouched. */
+
 [data-ed-theme="ws"] {
   color: var(--jw-ink);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  --pro-hair: rgba(255, 255, 255, 0.055);
+  --pro-hi: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --pro-g4: #2d2d30;
+  --pro-g5: #38383c;
+  --pro-g6: #4a4a4f;
 }
+
+/* panels: flat, a hairline instead of a shadow */
 [data-ed-theme="ws"] .jw-glass,
 [data-ed-theme="ws"] .jw-glass-lg {
-  background: var(--jw-surface) !important;
-  border: 1px solid var(--jw-line);
+  background: var(--jw-surface-2) !important;
+  border: 0;
   border-radius: var(--ws-radius) !important;
-  box-shadow: none;
+  box-shadow: var(--pro-hi), 0 0 0 1px var(--pro-hair) !important;
   backdrop-filter: none;
+}
+
+/* what can be pressed: a quiet gradient, 4 px corners, 12.5 px type */
+[data-ed-theme="ws"] .jw-btn {
+  min-height: 1.75rem;
+  padding: 0 0.7rem;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 0;
+  border-radius: 4px;
+  background: linear-gradient(#333336, #2a2a2d);
+  color: var(--jw-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+[data-ed-theme="ws"] .jw-btn:hover:not(:disabled) {
+  background: linear-gradient(#3b3b3f, #323236);
+}
+[data-ed-theme="ws"] .jw-btn:active:not(:disabled) {
+  background: #232326;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8), 0 0 0 1px #000;
+  transform: none;
+}
+[data-ed-theme="ws"] .jw-btn:disabled {
+  opacity: 0.4;
+}
+[data-ed-theme="ws"] .jw-btn-quiet {
+  background: transparent;
+  box-shadow: none;
+  color: var(--jw-muted);
+}
+[data-ed-theme="ws"] .jw-btn-quiet:hover:not(:disabled) {
+  background: var(--pro-g4);
+  color: var(--jw-ink);
+}
+[data-ed-theme="ws"] .jw-btn-icon {
+  min-height: 1.75rem;
+  width: 1.75rem;
+  padding: 0;
 }
 [data-ed-theme="ws"] .jw-3d,
 [data-ed-theme="ws"] .jw-3d:hover:not(:disabled) {
-  transform: none;
-  box-shadow: none;
+  transform: none !important;
 }
-[data-ed-theme="ws"] .jw-btn,
-[data-ed-theme="ws"] .jw-chip,
-[data-ed-theme="ws"] .jw-input,
-[data-ed-theme="ws"] .jw-textarea {
-  border-radius: var(--ws-radius);
-}
-[data-ed-theme="ws"] .jw-btn-primary,
-[data-ed-theme="ws"] .jw-rail-on,
-[data-ed-theme="ws"] .jw-play {
-  background: var(--jw-accent);
-  color: var(--jw-on-accent);
-  box-shadow: none;
-}
-[data-ed-theme="ws"] .jw-screen {
-  border-radius: 0;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
-}
-.ws-menubar,
-.ws-pages,
-.ws-menu {
-  background: var(--jw-surface);
-  border: 1px solid var(--jw-line);
-  border-radius: var(--ws-radius);
-  color: var(--jw-ink);
-}
-.ws-menu {
-  font-size: 12px;
-}
-.ws-page {
-  border-radius: var(--ws-radius);
-  color: var(--jw-muted);
-}
-.ws-page:hover {
-  color: var(--jw-ink);
-  background: var(--jw-surface-2);
-}
-.ws-page.on {
-  background: var(--jw-accent);
-  color: var(--jw-on-accent);
-  font-weight: 700;
-}
-/* the big page: the settings take most of the screen, at a comfortable size */
-[data-ed-page="big"] [aria-label="الإعدادات"] {
-  font-size: 1.04em;
-}
-/* the program's accent beats the editor's own blue gradient and glow */
 .jw [data-jw-section="editor"] [data-ed-theme="ws"] .jw-btn-primary,
 .jw [data-jw-section="editor"] [data-ed-theme="ws"] .jw-rail-on,
 .jw [data-jw-section="editor"] [data-ed-theme="ws"] .jw-play {
-  background: var(--jw-accent) !important;
+  background: linear-gradient(#f0b04e, #d9922c) !important;
   color: var(--jw-on-accent) !important;
-  box-shadow: none !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 0 1px #6b4310, 0 2px 8px rgba(232, 163, 61, 0.2) !important;
 }
 .jw [data-jw-section="editor"] [data-ed-theme="ws"] .jw-3d {
-  box-shadow: none !important;
-  transform: none !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4) !important;
 }
-.jw [data-jw-section="editor"] [data-ed-theme="ws"] .jw-orb {
-  background: radial-gradient(circle at 35% 30%, #fff 0 8%, var(--jw-accent) 55%, #000 120%);
+[data-ed-theme="ws"] .pro-on {
+  color: var(--jw-accent);
+  box-shadow: inset 0 0 0 1px rgba(232, 163, 61, 0.5), 0 0 0 1px #000 !important;
+  background: rgba(232, 163, 61, 0.12) !important;
+}
+[data-ed-theme="ws"] .jw-orb {
+  background: radial-gradient(circle at 35% 30%, #fff 0 8%, var(--jw-accent) 55%, #3a2606 120%);
   box-shadow: none;
+}
+
+/* segmented switches (قبل / قسمة / بعد, the tab sets): one recessed bar, the open one raised */
+[data-ed-theme="ws"] .jw-seg {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 2px;
+  border-radius: 5px;
+  background: #0d0d0e;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--pro-hair);
+  max-width: 100%;
+  overflow-x: auto;
+}
+[data-ed-theme="ws"] .jw-seg button {
+  min-height: 1.5rem;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--jw-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+[data-ed-theme="ws"] .jw-seg button:hover:not(:disabled) {
+  color: var(--jw-ink);
+}
+[data-ed-theme="ws"] .jw-seg button[aria-checked="true"],
+[data-ed-theme="ws"] .jw-seg button[aria-selected="true"] {
+  background: linear-gradient(#3a3a3e, #303034);
+  color: var(--jw-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+/* fields: recessed, the value in amber (they hold numbers) */
+[data-ed-theme="ws"] .jw-input,
+[data-ed-theme="ws"] .jw-textarea,
+[data-ed-theme="ws"] select.jw-input {
+  min-height: 1.6rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 3px;
+  background: #0d0d0e;
+  color: var(--jw-ink);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--pro-hair);
+  font-size: 0.78rem;
+}
+[data-ed-theme="ws"] .jw-input:focus,
+[data-ed-theme="ws"] .jw-textarea:focus {
+  outline: none;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--jw-accent);
+}
+[data-ed-theme="ws"] .jw-chip {
+  border-radius: 3px;
+  background: var(--pro-g4);
+  border: 0;
+}
+
+/* faders: a thin track, a small square grip (the value shows in the number beside it) */
+[data-ed-theme="ws"] input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  accent-color: var(--jw-accent);
+}
+[data-ed-theme="ws"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--pro-g5);
+}
+[data-ed-theme="ws"] input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--pro-g5);
+}
+[data-ed-theme="ws"] input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 15px;
+  margin-top: -6px;
+  border-radius: 2px;
+  background: linear-gradient(#ececee, #a9a9ae);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), inset 0 1px 0 #fff;
+  border: 0;
+}
+[data-ed-theme="ws"] input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 15px;
+  border-radius: 2px;
+  background: linear-gradient(#ececee, #a9a9ae);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  border: 0;
+}
+[data-ed-theme="ws"] input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--jw-accent);
+}
+
+/* thin scrollbars */
+[data-ed-theme="ws"] * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pro-g6) transparent;
+}
+
+[data-ed-theme="ws"] .jw-screen {
+  border-radius: 0;
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(255, 255, 255, 0.04);
+}
+
+/* ───────── the menus (a slim row) and the page tabs (the top bar's middle) ───────── */
+.pro-menus {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin: 2px 8px 0;
+  height: 26px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--jw-muted);
+}
+.pro-menus > div > button {
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.pro-menus > div > button:hover,
+.pro-menus > div > button.on {
+  background: var(--pro-g4);
+  color: var(--jw-ink);
+}
+.pro-menu {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 100%;
+  z-index: 70;
+  min-width: 15rem;
+  margin-top: 2px;
+  padding: 4px;
+  background: var(--jw-surface-2);
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px #000, 0 14px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.pro-menu button {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--jw-ink);
+  text-align: start;
+}
+.pro-menu button:hover {
+  background: var(--jw-accent);
+  color: var(--jw-on-accent);
+}
+.pro-menu kbd {
+  font: 600 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.65;
+}
+.pro-menu .sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--pro-hair);
+}
+
+.pro-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 6px;
+  background: #0d0d0e;
+  box-shadow: 0 0 0 1px var(--pro-hair);
+  margin-inline: auto;
+}
+.pro-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 13px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #6e6e75;
+  white-space: nowrap;
+}
+.pro-tabs button:hover {
+  color: var(--jw-ink);
+}
+.pro-tabs button.on {
+  background: linear-gradient(#3a3a3e, #303034);
+  color: var(--jw-ink);
+  box-shadow: inset 0 -2px 0 var(--jw-accent), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+.pro-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  width: 20rem;
+  max-width: 24vw;
+  padding: 0 10px;
+  border-radius: 4px;
+  background: #0d0d0e;
+  color: #6e6e75;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--pro-hair);
+}
+.pro-cmd:focus-within {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--jw-accent);
+  color: var(--jw-ink);
+}
+.pro-cmd input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--jw-ink);
+  outline: none;
+}
+.pro-cmd input::placeholder {
+  color: #6e6e75;
+}
+.pro-cmd kbd {
+  font: 600 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.7;
+}
+
+/* ───────── the big pages: the settings take most of the screen at a comfortable size ───────── */
+[data-ed-page="big"] [aria-label="الإعدادات"] {
+  font-size: 1.04em;
+}
+
+/* ───────── «غرفة التلوين»: the colour page as a whole room ─────────
+   above: the shots strip · the picture · the scopes;  below: the wheels | the curves | the rest of the grade */
+.room-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin: 4px 8px 0;
+  padding: 8px 12px;
+  height: 112px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--jw-surface);
+  border-radius: var(--ws-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 0 1px var(--pro-hair);
+}
+.room-strip-head {
+  flex: none;
+  width: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.room-strip-head .num,
+.room .num {
+  font-size: 11px;
+  color: var(--jw-muted);
+  direction: ltr;
+}
+.room-clip {
+  flex: none;
+  width: 156px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: start;
+}
+.room-clip .pic {
+  flex: 1;
+  min-height: 0;
+  border-radius: 3px;
+  background: #0d0d0e center / cover;
+  box-shadow: 0 0 0 1px #000;
+}
+.room-clip.on .pic {
+  box-shadow: 0 0 0 2px var(--jw-accent), 0 0 0 4px #000;
+}
+.room-clip .meta {
+  display: flex;
+  justify-content: space-between;
+  font: 600 10.5px/1 RXL, ui-monospace, monospace;
+  color: #6e6e75;
+  direction: ltr;
+}
+.room-clip.on .meta {
+  color: #f2c46d;
+}
+.room-empty {
+  color: var(--jw-muted);
+  font-size: 12px;
+  align-self: center;
+}
+
+.room-scopes {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--jw-surface-2);
+  border-radius: var(--ws-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 0 1px var(--pro-hair);
+}
+.room-ph {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  background: linear-gradient(#252527, #1e1e20);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--jw-muted);
+}
+.room-ph b {
+  color: var(--jw-ink);
+  font-weight: 700;
+}
+.room-ph .jw-seg {
+  margin-inline-start: auto;
+}
+.room-ph .skin {
+  color: var(--jw-accent);
+  font-weight: 600;
+  margin-inline-start: auto;
+}
+.room-scope-top {
+  flex: 1.15;
+  min-height: 0;
+  padding: 8px;
+}
+.room-scope-top canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #050505;
+}
+.room-scope-vec {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  margin: 8px;
+  container-type: size;
+}
+.room-scope-vec canvas {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  display: block;
+  background: #050505;
+}
+
+.room {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr) minmax(0, 1.05fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  height: 100%;
+  padding: 8px;
+}
+.room-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.room-head > div {
+  flex: 0 1 auto;
+}
+.room-head p {
+  display: none;
+}
+.room-head > div:last-child {
+  flex: 1 1 24rem;
+  position: static;
+}
+.room-cell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--jw-surface);
+  border-radius: var(--ws-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 0 1px var(--pro-hair);
+}
+.room-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.room-title span {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--jw-muted);
+}
+.room-curve {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  margin-top: 8px;
+  container-type: size;
+}
+.room-curve > div {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+}
+.room-cell > .space-y-2,
+.room-cell .jw-scroll {
+  min-height: 0;
 }
