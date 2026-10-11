@@ -118,7 +118,7 @@ export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean
               </div>
               <Range label="السماحية (كم يشيل حول اللون)" value={k.tolerance} disabled={locked} onChange={(v) => setKey({ tolerance: v }, "tolerance")} />
               <Range label="نعومة الحافة" value={k.soft} disabled={locked} onChange={(v) => setKey({ soft: v }, "soft")} />
-              <Range label="إزالة الانعكاس الأخضر (Spill)" value={k.spill} disabled={locked} onChange={(v) => setKey({ spill: v }, "spill")} />
+              <Range label="Despill — إزالة الانعكاس الأخضر" value={k.spill} disabled={locked} onChange={(v) => setKey({ spill: v }, "spill")} />
               <Range label="شدّ الحافة (Choke)" value={k.choke} disabled={locked} onChange={(v) => setKey({ choke: v }, "choke")} />
             </>
           )}

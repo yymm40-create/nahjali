@@ -591,6 +591,27 @@ export default function Inspector({
               <label className="flex items-center gap-1.5 text-xs">
                 <input type="checkbox" checked={!!clip.bg.show} disabled={locked} onChange={(e) => set({ bg: { show: e.target.checked } }, "bg:show")} /> اعرض الماسك (أبيض يبقى، أسود ينشال)
               </label>
+              <div className="space-y-1.5 border-t border-jw-line pt-2">
+                <Slider label="Despill — شيل انعكاس لون الخلفية" value={Math.round((clip.bg.despill ?? 0) * 100)} min={0} max={100} step={1} disabled={locked} onChange={(v) => set({ bg: { despill: v / 100 } }, "bg:despill")} format={(v) => (v ? `${v}%` : "بدون")} />
+                {(clip.bg.despill ?? 0) > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-jw-muted">
+                    لون الانعكاس:
+                    <button type="button" disabled={locked} aria-pressed={!clip.bg.spillColor} className={`rounded-lg border px-2 py-1 ${!clip.bg.spillColor ? "border-jw-accent bg-jw-accent/10 text-jw-ink" : "border-jw-line"}`} onClick={() => set({ bg: { spillColor: "" } }, "bg:spill")}>
+                      تلقائي من الخلفية
+                    </button>
+                    {[
+                      ["#00b140", "أخضر"],
+                      ["#0047bb", "أزرق"],
+                    ].map(([c, ar]) => (
+                      <button key={c} type="button" disabled={locked} aria-pressed={clip.bg!.spillColor === c} className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${clip.bg!.spillColor === c ? "border-jw-accent bg-jw-accent/10 text-jw-ink" : "border-jw-line"}`} onClick={() => set({ bg: { spillColor: c } }, "bg:spill")}>
+                        <i className="h-3 w-3 rounded-full" style={{ background: c }} /> {ar}
+                      </button>
+                    ))}
+                    <input type="color" disabled={locked} value={clip.bg.spillColor || "#00b140"} onChange={(e) => set({ bg: { spillColor: e.target.value } }, "bg:spill")} className="h-7 w-10 cursor-pointer rounded border border-jw-line bg-transparent" aria-label="لون آخر" title="لون آخر" />
+                  </div>
+                )}
+                <p className="text-[11px] leading-5 text-jw-faint">لو حول الشخص أو على شعره وملابسه لون من الخلفية القديمة (أخضر، أزرق، جدار ملوّن)، ارفع الـDespill.</p>
+              </div>
               <p className="text-[11px] leading-5 text-jw-faint">الحافة ترجف أو تقص من الشعر؟ زِد «التثبيت»، ووسّع الحافة شوي، ونعّمها. يقص زيادة حول الشخص؟ شدّها.</p>
             </div>
           )}

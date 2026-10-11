@@ -41,6 +41,9 @@ import { thumbnail } from "./media";
 import { Player } from "./player";
 import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
+import ShortcutsPage from "./ShortcutsPage";
+import { TL_ZOOM } from "./Timeline";
+import { BIG_STEP, comboOf, KEYS_STORE, keyTable, readProgram, type ActionId, type ProgramId } from "@/lib/editor/shortcuts";
 import Timeline from "./Timeline";
 import type { EditorAsset, EditorProjectView } from "./types";
 import { useUploads, type Placement } from "./useUploads";
@@ -144,6 +147,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [save, setSave] = useState<SaveState>("saved");
   const [sheet, setSheet] = useState<null | "library" | "inspector">(null);
   const [exporting, setExporting] = useState(false);
+  // «⌨️ الاختصارات»: whose keys win a clash (asked once on a computer; kept on this device), and the page of all keys
+  const [keysFrom, setKeysFrom] = useState<ProgramId | null>(null);
+  const [keysOpen, setKeysOpen] = useState<false | "first" | "page">(false);
+  const importInput = useRef<HTMLInputElement>(null);
   const [captioning, setCaptioning] = useState(false);
   // Claude: open beside the work from the start on a computer; on a phone it opens over it when asked
   const [assisting, setAssisting] = useState(false);
@@ -348,6 +355,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (z >= 0.85 && z <= 1.6) setChatZoom(z);
         const cm = localStorage.getItem("jw-editor-chat-mode");
         if (cm === "tall" || cm === "half") setChatModeState(cm);
+        const kp = readProgram(localStorage.getItem(KEYS_STORE));
+        if (kp) setKeysFrom(kp);
+        else if (window.matchMedia("(min-width: 1024px) and (pointer: fine)").matches) setKeysOpen("first");
         const th2 = Number(localStorage.getItem("jw-editor-tl-h"));
         if (th2 >= 110 && th2 <= 2000) setTlH(th2);
       } catch {
@@ -370,6 +380,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const f = THEMES[theme].font;
     if (f) void loadFont(f, 400).then(() => loadFont(f, 700));
   }, [theme]);
+  const pickKeys = (p: ProgramId) => {
+    setKeysFrom(p);
+    try {
+      localStorage.setItem(KEYS_STORE, p);
+    } catch {
+      /* not kept */
+    }
+  };
   const pickTlLook = (v: "classic" | "pro") => {
     setTlLook(v);
     try {
@@ -1103,61 +1121,134 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     if (!wide) setSheet("inspector");
   };
 
-  // keyboard: the shortcuts every editor has (not while typing)
+  // keyboard: our shortcuts and those of Premiere, Resolve, CapCut and Final Cut at once — on a clash, the program the
+  // person chose first wins (see «⌨️ الاختصارات»). Not while typing.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  const keyMap = useMemo(() => keyTable(keysFrom ?? "jawad"), [keysFrom]);
+  // the clip a trim acts on: the chosen one under the playhead, else the top clip there on an unlocked track
+  const clipAtHead = () => {
+    const ms = at();
+    const t = tlRef.current;
+    const hit = (id: string) => {
+      const f = findClip(t, id);
+      return f && !f.track.locked && ms > f.clip.start && ms < clipEnd(f.clip) ? f.clip.id : null;
+    };
+    for (const id of selected) if (hit(id)) return hit(id);
+    for (const tr of [...t.tracks].reverse()) {
+      if (tr.locked || tr.hidden) continue;
+      const c = tr.clips.find((c) => ms > c.start && ms < clipEnd(c));
+      if (c) return c.id;
+    }
+    return null;
+  };
+  const edits = () => [...new Set(tlRef.current.tracks.flatMap((t) => t.clips.flatMap((c) => [c.start, clipEnd(c)])))].sort((a, b) => a - b);
+  const keyDo = (action: ActionId, from: ProgramId) => {
+    const fps = tlRef.current.fps;
+    const ms = at();
+    const big = BIG_STEP[from];
+    const step = big.ms ?? (big.frames! * 1000) / fps;
+    const need = (ok: boolean, msg: string) => (ok ? true : (flash(msg, true), false));
+    const busy = readOnly && !["play", "pause", "playFwd", "back", "frameBack", "frameFwd", "bigBack", "bigFwd", "start", "end", "prevEdit", "nextEdit", "nextMarker", "prevMarker", "copy", "selectAll", "deselect", "zoomIn", "zoomOut", "zoomFit", "full"].includes(action);
+    if (busy) return;
+    switch (action) {
+      case "play":
+        return player?.toggle();
+      case "pause":
+        return player?.playing ? player.pause() : undefined;
+      case "playFwd":
+        return player?.playing ? undefined : player?.play();
+      case "back":
+        player?.pause();
+        return player?.seek(Math.max(0, ms - 1000));
+      case "frameBack":
+      case "frameFwd":
+        return player?.seek(ms + (1000 / fps) * (action === "frameFwd" ? 1 : -1));
+      case "bigBack":
+      case "bigFwd":
+        return player?.seek(Math.max(0, ms + step * (action === "bigFwd" ? 1 : -1)));
+      case "start":
+        return player?.seek(0);
+      case "end":
+        return player?.seek(duration(tlRef.current));
+      case "prevEdit":
+      case "nextEdit": {
+        const pts = edits();
+        const to = action === "nextEdit" ? pts.find((p) => p > ms + 1) : [...pts].reverse().find((p) => p < ms - 1);
+        return to !== undefined ? player?.seek(to) : undefined;
+      }
+      case "nextMarker":
+      case "prevMarker": {
+        const mk = tlRef.current.markers;
+        const to = action === "nextMarker" ? mk.find((p) => p > ms + 1) : [...mk].reverse().find((p) => p < ms - 1);
+        return to !== undefined ? player?.seek(to) : flash("ما فيه علامة بهالاتجاه.", true);
+      }
+      case "split":
+        return split();
+      case "splitAll":
+        return run({ type: "split", at: ms });
+      case "delete":
+      case "ripple":
+        return remove(action === "ripple");
+      case "trimStart":
+      case "trimEnd": {
+        const id = clipAtHead();
+        if (!need(!!id, "حط المؤشر داخل مقطع أول.")) return;
+        return run({ type: "trim_clip", clipId: id!, edge: action === "trimStart" ? "start" : "end", to: ms });
+      }
+      case "duplicate":
+        return duplicate();
+      case "transition": {
+        const id = selected[0] ?? clipAtHead();
+        if (!need(!!id, "اختر المقطع اللي تبي الانتقال بعده.")) return;
+        return run({ type: "update_clip", clipId: id!, patch: { transition: { kind: "fade", ms: 500 } } });
+      }
+      case "marker":
+        return run({ type: "set_markers", markers: [Math.round(ms)], mode: "add" });
+      case "undo":
+        return undo();
+      case "redo":
+        return redo();
+      case "copy":
+        return selected.length ? copySel() : undefined;
+      case "cut":
+        return selected.length ? cutSel() : undefined;
+      case "paste":
+        return pasteable() ? paste() : undefined;
+      case "pasteAttrs":
+        return pasteAttrs(Object.keys(ATTRS) as Attr[]);
+      case "selectAll":
+        // all the clips (of the unlocked tracks), to move or delete together
+        return setSelected(tlRef.current.tracks.filter((t) => !t.locked).flatMap((t) => t.clips.map((c) => c.id)));
+      case "deselect":
+        return setSelected([]);
+      case "zoomIn":
+      case "zoomOut":
+      case "zoomFit":
+        return void window.dispatchEvent(new CustomEvent(TL_ZOOM, { detail: action === "zoomIn" ? "in" : action === "zoomOut" ? "out" : "fit" }));
+      case "full":
+        return toggleFull();
+      case "save":
+        return void flush();
+      case "import":
+        return importInput.current?.click();
+      case "export":
+        return duration(tlRef.current) ? setExporting(true) : flash("ما فيه شي تصدّره للحين.", true);
+    }
+  };
   useEffect(() => {
     keys.current = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       // Safari sends key events without a key (autofill, dictation)
-      if (typeof e.key !== "string" || e.isComposing) return;
-      const mod = e.ctrlKey || e.metaKey;
-      const fps = tlRef.current.fps;
-      if (e.code === "Space") {
-        e.preventDefault();
-        player?.toggle();
-      } else if (mod && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      } else if (mod && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        redo();
-      } else if (mod && e.altKey && e.code === "KeyV") {
-        e.preventDefault();
-        pasteAttrs(Object.keys(ATTRS) as Attr[]);
-      } else if (mod && e.code === "KeyC") {
-        if (!selected.length) return;
-        e.preventDefault();
-        copySel();
-      } else if (mod && e.code === "KeyX") {
-        if (!selected.length) return;
-        e.preventDefault();
-        cutSel();
-      } else if (mod && e.code === "KeyV") {
-        if (!pasteable()) return;
-        e.preventDefault();
-        paste();
-      } else if (mod && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        duplicate();
-      } else if ((mod && e.key.toLowerCase() === "b") || (!mod && e.key.toLowerCase() === "s")) {
-        e.preventDefault();
-        split();
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        remove(e.shiftKey);
-      } else if (mod && e.key.toLowerCase() === "a") {
-        // all the clips (of the unlocked tracks), to move or delete together
-        e.preventDefault();
-        setSelected(tlRef.current.tracks.filter((t) => !t.locked).flatMap((t) => t.clips.map((c) => c.id)));
-      } else if (e.key === "Escape") setSelected([]);
-      else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        const d = (e.shiftKey ? 1000 : 1000 / fps) * (e.key === "ArrowRight" ? 1 : -1);
-        player?.seek(at() + d);
-      } else if (e.key === "Home") player?.seek(0);
-      else if (e.key === "End") player?.seek(duration(tlRef.current));
+      if (typeof e.key !== "string" || e.isComposing || keysOpen) return;
+      const combo = comboOf(e);
+      const hit = combo && keyMap.get(combo);
+      if (!hit) return;
+      // copy/cut/paste with nothing to act on stay the browser's (text on the page)
+      if ((hit.action === "copy" || hit.action === "cut") && !selected.length) return;
+      if (hit.action === "paste" && !pasteable()) return;
+      e.preventDefault();
+      keyDo(hit.action, hit.from);
     };
   });
   useEffect(() => {
@@ -1461,6 +1552,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </span>
         <PluginTools
           ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} className="lg:hidden" />
+        {/* «⌨️ الاختصارات»: every key, and whose program wins a clash */}
+        <button type="button" className="jw-btn jw-3d hidden shrink-0 text-xs lg:inline-flex" onClick={() => setKeysOpen("page")} title="الاختصارات: اختصارات بريمير ودافنشي وكاب كت وفاينل كت تشتغل هنا">
+          ⌨️ <span className="hidden xl:inline">الاختصارات</span>
+        </button>
         {/* the look */}
         <div className="relative shrink-0">
           <button type="button" className="jw-btn jw-3d" onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="الثيم: شكل المحرر وترتيبه">
@@ -1765,6 +1860,32 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </div>
       )}
 
+      <ShortcutsPage
+        open={!!keysOpen}
+        first={keysOpen === "first"}
+        program={keysFrom ?? "jawad"}
+        onPick={(p) => {
+          pickKeys(p);
+          if (keysOpen === "first") setKeysOpen(false);
+        }}
+        onClose={() => {
+          // closed without choosing on the first ask: ours win, and it isn't asked again
+          if (!keysFrom) pickKeys("jawad");
+          setKeysOpen(false);
+        }}
+      />
+      <input
+        ref={importInput}
+        type="file"
+        multiple
+        hidden
+        accept="video/*,image/*,audio/*,.wav,.mp3,.m4a,.mov,.mkv"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (files.length && !readOnly) dropFiles(files, at(), null);
+        }}
+      />
       <CaptionsPanel open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel
