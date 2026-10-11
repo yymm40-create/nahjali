@@ -204,6 +204,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [tlH, setTlH] = useState<number | null>(null);
   // the conversation over the whole editor (a computer), and its text size (kept on this device)
   const [chatBig, setChatBig] = useState(false);
+  // «حيدرة فوق التايملاين»: on a computer his conversation sits right over the timeline (instead of a popup) so edits are
+  // asked and seen in the same place; kept on this device
+  const [chatDock, setChatDockState] = useState(false);
+  const setChatDock = (v: boolean) => {
+    setChatDockState(v);
+    if (v) setChatBig(false);
+    try {
+      localStorage.setItem("jw-editor-chat-dock", v ? "1" : "");
+    } catch {
+      /* not kept */
+    }
+  };
   const [chatZoom, setChatZoom] = useState(1);
   const zoomChat = (z: number) => {
     setChatZoom(z);
@@ -402,6 +414,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         if (w >= 300 && w <= 900) setChatW(w);
         const z = Number(localStorage.getItem("jw-editor-chat-zoom"));
         if (z >= 0.85 && z <= 1.6) setChatZoom(z);
+        if (localStorage.getItem("jw-editor-chat-dock")) setChatDockState(true);
         const cm = localStorage.getItem("jw-editor-chat-mode");
         if (cm === "tall" || cm === "half") setChatModeState(cm);
         setPz(readPreviewZoom(localStorage.getItem(PREVIEW_ZOOM_KEY)));
@@ -1333,6 +1346,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     else if (a.open === "shortcuts") setKeysOpen("page");
     else if (a.open === "layout") setLayoutOpen(true);
     else if (a.open === "haidara") openClaude();
+    else if (a.open === "haidaraDock") {
+      const on = !(assisting && chatDock);
+      setChatDock(on);
+      openClaude(on ? true : assisting);
+    }
     else if (a.open === "themes") setPicking(true);
     else setRail(a.open === "media" ? "media" : a.open === "styles" ? "styles" : "project");
   };
@@ -1801,10 +1819,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <RobotFace id="haidara" size={38} />
           </MovableBubble>
         )}
-        {assisting && (
+
+        {assisting && !(chatDock && wide) && (
           <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرة" dir="rtl">
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-              <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
+              <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
             </div>
           </aside>
         )}
@@ -1984,6 +2003,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         )}
       </div>
 
+      {assisting && chatDock && wide && (
+        <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرة" dir="rtl">
+          <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
+            <Guard name="حيدرة"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} /></Guard>
+          </div>
+        </aside>
+      )}
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
       <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? (ws ? "hidden lg:flex lg:h-[36%] lg:min-h-[200px]" : "hidden lg:flex lg:h-[16%] lg:min-h-[110px]") : colorRoom ? "hidden" : bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`} style={tlH && wide && !big && !bigPage ? { height: tlH, minHeight: 0 } : undefined}>
         {/* its top edge: drag to make the timeline taller or shorter (double-click: the usual height) */}
