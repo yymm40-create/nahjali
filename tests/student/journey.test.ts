@@ -49,10 +49,16 @@ describe("«ابدأ»: what runs by itself", () => {
     expect(nextAuto(state("outputs", [output({ status: "plan_review", plan: {} })]))?.label).toBe("ملخص: اعتماد الخطة");
     expect(nextAuto(state("outputs", [output({ kind: "book", title: "كتاب", status: "trial_offer", plan: {}, planApproved: true })]))?.label).toBe("كتاب: تخطي التجربة");
   });
-  it("draws the pages with GPT Image 2 after the text, when that was chosen", () => {
-    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "high" } })]))?.label).toBe("ملخص: رسم الصفحات بـ GPT Image 2");
-    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "high" }, files: ["pdf", "pictures_pdf"] })]))).toBeNull();
-    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "" } })]))).toBeNull();
+  it("draws the pages with GPT Image 2 after the text, when that was chosen AND the student chose how many pages", () => {
+    // the number chosen rules (draw.ts): with it the drawing is exactly that many pages, so the autopilot may pay for it
+    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "high", pages: 5 } })]))?.label).toBe("ملخص: رسم الصفحات بـ GPT Image 2");
+    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "high", pages: 5 }, files: ["pdf", "pictures_pdf"] })]))).toBeNull();
+    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "", pages: 5 } })]))).toBeNull();
+  });
+  it("never draws, and so never pays, by itself without a chosen number of pages: that waits for the button that says how many", () => {
+    // «قلت له سو ٥ صفحات سوى ٣٧»: with no number the pages are as many as the words make
+    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "high" } })]))).toBeNull();
+    expect(nextAuto(state("outputs", [output({ status: "done", settings: { pictures: "high", pages: 0 } })]))).toBeNull();
   });
   it("tries a failed output again from where it stopped", () => {
     expect(nextAuto(state("outputs", [output({ status: "failed" })]))?.label).toBe("ملخص: إعادة إعداد الخطة");
