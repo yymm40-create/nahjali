@@ -221,9 +221,16 @@ function extra(x: Extra, b: string) {
           <path d="M6 63c0-6 5-10 12-11l7-.6L29 63z" fill="#121116" />
           <path d="M58 63c0-6-5-10-12-11l-7-.6L35 63z" fill="#121116" />
           <path d="M25 51.4 29 63M39 51.4 35 63" stroke={GOLD} strokeWidth="1" opacity="0.85" />
-          {/* the white turban, wound round the head */}
-          <path d="M10.5 23c0-9.5 9.5-16.5 21.5-16.5S53.5 13.5 53.5 23c0 2-1.4 3.2-3.4 3.2H13.9c-2 0-3.4-1.2-3.4-3.2z" fill="#f6f2e7" stroke={INK} strokeWidth="0.8" />
-          <path d="M14 20.5c7-3.4 29-3.4 36 0M17 14.5c6-3.6 24-3.6 30 0M12.5 24.6c8-2.2 31-2.2 39 0" fill="none" stroke="#cdc5ad" strokeWidth="1.1" />
+          {/* the white turban (عمامة), big and wound in layers round the head — never a cap */}
+          <path d="M8.5 24C6.5 13 16 2.5 32 1.8S57.5 13 55.5 24c-.3 2-1.8 3.2-3.8 3.2H12.3c-2 0-3.5-1.2-3.8-3.2z" fill="#f7f3e8" stroke={INK} strokeWidth="0.9" />
+          <g fill="none" stroke="#c9c0a6" strokeWidth="1.2" strokeLinecap="round">
+            <path d="M11 20.5C17 10 30 5.5 45 6.8" />
+            <path d="M12 24.2C19 14 33 9.5 50 11.8" />
+            <path d="M18 25.6C26 18 39 15 53.5 17.5" />
+            <path d="M53 20.5C47 10.5 36 6 22 6.5" />
+            <path d="M47 25.4C42 17 32 12.5 15 13.5" />
+          </g>
+          <path d="M9.3 22.6C20 20 44 20 54.7 22.6l-.4 3.6C44 23.8 20 23.8 9.7 26.2z" fill="#e9e2cf" stroke={INK} strokeWidth="0.6" />
         </>
       );
     default:

@@ -10,12 +10,18 @@ const WOOD_DARK = "#4e2d12";
 /** A turban seen from the front: `sayyid` black (the Prophet's descendants), otherwise white (a sheikh). */
 export function Turban({ sayyid = false, size = 22 }: { sayyid?: boolean; size?: number }) {
   const fill = sayyid ? "#16151a" : "#f6f2e7";
-  const wrap = sayyid ? "#3a3842" : "#cdc5ad";
+  const wrap = sayyid ? "#3d3b46" : "#c9c0a6";
+  const band = sayyid ? "#25232b" : "#e9e2cf";
   return (
-    <svg width={size} height={size * 0.7} viewBox="0 0 40 28" aria-hidden style={{ display: "inline-block", verticalAlign: "middle", flex: "none" }}>
-      <path d="M3 18C3 9 10.5 2.5 20 2.5S37 9 37 18c0 2.6-1.8 4.2-4.4 4.2H7.4C4.8 22.2 3 20.6 3 18z" fill={fill} stroke="#1b1a14" strokeWidth="0.9" />
-      <path d="M6.5 15c7-3.6 20-3.6 27 0M9.5 9.2c5.5-3.4 15.5-3.4 21 0M5 20.2c8-2.6 22-2.6 30 0" fill="none" stroke={wrap} strokeWidth="1.3" />
-      <path d="M9 22.2h22v3.2H9z" fill="#c9b58a" />
+    <svg width={size} height={size * 0.56} viewBox="7 0 50 28" aria-hidden style={{ display: "inline-block", verticalAlign: "middle", flex: "none" }}>
+      <path d="M8.5 24C6.5 13 16 2.5 32 1.8S57.5 13 55.5 24c-.3 2-1.8 3.2-3.8 3.2H12.3c-2 0-3.5-1.2-3.8-3.2z" fill={fill} stroke="#1b1a14" strokeWidth="0.9" />
+      <g fill="none" stroke={wrap} strokeWidth="1.3" strokeLinecap="round">
+        <path d="M11 20.5C17 10 30 5.5 45 6.8" />
+        <path d="M12 24.2C19 14 33 9.5 50 11.8" />
+        <path d="M53 20.5C47 10.5 36 6 22 6.5" />
+        <path d="M47 25.4C42 17 32 12.5 15 13.5" />
+      </g>
+      <path d="M9.3 22.6C20 20 44 20 54.7 22.6l-.4 3.6C44 23.8 20 23.8 9.7 26.2z" fill={band} stroke="#1b1a14" strokeWidth="0.6" />
     </svg>
   );
 }

@@ -75,6 +75,8 @@ export interface SermonPlan {
   /** the topic the preacher picked (-1 = not yet) */
   chosen: number;
   tafsir: SermonTafsir | null;
+  /** the tafsir's pages were looked for and not found (the sermon goes on without it) */
+  tafsirMissing?: boolean;
 }
 
 /** The plan of a written output / book: chapters with the segments each one draws on. */

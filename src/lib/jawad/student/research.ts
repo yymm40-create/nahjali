@@ -3,6 +3,7 @@
 
 import { RESEARCH_PREFIX } from "@config/jawad/student";
 import { STUDENT, briefLine, readBrief, researchPlaces } from "@config/jawad/student";
+import { isKhateeb, sermonFocus } from "@config/jawad/khateeb";
 import { claudeCeilingUsd, webResearch, type ResearchParagraph, type ResearchSource } from "./claude";
 import { addVersion, getProject, sdb, sources, touch, versionOf } from "./db";
 import type { Handler, Job } from "./jobs";
@@ -34,13 +35,20 @@ async function asMaterial(job: Job) {
     : where
       ? ` The student said where to look: «${where}». Keep to those sources (that site, curriculum, book or body); if they can't be found, say so instead of using other sources.`
       : "";
-  const r = await webResearch({
+  // «الخطيب الذكي»: the text of the preacher's topic, for the minbar, from the sources of the school of Ahl al-Bayt
+  const sermon = isKhateeb(project.branch) ? brief.sermon : undefined;
+  const r = await webResearch(sermon ? {
+    system: `You research the TEXT of a topic for a preacher of the Husseini minbar (the school of Ahl al-Bayt, peace be upon them), and write it up as the material his sermon will be built from. Search reliable sources: the books of the school of Ahl al-Bayt and their trusted sites (ar.wikishia.net, alhassanain.org, ablibrary.net, al-islam.org, the offices of the marajiʿ), and reputable Islamic encyclopaedias.${keepTo} Write in Arabic: a clear title line, then the topic in short sections (a heading line, then paragraphs) — what the texts say about it: the verses and the narrations of the Prophet and the Imams with their books, the events of the history and the life of the person when the topic is one, the meanings and the lessons the scholars drew — and the calamity (المصيبة) of the occasion when one is given. Every sentence must come from a source you found, and every narration with the book it is in; never write a narration, a saying or an event from memory; if you find nothing reliable on a part, say so plainly instead of filling it.`,
+    question: where ? `${sermonFocus(sermon)}\nوين يبحث (التزم بها): ${where}` : sermonFocus(sermon),
+    allowedDomains: places.sites,
+    fetch: places.links.length > 0,
+  } : {
     system: `You research a study topic on the web and write it up as the student's study material, for exactly this level and purpose. Search reliable sources (encyclopaedias, ministries of education and curricula, universities, official bodies, reputable publishers) — prefer Arabic sources when good ones exist, and the student's curriculum when the level names one.${keepTo} Write in Arabic: a clear title line, then the topic organised in short sections (a heading line, then paragraphs), covering what this level needs — definitions, key ideas, steps, examples, numbers — separated by blank lines. Every factual sentence must come from a source you found; if you find nothing reliable on a part, say so plainly instead of filling it.`,
     question,
     allowedDomains: places.sites,
     fetch: places.links.length > 0,
   });
-  if (!r.paragraphs.length) throw new Error("research found nothing");
+  if (!r.paragraphs.length) throw new Error(sermon ? "ما لقى الشيخ نصوصًا موثوقة عن هذا الموضوع. جرّب صياغة ثانية للموضوع." : "research found nothing");
   const cited = r.paragraphs.map((p) => `${p.text}${p.cites.length ? ` [${p.cites.map((i) => i + 1).join("، ")}]` : ""}`).join("\n\n");
   const refs = r.sources.map((s, i) => `[${i + 1}] ${s.title} — ${s.url}`).join("\n");
   const body = `${cited}${refs ? `\n\nالمصادر:\n${refs}` : ""}`;

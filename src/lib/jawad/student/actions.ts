@@ -125,6 +125,7 @@ function cleanBrief(v: unknown): Brief {
     focus: text(b.focus, 2000),
     where: text(b.where, 2000),
     auto: b.auto !== false,
+    sermon: b.sermon,
   });
 }
 
@@ -679,7 +680,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const i = Math.round(Number(b.index));
       if (!Number.isInteger(i) || i < 0 || i >= sp.topics.length) throw new UserError("اختر واحدًا من المواضيع.");
       // another topic has another verse: its tafsir is fetched again
-      await savePlan(o, user.id, { ...sp, chosen: i, tafsir: i === sp.chosen ? sp.tafsir : null, poems: i === sp.chosen ? sp.poems : undefined, sources: i === sp.chosen ? sp.sources : undefined });
+      await savePlan(o, user.id, { ...sp, chosen: i, tafsir: i === sp.chosen ? sp.tafsir : null, tafsirMissing: i === sp.chosen ? sp.tafsirMissing : undefined, poems: i === sp.chosen ? sp.poems : undefined, sources: i === sp.chosen ? sp.sources : undefined });
       return { ok: true };
     }
     // the preacher's own words on a topic, or another verse for it (its words are fetched from the Quran)
@@ -699,7 +700,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       }
       const topics = sp.topics.map((x, k) => (k === i ? { ...x, title: text(b.title, 300) || x.title, idea: text(b.idea, 1500) || x.idea, kooriz: text(b.kooriz, 800) || x.kooriz, verse } : x));
       const same = verse.surah === t.verse.surah && verse.from === t.verse.from && verse.to === t.verse.to;
-      await savePlan(o, user.id, { ...sp, topics, tafsir: i === sp.chosen && same ? sp.tafsir : i === sp.chosen ? null : sp.tafsir });
+      await savePlan(o, user.id, { ...sp, topics, tafsir: i === sp.chosen && same ? sp.tafsir : i === sp.chosen ? null : sp.tafsir, tafsirMissing: i === sp.chosen && !same ? undefined : sp.tafsirMissing });
       return { ok: true };
     }
     // the tafsir pasted by the preacher himself (when the book's pages could not be found, or he prefers another tafsir)
