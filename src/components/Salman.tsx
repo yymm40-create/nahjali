@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import "./salman.css";
 import RobotFace from "./RobotFace";
+import MovableBubble from "./MovableBubble";
 
 interface Msg {
   role: "user" | "assistant";
@@ -91,12 +92,10 @@ export default function Salman() {
 
   return (
     <>
-      {!open && (
-        <button type="button" className="slm-fab" onClick={show} aria-label="سلمان: اسألني عن الموقع">
-          <span className="slm-face" aria-hidden><RobotFace id="salman" size={30} /></span>
-          <span className="slm-label">سلمان</span>
-        </button>
-      )}
+      {/* small and movable (it used to sit in the corner over the page's own buttons and words) */}
+      <MovableBubble id="salman" corner="left" size={46} label="سلمان: اسألني عن الموقع" gradient="linear-gradient(135deg, #7c3aed, #ec4899)" hidden={open} onPress={show}>
+        <RobotFace id="salman" size={32} />
+      </MovableBubble>
       {open && (
         <div className="slm-wrap" role="dialog" aria-modal="false" aria-label="سلمان، مساعد الموقع" dir="rtl">
           <div className="slm-box">

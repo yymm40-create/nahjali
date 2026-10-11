@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Dialog from "@/components/jawad/Dialog";
 import { post } from "./client";
 import { ErrorLine } from "./ui";
+import MovableBubble from "@/components/MovableBubble";
 
 const KEY = "st-visitor";
 
@@ -50,9 +51,13 @@ export default function StudentChrome() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
+      <MovableBubble
+        id="student-feedback"
+        corner="right"
+        size={42}
+        label="رأيك"
+        gradient="linear-gradient(120deg,#7c3aed,#db2777 55%,#f97316)"
+        onPress={() => {
           setOpen(true);
           if (state === "sent") {
             setState("idle");
@@ -60,12 +65,9 @@ export default function StudentChrome() {
             setMessage("");
           }
         }}
-        aria-label="رأيك"
-        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-3 z-40 flex items-center gap-2 rounded-full p-3 font-bold text-white shadow-xl transition-transform hover:-translate-y-0.5 active:scale-95 sm:left-4 sm:px-4"
-        style={{ background: "linear-gradient(120deg,#7c3aed,#db2777 55%,#f97316)" }}
       >
-        💬 <span className="hidden sm:inline">رأيك</span>
-      </button>
+        💬
+      </MovableBubble>
       <Dialog open={open} onClose={() => setOpen(false)} title="رأيك يهمنا">
         {state === "sent" ? (
           <div className="space-y-2 p-6 text-center">
