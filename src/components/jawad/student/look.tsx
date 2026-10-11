@@ -8,6 +8,8 @@ export const KIND_LOOK: Record<string, { emoji: string; grad: string }> = {
   slides: { emoji: "🎞️", grad: "linear-gradient(135deg,#ec4899,#db2777)" },
   audio: { emoji: "🎧", grad: "linear-gradient(135deg,#10b981,#059669)" },
   quiz: { emoji: "🎯", grad: "linear-gradient(135deg,#f43f5e,#e11d48)" },
+  preread: { emoji: "🧭", grad: "linear-gradient(135deg,#14b8a6,#0ea5e9)" },
+  chat: { emoji: "💬", grad: "linear-gradient(135deg,#8b5cf6,#d946ef)" },
 };
 
 export const STEP_LOOK = [

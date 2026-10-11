@@ -20,6 +20,7 @@ export function defaults(kind: OutputKind, level: string): S {
   switch (kind) {
     case "summary":
     case "explain":
+    case "preread":
       return { density: young ? "low" : "medium", pages: 0, page: "A4", format: "pdf", pictures: "" };
     case "book":
       return { writing: "explain", page: "A4", pages: 0, density: "medium", format: "pdf", pictures: "" };
@@ -123,6 +124,7 @@ export function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; 
   switch (kind) {
     case "summary":
     case "explain":
+    case "preread":
       return (
         <>
           {density}
@@ -149,7 +151,7 @@ export function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; 
         </>
       );
     case "audio": {
-      const texts = chosen.filter((k) => k === "summary" || k === "explain" || k === "book");
+      const texts = chosen.filter((k) => k === "summary" || k === "explain" || k === "preread" || k === "book");
       return (
         <>
           <Choice label="وش يقرأ؟" value={String(s.source)} options={[{ id: "text", label: "المادة كاملة" }, ...texts.map((k) => ({ id: k, label: OUTPUT_KINDS.find((o) => o.kind === k)!.name }))]} onChange={(source) => set({ source })} />
@@ -188,6 +190,8 @@ export function Questions({ kind, s, set, chosen, prices }: { kind: OutputKind; 
         </>
       );
     }
+    case "chat":
+      return <p className="text-sm text-jw-muted">ما يحتاج إعدادات: تنفتح لك محادثة مع صادق على مادتك، تناقشه فيها وتسأله، ويبحث لك لو طلبت.</p>;
     default:
       return <p className="text-sm text-jw-muted">ما يحتاج أسئلة: المادة كاملة كما قرأها صادق، PDF ونص.</p>;
   }

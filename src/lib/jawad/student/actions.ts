@@ -21,6 +21,9 @@ import { researchCeiling } from "./research";
 import { understandCeiling, type Understanding } from "./understand";
 import { autoSettings } from "./defaults";
 import { pickDesigns } from "./design-pick";
+import { chatTurn } from "./chat";
+import { robotTurn } from "@/lib/claude-run";
+import { isAdmin } from "@config/site";
 import { LINK_CEILING_HOURS, MEDIA_MAX_BYTES, MEDIA_TYPES, SCRIBE_USD_PER_HOUR, mediaLink, mediaUsd } from "./media";
 
 import { storage } from "@/lib/storage";
@@ -397,9 +400,11 @@ export async function projectAction(user: User, id: string, b: Body) {
         kind: k,
         ord: existing.length + i,
         title: OUTPUT_KINDS.find((o) => o.kind === k)!.name,
-        status: "settings",
+        // «محادثة مع صادق» is ready at once: there is nothing to plan, only to talk
+        status: k === "chat" ? "done" : "settings",
         // pre-filled with the assistant's choices for this level: «اعرض الخطة» is one press away
-        settings: autoSettings(k, p.level),
+        settings: k === "chat" ? {} : autoSettings(k, p.level),
+        ...(k === "chat" ? { content: { messages: [] }, approved: true } : {}),
       }));
       await db.from("student_outputs").insert(rows);
       await touch(p.id);
@@ -432,6 +437,7 @@ export async function projectAction(user: User, id: string, b: Body) {
         const extra = [text(given.extra, 2000), notes[kind] ?? ""].filter(Boolean).join("\n");
         const settings = cleanSettings(kind, { ...autoSettings(kind, p.level), ...given, ...(designs[kind] ? { design: designs[kind] } : {}), ...(extra ? { extra } : {}) });
         if (kind === "audio") settings.source = "text";
+        if (kind === "chat") return { project_id: p.id, user_id: user.id, kind, ord: existing.length + i, title: OUTPUT_KINDS.find((o) => o.kind === kind)!.name, status: "done", settings: {}, content: { messages: [] }, approved: true };
         return { project_id: p.id, user_id: user.id, kind, ord: existing.length + i, title: OUTPUT_KINDS.find((o) => o.kind === kind)!.name, status: "settings", settings };
       });
       const { data: made, error } = await db.from("student_outputs").insert(rows).select("id,kind");
@@ -439,7 +445,7 @@ export async function projectAction(user: User, id: string, b: Body) {
       // a recording of the summary / explanation / book made here: it waits for that text
       const audio = list.find((w) => w.kind === "audio");
       const reads = String((audio?.settings as Body | undefined)?.source ?? "");
-      const dep = (made ?? []).find((m) => m.kind === reads && ["summary", "explain", "book"].includes(reads));
+      const dep = (made ?? []).find((m) => m.kind === reads && ["summary", "explain", "preread", "book"].includes(reads));
       const rec = (made ?? []).find((m) => m.kind === "audio");
       if (dep && rec) {
         const r = rows.find((x) => x.kind === "audio")!;
@@ -517,7 +523,7 @@ function cleanSettings(kind: Output["kind"], s: Body) {
     else if (typeof v === "boolean") out[k] = v;
     else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === "string").slice(0, 10);
   }
-  if (kind === "book" || kind === "slides" || kind === "summary" || kind === "explain" || kind === "quiz") {
+  if (kind === "book" || kind === "slides" || kind === "summary" || kind === "explain" || kind === "preread" || kind === "quiz") {
     const d = cleanDesign(s.design);
     if (d) out.design = d;
   }
@@ -591,12 +597,17 @@ export async function outputAction(user: User, id: string, b: Body) {
     paid(user, b, { projectId: p.id, outputId: o.id, kind, usd, input, stage, started: status ? () => saveOutput(o.id, { ...extra, status, error: null }) : undefined });
 
   switch (b.action) {
+    // «محادثة مع صادق»: one message, answered now (paid by its real use, like every robot's turn)
+    case "chat": {
+      const r = await robotTurn(user, b.model, "محادثة مع صادق (الطالب الذكي)", () => chatTurn(user.id, o, b.message, isAdmin(user.email)));
+      return { messages: r.messages, coins: r.coins };
+    }
     case "settings": {
       const settings = cleanSettings(o.kind, (b.settings ?? {}) as Body);
       if (o.kind === "audio") {
         const src = String(settings.source ?? "text");
         if (src !== "text" && src !== "custom") {
-          const dep = (await outputs(p.id)).find((x) => x.id === src && (x.kind === "summary" || x.kind === "explain" || x.kind === "book"));
+          const dep = (await outputs(p.id)).find((x) => x.id === src && (x.kind === "summary" || x.kind === "explain" || x.kind === "preread" || x.kind === "book"));
           if (!dep) throw new UserError("اختر نصًا من نواتج هذه المادة.");
           await saveOutput(o.id, { settings: { ...settings, _styleDraft: undefined }, depends_on: dep.id, status: dep.status === "done" ? "settings" : "waiting", plan_approved: false });
           return { ok: true };
@@ -654,7 +665,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const prevRun = Number((o.content as { run?: number } | null)?.run ?? 0);
       // what the trial made is kept and not charged again (so the trial's coins are not given back as well)
       const reusedTrial =
-        (["summary", "explain", "book"].includes(o.kind) && ((o.content as Doc | null)?.chapters?.length ?? 0) > 0) ||
+        (["summary", "explain", "preread", "book"].includes(o.kind) && ((o.content as Doc | null)?.chapters?.length ?? 0) > 0) ||
         (o.kind === "slides" && Boolean((o.plan as SlidePlan | null)?.slides?.some((x) => x.rendered?.path)));
       return run("final", await estimate(user.id, o, "final"), o.kind === "audio" ? { run: prevRun + 1 } : { reusedTrial }, "إنشاء الناتج", "running");
     }
@@ -672,7 +683,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const kind = b.kind === "other" ? "other" : "edit";
       if (!["review", "done"].includes(o.status)) throw new UserError(NOT_NOW);
       const requests = [...o.requests, { at: new Date().toISOString(), kind: kind as "edit", text: note }];
-      if (o.kind === "summary" || o.kind === "explain" || o.kind === "book" || o.kind === "quiz") {
+      if (o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "quiz") {
         const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
         return run("revise", await estimate(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
       }

@@ -71,7 +71,7 @@ export interface Output {
   id: string;
   project_id: string;
   user_id: string;
-  kind: "summary" | "explain" | "transcript" | "book" | "slides" | "audio" | "quiz";
+  kind: "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat";
   ord: number;
   title: string;
   settings: Record<string, unknown>;

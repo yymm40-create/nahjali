@@ -12,6 +12,8 @@ export function autoSettings(kind: string, level: string): Record<string, unknow
   switch (kind) {
     case "summary":
       return { purpose: "مراجعة المادة", density: young ? "low" : "medium", tone: young ? "بسيطة وودودة" : "واضحة" };
+    case "preread":
+      return { purpose: "التحضير قبل الدرس", density: young ? "low" : "medium", tone: young ? "بسيطة وودودة" : "واضحة" };
     case "explain":
       return { purpose: "فهم المادة", density: "medium", tone: young ? "بسيطة مع أمثلة" : "واضحة مع أمثلة" };
     case "book":

@@ -19,9 +19,10 @@ type S = Record<string, unknown>;
 /** What fits each purpose of the first page, chosen in advance (one tap to change). */
 const SUGGEST: Record<string, OutputKind[]> = {
   exam: ["summary", "quiz"],
-  understand: ["explain"],
+  understand: ["explain", "chat"],
   research: ["book"],
-  teach: ["slides", "summary"],
+  teach: ["preread", "slides", "summary"],
+  debate: ["summary", "chat"],
   present: ["slides"],
   other: ["summary"],
 };
@@ -211,7 +212,7 @@ export default function OutputsStep({ p, autoOn, onStart, onCreated, onResearch,
                   <Tile emoji={KIND_LOOK[o.kind].emoji} grad={KIND_LOOK[o.kind].grad} size={36} />
                   <span className="min-w-0 flex-1">
                     <b className="block truncate">{o.title}</b>
-                    <span className={`block text-xs ${o.status === "done" ? "text-jw-ok" : o.status === "failed" ? "text-jw-danger" : "text-jw-muted"}`}>{job ? job.stage || "جارٍ…" : o.status === "done" ? "جاهز — اضغط للتنزيل" : (OUTPUT_STATUS[o.status] ?? o.status)}</span>
+                    <span className={`block text-xs ${o.status === "done" ? "text-jw-ok" : o.status === "failed" ? "text-jw-danger" : "text-jw-muted"}`}>{job ? job.stage || "جارٍ…" : o.kind === "chat" ? "اضغط وناقش صادق" : o.status === "done" ? "جاهز — اضغط للتنزيل" : (OUTPUT_STATUS[o.status] ?? o.status)}</span>
                   </span>
                   {job && <span className="jw-spinner" aria-hidden />}
                 </button>

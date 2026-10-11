@@ -27,7 +27,7 @@ export interface Pictures {
   pages: PicturePage[];
 }
 
-export const PICTURE_KINDS = ["summary", "explain", "transcript", "book", "quiz"];
+export const PICTURE_KINDS = ["summary", "explain", "preread", "transcript", "book", "quiz"];
 
 /** USD ceiling of one page: the output at the chosen quality, a style reference and the prompt. */
 export function pageUsd(quality: PictureQuality) {

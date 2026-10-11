@@ -9,7 +9,7 @@ import { autoSettings } from "@/lib/jawad/student/defaults";
 import { newKey, post, type OutputView, type ProjectState } from "./client";
 
 /** Written outputs that can also be drawn as pages by GPT Image 2 (lib/jawad/student/pictures.ts). */
-export const PICTURE_KINDS: string[] = ["summary", "explain", "transcript", "book", "quiz"];
+export const PICTURE_KINDS: string[] = ["summary", "explain", "preread", "transcript", "book", "quiz"];
 
 export interface AutoAction {
   label: string;
