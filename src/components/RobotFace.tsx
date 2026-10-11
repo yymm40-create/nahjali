@@ -5,7 +5,7 @@
 type Head = "round" | "square" | "capsule" | "hex" | "tv";
 type Eyes = "dots" | "visor" | "big" | "screen" | "lens";
 type Antenna = "single" | "double" | "dish" | "none" | "bolt";
-type Extra = "cap" | "beret" | "hood" | "headphones" | "clapper" | "bow" | "crescent" | "scissors" | "spark" | "glasses" | "camera" | "pen" | "joystick" | "book" | "none";
+type Extra = "cap" | "beret" | "hood" | "headphones" | "clapper" | "bow" | "crescent" | "scissors" | "spark" | "glasses" | "camera" | "pen" | "joystick" | "book" | "dumbbell" | "none";
 
 interface Look {
   a: string;
@@ -32,6 +32,8 @@ export const ROBOT_LOOKS: Record<string, Look> = {
   abbas: { a: "#3d6d9e", b: "#1b3556", head: "square", eyes: "big", antenna: "single", extra: "book" },
   zainab: { a: "#7a4f98", b: "#3a2255", head: "round", eyes: "big", antenna: "none", extra: "hood" },
   booklet: { a: "#3d7ab0", b: "#1d3f6a", head: "capsule", eyes: "big", antenna: "double", extra: "book" },
+  // «عباس سبع القنطرة»: the coach of «الصحة العلوية» in «لأجل المهدي» — dark iron, a dumbbell in hand
+  sabaa: { a: "#74822f", b: "#3d4619", head: "square", eyes: "visor", antenna: "bolt", extra: "dumbbell" },
 };
 
 const INK = "#0b0a14";
@@ -202,6 +204,14 @@ function extra(x: Extra, b: string) {
           <path d="M0 2h6a2 2 0 0 1 2 2v9a2 2 0 0 0-2-2H0zM16 2h-6a2 2 0 0 0-2 2v9a2 2 0 0 1 2-2h6z" fill={GOLD} stroke={INK} strokeWidth="0.9" />
         </g>
       );
+    case "dumbbell":
+      return (
+        <g transform="translate(41 50)">
+          <rect x="3" y="5.2" width="12" height="2.6" rx="1" fill={INK} />
+          <rect x="0" y="1.5" width="4" height="10" rx="1.2" fill={GOLD} stroke={INK} strokeWidth="0.8" />
+          <rect x="14" y="1.5" width="4" height="10" rx="1.2" fill={GOLD} stroke={INK} strokeWidth="0.8" />
+        </g>
+      );
     default:
       return null;
   }
@@ -210,7 +220,7 @@ function extra(x: Extra, b: string) {
 /**
  * A robot's face — sober and weighty, never comic: a heavy squared head in one deep metal with a gold trim, level glowing
  * eyes behind dark glass, a flat mouth-groove (not a smile), and a broad collar under it.
- * `id`: salman · jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet.
+ * `id`: salman · jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet · sabaa.
  */
 export default function RobotFace({ id, size = 40, className = "", title }: { id: string; size?: number; className?: string; title?: string }) {
   const l = ROBOT_LOOKS[id] ?? ROBOT_LOOKS.salman;

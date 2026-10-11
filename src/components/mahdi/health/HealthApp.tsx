@@ -36,7 +36,49 @@ import {
   type HealthProfile,
   type PlanDay,
 } from "@/lib/mahdi/health/plan";
+import RobotFace from "@/components/RobotFace";
 import "./health.css";
+
+/** «عباس سبع القنطرة»: the coach of «الصحة العلوية»; a word on every screen (to a man or to a woman). */
+const COACH = "عباس سبع القنطرة";
+function coachLine(screen: Screen, f: boolean, preg: boolean): string {
+  const g = (m: string, w: string) => (f ? w : m);
+  switch (screen) {
+    case "track":
+      return g("وش ناوي عليه يا بطل؟ اختر وأنا معك للآخر 💪", "وش ناوية عليه يا بطلة؟ اختاري وأنا معك للآخر 💪");
+    case "about":
+      return g("عطني أرقامك بصدق، الخطة تنحسب عليها بالضبط.", "عطيني أرقامك بصدق، الخطة تنحسب عليها بالضبط.");
+    case "goal":
+      return preg ? "في الحمل هدفنا صحتك وصحة الجنين، مو الرجيم. نختار الهدف ونمشي بهدوء." : g("الهدف الواضح نص الطريق. وش تبي توصل له؟", "الهدف الواضح نص الطريق. وش تبين توصلين له؟");
+    case "train":
+      return preg ? "سلامتك أولًا: جاوبي على أسئلة الطبيبة بصدق، والجدول يكون خفيف وآمن." : g("الالتزام أهم من كثرة الأيام: اختر الأيام اللي تقدر تثبت عليها.", "الالتزام أهم من كثرة الأيام: اختاري الأيام اللي تقدرين تثبتين عليها.");
+    case "mode":
+      return g("تبيها جاهزة الحين، ولا نبنيها مع بعض حبة حبة؟", "تبينها جاهزة الحين، ولا نبنيها مع بعض حبة حبة؟");
+    case "build-food":
+      return g("هذا اللي أقترحه لك من البحوث، وتقدر تعدّله على راحتك.", "هذا اللي أقترحه لك من البحوث، وتقدرين تعدّلينه على راحتك.");
+    case "build-day":
+      return g("شوف تمارين اليوم: بدّل اللي ما يناسبك، والمهم التكنيك قبل الوزن.", "شوفي تمارين اليوم: بدّلي اللي ما يناسبك، والمهم التكنيك قبل الوزن.");
+    case "plan":
+      return g("خطتك جاهزة! الحين لا تكتفي بالقراءة، خلها عادات وابدأ اليوم.", "خطتك جاهزة! الحين لا تكتفين بالقراءة، خليها عادات وابدئي اليوم.");
+    case "habits":
+      return g("اختر كيف تتابعها كل يوم، وأنا أشوف نسبتك ترتفع 🔥", "اختاري كيف تتابعينها كل يوم، وأنا أشوف نسبتك ترتفع 🔥");
+    default:
+      return "";
+  }
+}
+
+function Coach({ line }: { line: string }) {
+  if (!line) return null;
+  return (
+    <div className="gym-coach">
+      <RobotFace id="sabaa" size={46} />
+      <p>
+        <b>{COACH}</b>
+        {line}
+      </p>
+    </div>
+  );
+}
 
 type Screen = "home" | "track" | "about" | "goal" | "train" | "mode" | "build-food" | "build-day" | "plan" | "habits";
 const WIZARD: Screen[] = ["track", "about", "goal", "train", "mode"];
@@ -176,6 +218,8 @@ export default function HealthApp() {
         </div>
       )}
 
+      {screen !== "home" && <Coach line={coachLine(screen, female, preg)} />}
+
       {screen === "home" && (
         <>
           <section className="gym-hero space-y-3">
@@ -192,6 +236,14 @@ export default function HealthApp() {
               <Link href="/mahdi/health/research" className="gym-btn ghost">
                 📚 البحث والمصادر
               </Link>
+            </div>
+          </section>
+
+          <section className="gym-card flex items-start gap-3">
+            <RobotFace id="sabaa" size={64} />
+            <div className="space-y-1">
+              <b className="text-lg font-black">هلا! أنا {COACH} 🦁</b>
+              <p className="gym-small">مدربك في «الصحة العلوية». أسوي لك جدول تمارين ونظام تغذية على مقاسك من توصيات المنظمات الطبية العالمية، للرجل والمرأة والحامل والمرضعة، وأدخله في عاداتك عشان تتابعه كل يوم. ما أبي منك إلا الالتزام!</p>
             </div>
           </section>
 

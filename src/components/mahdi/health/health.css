@@ -234,3 +234,18 @@
 .gym-ex.edit { flex-wrap: wrap; }
 .gym-ex.edit .what { flex-basis: calc(100% - 120px); }
 .gym-ex.edit .tools { width: 100%; justify-content: flex-end; }
+
+/* «عباس سبع القنطرة» talking: his face and a speech bubble */
+.gym-coach { display: flex; align-items: flex-end; gap: 0.5rem; }
+.gym-coach > svg { filter: drop-shadow(0 0 10px rgba(198, 255, 26, 0.35)); }
+.gym-coach p {
+  position: relative;
+  flex: 1;
+  background: #1a1f26;
+  border: 1px solid var(--g-line);
+  border-radius: 1rem 1rem 1rem 0.3rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+.gym-coach p b { display: block; font-size: 0.7rem; font-weight: 900; color: var(--g-lime); }
