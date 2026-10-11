@@ -855,6 +855,196 @@ export function shapesSvg(shapes: DrawShape[], pal: Palette, w: number, h: numbe
   return out.join("");
 }
 
+// ───────────── the background حيدرة composes himself (the motion skill's way: no preset theme) ─────────────
+
+/** What a background layer can be: soft masses and lines, not a canned "theme". Blur makes glows, light and depth. */
+export type BgLayerType = "blob" | "circle" | "ring" | "rect" | "line" | "wave" | "dots" | "grid" | "rays" | "arc" | "tri" | "streak";
+export const BG_LAYER_TYPES: BgLayerType[] = ["blob", "circle", "ring", "rect", "line", "wave", "dots", "grid", "rays", "arc", "tri", "streak"];
+export const MAX_BG_LAYERS = 10;
+
+/** One layer of a composed background: full-bleed coordinates (fractions of the frame), its own colour, blur and turn. */
+export interface BgLayer {
+  t: BgLayerType;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  c: string;
+  o: number;
+  r: number;
+  /** softness, as a fraction of the frame's short side (0 = hard edge, 0.12 = a wide glow) */
+  blur: number;
+  /** line weight for the drawn kinds (ring, line, wave, grid, rays, arc, streak), fraction of the short side */
+  sw: number;
+}
+
+/** A beat's whole background, written by حيدرة: the field it sits on, its layers, and the finish over them. */
+export interface BeatBg {
+  /** one colour, or a gradient: {from,to,deg} linear, or {from,to,radial:true,cx,cy} */
+  fill: string | { from: string; to: string; deg?: number; radial?: boolean; cx?: number; cy?: number };
+  layers: BgLayer[];
+  /** film grain over everything (0–0.25) */
+  grain: number;
+  /** darkened corners (0–0.6) */
+  vignette: number;
+  /** scan lines (0–0.3) */
+  scan: number;
+}
+
+const colorWord = (c: string) => COLOR_WORDS.includes(c) || /^#[0-9a-f]{6}$/i.test(c);
+
+/** A background from حيدرة's JSON: unknown kinds dropped, everything clamped; null when he wrote none. */
+export function readBeatBg(raw: unknown): BeatBg | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const num = (v: unknown, lo: number, hi: number, dflt: number) => (Number.isFinite(Number(v)) ? clamp(Number(v), lo, hi) : dflt);
+  let fill: BeatBg["fill"] | null = null;
+  if (typeof o.fill === "string" && colorWord(o.fill)) fill = o.fill;
+  else if (o.fill && typeof o.fill === "object") {
+    const g = o.fill as Record<string, unknown>;
+    if (typeof g.from === "string" && colorWord(g.from) && typeof g.to === "string" && colorWord(g.to))
+      fill = { from: g.from, to: g.to, deg: num(g.deg, -360, 360, 120), radial: g.radial === true, cx: num(g.cx, 0, 1, 0.5), cy: num(g.cy, 0, 1, 0.4) };
+  }
+  const layers: BgLayer[] = [];
+  for (const x of Array.isArray(o.layers) ? o.layers.slice(0, MAX_BG_LAYERS) : []) {
+    if (!x || typeof x !== "object") continue;
+    const l = x as Record<string, unknown>;
+    if (!BG_LAYER_TYPES.includes(l.t as BgLayerType) || typeof l.c !== "string" || !colorWord(l.c)) continue;
+    layers.push({
+      t: l.t as BgLayerType,
+      x: num(l.x, -0.5, 1.5, 0.5),
+      y: num(l.y, -0.5, 1.5, 0.5),
+      w: num(l.w, 0.02, 2.5, 0.5),
+      h: num(l.h, 0.02, 2.5, 0.5),
+      c: l.c,
+      o: num(l.o, 0.02, 1, 0.3),
+      r: num(l.r, -180, 180, 0),
+      blur: num(l.blur, 0, 0.3, 0),
+      sw: num(l.sw, 0.001, 0.08, 0.006),
+    });
+  }
+  if (!fill && !layers.length) return null;
+  return { fill: fill ?? "bg", layers, grain: num(o.grain, 0, 0.25, 0), vignette: num(o.vignette, 0, 0.6, 0), scan: num(o.scan, 0, 0.3, 0) };
+}
+
+/**
+ * The background حيدرة composed for one beat, drawn full-bleed: the field (a colour or a gradient), his layers in
+ * order (each with its own softness), then the finish — scan lines, grain, vignette. A layer that crosses the words'
+ * zone is held faint, so nothing he draws can ever eat the text.
+ */
+export function beatBgSvg(bg: BeatBg, pal: Palette, w: number, h: number, a?: Anchors): string {
+  const u = Math.min(w, h);
+  const col = (c: string) => (c === "accent" ? pal.accent : c === "second" ? pal.second : c === "text" ? pal.text : c === "pill" ? pal.pill : c === "bg" ? pal.bg : c);
+  const defs: string[] = [];
+  const parts: string[] = [];
+  if (typeof bg.fill === "string") parts.push(`<rect width="${w}" height="${h}" fill="${col(bg.fill)}"/>`);
+  else {
+    const g = bg.fill;
+    if (g.radial) defs.push(`<radialGradient id="bgf" cx="${f1((g.cx ?? 0.5) * 100)}%" cy="${f1((g.cy ?? 0.4) * 100)}%" r="85%"><stop offset="0" stop-color="${col(g.from)}"/><stop offset="1" stop-color="${col(g.to)}"/></radialGradient>`);
+    else {
+      const rad = ((g.deg ?? 120) * Math.PI) / 180;
+      const x2 = (0.5 + Math.cos(rad) / 2).toFixed(3);
+      const y2 = (0.5 + Math.sin(rad) / 2).toFixed(3);
+      const x1 = (0.5 - Math.cos(rad) / 2).toFixed(3);
+      const y1 = (0.5 - Math.sin(rad) / 2).toFixed(3);
+      defs.push(`<linearGradient id="bgf" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="${col(g.from)}"/><stop offset="1" stop-color="${col(g.to)}"/></linearGradient>`);
+    }
+    parts.push(`<rect width="${w}" height="${h}" fill="url(#bgf)"/>`);
+  }
+  bg.layers.forEach((l, i) => {
+    const cx = l.x * w;
+    const cy = l.y * h;
+    const lw = l.w * u;
+    const lh = l.h * u;
+    const c = col(l.c);
+    // the words' zone: a hard layer over it stays faint; a soft (blurred) one may be a little stronger
+    const crossY = !a || (cy + lh / 2 > a.top * h && cy - lh / 2 < a.bottom * h);
+    const cap = l.blur >= 0.03 ? 0.5 : 0.3;
+    const o = (crossY ? Math.min(l.o, cap) : l.o).toFixed(2);
+    const id = `bl${i}`;
+    const soft = l.blur > 0 ? ` filter="url(#${id})"` : "";
+    if (l.blur > 0) defs.push(`<filter id="${id}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${f1(l.blur * u)}"/></filter>`);
+    const rot = l.r ? ` transform="rotate(${f1(l.r)} ${f1(cx)} ${f1(cy)})"` : "";
+    const sw = f1(Math.max(1, l.sw * u));
+    switch (l.t) {
+      case "blob":
+        parts.push(`<path d="M${f1(cx - lw / 2)} ${f1(cy)} C${f1(cx - lw / 2)} ${f1(cy - lh * 0.72)} ${f1(cx + lw * 0.12)} ${f1(cy - lh * 0.62)} ${f1(cx + lw / 2)} ${f1(cy - lh * 0.08)} C${f1(cx + lw * 0.62)} ${f1(cy + lh * 0.62)} ${f1(cx - lw * 0.12)} ${f1(cy + lh * 0.72)} ${f1(cx - lw / 2)} ${f1(cy)} Z" fill="${c}" opacity="${o}"${soft}${rot}/>`);
+        break;
+      case "circle":
+        parts.push(`<ellipse cx="${f1(cx)}" cy="${f1(cy)}" rx="${f1(lw / 2)}" ry="${f1(lh / 2)}" fill="${c}" opacity="${o}"${soft}${rot}/>`);
+        break;
+      case "ring":
+        parts.push(`<ellipse cx="${f1(cx)}" cy="${f1(cy)}" rx="${f1(lw / 2)}" ry="${f1(lh / 2)}" fill="none" stroke="${c}" stroke-width="${sw}" opacity="${o}"${soft}${rot}/>`);
+        break;
+      case "rect":
+        parts.push(`<rect x="${f1(cx - lw / 2)}" y="${f1(cy - lh / 2)}" width="${f1(lw)}" height="${f1(lh)}" fill="${c}" opacity="${o}"${soft}${rot}/>`);
+        break;
+      case "line":
+        parts.push(`<line x1="${f1(cx - lw / 2)}" y1="${f1(cy)}" x2="${f1(cx + lw / 2)}" y2="${f1(cy)}" stroke="${c}" stroke-width="${sw}" stroke-linecap="round" opacity="${o}"${soft}${rot}/>`);
+        break;
+      case "tri":
+        parts.push(`<polygon points="${f1(cx)},${f1(cy - lh / 2)} ${f1(cx + lw / 2)},${f1(cy + lh / 2)} ${f1(cx - lw / 2)},${f1(cy + lh / 2)}" fill="${c}" opacity="${o}"${soft}${rot}/>`);
+        break;
+      case "arc":
+        parts.push(`<path d="M${f1(cx - lw / 2)} ${f1(cy)} A${f1(lw / 2)} ${f1(lh / 2)} 0 0 1 ${f1(cx + lw / 2)} ${f1(cy)}" fill="none" stroke="${c}" stroke-width="${sw}" stroke-linecap="round" opacity="${o}"${soft}${rot}/>`);
+        break;
+      case "wave": {
+        let d = `M${f1(cx - lw / 2)} ${f1(cy)}`;
+        for (let k = 0; k < 6; k++) d += ` q${f1(lw / 12)} ${f1(k % 2 ? lh / 2 : -lh / 2)} ${f1(lw / 6)} 0`;
+        parts.push(`<path d="${d}" fill="none" stroke="${c}" stroke-width="${sw}" stroke-linecap="round" opacity="${o}"${soft}${rot}/>`);
+        break;
+      }
+      case "streak": {
+        // light streaks: a few thin parallel lines going one way, the look of speed and depth
+        const g: string[] = [];
+        for (let k = 0; k < 7; k++) g.push(`<line x1="${f1(cx - lw / 2)}" y1="${f1(cy - lh / 2 + (lh * k) / 6)}" x2="${f1(cx + lw / 2)}" y2="${f1(cy - lh / 2 + (lh * k) / 6)}" stroke="${c}" stroke-width="${sw}" stroke-linecap="round"/>`);
+        parts.push(`<g opacity="${o}"${soft}${rot}>${g.join("")}</g>`);
+        break;
+      }
+      case "rays": {
+        const g: string[] = [];
+        for (let k = 0; k < 9; k++) {
+          const ang = (-Math.PI / 2) + ((k - 4) * Math.PI) / 16;
+          g.push(`<line x1="${f1(cx)}" y1="${f1(cy)}" x2="${f1(cx + Math.cos(ang) * lw)}" y2="${f1(cy + Math.sin(ang) * lh)}" stroke="${c}" stroke-width="${sw}" stroke-linecap="round"/>`);
+        }
+        parts.push(`<g opacity="${o}"${soft}${rot}>${g.join("")}</g>`);
+        break;
+      }
+      case "grid": {
+        const step = Math.max(u * 0.02, lw / 10);
+        const g: string[] = [];
+        for (let x = cx - lw / 2; x <= cx + lw / 2 + 0.01; x += step) g.push(`<line x1="${f1(x)}" y1="${f1(cy - lh / 2)}" x2="${f1(x)}" y2="${f1(cy + lh / 2)}" stroke="${c}" stroke-width="${sw}"/>`);
+        for (let y = cy - lh / 2; y <= cy + lh / 2 + 0.01; y += step) g.push(`<line x1="${f1(cx - lw / 2)}" y1="${f1(y)}" x2="${f1(cx + lw / 2)}" y2="${f1(y)}" stroke="${c}" stroke-width="${sw}"/>`);
+        parts.push(`<g opacity="${o}"${soft}${rot}>${g.join("")}</g>`);
+        break;
+      }
+      case "dots": {
+        const step = Math.max(u * 0.02, lw / 12);
+        const g: string[] = [];
+        for (let x = cx - lw / 2; x <= cx + lw / 2 + 0.01; x += step) for (let y = cy - lh / 2; y <= cy + lh / 2 + 0.01; y += step) g.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="${sw}" fill="${c}"/>`);
+        parts.push(`<g opacity="${o}"${soft}${rot}>${g.join("")}</g>`);
+        break;
+      }
+    }
+  });
+  if (bg.scan > 0) {
+    const step = Math.max(2, Math.round(u * 0.006));
+    defs.push(`<pattern id="bgscan" width="${step}" height="${step}" patternUnits="userSpaceOnUse"><rect width="${step}" height="${f1(step / 2)}" fill="#000000"/></pattern>`);
+    parts.push(`<rect width="${w}" height="${h}" fill="url(#bgscan)" opacity="${bg.scan.toFixed(2)}"/>`);
+  }
+  if (bg.grain > 0) {
+    const r = seeded(7);
+    let g = "";
+    for (let k = 0; k < 260; k++) g += `<circle cx="${(r() * w).toFixed(0)}" cy="${(r() * h).toFixed(0)}" r="${(0.6 + r() * 1.2).toFixed(1)}" fill="${r() > 0.5 ? "#ffffff" : "#000000"}"/>`;
+    parts.push(`<g opacity="${bg.grain.toFixed(2)}">${g}</g>`);
+  }
+  if (bg.vignette > 0) {
+    defs.push(`<radialGradient id="bgvig" cx="50%" cy="50%" r="72%"><stop offset="0.45" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="${bg.vignette.toFixed(2)}"/></radialGradient>`);
+    parts.push(`<rect width="${w}" height="${h}" fill="url(#bgvig)"/>`);
+  }
+  return `${svgOpen(w, h)}${defs.length ? `<defs>${defs.join("")}</defs>` : ""}${parts.join("")}</svg>`;
+}
+
 /** Every picture of a piece (a background and a decoration per beat), drawn at a size that stays crisp and light. */
 export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: number, H: number, look?: Pick<MotionLook, "background" | "decor" | "theme"> & Partial<Pick<MotionLook, "mood" | "scene">>): ArtPiece[] {
   // drawn at a size that stays crisp on a phone and light to make (the player scales it to the frame)
@@ -867,10 +1057,13 @@ export function pieceArt(beats: Beat[], pal: Palette, anchors: Anchors[], W: num
     // «steady»: one background for the whole piece (the same colour every beat)
     // the scene behind the words: the beat's own, then its feeling's, then the piece's own, then the piece's feeling's
     const scene = b.scene ?? moodOf(b.mood)?.scene ?? look?.scene ?? moodOf(look?.mood)?.scene;
-    out.push({ key: `bg-${i}`, svg: backgroundSvg(pal, look?.background === "steady" ? 0 : i, w, h, theme, scene), w, h });
-    // the decoration; or, when the skill draws none, only what the beat itself asked for (an icon, its own shapes)
+    // the background حيدرة composed himself for this beat wins over every preset look (the motion skill's way)
+    out.push({ key: `bg-${i}`, svg: b.bg ? beatBgSvg(b.bg, pal, w, h, anchors[i]) : backgroundSvg(pal, look?.background === "steady" ? 0 : i, w, h, theme, scene), w, h });
+    // the decoration; or, when the skill draws none, only what the beat itself asked for (an icon, its own shapes).
+    // With no theme at all (a piece حيدرة composes himself) there is nothing to draw unless the beat asked for it.
     const mine = Boolean(anchors[i]?.icon) || Boolean(b.shapes?.length);
-    if (look?.decor !== false || mine) out.push({ key: `art-${i}`, svg: decorationSvg(b, i, pal, anchors[i] ?? { top: 0.2, bottom: 0.8 }, w, h, theme, look?.decor === false), w, h });
+    const draws = theme !== "none" && look?.decor !== false;
+    if (draws || mine) out.push({ key: `art-${i}`, svg: decorationSvg(b, i, pal, anchors[i] ?? { top: 0.2, bottom: 0.8 }, w, h, theme, !draws), w, h });
   });
   return out;
 }

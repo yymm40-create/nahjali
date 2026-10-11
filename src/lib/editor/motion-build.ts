@@ -7,7 +7,7 @@
 
 import type { Command } from "./commands";
 import { allTracks, clipEnd, type Timeline } from "./model";
-import { beatTransition, pieceArt, readShapes, type Anchors, type DrawShape } from "./motion-art";
+import { beatTransition, pieceArt, readBeatBg, readShapes, type Anchors, type BeatBg, type DrawShape } from "./motion-art";
 import { iconById, iconOf } from "./motion-icons";
 import { lookOf, moodOf, readLook, SCENE_IDS, type MotionLook, type MotionMood, type SceneId } from "./motion-styles";
 import { TR_BY_ID } from "./transitions";
@@ -176,6 +176,43 @@ export interface Beat {
   shapes?: DrawShape[];
   /** what the voice says over this beat: the beat stays as long as the saying takes */
   say?: string;
+  /** the background حيدرة composed for this beat (fill, layers, grain, vignette): no preset theme is used when it is here */
+  bg?: BeatBg;
+  /** the arrivals حيدرة wrote for this beat's texts, in reading order: each text moves the way he drew it, not a preset */
+  enter?: Move[];
+}
+
+/**
+ * One arrival, written by حيدرة himself and run as motion points (not one of the editor's named entrances): the text
+ * starts shifted by `from` (dx, dy as fractions of the frame; s = scale, r = degrees, o = opacity), travels to its
+ * place over `ms` after `delay`, may pass through `over` (a 1.03–1.10 overshoot that then settles), and when `out`
+ * is given leaves the same way, faster. Every curve the person can see and edit afterwards on the clip.
+ */
+export interface Move {
+  delay: number;
+  ms: number;
+  from: { dx: number; dy: number; s: number; r: number; o: number };
+  /** the scale it overshoots to before settling (1 = no overshoot) */
+  over: number;
+  out?: { ms: number; dx: number; dy: number; s: number; o: number };
+}
+
+const MOVE_MS = { min: 80, max: 1200 } as const;
+
+/** One arrival from حيدرة's JSON, clamped (nothing can throw a text off the frame or stall the beat). */
+export function readMove(raw: unknown): Move | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const n = (v: unknown, lo: number, hi: number, d: number) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : d);
+  const f = (o.from && typeof o.from === "object" ? o.from : {}) as Record<string, unknown>;
+  const out = o.out && typeof o.out === "object" ? (o.out as Record<string, unknown>) : null;
+  return {
+    delay: n(o.delay, 0, 4000, 0),
+    ms: n(o.ms, MOVE_MS.min, MOVE_MS.max, 280),
+    from: { dx: n(f.dx, -1, 1, 0), dy: n(f.dy, -1, 1, 0), s: n(f.s, 0.2, 3, 1), r: n(f.r, -90, 90, 0), o: n(f.o, 0, 1, 0) },
+    over: n(o.over, 1, 1.3, 1),
+    ...(out ? { out: { ms: n(out.ms, MOVE_MS.min, MOVE_MS.max, 180), dx: n(out.dx, -1, 1, 0), dy: n(out.dy, -1, 1, 0), s: n(out.s, 0.2, 3, 1), o: n(out.o, 0, 1, 0) } } : {}),
+  };
 }
 export interface Storyboard {
   palette?: string;
@@ -277,6 +314,8 @@ export function readStoryboard(raw: unknown): Storyboard | null {
         ...(SCENE_IDS.includes(b.scene as SceneId) ? { scene: b.scene as SceneId } : {}),
         ...(readShapes(b.shapes).length ? { shapes: readShapes(b.shapes) } : {}),
         ...(clean(b.say, 400) ? { say: clean(b.say, 400) } : {}),
+        ...(readBeatBg(b.bg) ? { bg: readBeatBg(b.bg)! } : {}),
+        ...(Array.isArray(b.enter) && b.enter.map(readMove).filter(Boolean).length ? { enter: b.enter.slice(0, 8).map(readMove).filter((m): m is Move => !!m) } : {}),
       };
     })
     .filter((b) => (b.kind === "kinetic" ? (b.words?.length ?? 0) > 0 : b.title || b.text || b.items?.length || b.value || b.left || b.right));
@@ -319,6 +358,8 @@ export interface Placed {
   start: number;
   end: number;
   anim: { in: string; out: string; inMs: number; outMs: number };
+  /** the arrival حيدرة wrote for this text (motion points); when it is here no named entrance is used */
+  move?: Move;
 }
 
 interface Frame {
@@ -365,6 +406,8 @@ interface Spec {
   maxLines: number;
   delay: number;
   anim: { in: string; out: string; inMs: number; outMs: number };
+  /** the arrival حيدرة wrote for this text (it replaces the named entrance) */
+  move?: Move;
 }
 
 /**
@@ -469,9 +512,13 @@ const TEXT_LEAD = 80;
 /** The texts of one beat, in reading order, with their roles, colours, fonts and entrances. */
 function specsOf(b: Beat, pal: Palette, head: string, body: string, bi = 0, arabicDigits = false, look?: MotionLook): Spec[] {
   const specs: Spec[] = [];
+  // the arrivals حيدرة wrote for this beat, taken in reading order (the last one repeats for any text beyond them)
+  const moves = b.enter ?? [];
   const headIn = (i: number) => headInOf(i, look);
   const add = (s: Omit<Spec, "maxLines" | "delay"> & { maxLines?: number; delay?: number }) => {
-    if (s.body.replace(/[«»—\-●.:\s]/g, "")) specs.push({ maxLines: 2, delay: TEXT_LEAD + specs.length * STAGGER_MS, ...s, anim: paced(s.anim, look?.pace ?? "normal"), body: arabicDigits ? s.body : westernDigits(s.body) });
+    if (!s.body.replace(/[«»—\-●.:\s]/g, "")) return;
+    const mv = moves.length ? (moves[specs.length] ?? moves[moves.length - 1]) : undefined;
+    specs.push({ maxLines: 2, delay: TEXT_LEAD + specs.length * STAGGER_MS, ...s, anim: paced(s.anim, look?.pace ?? "normal"), ...(mv ? { move: mv, delay: TEXT_LEAD + mv.delay } : {}), body: arabicDigits ? s.body : westernDigits(s.body) });
   };
   switch (b.kind) {
     case "title":
@@ -549,8 +596,12 @@ const beatLook = (b: Beat, look: ReturnType<typeof lookOf>): ReturnType<typeof l
 export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Placed[]; palette: Palette; endMs: number; beats: Beat[]; anchors: Anchors[]; times: BeatTime[]; look: ReturnType<typeof lookOf>; weights: number[] } {
   const f = frameOf(W, H);
   const base = sizes(f);
-  // the named skill's look, under what the person asked for (their palette, fonts and look win)
-  const look = lookOf(sb.style, sb.look);
+  // the named skill's look, under what the person asked for (their palette, fonts and look win). With no skill named,
+  // NO preset background art and no drawn scene: the piece's backgrounds are the ones حيدرة composed himself, beat by
+  // beat (the motion skill's way — the engine's old theme library is only for someone who asks for a skill by name).
+  const named = lookOf(sb.style, sb.look);
+  const composed = !named.style && !sb.look?.theme;
+  const look = composed ? { ...named, theme: "none" as const, ...(sb.look?.scene ? {} : { scene: undefined }) } : named;
   const pal = brandPalette(sb.colors) ?? paletteOf(sb.palette || look.palette);
   const ad = sb.digits === "arabic";
   const head = sb.head || look.head || "cairo";
@@ -626,6 +677,7 @@ export function layoutMotion(sb: Storyboard, W: number, H: number): { placed: Pl
         beat: bi, role: s.role, body: blk.lines.join("\n"), lines: blk.lines, size: +blk.size.toFixed(4), weight: s.weight, font: s.font, color: s.color, box: s.box ?? null,
         align: al, x: +x.toFixed(4), y: +cy.toFixed(4), w: +blk.w.toFixed(4), h: +blk.h.toFixed(4),
         start: t + Math.round(TEXT_LEAD + (s.delay - TEXT_LEAD) * squeeze), end: t + dur, anim: s.anim,
+        ...(s.move ? { move: s.move } : {}),
       };
       placed.push(p);
       mine.push(p);
@@ -756,6 +808,35 @@ export function motionPlan(sb: Storyboard, W: number, H: number) {
 const artIn = (b: Beat) => (b.kind === "title" || b.kind === "points" || b.kind === "steps" ? IN.whip : b.kind === "statement" ? IN.right : IN.settle);
 
 /**
+ * The motion points of an arrival حيدرة wrote: it starts shifted (and faint), reaches its place at `ms` — through the
+ * overshoot first when he asked for one, settling after it — holds there, and leaves the way he drew the exit. Every
+ * point sits inside the clip, and the last one holds to its end (the player glides between them).
+ */
+export function moveKeys(p: Placed): { at: number; transform: { x: number; y: number; scale: number; rotate: number; opacity: number } }[] {
+  const m = p.move;
+  if (!m) return [];
+  const len = Math.max(1, p.end - p.start);
+  const at = (t: number) => p.start + Math.min(len - 1, Math.max(0, Math.round(t)));
+  const here = (s = 1, o = 1, r = 0, dx = 0, dy = 0) => ({ x: +(p.x + dx).toFixed(4), y: +(p.y + dy).toFixed(4), scale: +s.toFixed(3), rotate: +r.toFixed(2), opacity: +o.toFixed(3) });
+  const keys = [{ at: at(0), transform: here(m.from.s, m.from.o, m.from.r, m.from.dx, m.from.dy) }];
+  if (m.over > 1.001) {
+    keys.push({ at: at(m.ms * 0.72), transform: here(m.over, 1, 0, 0, 0) });
+    keys.push({ at: at(m.ms), transform: here(1, 1, 0, 0, 0) });
+  } else {
+    keys.push({ at: at(m.ms), transform: here(1, 1, 0, 0, 0) });
+  }
+  if (m.out) {
+    const start = Math.max(m.ms + 40, len - m.out.ms);
+    keys.push({ at: at(start), transform: here(1, 1, 0, 0, 0) });
+    keys.push({ at: at(len), transform: here(m.out.s, m.out.o, 0, m.out.dx, m.out.dy) });
+  }
+  // strictly rising times (the player reads them in order)
+  const out: typeof keys = [];
+  for (const k of keys) if (!out.length || k.at > out[out.length - 1].at) out.push(k);
+  return out;
+}
+
+/**
  * The commands that make the piece: the background colour, then — when the art was drawn (`art`: picture key →
  * file id) — a background picture per beat on one track with a transition into the next, and the beat's decoration
  * on a track above it (entering just before the words, drifting slowly); then each text (add_text, then its look,
@@ -803,11 +884,14 @@ export function motionCommands(sb: Storyboard, W: number, H: number, base = 0, a
       patch: {
         text: { body: p.body, size: p.size, color: p.color, weight: p.weight, font: p.font, align: p.align, box: p.box, highlight: null },
         transform: { x: p.x, y: p.y, scale: 1, rotate: 0, opacity: 1 },
-        anim: p.anim as never,
+        // the arrival حيدرة drew is run as motion points below; only a text without one keeps a named entrance
+        anim: (p.move ? null : p.anim) as never,
       },
     });
-    // nothing fully still: the headline and the big number drift in slowly over their beat
-    if (look.drift && (p.role === "head" || p.role === "value")) {
+    if (p.move) {
+      for (const k of moveKeys(p)) out.push({ type: "set_key", clipId: r, at: k.at, transform: k.transform });
+    } else if (look.drift && (p.role === "head" || p.role === "value")) {
+      // nothing fully still: the headline and the big number drift in slowly over their beat
       out.push({ type: "set_key", clipId: r, at: p.start, transform: { x: p.x, y: p.y, scale: 1, rotate: 0, opacity: 1 } });
       out.push({ type: "set_key", clipId: r, at: p.end - 1, transform: { x: p.x, y: p.y, scale: 1.04, rotate: 0, opacity: 1 } });
     }
