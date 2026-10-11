@@ -161,7 +161,7 @@ function CurveEditor({ pts, onChange, flat, disabled, bg }: { pts: Pt[]; onChang
     setSel(null);
   };
   return (
-    <svg ref={ref} viewBox="0 0 100 100" className="aspect-square w-full touch-none rounded-lg border border-jw-line bg-jw-bg-2" style={bg ? { background: bg } : undefined} onPointerDown={down} role="img" aria-label="منحنى">
+    <svg ref={ref} viewBox="0 0 100 100" className="block h-full w-full touch-none rounded-lg border border-jw-line bg-jw-bg-2" style={bg ? { background: bg } : undefined} onPointerDown={down} role="img" aria-label="منحنى">
       <g stroke="currentColor" strokeOpacity="0.12" strokeWidth="0.5">
         {[25, 50, 75].map((v) => (
           <g key={v}>
@@ -391,8 +391,15 @@ const OPEN_KEY = "jw-grade-open";
 
 /** A Lumetri-style section: a header that opens and closes, a reset, a short hint on hover. */
 function Section({ id, title, hint, open, onToggle, onReset, badge, children, tools }: { id: SectionId; title: string; hint: string; open: boolean; onToggle: (id: SectionId) => void; onReset?: () => void; badge?: boolean; children: React.ReactNode; tools?: React.ReactNode }) {
+  const box = useRef<HTMLElement>(null);
+  const opened = useRef(false);
+  // opened by the person: the whole section brought into view (no scrolling down to see the rest of it)
+  useEffect(() => {
+    if (open && opened.current) box.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    opened.current = false;
+  }, [open]);
   return (
-    <section className="border-b border-jw-line last:border-0">
+    <section ref={box} className="scroll-mt-[92px] border-b border-jw-line last:border-0" onClickCapture={() => (opened.current = !open)}>
       <div className="flex items-center gap-1">
         <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 py-2 text-start text-xs font-bold" aria-expanded={open} onClick={() => onToggle(id)} title={hint}>
           <Icon name={open ? "chevronDown" : "chevronLeft"} size={13} />
@@ -667,7 +674,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
           <div className="min-w-0">
             <p className="mb-1 text-sm font-bold">المنحنيات</p>
             {curveTabs}
-            <div className="mx-auto aspect-square w-full max-w-[340px]">{curveEditor}</div>
+            <div className="mx-auto aspect-square w-[min(100%,300px,34vh)]">{curveEditor}</div>
           </div>
         </div>
       )}
@@ -743,7 +750,8 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
 
         {!page && <Section id="curves" title="منحنيات" hint="RGB ومنحنيات اللون: نقطة بضغطة، اسحبها، ضغطتين تشيلها" open={open.includes("curves")} onToggle={toggle} badge={!isOff(g, ["curves"])} onReset={() => resetKeys(["curves"])} tools={enlarge("curves")}>
           {curveTabs}
-          {curveEditor}
+          {/* a size that fits the panel whole, with its tabs, without scrolling (bigger: ⤢) */}
+          <div className="mx-auto aspect-square w-[min(100%,200px,25vh)]">{curveEditor}</div>
         </Section>}
 
         {!page && <Section id="wheels" title="عجلات الألوان" hint="Lift / Gamma / Gain / Offset: اسحب نحو اللون، ضغطتين ترجعه" open={open.includes("wheels")} onToggle={toggle} badge={!isOff(g, ["lift", "gamma", "gain", "offset"])} onReset={() => resetKeys(["lift", "gamma", "gain", "offset"])} tools={enlarge("wheels")}>
@@ -871,7 +879,7 @@ export default function GradePanel({ clip, thumb, locked, run, flash, player, me
                     رجّع المنحنى
                   </button>
                 </div>
-                <div className="aspect-square h-full max-h-full min-w-0">{curveEditor}</div>
+                <div className="aspect-square h-full max-h-full min-w-0 max-w-full">{curveEditor}</div>
               </div>
             )}
           </div>
