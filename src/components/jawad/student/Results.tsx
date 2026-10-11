@@ -9,6 +9,8 @@ import { QUESTION_TYPES, fontById, type Design } from "@config/jawad/student";
 import type { Block, Doc, Question } from "@/lib/jawad/student/model";
 import { docText } from "@/lib/jawad/student/model";
 import { fileUrl, post, type OutputView, type Research } from "./client";
+import { levelOf } from "@/lib/jawad/student/level";
+import UnderstandingTest from "./UnderstandingTest";
 import { ErrorLine, PaidButton } from "./ui";
 
 const FILE_LABEL: Record<string, string> = {
@@ -347,17 +349,31 @@ export function QuizPlay({ o }: { o: OutputView }) {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [result, setResult] = useState<{ score: number | null; right: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"quiz" | "cards">("quiz");
+  const [mode, setMode] = useState<"quiz" | "cards" | "test">("quiz");
   // «ركّز على أخطائي»: the topics of the questions answered wrong, for a new quiz about them
   const wrong = result ? qs.filter((q, i) => q.options.length && answers[i] !== q.answer) : [];
+  // the three ways to use the same questions: all at once, as review cards, or «اختبر فهمي» (one at a time, then a level)
+  const modes = (
+    <div className="jw-seg" role="radiogroup" aria-label="طريقة المراجعة">
+      <button type="button" role="radio" aria-checked={mode === "quiz"} onClick={() => setMode("quiz")}>📝 اختبار</button>
+      <button type="button" role="radio" aria-checked={mode === "test"} onClick={() => setMode("test")}>🧪 اختبر فهمي</button>
+      <button type="button" role="radio" aria-checked={mode === "cards"} onClick={() => setMode("cards")}>🃏 بطاقات مراجعة</button>
+    </div>
+  );
   if (mode === "cards") {
     return (
       <div className="space-y-3">
-        <div className="jw-seg" role="radiogroup" aria-label="طريقة المراجعة">
-          <button type="button" role="radio" aria-checked={false} onClick={() => setMode("quiz")}>📝 اختبار</button>
-          <button type="button" role="radio" aria-checked onClick={() => setMode("cards")}>🃏 بطاقات مراجعة</button>
-        </div>
+        {modes}
         <Flashcards o={o} qs={qs} />
+      </div>
+    );
+  }
+  if (mode === "test") {
+    return (
+      <div className="space-y-4">
+        {modes}
+        <p className="text-sm text-jw-muted">يسألك صادق سؤال سؤال، ويصحّح لك على طول، وفي الآخر يقول لك <b>كم مستوى فهمك</b> وين نقاط ضعفك. بدون أي تكلفة.</p>
+        <UnderstandingTest o={o} qs={qs} />
       </div>
     );
   }
@@ -371,10 +387,7 @@ export function QuizPlay({ o }: { o: OutputView }) {
   };
   return (
     <div className="space-y-4">
-      <div className="jw-seg" role="radiogroup" aria-label="طريقة المراجعة">
-        <button type="button" role="radio" aria-checked onClick={() => setMode("quiz")}>📝 اختبار</button>
-        <button type="button" role="radio" aria-checked={false} onClick={() => setMode("cards")}>🃏 بطاقات مراجعة</button>
-      </div>
+      {modes}
       {qs.map((q, i) => (
         <fieldset key={i} className="space-y-2 rounded-lg bg-jw-surface-2 p-3">
           <legend className="font-semibold">
@@ -408,6 +421,11 @@ export function QuizPlay({ o }: { o: OutputView }) {
             <b>
               نتيجتك في أسئلة الاختيار والصح والخطأ: {result.right} من {result.total} ({result.score}٪)
             </b>
+          )}
+          {result.score !== null && (
+            <span className="jw-chip" title="تقدير لفهمك لهذي المادة">
+              {levelOf(result.score).emoji} مستواك: <b>{levelOf(result.score).name}</b>
+            </span>
           )}
           <span className="text-sm text-jw-muted">قارن إجاباتك المكتوبة بالإجابات النموذجية.</span>
           <button type="button" className="jw-btn jw-btn-quiet" onClick={() => { setResult(null); setAnswers({}); }}>
