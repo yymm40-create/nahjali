@@ -71,8 +71,19 @@ export function titleOf(html: string): string {
 /** The book `id` of the site, as pages of text. */
 export async function fetchBook(id: number): Promise<{ title: string; pages: BookPageText[]; url: string }> {
   const url = `http://${HOST}/arabic/?com=book&id=${id}&view=download&format=html`;
-  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(120_000), headers: { "user-agent": "Mozilla/5.0 (JAWAD AI)" } }).catch(() => null);
-  if (!res || !res.ok) throw new UserError("ما قدرنا نجيب الكتاب من شبكة الإمامين الحسنين. تأكد من الرقم وجرّب بعد شوي.", 502);
+  // the site sometimes drops a request: tried three times, and the reason of the last failure is told (never a guess)
+  let res: Response | null = null;
+  let why = "";
+  for (let i = 0; i < 3 && !res?.ok; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 1500 * i));
+    res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(120_000), headers: { "user-agent": "Mozilla/5.0 (JAWAD AI)", accept: "*/*" } }).catch((e: unknown) => {
+      const c = (e as { cause?: { code?: string; message?: string } })?.cause;
+      why = `${c?.code ?? c?.message ?? (e instanceof Error ? e.message : String(e))}`.slice(0, 120);
+      return null;
+    });
+    if (res && !res.ok) why = `HTTP ${res.status}`;
+  }
+  if (!res || !res.ok) throw new UserError(`ما قدرنا نجيب الكتاب من شبكة الإمامين الحسنين (${why || "بدون رد"}). تأكد من الرقم وجرّب بعد شوي.`, 502);
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.length > MAX_ZIP) throw new UserError("الكتاب كبير على الاستيراد.", 413);
   let html = "";
