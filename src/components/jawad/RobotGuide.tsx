@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { robotFor } from "@config/jawad/robots";
 import "./robot-guide.css";
+import RobotFace from "@/components/RobotFace";
 
 const POS = "jw-robot-pos";
 const FOLD = "jw-robot-fold";
@@ -112,7 +113,7 @@ export default function RobotGuide() {
     <>
       {folded ? (
         <button type="button" className={`rg-tab ${leftSide ? "left" : "right"}`} style={{ ...style, top: pos.y }} onClick={() => fold(false)} aria-label={`أظهر ${robot.name}`} title={robot.name}>
-          {robot.face}
+          <RobotFace id={robot.id} size={24} />
         </button>
       ) : (
         <div className="rg-bubble" style={{ ...style, left: pos.x, top: pos.y }}>
@@ -126,7 +127,7 @@ export default function RobotGuide() {
             aria-label={`${robot.name}: تعرّف عليّ`}
             title={`${robot.name} — اضغط تعرّف عليّ، واسحب لتحريكي`}
           >
-            <span aria-hidden>{robot.face}</span>
+            <RobotFace id={robot.id} size={50} />
           </button>
           <span className="rg-name">{robot.name}</span>
           <button type="button" className="rg-fold" onClick={() => fold(true)} aria-label="صغّر على الجنب" title="صغّر على الجنب">
@@ -140,7 +141,7 @@ export default function RobotGuide() {
           <div className="rg-card" style={style} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="rg-x" onClick={() => setOpen(false)} aria-label="إغلاق">✕</button>
             <div className="rg-hero">
-              <span className="rg-big" aria-hidden>{robot.face}</span>
+              <span className="rg-big" aria-hidden><RobotFace id={robot.id} size={60} /></span>
               <div>
                 <h2>هلا! أنا {robot.name}</h2>
                 <p>{robot.role}</p>

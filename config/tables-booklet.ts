@@ -193,7 +193,7 @@ export const bookletUsd = (poses: number) => picturesFor(poses) * PICTURE_USD;
 
 /** Who designs the booklet with the person: «عباس» for a boy or a man, «زينب» for a girl or a woman. */
 export function robotFor(a: Pick<Audience, "gender"> | null | undefined) {
-  return a?.gender === "female" ? { name: "زينب", icon: "🧕", female: true } : { name: "عباس", icon: "👦", female: false };
+  return a?.gender === "female" ? { name: "زينب", icon: "zainab", female: true } : { name: "عباس", icon: "abbas", female: false };
 }
 
 /** The designer's rules, in the right grammar for «عباس» or «زينب». */

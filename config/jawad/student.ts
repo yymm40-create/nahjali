@@ -325,7 +325,7 @@ export interface Design {
 export const defaultDesign = (main: StyleId = "notebook"): Design => ({ main, roles: {}, fonts: { ...styleById(main).pair }, custom: null });
 
 /** «صادق»: the assistant of «الطالب الذكي» (he reads, understands, researches, plans and makes everything). */
-export const STUDENT_ASSISTANT = { name: "صادق", icon: "🧑‍🎓" } as const;
+export const STUDENT_ASSISTANT = { name: "صادق", icon: "🤖" } as const;
 
 /** The written source a research becomes is named «بحث صادق: …» (older projects: «بحث كلاود: …»). */
 export const RESEARCH_PREFIX = "بحث صادق";

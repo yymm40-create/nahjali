@@ -6,6 +6,7 @@ import { api, postJson } from "@/lib/fetch";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
+import RobotFace from "@/components/RobotFace";
 
 type Action = { kind: "rewind" | "revise_script" | "revise_sheets" | "revise_director" | "fixed_facts"; to?: string; text?: string; sceneId?: string; effect: string; blocked?: string };
 type Msg = { role: "user" | "sajjad"; text: string; at: string; username?: string | null; questions?: { question: string; options: string[] }[]; changes?: string[]; pending?: Action[]; applied?: string[] };
@@ -181,14 +182,14 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
   return (
     <>
       <button type="button" className="sajjad-fab" onClick={() => setOpen(true)} aria-label="اسأل سجاد">
-        <span className="sajjad-face" aria-hidden>🧑‍🏫</span>
+        <span className="sajjad-face" aria-hidden><RobotFace id="sajjad" size={30} /></span>
         <span>سجاد</span>
       </button>
       {open && (
         <div className="fixed inset-0 z-[300] flex justify-end bg-black/30 backdrop-blur-[2px]" onClick={() => setOpen(false)}>
           <aside className="sajjad-panel flex h-full w-full max-w-md flex-col" onClick={(e) => e.stopPropagation()} aria-label="سجاد">
             <header className="flex items-center gap-3 border-b border-black/10 p-4">
-              <span className="sajjad-face text-3xl" aria-hidden>🧑‍🏫</span>
+              <span className="sajjad-face text-3xl" aria-hidden><RobotFace id="sajjad" size={44} /></span>
               <div className="min-w-0 flex-1">
                 <p className="text-lg font-black">سجاد</p>
                 <p className="truncate text-xs font-bold text-muted">مستشارك: فاهم {kind === "series" ? "المسلسل كله" : "القصة كلها"}، اسأله أي شي</p>

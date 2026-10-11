@@ -8,6 +8,7 @@ import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import type { OutputView } from "./client";
 import type { ProjectHook } from "./StudentProject";
+import RobotFace from "@/components/RobotFace";
 
 interface Msg { role: "user" | "assistant"; text: string; at?: string; sources?: string[]; error?: boolean }
 
@@ -63,7 +64,7 @@ export default function SadiqChat({ p, o }: { p: ProjectHook; o: OutputView }) {
         {list.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
             <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-7 ${m.role === "user" ? "bg-violet-100" : m.error ? "bg-red-50 text-jw-danger" : "border border-jw-line bg-white"}`}>
-              {m.role === "assistant" && !m.error && <b className="mb-1 block text-xs text-violet-700">🧑‍🎓 صادق</b>}
+              {m.role === "assistant" && !m.error && <b className="mb-1 flex items-center gap-1 text-xs text-violet-700"><RobotFace id="sadiq" size={20} /> صادق</b>}
               {m.text}
               {!!m.sources?.length && (
                 <span className="mt-2 block space-y-0.5 border-t border-jw-line pt-1 text-xs">

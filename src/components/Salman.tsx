@@ -8,6 +8,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import "./salman.css";
+import RobotFace from "./RobotFace";
 
 interface Msg {
   role: "user" | "assistant";
@@ -92,7 +93,7 @@ export default function Salman() {
     <>
       {!open && (
         <button type="button" className="slm-fab" onClick={show} aria-label="سلمان: اسألني عن الموقع">
-          <span className="slm-face" aria-hidden>🤖</span>
+          <span className="slm-face" aria-hidden><RobotFace id="salman" size={30} /></span>
           <span className="slm-label">سلمان</span>
         </button>
       )}
@@ -100,7 +101,7 @@ export default function Salman() {
         <div className="slm-wrap" role="dialog" aria-modal="false" aria-label="سلمان، مساعد الموقع" dir="rtl">
           <div className="slm-box">
             <header className="slm-head">
-              <span className="slm-face sm" aria-hidden>🤖</span>
+              <span className="slm-face sm" aria-hidden><RobotFace id="salman" size={34} /></span>
               <div>
                 <b>سلمان</b>
                 <small>مساعدك في الموقع · اسأل أي شي</small>

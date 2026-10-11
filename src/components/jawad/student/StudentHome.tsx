@@ -8,6 +8,7 @@ import { LEVELS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, type PurposeId, 
 import { newKey, post } from "./client";
 import { KIND_LOOK, KindSample, STEP_LOOK, Tile } from "./look";
 import { ErrorLine, useAsync } from "./ui";
+import RobotFace from "@/components/RobotFace";
 
 const STAGE_INDEX: Record<string, number> = { sources: 0, review: 0, understanding: 1, scope: 2, outputs: 2 };
 
@@ -97,7 +98,7 @@ export default function StudentHome({
           <p className="max-w-xl text-lg text-jw-muted">ارفع دروسك، ويحوّلها صادق إلى ملخصات وكتب مصممة وعروض تقديمية وتسجيلات صوتية واختبارات — وأنت تعتمد كل خطوة.</p>
           {/* «صادق»: the section's assistant, by name */}
           <p className="inline-flex items-center gap-2 rounded-full border border-jw-line bg-jw-surface px-4 py-1.5 text-sm font-bold">
-            <span aria-hidden>{STUDENT_ASSISTANT.icon}</span> معك {STUDENT_ASSISTANT.name}، مساعدك الذكي: يقرأ ويفهم ويبحث ويصنع
+            <RobotFace id="sadiq" size={22} /> معك {STUDENT_ASSISTANT.name}، مساعدك الذكي: يقرأ ويفهم ويبحث ويصنع
           </p>
           <div className="flex flex-wrap gap-3">
             <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-7 !text-base" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>

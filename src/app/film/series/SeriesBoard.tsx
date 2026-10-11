@@ -6,6 +6,7 @@ import { useState } from "react";
 import { postJson } from "@/lib/fetch";
 import { useFilmBase } from "../FilmBase";
 import ScenePrep from "./ScenePrep";
+import RobotFace from "@/components/RobotFace";
 
 type Scene = { id: string; title: string; number: number; stage: string; icon: string; stageLabel: string; saved: boolean; assignedTo: string | null; prepared: boolean };
 type Mate = { userId: string; username: string | null; leader: boolean };
@@ -127,7 +128,7 @@ function EpisodeBlock({ seriesId, ep, busy, send, canAssign, team }: { seriesId:
               )}
               {!s.prepared && s.stage === "screenwriter" && (
                 <button type="button" className="rounded-full bg-[#e2a72c]/25 px-2 py-1 text-[11px] font-extrabold" onClick={() => setPrep({ sceneId: s.id, title: s.title })} title="سجاد يفهم المشهد ويحدد شخصياته وبيئاته">
-                  🧑‍🏫 جهّزه
+                  <RobotFace id="sajjad" size={18} /> جهّزه
                 </button>
               )}
               <span className="flex flex-col">
