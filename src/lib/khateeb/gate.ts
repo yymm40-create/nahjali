@@ -35,7 +35,7 @@ async function rows(): Promise<{ kv: Record<string, string>; ready: boolean }> {
 
 export async function loadSettings(): Promise<Settings> {
   const { kv, ready } = await rows();
-  return { ...EMPTY, slug: cleanSlug(kv.slug), hasPassword: !!kv.password, version: Number(kv.version) || 0, method: kv.method ?? DEFAULT_METHOD, poems: kv.poems ?? "", ready };
+  return { ...EMPTY, slug: cleanSlug(kv.slug), hasPassword: !!kv.password, version: Number(kv.version) || 0, method: kv.method?.trim() ? kv.method : DEFAULT_METHOD, poems: kv.poems ?? "", ready };
 }
 
 /** Just the words the writer is told with (the method and the poems). */

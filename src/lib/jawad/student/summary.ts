@@ -34,6 +34,7 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
       const l = readSermonLength(s.length);
       out.push(`خطبة ${l.label} (نحو ${l.minutes.toLocaleString("ar")} دقيقة)`);
       out.push(FORMATS.find((f) => f.id === formatOf(s))!.label);
+      if (str(s.occasion).trim()) out.push(str(s.occasion).trim().slice(0, 60));
       break;
     }
     case "slides": {

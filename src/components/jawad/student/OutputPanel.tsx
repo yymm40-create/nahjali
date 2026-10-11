@@ -17,6 +17,7 @@ import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, Gate, JobStatus, PaidButton, Seg, useAsync } from "./ui";
 import Riyal from "@/components/Riyal";
 import SadiqChat from "./SadiqChat";
+import SermonPlan from "./SermonPlan";
 
 type S = Record<string, unknown>;
 const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
@@ -195,7 +196,8 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
         <div className="space-y-3">
           <CapacityAsk o={o} additionsAllowed={p.state.project.allow_additions === true} act={act} running={running} />
           <h3 className="font-semibold">{o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : o.kind === "mindmap" ? "فروع الخريطة" : "الخطة والفهرس"}</h3>
-          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "sermon") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
+          {o.kind === "sermon" && <SermonPlan o={o} plan={plan as DocPlan} act={act} running={running} />}
+          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
           {o.kind === "slides" && <SlideMapEditor plan={plan as SlidePlan} onChange={setPlan} images={images} />}
           {o.kind === "quiz" && <QuizPlanEditor plan={plan as QuizPlan} onChange={setPlan} wanted={Number(o.settings.count) || 10} customType={str(o.settings.customType)} />}
           {o.kind === "audio" && <AudioPlanEditor plan={plan as AudioPlan} onChange={setPlan} />}
@@ -208,7 +210,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
           {o.status === "plan_review" && (
             <Gate
               next={o.kind === "mindmap" ? (o.settings.render === "image" ? `يرسمها ${A} صورة عالية الدقة، وبعدها يرسمها GPT Image 2 على تصميمه.` : `يرسمها ${A} صورة عالية الدقة مع نسخة التسميع.`) : designed ? "يُعرض عليك خيار نسخة تجريبية مدفوعة ترى فيها الخط والتصميم، أو المتابعة مباشرة للتصنيع الكامل." : o.kind === "audio" ? "يُرسل النص كما يظهر هنا إلى ElevenLabs." : "يُكتب الناتج كاملًا على هذه الخطة."}
-              disabled={planDirty}
+              disabled={planDirty || (o.kind === "sermon" && ((plan as DocPlan).sermon?.chosen ?? -1) < 0)}
               onApprove={() => act({ action: "plan_approve" })}
               editHint="اكتب التعديل الذي تريده على الخطة (أو عدّلها يدويًا أعلاه):"
               onEdit={(note) => <PaidButton label="أرسل التعديل" what={`يعيد ${A} الخطة مع تعديلك.`} disabled={running} run={(b) => act({ action: "plan", note, kind: "edit", ...b })} />}
@@ -398,7 +400,11 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
             <span className="jw-label">صيغة الملف</span>
             <Seg label="صيغة الملف" value={formatOf(s)} options={FORMATS} onChange={(format) => set({ format })} />
           </div>
-          <Field s={s} set={set} k="purpose" label="المناسبة أو الموضوع (اختياري)" ph="جمعة، محرم، ذكرى…" />
+          <Field s={s} set={set} k="occasion" label="المناسبة أو الشخصية" ph="ذكرى شهادة الإمام الرضا عليه السلام" />
+          <Field s={s} set={set} k="poemsFor" label="الأشعار: غرضها (اختياري)" ph="الحكمة، طلب العلم، الصبر" />
+          <div className="sm:col-span-2">
+            <Field s={s} set={set} k="poems" label="أبياتك أنت (اختياري)" area />
+          </div>
           <Field s={s} set={set} k="audience" label="الجمهور (إن اختلف)" />
           <div className="sm:col-span-2">
             <Field s={s} set={set} k="extra" label="ملاحظات أخرى" area />

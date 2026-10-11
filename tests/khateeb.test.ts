@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanSlug, DEFAULT_METHOD, isKhateeb, KHATEEB, KHATEEB_LOOK, khateebRules, readBranch, STUDENT_LOOK } from "@config/jawad/khateeb";
+import { cleanSlug, isKhateeb, KHATEEB, KHATEEB_LOOK, khateebRules, readBranch, STUDENT_LOOK } from "@config/jawad/khateeb";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { rulesFor } from "@/lib/rate-limit";
 import { readFileSync } from "node:fs";
@@ -28,7 +28,7 @@ describe("«الخطيب الذكي»: the branch", () => {
   });
 
   it("tells the writer who he is, and binds him to the owner's method and poems only when they exist", () => {
-    const plain = khateebRules(DEFAULT_METHOD, "");
+    const plain = khateebRules("", "");
     expect(plain).toContain("«الشيخ»");
     expect(plain).not.toContain("<method>");
     expect(plain).not.toContain("<poems>");
@@ -111,10 +111,10 @@ describe("«خطبة المنبر»", () => {
     expect(book).toContain("الفصل");
   });
 
-  it("is wired into the writer: its own words budget, parts and length", () => {
+  it("is wired into the writer: its own words budget from its length, spread over its four parts", () => {
     const src = readFileSync(new URL("../src/lib/jawad/student/outputs.ts", import.meta.url), "utf8");
     expect(src).toContain('o.kind === "sermon"');
     expect(src).toContain("readSermonLength(o.settings.length).words");
-    expect(src).toContain("SERMON_MAX_PARTS");
+    expect(src).toContain("SERMON_PARTS[i]?.share");
   });
 });

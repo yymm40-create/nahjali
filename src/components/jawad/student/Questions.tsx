@@ -39,7 +39,7 @@ export function defaults(kind: OutputKind, level: string): S {
       return { writing: "explain", page: "A4", pages: 0, density: "medium", format: "pdf", pictures: "" };
     // the sermon: a length to say (short, medium, long) instead of a page count; the PDF and the editable Word file both
     case "sermon":
-      return { length: "medium", page: "A4", format: "both" };
+      return { length: "medium", page: "A4", format: "both", occasion: "", poemsFor: "", poems: "" };
     case "slides":
       return { density: "medium", count: 0, aspect: "16:9", notesMode: "both", render: "editable", imageQuality: "high" };
     case "audio":
@@ -158,6 +158,18 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
           <Choice label="طول الخطبة" value={readSermonLength(s.length).id} options={SERMON_LENGTHS.map((l) => ({ id: l.id, label: `${l.label} · نحو ${l.minutes.toLocaleString("ar")} دقيقة` }))} onChange={(length) => set({ length })} />
           <Choice label="صيغة الملف" value={String(s.format ?? "both")} options={FORMATS.map((f) => ({ id: f.id, label: f.label }))} onChange={(format) => set({ format })} />
           <Choice label="المقاس" value={String(s.page)} options={[{ id: "A4", label: "A4" }, { id: "A5", label: "A5 (صغير)" }]} onChange={(page) => set({ page })} />
+          <label className="block space-y-1 text-sm">
+            <span className="font-semibold">المناسبة أو الشخصية</span>
+            <input className="jw-input" value={String(s.occasion ?? "")} maxLength={300} onChange={(e) => set({ occasion: e.target.value })} placeholder="مثال: ذكرى شهادة الإمام الرضا عليه السلام" />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="font-semibold">الأشعار: غرضها (اختياري)</span>
+            <input className="jw-input" value={String(s.poemsFor ?? "")} maxLength={300} onChange={(e) => set({ poemsFor: e.target.value })} placeholder="مثال: الحكمة، طلب العلم، الصبر" />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="font-semibold">أبياتك أنت (اختياري، يُستشهد بها كما هي)</span>
+            <textarea className="jw-textarea" rows={4} value={String(s.poems ?? "")} maxLength={4000} onChange={(e) => set({ poems: e.target.value })} placeholder="الصق الأبيات هنا مع اسم قائلها إن أمكن" />
+          </label>
         </>
       );
     case "summary":
