@@ -24,10 +24,44 @@ export interface Doc {
   chapters: Chapter[];
 }
 
+/** «خطبة المنبر»: one of the three topics proposed (the method's step 2), with the key verse as the Quran itself gives it. */
+export interface SermonTopic {
+  /** the pivot idea (فكرة المحور) */
+  title: string;
+  /** the subject of its treatment (موضوع المعالجة) */
+  idea: string;
+  verse: { surah: number; from: number; to: number; /** e.g. «سورة الأحزاب: ٣٣» */ ref: string; /** the Quran's own words (never the model's) */ text: string };
+  /** the takhallus point (الكَوْريز) that joins the topic to the calamity */
+  kooriz: string;
+}
+
+/** The verse's tafsir (the method's step 3): the passage as the book has it, and the same in plain words, with where it comes from. */
+export interface SermonTafsir {
+  /** «مجمع البيان في تفسير القرآن — الطبرسي — ج٨، ص١٥٥–١٥٧» */
+  source: string;
+  /** the link to the first page, when there is one */
+  url: string;
+  /** the book's own words (the pages that hold the verse's tafsir) */
+  excerpt: string;
+  /** the same, ordered and in plain words, with the pages marked */
+  simple: string;
+  /** the preacher pasted it himself */
+  manual: boolean;
+}
+
+export interface SermonPlan {
+  topics: SermonTopic[];
+  /** the topic the preacher picked (-1 = not yet) */
+  chosen: number;
+  tafsir: SermonTafsir | null;
+}
+
 /** The plan of a written output / book: chapters with the segments each one draws on. */
 export interface DocPlan {
   title: string;
   subtitle: string;
+  /** only «خطبة المنبر»: the topics, the pick and the tafsir (the chapters are the sermon's four parts) */
+  sermon?: SermonPlan;
   chapters: { title: string; purpose: string; segments: string[]; image: ImageChoice }[];
 }
 

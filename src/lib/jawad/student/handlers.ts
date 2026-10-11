@@ -6,6 +6,7 @@ import type { Handler } from "./jobs";
 import { finalHandler, planHandler, reviseHandler, styleHandler, trialHandler } from "./outputs";
 import { mediaHandler } from "./media";
 import { picturesHandler } from "./pictures";
+import { tafsirHandler } from "./sermon";
 import { researchHandler } from "./research";
 import { understandHandler } from "./understand";
 
@@ -21,4 +22,5 @@ export const HANDLERS: Record<string, Handler> = {
   style: styleHandler,
   pictures: picturesHandler,
   media: mediaHandler,
+  tafsir: tafsirHandler,
 };

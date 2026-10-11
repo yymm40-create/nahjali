@@ -73,6 +73,15 @@ export function nextAuto(s: ProjectState): AutoAction | null {
           if (!configured(o)) return { label: `${o.title}: اختيار الإعدادات`, run: () => outAct(o.id, { action: "settings", settings: autoSettings(o.kind, s.project.level) }) };
           return { label: `${o.title}: إعداد الخطة`, run: () => outPaid(o.id, { action: "plan" }) };
         }
+        if (o.status === "plan_review" && o.kind === "sermon") {
+          // «خطبة المنبر»: the preacher picks the topic himself (the method's step 2); after it the tafsir is fetched, then the plan is approved
+          const sp = (o.plan as { sermon?: { chosen: number; tafsir: unknown } } | null)?.sermon;
+          if (!sp || sp.chosen < 0) return null;
+          if (s.jobs.some((j) => j.outputId === o.id && (j.status === "queued" || j.status === "running"))) return null;
+          // a tafsir that could not be found stops it: the preacher pastes it, or approves the plan without it
+          if (!sp.tafsir) return o.error ? null : { label: `${o.title}: جلب التفسير`, run: () => outPaid(o.id, { action: "sermon_tafsir" }) };
+          return { label: `${o.title}: اعتماد الخطة`, run: () => outAct(o.id, { action: "plan_approve" }) };
+        }
         if (o.status === "plan_review") {
           // the material doesn't fit the pages the student asked for: they are asked before anything is written (CapacityAsk)
           if (!fitsPages(readCapacity(o.settings))) return null;

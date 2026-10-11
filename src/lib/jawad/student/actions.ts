@@ -14,7 +14,8 @@ import { islamicAsk, islamicCeiling } from "./islamic";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
 import { CLAUDE_ONLY_KINDS, checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
-import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "./model";
+import type { AudioPlan, Doc, DocPlan, QuizPlan, SermonPlan, SlidePlan } from "./model";
+import { passage as quranPassage } from "@/lib/khateeb/quran";
 import { clampMap, type MindPlan } from "./mindmap";
 import { mapImageUsd } from "./mindmap-make";
 import { estimate } from "./outputs";
@@ -608,7 +609,22 @@ function cleanPlan(o: Output, plan: unknown): unknown {
     title: s(p.title, 300),
     subtitle: s(p.subtitle, 300),
     chapters: arr(p.chapters, (x) => ({ title: s(x.title, 300), purpose: s(x.purpose, 2000), segments: Array.isArray(x.segments) ? x.segments.slice(0, 2000).map((t) => s(t, 8)) : [], image: img(x.image) })),
+    // the sermon's topics, pick and tafsir are the server's own: changed only by their own actions, never from the browser
+    ...(o.kind === "sermon" && (prev as { sermon?: unknown }).sermon ? { sermon: (prev as { sermon: SermonPlan }).sermon } : {}),
   } satisfies DocPlan;
+}
+
+/** The sermon part of an output's plan (the plan must be there). */
+function sermonOf(o: Output): SermonPlan {
+  const sp = o.kind === "sermon" ? (o.plan as DocPlan | null)?.sermon : null;
+  if (!sp) throw new UserError(NOT_NOW);
+  return sp;
+}
+
+/** The plan with a changed sermon part, kept; what was written from the old one is written again. */
+async function savePlan(o: Output, userId: string, sermon: SermonPlan) {
+  const plan = { ...(o.plan as DocPlan), sermon };
+  await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, error: null }, { kind: "plan_edit", snapshot: plan, userId });
 }
 
 export async function outputAction(user: User, id: string, b: Body) {
@@ -657,6 +673,52 @@ export async function outputAction(user: User, id: string, b: Body) {
       const requests = note ? [...o.requests, { at: new Date().toISOString(), kind: (b.kind === "other" ? "other" : "edit") as "edit", text: note }] : o.requests;
       return run("plan", await estimate(user.id, o, "plan"), { note, previous: Boolean(note && o.plan) }, o.kind === "audio" ? "تجهيز نص القراءة" : "إعداد الخطة", "planning", note ? { requests } : {});
     }
+    // «خطبة المنبر»: the preacher picks one of the three topics (the method's step 2)
+    case "sermon_choose": {
+      const sp = sermonOf(o);
+      const i = Math.round(Number(b.index));
+      if (!Number.isInteger(i) || i < 0 || i >= sp.topics.length) throw new UserError("اختر واحدًا من المواضيع.");
+      // another topic has another verse: its tafsir is fetched again
+      await savePlan(o, user.id, { ...sp, chosen: i, tafsir: i === sp.chosen ? sp.tafsir : null });
+      return { ok: true };
+    }
+    // the preacher's own words on a topic, or another verse for it (its words are fetched from the Quran)
+    case "sermon_edit": {
+      const sp = sermonOf(o);
+      const i = Math.round(Number(b.index));
+      if (!Number.isInteger(i) || i < 0 || i >= sp.topics.length) throw new UserError("موضوع غير صحيح.");
+      const t = sp.topics[i];
+      const verse = { ...t.verse };
+      const surah = Math.round(Number(b.surah) || t.verse.surah);
+      const from = Math.round(Number(b.from) || t.verse.from);
+      const to = Math.round(Number(b.to) || from);
+      if (surah !== verse.surah || from !== verse.from || to !== verse.to) {
+        const v = await quranPassage(surah, from, to).catch(() => null);
+        if (!v) throw new UserError("هذي الآية ما لقيناها في القرآن: راجع رقم السورة والآية.");
+        Object.assign(verse, { surah: v.surah, from: v.from, to: v.to, ref: v.ref, text: v.text });
+      }
+      const topics = sp.topics.map((x, k) => (k === i ? { ...x, title: text(b.title, 300) || x.title, idea: text(b.idea, 1500) || x.idea, kooriz: text(b.kooriz, 800) || x.kooriz, verse } : x));
+      const same = verse.surah === t.verse.surah && verse.from === t.verse.from && verse.to === t.verse.to;
+      await savePlan(o, user.id, { ...sp, topics, tafsir: i === sp.chosen && same ? sp.tafsir : i === sp.chosen ? null : sp.tafsir });
+      return { ok: true };
+    }
+    // the tafsir pasted by the preacher himself (when the book's pages could not be found, or he prefers another tafsir)
+    case "sermon_tafsir_manual": {
+      const sp = sermonOf(o);
+      if (sp.chosen < 0) throw new UserError("اختر موضوع الخطبة أول.");
+      const body = text(b.text, 60_000);
+      if (!body) throw new UserError("الصق مقطع التفسير.");
+      const source = text(b.source, 300) || "تفسير أدخله الخطيب";
+      const url = /^https:\/\//.test(String(b.url ?? "")) ? text(b.url, 500) : "";
+      await savePlan(o, user.id, { ...sp, tafsir: { source, url, excerpt: body, simple: body, manual: true } });
+      return { ok: true };
+    }
+    // the tafsir of the chosen verse from مجمع البيان (a paid job: the pages are read and put in plain words)
+    case "sermon_tafsir": {
+      const sp = sermonOf(o);
+      if (sp.chosen < 0) throw new UserError("اختر موضوع الخطبة أول.");
+      return run("tafsir", await estimate(user.id, o, "tafsir"), {}, "جلب التفسير من مجمع البيان");
+    }
     case "plan_save": {
       if (!o.plan) throw new UserError(NOT_NOW);
       const plan = cleanPlan(o, b.plan);
@@ -666,6 +728,7 @@ export async function outputAction(user: User, id: string, b: Body) {
     }
     case "plan_approve": {
       if (!o.plan || o.status !== "plan_review") throw new UserError(NOT_NOW);
+      if (o.kind === "sermon" && sermonOf(o).chosen < 0) throw new UserError("اختر موضوع الخطبة أول، وبعدها اعتمد الخطة.");
       await saveOutput(o.id, { plan_approved: true, stale: false, status: o.kind === "book" || o.kind === "slides" ? "trial_offer" : "ready" });
       return { ok: true };
     }

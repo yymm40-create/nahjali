@@ -52,7 +52,23 @@ export const METHOD_MAX = 60_000;
 export const POEMS_MAX = 120_000;
 
 /** The method the Sheikh follows until the owner gives his own: nothing invented, a plain frame only. */
-export const DEFAULT_METHOD = "";
+export const DEFAULT_METHOD = `منهجية «المرجعية المأمونة» في التحضير المنبري (الذكاء الاصطناعي المقيَّد): الخطيب يتولى التحقيق وتوفير الأصول، والآلة تنهض بالترتيب الهيكلي والتنظيم البلاغي، ولا تخرج عن النصوص المعتمدة ولا تُقحم روايات غير محققة.
+
+الخطوة ١ — حصر المصادر: المادة التراثية الموثقة (نسب الشخصية، ولادتها، أهم محطات حياتها ومناظراتها، وتفاصيل استشهادها ومظلوميتها) هي المصدر الوحيد للمعلومات التاريخية، ولا يُخرج عنها.
+
+الخطوة ٢ — العصف الموضوعي والربط القرآني: ثلاثة موضوعات منبرية عميقة متباينة تصلح لإحياء المناسبة، بدل السرد التاريخي المجرد. لكل موضوع: (١) فكرة المحور وموضوع المعالجة، (٢) الآية القرآنية المناسبة لتكون مفتاحًا وافتتاحًا، (٣) نقطة التخلص (الكَوْريز) المناسبة للربط بين موضوع البحث ومصيبة الشهادة. ويختار الخطيب الموضوع والآية الأنسب لجمهوره وطبيعة مجلسه.
+
+الخطوة ٣ — العمق التفسيري للآية: لا يفسّر الذكاء الاصطناعي الآية من تلقاء نفسه؛ بل يُؤخذ المقطع الدال من التفاسير الرصينة (مثل الأمثل والميزان، وهنا مجمع البيان للطبرسي) ويُعتمد عليه لفهم دلالات الآية وإبراز رسالتها المركزية في الخطبة.
+
+الخطوة ٤ — الشواهد الأدبية: أبيات فصيحة تخدم المحور؛ إما أبيات يحددها الخطيب، أو بتحديد غرض شعري (كالحكمة وطلب العلم والصبر).
+
+الخطوة ٥ — الهندسة البنائية للمجلس: خطبة منبرية متكاملة بالاعتماد حصرًا على النصوص التاريخية والتفسيرية والشعرية المزوَّدة، وفق الهيكلية التالية:
+١. المقدمة: الاستهلال، والآية الكريمة، والربط التفسيري المدعم بالشعر.
+٢. صلب المجلس: معالجة الفكرة وطرح الوقائع والمناظرة التاريخية المستخلصة من النص.
+٣. الخاتمة والتخلّص (الكَوْريز): الربط المحكم بين البحث الفكري ودوافع المصيبة.
+٤. الرثاء: طور النعي الفصيح والدارج المناسب للمقام وفق تفاصيل المصيبة المذكورة في النص.
+
+بهذا المسار تُضمن صحة المحتوى دون تزييف أو استدعاء لروايات ضعيفة.`;
 
 /**
  * What the writer is told in this branch: who he is, how the owner's method binds him, and the poems the owner keeps. Empty
@@ -88,3 +104,29 @@ export const SERMON_MAX_PARTS = 7;
 
 /** Does this branch offer this output? The sermon only in «الخطيب الذكي»; everything else in both. */
 export const kindOffered = (branch: unknown, kind: string) => kind !== "sermon" || isKhateeb(branch);
+
+// ───────────────────────────── the method's steps and fields ─────────────────────────────
+// «المرجعية المأمونة» (the owner's method, see DEFAULT_METHOD): material → three topics with a key verse and a takhallus
+// point (the preacher picks one) → the verse's tafsir from a trusted tafsir (here مجمع البيان) → poetry → the four parts.
+
+/** The four parts of the sermon, in order: the method's own names and roles; `share` is each one's part of the words. */
+export const SERMON_PARTS = [
+  { id: "intro", title: "المقدمة", role: "الاستهلال، والآية الكريمة، والربط التفسيري المدعم بالشعر", share: 0.2 },
+  { id: "body", title: "صلب المجلس", role: "معالجة الفكرة وطرح الوقائع والمناظرة التاريخية المستخلصة من النص", share: 0.42 },
+  { id: "khatima", title: "الخاتمة والتخلّص (الكَوْريز)", role: "الربط المحكم بين البحث الفكري ودوافع المصيبة", share: 0.14 },
+  { id: "rithaa", title: "الرثاء", role: "طور النعي الفصيح والدارج المناسب للمقام وفق تفاصيل المصيبة المذكورة في النص", share: 0.24 },
+] as const;
+
+/** The most verses of one topic's key verse (the preacher opens with a short passage). */
+export const SERMON_MAX_AYAT = 4;
+
+/** The tafsir the method takes the verse's meaning from, «for now» (the owner's word): مجمع البيان for الطبرسي, on ablibrary.net. */
+export const MAJMA = {
+  title: "مجمع البيان في تفسير القرآن",
+  author: "أبو علي الفضل بن الحسن الطبرسي",
+  /** the book id of each volume on ablibrary.net, volume 1 first */
+  volumes: [3868, 3870, 3871, 3872, 3873, 3874, 3875, 3876, 3877, 3869],
+  site: "https://ablibrary.net",
+} as const;
+
+export const ablibraryUrl = (bookId: number | string, page?: number | string) => `${MAJMA.site}/books/${bookId}${page ? `?page=${page}` : ""}`;
