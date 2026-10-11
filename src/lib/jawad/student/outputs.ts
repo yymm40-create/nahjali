@@ -3,7 +3,8 @@
 // what it made, so a stopped run continues where it was and a failed part is made again alone.
 
 import { minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
-import { defaultDesign, isPaged, outputName, pagesOf, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
+import { defaultDesign, isPaged, outputName, pagesOf, readBrief, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
+import { methodLine, studyAudience } from "@config/jawad/study-methods";
 import { ELEVEN_PRICE } from "@config/jawad/generators";
 import { providerUserId } from "@/lib/jawad/server/providers/common";
 import { elevenSpeech } from "@/lib/jawad/server/providers/elevenlabs";
@@ -223,11 +224,13 @@ async function planStep(job: Job): Promise<StepResult> {
     return { done: true, stage: "الخطة جاهزة" };
   }
 
-  if (o.kind === "summary" || o.kind === "explain" || o.kind === "book") {
+  if (o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") {
     const what =
       o.kind === "summary"
         ? "a SUMMARY: keep the essential ideas and the source's structure (no claim of covering every word)"
-        : o.kind === "explain"
+        : o.kind === "preread"
+          ? "a PRE-READING SHEET for BEFORE the lesson (قراءة ما قبل الدرس): it prepares the student to meet the material — the big picture and why it matters, the map of what is coming, the key terms, guiding questions to answer during the lesson, what to focus on, and a short self-check for afterwards. It does NOT replace the lesson or summarise every detail"
+          : o.kind === "explain"
           ? "a NEW EXPLANATION: re-present the concepts in language suited to the level, unpack the terms"
           : `a READING BOOK / BOOKLET (${o.settings.writing === "summary" ? "a summary book" : "an explanatory book"})`;
     const pages = pagesOf(o.settings);
@@ -235,7 +238,7 @@ async function planStep(job: Job): Promise<StepResult> {
       ? `\nPAGE COUNT (the student's, kept exactly): the finished file is EXACTLY ${pages} page${pages > 1 ? "s" : ""} (${pageSize(o)}), about ${wordBudget(pages, pageSize(o), [1]).total} words of body text in all${frontPages(pages, 2).cover ? ", plus a cover" : ", with the title at the top of the first page (no cover)"}. Plan at most ${maxChapters(pages)} chapter${maxChapters(pages) > 1 ? "s" : ""}, sized for that length: choose what matters most when the material is longer than the pages, and go deeper when it is shorter.`
       : "";
     const r = await askJson<{ title: string; subtitle: string; chapters: { title: string; purpose: string; segments: string[]; imageIdea: string }[] }>({
-      system: `You plan ${what} of the student's material, in Arabic. Return a title (the document's main title), a subtitle (one line under it saying what it is and for whom) and ordered chapters with clear, short titles; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). Density: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.${pagesLine}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
+      system: `You plan ${what} of the student's material, in Arabic.\n${methodLine(o.kind, studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\n Return a title (the document's main title), a subtitle (one line under it saying what it is and for whom) and ordered chapters with clear, short titles; each chapter says what it will cover (purpose) and lists the ids of ALL material segments it draws on. Every segment of the material must be used by some chapter unless the settings say to leave something out. imageIdea: a short idea for an illustrative visual (or empty if none fits). Density: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}.${pagesLine}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
       parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
       schema: DOC_PLAN_SCHEMA,
     });
@@ -353,9 +356,9 @@ async function writeChapter(c: Ctx, o: Output, plan: DocPlan, i: number, revise?
     }
     return { chapter: { title: ch.title, blocks }, usd: 0 };
   }
-  const kind = o.kind === "summary" ? "a summary chapter" : o.kind === "explain" ? "an explanation chapter (simpler, terms unpacked, examples from the material)" : `a chapter of a reading book (${o.settings.writing === "summary" ? "summary book" : "explanatory book"})`;
+  const kind = o.kind === "summary" ? "a summary chapter" : o.kind === "preread" ? "a part of a PRE-READING sheet (before the lesson: big picture, key terms with short meanings, guiding questions, what to watch for; brief and inviting, not a full summary)" : o.kind === "explain" ? "an explanation chapter (simpler, terms unpacked, examples from the material)" : `a chapter of a reading book (${o.settings.writing === "summary" ? "summary book" : "explanatory book"})`;
   const r = await askJson<{ blocks: Block[] }>({
-    system: `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists. Structure: the chapter's title is given; inside it use "h" sub-headings for its parts (short, clear), then the body under each.${words ? `\nLENGTH (the student asked for a fixed page count, kept exactly): this chapter is about ${words} words in all (within 10%) — count them; ${words < 150 ? "keep it to the essentials, few blocks" : "spread them over its parts"}.` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
+    system: `You write ${kind} in Arabic for the student, as blocks. ${BLOCK_GUIDE}\n${methodLine(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" ? o.kind : "book", studyAudience(c.project.level, readBrief(c.project.brief).purpose))}\nDensity: ${DENSITY[String(o.settings.density ?? o.settings.detail ?? "medium")] ?? DENSITY.medium}. Vary the blocks where it helps understanding (terms, cards for parallel ideas, steps, a comparison table, a margin note, a review question), but most of the content is paragraphs and lists. Structure: the chapter's title is given; inside it use "h" sub-headings for its parts (short, clear), then the body under each.${words ? `\nLENGTH (the student asked for a fixed page count, kept exactly): this chapter is about ${words} words in all (within 10%) — count them; ${words < 150 ? "keep it to the essentials, few blocks" : "spread them over its parts"}.` : ""}\n${STUDENT_FIRST}\n${scopeRules(c)}`,
     parts: [
       {
         type: "text",

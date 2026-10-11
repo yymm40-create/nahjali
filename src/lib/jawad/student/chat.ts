@@ -1,0 +1,82 @@
+// «الطالب الذكي» · «محادثة مع صادق» — an output that is a conversation kept with the material: the student discusses
+// the topic with صادق, asks about any part of it, has it explained, summarised or prepared for, and صادق searches the
+// web when asked (or when the material doesn't hold the answer), with its sources. Server only.
+
+import { UserError } from "@/lib/api";
+import { callClaudeSearch } from "@/lib/film/anthropic";
+import { talk, type Turn } from "@/lib/games/claude";
+import { readBrief } from "@config/jawad/student";
+import { methodLine, studyAudience } from "@config/jawad/study-methods";
+import { MATERIAL_RULE } from "./claude";
+import { allText, loadCtx, researchText, understandingText } from "./context";
+import { saveOutput, type Output } from "./db";
+
+export interface ChatMsg {
+  role: "user" | "assistant";
+  text: string;
+  at: string;
+  sources?: string[];
+}
+
+export const chatOf = (o: Pick<Output, "content">): ChatMsg[] => {
+  const m = (o.content as { messages?: unknown } | null)?.messages;
+  return (Array.isArray(m) ? m : []).filter((x): x is ChatMsg => !!x && typeof x === "object" && ((x as ChatMsg).role === "user" || (x as ChatMsg).role === "assistant") && typeof (x as ChatMsg).text === "string");
+};
+
+const MESSAGE_MAX = 4000;
+/** The material sent with every turn (the rest is reached through the understanding's map). */
+const MATERIAL_MAX = 150_000;
+const HISTORY = 30;
+/** A request to look outside the material. */
+const WANTS_SEARCH = /ابحث|دوّر|دور لي|من النت|من الإنترنت|من الانترنت|مصادر|مصدر|آخر الأخبار|أحدث|search/i;
+
+/** The student says something to صادق in this conversation; returns the conversation with his answer, and its cost. */
+export async function chatTurn(userId: string, o: Output, raw: unknown, leader: boolean): Promise<{ messages: ChatMsg[]; usd: number }> {
+  if (o.kind !== "chat") throw new UserError("هذا الناتج مو محادثة.", 400);
+  const said = String(raw ?? "").trim().slice(0, MESSAGE_MAX);
+  if (!said) throw new UserError("اكتب رسالتك.");
+  const c = await loadCtx(userId, o.project_id);
+  const audience = studyAudience(c.project.level, readBrief(c.project.brief).purpose);
+  const before = chatOf(o);
+  let usd = 0;
+
+  // «ابحث لي…»: the web first, its findings and links handed to صادق with the question
+  let found = "";
+  let sources: string[] = [];
+  if (WANTS_SEARCH.test(said)) {
+    const r = await callClaudeSearch({
+      system: `${MATERIAL_RULE}\nSearch reliable sources for what the student asks about, in the context of their study topic (${c.understanding.topic}). Answer in Arabic: the facts found, briefly, each with where it comes from.`,
+      prompt: said,
+      maxUses: 4,
+    }).catch(() => null);
+    if (r) {
+      usd += r.usd;
+      found = r.text;
+      sources = r.sources;
+    }
+  }
+
+  const material = allText(c);
+  const system = [
+    MATERIAL_RULE,
+    `You are «صادق» in a saved CONVERSATION with the student about their study material (topic: ${c.understanding.topic}). Discuss it with them like a sharp, warm tutor: answer from the material first and say where in it; explain, simplify, give examples, quiz them when they want, help them prepare or debate, and push their thinking with a good question when it helps. When you add something that is NOT in the material, say so plainly («من خارج المادة»). Never invent sources, numbers or quotes. Reply in the student's language and dialect, short unless they ask for more.`,
+    methodLine("chat", audience),
+    `Student level: ${c.project.level || "unspecified"}.`,
+    `UNDERSTANDING OF THE MATERIAL:\n${understandingText(c)}`,
+    `MATERIAL${material.length > MATERIAL_MAX ? " (the beginning; ask about a part to get it in detail)" : ""}:\n${material.slice(0, MATERIAL_MAX)}`,
+    researchText(c),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const ask = found ? `${said}\n\n(ما وجده البحث في الويب الآن، للاستناد إليه مع ذكر المصدر:\n${found})` : said;
+  const turns: Turn[] = [...before.slice(-HISTORY).map((m) => ({ role: m.role, text: m.text })), { role: "user" as const, text: ask }];
+  while (turns.length && turns[0].role !== "user") turns.shift();
+  const r = await talk({ system, turns, maxTokens: 6000, leader, stream: true, timeoutMs: 240_000 });
+  usd += r.usd;
+
+  const now = new Date().toISOString();
+  const messages: ChatMsg[] = [...before, { role: "user", text: said, at: now }, { role: "assistant", text: r.text, at: now, ...(sources.length ? { sources } : {}) }];
+  await saveOutput(o.id, { content: { messages }, status: "done", approved: true, error: null });
+  return { messages, usd };
+}

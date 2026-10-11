@@ -29,6 +29,7 @@ export const PURPOSES = [
   { id: "research", label: "بحث أو تقرير", hint: "موضوع مكتوب بمصادر" },
   { id: "teach", label: "تحضير درس أو شرح لغيري", hint: "للمعلم أو لشرح المادة لزملاء" },
   { id: "present", label: "عرض أو مشروع", hint: "عرض تقديمي أو مشروع للصف" },
+  { id: "debate", label: "تحضير مناظرة", hint: "حجج الطرفين، الأدلة، والرد المتوقع" },
   { id: "other", label: "أخرى", hint: "اكتب غرضك" },
 ] as const;
 export type PurposeId = (typeof PURPOSES)[number]["id"];
@@ -137,16 +138,18 @@ export function rolesBrief(roles: unknown[]): string {
   return ["EACH SOURCE HAS A ROLE, written in its label («نموذج أتبعه», «مادة علمية», «مرجع إضافي»):", ...lines].join("\n");
 }
 
-export type OutputKind = "summary" | "explain" | "transcript" | "book" | "slides" | "audio" | "quiz";
+export type OutputKind = "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat";
 
 export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] = [
   { kind: "summary", name: "ملخص", blurb: "الأفكار الجوهرية بالمستوى والتفصيل الذي تختاره." },
   { kind: "explain", name: "شرح جديد", blurb: "شرح المادة بطريقة أسهل أو أنسب لجمهورك." },
+  { kind: "preread", name: "قراءة ما قبل الدرس", blurb: "ورقة تحضير قبل الدرس: الصورة الكبيرة، المصطلحات، وأسئلة تدخل فيها الدرس، بأقوى طرق التحضير لعمرك." },
   { kind: "transcript", name: "تفريغ نصي كامل", blurb: "النص الذي راجعته كما هو، كاملًا، للنسخ والتنزيل." },
   { kind: "book", name: "كتاب أو ملزمة PDF", blurb: "ملف قراءة مصمم بخط عربي واضح وأسلوب تختاره." },
   { kind: "slides", name: "عرض تقديمي PPTX", blurb: "شرائح قابلة للتعديل، مع نسخة PDF مطابقة." },
   { kind: "audio", name: "تسجيل صوتي", blurb: "قراءة صوتية بـ ElevenLabs، ملف واحد أو عدة ملفات." },
   { kind: "quiz", name: "اختبار", blurb: "أسئلة من المادة بصعوبة وعدد وأنواع تحددها." },
+  { kind: "chat", name: "محادثة مع صادق", blurb: "تناقش صادق في الموضوع وتسأله، ويبحث لك لو طلبت؛ المحادثة محفوظة مع مادتك." },
 ];
 export const outputName = (k: string) => OUTPUT_KINDS.find((o) => o.kind === k)?.name ?? k;
 
@@ -342,10 +345,10 @@ export const ISLAMIC_WAYS = [
 // ───────────────────────────── the student's own choices for a file ─────────────────────────────
 
 /** Outputs with a design (style, fonts): the design step is shown when one of them is chosen. */
-export const DESIGNED_KINDS: string[] = ["summary", "explain", "book", "slides", "quiz"];
+export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book", "slides", "quiz"];
 
 /** Written outputs made as pages (PDF, and Word when asked): they take a page count, a file format and a design. */
-export const PAGED_KINDS = ["summary", "explain", "book"] as const;
+export const PAGED_KINDS = ["summary", "explain", "preread", "book"] as const;
 export const isPaged = (k: string) => (PAGED_KINDS as readonly string[]).includes(k);
 
 /** The page count the student asked for (0 = as the material needs). Kept exactly in the PDF. */

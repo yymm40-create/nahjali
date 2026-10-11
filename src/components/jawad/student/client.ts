@@ -31,7 +31,7 @@ export interface SegmentView {
 
 export interface OutputView {
   id: string;
-  kind: "summary" | "explain" | "transcript" | "book" | "slides" | "audio" | "quiz";
+  kind: "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat";
   ord: number;
   title: string;
   settings: Record<string, unknown> & { design?: Design; _styleDraft?: Design | null };

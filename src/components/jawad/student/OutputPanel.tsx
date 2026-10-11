@@ -11,6 +11,7 @@ import { AudioResult, DocView, FileLinks, PdfFrame, QuizPlay, SlidesFonts, Trans
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, Gate, JobStatus, PaidButton, Seg, useAsync } from "./ui";
 import Riyal from "@/components/Riyal";
+import SadiqChat from "./SadiqChat";
 
 type S = Record<string, unknown>;
 const str = (v: unknown, d = "") => (typeof v === "string" ? v : d);
@@ -83,6 +84,12 @@ function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDo
 
 /** One output, from its settings to its approved files. */
 export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onRemade?: () => void }) {
+  // «محادثة مع صادق»: a conversation, not a document
+  if (o.kind === "chat") return <SadiqChat p={p} o={o} />;
+  return <DocOutputPanel p={p} o={o} onRemade={onRemade} />;
+}
+
+function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onRemade?: () => void }) {
   const { jobs, segments, sources, outputs, research } = p.state;
   const job = jobs.find((j) => j.outputId === o.id);
   const running = jobs.some((j) => j.status === "queued" || j.status === "running");
@@ -175,7 +182,7 @@ export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: Out
       {plan !== null && ["plan_review", "ready", "trial_offer", "trial_review", "failed"].includes(o.status) && !mine && (
         <div className="space-y-3">
           <h3 className="font-semibold">{o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : "الخطة والفهرس"}</h3>
-          {(o.kind === "summary" || o.kind === "explain" || o.kind === "book") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
+          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
           {o.kind === "slides" && <SlideMapEditor plan={plan as SlidePlan} onChange={setPlan} images={images} />}
           {o.kind === "quiz" && <QuizPlanEditor plan={plan as QuizPlan} onChange={setPlan} wanted={Number(o.settings.count) || 10} customType={str(o.settings.customType)} />}
           {o.kind === "audio" && <AudioPlanEditor plan={plan as AudioPlan} onChange={setPlan} />}
@@ -252,7 +259,7 @@ export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: Out
               {o.settings.render !== "image" && <SlidesFonts design={o.settings.design} />}
             </>
           )}
-          {(o.kind === "summary" || o.kind === "explain") && o.content !== null && <DocView doc={o.content as Doc} research={researchContent} />}
+          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread") && o.content !== null && <DocView doc={o.content as Doc} research={researchContent} />}
           {o.kind === "book" && o.content !== null && (
             <details>
               <summary className="cursor-pointer text-sm text-jw-muted">نص الكتاب (للنسخ وطلب تعديل فصل)</summary>
@@ -269,7 +276,7 @@ export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: Out
             </>
           )}
           {o.kind === "quiz" && o.settings.usage !== "sheet" && <QuizPlay o={o} />}
-          {["summary", "explain", "transcript", "book", "quiz"].includes(o.kind) && o.content !== null && <PicturesPanel o={o} act={act} running={running} />}
+          {["summary", "explain", "preread", "transcript", "book", "quiz"].includes(o.kind) && o.content !== null && <PicturesPanel o={o} act={act} running={running} />}
 
           {o.status === "review" ? (
             <Gate
@@ -306,7 +313,7 @@ export default function OutputPanel({ p, o, onRemade }: { p: ProjectHook; o: Out
 }
 
 function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: string; kind: "edit" | "other"; act: (b: S) => Promise<unknown>; running: boolean }) {
-  const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "book" ? (o.content as Doc | null) : null;
+  const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" ? (o.content as Doc | null) : null;
   const pictures = o.kind === "slides" && o.settings.render === "image" ? (o.plan as SlidePlan | null) : null;
   const [chapter, setChapter] = useState(-1);
   return (
@@ -356,6 +363,7 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
   switch (o.kind) {
     case "summary":
     case "explain":
+    case "preread":
       return (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field s={s} set={set} k="purpose" label="هدف الاستخدام" ph="مراجعة قبل الاختبار، شرح لزميل…" />
@@ -474,7 +482,7 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
         </div>
       );
     case "audio": {
-      const texts = outputs.filter((x) => x.kind === "summary" || x.kind === "explain" || x.kind === "book");
+      const texts = outputs.filter((x) => x.kind === "summary" || x.kind === "explain" || x.kind === "preread" || x.kind === "book");
       return <AudioSettings s={s} set={set} texts={texts} />;
     }
     case "quiz":
