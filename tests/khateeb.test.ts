@@ -58,3 +58,63 @@ describe("«الخطيب الذكي»: the branch", () => {
     expect(page).toContain("index: false");
   });
 });
+
+// ───────────────────────────── the sermon ─────────────────────────────
+import { docHtml } from "@/lib/jawad/student/render/html";
+import { autoSettings } from "@/lib/jawad/student/defaults";
+import { settingsParts } from "@/lib/jawad/student/summary";
+import { defaultDesign, DOC_KINDS, FORMATS, OUTPUT_KINDS } from "@config/jawad/student";
+import { kindOffered, readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
+import type { Doc } from "@/lib/jawad/student/model";
+
+describe("«خطبة المنبر»", () => {
+  const block = (t: string, text: string) => ({ t, text, title: "", items: [], rows: [], sources: [], segments: [] }) as unknown as Doc["chapters"][number]["blocks"][number];
+  const doc: Doc = { title: "خطبة", subtitle: "", chapters: [{ title: "المقدمة", blocks: [block("p", "نص")] }, { title: "الموعظة", blocks: [block("p", "نص آخر")] }] } as Doc;
+
+  it("is offered only in the hidden branch, first", () => {
+    expect(kindOffered("khateeb", "sermon")).toBe(true);
+    expect(kindOffered("student", "sermon")).toBe(false);
+    expect(kindOffered(undefined, "sermon")).toBe(false);
+    expect(kindOffered("student", "summary")).toBe(true);
+    expect(OUTPUT_KINDS[0].kind).toBe("sermon");
+    expect(DOC_KINDS).toContain("sermon");
+  });
+
+  it("has three lengths, short to long, medium when none is said", () => {
+    expect(SERMON_LENGTHS.map((l) => l.id)).toEqual(["short", "medium", "long"]);
+    const w = SERMON_LENGTHS.map((l) => l.words);
+    expect(w[0]).toBeLessThan(w[1]);
+    expect(w[1]).toBeLessThan(w[2]);
+    expect(readSermonLength("long").id).toBe("long");
+    expect(readSermonLength("nonsense").id).toBe("medium");
+    expect(readSermonLength(undefined).id).toBe("medium");
+  });
+
+  it("comes with both files (PDF and editable Word) and a length, summarised for the panel", () => {
+    const s = autoSettings("sermon", "");
+    expect(s.format).toBe("both");
+    expect(s.length).toBe("medium");
+    expect(FORMATS.some((f) => f.id === "both")).toBe(true);
+    const parts = settingsParts("sermon", { length: "short", format: "docx" });
+    expect(parts[0]).toContain("قصيرة");
+    expect(parts[1]).toContain("Word");
+  });
+
+  it("is printed plain: no cover, no contents, no chapter labels", () => {
+    const html = docHtml(doc, defaultDesign("editorial"), { fontFaces: "", plain: true });
+    expect(html).not.toContain('class="cover');
+    expect(html).not.toContain('class="toc');
+    expect(html).not.toContain("الفصل");
+    expect(html).toContain("المقدمة");
+    const book = docHtml(doc, defaultDesign("editorial"), { fontFaces: "" });
+    expect(book).toContain('class="cover');
+    expect(book).toContain("الفصل");
+  });
+
+  it("is wired into the writer: its own words budget, parts and length", () => {
+    const src = readFileSync(new URL("../src/lib/jawad/student/outputs.ts", import.meta.url), "utf8");
+    expect(src).toContain('o.kind === "sermon"');
+    expect(src).toContain("readSermonLength(o.settings.length).words");
+    expect(src).toContain("SERMON_MAX_PARTS");
+  });
+});

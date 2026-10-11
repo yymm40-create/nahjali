@@ -3,6 +3,7 @@
 // is what each output's panel shows afterwards instead of asking the same questions again. Pure.
 
 import { FORMATS, QUESTION_TYPES, formatOf, pagesOf, type OutputKind } from "@config/jawad/student";
+import { readSermonLength } from "@config/jawad/khateeb";
 import { MAP_TYPES } from "./mindmap";
 
 type S = Record<string, unknown>;
@@ -26,6 +27,12 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
       if (kind === "book" && WRITING[str(s.writing)]) out.push(WRITING[str(s.writing)]);
       if (!(kind === "book" && s.writing === "verbatim")) out.push(pagesOf(s) ? `${pagesOf(s)} صفحة` : "عدد الصفحات حسب المادة");
       if (!(kind === "book" && s.writing === "verbatim") && DENSITY[str(s.density)]) out.push(DENSITY[str(s.density)]);
+      out.push(FORMATS.find((f) => f.id === formatOf(s))!.label);
+      break;
+    }
+    case "sermon": {
+      const l = readSermonLength(s.length);
+      out.push(`خطبة ${l.label} (نحو ${l.minutes.toLocaleString("ar")} دقيقة)`);
       out.push(FORMATS.find((f) => f.id === formatOf(s))!.label);
       break;
     }

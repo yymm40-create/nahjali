@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { settingsLine } from "@/lib/jawad/student/summary";
 import CapacityAsk from "./CapacityAsk";
-import { DENSITIES, DESIGNED_KINDS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { DENSITIES, DESIGNED_KINDS, FORMATS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, formatOf, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
 import { AudioPlanEditor, DocPlanEditor, MindPlanEditor, QuizPlanEditor, SlideMapEditor } from "./PlanEditors";
@@ -194,7 +195,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
         <div className="space-y-3">
           <CapacityAsk o={o} additionsAllowed={p.state.project.allow_additions === true} act={act} running={running} />
           <h3 className="font-semibold">{o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : o.kind === "mindmap" ? "فروع الخريطة" : "الخطة والفهرس"}</h3>
-          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
+          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "sermon") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
           {o.kind === "slides" && <SlideMapEditor plan={plan as SlidePlan} onChange={setPlan} images={images} />}
           {o.kind === "quiz" && <QuizPlanEditor plan={plan as QuizPlan} onChange={setPlan} wanted={Number(o.settings.count) || 10} customType={str(o.settings.customType)} />}
           {o.kind === "audio" && <AudioPlanEditor plan={plan as AudioPlan} onChange={setPlan} />}
@@ -272,7 +273,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
               {o.settings.render !== "image" && <SlidesFonts design={o.settings.design} />}
             </>
           )}
-          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread") && o.content !== null && <DocView doc={o.content as Doc} research={researchContent} />}
+          {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "sermon") && o.content !== null && <DocView doc={o.content as Doc} research={researchContent} />}
           {o.kind === "book" && o.content !== null && (
             <details>
               <summary className="cursor-pointer text-sm text-jw-muted">نص الكتاب (للنسخ وطلب تعديل فصل)</summary>
@@ -327,7 +328,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
 }
 
 function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: string; kind: "edit" | "other"; act: (b: S) => Promise<unknown>; running: boolean }) {
-  const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" ? (o.content as Doc | null) : null;
+  const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "sermon" ? (o.content as Doc | null) : null;
   const pictures = o.kind === "slides" && o.settings.render === "image" ? (o.plan as SlidePlan | null) : null;
   const maps = o.kind === "mindmap" && o.settings.render === "image" ? (o.plan as MindPlan | null) : null;
   const [chapter, setChapter] = useState(-1);
@@ -386,6 +387,24 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
   );
 
   switch (o.kind) {
+    case "sermon":
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1 sm:col-span-2">
+            <span className="jw-label">طول الخطبة</span>
+            <Seg label="طول الخطبة" value={readSermonLength(s.length).id} options={SERMON_LENGTHS.map((l) => ({ id: l.id, label: `${l.label} (نحو ${l.minutes.toLocaleString("ar")} دقيقة)` }))} onChange={(length) => set({ length })} />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <span className="jw-label">صيغة الملف</span>
+            <Seg label="صيغة الملف" value={formatOf(s)} options={FORMATS} onChange={(format) => set({ format })} />
+          </div>
+          <Field s={s} set={set} k="purpose" label="المناسبة أو الموضوع (اختياري)" ph="جمعة، محرم، ذكرى…" />
+          <Field s={s} set={set} k="audience" label="الجمهور (إن اختلف)" />
+          <div className="sm:col-span-2">
+            <Field s={s} set={set} k="extra" label="ملاحظات أخرى" area />
+          </div>
+        </div>
+      );
     case "summary":
     case "explain":
     case "preread":
@@ -507,7 +526,7 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
         </div>
       );
     case "audio": {
-      const texts = outputs.filter((x) => x.kind === "summary" || x.kind === "explain" || x.kind === "preread" || x.kind === "book");
+      const texts = outputs.filter((x) => x.kind === "summary" || x.kind === "explain" || x.kind === "preread" || x.kind === "book" || x.kind === "sermon");
       return <AudioSettings s={s} set={set} texts={texts} />;
     }
     case "quiz":

@@ -17,6 +17,8 @@ export interface RenderOpts {
   pages?: number;
   /** type scale that lands the document on `pages` (1 = normal) */
   scale?: number;
+  /** a sermon to read aloud: no cover, no contents, no chapter labels, the parts flow on in a larger type */
+  plain?: boolean;
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -96,8 +98,9 @@ export function docHtml(doc: Doc, design: Design, o: RenderOpts) {
   const cover = styleFor(design, "cover");
   const story = styleFor(design, "story");
   const size = o.page ?? "A4";
-  const fixed = (o.pages ?? 0) > 0;
-  const front = fixed ? frontPages(o.pages!, doc.chapters.length) : { cover: true, toc: doc.chapters.length > 1 };
+  const plain = Boolean(o.plain);
+  const fixed = (o.pages ?? 0) > 0 || plain;
+  const front = plain ? { cover: false, toc: false } : fixed ? frontPages(o.pages!, doc.chapters.length) : { cover: true, toc: doc.chapters.length > 1 };
   const k = o.scale ?? 1;
   const css = `${designCss(design, o.fontFaces)}
 @page{size:${size};margin:${size === "A4" ? "20mm 18mm 22mm" : "15mm 13mm 17mm"}}
@@ -123,7 +126,8 @@ ${fixed ? ".chapter-open .num{font-size:.85em !important;line-height:1.4 !import
 .blk-p{line-height:1.95;text-align:justify;orphans:3;widows:3}
 main{position:relative;z-index:1}
 /* the page frame is drawn on the printed PDF (render/server.ts: framePdf), exactly at the page's edges */
-body{font-size:calc(${size === "A4" ? "12.5pt" : "11pt"} * ${k})}`;
+body{font-size:calc(${plain ? (size === "A4" ? "14.5pt" : "12.5pt") : size === "A4" ? "12.5pt" : "11pt"} * ${k})}
+${plain ? ".blk-p{line-height:2.15;text-align:right}.chapter-open{padding:0;margin:0 0 3mm;background:none !important;border:0 !important}.chapter-open h2{font-size:1.35em;color:var(--accent)}" : ""}`;
   const head = doc.subtitle ? `<p>${rich(doc.subtitle)}</p>` : "";
   const body = [
     `<div class="page-bg s-${main}"></div>`,
@@ -134,7 +138,7 @@ body{font-size:calc(${size === "A4" ? "12.5pt" : "11pt"} * ${k})}`;
     front.toc ? `<section class="toc s-${main}"><h2>المحتويات</h2><ol>${doc.chapters.map((c) => `<li>${rich(c.title)}</li>`).join("")}</ol></section>` : "",
     ...doc.chapters.map(
       (c, i) =>
-        `<section class="chapter s-${main}"><div class="chapter-open s-${story}">${doc.chapters.length > 1 ? `<div class="num">الفصل ${i + 1}</div>` : ""}<h2>${rich(c.title)}</h2></div>${c.blocks.map((b) => blockHtml(b, design, o)).join("\n")}</section>`,
+        `<section class="chapter s-${main}"><div class="chapter-open s-${story}">${doc.chapters.length > 1 && !plain ? `<div class="num">الفصل ${i + 1}</div>` : ""}<h2>${rich(c.title)}</h2></div>${c.blocks.map((b) => blockHtml(b, design, o)).join("\n")}</section>`,
     ),
     sourcesHtml(o),
     `</main>`,

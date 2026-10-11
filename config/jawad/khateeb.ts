@@ -69,3 +69,22 @@ export function khateebRules(method: string, poems: string): string {
     .filter(Boolean)
     .join("\n\n");
 }
+
+// ───────────────────────────── the sermon's length ─────────────────────────────
+
+/**
+ * The three lengths a sermon is made in. `words` is the body of the sermon; `minutes` is about how long it takes to say it
+ * (a preacher's pace of about 130 words a minute). The owner may change these numbers here.
+ */
+export const SERMON_LENGTHS = [
+  { id: "short", label: "قصيرة", minutes: 7, words: 900 },
+  { id: "medium", label: "متوسطة", minutes: 12, words: 1600 },
+  { id: "long", label: "طويلة", minutes: 20, words: 2700 },
+] as const;
+export type SermonLength = (typeof SERMON_LENGTHS)[number]["id"];
+export const readSermonLength = (v: unknown): (typeof SERMON_LENGTHS)[number] => SERMON_LENGTHS.find((l) => l.id === v) ?? SERMON_LENGTHS[1];
+/** What a sermon's chapters (its parts) are at most: even the long one is a few parts, not a book. */
+export const SERMON_MAX_PARTS = 7;
+
+/** Does this branch offer this output? The sermon only in «الخطيب الذكي»; everything else in both. */
+export const kindOffered = (branch: unknown, kind: string) => kind !== "sermon" || isKhateeb(branch);

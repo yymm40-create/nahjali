@@ -18,6 +18,8 @@ export function autoSettings(kind: string, level: string): Record<string, unknow
       return { purpose: "فهم المادة", density: "medium", tone: young ? "بسيطة مع أمثلة" : "واضحة مع أمثلة" };
     case "book":
       return { writing: "explain", density: "medium", page: "A4", numbered: true, design: defaultDesign(randomStyle()) };
+    case "sermon":
+      return { length: "medium", page: "A4", format: "both", design: defaultDesign("editorial") };
     case "slides":
       return { density: young ? "low" : "medium", aspect: "16:9", notesMode: "both", count: 0, render: "editable", design: defaultDesign(randomStyle()) };
     case "audio":

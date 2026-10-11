@@ -6,8 +6,8 @@ import { coinBalance, coinsRequired } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { claudeHalalas, coinsFor } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
-import { FONTS, OUTPUT_KINDS, PURPOSES, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
-import { STUDENT_BRANCH, type Branch } from "@config/jawad/khateeb";
+import { FONTS, OUTPUT_KINDS, PURPOSES, isDoc, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
+import { kindOffered, STUDENT_BRANCH, type Branch } from "@config/jawad/khateeb";
 import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
 import { islamicAsk, islamicCeiling } from "./islamic";
@@ -102,8 +102,9 @@ export const outputView = (o: Output) => ({
 
 /** A person's materials of one branch («الطالب الذكي», or the hidden «الخطيب الذكي»); before SQL 0065 there is only the first. */
 export async function listProjects(userId: string, branch: Branch = STUDENT_BRANCH) {
-  let { data, error } = await sdb().from("student_projects").select("id,title,level,stage,last_activity_at,created_at").eq("user_id", userId).eq("branch", branch).order("last_activity_at", { ascending: false }).limit(100);
-  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+  const first = await sdb().from("student_projects").select("id,title,level,stage,last_activity_at,created_at").eq("user_id", userId).eq("branch", branch).order("last_activity_at", { ascending: false }).limit(100);
+  let data = first.data;
+  if (first.error && (first.error.code === "42703" || first.error.code === "PGRST204")) {
     if (branch !== STUDENT_BRANCH) return [];
     ({ data } = await sdb().from("student_projects").select("id,title,level,stage,last_activity_at,created_at").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(100));
   }
@@ -402,7 +403,7 @@ export async function projectAction(user: User, id: string, b: Body) {
     }
     case "outputs_add": {
       if (p.stage !== "outputs") throw new UserError("أكمل اعتماد الفهم وحدود المصدر أولًا.");
-      const kinds = ((b.kinds as string[]) ?? []).filter((k) => OUTPUT_KINDS.some((o) => o.kind === k));
+      const kinds = ((b.kinds as string[]) ?? []).filter((k) => OUTPUT_KINDS.some((o) => o.kind === k) && kindOffered(p.branch, k));
       if (!kinds.length) throw new UserError("اختر ناتجًا واحدًا على الأقل.");
       const existing = await outputs(p.id);
       const rows = kinds.map((k, i) => ({
@@ -433,7 +434,7 @@ export async function projectAction(user: User, id: string, b: Body) {
       // Claude (never asked), and the special request passed to each. The page then runs them all (autopilot).
       if (p.stage !== "outputs") throw new UserError("اعتمد الفهم أولًا.");
       const wanted = (Array.isArray(b.outputs) ? b.outputs : []).slice(0, OUTPUT_KINDS.length) as { kind?: unknown; settings?: unknown }[];
-      const list = wanted.filter((w, i) => OUTPUT_KINDS.some((o) => o.kind === w.kind) && wanted.findIndex((x) => x.kind === w.kind) === i);
+      const list = wanted.filter((w, i) => OUTPUT_KINDS.some((o) => o.kind === w.kind) && kindOffered(p.branch, String(w.kind)) && wanted.findIndex((x) => x.kind === w.kind) === i);
       if (!list.length) throw new UserError("اختر ناتجًا واحدًا على الأقل.");
       const special = text(b.special, 3000);
       // the design step: what the student wants it to look like (empty when they skipped it and left it to صادق)
@@ -456,7 +457,7 @@ export async function projectAction(user: User, id: string, b: Body) {
       // a recording of the summary / explanation / book made here: it waits for that text
       const audio = list.find((w) => w.kind === "audio");
       const reads = String((audio?.settings as Body | undefined)?.source ?? "");
-      const dep = (made ?? []).find((m) => m.kind === reads && ["summary", "explain", "preread", "book"].includes(reads));
+      const dep = (made ?? []).find((m) => m.kind === reads && isDoc(reads));
       const rec = (made ?? []).find((m) => m.kind === "audio");
       if (dep && rec) {
         const r = rows.find((x) => x.kind === "audio")!;
@@ -534,7 +535,7 @@ function cleanSettings(kind: Output["kind"], s: Body) {
     else if (typeof v === "boolean") out[k] = v;
     else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === "string").slice(0, 10);
   }
-  if (kind === "book" || kind === "slides" || kind === "summary" || kind === "explain" || kind === "preread" || kind === "quiz" || kind === "mindmap") {
+  if (kind === "slides" || kind === "quiz" || kind === "mindmap" || isDoc(kind)) {
     const d = cleanDesign(s.design);
     if (d) out.design = d;
   }
@@ -631,7 +632,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       if (o.kind === "audio") {
         const src = String(settings.source ?? "text");
         if (src !== "text" && src !== "custom") {
-          const dep = (await outputs(p.id)).find((x) => x.id === src && (x.kind === "summary" || x.kind === "explain" || x.kind === "preread" || x.kind === "book"));
+          const dep = (await outputs(p.id)).find((x) => x.id === src && isDoc(x.kind));
           if (!dep) throw new UserError("اختر نصًا من نواتج هذه المادة.");
           await saveOutput(o.id, { settings: { ...settings, _styleDraft: undefined }, depends_on: dep.id, status: dep.status === "done" ? "settings" : "waiting", plan_approved: false });
           return { ok: true };
@@ -689,7 +690,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const prevRun = Number((o.content as { run?: number } | null)?.run ?? 0);
       // what the trial made is kept and not charged again (so the trial's coins are not given back as well)
       const reusedTrial =
-        (["summary", "explain", "preread", "book"].includes(o.kind) && ((o.content as Doc | null)?.chapters?.length ?? 0) > 0) ||
+        (isDoc(o.kind) && ((o.content as Doc | null)?.chapters?.length ?? 0) > 0) ||
         (o.kind === "slides" && Boolean((o.plan as SlidePlan | null)?.slides?.some((x) => x.rendered?.path)));
       return run("final", await estimate(user.id, o, "final"), o.kind === "audio" ? { run: prevRun + 1 } : { reusedTrial }, "إنشاء الناتج", "running");
     }
@@ -707,7 +708,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const kind = b.kind === "other" ? "other" : "edit";
       if (!["review", "done"].includes(o.status)) throw new UserError(NOT_NOW);
       const requests = [...o.requests, { at: new Date().toISOString(), kind: kind as "edit", text: note }];
-      if (o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "quiz") {
+      if (isDoc(o.kind) || o.kind === "quiz") {
         const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
         return run("revise", await estimate(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
       }
