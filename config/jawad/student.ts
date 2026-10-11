@@ -1,6 +1,8 @@
 // «الجواد الذكي!» | JAWAD AI · «الطالب الذكي» — the branch's fixed choices: outputs, levels, design styles, fonts.
 // Prices are not set here: every paid step is priced from its real cost on the site's coin (config/coins.ts).
 
+import { readSermonAsk, type SermonAsk } from "./khateeb";
+
 export const STUDENT = {
   base: "/jawad-ai/student",
   bucket: "student",
@@ -53,6 +55,8 @@ export interface Brief {
   where: string;
   /** «صادق» goes on through the steps by himself (on unless the student turned it off on the first page) */
   auto: boolean;
+  /** «الخطيب الذكي»: the preacher's request (topic, goal, occasion, length, file); absent in «الطالب الذكي» */
+  sermon?: SermonAsk;
 }
 
 export const emptyBrief = (): Brief => ({ purpose: "exam", purposeNote: "", mode: "files", focus: "", where: "", auto: true });
@@ -62,7 +66,8 @@ export function readBrief(v: unknown): Brief {
   const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const purpose = PURPOSES.some((x) => x.id === b.purpose) ? (b.purpose as PurposeId) : "exam";
   const mode = SOURCE_MODES.some((x) => x.id === b.mode) ? (b.mode as SourceMode) : "files";
-  return { purpose, purposeNote: String(b.purposeNote ?? "").slice(0, 1000), mode, focus: String(b.focus ?? "").slice(0, 2000), where: String(b.where ?? "").slice(0, 2000), auto: b.auto !== false };
+  const sermon = readSermonAsk(b.sermon);
+  return { purpose, purposeNote: String(b.purposeNote ?? "").slice(0, 1000), mode, focus: String(b.focus ?? "").slice(0, 2000), where: String(b.where ?? "").slice(0, 2000), auto: b.auto !== false, ...(sermon ? { sermon } : {}) };
 }
 
 /** The links in «وين يبحث» (https only) and their sites. */

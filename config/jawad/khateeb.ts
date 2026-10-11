@@ -135,3 +135,57 @@ export const MAJMA = {
 } as const;
 
 export const ablibraryUrl = (bookId: number | string, page?: number | string) => `${MAJMA.site}/books/${bookId}${page ? `?page=${page}` : ""}`;
+
+// ───────────────────────────── the preacher's request (the branch's own journey) ─────────────────────────────
+// «الخطيب الذكي» has its own way, not the student's: the preacher says his TOPIC and his GOAL (and the occasion, the length,
+// the file), and the Sheikh does the rest by himself — he researches the topic's text, reads it, finds the key verse and its
+// tafsir, searches the poetry references for lines (the شطرين) and the sources for stories, then writes the whole sermon
+// by the method. Kept in the material's brief until the sermon is made, then in the sermon's settings.
+
+export const SERMON_FORMATS = [
+  { id: "both", label: "PDF + Word" },
+  { id: "pdf", label: "PDF" },
+  { id: "docx", label: "Word" },
+] as const;
+
+export interface SermonAsk {
+  /** the topic the preacher wants to speak on */
+  topic: string;
+  /** what the sermon is for: what the listeners should leave with */
+  goal: string;
+  /** the occasion (a martyrdom, a birth, a night of Muharram…), may be empty */
+  occasion: string;
+  length: SermonLength;
+  format: (typeof SERMON_FORMATS)[number]["id"];
+  /** the preacher's own lines, used as written */
+  poems: string;
+  /** search the library's poetry references for lines */
+  poetry: boolean;
+  /** search the library's sources for stories and lessons */
+  sources: boolean;
+}
+
+/** A request read back (null when there is none, or no topic). */
+export function readSermonAsk(v: unknown): SermonAsk | null {
+  if (!v || typeof v !== "object") return null;
+  const b = v as Record<string, unknown>;
+  const s = (x: unknown, n: number) => String(x ?? "").trim().slice(0, n);
+  const topic = s(b.topic, 500);
+  if (!topic) return null;
+  return {
+    topic,
+    goal: s(b.goal, 1000),
+    occasion: s(b.occasion, 300),
+    length: readSermonLength(b.length).id,
+    format: SERMON_FORMATS.find((f) => f.id === b.format)?.id ?? "both",
+    poems: s(b.poems, 4000),
+    poetry: b.poetry !== false,
+    sources: b.sources !== false,
+  };
+}
+
+/** The sermon output's settings from a request (what its plan, its writer and its file read). */
+export const sermonSettings = (a: SermonAsk) => ({ topic: a.topic, goal: a.goal, occasion: a.occasion, length: a.length, format: a.format, poems: a.poems, poemsFor: a.goal });
+
+/** What the Sheikh researches for the topic (the material's research). */
+export const sermonFocus = (a: SermonAsk) => [`موضوع الخطبة: ${a.topic}`, a.goal ? `الغاية منها: ${a.goal}` : "", a.occasion ? `المناسبة: ${a.occasion}` : ""].filter(Boolean).join("\n");

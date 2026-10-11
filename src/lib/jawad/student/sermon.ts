@@ -38,8 +38,14 @@ const TOPICS_SCHEMA = {
 /** The method's step 2: three distinct topics from the material, each with its key verse and its takhallus point. */
 export async function sermonPlanStep(o: Output, c: Ctx, base: string, studentFirst: string): Promise<StepResult> {
   const length = readSermonLength(o.settings.length);
+  // «الخطيب الذكي»'s own journey: the preacher gave his topic and his goal — the three proposals are angles on THAT topic
+  const topic = String(o.settings.topic ?? "").trim();
+  const goal = String(o.settings.goal ?? "").trim();
+  const asked = topic
+    ? `\nTHE PREACHER ALREADY CHOSE HIS TOPIC: «${topic}»${goal ? `, and its GOAL (what the listeners should leave with): «${goal}»` : ""}. All three proposals must be on THIS topic and serve this goal — three angles of treatment, not three other subjects — and the FIRST must be the closest to what he asked (it is the one taken unless he changes it).`
+    : "";
   const r = await askJson<{ title: string; subtitle: string; topics: { title: string; idea: string; surah: number; ayahFrom: number; ayahTo: number; kooriz: string }[] }>({
-    system: `You are preparing a SERMON for the minbar by the owner's method «المرجعية المأمونة» (in the rules below). This is its STEP 2, the thematic brainstorm and the Quranic link: propose THREE distinct minbar topics that suit the occasion, drawn ONLY from the historical text of the material (never from your own memory of history) — deep ideas joined to the Quran, not a plain retelling.\nFor each topic give: title = the pivot idea (فكرة المحور), short · idea = the subject of its treatment (موضوع المعالجة), 2–3 sentences · surah and ayahFrom/ayahTo = the verse that suits to be its key and its opening: ONLY the surah's number and the verse numbers (at most ${SERMON_MAX_AYAT} verses) — NEVER write the verse's words, the site fetches them from the Quran · kooriz = the takhallus point (نقطة التخلص), 1–2 sentences, that joins the topic to the calamity of martyrdom in the material.\nAlso return the sermon's working title and a one-line subtitle (the occasion). The three topics must differ from each other in idea and in verse. The sermon will be ${length.label} (about ${length.minutes} minutes spoken).\n${studentFirst}\n${scopeRules(c)}`,
+    system: `You are preparing a SERMON for the minbar by the owner's method «المرجعية المأمونة» (in the rules below). This is its STEP 2, the thematic brainstorm and the Quranic link: propose THREE distinct minbar topics that suit the occasion, drawn ONLY from the historical text of the material (never from your own memory of history) — deep ideas joined to the Quran, not a plain retelling.\nFor each topic give: title = the pivot idea (فكرة المحور), short · idea = the subject of its treatment (موضوع المعالجة), 2–3 sentences · surah and ayahFrom/ayahTo = the verse that suits to be its key and its opening: ONLY the surah's number and the verse numbers (at most ${SERMON_MAX_AYAT} verses) — NEVER write the verse's words, the site fetches them from the Quran · kooriz = the takhallus point (نقطة التخلص), 1–2 sentences, that joins the topic to the calamity of martyrdom in the material.\nAlso return the sermon's working title and a one-line subtitle (the occasion). The three topics must differ from each other in idea and in verse. The sermon will be ${length.label} (about ${length.minutes} minutes spoken).${asked}\n${studentFirst}\n${scopeRules(c)}`,
     parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
     schema: TOPICS_SCHEMA,
     effort: "medium",
@@ -80,7 +86,11 @@ async function tafsirStep(job: Job): Promise<StepResult> {
   if (!plan || !sp || !topic) throw new Error("اختر موضوع الخطبة أول.");
   const { verse } = topic;
   const f = await findTafsir(verse.surah, verse.from, verse.text);
-  if (!f) throw new Error("ما لقينا صفحات تفسير هذي الآية في مجمع البيان تلقائيًا. الصق المقطع من التفسير بنفسك (من نفس الكتاب أو من الأمثل أو الميزان) تحت.");
+  if (!f) {
+    // marked, so the Sheikh's own journey goes on without it (the sermon then says nothing beyond the verse's plain words)
+    await saveOutput(o.id, { plan: { ...plan, sermon: { ...sp, tafsirMissing: true } } });
+    throw new Error("ما لقينا صفحات تفسير هذي الآية في مجمع البيان تلقائيًا. الصق المقطع من التفسير بنفسك (من نفس الكتاب أو من الأمثل أو الميزان) تحت.");
+  }
   const pages = f.pages.map((p) => `[ص${p.label}]\n${p.text}`).join("\n\n");
   const c = await loadCtx(job.user_id, o.project_id);
   const r = await askJson<{ simple: string }>({
@@ -148,9 +158,15 @@ async function refsStep(job: Job): Promise<StepResult> {
   const topic = sp && sp.chosen >= 0 ? sp.topics[sp.chosen] : null;
   if (!plan || !sp || !topic) throw new Error("اختر موضوع الخطبة أول.");
   const kind: RefKind = job.input.kind === "source" ? "source" : "poetry";
+  // what was looked for and not found is marked as an empty list, so the Sheikh's own journey goes on without it
+  const none = async (message: string): Promise<never> => {
+    const fresh = (await getOutput(job.user_id, job.output_id!)).plan as DocPlan;
+    if (fresh.sermon && fresh.sermon.chosen === sp.chosen) await saveOutput(o.id, { plan: { ...fresh, sermon: { ...fresh.sermon, [kind === "source" ? "sources" : "poems"]: [] } } });
+    throw new Error(message);
+  };
   const ids = (Array.isArray(job.input.refIds) ? job.input.refIds : []).map(String);
   const ready = (await readyRefs(kind)).filter((r) => !ids.length || ids.includes(r.id));
-  if (!ready.length) throw new Error(kind === "source" ? "ما فيه مصدر جاهز في المكتبة (أو ما اخترت واحد): أضفه من لوحة الجواد (الخطيب الذكي)." : "ما فيه مرجع أشعار جاهز: ارفعه واقرأه من لوحة الجواد (الخطيب الذكي).");
+  if (!ready.length) return none(kind === "source" ? "ما فيه مصدر جاهز في المكتبة (أو ما اخترت واحد): أضفه من لوحة الجواد (الخطيب الذكي)." : "ما فيه مرجع أشعار جاهز: ارفعه واقرأه من لوحة الجواد (الخطيب الذكي).");
   const ask = String(job.input.ask ?? "").trim().slice(0, 500);
   const purpose = [kind === "poetry" ? String(o.settings.poemsFor ?? "").trim() : "", ask].filter(Boolean).join("؛ ");
   const c = await loadCtx(job.user_id, o.project_id);
@@ -167,7 +183,7 @@ async function refsStep(job: Job): Promise<StepResult> {
     effort: "low",
   });
   const pages = (await searchRef(kw.data.keywords, prose ? 12 : 10, { kind, ids: ready.map((r) => r.id) })).filter((p) => p.text.trim());
-  if (!pages.length) throw new Error(prose ? "ما لقينا في المصادر المختارة شي قريب من هذا الموضوع. جرّب كلمات ثانية في «اطلب عن…» أو اختر مصادر أكثر." : "ما لقينا في المرجع أبياتًا قريبة من هذا الموضوع. جرّب غرضًا ثانيًا (مثل: الصبر، العلم) أو أضف أبياتك بنفسك.");
+  if (!pages.length) return none(prose ? "ما لقينا في المصادر المختارة شي قريب من هذا الموضوع. جرّب كلمات ثانية في «اطلب عن…» أو اختر مصادر أكثر." : "ما لقينا في المرجع أبياتًا قريبة من هذا الموضوع. جرّب غرضًا ثانيًا (مثل: الصبر، العلم) أو أضف أبياتك بنفسك.");
 
   const tagged = pages.map((p, i) => ({ tag: `P${i + 1}`, p }));
   const r = await askJson<{ items: { tag: string; text: string; poet: string; why: string }[] }>({
@@ -191,7 +207,7 @@ async function refsStep(job: Job): Promise<StepResult> {
     seen.add(key);
     picked.push({ text, poet: it.poet.trim().slice(0, 160), page: page.label, ref: page.title, why: it.why.trim().slice(0, 300) });
   }
-  if (!picked.length) throw new Error(prose ? "المقاطع اللي اختارها الشيخ ما طابقت نص المصدر حرفيًا فما اعتمدناها. جرّب مرة ثانية." : "الأبيات اللي اختارها الشيخ ما طابقت نص المرجع حرفيًا فما اعتمدناها. جرّب مرة ثانية، أو أضف أبياتك بنفسك.");
+  if (!picked.length) return none(prose ? "المقاطع اللي اختارها الشيخ ما طابقت نص المصدر حرفيًا فما اعتمدناها. جرّب مرة ثانية." : "الأبيات اللي اختارها الشيخ ما طابقت نص المرجع حرفيًا فما اعتمدناها. جرّب مرة ثانية، أو أضف أبياتك بنفسك.");
 
   const usd = kw.usd + r.usd;
   const fresh = (await getOutput(job.user_id, job.output_id!)).plan as DocPlan;

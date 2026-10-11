@@ -103,7 +103,7 @@ export function nextAuto(s: ProjectState): AutoAction | null {
  * in; "material" reads what was added and understands it, then stops for the student to approve the understanding;
  * "all" goes on to the end. Stops by itself on any error, or when the student is needed.
  */
-export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => Promise<void>, A = "صادق") {
+export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => Promise<void>, A = "صادق", nextOf: (s: ProjectState) => AutoAction | null = nextAuto) {
   const [mode, setMode] = useState<null | { scope: "step" | "material" | "all"; stage: string }>(null);
   const [doing, setDoing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +133,7 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
       stop();
       return;
     }
-    const next = nextAuto(state);
+    const next = nextOf(state);
     // «المادة»: up to the understanding, which the student approves
     if (mode.scope === "material" && next && (!["sources", "review", "understanding"].includes(state.project.stage) || next.label === "اعتماد الفهم")) {
       stop();
@@ -168,7 +168,7 @@ export function useAutopilot(state: ProjectState, busy: boolean, refresh: () => 
       });
     }, 400);
     return () => clearTimeout(t);
-  }, [mode, busy, state, refresh, stop, tick, A]);
+  }, [mode, busy, state, refresh, stop, tick, A, nextOf]);
 
   return { mode, doing, error, start, stop };
 }
