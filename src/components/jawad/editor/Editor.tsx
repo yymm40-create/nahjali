@@ -20,6 +20,7 @@ import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack,
 import { api, postJson } from "@/lib/fetch";
 import Icon, { type IconName } from "../Icon";
 import AssistantPanel from "./AssistantPanel";
+import { UPDATE_EVENT, updating } from "@/components/NewVersion";
 import MovableBubble from "@/components/MovableBubble";
 import RobotFace from "@/components/RobotFace";
 import "./haidara-pop.css";
@@ -572,13 +573,21 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // unsaved work is never lost silently: leaving asks, hiding the tab saves
   useEffect(() => {
     const leave = (e: BeforeUnloadEvent) => {
+      // «حدّث الحين» saved first and is loading the new version: let it go
+      if (updating()) return;
       if (dirty.current || saving.current) e.preventDefault();
     };
+    // «حدّث الحين»: save now, and tell it when the save is done
+    const onUpdate = () => {
+      (window as { __jwFlush?: Promise<unknown> }).__jwFlush = dirty.current || saving.current ? Promise.resolve(flush()) : Promise.resolve();
+    };
+    window.addEventListener(UPDATE_EVENT, onUpdate);
     const hide = () => document.visibilityState === "hidden" && dirty.current && versionRef.current > 0 && void flush();
     window.addEventListener("beforeunload", leave);
     document.addEventListener("visibilitychange", hide);
     return () => {
       window.removeEventListener("beforeunload", leave);
+      window.removeEventListener(UPDATE_EVENT, onUpdate);
       document.removeEventListener("visibilitychange", hide);
     };
   }, [flush]);
