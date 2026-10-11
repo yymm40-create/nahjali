@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { settingsLine } from "@/lib/jawad/student/summary";
+import CapacityAsk from "./CapacityAsk";
 import { DENSITIES, DESIGNED_KINDS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
@@ -188,6 +189,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
       {/* ───────── plan review ───────── */}
       {plan !== null && ["plan_review", "ready", "trial_offer", "trial_review", "failed"].includes(o.status) && !mine && (
         <div className="space-y-3">
+          <CapacityAsk o={o} additionsAllowed={p.state.project.allow_additions === true} act={act} running={running} />
           <h3 className="font-semibold">{o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : "الخطة والفهرس"}</h3>
           {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
           {o.kind === "slides" && <SlideMapEditor plan={plan as SlidePlan} onChange={setPlan} images={images} />}

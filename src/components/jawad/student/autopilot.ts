@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { autoSettings } from "@/lib/jawad/student/defaults";
+import { fitsPages, readCapacity } from "@/lib/jawad/student/capacity";
 import { mayAutoDraw } from "@/lib/jawad/student/draw";
 import { newKey, post, type OutputView, type ProjectState } from "./client";
 
@@ -72,7 +73,11 @@ export function nextAuto(s: ProjectState): AutoAction | null {
           if (!configured(o)) return { label: `${o.title}: اختيار الإعدادات`, run: () => outAct(o.id, { action: "settings", settings: autoSettings(o.kind, s.project.level) }) };
           return { label: `${o.title}: إعداد الخطة`, run: () => outPaid(o.id, { action: "plan" }) };
         }
-        if (o.status === "plan_review") return { label: `${o.title}: اعتماد الخطة`, run: () => outAct(o.id, { action: "plan_approve" }) };
+        if (o.status === "plan_review") {
+          // the material doesn't fit the pages the student asked for: they are asked before anything is written (CapacityAsk)
+          if (!fitsPages(readCapacity(o.settings))) return null;
+          return { label: `${o.title}: اعتماد الخطة`, run: () => outAct(o.id, { action: "plan_approve" }) };
+        }
         if (o.status === "trial_offer") return { label: `${o.title}: تخطي التجربة`, run: () => outAct(o.id, { action: "skip_trial" }) };
         if (o.status === "ready" || o.status === "trial_review") return { label: `${o.title}: التصنيع`, run: () => outPaid(o.id, { action: "final" }) };
         if (o.status === "review") return { label: `${o.title}: الاعتماد`, run: () => outAct(o.id, { action: "approve" }) };
