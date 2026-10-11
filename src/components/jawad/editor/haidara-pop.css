@@ -103,3 +103,23 @@
   .sp-grid { grid-template-columns: 1fr 1fr; }
   .sp-pic.big { width: 90px; }
 }
+
+/* the message box (and any field) inside حيدرة's window: white with black writing, whatever the editor's theme
+   (a light editor theme made the box white while the window's ink was white — the words vanished) */
+.hd-pop .jw-textarea,
+.hd-pop .jw-input,
+.hd-pop .jw-select,
+.hd-pop textarea,
+.hd-pop input[type="text"],
+.hd-pop input:not([type]) {
+  background: #ffffff;
+  color: #0c0e11;
+  caret-color: #0c0e11;
+  border-color: rgba(198, 255, 26, 0.55);
+}
+.hd-pop .jw-textarea::placeholder,
+.hd-pop .jw-input::placeholder,
+.hd-pop textarea::placeholder,
+.hd-pop input::placeholder {
+  color: #6b7280;
+}

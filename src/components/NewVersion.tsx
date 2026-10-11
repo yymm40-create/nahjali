@@ -5,6 +5,34 @@ import { useEffect, useState } from "react";
 /** The build this page was loaded from (inlined when the site is built). */
 export const PAGE_BUILD = process.env.NEXT_PUBLIC_BUILD ?? "dev";
 
+type W = { __jwUpdating?: boolean; __jwFlush?: Promise<unknown> };
+/** True while «حدّث الحين» is reloading the page: «you have unsaved work» checks let it go (it saved first). */
+export const updating = () => typeof window !== "undefined" && (window as W).__jwUpdating === true;
+/** The event pages with work in progress listen to: save now, and put the saving promise in `window.__jwFlush`. */
+export const UPDATE_EVENT = "jw:update";
+
+/**
+ * «حدّث الحين»: save what is open, let the page go, and load the newest build — fresh from the server (a cache-busting
+ * address), not a copy kept anywhere. It used to be a bare reload, which the editor's «unsaved work?» check cancelled
+ * while it was saving (silently in the desktop app), so the button did nothing however many times it was pressed.
+ */
+export async function updateNow() {
+  const w = window as W;
+  w.__jwUpdating = true;
+  window.dispatchEvent(new Event(UPDATE_EVENT));
+  // the work of the page saved first (at most 6 s)
+  await Promise.race([Promise.resolve(w.__jwFlush).catch(() => null), new Promise((r) => setTimeout(r, 6000))]);
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+    await Promise.all(regs.map((r) => r.update().catch(() => null)));
+  } catch {
+    /* no workers */
+  }
+  const u = new URL(window.location.href);
+  u.searchParams.set("v", Date.now().toString(36));
+  window.location.replace(u.toString());
+}
+
 /**
  * «🆕 في نسخة جديدة»: a page kept open for a long time (the editor, for hours) keeps running the code it was loaded
  * with, so fixes made since don't reach it. Every 2 minutes (and when the window comes back) it asks which build is
@@ -12,6 +40,14 @@ export const PAGE_BUILD = process.env.NEXT_PUBLIC_BUILD ?? "dev";
  */
 export default function NewVersion() {
   const [fresh, setFresh] = useState(false);
+  const [going, setGoing] = useState(false);
+  // back from «حدّث الحين»: the cache-busting mark leaves the address
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has("v")) return;
+    u.searchParams.delete("v");
+    window.history.replaceState(window.history.state, "", u.pathname + (u.search ? u.search : "") + u.hash);
+  }, []);
   useEffect(() => {
     if (PAGE_BUILD === "dev") return;
     let live = true;
@@ -39,8 +75,16 @@ export default function NewVersion() {
   return (
     <div role="status" dir="rtl" style={{ position: "fixed", insetInline: 12, bottom: 12, zIndex: 9999, margin: "0 auto", maxWidth: 520, display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 14, background: "#0f2a4a", color: "#fff", boxShadow: "0 8px 30px rgba(0,0,0,.35)", fontSize: 14, fontWeight: 700 }}>
       <span style={{ flex: 1 }}>🆕 نزلت نسخة جديدة من الموقع — حدّث الصفحة عشان توصلك آخر التعديلات (شغلك محفوظ).</span>
-      <button type="button" onClick={() => location.reload()} style={{ background: "#2fd3a6", color: "#06231b", border: 0, borderRadius: 10, padding: "6px 12px", fontWeight: 800, cursor: "pointer" }}>
-        حدّث الحين
+      <button
+        type="button"
+        disabled={going}
+        onClick={() => {
+          setGoing(true);
+          void updateNow();
+        }}
+        style={{ background: "#2fd3a6", color: "#06231b", border: 0, borderRadius: 10, padding: "6px 12px", fontWeight: 800, cursor: going ? "wait" : "pointer", opacity: going ? 0.7 : 1 }}
+      >
+        {going ? "يحدّث…" : "حدّث الحين"}
       </button>
       <button type="button" aria-label="لاحقًا" onClick={() => setFresh(false)} style={{ background: "transparent", color: "#cfe", border: 0, cursor: "pointer", fontSize: 16 }}>
         ✕
