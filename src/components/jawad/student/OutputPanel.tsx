@@ -7,9 +7,10 @@ import CapacityAsk from "./CapacityAsk";
 import { DENSITIES, DESIGNED_KINDS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
-import { AudioPlanEditor, DocPlanEditor, QuizPlanEditor, SlideMapEditor } from "./PlanEditors";
+import { AudioPlanEditor, DocPlanEditor, MindPlanEditor, QuizPlanEditor, SlideMapEditor } from "./PlanEditors";
+import type { MindPlan } from "@/lib/jawad/student/mindmap";
 import { defaults, DesignStep, Questions } from "./Questions";
-import { AudioResult, DocView, FileLinks, PdfFrame, QuizPlay, SlidesFonts, TranscriptView } from "./Results";
+import { AudioResult, DocView, FileLinks, MindmapResult, PdfFrame, QuizPlay, SlidesFonts, TranscriptView } from "./Results";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, Gate, JobStatus, PaidButton, Seg, useAsync } from "./ui";
 import Riyal from "@/components/Riyal";
@@ -42,7 +43,7 @@ function Remake({ p, o, onDone, onClose }: { p: ProjectHook; o: OutputView; onDo
   return (
     <div className="space-y-4 rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
       <h3 className="font-bold">↩ ارجع وغيّر «{o.title}»</h3>
-      <Questions kind={kind} s={s} set={(patch) => setS({ ...s, ...patch })} chosen={p.state.outputs.map((x) => x.kind as OutputKind)} prices={p.state.prices} />
+      <Questions kind={kind} s={s} set={(patch) => setS({ ...s, ...patch })} chosen={p.state.outputs.map((x) => x.kind as OutputKind)} prices={p.state.prices} level={p.state.project.level} />
       {designed && (
         <div className="space-y-2">
           <b className="block">🎨 التصميم</b>
@@ -179,7 +180,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
       )}
       {o.kind !== "transcript" && (o.status === "settings" || (o.status === "failed" && !o.plan)) && !settingsDirty && (
         <PaidButton
-          label={o.kind === "audio" ? "جهّز نص القراءة" : o.kind === "slides" ? "اعرض خريطة الشرائح" : o.kind === "quiz" ? "اعرض توزيع الأسئلة" : "اعرض الخطة"}
+          label={o.kind === "audio" ? "جهّز نص القراءة" : o.kind === "slides" ? "اعرض خريطة الشرائح" : o.kind === "quiz" ? "اعرض توزيع الأسئلة" : o.kind === "mindmap" ? "اعرض فروع الخريطة" : "اعرض الخطة"}
           what={o.kind === "audio" ? "تجهيز النص للقراءة وإضافة التشكيل حيث يلزم، لتراجعه قبل إرساله إلى ElevenLabs." : "إعداد خطة الناتج لتراجعها وتعدّلها قبل التصنيع."}
           disabled={running}
           run={(b) => act({ action: "plan", ...b })}
@@ -190,11 +191,12 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
       {plan !== null && ["plan_review", "ready", "trial_offer", "trial_review", "failed"].includes(o.status) && !mine && (
         <div className="space-y-3">
           <CapacityAsk o={o} additionsAllowed={p.state.project.allow_additions === true} act={act} running={running} />
-          <h3 className="font-semibold">{o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : "الخطة والفهرس"}</h3>
+          <h3 className="font-semibold">{o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : o.kind === "mindmap" ? "فروع الخريطة" : "الخطة والفهرس"}</h3>
           {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
           {o.kind === "slides" && <SlideMapEditor plan={plan as SlidePlan} onChange={setPlan} images={images} />}
           {o.kind === "quiz" && <QuizPlanEditor plan={plan as QuizPlan} onChange={setPlan} wanted={Number(o.settings.count) || 10} customType={str(o.settings.customType)} />}
           {o.kind === "audio" && <AudioPlanEditor plan={plan as AudioPlan} onChange={setPlan} />}
+          {o.kind === "mindmap" && <MindPlanEditor key={o.updatedAt} plan={plan as MindPlan} onChange={setPlan} />}
           {planDirty && (
             <button type="button" className="jw-btn" disabled={busy} onClick={() => run(() => act({ action: "plan_save", plan }))}>
               احفظ تعديلاتك على الخطة
@@ -202,7 +204,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
           )}
           {o.status === "plan_review" && (
             <Gate
-              next={designed ? "يُعرض عليك خيار نسخة تجريبية مدفوعة ترى فيها الخط والتصميم، أو المتابعة مباشرة للتصنيع الكامل." : o.kind === "audio" ? "يُرسل النص كما يظهر هنا إلى ElevenLabs." : "يُكتب الناتج كاملًا على هذه الخطة."}
+              next={o.kind === "mindmap" ? (o.settings.render === "image" ? "يرسمها صادق صورة عالية الدقة، وبعدها يرسمها GPT Image 2 على تصميمه." : "يرسمها صادق صورة عالية الدقة مع نسخة التسميع.") : designed ? "يُعرض عليك خيار نسخة تجريبية مدفوعة ترى فيها الخط والتصميم، أو المتابعة مباشرة للتصنيع الكامل." : o.kind === "audio" ? "يُرسل النص كما يظهر هنا إلى ElevenLabs." : "يُكتب الناتج كاملًا على هذه الخطة."}
               disabled={planDirty}
               onApprove={() => act({ action: "plan_approve" })}
               editHint="اكتب التعديل الذي تريده على الخطة (أو عدّلها يدويًا أعلاه):"
@@ -285,13 +287,14 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
             </>
           )}
           {o.kind === "quiz" && o.settings.usage !== "sheet" && <QuizPlay o={o} />}
+          {o.kind === "mindmap" && <MindmapResult o={o} />}
           {["summary", "explain", "preread", "transcript", "book", "quiz"].includes(o.kind) && o.content !== null && <PicturesPanel o={o} act={act} running={running} />}
 
           {o.status === "review" ? (
             <Gate
               next={outputs.some((x) => x.dependsOn === o.id) ? "يُعتمد الناتج، ويبدأ ما يعتمد عليه (مثل الصوت الذي يقرؤه)." : "يُعتمد الناتج ويبقى في المادة."}
               onApprove={() => act({ action: "approve" })}
-              editHint={o.kind === "slides" || o.kind === "audio" ? "ما الذي تريد تعديله؟ (يعدّل صادق الخطة لتعتمدها من جديد)" : "ما الذي تريد تعديله؟ يُعدَّل موضعيًا دون إعادة اختراع المحتوى."}
+              editHint={o.kind === "slides" || o.kind === "audio" || o.kind === "mindmap" ? "ما الذي تريد تعديله؟ (يعدّل صادق الخطة لتعتمدها من جديد)" : "ما الذي تريد تعديله؟ يُعدَّل موضعيًا دون إعادة اختراع المحتوى."}
               onEdit={(note) => <RequestButton o={o} note={note} kind="edit" act={act} running={running} />}
               onOther={(note) => <RequestButton o={o} note={note} kind="other" act={act} running={running} />}
             />
@@ -324,6 +327,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
 function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: string; kind: "edit" | "other"; act: (b: S) => Promise<unknown>; running: boolean }) {
   const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" ? (o.content as Doc | null) : null;
   const pictures = o.kind === "slides" && o.settings.render === "image" ? (o.plan as SlidePlan | null) : null;
+  const maps = o.kind === "mindmap" && o.settings.render === "image" ? (o.plan as MindPlan | null) : null;
   const [chapter, setChapter] = useState(-1);
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -333,6 +337,16 @@ function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: s
           {pictures.slides.map((sl, i) => (
             <option key={i} value={i}>
               أعد رسم الشريحة {i + 1}: {sl.title}
+            </option>
+          ))}
+        </select>
+      )}
+      {maps && (
+        <select className="jw-select w-auto" value={chapter} onChange={(e) => setChapter(Number(e.target.value))} aria-label="الخريطة المعنية">
+          <option value={-1}>تعديل فروع الخرائط (تعتمدها من جديد)</option>
+          {maps.maps.map((m, i) => (
+            <option key={i} value={i}>
+              أعد رسم الخريطة {i + 1} بـ GPT Image 2: {m.title}
             </option>
           ))}
         </select>
@@ -347,7 +361,7 @@ function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: s
           ))}
         </select>
       )}
-      <PaidButton label="أرسل" what={pictures && chapter >= 0 ? "تُرسم هذه الشريحة من جديد مع طلبك، وبقية الشرائح كما هي." : doc && chapter >= 0 ? "تعديل هذا الفصل فقط، وبقية الناتج كما هي." : "تعديل الناتج حسب طلبك."} disabled={running} run={(b) => act({ action: "request", note, kind, chapter, ...b })} />
+      <PaidButton label="أرسل" what={maps && chapter >= 0 ? "تُرسم هذه الخريطة من جديد مع طلبك، وبقية الخرائط كما هي." : pictures && chapter >= 0 ? "تُرسم هذه الشريحة من جديد مع طلبك، وبقية الشرائح كما هي." : doc && chapter >= 0 ? "تعديل هذا الفصل فقط، وبقية الناتج كما هي." : "تعديل الناتج حسب طلبك."} disabled={running} run={(b) => act({ action: "request", note, kind, chapter, ...b })} />
     </div>
   );
 }

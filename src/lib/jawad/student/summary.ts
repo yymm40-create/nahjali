@@ -3,6 +3,7 @@
 // is what each output's panel shows afterwards instead of asking the same questions again. Pure.
 
 import { FORMATS, QUESTION_TYPES, formatOf, pagesOf, type OutputKind } from "@config/jawad/student";
+import { MAP_TYPES } from "./mindmap";
 
 type S = Record<string, unknown>;
 
@@ -48,6 +49,12 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
       if (USAGE[str(s.usage)]) out.push(USAGE[str(s.usage)]);
       break;
     }
+    case "mindmap":
+      out.push(MAP_TYPES.find((t) => t.id === s.mapType)?.name ?? "النوع يختاره صادق");
+      out.push(s.scope === "sections" ? "شاملة + خريطة لكل قسم" : "خريطة وحدة");
+      out.push(s.render === "image" ? "يرسمها GPT Image 2" : "يصممها صادق");
+      if (s.recall !== false) out.push("مع نسخة التسميع");
+      break;
     case "audio":
       out.push(s.mode === "multi" ? "ملف لكل قسم" : "ملف واحد");
       break;

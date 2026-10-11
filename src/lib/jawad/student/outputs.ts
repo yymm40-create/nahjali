@@ -25,6 +25,7 @@ import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 import { capSlides } from "./draw";
 import { capacityOf, compactionLine } from "./capacity";
+import { mapFinalStep, mapFinalUsd, mapPlanStep, mapPlanUsd } from "./mindmap-make";
 
 /** Slides made as pictures with GPT Image 2 (the student's choice), and at which quality. */
 const asPictures = (o: Output) => o.kind === "slides" && o.settings.render === "image";
@@ -96,8 +97,11 @@ export async function estimate(userId: string, o: Output, action: string, chapte
       const n = audioSourceText(c, o, await depDoc(o)).length;
       return claudeCeilingUsd(n, n) + Math.ceil(n / 6000) * claudeCeilingUsd(0, 0);
     }
+    if (o.kind === "mindmap") return mapPlanUsd(c, o);
     return claudeCeilingUsd(Math.min(chars, 400_000), 16000);
   }
+  // «الخريطة الذهنية»: صادق draws it for nothing; only GPT Image 2's maps cost
+  if (o.kind === "mindmap") return mapFinalUsd(o, action);
   const plan = o.plan as DocPlan | SlidePlan | QuizPlan | AudioPlan | null;
   const imgs = (list: { image: { mode: string; path: string } }[], only?: number) =>
     list.slice(0, only ?? list.length).filter((x) => x.image.mode === "generate" && !x.image.path).length * IMAGE_USD;
@@ -214,6 +218,7 @@ async function planStep(job: Job): Promise<StepResult> {
   const base = `${levelLine(c, o)}\nOutput settings chosen by the student:\n${settingsText(o)}${requestsText(o)}${revision}${noteLine}`;
 
   if (o.kind === "audio") return audioPrepStep(job, o, c);
+  if (o.kind === "mindmap") return mapPlanStep(o, c, base, STUDENT_FIRST);
 
   if (o.kind === "book" && o.settings.writing === "verbatim") {
     // The original text, unshortened: chapters follow the understanding's sections, nothing is written by Claude
@@ -683,6 +688,7 @@ async function finalStep(job: Job): Promise<StepResult> {
   const c = await loadCtx(job.user_id, o.project_id);
   if (o.kind === "quiz") return quizStep(job, o, c);
   if (o.kind === "audio") return audioStep(job, o);
+  if (o.kind === "mindmap") return mapFinalStep(job, o, c);
   if (o.kind === "slides" && asPictures(o)) {
     const plan = o.plan as SlidePlan;
     if (job.kind === "revise") {

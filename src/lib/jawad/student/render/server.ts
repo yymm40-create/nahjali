@@ -71,6 +71,31 @@ export async function htmlToPdf(html: string, o: { numbered?: boolean; slides?: 
   }
 }
 
+/**
+ * Pages of a known size → sharp PNG pictures (one browser for all of them). `scale` is the device scale: the picture is
+ * w×scale by h×scale pixels.
+ */
+export async function htmlToPngs(pages: { html: string; w: number; h: number; scale: number }[]) {
+  const b = await browser();
+  try {
+    const out: Buffer[] = [];
+    for (const p of pages) {
+      const page = await b.newPage();
+      await page.setViewport({ width: Math.ceil(p.w), height: Math.ceil(p.h), deviceScaleFactor: p.scale });
+      await page.setContent(p.html, { waitUntil: "load", timeout: 120_000 });
+      await page.evaluate("document.fonts.ready");
+      const png = Buffer.from(await page.screenshot({ type: "png", clip: { x: 0, y: 0, width: Math.ceil(p.w), height: Math.ceil(p.h) } }));
+      // a picture that came out empty is a failure, never "done"
+      if (png.length < 2000) throw new Error("empty picture");
+      out.push(png);
+      await page.close();
+    }
+    return out;
+  } finally {
+    await b.close();
+  }
+}
+
 const FOOTER = `<div style="width:100%;text-align:center;font-size:9px;color:#777;font-family:sans-serif"><span class="pageNumber"></span></div>`;
 
 /**

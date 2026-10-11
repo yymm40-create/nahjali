@@ -130,7 +130,7 @@ function Wizard({ p, onStart, onCancel }: { p: ProjectHook; onStart: () => void;
             <Tile emoji={KIND_LOOK[k].emoji} grad={KIND_LOOK[k].grad} size={34} />
             <h2 className="font-bold">{OUTPUT_KINDS.find((o) => o.kind === k)!.name}</h2>
           </div>
-          <Questions kind={k} s={of(k)} set={set(k)} chosen={pick} prices={prices} />
+          <Questions kind={k} s={of(k)} set={set(k)} chosen={pick} prices={prices} level={project.level} />
         </div>
       ))}
       <div className="jw-panel space-y-3 p-4">

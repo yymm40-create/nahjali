@@ -7,6 +7,8 @@ import { QUESTION_TYPES } from "@config/jawad/student";
 import Icon from "@/components/jawad/Icon";
 import type { AudioPlan, DocPlan, ImageChoice, QuizPlan, Slide, SlidePlan } from "@/lib/jawad/student/model";
 import { emptyImage } from "@/lib/jawad/student/model";
+import { MAP_TYPES, fromOutline, toOutline, type MapType, type MindMap, type MindPlan } from "@/lib/jawad/student/mindmap";
+import { useState } from "react";
 
 type Img = { id: string; name: string };
 
@@ -246,6 +248,59 @@ export function AudioPlanEditor({ plan, onChange }: { plan: AudioPlan; onChange:
           </details>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * «الخريطة الذهنية»: each map as lines the student edits (# العنوان · * المركز · - فرع · -- فرع فرعي · --- تفصيل ·
+ * ~ من > إلى : رابط), with its shape. Nothing is drawn before the student approves it.
+ */
+export function MindPlanEditor({ plan, onChange }: { plan: MindPlan; onChange: (p: MindPlan) => void }) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-jw-muted">
+        عدّل الفروع كما تبي قبل الرسم: <b>-</b> فرع رئيسي، <b>--</b> فرع فرعي، <b>---</b> تفصيل، و«<b> | </b>» بعدها عبارة الربط على الخط. <b>~ من &gt; إلى : رابط</b> يربط بين فرعين.
+      </p>
+      {plan.maps.map((m, i) => (
+        <MapOutline key={i} map={m} n={i + 1} onChange={(next) => onChange({ maps: plan.maps.map((x, k) => (k === i ? next : x)) })} />
+      ))}
+    </div>
+  );
+}
+
+function MapOutline({ map, n, onChange }: { map: MindMap; n: number; onChange: (m: MindMap) => void }) {
+  // the text the student types stays as typed (a half-written line is not lost); the map is read from it
+  const [text, setText] = useState(() => toOutline(map));
+  const branches = map.branches.length;
+  return (
+    <div className="space-y-2 rounded-2xl border border-jw-line bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <b>
+          🧠 الخريطة {n}: {map.title}
+        </b>
+        <select className="jw-select w-auto py-1 text-sm" value={map.type} onChange={(e) => onChange({ ...map, type: e.target.value as MapType })} aria-label={`نوع الخريطة ${n}`}>
+          {MAP_TYPES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <textarea
+        className="jw-textarea font-mono text-sm"
+        dir="rtl"
+        rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(fromOutline(e.target.value, map));
+        }}
+        aria-label={`فروع الخريطة ${n}`}
+      />
+      <p className="text-[11px] text-jw-faint">
+        {branches} فرع رئيسي · {map.branches.reduce((s, b) => s + b.children.length, 0)} فرع فرعي{map.links.length ? ` · ${map.links.length} رابط بين الفروع` : ""}
+      </p>
     </div>
   );
 }

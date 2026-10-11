@@ -9,6 +9,7 @@ export const KIND_LOOK: Record<string, { emoji: string; grad: string }> = {
   audio: { emoji: "🎧", grad: "linear-gradient(135deg,#10b981,#059669)" },
   quiz: { emoji: "🎯", grad: "linear-gradient(135deg,#f43f5e,#e11d48)" },
   preread: { emoji: "🧭", grad: "linear-gradient(135deg,#14b8a6,#0ea5e9)" },
+  mindmap: { emoji: "🧠", grad: "linear-gradient(135deg,#22c55e,#0ea5e9 55%,#a855f7)" },
   chat: { emoji: "💬", grad: "linear-gradient(135deg,#8b5cf6,#d946ef)" },
 };
 
@@ -61,6 +62,15 @@ export function KindSample({ kind }: { kind: string }) {
             <span key={i} className="w-1.5 animate-pulse rounded-full bg-emerald-500" style={{ height: h, animationDelay: `${i * 0.12}s` }} />
           ))}
         </div>
+      );
+    case "mindmap":
+      return (
+        <svg viewBox="0 0 160 90" className="aspect-video w-full rounded-xl bg-white" aria-hidden>
+          {[["#e11d48", 130, 18], ["#ea580c", 140, 72], ["#0284c7", 28, 20], ["#7c3aed", 22, 70]].map(([c, x, y]) => (
+            <path key={String(c)} d={`M80,45 C${(80 + Number(x)) / 2},45 ${(80 + Number(x)) / 2},${y} ${x},${y}`} stroke={String(c)} strokeWidth="5" fill="none" strokeLinecap="round" />
+          ))}
+          <ellipse cx="80" cy="45" rx="24" ry="13" fill="#2b6cb0" />
+        </svg>
       );
     case "quiz":
       return (

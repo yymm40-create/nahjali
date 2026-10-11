@@ -23,6 +23,16 @@ const FILE_LABEL: Record<string, string> = {
   quiz_pdf: "ورقة الأسئلة PDF",
   answers_pdf: "ورقة الإجابات PDF",
   pictures_pdf: "الصفحات المصممة PDF",
+  maps_pdf: "الخرائط PDF",
+  blank_pdf: "نسخة التسميع الفارغة PDF",
+  art_pdf: "خرائط GPT Image 2 PDF",
+};
+
+/** A file's name for the student (the map pictures are numbered: map_2, blank_2, art_2). */
+const fileLabel = (f: string) => {
+  const m = /^(map|blank|art)_(\d+)$/.exec(f);
+  if (m) return `${m[1] === "map" ? "الخريطة" : m[1] === "blank" ? "نسخة التسميع" : "خريطة GPT Image 2"} ${m[2]} (PNG)`;
+  return FILE_LABEL[f] ?? (f.startsWith("audio_") ? `الملف الصوتي ${f.slice(6)}` : f);
 };
 
 export function FileLinks({ o, only }: { o: OutputView; only?: (n: string) => boolean }) {
@@ -32,7 +42,7 @@ export function FileLinks({ o, only }: { o: OutputView; only?: (n: string) => bo
     <div className="flex flex-wrap gap-2">
       {files.map((f) => (
         <a key={f} href={fileUrl(o.id, f)} className="jw-btn">
-          <Icon name="download" size={16} /> {FILE_LABEL[f] ?? (f.startsWith("audio_") ? `الملف الصوتي ${f.slice(6)}` : f)}
+          <Icon name="download" size={16} /> {fileLabel(f)}
         </a>
       ))}
     </div>
@@ -453,3 +463,47 @@ export function QuizPlay({ o }: { o: OutputView }) {
   );
 }
 
+
+/**
+ * «الخريطة الذهنية»: every map as its picture (صادق's, and GPT Image 2's when chosen), its blank recall copy behind a
+ * switch, and the downloads (each picture, and all of them as one PDF).
+ */
+export function MindmapResult({ o }: { o: OutputView }) {
+  const [view, setView] = useState<"map" | "art" | "blank">(() => (o.files.some((f) => f.startsWith("art_")) ? "art" : "map"));
+  const n = o.files.filter((f) => /^map_\d+$/.test(f)).length;
+  const has = (k: string) => o.files.some((f) => f.startsWith(`${k}_`));
+  const t = encodeURIComponent(o.updatedAt);
+  const views = [
+    has("art") && { id: "art" as const, label: "🪄 رسم GPT Image 2" },
+    { id: "map" as const, label: "🧩 تصميم صادق" },
+    has("blank") && { id: "blank" as const, label: "🧠 نسخة التسميع" },
+  ].filter(Boolean) as { id: "map" | "art" | "blank"; label: string }[];
+  return (
+    <div className="space-y-3">
+      {views.length > 1 && (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="أي نسخة">
+          {views.map((v) => (
+            <button key={v.id} type="button" role="radio" aria-checked={view === v.id} onClick={() => setView(v.id)} className={`rounded-full border px-3 py-1.5 text-sm ${view === v.id ? "border-transparent bg-violet-600 text-white" : "border-jw-line bg-white"}`}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {view === "blank" && <p className="text-sm text-jw-muted">املأ الفروع من ذاكرتك (اطبعها أو ارسم عليها)، وبعدها قارن بالأصل وعلّم اللي نسيته. أعدها بعد يوم، ثم أسبوع، ثم شهر.</p>}
+      {Array.from({ length: n }, (_, i) => {
+        const name = `${view}_${i + 1}`;
+        if (!o.files.includes(name)) return null;
+        const src = `${fileUrl(o.id, name, true)}&t=${t}`;
+        return (
+          <figure key={name} className="space-y-1">
+            <a href={src} target="_blank" rel="noopener">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a signed file of the student's own, any size */}
+              <img src={src} alt={`الخريطة ${i + 1}`} className="w-full rounded-xl border border-jw-line bg-white" loading="lazy" />
+            </a>
+            <figcaption className="text-xs text-jw-faint">الخريطة {i + 1} — اضغط عليها لتفتحها بدقتها الكاملة</figcaption>
+          </figure>
+        );
+      })}
+    </div>
+  );
+}
