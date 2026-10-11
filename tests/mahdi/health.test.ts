@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RESEARCH, SOURCES } from "@config/mahdi/health-research";
-import { DEFAULT_PROFILE, EXERCISES, cleanPlan, exerciseById, habitsFor, makePlan, nutrition, workout, type HealthProfile } from "@/lib/mahdi/health/plan";
+import { applyCoach } from "@/lib/mahdi/health/coach";
+import { DEFAULT_PROFILE, EXERCISES, cleanPlan, cleanProfile, exerciseById, habitsFor, makePlan, nutrition, workout, type HealthProfile } from "@/lib/mahdi/health/plan";
 
 const P = (o: Partial<HealthProfile>): HealthProfile => ({ ...DEFAULT_PROFILE, ...o });
 
@@ -16,13 +17,13 @@ describe("nutrition", () => {
     expect(nutrition(P({ sex: "female", weightKg: 60, heightCm: 165, age: 30 })).bmr).toBe(1320);
   });
   it("a cut is ~20% under maintenance, never below the floor", () => {
-    const n = nutrition(P({ goal: "lose", activity: "moderate" }));
+    const n = nutrition(P({ goals: ["lose"], activity: "moderate" }));
     expect(n.kcal).toBeLessThan(n.tdee);
     expect(n.kcal).toBeGreaterThanOrEqual(1500);
-    expect(nutrition(P({ sex: "female", weightKg: 45, heightCm: 150, age: 60, goal: "lose", activity: "sedentary" })).kcal).toBe(1200);
+    expect(nutrition(P({ sex: "female", weightKg: 45, heightCm: 150, age: 60, goals: ["lose"], activity: "sedentary" })).kcal).toBe(1200);
   });
   it("pregnancy: no deficit even when the goal is to lose, + calories from the 2nd trimester, protein ≥71 g", () => {
-    const base = P({ sex: "female", weightKg: 60, heightCm: 160, age: 28, goal: "lose", stage: "pregnant" });
+    const base = P({ sex: "female", weightKg: 60, heightCm: 160, age: 28, goals: ["lose"], stage: "pregnant" });
     const t1 = nutrition({ ...base, pregWeek: 10 });
     const t3 = nutrition({ ...base, pregWeek: 32 });
     expect(t1.kcal).toBeGreaterThanOrEqual(Math.round(t1.tdee / 50) * 50 - 25);
@@ -31,7 +32,7 @@ describe("nutrition", () => {
     expect(t1.gwg).toEqual({ label: expect.any(String), min: 11.5, max: 16 });
   });
   it("under 18: no deficit", () => {
-    const n = nutrition(P({ age: 16, goal: "lose" }));
+    const n = nutrition(P({ age: 16, goals: ["lose"] }));
     expect(n.kcal).toBe(Math.round(n.tdee / 50) * 50);
   });
 });
@@ -88,5 +89,79 @@ describe("into the habits", () => {
     expect(c.food?.proteinG).toBe(150);
     expect(c.workout?.days).toHaveLength(1);
     expect(c.workout?.days[0].items.map((i) => i.exId)).toEqual(["bench"]);
+  });
+});
+
+describe("places and goals", () => {
+  it("no equipment: every day is filled with bodyweight exercises only", () => {
+    for (const days of [[0, 2, 4], [0, 1, 3, 4], [0, 1, 2, 3, 4, 5]]) {
+      const w = workout(P({ place: "body", days }));
+      for (const d of w.days) {
+        expect(d.items.length).toBeGreaterThanOrEqual(4);
+        expect(d.items.every((it) => exerciseById(it.exId)!.body)).toBe(true);
+      }
+    }
+  });
+  it("home gym uses home-gym exercises; an old «home» profile stays the home gym", () => {
+    for (const d of workout(P({ place: "home", days: [0, 2, 4] })).days) expect(d.items.every((it) => exerciseById(it.exId)!.home)).toBe(true);
+    expect(cleanProfile({ place: "home" }).place).toBe("home");
+    expect(cleanProfile({ place: "body" }).place).toBe("body");
+  });
+  it("pregnant with no equipment: still a gentle table of safe exercises", () => {
+    const w = workout(P({ sex: "female", stage: "pregnant", pregWeek: 20, clearance: true, place: "body" }));
+    for (const d of w.days) {
+      expect(d.items.length).toBeGreaterThan(2);
+      expect(d.items.every((it) => exerciseById(it.exId)!.preg && exerciseById(it.exId)!.body)).toBe(true);
+    }
+  });
+  it("several goals: losing fat + muscle is a gentler cut than losing alone", () => {
+    const lose = nutrition(P({ goals: ["lose"], activity: "moderate" })).kcal;
+    const recomp = nutrition(P({ goals: ["lose", "muscle"], activity: "moderate" })).kcal;
+    const keep = nutrition(P({ goals: ["fit"], activity: "moderate" })).kcal;
+    expect(lose).toBeLessThan(recomp);
+    expect(recomp).toBeLessThan(keep);
+    expect(cleanProfile({ goal: "muscle" }).goals).toEqual(["muscle"]);
+  });
+});
+
+describe("«عباس سبع القنطرة» changes the plan", () => {
+  const base = P({ days: [0, 2, 4] });
+  const plan = makePlan(base, "ready");
+  it("changes the wizard's answers and rebuilds the plan", () => {
+    const r = applyCoach(base, plan, { profile: [{ field: "place", value: "body" }, { field: "goals", value: "lose,muscle" }] });
+    expect(r.changed).toBe(true);
+    expect(r.profile.place).toBe("body");
+    expect(r.profile.goals).toEqual(["lose", "muscle"]);
+    expect(r.plan!.workout!.days.every((d) => d.items.every((i) => exerciseById(i.exId)!.body))).toBe(true);
+  });
+  it("can never tick the doctor's ok or clear the warning signs", () => {
+    const preg = P({ sex: "female", stage: "pregnant", redFlags: ["previa"] });
+    const r = applyCoach(preg, null, { profile: [{ field: "stage", value: "pregnant" }, { field: "age", value: "30" }] });
+    expect(r.profile.clearance).toBe(false);
+    expect(r.profile.redFlags).toEqual(["previa"]);
+  });
+  it("swaps, removes and changes sets; refuses an exercise that does not fit", () => {
+    const day = plan.workout!.days[0];
+    const first = day.items[0].exId;
+    const r = applyCoach(base, plan, {
+      edits: [
+        { op: "sets", weekday: day.weekday, exId: first, newExId: "", sets: 5 },
+        { op: "add", weekday: day.weekday, exId: "no-such", newExId: "", sets: 0 },
+        { op: "remove", weekday: day.weekday, exId: day.items[1].exId, newExId: "", sets: 0 },
+      ],
+    });
+    const d = r.plan!.workout!.days[0];
+    expect(d.items[0].sets).toBe(5);
+    expect(d.items).toHaveLength(day.items.length - 1);
+    // in pregnancy, an unsafe exercise is refused
+    const preg = P({ sex: "female", stage: "pregnant", clearance: true, days: [0, 2, 4] });
+    const pp = makePlan(preg, "ready");
+    const r2 = applyCoach(preg, pp, { edits: [{ op: "add", weekday: 0, exId: "deadlift", newExId: "", sets: 0 }] });
+    expect(r2.plan!.workout!.days[0].items.some((i) => i.exId === "deadlift")).toBe(false);
+  });
+  it("food targets never go under the safe floor", () => {
+    const r = applyCoach(base, plan, { food: [{ field: "kcal", value: 800 }, { field: "proteinG", value: 150 }] });
+    expect(r.plan!.food!.kcal).toBeGreaterThanOrEqual(1500);
+    expect(r.plan!.food!.proteinG).toBe(150);
   });
 });

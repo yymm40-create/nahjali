@@ -26,7 +26,9 @@ import {
   foodHabitsFor,
   gentle,
   habitsFor,
+  macrosOf,
   makePlan,
+  placeOk,
   nutrition,
   trimester,
   weeklySets,
@@ -37,6 +39,7 @@ import {
   type PlanDay,
 } from "@/lib/mahdi/health/plan";
 import RobotFace from "@/components/RobotFace";
+import MovableBubble from "@/components/MovableBubble";
 import "./health.css";
 
 /** «عباس سبع القنطرة»: the coach of «الصحة العلوية»; a word on every screen (to a man or to a woman). */
@@ -208,6 +211,9 @@ export default function HealthApp() {
 
   return (
     <div className="gym space-y-4" dir="rtl" ref={top}>
+      <p className="gym-doctor" role="note">
+        🩺 <b>عندك مشاكل صحية؟</b> ارجع لطبيبك للتأكد قبل ما تبدأ. وتذكّر: الذكاء الاصطناعي قد يخطئ.
+      </p>
       {wizardAt >= 0 && (
         <div className="gym-bar" aria-label={`الخطوة ${wizardAt + 1} من ${WIZARD.length}`}>
           <b className="on" />
@@ -307,7 +313,8 @@ export default function HealthApp() {
 
       {screen === "goal" && (
         <section className="space-y-4">
-          <h2 className="gym-title">وش هدفك؟</h2>
+          <h2 className="gym-title">وش أهدافك؟</h2>
+          <p className="gym-small">تقدر تختار أكثر من هدف (مثلًا نزول وزن + بناء عضل).</p>
           <div className="gym-choices">
             {(
               [
@@ -318,7 +325,14 @@ export default function HealthApp() {
                 ["health", "❤️", "صحة عامة ونشاط"],
               ] as const
             ).map(([g, icon, hint]) => (
-              <Choice key={g} on={p.goal === g} onClick={() => set("goal", g)} big={icon} title={LABELS.goal[g]} hint={hint} />
+              <Choice
+                key={g}
+                on={p.goals.includes(g)}
+                onClick={() => set("goals", p.goals.includes(g) ? (p.goals.length > 1 ? p.goals.filter((x) => x !== g) : p.goals) : [...p.goals, g])}
+                big={icon}
+                title={LABELS.goal[g]}
+                hint={hint}
+              />
             ))}
           </div>
           <h3 className="font-black">حركتك اليومية (بدون التمرين)</h3>
@@ -359,8 +373,9 @@ export default function HealthApp() {
             </div>
           </div>
           <div className="gym-choices">
-            <Choice on={p.place === "gym"} onClick={() => set("place", "gym")} big="🏟️" title="في النادي" hint="أجهزة وأوزان حرة" />
-            <Choice on={p.place === "home"} onClick={() => set("place", "home")} big="🏠" title="في البيت" hint="دمبلز ومطاط ووزن الجسم" />
+            <Choice on={p.place === "gym"} onClick={() => set("place", "gym")} big="🏟️" title="جيم (نادي)" hint="أجهزة وكيبلات وبار وأوزان حرة" />
+            <Choice on={p.place === "home"} onClick={() => set("place", "home")} big="🏠" title="جيم بيتي" hint="عندي دمبلز أو مقعد أو مطاط أو بار عقلة" />
+            <Choice on={p.place === "body"} onClick={() => set("place", "body")} big="🤸" title="بدون أدوات" hint="وزن جسمي بس: كرسي، منشفة، جدار، درج" />
           </div>
           <div className="gym-field">
             <span>أيام التمرين ({p.days.length} بالأسبوع)</span>
@@ -482,7 +497,141 @@ export default function HealthApp() {
           }}
         />
       )}
+
+      <CoachChat
+        uid={uid}
+        female={female}
+        screen={screen}
+        profile={p}
+        plan={plan}
+        onResult={(r) => {
+          setP(r.profile);
+          if (r.plan && plan) save(r.plan);
+          if (r.go && (plan || !["plan", "habits"].includes(r.go))) go(r.go as Screen);
+        }}
+      />
     </div>
+  );
+}
+
+interface CoachMsg {
+  role: "user" | "assistant";
+  text: string;
+  changed?: boolean;
+  error?: boolean;
+}
+
+/** «عباس سبع القنطرة» on the side: a small movable bubble that opens his chat; he can change the plan directly. */
+function CoachChat({ uid, female, screen, profile, plan, onResult }: { uid: string; female: boolean; screen: Screen; profile: HealthProfile; plan: HealthPlan | null; onResult: (r: { profile: HealthProfile; plan: HealthPlan | null; go: string }) => void }) {
+  const key = `mahdi-health-chat:${uid}`;
+  const hello: CoachMsg = {
+    role: "assistant",
+    text: female
+      ? "هلا يا بطلة 🦁 أنا عباس سبع القنطرة. أي شي ما فهمتيه أو تبين تغيرينه في خطتك قولي لي، وأنا أعدله لك على طول."
+      : "هلا يا بطل 🦁 أنا عباس سبع القنطرة. أي شي ما فهمته أو تبي تغيره في خطتك قول لي، وأنا أعدله لك على طول.",
+  };
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<CoachMsg[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) ?? "null") as CoachMsg[] | null;
+      return Array.isArray(saved) && saved.length ? saved : [hello];
+    } catch {
+      return [hello];
+    }
+  });
+  const [choices, setChoices] = useState<string[]>(["ما فهمت الخطة، اشرح لي", "ما عندي أدوات، عدّل الجدول", "أبي أنزل وزن وأبني عضل", "عندي إصابة في ركبتي"]);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(list.slice(-40)));
+    } catch {
+      /* private window */
+    }
+    end.current?.scrollIntoView({ block: "nearest" });
+  }, [list, key, busy]);
+
+  const send = async (text: string) => {
+    const said = text.trim();
+    if (!said || busy) return;
+    const next = [...list, { role: "user" as const, text: said }];
+    setList(next);
+    setDraft("");
+    setChoices([]);
+    setBusy(true);
+    try {
+      const r = await mahdiFetch<{ reply: string; choices: string[]; profile: HealthProfile; plan: HealthPlan | null; go: string; changed: boolean }>("/api/mahdi/health/coach", {
+        method: "POST",
+        json: { messages: next.filter((m) => !m.error).map(({ role, text }) => ({ role, text })), profile, plan, screen },
+      });
+      setList((l) => [...l, { role: "assistant", text: r.reply, changed: r.changed }]);
+      setChoices(r.choices ?? []);
+      onResult(r);
+    } catch (e) {
+      setList((l) => [...l, { role: "assistant", text: (e as Error).message || "عباس ما قدر يرد الحين، جرّب بعد شوي.", error: true }]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <MovableBubble id="mahdi-coach" corner="left" size={52} label="عباس سبع القنطرة: اسألني" gradient="linear-gradient(135deg, #c6ff1a, #5c7a00)" hidden={open} onPress={() => setOpen(true)}>
+        <RobotFace id="sabaa" size={38} />
+      </MovableBubble>
+      {open && (
+        <aside className="gym-chat" role="dialog" aria-modal="false" aria-label="محادثة عباس سبع القنطرة" dir="rtl">
+          <header>
+            <RobotFace id="sabaa" size={38} />
+            <div>
+              <b>{COACH}</b>
+              <small>مدربك · يعدّل خطتك مباشرة</small>
+            </div>
+            <button type="button" className="gym-icon-btn" onClick={() => setOpen(false)} aria-label="إغلاق">✕</button>
+          </header>
+          <div className="gym-chat-list" aria-live="polite">
+            {list.map((m, i) => (
+              <div key={i} className={`gym-msg ${m.role}${m.error ? " err" : ""}`}>
+                {m.text}
+                {m.changed && <span className="gym-msg-tag">✓ عدّلت خطتك</span>}
+              </div>
+            ))}
+            {busy && <div className="gym-msg assistant">عباس يكتب… 🏋️</div>}
+            <div ref={end} />
+          </div>
+          {!!choices.length && !busy && (
+            <div className="gym-chips px-3 pb-2">
+              {choices.map((c) => (
+                <button key={c} type="button" className="gym-chip" onClick={() => void send(c)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+          <form className="gym-chat-send" onSubmit={(e) => (e.preventDefault(), void send(draft))}>
+            <textarea
+              className="gym-input"
+              rows={2}
+              maxLength={1500}
+              placeholder="اكتب لعباس…"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send(draft);
+                }
+              }}
+            />
+            <button type="submit" className="gym-btn sm" disabled={busy || !draft.trim()}>
+              إرسال
+            </button>
+          </form>
+          <p className="gym-chat-note">عباس مساعد ذكي وقد يخطئ؛ عندك مشكلة صحية؟ ارجع لطبيبك.</p>
+        </aside>
+      )}
+    </>
   );
 }
 
@@ -513,7 +662,7 @@ function PlanSummary({ plan, onOpen, onHabits, onEdit }: { plan: HealthPlan; onO
     <section className="gym-card hot space-y-3">
       <div className="flex items-center justify-between">
         <span className="gym-eyebrow">خطتي</span>
-        <span className="gym-small">{LABELS.track[plan.profile.track]} · {LABELS.goal[plan.profile.goal]}</span>
+        <span className="gym-small">{LABELS.track[plan.profile.track]} · {plan.profile.goals.map((g) => LABELS.goal[g]).join(" + ")}</span>
       </div>
       <div className="gym-stats">
         {plan.food && (
@@ -556,7 +705,7 @@ function BuildFood({ idx, plan, n, save, back, next }: { idx: number; plan: Heal
       </div>
       {k === "kcal" && (
         <div className="gym-stats">
-          <div className="gym-stat"><b>{Math.round((f.kcal * (plan.profile.goal === "muscle" ? 0.25 : 0.3)) / 9)}</b><span>غ دهون تقريبًا</span></div>
+          <div className="gym-stat"><b>{macrosOf(f, plan.profile).fatG}</b><span>غ دهون تقريبًا</span></div>
           <div className="gym-stat"><b>{n.fiberG}</b><span>غ ألياف</span></div>
           <div className="gym-stat orange"><b>&lt;{n.sugarG}</b><span>غ سكر مضاف</span></div>
           <div className="gym-stat orange"><b>&lt;{n.saltG}</b><span>غ ملح</span></div>
@@ -572,7 +721,7 @@ function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: PlanDay
   const w = plan.workout!;
   const p = plan.profile;
   const setDay = (d: PlanDay) => save({ ...plan, workout: { ...w, days: w.days.map((x) => (x.weekday === d.weekday ? d : x)) } });
-  const pool = EXERCISES.filter((e) => (p.place === "gym" ? e.gym : e.home) && (!gentle(p) || e.preg) && !day.items.some((i) => i.exId === e.id));
+  const pool = EXERCISES.filter((e) => placeOk(e, p.place) && (!gentle(p) || e.preg) && !day.items.some((i) => i.exId === e.id));
   return (
     <article className="gym-day">
       <header>
@@ -673,8 +822,8 @@ function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; save: (p
           <div className="gym-stats">
             <div className="gym-stat"><b>{plan.food.kcal}</b><span>سعرة باليوم</span></div>
             <div className="gym-stat"><b>{plan.food.proteinG}</b><span>غ بروتين ({n.proteinMealG} غ للوجبة)</span></div>
-            <div className="gym-stat"><b>{Math.round((plan.food.kcal * (plan.profile.goal === "muscle" || plan.profile.goal === "strength" ? 0.25 : 0.3)) / 9)}</b><span>غ دهون</span></div>
-            <div className="gym-stat"><b>{Math.max(0, Math.round((plan.food.kcal - plan.food.proteinG * 4 - Math.round((plan.food.kcal * (plan.profile.goal === "muscle" || plan.profile.goal === "strength" ? 0.25 : 0.3)) / 9) * 9) / 4))}</b><span>غ كربوهيدرات</span></div>
+            <div className="gym-stat"><b>{macrosOf(plan.food, plan.profile).fatG}</b><span>غ دهون</span></div>
+            <div className="gym-stat"><b>{macrosOf(plan.food, plan.profile).carbG}</b><span>غ كربوهيدرات</span></div>
             <div className="gym-stat orange"><b>{plan.food.waterCups}</b><span>أكواب ماء</span></div>
             <div className="gym-stat orange"><b>{plan.food.produce}</b><span>حصص خضار وفواكه</span></div>
             <div className="gym-stat"><b>{n.fiberG}</b><span>غ ألياف</span></div>

@@ -10,7 +10,7 @@ export type Stage = "none" | "pregnant" | "postpartum" | "breastfeeding";
 export type Goal = "lose" | "muscle" | "strength" | "fit" | "health";
 export type Track = "gym" | "food" | "both";
 export type Level = "beginner" | "intermediate" | "advanced";
-export type Place = "gym" | "home";
+export type Place = "gym" | "home" | "body";
 export type Activity = keyof typeof REF.activity;
 
 export interface HealthProfile {
@@ -20,7 +20,8 @@ export interface HealthProfile {
   heightCm: number;
   weightKg: number;
   activity: Activity;
-  goal: Goal;
+  /** one or more goals together (losing fat and building muscle is a «recomposition») */
+  goals: Goal[];
   stage: Stage;
   /** pregnancy week (1–42) */
   pregWeek: number;
@@ -47,7 +48,7 @@ export const DEFAULT_PROFILE: HealthProfile = {
   heightCm: 172,
   weightKg: 75,
   activity: "light",
-  goal: "fit",
+  goals: ["fit"],
   stage: "none",
   pregWeek: 12,
   babyMonths: 2,
@@ -65,7 +66,7 @@ export const LABELS = {
   goal: { lose: "نزول وزن (حرق دهون)", muscle: "بناء عضل", strength: "قوة", fit: "لياقة وشكل متناسق", health: "صحة عامة" } as Record<Goal, string>,
   activity: { sedentary: "قليل الحركة (مكتب)", light: "حركة خفيفة", moderate: "نشيط (شغل فيه حركة)", active: "نشيط جدًا", very: "شغل بدني شاق" } as Record<Activity, string>,
   level: { beginner: "مبتدئ", intermediate: "متوسط", advanced: "متقدم" } as Record<Level, string>,
-  place: { gym: "النادي (جيم)", home: "البيت" } as Record<Place, string>,
+  place: { gym: "جيم (نادي)", home: "جيم بيتي (عندي أدوات)", body: "بدون أدوات (وزن الجسم)" } as Record<Place, string>,
   stage: { none: "لا", pregnant: "حامل", postpartum: "بعد الولادة", breastfeeding: "مرضعة" } as Record<Stage, string>,
   track: { gym: "الجيم بس", food: "التغذية بس", both: "الجيم والتغذية" } as Record<Track, string>,
 };
@@ -87,6 +88,17 @@ export const RED_FLAGS = [
 
 /** ACOG 804: stop and call the doctor */
 export const STOP_SIGNS = ["نزيف من المهبل", "انقباضات منتظمة مؤلمة", "نزول ماء", "ضيق تنفس قبل الجهد", "دوخة", "صداع", "ألم في الصدر", "ضعف عضلات يأثر على التوازن", "ألم أو تورم في السمانة"];
+
+export const GOALS: Goal[] = ["lose", "muscle", "strength", "fit", "health"];
+export const has = (p: HealthProfile, g: Goal) => p.goals.includes(g);
+/** fat share 25% when the plan builds muscle or strength without a cut */
+export const buildsMuscle = (p: HealthProfile) => (has(p, "muscle") || has(p, "strength")) && !has(p, "lose");
+/** the goals a saved or sent profile asks for (an old profile had one «goal») */
+function goalsOf(o: Record<string, unknown>): Goal[] {
+  const raw = Array.isArray(o.goals) ? o.goals : typeof o.goal === "string" ? [o.goal] : [];
+  const out = GOALS.filter((g) => raw.includes(g));
+  return out.length ? out : ["fit"];
+}
 
 export const trimester = (week: number): 1 | 2 | 3 => (week <= 13 ? 1 : week <= 27 ? 2 : 3);
 /** pregnancy, or the first 3 months after birth: the gentle table */
@@ -138,16 +150,19 @@ export function nutrition(p: HealthProfile): Nutrition {
     notes.push("الحمل مو وقت رجيم: ما فيه عجز في السعرات حتى لو الهدف نزول وزن. السعرات الإضافية تبدأ من الثلث الثاني.");
   } else if (lact) {
     kcal += p.babyMonths < 6 ? REF.lactationKcal.early : REF.lactationKcal.late;
-    if (p.goal === "lose") {
+    if (has(p, "lose")) {
       kcal -= 300;
       notes.push("نزول هادي أثناء الرضاعة (حوالي نصف كيلو بالأسبوع كحد أعلى) عشان الحليب وصحتك.");
     }
   } else if (minor) {
     notes.push("تحت 18 سنة: بدون رجيم أو عجز في السعرات إلا بإشراف طبيب؛ ركّز على الحركة والأكل الصحي.");
-  } else if (p.goal === "lose") {
+  } else if (has(p, "lose") && has(p, "muscle")) {
+    kcal = tdee * (1 - REF.deficit / 2);
+    notes.push("حرق دهون وبناء عضل مع بعض (إعادة تشكيل الجسم): عجز بسيط 10% مع بروتين عالي ومقاومة منتظمة، والوزن ينزل ببطء والشكل يتحسن.");
+  } else if (has(p, "lose")) {
     kcal = tdee * (1 - REF.deficit);
     notes.push("عجز حوالي 20%: نزول تقريبًا 0.5–1% من وزنك بالأسبوع مع الحفاظ على عضلك (بشرط البروتين والمقاومة).");
-  } else if (p.goal === "muscle") {
+  } else if (has(p, "muscle")) {
     kcal = tdee * (1 + REF.surplus);
     notes.push("زيادة بسيطة 10% فوق حاجتك: عضل أكثر ودهون أقل من التضخيم القوي.");
   }
@@ -164,14 +179,14 @@ export function nutrition(p: HealthProfile): Nutrition {
   let perKg: number = REF.protein.health;
   if (preg) perKg = REF.proteinPregnancy;
   else if (lact) perKg = REF.proteinLactation;
-  else if (p.goal === "lose" && !minor) perKg = REF.protein.cut;
-  else if ((p.goal === "muscle" || p.goal === "strength") && trains) perKg = REF.protein.muscle;
+  else if (has(p, "lose") && !minor) perKg = REF.protein.cut;
+  else if ((has(p, "muscle") || has(p, "strength")) && trains) perKg = REF.protein.muscle;
   else if (trains || p.activity !== "sedentary") perKg = REF.protein.active;
   let proteinG = r5(perKg * refKg);
   if (preg) proteinG = Math.max(proteinG, REF.proteinPregnancyMinG);
   const proteinMealG = Math.min(40, Math.max(20, r5(proteinG / Math.max(3, p.meals))));
 
-  const fatShare = p.goal === "muscle" || p.goal === "strength" ? REF.fatShareMuscle : REF.fatShare;
+  const fatShare = buildsMuscle(p) ? REF.fatShareMuscle : REF.fatShare;
   const fatG = r5((kcal * fatShare) / 9);
   const carbG = Math.max(0, r5((kcal - proteinG * 4 - fatG * 9) / 4));
   const fiberG = Math.round((kcal / 1000) * REF.fiberPer1000);
@@ -221,65 +236,103 @@ export interface Exercise {
   name: string;
   muscle: Muscle;
   compound: boolean;
+  /** a full gym (machines, cables, barbells) */
   gym: boolean;
+  /** a home gym: dumbbells, an adjustable bench, bands, a pull-up bar */
   home: boolean;
+  /** nothing at all: the body, a chair, a towel, a step, a wall */
+  body: boolean;
   /** suitable in pregnancy (no lying on the back, no heavy bracing, no fall risk) */
   preg: boolean;
   cue: string;
 }
 
-const X = (id: string, name: string, muscle: Muscle, compound: boolean, where: "g" | "h" | "gh", preg: boolean, cue: string): Exercise => ({
-  id, name, muscle, compound, gym: where.includes("g"), home: where.includes("h"), preg, cue,
-});
+/** where: g = gym, h = home gym, b = no equipment (what needs nothing works everywhere) */
+const X = (id: string, name: string, muscle: Muscle, compound: boolean, where: string, preg: boolean, cue: string): Exercise => {
+  const b = where.includes("b");
+  return { id, name, muscle, compound, gym: b || where.includes("g"), home: b || where.includes("h"), body: b, preg, cue };
+};
 
 export const EXERCISES: Exercise[] = [
+  // الفخذ الأمامي
   X("back-squat", "سكوات بالبار", "quads", true, "g", false, "الصدر مرفوع، انزل لين الفخذ موازي الأرض"),
   X("leg-press", "ليق برس (دفع الأرجل)", "quads", true, "g", true, "لا تقفل الركبة فوق"),
   X("goblet-squat", "سكوات بالدمبل (جوبلت)", "quads", true, "gh", true, "الدمبل قدام صدرك، الركب مع اتجاه الأصابع"),
-  X("box-squat", "سكوات على كرسي", "quads", true, "gh", true, "اقعد على الكرسي بهدوء وقوم"),
-  X("split-squat", "سبليت سكوات (طعن ثابت)", "quads", true, "gh", true, "مسك شي للتوازن لو تحتاج"),
+  X("bw-squat", "سكوات بوزن الجسم", "quads", true, "b", false, "انزل ببطء ثلاث ثواني، واطلع بقوة"),
+  X("box-squat", "سكوات على كرسي", "quads", true, "b", true, "اقعد على الكرسي بهدوء وقوم"),
+  X("split-squat", "سبليت سكوات (طعن ثابت)", "quads", true, "b", true, "مسك شي للتوازن لو تحتاج"),
+  X("bulgarian", "بلغاري سبليت سكوات (رجل على الكنبة)", "quads", true, "b", false, "الرجل الخلفية على الكنبة، انزل بالأمامية"),
   X("leg-ext", "ليق إكستنشن", "quads", false, "g", true, "نزول بطيء"),
+  // الخلفية والورك
   X("rdl", "رومانيان ديدلفت", "hinge", true, "gh", false, "ظهر مستقيم والورك لورا"),
   X("deadlift", "ديدلفت", "hinge", true, "g", false, "البار قريب من جسمك، ادفع الأرض"),
   X("hip-hinge-band", "انحناء الورك بالمطاط", "hinge", true, "gh", true, "حركة من الورك بدون ثقل كبير"),
+  X("sl-rdl", "رومانيان على رجل وحدة (بدون وزن)", "hinge", true, "b", false, "ظهرك مستقيم، ومسك الجدار لو تحتاج"),
+  X("good-morning", "جود مورنينق بوزن الجسم", "hinge", true, "b", true, "اليدين ورا الراس والورك لورا"),
+  // المؤخرة
   X("hip-thrust", "هيب ثرست", "glutes", true, "gh", false, "اعصر المؤخرة فوق ثانية"),
+  X("glute-bridge", "جسر المؤخرة على الأرض", "glutes", true, "b", false, "اعصر فوق ثانيتين"),
   X("cable-kickback", "ركلة للخلف بالكيبل", "glutes", false, "g", true, "واقف وماسك الجهاز"),
-  X("step-up", "طلوع على درجة", "glutes", true, "gh", true, "درجة منخفضة في الحمل"),
-  X("side-clam", "تمرين الصدفة على الجنب", "glutes", false, "gh", true, "على جنبك، افتح الركبة وارجع"),
+  X("step-up", "طلوع على درجة", "glutes", true, "b", true, "درجة منخفضة في الحمل"),
+  X("side-clam", "تمرين الصدفة على الجنب", "glutes", false, "b", true, "على جنبك، افتح الركبة وارجع"),
+  // الفخذ الخلفي
   X("leg-curl", "ليق كيرل جالس", "hams", false, "g", true, "نزول بطيء"),
-  X("ham-slide", "سحب الكعب على الأرض", "hams", false, "h", false, "الورك فوق"),
-  X("calf-raise", "رفع السمانة واقف", "calves", false, "gh", true, "ثانية فوق وثانية تحت"),
+  X("db-leg-curl", "ليق كيرل بالدمبل على البطن", "hams", false, "h", false, "الدمبل بين القدمين، نزول بطيء"),
+  X("ham-slide", "سحب الكعب بالمنشفة على الأرض", "hams", false, "b", false, "الورك فوق والكعب على منشفة"),
+  // السمانة
+  X("calf-raise", "رفع السمانة واقف", "calves", false, "b", true, "ثانية فوق وثانية تحت، على درجة لو تقدر"),
+  // الصدر
   X("bench", "بنش برس بالبار", "chest", true, "g", false, "الكتف لورا والقدم ثابتة"),
-  X("incline-db", "ضغط دمبل على مقعد مائل", "chest", true, "g", true, "المقعد مائل (مو مسطح) في الحمل"),
+  X("incline-db", "ضغط دمبل على مقعد مائل", "chest", true, "gh", true, "المقعد مائل (مو مسطح) في الحمل"),
   X("chest-press", "جهاز ضغط الصدر جالس", "chest", true, "g", true, "ظهرك على المسند"),
-  X("pushup", "ضغط (بوش أب)", "chest", true, "h", false, "جسمك خط مستقيم"),
-  X("incline-pushup", "ضغط على طاولة أو جدار", "chest", true, "gh", true, "كل ما ارتفعت اليد صار أسهل"),
+  X("pushup", "ضغط (بوش أب)", "chest", true, "b", false, "جسمك خط مستقيم، وعلى الركب لو صعب"),
+  X("incline-pushup", "ضغط على طاولة أو جدار", "chest", true, "b", true, "كل ما ارتفعت اليد صار أسهل"),
+  X("decline-pushup", "ضغط والرجلين على الكنبة", "chest", true, "b", false, "أصعب من العادي، للأعلى الصدر"),
   X("cable-fly", "فراشة بالكيبل", "chest", false, "g", true, "ضمّ اليدين قدامك"),
+  X("db-fly", "فراشة دمبل على مقعد مائل", "chest", false, "h", true, "الكوع مثني شوي"),
+  // الظهر (عرض)
   X("pulldown", "سحب أمامي (لات بول داون)", "backV", true, "g", true, "اسحب للصدر والكتف تحت"),
-  X("pullup", "عقلة", "backV", true, "g", false, "استعن بالجهاز المساعد لو تحتاج"),
+  X("pullup", "عقلة", "backV", true, "gh", false, "بالمطاط المساعد أو الجهاز لو تحتاج"),
   X("band-pulldown", "سحب المطاط من فوق", "backV", true, "h", true, "اربط المطاط فوق الباب"),
+  X("towel-pulldown", "سحب المنشفة لتحت (شد ثابت)", "backV", true, "b", true, "شد المنشفة للجنبين وأنت تنزلها ورا راسك"),
+  X("superman", "سوبرمان على البطن", "backV", false, "b", false, "ارفع اليدين والرجلين وثبّت ثانيتين"),
+  // الظهر (سماكة)
   X("seated-row", "سحب جالس بالكيبل", "backH", true, "g", true, "ظهرك مستقيم والكوع لورا"),
   X("db-row", "سحب دمبل بيد وحدة", "backH", true, "gh", true, "ساند يدك وركبتك على مقعد"),
   X("band-row", "سحب المطاط جالس", "backH", true, "h", true, "اعصر بين الكتفين"),
   X("barbell-row", "سحب بالبار منحني", "backH", true, "g", false, "ظهر مستقيم"),
+  X("table-row", "سحب تحت طاولة قوية", "backH", true, "b", false, "تأكد إن الطاولة ثابتة، اسحب صدرك لها"),
+  X("door-row", "سحب على إطار الباب بالمنشفة", "backH", true, "b", true, "لف المنشفة على مقبض الباب واسحب جسمك"),
+  // الكتف
   X("ohp", "ضغط كتف واقف بالبار", "shoulders", true, "g", false, "شد البطن ولا تقوّس الظهر"),
   X("seated-db-press", "ضغط كتف دمبل جالس", "shoulders", true, "gh", true, "ظهرك على المسند"),
+  X("pike-pushup", "ضغط الكتف (بايك بوش أب)", "shoulders", true, "b", false, "الورك فوق والراس ينزل بين اليدين"),
+  X("wall-press", "ضغط كتف على الجدار", "shoulders", true, "b", true, "واقف مايل على الجدار، ادفع للأعلى"),
   X("lateral-raise", "رفرفة جانبي", "laterals", false, "gh", true, "لين مستوى الكتف"),
+  X("bottle-raise", "رفرفة جانبي بقناني ماء", "laterals", false, "b", true, "قنينتين مليانة، لين مستوى الكتف"),
   X("face-pull", "فيس بول (كيبل للوجه)", "rear", false, "g", true, "اسحب لعيونك والكوع عالي"),
   X("band-pull-apart", "فتح المطاط قدامك", "rear", false, "h", true, "اعصر بين الكتفين"),
   X("rear-fly", "رفرفة خلفي جالس", "rear", false, "gh", true, "خفيف وبتحكم"),
+  X("ytw", "رفع Y-T-W على البطن", "rear", false, "b", false, "اليدين بشكل الحروف، ثانية فوق"),
+  X("wall-angel", "ملاك الجدار", "rear", false, "b", true, "ظهرك على الجدار وحرك يدينك فوق وتحت"),
+  // الذراع
   X("db-curl", "بايسبس دمبل", "biceps", false, "gh", true, "الكوع ثابت جنبك"),
   X("cable-curl", "بايسبس كيبل", "biceps", false, "g", true, "نزول بطيء"),
   X("hammer-curl", "بايسبس هامر", "biceps", false, "gh", true, "الكف يقابل الجسم"),
+  X("towel-curl", "بايسبس بالمنشفة (رجلك تقاوم)", "biceps", false, "b", true, "المنشفة تحت قدمك، اسحب وقاوم بالرجل"),
+  X("bag-curl", "بايسبس بشنطة فيها أغراض", "biceps", false, "b", true, "عبّها كتب أو ماي، الكوع ثابت"),
   X("pushdown", "ترايسبس كيبل للأسفل", "triceps", false, "g", true, "الكوع ثابت"),
   X("overhead-ext", "ترايسبس دمبل فوق الراس", "triceps", false, "gh", true, "جالس وظهرك مسنود"),
-  X("bench-dip", "ترايسبس على الكرسي", "triceps", false, "h", false, "الكرسي ثابت"),
-  X("plank", "بلانك", "core", false, "gh", false, "جسمك خط مستقيم"),
+  X("bench-dip", "ترايسبس على الكرسي", "triceps", false, "b", false, "الكرسي ثابت"),
+  X("diamond-pushup", "ضغط ضيق (للترايسبس)", "triceps", true, "b", false, "اليدين قريبة والكوع لصق الجسم"),
+  X("wall-tri", "ترايسبس على الجدار", "triceps", false, "b", true, "الساعدين على الجدار وادفع بالكف"),
+  // البطن والثبات
+  X("plank", "بلانك", "core", false, "b", false, "جسمك خط مستقيم"),
   X("pallof", "بالوف برس (ثبات البطن)", "core", false, "gh", true, "قاوم الدوران"),
-  X("dead-bug", "ديد بق", "core", false, "gh", false, "أسفل الظهر لاصق بالأرض"),
-  X("bird-dog", "بيرد دوق (على الأربع)", "core", false, "gh", true, "يد ورجل عكسية ببطء"),
-  X("side-plank-knee", "بلانك جانبي على الركبة", "core", false, "gh", true, "الورك مرفوع"),
-  X("kegel", "تمارين قاع الحوض (كيجل)", "pelvic", false, "gh", true, "شد 3–5 ثواني وارخِ، 10 مرات"),
+  X("dead-bug", "ديد بق", "core", false, "b", false, "أسفل الظهر لاصق بالأرض"),
+  X("bird-dog", "بيرد دوق (على الأربع)", "core", false, "b", true, "يد ورجل عكسية ببطء"),
+  X("side-plank-knee", "بلانك جانبي على الركبة", "core", false, "b", true, "الورك مرفوع"),
+  X("kegel", "تمارين قاع الحوض (كيجل)", "pelvic", false, "b", true, "شد 3–5 ثواني وارخِ، 10 مرات"),
 ];
 
 export const exerciseById = (id: string) => EXERCISES.find((e) => e.id === id);
@@ -323,9 +376,11 @@ export interface Workout {
   notes: string[];
 }
 
+export const placeOk = (e: Exercise, place: Place) => (place === "gym" ? e.gym : place === "home" ? e.home : e.body);
+
 export function candidates(muscle: Muscle, p: HealthProfile): Exercise[] {
   const soft = gentle(p);
-  return EXERCISES.filter((e) => e.muscle === muscle && (p.place === "gym" ? e.gym : e.home) && (!soft || e.preg));
+  return EXERCISES.filter((e) => e.muscle === muscle && placeOk(e, p.place) && (!soft || e.preg));
 }
 
 export function splitFor(p: HealthProfile): Focus[] {
@@ -351,8 +406,8 @@ export function dose(ex: Exercise, p: HealthProfile): Omit<PlanItem, "exId"> {
   if (gentle(p)) return { sets: 2, reps: "10–15", restSec: 60 };
   const sets = p.level === "beginner" ? (ex.compound ? 3 : 2) : p.level === "advanced" && ex.compound ? 4 : 3;
   if (ex.muscle === "core") return { sets: Math.min(sets, 3), reps: ex.id === "plank" ? "30–45 ث" : "10–12", restSec: 45 };
-  if (p.goal === "strength" && ex.compound) return { sets: p.level === "beginner" ? 3 : 4, reps: "4–6", restSec: 180 };
-  if (ex.compound) return { sets, reps: p.goal === "muscle" ? "6–10" : "8–12", restSec: 120 };
+  if (has(p, "strength") && ex.compound) return { sets: p.level === "beginner" ? 3 : 4, reps: "4–6", restSec: 180 };
+  if (ex.compound) return { sets, reps: has(p, "muscle") ? "6–10" : "8–12", restSec: 120 };
   return { sets, reps: "10–15", restSec: 75 };
 }
 
@@ -394,7 +449,7 @@ export function workout(p: HealthProfile): Workout {
   });
 
   const soft = gentle(p);
-  const weeklyCardioMin = soft ? REF.pregnancyWeeklyMinutes : p.goal === "lose" ? 200 : REF.aerobicModerateMin;
+  const weeklyCardioMin = soft ? REF.pregnancyWeeklyMinutes : has(p, "lose") ? 200 : REF.aerobicModerateMin;
   const each = built.length ? r5(Math.min(30, weeklyCardioMin / Math.max(built.length, 3))) : 0;
   built.forEach((d) => (d.cardioMin = each));
   const outside = weeklyCardioMin - each * built.length;
@@ -573,7 +628,7 @@ export function cleanProfile(v: unknown): HealthProfile {
     heightCm: Math.round(num("heightCm", 120, 230)),
     weightKg: Math.round(num("weightKg", 30, 300) * 10) / 10,
     activity: pick("activity", Object.keys(REF.activity) as Activity[]),
-    goal: pick("goal", ["lose", "muscle", "strength", "fit", "health"] as const),
+    goals: goalsOf(o),
     stage: sex === "female" ? pick("stage", ["none", "pregnant", "postpartum", "breastfeeding"] as const) : "none",
     pregWeek: Math.round(num("pregWeek", 1, 42)),
     babyMonths: Math.round(num("babyMonths", 0, 24)),
@@ -581,7 +636,8 @@ export function cleanProfile(v: unknown): HealthProfile {
     clearance: o.clearance === true,
     redFlags: Array.isArray(o.redFlags) ? o.redFlags.filter((x): x is string => RED_FLAGS.some((r) => r.id === x)) : [],
     level: pick("level", ["beginner", "intermediate", "advanced"] as const),
-    place: pick("place", ["gym", "home"] as const),
+    // «home» was the home gym before «بدون أدوات» was added
+    place: o.place === "home" || o.place === "homegym" ? "home" : pick("place", ["gym", "home", "body"] as const),
     days: days.length ? days : D.days,
     minutes: Math.round(num("minutes", 20, 120)),
     meals: Math.round(num("meals", 2, 6)),
@@ -628,4 +684,10 @@ export function cleanPlan(v: unknown): HealthPlan | null {
     wk = { ...wk, days: days.sort((a, b) => a.weekday - b.weekday), weeklyCardioMin: n(w.weeklyCardioMin, 0, 1000, wk.weeklyCardioMin) };
   }
   return { profile, mode: fresh.mode, food, workout: wk, savedAt: new Date().toISOString() };
+}
+
+/** fat and carbs of the day from the calories and protein the person kept */
+export function macrosOf(food: { kcal: number; proteinG: number }, p: HealthProfile) {
+  const fatG = Math.round((food.kcal * (buildsMuscle(p) ? REF.fatShareMuscle : REF.fatShare)) / 9);
+  return { fatG, carbG: Math.max(0, Math.round((food.kcal - food.proteinG * 4 - fatG * 9) / 4)) };
 }

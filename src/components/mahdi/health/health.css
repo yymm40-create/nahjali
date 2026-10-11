@@ -249,3 +249,46 @@
   line-height: 1.7;
 }
 .gym-coach p b { display: block; font-size: 0.7rem; font-weight: 900; color: var(--g-lime); }
+
+/* always on top of the branch: see your doctor, and the AI can be wrong */
+.gym-doctor {
+  font-size: 0.78rem;
+  line-height: 1.7;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255, 122, 26, 0.55);
+  background: rgba(255, 122, 26, 0.1);
+  color: #ffd9bd;
+}
+.gym-doctor b { color: #fff; }
+
+/* «عباس سبع القنطرة»'s side chat */
+.gym-chat {
+  position: fixed;
+  z-index: 80;
+  inset-inline-start: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: min(400px, calc(100vw - 24px));
+  height: min(600px, calc(100dvh - 90px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 1.2rem;
+  border: 1px solid #c6ff1a66;
+  background: #0f1216;
+  color: #f3f4f1;
+  box-shadow: 0 24px 70px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(198, 255, 26, 0.15);
+  overflow: hidden;
+}
+.gym-chat > header { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.8rem; background: linear-gradient(90deg, rgba(198, 255, 26, 0.18), transparent); border-bottom: 1px solid #2a3038; }
+.gym-chat > header div { flex: 1; min-width: 0; }
+.gym-chat > header b { display: block; font-weight: 900; }
+.gym-chat > header small { color: #9aa3ad; font-size: 0.72rem; }
+.gym-chat-list { flex: 1; overflow-y: auto; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.gym-msg { max-width: 88%; white-space: pre-wrap; font-size: 0.88rem; line-height: 1.75; padding: 0.5rem 0.75rem; border-radius: 1rem; }
+.gym-msg.assistant { align-self: flex-end; background: #1a1f26; border: 1px solid #2a3038; border-end-end-radius: 0.3rem; }
+.gym-msg.user { align-self: flex-start; background: #c6ff1a; color: #0c0e11; font-weight: 700; border-end-start-radius: 0.3rem; }
+.gym-msg.err { border-color: #ff4d4d; color: #ffb3b3; }
+.gym-msg-tag { display: block; margin-top: 0.3rem; font-size: 0.7rem; font-weight: 900; color: #c6ff1a; }
+.gym-chat-send { display: flex; align-items: flex-end; gap: 0.4rem; padding: 0.6rem; border-top: 1px solid #2a3038; }
+.gym-chat-send .gym-input { min-height: 44px; padding: 0.5rem 0.7rem; resize: none; font-weight: 600; }
+.gym-chat-note { font-size: 0.68rem; color: #9aa3ad; text-align: center; padding: 0 0.6rem 0.5rem; }
