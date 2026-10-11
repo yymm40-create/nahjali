@@ -136,7 +136,9 @@ export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean
               <Range label="نعومة الحافة" value={k.soft} disabled={locked} onChange={(v) => setKey({ soft: v }, "soft")} />
               <Range label="شدّ الحافة (Choke)" value={k.choke} disabled={locked} onChange={(v) => setKey({ choke: v }, "choke")} />
               <Range label="Despill — إزالة الانعكاس الأخضر" value={k.spill} disabled={locked} onChange={(v) => setKey({ spill: v }, "spill")} />
-              <p className="text-[11px] leading-5 text-jw-faint">فعّل «اعرض الماسك»: الشاشة لازم تطلع سودا كلها والشخص أبيض. بقايا رمادية في الخلفية؟ زِد «تنظيف الخلفية». ثقوب في الشخص؟ زِد «سد الفراغات». حافة خضرا؟ زِد الـDespill أو شد الحافة.</p>
+              <Range label="حواف الشعر (شعيرات شفافة بدل مأكولة)" value={k.hair ?? 0.5} disabled={locked} onChange={(v) => setKey({ hair: v }, "hair")} />
+              <Range label="ثبات ضد الرجفة (Flicker) بين الفريمات" value={k.steady ?? 0.5} disabled={locked} onChange={(v) => setKey({ steady: v }, "steady")} />
+              <p className="text-[11px] leading-5 text-jw-faint">فعّل «اعرض الماسك»: الشاشة لازم تطلع سودا كلها والشخص أبيض. بقايا رمادية في الخلفية؟ زِد «تنظيف الخلفية». ثقوب في الشخص؟ زِد «سد الفراغات». حافة خضرا؟ زِد الـDespill أو شد الحافة. الشعر مأكول أو خشن؟ زِد «حواف الشعر». الحافة ترجف وقت التشغيل؟ زِد «الثبات».</p>
             </>
           )}
           {k?.kind === "luma" && (

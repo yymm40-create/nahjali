@@ -3,6 +3,9 @@
 // this device and browser can do. Kept in memory while the editor is open (the last 200), never sent by itself: only
 // with a diagnosis the owner asks for.
 
+import { describeDevice } from "@/lib/editor/perf";
+import { deviceNow, loadPerf, perfPlan } from "./perf-bench";
+
 export interface DiagEntry {
   /** ms since the editor opened */
   t: number;
@@ -121,9 +124,20 @@ async function device() {
     ...gl,
     webcodecs: { VideoEncoder: "VideoEncoder" in w, VideoDecoder: "VideoDecoder" in w, AudioEncoder: "AudioEncoder" in w, AudioDecoder: "AudioDecoder" in w },
     offscreenCanvas: "OffscreenCanvas" in w,
+    performance: perfSummary(),
     crossOriginIsolated: window.crossOriginIsolated,
     standalone: matchMedia("(display-mode: standalone)").matches,
   };
+}
+
+/** «الأداء»: the choice and the plan it gives (never throws). */
+function perfSummary() {
+  try {
+    const d = deviceNow();
+    return { prefs: loadPerf(), device: describeDevice(d), bench: d.bench, timeline: perfPlan("timeline").why, render: perfPlan("render").why };
+  } catch (e) {
+    return { error: say(e) };
+  }
 }
 
 /** The editor's own media elements as they stand (loaded or stuck, and why). */

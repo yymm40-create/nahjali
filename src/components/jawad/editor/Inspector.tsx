@@ -219,6 +219,13 @@ export default function Inspector({
             <span className="block text-jw-muted">المقاطع في المسار الرئيسي تلتصق ببعض بدون فراغات (مثل CapCut).</span>
           </span>
         </label>
+        <label className="flex items-start gap-2 text-xs">
+          <input type="checkbox" disabled={readOnly || !tl.magnetic} checked={tl.magnetic && tl.magnetAll} onChange={(e) => run({ type: "set_magnet_all", on: e.target.checked })} className="mt-0.5 accent-[var(--jw-accent)]" />
+          <span>
+            <b>مغناطيس كل المسارات</b>
+            <span className="block text-jw-muted">الحذف يشيل نفس الثواني من كل المسارات (اللي فوق المقطع وتحته معه) ويسحب اللي بعده في كل المسارات، فتبقى الصورة والصوت والنصوص متزامنة.</span>
+          </span>
+        </label>
         <div className="space-y-1.5 border-t border-jw-line pt-3">
           <span className="text-xs text-jw-muted">انتقال لكل قصّات المسار الرئيسي</span>
           <select className="jw-input !min-h-9 w-full text-sm" disabled={readOnly} value="" aria-label="انتقال لكل القصّات" onChange={(e) => e.target.value && run({ type: "transition_all", kind: e.target.value === "none" ? null : e.target.value })}>

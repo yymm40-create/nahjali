@@ -23,7 +23,7 @@ export const COMMANDS_GUIDE = `COMMANDS: put each command in "commands" as a JSO
 - {"type":"transition_all","kind":ID|null,"ms":MS?,"trackId":ID?} – the same transition at every cut.
 - {"type":"set_key","clipId":ID,"at":MS,"transform":{...}} – a motion point (keyframe); two or more make the clip move between them.
 - {"type":"update_track","trackId":ID,"patch":{"muted"|"hidden"|"locked"|"duck":BOOL,"name":TEXT}} – duck: music goes quieter by itself under speech; name: what the track is called.
-- {"type":"set_ratio","ratio":"9:16"|"16:9"|"1:1"|"4:5"}, {"type":"set_background","color":"#rrggbb"}, {"type":"set_magnetic","on":BOOL}
+- {"type":"set_ratio","ratio":"9:16"|"16:9"|"1:1"|"4:5"}, {"type":"set_background","color":"#rrggbb"}, {"type":"set_magnetic","on":BOOL}, {"type":"set_magnet_all","on":BOOL} (the magnet on EVERY track: a delete takes the same seconds out of all tracks and closes them)
 - {"type":"retime","map":[[OLD_MS,NEW_MS],...]} – move every clip's time by a map (increasing pairs; linear between them). Texts and pictures stretch with it, sounds keep their length. Use it to make a piece end with its narration or to stretch a part («خلّ الموشن يخلص مع الصوت»).
 - {"type":"set_markers","markers":[MS],"mode":"add"|"replace"|"clear"}
 ${GRADE_COMMANDS}

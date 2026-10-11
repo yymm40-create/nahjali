@@ -7,6 +7,7 @@
 // preview and the export see the same picture.
 
 import { gamutToRec709, gradeIsNeutral, logInput, lutBytes, maskAt, sampleCurve, shapeAt, type Grade, type LogId, type Mask, type Pt, type Secondary } from "@/lib/editor/grade";
+import { glPower } from "./perf-bench";
 
 const LOG_CODE: Record<LogId, number> = { none: 0, slog3: 1, slog2: 2, clog: 3, clog2: 4, clog3: 5, vlog: 6, logc3: 7, logc4: 8, nlog: 9, dlog: 10, flog: 11, flog2: 12, bmd5: 13, applelog: 14, redlog3g10: 15, hlg: 16, generic: 17 };
 const CURVE_N = 256;
@@ -245,11 +246,24 @@ interface Gl {
 let ctx: Gl | null | undefined;
 let failed = false;
 
+/** Forgets the context (after the performance choice changed): the next frame makes a new one with the new power. */
+export function resetGradeGl() {
+  if (ctx) {
+    try {
+      ctx.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+      /* gone */
+    }
+  }
+  ctx = undefined;
+  failed = false;
+}
+
 function setup(): Gl | null {
   if (ctx !== undefined) return ctx;
   try {
     const canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(16, 16) : document.createElement("canvas");
-    const gl = canvas.getContext("webgl2", { premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false }) as WebGL2RenderingContext | null;
+    const gl = canvas.getContext("webgl2", { premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false, powerPreference: glPower() }) as WebGL2RenderingContext | null;
     if (!gl) throw new Error("no webgl2");
     const sh = (type: number, src: string) => {
       const s = gl.createShader(type)!;

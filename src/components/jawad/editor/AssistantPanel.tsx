@@ -733,7 +733,7 @@ export default function AssistantPanel({
         )}
         {!msgs.length && chat.loaded && (
           <div className="space-y-3">
-            <div className="max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
+            <div className="jw-select-text max-w-[92%] rounded-2xl rounded-ss-sm bg-jw-surface-2 px-3 py-2 text-sm leading-6">
               هلا! أنا حيدرة، مساعدك في المونتاج 👋
               <span className="mt-1 block text-xs leading-6 text-jw-muted">قل لي وش تبي بكلامك وأنا أعدّل التايملاين: أقص السكتات، أرتّب، أحط انتقالات ونصوص وكابشن، وأنظّف الصوت. كل اللي أسويه تتراجع عنه بضغطة.</span>
             </div>
@@ -755,7 +755,7 @@ export default function AssistantPanel({
           </div>
         )}
         {msgs.map((m, i) => (
-          <div key={i} className={`max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-6 ${m.role === "user" ? "ms-auto bg-jw-accent/15" : m.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-surface-2"}`} dir="auto">
+          <div key={i} className={`jw-select-text max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-6 ${m.role === "user" ? "ms-auto bg-jw-accent/15" : m.error ? "bg-jw-danger/15 text-jw-danger" : "bg-jw-surface-2"}`} dir="auto">
             <MsgText text={m.text} />
             {m.done ? (
               <p className="mt-1.5 flex items-center gap-2 text-[11px] text-jw-ok">
