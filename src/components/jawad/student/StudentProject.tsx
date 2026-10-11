@@ -7,18 +7,16 @@ import { STUDENT, isResearchSource } from "@config/jawad/student";
 import { useProject, type ProjectState } from "./client";
 import { PURPOSES } from "@config/jawad/student";
 import OutputsStep from "./OutputsStep";
-import ResearchRun from "./ResearchRun";
-import SourcesStep from "./SourcesStep";
 import { useAutopilot } from "./autopilot";
-import BriefStep from "./BriefStep";
+import StartTiers, { type TierId } from "./StartTiers";
 import { STEP_LOOK } from "./look";
 import { AutoSwitch } from "./StudentHome";
 import { ErrorLine } from "./ui";
-import UnderstandingStep from "./UnderstandingStep";
 
-// The steps the student sees: «الطلب» (the first page, open any time to go back and change it), then three. The text
-// review and the source rules happen by themselves: the text is read and approved by the assistant, and the research
-// the first page asked for runs after the understanding. Every step reached can be opened again («رجوع»).
+// The student sees TWO steps: «المادة» — ONE page of three tiers («مراتب»: the request, the material, the understanding, one
+// under the other, see StartTiers) — and «النواتج». The text review and the source rules happen by themselves: the text is
+// read and approved by the assistant, and the research the request asked for runs after the understanding. Every tier
+// reached can be opened again. `StepId` stays the finer position inside the first page (which tier is the current one).
 const STEPS = [
   { id: "brief", label: "الطلب", emoji: "🎯" },
   { id: "sources", label: "المادة", emoji: STEP_LOOK[0].emoji },
@@ -26,6 +24,10 @@ const STEPS = [
   { id: "outputs", label: "النواتج", emoji: STEP_LOOK[2].emoji },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
+const GROUPS = [
+  { id: "start", label: "المادة", emoji: "📚" },
+  { id: "outputs", label: "النواتج", emoji: STEP_LOOK[2].emoji },
+] as const;
 const stepOf = (stage: ProjectState["project"]["stage"]): StepId => (stage === "review" ? "sources" : stage === "scope" ? "outputs" : stage);
 
 export default function StudentProject({ initial }: { initial: ProjectState }) {
@@ -37,9 +39,12 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
   const [view, setView] = useState<StepId>(step);
   // when the project moves on (an approval), follow it
   const [lastStage, setLastStage] = useState(project.stage);
+  // the tiers of the first page: the one the material is at is open, the ones behind it fold
+  const [open, setOpen] = useState<Record<string, boolean>>(step === "outputs" ? {} : { [step]: true });
   if (lastStage !== project.stage) {
     setLastStage(project.stage);
     setView(step);
+    setOpen(step === "outputs" ? {} : { [step]: true });
   }
   // «ملفاتي + بحث»: once the understanding is approved, the research runs by itself
   const { start } = auto;
@@ -86,14 +91,19 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
     navRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [view]);
 
-  const HINT: Record<StepId, string> = {
-    brief: "غيّر طلبك متى ما تبي، وصادق يمشي عليه في اللي جاي.",
-    sources: project.brief.mode === "research" ? "خلّ صادق يبحث ويكتب مادتك، أو أضف ملفاتك، ثم «تابع»." : "أضف صورك أو ملفات PDF أو نصك، ثم «تابع».",
-    understanding: "اقرأ كيف فهم صادق مادتك، واعتمده أو صحّحه.",
+  const HINT: Record<"start" | "outputs", string> = {
+    start: project.brief.mode === "research" ? "اكتب طلبك، وخلّ صادق يبحث ويكتب مادتك (أو أضف ملفاتك)، ثم اعتمد فهمه — كله هنا في صفحة وحدة." : "اكتب طلبك، أضف صورك أو ملفاتك أو نصك، ثم اعتمد فهم صادق — كله هنا في صفحة وحدة.",
     outputs: autoOn ? "اختر نواتجك، أجب الأسئلة القصيرة، واضغط «ابدأ»." : "اختر نواتجك واضغط «ابدأ»، وبعدها افتح كل ناتج: راجع خطته واعتمدها قبل التصنيع.",
   };
+  const group: "start" | "outputs" = view === "outputs" ? "outputs" : "start";
+  const gi = GROUPS.findIndex((g) => g.id === group);
+  const reachedGroup = reached >= 3 ? 1 : 0;
+  const toggle = (id: TierId) => {
+    const on = !open[id];
+    setOpen((o) => ({ ...o, [id]: on }));
+    if (on) setView(id);
+  };
   const purpose = PURPOSES.find((x) => x.id === project.brief.purpose);
-  const vi = STEPS.findIndex((s) => s.id === view);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6" data-st-stage={view} data-st-project={project.id}>
@@ -144,22 +154,22 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
       {p.pending && <div className="st-loading" role="progressbar" aria-label="جارٍ التنفيذ" />}
       <nav ref={navRef} aria-label="مراحل المادة" className="jw-panel scroll-mt-24 px-2 py-4 sm:px-6">
         <div className="st-steps">
-          <span className="bar" style={{ width: `${(reached / (STEPS.length - 1)) * 80}%` }} aria-hidden />
-          {STEPS.map((s, i) => (
+          <span className="bar" style={{ width: `${(reachedGroup / (GROUPS.length - 1)) * 80}%` }} aria-hidden />
+          {GROUPS.map((g, i) => (
             <button
-              key={s.id}
+              key={g.id}
               type="button"
-              className={`st-step ${i < reached ? "done" : ""} ${i === reached ? "current" : ""} ${view === s.id ? "viewing" : ""}`}
-              aria-current={view === s.id ? "step" : undefined}
-              disabled={i > reached}
-              onClick={() => setView(s.id)}
+              className={`st-step ${i < reachedGroup ? "done" : ""} ${i === reachedGroup ? "current" : ""} ${group === g.id ? "viewing" : ""}`}
+              aria-current={group === g.id ? "step" : undefined}
+              disabled={i > reachedGroup}
+              onClick={() => setView(g.id === "outputs" ? "outputs" : step === "outputs" ? "understanding" : step)}
             >
-              <span className="dot text-lg">{i < reached ? <Icon name="check" size={18} /> : <span aria-hidden>{s.emoji}</span>}</span>
-              <span className="text-center leading-tight">{s.label}</span>
+              <span className="dot text-lg">{i < reachedGroup ? <Icon name="check" size={18} /> : <span aria-hidden>{g.emoji}</span>}</span>
+              <span className="text-center leading-tight">{g.label}</span>
             </button>
           ))}
         </div>
-        <p className="mt-4 text-center text-sm text-jw-muted">{HINT[STEPS[vi].id]}</p>
+        <p className="mt-4 text-center text-sm text-jw-muted">{HINT[group]}</p>
         {auto.mode ? (
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl p-3 text-white" style={{ background: "var(--st-grad)" }} role="status" aria-live="polite">
             <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden />
@@ -178,29 +188,26 @@ export default function StudentProject({ initial }: { initial: ProjectState }) {
 
       <ErrorLine error={p.error} />
 
-      <div key={view} className="st-rise">
-      {view === "brief" && <BriefStep p={p} />}
-      {view === "brief" ? null : researching && view !== "outputs" ? (
-        <ResearchRun p={p} working={auto.doing} error={auto.error} onGo={() => start("all")} onFiles={() => setFilesInstead(true)} />
-      ) : (
-        view === "sources" && <SourcesStep p={p} onContinue={() => start("material")} />
-      )}
-      {view === "understanding" && !researching && <UnderstandingStep p={p} />}
-      {view === "outputs" && <OutputsStep p={p} autoOn={autoOn} onStart={() => start("all")} onCreated={() => autoOn && start("all")} onResearch={() => start("step")} researching={project.stage === "scope"} working={Boolean(auto.mode)} />}
+      <div key={group} className="st-rise">
+        {group === "start" ? (
+          <StartTiers p={p} reached={reached} open={open} onToggle={toggle} researching={researching} working={auto.doing} error={auto.error} onGo={() => start("all")} onFiles={() => setFilesInstead(true)} onContinue={() => start("material")} />
+        ) : (
+          <OutputsStep p={p} autoOn={autoOn} onStart={() => start("all")} onCreated={() => autoOn && start("all")} onResearch={() => start("step")} researching={project.stage === "scope"} working={Boolean(auto.mode)} />
+        )}
       </div>
 
-      {/* back to any step before (and forward again up to where the material is) */}
+      {/* between the two steps: from the outputs back to the tiers, and forward again once the material has gone on */}
       <nav aria-label="التنقل بين الخطوات" className="flex flex-wrap items-center justify-between gap-2">
-        {vi > 0 ? (
-          <button type="button" className="jw-btn" onClick={() => setView(STEPS[vi - 1].id)}>
-            → رجوع: {STEPS[vi - 1].label}
+        {gi > 0 ? (
+          <button type="button" className="jw-btn" onClick={() => { setView("understanding"); setOpen({ understanding: true }); }}>
+            → رجوع: {GROUPS[gi - 1].label}
           </button>
         ) : (
           <span />
         )}
-        {vi < reached && (
-          <button type="button" className="jw-btn" onClick={() => setView(STEPS[vi + 1].id)}>
-            التالي: {STEPS[vi + 1].label} ←
+        {gi < reachedGroup && (
+          <button type="button" className="jw-btn" onClick={() => setView("outputs")}>
+            التالي: {GROUPS[gi + 1].label} ←
           </button>
         )}
       </nav>

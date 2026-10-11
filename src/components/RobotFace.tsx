@@ -17,169 +17,189 @@ interface Look {
 }
 
 export const ROBOT_LOOKS: Record<string, Look> = {
-  salman: { a: "#7c3aed", b: "#ec4899", head: "round", eyes: "big", antenna: "single", extra: "none" },
-  jawad: { a: "#f97316", b: "#22d3ee", head: "capsule", eyes: "visor", antenna: "bolt", extra: "spark" },
-  sajjad: { a: "#e9b546", b: "#b45309", head: "square", eyes: "dots", antenna: "double", extra: "clapper" },
-  haidara: { a: "#84cc16", b: "#15803d", head: "tv", eyes: "screen", antenna: "single", extra: "scissors" },
-  sadiq: { a: "#6366f1", b: "#0ea5e9", head: "round", eyes: "big", antenna: "none", extra: "cap" },
-  islamic: { a: "#10b981", b: "#065f46", head: "capsule", eyes: "dots", antenna: "none", extra: "crescent" },
-  qanbar: { a: "#34d399", b: "#0891b2", head: "hex", eyes: "screen", antenna: "double", extra: "joystick" },
-  baqir: { a: "#f472b6", b: "#be185d", head: "square", eyes: "big", antenna: "single", extra: "pen" },
-  kazim: { a: "#a78bfa", b: "#6d28d9", head: "round", eyes: "dots", antenna: "none", extra: "beret" },
-  zahraa: { a: "#fb7185", b: "#e11d48", head: "capsule", eyes: "lens", antenna: "single", extra: "camera" },
-  kharq: { a: "#facc15", b: "#ea580c", head: "hex", eyes: "visor", antenna: "bolt", extra: "spark" },
-  abbas: { a: "#38bdf8", b: "#1d4ed8", head: "square", eyes: "big", antenna: "single", extra: "book" },
-  zainab: { a: "#c084fc", b: "#7e22ce", head: "round", eyes: "big", antenna: "none", extra: "hood" },
-  booklet: { a: "#38bdf8", b: "#2563eb", head: "capsule", eyes: "big", antenna: "double", extra: "book" },
+  // deep, muted metals — never candy colours: each robot is one dark hue lit from above, with a gold trim
+  salman: { a: "#5b4b9a", b: "#2e2466", head: "round", eyes: "big", antenna: "single", extra: "none" },
+  jawad: { a: "#3a6ea5", b: "#1b3a63", head: "capsule", eyes: "visor", antenna: "bolt", extra: "none" },
+  sajjad: { a: "#86661f", b: "#4a340d", head: "square", eyes: "dots", antenna: "double", extra: "clapper" },
+  haidara: { a: "#4d7c4f", b: "#243f2a", head: "tv", eyes: "screen", antenna: "single", extra: "scissors" },
+  sadiq: { a: "#4a5aa8", b: "#232c63", head: "round", eyes: "big", antenna: "none", extra: "cap" },
+  islamic: { a: "#2f7a62", b: "#12423a", head: "capsule", eyes: "dots", antenna: "none", extra: "crescent" },
+  qanbar: { a: "#3b7a7a", b: "#1a3f4a", head: "hex", eyes: "screen", antenna: "double", extra: "joystick" },
+  baqir: { a: "#8e4668", b: "#4a1f36", head: "square", eyes: "big", antenna: "single", extra: "pen" },
+  kazim: { a: "#6b52a0", b: "#33245c", head: "round", eyes: "dots", antenna: "none", extra: "beret" },
+  zahraa: { a: "#a04a58", b: "#521f2c", head: "capsule", eyes: "lens", antenna: "single", extra: "camera" },
+  kharq: { a: "#8a6a24", b: "#4a3410", head: "hex", eyes: "visor", antenna: "bolt", extra: "none" },
+  abbas: { a: "#3d6d9e", b: "#1b3556", head: "square", eyes: "big", antenna: "single", extra: "book" },
+  zainab: { a: "#7a4f98", b: "#3a2255", head: "round", eyes: "big", antenna: "none", extra: "hood" },
+  booklet: { a: "#3d7ab0", b: "#1d3f6a", head: "capsule", eyes: "big", antenna: "double", extra: "book" },
 };
 
-const INK = "#0f0b1e";
+const INK = "#0b0a14";
+/** The trim on every face, and the steady light of its eyes: aged gold and a warm pale glow. */
+const GOLD = "#d4b46a";
+const GLOW = "#f1dc9f";
 
+/**
+ * The heads are heavy and squared off, none of them a ball: a chamfered plate, a tall helm, a broad screen. They all sit
+ * between y 14 and y 50, above the collar.
+ */
 function head(h: Head, fill: string) {
   switch (h) {
     case "square":
-      return <rect x="12" y="16" width="40" height="36" rx="8" fill={fill} />;
+      return <path d="M18 14h28l6 6v24l-6 6H18l-6-6V20z" fill={fill} />;
     case "capsule":
-      return <rect x="11" y="15" width="42" height="38" rx="19" fill={fill} />;
+      return <path d="M20 14h24a8 8 0 0 1 8 8v20a8 8 0 0 1-8 8H20a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8z" fill={fill} />;
     case "hex":
-      return <path d="M32 13 52 24v22L32 57 12 46V24z" fill={fill} />;
+      return <path d="M32 12 51 22v20L32 52 13 42V22z" fill={fill} />;
     case "tv":
-      return <rect x="10" y="18" width="44" height="34" rx="5" fill={fill} />;
+      return <rect x="10" y="16" width="44" height="34" rx="6" fill={fill} />;
     default:
-      return <circle cx="32" cy="35" r="20" fill={fill} />;
+      // "round": a domed helm with a flat jaw, not a circle
+      return <path d="M12 50V32C12 21 21 13 32 13s20 8 20 19v18z" fill={fill} />;
   }
 }
 
+/** Calm, level, unblinking: a steady glow behind dark glass, never white eyes with pupils. */
 function eyes(e: Eyes) {
   switch (e) {
     case "visor":
       return (
         <>
-          <rect x="17" y="28" width="30" height="10" rx="5" fill={INK} />
-          <rect x="21" y="31" width="22" height="4" rx="2" fill="#7df9ff" />
+          <rect x="16" y="28" width="32" height="9" rx="3" fill={INK} />
+          <rect x="20" y="31.2" width="24" height="2.6" rx="1.3" fill={GLOW} />
         </>
       );
     case "screen":
       return (
         <>
-          <rect x="17" y="25" width="30" height="20" rx="4" fill={INK} />
-          <circle cx="26" cy="34" r="3" fill="#a3ff7a" />
-          <circle cx="38" cy="34" r="3" fill="#a3ff7a" />
+          <rect x="16" y="25" width="32" height="18" rx="3" fill={INK} />
+          <rect x="21" y="32" width="8" height="3.2" rx="1.6" fill={GLOW} />
+          <rect x="35" y="32" width="8" height="3.2" rx="1.6" fill={GLOW} />
         </>
       );
     case "lens":
       return (
         <>
-          <circle cx="25" cy="33" r="6.5" fill={INK} />
-          <circle cx="25" cy="33" r="3.2" fill="#ffd1dc" />
-          <circle cx="40" cy="33" r="4" fill={INK} />
-          <circle cx="41" cy="32" r="1.4" fill="#fff" />
+          <rect x="16" y="27" width="32" height="12" rx="4" fill={INK} />
+          <circle cx="32" cy="33" r="4.2" fill="none" stroke={GLOW} strokeWidth="1.6" />
+          <circle cx="32" cy="33" r="1.5" fill={GLOW} />
         </>
       );
     case "dots":
       return (
         <>
-          <circle cx="25" cy="33" r="3.2" fill={INK} />
-          <circle cx="39" cy="33" r="3.2" fill={INK} />
+          <rect x="17" y="28" width="30" height="10" rx="4" fill={INK} />
+          <circle cx="25" cy="33" r="2.4" fill={GLOW} />
+          <circle cx="39" cy="33" r="2.4" fill={GLOW} />
         </>
       );
     default:
+      // "big": two tall, narrow lights under a heavy brow
       return (
         <>
-          <circle cx="25" cy="33" r="5.5" fill="#fff" />
-          <circle cx="39" cy="33" r="5.5" fill="#fff" />
-          <circle cx="26" cy="34" r="2.6" fill={INK} />
-          <circle cx="40" cy="34" r="2.6" fill={INK} />
+          <rect x="16" y="26" width="32" height="13" rx="4" fill={INK} />
+          <rect x="22" y="29" width="5" height="7" rx="2.5" fill={GLOW} />
+          <rect x="37" y="29" width="5" height="7" rx="2.5" fill={GLOW} />
         </>
       );
   }
 }
 
-function antenna(a: Antenna, b: string) {
+/** Short and upright: a mast with a small gold cap. Nothing waves, nothing is a lightning bolt. */
+function antenna(a: Antenna) {
   switch (a) {
     case "single":
       return (
         <>
-          <rect x="31" y="6" width="2" height="10" fill={INK} />
-          <circle cx="32" cy="6" r="3" fill={b} stroke={INK} strokeWidth="1.2" />
+          <rect x="31.2" y="6" width="1.6" height="8" fill={INK} />
+          <rect x="29.6" y="3.5" width="4.8" height="3.5" rx="1" fill={GOLD} />
         </>
       );
     case "double":
       return (
         <>
-          <path d="M24 16 20 6M40 16l4-10" stroke={INK} strokeWidth="2" strokeLinecap="round" />
-          <circle cx="20" cy="6" r="2.6" fill={b} />
-          <circle cx="44" cy="6" r="2.6" fill={b} />
+          <rect x="21.2" y="7" width="1.6" height="7" fill={INK} />
+          <rect x="41.2" y="7" width="1.6" height="7" fill={INK} />
+          <rect x="19.8" y="4.6" width="4.4" height="3" rx="1" fill={GOLD} />
+          <rect x="39.8" y="4.6" width="4.4" height="3" rx="1" fill={GOLD} />
         </>
       );
     case "dish":
-      return <path d="M24 10a8 8 0 0 0 16 0z" fill={INK} />;
+      return <path d="M25 13a7 7 0 0 1 14 0z" fill={INK} />;
     case "bolt":
-      return <path d="M33 2 26 12h5l-2 6 8-11h-5z" fill="#ffe14d" stroke={INK} strokeWidth="1" />;
+      // a small gold finial, like the top of a standard
+      return (
+        <>
+          <rect x="31.2" y="7" width="1.6" height="7" fill={INK} />
+          <path d="M32 1.5 35 5.5 32 9.5 29 5.5z" fill={GOLD} stroke={INK} strokeWidth="0.8" />
+        </>
+      );
     default:
       return null;
   }
 }
 
+/** One small sign of what the robot does, drawn in dark metal and gold. */
 function extra(x: Extra, b: string) {
   switch (x) {
     case "cap":
       return (
         <>
-          <path d="M14 15 32 8l18 7-18 7z" fill={INK} />
-          <path d="M48 16v7" stroke="#fbbf24" strokeWidth="2" />
-          <circle cx="48" cy="24" r="1.8" fill="#fbbf24" />
+          <path d="M15 14 32 7.5 49 14 32 20.5z" fill={INK} />
+          <path d="M46 15.5v7" stroke={GOLD} strokeWidth="1.6" />
+          <rect x="44.6" y="22" width="2.8" height="3.4" rx="1" fill={GOLD} />
         </>
       );
     case "beret":
-      return <ellipse cx="30" cy="15" rx="17" ry="6" fill="#ef4444" />;
+      return <path d="M13 17c0-5 8-8 19-8s19 3 19 8c0 1.5-1 2.4-3 2.4H16c-2 0-3-.9-3-2.4z" fill="#5a1f2e" stroke={INK} strokeWidth="0.8" />;
     case "hood":
-      // a soft rounded hood around the head (a robot, modestly covered)
-      return <path d="M8 40C8 20 20 10 32 10s24 10 24 30v14H50V38C50 26 42 18 32 18S14 26 14 38v16H8z" fill={b} opacity="0.95" />;
+      // a plain hood around the head, modest and heavy
+      return <path d="M8 44C8 22 19 10 32 10s24 12 24 34v14c0 3-2 5-5 5H13c-3 0-5-2-5-5z" fill={b} opacity="0.95" />;
     case "headphones":
       return <path d="M10 36a22 22 0 0 1 44 0" fill="none" stroke={INK} strokeWidth="3" />;
     case "clapper":
       return (
-        <g transform="translate(40 40)">
-          <rect x="0" y="6" width="18" height="12" rx="1.5" fill={INK} />
-          <path d="M0 6 17 1l1 4L1 10z" fill="#fff" stroke={INK} strokeWidth="1" />
+        <g transform="translate(43 49)">
+          <rect x="0" y="5" width="14" height="9" rx="1.2" fill={INK} />
+          <path d="M0 5 13.5 1.4l.8 3.2L.8 8.2z" fill={GOLD} stroke={INK} strokeWidth="0.8" />
         </g>
       );
     case "crescent":
-      return <path d="M50 8a7 7 0 1 0 6 11 5.5 5.5 0 1 1-6-11z" fill="#fde68a" />;
+      return <path d="M50 7a6.4 6.4 0 1 0 5.4 10 5 5 0 1 1-5.4-10z" fill={GOLD} />;
     case "scissors":
       return (
-        <g stroke={INK} strokeWidth="1.6" fill="none">
-          <circle cx="47" cy="49" r="3" />
-          <circle cx="54" cy="49" r="3" />
-          <path d="M48 46 56 36M53 46 45 36" />
+        <g stroke={GOLD} strokeWidth="1.5" fill="none" transform="translate(-2 4)">
+          <circle cx="47" cy="49" r="2.6" />
+          <circle cx="53" cy="49" r="2.6" />
+          <path d="M48 46.5 55 38M52 46.5 45 38" />
         </g>
       );
     case "spark":
-      return <path d="M52 6l1.6 4.4L58 12l-4.4 1.6L52 18l-1.6-4.4L46 12l4.4-1.6z" fill="#fff59d" />;
+      // no sparkle: the mark of the one that makes things is a small gold seal on the brow
+      return <path d="M32 15.5 34.2 19 32 22.5 29.8 19z" fill={GOLD} stroke={INK} strokeWidth="0.7" />;
     case "glasses":
       return <path d="M17 33h12m6 0h12" stroke={INK} strokeWidth="2" />;
     case "camera":
       return (
-        <g transform="translate(42 42)">
-          <rect x="0" y="3" width="16" height="11" rx="2.5" fill={INK} />
-          <circle cx="8" cy="8.5" r="3" fill="#fda4af" />
+        <g transform="translate(43 49)">
+          <rect x="0" y="3" width="14" height="9" rx="2" fill={INK} />
+          <circle cx="7" cy="7.5" r="2.4" fill="none" stroke={GOLD} strokeWidth="1.3" />
         </g>
       );
     case "pen":
-      return <path d="m44 56 12-12 3 3-12 12-4 1z" fill="#fff" stroke={INK} strokeWidth="1.2" />;
+      return <path d="m46 58 8-8 2.4 2.4-8 8-3.4 1z" fill={GOLD} stroke={INK} strokeWidth="1" />;
     case "joystick":
       return (
-        <g transform="translate(42 44)">
-          <rect x="0" y="6" width="16" height="9" rx="3" fill={INK} />
-          <rect x="7" y="0" width="2" height="7" fill={INK} />
-          <circle cx="8" cy="0" r="2.6" fill="#ef4444" />
+        <g transform="translate(43 49)">
+          <rect x="0" y="6" width="14" height="7" rx="2.4" fill={INK} />
+          <rect x="6.2" y="1" width="1.6" height="6" fill={INK} />
+          <circle cx="7" cy="1" r="2.2" fill={GOLD} />
         </g>
       );
     case "book":
       return (
-        <g transform="translate(42 44)">
-          <path d="M0 2h7a2 2 0 0 1 2 2v11a2 2 0 0 0-2-2H0zM18 2h-7a2 2 0 0 0-2 2v11a2 2 0 0 1 2-2h7z" fill="#fff" stroke={INK} strokeWidth="1.1" />
+        <g transform="translate(43 49)">
+          <path d="M0 2h6a2 2 0 0 1 2 2v9a2 2 0 0 0-2-2H0zM16 2h-6a2 2 0 0 0-2 2v9a2 2 0 0 1 2-2h6z" fill={GOLD} stroke={INK} strokeWidth="0.9" />
         </g>
       );
     default:
@@ -187,28 +207,43 @@ function extra(x: Extra, b: string) {
   }
 }
 
-/** A robot's face. `id`: salman · jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet. */
+/**
+ * A robot's face — sober and weighty, never comic: a heavy squared head in one deep metal with a gold trim, level glowing
+ * eyes behind dark glass, a flat mouth-groove (not a smile), and a broad collar under it.
+ * `id`: salman · jawad · sajjad · haidara · sadiq · islamic · qanbar · baqir · kazim · zahraa · kharq · abbas · zainab · booklet.
+ */
 export default function RobotFace({ id, size = 40, className = "", title }: { id: string; size?: number; className?: string; title?: string }) {
   const l = ROBOT_LOOKS[id] ?? ROBOT_LOOKS.salman;
   const g = `rf-${id}`;
+  const body = `${g}-body`;
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" className={className} role={title ? "img" : undefined} aria-hidden={title ? undefined : true} aria-label={title} style={{ display: "inline-block", verticalAlign: "middle", flex: "none" }}>
       <defs>
-        <linearGradient id={g} x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={g} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={l.a} />
+          <stop offset="1" stopColor={l.b} />
+        </linearGradient>
+        <linearGradient id={body} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={l.a} stopOpacity="0.75" />
           <stop offset="1" stopColor={l.b} />
         </linearGradient>
       </defs>
       {l.extra === "hood" && extra("hood", l.b)}
-      {antenna(l.antenna, l.a)}
-      {/* ears / bolts on the sides: every face reads as a machine */}
-      <rect x="6" y="30" width="6" height="10" rx="2" fill={INK} />
-      <rect x="52" y="30" width="6" height="10" rx="2" fill={INK} />
+      {antenna(l.antenna)}
+      {/* the shoulders: a broad collar under the head, with a gold line, so the face has weight to sit on */}
+      <path d="M6 63c0-6 5-10 12-11l14-1 14 1c7 1 12 5 12 11z" fill={`url(#${body})`} />
+      <path d="M20 52.5 32 54l12-1.5" stroke={GOLD} strokeWidth="1.2" fill="none" opacity="0.8" />
+      <rect x="26" y="49" width="12" height="5" rx="1.5" fill={INK} />
+      {/* ear plates on the sides */}
+      <rect x="7" y="27" width="5" height="12" rx="1.6" fill={INK} />
+      <rect x="52" y="27" width="5" height="12" rx="1.6" fill={INK} />
       {head(l.head, `url(#${g})`)}
-      <rect x="22" y="45" width="20" height="4" rx="2" fill={INK} opacity="0.8" />
-      <rect x="25" y="46" width="2" height="2" fill="#fff" />
-      <rect x="31" y="46" width="2" height="2" fill="#fff" />
-      <rect x="37" y="46" width="2" height="2" fill="#fff" />
+      {/* the gold trim, and a light from above along the top edge */}
+      <g fill="none" stroke={GOLD} strokeOpacity="0.55" strokeWidth="1.1" style={{ mixBlendMode: "normal" }}>
+        {head(l.head, "none")}
+      </g>
+      {/* a flat groove for a mouth: calm, level */}
+      <rect x="24" y="43" width="16" height="1.8" rx="0.9" fill={INK} opacity="0.7" />
       {eyes(l.eyes)}
       {l.extra !== "hood" && extra(l.extra, l.b)}
     </svg>
