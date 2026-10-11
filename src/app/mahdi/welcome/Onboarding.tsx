@@ -28,10 +28,12 @@ export default function Onboarding({ shrines, suggestedName, username: existingU
     setBusy(true);
     setError("");
     try {
-      await mahdiFetch("/api/mahdi/profile", {
+      const { profile: saved } = await mahdiFetch<{ profile: { theme: MahdiTheme } }>("/api/mahdi/profile", {
         method: "POST",
         json: { displayName: name.trim(), shrineId, theme: look.theme, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh" },
       });
+      // the look the account really kept (the page shows that one from now on)
+      if (saved.theme !== look.theme) look.setTheme(saved.theme);
       setStep(2);
     } catch (e) {
       setError((e as Error).message);

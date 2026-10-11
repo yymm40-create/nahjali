@@ -893,6 +893,7 @@ export const ar = {
     avatarPick: "اختر صورة",
     avatarRemove: "إزالة الصورة",
     avatarTooBig: "الصورة كبيرة. اختر صورة أصغر من 5 ميجابايت.",
+    themeNotKept: "ما قدرنا نحفظ هذا الستايل على حسابك الآن، فبقي الستايل المحفوظ. جرّب بعد شوي.",
     avatarBadType: "اختر صورة بصيغة JPG أو PNG أو WEBP.",
     appearance: "المظهر",
     shrine: "الحرم",

@@ -34,14 +34,17 @@ export default function MorePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const deviceTz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "";
 
-  async function save(fields: Partial<Record<string, unknown>>, undo?: () => void) {
+  /** Saves; resolves to what the account really kept (the server may keep an older look when the database can't yet). */
+  async function save(fields: Partial<Record<string, unknown>>, undo?: () => void): Promise<Profile | null> {
     try {
       const { profile: p } = await mahdiFetch<{ profile: Profile }>("/api/mahdi/profile", { method: "PATCH", json: fields });
       store.setProfile(p);
       toast(t.common.saved);
+      return p;
     } catch (e) {
       undo?.();
       toast((e as Error).message);
+      return null;
     }
   }
 
@@ -60,10 +63,15 @@ export default function MorePage() {
     setBusy(false);
   }
 
-  const chooseTheme = (th: MahdiTheme) => {
+  const chooseTheme = async (th: MahdiTheme) => {
     const before = look.theme;
     look.setTheme(th);
-    save({ theme: th }, () => look.setTheme(before));
+    const kept = await save({ theme: th }, () => look.setTheme(before));
+    // the page shows what the account really has, not the pick: otherwise a reload shows a different look
+    if (kept && kept.theme !== th) {
+      look.setTheme(kept.theme);
+      toast(t.more.themeNotKept);
+    }
   };
   const choosePlace = (pl: ShrinePlace | "auto") => {
     const before = look.place;

@@ -52,6 +52,14 @@ describe("«لأجل المهدي» redesign: four looks", () => {
     // before the migration a new look is saved as the nearest older one instead of failing
     expect(read("src/app/api/mahdi/profile/route.ts")).toContain("beforeMigration");
   });
+
+  it("the page shows the look the account really kept, so a reload never shows another one", () => {
+    const more = read("src/app/mahdi/(app)/more/page.tsx");
+    expect(more).toContain("kept.theme !== th");
+    expect(more).toContain("look.setTheme(kept.theme)");
+    expect(read("src/app/mahdi/welcome/Onboarding.tsx")).toContain("saved.theme !== look.theme");
+    expect(read("src/lib/mahdi/i18n/ar.ts")).toContain("themeNotKept");
+  });
 });
 
 describe("the side menu (☰) holds everything", () => {
