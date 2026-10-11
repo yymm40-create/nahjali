@@ -1,0 +1,236 @@
+/* «الصحة العلوية»: a gym look inside «لأجل المهدي» — dark iron, chalk and a neon-lime plate, whatever the app's theme. */
+
+.gym {
+  --g-bg: #0c0e11;
+  --g-card: #15181d;
+  --g-line: #2a3038;
+  --g-ink: #f3f4f1;
+  --g-dim: #9aa3ad;
+  --g-lime: #c6ff1a;
+  --g-orange: #ff7a1a;
+  --g-red: #ff4d4d;
+  color: var(--g-ink);
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 14px),
+    radial-gradient(120% 60% at 100% 0%, rgba(198, 255, 26, 0.12), transparent 60%),
+    radial-gradient(90% 50% at 0% 100%, rgba(255, 122, 26, 0.12), transparent 60%),
+    var(--g-bg);
+  border-radius: 1.5rem;
+  padding: 1.1rem;
+  min-height: 70vh;
+  box-shadow: 0 20px 60px -30px rgba(0, 0, 0, 0.6);
+}
+.gym * { box-sizing: border-box; }
+.gym a { color: inherit; }
+
+.gym-title {
+  font-weight: 900;
+  font-size: 1.9rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.gym-title em { font-style: normal; color: var(--g-lime); }
+.gym-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--g-lime);
+}
+.gym-dim { color: var(--g-dim); }
+.gym-small { font-size: 0.8rem; color: var(--g-dim); line-height: 1.7; }
+
+.gym-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent), var(--g-card);
+  border: 1px solid var(--g-line);
+  border-radius: 1.1rem;
+  padding: 1rem;
+}
+.gym-card.hot { border-color: var(--g-lime); box-shadow: 0 0 0 1px var(--g-lime) inset, 0 10px 40px -20px var(--g-lime); }
+.gym-card.warn { border-color: var(--g-orange); background: rgba(255, 122, 26, 0.08); }
+.gym-card.stop { border-color: var(--g-red); background: rgba(255, 77, 77, 0.08); }
+
+.gym-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 46px;
+  padding: 0 1.2rem;
+  border-radius: 0.8rem;
+  font-weight: 900;
+  background: var(--g-lime);
+  color: #0c0e11;
+  border: 0;
+  cursor: pointer;
+  transition: transform 0.12s, filter 0.12s;
+  text-decoration: none;
+}
+.gym-btn:hover { filter: brightness(1.08); }
+.gym-btn:active { transform: scale(0.97); }
+.gym-btn:disabled { opacity: 0.45; cursor: default; }
+.gym-btn.ghost { background: transparent; color: var(--g-ink); border: 1px solid var(--g-line); }
+.gym-btn.orange { background: var(--g-orange); color: #160800; }
+.gym-btn.sm { min-height: 36px; padding: 0 0.8rem; font-size: 0.85rem; border-radius: 0.65rem; }
+.gym-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 0.6rem;
+  border: 1px solid var(--g-line);
+  background: #1c2027;
+  color: var(--g-ink);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.gym-choices { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); }
+.gym-choice {
+  text-align: start;
+  padding: 0.85rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--g-line);
+  background: #171a20;
+  color: var(--g-ink);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.12s;
+}
+.gym-choice b { display: block; font-weight: 900; }
+.gym-choice span { display: block; font-size: 0.75rem; color: var(--g-dim); margin-top: 0.2rem; line-height: 1.6; }
+.gym-choice .big { font-size: 1.6rem; display: block; margin-bottom: 0.3rem; }
+.gym-choice[aria-pressed="true"] { border-color: var(--g-lime); background: rgba(198, 255, 26, 0.09); }
+.gym-choice[aria-pressed="true"] b { color: var(--g-lime); }
+.gym-choice:active { transform: scale(0.98); }
+
+.gym-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.gym-chip {
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--g-line);
+  background: #171a20;
+  color: var(--g-ink);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.gym-chip[aria-pressed="true"] { background: var(--g-lime); color: #0c0e11; border-color: var(--g-lime); }
+
+.gym-field { display: grid; gap: 0.35rem; }
+.gym-field > span { font-size: 0.8rem; font-weight: 800; color: var(--g-dim); }
+.gym-input,
+.gym-select {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 0.7rem;
+  border: 1px solid var(--g-line);
+  background: #0f1216;
+  color: var(--g-ink);
+  padding: 0 0.75rem;
+  font-weight: 700;
+}
+.gym-input:focus,
+.gym-select:focus { outline: 2px solid var(--g-lime); outline-offset: 1px; }
+
+.gym-stepper { display: flex; align-items: center; gap: 0.4rem; }
+.gym-stepper .gym-input { text-align: center; max-width: 110px; font-size: 1.1rem; }
+
+/* the barbell progress of the wizard */
+.gym-bar { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 1rem; }
+.gym-bar i {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: #232830;
+}
+.gym-bar i.on { background: linear-gradient(90deg, var(--g-lime), #8fd400); }
+.gym-bar b {
+  width: 14px;
+  height: 26px;
+  border-radius: 3px;
+  background: #3a414b;
+}
+.gym-bar b.on { background: var(--g-lime); }
+
+/* big numbers (plates) */
+.gym-stats { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); }
+.gym-stat {
+  border-radius: 1rem;
+  border: 1px solid var(--g-line);
+  background: radial-gradient(circle at 50% 0%, rgba(198, 255, 26, 0.1), transparent 70%), #13161b;
+  padding: 0.8rem;
+  text-align: center;
+}
+.gym-stat b { display: block; font-size: 1.45rem; font-weight: 900; color: var(--g-lime); font-variant-numeric: tabular-nums; }
+.gym-stat span { font-size: 0.75rem; color: var(--g-dim); }
+.gym-stat.orange b { color: var(--g-orange); }
+
+/* the training day card */
+.gym-day { border-radius: 1.1rem; border: 1px solid var(--g-line); background: #13161b; overflow: hidden; }
+.gym-day > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  background: linear-gradient(90deg, rgba(198, 255, 26, 0.16), transparent);
+  border-bottom: 1px solid var(--g-line);
+}
+.gym-day > header h3 { font-weight: 900; font-size: 1.05rem; }
+.gym-day > header .tag {
+  font-size: 0.7rem;
+  font-weight: 900;
+  background: var(--g-lime);
+  color: #0c0e11;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+.gym-ex { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.9rem; border-top: 1px solid #1d2229; }
+.gym-ex:first-of-type { border-top: 0; }
+.gym-ex .n {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--g-lime);
+  font-weight: 900;
+  font-size: 0.8rem;
+  color: var(--g-lime);
+}
+.gym-ex .what { flex: 1; min-width: 0; }
+.gym-ex .what b { display: block; font-weight: 800; }
+.gym-ex .what small { display: block; color: var(--g-dim); font-size: 0.72rem; }
+.gym-ex .dose { font-weight: 900; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gym-ex .dose em { font-style: normal; color: var(--g-lime); }
+.gym-ex .tools { display: flex; gap: 0.25rem; }
+
+.gym-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.3rem;
+  padding: 1.4rem 1.1rem;
+  border: 1px solid var(--g-line);
+  background:
+    linear-gradient(120deg, rgba(198, 255, 26, 0.16), transparent 55%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 22px),
+    #101317;
+}
+.gym-hero svg.barbell { position: absolute; inset-inline-start: -20px; bottom: -14px; width: 220px; opacity: 0.18; }
+
+.gym-list { display: grid; gap: 0.5rem; }
+.gym-list li { display: flex; gap: 0.5rem; line-height: 1.8; }
+.gym-list li::before { content: "▸"; color: var(--g-lime); font-weight: 900; }
+.gym-ref { font-size: 0.7rem; color: var(--g-dim); }
+.gym-ref a { color: var(--g-lime); text-decoration: underline; }
+.gym-check { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.55rem 0; cursor: pointer; line-height: 1.7; }
+.gym-check input { width: 20px; height: 20px; accent-color: var(--g-lime); margin-top: 0.25rem; flex-shrink: 0; }
+
+/* editing on a phone: the buttons go under the exercise, the name keeps its width */
+.gym-ex.edit { flex-wrap: wrap; }
+.gym-ex.edit .what { flex-basis: calc(100% - 120px); }
+.gym-ex.edit .tools { width: 100%; justify-content: flex-end; }
