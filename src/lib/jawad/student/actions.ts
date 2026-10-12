@@ -160,8 +160,10 @@ async function paid(user: User, b: Body, o: { projectId: string; outputId?: stri
   // nothing is charged (the owner, a free guest, or while coins are switched off): no price to agree to
   const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
   const coins = o.usd > 0 && !free ? (CLAUDE_ONLY_KINDS.has(o.kind) ? claudeHalalas : coinsFor)(o.usd) : 0;
-  if (!b.confirm) return { quote: coins, balance: await coinBalance(user.id), ...(o.note ? { note: o.note } : {}) };
-  const key = checkKey(b.key);
+  // a free step (nothing to agree to) starts on the first call — a plain «اعتمد» button (not PaidButton's ask-then-go)
+  // never sends `confirm`, and must still run instead of silently returning an empty quote
+  if (coins > 0 && !b.confirm) return { quote: coins, balance: await coinBalance(user.id), ...(o.note ? { note: o.note } : {}) };
+  const key = checkKey(b.key ?? (coins > 0 ? undefined : crypto.randomUUID().replace(/-/g, "")));
   const { job, created } = await createJob(user, { projectId: o.projectId, outputId: o.outputId ?? null, kind: o.kind, key, input: o.input, estimateUsd: o.usd, stage: o.stage });
   // the job itself runs after this response, so the status set here comes before anything it writes
   if (created) await o.started?.();
