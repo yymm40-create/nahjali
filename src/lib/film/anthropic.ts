@@ -244,6 +244,23 @@ export interface ClaudeTurn {
   content: string | ClaudePart[];
 }
 
+/**
+ * Claude rejects a whole request when even one text block is empty. Old chats and attachment-only turns can leave
+ * one behind, so clean every call at the shared boundary (and join neighbours when removing one exposes equal roles).
+ */
+export function cleanClaudeTurns(turns: ClaudeTurn[]): { role: ClaudeTurn["role"]; content: ClaudePart[] }[] {
+  const out: { role: ClaudeTurn["role"]; content: ClaudePart[] }[] = [];
+  for (const turn of turns) {
+    const parts = (typeof turn.content === "string" ? [{ type: "text", text: turn.content } as ClaudePart] : turn.content)
+      .filter((part) => part.type !== "text" || part.text.trim().length > 0);
+    if (!parts.length) continue;
+    const last = out[out.length - 1];
+    if (last?.role === turn.role) last.content.push(...parts);
+    else out.push({ role: turn.role, content: [...parts] });
+  }
+  return out;
+}
+
 const toBlock = (p: ClaudePart) =>
   p.type === "text"
     ? { type: "text", text: p.text }
@@ -284,10 +301,12 @@ export async function callClaudeJson<T>({
   const asked = currentClaude();
 
   // pictures by link are fetched and made to fit Claude's limits (a large cut-out logo was refused)
-  const messages = await fitDocs(await fitImages(turns.map((t, i) => {
-    const blocks: Record<string, unknown>[] = (typeof t.content === "string" ? [{ type: "text", text: t.content } as ClaudePart] : t.content).map(toBlock);
+  const cleanTurns = cleanClaudeTurns(turns);
+  if (!cleanTurns.length) throw new Error("Claude request has no non-empty message content");
+  const messages = await fitDocs(await fitImages(cleanTurns.map((t, i) => {
+    const blocks: Record<string, unknown>[] = t.content.map(toBlock);
     // Cache breakpoint on the latest turn: the next request reuses everything up to here
-    if (i === turns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
+    if (i === cleanTurns.length - 1) blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
     return { role: t.role, content: blocks };
   })));
 

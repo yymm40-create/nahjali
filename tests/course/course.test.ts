@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SHARE } from "@config/share";
-import { countdown, DEFAULT_SETTINGS, embedOf, offerFor, offersAt, readSettings, savingPct, cleanPhone, waLink, COURSE, type CourseSettings } from "@config/course";
+import { countdown, DEFAULT_SETTINGS, embedOf, hasLifetimeAccess, offerFor, offersAt, PRODUCT_ACCESS, readSettings, savingPct, cleanPhone, waLink, COURSE, type CourseSettings } from "@config/course";
 
 const H = 3_600_000;
 const T0 = Date.parse("2026-10-10T12:00:00Z");
@@ -76,6 +76,30 @@ describe("the three prices, by the hours since the reel came out", () => {
 });
 
 describe("reading the owner's settings", () => {
+  it("promises lifetime access only for products that include the recording", () => {
+    expect(PRODUCT_ACCESS.live).not.toContain("مدى الحياة");
+    expect(hasLifetimeAccess("live")).toBe(false);
+    expect(PRODUCT_ACCESS.recorded).toContain("مدى الحياة");
+    expect(hasLifetimeAccess("recorded")).toBe(true);
+    expect(hasLifetimeAccess("combo")).toBe(true);
+  });
+
+  it("repairs the old default that wrongly promised lifetime access for the live course", () => {
+    const s = readSettings({ risks: ["الدورة مدى الحياة، مباشرة كانت أو مسجلة", "مجموعة خاصة"] });
+    expect(s.risks).toEqual(["وصول مدى الحياة للدورة المسجلة فقط", "مجموعة خاصة"]);
+  });
+
+  it("migrates the former general course copy to the cinematic film course and its dated programme", () => {
+    const s = readSettings({
+      headline: "اصنع فيلمك الأقوى بأقل الأسعار وأسهل الطرق والتقنيات (وأعلى جودة)",
+      subhead: "دورة عملية في ٣ أيام: يومين نمشي فيهم على صناعة الفيلم السينمائي خطوة بخطوة بالجواد الذكي، واليوم الثالث تدريب تسوي فيه فيلمك أنت بنفسك.",
+      days: [{ title: "اليوم الأول: صناعة الفيلم السينمائي (١)", points: ["قديم"] }],
+    });
+    expect(s.headline).toBe("اصنع فيلمك السينمائي من الفكرة إلى المشهد النهائي");
+    expect(s.subhead).toContain("١٥–١٧ أكتوبر ٢٠٢٦");
+    expect(s.days.map((d) => d.title)).toEqual(DEFAULT_SETTINGS.days.map((d) => d.title));
+  });
+
   it("fills what is missing with his numbers and clamps nonsense", () => {
     const s = readSettings({ prices: { comboA: -5, liveB: "abc", recordedB: 1e9 }, hoursA: 0, hoursB: 0, launchAt: "not a date", videoUrl: "http://x.com/a.mp4", groupLink: "javascript:alert(1)", bank: { iban: "SA03 8000 0000" } });
     expect(s.prices).toEqual({ comboA: 1, liveB: 40, recordedB: 100000, liveC: 80, recordedC: 100 });
@@ -168,4 +192,3 @@ describe("what the course sells", () => {
     expect(SHARE.paused).toBe(true);
   });
 });
-

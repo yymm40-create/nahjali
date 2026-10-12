@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AgreeTerms from "@/components/jawad/AgreeTerms";
 import Coined from "@/components/Coined";
 import Riyal from "@/components/Riyal";
-import { COURSE, countdown, embedOf, offersAt, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
+import { COURSE, countdown, embedOf, hasLifetimeAccess, offersAt, PRODUCT_ACCESS, PRODUCT_LABEL, type Bank, type Offer, type Product } from "@config/course";
 import { LEARN } from "@config/learn";
 import type { PublicCourse } from "@/lib/course/settings";
 
@@ -191,7 +191,6 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
   }, [cur.phase]);
 
   const NUM = ["١", "٢", "٣", "٤", "٥", "٦"];
-  const DESC: Record<Product, string> = { combo: "حضور مباشر + التسجيل مدى الحياة", live: "حضور مباشر، والتسجيل لك مدى الحياة", recorded: "تشوفها بوقتك، مدى الحياة" };
   const urgency = left !== null && (
     <p className="cr-urgent">
       ⏳ هذا السعر ينتهي بعد <b dir="ltr">{countdown(left)}</b>
@@ -231,7 +230,8 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
 
       <header className="cr-hero">
         <div className="cr-in">
-          <span className="cr-eyebrow"><i className="cr-dot" aria-hidden />{COURSE.name} · ٣ أيام · مباشرة ومسجلة</span>
+          <span className="cr-eyebrow"><i className="cr-dot" aria-hidden />{COURSE.name}</span>
+          <p className="cr-date">🗓️ {COURSE.schedule.short}</p>
           <h1>{s.headline}</h1>
           <p className="cr-sub">{s.subhead}</p>
 
@@ -257,7 +257,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
                             <span className="cr-radio" aria-hidden />
                             <span className="cr-ctext">
                               <b>{o.label}</b>
-                              <small>{DESC[o.product]}</small>
+                              <small>{PRODUCT_ACCESS[o.product]}</small>
                               {o.bonus > 0 && <em>🌸 + هدية {o.bonus} زهرة</em>}
                             </span>
                             <span className="cr-cprice">
@@ -271,7 +271,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
                   ) : (
                     <div className="cr-single">
                       <h2>{sel.label}</h2>
-                      <p className="cr-mute">{DESC[sel.product]}</p>
+                      <p className="cr-mute">{PRODUCT_ACCESS[sel.product]}</p>
                       <Price o={sel} size={44} />
                     </div>
                   )}
@@ -281,7 +281,8 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
                   {urgency}
                   <ul className="cr-trust">
                     <li>🔒 تحويل بنكي مباشر</li>
-                    <li>♾️ وصول مدى الحياة</li>
+                    {hasLifetimeAccess(sel.product) && <li>♾️ تسجيل الدورة مدى الحياة</li>}
+                    {sel.product === "live" && <li>🎥 حضور مباشر</li>}
                     <li>💬 مجموعة واتساب خاصة</li>
                   </ul>
                 </div>
@@ -312,7 +313,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
 
       <section className="cr-band cr-alt">
         <div className="cr-in">
-          <h2 className="cr-h">وش بنسوي في ٣ أيام</h2>
+          <h2 className="cr-h">وش بنسوي في أيام الدورة؟</h2>
           <ol className="cr-line">
             {s.days.map((d, i) => (
               <li key={i}>

@@ -34,7 +34,7 @@ export const isLongChat = (m: Pick<ChatMsg, "text">[]) => m.length >= CHAT_LONG.
 
 export function readMessages(v: unknown): ChatMsg[] {
   return (Array.isArray(v) ? v : [])
-    .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.text === "string")
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.text === "string" && m.text.trim().length > 0)
     .slice(-CHAT_MAX)
     .map((m) => ({
       role: m.role as ChatMsg["role"],
@@ -70,7 +70,7 @@ export async function appendChat(p: EditorProject, add: Omit<ChatMsg, "at">[]) {
 /** The turns Claude gets: the handoff summary first (when there is one), then the last turns of this conversation. */
 export function chatTurns(c: Pick<Chat, "messages" | "handoff">, last = 8): ClaudeTurn[] {
   const turns: ClaudeTurn[] = c.messages
-    .filter((m) => !m.error)
+    .filter((m) => !m.error && m.text.trim().length > 0)
     .slice(-last)
     .map((m) => ({ role: m.role, content: m.text.slice(0, 2000) }));
   while (turns.length && turns[0].role !== "user") turns.shift();
