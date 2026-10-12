@@ -13,6 +13,7 @@ import ShareReward from "./ShareReward";
 import CoursePromo from "./CoursePromo";
 import MemoryMenu from "./MemoryMenu";
 import SectionsBar from "./SectionsBar";
+import Tour from "./tour/Tour";
 
 /** JAWAD AI's compact header: the identity (back to JAWAD AI's home), a way back to نهج علي's home, the balance and the account; then the sections bar. */
 /** `preview`: JAWAD AI is still in development for this visitor — identity and account only, no sections or balance. */
@@ -39,6 +40,7 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
             <SoundToggle />
             {user ? (
               <>
+                {!preview && <Tour userId={user.id} />}
                 {!preview && <CoinBalance initial={balance} unlimited={owner} />}
                 <AccountMenu name={username ?? ""} email={user.email ?? ""} owner={owner} />
               </>
