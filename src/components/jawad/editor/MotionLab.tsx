@@ -90,6 +90,9 @@ export default function MotionLab({
   const view = useRef<HTMLCanvasElement>(null);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // closed while busy (a build, a review round, the final render): folded to a small pill instead of stopped, so the
+  // work keeps going; the person reopens it from the pill, or presses «إلغاء» inside to really stop it
+  const [minimized, setMinimized] = useState(false);
   const say1 = (s: string) => setLog((l) => [...l.slice(-30), s]);
 
   // pictures from the library the scene may use, with short ids حيدرة writes in his code (a1, a2…)
@@ -313,6 +316,37 @@ export default function MotionLab({
 
   const busy = stage === "planning" || stage === "building" || stage === "reviewing" || stage === "rendering";
   const last = reviews[reviews.length - 1];
+  const stageAr = stage === "planning" ? "يخطّط" : stage === "building" ? "يكتب الكود" : stage === "reviewing" ? "يراجع" : stage === "rendering" ? "يرندر" : "";
+
+  // don't lose a build, a review round or a render to an accidental tab close
+  useEffect(() => {
+    if (!busy) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy]);
+
+  const close = () => {
+    // busy: keep working, just fold the window (إلغاء inside really stops it); idle: nothing to lose, close for good
+    if (busy) setMinimized(true);
+    else (abort.current?.abort(), onClose());
+  };
+  const cancel = () => {
+    abort.current?.abort();
+    setStage(code ? "ready" : plan ? "plan" : "brief");
+    setMinimized(false);
+  };
+
+  if (minimized)
+    return (
+      <button type="button" className="jw-btn jw-btn-primary jw-3d fixed bottom-4 end-4 z-[80] !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن">
+        <span className="jw-spinner" />
+        🎬 {stageAr}{stage === "rendering" ? ` ${Math.round(progress * 100)}٪` : "…"}
+      </button>
+    );
 
   return (
     <div className="fixed inset-0 z-[80] flex items-stretch justify-center bg-black/55 p-2 sm:p-6" role="dialog" aria-label="مختبر الموشن" dir="rtl">
@@ -324,8 +358,13 @@ export default function MotionLab({
           </div>
           <div className="flex items-center gap-2">
             <ClaudeModelPicker disabled={busy} />
-            <button type="button" className="jw-btn !min-h-9" onClick={() => (abort.current?.abort(), onClose())}>
-              إغلاق
+            {busy && (
+              <button type="button" className="jw-btn jw-btn-quiet !min-h-9" onClick={cancel} title="يوقف العملية الحالية (الكود المسوّى قبلها يبقى محفوظ)">
+                إلغاء
+              </button>
+            )}
+            <button type="button" className="jw-btn !min-h-9" onClick={close} title={busy ? "يصغّر ويكمل الشغل في الخلفية" : "إغلاق"}>
+              {busy ? "تصغير" : "إغلاق"}
             </button>
           </div>
         </header>
