@@ -5,7 +5,7 @@ const at = "2026-10-06T00:00:00.000Z";
 
 describe("the edit's conversation with Claude", () => {
   it("keeps only well-formed turns", () => {
-    const m = readMessages([{ role: "user", text: "قص السكتات", at }, { role: "system", text: "x" }, null, { role: "assistant", text: "تم", done: 3, at }]);
+    const m = readMessages([{ role: "user", text: "قص السكتات", at }, { role: "assistant", text: "   ", at }, { role: "system", text: "x" }, null, { role: "assistant", text: "تم", done: 3, at }]);
     expect(m).toEqual([{ role: "user", text: "قص السكتات", at }, { role: "assistant", text: "تم", done: 3, at }]);
   });
 
