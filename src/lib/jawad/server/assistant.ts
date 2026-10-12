@@ -4,6 +4,7 @@
 //   Claude answers with a reply and changes to the form (config/jawad/assistant.ts checks them). Nothing is generated
 //   here, and the person's pictures are shown to Claude by short-lived links to their own stored files only.
 
+import { findStyle } from "@config/film-styles";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
@@ -91,6 +92,7 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     settings: (d.settings && typeof d.settings === "object" ? d.settings : {}) as Settings,
     refStyle,
     refs,
+    styleId: typeof d.styleId === "string" && findStyle(d.styleId) ? d.styleId : "",
   };
 
   // Pictures Claude looks at: the ones attached now first, then the form's own (links, short-lived)
@@ -112,6 +114,7 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     draft.instructions ? `instructions: ${draft.instructions}` : "",
     `settings: ${JSON.stringify(draft.settings)}`,
     `references style: ${draft.refStyle}`,
+    `style («الستايل»): ${draft.styleId ? `${draft.styleId} (${findStyle(draft.styleId)?.name})` : "none"}`,
     `references: ${refs.length ? refs.map(refLine).join("; ") : "none"}`,
     attached.length ? `ATTACHMENTS of this message: ${attached.map((u, i) => `${i + 1}. ${u.kind} ${u.file_name}${u.width && u.height ? ` ${u.width}×${u.height}` : ""}`).join("; ")}` : "No attachments in this message.",
   ]

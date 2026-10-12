@@ -5,6 +5,7 @@
 //   and the references. It never generates: the person reads what it put in and presses «توليد» themselves.
 //   Everything Claude returns is checked here against the registry before it touches the form.
 
+import { FILM_STYLES, findStyle } from "@config/film-styles";
 import type { GeneratorDef, OptionDef, RefRole, RefStyle, Settings, SettingValue } from "./types";
 import { playbooksBrief } from "./playbooks";
 
@@ -32,6 +33,8 @@ export interface AssistantDraft {
   settings: Settings;
   refStyle: RefStyle;
   refs: AssistantRef[];
+  /** «الستايل»: one of the 24 styles (config/film-styles.ts) or "" for none */
+  styleId?: string;
 }
 
 /** What Claude is asked to return (every field present; an empty string / array means «no change»). */
@@ -60,6 +63,7 @@ export const ASSISTANT_SCHEMA = {
     instructions: { type: "string" },
     settings: { type: "array", items: { type: "object", additionalProperties: false, required: ["key", "value"], properties: { key: { type: "string" }, value: { type: "string" } } } },
     refStyle: { type: "string" },
+    styleId: { type: "string" },
     addRefs: {
       type: "array",
       items: { type: "object", additionalProperties: false, required: ["source", "id", "name", "role"], properties: { source: { type: "string" }, id: { type: "string" }, name: { type: "string" }, role: { type: "string" } } },
@@ -78,6 +82,8 @@ export interface AssistantSet {
   instructions?: string;
   settings?: Settings;
   refStyle?: RefStyle;
+  /** «الستايل»: a style id, or "none" to take the style off */
+  styleId?: string;
   /** New references: an attachment of this message (by its number) or a work already in the form (by name). */
   addRefs?: { attachment: number; name: string; role: RefRole }[];
   /** Existing references given a new name or role. */
@@ -184,6 +190,10 @@ export function assistantSystem(output: "image" | "video" | "audio", defs: Gener
     `Answer with the JSON object only. "reply" is what you say to the person (Arabic, markdown not needed). Every other field is a change to the form: empty string / empty array = no change.`,
     `settings: each option you change as {key, value} (value as text: "16:9", "8", "true"). refStyle: "none" | "frames" | "references" or "" (frames = first/last frame pictures; references = people, places and objects mentioned by @name).`,
     `addRefs: {source: "attachment" | "ref", id: the attachment number or the reference's current name, name: its name in prompts, role: "first_frame" | "last_frame" | "reference" or ""}. removeRefs: names of references to take out.`,
+    ...(output === "audio" ? [] : [
+      `styleId: «الستايل», one of the 24 styles the person can pick with pictures under the prompt. The chosen style's text is put into the generator's prompt by itself (never copy it into "prompt"). Set it when the person asks for a style or names one (or "none" to take it off); leave "" otherwise. The styles (id — name: what it looks like):`,
+      FILM_STYLES.map((x) => `${x.id} — ${x.name} (${x.group}): ${x.description}`).join("\n"),
+    ]),
     `thumbnailPerson / thumbnailSide ("left" | "right" | "center"): only for the thumbnail method above; otherwise empty.`,
   ].join("\n");
 }
@@ -236,6 +246,8 @@ export function checkAnswer(
 
   const style = text(raw.refStyle) as RefStyle;
   if (STYLES.includes(style) && style !== ctx.draft.refStyle) set.refStyle = style;
+  const look = text((raw as { styleId?: unknown }).styleId);
+  if (look === "none" ? !!ctx.draft.styleId : findStyle(look) && look !== ctx.draft.styleId) set.styleId = look;
 
   const taken = new Set(ctx.draft.refs.map((r) => r.name.toLowerCase()));
   const removed = new Set((Array.isArray(raw.removeRefs) ? raw.removeRefs : []).map((n) => text(n).toLowerCase()).filter((n) => taken.has(n)));

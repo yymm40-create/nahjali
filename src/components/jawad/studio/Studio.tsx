@@ -29,6 +29,8 @@ import RefsStrip from "./RefsStrip";
 import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
+import StylePicker from "./StylePicker";
+import { findStyle } from "@config/film-styles";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
 import Coined from "@/components/Coined";
 
@@ -208,6 +210,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         settings: saved.settings ?? {},
         refStyle: saved.refStyle ?? {},
         refs: Array.isArray(saved.refs) ? withNames(saved.refs) : [],
+        styleId: typeof saved.styleId === "string" && findStyle(saved.styleId) ? saved.styleId : "",
       }));
       // Fresh links (and existence) of the kept references
       const ids = (saved.refs ?? []).flatMap((r) => (r.uploadId ? [r.uploadId] : []));
@@ -642,6 +645,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       instructions,
       refs: draft.refs.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
+      ...(section.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
       ...(frames ? { frames } : {}),
     };
     try {
@@ -791,6 +795,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       instructions: draft.instructions,
       settings: ev?.settings ?? settings,
       refStyle,
+      styleId: section.output === "audio" ? "" : draft.styleId ?? "",
       refs: draft.refs.filter((r) => r.uploadId && r.status === "ready").map((r) => ({ uploadId: r.uploadId!, name: r.name, kind: r.kind, role: r.role, width: r.width, height: r.height, durationMs: r.durationMs })),
     };
   }
@@ -822,6 +827,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         refStyle: { ...d.refStyle, [gid]: style },
         settings: set.settings ? { ...d.settings, [gid]: { ...base, ...set.settings } } : d.settings,
         refs,
+        styleId: set.styleId === undefined ? d.styleId : set.styleId === "none" ? "" : set.styleId,
       };
     });
     setTouched(true);
@@ -891,6 +897,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
               onRemove={removeRef}
               onRole={(id, role) => updateRef(id, { role })}
             />
+            {section.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true))} />}
             <PromptBox
               def={def}
               ev={ev}
@@ -1006,7 +1013,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
           generatorName={(id) => generators.find((g) => g.id === id)?.name ?? id}
           onThumbnail={(t) => setComposer(t)}
           canAttach={section.output !== "audio"}
-          storage={`${user.id}:${section.id}`}
+          storage={user.id}
         />
       )}
       {composer && (
