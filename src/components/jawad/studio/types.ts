@@ -69,6 +69,8 @@ export interface Draft {
   settings: Record<string, Settings>;
   refStyle: Record<string, RefStyle>;
   refs: RefItem[];
+  /** «الستايل»: one of the 24 styles (images and video), "" = none */
+  styleId?: string;
 }
 
 export const refMeta = (r: RefItem): RefMeta => ({

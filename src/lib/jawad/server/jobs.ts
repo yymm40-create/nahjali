@@ -8,6 +8,8 @@
 //            stale work, and finds tasks whose creation answer was lost (instead of sending a second one).
 //   end ─► jawad_finish_job: exactly once; success keeps the charge, failure or cancellation refunds it.
 
+import { findStyle } from "@config/film-styles";
+import { withStyle } from "@config/jawad/style-prompt";
 import { coinStr } from "@config/coins";
 import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { jawadSpeak } from "./providers/jawad-voice";
@@ -178,6 +180,8 @@ export interface GenerateBody {
   sectionId?: unknown;
   generatorId?: unknown;
   refStyle?: unknown;
+  /** «الستايل»: one of the 24 styles */
+  styleId?: unknown;
   settings?: unknown;
   prompt?: unknown;
   instructions?: unknown;
@@ -278,7 +282,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
   }
 
   // What the model reads: each «@name» written the way it numbers references (the user's prompt is kept as written)
-  const modelPrompt = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
+  // «الستايل»: one of the 24 styles chosen under the prompt — its text goes into what the model reads as the look
+  const style = def.output !== "audio" && typeof b.styleId === "string" ? findStyle(b.styleId) : undefined;
+  const asWritten = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
+  const modelPrompt = style ? withStyle(asWritten, style.text) : asWritten;
 
   // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
   const teamPays = !owner && !!server.team && e.price.coins > 0;
@@ -294,7 +301,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: e.price.coins,
       price_breakdown: e.price.lines,

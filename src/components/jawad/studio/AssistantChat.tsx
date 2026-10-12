@@ -34,7 +34,15 @@ interface Pending {
 }
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-const storeKey = (k: string) => `jawad:assistant:v1:${k}`;
+const storeKey = (k: string) => `jawad:assistant:v2:${k}`;
+/** A kept conversation (on this device): one جواد for images, video and sound, many conversations. */
+interface Kept {
+  id: string;
+  title: string;
+  at: number;
+  msgs: Msg[];
+}
+const KEEP_CHATS = 30;
 
 const GREETING: Record<"image" | "video" | "audio", { text: string; quick: string[] }> = {
   image: { text: `هلا! أنا ${ASSISTANT_NAME}. كيف أقدر أساعدك؟ أكتب لك البرومبت وأحط المراجع وأختار المولد، وأنت تراجع وتضغط «توليد».`, quick: ["أبي ثامبنيل يوتيوب", "أبي صورة لمنتج", "عندي صورة وأبي أعدّلها"] },
@@ -82,13 +90,20 @@ export default function AssistantChat({
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
 
-  // The conversation is kept on this device for two days (per person and studio)
+  // «محادثاتي»: the conversations are kept on this device (one جواد for every studio), the newest first
+  const [chats, setChats] = useState<Kept[]>([]);
+  const [chatId, setChatId] = useState<string>(() => uid());
+  const [list, setList] = useState(false);
   useEffect(() => {
     queueMicrotask(() => {
       try {
-        const raw = localStorage.getItem(storeKey(storage));
-        const saved = raw ? (JSON.parse(raw) as { at: number; msgs: Msg[] }) : null;
-        if (saved?.msgs?.length && Date.now() - saved.at < 2 * 86400_000) setMsgs(saved.msgs);
+        const saved = JSON.parse(localStorage.getItem(storeKey(storage)) ?? "null") as { chats: Kept[] } | null;
+        const all = (saved?.chats ?? []).filter((c) => c?.id && Array.isArray(c.msgs));
+        setChats(all);
+        if (all[0]) {
+          setChatId(all[0].id);
+          setMsgs(all[0].msgs);
+        }
       } catch {
         // nothing kept
       }
@@ -96,13 +111,39 @@ export default function AssistantChat({
     });
   }, [storage]);
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !msgs.some((m) => m.role === "user")) return;
+    const first = msgs.find((m) => m.role === "user")?.text ?? "";
+    setChats((all) => {
+      const next = [{ id: chatId, title: first.slice(0, 60) || "محادثة", at: Date.now(), msgs: msgs.slice(-60) }, ...all.filter((c) => c.id !== chatId)].slice(0, KEEP_CHATS);
+      try {
+        localStorage.setItem(storeKey(storage), JSON.stringify({ chats: next }));
+      } catch {
+        // storage full or blocked: the conversation just isn't kept
+      }
+      return next;
+    });
+  }, [msgs, loaded, storage, chatId]);
+  const fresh = () => {
+    setChatId(uid());
+    setMsgs([{ id: "hello", role: "assistant", text: greet.text, quick: greet.quick, local: true }]);
+    setPending([]);
+    setList(false);
+  };
+  const openChat = (c: Kept) => {
+    setChatId(c.id);
+    setMsgs(c.msgs);
+    setList(false);
+  };
+  const dropChat = (id: string) => {
+    const next = chats.filter((c) => c.id !== id);
+    setChats(next);
     try {
-      localStorage.setItem(storeKey(storage), JSON.stringify({ at: Date.now(), msgs: msgs.slice(-40) }));
+      localStorage.setItem(storeKey(storage), JSON.stringify({ chats: next }));
     } catch {
-      // storage full or blocked: the conversation just isn't kept
+      /* not kept */
     }
-  }, [msgs, loaded, storage]);
+    if (id === chatId) fresh();
+  };
   useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -200,17 +241,12 @@ export default function AssistantChat({
         <span className="grid size-8 place-items-center rounded-full bg-jw-accent text-[var(--jw-on-accent)]"><Icon name="sparkles" size={16} /></span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">{ASSISTANT_NAME}</p>
-          <p className="truncate text-[11px] text-jw-muted">مساعد {section.name} · يجهّز الفورم وأنت تضغط «توليد»</p>
+          <p className="truncate text-[11px] text-jw-muted">واحد للصور والفيديو والصوت · الحين في {section.name}</p>
         </div>
-        <button
-          type="button"
-          className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs"
-          onClick={() => {
-            setMsgs([{ id: "hello", role: "assistant", text: greet.text, quick: greet.quick, local: true }]);
-            setPending([]);
-          }}
-          title="محادثة جديدة"
-        >
+        <button type="button" className={`jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs ${list ? "!bg-jw-surface-2" : ""}`} onClick={() => setList((v) => !v)} aria-expanded={list} title="محادثاتي السابقة">
+          🗂️ {chats.length}
+        </button>
+        <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" onClick={fresh} title="محادثة جديدة">
           <Icon name="retry" size={14} /> جديدة
         </button>
         <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2" onClick={onClose} aria-label="إغلاق">
@@ -218,6 +254,24 @@ export default function AssistantChat({
         </button>
       </header>
 
+      {list && (
+        <nav className="jw-scroll max-h-[45%] shrink-0 overflow-y-auto border-b border-jw-line bg-jw-bg-2 p-2" aria-label="محادثاتي">
+          <p className="px-1 pb-1 text-[11px] text-jw-muted">محادثاتك مع {ASSISTANT_NAME} (نفسه في الصور والفيديو والصوت)، محفوظة على هذا الجهاز.</p>
+          {!chats.length && <p className="px-1 py-2 text-xs text-jw-faint">ما فيه محادثات سابقة بعد.</p>}
+          <ul className="space-y-1">
+            {chats.map((c) => (
+              <li key={c.id} className={`flex items-center gap-1 rounded-lg ${c.id === chatId ? "bg-jw-surface-2" : ""}`}>
+                <button type="button" className="min-w-0 flex-1 truncate px-2 py-1.5 text-start text-xs" onClick={() => openChat(c)} dir="auto">
+                  {c.title} <span className="text-[10px] text-jw-faint">· {new Date(c.at).toLocaleDateString("ar")}</span>
+                </button>
+                <button type="button" className="px-2 text-jw-faint hover:text-jw-danger" aria-label="احذف المحادثة" onClick={() => dropChat(c.id)}>
+                  <Icon name="x" size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
       <div ref={scroller} className="jw-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-live="polite">
         {msgs.map((m, i) => (
           <div key={m.id} className={`flex flex-col gap-1.5 ${m.role === "user" ? "items-start" : "items-end"}`} data-role={m.role}>
