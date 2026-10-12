@@ -10,7 +10,11 @@ import { COIN_MARK } from "./coins";
 
 export const COURSE = {
   base: "/jawad-ai/course",
-  name: "دورة الجواد الذكي",
+  name: "دورة صناعة الفيلم السينمائي بالجواد الذكي",
+  schedule: {
+    short: "الخميس ١٥ · الجمعة ١٦ · السبت ١٧ أكتوبر ٢٠٢٦",
+    days: ["الخميس ١٥ أكتوبر ٢٠٢٦", "الجمعة ١٦ أكتوبر ٢٠٢٦", "السبت ١٧ أكتوبر ٢٠٢٦"],
+  },
   /** how long the price a person saw at «ادفع الآن» is kept for their transfer (minutes) */
   lockMinutes: 180,
   /** the most orders a person may have open (started, waiting for the owner) at once */
@@ -21,6 +25,13 @@ export type Product = "combo" | "live" | "recorded";
 export const PRODUCTS: Product[] = ["combo", "live", "recorded"];
 export const isProduct = (v: unknown): v is Product => typeof v === "string" && (PRODUCTS as string[]).includes(v);
 export const PRODUCT_LABEL: Record<Product, string> = { combo: "الدورة كاملة (مباشرة + مسجلة)", live: "الدورة المباشرة", recorded: "الدورة المسجلة" };
+/** Keep access promises beside the product itself so a live-only ad can never inherit the recorded course's lifetime access. */
+export const PRODUCT_ACCESS: Record<Product, string> = {
+  combo: "حضور مباشر + تسجيل الدورة مدى الحياة",
+  live: "حضور مباشر فقط",
+  recorded: "الدورة المسجلة متاحة لك مدى الحياة",
+};
+export const hasLifetimeAccess = (product: Product) => product !== "live";
 
 export type Phase = "soon" | "A" | "B" | "C";
 
@@ -70,15 +81,15 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   prices: { comboA: 40, liveB: 40, recordedB: 80, liveC: 80, recordedC: 100 },
   was: { live: 80, recorded: 150 },
   bonus: { comboA: 0, recordedB: 0, recordedC: 0 },
-  headline: "اصنع فيلمك الأقوى بأقل الأسعار وأسهل الطرق والتقنيات (وأعلى جودة)",
-  subhead: "دورة عملية في ٣ أيام: يومين نمشي فيهم على صناعة الفيلم السينمائي خطوة بخطوة بالجواد الذكي، واليوم الثالث تدريب تسوي فيه فيلمك أنت بنفسك.",
-  problem: "تبي تسوي فيلم، لكن الطرق كثيرة والأدوات غالية، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل لأقوى نتيجة بأقل تكلفة وأسهل خطوات.",
+  headline: "اصنع فيلمك السينمائي من الفكرة إلى المشهد النهائي",
+  subhead: "دورة عملية الخميس والجمعة والسبت (١٥–١٧ أكتوبر ٢٠٢٦): نمشي داخل فرع صناعة الأفلام في الجواد الذكي، سواء اخترت فيلمًا سينمائيًا كاملًا أو مشهدًا قصيرًا، من السيناريست إلى صانع الشيت والمخرج والأصوات ثم المونتاج.",
+  problem: "عندك فكرة فيلم أو مشهد، لكن تضيع بين كتابة السيناريو، تثبيت شكل الشخصيات والأماكن، إخراج اللقطات، توليد الفيديو والصوت، ثم جمعها في عمل واحد. في الدورة تمشي على المسار الحقيقي داخل الجواد الذكي خطوة بخطوة، وتعرف كيف تحصل على نتيجة سينمائية بأقل تجارب مهدرة.",
   days: [
-    { title: "اليوم الأول: صناعة الفيلم السينمائي (١)", points: ["من الفكرة للسيناريو واللقطات", "الشخصيات والمشاهد بشكل ثابت من أول الفيلم لآخره", "كيف تختار الأرخص بدون ما تنزل الجودة"] },
-    { title: "اليوم الثاني: صناعة الفيلم السينمائي (٢)", points: ["توليد المشاهد وتركيبها في فيلم واحد", "الصوت والمونتاج والتعديل الذكي", "كيف تتجنب الأخطاء اللي تحرق الرصيد"] },
-    { title: "اليوم الثالث: تدريب عملي", points: ["تصنع فيلمك أنت بنفسك، وأنا معك خطوة بخطوة", "أسئلتك وملاحظاتي على شغلك", "خطة تكمل فيها بعد الدورة"] },
+    { title: "الخميس ١٥ أكتوبر: القصة والسيناريو", points: ["اختيار المسار: فيلم سينمائي كامل أو مشهد قصير", "السيناريست يحوّل فكرتك إلى مشاهد وحوار وخطة قابلة للصناعة", "تثبيت القصة والشخصيات قبل صرف الرصيد على التوليد"] },
+    { title: "الجمعة ١٦ أكتوبر: صناعة الصورة واللقطات", points: ["صانع الشيت يثبّت شكل الشخصيات والأماكن والأشياء", "المخرج يحوّل كل مشهد إلى لقطات وبرومبتات ومراجع واضحة", "توليد الفيديو والأصوات مع الحفاظ على الاستمرارية والجودة"] },
+    { title: "السبت ١٧ أكتوبر: المونتاج والفيلم النهائي", points: ["جمع اللقطات والصوت في حيدرة كت وإخراج الفيلم", "إضافة الموشن جرافيك والتعديلات المساندة عند الحاجة", "تطبيق عملي تصنع فيه عملك بنفسك مع المراجعة خطوة بخطوة"] },
   ],
-  risks: ["الدورة مدى الحياة، مباشرة كانت أو مسجلة", "مجموعة خاصة للمتابعة والأسئلة بعد الدورة", "تواصل مباشر معي لو واجهتك مشكلة"],
+  risks: ["وصول مدى الحياة للدورة المسجلة فقط", "مجموعة خاصة للمتابعة والأسئلة بعد الدورة", "تواصل مباشر معي لو واجهتك مشكلة"],
   videoPath: null,
   videoUrl: "",
   posterPath: null,
@@ -96,11 +107,21 @@ export const DEFAULT_SETTINGS: CourseSettings = {
  * himself is never touched.
  */
 const OLD_DEFAULTS = {
-  headline: ["تشتغل على الجواد الذكي بثقة في ٣ أيام: تسوي صورك وفيديوهاتك وتصاميمك بنفسك، وتعرف وين تصرف رصيدك"],
-  subhead: ["دورة عملية عن الجواد الذكي نفسه: الموقع وأقسامه وروبوتاته وعروضه، من أول خطوة لين تسوي شغلك أنت."],
-  problem: ["تفتح الأدوات الذكية وتضيع بين عشرات الخيارات، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل أسرع بتكلفة أقل."],
+  headline: [
+    "تشتغل على الجواد الذكي بثقة في ٣ أيام: تسوي صورك وفيديوهاتك وتصاميمك بنفسك، وتعرف وين تصرف رصيدك",
+    "اصنع فيلمك الأقوى بأقل الأسعار وأسهل الطرق والتقنيات (وأعلى جودة)",
+  ],
+  subhead: [
+    "دورة عملية عن الجواد الذكي نفسه: الموقع وأقسامه وروبوتاته وعروضه، من أول خطوة لين تسوي شغلك أنت.",
+    "دورة عملية في ٣ أيام: يومين نمشي فيهم على صناعة الفيلم السينمائي خطوة بخطوة بالجواد الذكي، واليوم الثالث تدريب تسوي فيه فيلمك أنت بنفسك.",
+  ],
+  problem: [
+    "تفتح الأدوات الذكية وتضيع بين عشرات الخيارات، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل أسرع بتكلفة أقل.",
+    "تبي تسوي فيلم، لكن الطرق كثيرة والأدوات غالية، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل لأقوى نتيجة بأقل تكلفة وأسهل خطوات.",
+  ],
   /** the first day's title of the old three days */
-  day1: ["اليوم الأول: تعرّف على الجواد"],
+  day1: ["اليوم الأول: تعرّف على الجواد", "اليوم الأول: صناعة الفيلم السينمائي (١)"],
+  risks: ["الدورة مدى الحياة، مباشرة كانت أو مسجلة"],
 } as const;
 
 const num = (v: unknown, lo: number, hi: number, d: number) => {
@@ -153,7 +174,11 @@ export function readSettings(raw: unknown): CourseSettings {
     subhead: ((t) => (!t || (OLD_DEFAULTS.subhead as readonly string[]).includes(t) ? d.subhead : t))(text(o.subhead, 400)),
     problem: ((t) => (!t || (OLD_DEFAULTS.problem as readonly string[]).includes(t) ? d.problem : t))(text(o.problem, 800)),
     days: days.length && !(OLD_DEFAULTS.day1 as readonly string[]).includes(days[0].title) ? days : d.days,
-    risks: (Array.isArray(o.risks) ? o.risks : d.risks).map((r) => text(r, 200)).filter(Boolean).slice(0, 10),
+    risks: (Array.isArray(o.risks) ? o.risks : d.risks)
+      .map((r) => text(r, 200))
+      .map((r) => ((OLD_DEFAULTS.risks as readonly string[]).includes(r) ? d.risks[0] : r))
+      .filter(Boolean)
+      .slice(0, 10),
     videoPath: typeof o.videoPath === "string" && /^course\/[0-9a-f-]{36}\.(mp4)$/.test(o.videoPath) ? o.videoPath : null,
     videoUrl: link(o.videoUrl),
     posterPath: typeof o.posterPath === "string" && /^course\/[0-9a-f-]{36}\.(png|jpg|webp)$/.test(o.posterPath) ? o.posterPath : null,

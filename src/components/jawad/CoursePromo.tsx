@@ -9,14 +9,14 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Coined from "@/components/Coined";
-import { COURSE, countdown, type Phase } from "@config/course";
+import { COURSE, countdown, hasLifetimeAccess, PRODUCT_ACCESS, type Phase, type Product } from "@config/course";
 import "./share-reward.css";
 
 interface Promo {
   headline: string;
   subhead: string;
   phase: Phase;
-  offer: { label: string; price: number; was: number; saving: number; bonus: number } | null;
+  offer: { product: Product; label: string; price: number; was: number; saving: number; bonus: number } | null;
   endsAt: number | null;
   now: number;
 }
@@ -76,32 +76,43 @@ export default function CoursePromo({ version }: { version: string }) {
       )}
       {open && !onCourse && typeof document !== "undefined" && createPortal(
         <div className="sr-back" role="dialog" aria-modal="true" aria-label={COURSE.name} dir="rtl" onClick={close}>
-          <div className="sr-card" onClick={(e) => e.stopPropagation()}>
+          <div className="sr-card sr-course-card" onClick={(e) => e.stopPropagation()}>
             <span className="sr-shine" aria-hidden />
             <button type="button" className="sr-x" onClick={close} aria-label="أغلق">✕</button>
 
-            <div className="sr-head">
-              <span className="sr-ribbon">🎬 {COURSE.name} — ٣ أيام</span>
-              <div className="sr-trophy" aria-hidden>🎓</div>
+            <div className="sr-head sr-course-head">
+              <span className="sr-ribbon">🎬 صناعة الفيلم السينمائي</span>
+              <p className="sr-course-date">🗓️ {COURSE.schedule.short}</p>
+              <div className="sr-course-icon" aria-hidden>🎓</div>
               <h2>{p.headline}</h2>
               {p.offer ? (
-                <div className="sr-prize">
-                  <span>{p.offer.label}</span>
-                  <b><Coined text={`¤${p.offer.price}`} size={30} /></b>
-                  <span>
-                    {p.offer.was > p.offer.price && <s><Coined text={`¤${p.offer.was}`} size={14} /></s>}
-                    {p.offer.saving > 0 && <> · خصم {p.offer.saving}٪</>}
-                  </span>
+                <div className="sr-prize sr-course-offer">
+                  <div className="sr-course-offer-copy">
+                    <strong>{p.offer.label}</strong>
+                    <span>{PRODUCT_ACCESS[p.offer.product]}</span>
+                  </div>
+                  <div className="sr-course-price">
+                    <b><Coined text={`¤${p.offer.price}`} size={28} /></b>
+                    {(p.offer.was > p.offer.price || p.offer.saving > 0) && <small>
+                      {p.offer.was > p.offer.price && <s><Coined text={`¤${p.offer.was}`} size={13} /></s>}
+                      {p.offer.saving > 0 && <> خصم {p.offer.saving}٪</>}
+                    </small>}
+                  </div>
                 </div>
               ) : (
                 <p>{soon ? "الدورة قريبًا، تابع الصفحة." : ""}</p>
               )}
-              <p>{p.subhead}</p>
-              {left !== null && left > 0 && p.offer && <p className="sr-small">⏳ هذا السعر ينتهي بعد {countdown(left)}</p>}
+              <p className="sr-course-summary">{p.subhead}</p>
+              {left !== null && left > 0 && p.offer && <p className="sr-course-timer">⏳ هذا السعر ينتهي بعد <b dir="ltr">{countdown(left)}</b></p>}
             </div>
 
             <Link href={COURSE.base} className="sr-go" onClick={close}>{soon ? "شوف الدورة" : "اشترك الآن"}</Link>
-            <p className="sr-small">🔒 تحويل بنكي · ♾️ وصول مدى الحياة · 💬 مجموعة واتساب خاصة</p>
+            <ul className="sr-course-trust" aria-label="مزايا العرض">
+              <li>🔒 تحويل بنكي</li>
+              {p.offer && hasLifetimeAccess(p.offer.product) && <li>♾️ المسجلة مدى الحياة</li>}
+              {p.offer?.product === "live" && <li>🎥 حضور مباشر</li>}
+              <li>💬 مجموعة خاصة</li>
+            </ul>
           </div>
         </div>,
         document.body,

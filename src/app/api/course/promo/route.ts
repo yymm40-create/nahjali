@@ -14,7 +14,7 @@ export const GET = handle(async () => {
     headline: s.headline,
     subhead: s.subhead,
     phase: o.phase,
-    offer: first ? { label: first.label, price: first.price, was: first.was, saving: savingPct(first), bonus: first.bonus } : null,
+    offer: first ? { product: first.product, label: first.label, price: first.price, was: first.was, saving: savingPct(first), bonus: first.bonus } : null,
     endsAt: o.endsAt,
     now: Date.now(),
   });

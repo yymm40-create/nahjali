@@ -193,6 +193,41 @@
 .sr-msg.bad { color: #ff9b85; }
 .sr-small { margin: 10px 0 0; font-size: 11px; color: #bfa874; text-align: center; }
 
+/* The course announcement uses the shared gold shell, with its own compact hierarchy so long Arabic copy stays orderly. */
+.sr-course-card { max-width: 420px; padding: 20px; }
+.sr-course-head { gap: 10px; }
+.sr-course-date { margin: -2px 0 0 !important; font-size: 12px !important; font-weight: 800; color: #ffe08a !important; }
+.sr-course-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-top: 2px;
+  border-radius: 18px;
+  font-size: 32px;
+  line-height: 1;
+  background: rgb(245 192 74 / 0.12);
+  border: 1px solid rgb(245 192 74 / 0.32);
+}
+.sr-course-head h2 { max-width: 360px; font-size: clamp(22px, 6vw, 28px); line-height: 1.45; text-wrap: balance; }
+.sr-course-offer { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 16px; text-align: right; }
+.sr-course-offer-copy { display: grid; gap: 4px; min-width: 0; }
+.sr-course-offer-copy strong { font-size: 15px; color: #fff3cf; }
+.sr-course-offer-copy span { font-size: 12px; line-height: 1.65; color: #d8c48d; }
+.sr-course-price { display: grid; justify-items: center; min-width: 90px; line-height: 1.2; }
+.sr-course-price b { font-size: 28px; white-space: nowrap; }
+.sr-course-price small { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #f2d993; white-space: nowrap; }
+.sr-course-summary { max-width: 360px; font-size: 13px !important; line-height: 1.8; color: #e6d3a1 !important; text-wrap: pretty; }
+.sr-course-timer { width: 100%; padding: 8px 10px; border-radius: 12px; font-size: 12px !important; color: #ffe08a !important; background: rgb(245 192 74 / 0.1); }
+.sr-course-timer b { font-variant-numeric: tabular-nums; }
+.sr-course-trust { position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 12px; margin: 12px 0 0; padding: 0; list-style: none; font-size: 11px; color: #cdb77e; }
+
+@media (max-width: 390px) {
+  .sr-course-card { padding: 18px 14px 16px; border-radius: 22px; }
+  .sr-course-offer { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 8px; }
+  .sr-course-price { grid-template-columns: auto auto; align-items: center; gap: 8px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sr-pill, .sr-back, .sr-card, .sr-shine, .sr-confetti i, .sr-trophy { animation: none; }
 }
