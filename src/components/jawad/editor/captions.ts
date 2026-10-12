@@ -174,12 +174,17 @@ const srtTime = (ms: number) => {
 };
 
 /** Every text clip of the text tracks (or of one track) as an SRT subtitle file. */
-export function toSRT(tl: Timeline, trackId?: string) {
+export function toSRT(tl: Timeline, trackId?: string, range?: { from: number; to: number } | null) {
   const clips = tl.tracks
     .filter((t) => t.kind === "text" && (!trackId || t.id === trackId))
     .flatMap((t) => t.clips.filter((c) => c.text?.body.trim()))
+    // «منطقة التصدير»: only the subtitles that touch the range, cut to it and counted from its start
+    .filter((c) => !range || (clipEnd(c) > range.from && c.start < range.to))
     .sort((a, b) => a.start - b.start);
-  return clips.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(clipEnd(c))}\n${c.text!.body.trim()}\n`).join("\n");
+  const o = range?.from ?? 0;
+  return clips
+    .map((c, i) => `${i + 1}\n${srtTime(Math.max(0, c.start - o))} --> ${srtTime(Math.min(clipEnd(c), range?.to ?? Infinity) - o)}\n${c.text!.body.trim()}\n`)
+    .join("\n");
 }
 
 /** An SRT (or WebVTT) file's subtitles as caption phrases. */

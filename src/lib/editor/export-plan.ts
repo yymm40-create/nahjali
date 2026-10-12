@@ -110,12 +110,12 @@ export function bitrateFor(width: number, height: number, fps: number, quality: 
 }
 
 /** Everything the export needs, and everything the person is shown, from the choices and the timeline. */
-export function exportPlan(tl: Pick<Timeline, "width" | "height" | "fps" | "tracks">, o: ExportOpts, source?: SourceInfo | null): ExportPlan {
+export function exportPlan(tl: Pick<Timeline, "width" | "height" | "fps" | "tracks">, o: ExportOpts, source?: SourceInfo | null, /** a part of the timeline (its length in ms) */ len?: number): ExportPlan {
   const { width, height } = sizeFor(tl, o.res, source);
   const fps = fpsFor(tl, o.fps, source);
   const bitrate = bitrateFor(width, height, fps, o.quality, source);
   const audioBitrate = AUDIO_BITRATE[typeof o.quality === "object" ? "high" : o.quality];
-  const ms = duration(tl as Timeline);
+  const ms = len ?? duration(tl as Timeline);
   const bytes = Math.round(((bitrate + audioBitrate) * (ms / 1000)) / 8);
   const pixels = width * height;
   return {

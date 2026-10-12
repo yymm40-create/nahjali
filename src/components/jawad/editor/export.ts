@@ -54,6 +54,13 @@ const CHUNK_S = 5;
 
 export class ExportError extends Error {}
 
+/** What to make: a part of the timeline (In/Out), the sound alone (an M4A), or the picture without sound. */
+export interface ExportOpts {
+  range?: { from: number; to: number } | null;
+  audioOnly?: boolean;
+  mute?: boolean;
+}
+
 /** Can this browser make the file at all? (WebCodecs: Chrome/Edge 94+, Safari 16.4+/17, recent Firefox.) */
 export const canExport = () => typeof window !== "undefined" && "VideoEncoder" in window;
 
@@ -64,9 +71,15 @@ export async function exportVideo(
   plan: Pick<ExportPlan, "width" | "height" | "fps" | "bitrate" | "audioBitrate">,
   onProgress: (p: number) => void,
   signal: AbortSignal,
+  opts: ExportOpts = {},
 ): Promise<ExportResult> {
-  const total = duration(tl);
-  if (!total) throw new ExportError("التايملاين فاضي؛ أضف مقطعًا أول.");
+  const whole = duration(tl);
+  if (!whole) throw new ExportError("التايملاين فاضي؛ أضف مقطعًا أول.");
+  // «منطقة التصدير» (In → Out): only that part is made, counted from 0 in the file
+  const r0 = Math.max(0, Math.min(whole, opts.range?.from ?? 0));
+  const total = Math.max(0, Math.min(whole, opts.range?.to ?? whole));
+  if (total - r0 < 100) throw new ExportError("منطقة التصدير قصيرة جدًا؛ حدّد منطقة أطول.");
+  const audioOnly = !!opts.audioOnly;
   const { width, height } = plan;
   const fps = plan.fps;
   // the texts' fonts are on the page before the first frame is drawn
@@ -86,21 +99,22 @@ export async function exportVideo(
     const want = wantedEncode();
     if (want !== "no-preference" && (await canEncodeVideo(videoCodec, { width, height, bitrate: plan.bitrate, frameRate: fps, hardwareAcceleration: want }).catch(() => false))) hw = want;
   }
-  if (!videoCodec) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بمقاس ${width}×${height}. اختر دقة أقل (أو جرّب Chrome أو Edge على الكمبيوتر).`);
+  if (!videoCodec && !audioOnly) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بمقاس ${width}×${height}. اختر دقة أقل (أو جرّب Chrome أو Edge على الكمبيوتر).`);
 
   // sound: clips we can hear
   const hasSound = (c: Clip) => !c.text && !!c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio;
-  const audible: { track: Track; c: Clip }[] = tl.tracks.flatMap((track) => (track.muted ? [] : track.clips.filter((c) => c.volume > 0 && hasSound(c)).map((c) => ({ track, c }))));
+  const audible: { track: Track; c: Clip }[] = tl.tracks.flatMap((track) => (track.muted || opts.mute ? [] : track.clips.filter((c) => c.volume > 0 && hasSound(c)).map((c) => ({ track, c }))));
   const spans = voiceSpans(tl, hasSound);
   const audioCodec = audible.length ? await soundCodec() : null;
+  if (audioOnly && !audioCodec) throw new ExportError(audible.length ? "متصفحك ما يقدر يحفظ الصوت. جرّب Chrome أو Edge على الكمبيوتر." : "ما فيه صوت في هذي المنطقة تصدّره.");
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d", { alpha: false })!;
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-  const video = new CanvasSource(canvas, { codec: videoCodec, bitrate: plan.bitrate, keyFrameInterval: 2, hardwareAcceleration: hw });
-  output.addVideoTrack(video, { frameRate: fps });
+  const video = audioOnly ? null : new CanvasSource(canvas, { codec: videoCodec!, bitrate: plan.bitrate, keyFrameInterval: 2, hardwareAcceleration: hw });
+  if (video) output.addVideoTrack(video, { frameRate: fps });
   const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: plan.audioBitrate }) : null;
   if (audio) output.addAudioTrack(audio);
 
@@ -115,7 +129,7 @@ export async function exportVideo(
     return i;
   };
   const images = new Map<string, ImageBitmap>();
-  const visual = tl.tracks.filter((t) => t.kind !== "audio" && !t.hidden).flatMap((t) => t.clips.filter((c) => !c.text && c.assetId));
+  const visual = audioOnly ? [] : tl.tracks.filter((t) => t.kind !== "audio" && !t.hidden).flatMap((t) => t.clips.filter((c) => !c.text && c.assetId));
 
   // each video clip: its frames in order, one per output frame it covers (decoded once, front to back)
   interface Stream {
@@ -126,13 +140,14 @@ export async function exportVideo(
     cur: Frame | null;
   }
   const streams = new Map<string, Stream>();
+  const startFrame = Math.ceil((r0 * fps) / 1000);
   async function streamOf(c: Clip, a: ExportAsset): Promise<Stream> {
     const had = streams.get(c.id);
     if (had) return had;
     const track = await input(a).getPrimaryVideoTrack();
     if (!track) throw new ExportError("أحد مقاطع الفيديو ما فيه صورة يقدر المتصفح يقرأها.");
     if (!(await track.canDecode())) throw new ExportError("متصفحك ما يقدر يقرأ ترميز أحد مقاطع الفيديو. جرّب Chrome على الكمبيوتر.");
-    const first = Math.ceil((c.start * fps) / 1000);
+    const first = Math.max(startFrame, Math.ceil((c.start * fps) / 1000));
     const last = Math.ceil((clipEnd(c) * fps) / 1000) - 1;
     const times = function* () {
       for (let f = first; f <= last; f++) yield Math.max(0, sourceTime(c, (f * 1000) / fps) / 1000);
@@ -166,7 +181,7 @@ export async function exportVideo(
   }
 
   const frames = Math.ceil((total * fps) / 1000);
-  let frame = 0;
+  let frame = startFrame;
   try {
     for (const c of visual) {
       const a = byId.get(c.assetId!)!;
@@ -178,13 +193,13 @@ export async function exportVideo(
     }
     await output.start();
 
-    for (let chunk = 0; chunk * CHUNK_S * 1000 < total; chunk++) {
-      const from = chunk * CHUNK_S * 1000;
+    for (let chunk = 0; r0 + chunk * CHUNK_S * 1000 < total; chunk++) {
+      const from = r0 + chunk * CHUNK_S * 1000;
       const to = Math.min(total, from + CHUNK_S * 1000);
       if (audio) await audio.add(await mixChunk(from, to));
 
       const until = Math.min(frames, Math.ceil((to * fps) / 1000));
-      for (; frame < until; frame++) {
+      for (; !audioOnly && frame < until; frame++) {
         if (signal.aborted) throw new DOMException("cancelled", "AbortError");
         const ms = (frame * 1000) / fps;
         const now = new Map<string, Frame | null>();
@@ -208,8 +223,8 @@ export async function exportVideo(
         } finally {
           setExporting(false);
         }
-        await video.add(frame / fps, 1 / fps);
-        onProgress(frame / frames);
+        await video!.add((frame - startFrame) / fps, 1 / fps);
+        onProgress((frame - startFrame) / Math.max(1, frames - startFrame));
       }
     }
     await output.finalize();
@@ -224,7 +239,7 @@ export async function exportVideo(
   const buf = (output.target as BufferTarget).buffer;
   if (!buf) throw new ExportError("ما انكتب الملف؛ جرّب مرة ثانية.");
   onProgress(1);
-  return { blob: new Blob([buf], { type: "video/mp4" }), width, height, codec: videoCodec, audio: audioCodec, lostSound: audible.length > 0 && !audioCodec };
+  return { blob: new Blob([buf], { type: audioOnly ? "audio/mp4" : "video/mp4" }), width, height, codec: videoCodec ?? "", audio: audioCodec, lostSound: audible.length > 0 && !audioCodec };
 
   /**
    * The mixed sound of [from, to) ms: every audible clip's decoded sound placed at its moment, its loudness following
@@ -348,7 +363,7 @@ export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = name.endsWith(".mp4") ? name : `${name}.mp4`;
+  a.download = /\.(mp4|m4a|srt|png)$/i.test(name) ? name : `${name}.mp4`;
   document.body.appendChild(a);
   a.click();
   a.remove();

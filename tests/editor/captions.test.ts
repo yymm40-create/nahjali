@@ -28,4 +28,10 @@ describe("captions", () => {
     expect(parseSRT(srt).map((x) => x.body)).toEqual(phrases(words, 4).map((x) => x.body));
     expect(parseSRT("WEBVTT\n\n00:00:04.000 --> 00:00:05.500\nسطر من ملف\n")).toEqual([{ start: 4000, end: 5500, body: "سطر من ملف" }]);
   });
+
+  it("writes only the subtitles of an export range, counted from its start", () => {
+    const t = applyAll(emptyTimeline(), [{ type: "add_captions", items: [{ start: 1000, end: 2000, body: "قبل" }, { start: 5000, end: 7000, body: "داخل" }, { start: 12000, end: 13000, body: "بعد" }], style: "classic" }], lib()).timeline;
+    const srt = toSRT(t, undefined, { from: 4000, to: 9000 });
+    expect(parseSRT(srt)).toEqual([{ start: 1000, end: 3000, body: "داخل" }]);
+  });
 });
