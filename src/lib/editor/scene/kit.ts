@@ -206,7 +206,7 @@ export const SCENE_KIT_JS = String.raw`
     ctx.fillStyle = fill; ctx.fillText(str, x, y);
     ctx.restore();
   };
-  K.roundRect = function (ctx, x, y, w, h, r) { r = Math.min(r || 0, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  K.roundRect = function (ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r || 0, Math.abs(w) / 2, Math.abs(h) / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
   // a path drawn on: p 0..1 of its length (len = the path's length, roughly)
   K.drawOn = function (ctx, p, len, pathFn) { ctx.save(); ctx.setLineDash([len, len]); ctx.lineDashOffset = len * (1 - K.clamp(p)); ctx.beginPath(); pathFn(ctx); ctx.stroke(); ctx.restore(); };
 
@@ -313,7 +313,7 @@ export const SCENE_KIT_JS = String.raw`
   K.grain = function (ctx, t, o) {
     o = o || {}; var amt = o.amount === undefined ? 0.06 : o.amount; if (amt <= 0) return;
     if (!grainTiles) { grainTiles = []; for (var g = 0; g < 4; g++) { var c = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(256, 256) : document.createElement("canvas"); c.width = c.height = 256; var x = c.getContext("2d", { willReadFrequently: true }), im = x.createImageData(256, 256), r = K.rng(100 + g); for (var i = 0; i < im.data.length; i += 4) { var v = r() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); grainTiles.push(c); } }
-    var tile = grainTiles[Math.floor(t * 24) % 4];
+    var tile = grainTiles[(((Math.floor(t * 24) || 0) % 4) + 4) % 4]; if (!tile) return;
     ctx.save(); ctx.globalCompositeOperation = "overlay"; ctx.globalAlpha = amt; ctx.fillStyle = ctx.createPattern(tile, "repeat"); ctx.fillRect(0, 0, K.W, K.H); ctx.restore();
   };
   K.vignette = function (ctx, o) {
