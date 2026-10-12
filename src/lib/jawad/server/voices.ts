@@ -18,7 +18,7 @@ import { probe, sniff } from "../media";
 import { JAWAD_BUCKET, loadRuntime } from "./runtime";
 import { isUuid, refsFor } from "./uploads";
 import { ProviderError } from "./providers/common";
-import { elevenCloneVoice, elevenDeleteVoice, elevenDesignVoice, elevenPremadeVoices, elevenSaveDesigned, elevenTranscribe } from "./providers/elevenlabs";
+import { elevenCloneVoice, elevenDeleteVoice, elevenDesignVoice, elevenOwnVoices, elevenPremadeVoices, elevenSaveDesigned, elevenTranscribe } from "./providers/elevenlabs";
 
 import { libraryAccess, libraryOpenFor, requireLibrary } from "./library-access";
 import { storage } from "@/lib/storage";
@@ -131,12 +131,22 @@ export async function resolveVoice(userId: string, value: string): Promise<{ ok:
     if (list && list.length && !list.some((v) => v.voiceId === id) && !FALLBACK_VOICES.some((v) => v.voiceId === id)) return { ok: false, reason: "هذا الصوت غير متاح. اختر صوتًا آخر." };
     return { ok: true, voiceId: id, provider: "elevenlabs" };
   }
+  if (value.startsWith("c:")) {
+    // A clone made while «مكتبة الأصوات» (jawad_voices, ملف 0023) wasn't there to keep it: the voice itself is real,
+    // on ElevenLabs' own account, just not a row here — sent as is, the same leniency as "p:" above
+    const id = value.slice(2);
+    if (!/^[A-Za-z0-9]{16,32}$/.test(id)) return { ok: false, reason: "الصوت غير صحيح." };
+    const own = await elevenOwnVoices().catch(() => null);
+    if (own && own.length && !own.some((v) => v.voiceId === id)) return { ok: false, reason: "هذا الصوت ما عاد موجودًا في حساب إيليفن لابز." };
+    return { ok: true, voiceId: id, provider: "elevenlabs" };
+  }
   return { ok: false, reason: "اختر صوتًا." };
 }
 
 async function countVoices(userId: string) {
   const { count, error } = await db().from("jawad_voices").select("id", { count: "exact", head: true }).eq("user_id", userId);
-  if (missing(error)) throw notReady();
+  // nothing is kept yet (ملف 0023 لم يُشغّل): nothing to count against the limit either
+  if (missing(error)) return 0;
   return count ?? 0;
 }
 
@@ -292,6 +302,12 @@ async function insertVoice(userId: string, v: { voiceId: string; name: string; d
     .select("*")
     .single();
   if (error) {
+    if (missing(error) && provider === "elevenlabs") {
+      // «مكتبة الأصوات» قيد التجهيز (ملف 0023): الصوت صار فعلاً على حساب إيليفن لابز، فيُستخدم من هنا بـ«c:<id>» —
+      // يشتغل الحين، بس ما يُحفظ في مكتبة دائمة ولا يظهر في «أصواتي» بعد تحديث الصفحة؛ ذاك يحتاج تشغيل الملف
+      const links = await signed(preview ? [preview] : []);
+      return { id: "", value: `c:${v.voiceId}`, name: v.name, description: v.description, origin: v.origin, previewUrl: preview ? links.get(preview) ?? null : null, provider };
+    }
     if (provider === "elevenlabs") await elevenDeleteVoice(v.voiceId).catch(() => null);
     if (missing(error)) throw notReady();
     throw error;
