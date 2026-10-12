@@ -68,7 +68,7 @@ const SCHEMA = {
         additionalProperties: false,
         required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer", "captionStyle", "poem", "then"],
         properties: {
-          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "upscale"] },
+          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale"] },
           captionStyle: { type: "string", enum: ["karaoke", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up). Else empty." },
           poem: { type: "string", description: "captions: a poem's verses (one per line, exactly as the person gave them) to time on its recitation in clipId. Else empty." },
           then: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "captions: commands to run once the captions exist — \"$CAPTIONS\" is the new caption track's id, and a command whose clipId is \"$EACH\" runs on every caption. Else empty." },
@@ -193,7 +193,7 @@ function lookParts(look: NonNullable<ReturnType<typeof readLook>>): ClaudePart[]
 }
 
 export interface MakeRequest {
-  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale";
+  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale" | "motion_lab";
   /** captions: the starting look, a poem to time, and the commands run on the new captions */
   captionStyle?: string;
   poem?: string;
@@ -495,7 +495,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
   const requests = (answer.requests ?? [])
-    .filter((r) => (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => (r.kind === "motion_lab" && r.prompt.trim()) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
