@@ -103,14 +103,22 @@ export interface TaskRow {
   done_at: string | null;
   priority?: boolean | null;
 }
-export const taskFromRow = (r: TaskRow): DayTask => ({ id: r.id, date: r.task_date, title: r.title, at: r.at_time ? r.at_time.slice(0, 5) : null, habitId: r.habit_id, sortOrder: r.sort_order, doneAt: r.done_at, priority: Boolean(r.priority) });
+/** Compatibility for deployments where migration 0058 has not reached PostgREST's schema cache yet. */
+export const PRIORITY_TITLE_PREFIX = "⁣أولوية⁣";
+export const taskFromRow = (r: TaskRow): DayTask => {
+  const fallback = r.title.startsWith(PRIORITY_TITLE_PREFIX);
+  return { id: r.id, date: r.task_date, title: fallback ? r.title.slice(PRIORITY_TITLE_PREFIX.length) : r.title, at: r.at_time ? r.at_time.slice(0, 5) : null, habitId: r.habit_id, sortOrder: r.sort_order, doneAt: r.done_at, priority: Boolean(r.priority) || fallback };
+};
+
+export const priorityColumnMissing = (error: { code?: string; message?: string } | null | undefined) =>
+  error?.code === "42703" || error?.code === "PGRST204" || /priority.+column|column.+priority/i.test(error?.message ?? "");
 
 /** One day's tasks (through RLS: the user's own), timed ones first by time, then in the order they were added. */
 export async function loadTasks(supabase: SupabaseClient, date: string): Promise<DayTask[]> {
   const read = (cols: string) => supabase.from("mahdi_day_tasks").select(cols).eq("task_date", date).order("sort_order").order("created_at").limit(200);
   let { data, error } = await read("id,task_date,title,at_time,habit_id,sort_order,done_at,priority");
-  // before SQL 0058 there is no «priority» column: the tasks still load (no priorities)
-  if (error?.code === "42703") ({ data, error } = await read("id,task_date,title,at_time,habit_id,sort_order,done_at"));
+  // Before SQL 0058 (or while PostgREST still has an old schema), marker-backed priorities still load correctly.
+  if (priorityColumnMissing(error)) ({ data, error } = await read("id,task_date,title,at_time,habit_id,sort_order,done_at"));
   if (error) throw error;
   return (data as unknown as TaskRow[]).map(taskFromRow);
 }

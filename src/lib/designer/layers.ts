@@ -1,10 +1,9 @@
-// «المصمم الذكي» — a design as the site keeps it: the artwork (a picture drawn WITHOUT text), an optional cut-out
-// (the subject of a picture with a transparent background), and the TEXT LAYERS: every word as real text in one of
-// the site's Arabic fonts, with its size, colour, effect and place, so the person edits it on the page and the final
-// PNG is drawn by the browser. Positions are in percent of the design's width and height, so a design survives a
-// change of pixel size. Pure (server and browser).
+// «المصمم الذكي» — a design as the site keeps it: by default the artwork is a complete picture with typography
+// baked in. The optional layers mode keeps every word as editable text in one of the site's Arabic fonts. A design
+// may also have a cut-out image layer. Positions are percentages, so layers survive a size change. Pure (server and
+// browser).
 
-import { DESIGNER, DESIGN_ASPECTS, LAYER_EFFECTS, LAYER_ROLES, type DesignAspect, type LayerEffect, type LayerRole } from "@config/designer";
+import { DESIGNER, DESIGN_ASPECTS, LAYER_EFFECTS, LAYER_ROLES, type DesignerTextMode, type DesignAspect, type LayerEffect, type LayerRole } from "@config/designer";
 import { FONTS } from "@config/jawad/student";
 
 export interface TextLayer {
@@ -63,12 +62,14 @@ export interface Design {
   height: number;
   /** the artwork drawn by جواد (a designer_files row), once it exists */
   artwork: string | null;
+  /** baked is the new default; absent on old saved designs means layers */
+  textMode?: DesignerTextMode;
   layers: Layer[];
   state: "drawing" | "ready" | "failed";
   error?: string;
   /** the technical reason (only the owner sees it) */
   detail?: string;
-  /** what the check after drawing found (text that slipped in) */
+  /** what the check after drawing found (missing/wrong requested text, or unwanted text in a text-free mode) */
   flag?: string;
   /** the final PNG the person saved (a designer_files row) */
   final?: string;
@@ -153,6 +154,7 @@ export function readDesign(v: unknown): Design | null {
     width: clamp(o.width, 256, 4096, size.width),
     height: clamp(o.height, 256, 4096, size.height),
     artwork: typeof o.artwork === "string" && o.artwork ? o.artwork : null,
+    textMode: o.textMode === "baked" || o.textMode === "blank" ? o.textMode : "layers",
     layers: readLayers(o.layers),
     state: o.state === "ready" || o.state === "failed" ? o.state : "drawing",
   };

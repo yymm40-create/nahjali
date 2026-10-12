@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
-import { loadTasks } from "@/lib/mahdi/server/snapshot";
+import { loadTasks, PRIORITY_TITLE_PREFIX, priorityColumnMissing } from "@/lib/mahdi/server/snapshot";
 
 const MAX_PER_DAY = 100;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -48,11 +48,15 @@ export const POST = mahdiRoute(async (req: Request) => {
   fail(e1);
   if ((count ?? 0) >= MAX_PER_DAY) throw new UserError(t.tasks.tooMany(MAX_PER_DAY), 429);
   const priority = body.priority === true;
-  const { error } = await supabase
+  const row = { user_id: user.id, task_date: today, title: title(body.title), at_time: priority ? null : timeOf(body.at), habit_id: await habitOf(supabase, body.habitId), sort_order: count ?? 0 };
+  let { error } = await supabase
     .from("mahdi_day_tasks")
-    .insert({ user_id: user.id, task_date: today, title: title(body.title), at_time: priority ? null : timeOf(body.at), habit_id: await habitOf(supabase, body.habitId), sort_order: count ?? 0, ...(priority ? { priority: true } : {}) });
-  // before SQL 0058 a priority can't be kept
-  if (priority && error?.code === "42703") throw new UserError(t.priorities.notReady, 503);
+    .insert({ ...row, ...(priority ? { priority: true } : {}) });
+  // Migration 0058 may not be applied yet, or PostgREST may still have the old schema cached. Keep priorities working
+  // in the same table with an invisible title marker; loadTasks recognises and hides it.
+  if (priority && priorityColumnMissing(error)) {
+    ({ error } = await supabase.from("mahdi_day_tasks").insert({ ...row, title: `${PRIORITY_TITLE_PREFIX}${row.title}` }));
+  }
   fail(error);
   return NextResponse.json({ tasks: await loadTasks(supabase, today) });
 });

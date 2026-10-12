@@ -1,31 +1,34 @@
 // «المصمم الذكي» — the produce step: the artwork of a design «كاظم» ordered. He does not draw it himself: the request
 // is handed to جواد's desk (src/lib/content/jawad.ts), who makes it with GPT Image 2 as an ordinary JAWAD AI job (so
-// it is also in «أعمالي»), with the site's rule that the picture carries NO TEXT (the words are real layers). The
-// picture is checked right after (Claude reads it: any text that slipped in); text in it is drawn again once
-// with the problem written into the prompt. Server only.
+// it is also in «أعمالي»). By default the finished picture includes its typography; editable text layers and a
+// text-free picture remain explicit alternatives. The picture is checked right after and redrawn once when the
+// requested typography is wrong (or when unwanted text appears in a text-free mode). Server only.
 
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { deskImage, DeskError, type DeskWho } from "@/lib/content/jawad";
 import { checkSlide } from "@/lib/content/verify";
-import { NO_TEXT_RULE } from "@config/designer";
+import { BAKED_TEXT_RULE, NO_TEXT_RULE, type DesignerTextMode } from "@config/designer";
 import { getChat, saveChat, type Chat, type PendingDesign } from "./chats";
 import { addFileFromOutput, attachmentsOf } from "./files";
-import type { Design } from "./layers";
+import { readLayers, type Design } from "./layers";
 
 /** GPT Image 2 for the artwork: the high tier (the design is exported at this size), high quality. */
 export const IMAGE_TIER = "hi" as const;
 export const IMAGE_QUALITY = "high" as const;
 const MAX_ATTEMPTS = 2;
 
-/** The full prompt of the artwork: what كاظم wrote, how the references are used, the no-text rule, the fix. */
-export function artworkPrompt(o: { prompt: string; refs: number; fix?: string }): string {
+/** The full prompt of the artwork: what كاظم wrote, how references and typography are used, and any retry fix. */
+export function artworkPrompt(o: { prompt: string; refs: number; textMode?: DesignerTextMode; layers?: Design["layers"]; fix?: string }): string {
+  const mode = o.textMode ?? "layers";
+  const text = (o.layers ?? []).filter((l) => l.kind === "text");
+  const typography = text.map((l, i) => `${i + 1}. exact text: "${l.text.replace(/\n/g, " / ")}"; role ${l.role}; position around (${Math.round(l.x)}%, ${Math.round(l.y)}%); width ${Math.round(l.w)}%; colour ${l.color}; ${l.align} aligned; visual size ${l.size}% of canvas height`).join("\n");
   return [
-    "Artwork for a designed graphic (a card, a poster or a thumbnail). The typography will be added later as separate text layers, so this picture is the background art only.",
+    mode === "baked" ? "A complete finished graphic design (card, poster or thumbnail), including its final typography." : "Artwork for a designed graphic (a card, a poster or a thumbnail). The typography will be added later, so this picture is the background art only.",
     o.refs ? `The client's own attached picture${o.refs > 1 ? "s are" : " is"} given as reference${o.refs > 1 ? "s" : ""} (named ref1${o.refs > 1 ? "…" : ""}): use ${o.refs > 1 ? "them" : "it"} as the brief says (a photo of a person to place, a template whose look to follow, a logo), keeping a person's face and identity exactly as in the photo.` : "",
     o.prompt,
-    NO_TEXT_RULE,
+    mode === "baked" ? `${BAKED_TEXT_RULE}\n\nTYPOGRAPHY TO RENDER:\n${typography}` : NO_TEXT_RULE,
     o.fix ?? "",
   ]
     .filter(Boolean)
@@ -64,18 +67,20 @@ export async function produce(userId: string, chatId: string, o: { owner?: boole
   let lastErr: unknown = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const r = await deskImage(who, { key: `d-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: artworkPrompt({ prompt: p.artwork, refs: refs.length, fix }), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
-      // the check: no text should be on the picture (expected text is empty, so any word is "extra")
-      const check = await checkSlide(r.bytes, "");
+      const r = await deskImage(who, { key: `d-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: artworkPrompt({ prompt: p.artwork, refs: refs.length, textMode: p.textMode, layers: p.layers, fix }), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+      const expected = p.textMode === "baked" ? p.layers.filter((l) => l.kind === "text").map((l) => l.text).join("\n") : "";
+      const check = await checkSlide(r.bytes, expected);
       usd += check.usd;
       const bad = check.checked && check.problems.length > 0;
       if (bad && attempt < MAX_ATTEMPTS) {
-        fix = `The previous attempt had these problems — fix every one of them: ${check.problems.join("; ") || "text was drawn"}. Remove every trace of letters, words or writing; keep the surfaces where text would go clean.`;
+        fix = p.textMode === "baked"
+          ? `The previous attempt had these typography problems — fix every one of them while keeping the design: ${check.problems.join("; ")}. Copy the supplied text exactly.`
+          : `The previous attempt had these problems — fix every one of them: ${check.problems.join("; ") || "text was drawn"}. Remove every trace of letters, words or writing; keep the surfaces where text would go clean.`;
         continue;
       }
       flag = bad ? check.problems.join("، ").slice(0, 300) : "";
-      const file = await addFileFromOutput({ userId, chatId, out: r.out, name: `artwork-${p.id}`, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, refs: p.refs, desk: r.receipt, ...(flag ? { flag } : {}) } });
-      design = { ...base, artwork: file.id, width: r.out.width ?? base.width, height: r.out.height ?? base.height, layers: base.layers.length ? base.layers : p.layers, state: "ready", ...(flag ? { flag } : {}) };
+      const file = await addFileFromOutput({ userId, chatId, out: r.out, name: `artwork-${p.id}`, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: p.textMode, textPlan: p.layers, refs: p.refs, desk: r.receipt, ...(flag ? { flag } : {}) } });
+      design = { ...base, artwork: file.id, width: r.out.width ?? base.width, height: r.out.height ?? base.height, textMode: p.textMode, layers: p.textMode === "layers" ? p.layers : [], state: "ready", ...(flag ? { flag } : {}) };
       break;
     } catch (e) {
       lastErr = e;
@@ -98,20 +103,26 @@ export async function retry(userId: string, chat: Chat): Promise<void> {
   if (at < 0 || !d) throw new UserError("ما فيه تصميم نعيد رسمه.", 409);
   const prompt = await lastPrompt(chat, at);
   if (!prompt) throw new UserError("ما لقينا توجيه الرسم لإعادته.", 409);
-  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, artwork: prompt.artwork, refs: prompt.refs, layers: d.layers, keep: null };
+  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, textMode: prompt.textMode, artwork: prompt.artwork, refs: prompt.refs, layers: prompt.layers, keep: null };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design: { ...d, state: "drawing", error: undefined, detail: undefined, flag: undefined } };
   await saveChat(userId, chat.id, { messages, pending });
 }
 
 /** The prompt a design was (or is to be) drawn with: the pending order, else what its artwork's record keeps. */
-async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; refs: string[]; kind: PendingDesign["kind"] } | null> {
-  if (chat.pending && chat.pending.at === at && chat.pending.artwork) return { artwork: chat.pending.artwork, refs: chat.pending.refs, kind: chat.pending.kind };
+async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; refs: string[]; kind: PendingDesign["kind"]; textMode: PendingDesign["textMode"]; layers: PendingDesign["layers"] } | null> {
+  if (chat.pending && chat.pending.at === at && chat.pending.artwork) return { artwork: chat.pending.artwork, refs: chat.pending.refs, kind: chat.pending.kind, textMode: chat.pending.textMode, layers: chat.pending.layers };
   const d = chat.messages[at].design;
   if (!d?.artwork) return null;
   const { createAdminClient } = await import("@/lib/supabase/admin");
   const { data } = await createAdminClient().from("designer_files").select("meta").eq("id", d.artwork).maybeSingle();
   const meta = (data?.meta ?? {}) as Record<string, unknown>;
   if (typeof meta.prompt !== "string" || !meta.prompt) return null;
-  return { artwork: meta.prompt, refs: Array.isArray(meta.refs) ? meta.refs.filter((r): r is string => typeof r === "string") : [], kind: (typeof meta.kind === "string" ? meta.kind : "other") as PendingDesign["kind"] };
+  return {
+    artwork: meta.prompt,
+    refs: Array.isArray(meta.refs) ? meta.refs.filter((r): r is string => typeof r === "string") : [],
+    kind: (typeof meta.kind === "string" ? meta.kind : "other") as PendingDesign["kind"],
+    textMode: meta.textMode === "baked" || meta.textMode === "blank" ? meta.textMode : "layers",
+    layers: readLayers(meta.textPlan ?? d.layers),
+  };
 }

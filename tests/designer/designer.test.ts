@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DESIGN_ASPECTS, DESIGN_KINDS, DESIGN_SOURCES, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA, NO_TEXT_RULE } from "@config/designer";
+import { BAKED_TEXT_RULE, DESIGN_ASPECTS, DESIGN_KINDS, DESIGN_SOURCES, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA, NO_TEXT_RULE } from "@config/designer";
 import { DESIGN_LIBRARY, findDirection, libraryBlock } from "@config/designer-library";
 import { FONTS } from "@config/jawad/student";
 import { ALL_PERMS, OPEN_PERMS } from "@config/access";
@@ -34,6 +34,8 @@ describe("«كاظم»", () => {
     expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "source", "directions", "fonts"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.kind.enum).toEqual(DESIGN_KINDS.map((k) => k.id));
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(Object.keys(DESIGN_ASPECTS));
+    expect(ANSWER_SCHEMA.properties.produce.properties.text_mode.enum).toEqual(["baked", "layers", "blank"]);
+    expect(ANSWER_SCHEMA.properties.produce.required).toContain("text_mode");
     for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"split\"", "kind=\"source\"", "kind=\"fonts\"", "kind=\"directions\"", "\"layers\"", "#RRGGBB"]) expect(DESIGNER_TOOLS).toContain(field);
   });
 });
@@ -80,12 +82,16 @@ describe("the layers", () => {
     expect(layersNote(d)).toContain("[names] «سعود»");
     expect(readDesign(null)).toBeNull();
   });
-  it("puts the no-text rule and the references into every artwork prompt", () => {
+  it("builds either a complete design with exact typography or an explicit text-free alternative", () => {
     const p = artworkPrompt({ prompt: "a dark velvet poster", refs: 2, fix: "FIX" });
     expect(p).toContain(NO_TEXT_RULE);
     expect(p).toContain("ref1…");
     expect(p.endsWith("FIX")).toBe(true);
     expect(artworkPrompt({ prompt: "x", refs: 0 })).not.toContain("ref1");
+    const baked = artworkPrompt({ prompt: "a complete poster", refs: 0, textMode: "baked", layers: [readTextLayer({ role: "title", text: "مجلس عزاء", x: 50, y: 20, w: 80 })!] });
+    expect(baked).toContain(BAKED_TEXT_RULE);
+    expect(baked).toContain('exact text: "مجلس عزاء"');
+    expect(baked).not.toContain(NO_TEXT_RULE);
   });
   it("picks the nearest aspect of a picture to split", () => {
     expect(nearestAspect(1920, 1080)).toBe("16:9");
@@ -110,7 +116,7 @@ describe("conversations", () => {
     expect(forModel(h)[0].role).toBe("user");
     expect(titleOf("  بطاقة   زواج ")).toBe("بطاقة زواج");
     expect(readQuestions([{ label: "l", kind: "directions", options: ["a — b — #000000"] }])![0].options).toEqual(["a — b — #000000"]);
-    expect(readPending({ id: "p", at: 2, kind: "wedding", aspect: "2:3", artwork: "art", refs: ["r1"], layers: [{ text: "t" }] })).toMatchObject({ kind: "wedding", aspect: "2:3", artwork: "art", refs: ["r1"], keep: null });
+    expect(readPending({ id: "p", at: 2, kind: "wedding", aspect: "2:3", artwork: "art", refs: ["r1"], layers: [{ text: "t" }] })).toMatchObject({ kind: "wedding", aspect: "2:3", textMode: "layers", artwork: "art", refs: ["r1"], keep: null });
     expect(readPending({ artwork: "" })).toBeNull();
     expect(readPending({ artwork: "", keep: "file" })?.keep).toBe("file");
   });
