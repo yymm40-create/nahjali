@@ -1,7 +1,7 @@
 // «المصمم الذكي» — one message in a conversation: the persona (the owner's edit or the template), the platform's
 // rules and tools, the fonts, the style library, the project's record, the person's attachments (pictures seen),
 // then «كاظم»'s structured answer: the reply, the questions, the record, and — on an explicit request — a design to
-// produce (the artwork drawn text-free by GPT Image 2 through جواد's desk, the words as real text layers) or a
+// produce (the complete design, including its text by default, through جواد's desk) or a
 // picture to split into layers. Server only.
 
 import { randomUUID } from "crypto";
@@ -38,13 +38,14 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "kind", "aspect", "artwork", "refs", "layers"],
+      required: ["on", "kind", "aspect", "text_mode", "artwork", "refs", "layers"],
       description: "طلب التصميم، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
         kind: { type: "string", enum: ["wedding", "husseini_joy", "husseini_mourning", "newborn", "thumbnail", "latmiya", "other"] },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9", "3:2"] },
-        artwork: { type: "string", description: "توجيه العمل الفني بالإنجليزية بلا أي نص، أو فارغ لإبقاء الصورة الحالية وتبديل الطبقات فقط" },
+        text_mode: { type: "string", enum: ["baked", "layers", "blank"], description: "baked افتراضيًا: النص داخل الصورة؛ layers: طبقات حقيقية؛ blank: بلا كتابة" },
+        artwork: { type: "string", description: "توجيه التصميم بالإنجليزية، أو فارغ لإبقاء الصورة الحالية وتبديل الطبقات فقط" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة المسلَّمة مرجعًا للرسم، أو فارغة" },
         layers: {
           type: "array",
@@ -84,7 +85,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; kind: string; aspect: string; artwork: string; refs: string[]; layers: unknown[] };
+  produce: { on: boolean; kind: string; aspect: string; text_mode: string; artwork: string; refs: string[]; layers: unknown[] };
   split: { on: boolean; ref: string };
 }
 
@@ -162,19 +163,21 @@ export async function say(userId: string, chatId: string | null, message: string
     const aspect: DesignAspect = isDesignAspect(a.produce.aspect) ? a.produce.aspect : ((style?.aspects[0] as DesignAspect | undefined) ?? "1:1");
     const artwork = String(a.produce.artwork ?? "").trim().slice(0, 6000);
     const layers = readLayers(a.produce.layers, style?.directions[0]?.fonts.body ?? "readex");
+    const textMode = a.produce.text_mode === "layers" || a.produce.text_mode === "blank" ? a.produce.text_mode : "baked";
     const refs = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((x) => mine.has(x)).slice(0, 6);
     const prevAt = lastDesignAt(history);
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
     const keep = !artwork && prev?.artwork && prev.state === "ready" ? prev.artwork : null;
     if (!artwork && !keep) {
       reply.text += "\n\n⚠️ لم أجد صورة قائمة أبقيها ولا توجيهًا جديدًا للرسم؛ اطلب التصميم من جديد.";
-    } else if (!layers.length) {
+    } else if (textMode !== "blank" && !layers.length) {
       reply.text += "\n\n⚠️ لم تُحدَّد طبقات نص للتصميم؛ أعطني النصوص كما تريدها ثم اطلب التصميم من جديد.";
     } else {
       const size = keep && prev ? { width: prev.width, height: prev.height } : sizeOf(aspect);
-      const design: Design = { id: randomUUID().slice(0, 8), aspect: keep && prev ? prev.aspect : aspect, ...size, artwork: keep, layers, state: keep ? "ready" : "drawing" };
+      const visibleLayers = textMode === "layers" ? layers : [];
+      const design: Design = { id: randomUUID().slice(0, 8), aspect: keep && prev ? prev.aspect : aspect, ...size, artwork: keep, textMode, layers: visibleLayers, state: keep ? "ready" : "drawing" };
       reply.design = design;
-      if (!keep) pending = { id: design.id, at, kind, aspect, artwork, refs, layers, keep: null };
+      if (!keep) pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep: null };
       else reply.text += "\n\n🧩 أبقيت الصورة ووضعت الطبقات الجديدة في محرر الطبقات.";
     }
   }

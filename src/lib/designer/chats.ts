@@ -2,7 +2,7 @@
 // still there after a reload, with its questions, its artwork and its layers as the person last left them. Server only.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DESIGNER, isDesignAspect, isDesignKind, type DesignAspect, type DesignKind } from "@config/designer";
+import { DESIGNER, isDesignAspect, isDesignKind, type DesignerTextMode, type DesignAspect, type DesignKind } from "@config/designer";
 import { readDesign, readLayers, type Design, type Layer } from "./layers";
 
 const db = () => createAdminClient();
@@ -42,7 +42,9 @@ export interface PendingDesign {
   at: number;
   kind: DesignKind;
   aspect: DesignAspect;
-  /** the artwork's prompt (English, no text); empty = keep the artwork that stands (only the layers change) */
+  /** how the requested typography is produced */
+  textMode: DesignerTextMode;
+  /** the artwork's prompt; empty = keep the artwork that stands (only the layers change) */
   artwork: string;
   /** the person's attached pictures (jawad_uploads ids) handed to جواد as references */
   refs: string[];
@@ -124,6 +126,7 @@ export function readPending(v: unknown): PendingDesign | null {
     at: num(p.at),
     kind: isDesignKind(p.kind) ? p.kind : "other",
     aspect,
+    textMode: p.textMode === "baked" || p.textMode === "blank" ? p.textMode : "layers",
     artwork,
     refs: (Array.isArray(p.refs) ? p.refs : []).filter((r): r is string => typeof r === "string").slice(0, 6),
     layers: readLayers(p.layers),
