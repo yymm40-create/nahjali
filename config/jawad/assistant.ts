@@ -35,6 +35,9 @@ export interface AssistantDraft {
   refs: AssistantRef[];
   /** «الستايل»: one of the 24 styles (config/film-styles.ts) or "" for none */
   styleId?: string;
+  /** «برومبت ثاني وثالث»: the other prompts in the form, each with the reference names it uses (null = all) */
+  extra?: { prompt: string; refs: string[] | null }[];
+  mainRefs?: string[] | null;
 }
 
 /** What Claude is asked to return (every field present; an empty string / array means «no change»). */
@@ -64,6 +67,8 @@ export const ASSISTANT_SCHEMA = {
     settings: { type: "array", items: { type: "object", additionalProperties: false, required: ["key", "value"], properties: { key: { type: "string" }, value: { type: "string" } } } },
     refStyle: { type: "string" },
     styleId: { type: "string" },
+    extraPrompts: { type: "array", items: { type: "object", additionalProperties: false, required: ["prompt", "refs"], properties: { prompt: { type: "string" }, refs: { type: "array", items: { type: "string" } } } } },
+    mainRefs: { type: "array", items: { type: "string" } },
     addRefs: {
       type: "array",
       items: { type: "object", additionalProperties: false, required: ["source", "id", "name", "role"], properties: { source: { type: "string" }, id: { type: "string" }, name: { type: "string" }, role: { type: "string" } } },
@@ -84,6 +89,10 @@ export interface AssistantSet {
   refStyle?: RefStyle;
   /** «الستايل»: a style id, or "none" to take the style off */
   styleId?: string;
+  /** «برومبت ثاني وثالث»: the second and third prompts (replacing the ones there), each with its reference names */
+  extra?: { prompt: string; refs: string[] | null }[];
+  /** the first prompt's references when there are more prompts (null = all) */
+  mainRefs?: string[] | null;
   /** New references: an attachment of this message (by its number) or a work already in the form (by name). */
   addRefs?: { attachment: number; name: string; role: RefRole }[];
   /** Existing references given a new name or role. */
@@ -194,6 +203,9 @@ export function assistantSystem(output: "image" | "video" | "audio", defs: Gener
       `styleId: «الستايل», one of the 24 styles the person can pick with pictures under the prompt. The chosen style's text is put into the generator's prompt by itself (never copy it into "prompt"). Set it when the person asks for a style or names one (or "none" to take it off); leave "" otherwise. The styles (id — name: what it looks like):`,
       FILM_STYLES.map((x) => `${x.id} — ${x.name} (${x.group}): ${x.description}`).join("\n"),
     ]),
+    ...(output === "audio" ? [] : [
+      `extraPrompts: «برومبت ثاني وثالث» — up to TWO more prompts next to "prompt" (three in all); on «توليد» each becomes its own generation at the same time (its own picture or video and its own price). Use them when the person wants different pictures/clips at once (three shots of a story, three products, three angles). Each item: {prompt, refs: the @names of the references it uses ([] = all of them)}. mainRefs: the @names the first prompt uses ([] = all). Put every reference in the form once (addRefs) and share them out by name; write each prompt complete on its own (it is read alone). Leave extraPrompts [] for no change; to remove them send [{"prompt":"","refs":[]}]. Tell the person each prompt is billed on its own, and when unsure, to try one first.`,
+    ]),
     `thumbnailPerson / thumbnailSide ("left" | "right" | "center"): only for the thumbnail method above; otherwise empty.`,
   ].join("\n");
 }
@@ -246,6 +258,17 @@ export function checkAnswer(
 
   const style = text(raw.refStyle) as RefStyle;
   if (STYLES.includes(style) && style !== ctx.draft.refStyle) set.refStyle = style;
+  const known = new Set([...ctx.draft.refs.map((r) => r.name.toLowerCase()), ...(Array.isArray(raw.addRefs) ? raw.addRefs : []).map((a) => text((a as { name?: unknown })?.name).toLowerCase())]);
+  const refNames = (v: unknown): string[] | null => {
+    const l = (Array.isArray(v) ? v : []).map((x) => text(x).replace(/^@/, "")).filter((x) => known.has(x.toLowerCase()));
+    return l.length ? [...new Set(l)] : null;
+  };
+  const xp = (raw as { extraPrompts?: unknown }).extraPrompts;
+  if (Array.isArray(xp) && xp.length) {
+    const list = xp.slice(0, 2).map((x) => ({ prompt: text((x as { prompt?: unknown })?.prompt).slice(0, 8000), refs: refNames((x as { refs?: unknown })?.refs) })).filter((x) => x.prompt);
+    set.extra = list;
+    set.mainRefs = list.length ? refNames((raw as { mainRefs?: unknown }).mainRefs) : null;
+  }
   const look = text((raw as { styleId?: unknown }).styleId);
   if (look === "none" ? !!ctx.draft.styleId : findStyle(look) && look !== ctx.draft.styleId) set.styleId = look;
 

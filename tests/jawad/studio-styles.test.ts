@@ -33,3 +33,21 @@ describe("«الستايل» and one «جواد» for the studios", () => {
     expect(chat).toContain("KEEP_CHATS");
   });
 });
+
+describe("«برومبت ثاني وثالث»", () => {
+  it("جواد fills up to two more prompts with the references each one uses, by known names only", async () => {
+    const { checkAnswer } = await import("@config/jawad/assistant");
+    const { GENERATORS } = await import("@config/jawad/generators");
+    const img = GENERATORS.filter((g) => g.output === "image").slice(0, 1);
+    const draft = { generatorId: img[0].id, prompt: "", instructions: "", settings: {}, refStyle: "references" as const, refs: [{ uploadId: "u1", name: "ali", kind: "image" as const, role: "reference" as const }, { uploadId: "u2", name: "cat", kind: "image" as const, role: "reference" as const }], styleId: "" };
+    const r = checkAnswer({ reply: "تم", extraPrompts: [{ prompt: "ثاني", refs: ["@cat", "dog"] }, { prompt: "ثالث", refs: [] }, { prompt: "رابع", refs: [] }], mainRefs: ["ali"] } as never, { defs: img, draft, attachments: 0 });
+    expect(r.set.extra).toEqual([{ prompt: "ثاني", refs: ["cat"] }, { prompt: "ثالث", refs: null }]);
+    expect(r.set.mainRefs).toEqual(["ali"]);
+    expect(checkAnswer({ reply: "x", extraPrompts: [{ prompt: "", refs: [] }] } as never, { defs: img, draft, attachments: 0 }).set.extra).toEqual([]);
+  });
+  it("the studio sends one generation per prompt with its own references and price", () => {
+    const s = readFileSync(new URL("../../src/components/jawad/studio/Studio.tsx", import.meta.url), "utf8");
+    expect(s).toContain("async function submitAll()");
+    expect(s).toContain("await submit(x.ev.price.coins, { prompt: x.prompt, refs: x.refs })");
+  });
+});

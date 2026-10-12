@@ -179,6 +179,8 @@ export default function AssistantChat({
     if (set.refStyle) lines.push(set.refStyle === "frames" ? "مراجع: إطار أول/أخير" : set.refStyle === "references" ? "مراجع: صور مرجعية" : "بدون مراجع");
     if (set.addRefs?.length) lines.push(`أضفت مرجع: ${set.addRefs.map((a) => `@${a.name}`).join("، ")}`);
     if (set.editRefs?.length) lines.push(`عدّلت مرجع: ${set.editRefs.map((a) => `@${a.newName ?? a.name}`).join("، ")}`);
+    if (set.extra?.length) lines.push(`كتبت ${set.extra.length + 1} برومبتات، كل واحد بمراجعه`);
+    else if (set.extra) lines.push("شلت البرومبتات الإضافية");
     if (set.removeRefs?.length) lines.push(`شلت: ${set.removeRefs.map((n) => `@${n}`).join("، ")}`);
     return lines;
   }

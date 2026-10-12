@@ -93,6 +93,8 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     refStyle,
     refs,
     styleId: typeof d.styleId === "string" && findStyle(d.styleId) ? d.styleId : "",
+    extra: (Array.isArray(d.extra) ? d.extra : []).slice(0, 2).map((x) => ({ prompt: str((x as { prompt?: unknown })?.prompt, 8000), refs: Array.isArray((x as { refs?: unknown })?.refs) ? ((x as { refs: unknown[] }).refs.map(String).slice(0, 20)) : null })),
+    mainRefs: Array.isArray(d.mainRefs) ? d.mainRefs.map(String).slice(0, 20) : null,
   };
 
   // Pictures Claude looks at: the ones attached now first, then the form's own (links, short-lived)
@@ -114,6 +116,8 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     draft.instructions ? `instructions: ${draft.instructions}` : "",
     `settings: ${JSON.stringify(draft.settings)}`,
     `references style: ${draft.refStyle}`,
+    ...(draft.extra ?? []).map((x, i) => `prompt ${i + 2}: <<<\n${x.prompt}\n>>> uses: ${x.refs ? x.refs.map((n) => "@" + n).join(", ") : "all references"}`),
+    draft.extra?.length ? `prompt 1 uses: ${draft.mainRefs ? draft.mainRefs.map((n) => "@" + n).join(", ") : "all references"}` : "",
     `style («الستايل»): ${draft.styleId ? `${draft.styleId} (${findStyle(draft.styleId)?.name})` : "none"}`,
     `references: ${refs.length ? refs.map(refLine).join("; ") : "none"}`,
     attached.length ? `ATTACHMENTS of this message: ${attached.map((u, i) => `${i + 1}. ${u.kind} ${u.file_name}${u.width && u.height ? ` ${u.width}×${u.height}` : ""}`).join("; ")}` : "No attachments in this message.",
