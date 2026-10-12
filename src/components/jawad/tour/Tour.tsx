@@ -5,6 +5,7 @@
 // ring. Progress is kept on this device per account. Content: config/jawad/tour.ts.
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 import { TOUR_ASK, TOUR_DONE, TOUR_PATHS, TOUR_TRY, TOUR_TRY_MAX, TOUR_WELCOME, tourProgress, type TourAnswers, type TourPath } from "@config/jawad/tour";
@@ -125,7 +126,7 @@ export default function Tour({ userId }: { userId: string }) {
         {progress < 1 && <span className="absolute -end-0.5 -top-0.5 size-2.5 rounded-full bg-jw-accent" aria-hidden />}
       </button>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/60 sm:items-center sm:p-6" role="dialog" aria-label="الجولة التعريفية" dir="rtl">
           <div className="jw-panel flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl">
             <header className="flex items-center gap-3 border-b border-jw-line px-4 py-3">
@@ -309,7 +310,8 @@ export default function Tour({ userId }: { userId: string }) {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
