@@ -54,6 +54,9 @@ export type ActionId =
   | "focus"
   | "import"
   | "export"
+  | "markIn"
+  | "markOut"
+  | "clearRange"
   | "save";
 
 export const ACTIONS: { id: ActionId; ar: string; group: string }[] = [
@@ -96,6 +99,9 @@ export const ACTIONS: { id: ActionId; ar: string; group: string }[] = [
   { id: "save", ar: "احفظ الحين", group: "المشروع" },
   { id: "import", ar: "استورد ملفات", group: "المشروع" },
   { id: "export", ar: "صدّر الفيديو", group: "المشروع" },
+  { id: "markIn", ar: "بداية منطقة التصدير (In) عند المؤشر", group: "منطقة التصدير" },
+  { id: "markOut", ar: "نهاية منطقة التصدير (Out) عند المؤشر", group: "منطقة التصدير" },
+  { id: "clearRange", ar: "شيل منطقة التصدير", group: "منطقة التصدير" },
 ];
 
 /** Each program's keys for what this editor can do ("Mod" = Ctrl on Windows, ⌘ on a Mac). */
@@ -125,6 +131,9 @@ export const KEYMAPS: Record<ProgramId, Partial<Record<ActionId, string[]>>> = {
     deselect: ["Escape"],
     focus: ["Shift+F", "`"],
     save: ["Mod+S"],
+    markIn: ["I"],
+    markOut: ["O"],
+    clearRange: ["Alt+X"],
   },
   premiere: {
     play: ["Space"],

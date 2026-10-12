@@ -580,7 +580,14 @@ export class Player {
     setPreviewScale(1);
     try {
       this.draw();
-      return await new Promise<Blob | null>((ok) => this.canvas.toBlob(ok, "image/png"));
+      // copied at once into a plain canvas: the picture canvas can be a GPU one that is blank once the draw is over
+      const copy = document.createElement("canvas");
+      copy.width = this.canvas.width;
+      copy.height = this.canvas.height;
+      const cx = copy.getContext("2d");
+      if (!cx) return null;
+      cx.drawImage(this.canvas, 0, 0);
+      return await new Promise<Blob | null>((ok) => copy.toBlob(ok, "image/png"));
     } catch {
       return null;
     } finally {

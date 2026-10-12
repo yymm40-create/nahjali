@@ -26,10 +26,21 @@ import {
 import { measureSource } from "./source-info";
 import { sendInParts } from "./parts";
 import type { EditorAsset } from "./types";
+import type { Player } from "./player";
 import { toSRT } from "./captions";
 import { packProject, saveFile } from "./package";
 
-type Phase = { k: "idle" } | { k: "running"; p: number } | { k: "done"; r: ExportResult; saved: boolean | null; purgeAt: string | null } | { k: "error"; m: string };
+/** what to save: the whole video, the picture without sound, the sound alone, the subtitles, or the frame under the playhead */
+type What = "video" | "mute" | "audio" | "srt" | "frame";
+const WHATS: { id: What; icon: string; name: string; hint: string }[] = [
+  { id: "video", icon: "🎬", name: "الفيديو مع الصوت", hint: "ملف MP4 كامل" },
+  { id: "mute", icon: "🔇", name: "الفيديو بدون صوت", hint: "الصورة بروحها MP4" },
+  { id: "audio", icon: "🎧", name: "الصوت بروحه", hint: "ملف M4A" },
+  { id: "srt", icon: "💬", name: "الكابشن SRT", hint: "ملف الترجمة" },
+  { id: "frame", icon: "🖼️", name: "الفريم صورة", hint: "PNG عند المؤشر" },
+];
+
+type Phase = { k: "idle" } | { k: "running"; p: number } | { k: "done"; r: ExportResult; saved: boolean | null; purgeAt: string | null; local?: boolean; file: string } | { k: "error"; m: string };
 
 const when = (iso: string) => new Date(iso).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
 
@@ -43,6 +54,9 @@ export default function ExportPanel({
   tl,
   assets,
   flush,
+  range,
+  onRange,
+  player,
   onExported,
 }: {
   open: boolean;
@@ -53,6 +67,10 @@ export default function ExportPanel({
   tl: Timeline;
   assets: EditorAsset[];
   flush: () => Promise<void>;
+  /** «منطقة التصدير» (In → Out), or none */
+  range: { from: number; to: number } | null;
+  onRange: (r: { from: number; to: number } | null) => void;
+  player: Player | null;
   onExported: (purgeAt: string) => void;
 }) {
   const [res, setRes] = useState<ExportRes>(1080);
@@ -61,6 +79,10 @@ export default function ExportPanel({
   // the typed bitrate («مخصص»), kept while the person edits it
   const [mbps, setMbps] = useState(12);
   const [phase, setPhase] = useState<Phase>({ k: "idle" });
+  const [what, setWhat] = useState<What>("video");
+  // the whole project, or its In → Out part
+  const [part, setPart] = useState(true);
+  const [note, setNote] = useState<string | null>(null);
   // «نفس المصدر»: the biggest video of the timeline — its size from the project's own files, its frame rate and
   // bitrate measured in the browser once (the first time a «نفس المصدر» choice is made)
   const [source, setSource] = useState<SourceInfo | null>(() => sourceFromTimeline(tl, assets));
@@ -68,7 +90,9 @@ export default function ExportPanel({
   const wantSource = res === "source" || quality === "source" || fpsFrom === "source";
   // «احفظ المشروع في جهازي»: what it is doing, or what went wrong
   const [packing, setPacking] = useState<{ busy: boolean; text: string; bad?: boolean } | null>(null);
-  const srt = toSRT(tl);
+  const total0 = duration(tl);
+  const use = part && range && range.to > range.from ? range : null;
+  const srt = toSRT(tl, undefined, use);
   const pack = async () => {
     setPacking({ busy: true, text: "نجهّز المشروع…" });
     try {
@@ -81,9 +105,11 @@ export default function ExportPanel({
     }
   };
   const abort = useRef<AbortController | null>(null);
-  const total = duration(tl);
-  const plan = exportPlan(tl, { res, quality, fps: fpsFrom }, source);
-  const name = exportName(title, plan);
+  const total = use ? use.to - use.from : total0;
+  const plan = exportPlan(tl, { res, quality, fps: fpsFrom }, source, total);
+  const stem = exportName(title, plan).replace(/\.mp4$/i, "") + (use ? `-${formatTime(use.from).replace(/[:.]/g, "-")}_${formatTime(use.to).replace(/[:.]/g, "-")}` : "");
+  const name = `${stem}.${what === "audio" ? "m4a" : "mp4"}`;
+  const picture = what === "video" || what === "mute";
   // the file's own frame rate and bitrate, read from the file itself (only when «نفس المصدر» is wanted)
   const matchSource = async () => {
     if (measured.current) return;
@@ -95,7 +121,24 @@ export default function ExportPanel({
     setSource(more ? { ...base, fps: more.fps ?? base.fps, mbps: more.mbps ?? base.mbps } : base);
   };
 
+  // the instant ones: the subtitles and the frame (no encoding)
+  const quick = async () => {
+    setNote(null);
+    if (what === "srt") {
+      if (!srt) return setNote("ما فيه كابشن في " + (use ? "هذي المنطقة." : "المشروع."));
+      saveFile(new Blob([srt], { type: "application/x-subrip" }), `${stem}.srt`);
+      return setNote("نزل ملف الكابشن ✓");
+    }
+    if (!player) return setNote("المعاينة ما جهزت بعد؛ جرّب بعد ثانية.");
+    if (player.playing) player.toggle();
+    const blob = await player.frameBlob();
+    if (!blob) return setNote("ما قدرت أحفظ هذا الفريم. جرّب مرة ثانية.");
+    saveFile(blob, `${stem.replace(/-[\d-]+_[\d-]+$/, "")}-${formatTime(player.ms).replace(/[:.]/g, "-")}.png`);
+    setNote("نزل الفريم صورة ✓");
+  };
+
   const start = async () => {
+    if (what === "srt" || what === "frame") return quick();
     if (!canExport()) {
       setPhase({ k: "error", m: "متصفحك ما يدعم التصدير. استخدم Chrome أو Edge (أو Safari حديث)." });
       return;
@@ -118,6 +161,7 @@ export default function ExportPanel({
             }
           },
           ac.signal,
+          { range: use, audioOnly: what === "audio", mute: what === "mute" },
         );
       // The links to the files live a few hours: a long session (or a file moved between sequences) can leave one dead,
       // and the browser then says only «Failed to fetch». The links are renewed first, and once more if it still fails.
@@ -144,7 +188,12 @@ export default function ExportPanel({
         }
       }
       download(r.blob, name);
-      setPhase({ k: "done", r, saved: null, purgeAt: null });
+      // only the whole video starts the 3-day countdown and keeps a copy; a part, a muted picture or the sound alone is just saved
+      if (what !== "video" || use) {
+        setPhase({ k: "done", r, saved: false, purgeAt: null, local: true, file: name });
+        return;
+      }
+      setPhase({ k: "done", r, saved: null, purgeAt: null, file: name });
       // a copy with the project (deleted with it after 3 days); if it can't be stored → just not kept
       let saved = false;
       // (the desktop program keeps everything on the computer: no copy goes up)
@@ -164,7 +213,7 @@ export default function ExportPanel({
         }
       }
       const m = await postJson<{ purgeAt: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "exported", saved });
-      setPhase({ k: "done", r, saved, purgeAt: m.purgeAt });
+      setPhase({ k: "done", r, saved, purgeAt: m.purgeAt, file: name });
       onExported(m.purgeAt);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") setPhase({ k: "idle" });
@@ -185,6 +234,49 @@ export default function ExportPanel({
       <div className="space-y-4 p-4">
         {phase.k === "idle" || phase.k === "error" ? (
           <>
+            <div className="space-y-1.5">
+              <span className="jw-label">وش تبي تحفظ؟</span>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="نوع الملف">
+                {WHATS.map((w) => (
+                  <button key={w.id} type="button" role="radio" aria-checked={what === w.id} className={`rounded-lg border px-2 py-2 text-start text-xs ${what === w.id ? "border-jw-accent bg-jw-accent/10" : "border-jw-line hover:border-jw-line-strong"}`} onClick={() => { setWhat(w.id); setNote(null); }}>
+                    <b className="block">{w.icon} {w.name}</b>
+                    <span className="block text-[10px] leading-4 text-jw-muted">{w.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {what !== "frame" && (
+              <div className="space-y-1.5 rounded-xl border border-jw-line p-2.5">
+                <span className="jw-label">منطقة التصدير</span>
+                <div className="jw-seg" role="radiogroup" aria-label="منطقة التصدير">
+                  <button type="button" role="radio" aria-checked={!use} onClick={() => setPart(false)}>المشروع كله</button>
+                  <button type="button" role="radio" aria-checked={!!use} disabled={!range} onClick={() => setPart(true)} title={range ? "" : "حدّد In و Out أول (زر I و O في التايملاين، أو من هنا)"}>
+                    الجزء المحدد{range ? ` (${formatTime(range.from)} ← ${formatTime(range.to)})` : ""}
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <button type="button" className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => { const m = Math.round(player?.ms ?? 0); onRange({ from: m, to: range && range.to > m ? range.to : total0 }); setPart(true); }}>
+                    📍 In عند المؤشر
+                  </button>
+                  <button type="button" className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => { const m = Math.round(player?.ms ?? 0); onRange({ from: range && range.from < m ? range.from : 0, to: m }); setPart(true); }}>
+                    📍 Out عند المؤشر
+                  </button>
+                  {range && (
+                    <button type="button" className="jw-chip !px-2.5 !py-1 !text-xs" onClick={() => onRange(null)}>
+                      ✕ شيل المنطقة
+                    </button>
+                  )}
+                  <span className="text-jw-faint">اختصار: I و O (وAlt+X يشيلها)</span>
+                </div>
+              </div>
+            )}
+
+            {what === "frame" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">يحفظ الصورة اللي واقف عليها المؤشر الحين <b dir="ltr">({formatTime(player?.ms ?? 0)})</b> بجودة المشروع الكاملة وبتدريجها، PNG.</p>}
+            {what === "srt" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">{srt ? `ملف ترجمة جاهز${use ? " للمنطقة المحددة (يبدأ من الصفر)" : ""}.` : "ما فيه كابشن للحين؛ سوّه من «الكابشن» أول."}</p>}
+            {what === "audio" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">الصوت المدموج كله (الكلام والموسيقى والمؤثرات بنفس المستويات) في ملف M4A، مدته <span dir="ltr">{formatTime(total)}</span>.</p>}
+
+            {picture && (<>
             <div className="space-y-1.5">
               <span className="jw-label">الدقة</span>
               <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="الدقة">
@@ -304,22 +396,19 @@ export default function ExportPanel({
                 <Icon name="alert" size={13} className="inline" /> هذا التصدير ثقيل (دقة عالية أو مشروع طويل): يصير على جهازك ويأخذ وقتًا ويحتاج ذاكرة. لو جهازك ضعيف اختر دقة أقل، وخلّ الصفحة مفتوحة.
               </p>
             )}
+            </>)}
             <p className="text-xs text-jw-faint">التصدير يصير داخل متصفحك (بدون انتظار سيرفر). خلّ الصفحة مفتوحة حتى يخلص.</p>
             {phase.k === "error" && <p className="error-box text-sm">{phase.m}</p>}
-            <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!total} onClick={start}>
-              <Icon name="download" size={16} /> صدّر الحين
+            <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!total0} onClick={start}>
+              <Icon name="download" size={16} /> {what === "srt" ? "نزّل الكابشن" : what === "frame" ? "نزّل الفريم" : what === "audio" ? "صدّر الصوت" : what === "mute" ? "صدّر بدون صوت" : "صدّر الحين"}
             </button>
+            {note && <p className="text-xs text-jw-ok" aria-live="polite">{note}</p>}
             <div className="space-y-2 rounded-xl border border-jw-line p-3">
               <p className="text-sm font-bold">💾 المشروع نفسه في جهازك</p>
               <p className="text-xs leading-5 text-jw-muted">ملف واحد فيه التايملاين وكل الفيديوهات والأصوات والصور والكابشن: تحتفظ فيه، تفتحه في جهاز ثاني، أو تاخذ ملفاته لبرنامج ثاني.</p>
               <button type="button" className="jw-btn w-full" disabled={packing?.busy} onClick={pack}>
                 {packing?.busy ? <span className="jw-spinner" /> : <Icon name="download" size={16} />} {packing?.busy ? packing.text : "احفظ المشروع في جهازي"}
               </button>
-              {srt && (
-                <button type="button" className="jw-btn jw-btn-quiet w-full" onClick={() => saveFile(new Blob([srt], { type: "application/x-subrip" }), `${title || "captions"}.srt`)}>
-                  <Icon name="download" size={16} /> الكابشن بروحه (SRT)
-                </button>
-              )}
               {packing && !packing.busy && <p className={`text-xs ${packing.bad ? "text-jw-danger" : "text-jw-ok"}`}>{packing.text}</p>}
             </div>
           </>
@@ -337,13 +426,13 @@ export default function ExportPanel({
         ) : (
           <div className="space-y-3">
             <p className="text-sm font-semibold text-jw-ok">
-              <Icon name="check" size={16} className="inline" /> خلص! نزل الفيديو على جهازك.
+              <Icon name="check" size={16} className="inline" /> خلص! نزل الملف على جهازك.
             </p>
             {phase.r.lostSound && <p className="text-xs text-jw-warn">متصفحك ما يقدر يحفظ الصوت في الملف، فطلع بدون صوت. صدّره من Chrome على الكمبيوتر.</p>}
-            <button type="button" className="jw-btn w-full" onClick={() => download(phase.r.blob, name)}>
+            <button type="button" className="jw-btn w-full" onClick={() => download(phase.r.blob, phase.file)}>
               <Icon name="download" size={16} /> نزّله مرة ثانية
             </button>
-            {phase.purgeAt ? (
+            {phase.local ? null : phase.purgeAt ? (
               <p className="rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-3 text-xs leading-6 text-jw-warn">
                 <Icon name="clock" size={13} className="inline" /> مقاطع هذا المشروع وملفاته تنحذف <b>{when(phase.purgeAt)}</b> (بعد ٣ أيام من التصدير). تأكد إن الفيديو محفوظ عندك.
                 {phase.saved ? " حفظنا نسخة منه مع المشروع لين ذاك الوقت." : " ما قدرنا نحفظ نسخة منه عندنا (حجمه أكبر من المسموح حاليًا)، فاحتفظ بالملف اللي نزل."}

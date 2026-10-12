@@ -46,6 +46,8 @@ interface Props {
   onDropAsset: (assetId: string, at: number, trackId: string | null) => void;
   /** «عادي» (pictures along the clips) or «بريمير» (solid coloured clips, named tracks, timecode) */
   look?: "classic" | "pro";
+  /** «منطقة التصدير» (In → Out), shown on the ruler */
+  range?: { from: number; to: number } | null;
 }
 
 /** What the library puts on a drag (the asset's id). */
@@ -120,7 +122,7 @@ export const timecode = (ms: number, fps: number) => {
 };
 const PRO_TONE = { video: "#2f4f6e", image: "#3a5470", audio: "#2f6b4f", text: "#7346b0" } as const;
 
-export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic" }: Props) {
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic", range }: Props) {
   const pro = look === "pro";
   // track labels like V1, V2, A1, T1 (bottom-up for pictures, top-down for sound)
   const labels = new Map<string, string>();
@@ -808,6 +810,9 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
                 </span>
               ))}
               {compact && ticks.map((ms) => <span key={`d${ms}`} className="absolute top-[7px] h-1 w-1 -translate-x-1/2 rounded-full bg-jw-faint/60" style={{ left: X0 + lanePx(ms + step / 2) }} />)}
+              {range && range.to > range.from && (
+                <span className="pointer-events-none absolute bottom-0 top-0 z-[1] border-x-2 border-jw-accent bg-jw-accent/20" style={{ left: X0 - HEAD + lanePx(range.from), width: Math.max(2, lanePx(range.to - range.from)) }} title="منطقة التصدير" />
+              )}
               {/* beat marks */}
               {tl.markers.map((m) => (
                 <span key={`m${m}`} className="pointer-events-none absolute bottom-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-jw-warn" style={{ left: X0 - HEAD + lanePx(m) }} />

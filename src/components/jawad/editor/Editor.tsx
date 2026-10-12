@@ -162,6 +162,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [save, setSave] = useState<SaveState>("saved");
   const [sheet, setSheet] = useState<null | "library" | "inspector">(null);
   const [exporting, setExporting] = useState(false);
+  // «منطقة التصدير»: the In and Out points (timeline ms); an end left empty = the project's start / end
+  const [rangeIO, setRangeIO] = useState<{ from: number | null; to: number | null }>({ from: null, to: null });
   // «⌨️ الاختصارات»: whose keys win a clash (asked once on a computer; kept on this device), and the page of all keys
   const [keysFrom, setKeysFrom] = useState<ProgramId | null>(null);
   const [keysOpen, setKeysOpen] = useState<false | "first" | "page">(false);
@@ -1353,6 +1355,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         return importInput.current?.click();
       case "export":
         return duration(tlRef.current) ? setExporting(true) : flash("ما فيه شي تصدّره للحين.", true);
+      case "markIn":
+        setRangeIO((r) => ({ from: Math.round(ms), to: r.to != null && r.to <= ms ? null : r.to }));
+        return flash(`بداية منطقة التصدير: ${formatTime(ms)}`);
+      case "markOut":
+        setRangeIO((r) => ({ from: r.from != null && r.from >= ms ? null : r.from, to: Math.round(ms) }));
+        return flash(`نهاية منطقة التصدير: ${formatTime(ms)}`);
+      case "clearRange":
+        setRangeIO({ from: null, to: null });
+        return flash("شلت منطقة التصدير؛ التصدير على المشروع كله.");
     }
   };
   // «واجهات البرامج»: a page, and what a menu item does
@@ -1438,6 +1449,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
 
   const assetMap = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const total = duration(tl);
+  const exportRange = rangeIO.from == null && rangeIO.to == null ? null : { from: Math.max(0, rangeIO.from ?? 0), to: Math.min(total, rangeIO.to ?? total) };
   const one = selected.length === 1 ? findClip(tl, selected[0]) : null;
 
   const pluginCtx = () => ({
@@ -2053,7 +2065,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         )}
         {wide && <SequenceTabs tl={tl} run={run} readOnly={readOnly} />}
         <div className="min-h-0 flex-1">
-        <Guard name="التايملاين"><Timeline tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
+        <Guard name="التايملاين"><Timeline range={exportRange} tl={tl} assets={assetMap} thumbs={thumbs} waves={waves} selected={selected} onSelect={pick} run={run} player={player} compact={!wide} readOnly={readOnly} look={tlLook} onMenu={wide ? openMenu : undefined} onDropFiles={(f, at, tr) => dropFiles(f, at, tr)} onDropAsset={dropAsset} onEmpty={() => setSheet("library")} onTransition={(id) => {
           setWantTab("transition");
           pick([id]);
           if (!wide) setSheet("inspector");
@@ -2120,6 +2132,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         tl={tl}
         assets={assets}
         flush={flush}
+        range={exportRange && exportRange.to > exportRange.from ? exportRange : null}
+        onRange={(r) => setRangeIO(r ? { from: r.from, to: r.to } : { from: null, to: null })}
+        player={player}
         onExported={(p) => setPurgeAt(p)}
       />
     </div>
