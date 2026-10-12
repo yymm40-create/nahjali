@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import qrcode from "qrcode-generator";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import Avatar from "@/components/mahdi/Avatar";
@@ -22,6 +23,7 @@ interface Member {
 interface Detail {
   group: { id: string; name: string; isLeader: boolean };
   members: Member[];
+  requests?: { displayName: string; username: string; avatarUrl: string | null }[];
   ranking: { ranked: BoardRow[]; unranked: { displayName: string; username: string; avatarUrl: string | null; mine: boolean }[]; min?: number };
 }
 type Confirm = { kind: "remove" | "transfer"; m: Member } | { kind: "leave" | "delete" } | null;
@@ -41,6 +43,25 @@ export default function GroupPage() {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const key = `${period}:${metric}:${reload}`;
+  // the join link (the leader's): its token comes from the server once asked
+  const [token, setToken] = useState<string | null>(null);
+  const link = token && typeof window !== "undefined" ? `${window.location.origin}/api/mahdi/groups/go?t=${token}` : "";
+  const qr = useMemo(() => {
+    if (!link) return "";
+    const q = qrcode(0, "M");
+    q.addData(link);
+    q.make();
+    return q.createDataURL(6, 8);
+  }, [link]);
+  async function getLink(reset = false) {
+    try {
+      const r = await mahdiFetch<{ token: string }>(`/api/mahdi/groups/${id}`, { method: "POST", json: { action: reset ? "link_reset" : "link" } });
+      setToken(r.token);
+      if (reset) toast(t.groups.linkResetDone);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }
 
   useEffect(() => {
     let live = true;
@@ -150,6 +171,43 @@ export default function GroupPage() {
             </li>
           ))}
         </ul>
+
+        {group.isLeader && (data.requests?.length ?? 0) > 0 && (
+          <div className="m-card space-y-2 p-4">
+            <h3 className="font-semibold">{t.groups.requestsTitle}</h3>
+            <ul className="divide-y" style={{ borderColor: "var(--m-line)" }}>
+              {data.requests!.map((r) => (
+                <li key={r.username || r.displayName} className="flex items-center gap-3 py-2">
+                  <Avatar profile={{ ...r }} size={32} />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{t.mawla(r.displayName)} <bdi dir="auto" className="text-sm font-normal m-muted">{r.username}</bdi></span>
+                  <button type="button" className="m-btn m-btn-primary m-btn-sm" disabled={busy} onClick={() => act({ action: "approve", username: r.username }, t.groups.approved)}>{t.groups.approve}</button>
+                  <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={() => act({ action: "reject", username: r.username }, t.groups.rejected)}>{t.groups.reject}</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {group.isLeader && (
+          <div className="m-card space-y-3 p-4">
+            <h3 className="font-semibold">{t.groups.linkTitle}</h3>
+            <p className="text-sm m-muted">{t.groups.linkHint}</p>
+            {!token ? (
+              <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => getLink()}>{t.groups.linkShow}</button>
+            ) : (
+              <div className="space-y-3 text-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {qr && <img src={qr} alt="QR" width={180} height={180} className="mx-auto rounded-lg bg-white" />}
+                <input className="m-field" dir="ltr" readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label={t.groups.linkTitle} />
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className="m-btn m-btn-primary" onClick={() => navigator.clipboard?.writeText(link).then(() => toast(t.groups.linkCopied)).catch(() => {})}>{t.groups.linkCopy}</button>
+                  <button type="button" className="m-btn m-btn-ghost" onClick={() => (navigator.share ? navigator.share({ title: group.name, url: link }).catch(() => {}) : navigator.clipboard?.writeText(link).then(() => toast(t.groups.linkCopied)))}>{t.groups.linkShare}</button>
+                </div>
+                <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => getLink(true)}>{t.groups.linkReset}</button>
+              </div>
+            )}
+          </div>
+        )}
 
         {group.isLeader && (
           <form
