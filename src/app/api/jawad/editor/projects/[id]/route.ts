@@ -9,6 +9,7 @@ import { can } from "@/lib/access";
 import type { Command } from "@/lib/editor/commands";
 import { importSfx } from "@/lib/editor/sfx-library";
 import { keyCheck } from "@/lib/editor/key-check";
+import { labPlan, labReview, labWrite } from "@/lib/editor/scene/director";
 import {
   addLocalAsset,
   assetViewsById,
@@ -61,7 +62,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -146,6 +147,13 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     // «🤖 حيدرة يضبط الكي»: he looks at the frame, the matte and the result, and corrects the key's settings
     case "key_check":
       return NextResponse.json(await keyCheck(p, who, b));
+    // «🎬 مختبر الموشن»: حيدرة plans, writes and reviews a motion piece made in code (the browser renders it)
+    case "lab_plan":
+      return NextResponse.json(await labPlan(p, who, b));
+    case "lab_write":
+      return NextResponse.json(await labWrite(p, who, b));
+    case "lab_review":
+      return NextResponse.json(await labReview(p, who, b));
     case "assistant":
       return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرة", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply }));
     case "fix_link":

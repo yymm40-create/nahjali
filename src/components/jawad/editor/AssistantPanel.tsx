@@ -120,7 +120,10 @@ export default function AssistantPanel({
   zoom,
   onZoom,
   diag,
+  onLab,
 }: {
+  /** «🎬 مختبر الموشن»: opens the lab with a brief حيدرة wrote */
+  onLab?: (brief: string, seconds: number) => void;
   /** a request sent from a button (sent once per `n`) */
   ask?: { text: string; n: number } | null;
   /** new library files (made for the edit) */
@@ -515,6 +518,9 @@ export default function AssistantPanel({
             const more = track ? expandThen(q.then ?? [], track.id, track.clips.map((c) => c.id)) : [];
             // all together (one undo); if one of them can't run, the others still do, one by one
             if (track && more.length && !run(more, { label: "حيدرة يكمّل على الكابشن" })) for (const c of more) run(c, { label: "حيدرة يكمّل على الكابشن" });
+          } else if (q.kind === "motion_lab") {
+            // «🎬 مختبر الموشن»: the lab opens with حيدرة's brief (the person presses «اكتب الخطة»)
+            onLab?.(q.prompt, Number(q.seconds) || 15);
           } else if (q.kind === "talk_motion") {
             // the words with their times first (the captions of the talking video), then حيدرة is asked again by itself
             const now = tlRef.current;
