@@ -13,7 +13,7 @@ describe("«الجولة التعريفية»", () => {
   });
   it("the ring fills only when the chosen path is done", () => {
     expect(tourProgress([], null)).toBe(0);
-    const all = ["welcome", "try", "path", ...TOUR_PATHS[1].steps.map((s) => s.id)];
+    const all = ["welcome", "ask", "try", "path", ...TOUR_PATHS[1].steps.map((s) => s.id)];
     expect(tourProgress(all, "film")).toBe(1);
     expect(tourProgress(all, "studio")).toBeLessThan(1);
   });
