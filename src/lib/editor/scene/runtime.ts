@@ -40,6 +40,27 @@ export const SCENE_RUNTIME_JS = String.raw`
   try { performance.now = function () { return 0; }; } catch (e) {}
   window.requestAnimationFrame = function () { return 0; };
   window.setTimeout = window.setInterval = function () { return 0; };
+  // ── the forgiving canvas ──
+  // Two mistakes cost a whole round of the lab, and neither is a real bug of the shot:
+  //   ctx.createPattern(K.layer("t", 64, 64), …) — a layer is { c: canvas, x: ctx }, so the canvas is l.c
+  //   ctx.arcTo / roundRect with a radius that went slightly negative (a width that shrank past 0)
+  // The surface understands both: a layer (or a 2D context) gives its canvas, and a radius never goes under zero.
+  // Anything else still throws, so a true bug is still seen.
+  (function (protos) {
+    var src = function (v) { return v && typeof v === "object" && !(v instanceof Element) ? (v.c && v.c.getContext ? v.c : v.canvas && v.canvas.getContext ? v.canvas : v) : v; };
+    var pos = function (r) { return typeof r === "number" ? Math.max(0, r) : r && typeof r === "object" ? r : r; };
+    for (var i = 0; i < protos.length; i++) {
+      var P = protos[i];
+      if (!P || P.__forgiving) continue;
+      P.__forgiving = true;
+      var cp = P.createPattern, di = P.drawImage, at = P.arcTo, rr = P.roundRect;
+      P.createPattern = function (img, rep) { return cp.call(this, src(img), rep); };
+      P.drawImage = function (img) { var a = [src(img)]; for (var k = 1; k < arguments.length; k++) a.push(arguments[k]); return di.apply(this, a); };
+      P.arcTo = function (x1, y1, x2, y2, r) { return at.call(this, x1, y1, x2, y2, Math.max(0, r || 0)); };
+      if (rr) P.roundRect = function (x, y, w, h, r) { return rr.call(this, x, y, w, h, Array.isArray(r) ? r.map(pos) : pos(r)); };
+    }
+  })([typeof CanvasRenderingContext2D !== "undefined" ? CanvasRenderingContext2D.prototype : null, typeof OffscreenCanvasRenderingContext2D !== "undefined" ? OffscreenCanvasRenderingContext2D.prototype : null]);
+
   function scene(d) { def = d || {}; }
   function fail(where, e) { post({ type: "error", where: where, message: String((e && e.message) || e), stack: String((e && e.stack) || "").split("\n").slice(0, 4).join("\n") }); }
   function drawOnce(t) {

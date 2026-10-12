@@ -49,6 +49,7 @@ HARD RULES OF THE MACHINE
 - Pictures: only K.img(id) / K.picture(ctx, id, …) for the ids you were given. Never draw a real product, logo or UI from imagination when its picture was given — animate the real thing. When none was given, draw it yourself in code (shapes, gradients, particles, type).
 - No network, no fetch, no DOM, no eval of strings, no workers. Everything you need is K (below), the 2D ctx and, when three:true, three.js.
 - Keep it fast: a frame must draw in well under 100 ms at full size (particles ≤ ~6,000; metaball res ≤ 0.25; heavy blur only on small layers). The page renders 30–60 frames a second of video.
+- A layer is { c: canvas, x: ctx }: draw on l.x, and use l.c (or K.pattern(ctx, l)) wherever a picture is wanted — ctx.createPattern / drawImage take l.c, never l.
 - Errors: wrap nothing silently; a bug must throw so you see it in the next round.
 - cues: only ids from this list: ${CUE_SFX.join(", ")}.
 

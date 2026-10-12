@@ -167,6 +167,8 @@ export const SCENE_KIT_JS = String.raw`
     l.x.setTransform(1, 0, 0, 1, 0, 0); l.x.globalAlpha = 1; l.x.globalCompositeOperation = "source-over"; l.x.filter = "none"; l.x.clearRect(0, 0, w, h);
     return l;
   };
+  // a repeating fill from a layer, a canvas or a picture (a layer's own canvas is taken for you)
+  K.pattern = function (ctx, src, rep) { var c = src && src.c ? src.c : src && src.canvas ? src.canvas : src; return c ? ctx.createPattern(c, rep || "repeat") : null; };
   K.reset = function (ctx) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; ctx.filter = "none"; ctx.shadowBlur = 0; ctx.shadowColor = "transparent"; ctx.setLineDash([]); };
   K.isArabic = function (s) { return /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/.test(String(s)); };
   K.font = function (size, weight, family) { return (weight || 700) + " " + Math.max(1, Math.round(size)) + "px " + (family || (K.fonts && K.fonts.head) || "sans-serif"); };
