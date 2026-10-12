@@ -23,13 +23,15 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
     <header className="sticky top-0 z-30">
       <div className="border-b border-jw-line bg-jw-bg/90 backdrop-blur">
         <div className="mx-auto flex h-[var(--jw-header-h)] max-w-[1600px] items-center justify-between gap-3 px-3 sm:px-5">
-          <Link href={JAWAD.base} className="flex items-center gap-2.5 rounded-lg" aria-label={`${JAWAD.nameEn} — الرئيسية`}>
+          <div className="flex items-center gap-1.5">
+              <Link href={JAWAD.base} className="flex items-center gap-2.5 rounded-lg" aria-label={`${JAWAD.nameEn} — الرئيسية`}>
             <Image src={rt.brand.logoUrl} alt="" width={36} height={36} priority unoptimized={rt.brand.customLogo} className="size-9 rounded-full object-contain" />
             <span className="flex flex-col leading-tight max-[359px]:hidden">
               <span className="text-[15px] font-bold tracking-wide" dir="ltr">{JAWAD.nameEn}</span>
               <span className="text-[11px] text-jw-muted">{JAWAD.nameAr}</span>
             </span>
           </Link>
+          </div>
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             {/* on a computer: the whole width, or a phone-wide column */}
             <CoursePromo version={version} />
@@ -50,7 +52,6 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           </div>
         </div>
       </div>
-      {!preview && <SectionsBar sections={sections} />}
     </header>
   );
 }

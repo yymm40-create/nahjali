@@ -30,6 +30,7 @@ import type { WorkSource } from "./RefAdder";
 import { probeFile, putWithProgress } from "./upload";
 import WorksPanel from "./WorksPanel";
 import StylePicker from "./StylePicker";
+import MorePrompts from "./MorePrompts";
 import { findStyle } from "@config/film-styles";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
 import Coined from "@/components/Coined";
@@ -211,6 +212,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
         refStyle: saved.refStyle ?? {},
         refs: Array.isArray(saved.refs) ? withNames(saved.refs) : [],
         styleId: typeof saved.styleId === "string" && findStyle(saved.styleId) ? saved.styleId : "",
+        extra: Array.isArray(saved.extra) ? saved.extra.slice(0, 2) : [],
+        mainRefs: Array.isArray(saved.mainRefs) ? saved.mainRefs : null,
       }));
       // Fresh links (and existence) of the kept references
       const ids = (saved.refs ?? []).flatMap((r) => (r.uploadId ? [r.uploadId] : []));
@@ -498,8 +501,17 @@ export default function Studio({ section, generators, prices: initialPrices, use
   }
   const libraryOptions = canUseLibrary && library ? library.items.filter((it) => !draft.refs.some((r) => r.uploadId === it.uploadId)).map((it) => ({ ...libraryRef(it, "reference"), localId: `lib:${it.id}` })) : [];
 
-  // ── generate ──
-  const price = ev?.price.ok ? ev.price.coins : null;
+  // ── generate ── (with «برومبت ثاني وثالث», one generation per prompt, each with its own references and price)
+  const pick = (names: string[] | null | undefined) => (names ? draft.refs.filter((r) => names.includes(r.name)) : draft.refs);
+  const extras = section.output === "audio" ? [] : (draft.extra ?? []).filter((x) => x.prompt.trim());
+  const plan = def && extras.length
+    ? [{ prompt: draft.prompt, refs: pick(draft.mainRefs) }, ...extras.map((x) => ({ prompt: x.prompt, refs: pick(x.refs) }))].map((x) => ({ ...x, ev: evaluate(def, { settings, prompt: x.prompt, instructions, refStyle, refs: x.refs.map(refMeta) }, prices[def.id] ?? {}) }))
+    : null;
+  const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + (x.ev.price.ok ? x.ev.price.coins : 0), 0) : null) : ev?.price.ok ? ev.price.coins : null;
+  async function submitAll() {
+    if (!plan) return price != null && submit(price);
+    for (const x of plan) if (x.ev.price.ok) await submit(x.ev.price.coins, { prompt: x.prompt, refs: x.refs });
+  }
   const busyUploads = draft.refs.some((r) => r.status === "uploading" || r.status === "checking");
   const blockers: string[] = [];
   if (!user) blockers.push("سجّل الدخول للتوليد.");
@@ -508,6 +520,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
   if (busyUploads) blockers.push("انتظر حتى يكتمل رفع المراجع وفحصها.");
   if (directing) blockers.push("انتظر حتى ينتهي «المخرج الخارق» من كتابة البرومبت.");
   if (ev) for (const i of ev.issues) if (!blockers.includes(i.message)) blockers.push(i.message);
+  if (plan) plan.forEach((x, n) => x.ev.issues.forEach((i) => { const m = `البرومبت ${n + 1}: ${i.message}`; if (n > 0 && !blockers.includes(m)) blockers.push(m); }));
   if (user && !owner && price != null && balance != null && balance < price) blockers.push(`رصيدك (${coinStr(balance)}) لا يكفي لهذا التوليد (${coinStr(price)}).`);
 
   // «المخرج الخارق» (video making): its price, and why it can't run now
@@ -578,7 +591,9 @@ export default function Studio({ section, generators, prices: initialPrices, use
     return times.map((t, i) => ({ t, data: shots[i] }));
   }
 
-  async function submit(expectedCoins: number) {
+  async function submit(expectedCoins: number, one?: { prompt: string; refs: RefItem[] }) {
+    const P = one?.prompt ?? draft.prompt;
+    const R = one?.refs ?? draft.refs;
     if (!def || !gen || submitting) return;
     let frames: { t: number; data: string }[] | undefined;
     if (ev?.mode.id === SMART_SPLIT_MODE && needsFrames(ev.settings)) {
@@ -595,7 +610,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         setSubmitting(false);
       }
     }
-    const sig = JSON.stringify([section.id, def.id, refStyle, ev?.settings ?? settings, draft.prompt, instructions, draft.refs.map((r) => [r.uploadId, r.role, r.name])]);
+    const sig = JSON.stringify([section.id, def.id, refStyle, ev?.settings ?? settings, P, instructions, R.map((r) => [r.uploadId, r.role, r.name])]);
     if (pendingSig.current !== sig) pendingKey.current = null;
     pendingSig.current = sig;
     const idem = (pendingKey.current ??= uid());
@@ -613,7 +628,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       sectionId: section.id,
       outputKind: def.output,
       mode: ev?.mode.id ?? "",
-      prompt: draft.prompt,
+      prompt: P,
       instructions,
       settings: ev?.settings ?? settings,
       refStyle,
@@ -641,9 +656,9 @@ export default function Studio({ section, generators, prices: initialPrices, use
       generatorId: def.id,
       refStyle,
       settings: ev?.settings ?? settings,
-      prompt: draft.prompt,
+      prompt: P,
       instructions,
-      refs: draft.refs.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
+      refs: R.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
       ...(section.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
       ...(frames ? { frames } : {}),
@@ -796,6 +811,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
       settings: ev?.settings ?? settings,
       refStyle,
       styleId: section.output === "audio" ? "" : draft.styleId ?? "",
+      extra: section.output === "audio" ? [] : draft.extra ?? [],
+      mainRefs: draft.mainRefs ?? null,
       refs: draft.refs.filter((r) => r.uploadId && r.status === "ready").map((r) => ({ uploadId: r.uploadId!, name: r.name, kind: r.kind, role: r.role, width: r.width, height: r.height, durationMs: r.durationMs })),
     };
   }
@@ -828,6 +845,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
         settings: set.settings ? { ...d.settings, [gid]: { ...base, ...set.settings } } : d.settings,
         refs,
         styleId: set.styleId === undefined ? d.styleId : set.styleId === "none" ? "" : set.styleId,
+        extra: set.extra === undefined ? d.extra : set.extra,
+        mainRefs: set.extra === undefined ? d.mainRefs : set.mainRefs ?? null,
       };
     });
     setTouched(true);
@@ -917,9 +936,17 @@ export default function Studio({ section, generators, prices: initialPrices, use
               onTouched={() => setTouched(true)}
               locked={directing ? "«المخرج الخارق» يكتب البرومبت…" : null}
               onSubmit={() => {
-                if (user && price != null && !blockers.length && !submitting) submit(price);
+                if (user && price != null && !blockers.length && !submitting) void submitAll();
               }}
             />
+            {section.output !== "audio" && (
+              <MorePrompts
+                refs={draft.refs.map((r) => r.name)}
+                extra={draft.extra ?? []}
+                mainRefs={draft.mainRefs ?? null}
+                onChange={(extra, mainRefs) => (setDraft((d) => ({ ...d, extra, mainRefs })), setTouched(true))}
+              />
+            )}
             <PromptHelpers kind={def.output} prompt={draft.prompt} onPrompt={onPrompt} disabled={directing} />
             {directorCoins != null && (
               <DirectorBoost
@@ -955,7 +982,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
                 disabled={blockers.length > 0 || submitting || price == null}
                 aria-disabled={blockers.length > 0}
                 aria-describedby="jw-gen-why"
-                onClick={() => price != null && submit(price)}
+                onClick={() => price != null && void submitAll()}
               >
                 {submitting ? <span className="jw-spinner" /> : <Icon name="sparkles" size={18} />}
                 {generateLabel}

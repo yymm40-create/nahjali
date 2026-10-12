@@ -71,7 +71,18 @@ export interface Draft {
   refs: RefItem[];
   /** «الستايل»: one of the 24 styles (images and video), "" = none */
   styleId?: string;
+  /** «برومبت ثاني وثالث»: more prompts, each its own generation at the same time with the references it is given */
+  extra?: ExtraPrompt[];
+  /** the references of the first prompt when there are more (names; null = all of them) */
+  mainRefs?: string[] | null;
 }
+
+export interface ExtraPrompt {
+  prompt: string;
+  /** names of the references this prompt uses (null = all of them) */
+  refs: string[] | null;
+}
+export const MAX_PROMPTS = 3;
 
 export const refMeta = (r: RefItem): RefMeta => ({
   id: r.uploadId ?? r.localId,

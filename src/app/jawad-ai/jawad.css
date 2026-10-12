@@ -32,7 +32,7 @@ html:has(.jw) body {
   --jw-gold: #e9b546;
   --jw-radius: 14px;
   --jw-header-h: 56px;
-  --jw-bar-h: 44px;
+  --jw-bar-h: 0px;
   --jw-font: var(--font-readex), system-ui, sans-serif;
 
   /* Components shared with the main site (sign-in, username, the film maker) read these: same widgets, JAWAD's look */
