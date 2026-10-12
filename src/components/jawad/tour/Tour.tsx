@@ -7,9 +7,9 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { TOUR_DONE, TOUR_PATHS, TOUR_TRY, TOUR_TRY_MAX, TOUR_WELCOME, tourProgress, type TourPath } from "@config/jawad/tour";
+import { TOUR_ASK, TOUR_DONE, TOUR_PATHS, TOUR_TRY, TOUR_TRY_MAX, TOUR_WELCOME, tourProgress, type TourAnswers, type TourPath } from "@config/jawad/tour";
 
-type Page = "welcome" | "try" | "paths" | TourPath["id"] | "done";
+type Page = "welcome" | "ask" | "try" | "paths" | TourPath["id"] | "done";
 interface Saved {
   done: string[];
   path: TourPath["id"] | null;
@@ -52,6 +52,18 @@ export default function Tour({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [image, setImage] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<TourAnswers>({});
+  const [words, setWords] = useState("");
+  const pick = (id: keyof TourAnswers, v: string, multi: boolean) =>
+    setAnswers((a) => {
+      const cur = a[id] ?? [];
+      return { ...a, [id]: multi ? (cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]) : [v] };
+    });
+  async function sendAnswers() {
+    mark("welcome", "ask");
+    go("try");
+    await fetch("/api/jawad/tour/interests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, words }) }).catch(() => {});
+  }
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -142,9 +154,46 @@ export default function Tour({ userId }: { userId: string }) {
                       <li key={p}>✅ {p}</li>
                     ))}
                   </ul>
-                  <button type="button" className="jw-btn jw-btn-primary !min-h-11" onClick={() => (mark("welcome"), go("try"))}>
-                    لنبدأ بصورتك الأولى ←
+                  <button type="button" className="jw-btn jw-btn-primary !min-h-11" onClick={() => (mark("welcome"), go("ask"))}>
+                    لنبدأ ←
                   </button>
+                </>
+              )}
+
+              {page === "ask" && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-12 place-items-center rounded-full bg-jw-accent text-2xl text-[var(--jw-on-accent)]" aria-hidden>✨</span>
+                    <h2 className="text-xl font-black">{TOUR_ASK.title}</h2>
+                  </div>
+                  <p className="leading-8">{TOUR_ASK.body}</p>
+                  {TOUR_ASK.questions.map((q) => (
+                    <fieldset key={q.id} className="space-y-2">
+                      <legend className="font-bold">{q.q}{q.multi && <span className="text-xs font-normal text-jw-muted"> (يمكنك اختيار أكثر من واحد)</span>}</legend>
+                      <div className="flex flex-wrap gap-2">
+                        {q.options.map((o) => {
+                          const on = (answers[q.id] ?? []).includes(o);
+                          return (
+                            <button key={o} type="button" aria-pressed={on} className={`rounded-full border px-3 py-1.5 text-sm ${on ? "border-jw-accent bg-jw-accent/15 font-bold" : "border-jw-line"}`} onClick={() => pick(q.id, o, q.multi)}>
+                              {o}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  ))}
+                  <label className="block space-y-1">
+                    <span className="font-bold">{TOUR_ASK.words}</span>
+                    <input className="jw-input w-full" maxLength={120} value={words} onChange={(e) => setWords(e.target.value)} placeholder="مثال: قصص أطفال، إعلانات مطعم" dir="auto" />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="jw-btn jw-btn-primary !min-h-11" onClick={sendAnswers}>
+                      التالي: صورتك الأولى ←
+                    </button>
+                    <button type="button" className="jw-btn" onClick={() => (mark("welcome", "ask"), go("try"))}>
+                      تخطَّ الأسئلة
+                    </button>
+                  </div>
                 </>
               )}
 

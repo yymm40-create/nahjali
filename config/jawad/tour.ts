@@ -81,12 +81,37 @@ export const TOUR_DONE = {
 };
 
 /** Every mark the ring counts: welcome, the free image, choosing a path, and each step of both paths. */
-export const TOUR_MARKS = ["welcome", "try", "path", ...TOUR_PATHS.flatMap((p) => p.steps.map((s) => s.id))];
+export const TOUR_MARKS = ["welcome", "ask", "try", "path", ...TOUR_PATHS.flatMap((p) => p.steps.map((s) => s.id))];
 /** The ring is full when the welcome, the trial, a path and every step of the chosen path are done. */
 export function tourProgress(done: readonly string[], path: TourPath["id"] | null): number {
   const p = TOUR_PATHS.find((x) => x.id === path) ?? TOUR_PATHS[0];
-  const need = ["welcome", "try", "path", ...p.steps.map((s) => s.id)];
+  const need = ["welcome", "ask", "try", "path", ...p.steps.map((s) => s.id)];
   return need.filter((m) => done.includes(m)).length / need.length;
 }
 
 export const TOUR_TRY_MAX = 800;
+
+/** «جواد يتعرّف عليك»: a few questions in the tour, so the offers fit what each person likes. */
+export const TOUR_ASK = {
+  title: "جواد يتعرّف عليك",
+  body: "قبل أن نبدأ، يسألك جواد بعض الأسئلة القصيرة ليقترح عليك ما يناسبك. اختر ما ينطبق عليك، ويمكنك التخطي.",
+  questions: [
+    { id: "make", q: "ماذا تريد أن تصنع؟", multi: true, options: ["أفلام ومشاهد قصيرة", "إعلانات ومحتوى تسويقي", "ريلز ومحتوى للسوشال", "محتوى تعليمي", "محتوى ديني", "قصص للأطفال", "صور وتصاميم", "ألعاب"] },
+    { id: "level", q: "ما خبرتك في صناعة المحتوى بالذكاء الاصطناعي؟", multi: false, options: ["مبتدئ تمامًا", "جرّبت قليلًا", "أستخدمه باستمرار", "محترف"] },
+    { id: "goal", q: "لمن تصنع؟", multi: false, options: ["لنفسي وهواية", "لعملي أو مشروعي", "لعملاء", "للتعليم والدراسة"] },
+    { id: "want", q: "ما الذي يهمك أكثر؟", multi: true, options: ["أتعلم خطوة بخطوة", "نتائج سريعة", "جودة سينمائية", "توفير التكلفة"] },
+  ],
+  words: "اكتب كلمة أو كلمتين عن فكرتك أو ما تحب أن تصنعه (اختياري)",
+} as const;
+export type TourAnswers = Partial<Record<(typeof TOUR_ASK.questions)[number]["id"], string[]>>;
+
+/** The answers made safe: only known options, and a few words. */
+export function readAnswers(raw: unknown, wordsRaw: unknown): { answers: TourAnswers; words: string } {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const answers: TourAnswers = {};
+  for (const q of TOUR_ASK.questions) {
+    const v = (Array.isArray(o[q.id]) ? (o[q.id] as unknown[]) : []).map(String).filter((x) => (q.options as readonly string[]).includes(x));
+    if (v.length) answers[q.id] = q.multi ? [...new Set(v)] : [v[0]];
+  }
+  return { answers, words: String(wordsRaw ?? "").replace(/\s+/g, " ").trim().slice(0, 120) };
+}

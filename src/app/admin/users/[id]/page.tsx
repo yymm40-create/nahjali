@@ -5,6 +5,9 @@ import { isPerm, type Perm } from "@config/access";
 import { coinsRequired } from "@/lib/coins";
 import { isAdmin } from "@config/site";
 import UserPermissions from "./UserPermissions";
+import Riyal from "@/components/Riyal";
+import { userSpend } from "@/lib/spend";
+import { TOUR_ASK } from "@config/jawad/tour";
 
 export const metadata = { title: "صلاحيات مستخدم · لوحة التحكم" };
 export const dynamic = "force-dynamic";
@@ -26,7 +29,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
     const { count: n, error: e } = await db.from(table).select("*", { count: "exact", head: true }).eq(col, id);
     return e ? null : (n ?? 0);
   };
-  const [perms, wallet, coinsOn, usage] = await Promise.all([
+  const [perms, wallet, coinsOn, usage, spend, likes] = await Promise.all([
     db.from("site_access").select("perms").eq("email", email).maybeSingle().then((r) => (r.data ? ((r.data.perms as string[]) ?? []).filter(isPerm) : null) as Perm[] | null),
     db.from("smart_coin_wallets").select("balance,library_until").eq("user_id", id).maybeSingle().then((r) => r.data as { balance: number; library_until: string | null } | null),
     coinsRequired().catch(() => false),
@@ -38,7 +41,10 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
       count("orders"),
       count("mahdi_logs"),
     ]),
+    userSpend(id),
+    db.from("jawad_settings").select("value").eq("key", `interests:${id}`).maybeSingle().then((r) => (r.data?.value ?? null) as { answers?: Record<string, string[]>; words?: string; at?: string } | null),
   ]);
+  const spent = spend.lines.reduce((s, x) => s + x.halalas, 0);
   const owner = isAdmin(email);
   const [jobs, editor, student, film, orders, mahdi] = usage;
   const name = String(u.user_metadata?.full_name ?? u.user_metadata?.name ?? "") || email.split("@")[0];
@@ -84,6 +90,62 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
             <p className="display text-2xl">{v === null ? "—" : v.toLocaleString("en")}</p>
           </div>
         ))}
+      </section>
+
+      <section className="card space-y-3 p-5">
+        <h2 className="display text-2xl">💸 في شنو صرف فلوسه · <Riyal halalas={spent} size={16} /></h2>
+        {spend.branches.length ? (
+          <ul className="flex flex-wrap gap-2 text-sm">
+            {spend.branches.map((b) => (
+              <li key={b.branch} className="chip">
+                {b.branch}: <Riyal halalas={b.halalas} size={12} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="font-bold text-muted">ما صرف شي بعد.</p>
+        )}
+        {!!spend.lines.length && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-muted">
+                  <th className="p-2 text-start">العملية</th>
+                  <th className="p-2 text-start">الفرع</th>
+                  <th className="p-2 text-start">المصروف</th>
+                  <th className="p-2 text-start">كم مرة</th>
+                  <th className="p-2 text-start">آخر مرة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {spend.lines.map((l) => (
+                  <tr key={l.label} className="border-t border-line">
+                    <td className="p-2 font-bold" dir="auto">{l.label}</td>
+                    <td className="p-2">{l.branch}</td>
+                    <td className="p-2"><Riyal halalas={l.halalas} size={12} /></td>
+                    <td className="p-2">{l.times.toLocaleString("en")}</td>
+                    <td className="p-2 text-muted">{fmt(l.last)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="card space-y-2 p-5">
+        <h2 className="display text-2xl">✨ وش يحب (من أسئلة جواد)</h2>
+        {likes ? (
+          <>
+            {TOUR_ASK.questions.map((q) => (likes.answers?.[q.id]?.length ? (
+              <p key={q.id} className="text-sm"><b>{q.q}</b> {likes.answers[q.id]!.join("، ")}</p>
+            ) : null))}
+            {likes.words && <p className="text-sm"><b>بكلماته:</b> <span dir="auto">{likes.words}</span></p>}
+            <p className="text-xs text-muted">جاوب {fmt(likes.at)}</p>
+          </>
+        ) : (
+          <p className="font-bold text-muted">ما جاوب على أسئلة جواد بعد.</p>
+        )}
       </section>
 
       {owner ? (
