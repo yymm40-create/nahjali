@@ -28,7 +28,7 @@ export const MAKE_KINDS: MakeKind[] = ["image", "video", "speech", "sfx", "music
 const CHOICES: Record<MakeKind, string[]> = {
   image: ["openai-gpt-image-2"],
   video: ["byteplus-seedance-2-5", "byteplus-seedance-2-0"],
-  speech: ["jawad-voice", "elevenlabs-eleven-v4", "minimax-speech-2-8", "openai-gpt-4o-mini-tts"],
+  speech: ["elevenlabs-eleven-v4", "minimax-speech-2-8", "openai-gpt-4o-mini-tts", "jawad-voice"],
   sfx: ["elevenlabs-sfx-v2"],
   music: ["elevenlabs-music-v2-5"],
 };
