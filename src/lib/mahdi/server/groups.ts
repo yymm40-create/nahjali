@@ -8,13 +8,15 @@ import { boardScore, rankEntries, rankReading, readingTotalsFor, MIN_GOALS, type
 import { addDays, todayIn } from "../engine";
 import { avatarUrl } from "./rows";
 
+/** The cookie that carries a group's join token while the visitor signs up or in (a week at most). */
+export const GROUP_JOIN_COOKIE = "mahdi_gjoin";
 export const MAX_GROUPS = 5;
 export const MAX_MEMBERS = 50;
 
 export interface MemberRow {
   group_id: string;
   user_id: string;
-  status: "invited" | "active";
+  status: "invited" | "active" | "requested";
   invited_by: string | null;
 }
 

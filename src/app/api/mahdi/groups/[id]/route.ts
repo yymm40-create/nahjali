@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { cleanUsername, USERNAME_RE } from "@/lib/username-rules";
 import { t } from "@/lib/mahdi/i18n";
@@ -22,7 +23,9 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   return NextResponse.json(
     {
       group: { id: group.id, name: group.name, isLeader: group.leader_id === user.id },
-      members: members.map((m) => ({ displayName: m.displayName, username: m.username, avatarUrl: m.avatarUrl, status: m.status, leader: m.leader, mine: m.userId === user.id })),
+      // the people who asked to join through the link are for the leader's eyes only
+      requests: group.leader_id === user.id ? members.filter((m) => m.status === "requested").map((m) => ({ displayName: m.displayName, username: m.username, avatarUrl: m.avatarUrl })) : [],
+      members: members.filter((m) => m.status !== "requested").map((m) => ({ displayName: m.displayName, username: m.username, avatarUrl: m.avatarUrl, status: m.status, leader: m.leader, mine: m.userId === user.id })),
       ranking,
     },
     { headers: { "Cache-Control": "private, no-store" } },
@@ -34,6 +37,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
  *   anyone invited: accept · decline
  *   members: leave
  *   the leader: invite { username } · remove { username } · transfer { username } · rename { name } · delete
+ *               link (the join link's token, made when missing) · link_reset (a new one) · approve { username } · reject { username }
  */
 export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { user } = await requireProfile(req);
@@ -83,6 +87,28 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
       if ((await groupCount(db, uid)) >= MAX_GROUPS) throw new UserError(t.groups.limitGroups, 400);
       const { error } = await db.from("mahdi_group_members").insert({ group_id: id, user_id: uid, status: "invited", invited_by: user.id });
       if (error) throw error;
+      return ok();
+    }
+    case "link":
+    case "link_reset": {
+      let token = body.action === "link" ? ((await db.from("mahdi_groups").select("join_token").eq("id", id).maybeSingle()).data?.join_token as string | null) : null;
+      if (!token) {
+        token = randomBytes(18).toString("base64url");
+        await db.from("mahdi_groups").update({ join_token: token }).eq("id", id);
+      }
+      return NextResponse.json({ token });
+    }
+    case "approve": {
+      const uid = await target();
+      if ((await membership(uid))?.status !== "requested") throw new UserError(t.groups.notFoundUser, 404);
+      const { count } = await db.from("mahdi_group_members").select("user_id", { count: "exact", head: true }).eq("group_id", id).in("status", ["active", "invited"]);
+      if ((count ?? 0) >= MAX_MEMBERS) throw new UserError(t.groups.limitMembers, 400);
+      await db.from("mahdi_group_members").update({ status: "active", joined_at: new Date().toISOString(), invited_by: user.id }).eq("group_id", id).eq("user_id", uid);
+      return ok();
+    }
+    case "reject": {
+      const uid = await target();
+      await db.from("mahdi_group_members").delete().eq("group_id", id).eq("user_id", uid).eq("status", "requested");
       return ok();
     }
     case "remove": {
