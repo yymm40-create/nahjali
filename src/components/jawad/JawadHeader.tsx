@@ -14,11 +14,13 @@ import CoursePromo from "./CoursePromo";
 import MemoryMenu from "./MemoryMenu";
 import SectionsBar from "./SectionsBar";
 import Tour from "./tour/Tour";
+import { SECTIONS } from "@config/sections";
 
 /** JAWAD AI's compact header: the identity (back to JAWAD AI's home), a way back to نهج علي's home, the balance and the account; then the sections bar. */
 /** `preview`: JAWAD AI is still in development for this visitor — identity and account only, no sections or balance. */
 export default function JawadHeader({ rt, user, owner, balance, username, preview = false, version = "dev", boss = false }: { rt: Runtime; user: User | null; owner: boolean; /** the site's owner himself (not a free guest): the problem button is his */ boss?: boolean; balance: number | null; username: string | null; preview?: boolean; version?: string }) {
   const sections = rt.sections.filter((s) => s.enabled || owner).map((s) => ({ id: s.id, name: s.name, icon: s.icon, path: s.path, hidden: !s.enabled }));
+  const siteSections = SECTIONS.filter((section) => !section.underDevelopment || owner).map((section) => ({ id: section.key, name: section.title, icon: section.icon, path: section.href }));
   return (
     <header className="sticky top-0 z-30">
       <div className="border-b border-jw-line bg-jw-bg/90 backdrop-blur">
@@ -33,6 +35,7 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           </Link>
           </div>
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+            {!preview && <SectionsBar sections={sections} siteSections={siteSections} />}
             {/* on a computer: the whole width, or a phone-wide column */}
             <CoursePromo version={version} />
             {!preview && <ShareReward version={version} loginHref={`${JAWAD.base}/login?next=${encodeURIComponent(JAWAD.base)}`} />}
