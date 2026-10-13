@@ -1,19 +1,23 @@
 .jw .tour-backdrop {
-  background: radial-gradient(ellipse at 50% 10%, rgb(19 24 34 / 72%), rgb(3 5 9 / 88%));
-  backdrop-filter: blur(8px);
+  background: radial-gradient(ellipse at 50% 10%, rgb(12 18 35 / 94%), rgb(3 5 12 / 98%));
+  backdrop-filter: blur(3px);
   animation: tour-fade-in 180ms ease-out;
 }
 
 .jw .tour-modal {
   position: relative;
-  border: 1px solid rgb(255 255 255 / 11%);
-  background: linear-gradient(155deg, #171a20 0%, #101216 72%);
-  box-shadow: 0 28px 100px rgb(0 0 0 / 58%);
+  isolation: isolate;
+  border: 1px solid #424a70;
+  background: #101526;
+  background-image: radial-gradient(rgb(133 151 255 / 9%) .8px, transparent .8px);
+  background-size: 22px 22px;
+  box-shadow: 0 28px 100px rgb(0 0 0 / 82%), 0 0 48px rgb(95 75 255 / 18%);
   animation: tour-rise-in 240ms cubic-bezier(.2,.8,.2,1);
 }
 
 .jw .tour-header {
-  background: linear-gradient(100deg, rgb(255 255 255 / 3%), transparent 58%);
+  border-color: #303958;
+  background: linear-gradient(110deg, #211c48 0%, #172642 56%, #102d36 100%);
 }
 
 .jw .tour-ring {
@@ -22,21 +26,23 @@
   height: 46px;
   flex: none;
   place-items: center;
-  border: 1px solid rgb(255 255 255 / 9%);
+  border: 1px solid #7366d9;
   border-radius: 16px;
-  background: rgb(255 255 255 / 4%);
+  background: linear-gradient(145deg, #4437a8, #136c79);
+  color: white;
+  box-shadow: 0 8px 28px rgb(73 62 195 / 30%);
 }
 
 .jw .tour-progress {
   height: 3px;
-  background: rgb(255 255 255 / 6%);
+  background: #28324f;
 }
 
 .jw .tour-progress span {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--jw-accent), #f5d885);
+  background: linear-gradient(90deg, #8b5cf6, #28d7c4, #f4b942);
   transition: width 350ms ease;
 }
 
@@ -46,7 +52,7 @@
 
 .jw .tour-cover-grid img {
   min-height: 90px;
-  border: 1px solid rgb(255 255 255 / 10%);
+  border: 1px solid #414a70;
   border-radius: 16px;
   box-shadow: 0 8px 28px rgb(0 0 0 / 20%);
 }
@@ -59,7 +65,11 @@
 
 .jw .tour-welcome-copy {
   max-width: 720px;
-  padding: 10px 2px 2px;
+  border: 1px solid #384365;
+  border-inline-start: 4px solid #28d7c4;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #1c2540, #172333);
+  padding: 16px 18px;
 }
 
 .jw .tour-welcome-copy h2 {
@@ -73,7 +83,7 @@
 }
 
 .jw .tour-kicker {
-  color: var(--jw-accent);
+  color: #a991ff;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .04em;
@@ -88,9 +98,9 @@
 .jw .tour-points li,
 .jw .tour-question,
 .jw .tour-word-input {
-  border: 1px solid rgb(255 255 255 / 8%);
+  border: 1px solid #354365;
   border-radius: 16px;
-  background: rgb(255 255 255 / 3%);
+  background: #1a2338;
   padding: 12px 14px;
 }
 
@@ -100,8 +110,9 @@
 
 .jw .tour-option {
   min-height: 40px;
-  border-color: rgb(255 255 255 / 13%);
-  background: rgb(255 255 255 / 3%);
+  border-color: #475372;
+  background: #202b43;
+  color: #e9edff;
   transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 
@@ -112,15 +123,15 @@
 
 .jw .tour-option[aria-pressed="true"] {
   border-color: var(--jw-accent);
-  background: color-mix(in srgb, var(--jw-accent) 22%, transparent);
-  box-shadow: inset 0 0 0 1px var(--jw-accent), 0 0 22px color-mix(in srgb, var(--jw-accent) 15%, transparent);
-  color: var(--jw-ink);
+  background: linear-gradient(110deg, #5947c7, #14777c);
+  box-shadow: inset 0 0 0 1px #b3a7ff, 0 0 22px rgb(50 216 197 / 24%);
+  color: #fff;
 }
 
 .jw .tour-word-input input,
 .jw .tour-prompt {
   border: 1px solid rgb(255 255 255 / 18%);
-  background: #0b0d11;
+  background: #0b1020;
   box-shadow: inset 0 1px 3px rgb(0 0 0 / 28%);
 }
 
@@ -139,12 +150,13 @@
 }
 
 .jw .tour-prompt::placeholder {
-  color: #9aa0aa;
+  color: #aeb8d0;
 }
 
 .jw .tour-path {
-  border-color: rgb(255 255 255 / 12%);
-  background: rgb(255 255 255 / 3%);
+  border-color: #3b496e;
+  background: #1a2339;
+  color: #eef1ff;
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -153,9 +165,52 @@
 }
 
 .jw .tour-path[aria-pressed="true"] {
-  border-color: var(--jw-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--jw-accent) 32%, transparent);
+  border-color: #42ddce;
+  background: linear-gradient(135deg, #292254, #123d4a);
+  box-shadow: 0 0 0 2px rgb(66 221 206 / 38%), 0 10px 30px rgb(14 190 179 / 12%);
 }
+
+.jw .tour-points li { border-inline-start: 3px solid #9275ff; background: #1c2841; }
+.jw .tour-option:hover { background: #303e60; }
+.jw .tour-word-input { background: #19223a; }
+
+.jw .tour-create .jw-btn-primary,
+.jw .tour-welcome-copy + .tour-points + button {
+  background: linear-gradient(100deg, #684be3, #168f91);
+  box-shadow: 0 8px 24px rgb(74 74 210 / 25%);
+}
+
+.site-menu-backdrop { background: rgb(2 5 15 / 88%); }
+.site-menu-drawer {
+  border-inline-start-color: #414c72;
+  background: #101629;
+  box-shadow: 16px 0 55px rgb(0 0 0 / 60%);
+}
+.site-menu-heading {
+  border: 1px solid #454179;
+  background: linear-gradient(135deg, #30245f, #16394b 62%, #12545a);
+  color: #f6f5ff;
+}
+.site-menu-heading > div > span:last-child { color: #c3c8e3; }
+.site-menu-mark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #9274ff, #13b9b0);
+  color: white;
+  box-shadow: 0 5px 20px rgb(0 0 0 / 28%);
+}
+.site-menu-label { color: #8fded8; }
+.site-menu-drawer nav,
+.site-menu-drawer a { color: #dce4ff; }
+.site-menu-drawer a[aria-current="page"] { background: linear-gradient(100deg, #43368e, #14575f); color: #fff; box-shadow: inset 3px 0 #43ded0; }
+.site-menu-drawer .site-menu-link { transition: background 150ms ease, color 150ms ease, transform 150ms ease; }
+.site-menu-drawer .site-menu-link:hover { transform: translateX(-2px); }
+.site-menu-drawer a:hover { background: #263452; }
 
 @keyframes tour-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes tour-rise-in { from { opacity: 0; transform: translateY(16px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
