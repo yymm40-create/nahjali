@@ -67,7 +67,7 @@ export interface JobRow {
    * modelPrompt: the prompt as the model receives it (each «@name» written the model's way, or Arabic words written
    * phonetically by «النطق الدقيق»), when it differs. diction: the words whose pronunciation was set.
    */
-  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
+  inputs: { settings: Settings; instructions?: string; refStyle?: RefStyle; origin?: string; saveAttempts?: number; modelPrompt?: string; signupFreeImage?: boolean; /** fal: the endpoint a video was sent to (text- or image-to-video) */ falModel?: string; edit?: EditInputs; video?: VideoInputs; sfx?: VideoInputs; library?: { kind: LibraryKind; name: string; note: string }; diction?: { mode: string; words: { word: string; vocalized: string }[] }; film?: { projectId: string; assetId?: string; genId?: string; title?: string } };
   refs: { uploadId: string; kind: string; role: RefRole; name?: string }[];
   price_coins: number;
   price_breakdown: { label: string; centi: number }[];
@@ -187,6 +187,8 @@ export interface GenerateBody {
   instructions?: unknown;
   refs?: unknown;
   expectedCoins?: unknown;
+  /** Server-verified new-account welcome image, claimed atomically by jawad_create_job. */
+  signupFreeImage?: unknown;
   /** «الفصل الذكي»: small JPEG frames of the video, `{ t, data: "data:image/jpeg;base64,…" }`. */
   frames?: unknown;
 }
@@ -202,7 +204,7 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content" } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content"; signupFreeImageEligible?: boolean } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
@@ -256,6 +258,13 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const table = rt.prices[def.id];
   const e = evaluate(def, { settings, prompt, instructions, refStyle, refs: meta, strict: true }, table);
   if (e.issues.length) return { kind: "issues", issues: e.issues };
+  const signupFreeImage = b.signupFreeImage === true;
+  if (signupFreeImage) {
+    if (!server.signupFreeImageEligible || owner || server.team || def.output !== "image") throw new UserError("الصورة المجانية مخصصة للحسابات الجديدة، وقد استُخدمت أو انتهى توفرها.", 409);
+    if (!prompt.trim() || found.rows.length || Number(e.settings.count ?? 1) !== 1) {
+      return { kind: "issues", issues: [{ field: "prompt", message: "الصورة المجانية تحتاج وصفًا ومخرج صورة واحدة، بدون مراجع." }] };
+    }
+  }
   // A voice must really exist: one of ElevenLabs' ready voices, or one in the person's own library
   if (def.options.some((o) => o.kind === "choice" && o.picker === "voice")) {
     const v = await resolveVoice(user.id, String(e.settings.voice));
@@ -268,7 +277,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
   }
   if (!e.price.ok) return { kind: "issues", issues: [{ field: "price", message: e.price.reason }] };
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
-  if (Number(b.expectedCoins) !== e.price.coins) return { kind: "price_changed", coins: e.price.coins, lines: e.price.lines, prices: table };
+  const chargeCoins = signupFreeImage ? 0 : e.price.coins;
+  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : e.price.lines, prices: table };
 
   // «الفصل الذكي»: the frames the studio took of the video are kept with the job (Claude watches them for the music
   // and the effects; the dialogue needs only the video)
@@ -288,8 +298,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const modelPrompt = style ? withStyle(asWritten, style.text) : asWritten;
 
   // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
-  const teamPays = !owner && !!server.team && e.price.coins > 0;
-  const charge = !owner && !server.team && e.price.coins > 0;
+  const teamPays = !signupFreeImage && !owner && !!server.team && e.price.coins > 0;
+  const charge = !signupFreeImage && !owner && !server.team && e.price.coins > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
     p_job: {
       user_id: user.id,
@@ -301,10 +311,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
-      price_coins: e.price.coins,
-      price_breakdown: e.price.lines,
+      price_coins: chargeCoins,
+      price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : e.price.lines,
       pricing_version: priceVersion(table),
       cost_usd_estimate: e.price.usdCeiling ?? "",
     },
@@ -318,6 +328,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
     const msg = String(error.message ?? "");
     if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${coinStr(e.price.coins)}.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
+    if (msg.includes("JAWAD_FREE_IMAGE_USED")) throw new UserError("استعملت الصورة المجانية لحسابك من قبل.", 409);
     throw error;
   }
   const row = (data as { job_id: string; created: boolean; balance: number | null }[])[0];

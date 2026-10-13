@@ -6,6 +6,7 @@ import { accessOf, permForGenerator } from "@/lib/access";
 import { generatorById } from "@config/jawad/generators";
 import { loadRuntime, sectionGenerators } from "@/lib/jawad/server/runtime";
 import { worksPage } from "@/lib/jawad/server/works";
+import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -32,6 +33,7 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
   const generators = sectionGenerators(rt, s.id, owner).filter((g) => !user || perms.has(permForGenerator(generatorById(g.id) ?? { id: g.id, output: s.output! }))).map((g) => ({ id: g.id, name: g.name, sampleUrl: g.sampleUrl, live: g.live, reason: owner ? g.reason : null }));
   const allowed = Boolean(user) && generators.length > 0;
   const [balance, initialWorks, free] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null), freeFor(user)]) : [null, null, false];
+  const freeImageAvailable = Boolean(user && allowed && !free && s.output === "image" && await signupFreeImageAvailable(user.id, user.created_at));
 
   return (
     // each section has its own look (sections.css), by its output type
@@ -48,6 +50,7 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
       allowed={allowed}
       balance={balance}
       initialWorks={initialWorks}
+      freeImageAvailable={freeImageAvailable}
     />
     </div>
   );

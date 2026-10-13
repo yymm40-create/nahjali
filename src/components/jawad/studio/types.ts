@@ -22,6 +22,7 @@ export interface StudioProps {
   /** the riyal pricing in force (config/coins.ts) */
   pricing: Pricing;
   initialWorks: { items: WorkItem[]; next: string | null } | null;
+  freeImageAvailable: boolean;
 }
 
 /** A stored upload as the server returns it (with a short-lived link). */

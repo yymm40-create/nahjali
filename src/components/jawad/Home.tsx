@@ -16,7 +16,7 @@ export interface RecentWork {
   label: string;
 }
 
-export default function Home({ first, owner, userId, sections, tools, recent, ads }: { first: string; owner: boolean; userId: string; sections: QuickSection[]; tools: LandingTool[]; recent: RecentWork[]; ads: ReactNode }) {
+export default function Home({ first, owner, userId, freeImageAvailable, sections, tools, recent, ads }: { first: string; owner: boolean; userId: string; freeImageAvailable: boolean; sections: QuickSection[]; tools: LandingTool[]; recent: RecentWork[]; ads: ReactNode }) {
   const works = `/jawad-ai/${sections.find((s) => s.output)?.id ?? "images"}?tab=works`;
   return (
     <div className="ld hm" dir="rtl">
@@ -28,7 +28,7 @@ export default function Home({ first, owner, userId, sections, tools, recent, ad
           <h1>
             وش <span className="ld-grad">نصنع اليوم</span>؟
           </h1>
-          <QuickStart hero sections={sections} userId={userId} loginHref={null} />
+          <QuickStart hero sections={sections} userId={userId} loginHref={null} freeImageAvailable={freeImageAvailable} />
           <nav className="hm-links" aria-label="روابط سريعة">
             <Link href={CREDITS.base} className="hot">💳 اشحن رصيدك</Link>
             <Link href={works}>🗂️ أعمالي</Link>

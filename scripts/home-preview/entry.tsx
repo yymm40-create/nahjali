@@ -19,4 +19,4 @@ const sections = [
   { id: "film", name: "الفيلم", path: "/jawad-ai/film", output: null, implementation: "film" },
 ];
 const recent = ["/s0.png", "/s1.png", "/s2.png", "/s3.png", "/s0.png"].map((url, i) => ({ url, kind: "image" as const, href: "#", label: `عمل رقم ${i + 1}` }));
-createRoot(document.getElementById("root")!).render(<Home first="جواد" owner userId="u1" sections={sections} tools={tools} recent={recent} ads={null} />);
+createRoot(document.getElementById("root")!).render(<Home first="جواد" owner userId="u1" freeImageAvailable={false} sections={sections} tools={tools} recent={recent} ads={null} />);

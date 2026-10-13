@@ -135,7 +135,7 @@ function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
   });
 }
 
-export default function Studio({ section, generators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing }: StudioProps) {
+export default function Studio({ section, generators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
   // the riyal pricing in force (rate, step, margins), so the prices here match the server's to the halala
   setPricing(pricing);
   const router = useRouter();
@@ -181,6 +181,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
   const pendingKey = useRef<string | null>(null);
   // what the pending key was made for: a changed request gets a new key (else the server returns the old job)
   const pendingSig = useRef("");
+  const welcomeStarted = useRef(false);
 
   const gen = generators.find((g) => g.id === draft.generatorId) ?? generators[0];
   const def = gen ? generatorById(gen.id) : undefined;
@@ -191,6 +192,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
   // ── draft: restore once, then keep it (prompt, settings, references) ──
   function restore() {
     let saved = readDraft(key);
+    const idea = new URLSearchParams(window.location.search).get("idea");
+    if (idea) saved = { ...(saved ?? {}), prompt: idea.slice(0, 500) };
     // written before signing in (under "anon"): it is this person's draft, so it follows them into their account
     if (user && !saved?.prompt && !saved?.refs?.length) {
       const anon = readDraft(draftKey(undefined, section.id));
@@ -591,10 +594,11 @@ export default function Studio({ section, generators, prices: initialPrices, use
     return times.map((t, i) => ({ t, data: shots[i] }));
   }
 
-  async function submit(expectedCoins: number, one?: { prompt: string; refs: RefItem[] }) {
+  async function submit(expectedCoins: number, one?: { prompt: string; refs: RefItem[] }, freeImage = false) {
     const P = one?.prompt ?? draft.prompt;
-    const R = one?.refs ?? draft.refs;
+    const R = freeImage ? [] : one?.refs ?? draft.refs;
     if (!def || !gen || submitting) return;
+    const usedSettings = freeImage ? { ...settings, count: 1 } : ev?.settings ?? settings;
     let frames: { t: number; data: string }[] | undefined;
     if (ev?.mode.id === SMART_SPLIT_MODE && needsFrames(ev.settings)) {
       setSubmitting(true);
@@ -610,7 +614,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         setSubmitting(false);
       }
     }
-    const sig = JSON.stringify([section.id, def.id, refStyle, ev?.settings ?? settings, P, instructions, R.map((r) => [r.uploadId, r.role, r.name])]);
+    const sig = JSON.stringify([section.id, def.id, refStyle, usedSettings, P, instructions, R.map((r) => [r.uploadId, r.role, r.name]), freeImage]);
     if (pendingSig.current !== sig) pendingKey.current = null;
     pendingSig.current = sig;
     const idem = (pendingKey.current ??= uid());
@@ -630,13 +634,13 @@ export default function Studio({ section, generators, prices: initialPrices, use
       mode: ev?.mode.id ?? "",
       prompt: P,
       instructions,
-      settings: ev?.settings ?? settings,
+      settings: usedSettings,
       refStyle,
       refs: [],
       modelPrompt: null,
       diction: [],
       priceCoins: expectedCoins,
-      charged: !owner,
+      charged: !owner && expectedCoins > 0,
       chargeState: "none",
       error: null,
       cancellable: false,
@@ -655,12 +659,13 @@ export default function Studio({ section, generators, prices: initialPrices, use
       sectionId: section.id,
       generatorId: def.id,
       refStyle,
-      settings: ev?.settings ?? settings,
+      settings: usedSettings,
       prompt: P,
       instructions,
       refs: R.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
       ...(section.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
+      ...(freeImage ? { signupFreeImage: true } : {}),
       ...(frames ? { frames } : {}),
     };
     try {
@@ -691,6 +696,16 @@ export default function Studio({ section, generators, prices: initialPrices, use
       setSubmitting(false);
     }
   }
+
+  useEffect(() => {
+    if (!hydrated || !freeImageAvailable || !draft.prompt.trim() || submitting || welcomeStarted.current) return;
+    if (new URLSearchParams(window.location.search).get("welcomeFree") !== "1") return;
+    welcomeStarted.current = true;
+    router.replace(window.location.pathname);
+    void submit(0, undefined, true);
+    // The one-shot ref prevents rerenders from starting a duplicate request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.prompt, freeImageAvailable, hydrated, router, submitting]);
 
   async function reuse(j: JobView) {
     if (j.sectionId !== section.id) {
