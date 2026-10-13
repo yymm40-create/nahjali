@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ASSISTANT_LIMITS, ASSISTANT_NAME, type AssistantAnswer, type AssistantDraft, type AssistantSet, type ThumbnailSide } from "@config/jawad/assistant";
+import { CHAT_STARTERS } from "@config/jawad/chat-guidance";
 import Icon from "../Icon";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
-import { uploadImage } from "./upload";
+import { uploadReference } from "./upload";
 import type { UploadView } from "./types";
 
 interface Msg {
@@ -16,7 +17,8 @@ interface Msg {
   /** What jawad changed in the form, in words. */
   chips?: string[];
   /** The person's pictures sent with this message. */
-  pictures?: { url: string | null; name: string }[];
+  pictures?: { url: string | null; name: string; kind?: "image" | "audio" }[];
+  uploadIds?: string[];
   quick?: string[];
   thumbnail?: { person: string; side: ThumbnailSide };
   /** The first greeting: shown, never sent to Claude. */
@@ -31,6 +33,7 @@ interface Pending {
   status: "uploading" | "ready" | "error";
   error?: string;
   view?: UploadView;
+  kind: "image" | "audio";
 }
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -89,6 +92,23 @@ export default function AssistantChat({
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const sending = useRef(false);
+  const attaching = useRef(false);
+  const objectUrls = useRef(new Set<string>());
+  const currentDraft = useRef(getDraft);
+  const session = useRef(0);
+  const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState("");
+  const locked = busy || uploading;
+  useEffect(() => { currentDraft.current = getDraft; }, [getDraft]);
+  useEffect(() => {
+    session.current += 1;
+    return () => { session.current += 1; };
+  }, [section.id, storage]);
+  useEffect(() => {
+    const urls = objectUrls.current;
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, []);
 
   // «محادثاتي»: the conversations are kept on this device (one جواد for every studio), the newest first
   const [chats, setChats] = useState<Kept[]>([]);
@@ -124,17 +144,25 @@ export default function AssistantChat({
     });
   }, [msgs, loaded, storage, chatId]);
   const fresh = () => {
+    if (sending.current || attaching.current) return;
     setChatId(uid());
     setMsgs([{ id: "hello", role: "assistant", text: greet.text, quick: greet.quick, local: true }]);
     setPending([]);
+    setText("");
+    setNotice("");
     setList(false);
   };
   const openChat = (c: Kept) => {
+    if (sending.current || attaching.current) return;
+    setPending([]);
+    setText("");
+    setNotice("");
     setChatId(c.id);
     setMsgs(c.msgs);
     setList(false);
   };
   const dropChat = (id: string) => {
+    if (sending.current || attaching.current) return;
     const next = chats.filter((c) => c.id !== id);
     setChats(next);
     try {
@@ -153,21 +181,35 @@ export default function AssistantChat({
   }, [open]);
 
   async function attach(files: FileList | null) {
-    if (!files) return;
+    if (!files || attaching.current || sending.current) return;
+    attaching.current = true;
+    setUploading(true);
     const room = ASSISTANT_LIMITS.attachments - pending.length;
+    const itemLabel = section.output === "audio" ? "ملف صوتي" : "صورة";
+    setNotice(files.length > room ? `تقدر ترفق ${ASSISTANT_LIMITS.attachments} ${itemLabel} في الرسالة؛ اخترت أول ${Math.max(0, room)} من الدفعة.` : "");
     for (const file of Array.from(files).slice(0, Math.max(0, room))) {
       const key = uid();
       const url = URL.createObjectURL(file);
-      setPending((p) => [...p, { key, name: file.name, url, status: "uploading" }]);
+      objectUrls.current.add(url);
+      const kind = section.output === "audio" ? "audio" : "image";
+      setPending((p) => [...p, { key, name: file.name, url, kind, status: "uploading" }]);
       const patch = (x: Partial<Pending>) => setPending((p) => p.map((i) => (i.key === key ? { ...i, ...x } : i)));
       try {
-        patch({ status: "ready", view: await uploadImage(file) });
+        patch({ status: "ready", view: await uploadReference(file, kind) });
       } catch (e) {
         patch({ status: "error", error: (e as Error).message });
       }
     }
+    attaching.current = false;
+    setUploading(false);
     if (picker.current) picker.current.value = "";
   }
+
+  const removePending = (item: Pending) => {
+    URL.revokeObjectURL(item.url);
+    objectUrls.current.delete(item.url);
+    setPending((list) => list.filter((candidate) => candidate.key !== item.key));
+  };
 
   function summary(set: AssistantSet, views: UploadView[]) {
     void views;
@@ -175,7 +217,7 @@ export default function AssistantChat({
     if (set.generatorId) lines.push(`المولد: ${generatorName(set.generatorId)}`);
     if (set.prompt) lines.push("كتبت البرومبت");
     if (set.instructions) lines.push("وصف الأداء");
-    if (set.settings) lines.push(`الإعدادات: ${Object.entries(set.settings).map(([k, v]) => `${k}=${String(v)}`).join("، ")}`);
+    if (set.settings) lines.push("جهّزت إعدادات التوليد للمراجعة");
     if (set.refStyle) lines.push(set.refStyle === "frames" ? "مراجع: إطار أول/أخير" : set.refStyle === "references" ? "مراجع: صور مرجعية" : "بدون مراجع");
     if (set.addRefs?.length) lines.push(`أضفت مرجع: ${set.addRefs.map((a) => `@${a.name}`).join("، ")}`);
     if (set.editRefs?.length) lines.push(`عدّلت مرجع: ${set.editRefs.map((a) => `@${a.newName ?? a.name}`).join("، ")}`);
@@ -190,8 +232,12 @@ export default function AssistantChat({
   async function send(raw?: string) {
     const message = (raw ?? text).trim();
     const ready = pending.filter((p) => p.status === "ready" && p.view);
-    if ((!message && !ready.length) || busy || pending.some((p) => p.status === "uploading")) return;
-    const mine: Msg = { id: uid(), role: "user", text: message || "(صور)", pictures: ready.map((p) => ({ url: p.view!.url, name: p.name })) };
+    if ((!message && !ready.length) || !loaded || sending.current || attaching.current || pending.some((p) => p.status !== "ready")) return;
+    sending.current = true;
+    const requestSession = session.current;
+    const originalDraft = getDraft();
+    const draftSnapshot = JSON.stringify(originalDraft);
+    const mine: Msg = { id: uid(), role: "user", text: message || (section.output === "audio" ? "(ملفات صوتية)" : "(صور)"), pictures: ready.map((p) => ({ url: p.view!.url, name: p.name, kind: p.kind })), uploadIds: ready.map((p) => p.view!.id) };
     const history = [...msgs.filter((m) => !m.local && !m.failed), mine].map((m) => ({ role: m.role, text: m.text }));
     setMsgs((m) => [...m, mine]);
     setText("");
@@ -201,21 +247,30 @@ export default function AssistantChat({
       const r = await post<AssistantAnswer>("/api/jawad/assistant", {
         sectionId: section.id,
         messages: history,
-        draft: getDraft(),
+        draft: originalDraft,
         attachments: ready.map((p) => ({ uploadId: p.view!.id })),
+        contextAttachments: msgs.filter((m) => !m.failed).flatMap((m) => m.uploadIds ?? []).slice(-ASSISTANT_LIMITS.attachments),
         model: claude.id,
       });
+      if (requestSession !== session.current) return;
       if (!r.ok) throw new Error(r.body.error ?? "تعذّر على جواد الرد الآن.");
       const views = ready.map((p) => p.view!);
       const set = r.body.set ?? {};
       const hasChange = Object.keys(set).some((k) => k !== "thumbnail");
-      const done = hasChange ? onApply(set, views) : [];
-      const chips = hasChange ? summary(set, views) : [];
-      void done;
-      setMsgs((m) => [...m, { id: uid(), role: "assistant", text: r.body.reply, chips, quick: r.body.quick, thumbnail: set.thumbnail }]);
+      const changed = draftSnapshot !== JSON.stringify(currentDraft.current());
+      const done = hasChange && !changed ? onApply(set, views) : [];
+      const chips = hasChange && !changed ? (done.length ? done : summary(set, views)) : [];
+      const reply = changed && hasChange ? "تغيّرت إعداداتك أثناء الرد، فاحتفظت بتعديلاتك. اضغط «راجع إعداداتي الجديدة» لأجهّز اقتراحًا يناسبها." : r.body.reply;
+      setMsgs((m) => [...m, { id: uid(), role: "assistant", text: reply, chips, quick: changed && hasChange ? ["راجع إعداداتي الجديدة"] : r.body.quick, thumbnail: changed ? undefined : set.thumbnail }]);
+      ready.forEach((item) => { URL.revokeObjectURL(item.url); objectUrls.current.delete(item.url); });
+      setNotice("");
     } catch (e) {
-      setMsgs((m) => [...m, { id: uid(), role: "assistant", text: navigator.onLine ? (e as Error).message : "انقطع الاتصال.", failed: true }]);
+      if (requestSession !== session.current) return;
+      setMsgs((m) => [...m.filter((item) => item.id !== mine.id), { id: uid(), role: "assistant", text: `${navigator.onLine ? (e as Error).message : "انقطع الاتصال."} رسالتك ومرفقاتك محفوظة في خانة الكتابة؛ أعد الإرسال لما تكون جاهز.`, failed: true }]);
+      setText(message);
+      setPending(ready);
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   }
@@ -248,7 +303,7 @@ export default function AssistantChat({
         <button type="button" className={`jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs ${list ? "!bg-jw-surface-2" : ""}`} onClick={() => setList((v) => !v)} aria-expanded={list} title="محادثاتي السابقة">
           🗂️ {chats.length}
         </button>
-        <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" onClick={fresh} title="محادثة جديدة">
+        <button type="button" disabled={locked} className="jw-btn jw-btn-quiet !min-h-8 !px-2 text-xs" onClick={fresh} title="محادثة جديدة">
           <Icon name="retry" size={14} /> جديدة
         </button>
         <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2" onClick={onClose} aria-label="إغلاق">
@@ -263,10 +318,10 @@ export default function AssistantChat({
           <ul className="space-y-1">
             {chats.map((c) => (
               <li key={c.id} className={`flex items-center gap-1 rounded-lg ${c.id === chatId ? "bg-jw-surface-2" : ""}`}>
-                <button type="button" className="min-w-0 flex-1 truncate px-2 py-1.5 text-start text-xs" onClick={() => openChat(c)} dir="auto">
+                <button type="button" disabled={locked} className="min-w-0 flex-1 truncate px-2 py-1.5 text-start text-xs" onClick={() => openChat(c)} dir="auto">
                   {c.title} <span className="text-[10px] text-jw-faint">· {new Date(c.at).toLocaleDateString("ar")}</span>
                 </button>
-                <button type="button" className="px-2 text-jw-faint hover:text-jw-danger" aria-label="احذف المحادثة" onClick={() => dropChat(c.id)}>
+                <button type="button" disabled={locked} className="px-2 text-jw-faint hover:text-jw-danger" aria-label="احذف المحادثة" onClick={() => dropChat(c.id)}>
                   <Icon name="x" size={12} />
                 </button>
               </li>
@@ -282,7 +337,7 @@ export default function AssistantChat({
                 <span className="mb-1.5 flex flex-wrap gap-1.5">
                   {m.pictures.map((p, k) => (
                     // eslint-disable-next-line @next/next/no-img-element
-                    p.url ? <img key={k} src={p.url} alt={p.name} className="size-16 rounded-lg object-cover" /> : <span key={k} className="text-xs">{p.name}</span>
+                    p.kind === "audio" ? <span key={k} className="rounded-lg bg-black/10 px-2 py-1 text-xs">🎵 {p.name}</span> : p.url ? <img key={k} src={p.url} alt={p.name} className="size-16 rounded-lg object-cover" /> : <span key={k} className="text-xs">{p.name}</span>
                   ))}
                 </span>
               )}
@@ -302,7 +357,7 @@ export default function AssistantChat({
                 <Icon name="layers" size={14} /> ركّب الشخص على الصورة بعد التوليد
               </button>
             )}
-            {m.quick && m.quick.length > 0 && i === msgs.length - 1 && !busy && (
+            {m.quick && m.quick.length > 0 && i === msgs.length - 1 && !locked && (
               <div className="flex max-w-[92%] flex-wrap gap-1.5">
                 {m.quick.map((q) => (
                   <button key={q} type="button" className="rounded-full border border-jw-line-strong px-3 py-1 text-xs hover:bg-jw-surface-2" onClick={() => send(q)}>
@@ -324,15 +379,21 @@ export default function AssistantChat({
       </div>
 
       <div className="space-y-2 border-t border-jw-line p-2.5">
+        <div className="flex flex-wrap gap-1.5" aria-label="مساعدة خطوة بخطوة">
+          {CHAT_STARTERS.map((starter) => <button key={starter.label} type="button" disabled={locked || !loaded} className="rounded-full border border-jw-line-strong px-2 py-1 text-xs hover:bg-jw-surface-2 disabled:opacity-50" onClick={() => send(starter.message)}>{starter.label}</button>)}
+        </div>
+        {notice && <p role="status" className="text-xs text-jw-muted">{notice}</p>}
+        {pending.some((item) => item.status === "error") && <p role="alert" className="text-xs text-jw-danger">فيه صورة ما اكتمل رفعها. احذفها وأرفقها من جديد قبل الإرسال.</p>}
+        {!!pending.length && <p className="text-xs text-jw-muted">{pending.filter((item) => item.status === "ready").length} جاهزة من {pending.length} · الحد {ASSISTANT_LIMITS.attachments} صورة</p>}
         {pending.length > 0 && (
           <ul className="flex flex-wrap gap-2">
             {pending.map((p) => (
               <li key={p.key} className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url} alt={p.name} className={`size-14 rounded-lg object-cover ${p.status === "ready" ? "" : "opacity-50"}`} />
+                {p.kind === "image" ? <img src={p.url} alt={p.name} className={`size-14 rounded-lg object-cover ${p.status === "ready" ? "" : "opacity-50"}`} /> : <span className={`grid h-14 max-w-32 place-items-center truncate rounded-lg bg-jw-surface-2 px-2 text-xs ${p.status === "ready" ? "" : "opacity-50"}`}>🎵 {p.name}</span>}
                 {p.status === "uploading" && <span className="jw-spinner absolute inset-0 m-auto" aria-label="يرفع" />}
                 {p.status === "error" && <span className="absolute inset-x-0 bottom-0 truncate rounded-b-lg bg-jw-danger px-1 text-[9px] text-white" title={p.error}>{p.error}</span>}
-                <button type="button" aria-label="شيل الصورة" className="absolute -end-1 -top-1 grid size-5 place-items-center rounded-full bg-jw-surface-3" onClick={() => setPending((l) => l.filter((x) => x.key !== p.key))}>
+                <button type="button" aria-label="شيل المرفق" className="absolute -end-1 -top-1 grid size-5 place-items-center rounded-full bg-jw-surface-3" onClick={() => removePending(p)}>
                   <Icon name="x" size={10} />
                 </button>
               </li>
@@ -343,9 +404,9 @@ export default function AssistantChat({
         <div className="flex items-end gap-2">
           {canAttach && (
             <>
-              <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => attach(e.target.files)} aria-label="أرفق صورة" />
-              <button type="button" className="jw-btn !min-h-10 !px-2.5" aria-label="أرفق حتى 20 صورة" title="أرفق حتى 20 صورة دفعة واحدة" disabled={pending.length >= ASSISTANT_LIMITS.attachments} onClick={() => picker.current?.click()}>
-                <Icon name="image" size={18} />
+              <input ref={picker} type="file" accept={section.output === "audio" ? "audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" : "image/png,image/jpeg,image/webp"} multiple hidden onChange={(e) => attach(e.target.files)} aria-label={section.output === "audio" ? "أرفق صوتًا مرجعيًا" : "أرفق صورة"} />
+              <button type="button" className="jw-btn !min-h-10 !px-2.5" aria-label={section.output === "audio" ? "أرفق حتى 20 ملفًا صوتيًا" : "أرفق حتى 20 صورة"} title={section.output === "audio" ? "أرفق MP3 أو WAV؛ جواد يستخدمه مرجعًا ولا يدّعي أنه سمعه" : "أرفق حتى 20 صورة دفعة واحدة"} disabled={locked || pending.length >= ASSISTANT_LIMITS.attachments} onClick={() => picker.current?.click()}>
+                <Icon name={section.output === "audio" ? "audio" : "image"} size={18} />
               </button>
             </>
           )}
@@ -353,6 +414,7 @@ export default function AssistantChat({
           <textarea
             ref={input}
             value={text}
+            disabled={busy || !loaded}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -362,12 +424,12 @@ export default function AssistantChat({
             }}
             rows={1}
             maxLength={ASSISTANT_LIMITS.message}
-            placeholder={`اكتب لـ${ASSISTANT_NAME}…`}
+            placeholder="قل لي وش تبي تسوي، حتى لو فكرتك بسيطة…"
             aria-label={`رسالة إلى ${ASSISTANT_NAME}`}
             className="jw-textarea max-h-32 min-h-10 flex-1 resize-none py-2"
             dir="auto"
           />
-          <button type="button" className="jw-btn jw-btn-primary !min-h-10 !px-3" aria-label="إرسال" disabled={busy || pending.some((p) => p.status === "uploading") || (!text.trim() && !pending.some((p) => p.status === "ready"))} onClick={() => send()}>
+          <button type="button" className="jw-btn jw-btn-primary !min-h-10 !px-3" aria-label="إرسال" disabled={locked || !loaded || pending.some((p) => p.status !== "ready") || (!text.trim() && !pending.some((p) => p.status === "ready"))} onClick={() => send()}>
             <Icon name="sparkles" size={16} />
           </button>
         </div>

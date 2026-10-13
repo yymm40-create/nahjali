@@ -25,6 +25,7 @@ export interface AssistantBody {
   messages?: unknown;
   draft?: unknown;
   attachments?: unknown;
+  contextAttachments?: unknown;
   /** the Claude model the person chose (config/claude-models.ts) */
   model?: unknown;
 }
@@ -34,7 +35,8 @@ const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max
 /** The person's ready uploads among these ids (never anyone else's). */
 async function ownUploads(userId: string, ids: string[]) {
   if (!ids.length) return new Map<string, UploadRow>();
-  const { data } = await db().from("jawad_uploads").select("*").in("id", ids).eq("user_id", userId).eq("status", "ready");
+  const { data, error } = await db().from("jawad_uploads").select("*").in("id", ids).eq("user_id", userId).eq("status", "ready");
+  if (error) throw new UserError("تعذّر تحميل صورك الآن؛ حاول مرة ثانية حتى يراجعها جواد بدقة.", 503);
   return new Map(((data ?? []) as UploadRow[]).map((r) => [r.id, r]));
 }
 
@@ -73,7 +75,9 @@ export async function assistantTurn(user: { id: string; email?: string | null },
   const rawRefs = (Array.isArray(d.refs) ? d.refs : []).slice(0, ASSISTANT_LIMITS.refs).map((r) => (r ?? {}) as Record<string, unknown>);
   const ids = rawRefs.map((r) => String(r.uploadId ?? "")).filter(isUuid);
   const attachIds = (Array.isArray(b.attachments) ? b.attachments : []).map((a) => String((a as { uploadId?: unknown })?.uploadId ?? "")).filter(isUuid).slice(0, ASSISTANT_LIMITS.attachments);
-  const uploads = await ownUploads(user.id, [...new Set([...ids, ...attachIds])]);
+  const contextIds = [...new Set((Array.isArray(b.contextAttachments) ? b.contextAttachments : []).filter(isUuid))].slice(-ASSISTANT_LIMITS.attachments);
+  const uploads = await ownUploads(user.id, [...new Set([...ids, ...attachIds, ...contextIds])]);
+  if (attachIds.some((id) => !uploads.has(id))) throw new UserError("إحدى الصور المرفقة غير متاحة. أعد إرفاقها قبل الإرسال.", 400);
   const refs: AssistantRef[] = rawRefs.flatMap((r) => {
     const u = uploads.get(String(r.uploadId ?? ""));
     if (!u) return [];
@@ -98,7 +102,7 @@ export async function assistantTurn(user: { id: string; email?: string | null },
   };
 
   // Pictures Claude looks at: the ones attached now first, then the form's own (links, short-lived)
-  const views = new Map((await uploadViews([...attached, ...refs.map((r) => uploads.get(r.uploadId)!).filter((u) => !attached.some((a) => a.id === u.id))])).map((v) => [v.id, v]));
+  const views = new Map((await uploadViews([...uploads.values()])).map((v) => [v.id, v]));
   const parts: ClaudePart[] = [];
   const seen = new Set<string>();
   const look = (u: UploadRow, label: string) => {
@@ -109,6 +113,10 @@ export async function assistantTurn(user: { id: string; email?: string | null },
   };
   attached.forEach((u, i) => look(u, `Attachment ${i + 1} (sent with this message):`));
   for (const r of refs) look(uploads.get(r.uploadId)!, `Reference @${r.name} (already in the form):`);
+  for (const id of [...contextIds].reverse()) {
+    const upload = uploads.get(id);
+    if (upload) look(upload, `Earlier conversation image: ${upload.file_name}. Context only; not a numbered attachment for addRefs. Ask the person to reattach it if needed as a new form reference.`);
+  }
 
   const state = [
     `FORM NOW (generator ${draft.generatorId}):`,
@@ -121,6 +129,7 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     `style («الستايل»): ${draft.styleId ? `${draft.styleId} (${findStyle(draft.styleId)?.name})` : "none"}`,
     `references: ${refs.length ? refs.map(refLine).join("; ") : "none"}`,
     attached.length ? `ATTACHMENTS of this message: ${attached.map((u, i) => `${i + 1}. ${u.kind} ${u.file_name}${u.width && u.height ? ` ${u.width}×${u.height}` : ""}`).join("; ")}` : "No attachments in this message.",
+    `Only the ${seen.size} image blocks supplied in this request are visible. Other images from history, videos and audio have NOT been inspected. Never infer their contents from filenames.`,
   ]
     .filter(Boolean)
     .join("\n");

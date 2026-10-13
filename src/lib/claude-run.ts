@@ -23,6 +23,11 @@ export interface Memo<T> {
   reply: (r: T) => string;
 }
 
+export interface RobotTurnOptions {
+  /** "isolated" keeps this conversation independent from the account-wide assistant memory. */
+  memory?: "shared" | "isolated";
+}
+
 /**
  * Runs a robot's work with the person's memory («ذاكرتي»: on unless they turned it off, for good or for this
  * conversation) read by every Claude call under it, and lets the memory learn from the turn afterwards.
@@ -47,10 +52,10 @@ export async function remembering<T>(userId: string, run: () => Promise<T>, memo
   return out;
 }
 
-export async function robotTurn<T extends { usd: number }>(user: RobotUser, modelId: unknown, label: string, run: () => Promise<T>, memo?: Memo<T>): Promise<T & { model: string; coins: number }> {
+export async function robotTurn<T extends { usd: number }>(user: RobotUser, modelId: unknown, label: string, run: () => Promise<T>, memo?: Memo<T>, options: RobotTurnOptions = {}): Promise<T & { model: string; coins: number }> {
   const model = claudeModelOf(modelId);
   const bill = await claudeMeter({ id: user.id, email: user.email, owner: isAdmin(user.email), team: user.team }, model, label);
-  const out = await withClaude(model.id, () => remembering(user.id, run, memo));
+  const out = await withClaude(model.id, () => options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo));
   const coins = await bill.settle(out.usd).catch((e) => {
     console.error("claude settle failed", e);
     return 0;

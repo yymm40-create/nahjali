@@ -7,9 +7,10 @@ import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import RobotFace from "@/components/RobotFace";
+import { CHAT_STARTERS } from "@config/jawad/chat-guidance";
 
 type Action = { kind: "rewind" | "revise_script" | "revise_sheets" | "revise_director" | "fixed_facts"; to?: string; text?: string; sceneId?: string; effect: string; blocked?: string };
-type Msg = { role: "user" | "sajjad"; text: string; at: string; username?: string | null; questions?: { question: string; options: string[] }[]; changes?: string[]; pending?: Action[]; applied?: string[] };
+type Msg = { role: "user" | "sajjad"; text: string; at: string; username?: string | null; questions?: { question: string; options: string[] }[]; changes?: string[]; pending?: Action[]; proposalId?: string; applied?: string[] };
 const ACTION_LABEL: Record<Action["kind"], string> = { rewind: "↩️ رجوع لنقطة", revise_script: "✍️ توجيه السيناريست", revise_sheets: "🎨 توجيه صانع الشيت", revise_director: "🎥 توجيه المخرج", fixed_facts: "📌 قاعدة ثابتة" };
 type Plan = { note: string; episodes: { number: number; title: string; summary: string; scenes: { title: string; brief: string; assignee: string }[] }[] };
 type Finding = { id: string; title: string; text: string; sources: string[]; status: "pending" | "approved" | "dropped"; scope: string };
@@ -154,17 +155,18 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
     }
   };
   // «تدخّل سجاد»: his last proposal still waiting for «طبّق»
-  const proposal = messages.findLast((m) => m.role === "sajjad" && m.pending?.length)?.pending ?? null;
+  const proposalMessage = messages.findLast((m) => m.role === "sajjad" && m.pending?.length) ?? null;
+  const proposal = proposalMessage?.pending ?? null;
   const decideAction = async (apply: boolean) => {
     setBusy(true);
     setError("");
     try {
       if (apply) {
-        const r = await postJson<{ message: Msg }>("/api/film/sajjad", { kind, id, action: "apply" });
+        const r = await postJson<{ message: Msg }>("/api/film/sajjad", { kind, id, action: "apply", proposalId: proposalMessage?.proposalId ?? proposalMessage?.at, model: claude.id });
         setMessages((m) => [...m.map((x) => (x.pending ? { ...x, pending: undefined, applied: r.message.changes } : x)), r.message]);
         router.refresh();
       } else {
-        await postJson("/api/film/sajjad", { kind, id, action: "drop" });
+        await postJson("/api/film/sajjad", { kind, id, action: "drop", proposalId: proposalMessage?.proposalId ?? proposalMessage?.at });
         setMessages((m) => m.map((x) => (x.pending ? { ...x, pending: undefined, applied: ["ما طُبّق"] } : x)));
       }
     } catch (e) {
@@ -203,6 +205,9 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
                 <div className="space-y-2 rounded-2xl bg-white/70 p-3 text-sm font-bold leading-7">
                   <p>هلا! أنا سجاد 👋 فاهم {kind === "series" ? "المسلسل وشخصياته وحلقاته ومشاهده" : "القصة والسيناريو وكل اللي صار"}، واللي ما تقرر بعد أقول لك.</p>
                   {kind === "series" && canEdit && <p>تقدر تكتب لي وصف المسلسل وأسألك اللي ناقص، أو تطلب مني أقترح شخصيات وبيئات، أو أرتّب لك الحلقات والمشاهد ومين يسوي إيش.</p>}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {CHAT_STARTERS.map((starter) => <button key={starter.label} type="button" className="rounded-full border border-black/15 bg-white px-3 py-1 text-xs" onClick={() => void send(starter.message)}>{starter.label}</button>)}
+                  </div>
                 </div>
               )}
               {messages.map((m, i) => (

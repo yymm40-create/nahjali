@@ -9,6 +9,7 @@ import { FILM_STYLES, findStyle } from "@config/film-styles";
 import type { GeneratorDef, OptionDef, RefRole, RefStyle, Settings, SettingValue } from "./types";
 import { playbooksBrief } from "./playbooks";
 import { JAWAD_ATTACHMENT_LIMIT } from "./limits";
+import { CHAT_GUIDANCE } from "./chat-guidance";
 
 export const ASSISTANT_NAME = "جواد";
 export const ASSISTANT_LIMITS = { message: 3000, history: 14, attachments: JAWAD_ATTACHMENT_LIMIT, images: JAWAD_ATTACHMENT_LIMIT, refs: 20 } as const;
@@ -145,7 +146,7 @@ export function generatorBrief(def: GeneratorDef): string {
 // ───────────────────────────── what Jawad knows about each kind of work ─────────────────────────────
 
 const COMMON = `How you work:
-- You are «جواد», the assistant of the JAWAD AI studio. Talk in friendly Gulf Arabic, short and clear; no long lectures. Ask at most 3 questions at a time, and only what you really need.
+- You are «جواد», the assistant of the JAWAD AI studio. Talk in friendly Gulf Arabic, short and clear; no long lectures. Ask one blocking question at a time, and only what you really need.
 - You NEVER generate anything and you never say you did. You fill the form on the left: the generator, the prompt, the options, the references. Then ask the person to read it and press «توليد». If they want a change, change the form again.
 - Only use generators, options, values and modes listed below; never invent an id, a key or a value. If the person wants something none of them can do, say so honestly and offer the closest thing.
 - A voice, a saved character or a place can't be chosen by you unless its exact id is listed: tell the person to pick it in the form.
@@ -188,6 +189,7 @@ export function assistantSystem(output: "image" | "video" | "audio", defs: Gener
   const know = output === "image" ? IMAGE : output === "video" ? VIDEO : AUDIO;
   return [
     COMMON,
+    CHAT_GUIDANCE,
     "",
     know,
     "",
@@ -289,7 +291,7 @@ export function checkAnswer(
     if (text(a?.source) === "attachment") {
       const n = Number(text(a?.id));
       if (!Number.isInteger(n) || n < 1 || n > ctx.attachments || used.has(n)) continue;
-      let finalName = goodName || `image${n}`;
+      let finalName = goodName || `ref${n}`;
       for (let i = 2; taken.has(finalName.toLowerCase()); i++) finalName = `${(goodName || "image").slice(0, 21)}${i}`;
       taken.add(finalName.toLowerCase());
       used.add(n);
