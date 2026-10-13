@@ -6,6 +6,7 @@
 // use like every robot turn. Rendering never happens here: the browser renders (scene-host.ts).
 
 import { UserError } from "@/lib/api";
+import { claudeModelOf } from "@config/claude-models";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { MOTION_DIRECTOR_SKILL_TEXT } from "@/lib/editor/motion-director-text";
@@ -95,6 +96,7 @@ const REVIEW_SCHEMA = {
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
 const exemplarsText = () => EXEMPLARS.map((e) => `<example name="${e.name}" shows="${e.shows}">\n${e.code}\n</example>`).join("\n\n");
 const planText = (p: LabPlan) => JSON.stringify(p, null, 1);
+const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 64_000 : 128_000;
 
 async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" | "xhigh" = "high") {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
@@ -158,7 +160,7 @@ ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page 
 Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.`,
     },
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, 32000, previous ? "medium" : "high");
+  const r = await ask<{ code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high");
   const chk = checkScene(r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
 }
@@ -188,7 +190,7 @@ ${code}`,
     ...sheets.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `CONTACT SHEET ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...stills.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `STILL ${i + 1}${times[i] !== undefined ? ` (t = ${times[i].toFixed(2)} s)` : ""}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة ${round}`, parts, REVIEW_SCHEMA, 32000, "high");
+  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة ${round}`, parts, REVIEW_SCHEMA, outputBudget(b.model), "high");
   const review = readReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
