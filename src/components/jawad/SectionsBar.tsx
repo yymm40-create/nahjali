@@ -44,12 +44,13 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
   const drawer = (
     <div className="site-menu-backdrop fixed inset-0 z-[90] flex" dir="rtl" role="dialog" aria-label="قائمة الموقع" onClick={() => setOpen(false)}>
       <nav className="site-menu-drawer jw-panel flex h-full w-[min(330px,88vw)] flex-col overflow-y-auto rounded-none border-s border-jw-line p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <span className="site-menu-orbit" aria-hidden><i /><i /><i /></span>
         <div className="site-menu-heading mb-4 flex items-center justify-between rounded-2xl p-4">
           <div className="flex items-center gap-3">
             <span className="site-menu-mark"><Icon name="robot" size={22} /></span>
-            <span><b className="block text-sm">مركز الجواد الذكي</b><span className="text-[11px]">أدواتك الإبداعية في مكان واحد</span></span>
+            <span><span className="site-menu-chip">AI CREATIVE HUB</span><b className="mt-1 block text-sm">مركز الجواد الذكي</b><span className="text-[11px]">أدواتك الإبداعية في مكان واحد</span></span>
           </div>
-          <button type="button" className="jw-btn jw-btn-quiet !min-h-8 !px-2" onClick={() => setOpen(false)} aria-label="إغلاق">
+          <button type="button" className="site-menu-close jw-btn jw-btn-quiet !min-h-8 !px-2" onClick={() => setOpen(false)} aria-label="إغلاق">
             <Icon name="x" size={16} />
           </button>
         </div>
@@ -60,9 +61,10 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
             return (
               <li key={s.id}>
                 <Link href={s.path} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined} className={`site-menu-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-jw-accent/15 font-bold text-jw-ink" : "text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink"}`}>
-                  <Icon name={s.icon} size={18} className={active ? "text-jw-accent" : ""} />
+                  <span className="site-menu-icon"><Icon name={s.icon} size={18} /></span>
                   <span className="flex-1">{s.name}</span>
                   {s.hidden && <Icon name="lock" size={12} className="text-jw-faint" />}
+                  {!s.hidden && <Icon name="chevronLeft" size={14} className="site-menu-arrow" />}
                 </Link>
               </li>
             );
@@ -73,7 +75,7 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
           <ul className="space-y-1">
             {siteSections.map((section) => {
               const active = pathname === section.path || pathname.startsWith(`${section.path}/`);
-              return <li key={section.id}><Link href={section.path} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined} className={`site-menu-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-jw-accent/15 font-bold text-jw-ink" : "text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink"}`}><span className="w-[18px] text-center" aria-hidden>{section.icon}</span><span>{section.name}</span></Link></li>;
+              return <li key={section.id}><Link href={section.path} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined} className={`site-menu-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-jw-accent/15 font-bold text-jw-ink" : "text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink"}`}><span className="site-menu-icon text-base" aria-hidden>{section.icon}</span><span className="flex-1">{section.name}</span><Icon name="chevronLeft" size={14} className="site-menu-arrow" /></Link></li>;
             })}
           </ul>
         </>}
@@ -82,12 +84,14 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
           {MORE.map((m) => (
             <li key={m.href}>
               <Link href={m.href} onClick={() => setOpen(false)} className="site-menu-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink">
-                <Icon name={m.icon} size={18} />
-                {m.name}
+                <span className="site-menu-icon"><Icon name={m.icon} size={18} /></span>
+                <span className="flex-1">{m.name}</span>
+                <Icon name="chevronLeft" size={14} className="site-menu-arrow" />
               </Link>
             </li>
           ))}
         </ul>
+        <div className="site-menu-signal mt-auto pt-5" aria-hidden><span /><b>النظام جاهز للإبداع</b><small>AI ONLINE</small></div>
       </nav>
       <span className="flex-1 bg-black/50" aria-hidden />
     </div>
