@@ -312,7 +312,7 @@ export default function Tour({ userId }: { userId: string }) {
             </div>
           </div>
         </div>,
-        document.body,
+        document.querySelector<HTMLElement>(".jw") ?? document.body,
       )}
     </>
   );
