@@ -20,7 +20,7 @@ import { SECTIONS } from "@config/sections";
 /** `preview`: JAWAD AI is still in development for this visitor — identity and account only, no sections or balance. */
 export default function JawadHeader({ rt, user, owner, balance, username, preview = false, version = "dev", boss = false }: { rt: Runtime; user: User | null; owner: boolean; /** the site's owner himself (not a free guest): the problem button is his */ boss?: boolean; balance: number | null; username: string | null; preview?: boolean; version?: string }) {
   const sections = rt.sections.filter((s) => s.enabled || owner).map((s) => ({ id: s.id, name: s.name, icon: s.icon, path: s.path, hidden: !s.enabled }));
-  const siteSections = SECTIONS.filter((section) => !section.underDevelopment || owner).map((section) => ({ id: section.key, name: section.title, icon: section.icon, path: section.href }));
+  const siteSections = SECTIONS.filter((section) => section.key !== "booklet").map((section) => ({ id: section.key, name: section.title, icon: section.icon, path: section.href }));
   return (
     <header className="sticky top-0 z-30">
       <div className="border-b border-jw-line bg-jw-bg/90 backdrop-blur">

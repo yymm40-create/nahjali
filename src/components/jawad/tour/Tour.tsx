@@ -134,7 +134,7 @@ export default function Tour({ userId }: { userId: string }) {
               <span className="tour-ring"><Ring p={progress} /></span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold">الجولة التعريفية: كيف تصنع فيلمًا من الصفر</p>
-                <p className="text-xs text-jw-muted">تقدر تتخطاها الآن وترجع لها متى شئت من الدائرة أعلى الصفحة.</p>
+                <p className="text-xs text-jw-muted">جولة تفاعلية داخل استوديو الذكاء الاصطناعي</p>
               </div>
               <button type="button" className="jw-btn !min-h-9 text-xs" onClick={close}>
                 تخطَّ الآن
