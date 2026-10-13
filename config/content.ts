@@ -1,3 +1,5 @@
+import { JAWAD_ATTACHMENT_LIMIT } from "./jawad/limits";
+
 // «صانع المحتوى» (JAWAD AI) — the branch's fixed choices. «محمد باقر» is its persona: the owner's own template (below,
 // verbatim), kept as the default; the owner can edit it from /admin/content (stored in content_kv) and go back to it.
 
@@ -15,7 +17,7 @@ export const CONTENT = {
   /** slides of one carousel at most (Instagram allows 20) */
   maxSlides: 20,
   /** pictures a message may carry */
-  maxAttachments: 12,
+  maxAttachments: JAWAD_ATTACHMENT_LIMIT,
 } as const;
 
 /** The keys in content_kv the owner edits. */

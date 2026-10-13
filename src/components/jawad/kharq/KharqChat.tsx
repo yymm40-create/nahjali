@@ -17,6 +17,7 @@ import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import { api, postJson } from "@/lib/fetch";
 import { coinStr } from "@config/coins";
 import { findRoad, KHARQ, KHARQ_STARTS } from "@config/kharq";
+import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; options: string[]; multi: boolean }
@@ -145,7 +146,7 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
     if (!files?.length) return;
     setUploading(true);
     try {
-      for (const file of Array.from(files).slice(0, 12 - pending.length)) {
+      for (const file of Array.from(files).slice(0, JAWAD_ATTACHMENT_LIMIT - pending.length)) {
         try {
           const probe = await probeFile(file);
           const signed = await postJson<{ id: string; signedUrl: string }>("/api/jawad/uploads", { kind: probe.kind, mime: probe.mime, bytes: file.size, fileName: file.name });
@@ -447,7 +448,7 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
               </div>
               <form className="kh-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
                 <input ref={picker} type="file" multiple hidden accept="image/*,video/*,audio/*,.pdf" onChange={(e) => void attach(e.target.files)} />
-                <button type="button" className="kh-mini kh-attach" aria-label="أرفق ملفات" title="أرفق صورًا أو ملفات PDF أو فيديو أو صوتًا" disabled={uploading || busy} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
+                <button type="button" className="kh-mini kh-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو ملف PDF أو فيديو أو صوت" disabled={uploading || busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
                 <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={busy || uploading} className="kh-mini kh-attach" />
                 <textarea
                   ref={box}

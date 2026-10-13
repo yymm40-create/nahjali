@@ -14,6 +14,7 @@ import { api, postJson } from "@/lib/fetch";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, DELEGATE_LINE, moodLine, motionLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
+import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
@@ -493,7 +494,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     if (!files?.length) return;
     setUploading(true);
     try {
-      for (const file of Array.from(files).slice(0, 12 - pending.length)) {
+      for (const file of Array.from(files).slice(0, JAWAD_ATTACHMENT_LIMIT - pending.length)) {
         try {
           const probe = await probeFile(file);
           const signed = await postJson<{ id: string; signedUrl: string }>("/api/jawad/uploads", { kind: probe.kind, mime: probe.mime, bytes: file.size, fileName: file.name });
@@ -690,7 +691,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
               <ClaudeModelPicker className="ct-claude" disabled={!!busy} />
               <div className="ct-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/wav,application/pdf" onChange={(e) => void attach(e.target.files)} />
-                <button type="button" className="ct-attach" aria-label="أرفق ملفات" title="أرفق صور أو فيديو أو صوت" disabled={uploading || !!busy} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
+                <button type="button" className="ct-attach" aria-label="أرفق حتى 20 ملفًا" title="أرفق حتى 20 صورة أو فيديو أو صوت أو PDF" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
                 <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={!!busy || uploading} className="ct-attach" />
                 <textarea
                   ref={box}
