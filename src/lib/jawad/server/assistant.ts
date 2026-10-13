@@ -17,10 +17,12 @@ import { FIGHT_METHOD, FIGHT_PLAYBOOK_ID, SCHOOLS_BRIEF, fightCasesBrief, neares
 import { TRANSFORM_METHOD, TRANSFORM_PLAYBOOK_ID, nearestTransformCases, transformCasesBrief } from "@config/jawad/video-transform";
 import { loadRuntime, sectionGenerators } from "./runtime";
 import { isUuid, uploadViews, type UploadRow } from "./uploads";
+import { managedAgentConfigured, managedAgentTurn, managedJson } from "@/lib/managed-agent";
 
 const db = () => createAdminClient();
 
 export interface AssistantBody {
+  chatId?: unknown;
   sectionId?: unknown;
   messages?: unknown;
   draft?: unknown;
@@ -153,19 +155,51 @@ export async function assistantTurn(user: { id: string; email?: string | null },
     return { role: "user", content: [...parts, { type: "text", text: [state, guide, examples, `THE PERSON'S MESSAGE:\n${t.text}`].filter(Boolean).join("\n\n") } as ClaudePart] };
   });
 
-  const out = await callClaudeJson<AssistantRaw>({
-    system: assistantSystem(section.output, defs),
-    turns: claudeTurns,
-    schema: ASSISTANT_SCHEMA,
-    maxTokens: 6000,
-    effort: "medium",
-    fallback: true,
-    leader: isLeader(user.email),
-  }).catch((e) => {
-    console.error("assistant", String(e instanceof Error ? e.message : e).slice(0, 300));
-    throw new UserError("تعذّر على جواد الرد الآن؛ جرّب مرة ثانية.", 502);
-  });
+  const system = assistantSystem(section.output, defs);
+  let data: AssistantRaw;
+  let usd = 0;
+  const chatId = String(b.chatId ?? "");
+  if (managedAgentConfigured() && isUuid(chatId)) {
+    try {
+      const content: ({ type: "text"; text: string } | { type: "image"; source: { type: "url"; url: string } })[] = [];
+      for (const turn of claudeTurns) {
+        const blocks = typeof turn.content === "string" ? [{ type: "text" as const, text: turn.content }] : turn.content;
+        content.push({ type: "text", text: `${turn.role === "user" ? "المستخدم" : "جواد"}:` });
+        for (const part of blocks) {
+          if (part.type === "text") content.push({ type: "text", text: part.text });
+          else if (part.type === "image") content.push({ type: "image", source: { type: "url", url: part.url } });
+        }
+      }
+      const managed = await managedAgentTurn({
+        userId: user.id,
+        contextType: "jawad",
+        contextKey: chatId,
+        title: `جواد · ${section.name}`,
+        content: [
+          {
+            type: "text",
+            text: `أنت الآن داخل محادثة جواد المستقلة رقم ${chatId}. لا تستخدم أي محادثة أخرى ولا تخلط ذاكرتها بهذه المحادثة. نفّذ تعليمات الاستوديو التالية بدقة، وأعد كائن JSON واحد فقط مطابقًا للمخطط؛ بلا Markdown ولا شرح خارجه.\n\nتعليمات جواد لهذه الشاشة:\n${system}\n\nJSON Schema:\n${JSON.stringify(ASSISTANT_SCHEMA)}\n\nالمحادثة والحالة الحالية:`,
+          },
+          ...content,
+        ],
+      });
+      data = managedJson<AssistantRaw>(managed.text);
+      usd = managed.usd;
+    } catch (error) {
+      console.error("managed assistant fallback", String(error).slice(0, 300));
+      const fallback = await callClaudeJson<AssistantRaw>({ system, turns: claudeTurns, schema: ASSISTANT_SCHEMA, maxTokens: 6000, effort: "medium", fallback: true, leader: isLeader(user.email) });
+      data = fallback.data;
+      usd = claudeCost(fallback.usage);
+    }
+  } else {
+    const fallback = await callClaudeJson<AssistantRaw>({ system, turns: claudeTurns, schema: ASSISTANT_SCHEMA, maxTokens: 6000, effort: "medium", fallback: true, leader: isLeader(user.email) }).catch((e) => {
+      console.error("assistant", String(e instanceof Error ? e.message : e).slice(0, 300));
+      throw new UserError("تعذّر على جواد الرد الآن؛ جرّب مرة ثانية.", 502);
+    });
+    data = fallback.data;
+    usd = claudeCost(fallback.usage);
+  }
 
-  const answer = checkAnswer(out.data, { defs, draft, attachments: attached.length });
-  return { ...answer, attachments: attached.map((u) => ({ uploadId: u.id })), usd: claudeCost(out.usage) };
+  const answer = checkAnswer(data, { defs, draft, attachments: attached.length });
+  return { ...answer, attachments: attached.map((u) => ({ uploadId: u.id })), usd };
 }

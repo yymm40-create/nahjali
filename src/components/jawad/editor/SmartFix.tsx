@@ -505,9 +505,11 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
 /** Every red piece: what to fix, «جزئي» or «كامل», its price; one tap saves the notes and sends them all in the background. */
 function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, onSend, opts, setOpts, onClose }: { opts: EditOpts; setOpts: (o: EditOpts) => void; projectId: string; pieces: Clip[]; yellow: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string }[]) => void; onClose: () => void }) {
   const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, c.fix?.note ?? ""])));
+  const [problems, setProblems] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, ""])));
   const [jobs, setJobs] = useState<Record<string, JobView>>({});
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
-  const busy = null as string | null;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [understanding, setUnderstanding] = useState<{ understanding: string; error: string; correction: string; willDo: string[] } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const assetOf = (c: Clip) => (c.assetId ? assets.get(c.assetId) : undefined);
 
@@ -567,27 +569,58 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
   }, [quoteKey]);
 
   const saveNote = (c: Clip) => {
-    const note = (notes[c.id] ?? "").slice(0, FIX_NOTE_MAX);
+    const note = `ما هو الخطأ:\n${(problems[c.id] ?? "").trim()}\n\nالتصحيح المطلوب:\n${(notes[c.id] ?? "").trim()}`.slice(0, FIX_NOTE_MAX);
     if (note !== c.fix?.note) run({ type: "update_clip", clipId: c.id, patch: { fix: { note } } }, { coalesce: `fix-note-${c.id}` });
   };
-  const written = open.filter((c) => (notes[c.id] ?? "").trim().length >= 3);
+  const written = open.filter((c) => (problems[c.id] ?? "").trim().length >= 3 && (notes[c.id] ?? "").trim().length >= 3);
   const priced = written.filter((c) => "coins" in (quotes[c.id] ?? {}));
   const total = priced.reduce((s, c) => s + (quotes[c.id] as { coins: number }).coins, 0);
 
   /** One tap: the notes are kept, the window closes, the pieces go in the background (their state shows on them). */
+  function payload(c: Clip) {
+    return `ما هو الخطأ:\n${(problems[c.id] ?? "").trim()}\n\nالتصحيح المطلوب:\n${(notes[c.id] ?? "").trim()}`;
+  }
+
+  async function askJawad() {
+    const first = written.find((c) => assetOf(c)?.jobId);
+    const jobId = first ? assetOf(first)?.jobId : null;
+    if (!jobId) return setErrors((current) => ({ ...current, _dialog: "تعذّر ربط المقطع بتوليده الأصلي." }));
+    setBusy("جواد يراجع التعديلات…");
+    setUnderstanding(null);
+    const response = await fetch("/api/jawad/edit/understand", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jobId,
+        editorProjectId: projectId,
+        generation: written.map((clip) => `${formatTime(clip.start)}–${formatTime(clip.start + clipLength(clip))}`).join("، "),
+        mode: written.some((clip) => clip.fix?.mode === "whole") ? "كامل" : "جزئي",
+        error: written.map((clip, index) => `${index + 1}. ${problems[clip.id]}`).join("\n"),
+        correction: written.map((clip, index) => `${index + 1}. ${notes[clip.id]}`).join("\n"),
+        settings: optsBody(opts),
+      }),
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    setBusy(null);
+    if (!response?.ok) return setErrors((current) => ({ ...current, _dialog: result.error ?? "تعذّر على جواد فهم التعديل الآن." }));
+    setErrors((current) => ({ ...current, _dialog: "" }));
+    setUnderstanding(result);
+  }
+
   function sendAll() {
     for (const c of open) saveNote(c);
-    onSend(written.map((c) => ({ id: c.id, note: (notes[c.id] ?? "").trim() })));
+    onSend(written.map((c) => ({ id: c.id, note: payload(c) })));
     onClose();
   }
 
-  const failedList = Object.entries(errors);
+  const failedList = Object.entries(errors).filter(([id]) => id !== "_dialog");
   return (
     <Dialog open onClose={() => !busy && onClose()} title="التعديل الذكي · الأجزاء الحمراء" wide>
       <div className="space-y-3 p-4">
         <p className="text-xs text-jw-muted">
-          اكتب لكل جزء شنو تبي يتعدل فيه، واختر <b>جزئي</b> (يتعاد هذا الجزء بس ويركب مكانه بقص نظيف) أو <b>كامل</b> (يتعاد الفيديو كله بالملاحظة). اللي ينصنع ينزل على <span className="font-bold text-emerald-600">المسار الأخضر</span> بنفس المكان.
+          جواد حاضر هنا مباشرة. اكتب لكل جزء الخطأ والتصحيح، وهو يراجع بيانات فيلم سجاد المرتبط ثم يرجع لك فهمه قبل أي توليد.
         </p>
+        <div className="rounded-xl border border-jw-accent/35 bg-jw-accent-soft p-3 text-sm"><b>🤖 جواد · التعديل الذكي</b><p className="mt-1 text-xs text-jw-muted">لن يُرسل شيء للمولد حتى تضغط «تم، ابدأ التوليد» بعد مراجعة فهمه.</p></div>
         {(() => {
           // the options of the edits: the generator that makes them and the output options, as at the start (the first piece's original is where they start from)
           const first = Object.values(jobs)[0];
@@ -600,10 +633,10 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
               def={def}
               choices={choices}
               originalId={first.generatorId}
-              onGenerator={(id) => setOpts({ ...opts, generatorId: id === first.generatorId ? null : id })}
+              onGenerator={(id) => { setOpts({ ...opts, generatorId: id === first.generatorId ? null : id }); setUnderstanding(null); }}
               original={first.settings as Settings}
               chosen={opts.settings}
-              onChange={(k: string, v: SettingValue) => setOpts({ ...opts, settings: { ...opts.settings, [k]: v } })}
+              onChange={(k: string, v: SettingValue) => { setOpts({ ...opts, settings: { ...opts.settings, [k]: v } }); setUnderstanding(null); }}
               mode={pieces.some((c) => c.fix?.mode === "whole") ? "whole" : "parts"}
               cutSeconds={null}
             />
@@ -629,7 +662,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
                   {editable && (
                     <div className="flex overflow-hidden rounded-lg border border-jw-line" role="radiogroup" aria-label="جزئي أو كامل">
                       {(["parts", "whole"] as const).map((m) => (
-                        <button key={m} type="button" role="radio" aria-checked={fix.mode === m} className={`px-3 py-1 text-[11px] font-semibold ${fix.mode === m ? "bg-jw-accent text-white" : "text-jw-muted"}`} onClick={() => run({ type: "update_clip", clipId: c.id, patch: { fix: { mode: m } } })}>
+                        <button key={m} type="button" role="radio" aria-checked={fix.mode === m} className={`px-3 py-1 text-[11px] font-semibold ${fix.mode === m ? "bg-jw-accent text-white" : "text-jw-muted"}`} onClick={() => { run({ type: "update_clip", clipId: c.id, patch: { fix: { mode: m } } }); setUnderstanding(null); }}>
                           {m === "parts" ? "جزئي" : "كامل"}
                         </button>
                       ))}
@@ -637,14 +670,14 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
                   )}
                 </div>
                 {editable ? (
-                  <textarea
-                    className="jw-input min-h-16 w-full text-sm"
-                    maxLength={FIX_NOTE_MAX}
-                    placeholder="مثال: الشخص يلتفت فجأة ووجهه يتغير؛ خلّه يكمل المشي بهدوء ونفس الملامح"
-                    value={notes[c.id] ?? ""}
-                    onChange={(e) => setNotes((n) => ({ ...n, [c.id]: e.target.value }))}
-                    onBlur={() => saveNote(c)}
-                  />
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <label className="space-y-1 text-xs font-semibold">ما هو الخطأ؟
+                      <textarea className="jw-input min-h-20 w-full text-sm font-normal" maxLength={FIX_NOTE_MAX} placeholder="مثال: الوجه يتغير وقت الالتفات" value={problems[c.id] ?? ""} onChange={(e) => { setProblems((current) => ({ ...current, [c.id]: e.target.value })); setUnderstanding(null); }} />
+                    </label>
+                    <label className="space-y-1 text-xs font-semibold">ما هو التصحيح المطلوب؟
+                      <textarea className="jw-input min-h-20 w-full text-sm font-normal" maxLength={FIX_NOTE_MAX} placeholder="مثال: ثبّت نفس الملامح واجعل الالتفات طبيعيًا" value={notes[c.id] ?? ""} onChange={(e) => { setNotes((current) => ({ ...current, [c.id]: e.target.value })); setUnderstanding(null); }} onBlur={() => saveNote(c)} />
+                    </label>
+                  </div>
                 ) : (
                   fix.note && <p className="text-xs text-jw-muted">«{fix.note}»</p>
                 )}
@@ -659,11 +692,22 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
             ما انرسل {failedList.length === 1 ? "جزء" : `${failedList.length} أجزاء`} — السبب مكتوب تحت كل جزء. صلّحه واضغط «اصنع» مرة ثانية.
           </p>
         )}
+        {errors._dialog && <p className="rounded-xl border border-jw-danger/40 bg-jw-danger/10 p-3 text-sm text-jw-danger">{errors._dialog}</p>}
+        {understanding && (
+          <div className="sticky bottom-0 z-10 space-y-2 rounded-xl border border-emerald-500/45 bg-jw-bg-2 p-3 shadow-xl" aria-live="polite">
+            <p className="font-semibold text-emerald-700">رسالة من جواد · هذا اللي فهمته</p>
+            <p className="text-sm">{understanding.understanding}</p>
+            <p className="text-xs"><b>الخطأ:</b> {understanding.error}</p>
+            <p className="text-xs"><b>التصحيح:</b> {understanding.correction}</p>
+            {understanding.willDo.length > 0 && <ul className="list-inside list-disc text-xs text-jw-muted">{understanding.willDo.map((item) => <li key={item}>{item}</li>)}</ul>}
+            <div className="flex gap-2"><button type="button" className="jw-btn jw-btn-primary" onClick={sendAll}>تم، ابدأ التوليد</button><button type="button" className="jw-btn" onClick={() => setUnderstanding(null)}>عدل</button></div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3 border-t border-jw-line pt-3">
-          <button type="button" className="jw-btn jw-btn-primary" disabled={!!busy || !written.length} onClick={sendAll}>
-            <Icon name="wand" size={16} /> {busy ?? (written.length ? <>اصنع {written.length} {written.length === 1 ? "تعديل" : "تعديلات"}{priced.length === written.length && <> · <Riyal halalas={total} size={14} /></>}</> : "اكتب ملاحظة (٣ أحرف أو أكثر) لكل جزء")}
+          <button type="button" className="jw-btn jw-btn-primary" disabled={!!busy || !written.length} onClick={() => void askJawad()}>
+            <Icon name="wand" size={16} /> {busy ?? (written.length ? <>خل جواد يفهم {written.length} {written.length === 1 ? "تعديل" : "تعديلات"}{priced.length === written.length && <> · <Riyal halalas={total} size={14} /></>}</> : "اكتب الخطأ والتصحيح لكل جزء")}
           </button>
-          <span className="text-[11px] text-jw-faint">تضغط مرة وحدة وترجع للتايم لاين؛ الإرسال يكمل في الخلفية، وكل جزء يوصل ينحط على الأخضر بنفسه.</span>
+          <span className="text-[11px] text-jw-faint">بعد تأكيد فهم جواد، الإرسال يكمل في الخلفية وكل جزء يوصل ينحط على الأخضر بنفسه.</span>
         </div>
       </div>
     </Dialog>

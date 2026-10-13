@@ -245,6 +245,7 @@ export default function AssistantChat({
     setBusy(true);
     try {
       const r = await post<AssistantAnswer>("/api/jawad/assistant", {
+        chatId,
         sectionId: section.id,
         messages: history,
         draft: originalDraft,

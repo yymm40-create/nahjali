@@ -14,6 +14,19 @@ import type { Settings, SettingValue } from "@config/jawad/types";
 import Riyal from "@/components/Riyal";
 import Coined from "@/components/Coined";
 
+interface Understanding {
+  understanding: string;
+  error: string;
+  correction: string;
+  willDo: string[];
+}
+
+interface FilmOption {
+  id: string;
+  title: string;
+  stage: string;
+}
+
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const fmt = (s: number) => (Number.isFinite(s) ? s.toFixed(1) : "—");
 
@@ -42,7 +55,11 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   const [mode, setMode] = useState<EditMode | null>(null);
   // the options chosen again for this edit (resolution, sound, a whole clip's seconds…): counted in the price, sent to جواد
   const [chosen, setChosen] = useState<Settings>({});
-  const [notes, setNotes] = useState("");
+  const [errorNote, setErrorNote] = useState("");
+  const [correction, setCorrection] = useState("");
+  const [understanding, setUnderstanding] = useState<Understanding | null>(null);
+  const [films, setFilms] = useState<FilmOption[]>([]);
+  const [filmProjectId, setFilmProjectId] = useState("");
   const [ranges, setRanges] = useState<EditRange[]>([]);
   const [quote, setQuote] = useState<{ coins: number; lines: { label: string; centi: number }[] } | null>(null);
   const [quoteError, setQuoteError] = useState("");
@@ -56,6 +73,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   const rangesOk = mode !== "parts" || Boolean(cut);
   // the seconds of the video itself around the cut, sent as continuity references
   const continuity = cut ? continuityRanges(cut, videoSec) : undefined;
+  const notes = `ما هو الخطأ:\n${errorNote.trim()}\n\nالتصحيح المطلوب:\n${correction.trim()}`;
   const body = { jobId: job.id, outputId: out?.id, mode, notes, ranges, generatorId: genId, settings: chosen, ...(continuity ? { continuity } : {}) };
   const quoteKey = JSON.stringify([out?.id, mode, genId, chosen, ranges.map((r) => [r.from, r.to])]);
 
@@ -82,10 +100,25 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, quoteKey, rangesOk]);
 
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    fetch("/api/jawad/edit/understand", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { projects: [] }))
+      .then((data) => live && setFilms(Array.isArray(data.projects) ? data.projects : []))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open]);
+
   const reset = () => {
     setMode(null);
     setChosen({});
-    setNotes("");
+    setErrorNote("");
+    setCorrection("");
+    setUnderstanding(null);
+    setFilmProjectId("");
     setRanges([]);
     setQuote(null);
     setError("");
@@ -99,16 +132,36 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
   };
   const choose = (m: EditMode) => {
     setMode(m);
+    setUnderstanding(null);
     setRanges(m === "parts" ? [{ from: 0, to: Math.min(videoSec, durOpt?.min ?? 4), note: "" }] : []);
     setQuote(null);
     setError("");
   };
-  const setRange = (i: number, patch: Partial<EditRange>) => setRanges((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setRange = (i: number, patch: Partial<EditRange>) => {
+    setUnderstanding(null);
+    setRanges((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  };
   const now = () => Math.round((player.current?.currentTime ?? 0) * 10) / 10;
 
-  async function generate() {
+  async function understand() {
+    if (!mode || !errorNote.trim() || !correction.trim()) return setError("اكتب ما هو الخطأ وما هو التصحيح المطلوب.");
+    setBusy("جواد يراجع التعديل…");
+    setError("");
+    const response = await fetch("/api/jawad/edit/understand", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jobId: job.id, filmProjectId: filmProjectId || undefined, generation: `الناتج ${outIdx + 1}`, mode, error: errorNote, correction, settings: { generatorId: genId, ...chosen } }),
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    setBusy(null);
+    if (!response?.ok) return setError(result.error ?? "تعذّر على جواد فهم التعديل الآن.");
+    setUnderstanding(result as Understanding);
+  }
+
+  async function generate(confirmed = false) {
     if (!mode || !out?.url || !quote) return;
-    if (notes.trim().length < 3 && !ranges.some((r) => r.note.trim().length >= 3)) return setError("اكتب الأخطاء والتعديل المطلوب.");
+    if (!errorNote.trim() || !correction.trim()) return setError("اكتب ما هو الخطأ وما هو التصحيح المطلوب.");
+    if (!confirmed || !understanding) return void understand();
     setError("");
     key.current ??= uid();
     const send: Record<string, unknown> = { ...body, idempotencyKey: key.current, expectedCoins: quote.coins };
@@ -167,7 +220,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
           {job.outputs.length > 1 && (
             <div className="flex gap-2" role="radiogroup" aria-label="أي صورة تعدّل؟">
               {job.outputs.map((o, i) => (
-                <button key={o.id} type="button" role="radio" aria-checked={i === outIdx} onClick={() => setOutIdx(i)} className={`size-14 overflow-hidden rounded-md border-2 ${i === outIdx ? "border-jw-accent" : "border-jw-line"}`}>
+                <button key={o.id} type="button" role="radio" aria-checked={i === outIdx} onClick={() => { setOutIdx(i); setUnderstanding(null); }} className={`size-14 overflow-hidden rounded-md border-2 ${i === outIdx ? "border-jw-accent" : "border-jw-line"}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {o.url && <img src={o.url} alt={`الصورة ${i + 1}`} className="size-full object-cover" />}
                 </button>
@@ -193,9 +246,22 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
             </div>
           ) : (
             <>
-              <button type="button" className="flex items-center gap-1 text-xs text-jw-muted hover:text-jw-ink" onClick={() => !busy && setMode(null)}>
+              <button type="button" className="flex items-center gap-1 text-xs text-jw-muted hover:text-jw-ink" onClick={() => { if (!busy) { setMode(null); setUnderstanding(null); } }}>
                 <Icon name="retry" size={12} /> {CHOICES[kind].find((c) => c.mode === mode)?.title} · غيّر
               </button>
+
+              <div className="rounded-xl border border-jw-accent/35 bg-jw-accent-soft p-3 text-sm">
+                <div className="flex items-center gap-2 font-semibold"><span className="grid size-8 place-items-center rounded-full bg-jw-accent text-white">🤖</span> جواد حاضر معك</div>
+                <p className="mt-1 text-xs text-jw-muted">يقرأ بيانات المقطع ومشروع سجاد المختار، ثم يرجع لك فهمه قبل ما يبدأ أي توليد.</p>
+              </div>
+
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold">مشروع سجاد المرتبط (اختياري)</span>
+                <select className="jw-input min-h-10 w-full text-sm" value={filmProjectId} disabled={Boolean(busy)} onChange={(event) => { setFilmProjectId(event.target.value); setUnderstanding(null); }}>
+                  <option value="">بدون مشروع — اعتمد على المقطع فقط</option>
+                  {films.map((film) => <option key={film.id} value={film.id}>{film.title} · {film.stage}</option>)}
+                </select>
+              </label>
 
               {kind === "video" && (
                 <div className="space-y-2">
@@ -246,6 +312,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                   originalId={job.generatorId}
                   onGenerator={(id) => {
                     setGenId(id);
+                    setUnderstanding(null);
                     setQuote(null);
                     key.current = null;
                   }}
@@ -253,6 +320,7 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
                   chosen={chosen}
                   onChange={(k: string, v: SettingValue) => {
                     setChosen((c) => ({ ...c, [k]: v }));
+                    setUnderstanding(null);
                     setQuote(null);
                     key.current = null;
                   }}
@@ -263,20 +331,42 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
               )}
 
               <label className="block space-y-1">
-                <span className="text-sm font-semibold">{kind === "video" ? "الأخطاء والتعديل المطلوب" : "التعديلات المطلوبة بدقة"}</span>
+                <span className="text-sm font-semibold">١. ما هو الخطأ؟</span>
                 <textarea
                   className="jw-textarea min-h-28 text-sm"
                   maxLength={EDIT_LIMITS.notesMax}
                   dir="auto"
-                  placeholder={
-                    kind === "video"
-                      ? "مثال: في الثانية 3 تتشوّه يد البطل، وحركة الكاميرا سريعة في آخر المقطع. أبي الحركة أهدأ والإضاءة أدفأ."
-                      : "اكتب بدقة: وش تغيّر، وفين في الصورة، وكيف… مثال: غيّر لون الثوب للأبيض، وصحّح الكتابة على اللوحة لتصير «الجواد الذكي»."
-                  }
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={kind === "video" ? "مثال: في الثانية 3 تتشوّه اليد، والوجه يتغير عند الالتفات." : "مثال: لون الثوب غير صحيح والكتابة على اللوحة مشوهة."}
+                  value={errorNote}
+                  onChange={(e) => { setErrorNote(e.target.value); setUnderstanding(null); }}
                 />
               </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold">٢. ما هو التصحيح المطلوب؟</span>
+                <textarea
+                  className="jw-textarea min-h-28 text-sm"
+                  maxLength={EDIT_LIMITS.notesMax}
+                  dir="auto"
+                  placeholder={kind === "video" ? "مثال: ثبّت نفس ملامح الشخص، واجعل الالتفات طبيعيًا والإضاءة أدفأ." : "مثال: اجعل الثوب أبيض واكتب على اللوحة «الجواد الذكي» بوضوح."}
+                  value={correction}
+                  onChange={(e) => { setCorrection(e.target.value); setUnderstanding(null); }}
+                />
+              </label>
+
+              {understanding && (
+                <div className="sticky top-0 z-10 space-y-2 rounded-xl border border-emerald-500/45 bg-jw-bg-2 p-3 shadow-xl" aria-live="polite">
+                  <p className="font-semibold text-emerald-700">رسالة من جواد · هذا اللي فهمته</p>
+                  <p className="text-sm">{understanding.understanding}</p>
+                  <p className="text-xs"><b>الخطأ:</b> {understanding.error}</p>
+                  <p className="text-xs"><b>التصحيح:</b> {understanding.correction}</p>
+                  {understanding.willDo.length > 0 && <ul className="list-inside list-disc text-xs text-jw-muted">{understanding.willDo.map((item) => <li key={item}>{item}</li>)}</ul>}
+                  <div className="flex gap-2">
+                    <button type="button" className="jw-btn jw-btn-primary" disabled={Boolean(busy)} onClick={() => void generate(true)}>تم، ابدأ التوليد</button>
+                    <button type="button" className="jw-btn" disabled={Boolean(busy)} onClick={() => setUnderstanding(null)}>عدل</button>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-1 rounded-lg border border-jw-line p-2.5 text-xs" aria-live="polite">
                 {quote ? (
@@ -301,14 +391,14 @@ export default function SmartEdit({ job, open, onClose, onCreated }: { job: JobV
               {error && <p className="text-xs text-jw-danger" role="alert"><Coined text={error} /></p>}
               <div className="flex justify-end gap-2">
                 <button type="button" className="jw-btn" disabled={Boolean(busy)} onClick={close}>إلغاء</button>
-                <button type="button" className="jw-btn jw-btn-primary" disabled={!quote || Boolean(busy) || !rangesOk || !out?.url} onClick={generate}>
+                <button type="button" className="jw-btn jw-btn-primary" disabled={!quote || Boolean(busy) || !rangesOk || !out?.url} onClick={() => void understand()}>
                   {busy ? (
                     <>
                       <span className="jw-spinner" aria-hidden /> {busy}
                     </>
                   ) : (
                     <>
-                      <Icon name="wand" size={16} /> توليد التعديل
+                      <Icon name="wand" size={16} /> خل جواد يفهم التعديل
                       {quote && (
                         <span className="flex items-center gap-1 rounded-full bg-black/25 px-1.5 py-0.5 text-xs tabular-nums" dir="ltr">
                           <Riyal halalas={quote.coins} size={13} />

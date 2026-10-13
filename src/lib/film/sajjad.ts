@@ -8,7 +8,7 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, totalTokens, type ClaudeTurn } from "./anthropic";
+import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeTrouble, totalTokens, type ClaudeTurn, type ClaudeUsage } from "./anthropic";
 import { addFindings, decideFindings, parseFindings, pendingFindings, readResearch, researchText, RESEARCH_LIMITS, type Research } from "./research";
 import { addEpisode, addScene, canEditBible, episodesOf, membersOf, openSeries, scenesOf, usernames, type FilmSeries, type SeriesPlan } from "./series";
 import { castOf, upsertCast } from "./series-cast";
@@ -20,6 +20,7 @@ import { rightsText } from "./team-rights";
 import { FILM_STAGES } from "@config/film";
 import { CHAT_GUIDANCE } from "@config/jawad/chat-guidance";
 import type { FilmProject } from "./types";
+import { managedAgentConfigured, managedAgentTurn, managedJson } from "@/lib/managed-agent";
 
 const db = () => createAdminClient();
 
@@ -318,8 +319,38 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   const system = `${PERSONA}\n\n${rules}${researchState(scope)}\n\n=== CONTEXT (read fresh each time) ===\n${context}\n\n=== YOUR NOTES ===\n${memory.length ? memory.map((m) => `- ${m}`).join("\n") : "(none yet)"}`;
   // his answer, and — when he was asked to research — the search itself, paid together
   const call = async () => {
-    const r = await callClaudeJson<Reply>({ system, turns: turnsOf(messages, text, me), schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
-    let usd = claudeCost(r.usage);
+    const turns = turnsOf(messages, text, me);
+    let r: { data: Reply; usage: ClaudeUsage };
+    let usd = 0;
+    if (managedAgentConfigured()) {
+      try {
+        const ownerId = scope.kind === "series" ? scope.series.user_id : scope.project.user_id;
+        const managed = await managedAgentTurn({
+          userId: ownerId,
+          contextType: "sajjad",
+          contextKey: key,
+          title: scope.kind === "series" ? `سجاد · ${scope.series.title}` : `سجاد · ${scope.project.title}`,
+          timeoutMs: 115_000,
+          content: [
+            {
+              type: "text",
+              text: `أنت الآن سجاد داخل المشروع المحدد فقط. اقرأ سياق المشروع الطازج في كل رسالة، ولا تنقل معلومات من أي مشروع آخر. ${isLeader(user.email) ? "المستخدم هو قائد المنصة." : ""}\n\nأعد كائن JSON واحد فقط بلا Markdown مطابقًا للمخطط التالي:\n${JSON.stringify(SCHEMA)}\n\nتعليمات وسياق سجاد:\n${system}\n\nآخر المحادثة:\n${turns.map((turn) => `${turn.role === "user" ? "المستخدم" : "سجاد"}: ${turn.content}`).join("\n\n")}`,
+            },
+          ],
+        });
+        r = { data: managedJson<Reply>(managed.text), usage: managed.usage };
+        usd = managed.usd;
+      } catch (error) {
+        console.error("managed sajjad fallback", String(error).slice(0, 300));
+        const fallback = await callClaudeJson<Reply>({ system, turns, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
+        r = fallback;
+        usd = claudeCost(fallback.usage);
+      }
+    } else {
+      const fallback = await callClaudeJson<Reply>({ system, turns, schema: SCHEMA, maxTokens: 16000, effort: "medium", leader: isLeader(user.email) });
+      r = fallback;
+      usd = claudeCost(fallback.usage);
+    }
     let found: Research | null = null;
     const scopeText = r.data.research.trim().slice(0, RESEARCH_LIMITS.scopeMax);
     if (scopeText) {
