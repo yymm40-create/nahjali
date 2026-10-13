@@ -98,24 +98,10 @@ export default function QuickStart({ sections, userId, loginHref, freeImageAvail
       <div className="relative space-y-3">
         {!hero && <h1 id="jw-quick" className="text-xl font-bold sm:text-2xl">وش تبي تصنع اليوم؟</h1>}
         {hero && <p className="hm-q-kicker"><Icon name="sparkles" size={15} /> ابدأ من فكرتك — بدون خطوات تمهيدية</p>}
-        <p className="hm-q-label">وش ودّك تصنع؟</p>
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="نوع الناتج">
-          {available.map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="radio"
-              aria-checked={kind === k}
-              onClick={() => setPicked(k)}
-              className={`jw-chip hm-q-choice !px-3.5 !py-2 !text-sm transition-all ${kind === k ? "is-picked !border-jw-accent !bg-jw-accent-soft !text-jw-ink" : ""}`}
-            >
-              <Icon name={KIND_AR[k].icon} size={16} /> {KIND_AR[k].label}
-              {kind === k && <span className="hm-q-check" aria-hidden>✓</span>}
-              {!picked && kind === k && text.trim() && <span className="text-[10px] text-jw-muted">· مقترح</span>}
-            </button>
-          ))}
+        <div className="hm-q-intro">
+          <label className="hm-q-input-label" htmlFor="jw-quick-prompt">اكتب فكرتك، وخَلّ الصورة علينا ✨</label>
+          <p>ما تحتاج تعرف الأوامر أو تختار إعدادات — اكتب اللي في بالك وابدأ.</p>
         </div>
-        <label className="hm-q-input-label" htmlFor="jw-quick-prompt">اكتب فكرتك بطريقتك</label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <textarea
             id="jw-quick-prompt"
@@ -125,7 +111,7 @@ export default function QuickStart({ sections, userId, loginHref, freeImageAvail
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go();
             }}
-            placeholder={kind === "image" ? "مثال: صورة فنجان قهوة على طاولة خشب وقت الغروب…" : info.hint}
+            placeholder={kind === "image" ? "مثال: قطة صغيرة تلبس عباية ذهبية في بيت نجدي… أو اكتب أي فكرة في بالك" : info.hint}
             aria-label="وصف ما تريد صنعه"
             dir="auto"
           />
@@ -135,6 +121,25 @@ export default function QuickStart({ sections, userId, loginHref, freeImageAvail
           </button>
         </div>
         {kind === "image" && <p className="hm-q-note">{freeImageAvailable ? "حسابك جديد: اكتب أي وصف، وننشئ لك صورة واحدة مجانًا الآن." : "اكتب فكرتك واضغط «ابدأ بصورة» — نجهّزها لك في استوديو الصور مباشرة."}</p>}
+        <div className="hm-q-options">
+          <p className="hm-q-label">أو اختر وش تبي تصنع</p>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="نوع الناتج">
+            {available.map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={kind === k}
+                onClick={() => setPicked(k)}
+                className={`jw-chip hm-q-choice !px-3.5 !py-2 !text-sm transition-all ${kind === k ? "is-picked !border-jw-accent !bg-jw-accent-soft !text-jw-ink" : ""}`}
+              >
+                <Icon name={KIND_AR[k].icon} size={16} /> {KIND_AR[k].label}
+                {kind === k && <span className="hm-q-check" aria-hidden>✓</span>}
+                {!picked && kind === k && text.trim() && <span className="text-[10px] text-jw-muted">· مقترح</span>}
+              </button>
+            ))}
+          </div>
+        </div>
         {!userId && loginHref && <p className="text-xs text-jw-muted">تقدر تكتب وتشوف الأقسام بدون حساب، والصنع يحتاج دخول.</p>}
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-jw-faint">جرّب مثال:</span>
