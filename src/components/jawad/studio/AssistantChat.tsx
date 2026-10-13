@@ -344,7 +344,7 @@ export default function AssistantChat({
           {canAttach && (
             <>
               <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => attach(e.target.files)} aria-label="أرفق صورة" />
-              <button type="button" className="jw-btn !min-h-10 !px-2.5" aria-label="أرفق صورة" disabled={pending.length >= ASSISTANT_LIMITS.attachments} onClick={() => picker.current?.click()}>
+              <button type="button" className="jw-btn !min-h-10 !px-2.5" aria-label="أرفق حتى 20 صورة" title="أرفق حتى 20 صورة دفعة واحدة" disabled={pending.length >= ASSISTANT_LIMITS.attachments} onClick={() => picker.current?.click()}>
                 <Icon name="image" size={18} />
               </button>
             </>

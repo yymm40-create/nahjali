@@ -17,6 +17,7 @@ import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, DELEGATE_LINE } from "@/lib/content/marks";
 import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
+import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { loadFont, renderDesign, type DesignView, type FontDef } from "./LayerEditor";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
@@ -251,7 +252,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     if (!files?.length) return;
     setUploading(true);
     try {
-      for (const file of Array.from(files).slice(0, 8 - pending.length)) {
+      for (const file of Array.from(files).slice(0, JAWAD_ATTACHMENT_LIMIT - pending.length)) {
         try {
           const probe = await probeFile(file, "image");
           const signed = await postJson<{ id: string; signedUrl: string }>("/api/jawad/uploads", { kind: probe.kind, mime: probe.mime, bytes: file.size, fileName: file.name });
@@ -452,7 +453,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
               <ClaudeModelPicker className="dz-claude" disabled={!!busy} />
               <div className="dz-compose-row">
                 <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" onChange={(e) => void attach(e.target.files)} />
-                <button type="button" className="dz-attach" aria-label="أرفق صور" title="أرفق قالبًا أو صورة" disabled={uploading || !!busy} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
+                <button type="button" className="dz-attach" aria-label="أرفق حتى 20 صورة" title="أرفق حتى 20 قالبًا أو صورة" disabled={uploading || !!busy || pending.length >= JAWAD_ATTACHMENT_LIMIT} onClick={() => picker.current?.click()}>{uploading ? "…" : "📎"}</button>
                 <MicButton onText={(t) => setQ((v) => (v.trim() ? `${v.trim()} ${t}` : t))} disabled={!!busy || uploading} className="dz-attach" />
                 <textarea ref={box} className="dz-input" dir="auto" rows={1} value={q} maxLength={6000} placeholder={busy === "drawing" ? "الصورة قيد الرسم…" : `اكتب لـ${persona}…`} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
                 <button className="dz-send" disabled={!!busy || uploading || (!q.trim() && !pending.length)}>{busy ? "…" : "أرسل"}</button>

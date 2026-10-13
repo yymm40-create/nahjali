@@ -3,6 +3,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { KHARQ, isDeliverKind, isKharqStage, ROAD_IDS, type DeliverKind, type KharqStage } from "@config/kharq";
+import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 
 const db = () => createAdminClient();
 
@@ -165,7 +166,7 @@ const readFiles = (v: unknown): Attachment[] | undefined => {
       name: str(f.name, 200),
       durationMs: typeof f.durationMs === "number" ? f.durationMs : null,
     }))
-    .slice(0, 12);
+    .slice(0, JAWAD_ATTACHMENT_LIMIT);
   return out.length ? out : undefined;
 };
 

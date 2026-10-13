@@ -1,0 +1,1 @@
+export const JAWAD_ATTACHMENT_LIMIT = 20;

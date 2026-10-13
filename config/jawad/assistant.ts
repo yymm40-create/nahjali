@@ -8,9 +8,10 @@
 import { FILM_STYLES, findStyle } from "@config/film-styles";
 import type { GeneratorDef, OptionDef, RefRole, RefStyle, Settings, SettingValue } from "./types";
 import { playbooksBrief } from "./playbooks";
+import { JAWAD_ATTACHMENT_LIMIT } from "./limits";
 
 export const ASSISTANT_NAME = "جواد";
-export const ASSISTANT_LIMITS = { message: 3000, history: 14, attachments: 4, images: 8, refs: 20 } as const;
+export const ASSISTANT_LIMITS = { message: 3000, history: 14, attachments: JAWAD_ATTACHMENT_LIMIT, images: JAWAD_ATTACHMENT_LIMIT, refs: 20 } as const;
 export const THUMBNAIL_SIDES = ["left", "right", "center"] as const;
 export type ThumbnailSide = (typeof THUMBNAIL_SIDES)[number];
 

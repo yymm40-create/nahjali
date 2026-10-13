@@ -3,6 +3,8 @@
 // a short, clear conversation to a finished design. By default GPT Image 2 draws the WHOLE design, including its
 // exact typography. Editable real text layers and a blank artwork are optional alternatives, not the default.
 
+import { JAWAD_ATTACHMENT_LIMIT } from "./jawad/limits";
+
 export const DESIGNER = {
   base: "/jawad-ai/designer",
   name: "المصمم الذكي",
@@ -15,7 +17,7 @@ export const DESIGNER = {
   /** the longest answer (tokens): a full design plan with its layers */
   maxTokens: 12000,
   /** pictures a message may carry (a template to copy, a photo, a logo) */
-  maxAttachments: 8,
+  maxAttachments: JAWAD_ATTACHMENT_LIMIT,
   /** text layers of one design at most */
   maxLayers: 14,
 } as const;

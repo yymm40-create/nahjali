@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { storage } from "@/lib/storage";
 import { JAWAD_BUCKET } from "@/lib/jawad/server/runtime";
 import { isUuid, type UploadRow } from "@/lib/jawad/server/uploads";
-import { KHARQ } from "@config/kharq";
+import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import type { Attachment } from "./chats";
 
 const db = () => createAdminClient();
@@ -14,7 +14,7 @@ const LINK_SECONDS = 6 * 3600;
 
 /** The person's own ready uploads among these ids, as attachments (anything else is dropped). */
 export async function attachmentsOf(userId: string, ids: unknown): Promise<Attachment[]> {
-  const wanted = (Array.isArray(ids) ? ids : []).filter(isUuid).slice(0, KHARQ.mediaMax * 4);
+  const wanted = (Array.isArray(ids) ? ids : []).filter(isUuid).slice(0, JAWAD_ATTACHMENT_LIMIT);
   if (!wanted.length) return [];
   const { data } = await db().from("jawad_uploads").select("*").in("id", wanted).eq("user_id", userId).eq("status", "ready");
   const byId = new Map(((data ?? []) as UploadRow[]).map((r) => [r.id, r]));
