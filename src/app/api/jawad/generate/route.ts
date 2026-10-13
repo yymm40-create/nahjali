@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { handle } from "@/lib/api";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
 import { createJob, type GenerateBody } from "@/lib/jawad/server/jobs";
+import { signupFreeImageEligible } from "@/lib/jawad/server/free-image";
 import { jobViews } from "@/lib/jawad/server/works";
 
 // The image and speech providers answer within the same request (run after the response, see runJob)
@@ -16,7 +17,9 @@ export const maxDuration = 300;
 export const POST = handle(async (req: Request) => {
   const { user, owner } = await requireJawadApiUser();
   const body = (await req.json().catch(() => ({}))) as GenerateBody;
-  const r = await createJob(user, owner, body, new URL(req.url).origin);
+  const r = await createJob(user, owner, body, new URL(req.url).origin, {
+    signupFreeImageEligible: body.signupFreeImage === true ? await signupFreeImageEligible(user.created_at) : false,
+  });
   if (r.kind === "issues") return NextResponse.json({ error: r.issues[0]?.message ?? "الطلب غير صالح.", issues: r.issues }, { status: 422 });
   if (r.kind === "price_changed") {
     return NextResponse.json({ error: `تغيّر السعر إلى ${coinStr(r.coins)}. أكّد المبلغ الجديد.`, code: "price_changed", coins: r.coins, lines: r.lines, prices: r.prices }, { status: 409 });

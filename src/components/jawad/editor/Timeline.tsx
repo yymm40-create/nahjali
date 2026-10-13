@@ -29,6 +29,9 @@ interface Props {
   thumbs: Record<string, string | null>;
   selected: string[];
   onSelect: (ids: string[]) => void;
+  /** align every selected video/audio clip against the first selected clip */
+  onSync?: (ids: string[]) => void;
+  syncing?: boolean;
   run: (cmd: Command | Command[], opts?: { label?: string; coalesce?: string }) => void;
   /** a right-click (two fingers on a Mac) on a clip or an empty spot */
   onMenu?: (m: { x: number; y: number; clipId: string | null; ms: number; trackId: string | null }) => void;
@@ -122,7 +125,7 @@ export const timecode = (ms: number, fps: number) => {
 };
 const PRO_TONE = { video: "#2f4f6e", image: "#3a5470", audio: "#2f6b4f", text: "#7346b0" } as const;
 
-export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic", range }: Props) {
+export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect, onSync, syncing = false, run, player, compact, readOnly, onEmpty, onTransition, onDropFiles, onDropAsset, onMenu, look = "classic", range }: Props) {
   const pro = look === "pro";
   // track labels like V1, V2, A1, T1 (bottom-up for pictures, top-down for sound)
   const labels = new Map<string, string>();
@@ -132,6 +135,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   const HEAD = compact ? 0 : 144;
   const scroller = useRef<HTMLDivElement>(null);
   const [pad, setPad] = useState(0);
+  const [selectionMode, setSelectionMode] = useState(false);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el || !compact) return;
@@ -354,6 +358,11 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const touch = e.pointerType === "touch";
     const isSel = selected.includes(c.id);
     const add = e.shiftKey || e.metaKey || e.ctrlKey;
+    // Explicit multi-select mode makes batch actions possible on touch screens without a modifier key.
+    if (selectionMode) {
+      onSelect(isSel ? selected.filter((id) => id !== c.id) : [...selected, c.id]);
+      return;
+    }
     // on a phone an unselected clip only gets selected (its touch scrolls the timeline)
     if (touch && !isSel && mode === "move") return;
     // Shift/Ctrl/Cmd on a selected clip takes it out of the selection
@@ -762,6 +771,18 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
 
   return (
     <div dir="ltr" data-no-press className="relative flex h-full min-h-0 flex-col bg-jw-bg-2">
+      {compact && !readOnly && (
+        <div className="absolute right-2 top-2 z-40 flex max-w-[calc(100%-1rem)] gap-1" dir="rtl">
+          <button type="button" className={`jw-btn ${selectionMode ? "jw-btn-primary" : "jw-3d"} !min-h-8 !px-2.5 !py-1 text-[11px] shadow`} onClick={() => setSelectionMode((v) => !v)} aria-pressed={selectionMode}>
+            {selectionMode ? "✓ اختر المقاطع" : "تحديد عدة مقاطع"}
+          </button>
+          {selectionMode && selected.length > 1 && onSync && (
+            <button type="button" className="jw-btn jw-btn-primary !min-h-8 !px-2.5 !py-1 text-[11px] shadow" disabled={syncing} onClick={() => onSync(selected)}>
+              {syncing ? "أزامن…" : `🎯 زامن ${selected.length} مقاطع`}
+            </button>
+          )}
+        </div>
+      )}
       <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
         <div ref={content} className="relative" style={{ width: contentW, minHeight: "100%" }}>
           {/* ruler */}

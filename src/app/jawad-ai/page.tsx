@@ -4,7 +4,8 @@ import Home from "@/components/jawad/Home";
 import Landing, { type LandingTool } from "@/components/jawad/Landing";
 import { loadCreditSettings } from "@/lib/credits/settings";
 import { liveAds } from "@/lib/jawad/server/ads";
-import { canUseJawad, jawadLogin, jawadSession } from "@/lib/jawad/server/access";
+import { canUseJawad, freeFor, jawadLogin, jawadSession } from "@/lib/jawad/server/access";
+import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { barSections } from "@/lib/jawad/server/bar";
 import { worksPage } from "@/lib/jawad/server/works";
@@ -69,6 +70,7 @@ export default async function JawadHome() {
   // every branch this person may open (the same as the top bar), the owner's hidden ones too
   const sections = (await barSections(rt, user, owner)).filter((s) => s.enabled || owner);
   const allowed = await canUseJawad(user);
+  const freeImageAvailable = !owner && allowed && await signupFreeImageAvailable(user.id, user.created_at) && !(await freeFor(user));
   const recent = allowed ? (await worksPage(user.id, "all", null).catch(() => null))?.items.map(thumb).filter((t): t is NonNullable<typeof t> => Boolean(t)).slice(0, 10) ?? [] : [];
   const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string };
   const first = String(meta.full_name || meta.name || "").trim().split(/\s+/)[0] ?? "";
@@ -78,6 +80,7 @@ export default async function JawadHome() {
       first={first}
       owner={owner}
       userId={user.id}
+      freeImageAvailable={freeImageAvailable}
       sections={sections.map((s) => ({ id: s.id, name: s.name, path: s.path, output: s.output, implementation: s.implementation }))}
       tools={[
         ...sections.map((s) => ({ href: s.path, name: s.name, ...(TOOL[s.implementation] ?? { icon: "✨", line: BLURB[s.implementation] ?? "", tint: "#8b5cf6" }) })),
