@@ -21,6 +21,7 @@ import { FILM_STAGES } from "@config/film";
 import { CHAT_GUIDANCE } from "@config/jawad/chat-guidance";
 import type { FilmProject } from "./types";
 import { managedAgentConfigured, managedAgentTurn, managedJson } from "@/lib/managed-agent";
+import { journeyIntakeText, normalizeJourneyIntake } from "./intake";
 
 const db = () => createAdminClient();
 
@@ -86,6 +87,13 @@ export async function seriesContext(series: FilmSeries, o: { full: boolean } = {
   lines.push(`# المسلسل: «${series.title}» (${series.mode === "team" ? "فريق" : "فردي"}، قائده @${names.get(series.user_id) ?? "؟"})`);
   lines.push("## الوصف المطوّر", series.bible?.trim() || (series.about ? `(فكرة أولية) ${series.about}` : "(لسه ما انكتب)"));
   lines.push("## الشكل (الستايل)", series.style?.trim() || "(لسه ما انحدد)");
+  if (series.workflow_version === 2 && series.intake) {
+    try {
+      lines.push("## بوابة الرحلة الجديدة (معتمدة)", journeyIntakeText(normalizeJourneyIntake(series.intake)));
+    } catch {
+      // Keep the series usable if an early intake draft was incomplete.
+    }
+  }
   const people = cast.filter((c) => c.kind === "character");
   const places = cast.filter((c) => c.kind === "place");
   lines.push("## الشخصيات", people.length ? people.map((c) => `- ${c.name}${c.status === "ready" ? " [صورتها جاهزة]" : ""}: ${cut(c.description, o.full ? 700 : 250)}`).join("\n") : "(ولا شخصية بعد)");
@@ -128,6 +136,13 @@ async function filmContext(project: FilmProject, series: FilmSeries | null) {
     project.story || "(فاضية)",
   ];
   if (project.fixed_facts) lines.push("## أشياء ثابتة", project.fixed_facts);
+  if (project.workflow_version === 2 && project.intake) {
+    try {
+      lines.push("## بوابة الرحلة الجديدة (معتمدة)", journeyIntakeText(normalizeJourneyIntake(project.intake)));
+    } catch {
+      // Keep old projects readable even if an early intake draft was incomplete.
+    }
+  }
   const research = researchText(readResearch(project.research));
   if (research) lines.push("## بحث معتمد", research);
   if (screenplay) lines.push(`## السيناريو${screenplay.status === "approved" ? " (معتمد)" : " (آخر نسخة)"}`, cut(screenplay.body, 14000));

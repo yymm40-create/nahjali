@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireFilmApiUser } from "@/lib/film/access";
 import { projectFields } from "@/lib/film/validate";
 import { FILM_LIMITS } from "@config/film";
+import { normalizeJourneyIntake } from "@/lib/film/intake";
 
 /** Creates a new film project from the user's title and story. */
 export const POST = handle(async (req: Request) => {
@@ -21,10 +22,12 @@ export const POST = handle(async (req: Request) => {
 
   // «هل تبيني أبحث لتطوير القصة؟» is kept with the film (without migration 0037 the film is made without it)
   const research = body.research === "yes" || body.research === "no" ? { asked: body.research, items: [] } : null;
-  const row: Record<string, unknown> = { user_id: user.id, ...fields, ...(research ? { research } : {}) };
+  const intake = body.workflowVersion === 2 ? normalizeJourneyIntake(body.intake) : null;
+  if (intake?.questions.some((question) => question.required)) throw new UserError("كمّل أسئلة سجاد قبل إنشاء المشروع.", 409);
+  const row: Record<string, unknown> = { user_id: user.id, ...fields, ...(research ? { research } : {}), ...(intake ? { intake, workflow_version: 2 } : {}) };
   let made = await db.from("film_projects").insert(row).select("id").single();
   // the columns that came with a migration: without it the film is still made, one piece lighter («kind» → a scene)
-  for (const drop of ["kind", "research"]) {
+  for (const drop of ["intake", "workflow_version", "kind", "research"]) {
     if (!made.error || !(drop in row)) continue;
     delete row[drop];
     made = await db.from("film_projects").insert(row).select("id").single();

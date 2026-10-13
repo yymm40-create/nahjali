@@ -34,7 +34,7 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
   if (!project.series_id) {
     const [progress, impacts, cost] = await Promise.all([filmProgress(project), impactsOf(project.id), projectCost(project.id)]);
     return (
-      <FilmStage projectId={id} title={project.title} stage={project.stage} videosOpen={Boolean(count)} cost={credits(cost.total)} progress={progress} impacts={impacts}>
+      <FilmStage projectId={id} title={project.title} kind={project.kind === "film" ? "film" : "scene"} stage={project.stage} videosOpen={Boolean(count)} cost={credits(cost.total)} progress={progress} impacts={impacts}>
         {children}
         {/* سجاد: the consultant, who knows this film */}
         <SajjadPanel kind="film" id={id} />

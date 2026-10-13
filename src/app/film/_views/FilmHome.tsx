@@ -40,8 +40,8 @@ export default async function FilmHomeView({ base }: { base: string }) {
       <div className="mx-auto max-w-5xl space-y-8 px-3 pb-20">
         <header className="fs-hero">
           <p className="fs-kicker">استوديو الجواد</p>
-          <h1>مشهدك السينمائي، من الفكرة إلى الشاشة</h1>
-          <p>تكتب فكرتك، والمشهد يُصنع معك خطوة خطوة في صفحة وحدة، وأنت اللي تعتمد كل شي.</p>
+          <h1>قصتك، من الفكرة إلى الشاشة</h1>
+          <p>مشهد قصير أو فيلم كامل أو مسلسل: سجاد يفهمك ويسأل الناقص، ثم يمشي كل مشهد في نفس رحلة الجودة وأنت تعتمد كل خطوة.</p>
         </header>
 
         {/* what to start — kept apart from the person's own projects */}
@@ -51,8 +51,8 @@ export default async function FilmHomeView({ base }: { base: string }) {
             <Link href={`${base}/new`} className="fs-poster new">
               <span className="ic" aria-hidden>🎬</span>
               <span className="st">جديد</span>
-              <h3>مشهد جديد</h3>
-              <p>فكرتك بسطرين، والسيناريست يبدأ معك.</p>
+              <h3>مشهد أو فيلم جديد</h3>
+              <p>سجاد يفهم الفكرة أول، ثم يسلّمها للسيناريست بدون تخمين.</p>
             </Link>
             <Link href={`${base}/series`} className="fs-poster series">
               <span className="ic" aria-hidden>📺</span>

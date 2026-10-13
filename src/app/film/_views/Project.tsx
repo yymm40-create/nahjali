@@ -11,6 +11,7 @@ import ProjectEditor from "../[id]/ProjectEditor";
 import References from "../[id]/References";
 
 import { storage } from "@/lib/storage";
+import JourneyUpgrade from "../JourneyUpgrade";
 /** Where each project stage continues. */
 const NEXT_PATH: Record<string, string> = { screenwriter: "/script", sheets: "/sheets", director: "/director", voices: "/voices", done: "/videos" };
 
@@ -46,6 +47,10 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
         <header className="space-y-3">
           <h1 className="display text-4xl">{project.title}</h1>
         </header>
+      )}
+
+      {(project.workflow_version ?? 1) < 2 && (
+        <JourneyUpgrade targetType="project" targetId={project.id} initialKind={project.kind === "film" ? "film" : "scene"} title={project.title} story={project.story} fixedFacts={project.fixed_facts} targetDurationSec={project.target_duration_sec} />
       )}
 
       <section className="card space-y-3 p-4">

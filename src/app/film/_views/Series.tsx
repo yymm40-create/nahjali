@@ -14,6 +14,7 @@ import TeamWallet from "../series/TeamWallet";
 import { FILM_STAGES } from "@config/film";
 import SeriesBoard from "../series/SeriesBoard";
 import SeriesTeam from "../series/SeriesTeam";
+import JourneyUpgrade from "../JourneyUpgrade";
 
 /**
  * One series: its groundwork (description, look, characters, places), its episodes with their scenes (small squares on
@@ -52,6 +53,8 @@ export default async function SeriesView({ id, base }: { id: string; base: strin
         {series.about && <p className="whitespace-pre-wrap text-sm font-bold leading-7 text-muted">{series.about}</p>}
         {!owner && <p className="rounded-2xl bg-gold/15 p-3 text-sm font-bold">أنت في فريق هذا المسلسل: تشتغل على مشاهده بالصلاحيات اللي أعطاك إياها صاحبه، وكل شي تصنعه ينقص من «نقود الفريق الذكي».</p>}
       </header>
+
+      {owner && (series.workflow_version ?? 1) < 2 && <JourneyUpgrade targetType="series" targetId={series.id} initialKind="series" title={series.title} story={series.about} />}
 
       <StepWhy step="series" />
 

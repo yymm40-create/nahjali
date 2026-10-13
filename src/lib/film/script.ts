@@ -17,6 +17,7 @@ import {
   type ScriptKind,
 } from "@config/film-prompts/screenwriter";
 import { filmKind, readFilmKind } from "@config/film";
+import { journeyIntakeText, normalizeJourneyIntake } from "./intake";
 
 const STAGE = "screenwriter";
 const SYSTEM = `${SCREENWRITER_PROMPT}\n\n${APP_INTEGRATION}`;
@@ -59,6 +60,13 @@ export function storyMessage(p: FilmProject) {
   const parts = [`نوع العمل: ${kind.ar}`, kind.brief, "", `عنوان المشروع: ${p.title}`, "", p.story];
   if (p.fixed_facts) parts.push("", "أشياء ثابتة لا تتغير:", p.fixed_facts);
   if (p.target_duration_sec) parts.push("", `مدة تقريبية: ${p.target_duration_sec} ثانية`);
+  if (p.workflow_version === 2 && p.intake) {
+    try {
+      parts.push("", journeyIntakeText(normalizeJourneyIntake(p.intake)));
+    } catch {
+      // A malformed legacy value must not block the existing screenplay journey.
+    }
+  }
   // what سجاد found and the person approved
   const research = researchText(readResearch(p.research));
   if (research) parts.push("", research);

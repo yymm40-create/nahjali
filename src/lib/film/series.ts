@@ -26,6 +26,8 @@ export interface FilmSeries {
   title: string;
   about: string;
   mode: SeriesMode;
+  workflow_version?: 1 | 2;
+  intake?: unknown;
   /** the description developed with سجاد (migration 0034) */
   bible?: string;
   /** the series' look, in words */
@@ -98,7 +100,7 @@ export async function requireSeries(id: unknown, userId: string, ownerOnly = fal
 
 const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\p{Cc}\p{Cf}]/gu, (c) => (c === "\n" ? c : " ")).trim().slice(0, max) : "");
 
-export async function createSeries(userId: string, b: { title?: unknown; about?: unknown; mode?: unknown; research?: unknown }) {
+export async function createSeries(userId: string, b: { title?: unknown; about?: unknown; mode?: unknown; research?: unknown; intake?: unknown; workflowVersion?: unknown }) {
   const title = cleanText(b.title, 200).replace(/\s+/g, " ");
   if (!title) throw new UserError("اكتب اسم المسلسل.", 400);
   if (title.length > FILM_LIMITS.titleMax) throw new UserError(`الاسم طويل (${FILM_LIMITS.titleMax} حرف كحد أقصى).`, 400);
@@ -107,16 +109,26 @@ export async function createSeries(userId: string, b: { title?: unknown; about?:
   if ((count ?? 0) >= SERIES_LIMITS.seriesPerUser) throw new UserError(`وصلت للحد الأقصى للمسلسلات (${SERIES_LIMITS.seriesPerUser}).`, 403);
   // «هل تبيني أبحث لتطوير القصة؟» is kept with the series (without migration 0037 the series is made without it)
   const research = b.research === "yes" || b.research === "no" ? { asked: b.research, items: [] } : null;
-  const row: Record<string, unknown> = { user_id: userId, title, about: cleanText(b.about, SERIES_LIMITS.aboutMax), mode: b.mode === "team" ? "team" : "solo", ...(research ? { research } : {}) };
+  const intake = b.workflowVersion === 2 ? (await import("./intake")).normalizeJourneyIntake(b.intake) : null;
+  if (intake?.questions.some((question) => question.required)) throw new UserError("كمّل أسئلة سجاد قبل إنشاء المسلسل.", 409);
+  const pendingPlan = intake?.episodePlan.length ? {
+    note: "خطة الرحلة الجديدة التي أكدها المستخدم مع سجاد.",
+    episodes: intake.episodePlan.map((episode) => ({ number: episode.number, title: episode.title, summary: episode.summary, scenes: episode.scenes.map((scene) => ({ title: scene.slice(0, 80), brief: scene, assignee: "" })) })),
+  } : null;
+  const row: Record<string, unknown> = { user_id: userId, title, about: cleanText(b.about, SERIES_LIMITS.aboutMax), mode: b.mode === "team" ? "team" : "solo", ...(research ? { research } : {}), ...(intake ? { intake, workflow_version: 2, bible: intake.understanding.slice(0, 30000), pending_plan: pendingPlan } : {}) };
   let made = await db().from("film_series").insert(row).select("*").single();
-  if (made.error && research) {
+  if (made.error && (research || intake)) {
     delete row.research;
+    delete row.intake;
+    delete row.workflow_version;
+    delete row.bible;
     made = await db().from("film_series").insert(row).select("*").single();
   }
   const { data, error } = made;
   if (error) throw new UserError(NOT_READY, 503);
   const series = data as FilmSeries;
   await addEpisode(series, "");
+  if (pendingPlan) await (await import("./sajjad")).applyPlan(series, userId);
   return series;
 }
 

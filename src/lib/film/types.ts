@@ -9,6 +9,9 @@ export interface FilmProject {
   target_duration_sec: number | null;
   stage: FilmStage;
   video_model: "seedance-2.5" | "seedance-2.0";
+  kind?: "scene" | "film";
+  workflow_version?: 1 | 2;
+  intake?: unknown;
   /** «المسلسل الذكي»: the series and episode this scene belongs to (null for a standalone film) */
   series_id?: string | null;
   episode_id?: string | null;
