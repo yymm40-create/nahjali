@@ -41,19 +41,19 @@ export default function FilmNav({ projectId, stage, videosOpen }: { projectId: s
           const done = order(stage) > order(s.reached) || (s.key === "story" && order(stage) > 0);
           const body = (
             <>
-              <span className="film-option-icon" aria-hidden>{s.icon}</span>
-              <span className="film-option-step">{!open ? "🔒" : done ? "✓" : i + 1}</span>
-              <h3>{s.label}</h3>
+              <span className="film-step-icon" aria-hidden>{s.icon}</span>
+              <span className="film-step-label">{s.label}</span>
+              <span className="film-step-state">{!open ? "🔒" : done ? "✓" : i + 1}</span>
             </>
           );
           return (
             <li key={s.key} data-active={active || undefined}>
               {open ? (
-                <Link href={href} aria-current={active ? "page" : undefined} className="film-option" data-tone={active ? "gold" : done ? undefined : "light"} data-active={active}>
+                <Link href={href} aria-current={active ? "page" : undefined} className="film-step-tab" data-done={done || undefined} data-active={active || undefined}>
                   {body}
                 </Link>
               ) : (
-                <span aria-disabled="true" className="film-option" data-tone="light" title={s.ready ? "توصل له بعد ما تخلص اللي قبله" : "قريبًا"}>
+                <span aria-disabled="true" className="film-step-tab" title={s.ready ? "توصل له بعد ما تخلص اللي قبله" : "قريبًا"}>
                   {body}
                 </span>
               )}

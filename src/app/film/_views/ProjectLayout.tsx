@@ -14,6 +14,7 @@ import FilmStage from "../stage/FilmStage";
 import ContinuityAlerts from "../series/ContinuityAlerts";
 import { openAlerts, readWatch } from "@/lib/film/watch";
 import Riyal from "@/components/Riyal";
+import FilmBackButton from "../FilmBackButton";
 
 /**
  * Every page of a film project lives inside the scene's one shell («المشهد»: the steps' rail, the meter, the library,
@@ -63,19 +64,22 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
   }
   return (
     <div className="space-y-5">
-      {scene && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href={scene.href} className="inline-flex items-center gap-1 rounded-full bg-[#0b1d47] px-3 py-1 text-xs font-extrabold text-white">
-            → {scene.text}
-          </Link>
-          {scene.team && (
-            <span className="team-wallet inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold text-white" title="كل شي ينصنع في هذا المشهد ينقص من نقود الفريق الذكي">
-              <Riyal halalas={scene.team.balance} size={18} /> للفريق
-            </span>
-          )}
-          {scene.team?.rights && <span className="chip text-xs">🔑 {scene.team.rights}</span>}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <FilmBackButton fallback={base} className="film-back" />
+        {scene && (
+          <>
+            <Link href={scene.href} className="inline-flex items-center gap-1 rounded-full bg-[#0b1d47] px-3 py-1 text-xs font-extrabold text-white">
+              → {scene.text}
+            </Link>
+            {scene.team && (
+              <span className="team-wallet inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold text-white" title="كل شي ينصنع في هذا المشهد ينقص من نقود الفريق الذكي">
+                <Riyal halalas={scene.team.balance} size={18} /> للفريق
+              </span>
+            )}
+            {scene.team?.rights && <span className="chip text-xs">🔑 {scene.team.rights}</span>}
+          </>
+        )}
+      </div>
       <FilmNav projectId={id} stage={project.stage} videosOpen={Boolean(count)} />
       {project.series_id && (alerts.length > 0 || project.stage !== "screenwriter") && (
         <ContinuityAlerts seriesId={project.series_id} sceneId={id} sceneKind="film" canAct alerts={alerts.map((a) => ({ ...a }))} />

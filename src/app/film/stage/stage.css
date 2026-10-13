@@ -146,26 +146,20 @@ html:has(.fs) body,
 @keyframes fs-drift { to { transform: translateY(-40px); } }
 @keyframes fs-grain { 0% { transform: translate(0, 0); } 33% { transform: translate(-2%, 1%); } 66% { transform: translate(1%, -2%); } 100% { transform: translate(0, 0); } }
 
-/* ── layout: the rail at the start side, the work beside it ── */
+/* ── layout: one light chrome row above the work ── */
 .fs-wrap {
-  display: grid;
+  display: block;
   gap: 18px;
-  grid-template-columns: minmax(0, 1fr);
   max-width: 1240px;
   margin: 0 auto;
   padding: 10px 14px 96px;
 }
 @media (min-width: 1024px) {
   .fs-wrap {
-    grid-template-columns: var(--fs-rail-w) minmax(0, 1fr);
     padding: 18px 20px 60px;
-    align-items: start;
-  }
-  .fs-side {
-    position: sticky;
-    top: calc(var(--jw-header-h, 0px) + 12px);
   }
 }
+.fs-side { margin-bottom: 18px; }
 
 /* glass panels: a thin blue edge and a blue light on top, like a lit screen */
 .fs-glass {
@@ -189,6 +183,22 @@ html:has(.fs) body,
   gap: 12px;
   padding: 10px 14px;
 }
+.fs-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--fs-line-2);
+  border-radius: 10px;
+  background: rgba(190, 215, 255, 0.06);
+  color: var(--fs-ink);
+  font-size: 0.75rem;
+  font-weight: 900;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+.fs-back:hover { background: var(--fs-ember-soft); border-color: rgba(47, 116, 255, 0.45); }
+.fs-back:active { transform: scale(0.95); }
 .fs-top::after {
   content: "";
   position: absolute;
@@ -310,36 +320,28 @@ html:has(.fs) body,
 /* ── the rail: the steps, numbered ── */
 .fs-rail {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
-  padding: 8px;
+  padding: 6px;
   scrollbar-width: none;
   scroll-snap-type: x proximity;
 }
 .fs-rail::-webkit-scrollbar { display: none; }
-@media (min-width: 1024px) {
-  .fs-rail {
-    flex-direction: column;
-    overflow: visible;
-    padding: 10px;
-  }
-}
 .fs-step {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   flex: 0 0 auto;
-  min-width: 150px;
-  padding: 9px 12px;
-  border-radius: 14px;
+  min-width: 116px;
+  padding: 6px 9px;
+  border-radius: 11px;
   color: var(--fs-muted);
   text-decoration: none;
   border: 1px solid transparent;
   scroll-snap-align: center;
   transition: background 0.25s, color 0.25s, border-color 0.25s, transform 0.25s;
 }
-@media (min-width: 1024px) { .fs-step { min-width: 0; } }
 .fs-step:hover { background: rgba(190, 215, 255, 0.05); color: var(--fs-ink); }
 .fs-step[aria-current="page"] {
   background: var(--fs-ember-soft);
@@ -351,9 +353,9 @@ html:has(.fs) body,
 .fs-step .n {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   font-weight: 900;
   font-size: 0.8rem;
   background: rgba(190, 215, 255, 0.07);
@@ -364,9 +366,9 @@ html:has(.fs) body,
 .fs-step[data-done="true"] .n { background: rgba(90, 215, 163, 0.14); color: var(--fs-mint); border-color: rgba(90, 215, 163, 0.35); }
 .fs-step[aria-current="page"] .n { background: var(--fs-ember); color: #ffffff; border-color: transparent; }
 .fs-step .t { min-width: 0; flex: 1; }
-.fs-step .t b { display: block; font-size: 0.86rem; font-weight: 800; line-height: 1.3; }
-.fs-step .t small { display: block; font-size: 0.68rem; color: var(--fs-faint); font-weight: 700; }
-.fs-step .bar { position: absolute; inset-inline: 12px; inset-block-end: 4px; height: 2px; border-radius: 2px; background: rgba(190, 215, 255, 0.07); overflow: hidden; }
+.fs-step .t b { display: block; font-size: 0.76rem; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+.fs-step .t small { display: none; }
+.fs-step .bar { position: absolute; inset-inline: 9px; inset-block-end: 2px; height: 2px; border-radius: 2px; background: rgba(190, 215, 255, 0.07); overflow: hidden; }
 .fs-step .bar > i { display: block; height: 100%; background: var(--fs-mint); transition: width 0.6s ease; }
 .fs-step[aria-current="page"] .bar > i { background: var(--fs-ember-2); }
 .fs-step[data-ask="true"]::after {

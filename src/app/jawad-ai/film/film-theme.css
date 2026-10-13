@@ -179,16 +179,65 @@
 .film-option p { font-size: 0.9rem; opacity: 0.85; line-height: 1.6; }
 .film-option[data-active="true"] { outline: 3px solid var(--film-gold); outline-offset: 3px; }
 
-/* the steps of a project: smaller swipe cards */
-.film-steps .film-option {
-  width: min(42vw, 150px);
-  min-height: 150px;
-  padding: 0.9rem;
-  border-radius: 20px;
+/* project navigation: a thin scrollable strip, not a row of heavy cards */
+.film-steps .film-swipe {
+  gap: 0.4rem;
+  padding-block: 0.3rem 0.55rem;
+  scroll-snap-type: x proximity;
 }
-.film-steps .film-option .film-option-icon { font-size: 2.3rem; inset-block-start: 0.8rem; inset-inline-start: 0.8rem; }
-.film-steps .film-option h3 { font-size: 1rem; }
-.film-steps .film-option .film-option-step { font-size: 0.65rem; top: 0.7rem; }
+.film-step-tab {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid var(--jw-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--jw-surface) 88%, transparent);
+  color: var(--jw-muted);
+  box-shadow: 0 8px 20px -18px rgba(11, 29, 71, 0.75);
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+}
+.film-step-tab:hover { color: var(--film-navy); border-color: var(--jw-line-strong); }
+.film-step-tab:active { transform: scale(0.96); }
+.film-step-tab[data-active="true"] {
+  background: linear-gradient(180deg, var(--film-gold-2), var(--film-gold));
+  border-color: var(--film-gold);
+  color: var(--film-navy);
+  box-shadow: 0 8px 22px -14px rgba(226, 167, 44, 0.8);
+}
+.film-step-tab[data-done="true"]:not([data-active="true"]) { color: var(--film-blue); }
+.film-step-tab[aria-disabled="true"] { cursor: not-allowed; opacity: 0.48; filter: grayscale(0.5); }
+.film-step-icon { font-size: 1rem; line-height: 1; }
+.film-step-state {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 0.63rem;
+}
+.film-back {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--jw-line-strong);
+  border-radius: 999px;
+  background: var(--jw-surface);
+  color: var(--film-navy);
+  font-size: 0.75rem;
+  font-weight: 900;
+  box-shadow: 0 8px 20px -16px rgba(11, 29, 71, 0.7);
+  transition: background 0.2s, transform 0.15s;
+}
+.film-back:hover { background: var(--jw-surface-2); }
+.film-back:active { transform: scale(0.95); }
 
 /* ── the background: reels, a strip of film, a spotlight, a clapper ── */
 .film-decor {

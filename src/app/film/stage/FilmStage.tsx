@@ -20,6 +20,7 @@ import LibraryDrawer from "./LibraryDrawer";
 import Meter, { RunningList } from "./Meter";
 import "./stage.css";
 import RobotFace from "@/components/RobotFace";
+import FilmBackButton from "../FilmBackButton";
 
 const order = (s: Stage) => FILM_STAGES.findIndex((x) => x.key === s);
 
@@ -90,6 +91,7 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
       <div className="fs-wrap">
         <div className="fs-side space-y-3">
           <div className="fs-glass fs-top">
+            <FilmBackButton fallback={filmBase} className="fs-back" />
             <Meter percent={progress.percent} busy={running} />
             <div className="fs-title">
               <span className="fs-kicker">{kind === "film" ? "فيلم سينمائي" : "مشهد قصير"}</span>
@@ -129,7 +131,7 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
           </nav>
           <div className="flex gap-2">
             <button type="button" className="fs-tool flex-1 justify-center" onClick={() => openSajjad()}><RobotFace id="sajjad" size={18} /> اسأل سجاد</button>
-            <Link href={filmBase} className="fs-tool justify-center">← أفلامي</Link>
+            <Link href={filmBase} className="fs-tool justify-center">🎞️ أفلامي</Link>
           </div>
         </div>
 

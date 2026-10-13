@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { overallPercent, runningPercent, TYPICAL_MS } from "@/lib/film/progress-math";
 import { STEPS } from "@/app/film/stage/steps";
-import { FILM_STAGES } from "@config/film";
+import { FILM_STAGES, VIDEO_OPEN_RESOLUTIONS, VIDEO_RESOLUTIONS } from "@config/film";
 
 describe("«العداد»", () => {
   it("a running piece ticks from 1 to 99 and never says done by itself", () => {
@@ -32,5 +32,9 @@ describe("«المشهد»: the rail", () => {
     expect(STEPS.map((s) => s.key)).toEqual(["story", "script", "sheets", "director", "videos", "voices", "edit"]);
     for (const s of STEPS) expect(FILM_STAGES.some((x) => x.key === s.reached)).toBe(true);
     expect(new Set(STEPS.map((s) => s.path)).size).toBe(STEPS.length);
+  });
+
+  it("offers every configured video quality in the director journey", () => {
+    expect(VIDEO_OPEN_RESOLUTIONS).toEqual(Object.keys(VIDEO_RESOLUTIONS));
   });
 });
