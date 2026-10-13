@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
+import "./tour.css";
 import { TOUR_ASK, TOUR_DONE, TOUR_PATHS, TOUR_TRY, TOUR_TRY_MAX, TOUR_WELCOME, tourProgress, type TourAnswers, type TourPath } from "@config/jawad/tour";
 
 type Page = "welcome" | "ask" | "try" | "paths" | TourPath["id"] | "done";
@@ -127,10 +128,10 @@ export default function Tour({ userId }: { userId: string }) {
       </button>
 
       {open && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/60 sm:items-center sm:p-6" role="dialog" aria-label="الجولة التعريفية" dir="rtl">
-          <div className="jw-panel flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl">
-            <header className="flex items-center gap-3 border-b border-jw-line px-4 py-3">
-              <Ring p={progress} />
+        <div className="tour-backdrop fixed inset-0 z-[95] flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-label="الجولة التعريفية" dir="rtl">
+          <div className="tour-modal jw-panel flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl">
+            <header className="tour-header flex items-center gap-3 border-b border-jw-line px-4 py-3 sm:px-6">
+              <span className="tour-ring"><Ring p={progress} /></span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold">الجولة التعريفية: كيف تصنع فيلمًا من الصفر</p>
                 <p className="text-xs text-jw-muted">تقدر تتخطاها الآن وترجع لها متى شئت من الدائرة أعلى الصفحة.</p>
@@ -140,17 +141,17 @@ export default function Tour({ userId }: { userId: string }) {
               </button>
             </header>
 
-            <div className="jw-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+            <div className="tour-progress" aria-hidden><span style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+            <div className="tour-body jw-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-5 sm:p-7">
               {page === "welcome" && (
                 <>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="tour-cover-grid grid grid-cols-4 gap-2">
                     {TOUR_WELCOME.images.map((src) => (
                       <Image key={src} src={src} alt="" width={240} height={135} className="aspect-video w-full rounded-lg object-cover" />
                     ))}
                   </div>
-                  <h2 className="text-xl font-black">{TOUR_WELCOME.title}</h2>
-                  <p className="leading-8">{TOUR_WELCOME.body}</p>
-                  <ul className="space-y-1.5 text-sm">
+                  <div className="tour-welcome-copy"><span className="tour-kicker">رحلتك تبدأ من هنا · الجواد الذكي</span><h2 className="text-2xl font-black sm:text-3xl">{TOUR_WELCOME.title}</h2><p className="leading-8">{TOUR_WELCOME.body}</p></div>
+                  <ul className="tour-points space-y-1.5 text-sm">
                     {TOUR_WELCOME.points.map((p) => (
                       <li key={p}>✅ {p}</li>
                     ))}
@@ -169,13 +170,13 @@ export default function Tour({ userId }: { userId: string }) {
                   </div>
                   <p className="leading-8">{TOUR_ASK.body}</p>
                   {TOUR_ASK.questions.map((q) => (
-                    <fieldset key={q.id} className="space-y-2">
+                    <fieldset key={q.id} className="tour-question space-y-2">
                       <legend className="font-bold">{q.q}{q.multi && <span className="text-xs font-normal text-jw-muted"> (يمكنك اختيار أكثر من واحد)</span>}</legend>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="tour-options flex flex-wrap gap-2">
                         {q.options.map((o) => {
                           const on = (answers[q.id] ?? []).includes(o);
                           return (
-                            <button key={o} type="button" aria-pressed={on} className={`rounded-full border px-3 py-1.5 text-sm ${on ? "border-jw-accent bg-jw-accent/15 font-bold" : "border-jw-line"}`} onClick={() => pick(q.id, o, q.multi)}>
+                            <button key={o} type="button" aria-pressed={on} className={`tour-option rounded-full border px-3 py-1.5 text-sm ${on ? "border-jw-accent bg-jw-accent/15 font-bold" : "border-jw-line"}`} onClick={() => pick(q.id, o, q.multi)}>
                               {o}
                             </button>
                           );
@@ -183,7 +184,7 @@ export default function Tour({ userId }: { userId: string }) {
                       </div>
                     </fieldset>
                   ))}
-                  <label className="block space-y-1">
+                  <label className="tour-word-input block space-y-1">
                     <span className="font-bold">{TOUR_ASK.words}</span>
                     <input className="jw-input w-full" maxLength={120} value={words} onChange={(e) => setWords(e.target.value)} placeholder="مثال: قصص أطفال، إعلانات مطعم" dir="auto" />
                   </label>
@@ -208,7 +209,7 @@ export default function Tour({ userId }: { userId: string }) {
                     ))}
                   </ul>
                   {image ? (
-                    <div className="space-y-3">
+                  <div className="tour-result space-y-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={image} alt="صورتك الأولى" className="mx-auto max-h-80 rounded-xl" />
                       <p className="text-center font-bold text-jw-ok">هذه صورتك الأولى، صنعتها بوصفك.</p>
@@ -217,8 +218,8 @@ export default function Tour({ userId }: { userId: string }) {
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <textarea className="jw-textarea w-full" rows={3} maxLength={TOUR_TRY_MAX} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="مثال: طفل يقرأ كتابًا تحت شجرة نخيل عند الغروب…" disabled={busy} dir="auto" />
+                    <div className="tour-create space-y-3">
+                      <textarea className="tour-prompt jw-textarea w-full" rows={3} maxLength={TOUR_TRY_MAX} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="اكتب فكرتك هنا… مثال: طفل يقرأ كتابًا تحت شجرة نخيل عند الغروب" disabled={busy} dir="auto" />
                       <div className="flex flex-wrap gap-1.5">
                         {TOUR_TRY.examples.map((x) => (
                           <button key={x} type="button" className="rounded-full border border-jw-line px-3 py-1 text-xs hover:bg-jw-surface-2" onClick={() => setPrompt(x)} disabled={busy}>
@@ -246,7 +247,7 @@ export default function Tour({ userId }: { userId: string }) {
                   <p className="leading-8">في الجواد الذكي طريقان لصناعة الفيلم. كلاهما يوصلك للنتيجة نفسها، والفرق في مقدار ما تتحكم به بنفسك.</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {TOUR_PATHS.map((p) => (
-                      <button key={p.id} type="button" className={`overflow-hidden rounded-2xl border text-start hover:border-jw-accent ${s.path === p.id ? "border-jw-accent ring-2 ring-jw-accent/30" : "border-jw-line"}`} onClick={() => (save({ ...s, seen: true, path: p.id, done: [...new Set([...s.done, "path"])] }), go(p.id))}>
+                      <button key={p.id} type="button" aria-pressed={s.path === p.id} className={`tour-path overflow-hidden rounded-2xl border text-start hover:border-jw-accent ${s.path === p.id ? "border-jw-accent ring-2 ring-jw-accent/30" : "border-jw-line"}`} onClick={() => (save({ ...s, seen: true, path: p.id, done: [...new Set([...s.done, "path"])] }), go(p.id))}>
                         <Image src={p.image} alt="" width={480} height={270} className="aspect-video w-full object-cover" />
                         <span className="block space-y-1 p-3">
                           <b className="block">{p.title}</b>

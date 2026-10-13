@@ -16,6 +16,7 @@ export interface BarSection {
 }
 
 const MORE = [
+  { href: "/jawad-ai", icon: "grid", name: "الرئيسية" },
   { href: "/jawad-ai/library", icon: "layers", name: "المكتبة" },
   { href: "/jawad-ai/learn", icon: "book", name: "دروسي" },
   { href: "/jawad-ai/coins", icon: "wallet", name: "رصيدي" },
@@ -25,7 +26,7 @@ const MORE = [
  * The sections, in a side menu: a «☰» button in the header opens a drawer from the side with every enabled
  * section (built from the central registry) and the person's own pages. Closes on a choice, Escape or outside.
  */
-export default function SectionsBar({ sections }: { sections: BarSection[] }) {
+export default function SectionsBar({ sections, siteSections = [] }: { sections: BarSection[]; siteSections?: BarSection[] }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
@@ -41,7 +42,7 @@ export default function SectionsBar({ sections }: { sections: BarSection[] }) {
   }, [open]);
 
   const drawer = (
-    <div className="fixed inset-0 z-[90] flex" dir="rtl" role="dialog" aria-label="أقسام JAWAD AI" onClick={() => setOpen(false)}>
+    <div className="fixed inset-0 z-[90] flex bg-black/50 backdrop-blur-[2px]" dir="rtl" role="dialog" aria-label="قائمة الموقع" onClick={() => setOpen(false)}>
       <nav className="jw-panel flex h-full w-[min(300px,85vw)] flex-col overflow-y-auto rounded-none border-s border-jw-line p-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between px-1">
           <b className="text-sm">الأقسام</b>
@@ -63,6 +64,15 @@ export default function SectionsBar({ sections }: { sections: BarSection[] }) {
             );
           })}
         </ul>
+        {siteSections.length > 0 && <>
+          <p className="mb-2 mt-5 px-3 text-[11px] font-bold text-jw-faint">مواقع نهج علي</p>
+          <ul className="space-y-1">
+            {siteSections.map((section) => {
+              const active = pathname === section.path || pathname.startsWith(`${section.path}/`);
+              return <li key={section.id}><Link href={section.path} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-jw-accent/15 font-bold text-jw-ink" : "text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink"}`}><span className="w-[18px] text-center" aria-hidden>{section.icon}</span><span>{section.name}</span></Link></li>;
+            })}
+          </ul>
+        </>}
         <hr className="my-3 border-jw-line" />
         <ul className="space-y-1">
           {MORE.map((m) => (
