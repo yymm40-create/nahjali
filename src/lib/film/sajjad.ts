@@ -18,6 +18,7 @@ import { rewindSummary, REWIND_POINTS, type RewindPoint } from "./rewind";
 import { failJob, startJob, succeedJob } from "./usage";
 import { rightsText } from "./team-rights";
 import { FILM_STAGES } from "@config/film";
+import { CHAT_GUIDANCE } from "@config/jawad/chat-guidance";
 import type { FilmProject } from "./types";
 
 const db = () => createAdminClient();
@@ -37,6 +38,7 @@ export interface SajjadMessage {
   changes?: string[];
   /** «تدخّل سجاد»: what he proposes to change in the work, waiting for «طبّق» (then `applied`) */
   pending?: SajjadAction[];
+  proposalId?: string;
   applied?: string[];
 }
 
@@ -53,13 +55,15 @@ export interface SajjadAction {
   effect: string;
   /** why it can't be applied as it is */
   blocked?: string;
+  projectVersion?: string;
 }
 
 type Scope = { kind: "series"; series: FilmSeries; canEdit: boolean } | { kind: "film"; project: FilmProject; series: FilmSeries | null };
 const scopeKey = (s: Scope) => (s.kind === "series" ? `series:${s.series.id}` : `film:${s.project.id}`);
 
 async function loadChat(key: string): Promise<{ messages: SajjadMessage[]; memory: string[] }> {
-  const { data } = await db().from("sajjad_chats").select("messages,memory").eq("scope", key).maybeSingle();
+  const { data, error } = await db().from("sajjad_chats").select("messages,memory").eq("scope", key).maybeSingle();
+  if (error) throw new UserError("تعذّر تحميل محادثتك السابقة؛ جرّب مرة ثانية حتى نكمل من نفس المكان.", 503);
   return { messages: (data?.messages as SajjadMessage[] | undefined) ?? [], memory: (data?.memory as string[] | undefined) ?? [] };
 }
 
@@ -143,7 +147,9 @@ Your notes ("remember"): every time the person decides or tells you a fact about
 
 «حيدرة» is the studio's editor (in «حيدرة كت»): you hand him each scene for its montage, and his reports come to you as messages starting «📨 وصلني من حيدرة» (what was made again or changed in a clip). Take them into account like your own notes.
 
-Asking: when you need information, ask at most 4 questions at a time in "questions", each with 2–5 short suggested answers in "options" (the person can also write their own). Never demand everything at once: they can come back any time and continue.
+Asking: when you need information, ask one blocking question at a time in "questions", with 2–3 short suggested answers in "options" (the person can also write their own). Never demand everything at once: they can come back any time and continue.
+
+${CHAT_GUIDANCE}
 
 ${JOURNEY}
 
@@ -358,7 +364,7 @@ export async function askSajjad(kind: unknown, id: unknown, user: { id: string; 
   const next: SajjadMessage[] = [
     ...messages,
     { role: "user", text, at: now, userId: user.id, username: me },
-    { role: "sajjad", text: d.reply.trim(), at: now, questions: d.questions.slice(0, 4).map((q) => ({ question: q.question, options: q.options.slice(0, 5) })), ...(changes.length ? { changes } : {}), ...(pending.length ? { pending } : {}) },
+    { role: "sajjad", text: d.reply.trim(), at: now, questions: d.questions.slice(0, 1).map((q) => ({ question: q.question, options: q.options.slice(0, 3) })), ...(changes.length ? { changes } : {}), ...(pending.length ? { pending, proposalId: crypto.randomUUID() } : {}) },
   ];
   const known = new Set(memory);
   const notes = [...memory, ...d.remember.map((m) => m.trim()).filter((m) => m && !known.has(m))];
@@ -373,7 +379,7 @@ const rankOf = (s: string) => FILM_STAGES.findIndex((x) => x.key === s);
 
 /** The project an action is about: the film itself, or one scene of the series. */
 async function actionProject(scope: Scope, userId: string, sceneId?: string) {
-  if (scope.kind === "film") return scope.project;
+  if (scope.kind === "film") return getOwnedProject(scope.project.id, userId, "all");
   if (!sceneId) return null;
   const { data } = await db().from("film_projects").select("id,series_id").eq("id", sceneId).eq("series_id", scope.series.id).maybeSingle();
   return data ? getOwnedProject(sceneId, userId, "all").catch(() => null) : null;
@@ -388,12 +394,12 @@ async function proposeActions(scope: Scope, userId: string, raw: Reply["actions"
   for (const a of raw.slice(0, 3)) {
     const text = String(a.text ?? "").trim().slice(0, 4000);
     const sceneId = scope.kind === "series" ? String(a.sceneId ?? "").trim() || undefined : undefined;
-    if (!project || (sceneId && project.id !== sceneId)) {
+    if (!project || (scope.kind === "series" && project.id !== sceneId)) {
       project = await actionProject(scope, userId, sceneId);
       stage = project?.stage ?? null;
-      sum = project ? await rewindSummary(project).catch(() => null) : null;
+      sum = project ? await rewindSummary(project) : null;
     }
-    const base: SajjadAction = { kind: a.kind, ...(text ? { text } : {}), ...(sceneId ? { sceneId } : {}), effect: "" };
+    const base: SajjadAction = { kind: a.kind, ...(text ? { text } : {}), ...(sceneId ? { sceneId } : {}), ...(project ? { projectVersion: project.updated_at } : {}), effect: "" };
     if (!project || !stage) {
       out.push({ ...base, effect: "", blocked: scope.kind === "series" ? "حدّد أي مشهد من المسلسل (sceneId)." : "ما لقينا العمل." });
       continue;
@@ -442,13 +448,19 @@ async function proposeActions(scope: Scope, userId: string, raw: Reply["actions"
 }
 
 /** «طبّق»: the last proposal is carried out, in order (a blocked action is skipped and said so). */
-export async function applySajjad(kind: unknown, id: unknown, user: { id: string; email?: string | null }) {
+export async function applySajjad(kind: unknown, id: unknown, user: { id: string; email?: string | null }, proposalId?: unknown) {
   const scope = await resolveScope(kind, id, user.id);
   const key = scopeKey(scope);
   const { messages, memory } = await loadChat(key);
   const i = messages.findLastIndex((m) => m.role === "sajjad" && m.pending?.length);
   const msg = i >= 0 ? messages[i] : null;
   if (!msg?.pending) throw new UserError("ما فيه تدخّل ينتظر التطبيق.", 409);
+  if (proposalId !== (msg.proposalId ?? msg.at)) throw new UserError("تغيّر الاقتراح. أغلق محادثة سجاد وافتحها لمراجعة الاقتراح الحالي قبل تطبيقه.", 409);
+  const checked = await proposeActions(scope, user.id, msg.pending.map((action) => ({ kind: action.kind, to: action.to ?? "", text: action.text ?? "", sceneId: action.sceneId ?? "" })));
+  if (checked.some((action, index) => action.blocked !== msg.pending![index].blocked || action.effect !== msg.pending![index].effect || action.projectVersion !== msg.pending![index].projectVersion)) {
+    throw new UserError("تغيّر المشروع أو الصلاحيات منذ الاقتراح. اطلب من سجاد اقتراحًا جديدًا لتراجع أثره قبل التطبيق.", 409);
+  }
+  if (checked.some((action) => action.blocked)) throw new UserError("جزء من الاقتراح غير قابل للتطبيق. اطلب من سجاد تصحيحه أولًا.", 409);
   const done: string[] = [];
   const { resetProject } = await import("./rewind");
   for (const a of msg.pending) {
@@ -467,7 +479,8 @@ export async function applySajjad(kind: unknown, id: unknown, user: { id: string
         done.push(`↩️ رجّعت العمل إلى ${stageLabel(a.to!)}`);
       } else if (a.kind === "fixed_facts") {
         const facts = [project.fixed_facts, a.text].filter(Boolean).join("\n").slice(0, 5000);
-        await db().from("film_projects").update({ fixed_facts: facts }).eq("id", project.id);
+        const { error } = await db().from("film_projects").update({ fixed_facts: facts }).eq("id", project.id);
+        if (error) throw new UserError("تعذّر حفظ القاعدة؛ لم تُعتمد.", 503);
         done.push(`📌 أضفت قاعدة ثابتة: ${cut(a.text ?? "", 80)}`);
       } else {
         const fresh = await getOwnedProject(project.id, user.id, "all");
@@ -488,23 +501,29 @@ export async function applySajjad(kind: unknown, id: unknown, user: { id: string
     } catch (e) {
       done.push(`❌ ${a.kind}: ${e instanceof UserError ? e.message : "تعذّر"}`);
       if (!(e instanceof UserError)) console.error("sajjad apply", e);
+      done.push("⏭️ أوقفت بقية الخطوات حتى لا تُنفّذ على تعديل لم يكتمل. اطلب اقتراحًا جديدًا لإكمال العمل.");
+      break;
     }
   }
   const { pending: _p, ...rest } = msg;
   void _p;
   const next = [...messages];
   next[i] = { ...rest, applied: done };
-  next.push({ role: "sajjad", text: `طبّقت تدخّلي:\n${done.join("\n")}`, at: new Date().toISOString(), changes: done.filter((d) => !d.startsWith("⏭️") && !d.startsWith("❌")) });
+  next.push({ role: "sajjad", text: `نتيجة تطبيق الاقتراح:\n${done.join("\n")}`, at: new Date().toISOString(), changes: done.filter((d) => !d.startsWith("⏭️") && !d.startsWith("❌")) });
   await saveChat(key, next, [...memory, ...done.filter((d) => d.startsWith("↩️") || d.startsWith("📌")).map((d) => `تدخّل: ${d}`)]);
   return { message: next.at(-1)!, done };
 }
 
 /** «لا»: the proposal is dropped. */
-export async function dropSajjad(kind: unknown, id: unknown, userId: string) {
+export async function dropSajjad(kind: unknown, id: unknown, userId: string, proposalId?: unknown) {
   const scope = await resolveScope(kind, id, userId);
+  if (scope.kind === "series" && !scope.canEdit) throw new UserError("إلغاء الاقتراح لصاحب المسلسل أو من يملك صلاحية تطويره.", 403);
+  if (scope.kind === "film") await getOwnedProject(scope.project.id, userId, "all");
   const key = scopeKey(scope);
   const { messages, memory } = await loadChat(key);
-  const next = messages.map((m) => (m.pending ? { ...m, pending: undefined, applied: ["ما طُبّق"] } : m));
+  const latest = messages.findLast((message) => message.role === "sajjad" && message.pending?.length);
+  if (!latest || proposalId !== (latest.proposalId ?? latest.at)) throw new UserError("تغيّر الاقتراح؛ افتح المحادثة من جديد قبل إلغائه.", 409);
+  const next = messages.map((message) => (message === latest ? { ...message, pending: undefined, applied: ["ما طُبّق"] } : message));
   await saveChat(key, next, memory);
 }
 

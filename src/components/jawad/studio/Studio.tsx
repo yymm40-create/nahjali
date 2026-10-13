@@ -1054,7 +1054,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
           onApply={applyAssistant}
           generatorName={(id) => generators.find((g) => g.id === id)?.name ?? id}
           onThumbnail={(t) => setComposer(t)}
-          canAttach={section.output !== "audio"}
+          canAttach
           storage={user.id}
         />
       )}
