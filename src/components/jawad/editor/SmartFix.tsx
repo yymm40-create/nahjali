@@ -44,6 +44,7 @@ export interface EditOpts {
 }
 const NO_OPTS: EditOpts = { generatorId: null, settings: {} };
 const optsBody = (o: EditOpts) => ({ ...(o.generatorId ? { generatorId: o.generatorId } : {}), ...(Object.keys(o.settings).length ? { settings: o.settings } : {}) });
+const fixOpts = (fix: Fix | null | undefined): EditOpts => ({ generatorId: fix?.generatorId ?? null, settings: fix?.settings ?? {} });
 type Sent = { job: string; from: number };
 type PriceLine = { label: string; centi: number };
 
@@ -91,12 +92,6 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   const [approving, setApproving] = useState<string | null>(null);
   // prices that moved since the quote: each waits for «أكّد» (nothing is charged before)
   const [asks, setAsks] = useState<Ask[]>([]);
-  // what the person chose for the edits (generator, resolution, sound, seconds): counted in every price, sent with every piece
-  const [editOpts, setEditOpts] = useState<EditOpts>(NO_OPTS);
-  const optsRef = useRef(editOpts);
-  useEffect(() => {
-    optsRef.current = editOpts;
-  }, [editOpts]);
 
   const sel = selected.length === 1 ? findClip(tl, selected[0]) : null;
   const selAsset = sel?.clip.assetId ? assets.get(sel.clip.assetId) : undefined;
@@ -168,17 +163,17 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
   }, [assets]);
   const fixOf = (id: string) => (tlRef.current.tracks.find((t) => t.role === "fix")?.clips ?? []).find((c) => c.id === id) ?? null;
   const sendInBackground = useCallback(
-    async (list: { id: string; note: string }[]) => {
+    async (list: { id: string; note: string; opts?: EditOpts }[]) => {
       if (!list.length) return;
       for (const { id, note } of list) run({ type: "update_clip", clipId: id, patch: { fix: { note, state: "sending", error: null } } }, { coalesce: `fix-send-${id}` });
       flash(list.length === 1 ? "انرسل الجزء للتعديل؛ تقدر تكمل شغلك." : `انرسلت ${list.length} أجزاء للتعديل؛ تقدر تكمل شغلك.`);
       let failed = 0;
       let asked = 0;
-      for (const { id, note } of list) {
+      for (const { id, note, opts } of list) {
         const c = fixOf(id);
         if (!c) continue;
         try {
-          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current), opts: optsRef.current });
+          const made = await sendPiece(c, note, { projectId, asset: c.assetId ? assetsRef.current.get(c.assetId) : undefined, onAssets, key: `fix-${id}-${uid()}`, yellow: yellowOf(tlRef.current), opts: opts ?? fixOpts(c.fix) });
           run({ type: "update_clip", clipId: id, patch: { fix: { job: made.job, from: made.from, state: "making", error: null } } }, { label: "أرسلت جزءًا للتعديل" });
         } catch (e) {
           if (e instanceof PriceAsk) {
@@ -211,7 +206,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
     }, 0);
     return () => clearTimeout(t);
   }, [staleKey, readOnly, run]);
-  const send = (list: { id: string; note: string }[]) => {
+  const send = (list: { id: string; note: string; opts?: EditOpts }[]) => {
     for (const x of list) busyIds.current.add(x.id);
     void sendInBackground(list).finally(() => list.forEach((x) => busyIds.current.delete(x.id)));
   };
@@ -370,7 +365,7 @@ export default function SmartFix({ projectId, tl, assets, selected, run, player,
           )}
         </div>
       )}
-      {open && <FixDialog projectId={projectId} pieces={pieces} yellow={yellowOf(tl)} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} opts={editOpts} setOpts={setEditOpts} onClose={() => setOpen(false)} />}
+      {open && <FixDialog projectId={projectId} pieces={pieces} yellow={yellowOf(tl)} assets={assets} run={run} player={player} onAssets={onAssets} onSend={send} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -505,9 +500,15 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
 }
 
 /** Every red piece: what to fix, «جزئي» or «كامل», its price; one tap saves the notes and sends them all in the background. */
-function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, onSend, opts, setOpts, onClose }: { opts: EditOpts; setOpts: (o: EditOpts) => void; projectId: string; pieces: Clip[]; yellow: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string }[]) => void; onClose: () => void }) {
-  const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, c.fix?.note ?? ""])));
-  const [problems, setProblems] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, ""])));
+const splitNote = (value: string) => {
+  const match = /^ما هو الخطأ:\n([\s\S]*?)\n\nالتصحيح المطلوب:\n([\s\S]*)$/.exec(value.trim());
+  return match ? { problem: match[1], correction: match[2] } : { problem: "", correction: value };
+};
+
+function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, onSend, onClose }: { projectId: string; pieces: Clip[]; yellow: Clip[]; assets: Map<string, EditorAsset>; run: Run; player: PlayerLike | null; onAssets: (list: EditorAsset[]) => void; onSend: (list: { id: string; note: string; opts?: EditOpts }[]) => void; onClose: () => void }) {
+  const initialNotes = Object.fromEntries(pieces.map((c) => [c.id, splitNote(c.fix?.note ?? "")]));
+  const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, initialNotes[c.id].correction])));
+  const [problems, setProblems] = useState<Record<string, string>>(() => Object.fromEntries(pieces.map((c) => [c.id, initialNotes[c.id].problem])));
   const [jobs, setJobs] = useState<Record<string, JobView>>({});
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -549,7 +550,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
 
   // ---------- prices (again when a piece's kind or length changes) ----------
   const open = pieces.filter((c) => c.fix && (c.fix.state === "draft" || c.fix.state === "failed"));
-  const quoteKey = open.map((c) => `${c.id}:${c.fix!.mode}:${c.in}:${c.out}:${assetOf(c)?.jobId ?? ""}`).join("|") + `#${Object.keys(jobs).length}#${JSON.stringify(opts)}#${yellow.map((y) => `${y.assetId}:${y.in}:${y.out}:${y.start}`).join(",")}`;
+  const quoteKey = open.map((c) => `${c.id}:${c.fix!.mode}:${c.in}:${c.out}:${assetOf(c)?.jobId ?? ""}:${JSON.stringify(fixOpts(c.fix))}`).join("|") + `#${Object.keys(jobs).length}#${yellow.map((y) => `${y.assetId}:${y.in}:${y.out}:${y.start}`).join(",")}`;
   useEffect(() => {
     let live = true;
     const t = setTimeout(async () => {
@@ -558,7 +559,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
         if (!a?.jobId && a?.origin === "film") continue; // being linked
         if (a?.jobId && !jobs[a.jobId]) continue; // being read
         const p = planOf(c, a, a?.jobId ? jobs[a.jobId] : undefined, yellow);
-        const q: Quote = p.ok ? await askPrice(p, opts) : { error: p.why };
+        const q: Quote = p.ok ? await askPrice(p, fixOpts(c.fix)) : { error: p.why };
         if (!live) return;
         setQuotes((x) => ({ ...x, [c.id]: q }));
       }
@@ -599,7 +600,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
         mode: written.some((clip) => clip.fix?.mode === "whole") ? "كامل" : "جزئي",
         error: written.map((clip, index) => `${index + 1}. ${problems[clip.id]}`).join("\n"),
         correction: written.map((clip, index) => `${index + 1}. ${notes[clip.id]}`).join("\n"),
-        settings: optsBody(opts),
+        settings: written.map((clip) => ({ range: `${formatTime(clip.start)}–${formatTime(clip.start + clipLength(clip))}`, ...optsBody(fixOpts(clip.fix)) })),
       }),
     }).catch(() => null);
     const result = response ? await response.json().catch(() => ({})) : {};
@@ -611,7 +612,7 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
 
   function sendAll() {
     for (const c of open) saveNote(c);
-    onSend(written.map((c) => ({ id: c.id, note: payload(c) })));
+    onSend(written.map((c) => ({ id: c.id, note: payload(c), opts: fixOpts(c.fix) })));
     onClose();
   }
 
@@ -623,39 +624,25 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
           جواد حاضر هنا مباشرة. اكتب لكل جزء الخطأ والتصحيح، وهو يراجع بيانات فيلم سجاد المرتبط ثم يرجع لك فهمه قبل أي توليد.
         </p>
         <div className="rounded-xl border border-jw-accent/35 bg-jw-accent-soft p-3 text-sm"><b>🤖 جواد · التعديل الذكي</b><p className="mt-1 text-xs text-jw-muted">لن يُرسل شيء للمولد حتى تضغط «تم، ابدأ التوليد» بعد مراجعة فهمه.</p></div>
-        {(() => {
-          // the options of the edits: the generator that makes them and the output options, as at the start (the first piece's original is where they start from)
-          const first = Object.values(jobs)[0];
-          const def = generatorById(opts.generatorId ?? first?.generatorId ?? "");
-          if (!first || !def) return null;
-          const kind = def.output === "image" ? "image" : "video";
-          const choices = GENERATORS.filter((g) => g.output === kind && g.priceKeys.some((k) => k.key === EDIT_FEE_KEY));
-          return (
-            <EditOptions
-              def={def}
-              choices={choices}
-              originalId={first.generatorId}
-              onGenerator={(id) => { setOpts({ ...opts, generatorId: id === first.generatorId ? null : id }); setUnderstanding(null); }}
-              original={first.settings as Settings}
-              chosen={opts.settings}
-              onChange={(k: string, v: SettingValue) => { setOpts({ ...opts, settings: { ...opts.settings, [k]: v } }); setUnderstanding(null); }}
-              mode={pieces.some((c) => c.fix?.mode === "whole") ? "whole" : "parts"}
-              cutSeconds={null}
-            />
-          );
-        })()}
         <ol className="space-y-2">
           {pieces.map((c, i) => {
-            const fix = c.fix ?? { note: "", mode: "parts" as const, job: null, from: null, state: "draft" as const };
+            const fix: Fix = c.fix ?? { note: "", mode: "parts", job: null, from: null, state: "draft", generatorId: null, settings: {} };
             const q = quotes[c.id];
             const editable = fix.state === "draft" || fix.state === "failed";
+            const options = fixOpts(c.fix);
+            const sourceJob = assetOf(c)?.jobId ? jobs[assetOf(c)!.jobId!] : undefined;
+            const def = sourceJob ? generatorById(options.generatorId ?? sourceJob.generatorId) : undefined;
+            const choices = def ? GENERATORS.filter((generator) => generator.output === def.output && generator.priceKeys.some((key) => key.key === EDIT_FEE_KEY)) : [];
+            const plan = sourceJob ? planOf(c, assetOf(c), sourceJob, yellow) : null;
+            const seconds = plan?.ok ? plan.cut.seconds : Math.round((clipLength(c) / 1000) * 10) / 10;
             return (
-              <li key={c.id} className="space-y-2 rounded-xl border border-red-500/30 bg-red-500/5 p-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="grid size-6 place-items-center rounded-full bg-red-500 font-bold text-white">{i + 1}</span>
-                  <span className="font-semibold" dir="ltr">
-                    {formatTime(c.start)} → {formatTime(c.start + clipLength(c))}
-                  </span>
+              <li key={c.id} className="overflow-hidden rounded-2xl border border-red-500/35 bg-gradient-to-b from-red-500/10 to-jw-bg-2 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2 border-b border-red-500/20 px-4 py-3 text-xs">
+                  <span className="grid size-8 place-items-center rounded-xl bg-red-500 text-sm font-black text-white shadow-sm">{i + 1}</span>
+                  <div>
+                    <p className="font-bold">التعديل {i + 1}</p>
+                    <p className="font-semibold text-jw-muted" dir="ltr">{formatTime(c.start)} → {formatTime(c.start + clipLength(c))}</p>
+                  </div>
                   <button type="button" className="jw-btn jw-btn-quiet !min-h-7 !px-2 text-[11px]" onClick={() => player?.seek(c.start)}>
                     <Icon name="play" size={12} /> روح له
                   </button>
@@ -671,20 +658,41 @@ function FixDialog({ projectId, pieces, yellow, assets, run, player, onAssets, o
                     </div>
                   )}
                 </div>
-                {editable ? (
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <label className="space-y-1 text-xs font-semibold">ما هو الخطأ؟
-                      <textarea className="jw-input min-h-20 w-full text-sm font-normal" maxLength={FIX_NOTE_MAX} placeholder="مثال: الوجه يتغير وقت الالتفات" value={problems[c.id] ?? ""} onChange={(e) => { setProblems((current) => ({ ...current, [c.id]: e.target.value })); setUnderstanding(null); }} />
-                    </label>
-                    <label className="space-y-1 text-xs font-semibold">ما هو التصحيح المطلوب؟
-                      <textarea className="jw-input min-h-20 w-full text-sm font-normal" maxLength={FIX_NOTE_MAX} placeholder="مثال: ثبّت نفس الملامح واجعل الالتفات طبيعيًا" value={notes[c.id] ?? ""} onChange={(e) => { setNotes((current) => ({ ...current, [c.id]: e.target.value })); setUnderstanding(null); }} onBlur={() => saveNote(c)} />
-                    </label>
+                <div className="space-y-4 p-4">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-xl border border-jw-line bg-jw-bg px-2 py-2"><p className="text-[10px] font-semibold text-jw-faint">مدة هذا التعديل</p><p className="mt-0.5 font-black tabular-nums">{seconds} ث</p></div>
+                    <div className="rounded-xl border border-jw-line bg-jw-bg px-2 py-2"><p className="text-[10px] font-semibold text-jw-faint">المعالجة</p><p className="mt-0.5 font-black">{fix.mode === "parts" ? "جزئي" : "كامل"}</p></div>
+                    <div className="rounded-xl border border-jw-line bg-jw-bg px-2 py-2"><p className="text-[10px] font-semibold text-jw-faint">السعر</p><p className="mt-0.5 font-black">{"coins" in (q ?? {}) ? <Riyal halalas={(q as { coins: number }).coins} size={13} /> : "—"}</p></div>
                   </div>
-                ) : (
-                  fix.note && <p className="text-xs text-jw-muted">«{fix.note}»</p>
-                )}
-                {editable && (!q ? <p className="text-[11px] text-jw-faint">يحسب السعر…</p> : "coins" in q ? <p className="text-[11px] text-jw-muted">السعر: <Riyal halalas={q.coins} size={12} /></p> : <p className="text-xs font-semibold text-jw-danger">⚠ {q.error}</p>)}
-                {(errors[c.id] || (fix.state === "failed" && fix.error)) && <p className="rounded-lg bg-jw-danger/10 p-2 text-xs font-semibold text-jw-danger">✕ ما انرسل: <Coined text={errors[c.id] || fix.error} /></p>}
+                  {editable ? (
+                    <div className="grid gap-3 xl:grid-cols-2">
+                    <label className="space-y-1.5 text-sm font-bold">ما هو الخطأ؟
+                      <textarea className="jw-input min-h-36 w-full resize-y text-base font-normal leading-7" maxLength={FIX_NOTE_MAX} placeholder="اكتب المشكلة كما تراها بدقة…" value={problems[c.id] ?? ""} onChange={(e) => { setProblems((current) => ({ ...current, [c.id]: e.target.value })); setUnderstanding(null); }} onBlur={() => saveNote(c)} />
+                    </label>
+                    <label className="space-y-1.5 text-sm font-bold">ما هو التصحيح المطلوب؟
+                      <textarea className="jw-input min-h-36 w-full resize-y text-base font-normal leading-7" maxLength={FIX_NOTE_MAX} placeholder="اكتب النتيجة التي تريدها بوضوح…" value={notes[c.id] ?? ""} onChange={(e) => { setNotes((current) => ({ ...current, [c.id]: e.target.value })); setUnderstanding(null); }} onBlur={() => saveNote(c)} />
+                    </label>
+                    </div>
+                  ) : (
+                    fix.note && <p className="rounded-xl bg-jw-bg p-3 text-sm text-jw-muted">{fix.note}</p>
+                  )}
+                  {editable && sourceJob && def && (
+                    <EditOptions
+                      def={def}
+                      choices={choices}
+                      originalId={sourceJob.generatorId}
+                      onGenerator={(id) => { run({ type: "update_clip", clipId: c.id, patch: { fix: { generatorId: id === sourceJob.generatorId ? null : id } } }, { coalesce: `fix-options-${c.id}` }); setUnderstanding(null); }}
+                      original={sourceJob.settings as Settings}
+                      chosen={options.settings}
+                      onChange={(key: string, value: SettingValue) => { run({ type: "update_clip", clipId: c.id, patch: { fix: { settings: { ...options.settings, [key]: value } } } }, { coalesce: `fix-options-${c.id}` }); setUnderstanding(null); }}
+                      mode={fix.mode}
+                      cutSeconds={seconds}
+                    />
+                  )}
+                  {editable && !q && <p className="text-xs text-jw-faint">نحسب سعر هذا التعديل…</p>}
+                  {editable && q && !("coins" in q) && <p className="rounded-xl bg-jw-danger/10 p-3 text-sm font-semibold text-jw-danger">⚠ {q.error}</p>}
+                  {(errors[c.id] || (fix.state === "failed" && fix.error)) && <p className="rounded-xl bg-jw-danger/10 p-3 text-sm font-semibold text-jw-danger">✕ ما انرسل: <Coined text={errors[c.id] || fix.error} /></p>}
+                </div>
               </li>
             );
           })}

@@ -22,7 +22,7 @@ describe("lifting a piece onto the red track", () => {
   it("moves it straight up, in the very same place", () => {
     expect(red(t).clips.map((c) => [c.id, c.start, c.in, c.out])).toEqual([[piece.id, 3000, 3000, 5000]]);
     expect(red(t)).toMatchObject({ name: FIX_TRACK.fix.name, color: "#ef4444", kind: "video" });
-    expect(red(t).clips[0].fix).toEqual({ note: "", mode: "parts", job: null, from: null, state: "draft" });
+    expect(red(t).clips[0].fix).toEqual({ note: "", mode: "parts", job: null, from: null, state: "draft", generatorId: null, settings: {} });
     expect(r.select).toEqual([piece.id]);
   });
 
@@ -45,9 +45,9 @@ describe("lifting a piece onto the red track", () => {
   });
 
   it("keeps the note, kind and job, and survives a save", () => {
-    const t2 = apply(t, { type: "update_clip", clipId: piece.id, patch: { fix: { note: "الوجه يتغير", mode: "whole" } } }, assets).timeline;
+    const t2 = apply(t, { type: "update_clip", clipId: piece.id, patch: { fix: { note: "الوجه يتغير", mode: "whole", generatorId: "byteplus-seedance-2-0", settings: { resolution: "1080p", duration: 8 } } } }, assets).timeline;
     const back = readTimeline(JSON.parse(JSON.stringify(t2)));
-    expect(red(back).clips[0].fix).toEqual({ note: "الوجه يتغير", mode: "whole", job: null, from: null, state: "draft", error: null });
+    expect(red(back).clips[0].fix).toEqual({ note: "الوجه يتغير", mode: "whole", job: null, from: null, state: "draft", generatorId: "byteplus-seedance-2-0", settings: { resolution: "1080p", duration: 8 }, error: null });
     expect(() => apply(t, { type: "update_clip", clipId: main(t).clips[0].id, patch: { fix: { note: "x" } } }, assets)).toThrow(/الأحمر/);
   });
 });

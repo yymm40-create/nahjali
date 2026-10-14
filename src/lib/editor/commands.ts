@@ -282,7 +282,7 @@ const seqsOf = (t: Timeline): Sequence[] => (t.seqs?.length ? t.seqs : [{ id: FI
 /** The list with the open timeline's content parked in its own place (before another one opens). */
 const parked = (t: Timeline, seqs: Sequence[]): Sequence[] => seqs.map((x) => (x.tl ? x : { ...x, tl: bare(t) }));
 
-const FRESH_FIX: Fix = { note: "", mode: "parts", job: null, from: null, state: "draft" };
+const FRESH_FIX: Fix = { note: "", mode: "parts", job: null, from: null, state: "draft", generatorId: null, settings: {} };
 
 const free = (track: Track, from: number, to: number) => track.clips.every((c) => clipEnd(c) <= from || c.start >= to);
 const countClips = (t: Timeline) => t.tracks.reduce((n, x) => n + x.clips.length, 0);

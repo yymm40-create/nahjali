@@ -461,6 +461,8 @@ export interface Fix {
   /** where in the original video the made clip starts (ms): the green clip lines up from it */
   from: number | null;
   state: "draft" | "sending" | "making" | "done" | "failed";
+  generatorId: string | null;
+  settings: Record<string, string | number | boolean>;
   /** why it failed (shown on the piece) */
   error?: string | null;
 }
@@ -476,12 +478,16 @@ export type TrackRole = keyof typeof FIX_TRACK;
 export function readFix(v: unknown): Fix | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
+  const rawSettings = o.settings && typeof o.settings === "object" && !Array.isArray(o.settings) ? (o.settings as Record<string, unknown>) : {};
+  const settings = Object.fromEntries(Object.entries(rawSettings).filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean").slice(0, 20)) as Record<string, string | number | boolean>;
   return {
     note: typeof o.note === "string" ? o.note.slice(0, FIX_NOTE_MAX) : "",
     mode: o.mode === "whole" ? "whole" : "parts",
     job: typeof o.job === "string" && /^[0-9a-f-]{36}$/i.test(o.job) ? o.job : null,
     from: typeof o.from === "number" && Number.isFinite(o.from) && o.from >= 0 ? Math.round(Math.min(o.from, LIMITS.maxMs)) : null,
     state: (["draft", "sending", "making", "done", "failed"] as const).find((x) => x === o.state) ?? "draft",
+    generatorId: typeof o.generatorId === "string" && o.generatorId.length <= 100 ? o.generatorId : null,
+    settings,
     error: typeof o.error === "string" && o.error ? o.error.slice(0, 300) : null,
   };
 }
