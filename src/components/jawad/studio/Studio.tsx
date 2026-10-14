@@ -23,6 +23,7 @@ import { GeneratorCard, GeneratorPicker } from "./GeneratorCard";
 import OutputSettings from "./OutputSettings";
 import DirectorBoost from "./DirectorBoost";
 import AssistantChat from "./AssistantChat";
+import DirectorChat from "@/components/jawad/director/DirectorChat";
 import ThumbnailComposer from "./ThumbnailComposer";
 import PromptBox from "./PromptBox";
 import RefsStrip from "./RefsStrip";
@@ -140,7 +141,7 @@ function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
   });
 }
 
-export default function Studio({ section, studioSections, generators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
+export default function Studio({ section, studioSections, generators, directorGenerators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
   // the riyal pricing in force (rate, step, margins), so the prices here match the server's to the halala
   setPricing(pricing);
   const router = useRouter();
@@ -153,9 +154,15 @@ export default function Studio({ section, studioSections, generators, prices: in
   const [balance, setBalance] = useState(initialBalance);
   const [picker, setPicker] = useState(false);
   const [tab, setTab] = useState<"settings" | "works">("settings");
+  const [directorOpen, setDirectorOpen] = useState(false);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("tab") !== "works") return;
     const t = setTimeout(() => setTab("works"), 0);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("director") !== "1") return;
+    const t = setTimeout(() => setDirectorOpen(true), 0);
     return () => clearTimeout(t);
   }, []);
   const [notice, setNotice] = useState("");
@@ -1057,7 +1064,10 @@ export default function Studio({ section, studioSections, generators, prices: in
       {user && allowed && (
         <AssistantChat
           open={chatOpen}
-          onOpen={() => setChatOpen(true)}
+          onOpen={() => {
+            setDirectorOpen(false);
+            setChatOpen(true);
+          }}
           onClose={() => setChatOpen(false)}
           section={activeSection}
           getDraft={assistantDraft}
@@ -1066,6 +1076,18 @@ export default function Studio({ section, studioSections, generators, prices: in
           onThumbnail={(t) => setComposer(t)}
           canAttach
           storage={user.id}
+        />
+      )}
+      {user && allowed && (
+        <DirectorChat
+          open={directorOpen}
+          onOpen={() => {
+            setChatOpen(false);
+            setDirectorOpen(true);
+          }}
+          onClose={() => setDirectorOpen(false)}
+          loginHref={null}
+          generators={directorGenerators}
         />
       )}
       {composer && (

@@ -46,12 +46,22 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
   const [balance, initialWorks, free] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null), freeFor(user)]) : [null, null, false];
   const hasImageGenerator = generators.some((generator) => generatorById(generator.id)?.output === "image");
   const freeImageAvailable = Boolean(user && allowed && !free && hasImageGenerator && await signupFreeImageAvailable(user.id, user.created_at));
+  const directorGenerators = generators.flatMap((generator) => {
+    const definition = generatorById(generator.id);
+    if (!definition || (definition.output !== "image" && definition.output !== "video")) return [];
+    const choices = (keys: string[]) => {
+      const option = definition.options.find((item) => keys.includes(item.key));
+      return option?.kind === "choice" ? option.values.map((item) => ({ value: item.value, label: item.label })) : [];
+    };
+    return [{ id: generator.id, name: generator.name, kind: definition.output, resolutions: choices(["resolution"]), aspects: choices(["ratio", "aspect"]) }];
+  });
 
   return <Studio
       key={s.id}
       section={{ id: s.id, name: unified ? "الاستوديو الإبداعي" : s.name, output: s.output }}
       studioSections={studioSections.map((item) => ({ id: item.id, name: item.name, output: item.output! }))}
       generators={generators}
+      directorGenerators={directorGenerators}
       prices={Object.fromEntries(generators.map((g) => [g.id, rt.prices[g.id]]))}
       user={user ? { id: user.id } : null}
       // free for the owners and the unlimited; everyone else sees riyal prices and pays from their wallet

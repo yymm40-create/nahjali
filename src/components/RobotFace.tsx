@@ -22,7 +22,7 @@ export const ROBOT_LOOKS: Record<string, Look> = {
   // deep, muted metals — never candy colours: each robot is one dark hue lit from above, with a gold trim
   salman: { a: "#5b4b9a", b: "#2e2466", head: "round", eyes: "big", antenna: "single", extra: "none" },
   jawad: { a: "#3a6ea5", b: "#1b3a63", head: "capsule", eyes: "visor", antenna: "bolt", extra: "none" },
-  director: { a: "#8f244b", b: "#3b174f", head: "square", eyes: "visor", antenna: "none", extra: "clapper" },
+  director: { a: "#343c47", b: "#050607", head: "square", eyes: "visor", antenna: "none", extra: "clapper" },
   sajjad: { a: "#86661f", b: "#4a340d", head: "square", eyes: "dots", antenna: "double", extra: "clapper" },
   haidara: { a: "#4d7c4f", b: "#243f2a", head: "tv", eyes: "screen", antenna: "single", extra: "scissors" },
   sadiq: { a: "#4a5aa8", b: "#232c63", head: "round", eyes: "big", antenna: "none", extra: "cap" },

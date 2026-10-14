@@ -9,7 +9,6 @@ export const SECTION_IMPLEMENTATIONS = {
   "studio:video": { label: "استوديو الفيديو (مولدات الفيديو)", output: "video" as OutputKind },
   "studio:audio": { label: "استوديو الصوت (مولدات الصوت)", output: "audio" as OutputKind },
   film: { label: "صناعة الفيلم بالخطوات (المسار القائم)", output: null },
-  director: { label: "جواد المخرج (وكيل الإخراج السينمائي المستقل)", output: null },
   student: { label: "الطالب الذكي (مواد دراسية إلى ملخصات وكتب وعروض وصوت واختبارات)", output: null },
   editor: { label: "حيدرة كت (مونتاج الفيديو: قص وترتيب ونصوص وتصدير)", output: null },
   islamic: { label: "الذكاء الإسلامي (أسئلة تُجاب من مكتبة المصادر التي يغذّيها المالك)", output: null },
@@ -40,7 +39,6 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "images", name: "الاستوديو الإبداعي", icon: "wand", implementation: "studio:image", sort: 10, enabled: true },
   { id: "video", name: "صناعة الفيديو", icon: "video", implementation: "studio:video", sort: 20, enabled: true },
   { id: "film", name: "الفيلم السينمائي", icon: "film", implementation: "film", sort: 30, enabled: true },
-  { id: "director", name: "جواد المخرج", icon: "camera", implementation: "director", sort: 32, enabled: true },
   { id: "editor", name: "حيدرة كت", icon: "scissors", implementation: "editor", sort: 35, enabled: true },
   { id: "audio", name: "صناعة الصوت", icon: "audio", implementation: "studio:audio", sort: 40, enabled: true },
   { id: "student", name: "الطالب الذكي", icon: "book", implementation: "student", sort: 50, enabled: true },
@@ -64,7 +62,7 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
 export const RESERVED_SECTION_IDS = ["memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
 
 export const STUDIO_SECTION_IDS = ["images", "video", "audio"] as const;
 export const STUDIO_ROOT_ID = "images";
@@ -72,7 +70,7 @@ export const STUDIO_ROOT_ID = "images";
 /** The three legacy studio routes stay valid, but navigation presents them as one adaptive studio. */
 export function unifiedStudioNavigation<T extends { id: string; name: string; icon: string; path: string }>(sections: T[]): T[] {
   return sections
-    .filter((section) => !STUDIO_SECTION_IDS.includes(section.id as (typeof STUDIO_SECTION_IDS)[number]) || section.id === STUDIO_ROOT_ID)
+    .filter((section) => section.id !== "director" && (!STUDIO_SECTION_IDS.includes(section.id as (typeof STUDIO_SECTION_IDS)[number]) || section.id === STUDIO_ROOT_ID))
     .map((section) => section.id === STUDIO_ROOT_ID ? { ...section, name: "الاستوديو الإبداعي", icon: "wand", path: "/jawad-ai/images" } : section);
 }
 

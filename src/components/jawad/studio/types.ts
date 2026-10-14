@@ -1,6 +1,7 @@
 import type { Pricing } from "@config/coins";
 import type { RefKind, RefMeta, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import type { JobView, WorkItem } from "@/lib/jawad/labels";
+import type { DirectorGenerator } from "@/components/jawad/director/DirectorChat";
 
 /** A generator as the studio receives it from the server (capabilities come from the shared registry by id). */
 export interface StudioGenerator {
@@ -16,6 +17,7 @@ export interface StudioProps {
   section: { id: string; name: string; output: "image" | "video" | "audio" };
   studioSections: { id: string; name: string; output: "image" | "video" | "audio" }[];
   generators: StudioGenerator[];
+  directorGenerators: DirectorGenerator[];
   prices: Record<string, Record<string, number | null>>;
   user: { id: string } | null;
   owner: boolean;

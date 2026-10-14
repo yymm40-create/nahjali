@@ -15,6 +15,7 @@ import { JAWAD_PATH_HEADER } from "@config/site";
 import { JAWAD } from "@config/jawad/brand";
 import "./jawad.css";
 import "./sections.css";
+import "./director/director.css";
 
 const readex = Readex_Pro({ variable: "--font-readex", subsets: ["arabic", "latin"], weight: ["300", "400", "500", "600", "700"] });
 

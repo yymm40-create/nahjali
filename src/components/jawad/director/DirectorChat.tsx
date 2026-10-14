@@ -49,7 +49,7 @@ const initialSettings = (media: Media, generators: DirectorGenerator[]): MediaSe
   };
 };
 
-export default function DirectorChat({ loginHref, generators }: { loginHref: string | null; generators: DirectorGenerator[] }) {
+export default function DirectorChat({ open, onOpen, onClose, loginHref, generators }: { open: boolean; onOpen: () => void; onClose: () => void; loginHref: string | null; generators: DirectorGenerator[] }) {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -213,15 +213,17 @@ export default function DirectorChat({ loginHref, generators }: { loginHref: str
     </article>;
   }
 
-  return <main className="jd" dir="rtl">
+  if (!open) return <button type="button" className="jd-launch" onClick={onOpen} aria-label="افتح جواد المخرج"><RobotFace id="director" size={38} /><span><strong>جواد المخرج</strong><small>إخراج خارق</small></span></button>;
+
+  return <div className="jd jd-popup" dir="rtl" role="dialog" aria-modal="true" aria-label="جواد المخرج">
     <div className="jd-stage">
       <aside className={`jd-side ${side ? "open" : ""}`}>
         <button className="jd-new" onClick={reset}>＋ محادثة جديدة</button>
         <div className="jd-chat-list">{chats.map((chat) => <div className="jd-chat-row" data-active={chat.id === chatId} key={chat.id} onClick={() => void openChat(chat.id)}><span>{chat.handoffReady ? "↗ " : ""}{chat.title}</span><button onClick={(event) => { event.stopPropagation(); void deleteChat(chat.id); }}>✕</button></div>)}</div>
-        <Link className="jd-back" href="/jawad-ai">← جواد العام والأقسام</Link>
+        <button type="button" className="jd-back" onClick={onClose}>← ارجع للاستوديو</button>
       </aside>
       <section className="jd-main">
-        <header className="jd-head"><button className="jd-menu" onClick={() => setSide((value) => !value)}>☰</button><div className="jd-robot"><RobotFace id="director" size={54} /></div><div><h1>جواد المخرج</h1><p>وكيل الإخراج المُدار — ذاكرة مستقلة لكل محادثة</p></div><div className="jd-head-actions"><span className="jd-agent">AGENT مباشر</span>{chatId && <button onClick={() => void prepareHandoff()} disabled={handoffBusy}>{handoffBusy ? "يجهّز…" : handoff ? "حدّث التسليم" : "جهّز handoff"}</button>}{chatId && handoff && <button className="strong" onClick={() => void continueHandoff()} disabled={handoffBusy}>محادثة جديدة بالتسليم</button>}</div></header>
+        <header className="jd-head"><button className="jd-menu" onClick={() => setSide((value) => !value)}>☰</button><div className="jd-robot"><RobotFace id="director" size={54} /></div><div><h1>جواد المخرج</h1><p>وكيل الإخراج الخارق — ذاكرة مستقلة لكل محادثة</p></div><div className="jd-head-actions"><span className="jd-agent">DIRECTOR AGENT</span>{chatId && <button onClick={() => void prepareHandoff()} disabled={handoffBusy}>{handoffBusy ? "يجهّز…" : handoff ? "حدّث التسليم" : "جهّز handoff"}</button>}{chatId && handoff && <button className="strong" onClick={() => void continueHandoff()} disabled={handoffBusy}>محادثة جديدة بالتسليم</button>}<button className="jd-close" type="button" onClick={onClose} aria-label="إغلاق جواد المخرج">✕</button></div></header>
         {context?.shouldHandoff && <div className={`jd-context ${context.level}`}><div><strong>{context.level === "critical" ? "تنبيه مهم قبل ضغط السياق" : "اقتربت المحادثة من الحد الآمن"}</strong><p>جهّز تسليمًا الآن؛ سيكتب جواد حالته كاملة ثم يرسلها لنفسه في محادثة جديدة مستقلة.</p></div><div className="jd-meter"><i style={{ width: `${context.percent}%` }} /></div><button onClick={() => void prepareHandoff()} disabled={handoffBusy}>{handoffBusy ? "يجهّز…" : handoff ? "حدّث التسليم" : "جهّز handoff"}</button>{handoff && <button className="strong" onClick={() => void continueHandoff()} disabled={handoffBusy}>أرسل التسليم لمحادثة جديدة</button>}</div>}
         <div className="jd-feed">
           {loginHref ? <div className="jd-message assistant"><p>سجّل الدخول لفتح جواد المخرج وذاكرته المستقلة.</p><Link className="jd-action" href={loginHref}>تسجيل الدخول</Link></div> : messages.length === 0 ? <><div className="jd-welcome"><RobotFace id="director" size={82} /><div><h2>أنا جواد المخرج</h2><p>هذه غرفة إخراج مستقلة عن جواد العام. كل مشروع جديد يبدأ بذاكرة جديدة، وكل لقطة تحمل مولّدها وجودتها ومدتها وصوتها بنفسها.</p></div></div><div className="jd-starts">{starts.map((item) => <button key={item.title} onClick={() => void send(item.text)}><span>{item.icon}</span><strong>{item.title}</strong></button>)}</div></> : messages.map((message, index) => <div className={`jd-message ${message.role} ${message.error ? "error" : ""}`} key={index}><p className="jd-text">{message.text}</p>{message.files?.length ? <div className="jd-files">{message.files.map((file) => <span key={file.id}>{ICON[file.kind]} {file.name}</span>)}</div> : null}{message.questions?.map((question, qIndex) => <div className="jd-question" key={qIndex}><strong>{question.label}</strong><div>{question.options.map((option) => <button key={option} disabled={busy} onClick={() => void send(option)}>{option}</button>)}</div></div>)}{message.media?.length ? <div className="jd-media-grid"><div className="jd-batch-head"><strong>{message.media.length} توليدات مستقلة</strong>{message.media.filter((media) => !media.jobId).length > 1 && <button className="jd-action" onClick={() => void makeAll(message.media!)}>ولّد المجموعة معًا</button>}</div>{message.media.map((media) => <MediaCard key={media.id} media={media} />)}</div> : null}</div>)}
@@ -230,5 +232,5 @@ export default function DirectorChat({ loginHref, generators }: { loginHref: str
         {!loginHref && <><div className="jd-pending">{pending.map((file) => <span key={file.id}>{ICON[file.kind]} {file.name}<button onClick={() => setPending((current) => current.filter((item) => item.id !== file.id))}>✕</button></span>)}</div><form className="jd-compose" onSubmit={(event) => { event.preventDefault(); void send(); }}><input ref={fileInput} hidden multiple type="file" accept="image/*,video/*,audio/*,.pdf" onChange={(event) => void attach(event.target.files)} /><button type="button" onClick={() => fileInput.current?.click()} disabled={busy || uploading || pending.length >= JAWAD_ATTACHMENT_LIMIT}>📎</button><MicButton onText={(value) => setText((current) => current ? `${current} ${value}` : value)} disabled={busy || uploading} /><textarea ref={textBox} value={text} onChange={(event) => setText(event.target.value)} maxLength={20000} placeholder="اكتب لجواد المخرج…" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} /><button className="send" disabled={busy || uploading || (!text.trim() && !pending.length)}>أرسل</button></form></>}
       </section>
     </div>
-  </main>;
+  </div>;
 }
