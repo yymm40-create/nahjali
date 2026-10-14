@@ -7,6 +7,7 @@ import { designerAllowed, getVisibility as designerVisibility } from "@/lib/desi
 import { gamesAllowed, getVisibility } from "@/lib/games/access";
 import { photoAllowed, getVisibility as photoVisibility } from "@/lib/photo/access";
 import type { Runtime } from "./runtime";
+import { unifiedStudioNavigation } from "@config/jawad/sections";
 
 export async function barSections(rt: Runtime, user: { email?: string | null } | null, owner: boolean): Promise<Runtime["sections"]> {
   const [gamesOk, gamesVis, contentOk, contentVis, designerOk, designerVis, photoOk, photoVis] = await Promise.all([
@@ -19,7 +20,7 @@ export async function barSections(rt: Runtime, user: { email?: string | null } |
     user ? photoAllowed(user.email) : false,
     owner ? photoVisibility() : "all",
   ]);
-  return rt.sections
+  return unifiedStudioNavigation(rt.sections
     .filter((s) => (s.implementation !== "games" || gamesOk) && (s.implementation !== "content" || contentOk) && (s.implementation !== "designer" || designerOk) && (s.implementation !== "photo" || photoOk))
-    .map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s.implementation === "content" ? { ...s, enabled: contentVis !== "owner" } : s.implementation === "designer" ? { ...s, enabled: designerVis !== "owner" } : s.implementation === "photo" ? { ...s, enabled: photoVis !== "owner" } : s));
+    .map((s) => (s.implementation === "games" ? { ...s, enabled: gamesVis !== "owner" } : s.implementation === "content" ? { ...s, enabled: contentVis !== "owner" } : s.implementation === "designer" ? { ...s, enabled: designerVis !== "owner" } : s.implementation === "photo" ? { ...s, enabled: photoVis !== "owner" } : s)));
 }

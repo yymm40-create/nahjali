@@ -37,7 +37,7 @@ export interface SectionDef {
 }
 
 export const DEFAULT_SECTIONS: SectionDef[] = [
-  { id: "images", name: "صناعة الصور", icon: "image", implementation: "studio:image", sort: 10, enabled: true },
+  { id: "images", name: "الاستوديو الإبداعي", icon: "wand", implementation: "studio:image", sort: 10, enabled: true },
   { id: "video", name: "صناعة الفيديو", icon: "video", implementation: "studio:video", sort: 20, enabled: true },
   { id: "film", name: "الفيلم السينمائي", icon: "film", implementation: "film", sort: 30, enabled: true },
   { id: "director", name: "جواد المخرج", icon: "camera", implementation: "director", sort: 32, enabled: true },
@@ -65,6 +65,16 @@ export const RESERVED_SECTION_IDS = ["memory", "admin", "login", "username", "co
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
 export const FIXED_IMPLEMENTATIONS: string[] = ["film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+
+export const STUDIO_SECTION_IDS = ["images", "video", "audio"] as const;
+export const STUDIO_ROOT_ID = "images";
+
+/** The three legacy studio routes stay valid, but navigation presents them as one adaptive studio. */
+export function unifiedStudioNavigation<T extends { id: string; name: string; icon: string; path: string }>(sections: T[]): T[] {
+  return sections
+    .filter((section) => !STUDIO_SECTION_IDS.includes(section.id as (typeof STUDIO_SECTION_IDS)[number]) || section.id === STUDIO_ROOT_ID)
+    .map((section) => section.id === STUDIO_ROOT_ID ? { ...section, name: "الاستوديو الإبداعي", icon: "wand", path: "/jawad-ai/images" } : section);
+}
 
 /** Where a section opens. The film maker, «الطالب الذكي» and «حيدرة كت» keep their own pages; studio sections open at /jawad-ai/<id>. */
 export const sectionPath = (s: { id: string; implementation: string }) =>

@@ -4,9 +4,10 @@ import { coinBalance } from "@/lib/coins";
 import { freeFor, jawadSession } from "@/lib/jawad/server/access";
 import { accessOf, permForGenerator } from "@/lib/access";
 import { generatorById } from "@config/jawad/generators";
-import { loadRuntime, sectionGenerators } from "@/lib/jawad/server/runtime";
+import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { worksPage } from "@/lib/jawad/server/works";
 import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
+import { STUDIO_SECTION_IDS } from "@config/jawad/sections";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -19,28 +20,37 @@ async function studioSection(id: string) {
 
 export async function generateMetadata({ params }: PageProps<"/jawad-ai/[section]">) {
   const { s } = await studioSection((await params).section);
-  return { title: s?.name ?? "غير موجود" };
+  const unified = s && STUDIO_SECTION_IDS.includes(s.id as (typeof STUDIO_SECTION_IDS)[number]);
+  return { title: unified ? "الاستوديو الإبداعي" : s?.name ?? "غير موجود" };
 }
 
 /** A studio section (images, video, audio, or one the owner added): generation settings on the left, the user's works on the right. */
 export default async function SectionPage({ params }: PageProps<"/jawad-ai/[section]">) {
   const { section } = await params;
   const [{ rt, s }, { user, owner }] = await Promise.all([studioSection(section), jawadSession()]);
-  if (!s || s.output === null || (!s.enabled && !owner)) notFound();
+  if (!s || s.output === null) notFound();
 
-  // the dashboard's list: each branch (images, video, voices, music) for this email
+  const unified = STUDIO_SECTION_IDS.includes(s.id as (typeof STUDIO_SECTION_IDS)[number]);
+  const studioRoot = rt.sections.find((item) => item.id === "images");
+  if ((unified ? !studioRoot?.enabled : !s.enabled) && !owner) notFound();
+  const studioSections = rt.sections.filter((item) => item.output !== null && (item.enabled || owner) && (unified ? STUDIO_SECTION_IDS.includes(item.id as (typeof STUDIO_SECTION_IDS)[number]) : item.id === s.id));
+  const sectionIds = new Set(studioSections.map((item) => item.id));
+  // The unified studio receives image, video and audio generators together. Legacy routes choose which kind appears first.
   const perms = await accessOf(user?.email);
-  const generators = sectionGenerators(rt, s.id, owner).filter((g) => !user || perms.has(permForGenerator(generatorById(g.id) ?? { id: g.id, output: s.output! }))).map((g) => ({ id: g.id, name: g.name, sampleUrl: g.sampleUrl, live: g.live, reason: owner ? g.reason : null }));
+  const generators = rt.generators
+    .filter((generator) => sectionIds.has(generator.sectionId) && (generator.live || (owner && generator.keyConfigured && rt.migrated)))
+    .filter((generator) => !user || perms.has(permForGenerator(generatorById(generator.id) ?? { id: generator.id, output: s.output! })))
+    .map((generator) => ({ id: generator.id, name: generator.name, sectionId: generator.sectionId, sampleUrl: generator.sampleUrl, live: generator.live, reason: owner ? generator.reason : null }))
+    .sort((a, b) => Number((generatorById(b.id)?.output ?? "") === s.output) - Number((generatorById(a.id)?.output ?? "") === s.output));
   const allowed = Boolean(user) && generators.length > 0;
   const [balance, initialWorks, free] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null), freeFor(user)]) : [null, null, false];
-  const freeImageAvailable = Boolean(user && allowed && !free && s.output === "image" && await signupFreeImageAvailable(user.id, user.created_at));
+  const hasImageGenerator = generators.some((generator) => generatorById(generator.id)?.output === "image");
+  const freeImageAvailable = Boolean(user && allowed && !free && hasImageGenerator && await signupFreeImageAvailable(user.id, user.created_at));
 
-  return (
-    // each section has its own look (sections.css), by its output type
-    <div className="jw-sec" data-jw-section={s.output}>
-    <Studio
+  return <Studio
       key={s.id}
-      section={{ id: s.id, name: s.name, output: s.output }}
+      section={{ id: s.id, name: unified ? "الاستوديو الإبداعي" : s.name, output: s.output }}
+      studioSections={studioSections.map((item) => ({ id: item.id, name: item.name, output: item.output! }))}
       generators={generators}
       prices={Object.fromEntries(generators.map((g) => [g.id, rt.prices[g.id]]))}
       user={user ? { id: user.id } : null}
@@ -51,7 +61,5 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
       balance={balance}
       initialWorks={initialWorks}
       freeImageAvailable={freeImageAvailable}
-    />
-    </div>
-  );
+    />;
 }

@@ -37,6 +37,54 @@
   box-shadow: var(--jw-sec-shadow, none);
 }
 
+/* One studio, three adaptive modes. The selected medium drives the page tokens above and every setting below it. */
+.jw-kind-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0.38rem;
+  border: 1px solid var(--jw-line-strong);
+  border-radius: calc(var(--jw-radius) + 4px);
+  background: var(--jw-surface-2);
+}
+.jw-kind-switch button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: var(--jw-radius);
+  padding: 0.62rem 0.55rem;
+  color: var(--jw-muted);
+  text-align: start;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+.jw-kind-switch button:not(:disabled):hover { transform: translateY(-1px); color: var(--jw-ink); }
+.jw-kind-switch button[aria-selected="true"] {
+  border-color: var(--jw-accent-line);
+  background: var(--jw-surface);
+  color: var(--jw-ink);
+  box-shadow: 0 8px 18px -12px var(--jw-accent);
+}
+.jw-kind-switch button:disabled { opacity: 0.38; cursor: not-allowed; }
+.jw-kind-switch b,.jw-kind-switch small { display: block; white-space: nowrap; }
+.jw-kind-switch b { font-size: 0.82rem; }
+.jw-kind-switch small { margin-top: 0.08rem; color: var(--jw-faint); font-size: 0.62rem; }
+.jw-kind-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--jw-accent) 14%, transparent);
+  color: var(--jw-accent);
+}
+@media (max-width: 420px) {
+  .jw-kind-switch button { justify-content: center; padding-inline: 0.35rem; }
+  .jw-kind-switch small { display: none; }
+}
+
 /* ── الصور «المرسم»: a bright gallery on paper, warm coral ── */
 .jw [data-jw-section="image"] {
   --jw-bg: #fbf7f1;

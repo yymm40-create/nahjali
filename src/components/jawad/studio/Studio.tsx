@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coinStr, setPricing } from "@config/coins";
 import Riyal from "@/components/Riyal";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, MINIMAX_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
-import type { RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
+import type { OutputKind, RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
 import type { AssistantDraft, AssistantSet, ThumbnailSide } from "@config/jawad/assistant";
 import { needsFrames, sfxFrameTimes, SMART_SPLIT_MODE, VIDEO_SFX } from "@config/jawad/smart-split";
 import { evaluate, fileProblem } from "@/lib/jawad/engine";
@@ -54,6 +54,11 @@ function notifyDone(count: number, anyFailed: boolean) {
   }
 }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+const STUDIO_KINDS: { id: OutputKind; label: string; hint: string; icon: string }[] = [
+  { id: "image", label: "صورة", hint: "صور وتصاميم", icon: "image" },
+  { id: "video", label: "فيديو", hint: "مشاهد وحركة", icon: "video" },
+  { id: "audio", label: "صوت", hint: "كلام وموسيقى", icon: "audio" },
+];
 const draftKey = (userId: string | undefined, sectionId: string) => `jawad:draft:v1:${userId ?? "anon"}:${sectionId}`;
 
 async function call<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: T & { error?: string } }> {
@@ -135,11 +140,12 @@ function withRoles(refs: RefItem[], style: RefStyle): RefItem[] {
   });
 }
 
-export default function Studio({ section, generators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
+export default function Studio({ section, studioSections, generators, prices: initialPrices, user, owner, allowed, balance: initialBalance, initialWorks, pricing, freeImageAvailable }: StudioProps) {
   // the riyal pricing in force (rate, step, margins), so the prices here match the server's to the halala
   setPricing(pricing);
   const router = useRouter();
-  const key = draftKey(user?.id, section.id);
+  const unified = studioSections.length > 1;
+  const key = draftKey(user?.id, unified ? "studio" : section.id);
   const first = generators[0]?.id ?? "";
   const [draft, setDraft] = useState<Draft>({ generatorId: first, prompt: "", instructions: "", settings: {}, refStyle: {}, refs: [] });
   const [hydrated, setHydrated] = useState(false);
@@ -185,6 +191,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   const gen = generators.find((g) => g.id === draft.generatorId) ?? generators[0];
   const def = gen ? generatorById(gen.id) : undefined;
+  const activeSection = studioSections.find((item) => item.id === gen?.sectionId) ?? section;
   const savedSettings = def ? draft.settings[def.id] : undefined;
   const settings: Settings = useMemo(() => (def ? { ...defaultSettings(def), ...(savedSettings ?? {}) } : {}), [def, savedSettings]);
   const refStyle: RefStyle = def ? draft.refStyle[def.id] ?? defaultStyle(def.id) : "none";
@@ -192,15 +199,17 @@ export default function Studio({ section, generators, prices: initialPrices, use
   // ── draft: restore once, then keep it (prompt, settings, references) ──
   function restore() {
     let saved = readDraft(key);
+    if (!saved && unified) saved = readDraft(draftKey(user?.id, section.id));
     const idea = new URLSearchParams(window.location.search).get("idea");
     if (idea) saved = { ...(saved ?? {}), prompt: idea.slice(0, 500) };
     // written before signing in (under "anon"): it is this person's draft, so it follows them into their account
     if (user && !saved?.prompt && !saved?.refs?.length) {
-      const anon = readDraft(draftKey(undefined, section.id));
+      const anon = readDraft(draftKey(undefined, unified ? "studio" : section.id)) ?? (unified ? readDraft(draftKey(undefined, section.id)) : null);
       if (anon?.prompt || anon?.refs?.length) {
         saved = { ...(saved ?? {}), ...anon, refs: anon.refs ?? saved?.refs };
         try {
-          localStorage.removeItem(draftKey(undefined, section.id));
+          localStorage.removeItem(draftKey(undefined, unified ? "studio" : section.id));
+          if (unified) localStorage.removeItem(draftKey(undefined, section.id));
         } catch {
           // nothing to clean
         }
@@ -282,6 +291,12 @@ export default function Studio({ section, generators, prices: initialPrices, use
       return { ...d, generatorId: id, refStyle: { ...d.refStyle, [id]: style }, refs: style === refStyle ? d.refs : withRoles(d.refs, style) };
     });
     setNotice(nd ? `بدّلت إلى ${nd.name}. احتفظنا بالبرومبت والمراجع؛ غير المتوافق منها معلَّم بالأحمر.` : "");
+  }
+
+  function switchOutput(output: OutputKind) {
+    const next = generators.find((generator) => generatorById(generator.id)?.output === output);
+    if (!next) return setNotice(`لا يوجد مولّد ${output === "image" ? "صور" : output === "video" ? "فيديو" : "صوت"} متاح لحسابك الآن.`);
+    switchGenerator(next.id);
   }
 
   function setRefStyle(s: RefStyle) {
@@ -506,7 +521,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   // ── generate ── (with «برومبت ثاني وثالث», one generation per prompt, each with its own references and price)
   const pick = (names: string[] | null | undefined) => (names ? draft.refs.filter((r) => names.includes(r.name)) : draft.refs);
-  const extras = section.output === "audio" ? [] : (draft.extra ?? []).filter((x) => x.prompt.trim());
+  const extras = def?.output === "audio" ? [] : (draft.extra ?? []).filter((x) => x.prompt.trim());
   const plan = def && extras.length
     ? [{ prompt: draft.prompt, refs: pick(draft.mainRefs) }, ...extras.map((x) => ({ prompt: x.prompt, refs: pick(x.refs) }))].map((x) => ({ ...x, ev: evaluate(def, { settings, prompt: x.prompt, instructions, refStyle, refs: x.refs.map(refMeta) }, prices[def.id] ?? {}) }))
     : null;
@@ -551,7 +566,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
     try {
       const r = await postJson<{ prompt: string; coins: number; balance: number | null; code?: string }>("/api/jawad/director", {
         idempotencyKey: uid(),
-        sectionId: section.id,
+        sectionId: activeSection.id,
         generatorId: def.id,
         refStyle,
         settings: ev?.settings ?? settings,
@@ -614,7 +629,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
         setSubmitting(false);
       }
     }
-    const sig = JSON.stringify([section.id, def.id, refStyle, usedSettings, P, instructions, R.map((r) => [r.uploadId, r.role, r.name]), freeImage]);
+    const sig = JSON.stringify([activeSection.id, def.id, refStyle, usedSettings, P, instructions, R.map((r) => [r.uploadId, r.role, r.name]), freeImage]);
     if (pendingSig.current !== sig) pendingKey.current = null;
     pendingSig.current = sig;
     const idem = (pendingKey.current ??= uid());
@@ -629,7 +644,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       progress: null,
       generatorId: def.id,
       generatorName: gen.name,
-      sectionId: section.id,
+      sectionId: activeSection.id,
       outputKind: def.output,
       mode: ev?.mode.id ?? "",
       prompt: P,
@@ -656,7 +671,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
     }
     const body = {
       idempotencyKey: idem,
-      sectionId: section.id,
+      sectionId: activeSection.id,
       generatorId: def.id,
       refStyle,
       settings: usedSettings,
@@ -664,7 +679,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
       instructions,
       refs: R.map((r) => ({ uploadId: r.uploadId, role: r.role, name: r.name })),
       expectedCoins,
-      ...(section.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
+      ...(def.output !== "audio" && draft.styleId ? { styleId: draft.styleId } : {}),
       ...(freeImage ? { signupFreeImage: true } : {}),
       ...(frames ? { frames } : {}),
     };
@@ -708,21 +723,6 @@ export default function Studio({ section, generators, prices: initialPrices, use
   }, [draft.prompt, freeImageAvailable, hydrated, router, submitting]);
 
   async function reuse(j: JobView) {
-    if (j.sectionId !== section.id) {
-      // Another section: hand over the draft and open it there
-      const target = draftKey(user?.id, j.sectionId);
-      const cur = readDraft(target) ?? {};
-      writeDraft(target, {
-        generatorId: j.generatorId,
-        prompt: j.prompt,
-        instructions: j.instructions,
-        settings: { ...(cur.settings ?? {}), [j.generatorId]: j.settings },
-        refStyle: { ...(cur.refStyle ?? {}), [j.generatorId]: j.refStyle },
-        refs: [],
-      });
-      router.push(`/jawad-ai/${j.sectionId}`);
-      return;
-    }
     if (!generators.some((g) => g.id === j.generatorId)) {
       setNotice("مولد هذا العمل غير متاح الآن؛ حمّلنا البرومبت فقط.");
       setDraft((d) => ({ ...d, prompt: j.prompt, instructions: j.instructions }));
@@ -825,8 +825,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
       instructions: draft.instructions,
       settings: ev?.settings ?? settings,
       refStyle,
-      styleId: section.output === "audio" ? "" : draft.styleId ?? "",
-      extra: section.output === "audio" ? [] : draft.extra ?? [],
+      styleId: def?.output === "audio" ? "" : draft.styleId ?? "",
+      extra: def?.output === "audio" ? [] : draft.extra ?? [],
       mainRefs: draft.mainRefs ?? null,
       refs: draft.refs.filter((r) => r.uploadId && r.status === "ready").map((r) => ({ uploadId: r.uploadId!, name: r.name, kind: r.kind, role: r.role, width: r.width, height: r.height, durationMs: r.durationMs })),
     };
@@ -878,7 +878,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
     return (
       <div className="mx-auto max-w-md px-4 py-24 text-center">
         <span className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-jw-surface-2 text-jw-muted"><Icon name="sparkles" size={26} /></span>
-        <h1 className="mb-2 text-lg font-semibold">{section.name}</h1>
+        <h1 className="mb-2 text-lg font-semibold">{unified ? "الاستوديو الإبداعي" : section.name}</h1>
         <p className="text-sm text-jw-muted">لا يوجد مولد متاح في هذا القسم حاليًا. سيظهر هنا فور تفعيله.</p>
       </div>
     );
@@ -886,8 +886,8 @@ export default function Studio({ section, generators, prices: initialPrices, use
 
   const generateLabel = price == null ? "توليد" : `توليد`;
   return (
-    <div>
-      <h1 className="sr-only">{section.name}</h1>
+    <div className="jw-sec" data-jw-section={def.output}>
+      <h1 className="sr-only">{unified ? `الاستوديو الإبداعي — ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : section.name}</h1>
       {/* Phones: two tabs that keep their own state */}
       <div className="sticky top-[calc(var(--jw-header-h)+var(--jw-bar-h))] z-20 grid grid-cols-2 border-b border-jw-line bg-jw-bg/95 backdrop-blur lg:hidden" role="tablist">
         {(["settings", "works"] as const).map((t) => (
@@ -903,7 +903,17 @@ export default function Studio({ section, generators, prices: initialPrices, use
       <div dir="ltr" className="mx-auto max-w-[1600px] lg:grid lg:h-[calc(100dvh-var(--jw-header-h)-var(--jw-bar-h))] lg:grid-cols-[minmax(340px,1fr)_minmax(0,2fr)]">
         <aside dir="rtl" aria-label="إعدادات التوليد" className={`${tab === "settings" ? "flex" : "hidden"} min-h-0 flex-col lg:flex lg:border-r lg:border-jw-line`}>
           <div className="jw-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-            <SectionHint kind={section.output} />
+            {unified && <div className="jw-kind-switch" role="tablist" aria-label="اختر نوع التوليد">
+              {STUDIO_KINDS.map((kind) => {
+                const available = generators.some((generator) => generatorById(generator.id)?.output === kind.id);
+                const active = def.output === kind.id;
+                return <button key={kind.id} type="button" role="tab" aria-selected={active} disabled={!available} data-kind={kind.id} onClick={() => switchOutput(kind.id)}>
+                  <span className="jw-kind-icon"><Icon name={kind.icon} size={20} /></span>
+                  <span><b>{kind.label}</b><small>{kind.hint}</small></span>
+                </button>;
+              })}
+            </div>}
+            <SectionHint kind={def.output} />
             <GeneratorCard gen={gen} owner={owner} onOpen={() => setPicker(true)} />
             {notice && (
               <p className="flex items-start gap-2 rounded-lg border border-jw-line bg-jw-surface-2 px-3 py-2 text-xs text-jw-muted" role="status">
@@ -931,7 +941,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
               onRemove={removeRef}
               onRole={(id, role) => updateRef(id, { role })}
             />
-            {section.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true))} />}
+            {def.output !== "audio" && <StylePicker value={draft.styleId ?? ""} onChange={(id) => (setDraft((d) => ({ ...d, styleId: id })), setTouched(true))} />}
             <PromptBox
               def={def}
               ev={ev}
@@ -954,7 +964,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
                 if (user && price != null && !blockers.length && !submitting) void submitAll();
               }}
             />
-            {section.output !== "audio" && (
+            {def.output !== "audio" && (
               <MorePrompts
                 refs={draft.refs.map((r) => r.name)}
                 extra={draft.extra ?? []}
@@ -1049,7 +1059,7 @@ export default function Studio({ section, generators, prices: initialPrices, use
           open={chatOpen}
           onOpen={() => setChatOpen(true)}
           onClose={() => setChatOpen(false)}
-          section={section}
+          section={activeSection}
           getDraft={assistantDraft}
           onApply={applyAssistant}
           generatorName={(id) => generators.find((g) => g.id === id)?.name ?? id}

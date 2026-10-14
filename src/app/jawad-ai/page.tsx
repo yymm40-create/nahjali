@@ -13,6 +13,7 @@ import type { WorkItem } from "@/lib/jawad/labels";
 import { JAWAD } from "@config/jawad/brand";
 import { COURSE } from "@config/course";
 import { LEARN } from "@config/learn";
+import { unifiedStudioNavigation } from "@config/jawad/sections";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ function thumb(w: WorkItem): { url: string; kind: "image" | "video" | "audio"; h
 
 // The visitor's front page: each tool as a card (the section's own name from the dashboard, a line, an icon and a colour)
 const TOOL: Record<string, { icon: string; line: string; tint: string }> = {
-  "studio:image": { icon: "🖼️", line: "صور من وصفك أو من صورك، بأي مقاس وجودة.", tint: "#f97316" },
+  "studio:image": { icon: "✨", line: "صور وفيديو وصوت من لوحة واحدة تتغيّر مع اختيارك.", tint: "#7c3aed" },
   "studio:video": { icon: "🎬", line: "فيديو من نص أو صورة، بحركة سينمائية وصوت.", tint: "#22d3ee" },
   "studio:audio": { icon: "🎙️", line: "تعليق صوتي وأصوات وموسيقى ومؤثرات.", tint: "#14b8a6" },
   film: { icon: "🎞️", line: "فيلم أو مسلسل من فكرتك، مشهد بمشهد.", tint: "#e9b546" },
@@ -54,7 +55,7 @@ export default async function JawadHome() {
   const [rt, ads, { user, owner }] = await Promise.all([loadRuntime(), liveAds(), jawadSession()]);
   if (!user) {
     const credits = await loadCreditSettings();
-    const tools: LandingTool[] = rt.sections
+    const tools: LandingTool[] = unifiedStudioNavigation(rt.sections)
       .filter((s) => s.enabled && s.implementation !== "islamic")
       .map((s) => {
         const t = TOOL[s.implementation];

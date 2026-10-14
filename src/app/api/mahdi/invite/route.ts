@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 /** Where the person who invited someone is remembered while they sign up (a week at most). */
-export const INVITE_COOKIE = "mahdi_invite";
+const INVITE_COOKIE = "mahdi_invite";
 const HANDLE = /^[\p{L}\p{N}_.-]{1,30}$/u;
 /** A redirect to a path on this same site (relative, so it keeps whatever address the visitor used). */
 const to = (path: string) => new NextResponse(null, { status: 307, headers: { Location: path } });

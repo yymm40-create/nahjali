@@ -50,10 +50,10 @@ export const SCENE_RUNTIME_JS = String.raw`
     var src = function (v) { return v && typeof v === "object" && !(v instanceof Element) ? (v.c && v.c.getContext ? v.c : v.canvas && v.canvas.getContext ? v.canvas : v) : v; };
     var pos = function (r) { return typeof r === "number" ? Math.max(0, r) : r && typeof r === "object" ? r : r; };
     for (var i = 0; i < protos.length; i++) {
-      var P = protos[i];
+      let P = protos[i];
       if (!P || P.__forgiving) continue;
       P.__forgiving = true;
-      var cp = P.createPattern, di = P.drawImage, at = P.arcTo, rr = P.roundRect;
+      let cp = P.createPattern, di = P.drawImage, at = P.arcTo, rr = P.roundRect;
       P.createPattern = function (img, rep) { return cp.call(this, src(img), rep); };
       P.drawImage = function (img) { var a = [src(img)]; for (var k = 1; k < arguments.length; k++) a.push(arguments[k]); return di.apply(this, a); };
       P.arcTo = function (x1, y1, x2, y2, r) { return at.call(this, x1, y1, x2, y2, Math.max(0, r || 0)); };

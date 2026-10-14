@@ -6,6 +6,7 @@ import type { JobView, WorkItem } from "@/lib/jawad/labels";
 export interface StudioGenerator {
   id: string;
   name: string;
+  sectionId: string;
   sampleUrl: string | null;
   live: boolean;
   reason: string | null;
@@ -13,6 +14,7 @@ export interface StudioGenerator {
 
 export interface StudioProps {
   section: { id: string; name: string; output: "image" | "video" | "audio" };
+  studioSections: { id: string; name: string; output: "image" | "video" | "audio" }[];
   generators: StudioGenerator[];
   prices: Record<string, Record<string, number | null>>;
   user: { id: string } | null;
