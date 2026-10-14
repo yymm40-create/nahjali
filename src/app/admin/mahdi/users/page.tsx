@@ -13,8 +13,21 @@ export const dynamic = "force-dynamic";
 
 const U = t.admin.users;
 const DAY_MS = 24 * 3600_000;
+const SESSION_GAP_MS = 30 * 60_000;
 /** The day `n` days ago in Riyadh (outside the component: reading the clock is fine on a dynamic page). */
 const daysAgo = (n: number) => riyadhDay(new Date(Date.now() - n * DAY_MS).toISOString());
+
+const riyadhMonthStart = () => {
+  const now = new Date(Date.now() + 3 * 3600_000);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 3 * 3600_000).toISOString();
+};
+
+const weekStart = (date: string) => {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() - value.getUTCDay());
+  return value.toISOString().slice(0, 10);
+};
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("ar-SA", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }) : U.never;
@@ -39,6 +52,9 @@ interface Row {
   groups: number;
   challenges: number;
   push: boolean;
+  monthSessions: number;
+  qualifiedWeeks: number;
+  lastVisit: string | null;
 }
 
 /** All site accounts, read page by page (the admin API returns at most 1000 at a time). */
@@ -60,12 +76,13 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
   const user = await requireUser("/admin/mahdi/users");
   if (!isAdmin(user.email)) notFound();
   const sp = await searchParams;
-  const showAll = sp.show === "all";
+  const view = sp.show === "all" ? "all" : sp.show === "actual" ? "actual" : "mahdi";
   const q = (typeof sp.q === "string" ? sp.q : "").trim().toLowerCase().replace(/^@/, "");
+  const monthStart = riyadhMonthStart();
 
   const db = createAdminClient();
   const optional = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]); // tables of later migrations
-  const [authUsers, profiles, usernames, projects, habits, logs, books, sessions, groups, challenges, push] = await Promise.all([
+  const [authUsers, profiles, usernames, projects, habits, logs, books, sessions, groups, challenges, push, visits] = await Promise.all([
     allAuthUsers(db),
     selectAll<{ user_id: string; display_name: string; created_at: string }>((a, b) => db.from("mahdi_profiles").select("user_id, display_name, created_at").order("user_id").range(a, b)),
     optional(selectAll<{ user_id: string; username: string }>((a, b) => db.from("site_usernames").select("user_id, username").order("user_id").range(a, b))),
@@ -77,6 +94,9 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
     optional(selectAll<{ user_id: string }>((a, b) => db.from("mahdi_group_members").select("user_id").eq("status", "active").order("group_id").order("user_id").range(a, b))),
     selectAll<{ user_id: string }>((a, b) => db.from("mahdi_challenge_members").select("user_id").order("challenge_id").order("user_id").range(a, b)),
     selectAll<{ user_id: string }>((a, b) => db.from("mahdi_push_subscriptions").select("user_id").order("id").range(a, b)),
+    optional(selectAll<{ user_id: string | null; created_at: string }>((a, b) =>
+      db.from("site_visits").select("user_id, created_at").not("user_id", "is", null).like("path", "/mahdi%").gte("created_at", monthStart).order("created_at").range(a, b),
+    )),
   ]);
 
   const count = (rows: { user_id: string }[]) => {
@@ -93,6 +113,30 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
   const groupsOf = count(groups);
   const challengesOf = count(challenges);
   const pushOf = count(push);
+
+  // Page navigation creates several visit rows. Collapse nearby rows into one real entry session.
+  const sessionsByUser = new Map<string, string[]>();
+  const lastVisitAt = new Map<string, number>();
+  for (const visit of visits) {
+    if (!visit.user_id) continue;
+    const at = Date.parse(visit.created_at);
+    const previous = lastVisitAt.get(visit.user_id);
+    if (previous === undefined || at - previous >= SESSION_GAP_MS) {
+      const userSessions = sessionsByUser.get(visit.user_id) ?? [];
+      userSessions.push(visit.created_at);
+      sessionsByUser.set(visit.user_id, userSessions);
+    }
+    lastVisitAt.set(visit.user_id, at);
+  }
+  const qualifiedWeeksByUser = new Map<string, number>();
+  for (const [userId, userSessions] of sessionsByUser) {
+    const weekly = new Map<string, number>();
+    for (const session of userSessions) {
+      const key = weekStart(riyadhDay(session));
+      weekly.set(key, (weekly.get(key) ?? 0) + 1);
+    }
+    qualifiedWeeksByUser.set(userId, [...weekly.values()].filter((total) => total >= 2).length);
+  }
 
   // Active days in the last 30 days and the latest activity (a log or a reading session)
   const since30 = daysAgo(29);
@@ -131,16 +175,21 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
       groups: groupsOf.get(u.id) ?? 0,
       challenges: challengesOf.get(u.id) ?? 0,
       push: (pushOf.get(u.id) ?? 0) > 0,
+      monthSessions: sessionsByUser.get(u.id)?.length ?? 0,
+      qualifiedWeeks: qualifiedWeeksByUser.get(u.id) ?? 0,
+      lastVisit: sessionsByUser.get(u.id)?.at(-1) ?? null,
     };
   });
 
   const entered = rows.filter((r) => r.joined);
+  const actual = entered.filter((r) => r.projects > 0 && r.qualifiedWeeks > 0);
   const pct = (n: number) => (entered.length ? Math.round((n / entered.length) * 100) : 0);
   const built = entered.filter((r) => r.habits > 0).length;
   const active7 = entered.filter((r) => [...(days.get(r.id) ?? [])].some((d) => d >= since7)).length;
   const new7 = entered.filter((r) => r.joined && riyadhDay(r.joined) >= since7).length;
   const pushOn = entered.filter((r) => r.push).length;
   const tiles: [string, number, string?][] = [
+    [U.tiles.actual, actual.length, U.actualTileHint],
     [U.tiles.site, rows.length],
     [U.tiles.entered, entered.length],
     [U.tiles.built, built, U.ofEntered(pct(built))],
@@ -149,12 +198,12 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
     [U.tiles.push, pushOn, U.ofEntered(pct(pushOn))],
   ];
 
-  const shown = (showAll ? rows : entered)
+  const shown = (view === "all" ? rows : view === "actual" ? actual : entered)
     .filter((r) => !q || r.name.toLowerCase().includes(q) || (r.username ?? "").includes(q) || r.email.toLowerCase().includes(q))
-    .sort((a, b) => (latest(b.lastActive, b.lastSignIn) ?? "").localeCompare(latest(a.lastActive, a.lastSignIn) ?? ""));
+    .sort((a, b) => (latest(b.lastVisit, b.lastActive, b.lastSignIn) ?? "").localeCompare(latest(a.lastVisit, a.lastActive, a.lastSignIn) ?? ""));
 
-  const tab = (all: boolean) =>
-    `/admin/mahdi/users?${new URLSearchParams({ ...(all ? { show: "all" } : {}), ...(q ? { q } : {}) })}`;
+  const tab = (target: typeof view) =>
+    `/admin/mahdi/users?${new URLSearchParams({ ...(target === "mahdi" ? {} : { show: target }), ...(q ? { q } : {}) })}`;
 
   return (
     <div className="space-y-6">
@@ -175,12 +224,14 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
       </section>
 
       <section className="space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <Link href={tab(false)} className={`btn px-3 text-base ${showAll ? "btn-ghost" : "btn-secondary"}`} aria-current={showAll ? undefined : "page"}>{U.show.mahdi}</Link>
-          <Link href={tab(true)} className={`btn px-3 text-base ${showAll ? "btn-secondary" : "btn-ghost"}`} aria-current={showAll ? "page" : undefined}>{U.show.all}</Link>
+        <div className="grid grid-cols-3 gap-2">
+          <Link href={tab("actual")} className={`btn px-3 text-base ${view === "actual" ? "btn-secondary" : "btn-ghost"}`} aria-current={view === "actual" ? "page" : undefined}>{U.show.actual}</Link>
+          <Link href={tab("mahdi")} className={`btn px-3 text-base ${view === "mahdi" ? "btn-secondary" : "btn-ghost"}`} aria-current={view === "mahdi" ? "page" : undefined}>{U.show.mahdi}</Link>
+          <Link href={tab("all")} className={`btn px-3 text-base ${view === "all" ? "btn-secondary" : "btn-ghost"}`} aria-current={view === "all" ? "page" : undefined}>{U.show.all}</Link>
         </div>
+        {view === "actual" && <p className="card border-2 border-primary/30 bg-primary/5 p-4 text-sm font-bold">{U.actualDefinition}</p>}
         <form className="flex gap-2" action="/admin/mahdi/users">
-          {showAll && <input type="hidden" name="show" value="all" />}
+          {view !== "mahdi" && <input type="hidden" name="show" value={view} />}
           <input name="q" defaultValue={q} dir="auto" placeholder={U.search} className="field min-w-0 flex-1" />
           <button className="btn btn-secondary px-4 text-base">{U.searchBtn}</button>
         </form>
@@ -216,6 +267,7 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
                       [U.readMinutes, r.readMinutes],
                       [U.groups, r.groups],
                       [U.challenges, r.challenges],
+                      ...(view === "actual" ? [[U.monthSessions, r.monthSessions], [U.qualifiedWeeks, r.qualifiedWeeks]] as const : []),
                     ] as const
                   ).map(([label, value]) => (
                     <div key={label} className="rounded-xl bg-surface-2 p-2">
@@ -231,6 +283,7 @@ export default async function MahdiUsersPage({ searchParams }: PageProps<"/admin
               <div className="grid gap-1 text-xs font-bold text-muted sm:grid-cols-2">
                 {r.joined && <div>{U.joined}: {fmtDate(r.joined)}</div>}
                 {r.joined && <div>{U.lastActive}: {fmtDate(r.lastActive)}</div>}
+                {view === "actual" && <div>{U.lastVisit}: {fmtDate(r.lastVisit)}</div>}
                 <div>{U.lastSignIn}: {fmtDate(r.lastSignIn)}</div>
                 {!r.joined && <div>{U.siteJoined}: {fmtDate(r.siteJoined)}</div>}
               </div>
