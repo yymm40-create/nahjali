@@ -12,6 +12,7 @@ import { avatarUrl } from "./rows";
 export const GROUP_JOIN_COOKIE = "mahdi_gjoin";
 export const MAX_GROUPS = 5;
 export const MAX_MEMBERS = 50;
+export const MAX_GROUP_WORKS = 40;
 
 export interface MemberRow {
   group_id: string;
@@ -96,6 +97,48 @@ export async function groupMembers(db: SupabaseClient, groupId: string, leaderId
     leader: m.user_id === leaderId,
     ...(people.get(m.user_id) ?? { displayName: "", username: "", avatarUrl: null, tz: "Asia/Riyadh" }),
   }));
+}
+
+/** Active shared work and this cycle's completion. A shared definition means leader edits never drift between members. */
+export async function groupWorks(
+  db: SupabaseClient,
+  groupId: string,
+  activeMemberIds: string[],
+  today: string,
+  me: string,
+) {
+  const { data: rows, error } = await db
+    .from("mahdi_group_works")
+    .select("id, title, details, cadence, due_date, created_at")
+    .eq("group_id", groupId)
+    .eq("active", true)
+    .order("created_at", { ascending: true });
+  if (error && ["42P01", "PGRST204", "PGRST205"].includes(error.code ?? "")) return null;
+  if (error) throw error;
+  if (!rows?.length) return [];
+  const dates = [...new Set(rows.map((work) => (work.cadence === "daily" ? today : work.due_date as string)))];
+  const { data: logs, error: logsError } = await db
+    .from("mahdi_group_work_logs")
+    .select("work_id, user_id, work_date")
+    .eq("group_id", groupId)
+    .in("work_id", rows.map((work) => work.id))
+    .in("work_date", dates);
+  if (logsError) throw logsError;
+  const active = new Set(activeMemberIds);
+  return rows.map((work) => {
+    const workDate = work.cadence === "daily" ? today : work.due_date as string;
+    const doneBy = new Set((logs ?? []).filter((log) => log.work_id === work.id && log.work_date === workDate && active.has(log.user_id)).map((log) => log.user_id));
+    return {
+      id: work.id as string,
+      title: work.title as string,
+      details: work.details as string,
+      cadence: work.cadence as "daily" | "once",
+      dueDate: work.due_date as string | null,
+      mineDone: doneBy.has(me),
+      doneCount: doneBy.size,
+      memberCount: activeMemberIds.length,
+    };
+  });
 }
 
 /**

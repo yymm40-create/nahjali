@@ -2,16 +2,17 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { cleanUsername, USERNAME_RE } from "@/lib/username-rules";
 import { t } from "@/lib/mahdi/i18n";
+import { todayIn } from "@/lib/mahdi/engine";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
-import { groupCount, groupMembers, groupRanking, MAX_GROUPS, MAX_MEMBERS, requireGroup } from "@/lib/mahdi/server/groups";
-import { requireName } from "@/lib/mahdi/server/validate";
+import { groupCount, groupMembers, groupRanking, groupWorks, MAX_GROUPS, MAX_GROUP_WORKS, MAX_MEMBERS, requireGroup } from "@/lib/mahdi/server/groups";
+import { cleanText, oneOf, parseDate, requireName } from "@/lib/mahdi/server/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** The group (members only): members, and the private ranking `?period=week|month&metric=score|reading`. */
 export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
-  const { user } = await requireProfile(req);
+  const { user, profile } = await requireProfile(req);
   const id = requireId((await params).id);
   const db = createAdminClient();
   const { group } = await requireGroup(db, id, user.id);
@@ -19,7 +20,11 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const period = q.get("period") === "month" ? "month" : "week";
   const metric = q.get("metric") === "reading" ? "reading" : "score";
   const members = await groupMembers(db, id, group.leader_id);
-  const ranking = await groupRanking(db, members, period, metric, user.id);
+  const activeIds = members.filter((member) => member.status === "active").map((member) => member.userId);
+  const [ranking, works] = await Promise.all([
+    groupRanking(db, members, period, metric, user.id),
+    groupWorks(db, id, activeIds, todayIn(profile.timeZone), user.id),
+  ]);
   return NextResponse.json(
     {
       group: { id: group.id, name: group.name, isLeader: group.leader_id === user.id },
@@ -27,6 +32,9 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
       requests: group.leader_id === user.id ? members.filter((m) => m.status === "requested").map((m) => ({ displayName: m.displayName, username: m.username, avatarUrl: m.avatarUrl })) : [],
       members: members.filter((m) => m.status !== "requested").map((m) => ({ displayName: m.displayName, username: m.username, avatarUrl: m.avatarUrl, status: m.status, leader: m.leader, mine: m.userId === user.id })),
       ranking,
+      works: works ?? [],
+      worksReady: works !== null,
+      today: todayIn(profile.timeZone),
     },
     { headers: { "Cache-Control": "private, no-store" } },
   );
@@ -40,7 +48,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
  *               link (the join link's token, made when missing) · link_reset (a new one) · approve { username } · reject { username }
  */
 export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
-  const { user } = await requireProfile(req);
+  const { user, profile } = await requireProfile(req);
   const id = requireId((await params).id);
   const body = await readJson(req);
   const db = createAdminClient();
@@ -73,11 +81,56 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
       await db.from("mahdi_group_members").delete().eq("group_id", id).eq("user_id", user.id);
       return ok();
     }
+    case "work_toggle": {
+      if (status !== "active") throw new UserError(t.groups.notMember, 403);
+      const workId = requireId(body.workId);
+      const { data: work } = await db.from("mahdi_group_works").select("id, cadence, due_date").eq("id", workId).eq("group_id", id).eq("active", true).maybeSingle();
+      if (!work) throw new UserError(t.errors.notFound, 404);
+      const workDate = work.cadence === "daily" ? todayIn(profile.timeZone) : work.due_date;
+      if (body.done === true) {
+        const { error } = await db.from("mahdi_group_work_logs").upsert(
+          { work_id: workId, group_id: id, user_id: user.id, work_date: workDate, done_at: new Date().toISOString() },
+          { onConflict: "work_id,user_id,work_date" },
+        );
+        if (error) throw error;
+      } else if (body.done === false) {
+        const { error } = await db.from("mahdi_group_work_logs").delete().eq("work_id", workId).eq("user_id", user.id).eq("work_date", workDate);
+        if (error) throw error;
+      } else {
+        throw new UserError(t.errors.invalid, 400);
+      }
+      return ok();
+    }
   }
 
   // Everything below is for the leader of an active group
   if (status !== "active" || !isLeader) throw new UserError(t.groups.notMember, 403);
   switch (body.action) {
+    case "work_create": {
+      const { count } = await db.from("mahdi_group_works").select("id", { count: "exact", head: true }).eq("group_id", id).eq("active", true);
+      if ((count ?? 0) >= MAX_GROUP_WORKS) throw new UserError(t.groups.worksLimit(MAX_GROUP_WORKS), 429);
+      const cadence = oneOf(body.cadence, ["daily", "once"] as const);
+      const dueDate = cadence === "once" ? parseDate(body.dueDate) : null;
+      const today = todayIn(profile.timeZone);
+      if (dueDate && dueDate < today) throw new UserError(t.groups.workPastDate, 400);
+      const { error } = await db.from("mahdi_group_works").insert({
+        group_id: id,
+        title: requireName(body.title, 120, t.groups.workBadTitle),
+        details: cleanText(body.details, 500),
+        cadence,
+        due_date: dueDate,
+        created_by: user.id,
+      });
+      if (error) throw error;
+      return ok();
+    }
+    case "work_archive": {
+      const workId = requireId(body.workId);
+      const { data, error } = await db.from("mahdi_group_works").update({ active: false }).eq("id", workId).eq("group_id", id).select("id");
+      if (error) throw error;
+      if (!data?.length) throw new UserError(t.errors.notFound, 404);
+      return ok();
+    }
     case "invite": {
       const uid = await target();
       if (uid === user.id) throw new UserError(t.groups.self, 400);

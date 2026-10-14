@@ -25,6 +25,9 @@ interface Detail {
   members: Member[];
   requests?: { displayName: string; username: string; avatarUrl: string | null }[];
   ranking: { ranked: BoardRow[]; unranked: { displayName: string; username: string; avatarUrl: string | null; mine: boolean }[]; min?: number };
+  works: { id: string; title: string; details: string; cadence: "daily" | "once"; dueDate: string | null; mineDone: boolean; doneCount: number; memberCount: number }[];
+  worksReady: boolean;
+  today: string;
 }
 type Confirm = { kind: "remove" | "transfer"; m: Member } | { kind: "leave" | "delete" } | null;
 
@@ -41,6 +44,11 @@ export default function GroupPage() {
   const [username, setUsername] = useState("");
   const [rename, setRename] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [workBusy, setWorkBusy] = useState<string | null>(null);
+  const [workTitle, setWorkTitle] = useState("");
+  const [workDetails, setWorkDetails] = useState("");
+  const [workCadence, setWorkCadence] = useState<"daily" | "once">("daily");
+  const [workDate, setWorkDate] = useState("");
   const [confirm, setConfirm] = useState<Confirm>(null);
   const key = `${period}:${metric}:${reload}`;
   // the join link (the leader's): its token comes from the server once asked
@@ -90,6 +98,21 @@ export default function GroupPage() {
     setBusy(false);
   }
 
+  async function toggleWork(work: Detail["works"][number]) {
+    if (workBusy) return;
+    setWorkBusy(work.id);
+    setResult((current) => current ? { ...current, data: { ...current.data, works: current.data.works.map((item) => item.id === work.id ? { ...item, mineDone: !item.mineDone, doneCount: Math.max(0, item.doneCount + (item.mineDone ? -1 : 1)) } : item) } } : current);
+    try {
+      await mahdiFetch(`/api/mahdi/groups/${id}`, { method: "POST", json: { action: "work_toggle", workId: work.id, done: !work.mineDone } });
+      toast(work.mineDone ? t.groups.workUndone : t.groups.workDone);
+    } catch (e) {
+      setReload((n) => n + 1);
+      toast((e as Error).message);
+    } finally {
+      setWorkBusy(null);
+    }
+  }
+
   if (error && !data) {
     return (
       <div className="m-card space-y-4 p-6 text-center">
@@ -113,6 +136,93 @@ export default function GroupPage() {
         <h1 className="m-display text-3xl">{group.name}</h1>
         <p className="m-num text-sm m-muted">{t.groups.members(active.length)}</p>
       </header>
+
+      <section className="space-y-3" aria-labelledby="group-works">
+        <div className="flex items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--m-gold) 16%, transparent)", color: "var(--m-gold)" }}>
+            <Icon name="check" size={21} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <h2 id="group-works" className="text-lg font-semibold">{t.groups.worksTitle}</h2>
+            <p className="text-sm m-muted">{t.groups.worksHint}</p>
+          </span>
+        </div>
+
+        {!data.worksReady ? (
+          <p className="m-note">{t.groups.worksNotReady}</p>
+        ) : data.works.length === 0 ? (
+          <p className="m-card p-5 text-center m-muted">{t.groups.worksEmpty}</p>
+        ) : (
+          <ul className="m-card divide-y" style={{ borderColor: "var(--m-line)" }}>
+            {data.works.map((work) => (
+              <li key={work.id} className="flex items-start gap-3 px-4 py-3">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={work.mineDone}
+                  aria-label={work.title}
+                  disabled={workBusy === work.id}
+                  onClick={() => void toggleWork(work)}
+                  className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border-2 transition-all active:scale-90"
+                  style={{ borderColor: work.mineDone ? "var(--m-gold)" : "var(--m-line)", background: work.mineDone ? "var(--m-gold)" : "transparent", color: "var(--m-bg, #fff)" }}
+                >
+                  {work.mineDone && <Icon name="check" size={18} />}
+                </button>
+                <span className="min-w-0 flex-1">
+                  <span className={`block font-semibold ${work.mineDone ? "line-through m-muted" : ""}`}>{work.title}</span>
+                  {work.details && <span className="mt-0.5 block whitespace-pre-line text-sm m-muted">{work.details}</span>}
+                  <span className="m-num mt-1 flex flex-wrap gap-x-2 text-xs m-muted">
+                    <span>{work.cadence === "daily" ? t.groups.workToday : t.groups.workOn(work.dueDate ?? "")}</span>
+                    <span>· {t.groups.workProgress(work.doneCount, work.memberCount)}</span>
+                  </span>
+                  <span className="mt-2 block h-1.5 overflow-hidden rounded-full" style={{ background: "var(--m-track)" }}>
+                    <span className="block h-full rounded-full transition-[width]" style={{ width: `${work.memberCount ? Math.round(work.doneCount / work.memberCount * 100) : 0}%`, background: "var(--m-gold)" }} />
+                  </span>
+                </span>
+                {group.isLeader && (
+                  <button type="button" className="m-icon-btn m-btn-ghost shrink-0" disabled={workBusy === work.id} aria-label={t.groups.workRemove} onClick={() => act({ action: "work_archive", workId: work.id }, t.groups.workArchived)}>
+                    <Icon name="trash" size={16} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {group.isLeader && data.worksReady && (
+          <form
+            className="m-card space-y-3 p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              act(
+                { action: "work_create", title: workTitle, details: workDetails, cadence: workCadence, dueDate: workCadence === "once" ? workDate : null },
+                t.groups.workCreated,
+                () => (setWorkTitle(""), setWorkDetails(""), setReload((n) => n + 1)),
+              );
+            }}
+          >
+            <h3 className="font-semibold">{t.groups.workAdd}</h3>
+            <input className="m-field" required maxLength={120} value={workTitle} onChange={(event) => setWorkTitle(event.target.value)} placeholder={t.groups.workTitlePlaceholder} aria-label={t.groups.workTitle} />
+            <textarea className="m-field min-h-20 resize-y" maxLength={500} value={workDetails} onChange={(event) => setWorkDetails(event.target.value)} placeholder={t.groups.workDetailsPlaceholder} aria-label={t.groups.workDetails} />
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.groups.workAdd}>
+              {(["daily", "once"] as const).map((cadence) => (
+                <button key={cadence} type="button" role="radio" aria-checked={workCadence === cadence} className="m-option min-h-11 px-3 font-semibold" onClick={() => (setWorkCadence(cadence), cadence === "once" && !workDate && setWorkDate(data.today))}>
+                  {cadence === "daily" ? t.groups.workDaily : t.groups.workOnce}
+                </button>
+              ))}
+            </div>
+            {workCadence === "once" && (
+              <label className="block">
+                <span className="m-label">{t.groups.workDueDate}</span>
+                <input type="date" className="m-field m-num" required min={data.today} value={workDate} onChange={(event) => setWorkDate(event.target.value)} />
+              </label>
+            )}
+            <button className="m-btn m-btn-primary w-full" disabled={busy || !workTitle.trim() || (workCadence === "once" && !workDate)}>
+              <Icon name="plus" size={18} /> {t.groups.workAdd}
+            </button>
+          </form>
+        )}
+      </section>
 
       <section className="space-y-3" aria-labelledby="rank">
         <h2 id="rank" className="text-lg font-semibold">{t.groups.ranking}</h2>
