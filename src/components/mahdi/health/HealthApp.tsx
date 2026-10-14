@@ -10,13 +10,13 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useHealth, type SetupStep } from "./HealthProvider";
 import {
-  DEFAULT_PROFILE,
   EXERCISES,
   FOCUS,
   GYM_WAYS,
   LABELS,
   MUSCLE_NAMES,
   RED_FLAGS,
+  SPLIT_CHOICES,
   SPLIT_NAMES,
   WEEKDAYS,
   bmiOf,
@@ -29,6 +29,7 @@ import {
   macrosOf,
   makePlan,
   placeOk,
+  splitFor,
   nutrition,
   trimester,
   weeklySets,
@@ -37,6 +38,7 @@ import {
   type HealthPlan,
   type HealthProfile,
   type PlanDay,
+  type SplitPreference,
 } from "@/lib/mahdi/health/plan";
 import RobotFace from "@/components/RobotFace";
 import "./health.css";
@@ -97,9 +99,9 @@ export function Barbell() {
   );
 }
 
-export function Choice({ on, onClick, big, title, hint }: { on: boolean; onClick: () => void; big?: string; title: string; hint?: string }) {
+export function Choice({ on, onClick, big, title, hint, disabled = false }: { on: boolean; onClick: () => void; big?: string; title: string; hint?: string; disabled?: boolean }) {
   return (
-    <button type="button" className="gym-choice" aria-pressed={on} onClick={onClick}>
+    <button type="button" className="gym-choice" aria-pressed={on} onClick={onClick} disabled={disabled}>
       {big && <span className="big">{big}</span>}
       <b>{title}</b>
       {hint && <span>{hint}</span>}
@@ -299,13 +301,43 @@ export default function HealthApp() {
                   type="button"
                   className="gym-chip"
                   aria-pressed={p.days.includes(i)}
-                  onClick={() => set("days", p.days.includes(i) ? (p.days.length > 1 ? p.days.filter((x) => x !== i) : p.days) : [...p.days, i].sort())}
+                  onClick={() => {
+                    const days = p.days.includes(i) ? (p.days.length > 1 ? p.days.filter((x) => x !== i) : p.days) : [...p.days, i].sort();
+                    const splitPreference = SPLIT_CHOICES[p.splitPreference].minDays <= days.length ? p.splitPreference : "auto";
+                    setP((old) => ({ ...old, days, splitPreference }));
+                  }}
                 >
                   {d}
                 </button>
               ))}
             </div>
             <p className="gym-small">التوصية: كل عضلات الجسم يومين على الأقل بالأسبوع. المبتدئ 2–3 أيام كفاية.</p>
+          </div>
+          <div className="gym-field">
+            <span>اختر نظام الجدول</span>
+            <div className="gym-choices">
+              {(Object.entries(SPLIT_CHOICES) as [SplitPreference, (typeof SPLIT_CHOICES)[SplitPreference]][]).map(([id, option]) => {
+                const unavailable = p.days.length < option.minDays;
+                return (
+                  <Choice
+                    key={id}
+                    on={p.splitPreference === id}
+                    onClick={() => set("splitPreference", id)}
+                    disabled={unavailable}
+                    title={option.name}
+                    hint={unavailable ? `اختر ${option.minDays} أيام أو أكثر` : option.hint}
+                  />
+                );
+              })}
+            </div>
+            <div className="gym-split-preview">
+              {splitFor(p).map((focus, i) => (
+                <div key={`${p.days[i]}-${focus}`}>
+                  <b>{WEEKDAYS[p.days[i]]} · {FOCUS[focus].name}</b>
+                  <small>{[...new Set(FOCUS[focus].slots)].slice(0, 6).map((muscle) => MUSCLE_NAMES[muscle]).join(" · ")}</small>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="gym-field">
             <span>وقت الحصة</span>
@@ -356,8 +388,8 @@ export default function HealthApp() {
             </div>
           )}
           <div className="gym-choices">
-            <Choice on={false} onClick={() => start("ready")} big="🚀" title="جدول جاهز كامل" hint="نعطيك الخطة كاملة مرة وحدة، وتقدر تعدّل عليها" />
-            <Choice on={false} onClick={() => start("steps")} big="🧱" title="نبنيه مع بعض شوي شوي" hint="نمشي خطوة خطوة: كل هدف غذائي وكل يوم تمرين، وتختار وتعدّل" />
+            <Choice on={false} onClick={() => start("ready")} big="🚀" title="اقترح لي جدولًا" hint="نختار أقل عدد مفيد من أشهر التمارين، وتعدّلها بعدين" />
+            <Choice on={false} onClick={() => start("steps")} big="🧱" title="أختار بنفسي" hint="نمر على كل يوم، ونعرض بدائل معروفة لكل عضلة" />
           </div>
           <Nav back={() => go(p.track === "food" ? "goal" : "train")} />
         </section>
@@ -478,6 +510,7 @@ function BuildFood({ idx, plan, n, save, back, next }: { idx: number; plan: Heal
 
 export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: PlanDay; save: (p: HealthPlan) => void; editable?: boolean }) {
   const [adding, setAdding] = useState("");
+  const [replacing, setReplacing] = useState<string | null>(null);
   const w = plan.workout!;
   const p = plan.profile;
   const setDay = (d: PlanDay) => save({ ...plan, workout: { ...w, days: w.days.map((x) => (x.weekday === d.weekday ? d : x)) } });
@@ -509,17 +542,35 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
                   type="button"
                   className="gym-icon-btn"
                   aria-label="بدّل التمرين"
-                  title="بدّل بتمرين ثاني لنفس العضلة"
-                  onClick={() => {
-                    const alts = candidates(ex.muscle, p).filter((e) => e.id === it.exId || !day.items.some((x) => x.exId === e.id));
-                    const next = alts[(alts.findIndex((e) => e.id === it.exId) + 1) % alts.length];
-                    if (next && next.id !== it.exId) setDay({ ...day, items: day.items.map((x) => (x.exId === it.exId ? { exId: next.id, ...dose(next, p) } : x)) });
-                  }}
+                  title="اختر من أشهر بدائل نفس العضلة"
+                  aria-expanded={replacing === it.exId}
+                  onClick={() => setReplacing(replacing === it.exId ? null : it.exId)}
                 >
-                  🔄
+                  بدائل
                 </button>
                 <button type="button" className="gym-icon-btn" aria-label="احذف" onClick={() => setDay({ ...day, items: day.items.filter((x) => x.exId !== it.exId) })}>✕</button>
               </span>
+            )}
+            {editable && replacing === it.exId && (
+              <div className="gym-ex-alts" aria-label={`بدائل ${ex.name}`}>
+                <small>أشهر خيارات {MUSCLE_NAMES[ex.muscle]} — اختر اللي ترتاح له:</small>
+                <div>
+                  {candidates(ex.muscle, p).slice(0, 4).map((alt, idx) => (
+                    <button
+                      key={alt.id}
+                      type="button"
+                      aria-pressed={alt.id === it.exId}
+                      onClick={() => {
+                        if (alt.id !== it.exId && !day.items.some((x) => x.exId === alt.id)) setDay({ ...day, items: day.items.map((x) => (x.exId === it.exId ? { exId: alt.id, ...dose(alt, p) } : x)) });
+                        setReplacing(null);
+                      }}
+                    >
+                      <b>{alt.name}</b>
+                      <span>{idx === 0 ? "الأشهر والمقترح" : alt.cue}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         );
@@ -532,7 +583,9 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
         </div>
       )}
       {editable && (
-        <div className="flex gap-2 p-3">
+        <div className="space-y-2 p-3">
+          <p className="gym-small">الجدول يبدأ بأقل عدد مفيد. إذا تبي زيادة، أضف تمرينًا واحدًا من العضلة اللي تبيها.</p>
+          <div className="flex gap-2">
           <select className="gym-select" value={adding} onChange={(e) => setAdding(e.target.value)} aria-label="أضف تمرين">
             <option value="">➕ أضف تمرين…</option>
             {Object.entries(MUSCLE_NAMES).map(([m, name]) => {
@@ -558,6 +611,7 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
           >
             أضف
           </button>
+          </div>
         </div>
       )}
     </article>

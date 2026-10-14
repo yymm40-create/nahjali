@@ -13,6 +13,18 @@ export interface SetLog {
 
 export const FOOD_KEYS = ["kcal", "proteinG", "waterCups", "produce", "steps"] as const;
 export type FoodKey = (typeof FOOD_KEYS)[number];
+export const MEASUREMENT_KEYS = ["shoulders", "chest", "arm", "forearm", "waist", "hips", "thigh", "calf"] as const;
+export type MeasurementKey = (typeof MEASUREMENT_KEYS)[number];
+export const MEASUREMENT_NAMES: Record<MeasurementKey, string> = {
+  shoulders: "الأكتاف",
+  chest: "الصدر",
+  arm: "الذراع",
+  forearm: "الساعد",
+  waist: "الخصر",
+  hips: "الحوض",
+  thigh: "الفخذ",
+  calf: "السمانة",
+};
 
 export interface DayLog {
   date: string;
@@ -24,14 +36,16 @@ export interface DayLog {
   food: Partial<Record<FoodKey, number>>;
   /** a weigh-in that day */
   bodyKg: number | null;
+  /** optional circumference measurements in centimetres */
+  measurements?: Partial<Record<MeasurementKey, number>>;
 }
 
-export const emptyDay = (date: string): DayLog => ({ date, sets: {}, cardioMin: 0, done: false, food: {}, bodyKg: null });
+export const emptyDay = (date: string): DayLog => ({ date, sets: {}, cardioMin: 0, done: false, food: {}, bodyKg: null, measurements: {} });
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const num = (v: unknown, lo: number, hi: number, step = 1) => {
   const n = Number(v);
-  return Number.isFinite(n) ? Math.round(Math.min(hi, Math.max(lo, n)) / step) * step : null;
+  return Number.isFinite(n) ? Number((Math.round(Math.min(hi, Math.max(lo, n)) / step) * step).toFixed(2)) : null;
 };
 
 /** A day as the page sent it, kept inside bounds. */
@@ -56,6 +70,12 @@ export function cleanDay(v: unknown): DayLog | null {
     const n = num(f[k], 0, k === "steps" ? 100000 : 20000);
     if (n !== null && f[k] !== undefined && f[k] !== null) food[k] = n;
   }
+  const measurements: Partial<Record<MeasurementKey, number>> = {};
+  const rawMeasurements = (o.measurements ?? {}) as Record<string, unknown>;
+  for (const key of MEASUREMENT_KEYS) {
+    const value = num(rawMeasurements[key], 5, 300, 0.1);
+    if (value !== null && rawMeasurements[key] !== undefined && rawMeasurements[key] !== null) measurements[key] = value;
+  }
   return {
     date: o.date,
     sets,
@@ -63,6 +83,7 @@ export function cleanDay(v: unknown): DayLog | null {
     done: o.done === true,
     food,
     bodyKg: o.bodyKg === null || o.bodyKg === undefined ? null : num(o.bodyKg, 20, 400, 0.1),
+    measurements,
   };
 }
 

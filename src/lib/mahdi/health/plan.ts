@@ -11,6 +11,7 @@ export type Goal = "lose" | "muscle" | "strength" | "fit" | "health";
 export type Track = "gym" | "food" | "both";
 export type Level = "beginner" | "intermediate" | "advanced";
 export type Place = "gym" | "home" | "body";
+export type SplitPreference = "auto" | "full" | "upper-lower" | "ppl";
 export type Activity = keyof typeof REF.activity;
 
 export interface HealthProfile {
@@ -35,6 +36,8 @@ export interface HealthProfile {
   redFlags: string[];
   level: Level;
   place: Place;
+  /** the training system the person chose; auto picks the safest fit for their number of days */
+  splitPreference: SplitPreference;
   /** training weekdays, 0 = Sunday … 6 = Saturday */
   days: number[];
   minutes: number;
@@ -57,6 +60,7 @@ export const DEFAULT_PROFILE: HealthProfile = {
   redFlags: [],
   level: "beginner",
   place: "gym",
+  splitPreference: "auto",
   days: [0, 2, 4],
   minutes: 60,
   meals: 3,
@@ -69,6 +73,13 @@ export const LABELS = {
   place: { gym: "جيم (نادي)", home: "جيم بيتي (عندي أدوات)", body: "بدون أدوات (وزن الجسم)" } as Record<Place, string>,
   stage: { none: "لا", pregnant: "حامل", postpartum: "بعد الولادة", breastfeeding: "مرضعة" } as Record<Stage, string>,
   track: { gym: "الجيم بس", food: "التغذية بس", both: "الجيم والتغذية" } as Record<Track, string>,
+};
+
+export const SPLIT_CHOICES: Record<SplitPreference, { name: string; hint: string; minDays: number }> = {
+  auto: { name: "اقترح الأنسب لي", hint: "نختار النظام حسب عدد أيامك ومستواك", minDays: 1 },
+  full: { name: "جسم كامل", hint: "أشهر تمرين لكل عضلة؛ ممتاز لـ2–3 أيام", minDays: 1 },
+  "upper-lower": { name: "علوي / سفلي", hint: "يوم للجزء العلوي ويوم للسفلي؛ ممتاز لـ4 أيام", minDays: 2 },
+  ppl: { name: "Push / Pull / Legs", hint: "دفع، سحب، أرجل؛ يحتاج 3 أيام على الأقل", minDays: 3 },
 };
 
 export const WEEKDAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -337,6 +348,25 @@ export const EXERCISES: Exercise[] = [
 
 export const exerciseById = (id: string) => EXERCISES.find((e) => e.id === id);
 
+/** Familiar staples first: free weights and the common machines, never novelty exercises unless they are the fallback. */
+const POPULAR: Record<Muscle, string[]> = {
+  quads: ["back-squat", "goblet-squat", "leg-press", "split-squat", "leg-ext", "bw-squat", "box-squat", "bulgarian"],
+  hinge: ["rdl", "deadlift", "hip-hinge-band", "good-morning", "sl-rdl"],
+  glutes: ["hip-thrust", "glute-bridge", "step-up", "cable-kickback", "side-clam"],
+  hams: ["leg-curl", "db-leg-curl", "ham-slide"],
+  calves: ["calf-raise"],
+  chest: ["bench", "incline-db", "chest-press", "pushup", "cable-fly", "db-fly", "incline-pushup", "decline-pushup"],
+  backV: ["pulldown", "pullup", "band-pulldown", "superman", "towel-pulldown"],
+  backH: ["db-row", "barbell-row", "seated-row", "band-row", "table-row", "door-row"],
+  shoulders: ["seated-db-press", "ohp", "pike-pushup", "wall-press"],
+  laterals: ["lateral-raise", "bottle-raise"],
+  rear: ["rear-fly", "face-pull", "band-pull-apart", "wall-angel", "ytw"],
+  biceps: ["db-curl", "hammer-curl", "cable-curl", "bag-curl", "towel-curl"],
+  triceps: ["pushdown", "overhead-ext", "diamond-pushup", "bench-dip", "wall-tri"],
+  core: ["plank", "pallof", "dead-bug", "bird-dog", "side-plank-knee"],
+  pelvic: ["kegel"],
+};
+
 // ─── training table ────────────────────────────────────────────────────────
 
 export type Focus = "full" | "upper" | "lower" | "push" | "pull" | "legs" | "gentle";
@@ -380,12 +410,21 @@ export const placeOk = (e: Exercise, place: Place) => (place === "gym" ? e.gym :
 
 export function candidates(muscle: Muscle, p: HealthProfile): Exercise[] {
   const soft = gentle(p);
-  return EXERCISES.filter((e) => e.muscle === muscle && placeOk(e, p.place) && (!soft || e.preg));
+  const rank = POPULAR[muscle];
+  return EXERCISES.filter((e) => e.muscle === muscle && placeOk(e, p.place) && (!soft || e.preg)).sort((a, b) => {
+    const ai = rank.indexOf(a.id);
+    const bi = rank.indexOf(b.id);
+    return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+  });
 }
 
 export function splitFor(p: HealthProfile): Focus[] {
   const n = p.days.length;
   if (gentle(p)) return Array(n).fill("gentle");
+  const chosen = SPLIT_CHOICES[p.splitPreference].minDays <= n ? p.splitPreference : "auto";
+  if (chosen === "full") return Array(n).fill("full");
+  if (chosen === "upper-lower") return Array.from({ length: n }, (_, i) => (i % 2 ? "lower" : "upper"));
+  if (chosen === "ppl") return Array.from({ length: n }, (_, i) => (["push", "pull", "legs"] as Focus[])[i % 3]);
   if (n <= 3) return Array(n).fill("full");
   if (n === 4) return ["upper", "lower", "upper", "lower"];
   if (n === 5) return ["upper", "lower", "push", "pull", "legs"];
@@ -414,14 +453,17 @@ export function dose(ex: Exercise, p: HealthProfile): Omit<PlanItem, "exId"> {
 /** how many exercises fit the session */
 export const perSession = (minutes: number) => (minutes <= 30 ? 4 : minutes <= 45 ? 5 : minutes <= 60 ? 6 : 7);
 
+/** Start with the smallest useful table. The person can add one familiar exercise later from the alternatives. */
+export const exerciseLimit = (p: HealthProfile) => Math.min(perSession(p.minutes), p.level === "beginner" ? 4 : p.level === "intermediate" ? 5 : 6);
+
 export function buildDay(p: HealthProfile, weekday: number, focus: Focus, variant: number): PlanDay {
-  const slots = FOCUS[focus].slots.slice(0, perSession(p.minutes));
+  const slots = FOCUS[focus].slots.slice(0, exerciseLimit(p));
   const used = new Set<string>();
   const items: PlanItem[] = [];
-  slots.forEach((m, i) => {
+  slots.forEach((m) => {
     const list = candidates(m, p).filter((e) => !used.has(e.id));
     if (!list.length) return;
-    const ex = list[(variant + i) % list.length];
+    const ex = list[0];
     used.add(ex.id);
     items.push({ exId: ex.id, ...dose(ex, p) });
   });
@@ -462,6 +504,7 @@ export function workout(p: HealthProfile): Workout {
     notes.push("وقفي فورًا وكلمي الطبيبة لو صار: " + STOP_SIGNS.join("، ") + ".");
     if (p.stage === "pregnant" && !p.wasActive) notes.push("ما كنتِ تتمرنين قبل الحمل: ابدئي بـ10–15 دقيقة وزيدي تدريجيًا.");
   } else {
+    notes.push(`بدأنا بأقل عدد مفيد (${exerciseLimit(p)} تمارين للحصة) من التمارين المعروفة. تقدر تضيف تمرين واحد أو تبدّل من البدائل بأي وقت.`);
     notes.push("خلِّ 1–3 تكرارات «في الخزان» في كل مجموعة، ولما تصير سهلة زِد الوزن شوي.");
     notes.push("سخّن 5–10 دقائق قبل، وأول مجموعة في كل تمرين خفيفة.");
   }
@@ -640,6 +683,7 @@ export function cleanProfile(v: unknown): HealthProfile {
     level: pick("level", ["beginner", "intermediate", "advanced"] as const),
     // «home» was the home gym before «بدون أدوات» was added
     place: o.place === "home" || o.place === "homegym" ? "home" : pick("place", ["gym", "home", "body"] as const),
+    splitPreference: pick("splitPreference", ["auto", "full", "upper-lower", "ppl"] as const),
     days: days.length ? days : D.days,
     minutes: Math.round(num("minutes", 20, 120)),
     meals: Math.round(num("meals", 2, 6)),

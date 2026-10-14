@@ -33,7 +33,7 @@ export const COACH = {
 } as const;
 
 export const COACH_SCREENS = ["track", "about", "goal", "train", "mode", "plan", "habits", "today", "progress", "learn"] as const;
-const PROFILE_FIELDS = ["track", "sex", "age", "heightCm", "weightKg", "activity", "goals", "stage", "pregWeek", "babyMonths", "wasActive", "level", "place", "days", "minutes", "meals"] as const;
+const PROFILE_FIELDS = ["track", "sex", "age", "heightCm", "weightKg", "activity", "goals", "stage", "pregWeek", "babyMonths", "wasActive", "level", "place", "splitPreference", "days", "minutes", "meals"] as const;
 const FOOD_FIELDS = ["kcal", "proteinG", "waterCups", "produce", "steps"] as const;
 
 export const COACH_SCHEMA = {
@@ -118,9 +118,9 @@ const catalogue = EXERCISES.map((e) => `${e.id} | ${e.name} | ${e.muscle} | ${[e
 export const COACH_TASK = `You are «${COACH.name}» 🦁, the robot coach of «الصحة العلوية» (the gym and nutrition branch of the app «لأجل المهدي»). You speak Gulf Arabic, as a man, warm and motivating like a good coach, short (2–5 lines). Address a woman in the feminine.
 
 WHAT YOU DO: you help the person through the branch: explain anything they did not understand, ask what you need to know about them, and CHANGE their choices and plan directly through the JSON fields — never tell them "go and change it yourself" when you can do it:
-- "profile": the wizard's answers. Fields: track (gym|food|both), sex (male|female), age, heightCm, weightKg (before pregnancy when pregnant), activity (${Object.keys(REF.activity).join("|")}), goals (comma list of ${GOALS.join("|")} — several allowed), stage (none|pregnant|postpartum|breastfeeding; women only), pregWeek, babyMonths, wasActive (true|false), level (beginner|intermediate|advanced), place (gym = a full gym · home = a home gym with dumbbells/bench/bands/pull-up bar · body = no equipment at all), days (comma list of weekdays 0=Sunday…6=Saturday), minutes (session length), meals. Changing them rebuilds the plan from the research.
+- "profile": the wizard's answers. Fields: track (gym|food|both), sex (male|female), age, heightCm, weightKg (before pregnancy when pregnant), activity (${Object.keys(REF.activity).join("|")}), goals (comma list of ${GOALS.join("|")} — several allowed), stage (none|pregnant|postpartum|breastfeeding; women only), pregWeek, babyMonths, wasActive (true|false), level (beginner|intermediate|advanced), place (gym = a full gym · home = a home gym with dumbbells/bench/bands/pull-up bar · body = no equipment at all), splitPreference (auto|full|upper-lower|ppl), days (comma list of weekdays 0=Sunday…6=Saturday), minutes (session length), meals. Changing them rebuilds the plan from the research.
 - "food": the nutrition targets the person keeps (kcal, proteinG, waterCups, produce, steps). Only within the research's safe ranges.
-- "edits": the training table: swap an exercise for another, remove one, add one, or change its sets. Use ONLY ids from the catalogue below that fit the person's place; in pregnancy and the first 3 months after birth ONLY pregnancy-safe ones.
+- "edits": the training table: swap an exercise for another, remove one, add one, or change its sets. Prefer the famous basics: dumbbell and barbell presses, squats, RDL/deadlift, rows, pulldown/pull-up, curls and pushdowns. Do not choose novelty exercises when a familiar basic fits. If the person says «أبي زيادة», add ONE useful exercise to the requested day/muscle, not several. Use ONLY ids from the catalogue below that fit the person's place; in pregnancy and the first 3 months after birth ONLY pregnancy-safe ones.
 - "go": move the person to a step of the setup (track, about, goal, train, mode) or a page of the app: today (the day's workout and food tracker), plan (the table and targets), habits (put the plan into «لأجل المهدي»'s habits), progress (weights, records, sets per muscle, nutrition and body weight over time), learn (the muscles and how to do each exercise).
 - "restart": true when the person wants to start over / change everything from the beginning: you set what you already know in "profile" and the setup opens at its first question so they go through it again.
 - "choices": up to 4 short replies to tap.
@@ -156,7 +156,7 @@ PROFILE: ${JSON.stringify({ ...profile, goals: profile.goals.join(","), days: pr
 (place: ${LABELS.place[profile.place]})
 PLAN: ${plan ? `mode ${plan.mode}; food ${JSON.stringify(plan.food)}\nTABLE:\n${table || "(none)"}` : "not made yet"}
 TRACKER (last 14 days, what they actually did):
-${recent.length ? recent.slice(-14).map((d) => `${d.date}: ${d.done ? "workout done" : ""} ${Object.entries(d.sets).map(([id, ss]) => `${id} ${ss.map((x) => `${x.kg}x${x.reps}`).join("/")}`).join("; ")}${d.cardioMin ? ` cardio ${d.cardioMin}min` : ""} food ${JSON.stringify(d.food)}${d.bodyKg ? ` weight ${d.bodyKg}kg` : ""}`).join("\n") : "(nothing logged yet)"}`;
+${recent.length ? recent.slice(-14).map((d) => `${d.date}: ${d.done ? "workout done" : ""} ${Object.entries(d.sets).map(([id, ss]) => `${id} ${ss.map((x) => `${x.kg}x${x.reps}`).join("/")}`).join("; ")}${d.cardioMin ? ` cardio ${d.cardioMin}min` : ""} food ${JSON.stringify(d.food)}${d.bodyKg ? ` weight ${d.bodyKg}kg` : ""}${d.measurements ? ` measurements(cm) ${JSON.stringify(d.measurements)}` : ""}`).join("\n") : "(nothing logged yet)"}`;
 }
 
 /** Applies what عباس decided to the profile and the plan; anything outside the rules is dropped. */

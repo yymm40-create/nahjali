@@ -104,6 +104,7 @@
 .gym-choice .big { font-size: 1.6rem; display: block; margin-bottom: 0.3rem; }
 .gym-choice[aria-pressed="true"] { border-color: var(--g-lime); background: rgba(198, 255, 26, 0.09); }
 .gym-choice[aria-pressed="true"] b { color: var(--g-lime); }
+.gym-choice:disabled { opacity: 0.42; cursor: not-allowed; filter: grayscale(0.7); }
 .gym-choice:active { transform: scale(0.98); }
 
 .gym-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -121,6 +122,10 @@
 
 .gym-field { display: grid; gap: 0.35rem; }
 .gym-field > span { font-size: 0.8rem; font-weight: 800; color: var(--g-dim); }
+.gym-split-preview { display: grid; gap: 0.35rem; }
+.gym-split-preview div { display: grid; gap: 0.12rem; padding: 0.55rem 0.7rem; border: 1px solid var(--g-line); border-radius: 0.8rem; background: #13161b; }
+.gym-split-preview b { font-size: 0.8rem; }
+.gym-split-preview small { color: var(--g-dim); font-size: 0.68rem; line-height: 1.5; }
 .gym-input,
 .gym-select {
   width: 100%;
@@ -208,6 +213,14 @@
 .gym-ex .dose { font-weight: 900; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .gym-ex .dose em { font-style: normal; color: var(--g-lime); }
 .gym-ex .tools { display: flex; gap: 0.25rem; }
+.gym-ex-alts { flex-basis: 100%; display: grid; gap: 0.45rem; padding: 0.6rem; border-radius: 0.8rem; background: #0c0f12; border: 1px solid #2a3038; }
+.gym-ex-alts > small { color: var(--g-dim); font-size: 0.72rem; }
+.gym-ex-alts > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.35rem; }
+.gym-ex-alts button { text-align: start; padding: 0.5rem; border-radius: 0.7rem; border: 1px solid #303740; background: #171b20; color: var(--g-ink); }
+.gym-ex-alts button b, .gym-ex-alts button span { display: block; }
+.gym-ex-alts button b { font-size: 0.76rem; }
+.gym-ex-alts button span { margin-top: 0.15rem; color: var(--g-dim); font-size: 0.65rem; line-height: 1.45; }
+.gym-ex-alts button[aria-pressed="true"] { border-color: var(--g-lime); background: rgba(198, 255, 26, 0.08); }
 
 .gym-hero {
   position: relative;

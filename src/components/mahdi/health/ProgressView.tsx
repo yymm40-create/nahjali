@@ -9,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { GROUPS, MUSCLES, type MuscleGroup } from "@config/mahdi/exercise-guide";
 import { exerciseById } from "@/lib/mahdi/health/plan";
-import { history, record, setsByMuscle, weekOf, WEEK_TARGET, FOOD_KEYS, type FoodKey } from "@/lib/mahdi/health/tracker";
+import { history, record, setsByMuscle, weekOf, WEEK_TARGET, FOOD_KEYS, MEASUREMENT_KEYS, MEASUREMENT_NAMES, type FoodKey, type MeasurementKey } from "@/lib/mahdi/health/tracker";
 import { useHealth } from "./HealthProvider";
 
 function Line({ points, unit }: { points: { x: string; y: number }[]; unit: string }) {
@@ -41,11 +41,12 @@ const FOOD_NAMES: Record<FoodKey, string> = { kcal: "🔥 السعرات", prote
 const FOOD_LINKS: Record<FoodKey, string> = { kcal: "kcal", proteinG: "protein", waterCups: "water", produce: "produce", steps: "steps" };
 
 export default function ProgressView() {
-  const { plan, days, today, habitValue } = useHealth();
+  const { plan, days, today, day, saveDay, habitValue } = useHealth();
   const params = useSearchParams();
   const all = useMemo(() => Object.values(days).sort((a, b) => a.date.localeCompare(b.date)), [days]);
   const logged = useMemo(() => [...new Set(all.flatMap((d) => Object.keys(d.sets)))].filter((id) => exerciseById(id)), [all]);
   const [ex, setEx] = useState<string>(() => params.get("ex") ?? "");
+  const [measurement, setMeasurement] = useState<MeasurementKey>("arm");
   const shown = ex && logged.includes(ex) ? ex : logged[0] ?? "";
 
   const week = weekOf(today);
@@ -58,6 +59,15 @@ export default function ProgressView() {
   const pr = shown ? record(all, shown) : null;
   const weighted = h.some((p) => p.best.kg > 0);
   const weights = all.filter((d) => d.bodyKg).map((d) => ({ x: d.date, y: d.bodyKg! }));
+  const todayLog = day(today);
+  const measurementPoints = all.filter((d) => d.measurements?.[measurement]).map((d) => ({ x: d.date, y: d.measurements![measurement]! }));
+  const setMeasurementValue = (key: MeasurementKey, raw: string) => {
+    const measurements = { ...(todayLog.measurements ?? {}) };
+    const value = Number(raw.replace(/[^٠-٩\d.]/g, ""));
+    if (Number.isFinite(value) && value > 0) measurements[key] = Math.min(300, Math.max(5, Math.round(value * 10) / 10));
+    else delete measurements[key];
+    saveDay({ ...todayLog, measurements });
+  };
 
   if (!plan) return <p className="gym-card">سوّ خطتك أول، وبعدها تسجّل وتشوف تقدمك هنا. <Link href="/mahdi/health/setup" className="underline">يلا نبدأ</Link></p>;
 
@@ -130,6 +140,33 @@ export default function ProgressView() {
       <section className="gym-card space-y-2">
         <h2 className="text-lg font-black">⚖️ وزن جسمك</h2>
         <Line points={weights.map((p) => ({ x: p.x, y: p.y }))} unit="كغ" />
+      </section>
+
+      <section className="gym-card space-y-3">
+        <div>
+          <h2 className="text-lg font-black">📏 قياسات الجسم والعضلات (اختياري)</h2>
+          <p className="gym-small">قِس بنفس الشريط ونفس المكان والوقت كل مرة. مو لازم تدخلها كلها.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {MEASUREMENT_KEYS.map((key) => (
+            <label key={key} className="gym-field">
+              <span>{MEASUREMENT_NAMES[key]} · سم</span>
+              <input
+                className="gym-input"
+                inputMode="decimal"
+                placeholder="—"
+                value={todayLog.measurements?.[key] ?? ""}
+                onChange={(event) => setMeasurementValue(key, event.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {MEASUREMENT_KEYS.map((key) => (
+            <button key={key} type="button" className="gym-chip" aria-pressed={measurement === key} onClick={() => setMeasurement(key)}>{MEASUREMENT_NAMES[key]}</button>
+          ))}
+        </div>
+        <Line points={measurementPoints} unit="سم" />
       </section>
 
       <section className="gym-card space-y-2">

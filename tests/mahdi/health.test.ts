@@ -43,6 +43,13 @@ describe("training table", () => {
     expect(workout(P({ days: [0, 1, 3, 4] })).split).toBe("upper-lower");
     expect(workout(P({ days: [0, 1, 2, 3, 4, 5] })).split).toBe("ppl");
   });
+  it("lets the person choose the split and starts with a compact table of familiar exercises", () => {
+    const ppl = workout(P({ splitPreference: "ppl", days: [0, 2, 4] }));
+    expect(ppl.days.map((d) => d.focus)).toEqual(["push", "pull", "legs"]);
+    expect(ppl.days.every((d) => d.items.length <= 4)).toBe(true);
+    expect(workout(P({ splitPreference: "upper-lower", days: [0, 1, 3, 4] })).days.map((d) => d.focus)).toEqual(["upper", "lower", "upper", "lower"]);
+    expect(cleanProfile({ splitPreference: "ppl" }).splitPreference).toBe("ppl");
+  });
   it("home uses home exercises only, and no exercise repeats within a day", () => {
     for (const d of workout(P({ place: "home", days: [0, 1, 2, 3, 4] })).days) {
       expect(d.items.every((it) => exerciseById(it.exId)!.home)).toBe(true);
@@ -184,11 +191,12 @@ describe("the exercise guide", () => {
 describe("the tracker", () => {
   it("keeps a day inside bounds", async () => {
     const { cleanDay } = await import("@/lib/mahdi/health/tracker");
-    const d = cleanDay({ date: "2026-10-11", sets: { bench: [{ kg: 60, reps: 8 }, { kg: -5, reps: 0 }], "BAD id": [{ kg: 1, reps: 1 }] }, food: { proteinG: 140, nope: 3 }, cardioMin: 9999, done: true, bodyKg: 80.44 })!;
+    const d = cleanDay({ date: "2026-10-11", sets: { bench: [{ kg: 60, reps: 8 }, { kg: -5, reps: 0 }], "BAD id": [{ kg: 1, reps: 1 }] }, food: { proteinG: 140, nope: 3 }, cardioMin: 9999, done: true, bodyKg: 80.44, measurements: { arm: 38.26, waist: 800, nope: 10 } })!;
     expect(d.sets).toEqual({ bench: [{ kg: 60, reps: 8 }] });
     expect(d.food).toEqual({ proteinG: 140 });
     expect(d.cardioMin).toBe(600);
     expect(d.bodyKg).toBe(80.4);
+    expect(d.measurements).toEqual({ arm: 38.3, waist: 300 });
     expect(cleanDay({ date: "yesterday" })).toBeNull();
   });
   it("estimated max, records and the suggestion for next time", async () => {
