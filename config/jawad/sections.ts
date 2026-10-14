@@ -9,6 +9,7 @@ export const SECTION_IMPLEMENTATIONS = {
   "studio:video": { label: "استوديو الفيديو (مولدات الفيديو)", output: "video" as OutputKind },
   "studio:audio": { label: "استوديو الصوت (مولدات الصوت)", output: "audio" as OutputKind },
   film: { label: "صناعة الفيلم بالخطوات (المسار القائم)", output: null },
+  director: { label: "جواد المخرج (وكيل الإخراج السينمائي المستقل)", output: null },
   student: { label: "الطالب الذكي (مواد دراسية إلى ملخصات وكتب وعروض وصوت واختبارات)", output: null },
   editor: { label: "حيدرة كت (مونتاج الفيديو: قص وترتيب ونصوص وتصدير)", output: null },
   islamic: { label: "الذكاء الإسلامي (أسئلة تُجاب من مكتبة المصادر التي يغذّيها المالك)", output: null },
@@ -39,6 +40,7 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "images", name: "صناعة الصور", icon: "image", implementation: "studio:image", sort: 10, enabled: true },
   { id: "video", name: "صناعة الفيديو", icon: "video", implementation: "studio:video", sort: 20, enabled: true },
   { id: "film", name: "الفيلم السينمائي", icon: "film", implementation: "film", sort: 30, enabled: true },
+  { id: "director", name: "جواد المخرج", icon: "camera", implementation: "director", sort: 32, enabled: true },
   { id: "editor", name: "حيدرة كت", icon: "scissors", implementation: "editor", sort: 35, enabled: true },
   { id: "audio", name: "صناعة الصوت", icon: "audio", implementation: "studio:audio", sort: 40, enabled: true },
   { id: "student", name: "الطالب الذكي", icon: "book", implementation: "student", sort: 50, enabled: true },
@@ -59,10 +61,10 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const RESERVED_SECTION_IDS = ["memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
 
 /** Where a section opens. The film maker, «الطالب الذكي» and «حيدرة كت» keep their own pages; studio sections open at /jawad-ai/<id>. */
 export const sectionPath = (s: { id: string; implementation: string }) =>

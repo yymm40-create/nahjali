@@ -25,6 +25,8 @@ export interface DeskRequest {
   /** the same key = the same request (a repeat returns the job already made); 8–80 of A-Z a-z 0-9 _ - */
   key: string;
   kind: "image" | "video";
+  /** Optional explicit generator picked for this one request. */
+  generatorId?: string;
   /** Baqir's prompt, final: جواد uses it as it is */
   prompt: string;
   aspect: string;
@@ -113,8 +115,9 @@ const receiptOf = (def: GeneratorDef, job: JobRow): DeskReceipt => ({
 async function bodyOf(req: DeskRequest): Promise<{ def: GeneratorDef; body: GenerateBody }> {
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(req.key)) throw new DeskError("طلب غير صحيح.", "bad key");
   if (!req.prompt.trim()) throw new DeskError("طلب بلا وصف.", "empty prompt");
-  const def = generatorById(DESK_GENERATOR[req.kind]);
-  if (!def) throw new DeskError("المولد غير معروف.", `unknown generator ${DESK_GENERATOR[req.kind]}`);
+  const generatorId = req.generatorId || DESK_GENERATOR[req.kind];
+  const def = generatorById(generatorId);
+  if (!def || def.output !== req.kind) throw new DeskError("المولد غير معروف أو لا يناسب نوع التوليد.", `unknown generator ${generatorId}`);
   const rt = await loadRuntime();
   const rg = rt.generators.find((g) => g.id === def.id);
   if (!rt.migrated || !rg) throw new DeskError("منصة جواد قيد التجهيز.", "runtime not ready", true);

@@ -36,6 +36,15 @@ export const ROBOTS: Record<string, RobotIntro> = {
     start: ["قول لي وش تبي تسوي بكلامك", "شوف البرومبت والإعدادات اللي جهزتها لك", "اضغط «توليد» وشوف النتيجة في «أعمالي»"],
     tint: ["#f97316", "#22d3ee"],
   },
+  director: {
+    id: "director",
+    name: "جواد المخرج",
+    face: "🎬",
+    role: "مخرجك السينمائي المستقل",
+    does: ["أحوّل رؤيتك إلى لقطات وتوليدات بإعدادات مستقلة", "أشغّل أكثر من توليد معًا دون خلط المدة أو الجودة أو المولّد", "أحفظ كل مشروع في محادثة وذاكرة منفصلة عن جواد العام"],
+    start: ["ابدأ محادثة جديدة لكل فيلم أو مشروع", "أرسل الفكرة والمراجع وراجع إعدادات كل لقطة", "ولّد لقطة وحدها أو شغّل المجموعة معًا"],
+    tint: ["#e11d48", "#7c3aed"],
+  },
   sajjad: {
     id: "sajjad",
     name: "سجاد",
@@ -140,6 +149,7 @@ export function robotFor(path: string): RobotIntro | null {
     video: "jawad",
     audio: "jawad",
     film: "sajjad",
+    director: "director",
     editor: "haidara",
     student: "sadiq",
     islamic: "islamic",

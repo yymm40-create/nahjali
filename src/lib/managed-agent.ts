@@ -46,7 +46,7 @@ export interface ManagedAgentResult {
 
 export interface ManagedAgentTurn {
   userId: string;
-  contextType: "jawad" | "sajjad" | "smart_edit";
+  contextType: "jawad" | "director" | "sajjad" | "smart_edit";
   contextKey: string;
   title: string;
   content: ContentBlock[];
