@@ -34,7 +34,7 @@ const GOLD_BRIGHT = "#f4da95";
 const INK = "#f7f0e3";
 const SOFT = "#e8dfcf";
 const NIGHT = "#0d0c0b";
-const LOGO = "/jawad-ai/logo.png";
+const LOGO = "/mahdi/brand/logo-v3.png";
 
 export interface PictureLook {
   fonts: { sans: string; display: string };

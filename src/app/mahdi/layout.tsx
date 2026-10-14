@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   description: t.auth.tagline,
   // Installable app: its own manifest and scope, separate from the rest of the site
   manifest: "/mahdi/manifest.webmanifest",
-  icons: { icon: "/mahdi/icons/icon-192.png", apple: "/mahdi/icons/apple-touch-icon.png" },
+  icons: { icon: "/mahdi/icons/icon-192-v3.png", apple: "/mahdi/icons/apple-touch-v3.png" },
   appleWebApp: { capable: true, title: t.brand, statusBarStyle: "black-translucent" },
 };
 

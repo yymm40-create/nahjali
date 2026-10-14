@@ -22,9 +22,8 @@ export function GET() {
       theme_color: color,
       categories: ["lifestyle", "productivity"],
       icons: [
-        { src: "/mahdi/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-        { src: "/mahdi/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-        { src: "/mahdi/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        { src: "/mahdi/icons/icon-192-v3.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/mahdi/icons/icon-512-v3.png", sizes: "512x512", type: "image/png", purpose: "any" },
       ],
     },
     { headers: { "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "public, max-age=3600" } },

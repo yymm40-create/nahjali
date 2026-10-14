@@ -212,10 +212,26 @@ export interface Offers {
 
 const HOUR = 3_600_000;
 
+export const OCTOBER_OFFER = {
+  startsAt: Date.parse("2026-10-14T00:00:00+03:00"),
+  endsAt: Date.parse("2026-10-15T16:00:00+03:00"),
+};
+
 /** What is on sale at `now`, and when the price changes. */
 export type Clock = Pick<CourseSettings, "launchAt" | "hoursA" | "hoursB" | "prices" | "was" | "bonus">;
 
 export function offersAt(s: Clock, now: number): Offers {
+  if (now >= OCTOBER_OFFER.startsAt && now < OCTOBER_OFFER.endsAt) {
+    return {
+      phase: "A",
+      offers: [
+        { product: "live", label: PRODUCT_LABEL.live, price: 50, was: s.was.live, bonus: 0 },
+        { product: "combo", label: PRODUCT_LABEL.combo, price: 80, was: s.was.live + s.was.recorded, bonus: s.bonus.comboA },
+      ],
+      endsAt: OCTOBER_OFFER.endsAt,
+      next: "ينتهي العرض الخميس ١٥ أكتوبر الساعة ٤ عصرًا بتوقيت السعودية، ثم تعود أسعار الدورة المعتادة.",
+    };
+  }
   const start = s.launchAt ? new Date(s.launchAt).getTime() : NaN;
   if (Number.isNaN(start) || now < start) return { phase: "soon", offers: [], endsAt: Number.isNaN(start) ? null : start, next: "" };
   const live = (price: number): Offer => ({ product: "live", label: PRODUCT_LABEL.live, price, was: s.was.live, bonus: 0 });

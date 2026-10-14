@@ -6,13 +6,15 @@ import { MAHDI_AUTH } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
+import BrandLogo from "./BrandLogo";
 
 /** Centred card for sign-in pages, over the shrine backdrop. */
 export function AuthShell({ title, children, footer }: { title: string; children: React.ReactNode; footer?: React.ReactNode }) {
   return (
     <main id="m-main" className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-4 py-10">
-      <Link href="/mahdi/start" className="m-display m-gold m-shadow-text text-center text-4xl">
-        {t.brand}
+      <Link href="/mahdi/start" className="m-display m-gold m-shadow-text flex flex-col items-center gap-3 text-center text-4xl">
+        <BrandLogo size={144} />
+        <span>{t.brand}</span>
       </Link>
       <section className="m-card space-y-5 p-6">
         <h1 className="text-xl font-semibold">{title}</h1>

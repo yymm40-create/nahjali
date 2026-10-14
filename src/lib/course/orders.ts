@@ -5,7 +5,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins } from "@/lib/coins";
-import { COURSE, cleanPhone, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
+import { COURSE, OCTOBER_OFFER, cleanPhone, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
 import { loadSettings } from "./settings";
 import { notifyTransfer } from "./telegram";
 
@@ -81,14 +81,15 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   wrap(error);
   const mine = (rows ?? []).map(view);
   if (mine.some((o) => o.status === "confirmed" && covers(o.product, b.product))) throw new UserError("اشتراكك مؤكد من قبل ✅", 409);
-  const lock = new Date(now + COURSE.lockMinutes * 60_000).toISOString();
+  const offerEnd = now >= OCTOBER_OFFER.startsAt && now < OCTOBER_OFFER.endsAt ? OCTOBER_OFFER.endsAt : Infinity;
+  const lock = new Date(Math.min(now + COURSE.lockMinutes * 60_000, offerEnd)).toISOString();
   const open = mine.find((o) => o.product === b.product && o.status === "started");
   const base = { email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
   const phase = offersAt(s, now).phase;
   if (phase === "soon") throw new UserError("الدورة ما بدأت للحين.", 409);
   if (open) {
     // the same order again: the price stays while it is kept, else it follows today's
-    const keep = new Date(open.lockedUntil).getTime() > now;
+    const keep = new Date(open.lockedUntil).getTime() > now && open.amount <= offer.price;
     const patch = keep ? { name, phone, email: base.email, updated_at: base.updated_at } : { ...base, phase };
     const { data, error: e2 } = await db().from("course_orders").update(patch).eq("id", open.id).eq("status", "started").select("*").single();
     wrap(e2);
@@ -108,7 +109,7 @@ export async function markTransferred(user: { id: string }, orderId: string, now
   const o = view(row);
   if (o.status === "transferred" || o.status === "confirmed") return o;
   if (o.status !== "started") throw new UserError("هذا الطلب مغلق؛ ابدأ طلبًا جديدًا.", 409);
-  if (new Date(o.lockedUntil).getTime() < now) throw new UserError("انتهت مهلة السعر. اضغط «ادفع الآن» من جديد وشوف السعر الحالي.", 409);
+  if (new Date(o.lockedUntil).getTime() <= now) throw new UserError("انتهت مهلة السعر. اضغط «ادفع الآن» من جديد وشوف السعر الحالي.", 409);
   const at = new Date(now).toISOString();
   const { data, error: e2 } = await db().from("course_orders").update({ status: "transferred", transferred_at: at, updated_at: at }).eq("id", o.id).eq("status", "started").select("*").maybeSingle();
   wrap(e2);

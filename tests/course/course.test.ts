@@ -41,7 +41,7 @@ describe("the three prices, by the hours since the reel came out", () => {
   });
 
   it("after 48 hours: live 80 (no strike: it is the usual price), recorded 100 (was 150), for good", () => {
-    for (const h of [48, 100, 5000]) {
+    for (const h of [48, 72, 5000]) {
       const o = at(h);
       expect(o.phase).toBe("C");
       expect(o.offers.map((x) => [x.product, x.price, x.was])).toEqual([["live", 80, 80], ["recorded", 100, 150]]);

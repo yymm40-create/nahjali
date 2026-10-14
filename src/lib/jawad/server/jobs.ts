@@ -47,6 +47,7 @@ import type { LibraryKind } from "@config/jawad/library";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, stemsOf, type Stem } from "@config/jawad/smart-split";
 
 import { storage } from "@/lib/storage";
+import type { CartoonPlan } from "./cartoon";
 const db = () => createAdminClient();
 
 export type JobStatus = "queued" | "submitting" | "running" | "saving" | "succeeded" | "failed" | "cancelled";
@@ -170,6 +171,9 @@ export async function finishJob(job: Pick<JobRow, "id" | "generator_id">, status
     const held = await refundTeamCoins(job.id).catch(() => null);
     if (held?.userId) await giveAttempt(held.seriesId, held.userId).catch(() => {});
   }
+  if (data && status === "succeeded" && job.generator_id === "openai-gpt-image-2") {
+    await import("./cartoon").then(module => module.continueCartoon(job.id)).catch(error => console.error("cartoon continuation", error));
+  }
   return Boolean(data);
 }
 
@@ -204,7 +208,7 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content"; signupFreeImageEligible?: boolean } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content"; signupFreeImageEligible?: boolean; cartoon?: CartoonPlan } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
@@ -257,6 +261,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
 
   const table = rt.prices[def.id];
   const e = evaluate(def, { settings, prompt, instructions, refStyle, refs: meta, strict: true }, table);
+  if (server.cartoon && def.id === "openai-gpt-image-2") {
+    if (e.settings.quality !== "medium" || e.settings.resolution !== "std" || e.settings.count !== 1 || found.rows.length < 1 || found.rows.length > 3 || found.rows.some(ref => ref.kind !== "image")) throw new UserError("إعدادات تحويل الشخصية غير صالحة.", 400);
+    e.price = { ok: true, coins: 200, usdCeiling: e.price.ok ? e.price.usdCeiling : null, lines: [{ label: "صورة كرتونية · ريالان", centi: 20000 }] };
+  }
   if (e.issues.length) return { kind: "issues", issues: e.issues };
   const signupFreeImage = b.signupFreeImage === true;
   if (signupFreeImage) {
@@ -311,7 +319,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       mode: e.mode.id,
       output_kind: def.output,
       prompt,
-      inputs: { settings: e.settings, instructions, refStyle, origin, ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}) },
+      inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
       price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : e.price.lines,

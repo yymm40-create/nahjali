@@ -5,6 +5,7 @@
 import type { OutputKind } from "./types";
 
 export const SECTION_IMPLEMENTATIONS = {
+  cartoon: { label: "حولني الى الستايل الكرتوني", output: null },
   "studio:image": { label: "استوديو الصور (مولدات الصور)", output: "image" as OutputKind },
   "studio:video": { label: "استوديو الفيديو (مولدات الفيديو)", output: "video" as OutputKind },
   "studio:audio": { label: "استوديو الصوت (مولدات الصوت)", output: "audio" as OutputKind },
@@ -36,6 +37,7 @@ export interface SectionDef {
 }
 
 export const DEFAULT_SECTIONS: SectionDef[] = [
+  { id: "cartoon", name: "حولني الى الستايل الكرتوني", icon: "sparkles", implementation: "cartoon", sort: 15, enabled: true },
   { id: "images", name: "الاستوديو الإبداعي", icon: "wand", implementation: "studio:image", sort: 10, enabled: true },
   { id: "video", name: "صناعة الفيديو", icon: "video", implementation: "studio:video", sort: 20, enabled: true },
   { id: "film", name: "الفيلم السينمائي", icon: "film", implementation: "film", sort: 30, enabled: true },
@@ -59,10 +61,10 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const RESERVED_SECTION_IDS = ["cartoon", "memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["cartoon", "film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
 
 export const STUDIO_SECTION_IDS = ["images", "video", "audio"] as const;
 export const STUDIO_ROOT_ID = "images";

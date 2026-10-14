@@ -64,6 +64,17 @@ beforeEach(() => {
 });
 
 describe("«ادفع الآن»", () => {
+  it("charges the approved October offer and expires its payment lock at 4pm Saudi time", async () => {
+    const { startOrder, markTransferred } = await import("@/lib/course/orders");
+    const time = Date.parse("2026-10-15T15:30:00+03:00");
+    const end = Date.parse("2026-10-15T16:00:00+03:00");
+    const live = await startOrder(U, { product: "live", ...who }, time);
+    expect(live.order.amount).toBe(50);
+    expect(Date.parse(live.order.lockedUntil)).toBe(end);
+    const combo = await startOrder({ id: "u-2" }, { product: "combo", ...who }, time);
+    expect(combo.order.amount).toBe(80);
+    await expect(markTransferred(U, live.order.id, end)).rejects.toThrow("مهلة");
+  });
   it("makes an order at the price of the phase, with the bank data to transfer to", async () => {
     const { startOrder } = await import("@/lib/course/orders");
     const r = await startOrder(U, { product: "combo", ...who }, T0 + 2 * H);

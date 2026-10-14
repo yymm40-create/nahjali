@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BrandLogo from "@/components/mahdi/BrandLogo";
 import { redirect } from "next/navigation";
 import { getMahdiSession } from "@/lib/mahdi/server/session";
 import { t } from "@/lib/mahdi/i18n";
@@ -12,6 +13,7 @@ export default async function MahdiStart() {
   return (
     <main id="m-main" className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-end gap-8 px-5 pb-12 pt-[38vh]">
       <div className="space-y-4">
+        <BrandLogo size={150} />
         <h1 className="m-display m-gold m-shadow-text text-6xl">{t.brand}</h1>
         <p className="m-shadow-text text-lg">{t.auth.tagline}</p>
         <ul className="space-y-2">

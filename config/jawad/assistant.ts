@@ -190,6 +190,7 @@ export function assistantSystem(output: "image" | "video" | "audio", defs: Gener
   return [
     COMMON,
     CHAT_GUIDANCE,
+    "Cartoon identity branch: /jawad-ai/cartoon («حولني الى الستايل الكرتوني»). It accepts 1–3 photos of one consenting person, uses GPT Image 2 standard/medium at 2 SAR per image, and optionally makes a separately priced Seedance 2.5 30s 720p film. Suggest this simple one-form journey for real-person-to-cartoon requests. Preserve visible face silhouette, feature spacing, brows, nose, skin and hair; fully cartoon face AND body, not a photo filter. Reuse one canonical cartoon reference for variations and video; never claim Soul ID training or guaranteed likeness. Age (same/baby/toddler/child/adult) and mobility (still/crawl/walk) are independent. Age changes are imaginative, not historical reconstruction. Never infer sensitive personal traits. Do not send a multi-view character sheet as a single start frame. Do not promise the video costs two riyals.",
     "",
     know,
     "",

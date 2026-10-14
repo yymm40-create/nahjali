@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BrandLogo from "./BrandLogo";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
@@ -116,7 +117,7 @@ export default function AppShell({ children, familyMember = false }: { children:
       {/* Computer: the same full menu, always open */}
       <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto border-e lg:flex" style={{ borderColor: "var(--m-line)", background: "color-mix(in srgb, var(--m-surface-solid) 78%, transparent)" }}>
         <div className="flex items-center gap-3 px-5 pt-6 pb-2">
-          <Link href="/mahdi" className="m-brand flex-1 text-2xl">{t.brand}</Link>
+          <Link href="/mahdi" className="m-brand flex flex-1 items-center gap-2 text-2xl"><BrandLogo />{t.brand}</Link>
         </div>
         <div className="px-4 py-2">
           <button type="button" className="m-btn m-btn-primary w-full" onClick={onAdd}>
@@ -136,7 +137,7 @@ export default function AppShell({ children, familyMember = false }: { children:
           <button type="button" className="m-menu-btn lg:hidden" onClick={() => setDrawer(true)} aria-label="القائمة" aria-haspopup="dialog" aria-expanded={drawer}>
             <Icon name="menu" size={22} strokeWidth={2.2} />
           </button>
-          <Link href="/mahdi" className="m-brand min-w-0 flex-1 truncate lg:hidden">{t.brand}</Link>
+          <Link href="/mahdi" className="m-brand flex min-w-0 flex-1 items-center gap-2 lg:hidden"><BrandLogo size={48} /><span className="truncate">{t.brand}</span></Link>
           <span className="hidden flex-1 lg:block" />
           <Link
             href="/mahdi/inbox"
@@ -189,7 +190,7 @@ export default function AppShell({ children, familyMember = false }: { children:
         <Link href="/mahdi/more" className="flex items-center gap-3" onClick={() => setDrawer(false)}>
           <Avatar profile={profile} size={52} />
           <span className="min-w-0">
-            <span className="m-brand block text-xl">{t.brand}</span>
+            <span className="m-brand flex items-center gap-2 text-xl"><BrandLogo />{t.brand}</span>
             <span className="block truncate text-sm font-semibold m-muted">{t.mawla(profile.displayName)}</span>
           </span>
         </Link>

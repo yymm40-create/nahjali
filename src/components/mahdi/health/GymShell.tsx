@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import RobotFace from "@/components/RobotFace";
+import BrandLogo from "../BrandLogo";
 import Toasts from "@/components/mahdi/Toasts";
 import CoachChat from "./CoachChat";
 import { useHealth } from "./HealthProvider";
@@ -28,7 +28,7 @@ export default function GymShell({ children }: { children: React.ReactNode }) {
           → لأجل المهدي
         </Link>
         <Link href="/mahdi/health" className="gym-brand">
-          <RobotFace id="sabaa" size={30} />
+          <BrandLogo size={52} />
           <span>
             الصحة <em>العلوية</em>
           </span>
