@@ -20,7 +20,14 @@ import { contactSheet, probe, renderVideo, reviewTimes, stills } from "./scene-r
 import type { EditorAsset } from "./types";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
+const REVIEW_MODES = {
+  fast: { label: "سريع", rounds: 0, description: "فحص التشغيل فقط، بدون مراجعة جودة تلقائية. الأسرع." },
+  balanced: { label: "متوازن", rounds: 1, description: "مراجعة جودة واحدة وتصحيح عند الحاجة. وقت متوسط." },
+  precise: { label: "دقيق", rounds: MAX_ROUNDS, description: "حتى ٣ جولات مراجعة وتحسين، ويتوقف مبكرًا إذا اجتاز الفحص. يأخذ وقتًا أطول." },
+} as const;
+type ReviewMode = keyof typeof REVIEW_MODES;
 interface Saved {
+  reviewMode?: ReviewMode;
   brief: string;
   seconds: number;
   intensity: number;
@@ -83,6 +90,7 @@ export default function MotionLab({
   const [code, setCode] = useState("");
   const [info, setInfo] = useState<SceneInfo | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewMode, setReviewMode] = useState<ReviewMode>("balanced");
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [music, setMusic] = useState(true);
@@ -118,6 +126,7 @@ export default function MotionLab({
         setSay(s.say || "");
         setCode(s.code || "");
         setReviews(s.reviews || []);
+        setReviewMode(s.reviewMode === "fast" || s.reviewMode === "precise" ? s.reviewMode : "balanced");
         if (s.plan && !initialBrief) setStage(s.code ? "ready" : "plan");
       }, 0);
       return () => clearTimeout(tm);
@@ -127,11 +136,11 @@ export default function MotionLab({
   }, [projectId, initialBrief]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, plan, say, code, reviews } satisfies Saved));
+      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, plan, say, code, reviews]);
+  }, [projectId, brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort()), []);
 
   const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
@@ -211,22 +220,25 @@ export default function MotionLab({
     if (!plan) return;
     setError(null);
     setLog([]);
+    setReviews([]);
     setStage("building");
     try {
       let { program, got } = await buildRunning(plan, code);
       setCode(program);
       setInfo(got);
-      setStage("reviewing");
+      const rounds = REVIEW_MODES[reviewMode].rounds;
+      if (rounds > 0) setStage("reviewing");
+      else say1("✅ اجتاز المشهد فحص التشغيل. اخترت السريع؛ لم تُجرَ مراجعة جودة بصرية.");
       const done: Review[] = [];
-      for (let round = 1; round <= MAX_ROUNDS; round++) {
-        say1(`🎬 الجولة ${round}: أصوّر أوراق التلامس واللقطات لحيدرة…`);
+      for (let round = 1; round <= rounds; round++) {
+        say1(`🎬 الجولة ${round} من ${rounds}: أصوّر أوراق التلامس واللقطات لحيدرة…`);
         const h = host.current!;
         const half = got.duration / 2;
         const sheets = [await contactSheet(h, 0, half, 24), await contactSheet(h, half, got.duration, 24)];
         const times = reviewTimes(got.duration);
         const shots = await stills(h, times, got.duration);
         say1("🧐 حيدرة يراجع كمخرج قاسي…");
-        const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan, seconds: plan.seconds, assets: assetList, code: program, sheets, stills: shots, times, round, reviewOnly: true });
+        const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan, seconds: plan.seconds, assets: assetList, code: program, sheets, stills: shots, times, round, maxRounds: rounds, reviewOnly: true });
         done.push(r.review);
         setReviews([...done]);
         say1(`${r.review.pass ? "✅" : "📝"} ${r.review.verdict}`);
@@ -385,6 +397,18 @@ export default function MotionLab({
 
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
           <section className="min-w-0 space-y-4">
+            <fieldset disabled={busy} className="space-y-2 rounded-2xl border border-jw-line bg-jw-surface p-3">
+              <legend className="px-2 text-sm font-bold">مستوى الفحص</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(Object.keys(REVIEW_MODES) as ReviewMode[]).map((mode) => (
+                  <label key={mode} className={`cursor-pointer rounded-xl border p-3 ${reviewMode === mode ? "border-jw-accent bg-jw-accent/15" : "border-jw-line"} ${busy ? "cursor-not-allowed opacity-60" : ""}`}>
+                    <span className="flex items-center gap-2 font-bold"><input type="radio" name="motion-review-mode" value={mode} checked={reviewMode === mode} onChange={() => setReviewMode(mode)} />{REVIEW_MODES[mode].label}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-jw-muted">{REVIEW_MODES[mode].description}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-jw-muted">كل المستويات تفحص أخطاء التشغيل وتصلّحها عند الحاجة. اختيارك محفوظ لهذا المشروع؛ تقدر تغيّره قبل البناء.</p>
+            </fieldset>
             {(stage === "brief" || stage === "planning" || !plan) && (
               <div className="space-y-3">
                 <label className="block space-y-1">

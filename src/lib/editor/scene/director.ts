@@ -176,13 +176,14 @@ export async function labReview(p: EditorProject, who: Who, b: Record<string, un
   if (!code) throw new UserError("ما وصلني المشهد.", 400);
   const sheets = pics(b.sheets, 3), stills = pics(b.stills, 6);
   if (!sheets.length && !stills.length) throw new UserError("ما وصلتني صور المشهد.", 400);
-  const round = Math.max(1, Math.min(MAX_ROUNDS, Math.round(Number(b.round) || 1)));
+  const maxRounds = Math.max(1, Math.min(MAX_ROUNDS, Math.round(Number(b.maxRounds) || MAX_ROUNDS)));
+  const round = Math.max(1, Math.min(maxRounds, Math.round(Number(b.round) || 1)));
   const times = (Array.isArray(b.times) ? b.times : []).map(Number).filter(Number.isFinite).slice(0, 6);
   const reviewOnly = b.reviewOnly === true;
   const parts: ClaudePart[] = [
     {
       type: "text",
-      text: `REVIEW ROUND ${round} of ${MAX_ROUNDS}${round === MAX_ROUNDS ? " (the last: if anything is still below the bar, give your best final program)" : ""}. Be a HARSH motion director, not a proud author.
+      text: `REVIEW ROUND ${round} of ${maxRounds}${round === maxRounds ? " (the last: identify the most important remaining corrections precisely)" : ""}. Be a HARSH motion director, not a proud author.
 Below: ${sheets.length} contact sheet(s) (the frames of the whole piece in order, the time under each) and ${stills.length} full-size still(s)${times.length ? ` at ${times.map((t) => `${t.toFixed(2)} s`).join(", ")}` : ""}, rendered from THE PROGRAM. Judge what you SEE, not what the code intends.
 Score every criterion 1–10 (10 = indistinguishable from a top studio): ${RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}.
 Check the blacklist. Name the 3 worst problems with their times and the exact fix. ${reviewOnly ? "Return code as an empty string. A separate writing step will apply your exact corrections; describe the fixes precisely and do not claim you applied them." : `If ANY score is below ${PASS}, return the COMPLETE revised program that fixes them (keep what already works); otherwise return code as an empty string.`}
