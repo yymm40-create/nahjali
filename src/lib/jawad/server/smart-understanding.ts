@@ -47,8 +47,10 @@ export async function smartEditProjects(userId: string) {
 export async function smartEditUnderstanding(user: { id: string; email?: string | null }, body: SmartUnderstandingBody) {
   const jobId = str(body.jobId, 80);
   if (!isUuid(jobId)) throw new UserError("المقطع غير صحيح.", 400);
-  const { data: source } = await db().from("jawad_jobs").select("id,prompt,generator_id,settings,inputs").eq("id", jobId).eq("user_id", user.id).maybeSingle();
+  const { data: source, error: sourceError } = await db().from("jawad_jobs").select("id,prompt,generator_id,inputs").eq("id", jobId).eq("user_id", user.id).maybeSingle();
+  if (sourceError) throw new UserError("تعذّر قراءة بيانات التوليد الأصلي الآن؛ جرّب مرة ثانية.", 503);
   if (!source) throw new UserError("ما لقينا التوليد الأصلي.", 404);
+  const sourceInputs = (source.inputs ?? {}) as { settings?: Record<string, unknown> };
 
   let filmProjectId = isUuid(body.filmProjectId) ? String(body.filmProjectId) : null;
   const editorProjectId = isUuid(body.editorProjectId) ? String(body.editorProjectId) : null;
@@ -66,7 +68,7 @@ export async function smartEditUnderstanding(user: { id: string; email?: string 
   const correction = str(body.correction, 5000);
   if (!error || !correction) throw new UserError("اكتب الخطأ والتصحيح المطلوب كل واحد في خانته.", 400);
   const film = filmProjectId ? await sajjadBrief({ filmProjectId }) : null;
-  const prompt = `أنت جواد حاضر داخل نافذة «التعديل الذكي» في حيدرة. لا تبدأ التوليد. افهم الطلب فقط ثم أعد ملخصًا عربيًا بسيطًا ودقيقًا كي يؤكده المستخدم أو يعدله. لا تخترع ما لا يظهر في البيانات.\n\nالتوليد الأصلي:\n- المولد: ${source.generator_id}\n- البرومبت: ${str(source.prompt, 9000)}\n- الإعدادات الأصلية: ${JSON.stringify(source.settings).slice(0, 4000)}\n- الجيل المختار: ${str(body.generation, 120) || "الحالي"}\n- نوع المعالجة: ${str(body.mode, 80) || "غير محدد"}\n- الإعدادات الجديدة: ${JSON.stringify(body.settings ?? {}).slice(0, 4000)}\n\nقسم المستخدم الأول — ما هو الخطأ:\n${error}\n\nقسم المستخدم الثاني — ما هو التصحيح المطلوب:\n${correction}${film ? `\n\nبيانات مشروع سجاد المرتبط (اقرأها مباشرة وحافظ على استمراريتها):\n${film}` : "\n\nلا يوجد مشروع سجاد مرتبط؛ لا تفترض قصة أو شخصيات خارج المقطع."}\n\nأعد JSON فقط مطابقًا لهذا المخطط:\n${JSON.stringify(SCHEMA)}`;
+  const prompt = `أنت جواد حاضر داخل نافذة «التعديل الذكي» في حيدرة. لا تبدأ التوليد. افهم الطلب فقط ثم أعد ملخصًا عربيًا بسيطًا ودقيقًا كي يؤكده المستخدم أو يعدله. لا تخترع ما لا يظهر في البيانات.\n\nالتوليد الأصلي:\n- المولد: ${source.generator_id}\n- البرومبت: ${str(source.prompt, 9000)}\n- الإعدادات الأصلية: ${JSON.stringify(sourceInputs.settings ?? {}).slice(0, 4000)}\n- الجيل المختار: ${str(body.generation, 120) || "الحالي"}\n- نوع المعالجة: ${str(body.mode, 80) || "غير محدد"}\n- الإعدادات الجديدة: ${JSON.stringify(body.settings ?? {}).slice(0, 4000)}\n\nقسم المستخدم الأول — ما هو الخطأ:\n${error}\n\nقسم المستخدم الثاني — ما هو التصحيح المطلوب:\n${correction}${film ? `\n\nبيانات مشروع سجاد المرتبط (اقرأها مباشرة وحافظ على استمراريتها):\n${film}` : "\n\nلا يوجد مشروع سجاد مرتبط؛ لا تفترض قصة أو شخصيات خارج المقطع."}\n\nأعد JSON فقط مطابقًا لهذا المخطط:\n${JSON.stringify(SCHEMA)}`;
 
   if (managedAgentConfigured()) {
     try {
