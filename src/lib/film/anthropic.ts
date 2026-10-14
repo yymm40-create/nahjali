@@ -126,6 +126,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
   let last: unknown;
   const payload = JSON.stringify({ ...(JSON.parse(init.body) as Record<string, unknown>), stream: true });
   for (let i = 0; i < tries; i++) {
+    init.signal?.throwIfAborted();
     if (i) await nap(CLAUDE_WAITS[Math.min(i - 1, CLAUDE_WAITS.length - 1)]);
     const ctrl = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -135,7 +136,8 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
     };
     try {
       quiet();
-      const res = await fetch(url, { ...init, body: payload, signal: ctrl.signal });
+      const signal = init.signal ? AbortSignal.any([init.signal, ctrl.signal]) : ctrl.signal;
+      const res = await fetch(url, { ...init, body: payload, signal });
       if (!res.ok || !res.body) {
         const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
         const why = (body.error as { message?: string } | undefined)?.message ?? "request failed";
@@ -150,6 +152,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
       return out;
     } catch (e) {
       clearTimeout(timer);
+      init.signal?.throwIfAborted();
       last = e;
       if (e instanceof Error && /^Claude \d/.test(e.message)) {
         // an error the API sent inside the stream: busy/overloaded is tried again, anything else is final
@@ -283,6 +286,7 @@ export async function callClaudeJson<T>({
   fallback = false,
   leader = false,
   timeoutMs,
+  signal,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -295,6 +299,7 @@ export async function callClaudeJson<T>({
   leader?: boolean;
   /** the longest one attempt may take (default CLAUDE_TIMEOUT_MS); a long conversation like حيدرة's asks for more */
   timeoutMs?: number;
+  signal?: AbortSignal;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -317,6 +322,7 @@ export async function callClaudeJson<T>({
     // streamed: a long reply is never cut by a clock on the whole answer (only a line gone quiet is dropped)
     const b = await claudeStream(`${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
       method: "POST",
+      signal,
       headers: {
         "x-api-key": key,
         "anthropic-version": "2023-06-01",

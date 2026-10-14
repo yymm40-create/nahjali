@@ -61,4 +61,18 @@ describe("Claude's reply as a stream (a long reply is never cut by a clock on th
     await expect(claudeStream("https://api.example/v1/messages", { method: "POST", body: "{}" })).rejects.toThrow(/Claude 400/);
     expect(n).toBe(1);
   });
+
+  it("honours a total deadline even while the provider keeps sending pings", async () => {
+    const deadline = new AbortController();
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: ping\ndata: {"type":"ping"}\n\n'));
+        init.signal!.addEventListener("abort", () => controller.error(init.signal!.reason), { once: true });
+        queueMicrotask(() => deadline.abort(new Error("total deadline")));
+      },
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(claudeStream("https://api.example/v1/messages", { method: "POST", body: "{}", signal: deadline.signal })).rejects.toThrow("total deadline");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

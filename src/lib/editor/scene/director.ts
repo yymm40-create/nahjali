@@ -100,13 +100,15 @@ const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 
 
 async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" | "xhigh" = "high") {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  const deadline = AbortSignal.timeout(600_000);
   return claudeCharged(
     who,
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true, timeoutMs: 600_000 }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true, signal: deadline }).catch((e) => {
         console.error("motion lab", label, e);
+        if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت في هذه الخطوة. الخطة والمشهد السابق محفوظان؛ أعد المحاولة من نفس الخطوة.", 504);
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
@@ -176,13 +178,14 @@ export async function labReview(p: EditorProject, who: Who, b: Record<string, un
   if (!sheets.length && !stills.length) throw new UserError("ما وصلتني صور المشهد.", 400);
   const round = Math.max(1, Math.min(MAX_ROUNDS, Math.round(Number(b.round) || 1)));
   const times = (Array.isArray(b.times) ? b.times : []).map(Number).filter(Number.isFinite).slice(0, 6);
+  const reviewOnly = b.reviewOnly === true;
   const parts: ClaudePart[] = [
     {
       type: "text",
       text: `REVIEW ROUND ${round} of ${MAX_ROUNDS}${round === MAX_ROUNDS ? " (the last: if anything is still below the bar, give your best final program)" : ""}. Be a HARSH motion director, not a proud author.
 Below: ${sheets.length} contact sheet(s) (the frames of the whole piece in order, the time under each) and ${stills.length} full-size still(s)${times.length ? ` at ${times.map((t) => `${t.toFixed(2)} s`).join(", ")}` : ""}, rendered from THE PROGRAM. Judge what you SEE, not what the code intends.
 Score every criterion 1–10 (10 = indistinguishable from a top studio): ${RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}.
-Check the blacklist. Name the 3 worst problems with their times and the exact fix. If ANY score is below ${PASS}, return the COMPLETE revised program that fixes them (keep what already works); otherwise return code as an empty string.
+Check the blacklist. Name the 3 worst problems with their times and the exact fix. ${reviewOnly ? "Return code as an empty string. A separate writing step will apply your exact corrections; describe the fixes precisely and do not claim you applied them." : `If ANY score is below ${PASS}, return the COMPLETE revised program that fixes them (keep what already works); otherwise return code as an empty string.`}
 THE PLAN: ${planText(plan)}
 THE PROGRAM:
 ${code}`,
@@ -190,7 +193,7 @@ ${code}`,
     ...sheets.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `CONTACT SHEET ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...stills.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `STILL ${i + 1}${times[i] !== undefined ? ` (t = ${times[i].toFixed(2)} s)` : ""}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة ${round}`, parts, REVIEW_SCHEMA, outputBudget(b.model), "high");
+  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة ${round}`, parts, REVIEW_SCHEMA, reviewOnly ? 12000 : outputBudget(b.model), "high");
   const review = readReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };

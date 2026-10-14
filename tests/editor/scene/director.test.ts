@@ -70,6 +70,13 @@ describe("«🎬 مختبر الموشن» on the server", () => {
     expect(again.review.pass).toBe(false);
     expect(again.code).toBe(EXEMPLARS[2].code.trim());
     expect(s.calls[1].text).toContain("the last");
+    s.reply = { scores: { ...high, wow: 5 }, worst: [{ t: 1, problem: "مسطح", fix: "عمق" }], verdict: "يحتاج", code: "" };
+    const critique = await labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [jpg], reviewOnly: true });
+    expect(critique.review.pass).toBe(false);
+    expect(critique.review.worst[0].fix).toBe("عمق");
+    expect(critique.code).toBe("");
+    expect(s.calls[2].text).toContain("A separate writing step");
+    expect(s.calls[2].maxTokens).toBe(12000);
     await expect(labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [], stills: [] })).rejects.toThrow(/صور/);
   });
 });

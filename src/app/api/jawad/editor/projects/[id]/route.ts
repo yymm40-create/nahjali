@@ -10,6 +10,7 @@ import type { Command } from "@/lib/editor/commands";
 import { importSfx } from "@/lib/editor/sfx-library";
 import { keyCheck } from "@/lib/editor/key-check";
 import { labPlan, labReview, labWrite } from "@/lib/editor/scene/director";
+import { labResponse } from "@/lib/editor/scene/response";
 import {
   addLocalAsset,
   assetViewsById,
@@ -152,11 +153,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await keyCheck(p, who, b));
     // «🎬 مختبر الموشن»: حيدرة plans, writes and reviews a motion piece made in code (the browser renders it)
     case "lab_plan":
-      return NextResponse.json(await labPlan(p, who, b));
+      return b.stream ? labResponse(() => labPlan(p, who, b)) : NextResponse.json(await labPlan(p, who, b));
     case "lab_write":
-      return NextResponse.json(await labWrite(p, who, b));
+      return b.stream ? labResponse(() => labWrite(p, who, b)) : NextResponse.json(await labWrite(p, who, b));
     case "lab_review":
-      return NextResponse.json(await labReview(p, who, b));
+      return b.stream ? labResponse(() => labReview(p, who, b)) : NextResponse.json(await labReview(p, who, b));
     case "assistant":
       return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرة", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply }));
     case "fix_link":

@@ -134,7 +134,11 @@ export default function MotionLab({
   }, [projectId, brief, seconds, intensity, brand, picks, plan, say, code, reviews]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort()), []);
 
-  const call = useCallback(<T,>(action: string, body: Record<string, unknown>) => postJson<T>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body }), [projectId, claude.id]);
+  const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
+    const result = await postJson<T & { error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body, stream: true });
+    if (result.error) throw new Error(result.error);
+    return result;
+  }, [projectId, claude.id]);
 
   /** The scene page with this program, its fonts and its pictures; the probe catches a bug before anything else. */
   const loadCode = async (program: string, p: LabPlan) => {
@@ -222,12 +226,13 @@ export default function MotionLab({
         const times = reviewTimes(got.duration);
         const shots = await stills(h, times, got.duration);
         say1("🧐 حيدرة يراجع كمخرج قاسي…");
-        const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan, seconds: plan.seconds, assets: assetList, code: program, sheets, stills: shots, times, round });
+        const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan, seconds: plan.seconds, assets: assetList, code: program, sheets, stills: shots, times, round, reviewOnly: true });
         done.push(r.review);
         setReviews([...done]);
         say1(`${r.review.pass ? "✅" : "📝"} ${r.review.verdict}`);
-        if (r.review.pass || !r.code) break;
-        const next = await buildRunning(plan, r.code, r.problems.length ? `The program breaks the machine's rules: ${r.problems.join("; ")}` : "");
+        if (r.review.pass) break;
+        say1("✍️ أطبّق ملاحظات المخرج على المشهد…");
+        const next = await buildRunning(plan, program, `Apply this visual review, preserving the approved plan and everything that already works: ${JSON.stringify(r.review)}`);
         program = next.program;
         got = next.got;
         setCode(program);
