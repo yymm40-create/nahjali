@@ -409,7 +409,7 @@ export function PriceAsks({ asks, onConfirm, onCancel }: { asks: Ask[]; onConfir
   );
 }
 
-type Plan = { ok: false; why: string } | { ok: true; job: JobView; out: OutputView; mode: "parts" | "whole"; cut: { start: number; end: number; seconds: number }; videoSec: number; ranges: EditRange[]; continuity: ContinuityRange[] | null };
+type Plan = { ok: false; why: string } | { ok: true; job: JobView; out: OutputView; sourceUrl: string; mode: "parts" | "whole"; cut: { start: number; end: number; seconds: number }; videoSec: number; ranges: EditRange[]; continuity: ContinuityRange[] | null };
 
 /**
  * The continuity references of a piece: the yellow track's copies of the same video (each before or after the piece,
@@ -427,7 +427,9 @@ function planOf(c: Clip, a: EditorAsset | undefined, j: JobView | undefined, yel
   if (!a?.jobId || !a.outputId) return { ok: false, why: "هذا الجزء مو من فيديو صنعته في «الجواد الذكي!» أو صانع الفيلم؛ ما يقدر يتعاد." };
   if (!j) return { ok: false, why: "ما قدرنا نقرأ الفيديو الأصلي؛ جرّب مرة ثانية." };
   const out = j.outputs.find((o) => o.id === a.outputId) ?? j.outputs.find((o) => o.kind === "video");
-  if (!out?.url) return { ok: false, why: "الفيديو الأصلي ما عاد موجود." };
+  if (!out) return { ok: false, why: "ما لقينا سجل الفيديو الأصلي؛ أعد فتحه من أعمال جواد أو صانع الفيلم." };
+  const sourceUrl = a.url ?? out.url;
+  if (!sourceUrl) return { ok: false, why: "ما قدرنا نقرأ ملف الفيديو من المونتاج أو أعمال جواد؛ أعد استيراد الفيديو الأصلي للمشروع ثم جرّب." };
   const def = generatorById(j.generatorId);
   const dur = def?.options.find((o) => o.key === "duration" && o.kind === "int") as { min?: number; max?: number } | undefined;
   const videoSec = (out.durationMs ?? a.durationMs ?? 0) / 1000;
@@ -435,7 +437,7 @@ function planOf(c: Clip, a: EditorAsset | undefined, j: JobView | undefined, yel
   const cut = fixCut(c, mode, videoSec, dur?.min ?? 4, dur?.max ?? 15);
   if (!cut) return { ok: false, why: mode === "parts" ? `الجزء أطول من أطول مقطع يولّده ${def?.name ?? "المولد"} (${dur?.max ?? 15} ث)، أو الفيديو أقصر من ${dur?.min ?? 4} ث؛ اختر «كامل» أو قصّ الجزء أصغر.` : "تعذّر." };
   const r = pieceRange(c);
-  return { ok: true, job: j, out, mode, cut, videoSec, ranges: [{ from: r.from, to: Math.min(r.to, videoSec), note: "" }], continuity: mode === "parts" ? continuityOf(c, yellow, cut, videoSec) : null };
+  return { ok: true, job: j, out, sourceUrl, mode, cut, videoSec, ranges: [{ from: r.from, to: Math.min(r.to, videoSec), note: "" }], continuity: mode === "parts" ? continuityOf(c, yellow, cut, videoSec) : null };
 }
 
 const loadJobs = async (ids: string[]) => {
@@ -472,15 +474,15 @@ async function sendPiece(c: Clip, note: string, ctx: { projectId: string; asset:
   const send: Record<string, unknown> = { jobId: p.job.id, outputId: p.out.id, mode: p.mode, notes: note, ranges, idempotencyKey: ctx.key, expectedCoins: q.coins, ...(p.continuity ? { continuity: p.continuity } : {}), ...optsBody(opts) };
   try {
     const times = frameTimes(p.videoSec, ranges, partCut);
-    const small = await grabFrames(p.out.url!, times, EDIT_LIMITS.frameWidth, 0.72);
+    const small = await grabFrames(p.sourceUrl, times, EDIT_LIMITS.frameWidth, 0.72);
     send.frames = times.map((t, i) => ({ t, data: small[i] }));
     if (partCut) {
       // the video itself around the piece (the yellow track, or the seconds around the cut), cut here and uploaded
       const ids: string[] = [];
-      for (const r of p.continuity ?? []) ids.push(await uploadContinuity(p.out.url!, r, `continuity-${r.at}`));
+      for (const r of p.continuity ?? []) ids.push(await uploadContinuity(p.sourceUrl, r, `continuity-${r.at}`));
       send.continuityUploads = ids;
       // and the sound around the cut (voices, effects, music carry on)
-      const [before, after] = await grabSounds(p.out.url!, [{ from: partCut.start - 2.5, to: partCut.start }, { from: partCut.end, to: partCut.end + 2.5 }]);
+      const [before, after] = await grabSounds(p.sourceUrl, [{ from: partCut.start - 2.5, to: partCut.start }, { from: partCut.end, to: partCut.end + 2.5 }]);
       send.cutSounds = { before, after };
     }
   } catch {
