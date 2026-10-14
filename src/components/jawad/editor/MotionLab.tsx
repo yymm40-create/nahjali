@@ -7,7 +7,8 @@
 // director and rewrites what is below the bar (up to three rounds) → the final film is rendered here at 30 fps with
 // motion blur and lands on the timeline with its sound cues (and, if asked, music from ElevenLabs).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { postJson } from "@/lib/fetch";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
@@ -33,6 +34,7 @@ interface Saved {
 const key = (id: string) => `jw-lab-${id}`;
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
 const FIXES = 2;
+const subscribeToClient = () => () => undefined;
 
 /** A picture from the device, made small for حيدرة's eyes (long side 768, JPEG). */
 async function refOf(file: File): Promise<string> {
@@ -90,6 +92,7 @@ export default function MotionLab({
   const view = useRef<HTMLCanvasElement>(null);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const portalReady = useSyncExternalStore(subscribeToClient, () => true, () => false);
   // closed while busy (a build, a review round, the final render): folded to a small pill instead of stopped, so the
   // work keeps going; the person reopens it from the pill, or presses «إلغاء» inside to really stop it
   const [minimized, setMinimized] = useState(false);
@@ -332,7 +335,10 @@ export default function MotionLab({
   const close = () => {
     // busy: keep working, just fold the window (إلغاء inside really stops it); idle: nothing to lose, close for good
     if (busy) setMinimized(true);
-    else (abort.current?.abort(), onClose());
+    else {
+      abort.current?.abort();
+      onClose();
+    }
   };
   const cancel = () => {
     abort.current?.abort();
@@ -340,31 +346,34 @@ export default function MotionLab({
     setMinimized(false);
   };
 
+  if (!portalReady) return null;
+
   if (minimized)
-    return (
-      <button type="button" className="jw-btn jw-btn-primary jw-3d fixed bottom-4 end-4 z-[80] !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن">
+    return createPortal(
+      <button type="button" className="jw-btn jw-btn-primary jw-3d fixed bottom-4 end-4 z-[1000] !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن">
         <span className="jw-spinner" />
         🎬 {stageAr}{stage === "rendering" ? ` ${Math.round(progress * 100)}٪` : "…"}
-      </button>
+      </button>,
+      document.body,
     );
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-stretch justify-center bg-black/55 p-2 sm:p-6" role="dialog" aria-label="مختبر الموشن" dir="rtl">
-      <div className="jw-glass-lg flex w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-jw-surface shadow-2xl">
-        <header className="flex items-center justify-between gap-2 border-b border-jw-line px-4 py-3">
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-stretch justify-center bg-black/70 p-2 sm:p-6" role="dialog" aria-modal="true" aria-label="مختبر الموشن" dir="rtl">
+      <div className="jw-glass-lg flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-jw-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+        <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-2 border-b border-jw-line bg-jw-surface px-3 py-3 sm:px-4">
           <div className="min-w-0">
             <h2 className="text-lg font-black">🎬 مختبر الموشن</h2>
-            <p className="text-xs text-jw-muted">حيدرة يصمم ويكتب كل فريم بالكود، يشوف النتيجة ويقيّمها كمخرج قاسي، ويصلّح لين يوصل مستوى الاستوديوهات.</p>
+            <p className="hidden text-xs text-jw-muted sm:block">حيدرة يصمم ويكتب كل فريم بالكود، يشوف النتيجة ويقيّمها كمخرج قاسي، ويصلّح لين يوصل مستوى الاستوديوهات.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <ClaudeModelPicker disabled={busy} />
             {busy && (
               <button type="button" className="jw-btn jw-btn-quiet !min-h-9" onClick={cancel} title="يوقف العملية الحالية (الكود المسوّى قبلها يبقى محفوظ)">
                 إلغاء
               </button>
             )}
-            <button type="button" className="jw-btn !min-h-9" onClick={close} title={busy ? "يصغّر ويكمل الشغل في الخلفية" : "إغلاق"}>
-              {busy ? "تصغير" : "إغلاق"}
+            <button type="button" className="jw-btn jw-btn-primary !min-h-9 whitespace-nowrap" onClick={close} title={busy ? "ارجع للمونتاج ويكمل المختبر شغله في الخلفية" : "اخرج من المختبر وارجع للمونتاج"}>
+              ← {busy ? "ارجع والمختبر يكمل" : "رجوع للمونتاج"}
             </button>
           </div>
         </header>
@@ -559,6 +568,7 @@ export default function MotionLab({
           </aside>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
