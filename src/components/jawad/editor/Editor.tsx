@@ -39,7 +39,7 @@ import Handles from "./Handles";
 import Inspector, { type SceneCutRun, type InspectorTab } from "./Inspector";
 import { peaksOf, waveImage } from "./peaks";
 import Library from "./Library";
-import { thumbnail } from "./media";
+import { framesOf, thumbnail } from "./media";
 import { Player } from "./player";
 import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
@@ -63,7 +63,8 @@ import Timeline from "./Timeline";
 import type { EditorAsset, EditorProjectView } from "./types";
 import { useUploads, type Placement } from "./useUploads";
 import { diagNote, startDiag } from "./diag";
-import { useMaking } from "./making";
+import { startMaking, useMaking } from "./making";
+import type { MakePlan } from "@/lib/editor/make-any";
 import Coined from "@/components/Coined";
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
@@ -1062,6 +1063,28 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   }, []);
   // «اصنع لي…»: what حيدرة started making with JAWAD AI, placed when it is ready
   const making = useMaking({ projectId: project.id, run, onAssets: addAssets, flash, readOnly });
+  const extendClip = async (clipId: string, edge: "start" | "end", seconds: number, prompt: string, quality: "720p" | "1080p", withSound: boolean) => {
+    const found = findClip(tlRef.current, clipId);
+    const asset = found?.clip.assetId ? assets.find((item) => item.id === found.clip.assetId) : null;
+    if (!found || !asset?.url || asset.kind !== "video") throw new Error("اختر مقطع فيديو جاهز أولًا.");
+    const boundary = edge === "start" ? found.clip.in : Math.max(found.clip.in, found.clip.out - 50);
+    const [frame] = await framesOf(asset.url, "video", boundary, boundary + 2, 1, 720);
+    if (!frame?.data) throw new Error("تعذّر قراءة فريم الربط من المقطع.");
+    const { plan } = await postJson<{ plan: MakePlan }>(`/api/jawad/editor/projects/${project.id}`, {
+      action: "extend_plan",
+      clipId,
+      edge,
+      frame: frame.data,
+      seconds,
+      prompt,
+      quality,
+      withSound,
+    });
+    if (!plan.generatorId.startsWith("byteplus-seedance-")) throw new Error("AI Extend متاح عبر Seedance فقط.");
+    if (!plan.free && !window.confirm(`تمديد ${edge === "start" ? "بداية" : "نهاية"} المقطع عبر ${plan.generatorName} مقابل ${coinStr(plan.coins)}؟`)) return;
+    await startMaking(project.id, plan);
+    flash(`بدأ ${plan.generatorName} تمديد ${edge === "start" ? "البداية" : "النهاية"}؛ سيُركّب تلقائيًا عند اكتماله.`);
+  };
   /** «🩺 تشخيص»: the editor's state as it stands (read when a diagnosis is asked for, never while drawing) */
   const diagApp = () => ({
     save,
@@ -1968,7 +1991,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className={`jw-scroll min-h-0 flex-1 ${colorRoom && one ? "overflow-hidden" : "overflow-y-auto"}`}>
             {colorRoom && !one && <p className="room-empty p-6 text-center">اختر لقطة من الشريط فوق عشان تلوّنها.</p>}
-            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onExtend={readOnly ? undefined : extendClip} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 

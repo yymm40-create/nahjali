@@ -22,6 +22,7 @@ export interface Making {
   volume?: number;
   /** a motion piece's narration: its beats stretch to the recording's real length when it arrives */
   fit?: Fit;
+  extend?: { clipId: string; edge: "start" | "end" };
 }
 
 const key = (projectId: string) => `jw-editor-making-${projectId}`;
@@ -61,7 +62,7 @@ function save(projectId: string, list: Making[]) {
 /** Starts a priced plan (JAWAD AI checks it again and takes its coins), and waits for it. */
 export async function startMaking(projectId: string, plan: MakePlan) {
   const r = await postJson<{ job: JobView }>(`/api/jawad/editor/projects/${projectId}`, { action: "make_start", key: `ed-${crypto.randomUUID()}`, plan });
-  save(projectId, [...load(projectId), { jobId: r.job.id, kind: plan.kind, place: plan.place, at: plan.at, name: plan.name, started: Date.now(), ...(plan.alsoAt?.length ? { alsoAt: plan.alsoAt } : {}), ...(plan.volume !== undefined ? { volume: plan.volume } : {}), ...(plan.fit ? { fit: plan.fit } : {}) }]);
+  save(projectId, [...load(projectId), { jobId: r.job.id, kind: plan.kind, place: plan.place, at: plan.at, name: plan.name, started: Date.now(), ...(plan.alsoAt?.length ? { alsoAt: plan.alsoAt } : {}), ...(plan.volume !== undefined ? { volume: plan.volume } : {}), ...(plan.fit ? { fit: plan.fit } : {}), ...(plan.extend ? { extend: plan.extend } : {}) }]);
   return r.job;
 }
 
@@ -120,7 +121,11 @@ export function useMaking(o: { projectId: string; run: (c: Command[], opts: { la
         drop();
         // the file must be known to the timeline before a clip is laid on it
         await new Promise((ok) => setTimeout(ok, 0));
-        const cmds = res.assets[0] ? placeMade(m.kind, res.assets[0].id, m.place, m.at, { alsoAt: m.alsoAt, volume: m.volume }) : [];
+        const cmds = res.assets[0]
+          ? m.extend
+            ? [{ type: "insert_adjacent" as const, assetId: res.assets[0].id, clipId: m.extend.clipId, edge: m.extend.edge }]
+            : placeMade(m.kind, res.assets[0].id, m.place, m.at, { alsoAt: m.alsoAt, volume: m.volume })
+          : [];
         if (cmds.length) run(cmds, { label: `حيدرة صنع: ${m.name.slice(0, 30)}` });
         // the narration of a motion piece: the piece ends when the voice does (each beat keeps its share of the saying)
         const dur = res.assets[0]?.durationMs;

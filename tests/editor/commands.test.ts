@@ -38,6 +38,17 @@ describe("the magnetic main track", () => {
     const a = main(t).clips[0].id;
     expect(spans(apply(t, { type: "trim_clip", clipId: a, edge: "end", to: 2500 }, assets).timeline)[1]).toEqual(["b", 2500, 8500]);
   });
+
+  it("inserts a generated extension before or after a clip and ripples later clips", () => {
+    const initial = three();
+    const middle = main(initial).clips[1].id;
+    const before = apply(initial, { type: "insert_adjacent", assetId: "c", clipId: middle, edge: "start" }, assets).timeline;
+    expect(spans(before)).toEqual([["a", 0, 4000], ["c", 4000, 6000], ["b", 6000, 12000], ["c", 12000, 14000]]);
+
+    const afterMiddle = main(before).clips.find((clip) => clip.assetId === "b")!.id;
+    const after = apply(before, { type: "insert_adjacent", assetId: "c", clipId: afterMiddle, edge: "end" }, assets).timeline;
+    expect(spans(after)).toEqual([["a", 0, 4000], ["c", 4000, 6000], ["b", 6000, 12000], ["c", 12000, 14000], ["c", 14000, 16000]]);
+  });
 });
 
 describe("several commands as one change", () => {

@@ -115,6 +115,7 @@ export default function Inspector({
   projectId,
   onSceneCut,
   onUpscale,
+  onExtend,
   onSync,
   syncing = false,
   page = false,
@@ -147,11 +148,18 @@ export default function Inspector({
   syncing?: boolean;
   /** «رفع الدقة»: the clip's video sent to be upscaled (720p/1080p → 4K) */
   onUpscale?: (assetId: string, target: "4k" | "1080p") => void;
+  /** Seedance continuation placed directly before/after this video. */
+  onExtend?: (clipId: string, edge: "start" | "end", seconds: number, prompt: string, quality: "720p" | "1080p", withSound: boolean) => Promise<void>;
 }) {
   const playhead = usePlayhead(player);
   const [beatBusy, setBeatBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [separating, setSeparating] = useState(false);
+  const [extendBusy, setExtendBusy] = useState<"start" | "end" | null>(null);
+  const [extendPrompt, setExtendPrompt] = useState("");
+  const [extendSeconds, setExtendSeconds] = useState(5);
+  const [extendQuality, setExtendQuality] = useState<"720p" | "1080p">("720p");
+  const [extendSound, setExtendSound] = useState(true);
   const [stemQ, setStemQ] = useState<StemQuality>("normal");
   useEffect(() => {
     const t = setTimeout(() => setStemQ(stemQuality()), 0);
@@ -399,6 +407,50 @@ export default function Inspector({
       {current === "basic" && (
         <div className="space-y-3">
           {a?.kind === "video" && onSceneCut && <SceneCut clipId={clip.id} locked={locked} run={onSceneCut} />}
+          {a?.kind === "video" && a.status === "ready" && onExtend && (
+            <div className="space-y-2 rounded-xl border border-cyan-400/35 bg-gradient-to-br from-cyan-400/10 via-jw-surface-2 to-violet-500/10 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold">↔ AI Extend · Seedance</p>
+                <span className="rounded-full border border-cyan-400/30 px-2 py-0.5 text-[10px] text-cyan-300">فريم ربط دقيق</span>
+              </div>
+              <p className="text-[11px] leading-5 text-jw-muted">يمدّد قبل المقطع أو بعده من الفريم الحدودي نفسه، ثم يركّب النتيجة ملاصقة ويسحب المقاطع التالية.</p>
+              <textarea className="jw-input min-h-16 w-full resize-y text-xs" value={extendPrompt} onChange={(event) => setExtendPrompt(event.target.value)} placeholder="اختياري: ماذا يحدث في التمديد؟ إذا تركته فارغًا يكمل جواد الحركة طبيعيًا." />
+              <div className="grid grid-cols-3 gap-1.5">
+                <select className="jw-input !min-h-8 text-xs" value={extendSeconds} onChange={(event) => setExtendSeconds(Number(event.target.value))} aria-label="مدة التمديد">
+                  {[4, 5, 8, 10, 15].map((seconds) => <option key={seconds} value={seconds}>{seconds} ث</option>)}
+                </select>
+                <select className="jw-input !min-h-8 text-xs" value={extendQuality} onChange={(event) => setExtendQuality(event.target.value as "720p" | "1080p")} aria-label="دقة التمديد">
+                  <option value="720p">720p</option>
+                  <option value="1080p">1080p</option>
+                </select>
+                <label className="flex min-h-8 items-center justify-center gap-1 rounded-lg border border-jw-line text-[11px] text-jw-muted">
+                  <input type="checkbox" checked={extendSound} onChange={(event) => setExtendSound(event.target.checked)} className="accent-cyan-400" /> صوت
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["start", "end"] as const).map((edge) => (
+                  <button
+                    key={edge}
+                    type="button"
+                    className="jw-btn jw-3d !min-h-9 text-xs"
+                    disabled={locked || !!extendBusy}
+                    onClick={async () => {
+                      setExtendBusy(edge);
+                      try {
+                        await onExtend(clip.id, edge, extendSeconds, extendPrompt, extendQuality, extendSound);
+                      } catch (error) {
+                        flash(error instanceof Error ? error.message : "تعذّر بدء التمديد.", true);
+                      } finally {
+                        setExtendBusy(null);
+                      }
+                    }}
+                  >
+                    {extendBusy === edge ? <span className="jw-spinner" /> : edge === "start" ? "←" : "→"} تمديد {edge === "start" ? "البداية" : "النهاية"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {a?.kind === "video" && a.status === "ready" && onUpscale && a.width && a.height && Math.max(a.width, a.height) < 3800 && (
             <div className="space-y-1.5 rounded-xl border border-jw-line p-2.5">
               <p className="text-xs font-semibold">⬆️ رفع الدقة بالذكاء الاصطناعي</p>

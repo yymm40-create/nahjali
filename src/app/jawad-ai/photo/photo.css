@@ -6,20 +6,21 @@
 
 .ph {
   /* the studio's own greys: the stage is the darkest thing, the panels lift off it step by step */
-  --ph-stage: #191b1e;
-  --ph-bg: #23262a;
-  --ph-panel: #2b2f34;
-  --ph-raise: #33383e;
-  --ph-line: #3d4349;
-  --ph-line-2: #4b5259;
-  --ph-ink: #eef1f4;
-  --ph-mut: #b2bac2;
-  --ph-faint: #8b949d;
-  /* the one accent of a colour tool: a cold studio blue, with amber for what is already touched */
-  --ph-accent: #4ea3f0;
+  --ph-stage: #11151d;
+  --ph-bg: #171b25;
+  --ph-panel: #202532;
+  --ph-raise: #292f3e;
+  --ph-line: #343c4d;
+  --ph-line-2: #4b566b;
+  --ph-ink: #f3f6fb;
+  --ph-mut: #b6bfd0;
+  --ph-faint: #8490a5;
+  /* teal is the studio identity; violet and amber distinguish AI and active edits */
+  --ph-accent: #21d4c2;
   --ph-accent-soft: color-mix(in srgb, var(--ph-accent) 18%, transparent);
   --ph-on-accent: #0b1620;
-  --ph-live: #e0a33c;
+  --ph-live: #ffb454;
+  --ph-ai: #9b7cff;
   color: var(--ph-ink);
   background: var(--ph-bg);
   min-height: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px));
@@ -43,11 +44,14 @@
   }
 }
 .ph { --ph-stage-h: 52dvh; }
-@media (min-width: 900px) { .ph { --ph-stage-h: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px) - 64px); } }
+@media (min-width: 900px) { .ph { --ph-stage-h: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px) - 132px); } }
 .ph-loading, .ph-error { padding: 48px 16px; text-align: center; color: var(--jw-muted); }
 .ph-link { color: var(--jw-accent); }
 
-.ph-top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--ph-line); flex-wrap: wrap; position: sticky; top: 0; z-index: 5; background: var(--ph-panel); }
+.ph-top { display: flex; align-items: center; gap: 7px; padding: 5px 10px; border-bottom: 1px solid var(--ph-line); flex-wrap: wrap; position: relative; z-index: 8; background: #191e29; box-shadow: 0 1px 0 rgba(255,255,255,.03); }
+.ph-brand { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ph-brand i { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 7px; background: linear-gradient(135deg, var(--ph-accent), var(--ph-ai)); color: #071311; font: 800 11px/1 system-ui; box-shadow: 0 0 18px color-mix(in srgb, var(--ph-accent) 25%, transparent); }
+.ph-brand b { font-size: 12px; letter-spacing: -.2px; }
 .ph-title { flex: 1; min-width: 120px; background: transparent; border: 1px solid transparent; color: inherit; font: inherit; font-weight: 600; padding: 6px 8px; border-radius: 10px; }
 .ph-title:hover, .ph-title:focus { border-color: var(--ph-line-2); outline: none; }
 .ph-saved { font-size: 12px; color: var(--ph-faint); min-width: 64px; text-align: center; }
@@ -67,23 +71,41 @@
 .ph-pop small { color: var(--ph-faint); padding: 2px 10px; }
 .ph-note { padding: 8px 14px; font-size: 13px; background: color-mix(in srgb, var(--jw-warn) 14%, var(--ph-panel)); border-bottom: 1px solid var(--ph-line); cursor: pointer; }
 
+.ph-menubar { min-height: 32px; display: flex; align-items: center; gap: 2px; padding: 0 9px; border-bottom: 1px solid var(--ph-line); background: var(--ph-bg); position: relative; z-index: 7; }
+.ph-menubar details { position: relative; }
+.ph-menubar summary { list-style: none; padding: 5px 9px; border-radius: 5px; color: var(--ph-mut); font-size: 12px; cursor: pointer; }
+.ph-menubar summary::-webkit-details-marker { display: none; }
+.ph-menubar details[open] summary, .ph-menubar summary:hover { color: var(--ph-ink); background: var(--ph-raise); }
+.ph-menu-list { position: absolute; inset-inline-start: 0; top: calc(100% + 3px); min-width: 210px; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--ph-line-2); border-radius: 8px; background: #222936; box-shadow: 0 18px 45px rgba(0,0,0,.48); }
+.ph-menu-list button { display: flex; justify-content: space-between; gap: 20px; border: 0; border-radius: 5px; padding: 7px 9px; background: transparent; color: var(--ph-ink); font: inherit; font-size: 12px; text-align: start; cursor: pointer; }
+.ph-menu-list button:hover:not(:disabled) { background: var(--ph-accent-soft); }
+.ph-menu-list button:disabled { opacity: .4; }
+.ph-menu-list kbd { color: var(--ph-faint); font: inherit; direction: ltr; }
+.ph-menu-spacer { flex: 1; }
+.ph-workspace { padding: 3px 8px; border: 1px solid var(--ph-line); border-radius: 5px; color: var(--ph-faint); font-size: 10.5px; }
+.ph-options { min-height: 35px; display: flex; align-items: center; gap: 10px; padding: 4px 12px; border-bottom: 1px solid var(--ph-line); background: var(--ph-panel); color: var(--ph-mut); font-size: 11px; }
+.ph-options b { color: var(--ph-ink); font-size: 12px; }
+.ph-options i { width: 1px; height: 18px; background: var(--ph-line-2); }
+.ph-options small { margin-inline-start: auto; direction: ltr; color: var(--ph-faint); }
+
 /* the desk: in RTL the columns run right to left, so [panel, stage, rail] puts the TOOLS ON THE LEFT and the
    pressed tool's settings on the right, the way Photoshop, Lightroom and Canva all sit */
 .ph-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "panel" "rail"; min-height: 0; }
-@media (min-width: 900px) { .ph-body { grid-template-columns: 360px minmax(0, 1fr) 74px; grid-template-areas: "panel stage rail"; } }
+@media (min-width: 900px) { .ph-body { direction: ltr; grid-template-columns: 58px minmax(0, 1fr) 348px; grid-template-areas: "rail stage panel"; } .ph-body > * { direction: rtl; } }
 
 /* ── the tool rail (left on a desk, a bar at the bottom of a phone) */
-.ph-rail { grid-area: rail; display: flex; gap: 4px; padding: 6px; background: var(--ph-panel); border-top: 1px solid var(--ph-line); overflow-x: auto; position: sticky; bottom: 0; z-index: 4; }
+.ph-rail { grid-area: rail; display: flex; gap: 3px; padding: 5px; background: #1b202b; border-top: 1px solid var(--ph-line); overflow-x: auto; position: sticky; bottom: 0; z-index: 4; }
 @media (min-width: 900px) { .ph-rail { flex-direction: column; border-top: 0; border-inline-end: 1px solid var(--ph-line); overflow: visible; position: static; } }
-.ph-rail button { flex: 1 0 auto; display: grid; gap: 2px; justify-items: center; padding: 8px 6px; min-width: 62px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--ph-mut); font: inherit; font-size: 11px; cursor: pointer; }
-.ph-rail button span { font-size: 19px; line-height: 1.1; }
+.ph-rail button { position: relative; flex: 1 0 auto; display: grid; gap: 2px; justify-items: center; padding: 7px 3px; min-width: 48px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--ph-mut); font: inherit; font-size: 9.5px; cursor: pointer; }
+.ph-rail button span { font-size: 16px; line-height: 1.1; font-weight: 700; direction: ltr; }
+.ph-rail button kbd { position: absolute; inset-block-start: 2px; inset-inline-end: 3px; color: var(--ph-faint); font: 8px/1 system-ui; opacity: .75; }
 .ph-rail button:hover { background: var(--ph-raise); color: var(--ph-ink); }
 .ph-rail button.on { background: var(--ph-accent-soft); border-color: color-mix(in srgb, var(--ph-accent) 55%, transparent); color: var(--ph-ink); }
 .ph-rail-gap { flex: 1; }
 .ph-rail-add { color: var(--ph-faint) !important; }
 
 .ph-stage-col { grid-area: stage; padding: 10px; min-width: 0; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.ph-stage { flex: 1; height: var(--ph-stage-h); display: grid; place-items: center; background: var(--ph-stage); border-radius: 14px; border: 1px solid var(--ph-line); overflow: auto; padding: 10px; }
+.ph-stage { flex: 1; height: var(--ph-stage-h); display: grid; place-items: center; background-color: var(--ph-stage); background-image: linear-gradient(45deg, rgba(255,255,255,.025) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.025) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.025) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.025) 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; border-radius: 5px; border: 1px solid var(--ph-line); overflow: auto; padding: 18px; }
 .ph-canvas-wrap { position: relative; aspect-ratio: var(--ar); box-shadow: 0 12px 44px rgba(0, 0, 0, 0.45); touch-action: none; user-select: none; }
 .ph-canvas-wrap.fit { width: min(100%, calc(var(--ph-stage-h) * var(--ar))); }
 /* the bar under the picture: how big it is shown, and «قبل/بعد» */
@@ -102,7 +124,7 @@
 .ph-grip { position: absolute; inset-inline-start: -7px; bottom: -7px; width: 14px; height: 14px; background: var(--ph-accent); border: 2px solid #fff; border-radius: 4px; cursor: nwse-resize; }
 
 .ph-panel { grid-area: panel; border-top: 1px solid var(--ph-line); display: flex; flex-direction: column; min-height: 0; background: var(--ph-panel); }
-@media (min-width: 900px) { .ph-panel { border-top: 0; border-inline-start: 1px solid var(--ph-line); max-height: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px) - 44px); } }
+@media (min-width: 900px) { .ph-panel { border-top: 0; border-inline-start: 1px solid var(--ph-line); max-height: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px) - 108px); } }
 .ph-panel-head { display: grid; gap: 2px; padding: 10px 12px; border-bottom: 1px solid var(--ph-line); }
 .ph-panel-head b { font-size: 14px; }
 .ph-panel-head small { color: var(--ph-faint); font-size: 11.5px; }

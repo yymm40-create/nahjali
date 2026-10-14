@@ -51,13 +51,13 @@ interface Piece {
 type Ask = { kind: "generate" | "cutout" | "edit"; prompt: string; aspect: string; target: "base" | "layer" | "file"; source: string };
 
 /** The tool rail on the LEFT, the way a design app is laid out: a tool is pressed, its own panel opens on the right. */
-const TABS: { id: Tab; icon: string; label: string; hint: string }[] = [
-  { id: "zahraa", icon: "✨", label: "زهراء", hint: "اطلب أي تعديل بالكلام" },
-  { id: "adjust", icon: "🎚️", label: "التلوين", hint: "الضوء واللون والتفاصيل — مثل لايت روم" },
-  { id: "filters", icon: "🎞️", label: "لوكات", hint: "لوك جاهز بقوّة تتحكم فيها" },
-  { id: "crop", icon: "✂️", label: "قص ومقاس", hint: "النسبة والمقاس والتدوير" },
-  { id: "pieces", icon: "🧩", label: "فكّك", hint: "يفصل عناصر الصورة: كل صورة وكل كلام طبقة بروحها" },
-  { id: "layers", icon: "🗂️", label: "طبقات", hint: "نص وأشكال وصور، وكل عنصر على حدة" },
+const TABS: { id: Tab; icon: string; label: string; hint: string; shortcut: string }[] = [
+  { id: "zahraa", icon: "AI", label: "زهراء", hint: "اطلب أي تعديل بالكلام", shortcut: "J" },
+  { id: "adjust", icon: "◐", label: "التلوين", hint: "الضوء واللون والتفاصيل — مثل لايت روم", shortcut: "A" },
+  { id: "filters", icon: "◈", label: "لوكات", hint: "لوك جاهز بقوّة تتحكم فيها", shortcut: "F" },
+  { id: "crop", icon: "⌗", label: "قص ومقاس", hint: "النسبة والمقاس والتدوير", shortcut: "C" },
+  { id: "pieces", icon: "◇", label: "فكّك", hint: "يفصل عناصر الصورة: كل صورة وكل كلام طبقة بروحها", shortcut: "S" },
+  { id: "layers", icon: "▱", label: "طبقات", hint: "نص وأشكال وصور، وكل عنصر على حدة", shortcut: "L" },
 ];
 const PIECE_ICON: Record<string, string> = { text: "🔤", picture: "🖼️", logo: "🏷️", shape: "▭" };
 /** How far the picture is zoomed on the stage: «يناسب الشاشة» or a real number. */
@@ -546,6 +546,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     <div className="ph" dir="rtl" style={{ ["--ar" as string]: String(ratio) }}>
       <header className="ph-top">
         <Link href={PHOTO.base} className="ph-btn" aria-label="مشاريعي">←</Link>
+        <span className="ph-brand"><i>ZM</i><b>زهراء فوتوماستر</b></span>
         <input className="ph-title" value={title} aria-label="اسم المشروع" onChange={(e) => setTitle(e.target.value)} onBlur={() => void fetch("/api/photo/projects", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: projectId, title }) })} maxLength={120} />
         <span className="ph-saved" aria-live="polite">{saved === "saving" ? "…" : saved === "saved" ? "✓ محفوظ" : saved === "error" ? "⚠️ لم يُحفظ" : ""}</span>
         <button type="button" className="ph-btn" disabled={!canUndo} onClick={undo} title="تراجع (Ctrl+Z)" aria-label="تراجع">↶</button>
@@ -562,6 +563,24 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
         {fromKazim && <button type="button" className={`ph-btn ph-kazim${askReturn ? " pulse" : ""}`} disabled={!!busy} onClick={() => void returnToKazim()} title="يرجع التصميم لكاظم والنصوص تبقى قابلة للتعديل عنده">↩️ رجّع لكاظم</button>}
       </header>
 
+      <div className="ph-menubar" aria-label="قائمة فوتوماستر">
+        <details><summary>ملف</summary><div className="ph-menu-list"><button type="button" onClick={() => pickBase.current?.click()}>فتح صورة… <kbd>⌘O</kbd></button><button type="button" onClick={() => void download("image/png")}>تصدير PNG <kbd>⌘E</kbd></button><button type="button" onClick={() => void download("image/jpeg")}>تصدير JPG</button></div></details>
+        <details><summary>تحرير</summary><div className="ph-menu-list"><button type="button" disabled={!canUndo} onClick={undo}>تراجع <kbd>⌘Z</kbd></button><button type="button" disabled={!canRedo} onClick={redo}>إعادة <kbd>⇧⌘Z</kbd></button><button type="button" onClick={() => op({ op: "adjust_reset" })}>تصفير التعديلات</button></div></details>
+        <details><summary>صورة</summary><div className="ph-menu-list"><button type="button" onClick={() => setTab("adjust")}>الضوء والألوان</button><button type="button" onClick={() => setTab("filters")}>اللوكات</button><button type="button" onClick={() => setTab("crop")}>حجم المنصة والقص</button></div></details>
+        <details><summary>طبقة</summary><div className="ph-menu-list"><button type="button" onClick={() => { setTab("layers"); op({ op: "add_text", text: "اكتب هنا", font: fontIds[0] ?? "readex", size: 7, color: "#FFFFFF", effect: "shadow", effect_color: "#000000", x: 50, y: 50, w: 80 }); }}>طبقة نص</button><button type="button" onClick={() => { setTab("layers"); picker.current?.click(); }}>طبقة صورة</button><button type="button" onClick={() => { setTab("layers"); op({ op: "add_shape", shape: "rect", x: 50, y: 50, w: 50, h: 30, fill: "#21d4c2", opacity: 1, radius: 2 }); }}>طبقة شكل</button></div></details>
+        <details><summary>تحديد</summary><div className="ph-menu-list"><button type="button" disabled={!doc.layers.length} onClick={() => { setTab("layers"); setSelected(doc.layers.at(-1)?.id ?? null); }}>أعلى طبقة</button><button type="button" disabled={!selected} onClick={() => setSelected(null)}>إلغاء التحديد</button></div></details>
+        <details><summary>عرض</summary><div className="ph-menu-list"><button type="button" onClick={() => setZoom("fit")}>ملاءمة للشاشة</button><button type="button" onClick={() => setZoom(1)}>الحجم الفعلي 100%</button><button type="button" onClick={() => setCompare((value) => !value)}>قبل / بعد</button></div></details>
+        <span className="ph-menu-spacer" />
+        <span className="ph-workspace">مساحة العمل · تحرير احترافي</span>
+      </div>
+
+      <div className="ph-options" aria-label="خيارات الأداة الحالية">
+        <b>{TABS.find((item) => item.id === tab)?.label}</b>
+        <span>{TABS.find((item) => item.id === tab)?.hint}</span>
+        <i />
+        <small>RGB · {doc.width} × {doc.height}</small>
+      </div>
+
       {(notice || busy) && (
         <div className="ph-note" role="status" onClick={() => setNotice("")}>
           {busy ? `⏳ ${busy}` : `⚠️ ${notice}`}
@@ -574,6 +593,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} title={t.hint} onClick={() => setTab(t.id)}>
               <span aria-hidden>{t.icon}</span>
               <small>{t.id === "zahraa" ? persona : t.label}</small>
+              <kbd>{t.shortcut}</kbd>
             </button>
           ))}
           <span className="ph-rail-gap" />

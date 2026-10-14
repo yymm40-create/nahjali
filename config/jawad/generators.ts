@@ -497,6 +497,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
   const modes: ModeDef[] = [
     { id: "text_to_video", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
     { id: "first_frame", label: "إطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: false },
+    { id: "last_frame", label: "إطار أخير", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["last_frame"], promptRequired: false },
     { id: "first_last_frame", label: "إطار أول وأخير", refStyle: "frames", refs: { image: { min: 2, max: 2 } }, roles: ["first_frame", "last_frame"], promptRequired: false },
     {
       id: "omni_reference",
@@ -582,8 +583,11 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
     ],
     modeFor(style, refs) {
       if (!refs.length) return modes[0];
-      if (style === "frames") return refs.length >= 2 ? modes[2] : modes[1];
-      return modes[3];
+      if (style === "frames") {
+        if (refs.length >= 2) return modes.find((mode) => mode.id === "first_last_frame")!;
+        return modes.find((mode) => mode.id === (refs[0]?.role === "last_frame" ? "last_frame" : "first_frame"))!;
+      }
+      return modes.find((mode) => mode.id === "omni_reference")!;
     },
     rules(d, mode) {
       const issues: Issue[] = [];
@@ -591,8 +595,8 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
       const states: Partial<Record<string, Partial<OptionState>>> = {};
       if (mode.refStyle === "frames") {
         // ModelArk keeps the first frame's aspect ratio in image-to-video (2.5: only "adaptive"); we never crop silently
-        states.ratio = { fixed: { value: "adaptive", reason: "النسبة تتبع صورة الإطار الأول تلقائيًا" } };
-        notes.push("في وضع الإطارات تُحفظ نسبة صورة الإطار الأول كما هي (adaptive)، ولا نقص الصورة.");
+        states.ratio = { fixed: { value: "adaptive", reason: `النسبة تتبع صورة الإطار ${mode.id === "last_frame" ? "الأخير" : "الأول"} تلقائيًا` } };
+        notes.push(`في وضع الإطارات تُحفظ نسبة صورة الإطار ${mode.id === "last_frame" ? "الأخير" : "الأول"} كما هي (adaptive)، ولا نقص الصورة.`);
         if (mode.id === "first_last_frame") notes.push("إذا اختلفت نسبة الإطار الأخير عن الأول، يقصّه المزوّد ليطابق الأول.");
       }
       if (!def.prompt.arabic && hasArabic(d.prompt)) issues.push({ field: "prompt", message: def.prompt.arabicNote! });

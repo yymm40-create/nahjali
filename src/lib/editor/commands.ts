@@ -99,6 +99,8 @@ const CLIP_DEFAULTS = { keys: [], seq: null as string | null, crop: null, blend:
 export type Command =
   /** `trackId: "new"` puts it on a new track of its kind */
   | { type: "add_clip"; assetId: string; trackId?: string; at?: number }
+  /** puts a generated continuation directly before/after an existing clip and ripples later clips */
+  | { type: "insert_adjacent"; assetId: string; clipId: string; edge: "start" | "end" }
   /** another timeline of the project put into the open one as one clip («Nest» of an existing sequence) */
   | { type: "place_seq"; id: string; trackId?: string; at?: number }
   /** a video's sound on its own sound track, in step with it (the video goes quiet) */
@@ -313,6 +315,23 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         place(track, c);
       }
       return { timeline: t, label: a.kind === "audio" ? "أضفت صوتًا" : a.kind === "image" ? "أضفت صورة" : "أضفت مقطعًا", select: [c.id] };
+    }
+
+    case "insert_adjacent": {
+      const a = assets.get(cmd.assetId) ?? fail("هذا الملف مو في مكتبة المشروع.");
+      if (a.kind !== "video") fail("التمديد الذكي لازم يكون فيديو.");
+      if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      const found = findClip(t, cmd.clipId) ?? fail("المقطع الأصلي مو موجود.");
+      if (found.track.kind !== "video" || found.track.locked) fail("افتح مسار الفيديو أولًا.");
+      const len = Math.max(LIMITS.minClipMs, a.durationMs ?? 5000);
+      const boundary = cmd.edge === "start" ? found.clip.start : clipEnd(found.clip);
+      for (const clip of found.track.clips) {
+        if (clip.start >= boundary) clip.start += len;
+      }
+      const c: Clip = { id: newId("c"), assetId: a.id, start: boundary, in: 0, out: len, speed: 1, volume: 1, fit: "cover", transform: { ...DEFAULT_TRANSFORM }, text: null, ...CLIP_DEFAULTS, keys: [] };
+      found.track.clips.push(c);
+      found.track.clips.sort((x, y) => x.start - y.start);
+      return { timeline: t, label: cmd.edge === "start" ? "مددت بداية المقطع" : "مددت نهاية المقطع", select: [c.id] };
     }
 
     case "place_seq": {

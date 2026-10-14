@@ -37,7 +37,7 @@ import { makeHook, makeMusic, makeSfx, separate } from "@/lib/editor/generate";
 import { assist, gradeCheck } from "@/lib/editor/assistant";
 import { diagnose } from "@/lib/editor/diagnose";
 import { isAdmin } from "@config/site";
-import { startMake } from "@/lib/editor/make-any";
+import { planSeedanceExtend, startMake } from "@/lib/editor/make-any";
 import { smartMask } from "@/lib/editor/smart-mask";
 
 // listening to a long clip can take a while
@@ -62,7 +62,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -135,6 +135,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     // «اصنع لي…» from حيدرة: a priced plan started as a JAWAD AI job
     case "make_start":
       return NextResponse.json(await startMake(user, owner, b, new URL(req.url).origin, who.team));
+    // Seedance only: continue a selected clip from its first/last boundary frame.
+    case "extend_plan":
+      return NextResponse.json(await planSeedanceExtend(who, b));
     // «ماسك ذكي»: what to select, found in a few moments of a clip
     case "smart_mask":
       return NextResponse.json(await smartMask(p, who, b));

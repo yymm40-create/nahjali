@@ -172,8 +172,10 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
   if (mode.refStyle === "frames") {
     const first = refs.filter((r) => r.role === "first_frame").length;
     const last = refs.filter((r) => r.role === "last_frame").length;
-    if (first !== 1) issues.push({ field: "refs", message: "حدّد صورة واحدة للإطار الأول." });
-    if (last > 1) issues.push({ field: "refs", message: "صورة واحدة فقط للإطار الأخير." });
+    const needsFirst = mode.roles?.includes("first_frame") ?? false;
+    const needsLast = mode.roles?.includes("last_frame") ?? false;
+    if ((needsFirst && first !== 1) || (!needsFirst && first > 0)) issues.push({ field: "refs", message: needsFirst ? "حدّد صورة واحدة للإطار الأول." : "هذا الوضع لا يستخدم إطارًا أول." });
+    if ((needsLast && last !== 1) || (!needsLast && last > 0)) issues.push({ field: "refs", message: needsLast ? "حدّد صورة واحدة للإطار الأخير." : "هذا الوضع لا يستخدم إطارًا أخيرًا." });
   }
 
   // What "+" may add now (for the current reference style)
