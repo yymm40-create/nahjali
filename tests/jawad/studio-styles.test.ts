@@ -11,12 +11,30 @@ describe("«الستايل» and one «جواد» for the studios", () => {
   it("offers the 24 styles, each with its picture", () => {
     expect(FILM_STYLES).toHaveLength(24);
     for (const s of FILM_STYLES) expect(() => readFileSync(new URL(`../../public/film/styles/${s.id}.jpg`, import.meta.url))).not.toThrow();
+    expect(FILM_STYLES.map((style) => style.name)).toEqual([
+      "بيكسار الكلاسيكية", "بيكسار الكاريكاتيرية", "إلومينيشن", "النيو-ديزني", "بيكسار الطبيعية", "دريم ووركس الملحمي",
+      "شينكاي", "سايبربانك / ساينن", "دريم ووركس اللوحي", "الهجين 2D/3D", "المرسوم فوق CG", "العصر الذهبي 2D",
+      "جيبلي", "بيكسار التجريدي", "الكوميكس المطبوع", "شونين حديث", "الهجين الأنمي-غربي", "دريم ووركس الساخر",
+      "ريترو سِل", "3DCG أنمي", "تجريبي / مؤلف", "الانحراف الأسلوبي", "موي / تشيبي", "نهضة التسعينات",
+    ]);
   });
-  it("puts the style's text in what the generator reads, keeping the prompt", () => {
+  it("puts the style's text in what the generator reads, keeping motion video-only", () => {
     const out = withStyle("قطة على سطح", FILM_STYLES[0].text);
     expect(out.startsWith("قطة على سطح")).toBe(true);
     expect(out).toContain(FILM_STYLES[0].text);
-    expect(read("src/lib/jawad/server/jobs.ts")).toContain("withStyle(asWritten, style.text)");
+    const moving = FILM_STYLES.find((style) => style.videoText)!;
+    expect(withStyle("قطة على سطح", moving.text)).not.toContain(moving.videoText);
+    expect(withStyle("قطة على سطح", moving.text, moving.videoText)).toContain(`VIDEO MOTION: ${moving.videoText}`);
+    expect(read("src/lib/jawad/server/jobs.ts")).toContain('def.output === "video" ? style.videoText : undefined');
+  });
+  it("contains no negative prompt or blanket ban on text and logos", () => {
+    const library = FILM_STYLES.map((style) => `${style.text} ${style.videoText ?? ""}`).join("\n").toLowerCase();
+    expect(library).not.toContain("negative prompt");
+    expect(library).not.toContain("watermark");
+    expect(library).not.toContain("logo");
+    expect(library).not.toMatch(/pixar|dreamworks|disney|ghibli|shinkai|ufotable|spider-verse|kpop/);
+    expect(read("src/lib/film/sheets.ts")).toContain("findStyle(styleId)!.text");
+    expect(read("src/components/jawad/studio/StylePicker.tsx")).toContain("FILM_STYLES");
   });
   it("جواد knows the styles (not for sound) and may pick one", () => {
     const img = GENERATORS.filter((g) => g.output === "image").slice(0, 1);

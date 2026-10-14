@@ -295,7 +295,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // «الستايل»: one of the 24 styles chosen under the prompt — its text goes into what the model reads as the look
   const style = def.output !== "audio" && typeof b.styleId === "string" ? findStyle(b.styleId) : undefined;
   const asWritten = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
-  const modelPrompt = style ? withStyle(asWritten, style.text) : asWritten;
+  const modelPrompt = style ? withStyle(asWritten, style.text, def.output === "video" ? style.videoText : undefined) : asWritten;
 
   // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
   const teamPays = !signupFreeImage && !owner && !!server.team && e.price.coins > 0;
