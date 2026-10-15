@@ -39,11 +39,13 @@ export default function SecretGate() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const show = () =>
+    // asked for by hand (the 🗝️ in the header, a «عندي كود سري» button): always opens, even when the site is open
+    // to everyone, because a code can still unlock more (its own sections, coins, a longer time)
+    const show = (force = false) =>
       fetch("/api/access/code", { cache: "no-store" })
         .then((r) => r.json())
         .then((s: { signedIn: boolean; open: boolean }) => {
-          if (s.open) {
+          if (s.open && !force) {
             write(ASKED, "1");
             write(PENDING, null);
             return;
@@ -52,7 +54,7 @@ export default function SecretGate() {
           setOpen(true);
         })
         .catch(() => {});
-    const onOpen = () => show();
+    const onOpen = () => show(true);
     window.addEventListener("secret:open", onOpen);
     const skip = SKIP.some((p) => path === p || path.startsWith(`${p}/`));
     const fromLink = new URLSearchParams(window.location.search).has("secret");
