@@ -56,6 +56,18 @@ describe("«🎬 مختبر الموشن» on the server", () => {
     expect(s.calls[1].text).not.toContain("<example");
   });
 
+  it("tells it to drop any background fill when خلفية شفافة is asked, and nothing extra when it isn't", async () => {
+    const { labWrite } = await import("@/lib/editor/scene/director");
+    s.reply = { code: EXEMPLARS[0].code, notes: "" };
+    await labWrite(project, who, { plan: { seconds: 6 }, seconds: 6, transparent: true });
+    expect(s.calls[0].text).toContain("TRANSPARENT BACKGROUND");
+    expect(s.calls[0].text).toContain("never call scene({ background");
+    s.calls = [];
+    s.reply = { code: EXEMPLARS[0].code, notes: "" };
+    await labWrite(project, who, { plan: { seconds: 6 }, seconds: 6 });
+    expect(s.calls[0].text).not.toContain("TRANSPARENT BACKGROUND");
+  });
+
   it("reviews what was rendered, scores it, and returns a rewrite only below the bar", async () => {
     const { labReview } = await import("@/lib/editor/scene/director");
     const high = Object.fromEntries(RUBRIC.map((r) => [r.id, 9]));

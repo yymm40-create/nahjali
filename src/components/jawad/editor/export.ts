@@ -363,7 +363,7 @@ export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = /\.(mp4|m4a|srt|png)$/i.test(name) ? name : `${name}.mp4`;
+  a.download = /\.(mp4|m4a|srt|png|webm)$/i.test(name) ? name : `${name}.mp4`;
   document.body.appendChild(a);
   a.click();
   a.remove();

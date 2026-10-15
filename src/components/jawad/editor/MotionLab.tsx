@@ -17,6 +17,7 @@ import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { SceneError, SceneHost, sceneFont, type SceneInfo } from "./scene-host";
 import { contactSheet, frameCost, probe, renderVideo, reviewTimes, stills } from "./scene-render";
+import { download } from "./export";
 import type { EditorAsset } from "./types";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
@@ -37,6 +38,10 @@ interface Saved {
   say: string;
   code: string;
   reviews: Review[];
+  /** خلفية شفافة: الأشخاص/العناصر بدون خلفية، تصدّر WebM منفصل بدل ما تدخل التايملاين مباشرة */
+  transparent?: boolean;
+  /** هل الكود المحفوظ حاليًا مكتوب فعلًا بدون خلفية (يختلف عن `transparent` لو حطّوه بعد ما بنى المشهد) */
+  transparentCode?: boolean;
 }
 const key = (id: string) => `jw-lab-${id}`;
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
@@ -105,6 +110,9 @@ export default function MotionLab({
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [music, setMusic] = useState(true);
+  // «خلفية شفافة»: الطلب نفسه (تقدر تشيله قبل ما تبني، أو بعد ما يخلص)، وهل الكود المحفوظ يطابقه فعلًا
+  const [transparent, setTransparent] = useState(false);
+  const [transparentCode, setTransparentCode] = useState(false);
   const [progress, setProgress] = useState(0);
   /** the render as it really runs on this device: which frame, how many, and the seconds left by the measured rate */
   const [renderAt, setRenderAt] = useState<{ frame: number; frames: number; leftMs: number } | null>(null);
@@ -143,6 +151,8 @@ export default function MotionLab({
         setCode(s.code || "");
         setReviews(s.reviews || []);
         setReviewMode(s.reviewMode === "fast" || s.reviewMode === "precise" ? s.reviewMode : "balanced");
+        setTransparent(Boolean(s.transparent));
+        setTransparentCode(Boolean(s.transparentCode));
         if (s.plan && !initialBrief) setStage(s.code ? "ready" : "plan");
       }, 0);
       return () => clearTimeout(tm);
@@ -152,11 +162,11 @@ export default function MotionLab({
   }, [projectId, initialBrief]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode } satisfies Saved));
+      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode, transparent, transparentCode } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode]);
+  }, [projectId, brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode, transparent, transparentCode]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort()), []);
 
   const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
@@ -201,7 +211,7 @@ export default function MotionLab({
     for (let attempt = 0; attempt <= FIXES; attempt++) {
       if (!program || why) {
         say1(attempt === 0 && !previous ? "✍️ حيدرة يكتب المشهد بالكود…" : `🛠️ حيدرة يصلّح خطأ في المشهد (${attempt}/${FIXES})…`);
-        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: assetList, ...(program ? { code: program, errors: why } : {}) });
+        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: assetList, transparent, ...(program ? { code: program, errors: why } : {}) });
         if (r.notes) say1(r.notes);
         program = r.code;
         if (r.problems.length) {
@@ -261,6 +271,7 @@ export default function MotionLab({
       stop();
       setCode(program);
       setInfo(got);
+      setTransparentCode(transparent);
       const rounds = REVIEW_MODES[reviewMode].rounds;
       if (rounds > 0) setStage("reviewing");
       else say1("✅ اجتاز المشهد فحص التشغيل. اخترت السريع؛ لم تُجرَ مراجعة جودة بصرية.");
@@ -358,6 +369,30 @@ export default function MotionLab({
     }
   };
 
+  /** «فرّغ الخلفية الآن»: the scene is already built with an opaque background — rewritten to drop it, keeping everything else. */
+  const stripBackground = async () => {
+    if (!plan || !code) return;
+    setError(null);
+    abort.current?.abort();
+    abort.current = new AbortController();
+    const mine = abort.current.signal;
+    setStage("building");
+    setNow(0);
+    try {
+      const { program, got } = await buildRunning(plan, code, "The person asked for a transparent background AFTER this scene was already built. Rewrite it to drop every full-frame background fill, backdrop shape, gradient or vignette that covers the whole canvas — the canvas must stay transparent where nothing is drawn (never call scene({ background: … }) with a colour, never fillRect the whole frame). Keep the subject, its motion, timing, type and sound cues exactly as they are; only the backdrop goes.");
+      if (mine.aborted) throw new DOMException("cancelled", "AbortError");
+      setCode(program);
+      setInfo(got);
+      setTransparentCode(true);
+      setStage("ready");
+      void seekTo(Math.min(got.duration * 0.3, 2));
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
+      else setError(e instanceof Error ? e.message : String(e));
+      setStage("ready");
+    }
+  };
+
   const exportFilm = async () => {
     if (!host.current || !info || !plan) return;
     setError(null);
@@ -382,11 +417,12 @@ export default function MotionLab({
         }
         if (sub < 6) say1(`⚙️ المشهد ثقيل على جهازك: خفّضت ضبابية الحركة من ٦ لقطات فرعية إلى ${sub} عشان يخلص في وقت معقول.`);
       }
-      say1(`🎞️ أرندر ${frames} إطارًا · ${mmss(plannedMs)} تقريبًا على جهازك.`);
+      const makingTransparent = transparent && transparentCode;
+      say1(makingTransparent ? `🎞️ أرندر ${frames} إطارًا بخلفية شفافة (WebM) · ${mmss(plannedMs)} تقريبًا على جهازك.` : `🎞️ أرندر ${frames} إطارًا · ${mmss(plannedMs)} تقريبًا على جهازك.`);
       const started = performance.now();
       const blob = await renderVideo(
         host.current,
-        { duration: info.duration, fps: 30, blur: info.blur, sub },
+        { duration: info.duration, fps: 30, blur: info.blur, sub, transparent: makingTransparent },
         (p: number, frame: number, total: number) => {
           setProgress(p);
           const spent = performance.now() - started;
@@ -394,7 +430,16 @@ export default function MotionLab({
         },
         signal,
       );
-      const file = new File([blob], `${(plan.title || "motion").replace(/[\\/:*?"<>|]/g, "").slice(0, 50)}.mp4`, { type: "video/mp4" });
+      const stem = (plan.title || "motion").replace(/[\\/:*?"<>|]/g, "").slice(0, 50);
+      if (makingTransparent) {
+        // ملف شفاف منفصل (مو للتايملاين — ما فيه خلفية أصلًا يركّب عليها الصوت والموسيقى): ينزل على الجهاز لتركيبه بعدين
+        download(blob, `${stem}-شفاف.webm`);
+        setStage("ready");
+        setRenderAt(null);
+        say1("✅ نزل ملف WebM بخلفية شفافة على جهازك. ركّبه على أي خلفية في برنامج المونتاج اللي تبيه.");
+        return;
+      }
+      const file = new File([blob], `${stem}.mp4`, { type: "video/mp4" });
       onFilm(file, readCues(info.cues, info.duration), music && plan.music ? { prompt: `${plan.music}. ${plan.bpm} BPM, instrumental, builds to a clear peak and resolves on the last beat.`, ms: Math.round(info.duration * 1000) } : null);
       setStage("ready");
       setRenderAt(null);
@@ -528,6 +573,12 @@ export default function MotionLab({
                 <label className="block space-y-1 text-sm">
                   <span className="text-jw-muted">ألوان وخطوط العلامة (اختياري)</span>
                   <input className="jw-input w-full" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="#0b3d2e و #d4af37، خط عريض" disabled={busy} />
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} disabled={busy} />
+                  <span>
+                    🪄 خلفية شفافة <span className="block text-xs text-jw-muted">يكتب حيدرة الأشخاص/العناصر بدون خلفية من الأول، عشان تركّبه بعدين على خلفية ثانية. تقدر تفعّله الحين أو بعد ما يخلص المشهد.</span>
+                  </span>
                 </label>
                 {!!images.length && (
                   <div className="space-y-1 text-sm">
@@ -669,7 +720,7 @@ export default function MotionLab({
             )}
             {info && (stage === "ready" || stage === "rendering") && (
               <div className="space-y-2 rounded-2xl border border-jw-line bg-white p-3">
-                {plan?.music && (
+                {plan?.music && !transparent && (
                   <label className="flex items-start gap-2 text-sm">
                     <input type="checkbox" className="mt-1" checked={music} onChange={(e) => setMusic(e.target.checked)} disabled={stage === "rendering"} />
                     <span>
@@ -677,10 +728,26 @@ export default function MotionLab({
                     </span>
                   </label>
                 )}
-                <button type="button" className="jw-btn jw-btn-primary !min-h-11 w-full" disabled={stage === "rendering"} onClick={exportFilm}>
-                  {stage === "rendering" ? `أرندر ${Math.round(progress * 100)}٪${renderAt ? ` · إطار ${renderAt.frame} من ${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : ""}` : "⬇️ صدّره ونزّله في التايملاين"}
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} disabled={stage === "rendering"} />
+                  <span>
+                    🪄 خلفية شفافة <span className="block text-xs text-jw-muted">يصدّر ملف WebM منفصل بدون خلفية تنزّله وتركّبه بنفسك — ما يدخل التايملاين تلقائيًا</span>
+                  </span>
+                </label>
+                {transparent && !transparentCode && (
+                  <button type="button" className="jw-btn w-full" disabled={stage === "rendering"} onClick={stripBackground}>
+                    🪄 فرّغ خلفية هذا المشهد الآن
+                  </button>
+                )}
+                {transparent && transparentCode && <p className="text-xs text-jw-ok">✓ المشهد مكتوب بدون خلفية؛ جاهز يصدّر شفافًا.</p>}
+                <button type="button" className="jw-btn jw-btn-primary !min-h-11 w-full" disabled={stage === "rendering" || (transparent && !transparentCode)} onClick={exportFilm}>
+                  {stage === "rendering"
+                    ? `أرندر ${Math.round(progress * 100)}٪${renderAt ? ` · إطار ${renderAt.frame} من ${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : ""}`
+                    : transparent
+                      ? "⬇️ صدّر الملف الشفاف ونزّله"
+                      : "⬇️ صدّره ونزّله في التايملاين"}
                 </button>
-                <p className="text-[11px] text-jw-faint">يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت مع مؤثراته الصوتية.</p>
+                <p className="text-[11px] text-jw-faint">{transparent ? "يتصدّر WebM بقناة شفافية (ألفا) على جهازك، وينزل مباشرة — لتركيبه في أي برنامج مونتاج يدعم الشفافية." : "يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت مع مؤثراته الصوتية."}</p>
               </div>
             )}
           </aside>

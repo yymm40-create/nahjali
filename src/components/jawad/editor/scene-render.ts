@@ -2,7 +2,7 @@
 // bug before حيدرة reviews it), contact sheets and stills for his review, and the final MP4 (WebCodecs through
 // Mediabunny, the same encoder as the export, with motion blur from sub-frames).
 
-import { BufferTarget, CanvasSource, canEncodeVideo, getFirstEncodableVideoCodec, Mp4OutputFormat, Output } from "mediabunny";
+import { BufferTarget, CanvasSource, canEncodeVideo, getFirstEncodableVideoCodec, Mp4OutputFormat, Output, WebMOutputFormat } from "mediabunny";
 import { wantedEncode } from "./perf-bench";
 import { SceneError, type SceneHost } from "./scene-host";
 
@@ -90,17 +90,19 @@ export async function frameCost(host: SceneHost, duration: number, sub: number, 
  * sub-frames each one averages — the lab lowers it when the measured cost says the render would take too long.
  * `onProgress` is told the share done, the frame reached and how many there are, so the wait is never silent.
  */
-export async function renderVideo(host: SceneHost, o: { duration: number; fps: number; blur: number; sub?: number }, onProgress: (p: number, frame: number, frames: number) => void, signal?: AbortSignal): Promise<Blob> {
+export async function renderVideo(host: SceneHost, o: { duration: number; fps: number; blur: number; sub?: number; /** خلفية شفافة: WebM (VP9) بقناة ألفا بدل MP4 */ transparent?: boolean }, onProgress: (p: number, frame: number, frames: number) => void, signal?: AbortSignal): Promise<Blob> {
   const w = host.w - (host.w % 2), h = host.h - (host.h % 2);
   const bitrate = Math.round(w * h * o.fps * 0.16);
-  const codec = await getFirstEncodableVideoCodec(["avc", "vp9", "av1"], { width: w, height: h, bitrate });
-  if (!codec) throw new Error(`متصفحك ما يقدر يصدّر فيديو بمقاس ${w}×${h}. جرّب Chrome أو Edge على الكمبيوتر.`);
+  // transparent: only VP9 keeps an alpha channel in a browser encoder, muxed into WebM (MP4/H.264 has no alpha)
+  const codec = o.transparent ? ((await canEncodeVideo("vp9", { width: w, height: h, bitrate, alpha: "keep" }).catch(() => false)) ? "vp9" : null) : await getFirstEncodableVideoCodec(["avc", "vp9", "av1"], { width: w, height: h, bitrate });
+  if (!codec) throw new Error(o.transparent ? "متصفحك ما يقدر يصدّر فيديو بخلفية شفافة. جرّب Chrome أو Edge على الكمبيوتر." : `متصفحك ما يقدر يصدّر فيديو بمقاس ${w}×${h}. جرّب Chrome أو Edge على الكمبيوتر.`);
   const want = wantedEncode();
-  const hw = want !== "no-preference" && (await canEncodeVideo(codec, { width: w, height: h, bitrate, hardwareAcceleration: want }).catch(() => false)) ? want : "no-preference";
+  const hw = want !== "no-preference" && (await canEncodeVideo(codec, { width: w, height: h, bitrate, hardwareAcceleration: want, alpha: o.transparent ? "keep" : "discard" }).catch(() => false)) ? want : "no-preference";
   const canvas = new OffscreenCanvas(w, h);
-  const ctx = canvas.getContext("2d", { alpha: false })!;
-  const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-  const source = new CanvasSource(canvas as unknown as HTMLCanvasElement, { codec, bitrate, keyFrameInterval: 2, hardwareAcceleration: hw });
+  // a transparent render never fills its background first (drawOnce in runtime.ts only paints one when the scene asks for it)
+  const ctx = canvas.getContext("2d", { alpha: !!o.transparent })!;
+  const output = new Output({ format: o.transparent ? new WebMOutputFormat() : new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+  const source = new CanvasSource(canvas as unknown as HTMLCanvasElement, { codec, bitrate, keyFrameInterval: 2, hardwareAcceleration: hw, alpha: o.transparent ? "keep" : "discard" });
   output.addVideoTrack(source, { frameRate: o.fps });
   await output.start();
   const frames = Math.max(1, Math.round(o.duration * o.fps));
@@ -109,6 +111,8 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
     if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
     const t = i / o.fps;
     const bm = await host.frame(t, { scale: 1, sub, shutter: o.blur });
+    // a transparent frame may leave empty pixels (alpha 0): cleared first, or the last frame's pixels would show through
+    if (o.transparent) ctx.clearRect(0, 0, w, h);
     ctx.drawImage(bm, 0, 0, w, h);
     bm.close();
     await source.add(t, 1 / o.fps);
@@ -117,5 +121,5 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
   source.close();
   await output.finalize();
   onProgress(1, frames, frames);
-  return new Blob([(output.target as BufferTarget).buffer!], { type: "video/mp4" });
+  return new Blob([(output.target as BufferTarget).buffer!], { type: o.transparent ? "video/webm" : "video/mp4" });
 }
