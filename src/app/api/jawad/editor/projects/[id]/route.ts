@@ -11,6 +11,7 @@ import { importSfx } from "@/lib/editor/sfx-library";
 import { keyCheck } from "@/lib/editor/key-check";
 import { labPlan, labReview, labWrite } from "@/lib/editor/scene/director";
 import { labResponse } from "@/lib/editor/scene/response";
+import { codeEditReview, codeEditWrite, codeGradeReview, codeGradeWrite } from "@/lib/editor/claude-code";
 import {
   addLocalAsset,
   assetViewsById,
@@ -158,6 +159,15 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return b.stream ? labResponse(() => labWrite(p, who, b)) : NextResponse.json(await labWrite(p, who, b));
     case "lab_review":
       return b.stream ? labResponse(() => labReview(p, who, b)) : NextResponse.json(await labReview(p, who, b));
+    // «Claude Code»: حيدرة executes cuts, arrangement and colour as programs the browser runs (write · fix · review)
+    case "code_edit_write":
+      return NextResponse.json(await codeEditWrite(p, who, b));
+    case "code_edit_review":
+      return NextResponse.json(await codeEditReview(p, who, b));
+    case "code_grade_write":
+      return NextResponse.json(await codeGradeWrite(p, who, b));
+    case "code_grade_review":
+      return NextResponse.json(await codeGradeReview(p, who, b));
     case "assistant":
       return NextResponse.json(await claudeCharged(who, b.model, "محادثة حيدرة", () => assist(p, who, b, new URL(req.url).origin), (r) => r.usd, { said: String(b.message ?? ""), reply: (r) => r.reply }));
     case "fix_link":

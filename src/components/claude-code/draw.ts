@@ -1,0 +1,87 @@
+// «Claude Code» in the image studio, in the browser: the picture's program is written on the server, rendered HERE in
+// the motion lab's sandboxed scene page at full size, looked at by Claude (a smaller JPEG), rewritten while it is below
+// the bar, and the final PNG is kept as a work of «أعمالي». A program that throws goes back to be fixed first.
+
+import { postJson } from "@/lib/fetch";
+import { CODE_FIXES, CODE_ROUNDS } from "@/lib/claude-code/skill";
+import { SceneHost, SceneError, sceneFont } from "@/components/jawad/editor/scene-host";
+
+const URL = "/api/jawad/claude-code";
+
+export interface DrawStep {
+  text: string;
+  /** the picture as it is now (an object URL), when there is one */
+  preview?: string;
+}
+export interface DrawResult {
+  png: string;
+  scores: Record<string, number>;
+  pass: boolean;
+  verdict: string;
+  rounds: number;
+  coins: number;
+}
+
+async function bitmapTo(bm: ImageBitmap, type: "image/png" | "image/jpeg", maxSide?: number, quality = 0.86) {
+  const k = maxSide ? Math.min(1, maxSide / Math.max(bm.width, bm.height)) : 1;
+  const c = document.createElement("canvas");
+  c.width = Math.round(bm.width * k);
+  c.height = Math.round(bm.height * k);
+  c.getContext("2d")!.drawImage(bm, 0, 0, c.width, c.height);
+  const url = c.toDataURL(type, quality);
+  return url.split(",")[1];
+}
+
+/** Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. */
+export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void }): Promise<DrawResult> {
+  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, ...body }, o.signal);
+  let coins = 0;
+  o.onStep({ text: "🧑‍💻 Claude Code يكتب برنامج الصورة…" });
+  type Wrote = { code: string; problems: string[]; fonts: { head: string; body: string }; size: [number, number]; notes: string; coins: number };
+  let w = await call<Wrote>({ action: "write" });
+  coins += w.coins ?? 0;
+  let code = w.code;
+  let problems = w.problems;
+  const fonts = w.fonts;
+  const [W, H] = w.size;
+  const host = new SceneHost();
+  try {
+    let best: DrawResult | null = null;
+    for (let round = 1; round <= CODE_ROUNDS; round++) {
+      let bm: ImageBitmap | null = null;
+      for (let fix = 0; ; fix++) {
+        if (o.signal?.aborted) throw Object.assign(new Error("⏹️ وقّفت الرسم."), { name: "AbortError" });
+        try {
+          if (problems.length) throw new SceneError(problems.join("; "), "check");
+          o.onStep({ text: `أرسم الصورة من البرنامج${round > 1 ? ` (جولة ${round})` : ""}…` });
+          await host.load(code, { w: W, h: H, fonts: [sceneFont("head", fonts.head), sceneFont("body", fonts.body)].filter((f): f is NonNullable<typeof f> => !!f) });
+          bm = await host.frame(0);
+          break;
+        } catch (e) {
+          if (!(e instanceof SceneError) || fix >= CODE_FIXES) throw e instanceof SceneError ? new Error(`برنامج الصورة ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
+          o.onStep({ text: "البرنامج طلع فيه خطأ — Claude Code يصلّحه…" });
+          w = await call<Wrote>({ action: "write", code, errors: `${e.where}: ${e.message}\n${e.stack2}` });
+          coins += w.coins ?? 0;
+          code = w.code;
+          problems = w.problems;
+        }
+      }
+      const png = await bitmapTo(bm, "image/png");
+      const still = await bitmapTo(bm, "image/jpeg", 1280, 0.85);
+      bm.close();
+      o.onStep({ text: `Claude Code يشوف الصورة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
+      const r = await call<{ review: { scores: Record<string, number>; pass: boolean; verdict: string }; code: string; problems: string[]; coins: number }>({ action: "review", code, still, round });
+      coins += r.coins ?? 0;
+      best = { png, scores: r.review.scores, pass: r.review.pass, verdict: r.review.verdict, rounds: round, coins };
+      if (r.review.pass || !r.code) break;
+      code = r.code;
+      problems = r.problems;
+    }
+    return { ...best!, coins };
+  } finally {
+    host.destroy();
+  }
+}
+
+/** Keeps the picture as a work of «أعمالي». */
+export const savePicture = <T>(body: { idempotencyKey: string; png: string; prompt: string; aspect: string; sectionId: string; styleId?: string; model: string; rounds: number; scores: Record<string, number> }) => postJson<T>(URL, { action: "save", ...body });

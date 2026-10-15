@@ -10,7 +10,7 @@ const inspector = readFileSync("src/components/jawad/editor/Inspector.tsx", "utf
 describe("«رفع الدقة» is reachable, not hidden in one corner", () => {
   it("حيدرة knows it: the request kind, the target and when not to offer it", () => {
     // the kind is in the schema's enum, and the guide tells him how to send it
-    expect(assistant).toMatch(/enum: \["hook_design"[^\]]*"upscale"\]/);
+    expect(assistant).toMatch(/enum: \["hook_design"[^\]]*"upscale"[^\]]*\]/);
     expect(assistant).toContain('{"kind":"upscale","clipId"');
     expect(assistant).toContain("رفع الدقة");
     // he must not start it by himself, and must say no for a clip that is already 4K

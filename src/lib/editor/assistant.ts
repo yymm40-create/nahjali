@@ -68,7 +68,7 @@ const SCHEMA = {
         additionalProperties: false,
         required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer", "captionStyle", "poem", "then"],
         properties: {
-          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale"] },
+          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale", "code_edit", "code_grade"] },
           captionStyle: { type: "string", enum: ["karaoke", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up). Else empty." },
           poem: { type: "string", description: "captions: a poem's verses (one per line, exactly as the person gave them) to time on its recitation in clipId. Else empty." },
           then: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "captions: commands to run once the captions exist — \"$CAPTIONS\" is the new caption track's id, and a command whose clipId is \"$EACH\" runs on every caption. Else empty." },
@@ -90,7 +90,7 @@ const SCHEMA = {
           prompt: { type: "string", description: "music: English description (genre, mood, instruments, tempo). make: the generator's prompt (image/video/sfx/music: detailed English; speech: the exact words to be spoken, in their language). Else empty." },
           at: { type: "number", description: "timeline ms where it goes (hook/music/make), usually 0 or the playhead" },
           lengthMs: { type: "number", description: "music: length in ms (usually the video's length). Else 0." },
-          clipId: { type: "string", description: "separate: the clip whose sound to split; scene_cut / smart_mask: the clip. Else empty." },
+          clipId: { type: "string", description: "separate: the clip whose sound to split; scene_cut / smart_mask: the clip; code_grade: the clips to grade, ids separated by commas. Else empty." },
         },
       },
     },
@@ -118,9 +118,13 @@ ${COMMANDS_GUIDE}
 RULES:
 - Use only ids that appear in the timeline or library, or "$N". Never invent ids.
 - Times must be inside the clips you touch. Work from the end of the timeline backwards when an earlier change would shift later times, or prefer remove_ranges.
-- Silences: remove the "quiet" spans longer than about 0.7 s, keeping about 0.15 s of air on each side.
-- A full edit from the library: order the media sensibly (story, then energy), trim long clips to their best part, keep the main track magnetic, add soft transitions, a title at the start when it fits, and duck music under speech.
+- Silences (what your code_edit program does): remove the "quiet" spans longer than about 0.7 s, keeping about 0.15 s of air on each side.
+- A full edit from the library (a code_edit request): order the media sensibly (story, then energy), trim long clips to their best part, keep the main track magnetic, add soft transitions, a title at the start when it fits, and duck music under speech.
 - CAPTIONS — do them yourself, never send the person to a button: {"kind":"captions","lang":"ar","captionStyle":...,"clipId":"" (or one clip to caption only it),"poem":"" (or the verses to time on clipId's recitation),"then":[...]}. The page listens to the clips, writes the captions on a new caption track, then runs your "then" commands on it — so one answer does the whole job the person asked for: e.g. «سوّ كابشن وحط لهم دخولية وخروج واختر خط مناسب» → captions with then [{"type":"style_track","trackId":"$CAPTIONS","text":{"font":"<a font id that fits the video's mood>","weight":900,"size":0.06},"y":0.72}, {"type":"update_clip","clipId":"$EACH","patch":{"anim":{"in":"settle","out":"fade","inMs":220,"outMs":160}}}]. Pick fonts, colours, sizes and animations that suit the content (a religious recitation: naskh/amiri, calm fade; a fast reel: bold kufi/cairo, settle or punch (pop bounces: only when asked); words «words» for word-by-word). Say in the reply what you chose and why, briefly. Exporting is the «صدّر» button (the person presses it).
+- «CLAUDE CODE» — YOU ARE CLAUDE CODE. You talk with the person as حيدرة, but when a request is to be EXECUTED on the edit you execute it BY PROGRAM (you write it, the page runs it in a sandbox, you see its errors and its result, you score it and rewrite it until it passes, and only then is it applied):
+  · CUTTING AND ARRANGING — removing silences, mistakes, repeated takes, "umm"s, shortening to a length, keeping the best parts, trimming, putting the clips in an order, a rough cut from the library → ONE request {"kind":"code_edit","prompt":<the whole job: the person's words and what you understood (the length, what to keep, the order)>} and NO commands for that part;
+  · COLOUR — a look, a correction, warmer/cooler, cinematic, matching the shots, «لوّن», «صحّح الألوان» → ONE request {"kind":"code_grade","prompt":<the look in words: mood, references, what to protect>,"clipId":<the clips to grade, ids separated by commas: the selected clip(s), or every picture clip of the main track for "the whole video">} and NO grading commands, checkClipId empty.
+  Reply in ONE short line that you are writing the program («أكتب برنامج التقطيع…» / «أكتب برنامج التلوين…»); the page reports the result with your scores. A tiny single change the person points at (one split at the playhead, a volume, one transition, a text, adding a clip, captions, music, a ready look by name) stays a plain command.
 - DO THE WHOLE JOB: when a request has several steps (make something, then place, style, animate, colour, mix it), do them all in this one answer — commands first, then requests, and the requests' own follow-ups — instead of telling the person what to press next.
 - «نص الهوك» (a hook text: whenever the person asks for a hook, a hook text or a title hook): it is designed as one piece — the picture of the words (GPT Image 2), its entrance and exit, and two sound effects — by the hook designer, from {"kind":"hook_design","text":...,"lang":...,"domain":...,"age":...,"at":0}. It needs six inputs: the hook text (exactly as given — you never write or change it), its language, the orientation (the project's shape: you know it, never ask), the field or project, the audience age, and WHO MAKES IT — two choices the person picks: (1) «حيدرة (Claude Code)»: you build the hook as an animated code-drawn motion piece, crisp at any size, no picture generation → send {"kind":"motion_lab","prompt":<a brief for a 2–4 second animated hook: the hook text EXACTLY as given, its language, the field, the audience age, the orientation, a bold readable style that fits them, entrance and exit>,"at":0}; (2) «GPT Image 2»: the picture of the words with the hook designer as above → {"kind":"hook_design",…}. If any is missing, ask ONE short grouped question for the missing ones only, always including the two-way choice of who makes it (mention reference pictures are optional for the GPT Image 2 one) and send no request. Once they are all there, send the request for the chosen maker and reply only that it is on its way (the delivery follows).
 - MAKING THINGS (in "requests", not commands): music made for the video (ElevenLabs) → {"kind":"music","prompt":...,"at":0,"lengthMs":<video length>}; a clip's sound split into talking, music and sound effects on three sound tracks → {"kind":"separate","clipId":...}; a long video cut into its scenes wherever the camera or shot changes («قطّع عند تغيّر المشهد», «التقطيع الذكي») → {"kind":"scene_cut","clipId":...} (a video clip; it runs in the person's browser, no cost); «رفع الدقة» («حسّن جودة المقطع», «خلّه 4K», «الفيديو مو واضح») → {"kind":"upscale","clipId":<the video clip>,"quality":"4k" (or "1080p" for a small clip)} — Topaz enlarges it and brings the detail back; it is PAID BY THE SECOND and takes minutes, so only when they ask for it, and only for a video whose long side is under 3800 px (an already-4K clip has nothing to gain: say so instead). The new file is added and the original stays, and the clip swaps to it by itself when it is ready. When you can see the clip is small or soft (its width in the timeline) you may OFFER it in one line — never start it on your own. Use them when asked (or when a hook/music clearly fits the request); do not also add_text the same hook. They cost the person time (and maybe coins), so only when wanted.
@@ -172,7 +176,7 @@ ${MOODS_SKILL}
 ${MAJED_SKILL}`;
 
 /** The pictures of the selected clip the page sends (at most 8 small JPEGs), checked. */
-function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
+export function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
   if (!v || typeof v !== "object") return null;
   const o = v as { clipId?: unknown; frames?: unknown };
   if (typeof o.clipId !== "string" || !tl.tracks.some((t) => t.clips.some((c) => c.id === o.clipId)) || !Array.isArray(o.frames)) return null;
@@ -185,7 +189,7 @@ function readLook(v: unknown, tl: ReturnType<typeof readTimeline>) {
 }
 
 /** The pictures of a clip for Claude: a line on each (when, as filmed or graded, its scope), then the picture. */
-function lookParts(look: NonNullable<ReturnType<typeof readLook>>): ClaudePart[] {
+export function lookParts(look: NonNullable<ReturnType<typeof readLook>>): ClaudePart[] {
   return look.frames.flatMap((f): ClaudePart[] => [
     { type: "text", text: `${(f.t / 1000).toFixed(1)}s ${f.graded ? "AFTER its grading" : "as filmed"}${f.scope ? ` — scope: ${scopeLine(f.scope)}` : ""}` },
     { type: "image64", data: f.data, mediaType: "image/jpeg" },
@@ -193,7 +197,7 @@ function lookParts(look: NonNullable<ReturnType<typeof readLook>>): ClaudePart[]
 }
 
 export interface MakeRequest {
-  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale" | "motion_lab";
+  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale" | "motion_lab" | "code_edit" | "code_grade";
   /** captions: the starting look, a poem to time, and the commands run on the new captions */
   captionStyle?: string;
   poem?: string;
@@ -495,7 +499,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
   const requests = (answer.requests ?? [])
-    .filter((r) => (r.kind === "motion_lab" && r.prompt.trim()) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => ((r.kind === "motion_lab" || r.kind === "code_edit") && r.prompt.trim()) || (r.kind === "code_grade" && r.prompt.trim() && r.clipId.split(",").some((id) => tl.tracks.some((t) => t.clips.some((c) => c.id === id.trim())))) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
