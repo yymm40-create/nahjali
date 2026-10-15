@@ -16,7 +16,7 @@ import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scen
 import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { SceneError, SceneHost, sceneFont, type SceneInfo } from "./scene-host";
-import { contactSheet, probe, renderVideo, reviewTimes, stills } from "./scene-render";
+import { contactSheet, frameCost, probe, renderVideo, reviewTimes, stills } from "./scene-render";
 import type { EditorAsset } from "./types";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
@@ -41,6 +41,12 @@ interface Saved {
 const key = (id: string) => `jw-lab-${id}`;
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
 const FIXES = 2;
+/** One request to the server never waits longer than this before it is given up on (the route itself allows more). */
+const CALL_TIMEOUT_MS = 6 * 60_000;
+/** What a render should fit inside before the lab trims the motion blur to make it (about four minutes). */
+const RENDER_BUDGET_MS = 4 * 60_000;
+/** Milliseconds as «٢:٣٠» (minutes and seconds), for a wait a person is watching. */
+const mmss = (ms: number) => `${Math.floor(Math.max(0, ms) / 60_000)}:${String(Math.round((Math.max(0, ms) % 60_000) / 1000)).padStart(2, "0")}`;
 const subscribeToClient = () => () => undefined;
 
 /** A picture from the device, made small for حيدرة's eyes (long side 768, JPEG). */
@@ -65,6 +71,8 @@ export default function MotionLab({
   initialSeconds,
   onFilm,
   onClose,
+  minimized,
+  onMinimize,
 }: {
   projectId: string;
   width: number;
@@ -75,6 +83,9 @@ export default function MotionLab({
   /** the finished film, its cues and whether music is wanted (the editor uploads it and places everything) */
   onFilm: (film: File, cues: Cue[], music: { prompt: string; ms: number } | null) => void;
   onClose: () => void;
+  /** folded to the pill — kept by the editor, so its «مختبر الموشن» button can bring the window back */
+  minimized: boolean;
+  onMinimize: (v: boolean) => void;
 }) {
   const [claude] = useClaudeModel();
   const [stage, setStage] = useState<Stage>("brief");
@@ -95,6 +106,10 @@ export default function MotionLab({
   const [error, setError] = useState<string | null>(null);
   const [music, setMusic] = useState(true);
   const [progress, setProgress] = useState(0);
+  /** the render as it really runs on this device: which frame, how many, and the seconds left by the measured rate */
+  const [renderAt, setRenderAt] = useState<{ frame: number; frames: number; leftMs: number } | null>(null);
+  /** how long the step running now has taken (a long wait is honest, a silent one looks broken) */
+  const [now, setNow] = useState(0);
   const host = useRef<SceneHost | null>(null);
   const abort = useRef<AbortController | null>(null);
   const view = useRef<HTMLCanvasElement>(null);
@@ -102,8 +117,9 @@ export default function MotionLab({
   const [playing, setPlaying] = useState(false);
   const portalReady = useSyncExternalStore(subscribeToClient, () => true, () => false);
   // closed while busy (a build, a review round, the final render): folded to a small pill instead of stopped, so the
-  // work keeps going; the person reopens it from the pill, or presses «إلغاء» inside to really stop it
-  const [minimized, setMinimized] = useState(false);
+  // work keeps going; the person reopens it from the pill OR from the editor's own «مختبر الموشن» button (which is why
+  // the fold lives in the editor's state), or presses «إلغاء» inside to really stop it
+  const setMinimized = onMinimize;
   const say1 = (s: string) => setLog((l) => [...l.slice(-30), s]);
 
   // pictures from the library the scene may use, with short ids حيدرة writes in his code (a1, a2…)
@@ -144,7 +160,15 @@ export default function MotionLab({
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort()), []);
 
   const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
-    const result = await postJson<T & { error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body, stream: true });
+    // «إلغاء» really stops it, and a request that never answers gives up instead of leaving the lab spinning for ever
+    const outer = abort.current?.signal;
+    const timer = AbortSignal.timeout(CALL_TIMEOUT_MS);
+    const signal = outer ? AbortSignal.any([outer, timer]) : timer;
+    const result = await postJson<T & { error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body, stream: true }, signal).catch((e: unknown) => {
+      if (outer?.aborted) throw new DOMException("cancelled", "AbortError");
+      if (timer.aborted) throw new Error(`«${action === "lab_plan" ? "الخطة" : action === "lab_write" ? "كتابة المشهد" : "المراجعة"}» أخذت أكثر من ${Math.round(CALL_TIMEOUT_MS / 60_000)} دقائق بدون رد. جرّب مرة ثانية، أو خفّف الطلب (ثواني أقل أو مراجعة «سريع»).`);
+      throw e;
+    });
     if (result.error) throw new Error(result.error);
     return result;
   }, [projectId, claude.id]);
@@ -200,7 +224,10 @@ export default function MotionLab({
 
   const makePlan = async () => {
     setError(null);
+    abort.current?.abort();
+    abort.current = new AbortController();
     setStage("planning");
+    setNow(0);
     try {
       const r = await call<{ plan: LabPlan; say: string }>("lab_plan", { brief: tweak && plan ? `${brief}\n\nتعديل على الخطة السابقة («${plan.title}»): ${tweak}` : brief, seconds, intensity, brand, assets: assetList, references: refs, language: "Arabic (Gulf)" });
       setPlan(r.plan);
@@ -210,7 +237,7 @@ export default function MotionLab({
       setReviews([]);
       setStage("plan");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (!(e instanceof DOMException && e.name === "AbortError")) setError(e instanceof Error ? e.message : String(e));
       setStage(plan ? "plan" : "brief");
     }
   };
@@ -219,11 +246,19 @@ export default function MotionLab({
   const build = async () => {
     if (!plan) return;
     setError(null);
+    abort.current?.abort();
+    abort.current = new AbortController();
+    const mine = abort.current.signal;
+    const stop = () => {
+      if (mine.aborted) throw new DOMException("cancelled", "AbortError");
+    };
     setLog([]);
     setReviews([]);
     setStage("building");
+    setNow(0);
     try {
       let { program, got } = await buildRunning(plan, code);
+      stop();
       setCode(program);
       setInfo(got);
       const rounds = REVIEW_MODES[reviewMode].rounds;
@@ -231,20 +266,26 @@ export default function MotionLab({
       else say1("✅ اجتاز المشهد فحص التشغيل. اخترت السريع؛ لم تُجرَ مراجعة جودة بصرية.");
       const done: Review[] = [];
       for (let round = 1; round <= rounds; round++) {
-        say1(`🎬 الجولة ${round} من ${rounds}: أصوّر أوراق التلامس واللقطات لحيدرة…`);
         const h = host.current!;
+        // how heavy this scene is here decides how many frames the review is allowed to draw
+        const cost = await frameCost(h, got.duration, 1, abort.current?.signal);
+        const perSheet = cost > 400 ? 9 : cost > 150 ? 15 : 24;
+        const shotTimes = (cost > 400 ? reviewTimes(got.duration).filter((_, i) => i % 2 === 0) : reviewTimes(got.duration));
+        say1(`🎬 الجولة ${round} من ${rounds}: أصوّر ${perSheet * 2} لقطة لورقتي التلامس و${shotTimes.length} لقطات كاملة${cost > 150 ? " (خفّفتها لأن المشهد ثقيل على جهازك)" : ""}…`);
         const half = got.duration / 2;
-        const sheets = [await contactSheet(h, 0, half, 24), await contactSheet(h, half, got.duration, 24)];
-        const times = reviewTimes(got.duration);
+        const sheets = [await contactSheet(h, 0, half, perSheet, 3), await contactSheet(h, half, got.duration, perSheet, 3)];
+        const times = shotTimes;
         const shots = await stills(h, times, got.duration);
         say1("🧐 حيدرة يراجع كمخرج قاسي…");
         const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan, seconds: plan.seconds, assets: assetList, code: program, sheets, stills: shots, times, round, maxRounds: rounds, reviewOnly: true });
+        stop();
         done.push(r.review);
         setReviews([...done]);
         say1(`${r.review.pass ? "✅" : "📝"} ${r.review.verdict}`);
         if (r.review.pass) break;
         say1("✍️ أطبّق ملاحظات المخرج على المشهد…");
         const next = await buildRunning(plan, program, `Apply this visual review, preserving the approved plan and everything that already works: ${JSON.stringify(r.review)}`);
+        stop();
         program = next.program;
         got = next.got;
         setCode(program);
@@ -253,7 +294,8 @@ export default function MotionLab({
       setStage("ready");
       void seekTo(Math.min(got.duration * 0.3, 2));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
+      else setError(e instanceof Error ? e.message : String(e));
       setStage(code ? "ready" : "plan");
     }
   };
@@ -321,20 +363,59 @@ export default function MotionLab({
     setError(null);
     setPlaying(false);
     setStage("rendering");
+    setNow(0);
+    setProgress(0);
+    setRenderAt(null);
     abort.current = new AbortController();
+    const signal = abort.current.signal;
     try {
-      const blob = await renderVideo(host.current, { duration: info.duration, fps: 30, blur: info.blur }, setProgress, abort.current.signal);
+      const frames = Math.max(1, Math.round(info.duration * 30));
+      // what one frame really costs on THIS device with THIS scene, measured before committing to hundreds of them
+      let sub = info.blur > 0 ? 6 : 1;
+      const ms = await frameCost(host.current, info.duration, sub, signal);
+      let plannedMs = ms * frames;
+      if (info.blur > 0) {
+        // a heavy scene with motion blur: fewer sub-frames rather than a render nobody can wait for
+        while (plannedMs > RENDER_BUDGET_MS && sub > 1) {
+          sub = sub === 6 ? 3 : sub === 3 ? 2 : 1;
+          plannedMs = (ms / (info.blur > 0 ? 6 : 1)) * sub * frames;
+        }
+        if (sub < 6) say1(`⚙️ المشهد ثقيل على جهازك: خفّضت ضبابية الحركة من ٦ لقطات فرعية إلى ${sub} عشان يخلص في وقت معقول.`);
+      }
+      say1(`🎞️ أرندر ${frames} إطارًا · ${mmss(plannedMs)} تقريبًا على جهازك.`);
+      const started = performance.now();
+      const blob = await renderVideo(
+        host.current,
+        { duration: info.duration, fps: 30, blur: info.blur, sub },
+        (p: number, frame: number, total: number) => {
+          setProgress(p);
+          const spent = performance.now() - started;
+          setRenderAt({ frame, frames: total, leftMs: frame > 0 ? (spent / frame) * (total - frame) : plannedMs });
+        },
+        signal,
+      );
       const file = new File([blob], `${(plan.title || "motion").replace(/[\\/:*?"<>|]/g, "").slice(0, 50)}.mp4`, { type: "video/mp4" });
       onFilm(file, readCues(info.cues, info.duration), music && plan.music ? { prompt: `${plan.music}. ${plan.bpm} BPM, instrumental, builds to a clear peak and resolves on the last beat.`, ms: Math.round(info.duration * 1000) } : null);
       setStage("ready");
+      setRenderAt(null);
       say1("✅ نزل المقطع في التايملاين مع أصواته.");
     } catch (e) {
+      setRenderAt(null);
       if (!(e instanceof DOMException && e.name === "AbortError")) setError(e instanceof Error ? e.message : String(e));
+      else say1("⏹️ أوقفت الرندر.");
       setStage("ready");
     }
   };
 
   const busy = stage === "planning" || stage === "building" || stage === "reviewing" || stage === "rendering";
+  useEffect(() => {
+    if (!busy) return;
+    // the clock of the step running now (it restarts with each stage)
+    const from = Date.now();
+    const tick = setInterval(() => setNow(Date.now() - from), 1000);
+    return () => clearInterval(tick);
+  }, [busy, stage]);
+  const elapsed = busy ? mmss(now) : "";
   const last = reviews[reviews.length - 1];
   const stageAr = stage === "planning" ? "يخطّط" : stage === "building" ? "يكتب الكود" : stage === "reviewing" ? "يراجع" : stage === "rendering" ? "يرندر" : "";
 
@@ -358,6 +439,7 @@ export default function MotionLab({
     }
   };
   const cancel = () => {
+    // this really stops the work now: the request in flight is dropped and the loop breaks at its next step
     abort.current?.abort();
     setStage(code ? "ready" : plan ? "plan" : "brief");
     setMinimized(false);
@@ -367,9 +449,9 @@ export default function MotionLab({
 
   if (minimized)
     return createPortal(
-      <button type="button" className="jw-btn jw-btn-primary jw-3d fixed bottom-4 end-4 z-[1000] !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن">
-        <span className="jw-spinner" />
-        🎬 {stageAr}{stage === "rendering" ? ` ${Math.round(progress * 100)}٪` : "…"}
+      <button type="button" className="jw-btn jw-btn-primary jw-3d fixed bottom-4 end-4 z-[1000] !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن" style={{ insetInlineEnd: "max(1rem, env(safe-area-inset-right, 0px))", bottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}>
+        {busy ? <span className="jw-spinner" /> : <span aria-hidden>✅</span>}
+        🎬 {busy ? `${stageAr}${stage === "rendering" ? ` ${Math.round(progress * 100)}٪${renderAt ? ` · يبقى ${mmss(renderAt.leftMs)}` : ""}` : ` ${elapsed}`}` : "جاهز — افتح المختبر"}
       </button>,
       document.body,
     );
@@ -379,8 +461,15 @@ export default function MotionLab({
       <div className="jw-glass-lg flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-jw-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
         <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-2 border-b border-jw-line bg-jw-surface px-3 py-3 sm:px-4">
           <div className="min-w-0">
-            <h2 className="text-lg font-black">🎬 مختبر الموشن</h2>
-            <p className="hidden text-xs text-jw-muted sm:block">حيدرة يصمم ويكتب كل فريم بالكود، يشوف النتيجة ويقيّمها كمخرج قاسي، ويصلّح لين يوصل مستوى الاستوديوهات.</p>
+            <h2 className="flex items-center gap-2 text-lg font-black">
+              🎬 مختبر الموشن
+              {busy && (
+                <span className="rounded-full bg-jw-accent-soft px-2 py-0.5 text-xs font-bold text-jw-accent tabular-nums" role="status" aria-live="polite">
+                  {stageAr} · {stage === "rendering" && renderAt ? `إطار ${renderAt.frame}/${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : elapsed}
+                </span>
+              )}
+            </h2>
+            <p className="hidden text-xs text-jw-muted sm:block">{busy ? "الشغل ماشي. تقدر تصغّر النافذة وترجع للمونتاج — يكمل في الخلفية، وترجّعه من زر «مختبر الموشن»." : "حيدرة يصمم ويكتب كل فريم بالكود، يشوف النتيجة ويقيّمها كمخرج قاسي، ويصلّح لين يوصل مستوى الاستوديوهات."}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <ClaudeModelPicker disabled={busy} />
@@ -589,7 +678,7 @@ export default function MotionLab({
                   </label>
                 )}
                 <button type="button" className="jw-btn jw-btn-primary !min-h-11 w-full" disabled={stage === "rendering"} onClick={exportFilm}>
-                  {stage === "rendering" ? `أرندر ${Math.round(progress * 100)}٪…` : "⬇️ صدّره ونزّله في التايملاين"}
+                  {stage === "rendering" ? `أرندر ${Math.round(progress * 100)}٪${renderAt ? ` · إطار ${renderAt.frame} من ${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : ""}` : "⬇️ صدّره ونزّله في التايملاين"}
                 </button>
                 <p className="text-[11px] text-jw-faint">يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت مع مؤثراته الصوتية.</p>
               </div>

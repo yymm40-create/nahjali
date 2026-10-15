@@ -68,8 +68,29 @@ export async function stills(host: SceneHost, times: number[], duration: number)
 /** The moments a director looks at: the hook, the beats in between, and the ending. */
 export const reviewTimes = (duration: number) => [0.4, duration * 0.25, duration * 0.5, duration * 0.75, Math.max(0, duration - 0.6)].map((t) => Math.round(t * 100) / 100);
 
-/** The final film: every frame at full size (motion blur when the scene asks for it), as an MP4 blob. */
-export async function renderVideo(host: SceneHost, o: { duration: number; fps: number; blur: number }, onProgress: (p: number) => void, signal?: AbortSignal): Promise<Blob> {
+/**
+ * What ONE full-size frame of this scene really costs on this device, in milliseconds: three frames drawn across the
+ * piece (the first one thrown away, so a cold start doesn't count), averaged. A render of hundreds of frames is
+ * planned from this instead of being started blind.
+ */
+export async function frameCost(host: SceneHost, duration: number, sub: number, signal?: AbortSignal): Promise<number> {
+  const times = [duration * 0.1, duration * 0.45, duration * 0.8];
+  let total = 0;
+  for (const [i, t] of times.entries()) {
+    if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
+    const started = performance.now();
+    (await host.frame(Math.min(t, duration - 1e-3), { scale: 1, sub, shutter: sub > 1 ? 0.5 : 0 })).close();
+    if (i > 0) total += performance.now() - started;
+  }
+  return total / (times.length - 1);
+}
+
+/**
+ * The final film: every frame at full size (motion blur when the scene asks for it), as an MP4 blob. `sub` is how many
+ * sub-frames each one averages — the lab lowers it when the measured cost says the render would take too long.
+ * `onProgress` is told the share done, the frame reached and how many there are, so the wait is never silent.
+ */
+export async function renderVideo(host: SceneHost, o: { duration: number; fps: number; blur: number; sub?: number }, onProgress: (p: number, frame: number, frames: number) => void, signal?: AbortSignal): Promise<Blob> {
   const w = host.w - (host.w % 2), h = host.h - (host.h % 2);
   const bitrate = Math.round(w * h * o.fps * 0.16);
   const codec = await getFirstEncodableVideoCodec(["avc", "vp9", "av1"], { width: w, height: h, bitrate });
@@ -83,7 +104,7 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
   output.addVideoTrack(source, { frameRate: o.fps });
   await output.start();
   const frames = Math.max(1, Math.round(o.duration * o.fps));
-  const sub = o.blur > 0 ? 6 : 1;
+  const sub = Math.max(1, Math.round(o.sub ?? (o.blur > 0 ? 6 : 1)));
   for (let i = 0; i < frames; i++) {
     if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
     const t = i / o.fps;
@@ -91,10 +112,10 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
     ctx.drawImage(bm, 0, 0, w, h);
     bm.close();
     await source.add(t, 1 / o.fps);
-    if (i % 5 === 0) onProgress(i / frames);
+    if (i % 5 === 0 || i === frames - 1) onProgress(i / frames, i, frames);
   }
   source.close();
   await output.finalize();
-  onProgress(1);
+  onProgress(1, frames, frames);
   return new Blob([(output.target as BufferTarget).buffer!], { type: "video/mp4" });
 }
