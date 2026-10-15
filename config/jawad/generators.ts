@@ -1243,8 +1243,9 @@ const minimaxSpeech: GeneratorDef = {
 // ───────── «صوت الجواد»: the site's own voice engine (open models, Arabic, free voiceprints) ─────────
 
 export const JAWAD_VOICE_ID = "jawad-voice";
-/** A library voice only: the engine speaks from the person's own reference recording (no ready voices). */
-export const JAWAD_VOICE = /^v:[0-9a-f-]{36}$/;
+/** The person's own recording only (no ready voices): a voice of their library (v:), or a recording made just now for
+ * this one reading and never kept as a voice (u:, one of their uploads, cleaned by «Claude Code» first). */
+export const JAWAD_VOICE = /^[vu]:[0-9a-f-]{36}$/;
 export const JAWAD_CLONE_KEY = "voice:clone";
 /** Chatterbox on fal: $0.025 per 1,000 characters; Habibi on our own endpoint about $0.02 (an L4 at ~$1/h). */
 export const JAWAD_VOICE_PRICE = { chatterboxPerKChars: 0.025, habibiPerKChars: 0.02, cloneUsd: 0.02 };

@@ -38,6 +38,7 @@ import Coined from "@/components/Coined";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import { codeEdit, codeGrade, type CodeDeps } from "./claude-code";
+import { cleanVoice } from "@/components/claude-code/clean-voice";
 import type { AssetInfo } from "@/lib/editor/model";
 
 interface Msg {
@@ -356,6 +357,15 @@ export default function AssistantPanel({
       source = r?.blob ?? null;
     }
     if (!source) throw new Error("ما وصلني تسجيل للبصمة.");
+    // «Claude Code» cleans the recording first (silences, rumble, hum, level); if it can't, the recording goes as it is
+    try {
+      const cleaned = await cleanVoice({ blob: source, model: claude.id, from: "editor", purpose: "a voiceprint of the person's own voice", onStep: setBusy, signal: abortRef.current?.signal });
+      source = cleaned.blob;
+      setMsgs((m) => [...m, { role: "assistant", text: cleaned.line }]);
+    } catch (e) {
+      if ((e as Error).name === "AbortError") throw e;
+      setMsgs((m) => [...m, { role: "assistant", text: `ما قدرت أنظّف التسجيل بـ Claude Code (${(e as Error).message}) — أخذت البصمة من التسجيل كما هو.`, error: true }]);
+    }
     const { wav, seconds } = await wavOf(source);
     if (!window.confirm(`أؤكد إن الصوت في هذا التسجيل (${Math.round(seconds)} ث) صوتي، أو عندي إذن صاحبه أنسخه.`)) throw new Error("ما أخذت البصمة (ما تأكدنا من الإذن).");
     setBusy("آخذ بصمة صوتك…");

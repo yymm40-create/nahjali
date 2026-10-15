@@ -202,3 +202,67 @@ describe("«Claude Code» · زهراء and كاظم", () => {
     expect(read("src/lib/jawad/server/claude-code-picture.ts")).toContain('from === "designer"');
   });
 });
+
+describe("«Claude Code» · the voice", () => {
+  const A = K.A;
+  const rate = 16000;
+  /** two "words" of a 200 Hz tone, a long pause between, hum at 50 Hz and a noise floor under everything */
+  function recording() {
+    const out = new Float32Array(rate * 6);
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296) - 0.5;
+    for (let i = 0; i < out.length; i++) {
+      const t = i / rate;
+      const word = (t > 0.5 && t < 1.5) || (t > 4 && t < 5);
+      out[i] = (word ? 0.3 * Math.sin(2 * Math.PI * 200 * t) : 0) + 0.02 * Math.sin(2 * Math.PI * 50 * t) + 0.004 * rnd();
+    }
+    return out;
+  }
+  it("finds the silences and shortens only the long pause, keeping the words", () => {
+    const s = recording();
+    const out = A.removeSilences(s, rate, { minMs: 450, keepMs: 200, threshDb: -28 });
+    expect(out.length / rate).toBeLessThan(s.length / rate - 1.5);
+    // both words survive: the loud part is nearly the same length
+    const loud = (x: Float32Array) => A.frames(x, rate, 10).filter((d: number) => d > -25).length / 100;
+    expect(loud(out)).toBeGreaterThan(loud(s) - 0.15);
+    const trimmed = A.trim(s, rate, { threshDb: -28, padMs: 150 });
+    // trim only takes the ends: 0.5 s − 0.15 s before and 1 s − 0.15 s after
+    expect(trimmed.length / rate).toBeCloseTo(6 - 0.35 - 0.85, 1);
+  });
+  it("finds mains hum and takes it out, and brings the speech to the target level", () => {
+    const s = recording();
+    expect(A.humHz(s, rate)).toBe(50);
+    const d = A.dehum(s, rate, 50, 3);
+    // the pause between the words (2 s … 3.5 s) is the hum alone: it falls by 20 dB or more
+    const pause = (x: Float32Array) => A.rmsDb(x.subarray(rate * 2, rate * 3.5));
+    expect(pause(d)).toBeLessThan(pause(s) - 20);
+    const n = A.normalizeSpeech(d, rate, -18);
+    expect(Math.abs(A.speechDb(n, rate) + 18)).toBeLessThan(1);
+    const lim = A.limit(A.normalizeSpeech(d, rate, -3), -1.5);
+    expect(A.peakDb(lim)).toBeLessThan(-1);
+  });
+  it("measures a recording the way Claude is told about it", async () => {
+    const { voiceStats, statsLine } = await import("@/lib/claude-code/voice-measure");
+    const v = voiceStats(recording(), rate);
+    expect(v.seconds).toBe(6);
+    expect(v.longestPauseMs).toBeGreaterThan(2000);
+    expect(v.humHz).toBe(50);
+    expect(v.leadMs).toBeGreaterThan(400);
+    expect(statsLine(v)).toContain("mains hum 50 Hz");
+  });
+  it("checks the cleaning program and wires the screens", async () => {
+    expect(checkProgram("clean", "function clean(A, K) { return A.samples; }").ok).toBe(true);
+    expect(checkProgram("clean", "function grade(c){}").problems.join()).toContain("function clean");
+    expect(checkProgram("clean", "function clean(A){ fetch('x'); return A.samples }").problems.join()).toContain("network");
+    expect(read("src/components/jawad/editor/AssistantPanel.tsx")).toContain("cleanVoice({ blob: source");
+    const picker = read("src/components/jawad/studio/VoicePicker.tsx");
+    expect(picker).toContain("prepare={prepare}");
+    expect(picker).toContain("سجّل صوتك لمرة وحدة");
+    expect(picker).toContain("`u:${v.id}`");
+    expect(read("config/jawad/generators.ts")).toContain("/^[vu]:[0-9a-f-]{36}$/");
+    expect(read("src/lib/jawad/server/voices.ts")).toContain('value.startsWith("u:")');
+    expect(read("src/lib/jawad/server/jobs.ts")).toContain("onceReferenceText");
+    expect(read("src/app/api/jawad/claude-code/route.ts")).toContain("voice_review");
+    expect(read("config/jawad/knowledge.ts")).toContain("لمرة وحدة (بدون حفظ)");
+  });
+});

@@ -7,7 +7,10 @@
 import { UserError } from "@/lib/api";
 import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { checkProgram, type ProgramKind } from "@/lib/claude-code/compute";
+import { checkProgram } from "@/lib/claude-code/compute";
+
+/** The two programs of the editor (the voice has its own, src/lib/claude-code/voice.ts). */
+type ProgramKind = "edit" | "grade";
 import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, EDIT_CONTRACT, EDIT_RUBRIC, GRADE_CONTRACT, GRADE_RUBRIC } from "@/lib/claude-code/skill";
 import { context, type Spoken } from "./assistant-core";
 import { COMMANDS_GUIDE } from "./assistant-commands";

@@ -12,7 +12,7 @@ export class ProgramError extends Error {
 
 const TIMEOUT_MS = 8000;
 
-function run<T>(kind: ProgramKind, code: string, extra: Record<string, unknown>, pick: (m: Record<string, unknown>) => T): Promise<T> {
+function run<T>(kind: ProgramKind, code: string, extra: Record<string, unknown>, pick: (m: Record<string, unknown>) => T, timeoutMs = TIMEOUT_MS, transfer: Transferable[] = []): Promise<T> {
   return new Promise((resolve, reject) => {
     const el = document.createElement("iframe");
     el.setAttribute("sandbox", "allow-scripts");
@@ -27,11 +27,11 @@ function run<T>(kind: ProgramKind, code: string, extra: Record<string, unknown>,
       el.remove();
       fn();
     };
-    const timer = setTimeout(() => end(() => reject(new ProgramError(`the program did not finish within ${TIMEOUT_MS / 1000} s (an endless loop, or far too much work)`))), TIMEOUT_MS);
+    const timer = setTimeout(() => end(() => reject(new ProgramError(`the program did not finish within ${timeoutMs / 1000} s (an endless loop, or far too much work)`))), timeoutMs);
     const onMsg = (e: MessageEvent) => {
       if (e.source !== el.contentWindow) return;
       const m = (e.data ?? {}) as Record<string, unknown>;
-      if (m.type === "boot") el.contentWindow?.postMessage({ type: "run", id: 1, kind, code, ...extra }, "*");
+      if (m.type === "boot") el.contentWindow?.postMessage({ type: "run", id: 1, kind, code, ...extra }, "*", transfer);
       else if (m.type === "result") end(() => resolve(pick(m)));
       else if (m.type === "error") end(() => reject(new ProgramError(String(m.message ?? "error"), String(m.stack ?? ""))));
     };
@@ -46,6 +46,12 @@ export const runGrade = (code: string, size = GRADE_LUT_SIZE) => run("grade", co
 
 /** An edit program run on the timeline's facts: the commands it returns. */
 export const runEdit = (code: string, facts: unknown) => run("edit", code, { input: facts }, (m) => (Array.isArray(m.commands) ? m.commands : []) as unknown[]);
+
+/** A voice-cleaning program run on a recording (mono samples): the cleaned samples (the input is copied, never moved). */
+export const runClean = (code: string, samples: Float32Array, rate: number) => {
+  const copy = new Float32Array(samples);
+  return run("clean", code, { samples: copy, rate }, (m) => m.samples as Float32Array, 25_000, [copy.buffer]);
+};
 
 /** Bytes as base64 (for a Lut3D's data). */
 export function toBase64(bytes: Uint8Array): string {

@@ -1,16 +1,17 @@
 // «Claude Code» — the COMPUTE page: where a program Claude wrote for a task runs (a colour grade, a cut of the timeline).
 // The same idea as «مختبر الموشن» (src/lib/editor/scene/runtime.ts), but for programs that compute instead of drawing:
 // a sandboxed iframe (scripts only, no same-origin, a content policy that blocks every request) with a small kit, frozen
-// clocks and seeded randomness, so a program gives the same answer every time. Two kinds of program:
+// clocks and seeded randomness, so a program gives the same answer every time. Three kinds of program:
 //   grade(c, K) → [r, g, b]       a colour grade as a function of one colour; the page samples it into a 3D LUT
 //   edit(T, K)  → [command, …]    the timeline's edit, computed from the facts of the timeline (clips, words, silences)
+//   clean(A, K) → Float32Array    a voice recording cleaned (silences cut, hum and rumble out, level evened, peaks held)
 // Pure strings and checks (no DOM here); the host is src/components/claude-code/compute-host.ts.
 
 export const PROGRAM_MAX = 60_000;
 /** The LUT edge a grade program is sampled at (25³: smooth enough for any grade, small enough to keep in the timeline). */
 export const GRADE_LUT_SIZE = 25;
 
-export type ProgramKind = "grade" | "edit";
+export type ProgramKind = "grade" | "edit" | "clean";
 
 /** Things a program must never contain (the page blocks them anyway; this tells Claude before it runs). */
 const FORBIDDEN: [RegExp, string][] = [
@@ -23,7 +24,8 @@ const FORBIDDEN: [RegExp, string][] = [
   [/Math\.random\s*\(|Date\.now|new\s+Date\s*\(|performance\.now|setTimeout|setInterval/, "clocks or unseeded randomness (use K.rng)"],
 ];
 
-const ENTRY: Record<ProgramKind, RegExp> = { grade: /\bfunction\s+grade\s*\(|\bgrade\s*=\s*(\(|function)/, edit: /\bfunction\s+edit\s*\(|\bedit\s*=\s*(\(|function)/ };
+const ENTRY: Record<ProgramKind, RegExp> = { grade: /\bfunction\s+grade\s*\(|\bgrade\s*=\s*(\(|function)/, edit: /\bfunction\s+edit\s*\(|\bedit\s*=\s*(\(|function)/, clean: /\bfunction\s+clean\s*\(|\bclean\s*=\s*(\(|function)/ };
+const SIGNATURE: Record<ProgramKind, string> = { grade: "function grade(c, K)", edit: "function edit(T, K)", clean: "function clean(A, K)" };
 
 /** The program as it will run, and what is wrong with it before it ever runs. */
 export function checkProgram(kind: ProgramKind, code: unknown): { ok: boolean; problems: string[]; code: string } {
@@ -31,7 +33,7 @@ export function checkProgram(kind: ProgramKind, code: unknown): { ok: boolean; p
   const problems: string[] = [];
   if (!s) problems.push("the program is empty");
   if (s.length > PROGRAM_MAX) problems.push(`the program is longer than ${PROGRAM_MAX} characters`);
-  if (s && !ENTRY[kind].test(s)) problems.push(`the program never defines ${kind === "grade" ? "function grade(c, K)" : "function edit(T, K)"}`);
+  if (s && !ENTRY[kind].test(s)) problems.push(`the program never defines ${SIGNATURE[kind]}`);
   for (const [re, why] of FORBIDDEN) if (re.test(s)) problems.push(`it uses ${why}`);
   if (/<\/?script/i.test(s)) problems.push("it contains a script tag");
   return { ok: !problems.length, problems, code: s };
@@ -66,6 +68,24 @@ K.words(T) → every spoken word or phrase on the timeline as { clipId, s, e, w 
 K.clipsOf(T, kind) → the clips of every track of that kind ("video" | "audio" | "text"), with their trackId, in time order
 K.main(T) → the main video track (the first video track) · K.find(T, clipId) → { clip, track } or null
 K.sortBy(list, key) · K.sum(list, f) · K.round(x)`;
+
+export const AUDIO_KIT_API = `THE AUDIO KIT (K.A) — s is a Float32Array of mono samples −1…1, rate the sample rate (Hz); times in ms; every function returns a NEW Float32Array (or the numbers asked for) and never changes s:
+K.A.db(x) / K.A.fromDb(db) · K.A.peakDb(s) · K.A.rmsDb(s)
+K.A.frames(s, rate, ms = 20) → the level of each frame in dB (an Array)
+K.A.noiseFloorDb(s, rate) → the level of the quietest 10% of frames (the room and the hiss)
+K.A.speechDb(s, rate) → the average level of the frames that are clearly speech
+K.A.silences(s, rate, { threshDb, minMs }) → [[fromMs, toMs], …] the stretches quieter than threshDb for at least minMs (threshDb: about noiseFloor + 6…10)
+K.A.keep(s, rate, rangesMs, fadeMs = 8) → only those stretches, joined with short crossfades (no clicks)
+K.A.removeSilences(s, rate, { threshDb, minMs = 450, keepMs = 180 }) → long pauses shortened to keepMs of air (never cutting into a word)
+K.A.trim(s, rate, { threshDb, padMs = 150 }) → the silence before the first word and after the last cut, padMs kept
+K.A.dc(s) → the DC offset removed
+K.A.highpass(s, rate, hz = 80) / K.A.lowpass(s, rate, hz) → 2nd-order filters (rumble, plosive thumps / hiss above the voice)
+K.A.notch(s, rate, hz, q = 30) · K.A.humHz(s, rate) → 50, 60 or 0 (mains hum found) · K.A.dehum(s, rate, hz, harmonics = 4)
+K.A.gate(s, rate, { threshDb, floorDb = -18, attackMs = 5, releaseMs = 120 }) → a gentle downward expander between words (floorDb = how far the room goes down; never mute fully)
+K.A.compress(s, rate, { threshDb = -24, ratio = 2.5, attackMs = 10, releaseMs = 120, makeupDb = 0 })
+K.A.normalizeSpeech(s, rate, targetDb = -20) → the speech frames brought to targetDb RMS
+K.A.limit(s, ceilingDb = -1.5) → peaks held under the ceiling (soft, no hard clipping)
+K.A.fade(s, rate, inMs = 10, outMs = 30)`;
 
 /** The kit's code inside the page (plain JS). */
 const KIT_JS = String.raw`
@@ -143,6 +163,69 @@ var K = (function () {
   K.words = function (T) { var out = []; (T.speech || []).forEach(function (s) { (s.phrases || []).forEach(function (p) { out.push({ clipId: s.clipId, s: p[0], e: p[1], w: p[2] }); }); }); return K.sortBy(out, "s"); };
   K.clipsOf = function (T, kind) { var out = []; (T.tracks || []).forEach(function (t) { if (!kind || t.kind === kind) t.clips.forEach(function (c) { var o = {}; for (var k in c) o[k] = c[k]; o.trackId = t.id; out.push(o); }); }); return K.sortBy(out, "start"); };
   K.main = function (T) { return (T.tracks || []).find(function (t) { return t.kind === "video"; }) || null; };
+  // ── audio ──
+  var A = {};
+  A.db = function (x) { return x > 1e-9 ? 20 * Math.log10(x) : -180; };
+  A.fromDb = function (d) { return Math.pow(10, d / 20); };
+  A.peakDb = function (s) { var m = 0; for (var i = 0; i < s.length; i++) { var v = s[i] < 0 ? -s[i] : s[i]; if (v > m) m = v; } return A.db(m); };
+  A.rmsDb = function (s) { var e = 0; for (var i = 0; i < s.length; i++) e += s[i] * s[i]; return A.db(Math.sqrt(e / Math.max(1, s.length))); };
+  A.frames = function (s, rate, ms) { var n = Math.max(1, Math.round(rate * (ms || 20) / 1000)), out = []; for (var i = 0; i < s.length; i += n) { var e = 0, m = Math.min(s.length, i + n); for (var j = i; j < m; j++) e += s[j] * s[j]; out.push(A.db(Math.sqrt(e / Math.max(1, m - i)))); } return out; };
+  var pct = function (arr, p) { var a = arr.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * p))] : -180; };
+  A.noiseFloorDb = function (s, rate) { return pct(A.frames(s, rate, 20), 0.1); };
+  A.speechDb = function (s, rate) { var f = A.frames(s, rate, 20), floor = pct(f, 0.1), loud = f.filter(function (d) { return d > floor + 15; }); if (!loud.length) return pct(f, 0.9); var e = 0; loud.forEach(function (d) { e += Math.pow(10, d / 10); }); return 10 * Math.log10(e / loud.length); };
+  A.silences = function (s, rate, o) {
+    o = o || {}; var ms = 10, f = A.frames(s, rate, ms), th = o.threshDb === undefined ? A.noiseFloorDb(s, rate) + 8 : o.threshDb, min = o.minMs === undefined ? 300 : o.minMs, out = [], st = -1;
+    for (var i = 0; i <= f.length; i++) { var q = i < f.length && f[i] < th; if (q && st < 0) st = i; if (!q && st >= 0) { if ((i - st) * ms >= min) out.push([st * ms, Math.min(i * ms, Math.round(s.length / rate * 1000))]); st = -1; } }
+    return out;
+  };
+  A.keep = function (s, rate, ranges, fadeMs) {
+    var fade = Math.max(1, Math.round(rate * (fadeMs === undefined ? 8 : fadeMs) / 1000)), parts = K.merge(ranges || []).map(function (r) { return [Math.max(0, Math.round(r[0] * rate / 1000)), Math.min(s.length, Math.round(r[1] * rate / 1000))]; }).filter(function (r) { return r[1] > r[0]; });
+    var total = 0; parts.forEach(function (r) { total += r[1] - r[0]; }); var out = new Float32Array(total), o = 0;
+    parts.forEach(function (r) { var n = r[1] - r[0], f = Math.min(fade, Math.floor(n / 2)); for (var i = 0; i < n; i++) { var g = i < f ? i / f : i > n - f ? (n - i) / f : 1; out[o + i] = s[r[0] + i] * g; } o += n; });
+    return out;
+  };
+  A.removeSilences = function (s, rate, o) {
+    o = o || {}; var keepMs = o.keepMs === undefined ? 180 : o.keepMs, half = keepMs / 2, dur = s.length / rate * 1000;
+    var sil = A.silences(s, rate, { threshDb: o.threshDb, minMs: o.minMs === undefined ? 450 : o.minMs }), cut = sil.map(function (r) { return [r[0] + half, r[1] - half]; }).filter(function (r) { return r[1] > r[0]; });
+    return A.keep(s, rate, K.invert(cut, 0, dur), 6);
+  };
+  A.trim = function (s, rate, o) {
+    o = o || {}; var th = o.threshDb === undefined ? A.noiseFloorDb(s, rate) + 10 : o.threshDb, pad = o.padMs === undefined ? 150 : o.padMs, f = A.frames(s, rate, 10), a = 0, b = f.length - 1;
+    while (a < f.length && f[a] < th) a++; while (b > a && f[b] < th) b--;
+    if (a >= f.length) return new Float32Array(s);
+    return A.keep(s, rate, [[Math.max(0, a * 10 - pad), Math.min(s.length / rate * 1000, (b + 1) * 10 + pad)]], 4);
+  };
+  A.dc = function (s) { var m = 0, i; for (i = 0; i < s.length; i++) m += s[i]; m /= Math.max(1, s.length); var out = new Float32Array(s.length); for (i = 0; i < s.length; i++) out[i] = s[i] - m; return out; };
+  var biquad = function (s, c) { var out = new Float32Array(s.length), x1 = 0, x2 = 0, y1 = 0, y2 = 0; for (var i = 0; i < s.length; i++) { var x = s[i], y = c[0] * x + c[1] * x1 + c[2] * x2 - c[3] * y1 - c[4] * y2; x2 = x1; x1 = x; y2 = y1; y1 = y; out[i] = y; } return out; };
+  var coef = function (type, rate, hz, q) {
+    var w = 2 * Math.PI * Math.min(hz, rate * 0.45) / rate, cs = Math.cos(w), al = Math.sin(w) / (2 * (q || Math.SQRT1_2)), b0, b1, b2, a0 = 1 + al, a1 = -2 * cs, a2 = 1 - al;
+    if (type === "hp") { b0 = (1 + cs) / 2; b1 = -(1 + cs); b2 = (1 + cs) / 2; } else if (type === "lp") { b0 = (1 - cs) / 2; b1 = 1 - cs; b2 = (1 - cs) / 2; } else { b0 = 1; b1 = -2 * cs; b2 = 1; }
+    return [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0];
+  };
+  A.highpass = function (s, rate, hz) { return biquad(s, coef("hp", rate, hz || 80)); };
+  A.lowpass = function (s, rate, hz) { return biquad(s, coef("lp", rate, hz || 12000)); };
+  A.notch = function (s, rate, hz, q) { return biquad(s, coef("notch", rate, hz, q || 30)); };
+  var goertzel = function (s, rate, hz) { var n = Math.min(s.length, rate * 8), k = 2 * Math.cos(2 * Math.PI * hz / rate), a = 0, b = 0; for (var i = 0; i < n; i++) { var c = s[i] + k * a - b; b = a; a = c; } return (a * a + b * b - k * a * b) / Math.max(1, n); };
+  A.humHz = function (s, rate) {
+    var e = function (hz) { return goertzel(s, rate, hz); }, ref = (e(70) + e(85) + e(40)) / 3 || 1e-12, h50 = e(50) + e(100) + e(150), h60 = e(60) + e(120) + e(180);
+    return h50 > h60 && h50 > ref * 30 ? 50 : h60 > ref * 30 ? 60 : 0;
+  };
+  A.dehum = function (s, rate, hz, harmonics) { var out = s; for (var k = 1; k <= (harmonics || 4); k++) out = A.notch(out, rate, hz * k, 30); return out; };
+  var follower = function (s, rate, attackMs, releaseMs) { var at = Math.exp(-1 / (rate * attackMs / 1000)), rl = Math.exp(-1 / (rate * releaseMs / 1000)), env = 0, out = new Float32Array(s.length); for (var i = 0; i < s.length; i++) { var v = s[i] < 0 ? -s[i] : s[i]; env = v > env ? at * env + (1 - at) * v : rl * env + (1 - rl) * v; out[i] = env; } return out; };
+  A.gate = function (s, rate, o) {
+    o = o || {}; var th = o.threshDb === undefined ? A.noiseFloorDb(s, rate) + 8 : o.threshDb, floor = A.fromDb(o.floorDb === undefined ? -18 : Math.max(-40, o.floorDb)), env = follower(s, rate, o.attackMs || 5, o.releaseMs || 120), out = new Float32Array(s.length), g = 1, sm = Math.exp(-1 / (rate * 0.01));
+    for (var i = 0; i < s.length; i++) { var d = A.db(env[i]), want = d >= th ? 1 : Math.max(floor, A.fromDb((d - th) * 1.5)); g = sm * g + (1 - sm) * want; out[i] = s[i] * g; }
+    return out;
+  };
+  A.compress = function (s, rate, o) {
+    o = o || {}; var th = o.threshDb === undefined ? -24 : o.threshDb, ratio = Math.max(1, o.ratio || 2.5), mk = A.fromDb(o.makeupDb || 0), env = follower(s, rate, o.attackMs || 10, o.releaseMs || 120), out = new Float32Array(s.length);
+    for (var i = 0; i < s.length; i++) { var d = A.db(env[i]), red = d > th ? (d - th) * (1 - 1 / ratio) : 0; out[i] = s[i] * A.fromDb(-red) * mk; }
+    return out;
+  };
+  A.normalizeSpeech = function (s, rate, target) { var g = A.fromDb((target === undefined ? -20 : target) - A.speechDb(s, rate)), out = new Float32Array(s.length); for (var i = 0; i < s.length; i++) out[i] = s[i] * g; return out; };
+  A.limit = function (s, ceilingDb) { var c = A.fromDb(ceilingDb === undefined ? -1.5 : ceilingDb), knee = c * 0.8, out = new Float32Array(s.length); for (var i = 0; i < s.length; i++) { var v = s[i], a = v < 0 ? -v : v; if (a > knee) { var over = (a - knee) / (c - knee + 1e-9); a = knee + (c - knee) * Math.tanh(over); } out[i] = v < 0 ? -a : a; } return out; };
+  A.fade = function (s, rate, inMs, outMs) { var out = new Float32Array(s), a = Math.round(rate * (inMs === undefined ? 10 : inMs) / 1000), b = Math.round(rate * (outMs === undefined ? 30 : outMs) / 1000); for (var i = 0; i < a && i < out.length; i++) out[i] *= i / a; for (var j = 0; j < b && j < out.length; j++) out[out.length - 1 - j] *= j / b; return out; };
+  K.A = A;
   K.find = function (T, id) { var tr = T.tracks || []; for (var i = 0; i < tr.length; i++) for (var j = 0; j < tr[i].clips.length; j++) if (tr[i].clips[j].id === id) return { clip: tr[i].clips[j], track: tr[i] }; return null; };
   return K;
 })();
@@ -180,11 +263,21 @@ const RUNTIME_JS = String.raw`
     if (!Array.isArray(cmds)) throw new Error("edit(T, K) must return an array of commands, it returned " + typeof cmds);
     post({ type: "result", id: m.id, commands: JSON.parse(JSON.stringify(cmds)) });
   }
+  function runClean(m) {
+    var fn = entry(m.code, "clean"); if (!fn) throw new Error("the program must define function clean(A, K)");
+    var src = new Float32Array(m.samples), v = fn({ rate: m.rate, samples: src, seconds: src.length / m.rate }, K);
+    var out = v instanceof Float32Array ? v : v && v.samples instanceof Float32Array ? v.samples : Array.isArray(v) ? new Float32Array(v) : null;
+    if (!out) throw new Error("clean(A, K) must return a Float32Array of samples");
+    if (out.length < m.rate * 0.5) throw new Error("clean(A, K) returned less than half a second (" + (out.length / m.rate).toFixed(2) + " s)");
+    for (var i = 0; i < out.length; i++) { var x = out[i]; if (!isFinite(x)) throw new Error("sample " + i + " is not a number"); out[i] = x > 1 ? 1 : x < -1 ? -1 : x; }
+    var copy = new Float32Array(out);
+    post({ type: "result", id: m.id, samples: copy }, [copy.buffer]);
+  }
   window.addEventListener("message", function (e) {
     if (e.source !== parent) return;
     var m = e.data || {};
     if (m.type !== "run") return;
-    try { if (m.kind === "grade") runGrade(m); else if (m.kind === "edit") runEdit(m); else throw new Error("unknown program kind"); }
+    try { if (m.kind === "grade") runGrade(m); else if (m.kind === "edit") runEdit(m); else if (m.kind === "clean") runClean(m); else throw new Error("unknown program kind"); }
     catch (err) { post({ type: "error", id: m.id, message: String((err && err.message) || err), stack: String((err && err.stack) || "").split("\n").slice(0, 4).join("\n") }); }
   });
   post({ type: "boot" });
