@@ -244,6 +244,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [layoutOpen, setLayoutOpen] = useState(false);
   // «🎬 مختبر الموشن»: open, with a brief (from حيدرة's chat or empty)
   const [lab, setLab] = useState<{ brief: string; seconds?: number } | null>(null);
+  // the lab folded to its pill: kept here, so «مختبر الموشن» in the toolbar brings the same work back instead of
+  // looking like a dead button (the window stays mounted while it is folded, and the work carries on)
+  const [labMin, setLabMin] = useState(false);
+  const openLab = (brief = "", seconds?: number) => {
+    setLabMin(false);
+    setLab((now) => (now && !brief ? now : { brief, seconds }));
+  };
   // «🩺 تشخيص»: the owner's browser keeps a record of what goes wrong while the editor is open
   useEffect(() => {
     if (owner) startDiag();
@@ -963,6 +970,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     uploads.add([film], [{ at, trackId: null, mode: "one", group: `lab-${at}`, first: true }]);
     flash("🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
     setLab(null);
+    setLabMin(false);
     if (cues.length) {
       try {
         const ids = [...new Set(cues.map((c) => c.sfx))];
@@ -1890,7 +1898,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         {assisting && !(chatDock && wide) && (
           <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرة" dir="rtl">
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-              <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number) => setLab({ brief, seconds: secs })} /></Guard>
+              <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number) => openLab(brief, secs)} /></Guard>
             </div>
           </aside>
         )}
@@ -2068,7 +2076,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <Icon name="magnet" size={16} /> كل المسارات
           </button>
         )}
-        <button type="button" className={`${toolBtn} flex ${lab ? "text-jw-accent" : ""}`} onClick={() => setLab({ brief: "" })} disabled={readOnly} title="مختبر الموشن: حيدرة يصمم الموشن ويكتبه بالكود، يراجعه كمخرج، وينزله في التايملاين">
+        <button type="button" className={`${toolBtn} flex ${lab ? "text-jw-accent" : ""} ${labMin ? "animate-pulse" : ""}`} onClick={() => openLab()} disabled={readOnly} title="مختبر الموشن: حيدرة يصمم الموشن ويكتبه بالكود، يراجعه كمخرج، وينزله في التايملاين">
           🎬 <span className="hidden sm:inline">مختبر الموشن</span>
         </button>
       </div>
@@ -2076,7 +2084,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {assisting && chatDock && wide && (
         <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرة" dir="rtl">
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
-            <Guard name="حيدرة"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number) => setLab({ brief, seconds: secs })} /></Guard>
+            <Guard name="حيدرة"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number) => openLab(brief, secs)} /></Guard>
           </div>
         </aside>
       )}
@@ -2101,7 +2109,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
 
-      {lab && !readOnly && <MotionLab projectId={project.id} width={tl.width} height={tl.height} assets={assets} initialBrief={lab.brief} initialSeconds={lab.seconds} onFilm={placeFilm} onClose={() => setLab(null)} />}
+      {lab && !readOnly && <MotionLab projectId={project.id} width={tl.width} height={tl.height} assets={assets} initialBrief={lab.brief} initialSeconds={lab.seconds} onFilm={placeFilm} onClose={() => (setLab(null), setLabMin(false))} minimized={labMin} onMinimize={setLabMin} />}
       {dropAsk && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" onClick={() => setDropAsk(null)}>
           <div role="dialog" aria-modal="true" aria-label="كيف أرتّب الملفات؟" className="w-full max-w-sm space-y-3 rounded-2xl border border-jw-line bg-jw-surface p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
