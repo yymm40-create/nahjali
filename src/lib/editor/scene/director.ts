@@ -150,6 +150,11 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
   const f = frameOf(p);
   const previous = typeof b.code === "string" ? text(b.code, 140_000) : "";
   const errors = text(b.errors, 4000);
+  // «خلفية شفافة»: the person wants the subject alone, to composite over something else — no fill at all
+  const transparent = b.transparent === true;
+  const bg = transparent
+    ? "\nTRANSPARENT BACKGROUND (the person will composite this over something else): never call scene({ background: … }) with a colour, never fillRect / draw a shape, gradient or vignette across the whole K.W×K.H frame. Draw ONLY the subject itself (and its own shadow/glow if any) — everywhere else stays empty (alpha 0). A light contact shadow under a floating subject is fine; a filled backdrop is not."
+    : "";
   const parts: ClaudePart[] = [
     {
       type: "text",
@@ -157,7 +162,7 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
 THE PLAN (approved by the person — follow it; improve only what the bar demands):
 ${planText(plan)}
 FRAME: ${f.w}×${f.h} (${f.shape}) · FONTS loaded for you: K.fonts.head = ${plan.fonts.head}, K.fonts.body = ${plan.fonts.body}
-ASSETS: ${assets.length ? assets.map((a) => `K.img("${a.id}") = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"}
+ASSETS: ${assets.length ? assets.map((a) => `K.img("${a.id}") = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"}${bg}
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`}
 Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.`,
     },
