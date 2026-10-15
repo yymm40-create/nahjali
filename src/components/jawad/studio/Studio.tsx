@@ -35,6 +35,7 @@ import MorePrompts from "./MorePrompts";
 import { findStyle } from "@config/film-styles";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
 import Coined from "@/components/Coined";
+import ClaudeCodeCard from "@/components/claude-code/ClaudeCodeCard";
 
 /** The person is on another tab: the title changes until they come back, and a system notification when allowed. */
 function notifyDone(count: number, anyFailed: boolean) {
@@ -922,6 +923,21 @@ export default function Studio({ section, studioSections, generators, directorGe
             </div>}
             <SectionHint kind={def.output} />
             <GeneratorCard gen={gen} owner={owner} onOpen={() => setPicker(true)} />
+            {def.output === "image" && (
+              <ClaudeCodeCard<JobView>
+                prompt={draft.prompt}
+                aspect={String(ev?.settings.aspect ?? "1:1")}
+                styleId={draft.styleId ?? ""}
+                styleText={draft.styleId ? findStyle(draft.styleId)?.text ?? "" : ""}
+                refUrls={draft.refs.filter((r) => r.kind === "image" && r.url).map((r) => r.url!)}
+                sectionId={activeSection.id}
+                disabledReason={!user ? "سجّل الدخول للرسم بـ Claude Code." : !allowed ? "المنصة مغلقة لحسابك." : null}
+                onSaved={(job) => {
+                  setItems((cur) => (filter === "all" || filter === "image" ? [job, ...cur.filter((c) => c.id !== job.id)] : cur));
+                  setTab("works");
+                }}
+              />
+            )}
             {notice && (
               <p className="flex items-start gap-2 rounded-lg border border-jw-line bg-jw-surface-2 px-3 py-2 text-xs text-jw-muted" role="status">
                 <Icon name="info" size={14} className="mt-0.5 shrink-0" />

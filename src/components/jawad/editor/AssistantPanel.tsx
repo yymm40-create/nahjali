@@ -37,6 +37,8 @@ import Riyal from "@/components/Riyal";
 import Coined from "@/components/Coined";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { useClaudeModel } from "@/components/robots/claude-model";
+import { codeEdit, codeGrade, type CodeDeps } from "./claude-code";
+import type { AssetInfo } from "@/lib/editor/model";
 
 interface Msg {
   role: "user" | "assistant";
@@ -283,6 +285,21 @@ export default function AssistantPanel({
     if (!seenFrames.current.size) setBusy("حيدرة يشوف المقطع المحدد…");
     return lookAtClip(tl, selected[0]);
   };
+  /** What «Claude Code» needs from the panel: the timeline now, the files, the way to apply, and the eyes. */
+  const codeDeps = (signal?: AbortSignal): CodeDeps => ({
+    projectId,
+    model: claude.id,
+    timeline: () => tlRef.current,
+    infos: () => new Map([...assets.values()].map((a): [string, AssetInfo] => [a.id, { id: a.id, kind: a.kind, durationMs: a.durationMs, width: a.width, height: a.height, hasAudio: a.hasAudio }])),
+    run,
+    busy: setBusy,
+    signal,
+    quiet: () => quietParts(tlRef.current, assets),
+    playhead: player?.ms ?? 0,
+    selected,
+    look: lookAtClip,
+    graded: gradedFrames,
+  });
   /** «يشيك التلوين»: rounds of look → judge → correct, the result told only when حيدرة is satisfied (or out of rounds). */
   const checkColour = async (clipId: string, request: string, start: Timeline) => {
     let at = start;
@@ -518,6 +535,10 @@ export default function AssistantPanel({
             const more = track ? expandThen(q.then ?? [], track.id, track.clips.map((c) => c.id)) : [];
             // all together (one undo); if one of them can't run, the others still do, one by one
             if (track && more.length && !run(more, { label: "حيدرة يكمّل على الكابشن" })) for (const c of more) run(c, { label: "حيدرة يكمّل على الكابشن" });
+          } else if (q.kind === "code_edit" || q.kind === "code_grade") {
+            // «Claude Code»: حيدرة's program runs here, he checks what it did, and only then is it applied
+            const out = q.kind === "code_edit" ? await codeEdit(codeDeps(signal), q.prompt) : await codeGrade(codeDeps(signal), q.prompt, q.clipId.split(",").map((x) => x.trim()).filter(Boolean));
+            setMsgs((m) => [...m, { role: "assistant", text: out.text, done: out.done }]);
           } else if (q.kind === "motion_lab") {
             // «🎬 مختبر الموشن»: the lab opens with حيدرة's brief (the person presses «اكتب الخطة»)
             onLab?.(q.prompt, Number(q.seconds) || 15);
