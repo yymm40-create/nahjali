@@ -13,7 +13,7 @@ import { withStyle } from "@config/jawad/style-prompt";
 import { coinStr } from "@config/coins";
 import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { jawadSpeak } from "./providers/jawad-voice";
-import { jawadReference } from "./voices";
+import { jawadReference, onceReferenceText } from "./voices";
 import { can, permForGenerator } from "@/lib/access";
 import { PERMS } from "@config/access";
 import { holdTeamCoins, refundTeamCoins } from "@/lib/coins";
@@ -500,7 +500,9 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
     if (voice.provider !== "jawad") throw new ProviderError("rejected", "هذا الصوت محفوظ عند مزوّد آخر؛ خذ بصمة صوتك في «صوت الجواد» واخترها.", `voice provider ${voice.provider}`);
     const engine = s.engine === "habibi" || s.engine === "chatterbox" ? s.engine : undefined;
     const dialect = typeof s.dialect === "string" ? (s.dialect as HabibiDialect) : undefined;
-    const r = await jawadSpeak({ refUrl: await jawadReference(voice.voiceId), refText: voice.refText ?? "", text: job.prompt, engine, dialect, speed: Number(s.speed) || 1 });
+    // a recording made for this one reading: its words are written now (a library voice keeps them from its saving)
+    const refText = voice.once && engine !== "chatterbox" ? await onceReferenceText(voice.voiceId) : voice.refText ?? "";
+    const r = await jawadSpeak({ refUrl: await jawadReference(voice.voiceId), refText, text: job.prompt, engine: voice.once && !refText ? "chatterbox" : engine, dialect, speed: Number(s.speed) || 1 });
     await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
     await saveOutput(job, 0, r.audio, "audio/wav", "wav", { durationMs: r.durationMs ?? undefined });
     await finishJob(job, "succeeded", { costUsd: (job.prompt.length / 1000) * (r.engine === "habibi" ? JAWAD_VOICE_PRICE.habibiPerKChars : JAWAD_VOICE_PRICE.chatterboxPerKChars), units: { characters: job.prompt.length, engine: r.engine } });

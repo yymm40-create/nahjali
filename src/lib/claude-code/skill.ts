@@ -4,7 +4,7 @@
 // fix, then he LOOKS at what it produced (the pictures, the timeline after), scores it like a harsh expert and rewrites
 // it until it passes, and only then is it applied. Pure text and numbers.
 
-import { EDIT_KIT_API, GRADE_KIT_API, GRADE_LUT_SIZE } from "./compute";
+import { AUDIO_KIT_API, EDIT_KIT_API, GRADE_KIT_API, GRADE_LUT_SIZE } from "./compute";
 
 /** Every round of a program: write → run → (fix) → look → score; it is applied only when every score is ≥ PASS. */
 export const CODE_PASS = 8;
@@ -61,3 +61,27 @@ The page runs edit(T, K), checks every command against the timeline on a copy, a
 - Return the whole job in one array (commands run in order, each on the result of the last).
 
 ${EDIT_KIT_API}`;
+
+export const VOICE_RUBRIC = [
+  { id: "pauses", ar: "السكتات", en: "Pauses: no dead air — every pause between phrases ≤ ~0.45 s, the silence before the first word and after the last ~0.1–0.25 s" },
+  { id: "words", ar: "الكلام", en: "Nothing of the voice lost: no word, breath-start or ending cut (the speech time barely changed except the removed silence)" },
+  { id: "level", ar: "التوزين", en: "Level: speech around −20…−16 dBFS RMS, steady across the recording; peaks under −1 dBFS; nothing clipped" },
+  { id: "clean", ar: "النظافة", en: "Clean: no mains hum, no rumble, the room at least 35–40 dB under the voice, no DC" },
+  { id: "natural", ar: "الطبيعية", en: "Natural: no pumping, no chopped or gated-sounding gaps, no thin over-filtered voice — a voiceprint must still sound like the person" },
+] as const;
+
+export const VOICE_CONTRACT = `THE CLEANING PROGRAM YOU WRITE — one JavaScript program (no HTML, no imports) that defines:
+
+function clean(A, K) {
+  // A = { rate, samples, seconds }: the person's recording, mono Float32Array −1…1
+  // return a Float32Array: the cleaned recording (same rate)
+}
+
+What it is for: the recording becomes a VOICEPRINT (the voice engine learns the person's voice from it) or the reference for one reading. So it must stay the person's own natural voice — cleaned, never processed into something else. You cannot hear it: you get its measurements and a picture of its waveform; after your program runs you get the same for the result.
+Build it like a dialogue editor, in this order, each step one short commented line, every threshold COMPUTED from this recording (its own noise floor and speech level), never a guessed constant:
+1. K.A.dc → K.A.highpass (70–90 Hz: rumble, desk thumps) → K.A.dehum when K.A.humHz finds 50/60 Hz.
+2. Silences: K.A.trim (≈150 ms kept at both ends), then K.A.removeSilences (pauses over ~450 ms shortened to ~180–250 ms of air; threshold ≈ noise floor + 6…10 dB). Never cut inside speech.
+3. A gentle K.A.gate between words only if the room is loud (floorDb −12…−18, never full silence), then a light K.A.compress (ratio 2–3) only if the level swings a lot.
+4. K.A.normalizeSpeech to about −18 dBFS, then K.A.limit at −1.5 dBFS, then K.A.fade (10 ms in, 30 ms out).
+
+${AUDIO_KIT_API}`;

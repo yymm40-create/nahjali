@@ -106,7 +106,15 @@ export async function listVoices(userId: string, owner: boolean): Promise<{ mine
 }
 
 /** The ElevenLabs voice id behind a request's voice, checked: one of the ready voices, or one of the person's own. */
-export async function resolveVoice(userId: string, value: string): Promise<{ ok: true; voiceId: string; provider: VoiceProvider; refText?: string } | { ok: false; reason: string }> {
+export async function resolveVoice(userId: string, value: string): Promise<{ ok: true; voiceId: string; provider: VoiceProvider; refText?: string; once?: true } | { ok: false; reason: string }> {
+  if (value.startsWith("u:")) {
+    // «صوتي لمرة وحدة»: a recording of the person's own, made just now for this reading (never a library voice)
+    const id = value.slice(2);
+    if (!isUuid(id)) return { ok: false, reason: "التسجيل غير صحيح." };
+    const { data } = await db().from("jawad_uploads").select("kind,status,storage_path").eq("id", id).eq("user_id", userId).maybeSingle();
+    if (!data || data.kind !== "audio" || data.status !== "ready") return { ok: false, reason: "تسجيلك ما لقيناه؛ سجّل صوتك مرة ثانية." };
+    return { ok: true, voiceId: String(data.storage_path), provider: "jawad", refText: "", once: true };
+  }
   if (value.startsWith("v:")) {
     const id = value.slice(2);
     if (!isUuid(id)) return { ok: false, reason: "الصوت غير صحيح." };
@@ -432,6 +440,19 @@ async function cloneJawad(user: { id: string }, owner: boolean, b: { key?: unkno
     await releaseCoins(user.id, coins, ref, LABEL);
     if (e instanceof UserError) throw e;
     throw new UserError(e instanceof ProviderError ? e.userMessage : "تعذّر حفظ بصمة الصوت الآن. أُعيدت لك نقودك.", 502);
+  }
+}
+
+/** What is said in a recording made for one reading (Habibi needs the words; Chatterbox doesn't): written by Scribe. */
+export async function onceReferenceText(path: string): Promise<string> {
+  try {
+    const { data } = await storage.from(JAWAD_BUCKET).download(path);
+    if (!data) return "";
+    const heard = await elevenTranscribe({ file: data, name: path.endsWith(".mp3") ? "ref.mp3" : "ref.wav" });
+    return heard.words.map((w) => w.text).join(" ").replace(/\s+([،,.؟?!:])/g, "$1").trim().slice(0, 2000);
+  } catch (e) {
+    console.warn("jawad voice: one-time reference transcript", e instanceof Error ? e.message : e);
+    return "";
   }
 }
 
