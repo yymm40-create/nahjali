@@ -3,7 +3,8 @@ import { handle } from "@/lib/api";
 import { requireContentUser } from "@/lib/content/access";
 import { templateImages } from "@/lib/content/templates";
 import { CAROUSEL_TEMPLATES, structureName } from "@config/content-templates";
-import { FILM_STYLES, styleImage } from "@config/film-styles";
+import { FILM_STYLES, STYLE_FAMILIES } from "@config/film-styles";
+import { stylePicturesSafe } from "@/lib/film/style-pictures";
 import { MOODS, MOTION_STYLES } from "@/lib/editor/motion-styles";
 import { previewUri } from "@/lib/editor/motion-preview";
 
@@ -23,17 +24,17 @@ export const dynamic = "force-dynamic";
 
 /**
  * «صانع المحتوى» · the two galleries a person picks from: the carousel templates (each with the one picture the owner had
- * drawn for it, the same for everyone; a template without one shows its palette) and the 24 cartoon styles (their
- * pictures from the course guide).
+ * drawn for it, the same for everyone; a template without one shows its palette) and the library's 100 styles in 14
+ * families (their pictures; a new style not drawn yet shows its family's icon).
  */
 export const GET = handle(async () => {
   await requireContentUser();
-  const images = await templateImages().catch(() => ({}) as Record<string, string>);
+  const [images, pictures] = await Promise.all([templateImages().catch(() => ({}) as Record<string, string>), stylePicturesSafe()]);
   return NextResponse.json(
     {
       templates: CAROUSEL_TEMPLATES.map((t) => ({ id: t.id, group: t.group, name: t.name, description: t.description, bestFor: t.bestFor, structures: t.structures.map(structureName), palettes: t.palettes, image: images[t.id] ?? null })),
       ...motionItems(),
-      styles: FILM_STYLES.map((s) => ({ id: s.id, group: s.group, name: s.name, description: s.description, bestFor: s.bestFor, image: styleImage(s.id) })),
+      styles: FILM_STYLES.map((s) => ({ id: s.id, group: s.group, name: `${s.name} · ${s.school}`, description: s.description, bestFor: s.bestFor, image: pictures[s.id] ?? null, icon: STYLE_FAMILIES.find((f) => f.id === s.family)?.icon })),
     },
     { headers: { "Cache-Control": "private, max-age=60" } },
   );

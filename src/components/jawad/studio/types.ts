@@ -74,7 +74,7 @@ export interface Draft {
   settings: Record<string, Settings>;
   refStyle: Record<string, RefStyle>;
   refs: RefItem[];
-  /** «الستايل»: one of the 24 styles (images and video), "" = none */
+  /** «الستايل»: one of the library's styles (images and video), "" = none */
   styleId?: string;
   /** «برومبت ثاني وثالث»: more prompts, each its own generation at the same time with the references it is given */
   extra?: ExtraPrompt[];

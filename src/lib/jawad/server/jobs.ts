@@ -184,7 +184,7 @@ export interface GenerateBody {
   sectionId?: unknown;
   generatorId?: unknown;
   refStyle?: unknown;
-  /** «الستايل»: one of the 24 styles */
+  /** «الستايل»: one of the library's styles */
   styleId?: unknown;
   settings?: unknown;
   prompt?: unknown;
@@ -300,7 +300,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
   }
 
   // What the model reads: each «@name» written the way it numbers references (the user's prompt is kept as written)
-  // «الستايل»: one of the 24 styles chosen under the prompt — its text goes into what the model reads as the look
+  // «الستايل»: one of the library's styles chosen under the prompt — its text goes into what the model reads as the look
   const style = def.output !== "audio" && typeof b.styleId === "string" ? findStyle(b.styleId) : undefined;
   const asWritten = def.refLabel ? promptForModel(prompt, meta, def.refLabel).text : prompt;
   const modelPrompt = style ? withStyle(asWritten, style.text, def.output === "video" ? style.videoText : undefined) : asWritten;

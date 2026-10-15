@@ -13,6 +13,7 @@ import ActionBar, { EditsLeftContext, type SendMode } from "../../ActionBar";
 import StepCard from "../../StepCard";
 import type { MapChoice, MapItem, SheetVersion } from "@/lib/film/sheets";
 import SheetCards from "./SheetCards";
+import StyleBrowser, { StyleThumb, type StyleCardView } from "@/components/style-map/StyleBrowser";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
 const SHEET_COST = `تقريبًا ${credits(0.4)}`;
@@ -29,16 +30,8 @@ interface Asset {
   created_at: string;
   version_id: string | null;
 }
-interface StyleCard {
-  id: string;
-  group: string;
-  name: string;
-  description: string;
-  feel: string;
-  bestFor: string;
-  /** the style's picture from the course guide */
-  image: string;
-}
+/** a style of the library («خريطة الستايلات»), with its picture or null (its family's tile) */
+type StyleCard = StyleCardView;
 interface Props {
   projectId: string;
   stage: string;
@@ -537,7 +530,6 @@ function StyleTest({
   actions?: ReactNode;
 }) {
   const [picked, setPicked] = useState<string[]>([]);
-  const groups = [...new Set(styles.map((s) => s.group))];
   const nameOf = (id: string) => styles.find((s) => s.id === id)?.name ?? id;
   const toggle = (id: string) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : picked.length < 4 ? [...picked, id] : picked);
 
@@ -566,8 +558,7 @@ function StyleTest({
                     <a href={t.url} target="_blank" rel="noopener"><img src={t.url} alt={nameOf(sid)} className="aspect-[3/2] w-full rounded-xl object-cover" /></a>
                   )}
                   <figcaption className="flex items-center gap-2 text-sm font-extrabold">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- a static picture from the course guide */}
-                    <img src={styles.find((s) => s.id === sid)?.image} alt="" className="h-8 w-14 rounded-md object-cover" />
+                    {styles.find((s) => s.id === sid) && <span className="w-14 shrink-0 overflow-hidden rounded-md"><StyleThumb s={styles.find((s) => s.id === sid)!} /></span>}
                     {nameOf(sid)}
                   </figcaption>
                   {!chosen && t.status === "generated" && (
@@ -585,25 +576,8 @@ function StyleTest({
       ) : (
         <div className="space-y-3">
           <h3 className="font-extrabold">اختر من ٢ إلى ٤ ستايلات للتجربة ({picked.length}/٤)</h3>
-          <p className="text-sm font-bold text-muted">💡 كل ستايل بصورته من الدليل. اختر ٢ أو ٣ أشكال رسم، نجرّبها على لقطة من قصتك، وبعدين تختار اللي يعجبك — وبعد الاعتماد ينرسم الماستر وكل الشيتات لحالهم.</p>
-          {groups.map((g) => (
-            <div key={g} className="space-y-2">
-              <p className="text-sm font-extrabold text-muted">{g}</p>
-              <div className="grid grid-cols-2 gap-2">
-                {styles.filter((s) => s.group === g).map((s) => (
-                  <button key={s.id} onClick={() => toggle(s.id)} className={`overflow-hidden rounded-2xl border text-start ${picked.includes(s.id) ? "border-2 border-gold bg-surface-2" : "border-line"}`}>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- a static picture from the course guide */}
-                    <img src={s.image} alt={s.name} loading="lazy" className="aspect-video w-full object-cover" />
-                    <div className="p-2.5">
-                      <p className="font-extrabold">{s.name}</p>
-                      <p className="text-xs font-bold text-muted">{s.feel}</p>
-                      <p className="mt-1 text-xs text-muted">{s.bestFor}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+          <p className="text-sm font-bold text-muted">💡 خريطة {styles.length} ستايل في ١٤ عائلة، كل واحد تحت شركته أو مدرسته (دوّر بالاسم أو بالشركة). اختر ٢ أو ٣ أشكال رسم، نجرّبها على لقطة من قصتك، وبعدين تختار اللي يعجبك — وبعد الاعتماد ينرسم الماستر وكل الشيتات لحالهم.</p>
+          <StyleBrowser skin="film" styles={styles} selected={picked} onPick={toggle} cols="grid-cols-2" />
           <button className="btn btn-primary sticky bottom-3 w-full" disabled={busy || picked.length === 0} onClick={() => { onTest(picked); setPicked([]); }}>
             ولّد صور الاختبار ({picked.length}) · تقريبًا {credits(picked.length * 0.06)}
           </button>

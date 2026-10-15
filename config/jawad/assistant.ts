@@ -35,7 +35,7 @@ export interface AssistantDraft {
   settings: Settings;
   refStyle: RefStyle;
   refs: AssistantRef[];
-  /** «الستايل»: one of the 24 styles (config/film-styles.ts) or "" for none */
+  /** «الستايل»: one of the library's styles (config/film-styles.ts) or "" for none */
   styleId?: string;
   /** «برومبت ثاني وثالث»: the other prompts in the form, each with the reference names it uses (null = all) */
   extra?: { prompt: string; refs: string[] | null }[];
@@ -204,8 +204,8 @@ export function assistantSystem(output: "image" | "video" | "audio", defs: Gener
     `settings: each option you change as {key, value} (value as text: "16:9", "8", "true"). refStyle: "none" | "frames" | "references" or "" (frames = first/last frame pictures; references = people, places and objects mentioned by @name).`,
     `addRefs: {source: "attachment" | "ref", id: the attachment number or the reference's current name, name: its name in prompts, role: "first_frame" | "last_frame" | "reference" or ""}. removeRefs: names of references to take out.`,
     ...(output === "audio" ? [] : [
-      `styleId: «الستايل», one of the 24 styles the person can pick with pictures under the prompt. The chosen style's text is put into the generator's prompt by itself (never copy it into "prompt"). Set it when the person asks for a style or names one (or "none" to take it off); leave "" otherwise. The styles (id — name: what it looks like):`,
-      FILM_STYLES.map((x) => `${x.id} — ${x.name} (${x.group}): ${x.description}`).join("\n"),
+      `styleId: «الستايل», one of the ${FILM_STYLES.length} styles of «خريطة الستايلات» (14 families, each style under the studio or school whose look it carries) the person can pick with pictures under the prompt. The chosen style's text is put into the generator's prompt by itself (never copy it into "prompt"). Set it when the person asks for a style or names one (or "none" to take it off); leave "" otherwise. The styles (id — name: what it looks like):`,
+      FILM_STYLES.map((x) => `${x.id} — ${x.name} (${x.group} · ${x.school}): ${x.description}`).join("\n"),
     ]),
     ...(output === "audio" ? [] : [
       `extraPrompts: «برومبت ثاني وثالث» — up to TWO more prompts next to "prompt" (three in all); on «توليد» each becomes its own generation at the same time (its own picture or video and its own price). Use them when the person wants different pictures/clips at once (three shots of a story, three products, three angles). Each item: {prompt, refs: the @names of the references it uses ([] = all of them)}. mainRefs: the @names the first prompt uses ([] = all). Put every reference in the form once (addRefs) and share them out by name; write each prompt complete on its own (it is read alone). Leave extraPrompts [] for no change; to remove them send [{"prompt":"","refs":[]}]. Tell the person each prompt is billed on its own, and when unsure, to try one first.`,

@@ -112,11 +112,11 @@ describe("the buttons and the galleries", () => {
     expect(chosenBlock({ template: "none", style: "none" })).toContain("بدون قالب");
     expect(chosenBlock({ template: null, style: null })).toBe("");
   });
-  it("lists all 24 templates and all 24 cartoon styles for him", () => {
+  it("lists all 24 templates and every style of «خريطة الستايلات» for him", () => {
     const c = catalogBlock();
     for (const t of CAROUSEL_TEMPLATES) expect(c).toContain(`- ${t.id} — ${t.name}`);
     for (const s of FILM_STYLES) expect(c).toContain(`- ${s.id} — ${s.name}`);
-    expect(FILM_STYLES).toHaveLength(24);
+    expect(FILM_STYLES).toHaveLength(100);
   });
 });
 
