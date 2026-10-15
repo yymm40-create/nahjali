@@ -5,7 +5,8 @@ import { requireFilmUser, requireProject } from "@/lib/film/access";
 import { latestJob, runningImageJobs, sheetAssets, sheetVersions } from "@/lib/film/sheets";
 import { projectCost } from "@/lib/film/usage";
 import { FILM_BUCKET } from "@/lib/film/types";
-import { FILM_STYLES, styleImage } from "@config/film-styles";
+import { FILM_STYLES } from "@config/film-styles";
+import { stylePicturesSafe } from "@/lib/film/style-pictures";
 import SheetsWorkspace from "../[id]/sheets/SheetsWorkspace";
 import { castLinks, castOf } from "@/lib/film/series-cast";
 
@@ -17,12 +18,13 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
   const project = await requireProject(id, user.id);
   if (project.stage === "screenwriter") redirect(`${base}/${id}/script`);
 
-  const [versions, assets, job, imageJobs, cost] = await Promise.all([
+  const [versions, assets, job, imageJobs, cost, pictures] = await Promise.all([
     sheetVersions(id),
     sheetAssets(id),
     latestJob(id, "sheets"),
     runningImageJobs(id),
     projectCost(id),
+    stylePicturesSafe(),
   ]);
   // a series' scene: its series' ready characters, places and style, to take as they are on the map
   const series = project.series_id ? (await castOf(project.series_id)).filter((c) => c.status === "ready") : [];
@@ -52,7 +54,7 @@ export default async function SheetsView({ id, base }: { id: string; base: strin
         job={job ? { status: job.status, error: job.error } : null}
         imagesRunning={imageJobs.length}
         seriesCast={series.map((c) => ({ id: c.id, kind: c.kind, name: c.name, url: seriesLinks[c.id] ?? "" }))}
-        styles={FILM_STYLES.map(({ id, group, name, description, feel, bestFor }) => ({ id, group, name, description, feel, bestFor, image: styleImage(id) }))}
+        styles={FILM_STYLES.map(({ id, family, school, name, description, feel, bestFor, photoreal }) => ({ id, family, school, name, description, feel, bestFor, photoreal, image: pictures[id] ?? null }))}
       />
     </div>
   );

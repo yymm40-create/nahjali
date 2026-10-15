@@ -5,6 +5,7 @@ import { createAdminClient, listAllUsers } from "@/lib/supabase/admin";
 import { riyadhDayStart, riyadhMonthStart, rowCost } from "@/lib/film/usage";
 import { isAdmin } from "@config/site";
 import { FILM_STAGES } from "@config/film";
+import StylePictures from "./StylePictures";
 
 export const metadata = { title: "فرع الفيلم | لوحة التحكم" };
 export const dynamic = "force-dynamic";
@@ -93,6 +94,8 @@ export default async function FilmAdminPage() {
           </div>
         ))}
       </section>
+
+      <StylePictures />
 
       <section className="card space-y-2 p-4">
         <h2 className="text-xl font-extrabold">مشاريع الأفلام ({projectRows.length})</h2>

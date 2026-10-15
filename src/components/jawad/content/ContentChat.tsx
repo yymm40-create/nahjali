@@ -118,17 +118,19 @@ const FLOATERS: { s: number; c: string; t: number; d: number; top: string; left:
   { s: 40, c: "#a78bfa", t: 12, d: 52, top: "72%", left: "92%" },
 ];
 
-/** A thumbnail of a gallery item: its picture, or (a template with no picture yet) its palette. */
+/** A thumbnail of a gallery item: its picture, or (no picture yet) a template's palette or a style's family icon. */
 function Thumb({ item, big }: { item: GalleryItem; big?: boolean }) {
   if (item.image) return <img src={item.image} alt={item.name} loading="lazy" className={`ct-thumb ${big ? "big" : ""}`} />;
   const p = item.palettes?.[0];
   return (
     <div className={`ct-thumb ct-thumb-ph ${big ? "big" : ""}`} style={{ background: p?.bg ?? "#222" }} aria-label={item.name}>
-      {p && (
+      {p ? (
         <>
           <b style={{ color: p.text }}>{item.name}</b>
           <span><i style={{ background: p.text }} /><i style={{ background: p.primary }} /><i style={{ background: p.accent }} /></span>
         </>
+      ) : (
+        <b style={{ color: "#fff" }}>{item.icon ?? "🎨"} {item.name}</b>
       )}
     </div>
   );
