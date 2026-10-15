@@ -151,8 +151,34 @@ export const AUDIENCE_RULES: Record<CartoonAudience, string> = {
     "Made FOR GROWN-UPS. Natural adult proportions (about seven and a half heads tall), restrained eye size, richer texture and surface detail, considered cinematic or graphic lighting, a sophisticated palette, and an expression with some character to it rather than a wide smile.",
 };
 
+/**
+ * What is actually being made. «الصورة كما هي» turns the photograph itself into a drawing — the same pose, the same
+ * framing, the same background and EVERY person in it, each keeping their own face — which is what a person means when
+ * they hold up a picture of themselves with their father and say «حوّلها». «شخصية جديدة» is the other thing: one person
+ * lifted out of their photos and drawn anew in a pose, an age and an outfit they choose.
+ */
+export const CARTOON_MODES = { scene: "حوّل الصورة كما هي", character: "اصنع شخصية جديدة مني" } as const;
+export type CartoonMode = keyof typeof CARTOON_MODES;
+
+/** The shapes a picture can come out in; «الصورة كما هي» keeps the photograph's own shape instead of forcing 9:16. */
+export const CARTOON_ASPECTS = ["1:1", "16:9", "9:16", "3:2", "2:3"] as const;
+export type CartoonAspect = (typeof CARTOON_ASPECTS)[number];
+/** The listed shape closest to a photograph of this size (the page measures the picture it is about to send). */
+export function nearestAspect(width: number, height: number): CartoonAspect {
+  if (!(width > 0) || !(height > 0)) return "9:16";
+  const r = width / height;
+  const of = (a: CartoonAspect) => Number(a.split(":")[0]) / Number(a.split(":")[1]);
+  return CARTOON_ASPECTS.reduce((best, a) => (Math.abs(Math.log(of(a) / r)) < Math.abs(Math.log(of(best) / r)) ? a : best), "9:16" as CartoonAspect);
+}
+
 export const CARTOON_AGES = { same: "نفس العمر", baby: "رضيع", toddler: "طفل صغير", child: "طفل", adult: "بالغ" } as const;
 export const CARTOON_MOVES = { still: "ساكن / يتفاعل بيديه", crawl: "يحبي", walk: "يمشي" } as const;
+/**
+ * Whether how the character moves is even a question. It is one for a baby or a small child, where crawling or taking
+ * first steps is the whole picture; for a grown-up it is not — nobody wants to be asked whether they crawl. It is also
+ * not a question when the photograph itself is being redrawn: the pose is already in the picture.
+ */
+export const movementAsked = (input: Pick<CartoonInput, "mode" | "age">) => input.mode === "character" && (input.age === "baby" || input.age === "toddler" || input.age === "child");
 export const CARTOON_STORIES = {
   space: "مغامرة الفضاء",
   garden: "الحديقة السحرية",
@@ -160,6 +186,10 @@ export const CARTOON_STORIES = {
   custom: "قصتي الخاصة",
 } as const;
 export interface CartoonInput {
+  /** the photograph itself redrawn, or a new character made from it */
+  mode: CartoonMode;
+  /** the picture's shape (the photograph's own, when the photograph is what is being redrawn) */
+  aspect: CartoonAspect;
   style: string;
   /** who the picture is FOR (a separate thing from who is in it) */
   audience: CartoonAudience;
@@ -178,13 +208,14 @@ export function cartoonInput(raw: unknown): CartoonInput {
   const value = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const field = (name: string, max: number) => String(value[name] ?? "").trim().slice(0, max);
   if (!CARTOON_STYLES.some(style => style.id === value.style)) throw new Error("اختر الستايل.");
+  const mode: CartoonMode = Object.hasOwn(CARTOON_MODES, String(value.mode)) ? (value.mode as CartoonMode) : "character";
   if (!Object.hasOwn(CARTOON_AGES, String(value.age)) || !Object.hasOwn(CARTOON_MOVES, String(value.movement))) throw new Error("اختر العمر والحركة.");
   if (!Object.hasOwn(CARTOON_STORIES, String(value.story))) throw new Error("اختر القصة.");
   if (!Number.isInteger(value.count) || Number(value.count) < 1 || Number(value.count) > 4) throw new Error("اختر من صورة إلى أربع صور.");
   if (value.consent !== true) throw new Error("أكد أن لديك إذن استخدام الصور، وموافقة ولي الأمر لصور الأطفال.");
   if (value.video === true && value.story === "custom" && !field("customStory", 3000)) throw new Error("اكتب قصتك أولًا.");
   // a run saved before this question existed reads as «للعائلة», so old work still makes the same kind of picture
-  return { style: String(value.style), audience: (Object.hasOwn(CARTOON_AUDIENCES, String(value.audience)) ? value.audience : "family") as CartoonAudience, age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story: value.story as CartoonInput["story"], customStory: field("customStory", 3000), count: Number(value.count), video: value.video === true, consent: true };
+  return { mode, aspect: (CARTOON_ASPECTS as readonly string[]).includes(String(value.aspect)) ? (value.aspect as CartoonAspect) : "9:16", style: String(value.style), audience: (Object.hasOwn(CARTOON_AUDIENCES, String(value.audience)) ? value.audience : "family") as CartoonAudience, age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story: value.story as CartoonInput["story"], customStory: field("customStory", 3000), count: Number(value.count), video: value.video === true, consent: true };
 }
 const AGE = { same: "the same apparent age as the references", baby: "a cartoon baby, age-reinterpreted infant proportions", toddler: "a cartoon toddler", child: "a cartoon child", adult: "a cartoon adult" };
 const MOVE = { still: "a stable safe seated pose, interacting with hands and expressions, not walking", crawl: "crawling on hands and knees on safe level ground, visible grounded contacts, low camera", walk: "walking with short balanced steps, feet contacting the ground without sliding" };
@@ -205,13 +236,33 @@ export function cartoonIdentity(input: CartoonInput) {
     "WHO IT IS: the references are the identity, not the rendering. Carry over, as drawn shapes in this style: the outline of the face and the jaw, the shape and spacing of the eyes and the brows, the line of the nose and its bridge, the shape of the mouth and lips, the hairline, the hair's own colour, texture and the way it falls, the skin tone, and anything distinctive — glasses, a beard and how it grows, freckles, a mole, a gap in the teeth, a scar, a dimple, the ears.",
     "DO NOT BEAUTIFY: do not smooth the skin into blankness, do not slim or lengthen the face, do not straighten the teeth, do not shrink the nose, do not enlarge the eyes beyond what the chosen look allows, do not change the skin tone, and do not replace any of it with a generically cute or handsome face. If a feature is unusual, it is the point: keep it.",
     "WHO IT IS FOR — " + AUDIENCE_RULES[input.audience],
-    "AGE: " + (input.desiredAge || AGE[input.age]) + ". An age change is an imaginative reinterpretation, not a reconstruction of how they really looked; keep the identity features above and adapt only what age really changes (proportions, the softness of the features, facial hair).",
-    "MOVEMENT: " + MOVE[input.movement] + ". Age and movement stay the same throughout.",
-    "OUTFIT: " + (input.outfit || "the clothing from the references, redrawn in this style and adapted to the chosen age") + ". INTERESTS: " + (input.interests || "a gentle colourful adventure") + ".",
-  ].join("\n");
+    input.mode === "scene"
+      ? "KEEP THE PICTURE: this is the photograph itself redrawn, so the age, the pose, the gestures, the expressions and the clothing are the ones already in it. Change none of them."
+      : "AGE: " + (input.desiredAge || AGE[input.age]) + ". An age change is an imaginative reinterpretation, not a reconstruction of how they really looked; keep the identity features above and adapt only what age really changes (proportions, the softness of the features, facial hair).",
+    input.mode === "scene" ? "" : movementAsked(input) ? "MOVEMENT: " + MOVE[input.movement] + ". Age and movement stay the same throughout." : "",
+    input.mode === "scene"
+      ? input.interests
+        ? "WHAT MATTERS TO THEM (only if it can be honoured without changing the picture): " + input.interests + "."
+        : ""
+      : "OUTFIT: " + (input.outfit || "the clothing from the references, redrawn in this style and adapted to the chosen age") + ". INTERESTS: " + (input.interests || "a gentle colourful adventure") + ".",
+  ].filter(Boolean).join("\n");
 }
 
+/**
+ * The picture's prompt. In «الصورة كما هي» the references ARE the picture: the whole photograph is redrawn — its
+ * composition, its background and everyone standing in it, each with their own face — so a person and their father
+ * stay a person and their father. In «شخصية جديدة» the references are only the identity of ONE person, and the
+ * composition is made fresh. `canonical` is the follow-up picture: the cartoon already made is the reference now.
+ */
 export function cartoonImagePrompt(input: CartoonInput, canonical = false) {
+  if (input.mode === "scene") {
+    return (canonical
+      ? "Image 1 is the cartoon version already made of this photograph. Keep its exact style, its characters and their identities, and draw the same scene again, equally faithful to it. "
+      : "REDRAW THE PHOTOGRAPH ITSELF as a cartoon. The references are the picture to redraw, not identity angles of one person. Keep its composition, the framing and camera angle, who stands where, every pose and gesture, the expressions, the clothing and the background exactly as they are — the same moment, drawn instead of photographed. ") +
+      "EVERY PERSON in the photograph is redrawn, each one a separate character keeping their OWN face: never merge two people, never drop anyone, never add a person who is not there, and never give two of them the same face. Keep their real difference in age and in height.\n" +
+      cartoonIdentity(input) +
+      "\nThe identity rules above apply to EACH person in the picture. Redraw the background of the photograph in the same style rather than replacing it with a new setting. No text and no logos that are not already in the photograph.";
+  }
   return (canonical
     ? "Image 1 is the canonical CARTOON character already made for this person. Reuse its exact identity, age, outfit and style, and give this same character a new pose or composition. "
     : "Every supplied reference is the SAME ONE PERSON, photographed from different angles — read them together to understand the face, and draw ONE cartoon character of that person. The references give identity only; how it is drawn comes from the look below. ") +
@@ -220,13 +271,23 @@ export function cartoonImagePrompt(input: CartoonInput, canonical = false) {
 }
 
 export function cartoonVideoPrompt(input: CartoonInput) {
+  if (input.mode === "scene") {
+    // the photograph, now drawn, simply begins to move: no story, no new events, nobody leaves the frame
+    return "30 seconds, a drawn picture coming gently to life. @character is the cartoon made from this photograph: keep its style, its composition, its background and EVERY person in it with the same face, clothing and position.\n" +
+      cartoonIdentity(input) +
+      "\nNothing new happens: the people in the picture breathe, blink, shift their weight a little, their hair and clothes move, a small natural gesture or a smile passes between them, and the background has its own quiet life (leaves, light, dust in the air). A very slow camera push or drift, nothing more. Nobody walks out of frame, nobody changes age or style, no new person or object appears, no cuts. Gentle original music and soft ambience; no invented spoken dialogue.";
+  }
   const story = input.story === "custom" ? input.customStory : {
     space: "0–7s: discovers a glowing star in a safe cartoon observatory. 7–16s: reacts to colorful planets through the window. 16–24s: reaches toward a large button; stars form a beautiful pattern. 24–30s: smiles beside the glowing star.",
     garden: "0–7s: notices a luminous flower in a safe garden. 7–16s: reacts to a friendly butterfly. 16–24s: the flower opens and softly lights the garden. 24–30s: a delighted expression and a calm ending.",
     sea: "0–7s: discovers a shell inside a dry safe underwater observation room. 7–16s: watches a colorful fish through glass. 16–24s: waves as the fish swims in a clear arc. 24–30s: smiles and waves goodbye.",
   }[input.story];
   return "30 seconds, vertical 9:16 cartoon film. @character is the canonical character: preserve the same stylized face, proportions, outfit and age in every shot.\n" + cartoonIdentity(input) +
-    "\nStory: " + story + "\nAdapt actions to the selected movement; a stationary baby watches/reaches, never walks. Use 3–4 clear beats, one action per beat, gentle camera moves and grounded motion. No age or style morph. Gentle original music and appropriate foley; no invented spoken dialogue. Do not copy the photo background.";
+    "\nStory: " + story + (movementAsked(input) ? "\nAdapt actions to the selected movement; a stationary baby watches/reaches, never walks." : "\nLet the character move naturally for their age.") +
+    " Use 3–4 clear beats, one action per beat, gentle camera moves and grounded motion. No age or style morph. Gentle original music and appropriate foley; no invented spoken dialogue. Do not copy the photo background.";
 }
+
 export const CARTOON_VIDEO_SETTINGS = { ratio: "9:16", resolution: "720p", duration: 30, audio: true } as const;
+/** The film's settings; a redrawn photograph keeps its own shape, a new character's story is vertical. */
+export const cartoonVideoSettings = (input: CartoonInput) => ({ ...CARTOON_VIDEO_SETTINGS, ...(input.mode === "scene" ? { ratio: input.aspect === "1:1" ? "1:1" : input.aspect === "16:9" || input.aspect === "3:2" ? "16:9" : "9:16" } : {}) });
 
