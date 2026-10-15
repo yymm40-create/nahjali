@@ -33,8 +33,8 @@ async function bitmapTo(bm: ImageBitmap, type: "image/png" | "image/jpeg", maxSi
 }
 
 /** Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. */
-export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void }): Promise<DrawResult> {
-  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, ...body }, o.signal);
+export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" }): Promise<DrawResult> {
+  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, from: o.from ?? "studio", ...body }, o.signal);
   let coins = 0;
   o.onStep({ text: "🧑‍💻 Claude Code يكتب برنامج الصورة…" });
   type Wrote = { code: string; problems: string[]; fonts: { head: string; body: string }; size: [number, number]; notes: string; coins: number };
@@ -80,6 +80,18 @@ export async function drawWithCode(o: { prompt: string; aspect: string; style: s
     return { ...best!, coins };
   } finally {
     host.destroy();
+  }
+}
+
+/** A reference picture made small for Claude's eyes (long side 768, JPEG base64), or null when it can't be read. */
+export async function smallJpeg(url: string): Promise<string | null> {
+  try {
+    const bm = await createImageBitmap(await (await fetch(url)).blob());
+    const out = await bitmapTo(bm, "image/jpeg", 768, 0.82);
+    bm.close();
+    return out;
+  } catch {
+    return null;
   }
 }
 

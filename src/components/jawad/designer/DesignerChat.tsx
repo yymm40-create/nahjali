@@ -19,6 +19,7 @@ import { answerLine, DELEGATE_LINE } from "@/lib/content/marks";
 import { DESIGN_KINDS, DESIGN_SOURCES } from "@config/designer";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 import { loadFont, renderDesign, type DesignView, type FontDef } from "./LayerEditor";
+import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface Question { label: string; kind: "choice" | "source" | "directions" | "fonts"; options: string[]; multi: boolean }
@@ -147,6 +148,10 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"" | "writing" | "drawing" | "splitting">("");
+  // «Claude Code» drawing the design here: what it is doing now (null when GPT Image 2 draws it)
+  const [codeStep, setCodeStep] = useState<string | null>(null);
+  // the person's Claude model, for «Claude Code» (read inside the produce step, which never changes)
+  const claudeId = useRef("");
   const [saving, setSaving] = useState(false);
   const [side, setSide] = useState(false);
   const [pending, setPending] = useState<FileView[]>([]);
@@ -192,13 +197,22 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   /** The produce step: جواد draws the artwork (one call, about a minute), then the editor opens. */
   const runProduce = useCallback(async (id: string, retry = false) => {
     setBusy("drawing");
+    setCodeStep(null);
     try {
-      const r = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
-      putDesign(() => r.design);
+      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[] } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
+      if (r.code) {
+        // «Claude Code»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork
+        const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
+        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, model: claudeId.current, from: "designer", onStep: (s) => setCodeStep(s.text) });
+        setCodeStep("أحفظ التصميم…");
+        const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
+        putDesign(() => saved.design);
+      } else if (r.design) putDesign(() => r.design!);
     } catch (e) {
       putDesign((old) => (old ? { ...old, state: "failed", error: e instanceof Error ? e.message : "تعذّر الرسم." } : old));
     } finally {
       setBusy("");
+      setCodeStep(null);
     }
   }, []);
 
@@ -271,6 +285,9 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   }
 
   const [claude] = useClaudeModel();
+  useEffect(() => {
+    claudeId.current = claude.id;
+  }, [claude.id]);
 
   async function send(text = q) {
     const message = text.trim();
@@ -403,8 +420,8 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                         <div className="dz-progress" role="status" aria-live="polite">
                           <span className="dz-spin" aria-hidden />
                           <div>
-                            <b>{busy === "splitting" ? "نفكّك الصورة إلى طبقات…" : "جواد يرسم الصورة بـ GPT Image 2…"}</b>
-                            <small>{busy === "splitting" ? "نقصّ العنصر الرئيسي بخلفية شفافة ونضعه فوق الصورة الأصلية (نحو نصف دقيقة)." : "صورة بلا كتابة، تأخذ نحو دقيقة، ثم يفتح محرر الطبقات. لا تقفل الصفحة."}</small>
+                            <b>{busy === "splitting" ? "نفكّك الصورة إلى طبقات…" : codeStep ? `🧑‍💻 Claude Code: ${codeStep}` : "جواد يرسم الصورة بـ GPT Image 2…"}</b>
+                            <small>{busy === "splitting" ? "نقصّ العنصر الرئيسي بخلفية شفافة ونضعه فوق الصورة الأصلية (نحو نصف دقيقة)." : codeStep ? "Claude يكتب برنامج التصميم ويرسمه هنا ويشوفه ويعيد كتابته لين ينجح (دقايق). لا تقفل الصفحة." : "صورة بلا كتابة، تأخذ نحو دقيقة، ثم يفتح محرر الطبقات. لا تقفل الصفحة."}</small>
                           </div>
                         </div>
                       )}

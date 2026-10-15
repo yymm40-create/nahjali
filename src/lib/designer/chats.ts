@@ -51,6 +51,8 @@ export interface PendingDesign {
   layers: Layer[];
   /** the artwork to keep when `artwork` is empty (a designer_files row) */
   keep: string | null;
+  /** who draws it: GPT Image 2 through جواد (default), or «Claude Code» in the person's browser */
+  maker?: "gpt" | "code";
 }
 
 export interface Chat {
@@ -131,6 +133,7 @@ export function readPending(v: unknown): PendingDesign | null {
     refs: (Array.isArray(p.refs) ? p.refs : []).filter((r): r is string => typeof r === "string").slice(0, 6),
     layers: readLayers(p.layers),
     keep,
+    ...(p.maker === "code" ? { maker: "code" as const } : {}),
   };
 }
 

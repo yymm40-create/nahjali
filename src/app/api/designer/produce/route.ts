@@ -3,7 +3,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireDesignerUser } from "@/lib/designer/access";
 import { getChat } from "@/lib/designer/chats";
 import { fileLinks } from "@/lib/designer/files";
-import { produce, retry } from "@/lib/designer/produce";
+import { codeBrief, produce, produceFromCode, retry, type Produced } from "@/lib/designer/produce";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
  */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireDesignerUser();
-  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { chatId?: unknown; retry?: unknown; png?: unknown; rounds?: unknown; scores?: unknown };
   const chatId = typeof b.chatId === "string" && UUID.test(b.chatId) ? b.chatId : null;
   if (!chatId) throw new UserError("محادثة غير صحيحة.", 400);
   try {
@@ -26,7 +26,14 @@ export const POST = handle(async (req: Request) => {
       if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
       await retry(user.id, chat);
     }
-    const r = await produce(user.id, chatId, { owner: isAdmin(user.email), email: user.email, origin: new URL(req.url).origin });
+    // «Claude Code»: the page draws the design itself — first it gets the brief, then it sends the picture back
+    let r: Produced;
+    if (typeof b.png === "string") r = await produceFromCode(user.id, chatId, b);
+    else {
+      const brief = await codeBrief(user.id, chatId);
+      if (brief) return NextResponse.json({ code: brief });
+      r = await produce(user.id, chatId, { owner: isAdmin(user.email), email: user.email, origin: new URL(req.url).origin });
+    }
     const links = await fileLinks(user.id, chatId);
     return NextResponse.json({
       ...r,

@@ -60,6 +60,13 @@ export interface Base {
   crop: Rect;
 }
 
+/** «Claude Code»'s colour on the base: the grade program sampled into a 3D LUT (size³ × 3 bytes, red fastest, base64). */
+export interface PhotoLut {
+  name: string;
+  size: number;
+  data: string;
+}
+
 export interface PhotoDoc {
   v: 1;
   width: number;
@@ -69,7 +76,20 @@ export interface PhotoDoc {
   base: Base | null;
   filter: { id: string; strength: number };
   adjust: Adjust;
+  /** applied to the base after the sliders and the look */
+  lut?: PhotoLut | null;
   layers: PhotoLayer[];
+}
+
+/** A LUT as kept: an edge of 2–33 and exactly size³ × 3 bytes of base64, else nothing. */
+export function readPhotoLut(v: unknown): PhotoLut | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const size = Math.round(Number(o.size));
+  if (!(size >= 2 && size <= 33) || typeof o.data !== "string" || !/^[A-Za-z0-9+/]+=*$/.test(o.data)) return null;
+  const bytes = Math.floor((o.data.length * 3) / 4) - (o.data.endsWith("==") ? 2 : o.data.endsWith("=") ? 1 : 0);
+  if (bytes !== size * size * size * 3) return null;
+  return { name: typeof o.name === "string" ? o.name.slice(0, 60) : "Claude Code", size, data: o.data };
 }
 
 const FULL: Rect = { x: 0, y: 0, w: 1, h: 1 };
@@ -169,6 +189,7 @@ export function readDoc(v: unknown): PhotoDoc {
     base: readBase(o.base),
     filter: { id: isFilterId(f.id) ? f.id : "none", strength: Math.round(clamp(f.strength, 0, 100, 100)) },
     adjust: readAdjust(o.adjust),
+    ...(readPhotoLut(o.lut) ? { lut: readPhotoLut(o.lut) } : {}),
     layers,
   };
 }
@@ -244,7 +265,7 @@ export interface OpsResult {
 
 const OPS = [
   "adjust", "adjust_reset", "filter", "crop", "crop_ratio", "canvas", "rotate", "flip", "straighten", "bg", "add_text", "add_shape", "update",
-  "move", "delete", "duplicate", "order", "align", "add_image", "use_as_base",
+  "move", "delete", "duplicate", "order", "align", "add_image", "use_as_base", "lut",
 ] as const;
 export const isOpName = (v: unknown): boolean => typeof v === "string" && (OPS as readonly string[]).includes(v);
 
@@ -410,6 +431,19 @@ export function applyOp(doc: PhotoDoc, op: Op, ctx: OpContext = {}): { doc: Phot
       const d = copy(doc);
       d.adjust = { ...NO_ADJUST };
       d.filter = { id: "none", strength: 100 };
+      d.lut = null;
+      return { doc: d };
+    }
+    case "lut": {
+      // «Claude Code»'s colour: set by the page from the program, or taken off ({"op":"lut","clear":true})
+      const d = copy(doc);
+      if (op.clear === true) {
+        d.lut = null;
+        return { doc: d };
+      }
+      const l = readPhotoLut(op);
+      if (!l) return { error: "ألوان Claude Code غير صالحة." };
+      d.lut = l;
       return { doc: d };
     }
     case "filter": {
@@ -595,6 +629,7 @@ export function describeDoc(doc: PhotoDoc, files: { id: string; name: string; w:
   } else lines.push("الصورة الأساسية: لا شيء (لوحة بلون)");
   const adj = ADJUSTS.filter((a) => doc.adjust[a.key] !== 0).map((a) => `${a.key}=${doc.adjust[a.key]}`);
   lines.push(`الشرائح: ${adj.length ? adj.join("، ") : "كلها صفر"}؛ الفلتر: ${doc.filter.id}${doc.filter.id !== "none" ? ` بقوة ${doc.filter.strength}` : ""} (${FILTERS.find((f) => f.id === doc.filter.id)?.name ?? ""})`);
+  if (doc.lut) lines.push(`ألوان «Claude Code» مطبّقة على الصورة الأساسية فوق الشرائح (LUT ${doc.lut.size}³). تشيلها بـ {"op":"lut","clear":true}.`);
   lines.push(doc.layers.length ? "الطبقات من الأسفل إلى الأعلى:" : "الطبقات: لا شيء");
   for (const l of doc.layers) {
     if (l.kind === "text") lines.push(`- ${l.id} نص «${l.text.replace(/\n/g, " / ").slice(0, 120)}» خط ${l.font} حجم ${round(l.size, 10)}% لون ${l.color} عند (${round(l.x, 10)}, ${round(l.y, 10)}) عرض ${round(l.w, 10)}% محاذاة ${l.align} تأثير ${l.effect}${l.effect !== "none" ? ` ${l.effectColor}` : ""} وزن ${l.weight} دوران ${l.rotate} شفافية ${l.opacity}`);

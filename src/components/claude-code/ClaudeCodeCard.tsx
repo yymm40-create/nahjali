@@ -8,25 +8,9 @@ import { useRef, useState } from "react";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import Icon from "@/components/jawad/Icon";
 import { PICTURE_RUBRIC } from "@/lib/claude-code/picture-rubric";
-import { drawWithCode, savePicture, type DrawStep } from "./draw";
+import { drawWithCode, savePicture, smallJpeg, type DrawStep } from "./draw";
 
 const uid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().replace(/-/g, "") : `${Date.now()}${Math.random().toString(36).slice(2)}`);
-
-/** A reference picture made small for Claude's eyes (long side 768, JPEG). */
-async function small(url: string): Promise<string | null> {
-  try {
-    const bm = await createImageBitmap(await (await fetch(url)).blob());
-    const k = Math.min(1, 768 / Math.max(bm.width, bm.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(bm.width * k);
-    c.height = Math.round(bm.height * k);
-    c.getContext("2d")!.drawImage(bm, 0, 0, c.width, c.height);
-    bm.close();
-    return c.toDataURL("image/jpeg", 0.82).split(",")[1];
-  } catch {
-    return null;
-  }
-}
 
 export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, refUrls, sectionId, disabledReason, onSaved }: {
   prompt: string;
@@ -55,7 +39,7 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
     abort.current = new AbortController();
     const key = uid();
     try {
-      const references = (await Promise.all(refUrls.slice(0, 4).map(small))).filter((x): x is string => !!x);
+      const references = (await Promise.all(refUrls.slice(0, 4).map(smallJpeg))).filter((x): x is string => !!x);
       const r = await drawWithCode({ prompt, aspect, style: styleText, references, model: claude.id, signal: abort.current.signal, onStep: setStep });
       setStep({ text: "أحفظ الصورة في أعمالك…", preview: step?.preview });
       const saved = await savePicture<{ job: J }>({ idempotencyKey: key, png: r.png, prompt, aspect, sectionId, styleId, model: claude.id, rounds: r.rounds, scores: r.scores });

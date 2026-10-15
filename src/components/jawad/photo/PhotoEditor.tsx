@@ -12,6 +12,10 @@ import { LAYER_EFFECTS } from "@config/designer";
 import { applyOp, docChanges, readDoc, type Op, type PhotoDoc, type PhotoLayer, type ShapeLayer, type TextLayer } from "@/lib/photo/doc";
 import { postJson } from "@/lib/fetch";
 import { loadFont, type FontDef } from "@/components/jawad/designer/LayerEditor";
+import { ProgramError, runGrade, toBase64 } from "@/components/claude-code/compute-host";
+import { GRADE_LUT_SIZE } from "@/lib/claude-code/compute";
+import { CODE_FIXES, CODE_ROUNDS, GRADE_RUBRIC } from "@/lib/claude-code/skill";
+import { applyLut } from "@/lib/photo/pixels";
 import { ensureFonts, exportBlob, loadImageUrl, renderPhoto, type Box } from "./render";
 
 interface FileView {
@@ -458,6 +462,64 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     }
   }, [fonts, images]);
 
+  /** «Claude Code» colour: زهراء writes the grade as a program, it is sampled into a LUT here, she looks at the picture
+   * before and after, rewrites it while it is below the bar, and the LUT is laid on the base (one undo). */
+  async function runCodeGrade(look: string) {
+    const d0 = docRef.current;
+    if (!d0?.base) return;
+    const api = <T,>(body: Record<string, unknown>) => postJson<T>("/api/photo/code", { request: look, ...body });
+    try {
+      setBusy("🧑‍💻 Claude Code يكتب برنامج التلوين…");
+      await ensureFonts(d0, fonts);
+      // the base as it looks now without any earlier Claude Code colour: what the program grades
+      const c0 = document.createElement("canvas");
+      renderPhoto(c0, { ...d0, lut: null }, { scale: Math.min(1, PHOTO.previewSide / Math.max(d0.width, d0.height)), images, fonts, baseOnly: true });
+      const before = c0.toDataURL("image/jpeg", 0.82).split(",")[1];
+      const px = c0.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, c0.width, c0.height);
+      let w = await api<{ code: string; problems: string[] }>({ action: "write", before });
+      let code = w.code;
+      let problems = w.problems;
+      let last: { lut: Uint8Array; verdict: string; scores: Record<string, number>; pass: boolean } | null = null;
+      for (let round = 1; round <= CODE_ROUNDS; round++) {
+        let lut: Uint8Array | null = null;
+        for (let fix = 0; ; fix++) {
+          try {
+            if (problems.length) throw new ProgramError(problems.join("; "));
+            setBusy(`أشغّل برنامج التلوين${round > 1 ? ` (جولة ${round})` : ""}…`);
+            lut = await runGrade(code, GRADE_LUT_SIZE);
+            break;
+          } catch (e) {
+            if (!(e instanceof ProgramError) || fix >= CODE_FIXES) throw e instanceof ProgramError ? new Error(`برنامج التلوين ما اشتغل: ${e.message}`) : e;
+            setBusy("البرنامج طلع فيه خطأ — زهراء تصلّحه…");
+            w = await api<{ code: string; problems: string[] }>({ action: "write", before, code, errors: `${e.message}\n${e.stack2}` });
+            code = w.code;
+            problems = w.problems;
+          }
+        }
+        const graded = new ImageData(new Uint8ClampedArray(px.data), px.width, px.height);
+        applyLut(graded.data, GRADE_LUT_SIZE, lut);
+        const c1 = document.createElement("canvas");
+        c1.width = px.width;
+        c1.height = px.height;
+        c1.getContext("2d")!.putImageData(graded, 0, 0);
+        const after = c1.toDataURL("image/jpeg", 0.82).split(",")[1];
+        setBusy(`زهراء تشوف النتيجة وتقيّمها (جولة ${round} من ${CODE_ROUNDS})…`);
+        const r = await api<{ review: { scores: Record<string, number>; pass: boolean; verdict: string }; code: string; problems: string[] }>({ action: "review", before, after, code, round });
+        last = { lut, verdict: r.review.verdict, scores: r.review.scores, pass: r.review.pass };
+        if (r.review.pass || !r.code) break;
+        code = r.code;
+        problems = r.problems;
+      }
+      if (!last) return;
+      op({ op: "lut", name: "Claude Code", size: GRADE_LUT_SIZE, data: toBase64(last.lut) } as Op);
+      setMessages((m) => [...m, { role: "assistant", text: `${last!.pass ? "✅" : "⚠️"} ${last!.verdict}\n🧑‍💻 Claude Code · ${GRADE_RUBRIC.map((x) => `${x.ar} ${last!.scores[x.id] ?? "—"}`).join(" · ")}` }]);
+    } catch (e) {
+      setMessages((m) => [...m, { role: "assistant", text: (e as Error).message, error: true }]);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function send(text: string) {
     const message = text.trim();
     if (!message || typing || !docRef.current) return;
@@ -466,7 +528,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     setTyping(true);
     try {
       const preview = await previewB64();
-      const r = await postJson<{ reply: string; doc: PhotoDoc; changes: string[]; suggestions: string[]; jawad: Ask | null; returnTo: boolean }>("/api/photo/chat", { projectId, message, doc: docRef.current, preview });
+      const r = await postJson<{ reply: string; doc: PhotoDoc; changes: string[]; suggestions: string[]; jawad: Ask | null; code: { prompt: string } | null; returnTo: boolean }>("/api/photo/chat", { projectId, message, doc: docRef.current, preview });
       const before = docRef.current;
       const next = readDoc(r.doc);
       if (docChanges(before, next).length) {
@@ -480,6 +542,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
       if (r.returnTo) setAskReturn(true);
       setTyping(false);
       if (r.jawad) await runMake(r.jawad);
+      if (r.code) await runCodeGrade(r.code.prompt);
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", text: (e as Error).message, error: true }]);
     } finally {

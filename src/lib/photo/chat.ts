@@ -37,6 +37,13 @@ export const ANSWER_SCHEMA = {
       },
     },
     return_to: { type: "string", enum: ["", "designer"], description: "designer فقط إذا طلب العميل صراحة إرجاع التصميم لكاظم." },
+    claude_code: {
+      type: "object",
+      additionalProperties: false,
+      required: ["on", "prompt"],
+      description: "«Claude Code» للألوان: on=true حين يطلب العميل لوكًا أو تلوينًا أو تصحيح ألوان للصورة (سينمائي، دافئ، فيلم قديم، ألوان مرجع…) — بدل شرائح الألوان تكتب له اللوك بالكلمات، وهو يكتب برنامج التلوين ويطبّقه بعد ما يشوفه ويقيّمه. on=false غير ذلك.",
+      properties: { on: { type: "boolean" }, prompt: { type: "string", description: "اللوك المطلوب بالكلمات (المزاج، المرجع، وما يُحمى كالبشرة)" } },
+    },
   },
 } as const;
 
@@ -47,6 +54,7 @@ interface Answer {
   record: string;
   jawad: { on: boolean; kind: string; prompt: string; aspect: string; target: string; source: string };
   return_to: string;
+  claude_code?: { on: boolean; prompt: string };
 }
 
 /** What جواد is asked, after the checks. */
@@ -64,6 +72,8 @@ export interface Said {
   changes: string[];
   suggestions: string[];
   jawad: JawadAsk | null;
+  /** «Claude Code»: the look to grade the base picture to, by program (the page runs it) */
+  code: { prompt: string } | null;
   returnTo: boolean;
   usd: number;
   /** the command that stopped the rest, if any */
@@ -140,5 +150,6 @@ export async function say(userId: string, email: string | null, p: { projectId: 
   const suggestions = (Array.isArray(a.suggestions) ? a.suggestions : []).map((s) => String(s).trim().slice(0, 100)).filter(Boolean).slice(0, 4);
   const messages: PhotoTurn[] = [...project.messages, { role: "user" as const, text: message }, { role: "assistant" as const, text: reply, ...(suggestions.length ? { suggestions } : {}) }].slice(-200);
   await saveProject(userId, project.id, { doc: res.doc, messages, ...(a.record?.trim() ? { record: a.record.trim() } : {}), addUsd: usd });
-  return { reply, doc: res.doc, changes: docChanges(before, res.doc), suggestions, jawad, returnTo, usd: Math.round(usd * 10000) / 10000, stopped };
+  const code = a.claude_code?.on && String(a.claude_code.prompt ?? "").trim() && res.doc.base ? { prompt: String(a.claude_code.prompt).trim().slice(0, 2000) } : null;
+  return { reply, doc: res.doc, changes: docChanges(before, res.doc), suggestions, jawad, code, returnTo, usd: Math.round(usd * 10000) / 10000, stopped };
 }
