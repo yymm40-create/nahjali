@@ -32,7 +32,7 @@ html:has(.jw) body {
   --jw-gold: #e9b546;
   --jw-radius: 14px;
   --jw-header-h: 56px;
-  --jw-bar-h: 0px;
+  --jw-bar-h: 48px;
   --jw-font: var(--font-readex), system-ui, sans-serif;
 
   /* Components shared with the main site (sign-in, username, the film maker) read these: same widgets, JAWAD's look */
@@ -66,6 +66,52 @@ html:has(.jw) body {
   color-scheme: dark;
   -webkit-tap-highlight-color: transparent;
 }
+
+.jw-path-rail {
+  height: var(--jw-bar-h);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--jw-line);
+  background: color-mix(in srgb, var(--jw-bg) 94%, var(--jw-accent) 6%);
+  scrollbar-width: none;
+}
+.jw-path-rail::-webkit-scrollbar { display: none; }
+.jw-path-rail-inner { display: flex; width: max-content; min-width: 100%; height: 100%; align-items: center; gap: 7px; padding: 6px max(12px, calc((100vw - 1600px) / 2)); }
+.jw-path-item { display: inline-flex; height: 36px; flex: none; align-items: center; gap: 7px; border: 1px solid var(--jw-line); border-radius: 12px; padding: 0 12px; color: var(--jw-muted); background: rgba(255,255,255,.025); font-size: 12px; font-weight: 650; text-decoration: none; transition: .16s ease; }
+.jw-path-item:hover { color: var(--jw-ink); border-color: var(--jw-line-strong); transform: translateY(-1px); }
+.jw-path-item[aria-current="page"] { color: #fff; border-color: var(--jw-accent-line); background: linear-gradient(135deg, var(--jw-accent-soft), rgba(255,255,255,.06)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--jw-accent) 18%, transparent); }
+.jw-path-icon { display: grid; place-items: center; color: color-mix(in srgb, var(--jw-accent) 75%, white); }
+
+.site-menu-view button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; color: var(--jw-muted); font-size: 12px; font-weight: 700; }
+.site-menu-view button.is-active { color: #fff; background: var(--jw-accent-soft); box-shadow: inset 0 0 0 1px var(--jw-accent-line); }
+.site-menu-items { display: grid; gap: 6px; }
+.site-menu-drawer.is-cards .site-menu-items { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.site-menu-drawer.is-cards .site-menu-link { min-height: 86px; align-content: center; border: 1px solid var(--jw-line); background: linear-gradient(145deg, rgba(255,255,255,.045), rgba(255,255,255,.015)); padding: 14px; }
+.site-menu-drawer.is-cards .site-menu-link:hover { border-color: var(--jw-accent-line); background: var(--jw-accent-soft); transform: translateY(-2px); }
+.site-menu-drawer.is-cards .site-menu-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 11px; color: #fff; background: color-mix(in srgb, var(--jw-accent) 24%, transparent); }
+.site-menu-drawer.is-cards .site-menu-personal { grid-template-columns: repeat(4, minmax(0,1fr)); }
+@media (max-width: 520px) {
+  .site-menu-drawer.is-cards .site-menu-items { grid-template-columns: 1fr 1fr; }
+  .site-menu-drawer.is-cards .site-menu-personal { grid-template-columns: 1fr 1fr; }
+  .site-menu-drawer.is-cards .site-menu-link { min-height: 78px; padding: 11px; font-size: 12px; }
+}
+
+.jw-admin-nav { display: grid; gap: 10px; }
+.jw-admin-rail { display: flex; gap: 7px; overflow-x: auto; padding: 2px 1px 7px; scrollbar-width: thin; }
+.jw-admin-rail a { display: inline-flex; min-height: 38px; flex: none; align-items: center; gap: 7px; border: 1px solid var(--jw-line); border-radius: 11px; padding: 0 12px; color: var(--jw-muted); background: var(--jw-surface); font-size: 12px; text-decoration: none; }
+.jw-admin-rail a[aria-current="page"] { color: #fff; border-color: var(--jw-accent-line); background: var(--jw-accent-soft); }
+.jw-admin-menu-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--jw-line-strong); border-radius: 15px; padding: 11px 14px; color: var(--jw-ink); background: linear-gradient(135deg, var(--jw-surface-2), color-mix(in srgb, var(--jw-accent) 8%, var(--jw-surface))); text-align: start; }
+.jw-admin-menu-toggle span:first-child { display: grid; gap: 1px; }
+.jw-admin-menu-toggle small { color: var(--jw-muted); font-size: 11px; }
+.jw-admin-groups { display: grid; gap: 12px; border: 1px solid var(--jw-line); border-radius: 20px; padding: 12px; background: rgba(8,9,12,.94); box-shadow: 0 24px 70px -42px #000; }
+@media (min-width: 900px) { .jw-admin-groups { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.jw-admin-groups section { border: 1px solid var(--jw-line); border-radius: 16px; padding: 10px; background: var(--jw-surface); }
+.jw-admin-groups h2 { display: flex; align-items: center; gap: 7px; margin: 2px 4px 8px; color: var(--jw-muted); font-size: 12px; font-weight: 700; }
+.jw-admin-groups section > div { display: grid; gap: 6px; }
+.jw-admin-groups a { display: flex; min-height: 46px; align-items: center; gap: 9px; border-radius: 11px; padding: 7px 10px; color: var(--jw-muted); background: var(--jw-surface-2); font-size: 12px; text-decoration: none; }
+.jw-admin-groups a b { flex: 1; color: inherit; }
+.jw-admin-groups a em { color: var(--jw-faint); font-style: normal; }
+.jw-admin-groups a:hover, .jw-admin-groups a[aria-current="page"] { color: #fff; background: var(--jw-accent-soft); box-shadow: inset 0 0 0 1px var(--jw-accent-line); }
 
 /* The main site's .card/.btn/.display, as they appear inside JAWAD AI (film maker, sign-in) */
 .jw .card {

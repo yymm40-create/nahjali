@@ -30,9 +30,15 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  const [view, setView] = useState<"cards" | "list">("cards");
   const activeId = sections.find((s) => pathname === s.path || pathname.startsWith(`${s.path}/`))?.id;
   useEffect(() => {
-    queueMicrotask(() => setReady(true));
+    queueMicrotask(() => {
+      try {
+        if (localStorage.getItem("jw-menu-view") === "list") setView("list");
+      } catch {}
+      setReady(true);
+    });
   }, []);
   useEffect(() => {
     if (!open) return;
@@ -43,7 +49,7 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
 
   const drawer = (
     <div className="site-menu-backdrop fixed inset-0 z-[90] flex" dir="rtl" role="dialog" aria-label="قائمة الموقع" onClick={() => setOpen(false)}>
-      <nav className="site-menu-drawer jw-panel flex h-full w-[min(330px,88vw)] flex-col overflow-y-auto rounded-none border-s border-jw-line p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <nav className={`site-menu-drawer jw-panel flex h-full flex-col overflow-y-auto rounded-none border-s border-jw-line p-4 shadow-2xl ${view === "cards" ? "is-cards w-[min(680px,94vw)]" : "w-[min(350px,90vw)]"}`} onClick={(e) => e.stopPropagation()}>
         <span className="site-menu-orbit" aria-hidden><i /><i /><i /></span>
         <div className="site-menu-heading mb-4 flex items-center justify-between rounded-2xl p-4">
           <div className="flex items-center gap-3">
@@ -54,8 +60,15 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
             <Icon name="x" size={16} />
           </button>
         </div>
+        <div className="site-menu-view mb-4 grid grid-cols-2 rounded-xl border border-jw-line bg-jw-bg/60 p-1" aria-label="طريقة عرض القائمة">
+          {([['cards', 'بطاقات كبيرة', 'grid'], ['list', 'قائمة جانبية', 'menu']] as const).map(([id, label, icon]) => (
+            <button key={id} type="button" className={view === id ? "is-active" : ""} aria-pressed={view === id} onClick={() => { setView(id); try { localStorage.setItem("jw-menu-view", id); } catch {} }}>
+              <Icon name={icon} size={16} /> {label}
+            </button>
+          ))}
+        </div>
         <p className="site-menu-label mb-2 px-3 text-[11px] font-bold">منصات وأدوات الذكاء الاصطناعي</p>
-        <ul className="space-y-1">
+        <ul className="site-menu-items">
           {sections.map((s) => {
             const active = s.id === activeId;
             return (
@@ -72,7 +85,7 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
         </ul>
         {siteSections.length > 0 && <>
           <p className="mb-2 mt-5 px-3 text-[11px] font-bold text-jw-faint">مواقع نهج علي</p>
-          <ul className="space-y-1">
+          <ul className="site-menu-items">
             {siteSections.map((section) => {
               const active = pathname === section.path || pathname.startsWith(`${section.path}/`);
               return <li key={section.id}><Link href={section.path} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined} className={`site-menu-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-jw-accent/15 font-bold text-jw-ink" : "text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink"}`}><span className="site-menu-icon text-base" aria-hidden>{section.icon}</span><span className="flex-1">{section.name}</span><Icon name="chevronLeft" size={14} className="site-menu-arrow" /></Link></li>;
@@ -80,7 +93,7 @@ export default function SectionsBar({ sections, siteSections = [] }: { sections:
           </ul>
         </>}
         <hr className="my-3 border-jw-line" />
-        <ul className="space-y-1">
+        <ul className="site-menu-items site-menu-personal">
           {MORE.map((m) => (
             <li key={m.href}>
               <Link href={m.href} onClick={() => setOpen(false)} className="site-menu-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink">

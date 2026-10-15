@@ -1,6 +1,6 @@
 /* «الجواد الذكي» — the home of a signed-in person, in the front page's colours (landing.css): a hero that asks what to make,
    the latest works, every section as a bright card, the packages, and the ads. */
-.hm { min-height: calc(100dvh - var(--jw-header-h, 56px)); }
+.hm { min-height: calc(100dvh - var(--jw-header-h, 56px) - var(--jw-bar-h, 0px)); }
 .hm-hero { padding: 30px 0 30px; text-align: start; }
 .hm-hero .ld-in { display: grid; gap: 14px; justify-items: stretch; max-width: 900px; }
 .hm-hi { justify-self: start; }
@@ -57,6 +57,7 @@
 .hm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .hm-head h2 { font-size: clamp(20px, 5vw, 26px); font-weight: 800; }
 .hm-head a { color: var(--ld-gold); font-size: 13.5px; font-weight: 700; text-decoration: none; }
+.hm-head p { margin-top: 3px; color: var(--ld-mute); font-size: 13px; }
 
 /* the latest works: a strip that scrolls sideways */
 .hm-works { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
@@ -74,6 +75,18 @@
 @media (min-width: 1100px) { .hm .ld-tools { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .hm .ld-tool { padding: 18px 16px; }
 .hm .ld-ticon { width: 52px; height: 52px; font-size: 28px; }
+
+.hm-branches { padding-top: 8px; }
+.hm-branch-grid { display: grid; gap: 14px; }
+@media (min-width: 760px) { .hm-branch-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.hm-branch-card { position: relative; display: flex; min-height: 126px; align-items: center; gap: 16px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--t) 48%, transparent); border-radius: 26px; padding: 20px; color: #fff; text-decoration: none; background: radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--t) 30%, transparent), transparent 42%), linear-gradient(135deg, #171126, #0d1420); box-shadow: 0 20px 45px -30px color-mix(in srgb, var(--t) 70%, transparent); transition: .18s ease; }
+.hm-branch-card::after { content: ""; position: absolute; width: 130px; height: 130px; inset-inline-end: -55px; bottom: -65px; border: 24px solid color-mix(in srgb, var(--t) 14%, transparent); border-radius: 50%; }
+.hm-branch-card:hover { transform: translateY(-4px); border-color: var(--t); }
+.hm-branch-icon { display: grid; width: 64px; height: 64px; flex: none; place-items: center; border-radius: 20px; background: color-mix(in srgb, var(--t) 22%, rgba(255,255,255,.05)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t) 46%, transparent); font-size: 34px; }
+.hm-branch-copy { display: grid; gap: 5px; flex: 1; }
+.hm-branch-copy b { font-size: clamp(18px, 4vw, 24px); }
+.hm-branch-copy small { max-width: 46ch; color: #c9c4d4; font-size: 13px; line-height: 1.65; }
+.hm-branch-card em { position: relative; z-index: 1; display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--t) 28%, #111); font-size: 20px; font-style: normal; }
 
 /* the packages: one line that leads to them */
 .hm-packs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 20px; border-radius: 24px; background: linear-gradient(120deg, rgba(124, 58, 237, 0.45), rgba(236, 72, 153, 0.35), rgba(255, 138, 31, 0.3)); border: 1px solid rgba(255, 255, 255, 0.16); }

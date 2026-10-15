@@ -14,6 +14,7 @@ import { JAWAD } from "@config/jawad/brand";
 import { COURSE } from "@config/course";
 import { LEARN } from "@config/learn";
 import { unifiedStudioNavigation } from "@config/jawad/sections";
+import { SECTIONS } from "@config/sections";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +89,10 @@ export default async function JawadHome() {
         // the branches outside the registry: the course and the lessons of those who bought it
         { href: COURSE.base, name: COURSE.name, icon: "🎓", line: "تعلّم تصنع بالذكاء الاصطناعي خطوة بخطوة.", tint: "#fbbf24" },
         { href: LEARN.base, name: "دوراتي", icon: "📺", line: "دروس الدورات اللي اشتركت فيها.", tint: "#60a5fa" },
+      ]}
+      siteTools={[
+        ...SECTIONS.filter((section) => section.key !== "booklet").map((section) => ({ href: section.href, name: section.title, icon: section.icon, line: section.description, tint: "#f2b84b" })),
+        ...(owner ? [{ href: "/jawad-ai/admin", name: "مركز الإدارة", icon: "⚙️", line: "المستخدمون، الأسعار، الفروع، المحتوى، والتشغيل من مكان واحد.", tint: "#38bdf8" }] : []),
       ]}
       recent={recent}
       ads={hasAds ? <AdsGrid ads={ads} emptyHint={owner ? <Link href="/jawad-ai/admin/ads" className="text-xs underline">خانة فارغة: أضف إعلانًا</Link> : null} /> : null}

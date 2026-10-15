@@ -26,6 +26,12 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   // no «X-Powered-By: Next.js»: nothing told about what runs the site
   poweredByHeader: false,
+  async redirects() {
+    return [
+      { source: "/admin", destination: "/jawad-ai/admin", permanent: false },
+      { source: "/admin/:path*", destination: "/jawad-ai/admin/:path*", permanent: false },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },

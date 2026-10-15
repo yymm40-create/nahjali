@@ -24,7 +24,7 @@ async function count(table: string, since?: string) {
 const n = (v: number | null) => (v === null ? "—" : v.toLocaleString("en"));
 
 /** The dashboard's front: the whole site in one glance, each branch's numbers and where to manage it. */
-export default async function AdminHome() {
+export async function SiteAdminOverview({ embedded = false }: { embedded?: boolean } = {}) {
   const me = await requireUser("/admin");
   const now = timeNow();
   const day = new Date(now - DAY).toISOString();
@@ -109,11 +109,13 @@ export default async function AdminHome() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
+      {!embedded && <header className="space-y-1">
         <h1 className="display text-4xl">لوحة التحكم</h1>
         <p className="chip w-fit text-xs">{isCoOwner(me.email) ? "👑 رئيس مشارك: كل الصلاحيات، إلا حساب الرئيس" : "👑 الرئيس"}</p>
         <p className="font-bold text-muted">الجواد الذكي كله في مكان واحد: الأرقام الحية، الفروع، والصلاحيات.</p>
-      </header>
+      </header>}
+
+      {embedded && <p className="chip w-fit text-xs">{isCoOwner(me.email) ? "👑 رئيس مشارك" : "👑 الرئيس"}</p>}
 
       <LaunchSwitch initial={open} />
 
@@ -189,4 +191,8 @@ export default async function AdminHome() {
       </Link>
     </div>
   );
+}
+
+export default async function AdminHome() {
+  return <SiteAdminOverview />;
 }

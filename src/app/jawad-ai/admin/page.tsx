@@ -5,6 +5,7 @@ import { adRows } from "@/lib/jawad/server/ads";
 import { loadRuntime, PROVIDER_KEYS } from "@/lib/jawad/server/runtime";
 import { GENERATORS } from "@config/jawad/generators";
 import { requireJawadOwnerPage } from "@/lib/jawad/server/access";
+import { SiteAdminOverview } from "@/app/admin/page";
 
 function Row({ ok, label, detail }: { ok: boolean | null; label: string; detail: React.ReactNode }) {
   return (
@@ -42,7 +43,10 @@ export default async function JawadAdminHome() {
   const waiting = GENERATORS.flatMap((g) => g.priceKeys.filter((k) => k.defaultCenti == null && rt.prices[g.id]?.[k.key] == null).map((k) => ({ g, k })));
 
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="space-y-6">
+      <SiteAdminOverview embedded />
+      <div className="flex items-center gap-3 pt-2"><span className="h-px flex-1 bg-jw-line" /><h2 className="text-lg font-bold">جاهزية أنظمة الجواد</h2><span className="h-px flex-1 bg-jw-line" /></div>
+      <div className="grid gap-5 lg:grid-cols-2">
       <section className="jw-panel p-4">
         <h2 className="mb-1 font-semibold">الجاهزية</h2>
         <ul>
@@ -100,6 +104,7 @@ export default async function JawadAdminHome() {
           <li><b className="text-jw-ink">مولد جديد:</b> مولد من مزوّد مدعوم بنفس واجهة API يُضاف في <span dir="ltr">config/jawad/generators.ts</span>؛ مزوّد جديد يحتاج برمجة واختبارًا. كتابة اسم مولد هنا لا تجعله يعمل.</li>
         </ol>
       </section>
+      </div>
     </div>
   );
 }

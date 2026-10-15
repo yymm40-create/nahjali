@@ -1,4 +1,3 @@
-import Link from "next/link";
 import AdminNav from "@/components/jawad/admin/AdminNav";
 import { jawadSession, requireJawadOwnerPage } from "@/lib/jawad/server/access";
 
@@ -12,13 +11,14 @@ export const dynamic = "force-dynamic";
 export default async function JawadAdminLayout({ children }: { children: React.ReactNode }) {
   await requireJawadOwnerPage("/jawad-ai/admin");
   return (
-    <div className="mx-auto max-w-6xl space-y-5 px-4 pb-16 pt-5">
+    <div className="jw-admin-shell mx-auto max-w-[1500px] space-y-5 px-4 pb-16 pt-5">
       <header className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-bold">إدارة <span dir="ltr">JAWAD AI</span></h1>
-          <Link href="/admin" className="text-sm font-bold text-jw-muted hover:underline">
-            → لوحة التحكم الكاملة (كل الفروع والصلاحيات)
-          </Link>
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-[.2em] text-jw-accent">Control Center</span>
+            <h1 className="text-2xl font-bold">مركز إدارة الجواد والموقع</h1>
+            <p className="text-sm text-jw-muted">لوحة واحدة لكل الفروع والمستخدمين والأسعار والتشغيل.</p>
+          </div>
         </div>
         <AdminNav />
       </header>

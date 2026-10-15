@@ -16,7 +16,7 @@ export interface RecentWork {
   label: string;
 }
 
-export default function Home({ first, owner, userId, freeImageAvailable, sections, tools, recent, ads }: { first: string; owner: boolean; userId: string; freeImageAvailable: boolean; sections: QuickSection[]; tools: LandingTool[]; recent: RecentWork[]; ads: ReactNode }) {
+export default function Home({ first, owner, userId, freeImageAvailable, sections, tools, siteTools = [], recent, ads }: { first: string; owner: boolean; userId: string; freeImageAvailable: boolean; sections: QuickSection[]; tools: LandingTool[]; siteTools?: LandingTool[]; recent: RecentWork[]; ads: ReactNode }) {
   const works = `/jawad-ai/${sections.find((s) => s.output)?.id ?? "images"}?tab=works`;
   return (
     <div className="ld hm" dir="rtl">
@@ -32,7 +32,7 @@ export default function Home({ first, owner, userId, freeImageAvailable, section
           <nav className="hm-links" aria-label="روابط سريعة">
             <Link href={CREDITS.base} className="hot">💳 اشحن رصيدك</Link>
             <Link href={works}>🗂️ أعمالي</Link>
-            {owner && <Link href="/admin">⚙️ لوحة التحكم</Link>}
+            {owner && <Link href="/jawad-ai/admin">⚙️ مركز الإدارة</Link>}
           </nav>
         </div>
       </header>
@@ -85,6 +85,30 @@ export default function Home({ first, owner, userId, freeImageAvailable, section
           </ul>
         </div>
       </section>
+
+      {siteTools.length > 0 && (
+        <section className="hm-sec hm-branches" aria-labelledby="jw-site-branches">
+          <div className="ld-in">
+            <div className="hm-head">
+              <div>
+                <h2 id="jw-site-branches">فروع الموقع</h2>
+                <p>انتقل مباشرة للفرع الذي تريده.</p>
+              </div>
+            </div>
+            <ul className="hm-branch-grid">
+              {siteTools.map((tool) => (
+                <li key={tool.href}>
+                  <Link href={tool.href} className="hm-branch-card" style={{ ["--t" as string]: tool.tint }}>
+                    <span className="hm-branch-icon" aria-hidden>{tool.icon}</span>
+                    <span className="hm-branch-copy"><b>{tool.name}</b><small>{tool.line}</small></span>
+                    <em aria-hidden>←</em>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       <section className="hm-sec">
         <div className="ld-in">

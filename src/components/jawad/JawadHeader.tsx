@@ -16,6 +16,7 @@ import SectionsBar from "./SectionsBar";
 import Tour from "./tour/Tour";
 import { SECTIONS } from "@config/sections";
 import { unifiedStudioNavigation } from "@config/jawad/sections";
+import JawadPathRail from "./JawadPathRail";
 
 /** JAWAD AI's compact header: the identity (back to JAWAD AI's home), a way back to نهج علي's home, the balance and the account; then the sections bar. */
 /** `preview`: JAWAD AI is still in development for this visitor — identity and account only, no sections or balance. */
@@ -56,6 +57,7 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           </div>
         </div>
       </div>
+      {!preview && <JawadPathRail sections={sections} owner={boss} />}
     </header>
   );
 }
