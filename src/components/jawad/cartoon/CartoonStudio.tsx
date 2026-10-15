@@ -2,15 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CARTOON_STYLES, CARTOON_AGES, CARTOON_MOVES, CARTOON_STORIES, type CartoonInput } from "@config/jawad/cartoon";
-import { fmtSar } from "@config/coins";
+import { CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MOVES, CARTOON_STORIES, type CartoonInput } from "@config/jawad/cartoon";
+import Riyal from "@/components/Riyal";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
 
 type Quote = { imageCoins: number; videoCoins: number; totalCoins: number };
 type Run = { key: string; input: CartoonInput; error?: string; jobs: JobView[] };
-const INITIAL: CartoonInput = { style: "cinematic-3d", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "garden", customStory: "", count: 1, video: false, consent: false };
+const INITIAL: CartoonInput = { style: "cinematic-3d", audience: "family", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "garden", customStory: "", count: 1, video: false, consent: false };
 async function api<T>(body?: unknown): Promise<T> {
   const response = await fetch("/api/jawad/cartoon", body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { cache: "no-store" });
   const data = await response.json();
@@ -79,28 +79,30 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   }
   return <main className="ct-page" dir="rtl">
     <Link href="/jawad-ai/images" className="ct-back">← رجوع للاستوديو الإبداعي</Link>
-    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>١–٣ صور، اختيارات بسيطة، وشخصية كرتونية كاملة تستلهم ملامحك.</p><div className="ct-tags"><span>الصورة بـ ٢ ريال</span><span>GPT Image 2 · قياسي</span><span>فيلم اختياري · ٣٠ ثانية</span></div></header>
+    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>١–٣ صور، اختيارات بسيطة، وشخصية كرتونية كاملة تستلهم ملامحك.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>فيلم اختياري · ٣٠ ثانية</span></div></header>
     <div className="ct-layout"><section className="ct-card">
       <fieldset disabled={!!busy}>
         <h2>١. صور الشخصية</h2><p>شخص واحد، وجه واضح. صورة أمامية تكفي؛ زاويتان إضافيتان تساعدان على توضيح الملامح.</p>
         <label className="ct-upload">＋ أضف صورك <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={uploads.length >= 3 || !!busy} onChange={event => { void add(event.target.files); event.target.value = ""; }} /></label>
         <div className="ct-refs">{uploads.map(upload => <div key={upload.id}>{upload.url && <img src={upload.url} alt="مرجع الشخصية" />}<button type="button" aria-label="حذف المرجع" onClick={() => { setUploads(current => current.filter(item => item.id !== upload.id)); setQuote(null); requestKey.current = null; }}>×</button></div>)}</div>
-        <h2>٢. اختر عالمك</h2><div className="ct-styles">{CARTOON_STYLES.map((style, index) => <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}><span>{["🌟", "🎨", "📖", "⚡", "🧸"][index]}</span>{style.name}{index === 0 && <small>موصى به</small>}</button>)}</div>
+        <h2>٢. لمين الصورة؟</h2><p>يغيّر شكل الشخصية: صورة الطفل تنرسم أبسط وأدفأ وأوضح، وصورة الكبار بنِسب طبيعية وتفاصيل أكثر.</p>
+        <div className="ct-aud">{(Object.entries(CARTOON_AUDIENCES) as [CartoonInput["audience"], string][]).map(([id, label]) => <button type="button" key={id} className={input.audience === id ? "chosen" : ""} aria-pressed={input.audience === id} onClick={() => change({ audience: id })}>{label}</button>)}</div>
+        <h2>٣. اختر عالمك</h2><div className="ct-styles">{CARTOON_STYLES.map(style => <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}><span>{style.icon}</span>{style.name}<small>{style.hint}</small>{style.fits === input.audience && <b>يناسب اختيارك</b>}</button>)}</div>
         <div className="ct-fields">
           <label>العمر بالتحديد (اختياري)<input maxLength={60} value={input.desiredAge} placeholder="مثلًا: ٨ أشهر، ٧ سنوات…" onChange={event => change({ desiredAge: event.target.value })} /></label>
           <label>العمر في الصورة الجديدة<select value={input.age} onChange={event => change({ age: event.target.value as CartoonInput["age"] })}>{Object.entries(CARTOON_AGES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
           <label>الحركة<select value={input.movement} onChange={event => change({ movement: event.target.value as CartoonInput["movement"] })}>{Object.entries(CARTOON_MOVES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
           <label>وش تبيه يلبس؟<input maxLength={400} value={input.outfit} placeholder="بطل فضاء، فستان، ملابسه نفسها…" onChange={event => change({ outfit: event.target.value })} /></label>
           <label>اهتماماته (اختياري)<input maxLength={400} value={input.interests} placeholder="الكواكب، الحيوانات، كرة القدم…" onChange={event => change({ interests: event.target.value })} /></label>
-          <label>عدد الصور<select value={input.count} onChange={event => change({ count: Number(event.target.value) })}>{[1, 2, 3, 4].map(count => <option key={count} value={count}>{count} — {count * 2} ريال</option>)}</select></label>
+          <label>عدد الصور<select value={input.count} onChange={event => change({ count: Number(event.target.value) })}>{[1, 2, 3, 4].map(count => <option key={count} value={count}>{count === 1 ? "صورة واحدة" : count + " صور"}</option>)}</select></label>
         </div>
         <p className="ct-note">تغيير العمر تخيّل فني، وليس استرجاعًا دقيقًا للشكل الحقيقي. التشابه غير مضمون ١٠٠٪.</p>
-        <h2>٣. صورة… أو رحلة فيلم؟</h2><label className="ct-check"><input type="checkbox" checked={input.video} onChange={event => change({ video: event.target.checked })} /> أضف فيلمًا بالشخصية نفسها — Seedance 2.5 · 720p · ٣٠ ثانية</label>
+        <h2>٤. صورة… أو رحلة فيلم؟</h2><label className="ct-check"><input type="checkbox" checked={input.video} onChange={event => change({ video: event.target.checked })} /> أضف فيلمًا بالشخصية نفسها — Seedance 2.5 · 720p · ٣٠ ثانية</label>
         {input.video && <div className="ct-story"><label>القصة<select value={input.story} onChange={event => change({ story: event.target.value as CartoonInput["story"] })}>{Object.entries(CARTOON_STORIES).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>{input.story === "custom" && <label>قصتك<textarea value={input.customStory} maxLength={3000} rows={5} placeholder="اكتب قصة قصيرة واضحة تناسب ٣٠ ثانية…" onChange={event => change({ customStory: event.target.value })} /></label>}<p>نجهّز الشخصية أولًا ثم نحركها تلقائيًا. سعر الفيلم منفصل ويظهر قبل التنفيذ.</p></div>}
         <label className="ct-check"><input type="checkbox" checked={input.consent} onChange={event => change({ consent: event.target.checked })} /> لدي إذن استخدام الصور، وموافقة ولي الأمر إذا كانت لطفل.</label>
       </fieldset>
     </section><aside className="ct-card ct-summary"><h2>رحلتك جاهزة</h2><p>صورك ← شخصيتك الكرتونية ← صور إضافية أو فيلم</p><p>نحفظ مرجع الشخصية ونستخدمه في بقية الطلب. لا حاجة لكتابة برومبتات.</p>
-      {validQuote && <div className="ct-price"><p>الصور: {fmtSar(validQuote.value.imageCoins)} ريال</p>{input.video && <p>الفيديو: {fmtSar(validQuote.value.videoCoins)} ريال</p>}<strong>الإجمالي: {validQuote.free ? "مجاني لحسابك" : fmtSar(validQuote.value.totalCoins) + " ريال"}</strong></div>}
+      {validQuote && <div className="ct-price"><p>الصور: <Riyal halalas={validQuote.value.imageCoins} /></p>{input.video && <p>الفيديو: <Riyal halalas={validQuote.value.videoCoins} /></p>}<strong>الإجمالي: {validQuote.free ? "مجاني لحسابك" : <Riyal halalas={validQuote.value.totalCoins} size={20} />}</strong></div>}
       <p className="ct-note">يُخصم سعر كل مرحلة عند بدئها. إن فشلت مرحلة يُرد مبلغها حسب نظام التوليد؛ الصور المكتملة تبقى لك. لا إعادة توليد مدفوعة تلقائية.</p>
       <button className="ct-primary" disabled={!!busy || !input.consent || uploads.length === 0} onClick={() => void submit()}>{busy || (validQuote ? "أوافق على الإجمالي · اصنع الآن ✨" : "اعرض السعر النهائي")}</button>
       {error && <p className="ct-feedback" role="status">{error}</p>}
