@@ -1,13 +1,156 @@
 export const CARTOON_IMAGE = "openai-gpt-image-2";
 export const CARTOON_VIDEO = "byteplus-seedance-2-5";
 export const CARTOON_PRICE = 200;
+/**
+ * The looks «حوّلني إلى الستايل الكرتوني» offers. Each one is a WHOLE look — line, shading, texture, palette, lighting
+ * and material — named with the markers a generator can actually reproduce, not a one-word label. They are deliberately
+ * far apart from each other (a flat line look next to a painted 3D one next to stop-motion clay), so the person feels
+ * they are choosing a world, not a filter.
+ *
+ * `real` is the look's LEVEL OF STYLISATION, and it is written into the prompt because the uncanny valley comes from
+ * MIXING levels — big cartoon eyes on an almost-real face — not from being cartoon. EEG work on six stylisation levels
+ * found the trough in the middle and the ease at the two ends (ncbi.nlm.nih.gov/pmc/articles/PMC5362933), and the ACM
+ * Interactions review of character design says people accept an unrealistic character easily as long as it is
+ * CONSISTENTLY unrealistic. So each look declares one level and holds it across the face, body and world.
+ *
+ * `fits` is who the look reads best for (the person's own choice always wins): "child", "all" or "grown".
+ */
 export const CARTOON_STYLES = [
-  { id: "cinematic-3d", name: "سينمائي 3D", text: "Fully cartoon feature-film 3D, sculpted stylized surfaces, moderate proportions, expressive but not oversized eyes, soft lighting." },
-  { id: "soft-2d", name: "كرتون 2D ناعم", text: "Fully hand-drawn 2D cartoon, clean contours, soft cel shading, distinctive facial silhouette." },
-  { id: "storybook", name: "قصة مصوّرة", text: "Warm illustrated storybook character, painterly color, clear recognizable facial contours." },
-  { id: "anime", name: "أنمي معتدل", text: "Moderate anime cel shading; retain distinctive nose, jaw, brows and skin tone rather than a generic anime face." },
-  { id: "clay", name: "صلصال", text: "Fully stylized clay-animation character, distinctive facial features sculpted in soft clay." },
+  {
+    id: "cinematic-3d",
+    name: "سينمائي 3D",
+    icon: "🎬",
+    hint: "فيلم كرتون عالمي، نعومة وإضاءة سينمائية",
+    fits: "all",
+    real: "stylised 3D: shapes simplified well away from a real face, held at that level everywhere",
+    text: "Feature-film 3D animation: sculpted stylised forms with clean topology, slightly simplified anatomy, soft subsurface skin with visible pore-free but not plastic surface, cinematic three-point lighting with a warm key and a cool rim, shallow depth of field, physically-based materials (cloth weave, hair clumps in groomed strands), gentle ambient occlusion in the creases.",
+  },
+  {
+    id: "anime",
+    name: "أنمي معتدل",
+    icon: "🌸",
+    hint: "أنمي هادئ يحافظ على ملامحك الحقيقية",
+    fits: "all",
+    real: "moderate anime: a drawn face, never a photo-real one, with eye size kept under control",
+    text: "Moderate anime cel work: clean confident ink line of varying weight, two-tone cel shading with a hard shadow edge, restrained highlight on the hair in a single soft band, eyes drawn in anime grammar but at a MODERATE size with the real eye shape and spacing kept, the real nose bridge, jawline, brow shape and skin tone kept rather than replaced by a generic anime face, simple painted background with soft gradients.",
+  },
+  {
+    id: "painted-3d",
+    name: "ثلاثي مرسوم باليد",
+    icon: "🖌️",
+    hint: "ثلاثي الأبعاد بملمس لوحة مرسومة — أسلوب ٢٠٢٦",
+    fits: "all",
+    real: "painterly stylised: a drawn surface over solid form, the same everywhere",
+    text: "Hand-painted textures over 3D form (the Arcane / Fortiche look): visible brush strokes baked into skin, cloth and hair, painterly edges that break up the silhouette, graphic shadow shapes rather than soft falloff, rich saturated keylight with coloured bounce, a touch of canvas grain over everything, the form solid and three-dimensional but every surface reading as painted by hand.",
+  },
+  {
+    id: "soft-2d",
+    name: "كرتون 2D ناعم",
+    icon: "🎨",
+    hint: "خط نظيف وألوان مسطّحة — كرتون القنوات",
+    fits: "child",
+    real: "flat 2D: drawn shapes and flat colour, far from photographic",
+    text: "Modern 2D television animation: a clean even contour line, flat colour fills with one soft cel shadow, simple rounded shape language, a clear readable silhouette, minimal interior detail, bright flat background shapes, no gradients on the character beyond a single soft shade.",
+  },
+  {
+    id: "storybook",
+    name: "قصة مصوّرة",
+    icon: "📖",
+    hint: "غواش وألوان مائية مثل كتب الأطفال",
+    fits: "child",
+    real: "illustrated: painted and drawn, never photographic",
+    text: "Children's picture-book illustration: gouache and watercolour on textured paper, visible paper tooth and granulation, soft pencil contour that wanders a little, warm limited palette of six or seven colours, hand-painted washes with bloom edges, gentle diffuse light with no hard shadows, white paper breathing around the figure.",
+  },
+  {
+    id: "ghibli",
+    name: "الدفء المرسوم",
+    icon: "🌿",
+    hint: "خلفيات مرسومة ووجوه لطيفة وضوء طبيعي",
+    fits: "all",
+    real: "hand-drawn film: a drawn face on a painted world, consistently so",
+    text: "Hand-drawn feature animation in the warm Japanese tradition: a fine understated line, gentle simplified features with small soft eyes and a tiny nose, mild blush on the cheeks, lovingly painted background with layered foliage and real atmospheric depth, natural daylight with soft shadow edges, nostalgic muted-but-luminous palette, clouds and wind given weight.",
+  },
+  {
+    id: "print-comic",
+    name: "كوميكس مطبوع",
+    icon: "💥",
+    hint: "نقاط هاف‌تون وطباعة مزاحة — أسلوب سبايدر-فيرس",
+    fits: "grown",
+    real: "graphic print: ink and dots, nothing photographic",
+    text: "Printed comic-book art brought to life (the Spider-Verse language): bold varied ink line with heavy spotted blacks, ben-day halftone dots in the midtones, slight CMYK misregistration with chromatic offset on the edges, limited high-contrast palette, cross-hatching for shadow, paper-print grain, graphic speed lines and a hard rim light.",
+  },
+  {
+    id: "clay",
+    name: "صلصال",
+    icon: "🧸",
+    hint: "ستوب موشن بملمس يد وبصمات أصابع",
+    fits: "child",
+    real: "stop-motion object: a sculpted physical thing, consistently so",
+    text: "Stop-motion clay puppet photographed on a real set: plasticine surface with faint fingerprints and tool marks, slightly uneven hand-sculpted forms, matte soft-scattering material, visible seams where parts meet, practical studio lighting with real soft shadows falling on a tangible miniature set, shallow macro depth of field.",
+  },
+  {
+    id: "papercut",
+    name: "ورق مقصوص",
+    icon: "✂️",
+    hint: "طبقات ورق ملوّن وظلال خفيفة",
+    fits: "child",
+    real: "paper collage: cut shapes and layers, nothing photographic",
+    text: "Cut-paper collage animation: every element a separate piece of coloured textured paper with a clean scissor edge and a tiny drop shadow onto the layer beneath, visible paper fibre and slight curl at the corners, simple geometric shape language, flat bright colours with torn-edge accents, even front lighting.",
+  },
+  {
+    id: "ligne-claire",
+    name: "الخط الصافي",
+    icon: "🖋️",
+    hint: "خط واحد ثابت وألوان مسطّحة بلا تدرّج — مدرسة تان‌تان",
+    fits: "grown",
+    real: "clear-line drawing: pure line and flat colour",
+    text: "Ligne claire (the Franco-Belgian clear line): one uniform-weight black contour on every form with no line variation, completely flat colour fills with NO gradients and no cast shadows, equal clarity in foreground and background, calm clean composition, a precise architectural background drawn with the same line, mid-saturation European palette.",
+  },
+  {
+    id: "webtoon",
+    name: "ويبتون",
+    icon: "📱",
+    hint: "رسم رقمي نظيف وألوان ناعمة — مدرسة الويبتون",
+    fits: "grown",
+    real: "clean digital drawing: drawn features with soft airbrushed rendering",
+    text: "Korean webtoon digital illustration: crisp thin line art, smooth airbrushed soft shading with a glossy highlight on hair and lips, slender elongated proportions, delicate features with detailed irises, pastel-leaning palette with one saturated accent, soft bloom and a simple blurred gradient background.",
+  },
+  {
+    id: "rubber-hose",
+    name: "كلاسيكي مطاطي",
+    icon: "🎩",
+    hint: "كرتون الثلاثينات: أطراف مطاطية وملمس فيلم قديم",
+    fits: "all",
+    real: "vintage cartoon: rubbery drawn forms, far from real",
+    text: "1930s rubber-hose animation: boneless curving limbs with no elbows or knees, pie-cut eyes and round white gloves, bouncy circular construction, thick inked outlines, cream-and-sepia or two-tone palette, aged film grain, slight frame jitter and vignette, hand-painted background with simple repeating shapes.",
+  },
 ] as const;
+export type CartoonStyle = (typeof CARTOON_STYLES)[number]["id"];
+
+/**
+ * Who the picture is FOR — a separate question from who is IN it. It came out of the research: Disney Research measured
+ * the characters of real children's shows and found that the ones made for younger audiences have a bigger head-to-body
+ * ratio (r = −0.724), bigger eyes relative to the head (r = −0.672) and rounder eyes, while how wide-set the eyes are
+ * carries no relation to the audience's age at all. But in the SAME study, when 4–10-year-olds chose between characters
+ * or built their own, they showed NO preference for those features and actually disliked enlarged heads — they kept
+ * choosing the unaltered character and regular head sizes (studios.disneyresearch.com, IDC 2016). So the childlike look
+ * is a convention of the people who draw, not a thing children ask for.
+ *
+ * What we do with that: a child's picture is made gentler by its WORLD — simple shapes, a clear silhouette, a warm safe
+ * palette, soft light and no frightening detail — and its proportions are only nudged, never ballooned, and the real
+ * face of the person is kept, because that is what the children themselves chose.
+ */
+export const CARTOON_AUDIENCES = { child: "لطفل", family: "للعائلة", grown: "لكبار" } as const;
+export type CartoonAudience = keyof typeof CARTOON_AUDIENCES;
+export const AUDIENCE_RULES: Record<CartoonAudience, string> = {
+  child:
+    "Made FOR A CHILD to look at. Nudge the proportions a little towards a childlike build (head slightly larger relative to the body, eyes a little larger and rounder) — a nudge, NOT a balloon head, and never at the cost of the real face. Simple clear shape language, one readable silhouette, few interior details, a warm bright safe palette with high figure-to-background contrast, soft even light, friendly open expression, nothing frightening, dark, sharp-toothed or ambiguous, and one clear thing happening in the frame.",
+  family:
+    "Made FOR THE WHOLE FAMILY. Natural balanced proportions, warm readable lighting, enough detail to be interesting up close but a silhouette that still reads from far, a friendly expression and a palette that is bright without being childish.",
+  grown:
+    "Made FOR GROWN-UPS. Natural adult proportions (about seven and a half heads tall), restrained eye size, richer texture and surface detail, considered cinematic or graphic lighting, a sophisticated palette, and an expression with some character to it rather than a wide smile.",
+};
+
 export const CARTOON_AGES = { same: "نفس العمر", baby: "رضيع", toddler: "طفل صغير", child: "طفل", adult: "بالغ" } as const;
 export const CARTOON_MOVES = { still: "ساكن / يتفاعل بيديه", crawl: "يحبي", walk: "يمشي" } as const;
 export const CARTOON_STORIES = {
@@ -18,6 +161,8 @@ export const CARTOON_STORIES = {
 } as const;
 export interface CartoonInput {
   style: string;
+  /** who the picture is FOR (a separate thing from who is in it) */
+  audience: CartoonAudience;
   age: keyof typeof CARTOON_AGES;
   desiredAge: string;
   movement: keyof typeof CARTOON_MOVES;
@@ -38,26 +183,42 @@ export function cartoonInput(raw: unknown): CartoonInput {
   if (!Number.isInteger(value.count) || Number(value.count) < 1 || Number(value.count) > 4) throw new Error("اختر من صورة إلى أربع صور.");
   if (value.consent !== true) throw new Error("أكد أن لديك إذن استخدام الصور، وموافقة ولي الأمر لصور الأطفال.");
   if (value.video === true && value.story === "custom" && !field("customStory", 3000)) throw new Error("اكتب قصتك أولًا.");
-  return { style: String(value.style), age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story: value.story as CartoonInput["story"], customStory: field("customStory", 3000), count: Number(value.count), video: value.video === true, consent: true };
+  // a run saved before this question existed reads as «للعائلة», so old work still makes the same kind of picture
+  return { style: String(value.style), audience: (Object.hasOwn(CARTOON_AUDIENCES, String(value.audience)) ? value.audience : "family") as CartoonAudience, age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story: value.story as CartoonInput["story"], customStory: field("customStory", 3000), count: Number(value.count), video: value.video === true, consent: true };
 }
 const AGE = { same: "the same apparent age as the references", baby: "a cartoon baby, age-reinterpreted infant proportions", toddler: "a cartoon toddler", child: "a cartoon child", adult: "a cartoon adult" };
 const MOVE = { still: "a stable safe seated pose, interacting with hands and expressions, not walking", crawl: "crawling on hands and knees on safe level ground, visible grounded contacts, low camera", walk: "walking with short balanced steps, feet contacting the ground without sliding" };
+/**
+ * What every picture and every shot of this person is told, in one block: the look, the identity, the audience, the age
+ * and the movement.
+ *
+ * The identity part is written against what image models actually do wrong. Left alone they beautify: they smooth the
+ * skin, slim the jaw, straighten the teeth and hand back a generic pretty face that is no longer the person. The
+ * answer that works is to NAME the features that must survive and to separate identity from rendering — the references
+ * say WHO, the style says HOW IT IS DRAWN — rather than asking vaguely for "a resemblance".
+ */
 export function cartoonIdentity(input: CartoonInput) {
+  const style = CARTOON_STYLES.find(item => item.id === input.style)!;
   return [
-    CARTOON_STYLES.find(style => style.id === input.style)!.text,
-    "Fully cartoon face AND body, not a filtered photograph or photoreal face on a cartoon body.",
-    "Preserve recognizable face outline, eye spacing, brows, nose and mouth silhouette, skin tone, hair and visible distinctive features. Do not replace them with a generic cute face.",
-    "Age: " + (input.desiredAge || AGE[input.age]) + ". Age changes are imaginative reinterpretations, not historical reconstruction. Adapt age-dependent proportions and facial hair appropriately.",
-    "Movement: " + MOVE[input.movement] + ". Keep age and movement consistent throughout; fantasy baby movement is cartoon fiction.",
-    "Outfit: " + (input.outfit || "retain the reference clothing, adapted to the chosen age") + ". Interests: " + (input.interests || "a gentle colorful adventure") + ".",
+    "THE LOOK — " + style.name + ": " + style.text,
+    "HOLD ONE LEVEL OF STYLISATION — " + style.real + ". The face, the body, the clothes and the world are all drawn at that same level; never a half-real face with cartoon eyes, and never a photographic face on a drawn body. A cartoon that is wholly a cartoon is easy to look at; a mixture of levels is what turns unsettling.",
+    "WHO IT IS: the references are the identity, not the rendering. Carry over, as drawn shapes in this style: the outline of the face and the jaw, the shape and spacing of the eyes and the brows, the line of the nose and its bridge, the shape of the mouth and lips, the hairline, the hair's own colour, texture and the way it falls, the skin tone, and anything distinctive — glasses, a beard and how it grows, freckles, a mole, a gap in the teeth, a scar, a dimple, the ears.",
+    "DO NOT BEAUTIFY: do not smooth the skin into blankness, do not slim or lengthen the face, do not straighten the teeth, do not shrink the nose, do not enlarge the eyes beyond what the chosen look allows, do not change the skin tone, and do not replace any of it with a generically cute or handsome face. If a feature is unusual, it is the point: keep it.",
+    "WHO IT IS FOR — " + AUDIENCE_RULES[input.audience],
+    "AGE: " + (input.desiredAge || AGE[input.age]) + ". An age change is an imaginative reinterpretation, not a reconstruction of how they really looked; keep the identity features above and adapt only what age really changes (proportions, the softness of the features, facial hair).",
+    "MOVEMENT: " + MOVE[input.movement] + ". Age and movement stay the same throughout.",
+    "OUTFIT: " + (input.outfit || "the clothing from the references, redrawn in this style and adapted to the chosen age") + ". INTERESTS: " + (input.interests || "a gentle colourful adventure") + ".",
   ].join("\n");
 }
+
 export function cartoonImagePrompt(input: CartoonInput, canonical = false) {
   return (canonical
-    ? "Image 1 is the canonical CARTOON character. Reuse its exact identity, age, outfit and style. Create a new pose or composition of this same character. "
-    : "All supplied identity references depict ONE person. Create one recognizable cartoon character inspired by their visible features. References supply identity, not photographic rendering. ") +
-    cartoonIdentity(input) + "\nOne character in a single composition, face readable, coherent anatomy. Do not add unrequested text; allow text or logos explicitly requested in the outfit/brief.";
+    ? "Image 1 is the canonical CARTOON character already made for this person. Reuse its exact identity, age, outfit and style, and give this same character a new pose or composition. "
+    : "Every supplied reference is the SAME ONE PERSON, photographed from different angles — read them together to understand the face, and draw ONE cartoon character of that person. The references give identity only; how it is drawn comes from the look below. ") +
+    cartoonIdentity(input) +
+    "\nOne character, one composition, the face clearly readable and the anatomy coherent. No text and no logos unless the outfit or the brief asked for them.";
 }
+
 export function cartoonVideoPrompt(input: CartoonInput) {
   const story = input.story === "custom" ? input.customStory : {
     space: "0–7s: discovers a glowing star in a safe cartoon observatory. 7–16s: reacts to colorful planets through the window. 16–24s: reaches toward a large button; stars form a beautiful pattern. 24–30s: smiles beside the glowing star.",

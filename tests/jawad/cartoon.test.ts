@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CARTOON_PRICE, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt } from "@config/jawad/cartoon";
+import { CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt } from "@config/jawad/cartoon";
 import { DEFAULT_SETTINGS, OCTOBER_OFFER, offersAt, offerFor } from "@config/course";
 import { generatorById } from "@config/jawad/generators";
 import { evaluate } from "@/lib/jawad/engine";
 import { DEFAULT_SECTIONS, sectionPath, RESERVED_SECTION_IDS } from "@config/jawad/sections";
-const input = { style: "cinematic-3d", age: "baby", movement: "crawl", outfit: "بدلة فضاء", interests: "", story: "garden", customStory: "", count: 2, video: true, consent: true };
+const input = { style: "cinematic-3d", audience: "child", age: "baby", movement: "crawl", outfit: "بدلة فضاء", interests: "", story: "garden", customStory: "", count: 2, video: true, consent: true };
 describe("cartoon journey", () => {
   it("requires valid choices and explicit consent", () => {
     expect(() => cartoonInput({ ...input, consent: false })).toThrow();
@@ -12,11 +12,14 @@ describe("cartoon journey", () => {
     expect(() => cartoonInput({ ...input, count: 5 })).toThrow();
     expect(() => cartoonInput({ ...input, age: "toString" })).toThrow();
     expect(() => cartoonInput({ ...input, story: "custom" })).toThrow();
-    expect(cartoonInput(input)).toMatchObject({ age: "baby", movement: "crawl", count: 2 });
+    expect(cartoonInput(input)).toMatchObject({ age: "baby", movement: "crawl", count: 2, audience: "child" });
+    // a run saved before the audience question existed still works, as «للعائلة»
+    expect(cartoonInput({ ...input, audience: undefined })).toMatchObject({ audience: "family" });
+    expect(cartoonInput({ ...input, audience: "toString" })).toMatchObject({ audience: "family" });
   });
   it("retains identity and independent age/mobility across all prompts", () => {
     const clean = cartoonInput(input);
-    expect(cartoonImagePrompt(clean)).toContain("ONE person");
+    expect(cartoonImagePrompt(clean)).toContain("SAME ONE PERSON");
     expect(cartoonImagePrompt(clean)).toContain("hands and knees");
     expect(cartoonImagePrompt(clean, true)).toContain("canonical CARTOON");
     expect(cartoonVideoPrompt(clean)).toContain("@character");
@@ -51,3 +54,43 @@ describe("October course offer", () => {
   });
 });
 
+
+describe("the looks, and who the picture is for", () => {
+  it("keeps «أنمي معتدل», and every look is a whole look that holds one level of stylisation", () => {
+    expect(CARTOON_STYLES.find(style => style.id === "anime")?.name).toBe("أنمي معتدل");
+    expect(CARTOON_STYLES.length).toBeGreaterThanOrEqual(10);
+    const ids = CARTOON_STYLES.map(style => style.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const style of CARTOON_STYLES) {
+      // a named, reproducible look: line, shading, texture, palette or light — not a one-word label
+      expect(style.text.length).toBeGreaterThan(160);
+      expect(style.real.length).toBeGreaterThan(20);
+      expect(style.hint.length).toBeGreaterThan(4);
+      expect(style.icon.length).toBeGreaterThan(0);
+      expect(["child", "all", "grown"]).toContain(style.fits);
+    }
+    // the looks are far apart: no two share their opening words
+    const openings = CARTOON_STYLES.map(style => style.text.split(":")[0]);
+    expect(new Set(openings).size).toBe(openings.length);
+  });
+
+  it("writes the identity rules image models get wrong, and never mixes levels of realism", () => {
+    const prompt = cartoonImagePrompt(cartoonInput({ ...input, style: "anime" }));
+    for (const rule of ["HOLD ONE LEVEL OF STYLISATION", "DO NOT BEAUTIFY", "do not smooth the skin", "do not slim or lengthen the face", "do not straighten the teeth", "glasses", "freckles", "the references are the identity, not the rendering"]) expect(prompt).toContain(rule);
+    expect(prompt).toContain("Moderate anime cel work");
+  });
+
+  it("asks who the picture is FOR, and that changes the drawing", () => {
+    const child = cartoonImagePrompt(cartoonInput({ ...input, audience: "child" }));
+    const grown = cartoonImagePrompt(cartoonInput({ ...input, audience: "grown" }));
+    expect(child).toContain("Made FOR A CHILD");
+    expect(grown).toContain("Made FOR GROWN-UPS");
+    expect(child).not.toBe(grown);
+    // the research's own finding: a nudge towards childlike proportions, never a balloon head, and the real face kept
+    expect(child).toContain("a nudge, NOT a balloon head");
+    expect(child).toContain("never at the cost of the real face");
+    expect(grown).toContain("seven and a half heads");
+    // and the audience reaches the film too
+    expect(cartoonVideoPrompt(cartoonInput({ ...input, audience: "child" }))).toContain("Made FOR A CHILD");
+  });
+});
