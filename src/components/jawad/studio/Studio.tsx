@@ -995,7 +995,7 @@ export default function Studio({ section, studioSections, generators, directorGe
                 onChange={(extra, mainRefs) => (setDraft((d) => ({ ...d, extra, mainRefs })), setTouched(true))}
               />
             )}
-            <PromptHelpers kind={def.output} prompt={draft.prompt} onPrompt={onPrompt} disabled={directing} />
+            <PromptHelpers kind={def.output} prompt={draft.prompt} onPrompt={onPrompt} disabled={directing} generatorId={def.id} />
             {directorCoins != null && (
               <DirectorBoost
                 coins={directorCoins}
