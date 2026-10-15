@@ -34,10 +34,10 @@ export const POST = handle(async (req: Request) => {
   if (existing.data) return NextResponse.json({ key, jobs: await jobViews([existing.data as JobRow]) });
   if (body.expectedCoins !== quote.totalCoins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
   if (!owner && (await coinBalance(user.id) ?? 0) < quote.totalCoins) throw new UserError("رصيدك لا يكفي لإكمال الطلب كله. اشحن الرصيد أولًا.", 402);
-  if (!Array.isArray(body.uploads) || body.uploads.length < 1 || body.uploads.length > 3 || body.uploads.some((id: unknown) => !isUuid(id)) || new Set(body.uploads).size !== body.uploads.length) throw new UserError("ارفع ١–٣ صور مختلفة للشخص نفسه.", 400);
+  if (!Array.isArray(body.uploads) || body.uploads.length < 1 || body.uploads.length > 3 || body.uploads.some((id: unknown) => !isUuid(id)) || new Set(body.uploads).size !== body.uploads.length) throw new UserError("ارفع ١–٣ صور مختلفة.", 400);
   const result = requireCreated(await createJob(user, owner, {
     idempotencyKey: key + "_0", generatorId: CARTOON_IMAGE, sectionId: quote.imageSection,
-    prompt: cartoonImagePrompt(input), settings: { aspect: "9:16", resolution: "std", quality: "medium", count: 1 },
+    prompt: cartoonImagePrompt(input), settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: 1 },
     refs: body.uploads.map((uploadId: string) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: CARTOON_PRICE,
   }, new URL(req.url).origin, { cartoon: { key, input, videoCoins: quote.videoCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000 } }));
   return NextResponse.json({ key, jobs: await jobViews([result.job]) });

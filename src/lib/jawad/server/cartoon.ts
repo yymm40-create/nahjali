@@ -1,4 +1,4 @@
-import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PRICE, CARTOON_VIDEO_SETTINGS, cartoonImagePrompt, cartoonVideoPrompt, type CartoonInput } from "@config/jawad/cartoon";
+import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PRICE, cartoonVideoSettings, cartoonImagePrompt, cartoonVideoPrompt, type CartoonInput } from "@config/jawad/cartoon";
 import { generatorById } from "@config/jawad/generators";
 import { unlimitedFor } from "@/lib/access";
 import { UserError } from "@/lib/api";
@@ -23,7 +23,7 @@ export async function cartoonQuote(input: CartoonInput) {
   let videoCoins = 0;
   if (input.video) {
     const result = evaluate(generatorById(CARTOON_VIDEO)!, {
-      settings: CARTOON_VIDEO_SETTINGS, prompt: cartoonVideoPrompt(input), instructions: "", refStyle: "none", refs: [], strict: true,
+      settings: cartoonVideoSettings(input), prompt: cartoonVideoPrompt(input), instructions: "", refStyle: "none", refs: [], strict: true,
     }, rt.prices[CARTOON_VIDEO]);
     if (!result.price.ok || result.issues.length) throw new UserError("تعذّر تسعير فيديو ٣٠ ثانية؛ جرّب الصور فقط.", 503);
     videoCoins = result.price.coins;
@@ -63,7 +63,7 @@ export async function continueCartoon(jobId: string) {
   requireCreated(await createJob(auth.user, owner, {
     idempotencyKey: nextKey, generatorId, sectionId,
     prompt: video ? cartoonVideoPrompt(plan.input) : cartoonImagePrompt(plan.input, true),
-    settings: video ? CARTOON_VIDEO_SETTINGS : { aspect: "9:16", resolution: "std", quality: "medium", count: 1 },
+    settings: video ? cartoonVideoSettings(plan.input) : { aspect: plan.input.aspect, resolution: "std", quality: "medium", count: 1 },
     refStyle: "references", refs: [{ uploadId: upload.id, role: "reference", name: "character" }],
     expectedCoins: video ? plan.videoCoins : CARTOON_PRICE,
   }, job.inputs.origin ?? "", { cartoon: { ...plan, position: next } }));

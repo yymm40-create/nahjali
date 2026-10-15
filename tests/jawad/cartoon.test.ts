@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt } from "@config/jawad/cartoon";
+import { CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
 import { DEFAULT_SETTINGS, OCTOBER_OFFER, offersAt, offerFor } from "@config/course";
 import { generatorById } from "@config/jawad/generators";
 import { evaluate } from "@/lib/jawad/engine";
@@ -92,5 +92,61 @@ describe("the looks, and who the picture is for", () => {
     expect(grown).toContain("seven and a half heads");
     // and the audience reaches the film too
     expect(cartoonVideoPrompt(cartoonInput({ ...input, audience: "child" }))).toContain("Made FOR A CHILD");
+  });
+});
+
+describe("the photograph itself, redrawn", () => {
+  const scene = cartoonInput({ ...input, mode: "scene", aspect: "3:2", age: "adult", movement: "crawl" });
+
+  it("keeps the picture's own shape, and only the listed shapes", () => {
+    expect(scene.aspect).toBe("3:2");
+    expect(cartoonInput({ ...input, aspect: "5:4" }).aspect).toBe("9:16");
+    expect(nearestAspect(4032, 3024)).toBe("3:2");
+    expect(nearestAspect(1080, 1920)).toBe("9:16");
+    expect(nearestAspect(1000, 1000)).toBe("1:1");
+    expect(nearestAspect(0, 0)).toBe("9:16");
+    // the film follows it too
+    expect(cartoonVideoSettings(scene).ratio).toBe("16:9");
+    expect(cartoonVideoSettings(cartoonInput({ ...input, mode: "character" })).ratio).toBe("9:16");
+  });
+
+  it("redraws everyone in it, each with their own face, and changes nothing else", () => {
+    const prompt = cartoonImagePrompt(scene);
+    expect(prompt).toContain("REDRAW THE PHOTOGRAPH ITSELF");
+    expect(prompt).toContain("EVERY PERSON in the photograph");
+    expect(prompt).toContain("never merge two people");
+    expect(prompt).toContain("never give two of them the same face");
+    expect(prompt).toContain("Keep their real difference in age and in height");
+    expect(prompt).toContain("KEEP THE PICTURE");
+    // nothing about a new pose, a new age or a chosen outfit
+    expect(prompt).not.toContain("An age change");
+    expect(prompt).not.toContain("OUTFIT:");
+    expect(prompt).not.toContain("hands and knees");
+    // the identity rules still hold, for each of them
+    expect(prompt).toContain("DO NOT BEAUTIFY");
+    expect(prompt).toContain("apply to EACH person");
+    // the follow-up picture keeps the same scene
+    expect(cartoonImagePrompt(scene, true)).toContain("the same scene again");
+  });
+
+  it("gives the film movement instead of a story", () => {
+    const film = cartoonVideoPrompt(scene);
+    expect(film).toContain("coming gently to life");
+    expect(film).toContain("Nothing new happens");
+    expect(film).not.toContain("Story:");
+    expect(film).not.toContain("luminous flower");
+  });
+
+  it("never asks a grown-up how they move", () => {
+    expect(movementAsked({ mode: "character", age: "baby" })).toBe(true);
+    expect(movementAsked({ mode: "character", age: "child" })).toBe(true);
+    expect(movementAsked({ mode: "character", age: "adult" })).toBe(false);
+    expect(movementAsked({ mode: "character", age: "same" })).toBe(false);
+    expect(movementAsked({ mode: "scene", age: "baby" })).toBe(false);
+    const grown = cartoonImagePrompt(cartoonInput({ ...input, mode: "character", age: "adult", movement: "crawl" }));
+    expect(grown).not.toContain("MOVEMENT:");
+    expect(grown).not.toContain("hands and knees");
+    // and the child's baby film still gets its movement
+    expect(cartoonVideoPrompt(cartoonInput({ ...input, mode: "character", age: "baby", movement: "crawl" }))).toContain("hands and knees");
   });
 });
