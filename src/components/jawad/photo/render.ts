@@ -3,7 +3,7 @@
 // Arabic fonts). The preview and the export are the same drawing at different sizes, so what is seen is what is saved.
 // Browser only.
 
-import { adjustPixels, effectiveAdjust, isIdentity } from "@/lib/photo/pixels";
+import { adjustPixels, applyLut, effectiveAdjust, isIdentity, lutBytesOf } from "@/lib/photo/pixels";
 import { orientedSize, type PhotoDoc, type ShapeLayer, type PhotoLayer } from "@/lib/photo/doc";
 import { drawText, loadFont, wrapLines, type FontDef } from "@/components/jawad/designer/LayerEditor";
 
@@ -116,7 +116,8 @@ export function renderPhoto(canvas: HTMLCanvasElement, doc: PhotoDoc, o: RenderO
   const img = doc.base ? o.images.get(doc.base.fileId) : undefined;
   if (doc.base && img) {
     const adj = effectiveAdjust(doc.adjust, doc.filter);
-    if (isIdentity(adj)) drawBase(ctx, doc, img, W, H);
+    const lut = doc.lut ?? null;
+    if (isIdentity(adj) && !lut) drawBase(ctx, doc, img, W, H);
     else {
       // the sliders touch only the base picture: draw it alone, change its pixels, then lay it down
       const tmp = document.createElement("canvas");
@@ -125,7 +126,9 @@ export function renderPhoto(canvas: HTMLCanvasElement, doc: PhotoDoc, o: RenderO
       const t = tmp.getContext("2d", { willReadFrequently: true })!;
       drawBase(t, doc, img, W, H);
       const data = t.getImageData(0, 0, W, H);
-      adjustPixels(data.data, W, H, adj);
+      if (!isIdentity(adj)) adjustPixels(data.data, W, H, adj);
+      // «Claude Code»'s colour comes last, over the sliders and the look
+      if (lut) applyLut(data.data, lut.size, lutBytesOf(lut.data));
       t.putImageData(data, 0, 0);
       ctx.drawImage(tmp, 0, 0);
     }

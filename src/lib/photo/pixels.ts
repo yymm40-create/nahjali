@@ -272,3 +272,34 @@ export function adjustPixels(data: Uint8ClampedArray, w: number, h: number, a: A
     }
   }
 }
+
+/** «Claude Code»'s colour: a 3D LUT (size³ × 3 bytes, red fastest) applied to RGBA pixels with trilinear sampling. */
+export function applyLut(data: Uint8ClampedArray, size: number, lut: Uint8Array, amount = 1): void {
+  const n = size - 1;
+  const at = (r: number, g: number, b: number, c: number) => lut[((b * size + g) * size + r) * 3 + c];
+  const k = Math.max(0, Math.min(1, amount));
+  for (let i = 0; i < data.length; i += 4) {
+    const fr = (data[i] / 255) * n, fg = (data[i + 1] / 255) * n, fb = (data[i + 2] / 255) * n;
+    const r0 = Math.min(n - 1, Math.floor(fr)), g0 = Math.min(n - 1, Math.floor(fg)), b0 = Math.min(n - 1, Math.floor(fb));
+    const dr = fr - r0, dg = fg - g0, db = fb - b0;
+    for (let c = 0; c < 3; c++) {
+      const c00 = at(r0, g0, b0, c) * (1 - dr) + at(r0 + 1, g0, b0, c) * dr;
+      const c10 = at(r0, g0 + 1, b0, c) * (1 - dr) + at(r0 + 1, g0 + 1, b0, c) * dr;
+      const c01 = at(r0, g0, b0 + 1, c) * (1 - dr) + at(r0 + 1, g0, b0 + 1, c) * dr;
+      const c11 = at(r0, g0 + 1, b0 + 1, c) * (1 - dr) + at(r0 + 1, g0 + 1, b0 + 1, c) * dr;
+      const v = (c00 * (1 - dg) + c10 * dg) * (1 - db) + (c01 * (1 - dg) + c11 * dg) * db;
+      data[i + c] = data[i + c] + (v - data[i + c]) * k;
+    }
+  }
+}
+
+/** base64 → bytes (browser and server). */
+export function lutBytesOf(b64: string): Uint8Array {
+  if (typeof atob === "function") {
+    const s = atob(b64);
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  }
+  return new Uint8Array(Buffer.from(b64, "base64"));
+}

@@ -12,7 +12,7 @@ export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   if (b.action === "save") return NextResponse.json(await savePicture(user, b));
-  if (!(await canDraw(user.email))) throw new UserError("صناعة الصور مقفلة لحسابك حاليًا.", 403);
+  if (!(await canDraw(user.email, b.from))) throw new UserError("صناعة الصور مقفلة لحسابك حاليًا.", 403);
   if (b.action === "write") return NextResponse.json(await pictureWrite(user, b));
   if (b.action === "review") return NextResponse.json(await pictureReview(user, b));
   throw new UserError("طلب غير معروف.", 400);

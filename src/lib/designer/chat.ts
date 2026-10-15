@@ -38,13 +38,14 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "kind", "aspect", "text_mode", "artwork", "refs", "layers"],
+      required: ["on", "kind", "aspect", "text_mode", "maker", "artwork", "refs", "layers"],
       description: "طلب التصميم، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
         kind: { type: "string", enum: ["wedding", "husseini_joy", "husseini_mourning", "newborn", "thumbnail", "latmiya", "other"] },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9", "3:2"] },
         text_mode: { type: "string", enum: ["baked", "layers", "blank"], description: "baked افتراضيًا: النص داخل الصورة؛ layers: طبقات حقيقية؛ blank: بلا كتابة" },
+        maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم: gpt = GPT Image 2 عبر جواد (الافتراضي للصور الواقعية والأشخاص)؛ code = «Claude Code» يرسمه بالكود (الكتابة الحرفية والأشكال)" },
         artwork: { type: "string", description: "توجيه التصميم بالإنجليزية، أو فارغ لإبقاء الصورة الحالية وتبديل الطبقات فقط" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة المسلَّمة مرجعًا للرسم، أو فارغة" },
         layers: {
@@ -85,7 +86,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; kind: string; aspect: string; text_mode: string; artwork: string; refs: string[]; layers: unknown[] };
+  produce: { on: boolean; kind: string; aspect: string; text_mode: string; maker?: string; artwork: string; refs: string[]; layers: unknown[] };
   split: { on: boolean; ref: string };
 }
 
@@ -163,7 +164,9 @@ export async function say(userId: string, chatId: string | null, message: string
     const aspect: DesignAspect = isDesignAspect(a.produce.aspect) ? a.produce.aspect : ((style?.aspects[0] as DesignAspect | undefined) ?? "1:1");
     const artwork = String(a.produce.artwork ?? "").trim().slice(0, 6000);
     const layers = readLayers(a.produce.layers, style?.directions[0]?.fonts.body ?? "readex");
-    const textMode = a.produce.text_mode === "layers" || a.produce.text_mode === "blank" ? a.produce.text_mode : "baked";
+    const maker = a.produce.maker === "code" ? "code" : "gpt";
+    // «Claude Code» draws the whole design with its writing: always baked
+    const textMode = maker === "code" ? "baked" : a.produce.text_mode === "layers" || a.produce.text_mode === "blank" ? a.produce.text_mode : "baked";
     const refs = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((x) => mine.has(x)).slice(0, 6);
     const prevAt = lastDesignAt(history);
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
@@ -177,7 +180,7 @@ export async function say(userId: string, chatId: string | null, message: string
       const visibleLayers = textMode === "layers" ? layers : [];
       const design: Design = { id: randomUUID().slice(0, 8), aspect: keep && prev ? prev.aspect : aspect, ...size, artwork: keep, textMode, layers: visibleLayers, state: keep ? "ready" : "drawing" };
       reply.design = design;
-      if (!keep) pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep: null };
+      if (!keep) pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep: null, ...(maker === "code" ? { maker } : {}) };
       else reply.text += "\n\n🧩 أبقيت الصورة ووضعت الطبقات الجديدة في محرر الطبقات.";
     }
   }

@@ -152,3 +152,53 @@ describe("«Claude Code» · pictures drawn in code in the image studio", () => 
     expect(read("config/jawad/knowledge.ts")).toContain("THE WAY THE SITE'S ROBOTS EXECUTE");
   });
 });
+
+describe("«Claude Code» · زهراء and كاظم", () => {
+  it("زهراء: the program's LUT lies on the base, read safely, taken off by reset or by its own op", async () => {
+    const { applyOp, readDoc, readPhotoLut, docFromPicture, describeDoc } = await import("@/lib/photo/doc");
+    const { applyLut } = await import("@/lib/photo/pixels");
+    const n = 3;
+    const id = new Uint8Array(n * n * n * 3);
+    for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
+      const i = ((b * n + g) * n + r) * 3;
+      id[i] = Math.round((r / (n - 1)) * 255);
+      id[i + 1] = Math.round((g / (n - 1)) * 255);
+      id[i + 2] = Math.round((b / (n - 1)) * 255);
+    }
+    const px = new Uint8ClampedArray([10, 128, 250, 255, 200, 30, 90, 255]);
+    const copy = new Uint8ClampedArray(px);
+    applyLut(copy, n, id);
+    for (let i = 0; i < px.length; i++) expect(Math.abs(copy[i] - px[i])).toBeLessThanOrEqual(1);
+    const data = Buffer.from(id).toString("base64");
+    expect(readPhotoLut({ size: 3, data })).toEqual({ name: "Claude Code", size: 3, data });
+    expect(readPhotoLut({ size: 4, data })).toBeNull();
+    expect(readPhotoLut({ size: 3, data: "x!" })).toBeNull();
+    const doc = docFromPicture({ id: "f", w: 800, h: 600 });
+    const r = applyOp(doc, { op: "lut", size: 3, data } as never);
+    expect("doc" in r && r.doc.lut?.size).toBe(3);
+    const withLut = (r as { doc: typeof doc }).doc;
+    expect(readDoc(JSON.parse(JSON.stringify(withLut))).lut?.data).toBe(data);
+    expect(describeDoc(withLut)).toContain("Claude Code");
+    const off = applyOp(withLut, { op: "lut", clear: true } as never);
+    expect("doc" in off && off.doc.lut).toBeNull();
+    const reset = applyOp(withLut, { op: "adjust_reset" } as never);
+    expect("doc" in reset && reset.doc.lut).toBeNull();
+    expect(read("src/components/jawad/photo/render.ts")).toContain("applyLut(data.data, lut.size");
+    expect(read("src/lib/photo/chat.ts")).toContain("claude_code");
+    expect(read("src/components/jawad/photo/PhotoEditor.tsx")).toContain("runCodeGrade(r.code.prompt)");
+    expect(read("src/app/api/photo/code/route.ts")).toContain("gradeReview");
+  });
+
+  it("كاظم: «Claude Code» draws the design in the page, always with its writing, and keeps it as the artwork", () => {
+    const chat = read("src/lib/designer/chat.ts");
+    expect(chat).toContain('maker: { type: "string", enum: ["gpt", "code"]');
+    expect(chat).toContain('maker === "code" ? "baked"');
+    const produce = read("src/lib/designer/produce.ts");
+    expect(produce).toContain("export async function codeBrief");
+    expect(produce).toContain("export async function produceFromCode");
+    expect(produce).toContain('maker: "code"');
+    expect(read("src/components/jawad/designer/DesignerChat.tsx")).toContain('from: "designer"');
+    expect(read("config/designer.ts")).toContain("«Claude Code» (maker = \"code\")");
+    expect(read("src/lib/jawad/server/claude-code-picture.ts")).toContain('from === "designer"');
+  });
+});
