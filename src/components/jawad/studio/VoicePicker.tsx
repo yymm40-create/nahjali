@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
+import { cleanVoice } from "@/components/claude-code/clean-voice";
+import { useClaudeModel } from "@/components/robots/claude-model";
 import { LIBRARY_ADDON } from "@config/coins";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
@@ -86,6 +88,10 @@ export default function VoicePicker({ value, onChange, coins, provider = "eleven
   const [studio, setStudio] = useState<"design" | "clone" | null>(null);
   const [showReady, setShowReady] = useState(false);
   const [showMinimax, setShowMinimax] = useState(provider === "minimax");
+  // «صوتي لمرة وحدة» (صوت الجواد): a recording made now for this one reading, cleaned, never kept as a voice
+  const [once, setOnce] = useState<{ id: string; name: string; sec: number } | null>(value.startsWith("u:") ? { id: value.slice(2), name: "تسجيلي لهالمرة", sec: 0 } : null);
+  const [onceOpen, setOnceOpen] = useState(false);
+  const prepareOnce = useCleaner(true, "the reference voice for ONE reading (not saved)");
 
   const load = useCallback(() => {
     fetch("/api/jawad/voices", { cache: "no-store" })
@@ -138,6 +144,17 @@ export default function VoicePicker({ value, onChange, coins, provider = "eleven
             </div>
           ) : (
             <LibraryLock what="صمّم صوتك الخاص من الوصف، أو احفظ بصمة صوتك أنت" />
+          )}
+          {provider === "jawad" && (
+            <div className="space-y-2 rounded-xl border border-jw-line bg-jw-surface-2 p-2">
+              <button type="button" className="jw-btn w-full" aria-expanded={onceOpen} onClick={() => setOnceOpen(!onceOpen)}>
+                <Icon name="mic" size={16} /> {once && value.startsWith("u:") ? "غيّر تسجيل «لمرة وحدة»" : "سجّل صوتك لمرة وحدة (بدون حفظ)"}
+              </button>
+              {once && value.startsWith("u:") && <p className="text-xs text-jw-accent">✅ يتكلم بتسجيلك هالمرة ({once.name}). ما ينحفظ في مكتبتك.</p>}
+              {onceOpen && (
+                <RecordingField label="تسجيل لهالمرة" hint="سجّل ٣٠ ثانية فأكثر بنبرتك (١٠ ثوانٍ كحد أدنى)، و Claude Code ينظّفه (يقص السكتات ويوزن الصوت) ويُستخدم للقراءة الحالية بس، ولا ينحفظ كصوت." value={once} onChange={(v) => { setOnce(v); if (v) { onChange(`u:${v.id}`); setOnceOpen(false); } }} maxSec={170} prepare={prepareOnce} />
+              )}
+            </div>
           )}
           {!minimaxOnly && (
             <>
@@ -255,6 +272,15 @@ async function uploadRecording(file: File, onProgress: (p: number) => void) {
   return { id: conf.upload.id, durationMs: conf.upload.durationMs };
 }
 
+/** «Claude Code» cleaning for a recording: silences, rumble, hum, level — the cleaned WAV as a file (null when switched off). */
+function useCleaner(on: boolean, purpose: string) {
+  const [claude] = useClaudeModel();
+  return on ? async (f: File, step: (s: string) => void) => {
+    const r = await cleanVoice({ blob: f, model: claude.id, from: "studio", purpose, onStep: step });
+    return new File([r.blob], "تسجيلي-منظّف.wav", { type: "audio/wav" });
+  } : null;
+}
+
 /** A recording as a 16-bit mono WAV (the server takes MP3 or WAV; the browser records in its own format). */
 async function toWav(blob: Blob, rate = 44_100): Promise<Blob> {
   const ctx = new AudioContext();
@@ -345,16 +371,26 @@ function MicButton({ maxSec, disabled, onFile, onError }: { maxSec: number; disa
   );
 }
 
-function RecordingField({ label, hint, value, onChange, maxSec }: { label: string; hint: string; value: { id: string; name: string; sec: number } | null; onChange: (v: { id: string; name: string; sec: number } | null) => void; maxSec: number }) {
+function RecordingField({ label, hint, value, onChange, maxSec, prepare }: { label: string; hint: string; value: { id: string; name: string; sec: number } | null; onChange: (v: { id: string; name: string; sec: number } | null) => void; maxSec: number; /** «Claude Code»: cleans the recording before it is uploaded (null = as it is) */ prepare?: ((f: File, step: (s: string) => void) => Promise<File>) | null }) {
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [step, setStep] = useState("");
   async function send(f: File) {
     setError("");
     setProgress(0);
     try {
-      const r = await uploadRecording(f, setProgress);
-      onChange({ id: r.id, name: f.name, sec: Math.round((r.durationMs ?? 0) / 1000) });
+      let file = f;
+      if (prepare) {
+        try {
+          file = await prepare(f, setStep);
+        } catch (err) {
+          setError(`ما قدرنا ننظّف بـ Claude Code (${(err as Error).message}) — رفعنا التسجيل كما هو.`);
+        }
+        setStep("");
+      }
+      const r = await uploadRecording(file, setProgress);
+      onChange({ id: r.id, name: file.name, sec: Math.round((r.durationMs ?? 0) / 1000) });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -373,7 +409,7 @@ function RecordingField({ label, hint, value, onChange, maxSec }: { label: strin
           </button>
         </div>
       ) : progress !== null ? (
-        <p className="jw-btn w-full" role="status">يرفع… {Math.round(progress * 100)}٪</p>
+        <p className="jw-btn w-full" role="status">{step || `يرفع… ${Math.round(progress * 100)}٪`}</p>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
           <MicButton maxSec={maxSec} disabled={false} onFile={send} onError={setError} />
@@ -420,6 +456,8 @@ export function VoiceStudio({ mode, coins, provider = "elevenlabs", onClose, onS
   const [name, setName] = useState("");
   const [consent, setConsent] = useState(false);
   const [noise, setNoise] = useState(false);
+  const [tidy, setTidy] = useState(true);
+  const prepare = useCleaner(tidy, "a voiceprint of the person's own voice");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const shown = tab;
@@ -566,7 +604,11 @@ export function VoiceStudio({ mode, coins, provider = "elevenlabs", onClose, onS
                 )}
               </div>
             )}
-            <RecordingField label="بصمة صوتك" hint="سجّل بصوتك الطبيعي في مكان هادئ (من ٣٠ ثانية إلى دقيقتين أفضل): اقرأ أي نص بنبرتك المعتادة. أو ارفع تسجيلًا نظيفًا لصوت واحد بلا موسيقى." value={reference} onChange={setReference} maxSec={170} />
+            <RecordingField label="بصمة صوتك" hint="سجّل بصوتك الطبيعي في مكان هادئ (من ٣٠ ثانية إلى دقيقتين أفضل): اقرأ أي نص بنبرتك المعتادة. أو ارفع تسجيلًا نظيفًا لصوت واحد بلا موسيقى." value={reference} onChange={setReference} maxSec={170} prepare={prepare} />
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1 size-4 accent-[var(--jw-accent)]" checked={tidy} onChange={(e) => setTidy(e.target.checked)} />
+              <span>🧑‍💻 نظّف التسجيل بـ Claude Code قبل الحفظ <span className="block text-[11px] text-jw-faint">يقص السكتات الطويلة ويشيل الطنين والدمدمة ويوزن مستوى الصوت، ويراجع النتيجة بنفسه (يحسب من استخدام Claude). يُطبَّق على ما تسجّله أو ترفعه هنا.</span></span>
+            </label>
             <label className="block">
               <span className="jw-label">اسم الصوت</span>
               <input className="jw-input" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: صوتي" dir="auto" />
