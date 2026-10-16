@@ -6,8 +6,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { UserError } from "@/lib/api";
 import { generatorById } from "@config/jawad/generators";
-import { ZAYNAB_IMAGE, ZAYNAB_VIEWS, zaynabPrompt, zaynabViewFile, type ZaynabInput } from "@config/jawad/zaynab";
-import type { RefMeta } from "@config/jawad/types";
+import { ZAYNAB_IMAGE, ZAYNAB_VIEWS, zaynabPrompt, zaynabQuoteRefs, zaynabViewFile, type ZaynabInput } from "@config/jawad/zaynab";
 import { evaluate } from "../engine";
 import { loadRuntime } from "./runtime";
 
@@ -25,10 +24,9 @@ export async function viewBytes(id: string): Promise<Uint8Array> {
 export async function zaynabQuote(input: ZaynabInput, photos: number) {
   const rt = await loadRuntime();
   const image = rt.generators.find((g) => g.id === ZAYNAB_IMAGE);
-  const refs: RefMeta[] = Array.from({ length: photos + 1 }, (_, i) => ({ id: `q${i}`, kind: "image", role: "reference", mime: "image/jpeg", bytes: 1, name: `image${i + 1}`, status: "ready" }));
   const result = evaluate(generatorById(ZAYNAB_IMAGE)!, {
     settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: input.count },
-    prompt: zaynabPrompt(input, photos), instructions: "", refStyle: "references", refs, strict: true,
+    prompt: zaynabPrompt(input, photos), instructions: "", refStyle: "references", refs: zaynabQuoteRefs(photos), strict: true,
   }, rt.prices[ZAYNAB_IMAGE]);
   if (!result.price.ok || result.issues.length) throw new UserError(result.issues[0]?.message ?? "تعذّر تسعير الصورة؛ جرّب لاحقًا.", 503);
   return { coins: result.price.coins, section: image?.sectionId ?? "images" };

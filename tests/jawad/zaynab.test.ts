@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ZAYNAB_GREETING, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLES, ZAYNAB_VIEWS, zaynabInput, zaynabPrompt, zaynabViewFile } from "@config/jawad/zaynab";
+import { ZAYNAB_GREETING, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLES, ZAYNAB_IMAGE, ZAYNAB_VIEWS, zaynabInput, zaynabPrompt, zaynabQuoteRefs, zaynabViewFile } from "@config/jawad/zaynab";
 import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS, freeFirstOpen } from "@config/jawad/free-first";
 import { DEFAULT_SECTIONS, RESERVED_SECTION_IDS } from "@config/jawad/sections";
+import { evaluate } from "@/lib/jawad/engine";
+import { generatorById } from "@config/jawad/generators";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
@@ -54,6 +56,14 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(route).toContain("[place.id, ...(uploads as string[])]");
     // the sheet's views are daytime and empty: the prompt relights them and puts the people on the marble
     expect(zaynabPrompt(zaynabInput(ok), 1)).toContain("plain daytime reference of an EMPTY courtyard");
+  });
+  it("the price can be asked before any photo is added: the references it is asked with are accepted by GPT Image 2's rules", () => {
+    for (const photos of [1, 2, 6]) {
+      const r = evaluate(generatorById(ZAYNAB_IMAGE)!, { settings: { aspect: "3:2", resolution: "std", quality: "medium", count: 1 }, prompt: zaynabPrompt(zaynabInput(ok), photos), instructions: "", refStyle: "references", refs: zaynabQuoteRefs(photos), strict: true }, {});
+      expect(r.issues.filter((i) => i.field === "refs"), `photos ${photos}`).toEqual([]);
+    }
+    // and so are the shipped views as they really are (a small side is fine, a missing size is not)
+    expect(read("src/lib/jawad/server/zaynab.ts")).toContain("zaynabQuoteRefs(photos)");
   });
   it("writes the greeting over the picture itself, in real letters", () => {
     expect(ZAYNAB_GREETING.join(" ")).toContain("نرفع أسمى آيات التهاني والتبريك لمقام صاحب العصر والزمان (عج)");
