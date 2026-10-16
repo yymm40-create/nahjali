@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ZAYNAB_ASPECTS, ZAYNAB_MAX_PHOTOS, ZAYNAB_VIEWS, ZAYNAB_TIMES, ZAYNAB_WEATHER, type ZaynabInput } from "@config/jawad/zaynab";
+import { ZAYNAB_ASPECTS, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLE_IDS, ZAYNAB_VIEWS, ZAYNAB_TIMES, ZAYNAB_WEATHER, type ZaynabInput } from "@config/jawad/zaynab";
 import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS } from "@config/jawad/free-first";
 import Riyal from "@/components/Riyal";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
-import StylePicker from "../studio/StylePicker";
-import { findStyle } from "@config/film-styles";
+import { StyleThumb } from "@/components/style-map/StyleBrowser";
+import { findStyle, styleImage } from "@config/film-styles";
 
 type Quote = { coins: number; fullCoins: number };
 /** what «جواد» wrote for this request, sealed by the server (sent back as it is to start) */
@@ -33,6 +33,8 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
   const [quote, setQuote] = useState<{ value: Quote; free: boolean; snapshot: string; written: Written } | null>(null);
   const [jobs, setJobs] = useState<JobView[]>([]);
   const [firstFree, setFirstFree] = useState(false);
+  // the pictures of the library's styles (the same as the studios' «🎨 الستايل»)
+  const [pics, setPics] = useState<Record<string, string>>({});
   const requestKey = useRef<string | null>(null);
   const lock = useRef(false);
   const snapshot = JSON.stringify({ input, people: people.map(p => [p.upload.id, p.label]) });
@@ -57,6 +59,14 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
     return () => { stopped = true; clearTimeout(timer); };
   }, [userId]);
 
+  useEffect(() => {
+    let live = true;
+    fetch("/api/jawad/styles")
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { pictures?: Record<string, string> } | null) => { if (live && d?.pictures) setPics(d.pictures); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
   async function add(files: FileList | null) {
     if (!files || lock.current) return;
     if (people.length + files.length > ZAYNAB_MAX_PHOTOS) { setError(`أقصى شي ${ZAYNAB_MAX_PHOTOS} صور.`); return; }
@@ -109,8 +119,8 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
       <label className="zy-upload">＋ أضف صور<input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={people.length >= ZAYNAB_MAX_PHOTOS || !!busy} onChange={event => { void add(event.target.files); event.target.value = ""; }} /></label>
       <div className="zy-people">{people.map((person, index) => <div key={person.upload.id}>{person.upload.url && <img src={person.upload.url} alt={`الشخص ${index + 1}`} />}<input maxLength={40} value={person.label} placeholder="اسمه أو من هو (اختياري)" onChange={event => { const value = event.target.value; setPeople(current => current.map((item, i) => i === index ? { ...item, label: value } : item)); reset(); }} /><button type="button" aria-label="حذف الصورة" onClick={() => { setPeople(current => current.filter((_, i) => i !== index)); reset(); }}>×</button></div>)}</div>
       <h2>٣. الستايل</h2>
-      <p>اختر ستايل من ستايلات الجواد الذكي (لازم تختار واحد). الصورة كلها تتحوّل له، وما يبقى فيها شي واقعي.</p>
-      <StylePicker value={input.style} onChange={id => change({ style: id })} allowNone={false} />
+      <p>اختر واحد من عشر ستايلات. الصورة كلها تتحوّل له، وما يبقى فيها شي واقعي.</p>
+      <div className="zy-views">{ZAYNAB_STYLE_IDS.map(id => findStyle(id)).filter(s => !!s).map(s => <button type="button" key={s!.id} className={input.style === s!.id ? "chosen" : ""} aria-pressed={input.style === s!.id} onClick={() => change({ style: s!.id })}><StyleThumb s={{ family: s!.family, name: s!.name, image: pics[s!.id] ?? styleImage(s!.id) }} /><b>{s!.name}</b><small>{s!.description}</small></button>)}</div>
       <h2>٤. الوقت والجو</h2>
       <div className="zy-seg" role="radiogroup" aria-label="الوقت">{(Object.entries(ZAYNAB_TIMES) as [ZaynabInput["time"], string][]).map(([id, label]) => <button type="button" role="radio" aria-checked={input.time === id} key={id} className={input.time === id ? "chosen" : ""} onClick={() => change({ time: id })}>{label}</button>)}</div>
       <div className="zy-seg" role="radiogroup" aria-label="الجو">{(Object.entries(ZAYNAB_WEATHER) as [ZaynabInput["weather"], string][]).map(([id, label]) => <button type="button" role="radio" aria-checked={input.weather === id} key={id} className={input.weather === id ? "chosen" : ""} onClick={() => change({ weather: id })}>{label}</button>)}</div>

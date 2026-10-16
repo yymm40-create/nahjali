@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ZAYNAB_GREETING, ZAYNAB_IMAGE, ZAYNAB_MAX_PHOTOS, ZAYNAB_RECIPE, ZAYNAB_SHEET_FILE, ZAYNAB_VIEWS, ZAYNAB_VIEW_TILE, zaynabBrief, zaynabInput, zaynabPromptProblems, zaynabQuoteRefs, zaynabViewFile } from "@config/jawad/zaynab";
+import { ZAYNAB_GREETING, ZAYNAB_IMAGE, ZAYNAB_MAX_PHOTOS, ZAYNAB_RECIPE, ZAYNAB_SHEET_FILE, ZAYNAB_STYLE_IDS, ZAYNAB_VIEWS, ZAYNAB_VIEW_TILE, zaynabBrief, zaynabInput, zaynabPromptProblems, zaynabQuoteRefs, zaynabViewFile } from "@config/jawad/zaynab";
 import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS, freeFirstOpen } from "@config/jawad/free-first";
 import { FILM_STYLES } from "@config/film-styles";
 import { DEFAULT_SECTIONS, RESERVED_SECTION_IDS } from "@config/jawad/sections";
@@ -72,14 +72,17 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     // a style is always chosen: «بدون ستايل» is not offered here
     expect(() => zaynabInput({ ...ok, style: "" })).toThrow();
     const page = read("src/components/jawad/zaynab/ZaynabStudio.tsx");
-    expect(page).toContain("allowNone={false}");
+    // only the ten styles chosen from the library are offered
+    expect(page).toContain("ZAYNAB_STYLE_IDS.map");
     // nothing chosen in advance: the person picks the style (it used to start on Pixar, so everyone got Pixar)
     expect(page).toContain('{ view: "shrine", style: "",');
     expect(page).toContain("!input.style");
     expect(() => zaynabInput({ ...ok, view: "nowhere" })).toThrow();
     expect(() => zaynabInput({ ...ok, weather: "fog" })).toThrow();
     expect(() => zaynabInput({ ...ok, consent: false })).toThrow();
-    expect(read("src/components/jawad/zaynab/ZaynabStudio.tsx")).toContain("<StylePicker");
+    expect(ZAYNAB_STYLE_IDS).toHaveLength(10);
+    for (const id of ZAYNAB_STYLE_IDS) expect(FILM_STYLES.some((s) => s.id === id), id).toBe(true);
+    expect(() => zaynabInput({ ...ok, style: "noir" })).toThrow();
     for (const v of ZAYNAB_VIEWS) expect(readFileSync(new URL(`../../${zaynabViewFile(v.id)}`, import.meta.url)).length).toBeGreaterThan(5000);
   });
 
