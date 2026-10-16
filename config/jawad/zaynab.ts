@@ -10,6 +10,7 @@
 // GPT Image 2 at the studio's price, the people's own faces kept.
 
 import { CARTOON_STYLES } from "./cartoon";
+import type { RefMeta } from "./types";
 
 export const ZAYNAB_BASE = "/jawad-ai/zaynab";
 export const ZAYNAB_IMAGE = "openai-gpt-image-2";
@@ -159,3 +160,10 @@ export function zaynabPrompt(input: ZaynabInput, photos: number): string {
     "Everything — the people, the shrine and the sky — is rendered in this one look at one consistent level of stylisation, so the picture reads as a single image.",
   ].filter(Boolean).join("\n");
 }
+
+/**
+ * The references a price is asked for, before any file is added: the chosen view and the people's photos, each a ready
+ * image with real pixels (a reference without them is turned down by the generator's rules, whatever its count).
+ */
+export const zaynabQuoteRefs = (photos: number): RefMeta[] =>
+  Array.from({ length: photos + 1 }, (_, i) => ({ id: `q${i}`, kind: "image", role: "reference", mime: "image/jpeg", bytes: 200_000, width: 1024, height: 1024, name: `image${i + 1}`, status: "ready" }));
