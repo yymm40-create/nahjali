@@ -208,7 +208,7 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
  * `server.library`: set only by the server (never from the request), for a character or place of «المكتبة» made from a
  * description; its picture is kept in the library when the job succeeds.
  */
-export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content"; signupFreeImageEligible?: boolean; cartoon?: CartoonPlan } = {}): Promise<CreateResult> {
+export async function createJob(user: { id: string; email?: string | null }, owner: boolean, b: GenerateBody, origin: string, server: { library?: { kind: LibraryKind; name: string; note: string }; team?: string | null; via?: "editor" | "content"; signupFreeImageEligible?: boolean; cartoon?: CartoonPlan; free?: boolean } = {}): Promise<CreateResult> {
   const key = String(b.idempotencyKey ?? "");
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw new UserError("طلب غير صحيح.", 400);
   const def = generatorById(String(b.generatorId ?? ""));
@@ -285,8 +285,10 @@ export async function createJob(user: { id: string; email?: string | null }, own
   }
   if (!e.price.ok) return { kind: "issues", issues: [{ field: "price", message: e.price.reason }] };
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
-  const chargeCoins = signupFreeImage ? 0 : e.price.coins;
-  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : e.price.lines, prices: table };
+  // «أول تجربة مجانية»: set only by the server after it checked the offer and that this is the account's first attempt
+  const freeFirst = server.free === true && !signupFreeImage;
+  const chargeCoins = signupFreeImage || freeFirst ? 0 : e.price.coins;
+  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : e.price.lines, prices: table };
 
   // «الفصل الذكي»: the frames the studio took of the video are kept with the job (Claude watches them for the music
   // and the effects; the dialogue needs only the video)
@@ -306,8 +308,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const modelPrompt = style ? withStyle(asWritten, style.text, def.output === "video" ? style.videoText : undefined) : asWritten;
 
   // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
-  const teamPays = !signupFreeImage && !owner && !!server.team && e.price.coins > 0;
-  const charge = !signupFreeImage && !owner && !server.team && e.price.coins > 0;
+  const teamPays = !signupFreeImage && !freeFirst && !owner && !!server.team && e.price.coins > 0;
+  const charge = !signupFreeImage && !freeFirst && !owner && !server.team && e.price.coins > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
     p_job: {
       user_id: user.id,
@@ -322,7 +324,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
-      price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : e.price.lines,
+      price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : e.price.lines,
       pricing_version: priceVersion(table),
       cost_usd_estimate: e.price.usdCeiling ?? "",
     },
