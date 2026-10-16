@@ -110,6 +110,25 @@ function videoThumb(url: string) {
   });
 }
 
+/** A video's pixels and length, read by the browser from its link (null when it can't be read in 15 s). */
+export function measureVideo(url: string) {
+  return new Promise<{ width: number; height: number; durationMs: number } | null>((done) => {
+    const v = document.createElement("video");
+    v.muted = true;
+    v.preload = "metadata";
+    const finish = (r: { width: number; height: number; durationMs: number } | null) => {
+      clearTimeout(timer);
+      v.removeAttribute("src");
+      v.load();
+      done(r);
+    };
+    const timer = setTimeout(() => finish(null), 15_000);
+    v.onloadedmetadata = () => finish(v.videoWidth && v.videoHeight ? { width: v.videoWidth, height: v.videoHeight, durationMs: Number.isFinite(v.duration) ? Math.round(v.duration * 1000) : 0 } : null);
+    v.onerror = () => finish(null);
+    v.src = url;
+  });
+}
+
 // ---------- frames for Claude ----------
 
 /**
