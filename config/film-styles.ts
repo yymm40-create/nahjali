@@ -54,7 +54,7 @@ const PLACE: Record<string, [string, string]> = {
 };
 
 /** The looks of «حولني الى الستايل الكرتوني» that were already in the guide's 24. */
-const CARTOON_OF: Record<string, string> = { "pixar-caricature": "cinematic-3d", ghibli: "ghibli", "comic-print": "print-comic" };
+const CARTOON_OF: Record<string, string> = { "pixar-caricature": "cinematic-3d", ghibli: "ghibli", "comic-print": "print-comic", shinkai: "anime-sky", "modern-shonen": "anime-action", "retro-cel": "retro-anime", chibi: "chibi" };
 
 const ARABIC_STYLE_NAMES: Record<string, string> = {
   "pixar-classic": "بيكسار الكلاسيكية",

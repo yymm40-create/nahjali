@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FILM_STYLES, GUIDE_STYLE_IDS, STYLE_FAMILIES, familySchools, styleImage, stylePicturePrompt } from "@config/film-styles";
-import { CARTOON_STYLES } from "@config/jawad/cartoon";
+import { CARTOON_ONLY, CARTOON_STYLES } from "@config/jawad/cartoon";
 import { withStyle } from "@config/jawad/style-prompt";
 import { assistantSystem, checkAnswer } from "@config/jawad/assistant";
 import { GENERATORS } from "@config/jawad/generators";
@@ -47,7 +47,7 @@ describe("«الستايل» and one «جواد» for the studios", () => {
     }
   });
   it("carries every look of «حولني الى الستايل الكرتوني» into the map", () => {
-    for (const c of CARTOON_STYLES) expect(FILM_STYLES.filter((s) => s.cartoon === c.id), c.id).toHaveLength(1);
+    for (const c of CARTOON_STYLES.filter((x) => !CARTOON_ONLY.includes(x.id))) expect(FILM_STYLES.filter((s) => s.cartoon === c.id), c.id).toHaveLength(1);
   });
   it("a new style shows its family's tile until the owner draws its picture once, from its family's scene", () => {
     const fresh = FILM_STYLES.filter((s) => !GUIDE_STYLE_IDS.has(s.id));

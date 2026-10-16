@@ -18,6 +18,7 @@ export const CARTOON_PRICE = 200;
 export const CARTOON_STYLES = [
   {
     id: "cinematic-3d",
+    group: "world",
     name: "سينمائي 3D",
     icon: "🎬",
     hint: "فيلم كرتون عالمي، نعومة وإضاءة سينمائية",
@@ -27,6 +28,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "anime",
+    group: "anime",
     name: "أنمي معتدل",
     icon: "🌸",
     hint: "أنمي هادئ يحافظ على ملامحك الحقيقية",
@@ -36,6 +38,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "painted-3d",
+    group: "world",
     name: "ثلاثي مرسوم باليد",
     icon: "🖌️",
     hint: "ثلاثي الأبعاد بملمس لوحة مرسومة — أسلوب ٢٠٢٦",
@@ -45,6 +48,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "soft-2d",
+    group: "kids",
     name: "كرتون 2D ناعم",
     icon: "🎨",
     hint: "خط نظيف وألوان مسطّحة — كرتون القنوات",
@@ -54,6 +58,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "storybook",
+    group: "kids",
     name: "قصة مصوّرة",
     icon: "📖",
     hint: "غواش وألوان مائية مثل كتب الأطفال",
@@ -63,6 +68,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "ghibli",
+    group: "anime",
     name: "الدفء المرسوم",
     icon: "🌿",
     hint: "خلفيات مرسومة ووجوه لطيفة وضوء طبيعي",
@@ -72,6 +78,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "print-comic",
+    group: "art",
     name: "كوميكس مطبوع",
     icon: "💥",
     hint: "نقاط هاف‌تون وطباعة مزاحة — أسلوب سبايدر-فيرس",
@@ -81,6 +88,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "clay",
+    group: "kids",
     name: "صلصال",
     icon: "🧸",
     hint: "ستوب موشن بملمس يد وبصمات أصابع",
@@ -90,6 +98,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "papercut",
+    group: "kids",
     name: "ورق مقصوص",
     icon: "✂️",
     hint: "طبقات ورق ملوّن وظلال خفيفة",
@@ -99,6 +108,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "ligne-claire",
+    group: "art",
     name: "الخط الصافي",
     icon: "🖋️",
     hint: "خط واحد ثابت وألوان مسطّحة بلا تدرّج — مدرسة تان‌تان",
@@ -108,6 +118,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "webtoon",
+    group: "anime",
     name: "ويبتون",
     icon: "📱",
     hint: "رسم رقمي نظيف وألوان ناعمة — مدرسة الويبتون",
@@ -117,6 +128,7 @@ export const CARTOON_STYLES = [
   },
   {
     id: "rubber-hose",
+    group: "art",
     name: "كلاسيكي مطاطي",
     icon: "🎩",
     hint: "كرتون الثلاثينات: أطراف مطاطية وملمس فيلم قديم",
@@ -124,8 +136,122 @@ export const CARTOON_STYLES = [
     real: "vintage cartoon: rubbery drawn forms, far from real",
     text: "1930s rubber-hose animation: boneless curving limbs with no elbows or knees, pie-cut eyes and round white gloves, bouncy circular construction, thick inked outlines, cream-and-sepia or two-tone palette, aged film grain, slight frame jitter and vignette, hand-painted background with simple repeating shapes.",
   },
+  {
+    id: "game-2-5d",
+    group: "games",
+    name: "لعبة 2.5D",
+    icon: "🎮",
+    hint: "عالم لعبة بطبقات عمق: شخصية مسطّحة على ديوراما ثلاثي الأبعاد",
+    fits: "all",
+    real: "2.5D game art: flat-feeling characters on a layered 3D diorama, the same everywhere",
+    text: "2.5D video-game art (the HD-2D / side-scroller diorama look): the character drawn as a crisp stylised sprite-like figure with a clean outline and a few flat shading steps, standing on a layered miniature 3D stage built of separate depth planes — foreground leaves out of focus, a mid-ground platform with modelled ground and props, a far painted backdrop — with tilt-shift depth of field, rich bloom and glowing particles, warm volumetric light shafts and a saturated game-engine colour grade.",
+  },
+  {
+    id: "pixel",
+    group: "games",
+    name: "بكسل ريترو",
+    icon: "👾",
+    hint: "ألعاب الـ١٦ بت: مربعات كبيرة وألوان محدودة",
+    fits: "all",
+    real: "pixel art: every shape built from visible square pixels, nothing smooth or photographic",
+    text: "16-bit pixel art: the whole picture built from large visible square pixels with no anti-aliasing, a limited palette of about sixteen colours with dithered shading, one-pixel dark outlines, simple chunky face features of only a few pixels, a tiled retro game background with layered parallax scenery, crisp edges everywhere and not a single smooth gradient.",
+  },
+  {
+    id: "voxel",
+    group: "games",
+    name: "عالم مكعبات",
+    icon: "🧱",
+    hint: "كل شي من مكعبات صغيرة مثل ألعاب البناء",
+    fits: "child",
+    real: "voxel blocks: the character and the world made of small cubes, consistently so",
+    text: "Voxel block world: the character and everything around them built from small cubes of flat colour, a blocky face made of a few cubes with the features kept recognisable, stepped silhouettes, soft ambient occlusion where cubes meet, clean toy-like lighting with a gentle sun shadow, bright cheerful palette, a diorama of cube trees, water and clouds, shallow tilt-shift focus.",
+  },
+  {
+    id: "anime-action",
+    group: "anime",
+    name: "أنمي أكشن",
+    icon: "⚡",
+    hint: "حدود حبر قوية وظلال حادة وإضاءة درامية",
+    fits: "grown",
+    real: "action anime: drawn cel characters over painted depth, held consistently",
+    text: "Modern action anime (the shonen-film look): crisp ink outlines of varying weight, hard-edged cel shadow shapes, dynamic low-angle framing with wind-swept hair and cloth, volumetric light shafts and floating sparks over a detailed painted environment, a dramatic colour script with a hot accent against cool shadows, speed-line energy and a controlled glow bloom.",
+  },
+  {
+    id: "anime-sky",
+    group: "anime",
+    name: "أنمي السماء المضيئة",
+    icon: "🌅",
+    hint: "سماء وماء مرسومة بتفاصيل وإضاءة رومانسية",
+    fits: "all",
+    real: "painted-background anime: a clean drawn character in front of a hyper-detailed painted sky, consistently so",
+    text: "Luminous-sky anime (the romantic painted-backdrop school): the character drawn with clean thin anime linework and soft flat shading, set against a hyper-detailed painted background with towering cumulus clouds, glassy reflective water, restrained lens flares, light scattering and soft bloom, deep saturated blues melting into glowing warm gold at the horizon.",
+  },
+  {
+    id: "retro-anime",
+    group: "anime",
+    name: "أنمي الثمانينات",
+    icon: "📼",
+    hint: "ألوان سِل قديمة وحبيبات فيلم وإحساس بث قديم",
+    fits: "all",
+    real: "vintage cel anime: hand-painted cels, far from real, consistently so",
+    text: "1980s-90s retro cel anime: hand-painted cel colour with visible paint texture, slightly off-register colour edges, warm film grain and halation around the highlights, big glossy eyes with sparkling reflections, sharp linework under the grain, a vintage broadcast palette with soft scanline feel and a painted airbrushed sunset backdrop.",
+  },
+  {
+    id: "chibi",
+    group: "anime",
+    name: "تشيبي لطيف",
+    icon: "🍡",
+    hint: "رأس كبير وجسم صغير وخدود وردية",
+    fits: "child",
+    real: "chibi: deliberately tiny-bodied, big-headed drawn shapes, consistently so",
+    text: "Chibi cute style: a very large round head on a tiny two-heads-tall body, short soft limbs, big shiny eyes with simple highlights, a tiny nose and a small smiling mouth, rosy blush on the cheeks, the hair shape and colour and any glasses or beard kept as simplified graphic shapes, soft pastel cel shading, rounded bubbly outlines and little sparkles and hearts floating around.",
+  },
+  {
+    id: "vinyl-toy",
+    group: "kids",
+    name: "مجسّم لعبة",
+    icon: "🪀",
+    hint: "فيجر لامع من الفينيل مثل ألعاب المجموعات",
+    fits: "all",
+    real: "designer vinyl toy: a manufactured glossy object, consistently so",
+    text: "Collectible designer vinyl toy figure photographed on a tabletop: smooth glossy injection-moulded plastic with a soft specular highlight, simplified rounded body with a seam line at the joints, painted-on face features and a matte paint finish, tiny scuffs of realistic manufacturing, a small round display base, bright studio softbox lighting with a clean coloured backdrop and a shallow macro depth of field.",
+  },
+  {
+    id: "felt",
+    group: "kids",
+    name: "صوف ولباد",
+    icon: "🧶",
+    hint: "غرز يدوية وقماش لباد ناعم مثل دمى الأطفال",
+    fits: "child",
+    real: "felt and yarn craft: stitched soft fabric forms, consistently so",
+    text: "Handmade felt-and-yarn craft: every shape cut from thick coloured wool felt with fuzzy fibre edges, visible hand stitches in contrasting thread along the seams, button eyes and embroidered smiles, hair made of looped yarn, soft stuffing puffing the forms, a knitted and quilted background set, warm cosy window light with soft shadows and macro depth of field.",
+  },
 ] as const;
 export type CartoonStyle = (typeof CARTOON_STYLES)[number]["id"];
+
+/** The looks only this page has (games and toys): the shared style map keeps the library's own 100, so these are not in it. */
+export const CARTOON_ONLY: readonly string[] = ["game-2-5d", "pixel", "voxel", "vinyl-toy", "felt"];
+
+/** The shelves the styles are shown under (the person can still see them all at once). */
+export const CARTOON_GROUPS = {
+  world: { name: "عوالم سينمائية", icon: "🎬" },
+  anime: { name: "أنمي", icon: "🌸" },
+  games: { name: "ألعاب", icon: "🎮" },
+  kids: { name: "للأطفال", icon: "🧸" },
+  art: { name: "فن ورسم", icon: "🖋️" },
+} as const;
+export type CartoonGroup = keyof typeof CARTOON_GROUPS;
+
+/**
+ * The picture of each look (drawn once by the owner from /admin/film, kept in the public bucket): a friendly made-up
+ * character, never a real person, in this look's whole world. A look without one shows its coloured tile.
+ */
+export const CARTOON_PICTURE_DIR = "cartoon-styles";
+export function cartoonStylePicturePrompt(id: string): string {
+  const style = CARTOON_STYLES.find(item => item.id === id);
+  if (!style) throw new Error("unknown cartoon style " + id);
+  return "A friendly made-up young character with a warm smile, modest clothing, waving hello in a bright garden with a small house and a tree behind. A wide 16:9 frame, the character clear and well staged. No writing, letters or captions anywhere in the picture.\n\nART STYLE: " + style.text + "\nHOLD ONE LEVEL OF STYLISATION — " + style.real + ".";
+}
 
 /**
  * Who the picture is FOR — a separate question from who is IN it. It came out of the research: Disney Research measured

@@ -6,6 +6,7 @@ import { riyadhDayStart, riyadhMonthStart, rowCost } from "@/lib/film/usage";
 import { isAdmin } from "@config/site";
 import { FILM_STAGES } from "@config/film";
 import StylePictures from "./StylePictures";
+import CartoonPictures from "./CartoonPictures";
 
 export const metadata = { title: "فرع الفيلم | لوحة التحكم" };
 export const dynamic = "force-dynamic";
@@ -96,6 +97,7 @@ export default async function FilmAdminPage() {
       </section>
 
       <StylePictures />
+      <CartoonPictures />
 
       <section className="card space-y-2 p-4">
         <h2 className="text-xl font-extrabold">مشاريع الأفلام ({projectRows.length})</h2>

@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
+import { CARTOON_GROUPS, CARTOON_PICTURE_DIR, cartoonStylePicturePrompt, CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
 import { DEFAULT_SETTINGS, OCTOBER_OFFER, offersAt, offerFor } from "@config/course";
 import { generatorById } from "@config/jawad/generators";
 import { evaluate } from "@/lib/jawad/engine";
@@ -148,5 +149,39 @@ describe("the photograph itself, redrawn", () => {
     expect(grown).not.toContain("hands and knees");
     // and the child's baby film still gets its movement
     expect(cartoonVideoPrompt(cartoonInput({ ...input, mode: "character", age: "baby", movement: "crawl" }))).toContain("hands and knees");
+  });
+});
+
+describe("the games, anime and kids shelves, and the looks' pictures", () => {
+  it("has a 2.5D game look and several anime looks, every look on a known shelf", () => {
+    const ids = CARTOON_STYLES.map(style => style.id);
+    for (const id of ["game-2-5d", "pixel", "voxel", "anime-action", "anime-sky", "retro-anime", "chibi", "vinyl-toy", "felt"]) expect(ids).toContain(id);
+    expect(CARTOON_STYLES.find(style => style.id === "game-2-5d")?.name).toBe("لعبة 2.5D");
+    expect(CARTOON_STYLES.length).toBe(21);
+    for (const style of CARTOON_STYLES) expect(Object.keys(CARTOON_GROUPS)).toContain(style.group);
+    // every shelf has looks, and anime has several
+    for (const group of Object.keys(CARTOON_GROUPS)) expect(CARTOON_STYLES.some(style => style.group === group)).toBe(true);
+    expect(CARTOON_STYLES.filter(style => style.group === "anime").length).toBeGreaterThanOrEqual(6);
+  });
+  it("a new look builds a prompt, and its picture is a made-up character, never drawn by itself", () => {
+    const prompt = cartoonImagePrompt(cartoonInput({ ...input, style: "game-2-5d" }));
+    expect(prompt).toContain("2.5D video-game art");
+    const picture = cartoonStylePicturePrompt("pixel");
+    expect(picture).toContain("made-up");
+    expect(picture).toContain("16-bit pixel art");
+    expect(CARTOON_PICTURE_DIR).toBe("cartoon-styles");
+    // drawn only from the owner's button in /admin/film, and the page shows a tile until then
+    const route = readFileSync(new URL("../../src/app/api/jawad/cartoon-styles/route.ts", import.meta.url), "utf8");
+    expect(route).toContain("isAdmin(user.email)");
+    const studio = readFileSync(new URL("../../src/components/jawad/cartoon/CartoonStudio.tsx", import.meta.url), "utf8");
+    expect(studio).toContain("ct-tile");
+    expect(studio).toContain("/api/jawad/cartoon-styles");
+    expect(readFileSync(new URL("../../src/app/admin/film/page.tsx", import.meta.url), "utf8")).toContain("CartoonPictures");
+  });
+  it("the page is a child's: doodles in the back and motion that respects the device's setting", () => {
+    const css = readFileSync(new URL("../../src/app/jawad-ai/cartoon/cartoon.css", import.meta.url), "utf8");
+    expect(css).toContain(".ct-sky");
+    expect(css).toContain("prefers-reduced-motion");
+    expect(readFileSync(new URL("../../src/components/jawad/cartoon/Doodles.tsx", import.meta.url), "utf8")).toContain('aria-hidden="true"');
   });
 });
