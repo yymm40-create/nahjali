@@ -71,7 +71,11 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(() => zaynabInput({ ...ok, style: "my-own-look" })).toThrow();
     // a style is always chosen: «بدون ستايل» is not offered here
     expect(() => zaynabInput({ ...ok, style: "" })).toThrow();
-    expect(read("src/components/jawad/zaynab/ZaynabStudio.tsx")).toContain("allowNone={false}");
+    const page = read("src/components/jawad/zaynab/ZaynabStudio.tsx");
+    expect(page).toContain("allowNone={false}");
+    // nothing chosen in advance: the person picks the style (it used to start on Pixar, so everyone got Pixar)
+    expect(page).toContain('{ view: "shrine", style: "",');
+    expect(page).toContain("!input.style");
     expect(() => zaynabInput({ ...ok, view: "nowhere" })).toThrow();
     expect(() => zaynabInput({ ...ok, weather: "fog" })).toThrow();
     expect(() => zaynabInput({ ...ok, consent: false })).toThrow();

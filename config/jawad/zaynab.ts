@@ -30,8 +30,6 @@ export const ZAYNAB_VIEWS = [
 ] as const;
 export type ZaynabView = (typeof ZAYNAB_VIEWS)[number]["id"];
 export const ZAYNAB_VIEW_DEFAULT: ZaynabView = "shrine";
-/** The style the page starts on (the person changes it from the library). */
-export const ZAYNAB_STYLE_DEFAULT = "pixar-classic";
 export const zaynabViewFile = (id: string) => `public/zaynab/views/${id}.jpg`;
 /** The tile of the sheet each view is (its label as written on the sheet). */
 export const ZAYNAB_VIEW_TILE: Record<ZaynabView, string> = { shrine: "03 VIEW TO SHRINE", spot: "07 SPOT A", left: "05 LEFT ARCADE", right: "06 RIGHT ARCADE", up: "08 LOOKING UP" };
