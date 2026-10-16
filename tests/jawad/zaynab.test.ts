@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ZAYNAB_GREETING, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLES, ZAYNAB_IMAGE, ZAYNAB_VIEWS, zaynabInput, zaynabPrompt, zaynabQuoteRefs, zaynabViewFile } from "@config/jawad/zaynab";
+import { ZAYNAB_GREETING, ZAYNAB_MAX_PHOTOS, ZAYNAB_IMAGE, ZAYNAB_VIEWS, zaynabInput, zaynabPrompt, zaynabQuoteRefs, zaynabViewFile } from "@config/jawad/zaynab";
 import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS, freeFirstOpen } from "@config/jawad/free-first";
+import { FILM_STYLES } from "@config/film-styles";
 import { DEFAULT_SECTIONS, RESERVED_SECTION_IDS } from "@config/jawad/sections";
 import { evaluate } from "@/lib/jawad/engine";
 import { generatorById } from "@config/jawad/generators";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
-const ok = { view: "shrine", style: "real", time: "night", weather: "rain", aspect: "3:2", labels: ["أبي", ""], greeting: true, count: 1, consent: true };
+const ok = { view: "shrine", style: "", time: "night", weather: "rain", aspect: "3:2", labels: ["أبي", ""], greeting: true, count: 1, consent: true };
 
 describe("«في حضرة السيدة زينب (ع)»", () => {
   it("is unlisted: no section on the bar, its address reserved, hidden from search engines", () => {
@@ -16,10 +17,12 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(RESERVED_SECTION_IDS).toContain("zaynab");
     expect(read("src/app/jawad-ai/zaynab/page.tsx")).toContain("index: false");
   });
-  it("offers 5 to 7 looks, night/day, rain/snow/clear", () => {
-    expect(ZAYNAB_STYLES.length).toBeGreaterThanOrEqual(5);
-    expect(ZAYNAB_STYLES.length).toBeLessThanOrEqual(7);
-    for (const s of ZAYNAB_STYLES) expect(s.text.length).toBeGreaterThan(120);
+  it("the look is one of JAWAD AI's own library styles (the studio's «الستايل»), passed to the job exactly as the studio does", () => {
+    expect(() => zaynabInput({ ...ok, style: FILM_STYLES[0].id })).not.toThrow();
+    expect(() => zaynabInput({ ...ok, style: "" })).not.toThrow();
+    expect(() => zaynabInput({ ...ok, style: "my-own-look" })).toThrow();
+    expect(read("src/components/jawad/zaynab/ZaynabStudio.tsx")).toContain("<StylePicker");
+    expect(read("src/app/api/jawad/zaynab/route.ts")).toContain("styleId: input.style");
     for (const time of ["day", "night"]) for (const weather of ["clear", "rain", "snow"]) expect(() => zaynabInput({ ...ok, time, weather })).not.toThrow();
     expect(() => zaynabInput({ ...ok, weather: "fog" })).toThrow();
     expect(() => zaynabInput({ ...ok, consent: false })).toThrow();
@@ -32,10 +35,11 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(p).toContain("never redesigned");
     expect(p).toContain("NIGHT");
     expect(p).toContain("gentle rain");
-    expect(p).toContain("Photorealistic cinematic photograph");
+    expect(p).toContain("a natural, true-to-life photograph");
+    expect(zaynabPrompt(zaynabInput({ ...ok, style: FILM_STYLES[0].id }), 1)).not.toContain("true-to-life photograph");
     expect(p).toContain("no holy figure is depicted");
-    expect(p).toContain("a greeting is written there afterwards");
-    expect(zaynabPrompt(zaynabInput({ ...ok, greeting: false, weather: "snow", time: "day" }), 1)).not.toContain("a greeting is written");
+    expect(p).toContain("THE GREETING");
+    expect(zaynabPrompt(zaynabInput({ ...ok, greeting: false, weather: "snow", time: "day" }), 1)).not.toContain("THE GREETING");
   });
   it("lets the person choose a view of the courtyard, each one a tile of the owner's sheet shipped with the site", () => {
     expect(ZAYNAB_VIEWS.length).toBeGreaterThanOrEqual(4);
@@ -65,11 +69,13 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     // and so are the shipped views as they really are (a small side is fine, a missing size is not)
     expect(read("src/lib/jawad/server/zaynab.ts")).toContain("zaynabQuoteRefs(photos)");
   });
-  it("writes the greeting over the picture itself, in real letters", () => {
+  it("the model writes the greeting itself, the owner's words letter for letter, joyful and in the picture's look", () => {
+    const p = zaynabPrompt(zaynabInput(ok), 1);
+    for (const line of ZAYNAB_GREETING) expect(p).toContain(`«${line}»`);
     expect(ZAYNAB_GREETING.join(" ")).toContain("نرفع أسمى آيات التهاني والتبريك لمقام صاحب العصر والزمان (عج)");
     expect(ZAYNAB_GREETING.join(" ")).toContain("بمناسبة ميلاد السيدة زينب عليها السلام");
-    expect(read("src/components/jawad/zaynab/greeting.ts")).toContain("fillText");
-    expect(read("src/app/jawad-ai/zaynab/page.tsx")).toContain("Marhey");
+    expect(p).toContain("EXACTLY as given, letter for letter");
+    expect(p).toContain("joyful and festive");
   });
   it("the first attempt is free for 26 hours on both branches, once per account, never for a failed one", () => {
     expect(FREE_FIRST_HOURS).toBe(26);

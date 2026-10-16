@@ -45,6 +45,8 @@ export const POST = handle(async (req: Request) => {
     idempotencyKey: key, generatorId: ZAYNAB_IMAGE, sectionId: quote.section,
     prompt: zaynabPrompt(input, uploads.length), settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: input.count },
     refs: [place.id, ...(uploads as string[])].map((uploadId) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: coins,
+    // the look: one of JAWAD AI's library styles, added to what the model reads exactly as the studio adds it
+    ...(input.style ? { styleId: input.style } : {}),
   }, new URL(req.url).origin, { free: firstFree }));
   return NextResponse.json({ key, jobs: await jobViews([result.job]) });
 });
