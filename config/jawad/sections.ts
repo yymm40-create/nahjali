@@ -61,7 +61,7 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
 ];
 
 /** Paths under /jawad-ai that a section id may not take. */
-export const RESERVED_SECTION_IDS = ["cartoon", "memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const RESERVED_SECTION_IDS = ["cartoon", "memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet", "zaynab"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
 export const FIXED_IMPLEMENTATIONS: string[] = ["cartoon", "film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];

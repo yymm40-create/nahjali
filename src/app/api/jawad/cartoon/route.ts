@@ -6,6 +6,7 @@ import { handle, UserError } from "@/lib/api";
 import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
+import { freeFirstEligible } from "@/lib/jawad/server/free-first";
 import { cartoonQuote, continueCartoon, planOf, requireCreated } from "@/lib/jawad/server/cartoon";
 import { createJob, advanceJob, type JobRow } from "@/lib/jawad/server/jobs";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
@@ -25,12 +26,15 @@ export const POST = handle(async (req: Request) => {
     const live = rt.generators.find(generator => generator.id === id);
     if (!live || !(live.live || (owner && live.keyConfigured)) || !(await can(user.email, permForGenerator(generatorById(id)!)))) throw new UserError("أحد مولدات هذا الطلب غير متاح لحسابك؛ جرّب الصور فقط أو تواصل معنا.", 403);
   }
-  const quote = await cartoonQuote(input);
-  if (body.action === "quote") return NextResponse.json({ quote, free: owner });
-  if (!isUuid(body.key)) throw new UserError("معرّف طلب غير صالح.", 400);
+  const full = await cartoonQuote(input);
+  // «أول تجربة مجانية»: the account's first attempt — its first picture — while the offer is open (more pictures and the film are paid)
   const key = "cartoon_" + body.key;
   const db = createAdminClient();
-  const existing = await db.from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key + "_0").maybeSingle();
+  const existing = isUuid(body.key) ? await db.from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key + "_0").maybeSingle() : { data: null };
+  const firstFree = !owner && !existing.data && (await freeFirstEligible(user.id, "cartoon_"));
+  const quote = firstFree ? { ...full, imageCoins: full.imageCoins - CARTOON_PRICE, totalCoins: full.totalCoins - CARTOON_PRICE } : full;
+  if (body.action === "quote") return NextResponse.json({ quote, free: owner, firstFree });
+  if (!isUuid(body.key)) throw new UserError("معرّف طلب غير صالح.", 400);
   if (existing.data) return NextResponse.json({ key, jobs: await jobViews([existing.data as JobRow]) });
   if (body.expectedCoins !== quote.totalCoins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
   if (!owner && (await coinBalance(user.id) ?? 0) < quote.totalCoins) throw new UserError("رصيدك لا يكفي لإكمال الطلب كله. اشحن الرصيد أولًا.", 402);
@@ -38,13 +42,13 @@ export const POST = handle(async (req: Request) => {
   const result = requireCreated(await createJob(user, owner, {
     idempotencyKey: key + "_0", generatorId: CARTOON_IMAGE, sectionId: quote.imageSection,
     prompt: cartoonImagePrompt(input), settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: 1 },
-    refs: body.uploads.map((uploadId: string) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: CARTOON_PRICE,
-  }, new URL(req.url).origin, { cartoon: { key, input, videoCoins: quote.videoCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000 } }));
+    refs: body.uploads.map((uploadId: string) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: firstFree ? 0 : CARTOON_PRICE,
+  }, new URL(req.url).origin, { free: firstFree, cartoon: { key, input, videoCoins: quote.videoCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000 } }));
   return NextResponse.json({ key, jobs: await jobViews([result.job]) });
 });
 
 export const GET = handle(async () => {
-  const { user } = await requireJawadApiUser();
+  const { user, owner } = await requireJawadApiUser();
   const { data, error } = await createAdminClient().from("jawad_jobs").select("*").eq("user_id", user.id).like("idempotency_key", "cartoon_%").order("created_at", { ascending: false }).limit(40);
   if (error) throw error;
   const jobs = (data ?? []) as JobRow[];
@@ -58,7 +62,8 @@ export const GET = handle(async () => {
     }
   }
   const views = await jobViews(jobs);
-  return NextResponse.json({ runs: [...new Set(jobs.map(job => planOf(job)?.key).filter(Boolean))].map(key => {
+  const firstFree = !owner && (await freeFirstEligible(user.id, "cartoon_"));
+  return NextResponse.json({ firstFree, runs: [...new Set(jobs.map(job => planOf(job)?.key).filter(Boolean))].map(key => {
     const plan = planOf(jobs.find(job => planOf(job)?.key === key)! )!;
     return { key, input: plan.input, error: messages[key!], jobs: views.filter(view => jobs.some(job => job.id === view.id && planOf(job)?.key === key)).reverse() };
   }) });

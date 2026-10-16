@@ -8,8 +8,11 @@ import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
 import Doodles from "./Doodles";
+import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS } from "@config/jawad/free-first";
 
 type Quote = { imageCoins: number; videoCoins: number; totalCoins: number };
+/** the end of «أول تجربة مجانية» (config/jawad/free-first.ts), shown to the person in their own clock */
+const offerEnd = () => new Date(FREE_FIRST_ENDS_AT).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
 type Run = { key: string; input: CartoonInput; error?: string; jobs: JobView[] };
 const INITIAL: CartoonInput = { mode: "scene", aspect: "9:16", style: "cinematic-3d", audience: "family", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "garden", customStory: "", count: 1, video: false, consent: false };
 async function api<T>(body?: unknown): Promise<T> {
@@ -28,6 +31,8 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   // the shelf of looks shown («all» = every look) and the looks' pictures (drawn once by the owner; none yet = a coloured tile)
   const [shelf, setShelf] = useState<"all" | keyof typeof CARTOON_GROUPS>("all");
   const [pictures, setPictures] = useState<Record<string, string>>({});
+  // «أول تجربة مجانية»: this account's first picture is free while the offer is open
+  const [firstFree, setFirstFree] = useState(false);
   const requestKey = useRef<string | null>(null);
   const lock = useRef(false);
   const snapshot = JSON.stringify({ input, uploads: uploads.map(upload => upload.id) });
@@ -38,8 +43,8 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
-        const data = await api<{ runs: Run[] }>();
-        if (!stopped) setRuns(data.runs);
+        const data = await api<{ runs: Run[]; firstFree?: boolean }>();
+        if (!stopped) { setRuns(data.runs); setFirstFree(data.firstFree === true); }
       } catch (error) {
         if (!stopped) setError((error as Error).message);
       } finally {
@@ -85,13 +90,15 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     lock.current = true; setError(""); setBusy(validQuote ? "بدء رحلتك…" : "حساب السعر…");
     try {
       if (!validQuote) {
-        const data = await api<{ quote: Quote; free: boolean }>({ action: "quote", input });
+        const data = await api<{ quote: Quote; free: boolean; firstFree?: boolean }>({ action: "quote", input });
+        setFirstFree(data.firstFree === true);
         setQuote({ value: data.quote, free: data.free, snapshot });
       } else {
         requestKey.current ??= crypto.randomUUID();
         await api({ action: "start", input, uploads: uploads.map(upload => upload.id), key: requestKey.current, expectedCoins: validQuote.value.totalCoins });
-        const data = await api<{ runs: Run[] }>();
+        const data = await api<{ runs: Run[]; firstFree?: boolean }>();
         setRuns(data.runs);
+        setFirstFree(data.firstFree === true);
         setQuote(null);
         requestKey.current = null;
         setError("بدأ طلبك. تقدر تغادر وترجع؛ النتائج محفوظة هنا وفي أعمالك.");
@@ -102,7 +109,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   return <main className="ct-page" dir="rtl">
     <Doodles />
     <Link href="/jawad-ai/images" className="ct-back">← رجوع للاستوديو الإبداعي</Link>
-    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>حوّل صورتك كما هي بكل من فيها، أو اصنع منك شخصية جديدة.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>فيلم اختياري · ٣٠ ثانية</span></div></header>
+    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>حوّل صورتك كما هي بكل من فيها، أو اصنع منك شخصية جديدة.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>فيلم اختياري · ٣٠ ثانية</span></div>{firstFree && <p className="ct-offer">🎁 أول تجربة مجانية! صورتك الأولى علينا لمدة {FREE_FIRST_HOURS} ساعة — العرض ينتهي {offerEnd()}</p>}</header>
     <div className="ct-layout"><section className="ct-card">
       <fieldset disabled={!!busy}>
         <h2>١. وش نسوي بصورتك؟</h2>
@@ -131,7 +138,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
         <label className="ct-check"><input type="checkbox" checked={input.consent} onChange={event => change({ consent: event.target.checked })} /> لدي إذن استخدام الصور، وموافقة ولي الأمر إذا كانت لطفل.</label>
       </fieldset>
     </section><aside className="ct-card ct-summary"><h2>رحلتك جاهزة</h2><p>صورك ← شخصيتك الكرتونية ← صور إضافية أو فيلم</p><p>نحفظ مرجع الشخصية ونستخدمه في بقية الطلب. لا حاجة لكتابة برومبتات.</p>
-      {validQuote && <div className="ct-price"><p>الصور: <Riyal halalas={validQuote.value.imageCoins} /></p>{input.video && <p>الفيديو: <Riyal halalas={validQuote.value.videoCoins} /></p>}<strong>الإجمالي: {validQuote.free ? "مجاني لحسابك" : <Riyal halalas={validQuote.value.totalCoins} size={20} />}</strong></div>}
+      {validQuote && <div className="ct-price">{firstFree && <p>🎁 أول صورة مجانية — محسوبة في الأسعار تحت</p>}<p>الصور: <Riyal halalas={validQuote.value.imageCoins} /></p>{input.video && <p>الفيديو: <Riyal halalas={validQuote.value.videoCoins} /></p>}<strong>الإجمالي: {validQuote.free || validQuote.value.totalCoins === 0 ? "مجاني" : <Riyal halalas={validQuote.value.totalCoins} size={20} />}</strong></div>}
       <p className="ct-note">يُخصم سعر كل مرحلة عند بدئها. إن فشلت مرحلة يُرد مبلغها حسب نظام التوليد؛ الصور المكتملة تبقى لك. لا إعادة توليد مدفوعة تلقائية.</p>
       <button className="ct-primary" disabled={!!busy || !input.consent || uploads.length === 0} onClick={() => void submit()}>{busy || (validQuote ? "أوافق على الإجمالي · اصنع الآن ✨" : "اعرض السعر النهائي")}</button>
       {error && <p className="ct-feedback" role="status">{error}</p>}
