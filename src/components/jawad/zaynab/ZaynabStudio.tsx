@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ZAYNAB_ASPECTS, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLES, ZAYNAB_TIMES, ZAYNAB_WEATHER, type ZaynabInput } from "@config/jawad/zaynab";
+import { ZAYNAB_ASPECTS, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLES, ZAYNAB_VIEWS, ZAYNAB_TIMES, ZAYNAB_WEATHER, type ZaynabInput } from "@config/jawad/zaynab";
 import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS } from "@config/jawad/free-first";
 import Riyal from "@/components/Riyal";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
@@ -11,7 +11,7 @@ import GreetedPicture from "./GreetedPicture";
 
 type Quote = { coins: number; fullCoins: number };
 type Person = { upload: UploadView; label: string };
-const INITIAL: Omit<ZaynabInput, "labels"> = { style: "real", time: "day", weather: "clear", aspect: "3:2", greeting: true, count: 1, consent: false };
+const INITIAL: Omit<ZaynabInput, "labels"> = { view: "shrine", style: "real", time: "day", weather: "clear", aspect: "3:2", greeting: true, count: 1, consent: false };
 const offerEnd = () => new Date(FREE_FIRST_ENDS_AT).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
 
 async function api<T>(body?: unknown): Promise<T> {
@@ -29,8 +29,6 @@ export default function ZaynabStudio({ userId, fontFamily }: { userId: string; f
   const [error, setError] = useState("");
   const [quote, setQuote] = useState<{ value: Quote; free: boolean; snapshot: string } | null>(null);
   const [jobs, setJobs] = useState<JobView[]>([]);
-  const [haram, setHaram] = useState<string | null | undefined>(undefined);
-  const [owner, setOwner] = useState(false);
   const [firstFree, setFirstFree] = useState(false);
   const requestKey = useRef<string | null>(null);
   const lock = useRef(false);
@@ -44,8 +42,8 @@ export default function ZaynabStudio({ userId, fontFamily }: { userId: string; f
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
-        const data = await api<{ haram: string | null; owner: boolean; firstFree: boolean; jobs: JobView[] }>();
-        if (!stopped) { setJobs(data.jobs); setHaram(data.haram); setOwner(data.owner); setFirstFree(data.firstFree); }
+        const data = await api<{ firstFree: boolean; jobs: JobView[] }>();
+        if (!stopped) { setJobs(data.jobs); setFirstFree(data.firstFree); }
       } catch (e) {
         if (!stopped) setError((e as Error).message);
       } finally {
@@ -65,17 +63,6 @@ export default function ZaynabStudio({ userId, fontFamily }: { userId: string; f
         const upload = await uploadImage(file);
         setPeople(current => [...current, { upload, label: "" }]);
       }
-    } catch (e) { setError((e as Error).message); }
-    finally { lock.current = false; setBusy(""); }
-  }
-  // the owner puts the photograph of the shrine (replacing the old one)
-  async function putHaram(files: FileList | null) {
-    if (!files?.[0] || lock.current) return;
-    lock.current = true; setBusy("رفع صورة الحضرة…"); setError("");
-    try {
-      const upload = await uploadImage(files[0]);
-      const data = await api<{ haram: string | null }>({ action: "set_haram", uploadId: upload.id });
-      setHaram(data.haram);
     } catch (e) { setError((e as Error).message); }
     finally { lock.current = false; setBusy(""); }
   }
@@ -100,7 +87,6 @@ export default function ZaynabStudio({ userId, fontFamily }: { userId: string; f
     } catch (e) { setError((e as Error).message); }
     finally { lock.current = false; setBusy(""); }
   }
-  const ready = haram !== undefined && !!haram;
   return <main className="zy-page" dir="rtl">
     <div className="zy-stars" aria-hidden="true" />
     <header className="zy-hero">
@@ -112,8 +98,8 @@ export default function ZaynabStudio({ userId, fontFamily }: { userId: string; f
     </header>
     <div className="zy-layout"><section className="zy-card"><fieldset disabled={!!busy}>
       <h2>١. المكان</h2>
-      {haram === undefined ? <p>نحمّل…</p> : haram ? <div className="zy-place"><img src={haram} alt="الحرم الشريف" /><p>هذي صورة الحرم اللي تدخل مع كل صورة وتتحوّل معك للأسلوب اللي تختاره.</p></div> : <p className="zy-empty">صورة الحرم الشريف ما انضافت بعد؛ تنضاف من صاحب المنصة وبعدها تقدر تبدأ.</p>}
-      {owner && <label className="zy-upload zy-small">{haram ? "↻ غيّر صورة الحرم" : "＋ أضف صورة الحرم (للمالك)"}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { void putHaram(event.target.files); event.target.value = ""; }} /></label>}
+      <p>صحن الحرم الشريف، والقبة خلفكم. اختر الزاوية اللي تعجبك.</p>
+      <div className="zy-views">{ZAYNAB_VIEWS.map(view => <button type="button" key={view.id} className={input.view === view.id ? "chosen" : ""} aria-pressed={input.view === view.id} onClick={() => change({ view: view.id })}><img src={`/zaynab/views/${view.id}.jpg`} alt={view.name} loading="lazy" /><b>{view.name}</b><small>{view.hint}</small></button>)}</div>
       <h2>٢. صورك</h2>
       <p>صور عادية من الجوال، وما يلزم تفرّغ الخلفية. ضيف أكثر من شخص: كل شخص بصورة، أو صورة وحدة فيها مجموعة وكلهم يدخلون.</p>
       <label className="zy-upload">＋ أضف صور<input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={people.length >= ZAYNAB_MAX_PHOTOS || !!busy} onChange={event => { void add(event.target.files); event.target.value = ""; }} /></label>
@@ -131,12 +117,11 @@ export default function ZaynabStudio({ userId, fontFamily }: { userId: string; f
       <label className="zy-check"><input type="checkbox" checked={input.greeting} onChange={event => change({ greeting: event.target.checked })} /> اكتب التهنئة فوق الصورة بخط فرحان (بمناسبة ميلاد السيدة زينب عليها السلام)</label>
       <label className="zy-check"><input type="checkbox" checked={input.consent} onChange={event => change({ consent: event.target.checked })} /> لدي إذن استخدام الصور، وموافقة ولي الأمر إذا كانت لطفل.</label>
     </fieldset></section>
-    <aside className="zy-card zy-summary"><h2>طلبك</h2><p>{people.length ? `${people.length} صور` : "ما أضفت صور بعد"} · {ZAYNAB_STYLES.find(s => s.id === input.style)?.name} · {ZAYNAB_TIMES[input.time]} · {ZAYNAB_WEATHER[input.weather]}</p>
+    <aside className="zy-card zy-summary"><h2>طلبك</h2><p>{people.length ? `${people.length} صور` : "ما أضفت صور بعد"} · {ZAYNAB_VIEWS.find(v => v.id === input.view)?.name} · {ZAYNAB_STYLES.find(s => s.id === input.style)?.name} · {ZAYNAB_TIMES[input.time]} · {ZAYNAB_WEATHER[input.weather]}</p>
       {validQuote && <div className="zy-price">{firstFree && validQuote.value.coins === 0 && <p>🎁 أول تجربة مجانية</p>}<strong>الإجمالي: {validQuote.free || validQuote.value.coins === 0 ? "مجاني" : <Riyal halalas={validQuote.value.coins} size={20} />}</strong></div>}
       {firstFree && input.count > 1 && <p className="zy-note">التجربة المجانية لصورة واحدة؛ اختر «صورة واحدة» لتستفيد منها.</p>}
       <p className="zy-note">التشابه غير مضمون ١٠٠٪. يُخصم السعر عند البدء، وإن فشل التوليد يرجع لك.</p>
-      <button className="zy-primary" disabled={!!busy || !input.consent || !people.length || !ready} onClick={() => void submit()}>{busy || (validQuote ? "أوافق · اصنع الصورة ✨" : "اعرض السعر")}</button>
-      {!ready && haram !== undefined && <p className="zy-note">يبدأ الطلب لما تنضاف صورة الحرم.</p>}
+      <button className="zy-primary" disabled={!!busy || !input.consent || !people.length} onClick={() => void submit()}>{busy || (validQuote ? "أوافق · اصنع الصورة ✨" : "اعرض السعر")}</button>
       {error && <p className="zy-feedback" role="status">{error}</p>}
     </aside></div>
     <section className="zy-results"><h2>صورك</h2>{!jobs.length && <p>هنا تظهر صورك بعد البدء.</p>}
