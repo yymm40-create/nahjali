@@ -17,7 +17,7 @@ const loadPictures = () =>
     .then((d: { pictures?: Record<string, string> }) => d.pictures ?? {})
     .catch(() => ({}) as Record<string, string>));
 
-export default function StylePicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+export default function StylePicker({ value, onChange, allowNone = true }: { value: string; onChange: (id: string) => void; /** false: a style must be chosen («بدون ستايل» is not offered) */ allowNone?: boolean }) {
   const [open, setOpen] = useState(false);
   const [pics, setPics] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function StylePicker({ value, onChange }: { value: string; onChan
   const curCard = cur ? cards.find((c) => c.id === cur.id) : undefined;
   return (
     <div className="space-y-1.5">
-      <p className="text-sm font-semibold">🎨 الستايل <span className="text-xs font-normal text-jw-muted">(اختياري)</span></p>
+      <p className="text-sm font-semibold">🎨 الستايل {allowNone && <span className="text-xs font-normal text-jw-muted">(اختياري)</span>}</p>
       <button type="button" className="flex w-full items-center gap-3 rounded-xl border border-jw-line bg-jw-surface-2 p-2 text-start hover:border-jw-accent" onClick={() => setOpen(true)} aria-haspopup="dialog">
         {cur && curCard ? (
           <>
@@ -62,9 +62,11 @@ export default function StylePicker({ value, onChange }: { value: string; onChan
               <button type="button" className="jw-btn !min-h-9" onClick={() => setOpen(false)}>إغلاق</button>
             </header>
             <div className="jw-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-              <button type="button" className={`rounded-xl border px-4 py-2 text-sm ${!value ? "border-jw-accent bg-jw-accent/10 font-bold" : "border-jw-line"}`} onClick={() => (onChange(""), setOpen(false))}>
-                بدون ستايل
-              </button>
+              {allowNone && (
+                <button type="button" className={`rounded-xl border px-4 py-2 text-sm ${!value ? "border-jw-accent bg-jw-accent/10 font-bold" : "border-jw-line"}`} onClick={() => (onChange(""), setOpen(false))}>
+                  بدون ستايل
+                </button>
+              )}
               <StyleBrowser skin="jawad" styles={cards} selected={value ? [value] : []} onPick={(id) => (onChange(id), setOpen(false))} />
             </div>
           </div>

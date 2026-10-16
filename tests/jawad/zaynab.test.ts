@@ -9,7 +9,7 @@ import { evaluate } from "@/lib/jawad/engine";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
-const ok = { view: "shrine", style: "", time: "night", weather: "rain", aspect: "3:2", labels: ["أبي", ""], greeting: true, count: 1, consent: true };
+const ok = { view: "shrine", style: "pixar-classic", time: "night", weather: "rain", aspect: "3:2", labels: ["أبي", ""], greeting: true, count: 1, consent: true };
 const pixar = FILM_STYLES.find((s) => /pixar/.test(s.id))!;
 
 describe("«في حضرة السيدة زينب (ع)»", () => {
@@ -41,16 +41,13 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(route).toContain("jawadWritesZaynab(input");
     expect(route).toContain("promptSealed(body.seal");
     expect(route).not.toContain("styleId");
-    // the recipe: the style is the whole picture, people included
-    expect(ZAYNAB_RECIPE).toContain("THE STYLE IS THE WHOLE PICTURE");
-    expect(ZAYNAB_RECIPE).toContain("COMPLETELY into Pixar characters of themselves");
+    // the owner's order: nothing realistic left, and جواد is not bound by the photos (who they are and how many only)
+    expect(ZAYNAB_RECIPE).toContain("NOTHING REALISTIC REMAINS");
+    expect(ZAYNAB_RECIPE).toContain("YOU ARE NOT BOUND by the photos");
+    expect(ZAYNAB_RECIPE).toContain("not a rule");
+    expect(ZAYNAB_RECIPE).not.toContain("true-to-life");
+    expect(ZAYNAB_RECIPE).not.toContain("DO NOT BEAUTIFY");
     expect(ZAYNAB_RECIPE).toContain("Image 1 is the owner's ENVIRONMENT SHEET");
-    // transformed completely and dressed for the visit: only the face (who they are) is kept
-    expect(ZAYNAB_RECIPE).toContain("TRANSFORM THEM COMPLETELY AND DRESS THEM");
-    expect(ZAYNAB_RECIPE).toContain("white thobe");
-    expect(ZAYNAB_RECIPE).toContain("black abaya with a hijab");
-    expect(ZAYNAB_RECIPE).not.toContain("SAME CLOTHES exactly");
-    expect(ZAYNAB_RECIPE).toContain("DO NOT BEAUTIFY");
   });
 
   it("the brief carries the person's choices: the tile, the people, the library style, time, weather and the greeting", () => {
@@ -63,12 +60,15 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(b).toContain("rain");
     for (const line of ZAYNAB_GREETING) expect(b).toContain(`«${line}»`);
     expect(zaynabBrief(zaynabInput({ ...ok, greeting: false }), 1)).toContain("no writing in the picture");
-    expect(zaynabBrief(zaynabInput(ok), 1)).toContain("true-to-life photograph");
+    expect(zaynabBrief(zaynabInput(ok), 1)).toContain("nothing realistic left");
   });
 
   it("only the library's styles, and the person's choices are checked", () => {
     expect(() => zaynabInput({ ...ok, style: pixar.id })).not.toThrow();
     expect(() => zaynabInput({ ...ok, style: "my-own-look" })).toThrow();
+    // a style is always chosen: «بدون ستايل» is not offered here
+    expect(() => zaynabInput({ ...ok, style: "" })).toThrow();
+    expect(read("src/components/jawad/zaynab/ZaynabStudio.tsx")).toContain("allowNone={false}");
     expect(() => zaynabInput({ ...ok, view: "nowhere" })).toThrow();
     expect(() => zaynabInput({ ...ok, weather: "fog" })).toThrow();
     expect(() => zaynabInput({ ...ok, consent: false })).toThrow();

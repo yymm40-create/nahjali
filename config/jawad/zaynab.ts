@@ -30,6 +30,8 @@ export const ZAYNAB_VIEWS = [
 ] as const;
 export type ZaynabView = (typeof ZAYNAB_VIEWS)[number]["id"];
 export const ZAYNAB_VIEW_DEFAULT: ZaynabView = "shrine";
+/** The style the page starts on (the person changes it from the library). */
+export const ZAYNAB_STYLE_DEFAULT = "pixar-classic";
 export const zaynabViewFile = (id: string) => `public/zaynab/views/${id}.jpg`;
 /** The tile of the sheet each view is (its label as written on the sheet). */
 export const ZAYNAB_VIEW_TILE: Record<ZaynabView, string> = { shrine: "03 VIEW TO SHRINE", spot: "07 SPOT A", left: "05 LEFT ARCADE", right: "06 RIGHT ARCADE", up: "08 LOOKING UP" };
@@ -50,7 +52,7 @@ export type ZaynabAspect = keyof typeof ZAYNAB_ASPECTS;
 export interface ZaynabInput {
   /** which view of the courtyard (a tile of the environment sheet) */
   view: ZaynabView;
-  /** a style of JAWAD AI's library (config/film-styles.ts), or "" for none (a true-to-life picture) */
+  /** a style of JAWAD AI's library (config/film-styles.ts): always one (nothing realistic remains, the owner's order) */
   style: string;
   time: ZaynabTime;
   weather: ZaynabWeather;
@@ -68,7 +70,7 @@ export function zaynabInput(raw: unknown): ZaynabInput {
   const v = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   if (!ZAYNAB_VIEWS.some(view => view.id === v.view)) throw new Error("اختر المنظر.");
   const style = typeof v.style === "string" ? v.style : "";
-  if (style && !findStyle(style)) throw new Error("اختر الستايل من القائمة.");
+  if (!findStyle(style)) throw new Error("اختر الستايل من القائمة.");
   if (!Object.hasOwn(ZAYNAB_TIMES, String(v.time))) throw new Error("اختر ليل أو نهار.");
   if (!Object.hasOwn(ZAYNAB_WEATHER, String(v.weather))) throw new Error("اختر الجو: صافي أو مطر أو ثلج.");
   if (!Object.hasOwn(ZAYNAB_ASPECTS, String(v.aspect))) throw new Error("اختر شكل الصورة.");
@@ -88,12 +90,11 @@ const WEATHER_AR: Record<ZaynabWeather, string> = { clear: "clear sky", rain: "r
 export const ZAYNAB_RECIPE = `REQUEST TYPE — «في حضرة السيدة زينب (ع)» (a picture of the person and their people at the holy shrine of Sayyida Zaynab, peace be upon her, in Damascus). You write the WHOLE final prompt for GPT Image 2 yourself, from the brief and from looking at the references; there is no template.
 What the references are (the generator numbers them in this order, "Image 1", "Image 2"…):
 - Image 1 is the owner's ENVIRONMENT SHEET of the shrine's courtyard: many labelled tiles of the same place (an overview, a plan, views to the shrine, the gate, the arcades, spot A, looking up, details of the dome, the minarets, the tiles and the marble, the colour palette and the "locks"). It is the source of truth for the architecture: the gilded dome between two blue-tiled minarets, the golden iwan facade, the tiled arcades, the white marble courtyard. The brief names the tile whose camera view the picture is composed like.
-- Image 2 onwards are the PEOPLE's photos: ordinary photos (one person each, or a group). Every person in them is in the picture, each one recognisably themselves — never merged, dropped, duplicated or replaced, and no one added.
+- Image 2 onwards are the PEOPLE's photos: ordinary photos (one person each, or a group). Every person in them is in the picture as a stylised version of themselves — none dropped or merged, no one added.
 Must hold in your prompt:
-- TRANSFORM THEM COMPLETELY AND DRESS THEM FOR THE VISIT: from each photo only WHO the person is is kept — the face (its outline and jaw, the eyes and brows and their spacing, the nose, the mouth, the hairline, the skin tone, a beard and how it grows, glasses, anything distinctive), their age and build. Everything else is made new: the clothes are REPLACED — men and boys wear a clean, well-pressed white thobe (with a white ghutra or a red-and-white shemagh where it suits), women and girls wear a flowing black abaya with a hijab that covers the hair fully — and the pose is new: they stand together naturally and gracefully in front of the shrine, not copied from their photos. Their photos' clothes, poses and backgrounds are not used.
-- WHO IT IS stays: never merged, dropped, duplicated or swapped; no one added; their real difference in age and height kept. DO NOT BEAUTIFY the face into a generic one.
-- The people stand together in the courtyard in front of the shrine, the dome clearly behind them, in the chosen tile's view.
-- THE STYLE IS THE WHOLE PICTURE: when a style is given, everything — the people (faces, bodies, clothes), the shrine and the sky — is rendered in that style. A Pixar style turns the people COMPLETELY into Pixar characters of themselves (their faces recognisable as stylised shapes, in the thobe or abaya), never a photo face on a cartoon place. With no style, the picture is a natural true-to-life photograph.
+- NOTHING REALISTIC REMAINS: the people are re-made COMPLETELY in the chosen style — their faces are the style's own faces with only a loose likeness (hair, skin tone, a beard, glasses, age and build), never a photo face, photographic skin, pores, real hair strands, camera lighting or any photo texture. The shrine, the sky and everything else are the style too. A Pixar style makes them Pixar characters through and through.
+- YOU ARE NOT BOUND by the photos: take from them only who the people are and how many. Dress them, pose them and arrange them as you judge best for a joyful visit to a holy place — modest clothing that fits the occasion (a thobe, an abaya with a hijab and the like are natural choices, not a rule) — their photos' clothes, poses and backgrounds need not be kept.
+- The people stand in the courtyard in front of the shrine, the dome clearly behind them, in the chosen tile's view.
 - The chosen time and weather relight the sheet's plain daytime courtyard; the architecture stays.
 - Respect: modest, calm and dignified, as on a visit to a holy place; nobody touching or climbing the shrine; no holy figure depicted; no logos or watermarks.
 - The greeting (when asked): the given Arabic lines written in the sky above the dome, EXACTLY as given, letter for letter, in joyful festive gold lettering that fits the style, clear of the dome, the minarets and the faces; no other writing. When not asked: no writing at all.
@@ -101,14 +102,14 @@ Must hold in your prompt:
 
 /** The brief «جواد» receives with the references: the person's choices, plainly. */
 export function zaynabBrief(input: ZaynabInput, photos: number): string {
-  const style = input.style ? findStyle(input.style) : undefined;
+  const style = findStyle(input.style)!;
   const view = ZAYNAB_VIEWS.find(item => item.id === input.view)!;
   const people = Array.from({ length: photos }, (_, i) => `Image ${i + 2}` + (input.labels[i] ? ` — «${input.labels[i]}»` : "")).join("\n");
   return [
     "THE BRIEF",
     "View: the sheet's tile «" + ZAYNAB_VIEW_TILE[input.view] + "» — " + view.text + ".",
     "People (" + photos + (photos === 1 ? " photo" : " photos") + "):\n" + people,
-    style ? "Style: «" + style.name + "» — " + style.text : "Style: none — a natural, true-to-life photograph.",
+    "Style (the whole picture, nothing realistic left): «" + style.name + "» — " + style.text,
     "Time: " + TIME_AR[input.time] + ". Weather: " + WEATHER_AR[input.weather] + ".",
     "Shape: " + input.aspect + ".",
     input.greeting ? "Greeting — write these two lines exactly:\nline 1: «" + ZAYNAB_GREETING[0] + "»\nline 2: «" + ZAYNAB_GREETING[1] + "»" : "Greeting: none — no writing in the picture.",
