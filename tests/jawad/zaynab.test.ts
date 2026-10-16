@@ -44,7 +44,10 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     // the owner's order: nothing realistic left, and جواد is not bound by the photos (who they are and how many only)
     expect(ZAYNAB_RECIPE).toContain("NOTHING REALISTIC REMAINS");
     expect(ZAYNAB_RECIPE).toContain("YOU ARE NOT BOUND by the photos");
-    expect(ZAYNAB_RECIPE).toContain("not a rule");
+    // the owner's clothing rule: a thobe without a ghutra; a plain black Zaynabi head abaya, only the face and hands showing
+    expect(ZAYNAB_RECIPE).toContain("plain THOBE only — NO ghutra, NO shemagh");
+    expect(ZAYNAB_RECIPE).toContain("ZAYNABI HEAD ABAYA");
+    expect(ZAYNAB_RECIPE).toContain("only the face and the hands are visible");
     expect(ZAYNAB_RECIPE).not.toContain("true-to-life");
     expect(ZAYNAB_RECIPE).not.toContain("DO NOT BEAUTIFY");
     expect(ZAYNAB_RECIPE).toContain("Image 1 is the owner's ENVIRONMENT SHEET");
