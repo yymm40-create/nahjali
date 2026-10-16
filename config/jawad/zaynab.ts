@@ -31,6 +31,13 @@ export const ZAYNAB_VIEWS = [
 export type ZaynabView = (typeof ZAYNAB_VIEWS)[number]["id"];
 export const ZAYNAB_VIEW_DEFAULT: ZaynabView = "shrine";
 export const zaynabViewFile = (id: string) => `public/zaynab/views/${id}.jpg`;
+/**
+ * The only styles offered here: ten of the library's hundred, chosen for a family picture at a holy place on a happy
+ * occasion (warm, festive, fully stylised; none photographic): three feature-film 3D looks, two painted 2D ones, three
+ * anime, the Persian miniature and clay. Their text is the library's own.
+ */
+export const ZAYNAB_STYLE_IDS = ["pixar-classic", "neo-disney", "disney-musical", "hybrid-2d3d", "renaissance-90s", "ghibli", "shinkai", "anime-moderate", "persian-miniature", "clay"] as const;
+
 /** The tile of the sheet each view is (its label as written on the sheet). */
 export const ZAYNAB_VIEW_TILE: Record<ZaynabView, string> = { shrine: "03 VIEW TO SHRINE", spot: "07 SPOT A", left: "05 LEFT ARCADE", right: "06 RIGHT ARCADE", up: "08 LOOKING UP" };
 /** The owner's whole environment sheet: Image 1 of every generation. */
@@ -68,7 +75,7 @@ export function zaynabInput(raw: unknown): ZaynabInput {
   const v = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   if (!ZAYNAB_VIEWS.some(view => view.id === v.view)) throw new Error("اختر المنظر.");
   const style = typeof v.style === "string" ? v.style : "";
-  if (!findStyle(style)) throw new Error("اختر الستايل من القائمة.");
+  if (!(ZAYNAB_STYLE_IDS as readonly string[]).includes(style) || !findStyle(style)) throw new Error("اختر واحد من الستايلات العشرة.");
   if (!Object.hasOwn(ZAYNAB_TIMES, String(v.time))) throw new Error("اختر ليل أو نهار.");
   if (!Object.hasOwn(ZAYNAB_WEATHER, String(v.weather))) throw new Error("اختر الجو: صافي أو مطر أو ثلج.");
   if (!Object.hasOwn(ZAYNAB_ASPECTS, String(v.aspect))) throw new Error("اختر شكل الصورة.");
