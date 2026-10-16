@@ -45,6 +45,11 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(ZAYNAB_RECIPE).toContain("THE STYLE IS THE WHOLE PICTURE");
     expect(ZAYNAB_RECIPE).toContain("Pixar characters OF THEMSELVES");
     expect(ZAYNAB_RECIPE).toContain("Image 1 is the owner's ENVIRONMENT SHEET");
+    // like «حوّل الصورة كما هي»: the same person, pose and clothes (a thobe, an abaya), only placed and made better
+    expect(ZAYNAB_RECIPE).toContain("KEEP EACH PERSON AS THEY ARE IN THEIR PHOTO");
+    expect(ZAYNAB_RECIPE).toContain("an abaya stays that abaya");
+    expect(ZAYNAB_RECIPE).toContain("any writing or print on them");
+    expect(ZAYNAB_RECIPE).toContain("DO NOT BEAUTIFY");
   });
 
   it("the brief carries the person's choices: the tile, the people, the library style, time, weather and the greeting", () => {
