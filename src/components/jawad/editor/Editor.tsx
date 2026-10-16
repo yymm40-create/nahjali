@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { coinStr } from "@config/coins";
+import { download } from "./export";
 import InstallApp from "./InstallApp";
 import { detectScenes } from "./scene-detect";
 import { takeStartKit } from "./start-kit";
@@ -770,6 +771,18 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           if (!r) continue;
           if (r.state === "done" && r.asset) {
             addAssets([r.asset]);
+            // «رفع دقة الفيديو كامل» (from = "dl:<file name>"): the whole export, upscaled — it is saved on the device, no clip to switch
+            if (from.startsWith("dl:")) {
+              const file = from.slice(3) || "jawad-4k.mp4";
+              try {
+                const blob = await (await fetch(r.asset.url!)).blob();
+                download(blob, file);
+                flash(`✅ نزل الفيديو كامل بدقة ${r.asset.width}×${r.asset.height} («${file}»). نسخته باقية في المكتبة.`);
+              } catch {
+                flash(`✅ الفيديو الكامل بدقة ${r.asset.width}×${r.asset.height} جاهز في المكتبة (نزّله من هناك).`);
+              }
+              break;
+            }
             // the new file's info first, then the clips switched to it (one undo)
             setTimeout(() => {
               const done = run({ type: "swap_asset", from, to: id }, { label: "رفع الدقة" });
@@ -822,6 +835,21 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     },
     [assets, addAssets, flash, project.id, watchUpscale],
   );
+  // «رفع دقة الفيديو كامل» (from the export window): the exported file is already up as a library file (it isn't put on
+  // the timeline); it is sent to be upscaled whole, and the 4K file downloads by itself when it is ready
+  const upscaleWhole = useCallback(
+    async (a: EditorAsset, target: "4k" | "1080p", file: string) => {
+      try {
+        const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId: a.id, target, width: a.width, height: a.height, durationMs: a.durationMs });
+        addAssets([r.asset]);
+        flash(`⬆️ بدأ رفع دقة الفيديو كامل إلى ${target === "4k" ? "4K" : "1080p"}${r.coins ? ` (${coinStr(r.coins)})` : ""}… ينزل لك لحاله لما يخلص.`);
+        watchUpscale(r.asset.id, `dl:${file}`);
+      } catch (e) {
+        flash(e instanceof Error ? e.message : "ما بدأ رفع الدقة.", true);
+      }
+    },
+    [addAssets, flash, project.id, watchUpscale],
+  );
   // files let go on the timeline land where they were dropped: one after another («line») or each on its own track
   // one above the other («stack»); the line goes on from the end of the last one placed
   const cursor = useRef<{ group: string; at: number } | null>(null);
@@ -847,6 +875,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     useCallback(
       (a: EditorAsset, place?: Placement) => {
         addAssets([a]);
+        // the export window's whole-video upscale: the file stays out of the timeline
+        if (place?.group.startsWith("expup:")) {
+          const [, target, ...name] = place.group.split(":");
+          void upscaleWhole(a, target === "1080p" ? "1080p" : "4k", name.join(":"));
+          return;
+        }
         // a saved project's file: kept until all are up, then its timeline comes back pointing at them
         const w = pkgWait.current;
         if (w && place?.group.startsWith("pkg:")) {
@@ -860,7 +894,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         // each uploaded file goes on the timeline: pictures after what is there (or where it was dropped), sound from the start
         placeAsset(a, place);
       },
-      [addAssets, placeAsset, commit, flash],
+      [addAssets, placeAsset, commit, flash, upscaleWhole],
     ),
   );
   const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
@@ -2177,6 +2211,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         onRange={(r) => setRangeIO(r ? { from: r.from, to: r.to } : { from: null, to: null })}
         player={player}
         onExported={(p) => setPurgeAt(p)}
+        onUpscaleExport={readOnly ? undefined : (file, target, name) => {
+          uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `expup:${target}:${name}`, first: true }]);
+          flash("نرفع الفيديو المصدَّر ونرسله لرفع الدقة…");
+        }}
       />
     </div>
   );
