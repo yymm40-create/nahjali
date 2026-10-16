@@ -11,6 +11,8 @@ import StylePicker from "../studio/StylePicker";
 import { findStyle } from "@config/film-styles";
 
 type Quote = { coins: number; fullCoins: number };
+/** what «جواد» wrote for this request, sealed by the server (sent back as it is to start) */
+type Written = { prompt: string; seal: string };
 type Person = { upload: UploadView; label: string };
 const INITIAL: Omit<ZaynabInput, "labels"> = { view: "shrine", style: "", time: "day", weather: "clear", aspect: "3:2", greeting: true, count: 1, consent: false };
 const offerEnd = () => new Date(FREE_FIRST_ENDS_AT).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
@@ -28,7 +30,7 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
   const [people, setPeople] = useState<Person[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [quote, setQuote] = useState<{ value: Quote; free: boolean; snapshot: string } | null>(null);
+  const [quote, setQuote] = useState<{ value: Quote; free: boolean; snapshot: string; written: Written } | null>(null);
   const [jobs, setJobs] = useState<JobView[]>([]);
   const [firstFree, setFirstFree] = useState(false);
   const requestKey = useRef<string | null>(null);
@@ -71,15 +73,15 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
   async function submit() {
     if (lock.current) return;
     if (!people.length) { setError("أضف صورة واحدة على الأقل."); return; }
-    lock.current = true; setError(""); setBusy(validQuote ? "نجهّز صورتك…" : "حساب السعر…");
+    lock.current = true; setError(""); setBusy(validQuote ? "نجهّز صورتك…" : "«جواد» يشوف صورك والشيت ويكتب البرومبت…");
     try {
       if (!validQuote) {
-        const data = await api<{ quote: Quote; free: boolean; firstFree: boolean }>({ action: "quote", ...body() });
+        const data = await api<{ quote: Quote; free: boolean; firstFree: boolean; prompt: string; seal: string }>({ action: "quote", ...body() });
         setFirstFree(data.firstFree);
-        setQuote({ value: data.quote, free: data.free, snapshot });
+        setQuote({ value: data.quote, free: data.free, snapshot, written: { prompt: data.prompt, seal: data.seal } });
       } else {
         requestKey.current ??= crypto.randomUUID();
-        await api({ action: "start", ...body(), key: requestKey.current, expectedCoins: validQuote.value.coins });
+        await api({ action: "start", ...body(), key: requestKey.current, expectedCoins: validQuote.value.coins, prompt: validQuote.written.prompt, seal: validQuote.written.seal });
         const data = await api<{ jobs: JobView[]; firstFree: boolean }>();
         setJobs(data.jobs); setFirstFree(data.firstFree);
         reset();
@@ -99,7 +101,7 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
     </header>
     <div className="zy-layout"><section className="zy-card"><fieldset disabled={!!busy}>
       <h2>١. المكان</h2>
-      <p>صحن الحرم الشريف، والقبة خلفكم. اختر الزاوية اللي تعجبك.</p>
+      <p>صحن الحرم الشريف، والقبة خلفكم. اختر الزاوية؛ شيت المكان كامل يروح مرجع مع صورك.</p>
       <div className="zy-views">{ZAYNAB_VIEWS.map(view => <button type="button" key={view.id} className={input.view === view.id ? "chosen" : ""} aria-pressed={input.view === view.id} onClick={() => change({ view: view.id })}><img src={`/zaynab/views/${view.id}.jpg`} alt={view.name} loading="lazy" /><b>{view.name}</b><small>{view.hint}</small></button>)}</div>
       <h2>٢. صورك</h2>
       <p>صور عادية من الجوال، وما يلزم تفرّغ الخلفية. ضيف أكثر من شخص: كل شخص بصورة، أو صورة وحدة فيها مجموعة وكلهم يدخلون.</p>
@@ -120,10 +122,10 @@ export default function ZaynabStudio({ userId }: { userId: string }) {
       <label className="zy-check"><input type="checkbox" checked={input.consent} onChange={event => change({ consent: event.target.checked })} /> لدي إذن استخدام الصور، وموافقة ولي الأمر إذا كانت لطفل.</label>
     </fieldset></section>
     <aside className="zy-card zy-summary"><h2>طلبك</h2><p>{people.length ? `${people.length} صور` : "ما أضفت صور بعد"} · {ZAYNAB_VIEWS.find(v => v.id === input.view)?.name} · {findStyle(input.style)?.name ?? "بدون ستايل"} · {ZAYNAB_TIMES[input.time]} · {ZAYNAB_WEATHER[input.weather]}</p>
-      {validQuote && <div className="zy-price">{firstFree && validQuote.value.coins === 0 && <p>🎁 أول تجربة مجانية</p>}<strong>الإجمالي: {validQuote.free || validQuote.value.coins === 0 ? "مجاني" : <Riyal halalas={validQuote.value.coins} size={20} />}</strong></div>}
+      {validQuote && <div className="zy-price">{firstFree && validQuote.value.coins === 0 && <p>🎁 أول تجربة مجانية</p>}<strong>الإجمالي: {validQuote.free || validQuote.value.coins === 0 ? "مجاني" : <Riyal halalas={validQuote.value.coins} size={20} />}</strong><details className="zy-prompt"><summary>📝 البرومبت اللي كتبه «جواد»</summary><p dir="ltr">{validQuote.written.prompt}</p></details></div>}
       {firstFree && input.count > 1 && <p className="zy-note">التجربة المجانية لصورة واحدة؛ اختر «صورة واحدة» لتستفيد منها.</p>}
       <p className="zy-note">التشابه غير مضمون ١٠٠٪. يُخصم السعر عند البدء، وإن فشل التوليد يرجع لك.</p>
-      <button className="zy-primary" disabled={!!busy || !input.consent || !people.length} onClick={() => void submit()}>{busy || (validQuote ? "أوافق · اصنع الصورة ✨" : "اعرض السعر")}</button>
+      <button className="zy-primary" disabled={!!busy || !input.consent || !people.length} onClick={() => void submit()}>{busy || (validQuote ? "أوافق · اصنع الصورة ✨" : "خلّ «جواد» يكتب البرومبت · اعرض السعر")}</button>
       {error && <p className="zy-feedback" role="status">{error}</p>}
     </aside></div>
     <section className="zy-results"><h2>صورك</h2>{!jobs.length && <p>هنا تظهر صورك بعد البدء.</p>}

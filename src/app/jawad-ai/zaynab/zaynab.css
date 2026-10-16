@@ -77,6 +77,9 @@
 .zy-price { margin: 14px 0; padding: 14px; border: 1.5px solid var(--zy-gold); border-radius: 16px; background: #ffd54a14; }
 .zy-price strong { font-size: 20px; color: var(--zy-gold); }
 .zy-note { font-size: 12.5px; }
+.zy-prompt { margin-top: 10px; }
+.zy-prompt summary { cursor: pointer; color: var(--zy-gold); font-weight: 800; font-size: 13px; }
+.zy-prompt p { max-height: 240px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.7; text-align: left; color: var(--zy-soft); background: #0a2230; border-radius: 10px; padding: 10px; margin-top: 8px; }
 .zy-primary { width: 100%; border: 0; border-radius: 16px; padding: 15px; margin: 8px 0 12px; font: inherit; font-weight: 900; font-size: 16px; background: linear-gradient(100deg, var(--zy-gold), var(--zy-gold2)); color: #3a2400; cursor: pointer; box-shadow: 0 5px 0 #a8650c; transition: transform .1s, box-shadow .1s; }
 .zy-primary:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 #a8650c; }
 .zy-primary:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
