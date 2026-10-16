@@ -2,9 +2,10 @@
 // own address, /jawad-ai/zaynab). The person adds a photo of themselves — an ordinary photo, no cut-out needed — and of
 // as many other people as they like (one photo each, or a group photo), chooses how the picture is drawn, whether it is
 // night or day and rain, snow or clear, and gets themselves standing in the courtyard of the holy shrine of Sayyida
-// Zaynab (peace be upon her) with its golden dome behind them. THE PLACE IS A REAL PHOTOGRAPH the owner puts once (the
-// «صورة الحضرة»: kept in the public bucket, sent as the first reference of EVERY generation, so the dome, the minarets and
-// the facade are the real ones and are redrawn in the chosen look together with the people). The greeting is written
+// Zaynab (peace be upon her) with its golden dome behind them. THE PLACE IS ONE OF THE VIEWS OF THE OWNER'S ENVIRONMENT
+// SHEET («ENV-02 Zainab shrine courtyard»: public/zaynab/views, cut from the sheet), chosen by the person and sent as the
+// first reference of EVERY generation, so the dome, the minarets and the facade are the sheet's own and are redrawn in
+// the chosen look, time and weather together with the people. The greeting is written
 // over the top of the finished picture by the page (real Arabic letters in a joyful font, never drawn by the model).
 // GPT Image 2 at the studio's price, the people's own faces kept.
 
@@ -15,8 +16,22 @@ export const ZAYNAB_IMAGE = "openai-gpt-image-2";
 /** One photo per person, or a group photo: up to this many photos. */
 export const ZAYNAB_MAX_PHOTOS = 6;
 export const ZAYNAB_KEY_PREFIX = "zaynab_";
-/** Where the owner's photograph of the shrine is kept (public bucket) — sent with every generation. */
-export const ZAYNAB_HARAM_PATH = "zaynab/haram.jpg";
+
+/**
+ * The views of the courtyard the person chooses from, each one a tile of the owner's environment sheet (the dome is in
+ * every one of them; the courtyard is empty in all, so the people stand on the marble in front). `file` is under
+ * public/zaynab/views and is read from disk for every generation.
+ */
+export const ZAYNAB_VIEWS = [
+  { id: "shrine", name: "أمام الحرم", hint: "الواجهة الذهبية والقبة والمنارتان وسط الصورة", text: "the main view facing the shrine: the golden iwan facade centred, the golden dome rising behind it between the two tiled minarets, the arcades on both sides" },
+  { id: "spot", name: "وسط الصحن", hint: "منظر أوسع من وسط الصحن بالقبة بعيدة وبالمنارتين", text: "a wide view from the middle of the courtyard: the shrine seen from further back, the dome centred between the two minarets, a large open marble floor in front" },
+  { id: "left", name: "الرواق الأيسر", hint: "أقواس مزخرفة وبلاط أزرق والقبة تظهر من الجانب", text: "a view along the left arcade: a long row of tiled arches in blue and gold running into the distance, the golden dome and a minaret appearing beyond them" },
+  { id: "right", name: "الرواق الأيمن", hint: "رواق مبلّط بالفيروزي والمنارة من الجانب الآخر", text: "a view along the right arcade: the long tiled arcade seen at an angle, a minaret above it and the shrine's facade at the end" },
+  { id: "up", name: "من تحت لفوق", hint: "منظر منخفض يرفع القبة والمنارتين فوق الأشخاص", text: "a low looking-up view: the golden dome and the two tiled minarets rising tall into the sky over the facade, with the dome large above the viewer" },
+] as const;
+export type ZaynabView = (typeof ZAYNAB_VIEWS)[number]["id"];
+export const ZAYNAB_VIEW_DEFAULT: ZaynabView = "shrine";
+export const zaynabViewFile = (id: string) => `public/zaynab/views/${id}.jpg`;
 
 /** The greeting written over the top of every picture (the person can switch it off). */
 export const ZAYNAB_GREETING = ["نرفع أسمى آيات التهاني والتبريك لمقام صاحب العصر والزمان (عج)", "بمناسبة ميلاد السيدة زينب عليها السلام"] as const;
@@ -95,6 +110,8 @@ const WEATHER_TEXT: Record<ZaynabWeather, string> = {
 };
 
 export interface ZaynabInput {
+  /** which view of the courtyard (a tile of the environment sheet) */
+  view: ZaynabView;
   style: ZaynabStyle;
   time: ZaynabTime;
   weather: ZaynabWeather;
@@ -110,6 +127,7 @@ export interface ZaynabInput {
 /** Reads a request's input; anything unknown is refused with the sentence the page shows. */
 export function zaynabInput(raw: unknown): ZaynabInput {
   const v = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  if (!ZAYNAB_VIEWS.some(view => view.id === v.view)) throw new Error("اختر المنظر.");
   if (!ZAYNAB_STYLES.some(style => style.id === v.style)) throw new Error("اختر أسلوب التحويل.");
   if (!Object.hasOwn(ZAYNAB_TIMES, String(v.time))) throw new Error("اختر ليل أو نهار.");
   if (!Object.hasOwn(ZAYNAB_WEATHER, String(v.weather))) throw new Error("اختر الجو: صافي أو مطر أو ثلج.");
@@ -117,7 +135,7 @@ export function zaynabInput(raw: unknown): ZaynabInput {
   if (!Number.isInteger(v.count) || Number(v.count) < 1 || Number(v.count) > 4) throw new Error("اختر من صورة إلى أربع صور.");
   if (v.consent !== true) throw new Error("أكد أن لديك إذن استخدام الصور، وموافقة ولي الأمر لصور الأطفال.");
   const labels = Array.isArray(v.labels) ? v.labels.slice(0, ZAYNAB_MAX_PHOTOS).map(label => String(label ?? "").trim().slice(0, 40)) : [];
-  return { style: v.style as ZaynabStyle, time: v.time as ZaynabTime, weather: v.weather as ZaynabWeather, aspect: v.aspect as ZaynabAspect, labels, greeting: v.greeting !== false, count: Number(v.count), consent: true };
+  return { view: v.view as ZaynabView, style: v.style as ZaynabStyle, time: v.time as ZaynabTime, weather: v.weather as ZaynabWeather, aspect: v.aspect as ZaynabAspect, labels, greeting: v.greeting !== false, count: Number(v.count), consent: true };
 }
 
 /**
@@ -127,10 +145,11 @@ export function zaynabInput(raw: unknown): ZaynabInput {
  */
 export function zaynabPrompt(input: ZaynabInput, photos: number): string {
   const style = ZAYNAB_STYLES.find(item => item.id === input.style)!;
+  const view = ZAYNAB_VIEWS.find(item => item.id === input.view)!;
   const who = Array.from({ length: photos }, (_, i) => `Image ${i + 2}` + (input.labels[i] ? ` (“${input.labels[i]}”)` : "")).join(", ");
   return [
-    "PUT THE PEOPLE IN THE PLACE. Image 1 is the PLACE: a photograph of the holy shrine of Sayyida Zaynab (peace be upon her) near Damascus. " + who + (photos > 1 ? " are" : " is") + " the PEOPLE: each of those photos shows one person, or a group — every person in every one of them appears in the final picture, standing together in front of the shrine.",
-    "THE PLACE: keep the shrine of Image 1 exactly as it is — its golden dome, the drum below it, the minarets, the iwan facade, the tilework and the courtyard — the same architecture, proportions and details, never redesigned, never invented anew; it is simply redrawn in the look below, together with the people. The shrine stays large in the frame and the dome is centred behind the people, never hidden by them; the people stand in the foreground on the courtyard.",
+    "PUT THE PEOPLE IN THE PLACE. Image 1 is the PLACE: the courtyard of the holy shrine of Sayyida Zaynab (peace be upon her) near Damascus, as " + view.text + ". " + who + (photos > 1 ? " are" : " is") + " the PEOPLE: each of those photos shows one person, or a group — every person in every one of them appears in the final picture, standing together in front of the shrine.",
+    "THE PLACE: keep the architecture of Image 1 exactly as it is — its golden dome, the drum below it, the two minarets, the iwan facade, the arcades, the tilework and the marble courtyard — the same shapes, proportions, colours and details, never redesigned, never invented anew; it is a plain daytime reference of an EMPTY courtyard, so its light and sky are changed to the time and weather asked below while the architecture stays, and it is redrawn in the look below together with the people. The dome stays visible and large behind the people, never hidden by them; the people stand in the foreground on the marble floor of the courtyard.",
     "WHO THEY ARE: keep each person's own face, hair, skin tone, age, build and anything distinctive (glasses, beard, freckles, dimples) and their own clothing exactly as it is in their photo — never merge two people, never drop anyone, never add a person who is not in a photo, never give two people the same face, and keep their real difference in height and age. Do not beautify: no smoothing, no slimming, no replacing a face with a generic one. Do not use the backgrounds of the people's photographs.",
     "THE PEOPLE'S POSE: standing together quietly and calmly, facing the camera or the shrine, with the dignity and modesty of a visit to a holy place; relaxed hands at their sides or together; natural gentle expressions. Nobody touches or climbs the shrine, nobody is shown in a disrespectful pose, no holy figure is depicted, and there is no writing, text, logo or watermark anywhere in the picture.",
     input.greeting ? "COMPOSITION: leave the top fifth of the frame as open sky with nothing important in it (no dome tip, no minaret top, no faces): a greeting is written there afterwards." : "",

@@ -48,13 +48,15 @@
 .zy-card h2 { font-size: 19px; margin: 18px 0 8px; color: var(--zy-gold); font-weight: 900; }
 .zy-card fieldset > h2:first-child { margin-top: 0; }
 .zy-card p { line-height: 1.9; color: var(--zy-soft); }
-.zy-empty { padding: 14px; border: 1.5px dashed var(--zy-gold); border-radius: 16px; color: var(--zy-gold) !important; background: #ffd54a14; }
-.zy-place { display: flex; gap: 14px; align-items: center; }
-.zy-place img { width: 140px; aspect-ratio: 16 / 10; object-fit: cover; border: 2px solid var(--zy-gold); border-radius: 14px; }
-
+.zy-views { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.zy-views button { display: flex; flex-direction: column; gap: 4px; padding: 0 0 10px; overflow: hidden; border: 2px solid var(--zy-line); border-radius: 16px; background: #0a2230; color: var(--zy-ink); font: inherit; cursor: pointer; text-align: center; transition: transform .12s, border-color .12s; }
+.zy-views button:hover { transform: translateY(-2px); border-color: var(--zy-teal); }
+.zy-views img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.zy-views b { padding: 0 6px; }
+.zy-views small { padding: 0 8px; color: var(--zy-soft); font-size: 11.5px; line-height: 1.5; }
+.zy-views .chosen { border-color: var(--zy-gold); background: #ffd54a1f; box-shadow: 0 0 0 2px #ffd54a44; }
 .zy-upload { display: block; text-align: center; border: 2px dashed var(--zy-teal); border-radius: 18px; padding: 20px; background: #1fb5bd14; cursor: pointer; font-weight: 800; color: var(--zy-teal); }
 .zy-upload:hover { background: #1fb5bd26; }
-.zy-small { padding: 10px; margin-top: 10px; font-size: 14px; }
 .zy-upload input { display: block; margin: 10px auto 0; max-width: 100%; color: var(--zy-soft); }
 .zy-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 14px; }
 .zy-people > div { position: relative; display: flex; flex-direction: column; gap: 6px; }
@@ -100,5 +102,4 @@
   .zy-page { padding: 16px 12px 70px; border-radius: 24px; margin: 8px 8px 30px; }
   .zy-card { padding: 16px; }
   .zy-fields { grid-template-columns: 1fr; }
-  .zy-place { flex-direction: column; align-items: flex-start; }
 }

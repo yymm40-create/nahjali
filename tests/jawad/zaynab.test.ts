@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ZAYNAB_GREETING, ZAYNAB_HARAM_PATH, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLES, zaynabInput, zaynabPrompt } from "@config/jawad/zaynab";
+import { ZAYNAB_GREETING, ZAYNAB_MAX_PHOTOS, ZAYNAB_STYLES, ZAYNAB_VIEWS, zaynabInput, zaynabPrompt, zaynabViewFile } from "@config/jawad/zaynab";
 import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS, freeFirstOpen } from "@config/jawad/free-first";
 import { DEFAULT_SECTIONS, RESERVED_SECTION_IDS } from "@config/jawad/sections";
 import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 
 const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
-const ok = { style: "real", time: "night", weather: "rain", aspect: "3:2", labels: ["أبي", ""], greeting: true, count: 1, consent: true };
+const ok = { view: "shrine", style: "real", time: "night", weather: "rain", aspect: "3:2", labels: ["أبي", ""], greeting: true, count: 1, consent: true };
 
 describe("«في حضرة السيدة زينب (ع)»", () => {
   it("is unlisted: no section on the bar, its address reserved, hidden from search engines", () => {
@@ -35,16 +35,25 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(p).toContain("a greeting is written there afterwards");
     expect(zaynabPrompt(zaynabInput({ ...ok, greeting: false, weather: "snow", time: "day" }), 1)).not.toContain("a greeting is written");
   });
-  it("takes several people's photos and keeps the shrine's photograph as a reference of its own with every generation", () => {
+  it("lets the person choose a view of the courtyard, each one a tile of the owner's sheet shipped with the site", () => {
+    expect(ZAYNAB_VIEWS.length).toBeGreaterThanOrEqual(4);
+    for (const v of ZAYNAB_VIEWS) {
+      const bytes = readFileSync(new URL(`../../${zaynabViewFile(v.id)}`, import.meta.url));
+      expect(bytes.length, v.id).toBeGreaterThan(5000);
+      // a JPEG
+      expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
+    }
+    expect(() => zaynabInput({ ...ok, view: "nowhere" })).toThrow();
+    expect(zaynabPrompt(zaynabInput({ ...ok, view: "up" }), 1)).toContain("looking-up view");
+    expect(read("next.config.ts")).toContain("./public/zaynab/views/*.jpg");
+  });
+  it("takes several people's photos and sends the chosen view as a reference of its own, first, with every generation", () => {
     expect(ZAYNAB_MAX_PHOTOS).toBeGreaterThanOrEqual(5);
     const route = read("src/app/api/jawad/zaynab/route.ts");
-    expect(route).toContain("haramBytes()");
-    expect(route).toContain("[haram.id, ...(uploads as string[])]");
-    expect(ZAYNAB_HARAM_PATH).toBe("zaynab/haram.jpg");
-    // only the owner puts the shrine's photograph, and nobody starts without it
-    expect(route).toContain('body.action === "set_haram"');
-    expect(route).toContain("if (!owner) throw");
-    expect(route).toContain("صورة الحضرة لم تُرفع بعد");
+    expect(route).toContain("viewBytes(input.view)");
+    expect(route).toContain("[place.id, ...(uploads as string[])]");
+    // the sheet's views are daytime and empty: the prompt relights them and puts the people on the marble
+    expect(zaynabPrompt(zaynabInput(ok), 1)).toContain("plain daytime reference of an EMPTY courtyard");
   });
   it("writes the greeting over the picture itself, in real letters", () => {
     expect(ZAYNAB_GREETING.join(" ")).toContain("نرفع أسمى آيات التهاني والتبريك لمقام صاحب العصر والزمان (عج)");
