@@ -40,6 +40,9 @@ const WHATS: { id: What; icon: string; name: string; hint: string }[] = [
   { id: "frame", icon: "🖼️", name: "الفريم صورة", hint: "PNG عند المؤشر" },
 ];
 
+/** the longest video Topaz takes (src/lib/editor/upscale.ts UPSCALE_MAX_MS) */
+const UPSCALE_EXPORT_MAX_MS = 5 * 60_000;
+
 type Phase = { k: "idle" } | { k: "running"; p: number } | { k: "done"; r: ExportResult; saved: boolean | null; purgeAt: string | null; local?: boolean; file: string } | { k: "error"; m: string };
 
 const when = (iso: string) => new Date(iso).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
@@ -58,6 +61,7 @@ export default function ExportPanel({
   onRange,
   player,
   onExported,
+  onUpscaleExport,
 }: {
   open: boolean;
   onClose: () => void;
@@ -72,6 +76,8 @@ export default function ExportPanel({
   onRange: (r: { from: number; to: number } | null) => void;
   player: Player | null;
   onExported: (purgeAt: string) => void;
+  /** «رفع دقة الفيديو كامل»: the finished file goes up and is upscaled whole; the page saves the result when it is ready (none: not offered) */
+  onUpscaleExport?: (file: File, target: "4k" | "1080p", name: string) => void;
 }) {
   const [res, setRes] = useState<ExportRes>(1080);
   const [quality, setQuality] = useState<ExportQuality>("high");
@@ -83,6 +89,8 @@ export default function ExportPanel({
   // the whole project, or its In → Out part
   const [part, setPart] = useState(true);
   const [note, setNote] = useState<string | null>(null);
+  // «رفع دقة الفيديو كامل»: after the export, the whole file is upscaled by Topaz (not clip by clip)
+  const [upTarget, setUpTarget] = useState<"4k" | "1080p" | null>(null);
   // «نفس المصدر»: the biggest video of the timeline — its size from the project's own files, its frame rate and
   // bitrate measured in the browser once (the first time a «نفس المصدر» choice is made)
   const [source, setSource] = useState<SourceInfo | null>(() => sourceFromTimeline(tl, assets));
@@ -110,6 +118,10 @@ export default function ExportPanel({
   const stem = exportName(title, plan).replace(/\.mp4$/i, "") + (use ? `-${formatTime(use.from).replace(/[:.]/g, "-")}_${formatTime(use.to).replace(/[:.]/g, "-")}` : "");
   const name = `${stem}.${what === "audio" ? "m4a" : "mp4"}`;
   const picture = what === "video" || what === "mute";
+  // whole-video upscale: only for the video with sound, made by the site (not the desktop program's local files), up to 5 minutes, and when it isn't 4K already
+  const longSide = Math.max(plan.width, plan.height);
+  const upWhy = !onUpscaleExport ? null : desktop() ? "برنامج حيدرة على الكمبيوتر يحفظ الملفات عندك بس، وما تروح لخادم رفع الدقة؛ استخدم المتصفح." : total > UPSCALE_EXPORT_MAX_MS ? "رفع الدقة لفيديو حتى ٥ دقائق؛ حدّد منطقة أقصر (In و Out)." : longSide >= 3800 ? "التصدير الحين 4K أصلًا؛ اختر دقة أقل (مثل 1080p) وارفعها بعدين." : null;
+  const upOn = !!onUpscaleExport && what === "video" && !upWhy && upTarget !== null && (upTarget === "4k" || longSide < 1800);
   // the file's own frame rate and bitrate, read from the file itself (only when «نفس المصدر» is wanted)
   const matchSource = async () => {
     if (measured.current) return;
@@ -188,6 +200,8 @@ export default function ExportPanel({
         }
       }
       download(r.blob, name);
+      // «رفع دقة الفيديو كامل»: the same file goes up and is upscaled whole; the 4K file downloads by itself when it is ready
+      if (upOn && upTarget && onUpscaleExport) onUpscaleExport(new File([r.blob], name, { type: "video/mp4" }), upTarget, `${stem}-${upTarget === "4k" ? "4K" : "1080p"}.mp4`);
       // only the whole video starts the 3-day countdown and keeps a copy; a part, a muted picture or the sound alone is just saved
       if (what !== "video" || use) {
         setPhase({ k: "done", r, saved: false, purgeAt: null, local: true, file: name });
@@ -383,6 +397,27 @@ export default function ExportPanel({
               <span className="block text-jw-muted">ضغطة واحدة: نفس دقة المقطع الأصلي وفريم ريته وبت ريته — بلا تصغير ولا نزول جودة.</span>
             </button>
 
+            {what === "video" && onUpscaleExport && (
+              <div className="space-y-1.5 rounded-xl border border-jw-line p-2.5">
+                <span className="jw-label">⬆️ رفع الدقة للفيديو كامل (Topaz)</span>
+                {upWhy ? (
+                  <p className="text-[11px] leading-5 text-jw-muted">{upWhy}</p>
+                ) : (
+                  <>
+                    <div className="jw-seg" role="radiogroup" aria-label="رفع الدقة للفيديو كامل">
+                      <button type="button" role="radio" aria-checked={upTarget === null} onClick={() => setUpTarget(null)}>بدون</button>
+                      <button type="button" role="radio" aria-checked={upTarget === "4k"} onClick={() => setUpTarget("4k")}>إلى 4K</button>
+                      {longSide < 1800 && (
+                        <button type="button" role="radio" aria-checked={upTarget === "1080p"} onClick={() => setUpTarget("1080p")}>إلى 1080p</button>
+                      )}
+                    </div>
+                    <p className="text-[11px] leading-5 text-jw-muted">
+                      {upTarget ? "بعد التصدير يطلع الفيديو كله (مو مقطع مقطع) لرفع الدقة، وتنزل لك النسخة المرفوعة لحالها لما تخلص (دقايق على حسب الطول). خلّ الصفحة مفتوحة؛ وإذا سكرتها ترجع تكمل لما تفتح المشروع." : "اختر الدقة وصدّر: الفيديو كامل يرتفع مرة وحدة بدل ما ترفع كل مقطع بروحه."}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
             <p className="rounded-lg bg-jw-surface-2 p-2.5 text-sm leading-6">
               الملف الطالع: <b className="text-jw-ink" dir="ltr">{plan.width}×{plan.height}</b> · <b className="text-jw-ink" dir="ltr">{plan.fps} ف/ث</b> · <b className="text-jw-ink" dir="ltr">{plan.mbps} ميجابت/ث</b> · MP4
               <span className="block text-xs text-jw-muted">
@@ -400,7 +435,7 @@ export default function ExportPanel({
             <p className="text-xs text-jw-faint">التصدير يصير داخل متصفحك (بدون انتظار سيرفر). خلّ الصفحة مفتوحة حتى يخلص.</p>
             {phase.k === "error" && <p className="error-box text-sm">{phase.m}</p>}
             <button type="button" className="jw-btn jw-btn-primary w-full" disabled={!total0} onClick={start}>
-              <Icon name="download" size={16} /> {what === "srt" ? "نزّل الكابشن" : what === "frame" ? "نزّل الفريم" : what === "audio" ? "صدّر الصوت" : what === "mute" ? "صدّر بدون صوت" : "صدّر الحين"}
+              <Icon name="download" size={16} /> {what === "srt" ? "نزّل الكابشن" : what === "frame" ? "نزّل الفريم" : what === "audio" ? "صدّر الصوت" : what === "mute" ? "صدّر بدون صوت" : upOn ? "صدّر وارفع الدقة" : "صدّر الحين"}
             </button>
             {note && <p className="text-xs text-jw-ok" aria-live="polite">{note}</p>}
             <div className="space-y-2 rounded-xl border border-jw-line p-3">

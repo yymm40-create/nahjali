@@ -39,6 +39,21 @@ describe("«رفع الدقة» is reachable, not hidden in one corner", () => {
     expect(panel).not.toContain("ما قدرت أقرا دقة");
   });
 
+  it("the export window can upscale the whole video at once, not clip by clip", () => {
+    const panelSrc = readFileSync("src/components/jawad/editor/ExportPanel.tsx", "utf8");
+    const editor = readFileSync("src/components/jawad/editor/Editor.tsx", "utf8");
+    expect(panelSrc).toContain("رفع الدقة للفيديو كامل");
+    expect(panelSrc).toContain("صدّر وارفع الدقة");
+    expect(panelSrc).toContain("onUpscaleExport(");
+    // the page's limit is the server's
+    expect(panelSrc).toContain(`const UPSCALE_EXPORT_MAX_MS = ${UPSCALE_MAX_MS / 60_000} * 60_000;`);
+    // the exported file goes up but stays off the timeline, then it is upscaled and saved by itself
+    expect(editor).toContain('place?.group.startsWith("expup:")');
+    expect(editor).toContain("upscaleWhole(a,");
+    expect(editor).toContain('from.startsWith("dl:")');
+    expect(JAWAD_KNOWLEDGE).toContain("رفع الدقة للفيديو كامل");
+  });
+
   it("the button stays in the clip's own tab too", () => {
     expect(inspector).toContain("رفع الدقة بالذكاء الاصطناعي");
     expect(inspector).toContain("إلى 4K");
