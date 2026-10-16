@@ -1,14 +1,11 @@
 // «في حضرة السيدة زينب (ع)» — an unlisted branch of JAWAD AI (no card on the bar, no link anywhere: it opens only from its
-// own address, /jawad-ai/zaynab). The person adds a photo of themselves — an ordinary photo, no cut-out needed — and of
-// as many other people as they like (one photo each, or a group photo), chooses its look from JAWAD AI's own style library
-// (the studios' «🎨 الستايل»: config/film-styles.ts, passed as the job's styleId exactly as the studio does), whether it is
-// night or day and rain, snow or clear, and gets themselves standing in the courtyard of the holy shrine of Sayyida
-// Zaynab (peace be upon her) with its golden dome behind them. THE PLACE IS ONE OF THE VIEWS OF THE OWNER'S ENVIRONMENT
-// SHEET («ENV-02 Zainab shrine courtyard»: public/zaynab/views, cut from the sheet), chosen by the person and sent as the
-// first reference of EVERY generation, so the dome, the minarets and the facade are the sheet's own and are redrawn in
-// the chosen look, time and weather together with the people. The greeting is part of the prompt: the model writes it
-// across the sky at the top, in joyful festive lettering that matches the look (the owner's choice). GPT Image 2 at the
-// studio's price, the people's own faces kept.
+// own address, /jawad-ai/zaynab). The person adds ordinary photos (no cut-out needed) of themselves and of as many other
+// people as they like, picks one of the views of the owner's environment sheet («ENV-02 Zainab shrine courtyard»), a style
+// of JAWAD AI's own library (the studios' «🎨 الستايل»), night or day, rain, snow or clear, and the greeting.
+// THE WHOLE SHEET AND EVERY PHOTO GO TO GPT IMAGE 2 AS REFERENCES, and THE PROMPT IS WRITTEN BY «جواد» — the studio's
+// assistant, with his own system prompt and knowledge — from the person's choices and from looking at the references
+// (the owner's choice: no fixed template). When a style is chosen, everything in the picture, the people too, becomes
+// that style (a Pixar look turns the people into Pixar characters of themselves). GPT Image 2 at the studio's price.
 
 import { findStyle } from "../film-styles";
 import type { RefMeta } from "./types";
@@ -34,8 +31,12 @@ export const ZAYNAB_VIEWS = [
 export type ZaynabView = (typeof ZAYNAB_VIEWS)[number]["id"];
 export const ZAYNAB_VIEW_DEFAULT: ZaynabView = "shrine";
 export const zaynabViewFile = (id: string) => `public/zaynab/views/${id}.jpg`;
+/** The tile of the sheet each view is (its label as written on the sheet). */
+export const ZAYNAB_VIEW_TILE: Record<ZaynabView, string> = { shrine: "03 VIEW TO SHRINE", spot: "07 SPOT A", left: "05 LEFT ARCADE", right: "06 RIGHT ARCADE", up: "08 LOOKING UP" };
+/** The owner's whole environment sheet: Image 1 of every generation. */
+export const ZAYNAB_SHEET_FILE = "public/zaynab/env-sheet.jpg";
 
-/** The greeting written over the top of every picture (the person can switch it off). */
+/** The greeting written in the picture by the model (the person can switch it off). */
 export const ZAYNAB_GREETING = ["نرفع أسمى آيات التهاني والتبريك لمقام صاحب العصر والزمان (عج)", "بمناسبة ميلاد السيدة زينب عليها السلام"] as const;
 
 
@@ -45,16 +46,6 @@ export const ZAYNAB_WEATHER = { clear: "✨ صافي", rain: "🌧️ مطر", s
 export type ZaynabWeather = keyof typeof ZAYNAB_WEATHER;
 export const ZAYNAB_ASPECTS = { "2:3": "عمودي", "3:2": "أفقي", "1:1": "مربع" } as const;
 export type ZaynabAspect = keyof typeof ZAYNAB_ASPECTS;
-
-const TIME_TEXT: Record<ZaynabTime, string> = {
-  day: "DAYTIME: bright clear daylight, the golden dome blazing in the sun, the blue and turquoise tiles vivid, soft shadows on the marble.",
-  night: "NIGHT: a deep blue night sky with a few stars, the golden dome and the minarets lit by warm golden floodlights, glowing lamps and lanterns around the courtyard, the marble floor reflecting the lights, the people lit softly by the light of the shrine.",
-};
-const WEATHER_TEXT: Record<ZaynabWeather, string> = {
-  clear: "WEATHER: clear and calm, a sky free of storm.",
-  rain: "WEATHER: gentle rain falling, fine rain streaks catching the light, the marble courtyard wet and mirroring the dome and the lights, a soft grey sky, a quiet and moving atmosphere.",
-  snow: "WEATHER: soft snow falling, flakes drifting through the air and catching the light, a thin layer of snow on the courtyard edges and rooftops while the golden dome stays gold, a pale hush over the sky, a cold breath of mist.",
-};
 
 export interface ZaynabInput {
   /** which view of the courtyard (a tile of the environment sheet) */
@@ -66,7 +57,7 @@ export interface ZaynabInput {
   aspect: ZaynabAspect;
   /** a name or a word for each photo, in the order they were added (may be blank) */
   labels: string[];
-  /** leave room at the top of the picture for the greeting the page writes over it */
+  /** the greeting is written in the picture */
   greeting: boolean;
   count: number;
   consent: boolean;
@@ -87,32 +78,49 @@ export function zaynabInput(raw: unknown): ZaynabInput {
   return { view: v.view as ZaynabView, style, time: v.time as ZaynabTime, weather: v.weather as ZaynabWeather, aspect: v.aspect as ZaynabAspect, labels, greeting: v.greeting !== false, count: Number(v.count), consent: true };
 }
 
-/** The greeting the model writes across the sky (the owner's words, letter for letter). */
-const GREETING_TEXT = (lines: readonly string[]) =>
-  "THE GREETING — the only writing in the picture: across the top of the picture, in the open sky above the dome and clear of the dome, the minarets and every face, write this Arabic greeting in two lines, EXACTLY as given, letter for letter, right to left, in properly joined Arabic script with every letter and every dot correct, nothing added, nothing left out, nothing translated:\n" +
-  lines.map((line, i) => `line ${i + 1}: «${line}»`).join("\n") +
-  "\nLettering: beautiful, joyful and festive — celebratory Arabic display calligraphy in warm shining gold with a soft glow and a few small sparkles around it, fitting the look of the picture; large enough to read easily on a phone, the first line a little smaller than the second.";
+const TIME_AR: Record<ZaynabTime, string> = { day: "daytime", night: "night (the dome and minarets lit by warm floodlights)" };
+const WEATHER_AR: Record<ZaynabWeather, string> = { clear: "clear sky", rain: "rain falling (a wet, reflective marble floor)", snow: "snow falling (the dome stays gold)" };
 
 /**
- * The picture's prompt. Image 1 is ALWAYS the chosen view of the courtyard (the place: never redesigned, only relit and
- * drawn in the look), the images after it are the people. The look itself is the library style, added by the job the way
- * the studio adds it (createJob's styleId). Respectful by construction: modest and calm, nobody touching the shrine, no
- * holy figure shown, no writing but the greeting.
+ * «جواد»'s recipe for this request type: what the picture is and what must survive, so HE writes the prompt. Said once,
+ * after his own system prompt.
  */
-export function zaynabPrompt(input: ZaynabInput, photos: number): string {
+export const ZAYNAB_RECIPE = `REQUEST TYPE — «في حضرة السيدة زينب (ع)» (a picture of the person and their people at the holy shrine of Sayyida Zaynab, peace be upon her, in Damascus). You write the WHOLE final prompt for GPT Image 2 yourself, from the brief and from looking at the references; there is no template.
+What the references are (the generator numbers them in this order, "Image 1", "Image 2"…):
+- Image 1 is the owner's ENVIRONMENT SHEET of the shrine's courtyard: many labelled tiles of the same place (an overview, a plan, views to the shrine, the gate, the arcades, spot A, looking up, details of the dome, the minarets, the tiles and the marble, the colour palette and the "locks"). It is the source of truth for the architecture: the gilded dome between two blue-tiled minarets, the golden iwan facade, the tiled arcades, the white marble courtyard. The brief names the tile whose camera view the picture is composed like.
+- Image 2 onwards are the PEOPLE's photos: ordinary photos (one person each, or a group). Every person in them is in the picture, each one recognisably themselves — never merged, dropped, duplicated or replaced, and no one added.
+Must hold in your prompt:
+- The people stand together in the courtyard in front of the shrine, the dome clearly behind them, in the chosen tile's view; their photos' backgrounds are not used.
+- THE STYLE IS THE WHOLE PICTURE: when a style is given, everything — the people (faces, bodies, clothes), the shrine and the sky — is rendered in that style. A Pixar style turns the people into Pixar characters OF THEMSELVES (likeness kept as stylised shapes), never a photo face on a cartoon place. With no style, the picture is a natural true-to-life photograph.
+- The chosen time and weather relight the sheet's plain daytime courtyard; the architecture stays.
+- Respect: modest, calm and dignified, as on a visit to a holy place; nobody touching or climbing the shrine; no holy figure depicted; no logos or watermarks.
+- The greeting (when asked): the given Arabic lines written in the sky above the dome, EXACTLY as given, letter for letter, in joyful festive gold lettering that fits the style, clear of the dome, the minarets and the faces; no other writing. When not asked: no writing at all.
+- The picture's shape is the one given (it is the generator's setting; just compose for it).`;
+
+/** The brief «جواد» receives with the references: the person's choices, plainly. */
+export function zaynabBrief(input: ZaynabInput, photos: number): string {
+  const style = input.style ? findStyle(input.style) : undefined;
   const view = ZAYNAB_VIEWS.find(item => item.id === input.view)!;
-  const who = Array.from({ length: photos }, (_, i) => `Image ${i + 2}` + (input.labels[i] ? ` (“${input.labels[i]}”)` : "")).join(", ");
+  const people = Array.from({ length: photos }, (_, i) => `Image ${i + 2}` + (input.labels[i] ? ` — «${input.labels[i]}»` : "")).join("\n");
   return [
-    "PUT THE PEOPLE IN THE PLACE. Image 1 is the PLACE: the courtyard of the holy shrine of Sayyida Zaynab (peace be upon her) near Damascus, as " + view.text + ". " + who + (photos > 1 ? " are" : " is") + " the PEOPLE: each of those photos shows one person, or a group — every person in every one of them appears in the final picture, standing together in front of the shrine.",
-    "THE PLACE: keep the architecture of Image 1 exactly as it is — its golden dome, the drum below it, the two minarets, the iwan facade, the arcades, the tilework and the marble courtyard — the same shapes, proportions, colours and details, never redesigned, never invented anew; it is a plain daytime reference of an EMPTY courtyard, so its light and sky are changed to the time and weather asked below while the architecture stays, and it is drawn in the picture's style together with the people. The dome stays visible and large behind the people, never hidden by them; the people stand in the foreground on the marble floor of the courtyard.",
-    "WHO THEY ARE: keep each person's own face, hair, skin tone, age, build and anything distinctive (glasses, beard, freckles, dimples) and their own clothing exactly as it is in their photo — never merge two people, never drop anyone, never add a person who is not in a photo, never give two people the same face, and keep their real difference in height and age. Do not beautify: no smoothing, no slimming, no replacing a face with a generic one. Do not use the backgrounds of the people's photographs.",
-    "THE PEOPLE'S POSE: standing together quietly and calmly, facing the camera or the shrine, with the dignity and modesty of a visit to a holy place; relaxed hands at their sides or together; natural gentle expressions. Nobody touches or climbs the shrine, nobody is shown in a disrespectful pose, no holy figure is depicted, and there is no logo or watermark.",
-    TIME_TEXT[input.time],
-    WEATHER_TEXT[input.weather],
-    input.greeting ? GREETING_TEXT(ZAYNAB_GREETING) : "No writing, text or letters anywhere in the picture.",
-    input.style ? "" : "LOOK: a natural, true-to-life photograph.",
-    "Everything — the people, the shrine, the sky" + (input.greeting ? " and the greeting" : "") + " — is rendered in one consistent look, so the picture reads as a single image.",
-  ].filter(Boolean).join("\n");
+    "THE BRIEF",
+    "View: the sheet's tile «" + ZAYNAB_VIEW_TILE[input.view] + "» — " + view.text + ".",
+    "People (" + photos + (photos === 1 ? " photo" : " photos") + "):\n" + people,
+    style ? "Style: «" + style.name + "» — " + style.text : "Style: none — a natural, true-to-life photograph.",
+    "Time: " + TIME_AR[input.time] + ". Weather: " + WEATHER_AR[input.weather] + ".",
+    "Shape: " + input.aspect + ".",
+    input.greeting ? "Greeting — write these two lines exactly:\nline 1: «" + ZAYNAB_GREETING[0] + "»\nline 2: «" + ZAYNAB_GREETING[1] + "»" : "Greeting: none — no writing in the picture.",
+  ].join("\n");
+}
+
+/** The faults sent back to «جواد» (his prompt must name the references and, when asked, carry the greeting letter for letter). */
+export function zaynabPromptProblems(prompt: string, input: ZaynabInput): string[] {
+  const out: string[] = [];
+  if (!prompt.trim()) out.push('The "prompt" is empty: write the whole final prompt.');
+  if (prompt.length > 30_000) out.push("The prompt is too long: keep it under 30,000 characters.");
+  if (!/Image 1\b/.test(prompt)) out.push("Refer to the environment sheet as Image 1.");
+  if (input.greeting) for (const line of ZAYNAB_GREETING) if (!prompt.includes(line)) out.push(`The greeting line must appear in the prompt exactly, letter for letter: «${line}».`);
+  return out;
 }
 
 /**
