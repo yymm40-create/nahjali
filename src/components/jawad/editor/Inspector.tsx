@@ -451,20 +451,30 @@ export default function Inspector({
               </div>
             </div>
           )}
-          {a?.kind === "video" && a.status === "ready" && onUpscale && a.width && a.height && Math.max(a.width, a.height) < 3800 && (
+          {a?.kind === "video" && a.status === "ready" && onUpscale && (
             <div className="space-y-1.5 rounded-xl border border-jw-line p-2.5">
               <p className="text-xs font-semibold">⬆️ رفع الدقة بالذكاء الاصطناعي</p>
-              <p className="text-[11px] leading-5 text-jw-muted">دقته الحين {a.width}×{a.height}. Topaz يكبّره ويرجّع التفاصيل وينظّف التشويش؛ تنضاف نسخة جديدة والأصلي يظل.</p>
-              <div className="flex gap-1.5">
-                <button type="button" className="jw-btn jw-btn-primary !min-h-8 flex-1 text-xs" disabled={locked} onClick={() => onUpscale(a.id, "4k")}>
-                  إلى 4K
-                </button>
-                {Math.max(a.width, a.height) < 1800 && (
-                  <button type="button" className="jw-btn !min-h-8 flex-1 text-xs" disabled={locked} onClick={() => onUpscale(a.id, "1080p")}>
-                    إلى 1080p
-                  </button>
-                )}
-              </div>
+              {a.url?.startsWith("haidara-media:") ? (
+                <p className="text-[11px] leading-5 text-jw-muted">هذا الفيديو محفوظ على جهازك بس، وما يوصل لخادم رفع الدقة. ارفعه للمشروع من المتصفح وبيطلع لك الزر.</p>
+              ) : a.width && a.height && Math.max(a.width, a.height) >= 3800 ? (
+                <p className="text-[11px] leading-5 text-jw-muted">دقته {a.width}×{a.height} — هذا 4K أصلًا، ما يحتاج رفع.</p>
+              ) : (
+                <>
+                  <p className="text-[11px] leading-5 text-jw-muted">
+                    {a.width && a.height ? `دقته الحين ${a.width}×${a.height}.` : "أقرا دقته قبل الإرسال."} Topaz يكبّره ويرجّع التفاصيل وينظّف التشويش؛ تنضاف نسخة جديدة والأصلي يظل.
+                  </p>
+                  <div className="flex gap-1.5">
+                    <button type="button" className="jw-btn jw-btn-primary !min-h-8 flex-1 text-xs" disabled={locked} onClick={() => onUpscale(a.id, "4k")}>
+                      إلى 4K
+                    </button>
+                    {(!a.width || !a.height || Math.max(a.width, a.height) < 1800) && (
+                      <button type="button" className="jw-btn !min-h-8 flex-1 text-xs" disabled={locked} onClick={() => onUpscale(a.id, "1080p")}>
+                        إلى 1080p
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
           {group && (

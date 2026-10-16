@@ -60,12 +60,32 @@ async function sourceRow(p: EditorProject, id: unknown) {
 }
 
 /** Sends a video of the project to be upscaled; the new file waits in the library («pending») until it is done. */
-export async function startUpscale(p: EditorProject, who: Who, b: { assetId?: unknown; target?: unknown }) {
+/** A size or length the page measured, for a file whose row has none (works brought in before they were measured). */
+const measured = (v: unknown, max: number) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 && n <= max ? n : null;
+};
+
+export async function startUpscale(p: EditorProject, who: Who, b: { assetId?: unknown; target?: unknown; width?: unknown; height?: unknown; durationMs?: unknown }) {
   stillOpen(p);
   if (!process.env.FAL_KEY) throw new UserError("رفع الدقة غير مفعّل على الخادم (FAL_KEY).", 503);
   const target: UpscaleTarget = b.target === "1080p" ? "1080p" : "4k";
   const src = await sourceRow(p, b.assetId);
   if (!src || src.kind !== "video" || src.status !== "ready") throw new UserError("اختر فيديو جاهز من المشروع.", 400);
+  if (src.meta?.local) throw new UserError("هذا الفيديو محفوظ على جهازك بس (برنامج حيدرة)، وما يوصل لخادم رفع الدقة؛ ارفعه للمشروع من المتصفح وارفع دقته.", 400);
+  // a file without its size (or length) on record: the page's measurement is kept, once
+  if (!src.width || !src.height || !src.duration_ms) {
+    const fill: Record<string, number> = {};
+    const w = measured(b.width, 16384);
+    const h = measured(b.height, 16384);
+    const d = measured(b.durationMs, 24 * 3600_000);
+    if (!src.width && !src.height && w && h) {
+      src.width = fill.width = w;
+      src.height = fill.height = h;
+    }
+    if (!src.duration_ms && d) src.duration_ms = fill.duration_ms = d;
+    if (Object.keys(fill).length) await db().from("editor_assets").update(fill).eq("id", src.id).eq("project_id", p.id);
+  }
   if (!src.width || !src.height || !src.duration_ms) throw new UserError("ما أعرف مقاس هذا الفيديو أو مدته؛ ارفعه من جديد.", 400);
   if (src.duration_ms > UPSCALE_MAX_MS) throw new UserError(`رفع الدقة لمقطع حتى ${UPSCALE_MAX_MS / 60_000} دقائق؛ قصّه أو قسّمه أول.`, 400);
   const factor = upscaleFactor(src.width, src.height, target);

@@ -25,6 +25,20 @@ describe("«رفع الدقة» is reachable, not hidden in one corner", () => {
     expect(panel).toContain("onUpscale");
   });
 
+  it("the box shows for every ready video: a size not on record is measured first, never hiding the button", () => {
+    expect(inspector).not.toContain('onUpscale && a.width && a.height');
+    expect(inspector).toContain("أقرا دقته قبل الإرسال");
+    expect(inspector).toContain("هذا 4K أصلًا");
+    expect(inspector).toContain('haidara-media:');
+    const editor = readFileSync("src/components/jawad/editor/Editor.tsx", "utf8");
+    expect(editor).toContain("measureVideo(a.url)");
+    expect(editor).toMatch(/action: "upscale", assetId, target, width: a\.width, height: a\.height, durationMs: a\.durationMs/);
+    const server = readFileSync("src/lib/editor/upscale.ts", "utf8");
+    expect(server).toContain("the page's measurement is kept");
+    expect(server).toContain("src.meta?.local");
+    expect(panel).not.toContain("ما قدرت أقرا دقة");
+  });
+
   it("the button stays in the clip's own tab too", () => {
     expect(inspector).toContain("رفع الدقة بالذكاء الاصطناعي");
     expect(inspector).toContain("إلى 4K");

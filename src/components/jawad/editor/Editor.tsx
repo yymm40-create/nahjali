@@ -39,7 +39,7 @@ import Handles from "./Handles";
 import Inspector, { type SceneCutRun, type InspectorTab } from "./Inspector";
 import { peaksOf, waveImage } from "./peaks";
 import Library from "./Library";
-import { framesOf, thumbnail } from "./media";
+import { framesOf, measureVideo, thumbnail } from "./media";
 import { Player } from "./player";
 import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
@@ -798,11 +798,21 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   }, [upKey, watchUpscale]);
   const upscale = useCallback(
     async (assetId: string, target: "4k" | "1080p") => {
-      const a = assets.find((x) => x.id === assetId);
-      if (!a) return;
+      const found = assets.find((x) => x.id === assetId);
+      if (!found) return;
+      let a = found;
+      // a work brought in without its size on record: the browser reads it from the file first
+      if (!a.width || !a.height || !a.durationMs) {
+        const m = a.url ? await measureVideo(a.url) : null;
+        if (!m) return flash(`ما قدرت أقرا دقة «${a.name}»؛ شغّله مرة في المعاينة وأعد المحاولة.`, true);
+        a = { ...a, width: a.width || m.width, height: a.height || m.height, durationMs: a.durationMs || m.durationMs };
+        const known = a;
+        setAssets((xs) => xs.map((x) => (x.id === known.id ? { ...x, width: known.width, height: known.height, durationMs: known.durationMs } : x)));
+      }
+      if (Math.max(a.width!, a.height!) >= 3800) return flash(`«${a.name}» دقته ${a.width}×${a.height} — هذا 4K أصلًا.`, true);
       if (!window.confirm(`أرفع دقة «${a.name}» (${a.width}×${a.height}) إلى ${target === "4k" ? "4K" : "1080p"} بالذكاء الاصطناعي (Topaz)؟\nياخذ من دقايق لأكثر على حسب طوله، وتقدر تكمل شغلك. النسخة الجديدة تنضاف للمكتبة والأصلي يظل.`)) return;
       try {
-        const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId, target });
+        const r = await postJson<{ asset: EditorAsset; coins: number }>(`/api/jawad/editor/projects/${project.id}`, { action: "upscale", assetId, target, width: a.width, height: a.height, durationMs: a.durationMs });
         addAssets([r.asset]);
         flash(`⬆️ بدأ رفع الدقة${r.coins ? ` (${coinStr(r.coins)})` : ""}… أعلمك إذا خلص.`);
         watchUpscale(r.asset.id, assetId);

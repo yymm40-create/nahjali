@@ -576,10 +576,9 @@ export default function AssistantPanel({
             const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
             if (!f || !a || a.kind !== "video") throw new Error("رفع الدقة للفيديو فقط — اختر مقطع فيديو.");
             if (a.status !== "ready") throw new Error(`الملف «${a.name}» ما خلص رفع بعد؛ انتظر شوي وأعد الطلب.`);
-            if (!a.width || !a.height) throw new Error(`ما قدرت أقرا دقة «${a.name}».`);
-            if (Math.max(a.width, a.height) >= 3800) throw new Error(`«${a.name}» دقته ${a.width}×${a.height} — هذا 4K أصلًا، رفع الدقة ما يضيف له شي.`);
+            if (a.width && a.height && Math.max(a.width, a.height) >= 3800) throw new Error(`«${a.name}» دقته ${a.width}×${a.height} — هذا 4K أصلًا، رفع الدقة ما يضيف له شي.`);
             setBusy("أرسل المقطع لرفع الدقة…");
-            await onUpscale(a.id, q.quality === "1080p" && Math.max(a.width, a.height) < 1800 ? "1080p" : "4k");
+            await onUpscale(a.id, q.quality === "1080p" && (!a.width || !a.height || Math.max(a.width, a.height) < 1800) ? "1080p" : "4k");
           }
         } catch (e) {
           setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر.", error: true }]);
