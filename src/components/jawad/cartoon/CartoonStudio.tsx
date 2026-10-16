@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MODES, CARTOON_MOVES, CARTOON_STORIES, movementAsked, nearestAspect, type CartoonInput } from "@config/jawad/cartoon";
+import { CARTOON_GROUPS, CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MODES, CARTOON_MOVES, CARTOON_STORIES, movementAsked, nearestAspect, type CartoonInput } from "@config/jawad/cartoon";
 import Riyal from "@/components/Riyal";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
+import Doodles from "./Doodles";
 
 type Quote = { imageCoins: number; videoCoins: number; totalCoins: number };
 type Run = { key: string; input: CartoonInput; error?: string; jobs: JobView[] };
@@ -24,6 +25,9 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   const [error, setError] = useState("");
   const [quote, setQuote] = useState<{ value: Quote; snapshot: string; free: boolean } | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
+  // the shelf of looks shown («all» = every look) and the looks' pictures (drawn once by the owner; none yet = a coloured tile)
+  const [shelf, setShelf] = useState<"all" | keyof typeof CARTOON_GROUPS>("all");
+  const [pictures, setPictures] = useState<Record<string, string>>({});
   const requestKey = useRef<string | null>(null);
   const lock = useRef(false);
   const snapshot = JSON.stringify({ input, uploads: uploads.map(upload => upload.id) });
@@ -45,6 +49,14 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     void refresh();
     return () => { stopped = true; clearTimeout(timer); };
   }, [userId]);
+  useEffect(() => {
+    let stopped = false;
+    fetch("/api/jawad/cartoon-styles")
+      .then(response => (response.ok ? response.json() : null))
+      .then((data: { pictures?: Record<string, string> } | null) => { if (!stopped && data?.pictures) setPictures(data.pictures); })
+      .catch(() => {});
+    return () => { stopped = true; };
+  }, []);
   async function add(files: FileList | null) {
     if (!files || lock.current) return;
     if (uploads.length + files.length > 3) { setError("ارفع من صورة إلى ثلاث صور فقط."); return; }
@@ -88,6 +100,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     finally { lock.current = false; setBusy(""); }
   }
   return <main className="ct-page" dir="rtl">
+    <Doodles />
     <Link href="/jawad-ai/images" className="ct-back">← رجوع للاستوديو الإبداعي</Link>
     <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>حوّل صورتك كما هي بكل من فيها، أو اصنع منك شخصية جديدة.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>فيلم اختياري · ٣٠ ثانية</span></div></header>
     <div className="ct-layout"><section className="ct-card">
@@ -99,7 +112,9 @@ export default function CartoonStudio({ userId }: { userId: string }) {
         <div className="ct-refs">{uploads.map(upload => <div key={upload.id}>{upload.url && <img src={upload.url} alt="مرجع الشخصية" />}<button type="button" aria-label="حذف المرجع" onClick={() => { setUploads(current => current.filter(item => item.id !== upload.id)); setQuote(null); requestKey.current = null; }}>×</button></div>)}</div>
         <h2>٣. لمين الصورة؟</h2><p>يغيّر شكل الشخصية: صورة الطفل تنرسم أبسط وأدفأ وأوضح، وصورة الكبار بنِسب طبيعية وتفاصيل أكثر.</p>
         <div className="ct-aud">{(Object.entries(CARTOON_AUDIENCES) as [CartoonInput["audience"], string][]).map(([id, label]) => <button type="button" key={id} className={input.audience === id ? "chosen" : ""} aria-pressed={input.audience === id} onClick={() => change({ audience: id })}>{label}</button>)}</div>
-        <h2>٤. اختر عالمك</h2><div className="ct-styles">{CARTOON_STYLES.map(style => <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}><span>{style.icon}</span>{style.name}<small>{style.hint}</small>{style.fits === input.audience && <b>يناسب اختيارك</b>}</button>)}</div>
+        <h2>٤. اختر عالمك</h2>
+        <div className="ct-shelves" role="tablist" aria-label="أقسام الستايلات"><button type="button" role="tab" aria-selected={shelf === "all"} className={shelf === "all" ? "chosen" : ""} onClick={() => setShelf("all")}>✨ الكل ({CARTOON_STYLES.length})</button>{(Object.entries(CARTOON_GROUPS) as [keyof typeof CARTOON_GROUPS, (typeof CARTOON_GROUPS)[keyof typeof CARTOON_GROUPS]][]).map(([id, group]) => <button type="button" role="tab" aria-selected={shelf === id} key={id} className={shelf === id ? "chosen" : ""} onClick={() => setShelf(id)}>{group.icon} {group.name} ({CARTOON_STYLES.filter(style => style.group === id).length})</button>)}</div>
+        <div className="ct-styles">{CARTOON_STYLES.map((style, index) => ({ style, index })).filter(({ style }) => shelf === "all" || style.group === shelf).map(({ style, index }) => <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}>{pictures[style.id] ? <img className="ct-pic" src={pictures[style.id]} alt={style.name} loading="lazy" /> : <span className={"ct-tile t" + (index % 6)} aria-hidden="true">{style.icon}</span>}<span className="ct-name">{style.name}</span><small>{style.hint}</small>{style.fits === input.audience && <b>⭐ يناسب اختيارك</b>}</button>)}</div>
         <div className="ct-fields">
           {input.mode === "character" && <label>العمر بالتحديد (اختياري)<input maxLength={60} value={input.desiredAge} placeholder="مثلًا: ٨ أشهر، ٧ سنوات…" onChange={event => change({ desiredAge: event.target.value })} /></label>}
           {input.mode === "character" && <label>العمر في الصورة الجديدة<select value={input.age} onChange={event => change({ age: event.target.value as CartoonInput["age"] })}>{Object.entries(CARTOON_AGES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>}
