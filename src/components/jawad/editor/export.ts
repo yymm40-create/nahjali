@@ -344,7 +344,7 @@ let aacReady: Promise<void> | null = null;
  * The sound's codec: the browser's own AAC (or Opus) encoder when it has one, else an AAC encoder that runs in the
  * page (FFmpeg's, as WebAssembly: Safari on iPhone, for one, has none of its own), so the file never comes out silent.
  */
-async function soundCodec() {
+export async function soundCodec() {
   const opts = { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality: QUALITY_HIGH };
   const native = "AudioEncoder" in window ? await getFirstEncodableAudioCodec(["aac", "opus"], opts).catch(() => null) : null;
   if (native) return native;

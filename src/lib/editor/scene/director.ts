@@ -51,7 +51,7 @@ function frameOf(p: EditorProject) {
 const PLAN_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "music", "skillRefs", "say"],
+  required: ["title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "music", "narration", "skillRefs", "say"],
   properties: {
     title: { type: "string" },
     idea: { type: "string", description: "the one idea in one sentence" },
@@ -74,6 +74,11 @@ const PLAN_SCHEMA = {
     },
     assets: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "use"], properties: { id: { type: "string" }, use: { type: "string" } } } },
     music: { type: "string", description: "the music bed in words (mood, tempo, instruments), or empty" },
+    narration: {
+      type: "array",
+      description: "only when the person records their own voice: the lines they will read, in order, with the seconds planned for each; otherwise []",
+      items: { type: "object", additionalProperties: false, required: ["text", "from", "to"], properties: { text: { type: "string" }, from: { type: "number" }, to: { type: "number" } } },
+    },
     skillRefs: { type: "array", items: { type: "string" }, description: "ids from <skill-catalogue> to have open, word for word, while writing and reviewing this piece (≤ 12)" },
     say: { type: "string", description: "to the person, in Gulf Arabic, 1–2 sentences: the idea and why it will stop the scroll" },
   },
@@ -97,6 +102,27 @@ const REVIEW_SCHEMA = {
     code: { type: "string", description: `the COMPLETE revised program when any score is below ${PASS}; empty when every score is ≥ ${PASS}` },
   },
 };
+
+/** What the person chose for the sound: their own voice, and music made in code / by ElevenLabs / none. */
+function soundAsk(b: Record<string, unknown>) {
+  const music = b.musicMode === "code" ? "code" : b.musicMode === "eleven" ? "eleven" : "none";
+  return {
+    voice: b.voice === "own",
+    music,
+    text: `THE SOUND (the piece comes out WITH its sound — never a silent film): write sound(K, S) and design every effect in code, timed to your own frames. Music: ${music === "code" ? "MADE IN CODE — a bed with S.drone and/or S.beat on the bpm, under everything" : music === "eleven" ? "a separate music track is made for it (describe it in the plan's music); do NOT write a music bed in sound()" : "none — effects only (no S.drone / S.beat)"}.`,
+  };
+}
+
+/** The person's own recorded voice, measured: when each line is said (the visuals follow it). */
+function voiceText(b: Record<string, unknown>) {
+  const v = (b.voice_lines ?? null) as { seconds?: unknown; lines?: unknown } | null;
+  const lines = (Array.isArray(v?.lines) ? v!.lines : []).slice(0, 30).map((x) => x as Record<string, unknown>).map((x) => ({ text: text(x.text, 300), from: Number(x.from) || 0, to: Number(x.to) || 0 }));
+  const secs = Number(v?.seconds) || 0;
+  if (!secs || !lines.length) return "";
+  return `THE PERSON'S OWN VOICE narrates this piece (their recording, cleaned; it is mixed in under nothing — it leads). It lasts ${secs.toFixed(2)} s; the piece must last at least ${(secs + 0.8).toFixed(1)} s. Each line and WHEN it is said (measured from the recording):
+${lines.map((l, i) => `${i + 1}. ${l.from.toFixed(2)}–${l.to.toFixed(2)} s: ${l.text ? `«${l.text}»` : "(a phrase)"}`).join("\n")}
+Time the picture to the words: the line's key idea appears as it is said (a key word, a number, the thing named), shots change on the gaps between lines, nothing busy fights a spoken line; the same lines are in K.voice ([{text, from, to}]) if you want to read them in code. Don't print every spoken word as captions unless the plan says so. In sound(), keep effects short and soft while a line is spoken; the big ones go in the gaps.`;
+}
 
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
 const exemplarsText = () => EXEMPLARS.map((e) => `<example name="${e.name}" shows="${e.shows}">\n${e.code}\n</example>`).join("\n\n");
@@ -141,6 +167,7 @@ BRAND: ${text(b.brand, 800) || "none given — design a palette for the idea (on
 ASSETS the scene can draw (by id): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none — you draw everything in code"}
 FONTS you may pick (catalogue ids): ${fontMenu()}
 ${refs.length ? `REFERENCES: ${refs.length} frame(s) below — take their colours, type, pacing and finish (never their content), as the skill's reference protocol says.` : "No references: avoid the safe default look; pick a viral format and push it."}
+${soundAsk(b).voice ? `THE PERSON WILL RECORD THEIR OWN VOICE reading a narration YOU write: fill "narration" with the lines in order (${text(b.language, 40) || "Gulf Arabic"}, spoken words, short lines of one idea each, about 2 words a second so it is never rushed, from/to on the shots); the visuals are built to follow those words. ` : `"narration" is [] (no voice). `}${soundAsk(b).text}
 Make it a studio piece: a hook on frame 1, one hero per shot, the beat grid, one object carrying across shots, the "wow" moment, a held ending or a loop. Times in seconds; shots cover the whole length without gaps. Every on-screen word written exactly (Arabic as it will appear).
 Follow the owner's Higgsfield skills' workflow for a film (brief → passport → scenario with the shot table on the beat grid and the trigger map), and pick in "skillRefs" the files of theirs you will need open.
 
@@ -175,6 +202,8 @@ THE PLAN (approved by the person — follow it; improve only what the bar demand
 ${planText(plan)}
 FRAME: ${f.w}×${f.h} (${f.shape}) · FONTS loaded for you: K.fonts.head = ${plan.fonts.head}, K.fonts.body = ${plan.fonts.body}
 ASSETS: ${assets.length ? assets.map((a) => `K.img("${a.id}") = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"}${bg}
+${soundAsk(b).text}${voiceText(b) ? `
+${voiceText(b)}` : ""}
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`}
 Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.
 
@@ -207,7 +236,9 @@ Below: ${sheets.length} contact sheet(s) (the frames of the whole piece in order
 Score every criterion 1–10 (10 = indistinguishable from a top studio): ${RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}.
 Check the blacklist. Name the 3 worst problems with their times and the exact fix. ${reviewOnly ? "Return code as an empty string. A separate writing step will apply your exact corrections; describe the fixes precisely and do not claim you applied them." : `If ANY score is below ${PASS}, return the COMPLETE revised program that fixes them (keep what already works); otherwise return code as an empty string.`}
 Judge it also against the owner's Higgsfield skills (their non-negotiables, their motion grammar and their QA list).
-THE PLAN: ${planText(plan)}
+THE PLAN: ${planText(plan)}${voiceText(b) ? `
+${voiceText(b)}` : ""}
+Check the sound by reading sound() and the cues against what you see at those times (you cannot hear it): every big change has its sound on its frame, and the program has a sound() at all.
 THE PROGRAM:
 ${code}
 

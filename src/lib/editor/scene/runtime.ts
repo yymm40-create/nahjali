@@ -5,6 +5,7 @@
 // Motion blur: the frame is the average of sub-frames across the shutter. Pure strings (no DOM here).
 
 import { SCENE_KIT_JS } from "./kit";
+import { SOUND_KIT_JS } from "./sound-kit";
 
 export const THREE_VERSION = "0.170.0";
 export const THREE_URL = `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.js`;
@@ -73,6 +74,8 @@ export const SCENE_RUNTIME_JS = String.raw`
   async function load(m) {
     canvas.width = gl.width = m.w; canvas.height = gl.height = m.h;
     K.W = m.w; K.H = m.h; K.fps = m.fps || 30; K.ctx = ctx; K.canvas = canvas; K.glCanvas = gl; K.assets = {};
+    // the person's own voice, when the piece is built on it: its lines and when each is said
+    K.voice = Array.isArray(m.voice) ? m.voice : [];
     for (var i = 0; i < (m.assets || []).length; i++) K.assets[m.assets[i].id] = m.assets[i].bitmap;
     K.fonts = {};
     var faces = (m.fonts || []).map(function (f) {
@@ -91,7 +94,7 @@ export const SCENE_RUNTIME_JS = String.raw`
     if (!def || typeof def.draw !== "function") throw new Error("the scene must call scene({ duration, draw(K, t, ctx) { … } })");
     if (def.three) { K.THREE = await import("three"); K.addon = function (p) { return import("three/addons/" + p); }; }
     if (typeof def.setup === "function") await def.setup(K, ctx);
-    post({ type: "ready", duration: Number(def.duration) || 0, cues: Array.isArray(def.cues) ? def.cues : [], blur: Number(def.blur) || 0, bpm: Number(def.bpm) || 0, title: String(def.title || "") });
+    post({ type: "ready", duration: Number(def.duration) || 0, cues: Array.isArray(def.cues) ? def.cues : [], blur: Number(def.blur) || 0, bpm: Number(def.bpm) || 0, title: String(def.title || ""), sound: typeof def.sound === "function" });
   }
   async function frame(m) {
     var n = Math.max(1, Math.min(8, Math.round(m.sub || 1))), shutter = Math.max(0, Math.min(1, def.blur === undefined ? (m.shutter || 0) : Number(def.blur))), out = canvas;
@@ -106,10 +109,19 @@ export const SCENE_RUNTIME_JS = String.raw`
     var bm = await createImageBitmap(out, w === K.W ? undefined : { resizeWidth: w, resizeHeight: h, resizeQuality: "high" });
     post({ type: "frame", id: m.id, bitmap: bm }, [bm]);
   }
+  // the soundtrack the scene writes in code (sound(K, S)), once, into a stereo buffer handed back to the host
+  function sound(m) {
+    if (typeof def.sound !== "function") return post({ type: "sound", id: m.id, none: true });
+    var S = window.SFX.make(m.rate || 48000, Math.max(0.1, Number(def.duration) || 1));
+    def.sound(K, S);
+    var out = window.SFX.finish(S);
+    post({ type: "sound", id: m.id, L: out.L, R: out.R, peak: out.peak }, [out.L.buffer, out.R.buffer]);
+  }
   window.addEventListener("message", function (e) {
     if (e.source !== parent) return;
     var m = e.data || {};
     if (m.type === "load") load(m).catch(function (err) { fail("load", err); });
+    else if (m.type === "sound") { if (!def) return fail("sound", "not loaded"); try { sound(m); } catch (err) { post({ type: "error", where: "sound", id: m.id, message: String((err && err.message) || err), stack: String((err && err.stack) || "").split("\n").slice(0, 4).join("\n") }); } }
     else if (m.type === "frame") { if (!def) return fail("frame", "not loaded"); frame(m).catch(function (err) { post({ type: "error", where: "frame", id: m.id, t: m.t, message: String((err && err.message) || err), stack: String((err && err.stack) || "").split("\n").slice(0, 4).join("\n") }); }); }
   });
   window.addEventListener("error", function (e) { fail("page", e.error || e.message); });
@@ -120,5 +132,5 @@ export const SCENE_RUNTIME_JS = String.raw`
 /** The whole scene page, for an iframe's srcdoc. */
 export function sceneDoc(): string {
   const importMap = JSON.stringify({ imports: { three: THREE_URL, "three/addons/": THREE_ADDONS } });
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${SCENE_CSP}"><script type="importmap">${importMap}</script><style>html,body{margin:0;background:transparent;overflow:hidden}canvas{position:absolute;left:0;top:0}</style></head><body><canvas id="c"></canvas><canvas id="g" style="visibility:hidden"></canvas><script>${SCENE_KIT_JS}</script><script>${SCENE_RUNTIME_JS}</script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${SCENE_CSP}"><script type="importmap">${importMap}</script><style>html,body{margin:0;background:transparent;overflow:hidden}canvas{position:absolute;left:0;top:0}</style></head><body><canvas id="c"></canvas><canvas id="g" style="visibility:hidden"></canvas><script>${SCENE_KIT_JS}</script><script>${SOUND_KIT_JS}</script><script>${SCENE_RUNTIME_JS}</script></body></html>`;
 }

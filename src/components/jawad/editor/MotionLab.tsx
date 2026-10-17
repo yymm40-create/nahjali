@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { postJson } from "@/lib/fetch";
+import { api, postJson } from "@/lib/fetch";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scene/contract";
@@ -21,6 +21,9 @@ import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGro
 import { SceneError, SceneHost, sceneFont, type SceneInfo } from "./scene-host";
 import { contactSheet, frameCost, probe, renderVideo, reviewTimes, stills } from "./scene-render";
 import { download } from "./export";
+import LabVoice, { type LabVoiceTake } from "./LabVoice";
+import { mixSoundtrack, SoundPreview } from "./lab-sound";
+import { makeMusicAsset } from "./make";
 import { drawDemo, STUDIO, type Swatch } from "./lab-demos";
 import type { EditorAsset } from "./types";
 import "./motion-lab.css";
@@ -57,7 +60,26 @@ interface Saved {
   transparent?: boolean;
   /** هل الكود المحفوظ حاليًا مكتوب فعلًا بدون خلفية (يختلف عن `transparent` لو حطّوه بعد ما بنى المشهد) */
   transparentCode?: boolean;
+  /** «🎙️ بصوتي»: the person records the narration in their own voice */
+  voiceOn?: boolean;
+  /** the music: made in code (free), by ElevenLabs, or none */
+  musicMode?: MusicMode;
 }
+type MusicMode = "code" | "eleven" | "none";
+const MUSIC_MODES: { id: MusicMode; ar: string; tip: string }[] = [
+  { id: "code", ar: "🎹 موسيقى بالكود", tip: "حيدرة يكتبها بالكود على إيقاع المشهد (مجانًا)" },
+  { id: "eleven", ar: "🎵 موسيقى ElevenLabs", tip: "تنصنع وقت التصدير وتنحسب بسعرها" },
+  { id: "none", ar: "🔇 بدون موسيقى", tip: "مؤثرات (وصوتك) فقط" },
+];
+/** the library's sounds (their links), read once for the preview and the mix */
+let sfxLinks: Promise<Map<string, string>> | null = null;
+const libraryLinks = () =>
+  (sfxLinks ??= api<{ items: { id: string; url: string | null }[] }>("/api/jawad/editor/sfx-library")
+    .then((r) => new Map(r.items.filter((i) => i.url).map((i) => [i.id, i.url!])))
+    .catch(() => {
+      sfxLinks = null;
+      return new Map<string, string>();
+    }));
 const key = (id: string) => `jw-lab-${id}`;
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
 const INTENSITY: [number, string][] = [[1, "هادئ وفخم"], [3, "متوازن"], [4, "قوي"], [5, "ناري"]];
@@ -195,7 +217,14 @@ export default function MotionLab({
   const [reviewMode, setReviewMode] = useState<ReviewMode>("balanced");
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [music, setMusic] = useState(true);
+  // the sound: the person's own voice (recorded, cleaned by Claude Code), the music, and the mix heard with the picture
+  const [voiceOn, setVoiceOn] = useState(false);
+  const [musicMode, setMusicMode] = useState<MusicMode>("code");
+  const [take, setTake] = useState<LabVoiceTake | null>(null);
+  const [soundtrack, setSoundtrack] = useState<AudioBuffer | null>(null);
+  const [soundBusy, setSoundBusy] = useState(false);
+  const [alsoDownload, setAlsoDownload] = useState(false);
+  const preview = useRef<SoundPreview | null>(null);
   // «خلفية شفافة»: الطلب نفسه (تقدر تشيله قبل ما تبني، أو بعد ما يخلص)، وهل الكود المحفوظ يطابقه فعلًا
   const [transparent, setTransparent] = useState(false);
   const [transparentCode, setTransparentCode] = useState(false);
@@ -238,6 +267,8 @@ export default function MotionLab({
         setReviewMode(s.reviewMode === "fast" || s.reviewMode === "precise" ? s.reviewMode : "balanced");
         setTransparent(Boolean(s.transparent));
         setTransparentCode(Boolean(s.transparentCode));
+        setVoiceOn(Boolean(s.voiceOn));
+        setMusicMode(s.musicMode === "eleven" || s.musicMode === "none" ? s.musicMode : "code");
         if (s.plan && !initialBrief) {
           setStage(s.code ? "ready" : "plan");
           setView(s.code ? "export" : "plan");
@@ -250,12 +281,43 @@ export default function MotionLab({
   }, [projectId, initialBrief]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode } satisfies Saved));
+      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode]);
-  useEffect(() => () => (host.current?.destroy(), abort.current?.abort()), []);
+  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode]);
+  useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close()), []);
+
+  /** what the server is told about the sound: the voice (its measured lines) and the music */
+  const soundBody = () => ({ voice: voiceOn ? "own" : "", musicMode, voice_lines: take ? { seconds: take.seconds, lines: take.lines } : null });
+  /** the plan as it is built: never shorter than the voice that narrates it */
+  const sized = (p: LabPlan): LabPlan => (take ? { ...p, seconds: Math.max(p.seconds, Math.ceil((take.seconds + 1) * 2) / 2) } : p);
+
+  /** The piece's sound, mixed: the scene's own soundtrack (code), the library's cues, the voice, and the music. */
+  const makeSound = async (o: { got: SceneInfo; music?: string | null }) => {
+    const h = host.current;
+    if (!h) return null;
+    setSoundBusy(true);
+    try {
+      const synth = o.got.sound ? await h.sound().catch((e: unknown) => (say1(`⚠️ صوت المشهد: ${e instanceof Error ? e.message : e}`), null)) : null;
+      const links = await libraryLinks();
+      const cues = readCues(o.got.cues, o.got.duration).flatMap((c) => (links.get(c.sfx) ? [{ url: links.get(c.sfx)!, t: c.t, vol: c.vol }] : []));
+      if (!synth && !cues.length && !take && !o.music) return null;
+      const mix = await mixSoundtrack({ duration: o.got.duration, synth, cues, voice: take?.blob ?? null, music: o.music ?? null });
+      return mix;
+    } finally {
+      setSoundBusy(false);
+    }
+  };
+  const refreshSound = async (got: SceneInfo) => {
+    preview.current?.stop();
+    setSoundtrack(null);
+    try {
+      setSoundtrack(await makeSound({ got }));
+    } catch (e) {
+      say1(`⚠️ ما قدرت أجهّز الصوت: ${e instanceof Error ? e.message : e}`);
+    }
+  };
 
   const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
     // no clock of the lab's own (the owner's rule): the only thing that stops a step is «إلغاء»
@@ -283,7 +345,7 @@ export default function MotionLab({
         say1(`ما قدرت أحمّل «${c.asset.name}» للمشهد.`);
       }
     }
-    const got = await h.load(program, { w: width, h: height, fps: 30, assets: bitmaps, fonts });
+    const got = await h.load(program, { w: width, h: height, fps: 30, assets: bitmaps, fonts, voice: take?.lines ?? [] });
     if (!(got.duration > 0)) throw new SceneError("المشهد ما حدد مدته (duration).", "load");
     const bad = await probe(h, got.duration);
     if (bad) throw bad;
@@ -296,7 +358,7 @@ export default function MotionLab({
     for (let attempt = 0; attempt <= FIXES; attempt++) {
       if (!program || why) {
         say1(attempt === 0 && !previous ? "✍️ حيدرة يكتب المشهد بالكود…" : `🛠️ حيدرة يصلّح خطأ في المشهد (${attempt}/${FIXES})…`);
-        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: assetList, transparent, ...(program ? { code: program, errors: why } : {}) });
+        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: assetList, transparent, ...soundBody(), ...(program ? { code: program, errors: why } : {}) });
         if (r.notes) say1(r.notes);
         program = r.code;
         if (r.problems.length) {
@@ -334,9 +396,12 @@ export default function MotionLab({
         references: refs,
         choices,
         language: "Arabic (Gulf)",
+        ...soundBody(),
       });
       setPlan(r.plan);
       setSay(r.say);
+      // a new plan has new lines to read: the old take no longer fits it
+      if (take && JSON.stringify(r.plan.narration) !== JSON.stringify(plan?.narration)) setTake(null);
       setTweak("");
       setCode("");
       setReviews([]);
@@ -351,6 +416,13 @@ export default function MotionLab({
   /** Builds, then the director's rounds: render sheets and stills, he scores and rewrites, until it passes. */
   const build = async () => {
     if (!plan) return;
+    if (voiceOn && !take) {
+      setError("سجّل صوتك أول (تحت الخطة)، وبعدها حيدرة يبني الحركة على كلامك.");
+      setView("plan");
+      return;
+    }
+    const built = sized(plan);
+    if (built.seconds !== plan.seconds) setPlan(built);
     setError(null);
     abort.current?.abort();
     abort.current = new AbortController();
@@ -364,7 +436,7 @@ export default function MotionLab({
     setView("build");
     setNow(0);
     try {
-      let { program, got } = await buildRunning(plan, code);
+      let { program, got } = await buildRunning(built, code);
       stop();
       setCode(program);
       setInfo(got);
@@ -385,14 +457,14 @@ export default function MotionLab({
         const times = shotTimes;
         const shots = await stills(h, times, got.duration);
         say1("🧐 حيدرة يراجع كمخرج قاسي…");
-        const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan, seconds: plan.seconds, assets: assetList, code: program, sheets, stills: shots, times, round, maxRounds: rounds, reviewOnly: true });
+        const r = await call<{ review: Review; code: string; problems: string[] }>("lab_review", { plan: built, seconds: built.seconds, assets: assetList, code: program, sheets, stills: shots, times, round, maxRounds: rounds, reviewOnly: true, ...soundBody() });
         stop();
         done.push(r.review);
         setReviews([...done]);
         say1(`${r.review.pass ? "✅" : "📝"} ${r.review.verdict}`);
         if (r.review.pass) break;
         say1("✍️ أطبّق ملاحظات المخرج على المشهد…");
-        const next = await buildRunning(plan, program, `Apply this visual review, preserving the approved plan and everything that already works: ${JSON.stringify(r.review)}`);
+        const next = await buildRunning(built, program, `Apply this visual review, preserving the approved plan and everything that already works: ${JSON.stringify(r.review)}`);
         stop();
         program = next.program;
         got = next.got;
@@ -402,6 +474,7 @@ export default function MotionLab({
       setStage("ready");
       setView("export");
       void seekTo(Math.min(got.duration * 0.3, 2));
+      void refreshSound(got);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
       else setError(e instanceof Error ? e.message : String(e));
@@ -410,6 +483,14 @@ export default function MotionLab({
     }
   };
 
+  // the sound plays with the preview, from where the picture is
+  useEffect(() => {
+    if (!playing || !soundtrack) return;
+    preview.current ??= new SoundPreview();
+    preview.current.play(soundtrack, t);
+    return () => preview.current?.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, soundtrack]);
   // the preview: frames from the page, as fast as it draws them
   useEffect(() => {
     if (!playing || !host.current || !info) return;
@@ -463,6 +544,7 @@ export default function MotionLab({
       const g = await loadCode(code, plan);
       setInfo(g);
       void seekTo(Math.min(g.duration * 0.3, 2));
+      void refreshSound(g);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -484,6 +566,7 @@ export default function MotionLab({
       setInfo(got);
       setTransparentCode(true);
       setStage("ready");
+      void refreshSound(got);
       void seekTo(Math.min(got.duration * 0.3, 2));
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
@@ -517,11 +600,22 @@ export default function MotionLab({
         if (sub < 6) say1(`⚙️ المشهد ثقيل على جهازك: خفّضت ضبابية الحركة من ٦ لقطات فرعية إلى ${sub} عشان يخلص في وقت معقول.`);
       }
       const makingTransparent = transparent && transparentCode;
+      // the film's sound, mixed for it (ElevenLabs' music made now when chosen) and muxed INTO the file
+      let audio = soundtrack;
+      if (musicMode === "eleven" && plan.music && !makingTransparent) {
+        say1("🎵 أصنع الموسيقى على الإيقاع…");
+        try {
+          const a = await makeMusicAsset(projectId, `${plan.music}. ${plan.bpm} BPM, instrumental, builds to a clear peak and resolves on the last beat.`, Math.max(10_000, Math.round(info.duration * 1000)));
+          audio = (await makeSound({ got: info, music: a.url ?? null })) ?? audio;
+        } catch (e) {
+          say1(`⚠️ الموسيقى: ${e instanceof Error ? e.message : e} — أكمل بدونها.`);
+        }
+      } else if (!audio) audio = await makeSound({ got: info }).catch(() => null);
       say1(makingTransparent ? `🎞️ أرندر ${frames} إطارًا بخلفية شفافة (WebM) · ${mmss(plannedMs)} تقريبًا على جهازك.` : `🎞️ أرندر ${frames} إطارًا · ${mmss(plannedMs)} تقريبًا على جهازك.`);
       const started = performance.now();
       const blob = await renderVideo(
         host.current,
-        { duration: info.duration, fps: 30, blur: info.blur, sub, transparent: makingTransparent },
+        { duration: info.duration, fps: 30, blur: info.blur, sub, transparent: makingTransparent, audio },
         (p: number, frame: number, total: number) => {
           setProgress(p);
           const spent = performance.now() - started;
@@ -539,10 +633,12 @@ export default function MotionLab({
         return;
       }
       const file = new File([blob], `${stem}.mp4`, { type: "video/mp4" });
-      onFilm(file, readCues(info.cues, info.duration), music && plan.music ? { prompt: `${plan.music}. ${plan.bpm} BPM, instrumental, builds to a clear peak and resolves on the last beat.`, ms: Math.round(info.duration * 1000) } : null);
+      if (alsoDownload) download(blob, `${stem}.mp4`);
+      // the sound is already inside the film: nothing placed twice (a silent scene keeps the old way: its cues on tracks)
+      onFilm(file, audio ? [] : readCues(info.cues, info.duration), null);
       setStage("ready");
       setRenderAt(null);
-      say1("✅ نزل المقطع في التايملاين مع أصواته.");
+      say1(audio ? "✅ نزل المقطع في التايملاين وصوته داخله (المؤثرات" + (take ? " وصوتك" : "") + (musicMode !== "none" ? " والموسيقى" : "") + ")." : "✅ نزل المقطع في التايملاين.");
     } catch (e) {
       setRenderAt(null);
       if (!(e instanceof DOMException && e.name === "AbortError")) setError(e instanceof Error ? e.message : String(e));
@@ -688,6 +784,25 @@ export default function MotionLab({
                     </span>
                   </label>
                 </div>
+                <div className="mlab-card flex flex-col gap-3">
+                  <span className="mlab-label">🔊 الصوت (الفيديو يطلع بصوته)</span>
+                  <p className="mlab-tip m-0">حيدرة يصمم المؤثرات الصوتية بالكود على حركة المشهد نفسها: ووش على الحركة، ضربة على النزول، تصاعد قبل الكشف.</p>
+                  <label className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1.5 h-4 w-4" checked={voiceOn} onChange={(e) => setVoiceOn(e.target.checked)} disabled={busy} />
+                    <span>
+                      <b>🎙️ بصوتي</b>
+                      <span className="mlab-tip block">حيدرة يكتب لك نص قصير، تقرأه وتسجّله، Claude Code ينظّفه، والحركة تنبني على كلامك. صوتك أنت، مب صوت مولّد.</span>
+                    </span>
+                  </label>
+                  <div className="mlab-pills">
+                    {MUSIC_MODES.map((m) => (
+                      <button key={m.id} type="button" disabled={busy} className="mlab-pill" aria-pressed={musicMode === m.id} title={m.tip} onClick={() => setMusicMode(m.id)}>
+                        {m.ar}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mlab-tip m-0">{MUSIC_MODES.find((m) => m.id === musicMode)?.tip}</p>
+                </div>
                 {!!images.length && (
                   <div className="mlab-card">
                     <span className="mlab-label">صور من مكتبتك يستخدمها في المشهد (شعار، منتج، شخصية…)</span>
@@ -799,6 +914,10 @@ export default function MotionLab({
                         </li>
                       ))}
                     </ol>
+                    {voiceOn && (stage === "plan" || stage === "ready") && (
+                      <LabVoice script={plan.narration.map((n) => n.text)} model={claude.id} value={take} onChange={(v) => (setTake(v), setSoundtrack(null))} disabled={busy} />
+                    )}
+                    {voiceOn && !plan.narration.length && <p className="mlab-tip m-0">ما فيه نص في هالخطة؛ اضغط «عدّل» واكتب «اكتب لي نص أقرأه»، أو سجّل كلامك بحرّية وحيدرة يبني على مقاطعه.</p>}
                     {(stage === "plan" || stage === "ready") && (
                       <div className="flex flex-col gap-3">
                         <div className="flex gap-2">
@@ -808,8 +927,8 @@ export default function MotionLab({
                           </button>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy} onClick={build}>
-                            🎬 {code ? "ابنِ من جديد وراجع" : "اعتمد الخطة وابنِ"}
+                          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || (voiceOn && !take)} onClick={build} title={voiceOn && !take ? "سجّل صوتك أول" : undefined}>
+                            🎬 {voiceOn && !take ? "سجّل صوتك أول ↑" : code ? "ابنِ من جديد وراجع" : "اعتمد الخطة وابنِ"}
                           </button>
                           <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("style")}>
                             غيّر الأسلوب
@@ -873,14 +992,21 @@ export default function MotionLab({
                 {info && (
                   <div className="mlab-card flex flex-col gap-3">
                     <h3>التصدير</h3>
-                    {plan?.music && !transparent && (
-                      <label className="flex items-start gap-3">
-                        <input type="checkbox" className="mt-1.5 h-4 w-4" checked={music} onChange={(e) => setMusic(e.target.checked)} disabled={stage === "rendering"} />
-                        <span>
-                          <b>موسيقى على الإيقاع من ElevenLabs</b> <span className="mlab-tip block">{plan.music}</span>
-                        </span>
-                      </label>
-                    )}
+                    <p className="m-0 font-bold" role="status">
+                      {soundBusy ? "🔊 أجهّز الصوت…" : soundtrack ? `🔊 الصوت جاهز ويطلع مع الفيديو: مؤثرات بالكود${take ? " + صوتك" : ""}${musicMode === "code" ? " + موسيقى بالكود" : musicMode === "eleven" ? " (وموسيقى ElevenLabs تنصنع وقت التصدير)" : ""}. شغّل المعاينة واسمعه.` : "🔇 المشهد ما كتب له صوت. ابنه من جديد ويكتب صوته."}
+                    </p>
+                    <div className="mlab-pills">
+                      {MUSIC_MODES.map((m) => (
+                        <button key={m.id} type="button" disabled={stage === "rendering"} className="mlab-pill" aria-pressed={musicMode === m.id} title={m.tip} onClick={() => setMusicMode(m.id)}>
+                          {m.ar}
+                        </button>
+                      ))}
+                    </div>
+                    {musicMode === "code" && !/drone|beat/.test(code) && <p className="mlab-tip m-0">الموسيقى بالكود تنكتب وقت البناء: ابنِ من جديد عشان يضيفها.</p>}
+                    <label className="flex items-start gap-3">
+                      <input type="checkbox" className="mt-1.5 h-4 w-4" checked={alsoDownload} onChange={(e) => setAlsoDownload(e.target.checked)} disabled={stage === "rendering"} />
+                      <span><b>⬇️ ونزّل نسخة على جهازي</b> <span className="mlab-tip block">MP4 بصوته، جاهز تنشره مباشرة.</span></span>
+                    </label>
                     <label className="flex items-start gap-3">
                       <input type="checkbox" className="mt-1.5 h-4 w-4" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} disabled={stage === "rendering"} />
                       <span>
@@ -900,7 +1026,7 @@ export default function MotionLab({
                           ? "⬇️ صدّر الملف الشفاف ونزّله"
                           : "⬇️ صدّره ونزّله في التايملاين"}
                     </button>
-                    <p className="mlab-tip m-0">{transparent ? "يتصدّر WebM بقناة شفافية (ألفا) على جهازك وينزل مباشرة." : "يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت مع مؤثراته الصوتية."}</p>
+                    <p className="mlab-tip m-0">{transparent ? "يتصدّر WebM بقناة شفافية (ألفا) على جهازك وينزل مباشرة، وصوته داخله." : "يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت وصوته داخله."}</p>
                   </div>
                 )}
                 {code && !busy && (
