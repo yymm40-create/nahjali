@@ -62,8 +62,6 @@ const key = (id: string) => `jw-lab-${id}`;
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
 const INTENSITY: [number, string][] = [[1, "هادئ وفخم"], [3, "متوازن"], [4, "قوي"], [5, "ناري"]];
 const FIXES = 2;
-/** One request to the server never waits longer than this before it is given up on (the route itself allows more). */
-const CALL_TIMEOUT_MS = 6 * 60_000;
 /** What a render should fit inside before the lab trims the motion blur to make it (about four minutes). */
 const RENDER_BUDGET_MS = 4 * 60_000;
 /** Milliseconds as «٢:٣٠» (minutes and seconds), for a wait a person is watching. */
@@ -260,13 +258,10 @@ export default function MotionLab({
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort()), []);
 
   const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
-    // «إلغاء» really stops it, and a request that never answers gives up instead of leaving the lab spinning for ever
+    // no clock of the lab's own (the owner's rule): the only thing that stops a step is «إلغاء»
     const outer = abort.current?.signal;
-    const timer = AbortSignal.timeout(CALL_TIMEOUT_MS);
-    const signal = outer ? AbortSignal.any([outer, timer]) : timer;
-    const result = await postJson<T & { error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body, stream: true }, signal).catch((e: unknown) => {
+    const result = await postJson<T & { error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body, stream: true }, outer).catch((e: unknown) => {
       if (outer?.aborted) throw new DOMException("cancelled", "AbortError");
-      if (timer.aborted) throw new Error(`«${action === "lab_plan" ? "الخطة" : action === "lab_write" ? "كتابة المشهد" : "المراجعة"}» أخذت أكثر من ${Math.round(CALL_TIMEOUT_MS / 60_000)} دقائق بدون رد. جرّب مرة ثانية، أو خفّف الطلب (ثواني أقل أو مراجعة «سريع»).`);
       throw e;
     });
     if (result.error) throw new Error(result.error);
