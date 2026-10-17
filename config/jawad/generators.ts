@@ -6,7 +6,7 @@
 // The owner can rename, hide, reorder or re-price a generator from /jawad-ai/admin, but can never add a capability:
 // options, limits and modes only come from this file.
 
-import { COIN_COST_USD, sellHalalas, wasHalalas } from "../coins";
+import { COIN_COST_USD, sellKind, wasHalalas, getPricing, type PriceKind } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
@@ -31,10 +31,12 @@ const MB = 1024 * 1024;
 export const centiFor = (usd: number) => Math.max(1, Math.ceil((usd / COIN_COST_USD) * 100 - 1e-9));
 /** The halalas of cost in a sum of hundredths (rounded up, never 0 for a paid line). */
 export const costOf = (centi: number) => Math.ceil(centi / 100 - 1e-9);
-/** What the customer pays (halalas) for a sum of cost hundredths: rounded up to the step, plus the margin (config/coins.ts). */
-export const coinsOf = (centi: number) => sellHalalas(costOf(centi));
+/** What a generator's output is priced as: pictures 60٪, videos 40٪, the rest the general margin (config/coins.ts). */
+export const priceKindOf = (output: GeneratorDef["output"] | string): PriceKind => (output === "image" ? "image" : output === "video" ? "video" : "other");
+/** What the customer pays (halalas) for a sum of cost hundredths: rounded up to the step, plus the kind's margin (config/coins.ts). */
+export const coinsOf = (centi: number, kind: PriceKind = "other") => sellKind(costOf(centi), kind);
 /** The struck «was» price (halalas) for the same cost. */
-export const wasOf = (centi: number) => wasHalalas(costOf(centi));
+export const wasOf = (centi: number, kind: PriceKind = "other") => wasHalalas(costOf(centi), getPricing(), kind);
 
 const ARABIC = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 export const hasArabic = (s: string) => ARABIC.test(s);

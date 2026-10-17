@@ -4,7 +4,7 @@
 import { remembering, type Memo } from "@/lib/claude-run";
 import { claudeMeter, coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
 import { getLimit, type LimitKey } from "@/lib/film/limits";
-import { sellHalalas } from "@config/coins";
+import { sellKind, type PriceKind } from "@config/coins";
 import { claudeModelOf } from "@config/claude-models";
 import { withClaude } from "@/lib/film/claude-model";
 
@@ -16,12 +16,15 @@ export interface Who {
   team?: string | null;
 }
 
+/** The owner's per-unit prices that make a picture (the hook drawn by GPT Image 2) carry the pictures' profit (60٪). */
+const PRICE_KIND: Partial<Record<LimitKey, PriceKind>> = { editor_price_hook: "image", editor_price_upscale: "video" };
+
 /**
  * Runs a paid call: its price (coins × units) is held first and given back if the call throws. Free when the owner
  * asks, when coins aren't required, or when the price is 0.
  */
 export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_price_${string}`>, units: number, label: string, run: () => Promise<T>) {
-  const coins = who.owner || !(await coinsRequired()) ? 0 : sellHalalas(Math.ceil((await getLimit(price)) * units));
+  const coins = who.owner || !(await coinsRequired()) ? 0 : sellKind(Math.ceil((await getLimit(price)) * units), PRICE_KIND[price] ?? "other");
   const ref = `editor:${price}:${crypto.randomUUID()}`;
   if (who.team) await holdTeamCoins(who.team, who, coins, ref, label);
   else await holdCoins(who.id, coins, ref, label);

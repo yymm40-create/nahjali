@@ -14,6 +14,7 @@ import type {
   Settings,
 } from "@config/jawad/types";
 import { findMentions, looksLikeRef, sameName } from "./mentions";
+import { coinsOf, priceKindOf, wasOf } from "@config/jawad/generators";
 
 export interface EvalInput {
   settings: Settings;
@@ -193,7 +194,11 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
     } else refKinds[kind] = { allowed: true };
   }
 
-  const price = def.price({ settings, prompt, instructions: input.instructions, refs }, mode, prices);
+  const quoted: PriceResult = def.price({ settings, prompt, instructions: input.instructions, refs }, mode, prices);
+  // the profit follows what is made: a picture 60٪, a video 40٪, sound the general margin (config/coins.ts)
+  const kind = priceKindOf(def.output);
+  const centi = quoted.ok ? quoted.lines.reduce((sum, l) => sum + l.centi, 0) : 0;
+  const price: PriceResult = quoted.ok ? { ...quoted, coins: coinsOf(centi, kind), was: wasOf(centi, kind) } : quoted;
   if (!price.ok) issues.push({ field: "price", message: price.reason });
 
   return {

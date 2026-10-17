@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
 import { fmtSar } from "@config/coins";
-import { coinsOf } from "@config/jawad/generators";
+import { coinsOf, generatorById, priceKindOf } from "@config/jawad/generators";
 import { adminPost } from "./client";
 
 export interface AdminPriceGroup {
@@ -58,7 +58,7 @@ function PriceRow({ generatorId, k }: { generatorId: string; k: AdminPriceGroup[
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm">{k.label}</span>
         <span className={`flex items-center gap-1 text-sm tabular-nums ${effective == null ? "text-jw-warn" : ""}`}>
-          {effective == null ? "موقوف حتى تحدد السعر" : (<><span dir="ltr">{coins(effective)}</span> تكلفة → <SmartCoin size={14} /><span dir="ltr">{fmtSar(coinsOf(effective))}</span> للعميل</>)}
+          {effective == null ? "موقوف حتى تحدد السعر" : (<><span dir="ltr">{coins(effective)}</span> تكلفة → <SmartCoin size={14} /><span dir="ltr">{fmtSar(coinsOf(effective, priceKindOf(generatorById(generatorId)?.output ?? "")))}</span> للعميل</>)}
         </span>
       </div>
       <p className="text-[11px] text-jw-faint">

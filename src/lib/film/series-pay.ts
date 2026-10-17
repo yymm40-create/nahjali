@@ -3,7 +3,7 @@
 // person pays from its owner's «النقود الذكية». Reserved from the estimate, settled to the real cost, given back on
 // failure — the same as the film's jobs. Server only.
 
-import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins } from "@/lib/coins";
+import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins, type ChargeKind } from "@/lib/coins";
 import { giveAttempt, takeAttempt } from "./team";
 import type { FilmSeries } from "./series";
 
@@ -14,12 +14,12 @@ export interface SeriesCharge {
   series: Pick<FilmSeries, "id" | "user_id" | "mode">;
   who: Who;
   took: boolean;
-  /** Claude's usage alone (سجاد's replies): the real cost + 10% */
-  claude?: boolean;
+  /** what it is priced as: Claude's usage alone (سجاد's replies, `true`) the real cost + 10٪, a picture 60٪ */
+  claude?: ChargeKind;
 }
 
 /** Holds the estimated cost (and, for a team member's picture, an attempt). Throws a clear message when short. */
-export async function reserveSeries(series: Pick<FilmSeries, "id" | "user_id" | "mode">, who: Who, usd: number, label: string, o: { attempt?: boolean; claude?: boolean } = {}): Promise<SeriesCharge> {
+export async function reserveSeries(series: Pick<FilmSeries, "id" | "user_id" | "mode">, who: Who, usd: number, label: string, o: { attempt?: boolean; claude?: ChargeKind } = {}): Promise<SeriesCharge> {
   const ref = `series:${series.id}:${crypto.randomUUID()}`;
   const took = series.mode === "team" && o.attempt ? await takeAttempt(series.id, series.user_id, who.id) : false;
   try {

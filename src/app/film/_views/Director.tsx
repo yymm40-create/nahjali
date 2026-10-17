@@ -39,7 +39,7 @@ export default async function DirectorView({ id, base }: { id: string; base: str
         <h1 className={project.series_id ? "display text-4xl" : "display text-2xl"}>🎥 المخرج السينمائي</h1>
         <p className="text-sm font-bold text-muted">
           الفهم ← أسئلة الإخراج ← خريطة التوليدات ← تحليل وبرومبت لكل توليد، والاعتماد يولّد الفيديو.
-          النصوص <span>{credits(cost.byService.anthropic ?? 0)}</span> · الفيديو <span>{credits(cost.byService.seedance ?? 0)}</span>
+          النصوص <span>{credits(cost.byService.anthropic ?? 0, "claude")}</span> · الفيديو <span>{credits(cost.byService.seedance ?? 0, "video")}</span>
         </p>
       </header>
       <DirectorWorkspace

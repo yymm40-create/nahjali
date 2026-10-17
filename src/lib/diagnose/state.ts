@@ -90,7 +90,7 @@ export async function platformState(mentioned: string[] = []) {
   const [schema, jobs, limits] = await Promise.all([
     missingSchema().catch((e) => ({ error: String((e as Error).message ?? e) })),
     db().from("jawad_jobs").select("id,generator_id,status,submit_state,provider_status,error_message,created_at").eq("status", "failed").order("created_at", { ascending: false }).limit(12).then((r) => (r.error ? { error: r.error.message } : r.data)),
-    db().from("film_limits").select("key,value").eq("scope", "all").eq("target", "").in("key", ["coins_required", "units_halalas", "price_usd_sar_x100", "price_step_halalas", "price_margin_pct", "price_was_margin_pct"]).then((r) => (r.error ? { error: r.error.message } : r.data)),
+    db().from("film_limits").select("key,value").eq("scope", "all").eq("target", "").in("key", ["coins_required", "units_halalas", "price_usd_sar_x100", "price_step_halalas", "price_margin_pct", "price_was_margin_pct", "price_image_margin_pct", "price_video_margin_pct"]).then((r) => (r.error ? { error: r.error.message } : r.data)),
   ]);
   const people = await Promise.all([...new Set(mentioned.map((m) => m.toLowerCase()))].slice(0, 3).map((m) => personFacts(m).catch(() => ({ email: m, error: "تعذّر الفحص" }))));
   return {

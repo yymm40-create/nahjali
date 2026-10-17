@@ -30,7 +30,7 @@ Do not add, remove, translate, retouch the design of, restyle or invent anything
 
 /** What one enhancement costs this person now (0 for the owner, or while coins are switched off). */
 export async function enhancePrice(user: Pick<User, "email">) {
-  return (await unlimitedFor(user.email)) || !(await coinsRequired()) ? 0 : coinsFor(COVER_ENHANCE.costUsd);
+  return (await unlimitedFor(user.email)) || !(await coinsRequired()) ? 0 : coinsFor(COVER_ENHANCE.costUsd, "image");
 }
 
 export async function enhanceCover(user: User, photo: unknown): Promise<{ image: string; coins: number }> {
@@ -57,7 +57,7 @@ export async function enhanceCover(user: User, photo: unknown): Promise<{ image:
   const ref = `mahdi-cover:${randomUUID()}`;
   if (coins) {
     try {
-      await reserveCoins(user, ref, COVER_ENHANCE.costUsd, LABEL);
+      await reserveCoins(user, ref, COVER_ENHANCE.costUsd, LABEL, "image");
     } catch (e) {
       if (e instanceof UserError && e.status === 402) throw new UserError(E.noCoins(coins), 402);
       throw e;

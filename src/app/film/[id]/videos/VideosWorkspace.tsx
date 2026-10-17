@@ -78,7 +78,8 @@ interface Video {
 const RESOLUTIONS = Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[];
 /** Videos made at the same time (the server's MAX_VIDEOS_AT_ONCE). */
 const MAX_AT_ONCE = 10;
-const usd = (n: number) => credits(n);
+// the videos here (Seedance, lip-sync): the videos' profit (40٪)
+const usd = (n: number) => credits(n, "video");
 
 /** Days left before a video file is removed from the site. */
 const daysLeft = (createdAt: string) => Math.max(0, Math.ceil(VIDEO_KEEP_DAYS - (Date.now() - new Date(createdAt).getTime()) / 86_400_000));

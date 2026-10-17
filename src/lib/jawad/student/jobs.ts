@@ -10,11 +10,22 @@
 
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
-import { coinsRequired, refundCoins, releaseCoins, reserveCoins, settleCoins } from "@/lib/coins";
-import { claudeHalalas, coinsFor } from "@config/coins";
+import { coinsRequired, priceOf, refundCoins, releaseCoins, reserveCoins, settleCoins, type PriceMix } from "@/lib/coins";
+import type { PriceKind } from "@config/coins";
 
 /** The steps that are Claude's usage alone (reading the material, researching): priced at the real cost + 10%. */
-export const CLAUDE_ONLY_KINDS = new Set(["understand", "research", "islamic", "tafsir", "poems"]);
+export const CLAUDE_ONLY_KINDS = new Set(["understand", "research", "islamic", "tafsir", "poems", "extract", "style"]);
+
+/**
+ * What a student job is priced as. Its own split (written with the job when it was asked for: Claude's writing and
+ * GPT Image 2's pictures of one step), else by its kind: Claude's work its real cost + 10٪, the pictures 60٪, the
+ * transcription and the reading aloud the general margin.
+ */
+export function jobMix(kind: string, input?: Record<string, unknown> | null): PriceMix | PriceKind {
+  const m = input?._mix;
+  if (m && typeof m === "object") return m as PriceMix;
+  return CLAUDE_ONLY_KINDS.has(kind) || kind === "plan" ? "claude" : kind === "pictures" ? "image" : "other";
+}
 import { unlimitedFor } from "@/lib/access";
 import { STUDENT } from "@config/jawad/student";
 import { sdb } from "./db";
@@ -116,7 +127,7 @@ export async function createJob(
   }
   const job = data as Job;
   try {
-    if (o.estimateUsd > 0) await reserveCoins(user, job.id, o.estimateUsd, `الطالب الذكي · ${handler.label}`, CLAUDE_ONLY_KINDS.has(o.kind));
+    if (o.estimateUsd > 0) await reserveCoins(user, job.id, o.estimateUsd, `الطالب الذكي · ${handler.label}`, jobMix(o.kind, o.input));
   } catch (e) {
     await db.from("student_jobs").delete().eq("id", job.id);
     throw e;
@@ -156,7 +167,7 @@ export async function runJob(id: string) {
       job = { ...job, ...patch };
       if (r.done) {
         await db.from("student_jobs").update({ ...patch, status: "succeeded", finished_at: new Date().toISOString(), lease_until: null }).eq("id", id);
-        await settleCoins(job.id, Number(job.cost_usd), CLAUDE_ONLY_KINDS.has(job.kind));
+        await settleCoins(job.id, Number(job.cost_usd), jobMix(job.kind, job.input));
         await creditTrial(job);
         await handler.onSuccess?.(job);
         return;
@@ -238,7 +249,7 @@ export const jobView = (j: Job): JobView => ({
   stage: j.stage,
   progress: j.progress,
   error: j.error,
-  coins: (CLAUDE_ONLY_KINDS.has(j.kind) ? claudeHalalas : coinsFor)(Number(j.estimate_usd) || 0),
+  coins: priceOf(Number(j.estimate_usd) || 0, jobMix(j.kind, j.input)),
 });
 
 export async function projectJobs(projectId: string, limit = 30): Promise<Job[]> {

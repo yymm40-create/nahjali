@@ -31,14 +31,14 @@ export default async function CoinsPage() {
   const wallet = walletRow.data as Record<string, unknown> | null;
   // A full film (2 edits per stage, two 10 s 480p videos on Seedance 2.5), as on the pricing calculator
   const journeyCoins =
-    8 * coinsFor(0.12) + 12 * coinsFor(0.12) + 2 * coinsFor(IMAGE_ESTIMATE_USD.test) + 6 * coinsFor(IMAGE_ESTIMATE_USD.sheet) + 8 * coinsFor(0.15) +
-    2 * coinsFor(videoEstimateUsd("seedance-2.5", "480p", 10));
+    8 * coinsFor(0.12, "claude") + 12 * coinsFor(0.12, "claude") + 2 * coinsFor(IMAGE_ESTIMATE_USD.test, "image") + 6 * coinsFor(IMAGE_ESTIMATE_USD.sheet, "image") + 8 * coinsFor(0.15, "claude") +
+    2 * coinsFor(videoEstimateUsd("seedance-2.5", "480p", 10), "video");
   const owner = isAdmin(user.email);
   const prices: [string, number][] = [
-    ["رد السيناريست أو صانع الشيت (تقريبًا)", coinsFor(0.12)],
-    ["رد المخرج (تقريبًا)", coinsFor(0.15)],
-    ["صورة اختبار ستايل", coinsFor(IMAGE_ESTIMATE_USD.test)],
-    ["صورة شيت", coinsFor(IMAGE_ESTIMATE_USD.sheet)],
+    ["رد السيناريست أو صانع الشيت (تقريبًا)", coinsFor(0.12, "claude")],
+    ["رد المخرج (تقريبًا)", coinsFor(0.15, "claude")],
+    ["صورة اختبار ستايل", coinsFor(IMAGE_ESTIMATE_USD.test, "image")],
+    ["صورة شيت", coinsFor(IMAGE_ESTIMATE_USD.sheet, "image")],
   ];
 
   return (
@@ -69,7 +69,7 @@ export default async function CoinsPage() {
               <div key={`${m}-${q}`} className="flex justify-between gap-2 border-b border-line p-2 last:border-0">
                 <span dir="ltr">{VIDEO_MODELS[m].label} · {q}</span>
                 <span className="flex items-center gap-1" dir="ltr">
-                  <Riyal halalas={coinsFor(videoEstimateUsd(m, q, 5))} size={16} /> · <Riyal halalas={coinsFor(videoEstimateUsd(m, q, 10))} size={16} />
+                  <Riyal halalas={coinsFor(videoEstimateUsd(m, q, 5), "video")} size={16} /> · <Riyal halalas={coinsFor(videoEstimateUsd(m, q, 10), "video")} size={16} />
                 </span>
               </div>
             )),
@@ -86,9 +86,9 @@ export default async function CoinsPage() {
         libraryUntil={runningUntil(wallet?.library_until)}
         balance={owner ? null : (balance ?? 0)}
         coinsPerVideo={{
-          "2.0 · 480p": coinsFor(videoEstimateUsd("seedance-2.0", "480p", 10)),
-          "2.5 · 480p": coinsFor(videoEstimateUsd("seedance-2.5", "480p", 10)),
-          "2.5 · 720p": coinsFor(videoEstimateUsd("seedance-2.5", "720p", 10)),
+          "2.0 · 480p": coinsFor(videoEstimateUsd("seedance-2.0", "480p", 10), "video"),
+          "2.5 · 480p": coinsFor(videoEstimateUsd("seedance-2.5", "480p", 10), "video"),
+          "2.5 · 720p": coinsFor(videoEstimateUsd("seedance-2.5", "720p", 10), "video"),
         }}
         journeyCoins={journeyCoins}
       />

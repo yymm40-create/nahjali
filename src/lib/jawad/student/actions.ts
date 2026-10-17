@@ -2,9 +2,9 @@
 // Paid steps answer `{ quote: coins }` first (nothing runs) and run only when sent again with `confirm: true` and a key.
 
 import { UserError } from "@/lib/api";
-import { coinBalance, coinsRequired } from "@/lib/coins";
+import { coinBalance, coinsRequired, priceOf } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
-import { claudeHalalas, coinsFor } from "@config/coins";
+import { coinsFor } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
 import { FONTS, OUTPUT_KINDS, PURPOSES, isDoc, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { kindOffered, STUDENT_BRANCH, type Branch } from "@config/jawad/khateeb";
@@ -13,12 +13,12 @@ import { loadCtx } from "./context";
 import { islamicAsk, islamicCeiling } from "./islamic";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
-import { CLAUDE_ONLY_KINDS, checkKey, createJob, jobView, projectJobs, advanceJobs } from "./jobs";
+import { checkKey, createJob, jobMix, jobView, projectJobs, advanceJobs } from "./jobs";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SermonPlan, SlidePlan } from "./model";
 import { passage as quranPassage } from "@/lib/khateeb/quran";
 import { clampMap, type MindPlan } from "./mindmap";
 import { mapImageUsd } from "./mindmap-make";
-import { estimate } from "./outputs";
+import { estimateParts, partsUsd, type StepParts } from "./outputs";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
 import { chosenPages, drawNote } from "./draw";
 import { slideImageUsd } from "./slide-images";
@@ -49,7 +49,8 @@ const NOT_NOW = "هذه الخطوة غير متاحة الآن.";
  */
 async function drawPrices(user: User) {
   const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
-  const c = (usd: number) => (free ? 0 : coinsFor(usd));
+  // GPT Image 2's pages: the pictures' profit (60٪)
+  const c = (usd: number) => (free ? 0 : coinsFor(usd, "image"));
   return { free, page: { high: c(pageUsd("high")), medium: c(pageUsd("medium")) }, slide: { high: c(slideImageUsd("high")), medium: c(slideImageUsd("medium")) }, map: { high: c(mapImageUsd("high")), medium: c(mapImageUsd("medium")) } };
 }
 
@@ -156,15 +157,20 @@ export async function createProject(user: User & { app_metadata?: Record<string,
 // ───────────────────────────── paid steps ─────────────────────────────
 
 /** Quote first (nothing runs), then run with the same key once the student confirmed. */
-async function paid(user: User, b: Body, o: { projectId: string; outputId?: string; kind: string; usd: number; input?: Record<string, unknown>; stage?: string; started?: () => Promise<void>; /** said to the student with the price, before they agree */ note?: string }) {
+async function paid(user: User, b: Body, o: { projectId: string; outputId?: string; kind: string; usd: number | StepParts; input?: Record<string, unknown>; stage?: string; started?: () => Promise<void>; /** said to the student with the price, before they agree */ note?: string }) {
   // nothing is charged (the owner, a free guest, or while coins are switched off): no price to agree to
   const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
-  const coins = o.usd > 0 && !free ? (CLAUDE_ONLY_KINDS.has(o.kind) ? claudeHalalas : coinsFor)(o.usd) : 0;
+  // a step made of Claude's writing and pictures carries its split: each part at its own profit (and the job keeps it
+  // for the final settle)
+  const split = typeof o.usd === "number" ? null : o.usd;
+  const usd = split ? partsUsd(split) : (o.usd as number);
+  const input = split ? { ...(o.input ?? {}), _mix: split } : o.input;
+  const coins = usd > 0 && !free ? priceOf(usd, jobMix(o.kind, input)) : 0;
   // a free step (nothing to agree to) starts on the first call — a plain «اعتمد» button (not PaidButton's ask-then-go)
   // never sends `confirm`, and must still run instead of silently returning an empty quote
   if (coins > 0 && !b.confirm) return { quote: coins, balance: await coinBalance(user.id), ...(o.note ? { note: o.note } : {}) };
   const key = checkKey(b.key ?? (coins > 0 ? undefined : crypto.randomUUID().replace(/-/g, "")));
-  const { job, created } = await createJob(user, { projectId: o.projectId, outputId: o.outputId ?? null, kind: o.kind, key, input: o.input, estimateUsd: o.usd, stage: o.stage });
+  const { job, created } = await createJob(user, { projectId: o.projectId, outputId: o.outputId ?? null, kind: o.kind, key, input, estimateUsd: usd, stage: o.stage });
   // the job itself runs after this response, so the status set here comes before anything it writes
   if (created) await o.started?.();
   return { job: jobView(job) };
@@ -655,7 +661,7 @@ export async function outputAction(user: User, id: string, b: Body) {
   await touch(p.id);
   // `extra` (the student's request, approval taken back) is saved only once the job really started: a refused job
   // (busy, short balance) leaves the output exactly as it was
-  const run = (kind: string, usd: number, input: Record<string, unknown> = {}, stage?: string, status?: string, extra: Record<string, unknown> = {}, note?: string) =>
+  const run = (kind: string, usd: number | StepParts, input: Record<string, unknown> = {}, stage?: string, status?: string, extra: Record<string, unknown> = {}, note?: string) =>
     paid(user, b, { projectId: p.id, outputId: o.id, kind, usd, input, stage, note, started: status ? () => saveOutput(o.id, { ...extra, status, error: null }) : undefined });
 
   switch (b.action) {
@@ -716,7 +722,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       if (o.status === "waiting") throw new UserError("هذا الصوت يقرأ ناتجًا لم يُعتمد بعد: اعتمد ذلك الناتج أولًا.");
       const note = text(b.note, 4000);
       const requests = note ? [...o.requests, { at: new Date().toISOString(), kind: (b.kind === "other" ? "other" : "edit") as "edit", text: note }] : o.requests;
-      return run("plan", await estimate(user.id, o, "plan"), { note, previous: Boolean(note && o.plan) }, o.kind === "audio" ? "تجهيز نص القراءة" : "إعداد الخطة", "planning", note ? { requests } : {});
+      return run("plan", await estimateParts(user.id, o, "plan"), { note, previous: Boolean(note && o.plan) }, o.kind === "audio" ? "تجهيز نص القراءة" : "إعداد الخطة", "planning", note ? { requests } : {});
     }
     // «خطبة المنبر»: the preacher picks one of the three topics (the method's step 2)
     case "sermon_choose": {
@@ -766,7 +772,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const ask = text(b.ask, 500);
       const refIds = (Array.isArray(b.refIds) ? b.refIds : []).map((x) => String(x)).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 30);
       const sources = b.action === "sermon_sources";
-      return run("poems", await estimate(user.id, o, "poems"), { ask, refIds, kind: sources ? "source" : "poetry" }, sources ? "الاستخراج من مصادر المكتبة" : "اختيار الأبيات من المرجع");
+      return run("poems", await estimateParts(user.id, o, "poems"), { ask, refIds, kind: sources ? "source" : "poetry" }, sources ? "الاستخراج من مصادر المكتبة" : "اختيار الأبيات من المرجع");
     }
     case "sermon_poems_keep":
     case "sermon_sources_keep": {
@@ -780,7 +786,7 @@ export async function outputAction(user: User, id: string, b: Body) {
     case "sermon_tafsir": {
       const sp = sermonOf(o);
       if (sp.chosen < 0) throw new UserError("اختر موضوع الخطبة أول.");
-      return run("tafsir", await estimate(user.id, o, "tafsir"), {}, "جلب التفسير من مجمع البيان");
+      return run("tafsir", await estimateParts(user.id, o, "tafsir"), {}, "جلب التفسير من مجمع البيان");
     }
     case "plan_save": {
       if (!o.plan) throw new UserError(NOT_NOW);
@@ -797,7 +803,7 @@ export async function outputAction(user: User, id: string, b: Body) {
     }
     case "trial": {
       if (!o.plan_approved || !["trial_offer", "trial_review"].includes(o.status)) throw new UserError(NOT_NOW);
-      return run("trial", await estimate(user.id, o, "trial"), {}, "النسخة التجريبية", "trial_running");
+      return run("trial", await estimateParts(user.id, o, "trial"), {}, "النسخة التجريبية", "trial_running");
     }
     case "skip_trial": {
       if (!o.plan_approved) throw new UserError(NOT_NOW);
@@ -818,7 +824,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       const reusedTrial =
         (isDoc(o.kind) && ((o.content as Doc | null)?.chapters?.length ?? 0) > 0) ||
         (o.kind === "slides" && Boolean((o.plan as SlidePlan | null)?.slides?.some((x) => x.rendered?.path)));
-      return run("final", await estimate(user.id, o, "final"), o.kind === "audio" ? { run: prevRun + 1 } : { reusedTrial }, "إنشاء الناتج", "running");
+      return run("final", await estimateParts(user.id, o, "final"), o.kind === "audio" ? { run: prevRun + 1 } : { reusedTrial }, "إنشاء الناتج", "running");
     }
     case "audio_retry": {
       const c = o.content as { run?: number; failedParts?: number } | null;
@@ -836,18 +842,18 @@ export async function outputAction(user: User, id: string, b: Body) {
       const requests = [...o.requests, { at: new Date().toISOString(), kind: kind as "edit", text: note }];
       if (isDoc(o.kind) || o.kind === "quiz") {
         const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
-        return run("revise", await estimate(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
+        return run("revise", await estimateParts(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
       }
       // a mind map drawn by GPT Image 2: one map drawn again with the request
       if (o.kind === "mindmap" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
-        return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الخريطة من جديد", "running", { requests, approved: false });
+        return run("revise", await estimateParts(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الخريطة من جديد", "running", { requests, approved: false });
       }
       // slides made as pictures: one slide is drawn again with the request
       if (o.kind === "slides" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
-        return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الشريحة من جديد", "running", { requests, approved: false });
+        return run("revise", await estimateParts(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الشريحة من جديد", "running", { requests, approved: false });
       }
       // slides / audio: the change goes into the plan (slide map / reading text), which is approved again
-      return run("plan", await estimate(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning", { requests, approved: false });
+      return run("plan", await estimateParts(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning", { requests, approved: false });
     }
     // «خطبة المنبر»: the text is written and shown FIRST; its PDF and Word file are made only after the preacher approves it
     case "sermon_files": {

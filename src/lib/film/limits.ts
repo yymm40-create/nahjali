@@ -7,7 +7,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const LIMITS = {
   price_usd_sar_x100: { label: "💱 سعر الدولار بالهللة (375 = 3.75 ريال)", hint: "التكلفة تُحوَّل من الدولار إلى الريال بهذا السعر", default: 375, perUser: false },
   price_step_halalas: { label: "🔼 التقريب للأعلى (هللة)", hint: "كل سعر يُقرَّب للأعلى إلى هذا: 50 = نص ريال (0.45 → 0.50، 1.10 → 1.50)، 10 = عشر هللات، 100 = ريال كامل", default: 50, perUser: false },
-  price_margin_pct: { label: "💰 نسبة الربح الحالية (٪)", hint: "تُضاف على التكلفة بعد تقريبها (وتُقرَّب هي أيضًا). 30 = عرض الإطلاق", default: 30, perUser: false },
+  price_margin_pct: { label: "💰 نسبة الربح الحالية (٪)", hint: "تُضاف على التكلفة بعد تقريبها (وتُقرَّب هي أيضًا) — لكل ما ليس صورة ولا فيديو ولا Claude (الصوت، الرسوم الثابتة). 30 = عرض الإطلاق. ردود Claude كلها: استخدامها الفعلي + ١٠٪ فقط", default: 30, perUser: false },
+  price_image_margin_pct: { label: "🖼️ نسبة الربح في صناعة الصور (٪)", hint: "على كل صورة تُولَّد (GPT Image 2، نانو بنانا، FLUX، الشيتات، الهوك…). 60 = قرار المالك. السعر المشطوب يزيد عليها نفس فرق النسبة العامة", default: 60, perUser: false },
+  price_video_margin_pct: { label: "🎬 نسبة الربح في الفيديو (٪)", hint: "على كل فيديو يُولَّد (Seedance، Kling، مزامنة الشفايف، رفع الدقة). 40 = قرار المالك", default: 40, perUser: false },
   price_was_margin_pct: { label: "🏷️ نسبة الربح الكاملة (٪) — السعر المشطوب", hint: "السعر «كان» الذي يظهر مشطوبًا جنب السعر الحالي: نفس الحسبة بهذه النسبة", default: 60, perUser: false },
   editor_price_claude: { label: "تكلفة الماسك الذكي في حيدرة كت (هللة)", hint: "تكلفة بالهللة، يُضاف عليها الربح عند الخصم؛ ٠ = مجاني. (محادثات حيدرة مع Claude صارت تُحسب باستخدامها الفعلي + ١٠٪ فقط، ولا تتأثر بهذا الرقم)", default: 0, perUser: false },
   editor_price_voice: { label: "سعر رد حيدرة بالصوت في حيدرة كت (هللة)", hint: "تكلفة بالهللة لكل رد ينقرأ بصوت حيدرة (ElevenLabs)؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },

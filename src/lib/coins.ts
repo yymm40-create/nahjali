@@ -4,11 +4,29 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { claudeHalalas, coinStr, coinsFor, setPricing, type Pricing } from "@config/coins";
+import { claudeHalalas, coinStr, coinsFor, setPricing, type PriceKind, type Pricing } from "@config/coins";
 import { typicalReplyUsd, type ClaudeModel } from "@config/claude-models";
 import { unlimitedFor } from "@/lib/access";
 
 const db = () => createAdminClient();
+
+/** A job made of several kinds (Claude's writing and pictures, say): each kind's share of the cost. */
+export type PriceMix = Partial<Record<PriceKind, number>>;
+/**
+ * A job's kind of price: `true` (the old flag) is Claude's own work, `false` the general margin, or a mix — the cost
+ * split by the mix's shares, each share at its own kind's profit.
+ */
+export type ChargeKind = boolean | PriceKind | PriceMix;
+const kindOf = (k: boolean | PriceKind | undefined): PriceKind => (k === true ? "claude" : k === false || k == null ? "other" : k);
+export function priceOf(usd: number, k: ChargeKind | undefined): number {
+  if (k && typeof k === "object") {
+    const parts = Object.entries(k).filter(([, v]) => Number(v) > 0) as [PriceKind, number][];
+    const all = parts.reduce((s, [, v]) => s + v, 0);
+    if (!(all > 0) || !(usd > 0)) return 0;
+    return parts.reduce((s, [kind, v]) => s + coinsFor((usd * v) / all, kind), 0);
+  }
+  return coinsFor(usd, kindOf(k));
+}
 
 /** The user's balance (0 without a wallet, or null if the coin tables don't exist yet). */
 export async function coinBalance(userId: string): Promise<number | null> {
@@ -29,7 +47,7 @@ export async function coinsRequired() {
 
 // ── the pricing in force: the owner's settings (film_limits) over the defaults, read once a minute
 let pricingAt = 0;
-const PRICING_KEYS: Record<string, keyof Pricing> = { price_usd_sar_x100: "usdToSar", price_step_halalas: "stepHalalas", price_margin_pct: "marginPct", price_was_margin_pct: "wasMarginPct" };
+const PRICING_KEYS: Record<string, keyof Pricing> = { price_usd_sar_x100: "usdToSar", price_step_halalas: "stepHalalas", price_margin_pct: "marginPct", price_was_margin_pct: "wasMarginPct", price_image_margin_pct: "imageMarginPct", price_video_margin_pct: "videoMarginPct" };
 export async function loadPricing(force = false): Promise<Pricing> {
   if (!force && Date.now() - pricingAt < 60_000) return (await import("@config/coins")).getPricing();
   const { data } = await db().from("film_limits").select("key,value").eq("scope", "all").eq("target", "").in("key", Object.keys(PRICING_KEYS));
@@ -56,11 +74,14 @@ async function adjust(userId: string, delta: number, reason: string, ref: string
 export const grantCoins = (userId: string, amount: number, note: string) => adjust(userId, amount, "grant", note, note, true);
 
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
-/** `claude`: the job is Claude's usage alone — priced at the real cost plus the platform's 10% (config/coins.ts `claudeHalalas`). */
-export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string, claude = false) {
+/**
+ * `kind`: what the job makes — "claude" (or `true`): Claude's usage alone, its real cost + the platform's 10٪;
+ * "image" 60٪; "video" 40٪; anything else the general margin (config/coins.ts).
+ */
+export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string, claude: ChargeKind = false) {
   if ((await unlimitedFor(user.email)) || !(await coinsRequired())) return;
   await loadPricing();
-  const coins = (claude ? claudeHalalas : coinsFor)(estimateUsd);
+  const coins = priceOf(estimateUsd, claude);
   const left = await adjust(user.id, -coins, "reserve", jobId, label);
   if (left === null) {
     throw new UserError(`رصيدك ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك).`, 402);
@@ -74,12 +95,12 @@ async function reserved(jobId: string) {
 }
 
 /** On success: the held coins become the real charge (the difference is given back, or taken). */
-export async function settleCoins(jobId: string, costUsd: number, claude = false) {
+export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false) {
   await loadPricing();
   await settleTeamCoins(jobId, costUsd, claude);
   const r = await reserved(jobId);
   if (!r || r.held <= 0) return;
-  const diff = r.held - (claude ? claudeHalalas : coinsFor)(costUsd);
+  const diff = r.held - priceOf(costUsd, claude);
   if (diff !== 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
 }
 
@@ -109,10 +130,10 @@ export async function teamCoinBalance(seriesId: string): Promise<number> {
 const SHORT_TEAM = (coins: number) => `رصيد «نقود الفريق الذكي» ما يكفي: هذي العملية تحتاج تقريبًا ${coinStr(coins)}. اطلب من صاحب المسلسل يشحن رصيد الفريق.`;
 
 /** A team series' paid job: holds its estimated coins from the team's wallet (`who` pressed it). */
-export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string, claude = false) {
+export async function reserveTeamCoins(seriesId: string, who: { id: string }, jobId: string, estimateUsd: number, label: string, claude: ChargeKind = false) {
   if (!(await coinsRequired())) return;
   await loadPricing();
-  const coins = (claude ? claudeHalalas : coinsFor)(estimateUsd);
+  const coins = priceOf(estimateUsd, claude);
   if ((await adjustTeam(seriesId, who.id, -coins, "reserve", jobId, label)) === null) throw new UserError(SHORT_TEAM(coins), 402);
 }
 
@@ -129,10 +150,10 @@ async function teamReserved(ref: string) {
   return rows.length ? { seriesId: rows[0].series_id, userId: rows[0].user_id, label: rows[0].label, held: -rows.reduce((s, r) => s + r.delta, 0) } : null;
 }
 
-async function settleTeamCoins(ref: string, costUsd: number, claude = false) {
+async function settleTeamCoins(ref: string, costUsd: number, claude: ChargeKind = false) {
   const r = await teamReserved(ref);
   if (!r || r.held <= 0) return;
-  const diff = r.held - (claude ? claudeHalalas : coinsFor)(costUsd);
+  const diff = r.held - priceOf(costUsd, claude);
   if (diff !== 0) await adjustTeam(r.seriesId, r.userId, diff, "settle", ref, r.label, true);
 }
 

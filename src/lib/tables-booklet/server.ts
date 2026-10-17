@@ -136,7 +136,8 @@ export async function sayToNoor(user: { id: string; email?: string | null }, cha
 export async function bookletPrice(email: string | null | undefined, poses: number): Promise<{ halalas: number; free: boolean }> {
   await loadPricing();
   const usd = bookletUsd(poses);
-  const halalas = usd > 0 ? coinsFor(usd) : 0;
+  // its pictures: the pictures' profit (60٪)
+  const halalas = usd > 0 ? coinsFor(usd, "image") : 0;
   return { halalas, free: await unlimitedFor(email) };
 }
 
