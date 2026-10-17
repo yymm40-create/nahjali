@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { useClaudeModel } from "@/components/robots/claude-model";
-import Markdown from "@/components/Markdown";
+import ReplyView from "../../ReplyView";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import ActionBar, { EditsLeftContext, type SendMode } from "../../ActionBar";
@@ -538,7 +538,7 @@ function StyleTest({
       <h2 className="text-xl font-extrabold">اختبار الستايل</h2>
       <details>
         <summary className="cursor-pointer text-sm font-extrabold text-muted">اللقطة المختارة من قصتك وبرومبتها</summary>
-        <Markdown text={v.body} />
+        <ReplyView text={v.body} />
       </details>
 
       {tests.length > 0 && (

@@ -37,14 +37,15 @@ export default function ActionBar({
   const toggle = (m: SendMode) => setMode(mode === m ? null : m);
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
+      {/* on a phone: «اعتمد» across the width, the two other choices side by side under it */}
+      <div className="flex flex-col gap-2 sm:flex-row">
         {onApprove && (
           <button className="btn btn-primary flex-1" onClick={onApprove}>{approveLabel}</button>
         )}
         {send && (
           <div className="flex flex-1 gap-2">
             <button className={`btn flex-1 px-2 ${mode === "edit" ? "btn-secondary" : "btn-ghost"}`} onClick={() => toggle("edit")}>تعديل ✏️</button>
-            <button className={`btn flex-1 px-2 ${mode === "direct" ? "btn-secondary" : "btn-ghost"}`} onClick={() => toggle("direct")}>توجيه أو أمر جديد 🧭</button>
+            <button className={`btn flex-1 px-2 ${mode === "direct" ? "btn-secondary" : "btn-ghost"}`} onClick={() => toggle("direct")}>توجيه جديد 🧭</button>
           </div>
         )}
       </div>

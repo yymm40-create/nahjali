@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { useClaudeModel } from "@/components/robots/claude-model";
-import Markdown from "@/components/Markdown";
+import ReplyView from "../../ReplyView";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import ActionBar, { EditsLeftContext } from "../../ActionBar";
@@ -668,7 +668,7 @@ export default function VideosWorkspace({
                 <p className="font-extrabold">🎬 فهم المخرج لتعديلاتك</p>
                 <details className="text-sm">
                   <summary className="cursor-pointer font-extrabold text-muted">اعرض رسالة المخرج كاملة</summary>
-                  <Markdown text={g.questions.body} hideCode />
+                  <ReplyView text={g.questions.body} hideCode />
                 </details>
                 <QuestionsForm questions={g.questions.items} busy={busy || writing} onSubmit={(answers) => send({ action: "answers", versionId: g.questions!.id, answers })} />
               </div>
@@ -678,7 +678,7 @@ export default function VideosWorkspace({
                 <p className="font-extrabold">✅ التعديل جاهز</p>
                 <details className="text-sm">
                   <summary className="cursor-pointer font-extrabold text-muted">اعرض تحليل المخرج للنسخة المعدّلة</summary>
-                  <Markdown text={g.revision.body} hideCode />
+                  <ReplyView text={g.revision.body} hideCode />
                 </details>
                 <ActionBar
                   busy={busy || writing}

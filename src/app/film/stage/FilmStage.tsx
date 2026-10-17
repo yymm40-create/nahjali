@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/fetch";
 import { FILM_STAGES, type FilmStage as Stage } from "@config/film";
 import { STEPS } from "./steps";
@@ -20,6 +20,7 @@ import LibraryDrawer from "./LibraryDrawer";
 import Meter, { RunningList } from "./Meter";
 import "./stage.css";
 import RobotFace from "@/components/RobotFace";
+import { ArrivalCard, BellAsk, useArrivals } from "./ReplyAlert";
 import FilmBackButton from "../FilmBackButton";
 
 const order = (s: Stage) => FILM_STAGES.findIndex((x) => x.key === s);
@@ -80,6 +81,12 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
   }, [pathname]);
 
   const waiting = impacts.find((i) => i.status === "awaiting_approval");
+  // «🔔 وصل رد جديد»: what was being made and just finished
+  const stepHref = useCallback((key: string) => {
+    const s = STEPS.find((x) => x.key === key);
+    return s ? base + s.path : null;
+  }, [base]);
+  const [arrival, closeArrival] = useArrivals(progress, stepHref);
 
   return (
     <div className="fs">
@@ -103,6 +110,7 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
             </button>
           </div>
           <RunningList items={progress.running} />
+          {running && <BellAsk />}
           <nav className="fs-glass fs-rail" aria-label={kind === "film" ? "خطوات الفيلم" : "خطوات المشهد"} ref={rail}>
             {STEPS.map((s, i) => {
               const href = base + s.path;
@@ -142,6 +150,7 @@ export default function FilmStage({ projectId, title, kind, stage, videosOpen, c
         </main>
       </div>
       {lib && <LibraryDrawer projectId={projectId} onClose={() => setLib(false)} />}
+      {arrival && <ArrivalCard arrival={arrival} here={arrival.href === pathname} onClose={closeArrival} />}
     </div>
   );
 }
