@@ -31,8 +31,17 @@ export interface CreditSettings {
   whatsapp: string;
 }
 
+/**
+ * «المشهد السينمائي» (owner, 17 October 2026): the balance one cinematic scene costs, end to end — Seedance 2.0 at its
+ * 15-second limit in 720p with one redo (2 takes, ¤23), 4 sheets with 2 redraws and 2 style tests (¤13), and the robots'
+ * replies at what the film code reserves for each (screenwriter 4, sheet maker 5, director 3, small helpers: ¤40.02) =
+ * ¤76.02, rounded up to the whole riyal. (480p would be ¤63.52, 1080p ¤108.52.) The trial is ¤10 (the ¤19 one is gone).
+ */
+export const SCENE_PACK_SAR = 77;
+
 export const DEFAULT_PACKS: Pack[] = [
-  { id: "try", name: "تجربة", price: 19, credit: 19, tag: "", note: "تجرب فيها الأقسام" },
+  { id: "try", name: "تجربة", price: 10, credit: 10, tag: "", note: "تجرب فيها الأقسام" },
+  { id: "scene", name: "المشهد السينمائي", price: SCENE_PACK_SAR, credit: SCENE_PACK_SAR, tag: "", note: "مشهد ١٥ ثانية كامل: سيناريو، ٤ شيتات، فيديو 720p مع إعادة" },
   { id: "basic", name: "الأساسية", price: 99, credit: 100, tag: "", note: "للاستخدام الخفيف" },
   { id: "pro", name: "المحترف", price: 119, credit: 140, tag: "الأكثر طلبًا", note: "صور وفيديوهات أسبوعية" },
   { id: "studio", name: "الاستوديو", price: 279, credit: 330, tag: "", note: "لصنّاع المحتوى" },
