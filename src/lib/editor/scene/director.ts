@@ -105,15 +105,14 @@ const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 
 
 async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" | "xhigh" = "high") {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
-  const deadline = AbortSignal.timeout(600_000);
+  // no deadline of the lab's own (the owner's rule): a step runs as long as the platform's route allows
   return claudeCharged(
     who,
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true, signal: deadline }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true }).catch((e) => {
         console.error("motion lab", label, e);
-        if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت في هذه الخطوة. الخطة والمشهد السابق محفوظان؛ أعد المحاولة من نفس الخطوة.", 504);
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
