@@ -114,8 +114,8 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
   const source = new CanvasSource(canvas as unknown as HTMLCanvasElement, { codec, bitrate, keyFrameInterval: 2, hardwareAcceleration: hw, alpha: o.transparent ? "keep" : "discard" });
   output.addVideoTrack(source, { frameRate: o.fps });
   // the sound goes INTO the film (AAC / Opus — FFmpeg's AAC in the page when the browser has no encoder of its own)
-  const aCodec = o.audio ? (o.transparent ? "opus" : await soundCodec()) : null;
-  const sound = o.audio && aCodec ? new AudioBufferSource({ codec: aCodec, bitrate: 192_000 }) : null;
+  const aCodec = o.audio ? (o.transparent ? { codec: "opus" as const, bitrate: 160_000 } : await soundCodec(192_000)) : null;
+  const sound = o.audio && aCodec ? new AudioBufferSource({ codec: aCodec.codec, bitrate: aCodec.bitrate }) : null;
   if (sound) output.addAudioTrack(sound);
   let soundAt = 0;
   await output.start();

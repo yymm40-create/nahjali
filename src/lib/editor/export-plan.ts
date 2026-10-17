@@ -33,6 +33,9 @@ export const BITRATE_MAX = 200_000_000;
 /** The sound's bitrate for each level (bits a second). */
 export const AUDIO_BITRATE: Record<"low" | "medium" | "high" | "max" | "source", number> = { low: 96_000, medium: 128_000, high: 192_000, max: 320_000, source: 256_000 };
 
+/** The sound's bitrates to try, best first: the one asked for, then the steps below it that every AAC encoder knows. */
+export const soundLadder = (want: number) => [...new Set([want, 256_000, 192_000, 160_000, 128_000, 96_000].filter((b) => b <= want))];
+
 /** What the timeline's biggest source video is (read from the files in the browser; null when there is none). */
 export interface SourceInfo {
   width: number;

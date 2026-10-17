@@ -11,6 +11,7 @@ import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
 import { GRADE_CHECK, GRADING_KNOW_HOW, gradeBrief, MAX_CHECKS } from "./assistant-guide";
 import { readScope, scopeLine } from "./scopes";
+import { readWatch, watchText } from "./watch";
 import { aboutColour, caseParts, GRADING_LESSONS, nearestCases } from "./grading-library";
 import { ownVoiceNames, planMake, type MakeKind, type MakePlace, type MakePlan, type MakeSpec } from "./make-any";
 import { TR_LIST } from "./transitions";
@@ -68,7 +69,7 @@ const SCHEMA = {
         additionalProperties: false,
         required: ["kind", "text", "style", "prompt", "at", "lengthMs", "clipId", "lang", "domain", "age", "makeKind", "aspect", "seconds", "voice", "withSound", "quality", "place", "name", "track", "layer", "captionStyle", "poem", "then"],
         properties: {
-          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale", "code_edit", "code_grade"] },
+          kind: { type: "string", enum: ["hook_design", "music", "separate", "scene_cut", "make", "smart_mask", "captions", "voiceprint", "talk_motion", "motion_lab", "upscale", "code_edit", "code_grade", "watch"] },
           captionStyle: { type: "string", enum: ["karaoke", "classic", "box", "neon", "poem", ""], description: "captions: the look to start from (karaoke = the word being said lights up). Else empty." },
           poem: { type: "string", description: "captions: a poem's verses (one per line, exactly as the person gave them) to time on its recitation in clipId. Else empty." },
           then: { type: "array", items: { type: "string", description: "One editing command as a JSON object string." }, description: "captions: commands to run once the captions exist — \"$CAPTIONS\" is the new caption track's id, and a command whose clipId is \"$EACH\" runs on every caption. Else empty." },
@@ -147,6 +148,7 @@ RULES:
   The engine lays the cues out, draws the icons and routes, keys the frames on every piece of the talking video, lifts the captions above the person and adds the sounds.
 - A PRECISE WINDOW («ماسك ذكي», by SAM 3: the subject's exact outline, following its shape as it moves) → {"kind":"smart_mask","clipId":...,"prompt":"<what to select as a short English noun phrase: face, sky, person on the right, white robe>","track":true for a moving subject in a video,"layer":N}. Use it whenever a grade or fix must touch exactly one thing (brighten a face, darken the sky, warm a robe, cool the background with invert): in the same answer put that layer's grade change in "commands" (e.g. {"type":"update_clip","clipId":...,"patch":{"grade":{"layer":1,"name":"الوجه","exposure":0.3}}}; for "everything except it" add "mask":{"kind":"ellipse","invert":true} there and the precise outline keeps the invert). The outline replaces that layer's window when it arrives. A rough ellipse/rect with "keys" stays fine for soft, broad areas.
 - MOTION GRAPHICS («موشن جرافيكس», «فيديو توضيحي متحرك», «إنفوجرافيك متحرك», «تايبوغرافي», an animated ad or intro): follow the MOTION GRAPHICS skill below — get the brief in one grouped question (only what's missing), write the script, then build the whole piece from editable clips, with its narration, sounds and music, in one answer.
+- SEEING THE CLIP («شوف المقطع», «وش يصير فيه», «متى يدخل», «قص لما يضحك», «اوصف اللقطات», anything that depends on WHAT HAPPENS in it): when a clip is selected and the request is about its content, the page WATCHES IT WHOLE for you — every frame measured (the cuts, black and frozen moments, motion each second) and many of its frames on numbered sheets with their timeline times ("WATCHED WHOLE" in the request). Work from those: name moments by the tiles' times, cut and place on them. If the request needs that and you only have a few moments (or none) of the clip, send ONLY {"kind":"watch","clipId":<the clip>} with a one-line reply («أشوف المقطع كامل…»): the page watches it and asks you again by itself. Never guess what happens in a clip you have not seen.
 - If something is missing that only a new shot could fix (e.g. an opening view), offer to make it (make) or add a suggestion with a clear English generation prompt.
 - When something doesn't work or looks wrong («ليش ما يطلع الصوت؟», «ليش الصورة مشعة؟»), find the reason in what you see (a muted or hidden track, a clip past its file, a wrong log or gamut, a file still uploading) and fix it or explain; the site's owner also has «🩺 تشخيص» next to the send button, which reads the browser's error log, the files and the server for a deep check.
 - CLICKABLE ANSWERS: whenever your reply asks the person something or proposes a next step, put 2–5 short answers they can press in "quick" (each a sentence that works as their reply, e.g. «٣٠ ثانية» or «اختر أنت»); the page always adds «✍️ اكتب إجابة مختلفة». Leave "quick" empty when you just did the job and ask nothing.
@@ -197,7 +199,7 @@ export function lookParts(look: NonNullable<ReturnType<typeof readLook>>): Claud
 }
 
 export interface MakeRequest {
-  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale" | "motion_lab" | "code_edit" | "code_grade";
+  kind: "hook_design" | "music" | "separate" | "scene_cut" | "make" | "smart_mask" | "captions" | "voiceprint" | "talk_motion" | "upscale" | "motion_lab" | "code_edit" | "code_grade" | "watch";
   /** captions: the starting look, a poem to time, and the commands run on the new captions */
   captionStyle?: string;
   poem?: string;
@@ -251,7 +253,7 @@ interface Answer {
 const SPOKEN = "\n\n(The person said this by voice and your reply will be read aloud to them: answer in one to three short, natural spoken sentences in their dialect, no lists, no markdown, no emoji; do the commands as usual.)";
 
 /** One request: the person's words (and the last few exchanges) → a reply and checked commands. */
-export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown; model?: unknown }, origin: string | null = null) {
+export async function assist(p: EditorProject, who: Who, b: { message?: unknown; history?: unknown; handoff?: unknown; timeline?: unknown; playhead?: unknown; selected?: unknown; quiet?: unknown; look?: unknown; watch?: unknown; spoken?: unknown; refs?: unknown; refLooks?: unknown; face?: unknown; model?: unknown }, origin: string | null = null) {
   stillOpen(p);
   const message = String(b.message ?? "").trim().slice(0, 2000);
   if (!message) throw new UserError("اكتب وش تبي.", 400);
@@ -315,6 +317,20 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
       ...lookParts(look),
     ];
     last.content = parts;
+  }
+  // «👁️»: the selected clip watched whole (every frame measured, the frames worth seeing on numbered sheets)
+  const watch = readWatch(b.watch, new Set(tl.tracks.flatMap((t) => t.clips.map((c) => c.id))));
+  if (watch) {
+    const last = merged[merged.length - 1];
+    const before: ClaudePart[] = typeof last.content === "string" ? [{ type: "text", text: last.content }] : last.content;
+    last.content = [
+      ...before,
+      { type: "text", text: watchText(watch) },
+      ...watch.sheets.flatMap((sh, i): ClaudePart[] => [
+        { type: "text", text: `Sheet ${i + 1}: ${(sh.times[0] / 1000).toFixed(2)}s – ${(sh.times[sh.times.length - 1] / 1000).toFixed(2)}s` },
+        { type: "image64", data: sh.data, mediaType: "image/jpeg" },
+      ]),
+    ];
   }
   // «📎 مراجع»: the files attached to this message — pictures shown as they are, videos by a few of their moments
   const refIds = new Set(Array.isArray(b.refs) ? b.refs.filter((x): x is string => typeof x === "string").slice(0, 6) : []);
@@ -499,7 +515,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
   const requests = (answer.requests ?? [])
-    .filter((r) => ((r.kind === "motion_lab" || r.kind === "code_edit") && r.prompt.trim()) || (r.kind === "code_grade" && r.prompt.trim() && r.clipId.split(",").some((id) => tl.tracks.some((t) => t.clips.some((c) => c.id === id.trim())))) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => ((r.kind === "motion_lab" || r.kind === "code_edit") && r.prompt.trim()) || (r.kind === "code_grade" && r.prompt.trim() && r.clipId.split(",").some((id) => tl.tracks.some((t) => t.clips.some((c) => c.id === id.trim())))) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "watch" || r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
