@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
-import Markdown from "@/components/Markdown";
+import ReplyView from "../../ReplyView";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import StepCard from "../../StepCard";
@@ -224,7 +224,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
       {understanding && understanding.status === "approved" && (
         <details className="card p-4 text-sm">
           <summary className="cursor-pointer font-extrabold text-muted">فهم المخرج (اشتغل في الخلفية) — اعرضه أو عدّل عليه</summary>
-          <Markdown text={understanding.body} hideCode />
+          <ReplyView text={understanding.body} hideCode />
         </details>
       )}
 
@@ -244,7 +244,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
             <>
               <details className="text-sm">
                 <summary className="cursor-pointer font-extrabold text-muted">اعرض رسالة المخرج كاملة</summary>
-                <Markdown text={q.body} hideCode />
+                <ReplyView text={q.body} hideCode />
               </details>
               <QuestionsForm questions={q.data.questions ?? []} busy={busy || writing} onSubmit={(answers) => send({ action: "answers", versionId: q.id, answers })} />
             </>
@@ -319,6 +319,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
             onApprove={v.status === "awaiting_approval" ? () => send({ action: "approve", versionId: v.id }) : undefined}
             approveLabel="اعتمد وكمّل ✅"
             onSend={revise(v)}
+            foldExtra={<Link href={`${filmBase}/${projectId}/videos`} className="btn btn-primary min-h-9 px-4 text-sm">🎬 ولّد الفيديو</Link>}
             warning={v.status === "approved" ? `هذا التوليد معتمد. بعد التعديل يوصلك تحليل وبرومبت جديد تعتمده، وبعدها تولّد فيديو جديد من صفحة التوليد.${made ? " الفيديوهات اللي تولدت قبل تظل مثل ما هي." : ""}${affects(gid)}` : undefined}
           >
             <div className="flex flex-wrap gap-1 text-xs font-bold">

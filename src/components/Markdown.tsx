@@ -10,7 +10,7 @@ function inline(text: string): ReactNode[] {
 // What the assistant asks the user for: a section like «نقاط تحتاج توضيحًا» / «أسئلة…», or a line asking for «اعتمد» or a reply
 const REQUEST_HEADING = /توضيح|تحتاج|أسئلة|سؤال|قرار/;
 const REQUEST_LINE = /أنتظر|بانتظار|أرسل لي|أخبرني|اكتب «?"?اعتمد|يحتاج قرارك|اختر/;
-const RED = "rounded-xl border-s-4 border-red-500 bg-red-500/10 px-3 py-1 font-bold text-red-500";
+const RED = "md-ask";
 
 /**
  * Small, safe Markdown renderer for the assistants' replies (headings, lists, bold, ``` blocks).
@@ -51,7 +51,7 @@ export default function Markdown({ text, highlightRequests, hideCode }: { text: 
       flushList();
       const cls = h[1].length === 1 ? "display text-2xl pt-2" : h[1].length === 2 ? "text-xl font-extrabold pt-2" : "text-lg font-extrabold";
       inRequest = REQUEST_HEADING.test(h[2]);
-      out.push(<p key={i} className={`${cls} ${highlightRequests && inRequest ? "text-red-500" : ""}`}>{inline(h[2])}</p>);
+      out.push(<p key={i} className={`${cls} ${highlightRequests && inRequest ? "md-ask-h" : ""}`}>{inline(h[2])}</p>);
       continue;
     }
     const li = line.match(/^\s*[-*•]\s+(.*)$/);

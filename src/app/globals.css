@@ -140,6 +140,13 @@ body {
   .error-box {
     @apply rounded-2xl border border-red-300 bg-red-50 p-3 font-bold text-red-800;
   }
+  /* what an assistant asks the person for, in a reply: a calm callout, never alarm-red */
+  .md-ask {
+    @apply rounded-xl border-s-4 border-amber-400 bg-amber-50 px-3 py-1 text-amber-900;
+  }
+  .md-ask-h {
+    @apply text-amber-800;
+  }
   .gold-text {
     background: linear-gradient(180deg, var(--gold-2), var(--gold));
     -webkit-background-clip: text;

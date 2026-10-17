@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Markdown from "@/components/Markdown";
+import ReplyView from "./ReplyView";
 import ActionBar, { type SendMode } from "./ActionBar";
 import { STATUS_LABELS } from "@config/film";
 import { credits } from "@/lib/film/credits";
@@ -32,6 +33,7 @@ export default function StepCard({
   onSend,
   warning,
   noActions,
+  foldExtra,
   children,
 }: {
   title: string;
@@ -45,22 +47,38 @@ export default function StepCard({
   warning?: string;
   /** The card's actions live inside its children (the map: approval needs the per-item choices). */
   noActions?: boolean;
+  /** shown on the folded line of an approved step (e.g. where to go next) */
+  foldExtra?: ReactNode;
   children?: ReactNode;
 }) {
   const pending = v.status === "awaiting_approval";
+  // an approved step that is not the one being worked on folds to one line (its full text only when asked)
+  const [open, setOpen] = useState(false);
+  if (v.status === "approved" && !current && !open) {
+    return (
+      <article className="card flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+        <p className="font-extrabold">✅ {title} <span className="text-sm font-bold text-muted">· معتمد</span></p>
+        <span className="flex flex-wrap items-center gap-2">
+          {foldExtra}
+          <button type="button" className="btn btn-ghost min-h-9 px-4 text-sm" onClick={() => setOpen(true)}>اعرض أو عدّل</button>
+        </span>
+      </article>
+    );
+  }
   return (
-    <article className={`card space-y-3 p-5 ${pending ? "border-2 border-gold" : ""}`}>
+    <article className={`card space-y-3 p-5 ${pending ? "border-2 border-gold" : ""}`} data-reply-now={pending || undefined}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-extrabold">{title} <span className="text-sm text-muted">· النسخة {v.version}</span></h2>
+        {open && <button type="button" className="text-sm font-bold text-muted underline" onClick={() => setOpen(false)}>صغّره</button>}
         <span className="flex items-center gap-1.5">
           {typeof v.data.cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد">{credits(v.data.cost_usd, "claude")}</span>}
           <span className={`chip ${statusChip(v.status)}`}>{STATUS_LABELS[v.status]}</span>
         </span>
       </header>
       {!hideBody && (
-        <details open={pending || current}>
+        <details open={pending || current || open}>
           <summary className="cursor-pointer text-sm font-extrabold text-muted">اعرض النص</summary>
-          <Markdown text={v.body} highlightRequests={pending} hideCode />
+          <ReplyView text={v.body} highlightRequests={pending} hideCode />
           {v.data.notes && (
             <div className="mt-2 rounded-2xl bg-surface-2 p-3 text-sm">
               <p className="font-extrabold">ملاحظات</p>

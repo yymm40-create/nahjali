@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useCallback, useTransition } from "react";
 import { api, postJson } from "@/lib/fetch";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import Markdown from "@/components/Markdown";
+import ReplyView from "../../ReplyView";
 import Spinner from "@/components/Spinner";
 import QuestionsForm from "../../QuestionsForm";
 import ActionBar, { EditsLeftContext } from "../../ActionBar";
@@ -40,6 +41,8 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
   const refresh = useCallback(() => startRefresh(() => router.refresh()), [router]);
   const busy = sending || refreshing;
   const [error, setError] = useState("");
+  // approved steps fold to one line; these were opened by the person
+  const [unfolded, setUnfolded] = useState<string[]>([]);
 
   // While the screenwriter writes, poll until the job finishes, then reload the page data
   useEffect(() => {
@@ -125,8 +128,17 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
       {shown.map((v) => {
         const isCurrent = v.id === current?.id && v.status === "awaiting_approval";
         const older = versions.filter((x) => x.kind === v.kind && x.id !== v.id);
+        // done and not what is being worked on now: one line (the understanding is not shown again on a second round of questions)
+        if (!isCurrent && v.status === "approved" && !unfolded.includes(v.id)) {
+          return (
+            <article key={v.id} className="card flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+              <p className="font-extrabold">✅ {KIND_LABELS[v.kind]} <span className="text-sm font-bold text-muted">· {v.kind === "questions" ? "تمت الإجابة" : "معتمد"}</span></p>
+              <button type="button" className="btn btn-ghost min-h-9 px-4 text-sm" onClick={() => setUnfolded([...unfolded, v.id])}>اعرض أو عدّل</button>
+            </article>
+          );
+        }
         return (
-          <article key={v.id} className={`card space-y-3 p-5 ${isCurrent ? "border-2 border-gold" : ""}`}>
+          <article key={v.id} className={`card space-y-3 p-5 ${isCurrent ? "border-2 border-gold" : ""}`} data-reply-now={isCurrent || undefined}>
             <header className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-extrabold">
                 {KIND_LABELS[v.kind]} <span className="text-sm text-muted">· النسخة {v.version}</span>
@@ -146,7 +158,7 @@ export default function ScriptWorkspace({ projectId, hasStory, versions, job, st
             ) : (
               <details open={isCurrent} className="group">
                 <summary className="cursor-pointer text-sm font-extrabold text-muted group-open:hidden">اعرض النص</summary>
-                <Markdown text={v.body} highlightRequests={isCurrent} />
+                <ReplyView text={v.body} highlightRequests={isCurrent} />
                 {v.kind === "questions" && v.data.answers && (
                   <div className="mt-3 rounded-2xl bg-surface-2 p-3 text-sm font-bold">
                     <p className="mb-1">إجاباتك:</p>

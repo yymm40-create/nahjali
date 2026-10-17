@@ -43,11 +43,17 @@ export default function StepWhy({ step, sajjad = true }: { step: string; sajjad?
   }
   return (
     <aside className="space-y-2 rounded-2xl border border-[#e2a72c]/50 bg-white/80 p-3 text-sm leading-7" aria-label={`ليش خطوة ${w.title}`}>
-      <p className="font-black">💡 ليش خطوة «{w.title}»؟</p>
-      <p><b>ليش:</b> {w.why}</p>
-      <p><b>وش تطلّع:</b> {w.gives}</p>
-      <p><b>وش تسوي هنا:</b> {w.doHere}</p>
-      <p className="text-muted"><b>بعدها:</b> {w.next}</p>
+      <p className="font-black">💡 خطوة «{w.title}»</p>
+      {/* what to do here first, in one line; the why and what comes after only when asked */}
+      <p className="text-base leading-8"><b>وش تسوي هنا:</b> {w.doHere}</p>
+      <details>
+        <summary className="cursor-pointer text-xs font-extrabold text-muted">ليش هالخطوة ووش بعدها؟</summary>
+        <div className="space-y-1 pt-1">
+          <p><b>ليش:</b> {w.why}</p>
+          <p><b>وش تطلّع:</b> {w.gives}</p>
+          <p className="text-muted"><b>بعدها:</b> {w.next}</p>
+        </div>
+      </details>
       <div className="flex flex-wrap gap-2 pt-1">
         <button type="button" className="btn btn-ghost min-h-8 px-3 text-xs" onClick={() => remember(false)}>فهمت ✓</button>
         {sajjad && (
