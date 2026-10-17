@@ -26,6 +26,7 @@ import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, sli
 import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 import { capSlides } from "./draw";
+import { asDesigned, deckContent, deckFiles, deckSlideUsd, deckStep, deckTodo, deckUsd, redesignSlide } from "./deck-make";
 import { capacityOf, compactionLine } from "./capacity";
 import { mapFinalStep, mapFinalUsd, mapPlanStep, mapPlanUsd } from "./mindmap-make";
 
@@ -120,6 +121,12 @@ export async function estimate(userId: string, o: Output, action: string, chapte
     list.slice(0, only ?? list.length).filter((x) => x.image.mode === "generate" && !x.image.path).length * IMAGE_USD;
   if (o.kind === "slides") {
     const p = plan as SlidePlan;
+    // designed by صادق: the slides still to design (and their check), plus their pictures
+    if (asDesigned(o)) {
+      if (action === "revise") return chapter >= 0 ? deckSlideUsd() : deckUsd(p.slides.length);
+      const limit = action === "trial" ? 3 : undefined;
+      return deckUsd(deckTodo(o, p, designOf(o), limit)) + (action === "trial" ? imgs(p.slides, 3) : imgs(p.slides));
+    }
     if (asPictures(o)) {
       const per = slideImageUsd(pictureQuality(o));
       if (action === "revise") return per;
@@ -548,6 +555,23 @@ async function trialStep(job: Job): Promise<StepResult> {
     await saveOutput(o.id, { status: "trial_review", trial: { pictures: true }, files }, { kind: "trial", snapshot: { files: [pdfPath] }, userId: o.user_id });
     return { done: true, stage: "النسخة التجريبية جاهزة" };
   }
+  if (o.kind === "slides" && asDesigned(o)) {
+    const plan = o.plan as SlidePlan;
+    const img = await nextImage(o, c, plan.slides, 3);
+    if (img) {
+      await saveOutput(o.id, { plan });
+      return { done: false, usd: img.usd, stage: `صورة الشريحة ${img.k + 1}` };
+    }
+    const step = await deckStep(o, plan, designOf(o), 3);
+    if (step) return step;
+    const fresh = await getOutput(job.user_id, o.id);
+    const { deck } = deckContent(fresh, plan, designOf(o));
+    const r = await deckFiles(fresh, deck, 3);
+    const files: Record<string, string> = { ...fresh.files, trial_pdf: r.pdfPath };
+    delete files.trial_pptx;
+    await saveOutput(o.id, { status: "trial_review", trial: { designed: true }, files }, { kind: "trial", snapshot: { files: [r.pdfPath] }, userId: o.user_id });
+    return { done: true, stage: "النسخة التجريبية جاهزة" };
+  }
   if (o.kind === "slides") {
     const plan = o.plan as SlidePlan;
     const img = await nextImage(o, c, plan.slides, 3);
@@ -733,6 +757,24 @@ async function finalStep(job: Job): Promise<StepResult> {
     await putFile(pptxPath, await picturesPptx(plan, paths), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
     await saveOutput(o.id, { status: "review", content: { pictures: true, overflow: [] }, files: { ...o.files, pdf: pdfPath, pptx: pptxPath } }, { kind: job.kind === "revise" ? "revision" : "final", snapshot: { plan, files: [pdfPath, pptxPath] }, userId: o.user_id });
     return { done: true, stage: "العرض جاهز" };
+  }
+  if (o.kind === "slides" && asDesigned(o)) {
+    const plan = o.plan as SlidePlan;
+    const design = designOf(o);
+    // «عدّل» on one slide (from the editor or the request box): that slide designed again, then checked
+    if (job.kind === "revise" && Number(job.input.chapter) >= 0 && !job.progress.redesigned) return redesignSlide(o, plan, design, Number(job.input.chapter), String(job.input.note ?? ""));
+    const img = await nextImage(o, c, plan.slides);
+    if (img) {
+      await saveOutput(o.id, { plan });
+      return { done: false, usd: img.usd, stage: `صورة الشريحة ${img.k + 1}` };
+    }
+    const step = await deckStep(o, plan, design);
+    if (step) return { ...step, progress: { ...job.progress, ...(step.progress ?? {}) } };
+    const fresh = await getOutput(job.user_id, o.id);
+    const dc = deckContent(fresh, plan, design);
+    const r = await deckFiles(fresh, dc.deck);
+    await saveOutput(o.id, { status: "review", content: { ...dc, unchecked: [] }, files: { ...fresh.files, pdf: r.pdfPath, pptx: r.pptxPath } }, { kind: job.kind === "revise" ? "revision" : "final", snapshot: { files: [r.pdfPath, r.pptxPath] }, userId: o.user_id });
+    return { done: true, stage: "العرض جاهز: افتح «🎨 محرر العرض» لتعدّله وتعرضه" };
   }
   if (o.kind === "slides") {
     const plan = o.plan as SlidePlan;

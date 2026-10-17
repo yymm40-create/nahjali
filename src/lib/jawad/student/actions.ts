@@ -19,6 +19,7 @@ import { passage as quranPassage } from "@/lib/khateeb/quran";
 import { clampMap, type MindPlan } from "./mindmap";
 import { mapImageUsd } from "./mindmap-make";
 import { estimate } from "./outputs";
+import { deckAction } from "./deck-actions";
 import { PICTURE_KINDS, pageUsd, picturesPlan } from "./pictures";
 import { chosenPages, drawNote } from "./draw";
 import { slideImageUsd } from "./slide-images";
@@ -658,6 +659,8 @@ export async function outputAction(user: User, id: string, b: Body) {
   const run = (kind: string, usd: number, input: Record<string, unknown> = {}, stage?: string, status?: string, extra: Record<string, unknown> = {}, note?: string) =>
     paid(user, b, { projectId: p.id, outputId: o.id, kind, usd, input, stage, note, started: status ? () => saveOutput(o.id, { ...extra, status, error: null }) : undefined });
 
+  // «🎨 محرر العرض»: the designed deck (read, saved, a picture added, exported)
+  if (typeof b.action === "string" && b.action.startsWith("deck_")) return deckAction(user.id, o.id, b);
   switch (b.action) {
     // «محادثة مع صادق»: one message, answered now (paid by its real use, like every robot's turn)
     case "chat": {
@@ -842,12 +845,18 @@ export async function outputAction(user: User, id: string, b: Body) {
       if (o.kind === "mindmap" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
         return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الخريطة من جديد", "running", { requests, approved: false });
       }
+      // slides designed by صادق: one slide designed again with the request (the editor's «🤖 اطلب من صادق»)
+      if (o.kind === "slides" && o.settings.render === "design" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
+        return run("revise", await estimate(user.id, o, "revise", Number(b.chapter)), { note, chapter: Number(b.chapter), requestKind: kind }, "تعديل الشريحة", "running", { requests, approved: false });
+      }
       // slides made as pictures: one slide is drawn again with the request
       if (o.kind === "slides" && o.settings.render === "image" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
         return run("revise", await estimate(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الشريحة من جديد", "running", { requests, approved: false });
       }
       // slides / audio: the change goes into the plan (slide map / reading text), which is approved again
-      return run("plan", await estimate(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning", { requests, approved: false });
+      // a deck changed by hand follows the new map again (its hand-edited slides stay as they are)
+      const remap = o.kind === "slides" && o.settings.render === "design" && o.content ? { content: { ...(o.content as Record<string, unknown>), manual: false } } : {};
+      return run("plan", await estimate(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning", { requests, approved: false, ...remap });
     }
     // «خطبة المنبر»: the text is written and shown FIRST; its PDF and Word file are made only after the preacher approves it
     case "sermon_files": {

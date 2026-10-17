@@ -40,7 +40,7 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
     case "slides": {
       const n = Math.max(0, Math.round(Number(s.count) || 0));
       out.push(n ? `${n} شريحة` : "عدد الشرائح حسب المادة");
-      out.push(s.render === "image" ? "تُرسم صورًا" : "شرائح قابلة للتعديل");
+      out.push(s.render === "image" ? "تُرسم صورًا" : s.render === "design" ? "يصممها صادق + محرر وعرض" : "شرائح قابلة للتعديل");
       if (NOTES[str(s.notesMode)]) out.push(NOTES[str(s.notesMode)]);
       out.push(s.aspect === "4:3" ? "4:3" : "عريض 16:9");
       break;
