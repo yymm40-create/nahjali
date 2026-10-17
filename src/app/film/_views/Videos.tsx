@@ -101,6 +101,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
           download: links[v.id]?.download ?? "",
           note: typeof v.meta?.montage_note === "string" ? (v.meta.montage_note as string) : "",
           edited: Boolean(v.meta?.edited),
+          lipsync: Boolean(v.meta?.lipsync),
         }))}
         videosRunning={videosRunning}
         job={job ? { status: job.status, error: job.error } : null}
