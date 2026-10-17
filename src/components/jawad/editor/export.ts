@@ -10,13 +10,12 @@ import {
   BufferTarget,
   CanvasSink,
   CanvasSource,
-  getFirstEncodableAudioCodec,
+  canEncodeAudio,
   canEncodeVideo,
   getFirstEncodableVideoCodec,
   Input,
   Mp4OutputFormat,
   Output,
-  QUALITY_HIGH,
   UrlSource,
   type WrappedCanvas,
 } from "mediabunny";
@@ -24,7 +23,7 @@ import { wantedEncode } from "./perf-bench";
 import type { HwHint } from "@/lib/editor/perf";
 import { clipEnd, duration, gainAt, hasSoundFx, sourceTime, voiceSpans, type Clip, type Timeline, type Track } from "@/lib/editor/model";
 import { drawFrame, layersAt, setExporting, type Frame } from "./render";
-import type { ExportPlan } from "@/lib/editor/export-plan";
+import { soundLadder, type ExportPlan } from "@/lib/editor/export-plan";
 import { stretch } from "./stretch";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
@@ -105,7 +104,8 @@ export async function exportVideo(
   const hasSound = (c: Clip) => !c.text && !!c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio;
   const audible: { track: Track; c: Clip }[] = tl.tracks.flatMap((track) => (track.muted || opts.mute ? [] : track.clips.filter((c) => c.volume > 0 && hasSound(c)).map((c) => ({ track, c }))));
   const spans = voiceSpans(tl, hasSound);
-  const audioCodec = audible.length ? await soundCodec() : null;
+  const sound = audible.length ? await soundCodec(plan.audioBitrate) : null;
+  const audioCodec = sound?.codec ?? null;
   if (audioOnly && !audioCodec) throw new ExportError(audible.length ? "متصفحك ما يقدر يحفظ الصوت. جرّب Chrome أو Edge على الكمبيوتر." : "ما فيه صوت في هذي المنطقة تصدّره.");
 
   const canvas = document.createElement("canvas");
@@ -115,7 +115,7 @@ export async function exportVideo(
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
   const video = audioOnly ? null : new CanvasSource(canvas, { codec: videoCodec!, bitrate: plan.bitrate, keyFrameInterval: 2, hardwareAcceleration: hw });
   if (video) output.addVideoTrack(video, { frameRate: fps });
-  const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: plan.audioBitrate }) : null;
+  const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: sound!.bitrate }) : null;
   if (audio) output.addAudioTrack(audio);
 
   // one decoder input per file, opened lazily
@@ -341,12 +341,20 @@ export async function exportVideo(
 let aacReady: Promise<void> | null = null;
 
 /**
- * The sound's codec: the browser's own AAC (or Opus) encoder when it has one, else an AAC encoder that runs in the
- * page (FFmpeg's, as WebAssembly: Safari on iPhone, for one, has none of its own), so the file never comes out silent.
+ * The sound's codec AND bitrate: the browser's own AAC (or Opus) encoder at the best bitrate it accepts, else an AAC
+ * encoder that runs in the page (FFmpeg's, as WebAssembly: Safari on iPhone, for one, has none of its own), so the
+ * file never comes out silent. Each pair is checked as it will be used — Windows' own AAC encoder takes nothing above
+ * 192 kb/s and some phones none at 320, so asking at the export's top bitrate alone failed there.
  */
-async function soundCodec() {
-  const opts = { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality: QUALITY_HIGH };
-  const native = "AudioEncoder" in window ? await getFirstEncodableAudioCodec(["aac", "opus"], opts).catch(() => null) : null;
+async function soundCodec(want: number): Promise<{ codec: "aac" | "opus"; bitrate: number } | null> {
+  const ladder = soundLadder(want);
+  const first = async (codecs: ("aac" | "opus")[]) => {
+    for (const codec of codecs)
+      for (const bitrate of ladder)
+        if (await canEncodeAudio(codec, { numberOfChannels: 2, sampleRate: SAMPLE_RATE, bitrate }).catch(() => false)) return { codec, bitrate };
+    return null;
+  };
+  const native = "AudioEncoder" in window ? await first(["aac", "opus"]) : null;
   if (native) return native;
   aacReady ??= import("@mediabunny/aac-encoder").then((m) => m.registerAacEncoder());
   try {
@@ -355,7 +363,7 @@ async function soundCodec() {
     aacReady = null;
     return null;
   }
-  return (await getFirstEncodableAudioCodec(["aac"], opts).catch(() => null)) ?? null;
+  return first(["aac"]);
 }
 
 /** Saves the file on the device. */

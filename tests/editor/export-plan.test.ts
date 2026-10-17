@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  soundLadder,
   AUDIO_BITRATE,
   BITRATE_MAX,
   BITRATE_MIN,
@@ -143,5 +145,19 @@ describe("which file the export matches", () => {
   it("is nothing when the timeline has no video", () => {
     const only = applyAll(wide, [{ type: "add_clip", assetId: "pic" }], infos).timeline;
     expect(sourceFromTimeline(only, assets)).toBeNull();
+  });
+});
+
+describe("الصوت يتصدّر على كل جهاز (ويندوز والجوال)", () => {
+  it("steps the sound down until the device's encoder takes it (Windows' AAC stops at 192 kb/s)", () => {
+    expect(soundLadder(320_000)).toEqual([320_000, 256_000, 192_000, 160_000, 128_000, 96_000]);
+    expect(soundLadder(192_000)).toEqual([192_000, 160_000, 128_000, 96_000]);
+    expect(soundLadder(96_000)).toEqual([96_000]);
+  });
+  it("checks each codec at the very bitrate it will encode with, and encodes with the one found", () => {
+    const src = readFileSync("src/components/jawad/editor/export.ts", "utf8");
+    expect(src).toContain("canEncodeAudio(codec, { numberOfChannels: 2, sampleRate: SAMPLE_RATE, bitrate })");
+    expect(src).toContain("new AudioBufferSource({ codec: audioCodec, bitrate: sound!.bitrate })");
+    expect(src).not.toContain("bitrate: plan.audioBitrate })");
   });
 });
