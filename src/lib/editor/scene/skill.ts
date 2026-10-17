@@ -5,6 +5,7 @@
 
 import { SFX_LIBRARY } from "@config/jawad/sfx-library";
 import { SCENE_KIT_API } from "./kit";
+import { SOUND_KIT_API } from "./sound-kit";
 
 /** The director's score sheet: every criterion 1–10; the piece ships only when every one is ≥ PASS. */
 export const RUBRIC = [
@@ -17,7 +18,7 @@ export const RUBRIC = [
   { id: "type", ar: "الخط", en: "Typography: ≤ 2 families, weight and size contrast, one idea ≤ 7 words per card, held ≥ 1.5 s, inside the safe zone, readable on a phone; Arabic whole words, right to left" },
   { id: "color", ar: "الألوان", en: "Colour discipline: 3–5 colours, ONE accent used sparingly, near-black / off-white instead of pure #000/#fff" },
   { id: "variety", ar: "التنوّع", en: "Something new every 0.8–2 s; no two beats arrive the same way; transitions motivated (a shape carries into the next shot), never preset wipes" },
-  { id: "sound", ar: "الصوت", en: "Sound cues on the frames that change: whoosh 10–20 ms ahead, impact on the landing frame, riser cresting on the reveal; ~1 accent per 1–2 s; not on every move" },
+  { id: "sound", ar: "الصوت", en: "Sound (read the program's sound() and cues against the frames — you cannot hear it): whoosh peaking on the move, impact on the landing frame, riser cresting on the reveal; ~1 accent per 1–2 s; not on every move; with a voice, the big accents in the gaps between lines and the visuals landing on the words" },
   { id: "wow", ar: "الانبهار", en: "The million-dollar test: would a viewer believe a top studio was paid for it? At least one moment nobody has seen in a template" },
   { id: "clean", ar: "النظافة", en: "Technically clean: no overlap of texts, no pops or flicker, nothing cut by the frame, a held ending (≥ 2 s) or a seamless loop" },
 ] as const;
@@ -40,6 +41,7 @@ scene({
   cues: [ { t: 0.0, sfx: "transition-whoosh-fast" }, { t: 1.2, sfx: "hit-bass-hit", vol: 0.8 } ], // sound on the frames that change
   setup(K, ctx) { /* once: sample particles, measure text, build three.js scenes. May be async. */ },
   draw(K, t, ctx) { /* the frame at time t (seconds). Pure: depends only on t and what setup built. */ },
+  sound(K, S) { /* the soundtrack, made in code, timed to your own frames (see THE SOUND below) */ },
 });
 
 HARD RULES OF THE MACHINE
@@ -53,7 +55,9 @@ HARD RULES OF THE MACHINE
 - Errors: wrap nothing silently; a bug must throw so you see it in the next round.
 - cues: only ids from this list: ${CUE_SFX.join(", ")}.
 
-${SCENE_KIT_API}`;
+${SCENE_KIT_API}
+
+${SOUND_KIT_API}`;
 
 export const MILLION_DOLLAR = `THE OWNER'S BAR — «لو حطيت المقطع، الشخص يفكر مصروف عليه ملايين»: a viewer must believe millions were spent on it. Not a pleasant template: a studio piece. Aim there on every shot.
 

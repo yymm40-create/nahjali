@@ -12,6 +12,8 @@ export interface SceneInfo {
   blur: number;
   bpm: number;
   title: string;
+  /** the scene writes its own soundtrack in code (sound(K, S)) */
+  sound?: boolean;
 }
 export interface SceneFont {
   role: string;
@@ -62,6 +64,7 @@ export class SceneHost {
   private booted: Promise<void>;
   private waits = new Map<number, { ok: (v: ImageBitmap) => void; no: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private loading: { ok: (v: SceneInfo) => void; no: (e: Error) => void } | null = null;
+  private sounds = new Map<number, { ok: (v: { L: Float32Array; R: Float32Array } | null) => void; no: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private seq = 0;
   private listener: (e: MessageEvent) => void;
   w = 0;
@@ -78,10 +81,19 @@ export class SceneHost {
     this.booted = new Promise((r) => (boot = r));
     this.listener = (e: MessageEvent) => {
       if (e.source !== el.contentWindow) return;
-      const m = (e.data ?? {}) as { type?: string; id?: number; bitmap?: ImageBitmap; message?: string; where?: string; t?: number; stack?: string } & Partial<SceneInfo>;
+      const m = (e.data ?? {}) as { type?: string; id?: number; bitmap?: ImageBitmap; message?: string; where?: string; t?: number; stack?: string; none?: boolean; L?: Float32Array; R?: Float32Array } & Omit<Partial<SceneInfo>, "sound"> & { sound?: boolean };
+      if (m.type === "sound" && m.id !== undefined) {
+        const w = this.sounds.get(m.id);
+        if (w) {
+          clearTimeout(w.timer);
+          this.sounds.delete(m.id);
+          w.ok(m.none || !m.L || !m.R ? null : { L: m.L, R: m.R });
+        }
+        return;
+      }
       if (m.type === "boot") return boot();
       if (m.type === "ready" && this.loading) {
-        this.loading.ok({ duration: Number(m.duration) || 0, cues: m.cues ?? [], blur: Number(m.blur) || 0, bpm: Number(m.bpm) || 0, title: String(m.title ?? "") });
+        this.loading.ok({ duration: Number(m.duration) || 0, cues: m.cues ?? [], blur: Number(m.blur) || 0, bpm: Number(m.bpm) || 0, title: String(m.title ?? ""), sound: Boolean(m.sound) });
         this.loading = null;
         return;
       }
@@ -96,7 +108,12 @@ export class SceneHost {
       }
       if (m.type === "error") {
         const err = new SceneError(String(m.message ?? "خطأ في المشهد"), String(m.where ?? ""), m.t, String(m.stack ?? ""));
-        if (m.id !== undefined && this.waits.has(m.id)) {
+        if (m.id !== undefined && this.sounds.has(m.id)) {
+          const w = this.sounds.get(m.id)!;
+          clearTimeout(w.timer);
+          this.sounds.delete(m.id);
+          w.no(err);
+        } else if (m.id !== undefined && this.waits.has(m.id)) {
           const w = this.waits.get(m.id)!;
           clearTimeout(w.timer);
           this.waits.delete(m.id);
@@ -123,7 +140,7 @@ export class SceneHost {
   }
 
   /** Loads a program (its pictures as bitmaps, its fonts by URL); resolves with what the scene says about itself. */
-  async load(code: string, o: { w: number; h: number; fps?: number; assets?: { id: string; bitmap: ImageBitmap }[]; fonts?: SceneFont[] }): Promise<SceneInfo> {
+  async load(code: string, o: { w: number; h: number; fps?: number; assets?: { id: string; bitmap: ImageBitmap }[]; fonts?: SceneFont[]; voice?: { text: string; from: number; to: number }[] }): Promise<SceneInfo> {
     await this.booted;
     this.w = o.w;
     this.h = o.h;
@@ -138,7 +155,7 @@ export class SceneHost {
       this.loading = { ok: (v) => (clearTimeout(timer), ok(v)), no: (e) => (clearTimeout(timer), no(e)) };
       // the bitmaps are copied (not transferred): the host keeps them for the next load
       void hfLibs(code)
-        .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs }))
+        .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs, voice: o.voice ?? [] }))
         .catch((e) => this.loading?.no(new SceneError(`ما قدرت أحمّل أدوات مهارة Higgsfield (${e instanceof Error ? e.message : e}).`, "load")));
     });
   }
@@ -156,10 +173,25 @@ export class SceneHost {
     });
   }
 
+  /** The soundtrack the scene writes in code (48 kHz stereo), or null when it writes none. */
+  sound(rate = 48000): Promise<{ L: Float32Array; R: Float32Array } | null> {
+    const id = ++this.seq;
+    return new Promise((ok, no) => {
+      const timer = setTimeout(() => {
+        this.sounds.delete(id);
+        no(new SceneError("صوت المشهد أخذ أكثر من دقيقة.", "sound"));
+      }, 60_000);
+      this.sounds.set(id, { ok, no, timer });
+      this.post({ type: "sound", id, rate });
+    });
+  }
+
   destroy() {
     window.removeEventListener("message", this.listener);
     for (const w of this.waits.values()) clearTimeout(w.timer);
     this.waits.clear();
+    for (const w of this.sounds.values()) clearTimeout(w.timer);
+    this.sounds.clear();
     this.frameEl.remove();
   }
 }

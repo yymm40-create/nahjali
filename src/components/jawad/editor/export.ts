@@ -346,7 +346,7 @@ let aacReady: Promise<void> | null = null;
  * file never comes out silent. Each pair is checked as it will be used — Windows' own AAC encoder takes nothing above
  * 192 kb/s and some phones none at 320, so asking at the export's top bitrate alone failed there.
  */
-async function soundCodec(want: number): Promise<{ codec: "aac" | "opus"; bitrate: number } | null> {
+export async function soundCodec(want: number): Promise<{ codec: "aac" | "opus"; bitrate: number } | null> {
   const ladder = soundLadder(want);
   const first = async (codecs: ("aac" | "opus")[]) => {
     for (const codec of codecs)

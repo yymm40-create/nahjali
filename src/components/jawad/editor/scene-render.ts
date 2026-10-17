@@ -2,7 +2,8 @@
 // bug before حيدرة reviews it), contact sheets and stills for his review, and the final MP4 (WebCodecs through
 // Mediabunny, the same encoder as the export, with motion blur from sub-frames).
 
-import { BufferTarget, CanvasSource, canEncodeVideo, getFirstEncodableVideoCodec, Mp4OutputFormat, Output, WebMOutputFormat } from "mediabunny";
+import { AudioBufferSource, BufferTarget, CanvasSource, canEncodeVideo, getFirstEncodableVideoCodec, Mp4OutputFormat, Output, WebMOutputFormat } from "mediabunny";
+import { soundCodec } from "./export";
 import { wantedEncode } from "./perf-bench";
 import { SceneError, type SceneHost } from "./scene-host";
 
@@ -90,7 +91,15 @@ export async function frameCost(host: SceneHost, duration: number, sub: number, 
  * sub-frames each one averages — the lab lowers it when the measured cost says the render would take too long.
  * `onProgress` is told the share done, the frame reached and how many there are, so the wait is never silent.
  */
-export async function renderVideo(host: SceneHost, o: { duration: number; fps: number; blur: number; sub?: number; /** خلفية شفافة: WebM (VP9) بقناة ألفا بدل MP4 */ transparent?: boolean }, onProgress: (p: number, frame: number, frames: number) => void, signal?: AbortSignal): Promise<Blob> {
+/** One second (or the rest) of a buffer, as its own buffer (the sound is muxed alongside the frames, a second at a time). */
+function sliceOf(buf: AudioBuffer, from: number, to: number): AudioBuffer {
+  const a = Math.round(from * buf.sampleRate), b = Math.min(buf.length, Math.round(to * buf.sampleRate));
+  const out = new AudioBuffer({ length: Math.max(1, b - a), numberOfChannels: buf.numberOfChannels, sampleRate: buf.sampleRate });
+  for (let c = 0; c < buf.numberOfChannels; c++) out.copyToChannel(buf.getChannelData(c).subarray(a, Math.max(a + 1, b)), c);
+  return out;
+}
+
+export async function renderVideo(host: SceneHost, o: { duration: number; fps: number; blur: number; sub?: number; /** خلفية شفافة: WebM (VP9) بقناة ألفا بدل MP4 */ transparent?: boolean; /** the piece's mixed sound, muxed into the file */ audio?: AudioBuffer | null }, onProgress: (p: number, frame: number, frames: number) => void, signal?: AbortSignal): Promise<Blob> {
   const w = host.w - (host.w % 2), h = host.h - (host.h % 2);
   const bitrate = Math.round(w * h * o.fps * 0.16);
   // transparent: only VP9 keeps an alpha channel in a browser encoder, muxed into WebM (MP4/H.264 has no alpha)
@@ -104,6 +113,11 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
   const output = new Output({ format: o.transparent ? new WebMOutputFormat() : new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
   const source = new CanvasSource(canvas as unknown as HTMLCanvasElement, { codec, bitrate, keyFrameInterval: 2, hardwareAcceleration: hw, alpha: o.transparent ? "keep" : "discard" });
   output.addVideoTrack(source, { frameRate: o.fps });
+  // the sound goes INTO the film (AAC / Opus — FFmpeg's AAC in the page when the browser has no encoder of its own)
+  const aCodec = o.audio ? (o.transparent ? { codec: "opus" as const, bitrate: 160_000 } : await soundCodec(192_000)) : null;
+  const sound = o.audio && aCodec ? new AudioBufferSource({ codec: aCodec.codec, bitrate: aCodec.bitrate }) : null;
+  if (sound) output.addAudioTrack(sound);
+  let soundAt = 0;
   await output.start();
   const frames = Math.max(1, Math.round(o.duration * o.fps));
   const sub = Math.max(1, Math.round(o.sub ?? (o.blur > 0 ? 6 : 1)));
@@ -116,9 +130,15 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
     ctx.drawImage(bm, 0, 0, w, h);
     bm.close();
     await source.add(t, 1 / o.fps);
+    if (sound && o.audio && (t + 1 / o.fps >= soundAt + 1 || i === frames - 1)) {
+      const to = i === frames - 1 ? o.audio.duration : soundAt + 1;
+      if (to > soundAt) await sound.add(sliceOf(o.audio, soundAt, to));
+      soundAt = to;
+    }
     if (i % 5 === 0 || i === frames - 1) onProgress(i / frames, i, frames);
   }
   source.close();
+  sound?.close();
   await output.finalize();
   onProgress(1, frames, frames);
   return new Blob([(output.target as BufferTarget).buffer!], { type: o.transparent ? "video/webm" : "video/mp4" });

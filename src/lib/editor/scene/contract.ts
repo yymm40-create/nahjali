@@ -82,6 +82,8 @@ export interface LabPlan {
   skillRefs: string[];
   /** the person's picks from the lab's gallery (look, structure, connections, feel, pace, camera, type, finish, ending) — binding */
   choices: LabChoices;
+  /** «🎙️ بصوتي»: the lines the person will record, with the seconds planned for each (empty: no voice) */
+  narration: { text: string; from: number; to: number }[];
 }
 
 /** The fonts the lab can load (the catalogue's Arabic families; display first). */
@@ -114,6 +116,10 @@ export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [])
     music: str(o.music, 400),
     skillRefs: (Array.isArray(o.skillRefs) ? o.skillRefs : []).map((v) => String(v ?? "").trim()).filter((v) => /^higgsfield-motion(-saas)?\/[\w./#-]+$/.test(v)).slice(0, 12),
     choices: readChoices(o.choices),
+    narration: (Array.isArray(o.narration) ? o.narration : []).slice(0, 30).map((x) => {
+      const n = (x ?? {}) as Record<string, unknown>;
+      return { text: str(n.text, 300), from: num(n.from, 0, secs, 0), to: num(n.to, 0, secs, secs) };
+    }).filter((n) => n.text),
   };
 }
 
