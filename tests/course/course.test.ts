@@ -171,12 +171,20 @@ describe("phone numbers, WhatsApp, count down and the video", () => {
 });
 
 describe("what the course sells", () => {
-  it("promises the strongest film at the lowest price, two days of film and a third of training", () => {
-    expect(DEFAULT_SETTINGS.headline).toContain("اصنع فيلمك الأقوى");
+  it("promises your cinematic film from the idea to the last scene, over three days that follow the film's steps", () => {
+    // since «Fix course access promises and cinematic ad» (f797ba5): the headline and the three dated days
+    expect(DEFAULT_SETTINGS.headline).toContain("اصنع فيلمك السينمائي");
+    expect(DEFAULT_SETTINGS.headline).toContain("المشهد النهائي");
+    const [d1, d2, d3] = DEFAULT_SETTINGS.days;
     expect(DEFAULT_SETTINGS.days).toHaveLength(3);
-    expect(DEFAULT_SETTINGS.days[0].title).toContain("الفيلم السينمائي");
-    expect(DEFAULT_SETTINGS.days[1].title).toContain("الفيلم السينمائي");
-    expect(DEFAULT_SETTINGS.days[2].title).toContain("تدريب");
+    expect(d1.title).toContain("الخميس ١٥ أكتوبر");
+    expect(d1.title).toContain("السيناريو");
+    expect(d2.title).toContain("الجمعة ١٦ أكتوبر");
+    expect(d2.title).toContain("اللقطات");
+    expect(d3.title).toContain("السبت ١٧ أكتوبر");
+    expect(d3.title).toContain("الفيلم النهائي");
+    // the third day ends in hands-on practice
+    expect(d3.points.join(" ")).toContain("تطبيق عملي");
   });
 
   it("gives way to today's words when storage still holds the old defaults, and keeps the owner's own", () => {
