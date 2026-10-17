@@ -25,20 +25,21 @@ describe("the balance packages", () => {
     expect(c.price - b.price).toBeLessThan(b.price * 0.3);
     expect(bonusPct(c)).toBeGreaterThan(bonusPct(b) + 10);
   });
-  it("«المشهد السينمائي» covers one 15-second Seedance 2.0 scene at 720p with a redo, 4 sheets and the robots' replies, at the owner's margins", () => {
-    const video = coinsFor(videoEstimateUsd("seedance-2.0", "720p", 15) * 2, "video");
-    const pictures = coinsFor(6 * 0.4 + 2 * 0.07, "image");
-    const robots = claudeHalalas(4 * 0.6) + claudeHalalas(5 * 0.8) + claudeHalalas(3 * 1.0) + claudeHalalas(0.3);
+  it("«المشهد السينمائي» covers one 15-second Seedance 2.0 scene at 480p in one take, 4 sheets and one reply from each robot, at the owner's margins", () => {
+    const video = coinsFor(videoEstimateUsd("seedance-2.0", "480p", 15), "video");
+    const pictures = coinsFor(4 * 0.4, "image");
+    const robots = claudeHalalas(0.6) + claudeHalalas(0.8) + claudeHalalas(1.0) + claudeHalalas(0.3);
     const total = video + pictures + robots;
     expect(SCENE_PACK_SAR * 100).toBeGreaterThanOrEqual(total);
     expect(SCENE_PACK_SAR * 100 - total).toBeLessThan(100);
-    expect(SCENE_PACK_SAR).toBe(81);
+    expect(SCENE_PACK_SAR).toBe(28);
+    expect(SCENE_PACK_SAR).toBeLessThanOrEqual(50);
   });
   it("say what each package makes (pictures, 5-second videos, scenes), each on its own", () => {
     const u = { image: 100, video5: 450, scene: SCENE_PACK_SAR * 100 };
     expect(packYield(10, u)).toEqual({ images: 10, videos: 2, scenes: 0 });
-    expect(packYield(SCENE_PACK_SAR, u)).toEqual({ images: 81, videos: 18, scenes: 1 });
-    expect(packYield(660, u).scenes).toBe(8);
+    expect(packYield(SCENE_PACK_SAR, u)).toEqual({ images: 28, videos: 6, scenes: 1 });
+    expect(packYield(660, u).scenes).toBe(23);
     expect(packYield(10, { image: 0, video5: 0, scene: 0 })).toEqual({ images: 0, videos: 0, scenes: 0 });
   });
   it("never give so much extra that the balance sells under cost (the site's margin is ~30%)", () => {

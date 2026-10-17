@@ -33,12 +33,12 @@ export interface CreditSettings {
 
 /**
  * «المشهد السينمائي» (owner, 17 October 2026): the balance one cinematic scene costs, end to end, at the owner's
- * margins (videos 40٪, pictures 60٪, Claude its real cost + 10٪) — Seedance 2.0 at its 15-second limit in 720p with
- * one redo (2 takes, ¤24.50), 4 sheets with 2 redraws and 2 style tests (¤16), and the robots' replies at what the film
- * code reserves for each (screenwriter 4, sheet maker 5, director 3, small helpers: ¤40.02) = ¤80.52, rounded up to the
- * whole riyal. (480p would be ¤67.52, 1080p ¤115.52.) The trial is ¤10 (the ¤19 one is gone).
+ * margins (videos 40٪, pictures 60٪, Claude its real cost + 10٪) — the owner's basis: Seedance 2.0 at its 15-second
+ * limit in 480p, ONE take (¤6), 4 sheets with no redraws (¤10), and ONE reply each from the screenwriter, the sheet
+ * maker and the director plus the small helpers, at what the film code reserves for each (¤11.15) = ¤27.15, rounded
+ * up to the whole riyal (the owner's cap: never above ¤50). The trial is ¤10 (the ¤19 one is gone).
  */
-export const SCENE_PACK_SAR = 81;
+export const SCENE_PACK_SAR = 28;
 
 /** What one of each thing costs now (halalas), for «تقدر تسوي فيها»: a standard picture, a 5-second 720p video, a scene. */
 export interface UnitPrices {
@@ -55,7 +55,7 @@ export function packYield(creditSar: number, u: UnitPrices) {
 
 export const DEFAULT_PACKS: Pack[] = [
   { id: "try", name: "تجربة", price: 10, credit: 10, tag: "", note: "تجرب فيها الأقسام" },
-  { id: "scene", name: "المشهد السينمائي", price: SCENE_PACK_SAR, credit: SCENE_PACK_SAR, tag: "", note: "مشهد ١٥ ثانية كامل: سيناريو، ٤ شيتات، فيديو 720p مع إعادة" },
+  { id: "scene", name: "المشهد السينمائي", price: SCENE_PACK_SAR, credit: SCENE_PACK_SAR, tag: "", note: "مشهد ١٥ ثانية كامل: سيناريو، ٤ شيتات، فيديو 480p" },
   { id: "basic", name: "الأساسية", price: 99, credit: 100, tag: "", note: "للاستخدام الخفيف" },
   { id: "pro", name: "المحترف", price: 119, credit: 140, tag: "الأكثر طلبًا", note: "صور وفيديوهات أسبوعية" },
   { id: "studio", name: "الاستوديو", price: 279, credit: 330, tag: "", note: "لصنّاع المحتوى" },
