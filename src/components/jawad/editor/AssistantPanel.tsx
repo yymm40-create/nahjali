@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { clipEnd, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
+import { watchClip } from "./watch";
+import { asksToSee, type Watch } from "@/lib/editor/watch";
 import { diagNote, diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
@@ -328,6 +330,27 @@ export default function AssistantPanel({
   const abortRef = useRef<AbortController | null>(null);
   // a request that continues by itself once this one is done (the captions written → the motion on the words)
   const followUp = useRef<string | null>(null);
+  /** «👁️»: the clip حيدرة asked to watch whole before he goes on (his next request carries it) */
+  const watchNext = useRef<string | null>(null);
+  /** clips already watched whole (kept while the clip's part stays the same) */
+  const watched = useRef(new Map<string, Watch>());
+  /** A clip watched whole: every frame measured, the frames worth seeing on numbered sheets. */
+  const watchWhole = async (at: Timeline, clipId: string, signal: AbortSignal): Promise<Watch | null> => {
+    const f = findClip(at, clipId);
+    const a = f?.clip.assetId ? assets.get(f.clip.assetId) : null;
+    if (!f || !a?.url || a.kind !== "video") return null;
+    const c = f.clip;
+    const key = `${c.id}:${c.in}:${c.out}:${c.start}:${c.speed}`;
+    const kept = watched.current.get(key);
+    if (kept) return kept;
+    try {
+      const w = await watchClip(a.url, { id: c.id, start: c.start, in: c.in, out: c.out, speed: c.speed || 1 }, setBusy, signal);
+      if (w.sheets.length) watched.current.set(key, w);
+      return w.sheets.length ? w : null;
+    } catch {
+      return null;
+    }
+  };
   const [canStop, setCanStop] = useState(false);
   // the person's own voices made here (a voiceprint): offered for حيدرة's spoken replies
   const [ownVoices, setOwnVoices] = useState<{ value: string; name: string }[]>([]);
@@ -447,8 +470,12 @@ export default function AssistantPanel({
     try {
       setBusy("نسمع الصوت ونلقى السكتات…");
       const quiet = await quietParts(tl, assets);
-      // the clip the person chose: Claude looks at a few of its moments to know what is in it
-      const look = await lookAt();
+      // the clip the person chose: watched whole when the request is about what happens in it (or حيدرة asked to),
+      // else a few of its moments
+      const toWatch = watchNext.current ?? (selected.length === 1 && asksToSee(message) ? selected[0] : null);
+      watchNext.current = null;
+      const watch = toWatch ? await watchWhole(tl, toWatch, signal) : null;
+      const look = watch ? null : await lookAt();
       if (signal.aborted) throw Object.assign(new Error("⏹️ وقّفت الطلب."), { name: "AbortError" });
       // the attached videos: a few of their moments, so حيدرة sees what is in them (pictures go as they are)
       const refLooks: { id: string; frames: { t: number; data: string }[] }[] = [];
@@ -471,6 +498,7 @@ export default function AssistantPanel({
         selected,
         quiet,
         look,
+        watch,
         spoken,
         refs: pending.map((a) => a.id),
         refLooks,
@@ -552,6 +580,10 @@ export default function AssistantPanel({
           } else if (q.kind === "motion_lab") {
             // «🎬 مختبر الموشن»: the lab opens with حيدرة's brief (the person presses «اكتب الخطة»)
             onLab?.(q.prompt, Number(q.seconds) || 15);
+          } else if (q.kind === "watch") {
+            // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
+            watchNext.current = q.clipId;
+            followUp.current = `👁️ شفت المقطع كامل الحين. كمّل طلبي: ${message}`;
           } else if (q.kind === "talk_motion") {
             // the words with their times first (the captions of the talking video), then حيدرة is asked again by itself
             const now = tlRef.current;
