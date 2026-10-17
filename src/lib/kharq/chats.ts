@@ -2,7 +2,8 @@
 // shown), the clickable questions, what he delivered, and the branches he pointed to. Server only.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { KHARQ, isDeliverKind, isKharqStage, ROAD_IDS, type DeliverKind, type KharqStage } from "@config/kharq";
+import { AGENT_IDS, KHARQ, isDeliverKind, isKharqStage, ROAD_IDS, type AgentId, type DeliverKind, type KharqStage } from "@config/kharq";
+import type { Consult } from "./agents";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 
 const db = () => createAdminClient();
@@ -70,6 +71,8 @@ export interface Turn {
   deliver?: Deliver;
   /** branch ids of the site he pointed to */
   suggest?: string[];
+  /** the agents of his team he asked in this answer, and what they answered (run in the background) */
+  consult?: Consult[];
   error?: boolean;
 }
 
@@ -150,7 +153,8 @@ export function readDeliver(v: unknown): Deliver | undefined {
   const o = v as Record<string, unknown>;
   const kind: DeliverKind = isDeliverKind(o.kind) ? o.kind : "none";
   if (kind === "none") return undefined;
-  const d: Deliver = { kind, title: str(o.title, 200), text: str(o.text, KHARQ.textMax), table: readTable(o.table), media: readMedia(o.media) };
+  // a page in code (one HTML file) is longer than any text; it is run on the person's device only, never on the server
+  const d: Deliver = { kind, title: str(o.title, 200), text: str(o.text, kind === "code" ? KHARQ.codeMax : KHARQ.textMax), table: kind === "code" ? null : readTable(o.table), media: kind === "code" ? [] : readMedia(o.media) };
   // a delivery with nothing in it is no delivery
   if (!d.text && !d.table && !d.media.length) return undefined;
   return d;
@@ -176,6 +180,23 @@ const readSuggest = (v: unknown): string[] | undefined => {
   return out.length ? out : undefined;
 };
 
+/** The consultations of an answer: real agents, a task each, at most a few. */
+export function readConsult(v: unknown): Consult[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v
+    .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === "object")
+    .filter((c) => (AGENT_IDS as readonly string[]).includes(String(c.agent)))
+    .map((c): Consult => ({
+      agent: c.agent as AgentId,
+      task: str(c.task, KHARQ.consultTask),
+      state: c.state === "done" || c.state === "failed" ? c.state : "pending",
+      ...(typeof c.answer === "string" ? { answer: str(c.answer, KHARQ.consultAnswer) } : {}),
+    }))
+    .filter((c) => c.task.trim())
+    .slice(0, KHARQ.consultMax);
+  return out.length ? out : undefined;
+}
+
 /** Messages from the page or the store, checked: the two roles, the last turns, nothing too long, junk dropped. */
 export function cleanHistory(raw: unknown): Turn[] {
   if (!Array.isArray(raw)) return [];
@@ -188,28 +209,32 @@ export function cleanHistory(raw: unknown): Turn[] {
     const text = str(o.text, role === "user" ? KHARQ.messageMax : KHARQ.textMax);
     const files = readFiles(o.files);
     const deliver = role === "assistant" ? readDeliver(o.deliver) : undefined;
-    if (!text.trim() && !files && !deliver) continue;
+    if (!text.trim() && !files && !deliver && !(role === "assistant" && readConsult(o.consult))) continue;
     out.push({
       role,
       text,
       ...(files ? { files } : {}),
-      ...(role === "assistant" ? { ...(readQuestions(o.questions) ? { questions: readQuestions(o.questions) } : {}), ...(deliver ? { deliver } : {}), ...(readSuggest(o.suggest) ? { suggest: readSuggest(o.suggest) } : {}) } : {}),
+      ...(role === "assistant"
+        ? {
+            ...(readQuestions(o.questions) ? { questions: readQuestions(o.questions) } : {}),
+            ...(deliver ? { deliver } : {}),
+            ...(readSuggest(o.suggest) ? { suggest: readSuggest(o.suggest) } : {}),
+            ...(readConsult(o.consult) ? { consult: readConsult(o.consult) } : {}),
+          }
+        : {}),
     });
   }
   return out;
 }
 
-/** What is sent to him: the turns, starting with the person, and two of a role in a row joined (his turns alternate). */
+/**
+ * What is sent to him: the last turns, starting with the person. Two of a role in a row (his answer after his team
+ * came back) stay two turns here, each with its own delivery, and are joined into one when they are sent.
+ */
 export function forModel(history: Turn[]): Turn[] {
   const cut = history.slice(-KHARQ.historyTurns).filter((t) => !t.error);
   while (cut.length && cut[0].role !== "user") cut.shift();
-  const out: Turn[] = [];
-  for (const t of cut) {
-    const last = out[out.length - 1];
-    if (last && last.role === t.role && !t.files && !last.files) last.text = `${last.text}\n\n${t.text}`.slice(0, KHARQ.textMax);
-    else out.push({ ...t });
-  }
-  return out;
+  return cut.map((t) => ({ ...t }));
 }
 
 /** A short title from the first thing the person said. */
@@ -266,6 +291,21 @@ export async function saveChat(userId: string, id: string | null, messages: Turn
 
 export async function deleteChat(userId: string, id: string) {
   await db().from("kharq_chats").delete().eq("id", id).eq("user_id", userId);
+}
+
+/** The last answer of the conversation, when it still waits for its team (the consultations not run yet). */
+export function pendingConsult(chat: Chat): { turn: number; consult: Consult[] } | null {
+  const i = chat.messages.length - 1;
+  const t = chat.messages[i];
+  if (!t || t.role !== "assistant" || !t.consult?.some((c) => c.state === "pending")) return null;
+  return { turn: i, consult: t.consult };
+}
+
+/** How many of his answers since the person last spoke asked the team (a cap keeps him from asking forever). */
+export function consultRoundsSinceUser(messages: Turn[]): number {
+  let n = 0;
+  for (let i = messages.length - 1; i >= 0 && messages[i].role === "assistant"; i--) if (messages[i].consult?.length) n++;
+  return n;
 }
 
 /** One answer's media ask found again by its id (the confirm button and the follow-up both start here). */

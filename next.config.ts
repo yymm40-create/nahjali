@@ -36,7 +36,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
       { source: "/", headers: [SITE_CSP] },
-      { source: "/:path((?!api/games/play/).*)", headers: [SITE_CSP] },
+      { source: "/:path((?!api/games/play/|api/kharq/code).*)", headers: [SITE_CSP] },
     ];
   },
   // the build the pages were made from: a page kept open compares it with /api/version («في نسخة جديدة»)

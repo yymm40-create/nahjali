@@ -305,6 +305,19 @@
 }
 .kh-send:disabled { opacity: 0.5; cursor: default; }
 
+/* a page he wrote in code, running in its own sandbox */
+.kh-code { display: block; width: 100%; height: min(70vh, 560px); margin-top: 10px; border: 1px solid var(--kh-line); border-radius: 12px; background: #fff; }
+/* his team, asked in the background */
+.kh-team { display: grid; gap: 6px; margin-top: 10px; }
+.kh-agent { border: 1px solid var(--kh-line); border-radius: 12px; padding: 8px 10px; font-size: 13px; }
+.kh-agent summary { cursor: pointer; font-weight: 700; }
+.kh-agent summary small { font-weight: 400; color: var(--kh-dim); }
+.kh-agent.pending summary small { animation: kh-pulse 1.4s ease-in-out infinite; }
+.kh-agent.failed summary small { color: #f4a0a6; }
+@keyframes kh-pulse { 50% { opacity: 0.45; } }
+.kh-auto { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 12.5px; color: var(--kh-dim); cursor: pointer; }
+.kh-auto input { margin-top: 3px; accent-color: #facc15; }
+
 @media (max-width: 860px) {
   .kh-wrap { grid-template-columns: 1fr; padding: 8px; }
   .kh-burger { display: inline-flex; }
@@ -322,5 +335,5 @@
   .kh-road { max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .kh-msg, .kh-card, .kh-orb.think i, .kh-dots span { animation: none; }
+  .kh-msg, .kh-card, .kh-orb.think i, .kh-dots span, .kh-agent.pending summary small { animation: none; }
 }
