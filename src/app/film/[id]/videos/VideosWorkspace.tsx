@@ -29,6 +29,7 @@ import { useFilmBase } from "../../FilmBase";
 import EmotionPicker from "../../EmotionPicker";
 import RewindCard from "../RewindCard";
 import { smartEditInEditor } from "@/components/jawad/editor/smart-open";
+import { dialoguePace, paceWarning } from "@/lib/film/pace";
 
 interface Generation {
   /** The director's understanding of the client's video notes, as options to choose from. */
@@ -276,6 +277,44 @@ export default function VideosWorkspace({
       setVoiceError((e as Error).message);
     }
   }
+  // «✏️ عدّل الحوار»: a line's words changed here change in the generation's prompt too (and its voice is made again)
+  const [editing, setEditing] = useState<{ key: string; text: string } | null>(null);
+  const [savingLine, setSavingLine] = useState(false);
+  const [lineNote, setLineNote] = useState("");
+  async function saveLine() {
+    if (!editing) return;
+    setVoiceError("");
+    setLineNote("");
+    setSavingLine(true);
+    try {
+      const r = await postJson<{ inPrompt: boolean }>(voicesUrl, { action: "edit_line", key: editing.key, text: editing.text });
+      setLineNote(r.inPrompt ? "✅ تعدّل النص وتغيّر في البرومبت." : "✅ تعدّل نص الحوار؛ ما لقينا نفس الجملة في البرومبت، فالكلام يمشي من الصوت المرجعي.");
+      setEditing(null);
+      if (voice) setVoice(await api<VoiceState>(voicesUrl));
+      refresh();
+    } catch (e) {
+      setVoiceError((e as Error).message);
+    } finally {
+      setSavingLine(false);
+    }
+  }
+  const lineText = (l: Generation["lines"][number]) =>
+    editing?.key === l.key ? (
+      <div className="w-full space-y-1.5">
+        <label className="block text-xs font-extrabold" htmlFor={`edit-${l.key}`}>{l.speaker}:</label>
+        <textarea id={`edit-${l.key}`} className="field min-h-20 w-full text-sm" dir="rtl" value={editing.text} maxLength={1000} onChange={(e) => setEditing({ key: l.key, text: e.target.value })} disabled={savingLine} />
+        <div className="flex gap-1.5">
+          <button type="button" className="btn btn-primary min-h-9 flex-1 text-xs" disabled={savingLine || !editing.text.trim() || editing.text.trim() === l.line} onClick={saveLine}>{savingLine ? "يحفظ…" : "💾 احفظ (يتغيّر في البرومبت)"}</button>
+          <button type="button" className="btn btn-ghost min-h-9 px-3 text-xs" disabled={savingLine} onClick={() => setEditing(null)}>إلغاء</button>
+        </div>
+      </div>
+    ) : (
+      <span className="flex flex-1 items-start gap-2">
+        <span className="flex-1"><b>{l.speaker}:</b> {l.line}</span>
+        <button type="button" className="btn btn-ghost min-h-8 shrink-0 px-2 text-xs" disabled={Boolean(speaking) || savingLine || Boolean(editing)} onClick={() => (setLineNote(""), setEditing({ key: l.key, text: l.line }))} aria-label={`عدّل جملة ${l.speaker}`}>✏️ تعديل</button>
+      </span>
+    );
+
   async function speakLines(keys: string[]) {
     setVoiceError("");
     for (const key of keys) {
@@ -654,6 +693,23 @@ export default function VideosWorkspace({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-extrabold">🎙️ حوار هذا المقطع {sendVoices(g) && (dialogueReady(g) ? <span className="chip bg-teal text-xs text-white">جاهز ✅</span> : modeOf(g) === "make" ? <span className="chip text-xs">{g.lines.filter((l) => spokenOf(g, l.key)).length}/{g.lines.length}</span> : null)}</p>
                 </div>
+                {(() => {
+                  const pace = dialoguePace(g.lines.map((l) => l.line), sec);
+                  const warn = paceWarning(pace, VIDEO_MODELS[model].maxSeconds);
+                  return warn ? (
+                    <div className="space-y-1.5 rounded-xl border-2 border-gold bg-gold/10 p-2 text-sm font-bold" role="status">
+                      <p>{warn}</p>
+                      <p className="text-xs text-muted">Seedance يحشر كل الكلام في مدة المقطع؛ تقريبًا كلمتين بالثانية تطلع طبيعية. عدّل الجمل تحت أو قسّم المشهد على توليدين.</p>
+                      {pace.need <= VIDEO_MODELS[model].maxSeconds && <button type="button" className="btn btn-secondary min-h-9 w-full text-xs" onClick={() => setSeconds({ ...seconds, [g.id]: pace.need })}>⏱️ طوّل المقطع لـ{pace.need} ثانية</button>}
+                    </div>
+                  ) : null;
+                })()}
+                {lineNote && <p className="text-xs font-bold text-teal" role="status">{lineNote}</p>}
+                {!(modeOf(g) === "make" && voicesOn) && (
+                  <ol className="space-y-1" aria-label="نص الحوار">
+                    {g.lines.map((l) => <li key={l.key} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-2 text-sm">{lineText(l)}</li>)}
+                  </ol>
+                )}
                 {/* every generation asks: the dialogue made here, from your device, or none */}
                 <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="مصدر الحوار">
                   {([
@@ -706,7 +762,7 @@ export default function VideosWorkspace({
                     const ok = spokenOf(g, l.key);
                     return (
                       <li key={l.key} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-2 text-sm">
-                        <span className="flex-1"><b>{l.speaker}:</b> {l.line}</span>
+                        {lineText(l)}
                         <div className="w-full"><EmotionPicker provider={voice?.voices.find((v) => v.value === voice?.cast[l.speaker])?.provider ?? "elevenlabs"} value={feel[l.key] ?? ""} onChange={(v) => setFeel({ ...feel, [l.key]: v })} disabled={Boolean(speaking)} /></div>
                         {a?.url && ok && <audio controls preload="none" src={a.url} className="h-8 w-40" />}
                         <button

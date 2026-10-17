@@ -156,10 +156,36 @@ export async function editLine(project: FilmProject, key: unknown, text: unknown
   const old = list[i].line.trim();
   list[i] = { ...list[i], line };
   // the same words in the video's prompt follow the change
-  const prompt = typeof v.data.prompt === "string" ? v.data.prompt.split(old).join(line) : v.data.prompt;
-  const { error } = await db().from("film_versions").update({ data: { ...v.data, dialogue_ar: list, prompt } }).eq("id", v.id);
+  const p = typeof v.data.prompt === "string" ? replaceLineInPrompt(v.data.prompt, old, line, i, list.length) : null;
+  const { error } = await db().from("film_versions").update({ data: { ...v.data, dialogue_ar: list, prompt: p ? p.prompt : v.data.prompt } }).eq("id", v.id);
   if (error) throw error;
-  return { key: `${m[1]}:${i}`, line };
+  return { key: `${m[1]}:${i}`, line, inPrompt: Boolean(p?.found) };
+}
+
+const MARKS = "[\\u0640\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]*";
+const escape = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const QUOTED = /"[^"\n]*"|“[^”\n]*”|«[^»\n]*»/gu;
+const ARABIC_CHAR = /[\u0600-\u06FF]/;
+
+/**
+ * A line of the dialogue changed: its words in the video's prompt change too. The old words exactly; else the same
+ * words with other diacritics (or none, or other spaces); else, when the prompt quotes exactly one Arabic line per line
+ * of the dialogue, the i-th of those quotes. Pure.
+ */
+export function replaceLineInPrompt(prompt: string, old: string, line: string, i: number, count: number): { prompt: string; found: boolean } {
+  if (old && prompt.includes(old)) return { prompt: prompt.split(old).join(line), found: true };
+  const bare = old.replace(new RegExp(MARKS.slice(0, -1) + "+", "gu"), "").replace(/\s+/g, " ").trim();
+  if (bare) {
+    const loose = new RegExp([...bare].map((c) => (c === " " ? "\\s+" : escape(c) + MARKS)).join(""), "gu");
+    if (loose.test(prompt)) return { prompt: prompt.replace(loose, () => line), found: true };
+  }
+  const quotes = [...prompt.matchAll(QUOTED)].filter((q) => ARABIC_CHAR.test(q[0]));
+  if (quotes.length === count && quotes[i]?.index !== undefined) {
+    const q = quotes[i];
+    const at = q.index!;
+    return { prompt: prompt.slice(0, at + 1) + line + prompt.slice(at + q[0].length - 1), found: true };
+  }
+  return { prompt, found: false };
 }
 
 /** Speaks one line with its speaker's voice (Eleven v4) and keeps it with the project. */
