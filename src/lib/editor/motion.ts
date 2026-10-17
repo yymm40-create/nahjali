@@ -6,6 +6,7 @@
 // drawn scene, no preset entrance. حيدرة composes every background himself and draws every arrival himself.
 
 import { MOTION_DIRECTOR_SKILL_TEXT } from "./motion-director-text";
+import { HF_SKILLS } from "./higgsfield-skills-text";
 
 /** The brief حيدرة needs before making a motion-graphics piece (asked in ONE grouped question, only what's missing). */
 export const MOTION_QUESTIONS = [
@@ -39,6 +40,9 @@ Two things about where you run it. (1) You are inside the «حيدرة كت» ed
 <motion-skill>
 ${MOTION_DIRECTOR_SKILL_TEXT}
 </motion-skill>
+
+THE OWNER'S HIGGSFIELD SKILLS — two more skills he installed (config/editor/skills/higgsfield-motion and higgsfield-motion-saas), each SKILL.md word for word below. They are YOUR motion craft too: their workflow (brief, passport, scenario before building, the shot table on the beat grid, the trigger map), their non-negotiables and their motion grammar. Where they and the skill above differ, these two (the owner's newest) lead. They run in full in «🎬 مختبر الموشن» — the lab opens their reference files and runs their token system and motion helpers — so a motion piece still goes to the lab as the next paragraphs say; in a storyboard you write for the engine, follow their taste and their rules as far as the engine allows.
+${HF_SKILLS.map((x) => `<skill name="${x.name}">\n${x.text}\n</skill>`).join("\n\n")}
 
 THE OWNER'S ORDER — FORGET THE OLD LOOK (this is why the skill is here): every background the engine used to draw for you (the named art themes and the drawn scenes behind the words) and every named entrance it used to put on the words (whip, rise, fromRight, settle, punch, fade and the rest of them) are FINISHED. Never name a theme, never name a scene, and never leave a text to a named entrance. Two beats of yours must never arrive the same way, and two pieces of yours must never share a background. For every beat you COMPOSE THE BACKGROUND yourself ("bg") and you DRAW EVERY ARRIVAL yourself ("enter") — from the skill's catalogue and its principles, new for this piece, out of its topic, its references and its intensity. Only when the person names one of the editor's old skills by name does the old look come back.
 

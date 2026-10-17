@@ -83,6 +83,10 @@ export const SCENE_RUNTIME_JS = String.raw`
     if (!K.fonts.head) K.fonts.head = "sans-serif";
     if (!K.fonts.body) K.fonts.body = K.fonts.head;
     def = null;
+    // the owner's Higgsfield skill code (hf-tokens.js → HFT, hf-motion.js → HF), run here as the skill's pages run it
+    for (var li = 0; li < (m.libs || []).length; li++) new Function(m.libs[li])();
+    if (window.HFT) K.HFT = window.HFT;
+    if (window.HF) K.HF = window.HF;
     new Function("scene", "K", m.code)(scene, K);
     if (!def || typeof def.draw !== "function") throw new Error("the scene must call scene({ duration, draw(K, t, ctx) { … } })");
     if (def.three) { K.THREE = await import("three"); K.addon = function (p) { return import("three/addons/" + p); }; }

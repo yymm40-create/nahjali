@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- Font specimen sheet (the BLIP. method that fixed "шрифты дешево"): every candidate set in the FILM'S REAL COPY with
+     numerals, on the film's background, labelled. Pick 3 roles: display, motif (pixel/serif/…), UI/mono.
+     node scripts/code/capture.mjs "assets/specimen/specimen.html?fonts=Unbounded:900|Anybody:800|Syne:800|Bricolage+Grotesque:800|Funnel+Display:800|Host+Grotesk:700|Big+Shoulders+Display:900|Geist:800&copy=NOVA 2.0 Ship it tonight 0123&copy2=Привет, мир · 07:42&bg=%2314111F&fg=%23EEEAE3" out --stills 0
+     Check Cyrillic if any caption is Russian: a display font without Cyrillic silently falls back. -->
+<html><head><meta charset="utf-8"><style>
+  body{margin:0;font-family:"Geist Mono",monospace}
+  #s{width:1920px;padding:40px 56px;box-sizing:border-box}
+  .r{display:flex;align-items:baseline;gap:28px;border-bottom:1px solid #ffffff14;padding:14px 0}
+  .lab{width:300px;flex:none;font-size:16px;opacity:.6}
+  .a{font-size:96px;line-height:1;letter-spacing:-.035em;white-space:nowrap;overflow:hidden}
+  .b{font-size:30px;opacity:.75;white-space:nowrap}
+</style></head><body><div id="s"></div><script>
+(async () => {
+  const q = new URLSearchParams(location.search), fonts = (q.get('fonts') || 'Unbounded:900|Geist:800').split('|');
+  const copy = q.get('copy') || 'BRAND 2.0 Big idea. 0123', copy2 = q.get('copy2') || 'Привет · 07:42 · launch';
+  document.body.style.background = q.get('bg') || '#14111F'; document.body.style.color = q.get('fg') || '#EEEAE3';
+  const l = document.createElement('link'); l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css2?' + fonts.map((f) => 'family=' + f.split(':')[0] + ':wght@' + (f.split(':')[1] || 400)).join('&') + '&family=Geist+Mono&display=block';
+  document.head.appendChild(l); await new Promise((r) => { l.onload = r; l.onerror = r; });
+  const S = document.getElementById('s');
+  for (const f of fonts) {
+    const [fam, w] = [f.split(':')[0].replace(/\+/g, ' '), f.split(':')[1] || 400];
+    const r = document.createElement('div'); r.className = 'r';
+    r.innerHTML = `<div class="lab">${fam} ${w}</div><div><div class="a" style="font-family:'${fam}';font-weight:${w}"></div><div class="b" style="font-family:'${fam}';font-weight:${w}"></div></div>`;
+    r.querySelector('.a').textContent = copy; r.querySelector('.b').textContent = copy2; S.appendChild(r);
+    try { await document.fonts.load(`${w} 96px "${fam}"`, copy + copy2); } catch (e) {}
+  }
+  await document.fonts.ready;
+  window.__seek = async () => {}; window.__comp = { width: 1920, height: S.offsetHeight, fps: 1, duration: 1 };
+})();
+</script></body></html>

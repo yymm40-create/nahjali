@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920">
+<title>Motion Personality Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:var(--bg-base,#000)}
+  body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+  /* Per-copy style constant. null = take ?style=<preset> (and ?scheme=) from the URL, else 'higgsfield'.
+     Example fixed copy: window.DEMO_STYLE = 'luxury-serif'; */
+  window.DEMO_STYLE = null;
+</script>
+<script src="../../../scripts/hf-tokens.js"></script>
+<script src="../../../scripts/hf-motion.js"></script>
+<script src="../shared/hero-glyph.js"></script>
+<script src="demo.js"></script>
+</body>
+</html>

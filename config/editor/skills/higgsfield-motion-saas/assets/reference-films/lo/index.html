@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="frame" content="1920x1080">
+<script>
+(function () {
+  const q = (fam, text) => 'https://fonts.googleapis.com/css2?family=' + fam + (text ? '&text=' + encodeURIComponent(text) : '') + '&display=block';
+  const L = [q('Gloock'), q('Silkscreen:wght@400;700'), q('Pixelify+Sans:wght@400;500;600;700'), q('Martian+Mono:wght@400;500;700'), q('Noto+Serif:wght@600', 'приветcześćolá'),
+    q('Noto+Serif+JP:wght@600', 'こんにちは'), q('Noto+Serif+SC:wght@600', '你好'), q('Noto+Serif+KR:wght@600', '안녕'),
+    q('Noto+Naskh+Arabic:wght@600', 'مرحبا'), q('Noto+Serif+Devanagari:wght@600', 'नमस्ते')];
+  L.forEach((h) => document.write('<link rel="stylesheet" href="' + h + '">'));
+})();
+</script>
+<style>*{margin:0;padding:0}html,body{width:1920px;height:1080px;overflow:hidden;background:#000}#c{display:none}canvas{display:block}</style>
+<script src="../frames/kit.js"></script></head><body><canvas id="c" width="1920" height="1080"></canvas><canvas id="g" width="1920" height="1080"></canvas>
+<script src="film.js"></script></body></html>
