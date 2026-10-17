@@ -1,11 +1,13 @@
 "use client";
 
 // «🎬 مختبر الموشن» — حيدرة makes a motion piece in CODE, the way the viral Claude Opus 5.5 films were made: the person
-// gives the idea (and, if they like, references, their own pictures and brand colours) → حيدرة writes the plan
-// (idea, hook, look, shot list) → approved → he writes the scene program → the browser runs it in a sandbox and
-// catches any bug (sent back to him to fix) → contact sheets and stills go to him, he scores them like a harsh
-// director and rewrites what is below the bar (up to three rounds) → the final film is rendered here at 30 fps with
-// motion blur and lands on the timeline with its sound cues (and, if asked, music from ElevenLabs).
+// gives the idea (and, if they like, references, their own pictures and brand colours), PICKS from the gallery what the
+// research found (the look, the structure, how shots connect, the feel, the pace, the camera, the type, the finish, the
+// ending — every card a live sample drawn in code) → حيدرة writes the plan (idea, hook, look, shot list), bound to those
+// picks → approved → he writes the scene program → the browser runs it in a sandbox and catches any bug (sent back to
+// him to fix) → contact sheets and stills go to him, he scores them like a harsh director and rewrites what is below the
+// bar (up to three rounds) → the final film is rendered here at 30 fps with motion blur and lands on the timeline with
+// its sound cues (and, if asked, music from ElevenLabs). The window is a solid studio: five steps, one at a time.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -15,16 +17,28 @@ import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scene/contract";
 import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
+import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGroup } from "@config/editor/lab-options";
 import { SceneError, SceneHost, sceneFont, type SceneInfo } from "./scene-host";
 import { contactSheet, frameCost, probe, renderVideo, reviewTimes, stills } from "./scene-render";
 import { download } from "./export";
+import { drawDemo, STUDIO, type Swatch } from "./lab-demos";
 import type { EditorAsset } from "./types";
+import "./motion-lab.css";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
+/** the five steps of the window (what the person is looking at; the stage is what حيدرة is doing) */
+type View = "brief" | "style" | "plan" | "build" | "export";
+const VIEWS: { id: View; ar: string }[] = [
+  { id: "brief", ar: "الفكرة" },
+  { id: "style", ar: "الأسلوب" },
+  { id: "plan", ar: "الخطة" },
+  { id: "build", ar: "البناء" },
+  { id: "export", ar: "التصدير" },
+];
 const REVIEW_MODES = {
-  fast: { label: "سريع", rounds: 0, description: "فحص التشغيل فقط، بدون مراجعة جودة تلقائية. الأسرع." },
-  balanced: { label: "متوازن", rounds: 1, description: "مراجعة جودة واحدة وتصحيح عند الحاجة. وقت متوسط." },
-  precise: { label: "دقيق", rounds: MAX_ROUNDS, description: "حتى ٣ جولات مراجعة وتحسين، ويتوقف مبكرًا إذا اجتاز الفحص. يأخذ وقتًا أطول." },
+  fast: { label: "سريع", rounds: 0, description: "فحص التشغيل فقط، بدون مراجعة جودة. الأسرع." },
+  balanced: { label: "متوازن", rounds: 1, description: "مراجعة جودة واحدة وتصحيح عند الحاجة." },
+  precise: { label: "دقيق", rounds: MAX_ROUNDS, description: `حتى ${MAX_ROUNDS} جولات، ويتوقف مبكرًا إذا اجتاز. أطول.` },
 } as const;
 type ReviewMode = keyof typeof REVIEW_MODES;
 interface Saved {
@@ -34,6 +48,7 @@ interface Saved {
   intensity: number;
   brand: string;
   picks: string[];
+  choices?: LabChoices;
   plan: LabPlan | null;
   say: string;
   code: string;
@@ -45,6 +60,7 @@ interface Saved {
 }
 const key = (id: string) => `jw-lab-${id}`;
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
+const INTENSITY: [number, string][] = [[1, "هادئ وفخم"], [3, "متوازن"], [4, "قوي"], [5, "ناري"]];
 const FIXES = 2;
 /** One request to the server never waits longer than this before it is given up on (the route itself allows more). */
 const CALL_TIMEOUT_MS = 6 * 60_000;
@@ -65,6 +81,76 @@ async function refOf(file: File): Promise<string> {
   let str = "";
   for (let i = 0; i < b.length; i += 0x8000) str += String.fromCharCode(...b.subarray(i, i + 0x8000));
   return btoa(str);
+}
+
+/** One live sample of the gallery: a small canvas looping its drawing (about 24 frames a second, only while shown). */
+function Demo({ kind, swatch }: { kind: string; swatch: Swatch }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    let raf = 0, last = 0;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      if (now - last < 40) return;
+      last = now;
+      drawDemo(kind, ctx, c.width, c.height, (now - t0) / 1000, swatch);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [kind, swatch]);
+  return <canvas ref={ref} width={200} height={150} aria-hidden />;
+}
+
+/** The gallery: the nine groups, one open at a time; each card a live sample; «خلّه لحيدرة» leaves the group to him. */
+function Gallery({ choices, onChange, disabled }: { choices: LabChoices; onChange: (c: LabChoices) => void; disabled: boolean }) {
+  const [open, setOpen] = useState<ChoiceKey>("look");
+  const toggle = (g: LabGroup, id: string) => {
+    const now = choices[g.id] ?? [];
+    let next: string[];
+    if (g.multi) next = now.includes(id) ? now.filter((x) => x !== id) : [...now, id].slice(-(g.max ?? 3));
+    else next = now[0] === id ? [] : [id];
+    const c = { ...choices };
+    if (next.length) c[g.id] = next;
+    else delete c[g.id];
+    onChange(c);
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      {LAB_GROUPS.map((g) => {
+        const picked = (choices[g.id] ?? []).map((id) => g.options.find((o) => o.id === id)?.ar).filter(Boolean);
+        return (
+          <details key={g.id} className="mlab-group" open={open === g.id} onToggle={(e) => (e.target as HTMLDetailsElement).open && setOpen(g.id)}>
+            <summary>
+              <span>
+                {g.ar} <span className="mlab-tip">· {g.hint}</span>
+              </span>
+              {picked.length ? <span className="picked">✓ {picked.join(" · ")}</span> : <span className="free">خلّه لحيدرة</span>}
+            </summary>
+            {open === g.id && (
+              <div className="mlab-grid">
+                <button type="button" className="mlab-opt free" aria-pressed={!picked.length} disabled={disabled} onClick={() => onChange(Object.fromEntries(Object.entries(choices).filter(([k]) => k !== g.id)) as LabChoices)}>
+                  <span className="name">خلّه لحيدرة</span>
+                  <span className="tip">يختار من الفكرة</span>
+                </button>
+                {g.options.map((o) => (
+                  <button key={o.id} type="button" className="mlab-opt" aria-pressed={(choices[g.id] ?? []).includes(o.id)} disabled={disabled} onClick={() => toggle(g, o.id)} title={o.en}>
+                    <Demo kind={o.demo} swatch={o.swatch ?? STUDIO} />
+                    <span className="name">{o.ar}</span>
+                    <span className="tip">{o.tip}</span>
+                    <span className="from">{o.from}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </details>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function MotionLab({
@@ -94,11 +180,13 @@ export default function MotionLab({
 }) {
   const [claude] = useClaudeModel();
   const [stage, setStage] = useState<Stage>("brief");
+  const [view, setView] = useState<View>("brief");
   const [brief, setBrief] = useState(initialBrief);
   const [seconds, setSeconds] = useState(() => SECONDS.reduce((a, b) => (Math.abs(b - (initialSeconds || 15)) < Math.abs(a - (initialSeconds || 15)) ? b : a), 15));
   const [intensity, setIntensity] = useState(4);
   const [brand, setBrand] = useState("");
   const [picks, setPicks] = useState<string[]>([]);
+  const [choices, setChoices] = useState<LabChoices>({});
   const [refs, setRefs] = useState<string[]>([]);
   const [plan, setPlan] = useState<LabPlan | null>(null);
   const [say, setSay] = useState("");
@@ -120,13 +208,10 @@ export default function MotionLab({
   const [now, setNow] = useState(0);
   const host = useRef<SceneHost | null>(null);
   const abort = useRef<AbortController | null>(null);
-  const view = useRef<HTMLCanvasElement>(null);
+  const viewCanvas = useRef<HTMLCanvasElement>(null);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
   const portalReady = useSyncExternalStore(subscribeToClient, () => true, () => false);
-  // closed while busy (a build, a review round, the final render): folded to a small pill instead of stopped, so the
-  // work keeps going; the person reopens it from the pill OR from the editor's own «مختبر الموشن» button (which is why
-  // the fold lives in the editor's state), or presses «إلغاء» inside to really stop it
   const setMinimized = onMinimize;
   const say1 = (s: string) => setLog((l) => [...l.slice(-30), s]);
 
@@ -134,6 +219,7 @@ export default function MotionLab({
   const images = useMemo(() => assets.filter((a) => a.kind === "image" && a.url && a.status === "ready").slice(0, 24), [assets]);
   const chosen = useMemo(() => picks.map((id, i) => ({ short: `a${i + 1}`, asset: images.find((a) => a.id === id)! })).filter((x) => x.asset), [picks, images]);
   const assetList = chosen.map((c) => ({ id: c.short, name: c.asset.name, w: c.asset.width ?? 0, h: c.asset.height ?? 0 }));
+  const chosenCards = useMemo(() => chosenOptions(choices), [choices]);
 
   // the lab remembers its work on this device (a refresh keeps the plan, the program and the reviews)
   useEffect(() => {
@@ -146,6 +232,7 @@ export default function MotionLab({
         setIntensity(s.intensity || 4);
         setBrand(s.brand || "");
         setPicks(s.picks || []);
+        setChoices(s.choices || {});
         setPlan(s.plan);
         setSay(s.say || "");
         setCode(s.code || "");
@@ -153,7 +240,10 @@ export default function MotionLab({
         setReviewMode(s.reviewMode === "fast" || s.reviewMode === "precise" ? s.reviewMode : "balanced");
         setTransparent(Boolean(s.transparent));
         setTransparentCode(Boolean(s.transparentCode));
-        if (s.plan && !initialBrief) setStage(s.code ? "ready" : "plan");
+        if (s.plan && !initialBrief) {
+          setStage(s.code ? "ready" : "plan");
+          setView(s.code ? "export" : "plan");
+        }
       }, 0);
       return () => clearTimeout(tm);
     } catch {
@@ -162,11 +252,11 @@ export default function MotionLab({
   }, [projectId, initialBrief]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode, transparent, transparentCode } satisfies Saved));
+      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, plan, say, code, reviews, reviewMode, transparent, transparentCode]);
+  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort()), []);
 
   const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
@@ -237,9 +327,19 @@ export default function MotionLab({
     abort.current?.abort();
     abort.current = new AbortController();
     setStage("planning");
+    setView("plan");
     setNow(0);
     try {
-      const r = await call<{ plan: LabPlan; say: string }>("lab_plan", { brief: tweak && plan ? `${brief}\n\nتعديل على الخطة السابقة («${plan.title}»): ${tweak}` : brief, seconds, intensity, brand, assets: assetList, references: refs, language: "Arabic (Gulf)" });
+      const r = await call<{ plan: LabPlan; say: string }>("lab_plan", {
+        brief: tweak && plan ? `${brief}\n\nتعديل على الخطة السابقة («${plan.title}»): ${tweak}` : brief,
+        seconds,
+        intensity,
+        brand,
+        assets: assetList,
+        references: refs,
+        choices,
+        language: "Arabic (Gulf)",
+      });
       setPlan(r.plan);
       setSay(r.say);
       setTweak("");
@@ -249,6 +349,7 @@ export default function MotionLab({
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) setError(e instanceof Error ? e.message : String(e));
       setStage(plan ? "plan" : "brief");
+      if (!plan) setView("brief");
     }
   };
 
@@ -265,6 +366,7 @@ export default function MotionLab({
     setLog([]);
     setReviews([]);
     setStage("building");
+    setView("build");
     setNow(0);
     try {
       let { program, got } = await buildRunning(plan, code);
@@ -281,7 +383,7 @@ export default function MotionLab({
         // how heavy this scene is here decides how many frames the review is allowed to draw
         const cost = await frameCost(h, got.duration, 1, abort.current?.signal);
         const perSheet = cost > 400 ? 9 : cost > 150 ? 15 : 24;
-        const shotTimes = (cost > 400 ? reviewTimes(got.duration).filter((_, i) => i % 2 === 0) : reviewTimes(got.duration));
+        const shotTimes = cost > 400 ? reviewTimes(got.duration).filter((_, i) => i % 2 === 0) : reviewTimes(got.duration);
         say1(`🎬 الجولة ${round} من ${rounds}: أصوّر ${perSheet * 2} لقطة لورقتي التلامس و${shotTimes.length} لقطات كاملة${cost > 150 ? " (خفّفتها لأن المشهد ثقيل على جهازك)" : ""}…`);
         const half = got.duration / 2;
         const sheets = [await contactSheet(h, 0, half, perSheet, 3), await contactSheet(h, half, got.duration, perSheet, 3)];
@@ -303,11 +405,13 @@ export default function MotionLab({
         setInfo(got);
       }
       setStage("ready");
+      setView("export");
       void seekTo(Math.min(got.duration * 0.3, 2));
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
       else setError(e instanceof Error ? e.message : String(e));
       setStage(code ? "ready" : "plan");
+      if (!code) setView("plan");
     }
   };
 
@@ -321,7 +425,7 @@ export default function MotionLab({
         const now = ((performance.now() - start) / 1000) % info.duration;
         try {
           const bm = await host.current!.frame(now, { scale: Math.min(1, 540 / Math.max(width, height)) });
-          const c = view.current;
+          const c = viewCanvas.current;
           if (c) {
             c.width = bm.width;
             c.height = bm.height;
@@ -345,7 +449,7 @@ export default function MotionLab({
     if (!host.current || !info) return;
     try {
       const bm = await host.current.frame(v, { scale: Math.min(1, 540 / Math.max(width, height)) });
-      const c = view.current;
+      const c = viewCanvas.current;
       if (c) {
         c.width = bm.width;
         c.height = bm.height;
@@ -490,265 +594,394 @@ export default function MotionLab({
     setMinimized(false);
   };
 
+  /** which steps the person may open now (a plan needs an idea; the build and the export need a plan / a scene) */
+  const canOpen = (v: View) => (v === "brief" || v === "style" ? true : v === "plan" ? Boolean(plan) || stage === "planning" : v === "build" ? Boolean(plan) : Boolean(code));
+  const doneStep = (v: View) => (v === "brief" ? brief.trim().length >= 3 : v === "style" ? chosenCards.length > 0 : v === "plan" ? Boolean(plan) : v === "build" ? Boolean(code) : false);
+
   if (!portalReady) return null;
 
   if (minimized)
     return createPortal(
-      <button type="button" className="jw-btn jw-btn-primary jw-3d fixed bottom-4 end-4 z-[1000] !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن" style={{ insetInlineEnd: "max(1rem, env(safe-area-inset-right, 0px))", bottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}>
+      <button type="button" className="jw-btn jw-btn-primary jw-3d mlab-fill !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن">
         {busy ? <span className="jw-spinner" /> : <span aria-hidden>✅</span>}
         🎬 {busy ? `${stageAr}${stage === "rendering" ? ` ${Math.round(progress * 100)}٪${renderAt ? ` · يبقى ${mmss(renderAt.leftMs)}` : ""}` : ` ${elapsed}`}` : "جاهز — افتح المختبر"}
       </button>,
       document.body,
     );
 
+  const pillClass = (on: boolean) => `mlab-pill${on ? "" : ""}`;
+
   return createPortal(
-    <div className="fixed inset-0 z-[1000] flex items-stretch justify-center bg-black/70 p-2 sm:p-6" role="dialog" aria-modal="true" aria-label="مختبر الموشن" dir="rtl">
-      <div className="jw-glass-lg flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-jw-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
-        <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-2 border-b border-jw-line bg-jw-surface px-3 py-3 sm:px-4">
+    <div className="mlab-overlay" role="dialog" aria-modal="true" aria-label="مختبر الموشن" dir="rtl">
+      <div className="mlab">
+        <header className="mlab-head">
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-lg font-black">
+            <h2 className="mlab-title">
               🎬 مختبر الموشن
               {busy && (
-                <span className="rounded-full bg-jw-accent-soft px-2 py-0.5 text-xs font-bold text-jw-accent tabular-nums" role="status" aria-live="polite">
+                <span className="mlab-status" role="status" aria-live="polite">
+                  <span className="jw-spinner !h-3.5 !w-3.5 !border-black/30 !border-t-black" aria-hidden />
                   {stageAr} · {stage === "rendering" && renderAt ? `إطار ${renderAt.frame}/${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : elapsed}
                 </span>
               )}
             </h2>
-            <p className="hidden text-xs text-jw-muted sm:block">{busy ? "الشغل ماشي. تقدر تصغّر النافذة وترجع للمونتاج — يكمل في الخلفية، وترجّعه من زر «مختبر الموشن»." : "حيدرة يصمم ويكتب كل فريم بالكود، يشوف النتيجة ويقيّمها كمخرج قاسي، ويصلّح لين يوصل مستوى الاستوديوهات."}</p>
+            <p className="mlab-tip hidden sm:block">{busy ? "الشغل ماشي. صغّر النافذة وارجع للمونتاج — يكمل في الخلفية، وترجّعه من زر «مختبر الموشن»." : "حيدرة يكتب كل فريم بالكود على مهارات Higgsfield واختياراتك، يشوف النتيجة ويقيّمها كمخرج، ويصلّح لين توصل مستوى الاستوديوهات."}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <ClaudeModelPicker disabled={busy} />
             {busy && (
-              <button type="button" className="jw-btn jw-btn-quiet !min-h-9" onClick={cancel} title="يوقف العملية الحالية (الكود المسوّى قبلها يبقى محفوظ)">
+              <button type="button" className="jw-btn !min-h-10" onClick={cancel} title="يوقف العملية الحالية (الكود المسوّى قبلها يبقى محفوظ)">
                 إلغاء
               </button>
             )}
-            <button type="button" className="jw-btn jw-btn-primary !min-h-9 whitespace-nowrap" onClick={close} title={busy ? "ارجع للمونتاج ويكمل المختبر شغله في الخلفية" : "اخرج من المختبر وارجع للمونتاج"}>
+            <button type="button" className="jw-btn jw-btn-primary !min-h-10 whitespace-nowrap" onClick={close} title={busy ? "ارجع للمونتاج ويكمل المختبر شغله في الخلفية" : "اخرج من المختبر وارجع للمونتاج"}>
               ← {busy ? "ارجع والمختبر يكمل" : "رجوع للمونتاج"}
             </button>
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-          <section className="min-w-0 space-y-4">
-            <fieldset disabled={busy} className="space-y-2 rounded-2xl border border-jw-line bg-jw-surface p-3">
-              <legend className="px-2 text-sm font-bold">مستوى الفحص</legend>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {(Object.keys(REVIEW_MODES) as ReviewMode[]).map((mode) => (
-                  <label key={mode} className={`cursor-pointer rounded-xl border p-3 ${reviewMode === mode ? "border-jw-accent bg-jw-accent/15" : "border-jw-line"} ${busy ? "cursor-not-allowed opacity-60" : ""}`}>
-                    <span className="flex items-center gap-2 font-bold"><input type="radio" name="motion-review-mode" value={mode} checked={reviewMode === mode} onChange={() => setReviewMode(mode)} />{REVIEW_MODES[mode].label}</span>
-                    <span className="mt-1 block text-xs leading-relaxed text-jw-muted">{REVIEW_MODES[mode].description}</span>
+        <nav className="mlab-steps" aria-label="خطوات المختبر">
+          {VIEWS.map((v, i) => (
+            <button key={v.id} type="button" className={`mlab-step${doneStep(v.id) && view !== v.id ? " done" : ""}`} aria-current={view === v.id ? "step" : undefined} disabled={!canOpen(v.id)} onClick={() => setView(v.id)}>
+              <span className="n">{i + 1}</span>
+              {v.ar}
+              {doneStep(v.id) && view !== v.id && <span aria-hidden>✓</span>}
+            </button>
+          ))}
+        </nav>
+
+        <div className="mlab-body">
+          <section className="mlab-main">
+            {view === "brief" && (
+              <>
+                <div className="mlab-card">
+                  <label className="mlab-label" htmlFor="mlab-brief">
+                    وش الموشن اللي تبيه؟
                   </label>
-                ))}
-              </div>
-              <p className="text-xs text-jw-muted">كل المستويات تفحص أخطاء التشغيل وتصلّحها عند الحاجة. اختيارك محفوظ لهذا المشروع؛ تقدر تغيّره قبل البناء.</p>
-            </fieldset>
-            {(stage === "brief" || stage === "planning" || !plan) && (
-              <div className="space-y-3">
-                <label className="block space-y-1">
-                  <span className="font-bold">وش الموشن اللي تبيه؟</span>
-                  <textarea className="jw-textarea w-full" rows={4} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="مثال: إعلان ١٥ ثانية لتطبيق «نهج علي»: الكلمة تتكوّن من غبار ذهبي، أرقام النمو تطلع على الإيقاع، وفي الآخر الشعار ينبني من جزيئات…" disabled={busy} />
-                </label>
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-jw-muted">المدة</span>
-                  {SECONDS.map((s) => (
-                    <button key={s} type="button" disabled={busy} className={`jw-chip !px-3 ${seconds === s ? "!border-jw-accent !bg-jw-accent/15" : ""}`} onClick={() => setSeconds(s)}>
-                      {s} ث
-                    </button>
-                  ))}
+                  <textarea id="mlab-brief" className="jw-textarea w-full" rows={4} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="مثال: إعلان ١٥ ثانية لتطبيق «نهج علي»: الكلمة تتكوّن من غبار ذهبي، أرقام النمو تطلع على الإيقاع، وفي الآخر الشعار ينبني من جزيئات…" disabled={busy} />
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-jw-muted">الحماس</span>
-                  {[
-                    [1, "هادئ وفخم"],
-                    [3, "متوازن"],
-                    [4, "قوي"],
-                    [5, "ناري"],
-                  ].map(([v, ar]) => (
-                    <button key={v} type="button" disabled={busy} className={`jw-chip !px-3 ${intensity === v ? "!border-jw-accent !bg-jw-accent/15" : ""}`} onClick={() => setIntensity(Number(v))}>
-                      {ar}
-                    </button>
-                  ))}
+                <div className="mlab-card flex flex-col gap-4">
+                  <div>
+                    <span className="mlab-label">المدة</span>
+                    <div className="mlab-pills">
+                      {SECONDS.map((s) => (
+                        <button key={s} type="button" disabled={busy} className={pillClass(seconds === s)} aria-pressed={seconds === s} onClick={() => setSeconds(s)}>
+                          {s} ث
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="mlab-label">الحماس</span>
+                    <div className="mlab-pills">
+                      {INTENSITY.map(([v, ar]) => (
+                        <button key={v} type="button" disabled={busy} className={pillClass(intensity === v)} aria-pressed={intensity === v} onClick={() => setIntensity(v)}>
+                          {ar}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="block">
+                    <span className="mlab-label">ألوان وخطوط العلامة (اختياري)</span>
+                    <input className="jw-input w-full" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="#0b3d2e و #d4af37، خط عريض" disabled={busy} />
+                  </label>
+                  <label className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1.5 h-4 w-4" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} disabled={busy} />
+                    <span>
+                      <b>🪄 خلفية شفافة</b>
+                      <span className="mlab-tip block">يكتب حيدرة العناصر بدون خلفية من الأول، عشان تركّبها على خلفية ثانية. تقدر تفعّلها الحين أو بعد ما يخلص المشهد.</span>
+                    </span>
+                  </label>
                 </div>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-jw-muted">ألوان وخطوط العلامة (اختياري)</span>
-                  <input className="jw-input w-full" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="#0b3d2e و #d4af37، خط عريض" disabled={busy} />
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} disabled={busy} />
-                  <span>
-                    🪄 خلفية شفافة <span className="block text-xs text-jw-muted">يكتب حيدرة الأشخاص/العناصر بدون خلفية من الأول، عشان تركّبه بعدين على خلفية ثانية. تقدر تفعّله الحين أو بعد ما يخلص المشهد.</span>
-                  </span>
-                </label>
                 {!!images.length && (
-                  <div className="space-y-1 text-sm">
-                    <span className="text-jw-muted">صور من مكتبتك يستخدمها في المشهد (شعار، منتج، شخصية…)</span>
+                  <div className="mlab-card">
+                    <span className="mlab-label">صور من مكتبتك يستخدمها في المشهد (شعار، منتج، شخصية…)</span>
                     <div className="flex flex-wrap gap-2">
                       {images.map((a) => {
                         const on = picks.includes(a.id);
                         return (
-                          <button key={a.id} type="button" disabled={busy} onClick={() => setPicks(on ? picks.filter((x) => x !== a.id) : [...picks, a.id].slice(0, 8))} className={`relative h-16 w-16 overflow-hidden rounded-lg border ${on ? "border-jw-accent ring-2 ring-jw-accent/40" : "border-jw-line"}`} title={a.name}>
+                          <button key={a.id} type="button" className="mlab-thumb" aria-pressed={on} disabled={busy} onClick={() => setPicks(on ? picks.filter((x) => x !== a.id) : [...picks, a.id].slice(0, 8))} title={a.name}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={a.url!} alt={a.name} className="h-full w-full object-cover" />
-                            {on && <span className="absolute inset-x-0 bottom-0 bg-jw-accent text-[10px] font-bold text-white">a{picks.indexOf(a.id) + 1}</span>}
+                            <img src={a.url!} alt={a.name} />
+                            {on && <span className="tag">a{picks.indexOf(a.id) + 1}</span>}
                           </button>
                         );
                       })}
                     </div>
                   </div>
                 )}
-                <label className="block space-y-1 text-sm">
-                  <span className="text-jw-muted">مراجع: لقطات من ريلز عاجبتك (ياخذ منها الألوان والإيقاع والخطوط، مو المحتوى)</span>
-                  <input type="file" accept="image/*" multiple disabled={busy} onChange={async (e) => setRefs(await Promise.all([...(e.target.files ?? [])].slice(0, 4).map(refOf)))} />
-                  {!!refs.length && <span className="text-xs text-jw-ok">{refs.length} مرجع جاهز</span>}
-                </label>
-                <button type="button" className="jw-btn jw-btn-primary !min-h-11" disabled={busy || brief.trim().length < 3} onClick={makePlan}>
-                  {stage === "planning" ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : "🧠"} اكتب الخطة
-                </button>
-              </div>
+                <div className="mlab-card">
+                  <label className="block">
+                    <span className="mlab-label">مراجع: لقطات من ريلز عاجبتك</span>
+                    <span className="mlab-tip block mb-2">ياخذ منها الألوان والإيقاع والخطوط، مو المحتوى. حتى ٤ صور.</span>
+                    <input type="file" accept="image/*" multiple disabled={busy} onChange={async (e) => setRefs(await Promise.all([...(e.target.files ?? [])].slice(0, 4).map(refOf)))} />
+                    {!!refs.length && <span className="block mt-1 font-bold" style={{ color: "var(--jw-ok)" }}>{refs.length} مرجع جاهز</span>}
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || brief.trim().length < 3} onClick={() => setView("style")}>
+                    التالي: اختر الأسلوب ←
+                  </button>
+                  <button type="button" className="jw-btn !min-h-12" disabled={busy || brief.trim().length < 3} onClick={makePlan}>
+                    🧠 اكتب الخطة مباشرة (حيدرة يختار كل شيء)
+                  </button>
+                </div>
+              </>
             )}
 
-            {plan && stage !== "brief" && stage !== "planning" && (
-              <div className="space-y-3 rounded-2xl border border-jw-line bg-white p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-base font-black">{plan.title}</h3>
-                    <p className="text-sm">{plan.idea}</p>
-                  </div>
-                  <div className="flex gap-1" aria-label="الألوان">
-                    {Object.values(plan.palette).map((c, i) => (
-                      <span key={i} className="h-6 w-6 rounded-full border border-jw-line" style={{ background: c }} title={c} />
-                    ))}
-                  </div>
+            {view === "style" && (
+              <>
+                <div className="mlab-card">
+                  <h3>اختر من العينات، أو خلّ أي مجموعة لحيدرة</h3>
+                  <p className="mlab-tip">
+                    كل كرت عينة حيّة مرسومة بالكود من بحث ~١١٠ مصدر (أكثر الأفلام المصنوعة بكلود مشاهدةً، ~٩٠ مهارة مفتوحة، ومهارتا Higgsfield حقّك). اختيارك يدخل خطة حيدرة كقيد ملزم، ويفتح له ملفات المهارة المناسبة.
+                  </p>
+                  {!!chosenCards.length && (
+                    <div className="mlab-chips mt-2">
+                      {chosenCards.map(({ group, option }) => (
+                        <span key={`${group.id}-${option.id}`} className="mlab-chip">
+                          {group.ar}: {option.ar}
+                        </span>
+                      ))}
+                      <button type="button" className="mlab-chip" style={{ background: "rgba(255,255,255,0.1)", color: "var(--jw-ink)" }} disabled={busy} onClick={() => setChoices({})}>
+                        ✕ صفّر الكل
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {say && <p className="text-sm text-violet-700">🤖 {say}</p>}
-                <p className="text-xs text-jw-muted">
-                  🎣 الهوك: {plan.hook} · ✨ اللحظة المبهرة: {plan.wow} · 🔤 {FONT_BY_ID.get(plan.fonts.head)?.ar ?? plan.fonts.head} / {FONT_BY_ID.get(plan.fonts.body)?.ar ?? plan.fonts.body} · {plan.seconds} ث · {plan.bpm} BPM
-                </p>
-                <ol className="max-h-56 space-y-1 overflow-y-auto text-xs">
-                  {plan.shots.map((s, i) => (
-                    <li key={i} className="rounded-lg bg-jw-surface-2 px-2 py-1">
-                      <b className="tabular-nums" dir="ltr">
-                        {s.from.toFixed(1)}–{s.to.toFixed(1)}s
-                      </b>{" "}
-                      {s.what} {s.text && <span className="font-bold">«{s.text}»</span>} <span className="text-jw-muted">· {s.motion} · {s.camera}</span>
-                    </li>
-                  ))}
-                </ol>
-                {(stage === "plan" || stage === "ready") && (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" className="jw-btn jw-btn-primary !min-h-11" disabled={busy} onClick={build}>
-                        🎬 {code ? "ابنِ من جديد وراجع" : "اعتمد الخطة وابنِ"}
-                      </button>
-                      <button type="button" className="jw-btn" disabled={busy} onClick={() => setStage("brief")}>
-                        فكرة جديدة
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      <input className="jw-input flex-1" value={tweak} onChange={(e) => setTweak(e.target.value)} placeholder="عدّل الخطة: خلّ الهوك أقوى، غيّر الألوان، أضف رقم…" disabled={busy} />
-                      <button type="button" className="jw-btn" disabled={busy || !tweak.trim()} onClick={makePlan}>
-                        عدّل
-                      </button>
-                    </div>
+                <Gallery choices={choices} onChange={setChoices} disabled={busy} />
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || brief.trim().length < 3} onClick={makePlan}>
+                    {stage === "planning" ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : "🧠"} اكتب الخطة
+                  </button>
+                  <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("brief")}>
+                    → رجوع للفكرة
+                  </button>
+                </div>
+              </>
+            )}
+
+            {view === "plan" && (
+              <>
+                {stage === "planning" && !plan && (
+                  <div className="mlab-card flex items-center gap-3">
+                    <span className="jw-spinner" aria-hidden /> حيدرة يكتب الخطة على اختياراتك… {elapsed}
                   </div>
                 )}
-              </div>
+                {plan && (
+                  <div className="mlab-card flex flex-col gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="!text-xl">{plan.title}</h3>
+                        <p className="m-0">{plan.idea}</p>
+                      </div>
+                      <div className="flex gap-1.5" aria-label="الألوان">
+                        {Object.values(plan.palette).map((c, i) => (
+                          <span key={i} className="h-7 w-7 rounded-full border border-white/20" style={{ background: c }} title={c} />
+                        ))}
+                      </div>
+                    </div>
+                    {say && <p className="m-0 font-bold" style={{ color: "var(--jw-accent)" }}>🤖 {say}</p>}
+                    <p className="mlab-tip m-0">
+                      🎣 الهوك: {plan.hook} · ✨ اللحظة المبهرة: {plan.wow} · 🔤 {FONT_BY_ID.get(plan.fonts.head)?.ar ?? plan.fonts.head} / {FONT_BY_ID.get(plan.fonts.body)?.ar ?? plan.fonts.body} · {plan.seconds} ث · {plan.bpm} BPM
+                    </p>
+                    {!!chosenOptions(plan.choices).length && (
+                      <div className="mlab-chips">
+                        {chosenOptions(plan.choices).map(({ group, option }) => (
+                          <span key={`${group.id}-${option.id}`} className="mlab-chip">
+                            {group.ar}: {option.ar}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <ol className="mlab-shots">
+                      {plan.shots.map((s, i) => (
+                        <li key={i}>
+                          <b className="tabular-nums" dir="ltr">
+                            {s.from.toFixed(1)}–{s.to.toFixed(1)}s
+                          </b>{" "}
+                          {s.what} {s.text && <span className="font-bold">«{s.text}»</span>} <span className="mlab-tip">· {s.motion} · {s.camera}{s.transition ? ` · ${s.transition}` : ""}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    {(stage === "plan" || stage === "ready") && (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex gap-2">
+                          <input className="jw-input flex-1" value={tweak} onChange={(e) => setTweak(e.target.value)} placeholder="عدّل الخطة: خلّ الهوك أقوى، غيّر الألوان، أضف رقم…" disabled={busy} />
+                          <button type="button" className="jw-btn" disabled={busy || !tweak.trim()} onClick={makePlan}>
+                            عدّل
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy} onClick={build}>
+                            🎬 {code ? "ابنِ من جديد وراجع" : "اعتمد الخطة وابنِ"}
+                          </button>
+                          <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("style")}>
+                            غيّر الأسلوب
+                          </button>
+                          <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("brief")}>
+                            فكرة جديدة
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
-            {!!log.length && (
-              <ul className="space-y-1 rounded-xl bg-jw-surface-2 p-3 text-xs" aria-live="polite">
-                {log.map((l, i) => (
-                  <li key={i}>{l}</li>
-                ))}
-              </ul>
+            {view === "build" && (
+              <>
+                <fieldset disabled={busy} className="mlab-card">
+                  <legend className="mlab-label px-1">مستوى الفحص</legend>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {(Object.keys(REVIEW_MODES) as ReviewMode[]).map((mode) => (
+                      <label key={mode} className="mlab-opt !p-3" aria-pressed={reviewMode === mode} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
+                        <span className="flex items-center gap-2 name">
+                          <input type="radio" name="motion-review-mode" value={mode} checked={reviewMode === mode} onChange={() => setReviewMode(mode)} />
+                          {REVIEW_MODES[mode].label}
+                        </span>
+                        <span className="tip">{REVIEW_MODES[mode].description}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                {plan && !busy && (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" onClick={build}>
+                      🎬 {code ? "ابنِ من جديد وراجع" : "ابنِ المشهد"}
+                    </button>
+                    {code && (
+                      <button type="button" className="jw-btn !min-h-12" onClick={() => setView("export")}>
+                        التصدير ←
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!!log.length && (
+                  <ul className="mlab-log" aria-live="polite">
+                    {log.map((l, i) => (
+                      <li key={i}>{l}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
+
+            {view === "export" && (
+              <>
+                {!info && code && (
+                  <button type="button" className="jw-btn jw-btn-primary !min-h-12 w-full" onClick={reopen}>
+                    ▶️ شغّل المشهد المحفوظ
+                  </button>
+                )}
+                {info && (
+                  <div className="mlab-card flex flex-col gap-3">
+                    <h3>التصدير</h3>
+                    {plan?.music && !transparent && (
+                      <label className="flex items-start gap-3">
+                        <input type="checkbox" className="mt-1.5 h-4 w-4" checked={music} onChange={(e) => setMusic(e.target.checked)} disabled={stage === "rendering"} />
+                        <span>
+                          <b>موسيقى على الإيقاع من ElevenLabs</b> <span className="mlab-tip block">{plan.music}</span>
+                        </span>
+                      </label>
+                    )}
+                    <label className="flex items-start gap-3">
+                      <input type="checkbox" className="mt-1.5 h-4 w-4" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} disabled={stage === "rendering"} />
+                      <span>
+                        <b>🪄 خلفية شفافة</b> <span className="mlab-tip block">يصدّر ملف WebM منفصل بدون خلفية تنزّله وتركّبه بنفسك — ما يدخل التايملاين تلقائيًا.</span>
+                      </span>
+                    </label>
+                    {transparent && !transparentCode && (
+                      <button type="button" className="jw-btn w-full !min-h-11" disabled={stage === "rendering"} onClick={stripBackground}>
+                        🪄 فرّغ خلفية هذا المشهد الآن
+                      </button>
+                    )}
+                    {transparent && transparentCode && <p className="m-0 font-bold" style={{ color: "var(--jw-ok)" }}>✓ المشهد مكتوب بدون خلفية؛ جاهز يصدّر شفافًا.</p>}
+                    <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base w-full" disabled={stage === "rendering" || (transparent && !transparentCode)} onClick={exportFilm}>
+                      {stage === "rendering"
+                        ? `أرندر ${Math.round(progress * 100)}٪${renderAt ? ` · إطار ${renderAt.frame} من ${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : ""}`
+                        : transparent
+                          ? "⬇️ صدّر الملف الشفاف ونزّله"
+                          : "⬇️ صدّره ونزّله في التايملاين"}
+                    </button>
+                    <p className="mlab-tip m-0">{transparent ? "يتصدّر WebM بقناة شفافية (ألفا) على جهازك وينزل مباشرة." : "يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت مع مؤثراته الصوتية."}</p>
+                  </div>
+                )}
+                {code && !busy && (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="jw-btn !min-h-11" onClick={() => setView("build")}>
+                      → ابنِ من جديد / غيّر مستوى الفحص
+                    </button>
+                    <button type="button" className="jw-btn !min-h-11" onClick={() => setView("plan")}>
+                      → عدّل الخطة
+                    </button>
+                  </div>
+                )}
+                {!!log.length && (
+                  <ul className="mlab-log" aria-live="polite">
+                    {log.slice(-6).map((l, i) => (
+                      <li key={i}>{l}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+
             {error && (
-              <p role="alert" className="rounded-lg border border-jw-danger/40 bg-jw-danger/10 px-3 py-2 text-sm text-jw-danger">
+              <p role="alert" className="mlab-error m-0">
                 {error}
               </p>
             )}
           </section>
 
-          <aside className="min-w-0 space-y-3">
-            <div className="flex aspect-[9/16] max-h-[56vh] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#111] lg:aspect-auto lg:h-[56vh]" style={width > height ? { aspectRatio: `${width} / ${height}`, height: "auto" } : undefined}>
-              {info ? <canvas ref={view} className="max-h-full max-w-full" /> : <span className="px-6 text-center text-sm text-white/60">{busy ? "حيدرة يشتغل على المشهد…" : "المعاينة تطلع هنا بعد ما يبني حيدرة المشهد."}</span>}
+          <aside className="mlab-side">
+            <div className="mlab-preview aspect-[9/16] max-h-[56vh] w-full lg:aspect-auto lg:h-[56vh]" style={width > height ? { aspectRatio: `${width} / ${height}`, height: "auto" } : undefined}>
+              {info ? <canvas ref={viewCanvas} /> : <span className="mlab-tip px-6 text-center">{busy ? `حيدرة ${stageAr}… ${elapsed}` : "المعاينة تطلع هنا بعد ما يبني حيدرة المشهد."}</span>}
             </div>
             {info && (
               <div className="flex items-center gap-2" dir="ltr">
-                <button type="button" className="jw-btn !min-h-9" disabled={stage === "rendering"} onClick={() => setPlaying((v) => !v)} aria-label={playing ? "وقّف" : "شغّل"}>
+                <button type="button" className="jw-btn !min-h-10" disabled={stage === "rendering"} onClick={() => setPlaying((v) => !v)} aria-label={playing ? "وقّف" : "شغّل"}>
                   {playing ? "⏸" : "▶"}
                 </button>
                 <input type="range" className="flex-1" min={0} max={info.duration} step={0.01} value={t} disabled={playing || stage === "rendering"} onChange={(e) => void seekTo(Number(e.target.value))} aria-label="الوقت" />
-                <span className="w-14 text-end text-xs tabular-nums">{t.toFixed(2)}s</span>
+                <span className="w-16 text-end tabular-nums text-sm">{t.toFixed(2)}s</span>
               </div>
             )}
-
             {last && (
-              <div className="space-y-2 rounded-2xl border border-jw-line bg-white p-3">
-                <div className="flex items-center justify-between text-sm">
+              <div className="mlab-card flex flex-col gap-2">
+                <div className="flex items-center justify-between">
                   <b>درجات المخرج — الجولة {reviews.length}</b>
-                  <span className={last.pass ? "font-bold text-jw-ok" : "text-jw-muted"}>{last.pass ? `✅ وصل المعيار (كلها ≥ ${PASS})` : `أقل درجة ${last.low}`}</span>
+                  <span className="font-bold" style={{ color: last.pass ? "var(--jw-ok)" : "var(--jw-muted)" }}>{last.pass ? `✅ وصل المعيار (كلها ≥ ${PASS})` : `أقل درجة ${last.low}`}</span>
                 </div>
-                <ul className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <ul className="mlab-score m-0 list-none p-0">
                   {RUBRIC.map((r) => (
-                    <li key={r.id} className="flex items-center gap-2">
-                      <span className="w-20 shrink-0 text-jw-muted">{r.ar}</span>
-                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-jw-surface-3">
-                        <span className="block h-full rounded-full" style={{ width: `${last.scores[r.id] * 10}%`, background: last.scores[r.id] >= PASS ? "var(--jw-ok, #16a34a)" : "var(--jw-accent)" }} />
+                    <li key={r.id}>
+                      <span className="w-20 shrink-0 mlab-tip">{r.ar}</span>
+                      <span className="bar">
+                        <span className="block h-full rounded-full" style={{ width: `${last.scores[r.id] * 10}%`, background: last.scores[r.id] >= PASS ? "var(--jw-ok)" : "var(--jw-accent)" }} />
                       </span>
-                      <b className="w-4 text-end tabular-nums">{last.scores[r.id]}</b>
+                      <b className="w-5 text-end tabular-nums">{last.scores[r.id]}</b>
                     </li>
                   ))}
                 </ul>
                 {!!last.worst.length && (
-                  <ul className="space-y-0.5 text-xs text-jw-muted">
+                  <ul className="m-0 list-none p-0 flex flex-col gap-1 text-sm mlab-tip">
                     {last.worst.map((w, i) => (
                       <li key={i}>
-                        <b dir="ltr">{w.t.toFixed(1)}s</b> {w.problem}
+                        <b dir="ltr" style={{ color: "var(--jw-ink)" }}>{w.t.toFixed(1)}s</b> {w.problem}
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
             )}
-
-            {!info && stage === "ready" && code && (
-              <button type="button" className="jw-btn w-full" onClick={reopen}>
-                ▶️ شغّل المشهد المحفوظ
-              </button>
-            )}
-            {info && (stage === "ready" || stage === "rendering") && (
-              <div className="space-y-2 rounded-2xl border border-jw-line bg-white p-3">
-                {plan?.music && !transparent && (
-                  <label className="flex items-start gap-2 text-sm">
-                    <input type="checkbox" className="mt-1" checked={music} onChange={(e) => setMusic(e.target.checked)} disabled={stage === "rendering"} />
-                    <span>
-                      موسيقى على الإيقاع من ElevenLabs <span className="block text-xs text-jw-muted">{plan.music}</span>
-                    </span>
-                  </label>
-                )}
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} disabled={stage === "rendering"} />
-                  <span>
-                    🪄 خلفية شفافة <span className="block text-xs text-jw-muted">يصدّر ملف WebM منفصل بدون خلفية تنزّله وتركّبه بنفسك — ما يدخل التايملاين تلقائيًا</span>
-                  </span>
-                </label>
-                {transparent && !transparentCode && (
-                  <button type="button" className="jw-btn w-full" disabled={stage === "rendering"} onClick={stripBackground}>
-                    🪄 فرّغ خلفية هذا المشهد الآن
-                  </button>
-                )}
-                {transparent && transparentCode && <p className="text-xs text-jw-ok">✓ المشهد مكتوب بدون خلفية؛ جاهز يصدّر شفافًا.</p>}
-                <button type="button" className="jw-btn jw-btn-primary !min-h-11 w-full" disabled={stage === "rendering" || (transparent && !transparentCode)} onClick={exportFilm}>
-                  {stage === "rendering"
-                    ? `أرندر ${Math.round(progress * 100)}٪${renderAt ? ` · إطار ${renderAt.frame} من ${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : ""}`
-                    : transparent
-                      ? "⬇️ صدّر الملف الشفاف ونزّله"
-                      : "⬇️ صدّره ونزّله في التايملاين"}
-                </button>
-                <p className="text-[11px] text-jw-faint">{transparent ? "يتصدّر WebM بقناة شفافية (ألفا) على جهازك، وينزل مباشرة — لتركيبه في أي برنامج مونتاج يدعم الشفافية." : "يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت مع مؤثراته الصوتية."}</p>
-              </div>
+            {view !== "build" && view !== "export" && !!log.length && (
+              <ul className="mlab-log" aria-live="polite">
+                {log.slice(-4).map((l, i) => (
+                  <li key={i}>{l}</li>
+                ))}
+              </ul>
             )}
           </aside>
         </div>

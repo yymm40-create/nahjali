@@ -16,6 +16,7 @@ import { checkScene, LAB_FONTS, readPlan, readReview, SECONDS, type LabPlan } fr
 import { EXEMPLARS } from "./exemplars";
 import { MAX_ROUNDS, MOTION_LAB_SKILL, PASS, RUBRIC } from "./skill";
 import { ALWAYS_AT_PLAN, HF_LAB_TEXT, knownRefs, openRefs } from "./higgsfield";
+import { choicesRefs, choicesText, readChoices } from "@config/editor/lab-options";
 
 const SYSTEM = `${MOTION_LAB_SKILL}
 
@@ -128,11 +129,14 @@ export async function labPlan(p: EditorProject, who: Who, b: Record<string, unkn
   const assets = assetsOf(b.assets);
   const refs = pics(b.references, 4);
   const f = frameOf(p);
+  // the gallery picks (look, structure, connections…): binding lines for the plan, and their skill files opened with it
+  const choices = readChoices(b.choices);
+  const chosen = choicesText(choices);
   const parts: ClaudePart[] = [
     {
       type: "text",
       text: `PLAN a motion-graphics piece for this project. Do NOT write code yet.
-THE BRIEF (the person's words): ${brief}
+THE BRIEF (the person's words): ${brief}${chosen ? `\n\n${chosen}\n` : ""}
 LENGTH: ${seconds} s · FRAME: ${f.w}×${f.h} (${f.shape}) · INTENSITY wanted: ${Number(b.intensity) || "your call from the brief"} · LANGUAGE: ${text(b.language, 40) || "Arabic (Gulf)"}
 BRAND: ${text(b.brand, 800) || "none given — design a palette for the idea (one accent)"}
 ASSETS the scene can draw (by id): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none — you draw everything in code"}
@@ -141,12 +145,14 @@ ${refs.length ? `REFERENCES: ${refs.length} frame(s) below — take their colour
 Make it a studio piece: a hook on frame 1, one hero per shot, the beat grid, one object carrying across shots, the "wow" moment, a held ending or a loop. Times in seconds; shots cover the whole length without gaps. Every on-screen word written exactly (Arabic as it will appear).
 Follow the owner's Higgsfield skills' workflow for a film (brief → passport → scenario with the shot table on the beat grid and the trigger map), and pick in "skillRefs" the files of theirs you will need open.
 
-${openRefs(ALWAYS_AT_PLAN).text}`,
+${openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)]).text}`,
     },
     ...refs.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `REFERENCE ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
   const r = await ask<Record<string, unknown>>(who, b.model, "مختبر الموشن · الخطة", parts, PLAN_SCHEMA, 12000, "high");
-  return { plan: readPlan(r.data, seconds, assets.map((a) => a.id)), say: text(r.data.say, 600), coins: r.coins, model: r.model };
+  // the picks ride with the plan, so writing and review see them too
+  const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id)), choices };
+  return { plan, say: text(r.data.say, 600), coins: r.coins, model: r.model };
 }
 
 /** 2 · WRITE: the scene program on the kit, from the approved plan (or a fix of the last one, from its errors). */

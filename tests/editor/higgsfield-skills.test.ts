@@ -52,7 +52,7 @@ describe("the owner's two Higgsfield skills, installed verbatim", () => {
     for (const r of HF_REFS) expect(HF_LAB_TEXT).toContain(r.id);
     const director = read("src/lib/editor/scene/director.ts");
     expect(director).toContain("${HF_LAB_TEXT}");
-    expect(director).toContain("openRefs(ALWAYS_AT_PLAN)");
+    expect(director).toContain("openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)])");
     expect(director.match(/openRefs\(knownRefs\(plan\.skillRefs\)\)/g)?.length).toBe(2);
     // the taste files both skills say to read first are always opened at the plan
     const atPlan = openRefs(ALWAYS_AT_PLAN);
