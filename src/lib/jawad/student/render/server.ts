@@ -38,7 +38,7 @@ function localChrome() {
   return null;
 }
 
-async function browser(): Promise<Browser> {
+export async function openBrowser(): Promise<Browser> {
   const puppeteer = (await import("puppeteer-core")).default;
   const local = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME ? null : localChrome();
   if (local) return puppeteer.launch({ executablePath: local, headless: true, args: ["--no-sandbox", "--font-render-hinting=none"] });
@@ -48,7 +48,7 @@ async function browser(): Promise<Browser> {
 
 /** HTML → PDF. Page numbers in the footer when asked. */
 export async function htmlToPdf(html: string, o: { numbered?: boolean; slides?: boolean } = {}) {
-  const b = await browser();
+  const b = await openBrowser();
   try {
     const page = await b.newPage();
     await page.setContent(html, { waitUntil: "load", timeout: 120_000 });
@@ -76,7 +76,7 @@ export async function htmlToPdf(html: string, o: { numbered?: boolean; slides?: 
  * w×scale by h×scale pixels.
  */
 export async function htmlToPngs(pages: { html: string; w: number; h: number; scale: number }[]) {
-  const b = await browser();
+  const b = await openBrowser();
   try {
     const out: Buffer[] = [];
     for (const p of pages) {
@@ -134,7 +134,7 @@ export async function pdfPageCount(pdf: Buffer) {
  */
 export async function fitPdf(make: (scale: number) => string, want: number, o: { numbered?: boolean } = {}) {
   const { FIT_SCALE, nextScale } = await import("../pages");
-  const b = await browser();
+  const b = await openBrowser();
   try {
     const page = await b.newPage();
     const print = async (scale: number) => {

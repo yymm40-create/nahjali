@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { settingsLine } from "@/lib/jawad/student/summary";
 import CapacityAsk from "./CapacityAsk";
-import { DENSITIES, DESIGNED_KINDS, FORMATS, OUTPUT_STATUS, QUESTION_TYPES, emptyWish, formatOf, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { DENSITIES, DESIGNED_KINDS, FORMATS, OUTPUT_STATUS, QUESTION_TYPES, STUDENT, emptyWish, formatOf, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
 import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
@@ -227,7 +227,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
         <div className="jw-panel space-y-3 border-jw-line-strong p-4">
           <h3 className="font-semibold">نسخة تجريبية قبل التصنيع الكامل؟</h3>
           <p className="text-sm text-jw-muted">
-            {o.kind === "book" ? "يُكتب الفصل الأول ويُطبع مع الغلاف بالخطوط والتصميم الذي اخترته" : o.settings.render === "image" ? "تُرسم أول ٣ شرائح كصور بـ GPT Image 2 وتُجمع في PDF" : "تُصنع أول ٣ شرائح بملف PPTX وPDF"}، لترى الخط والتصميم على مادتك الحقيقية. النسخة التجريبية مدفوعة، ومبلغها يُخصم من سعر النسخة النهائية إذا أكملت.
+            {o.kind === "book" ? "يُكتب الفصل الأول ويُطبع مع الغلاف بالخطوط والتصميم الذي اخترته" : o.settings.render === "image" ? "تُرسم أول ٣ شرائح كصور بـ GPT Image 2 وتُجمع في PDF" : o.settings.render === "design" ? `يصمم ${A} أول ٣ شرائح ويراجعها وهي مرسومة، وتُجمع في PDF` : "تُصنع أول ٣ شرائح بملف PPTX وPDF"}، لترى الخط والتصميم على مادتك الحقيقية. النسخة التجريبية مدفوعة، ومبلغها يُخصم من سعر النسخة النهائية إذا أكملت.
           </p>
           <div className="flex flex-wrap gap-2">
             <PaidButton label="ابدأ التصنيع الكامل" what="إنشاء الناتج كاملًا على الخطة المعتمدة." disabled={running || settingsDirty} run={(b) => act({ action: "final", ...b })} />
@@ -272,6 +272,14 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
             <>
               {((o.content as { overflow?: number[] } | null)?.overflow ?? []).length > 0 && (
                 <p className="text-sm text-jw-warn">شرائح نصها أطول من مساحتها حتى بعد تصغير الخط: {(o.content as { overflow: number[] }).overflow.join("، ")}. وزّعها على شرائح أكثر من الخريطة.</p>
+              )}
+              {o.settings.render === "design" && (
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl p-3 text-white" style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
+                  <b className="flex-1">🎨 عرضك جاهز: عدّل نصه وصوره، اعرضه شاشة كاملة، ونزّله PDF أو PPTX.</b>
+                  <a className="jw-btn jw-btn-primary" href={`${STUDENT.base}/deck/${o.id}`}>
+                    افتح محرر العرض
+                  </a>
+                </div>
               )}
               <PdfFrame o={o} name="pdf" />
               {o.settings.render !== "image" && <SlidesFonts design={o.settings.design} />}
@@ -486,9 +494,23 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
               </button>
               <button
                 type="button"
-                aria-pressed={s.render !== "image"}
+                aria-pressed={s.render === "design"}
+                onClick={() => set({ render: "design" })}
+                className={`relative overflow-hidden rounded-2xl p-4 text-start text-white transition-transform hover:-translate-y-0.5 md:col-span-2 ${s.render === "design" ? "ring-4 ring-amber-300" : "opacity-90"}`}
+                style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}
+              >
+                <span className="absolute top-3 left-3 rounded-full bg-white/25 px-2 py-0.5 text-[11px] font-bold">جديد ✨</span>
+                <span className="block text-2xl" aria-hidden>
+                  🎨
+                </span>
+                <b className="block text-lg">صادق يصممها + محرر وعرض</b>
+                <span className="block text-sm text-white/90">تصميم حر لكل شريحة (صور، أشكال، ألوان)، يراجعه صادق وهو مرسوم. تعدّل نصها وصورها في «محرر العرض»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX قابل للتعديل.</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={s.render !== "image" && s.render !== "design"}
                 onClick={() => set({ render: "editable" })}
-                className={`rounded-2xl border bg-white p-4 text-start transition-transform hover:-translate-y-0.5 ${s.render !== "image" ? "border-jw-accent ring-4 ring-violet-200" : "border-jw-line"}`}
+                className={`rounded-2xl border bg-white p-4 text-start transition-transform hover:-translate-y-0.5 ${s.render !== "image" && s.render !== "design" ? "border-jw-accent ring-4 ring-violet-200" : "border-jw-line"}`}
               >
                 <span className="block text-2xl" aria-hidden>
                   🧩

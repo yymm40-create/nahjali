@@ -94,15 +94,22 @@ export function Count({ label, value, options, max, unit, onChange }: { label: s
 }
 
 /** «GPT Image 2 or Claude»: what each gives, and what drawing costs. */
-export function MethodChoice({ what, value, quality, perUnit, free, onChange }: { what: "page" | "slide" | "map"; value: boolean; quality: string; perUnit: { high: number; medium: number }; free: boolean; onChange: (draw: boolean, quality: string) => void }) {
+export function MethodChoice({ what, value, quality, perUnit, free, onChange, designed = false, onDesign }: { what: "page" | "slide" | "map"; value: boolean; quality: string; perUnit: { high: number; medium: number }; free: boolean; onChange: (draw: boolean, quality: string) => void; /** slides only: «صادق يصممها» with the deck's own editor and show */ designed?: boolean; onDesign?: () => void }) {
   const { assistant: A } = useBranch();
   const unit = what === "slide" ? "الشريحة" : what === "map" ? "الخريطة" : "الصفحة";
   const price = (q: "high" | "medium") => (free ? "مجانًا لك الحين" : `≈ ${coinStr(perUnit[q])} لكل ${what === "slide" ? "شريحة" : what === "map" ? "خريطة" : "صفحة"}`);
   return (
     <div className="space-y-2">
       <span className="text-sm font-semibold">كيف تنصنع {what === "slide" ? "الشرائح" : what === "map" ? "الخريطة" : "الصفحات"}؟</span>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <button type="button" aria-pressed={!value} onClick={() => onChange(false, quality)} className={`rounded-2xl border bg-white p-3 text-start ${!value ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
+      <div className={`grid gap-2 ${onDesign ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+        {onDesign && (
+          <button type="button" aria-pressed={designed} onClick={onDesign} className={`relative rounded-2xl p-3 text-start text-white ${designed ? "ring-4 ring-amber-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
+            <span className="absolute top-2 left-2 rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold">جديد ✨</span>
+            <b className="block">🎨 {A} يصممها + محرر وعرض</b>
+            <span className="block text-xs text-white/90">كل شريحة تصميم حر مثل المصممين (صور، أشكال، ألوان)، يراجعها {A} وهي مرسومة ويصلّحها. بعدها تعدّلها بنفسك في «محرر العرض»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX نصها قابل للتعديل.</span>
+          </button>
+        )}
+        <button type="button" aria-pressed={!value && !designed} onClick={() => onChange(false, quality)} className={`rounded-2xl border bg-white p-3 text-start ${!value && !designed ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
           <b className="block">🧩 {A} يصممها</b>
           <span className="block text-xs text-jw-muted">
             {what === "slide" ? "ملف PPTX تقدر تعدّل نصه بنفسك + PDF." : what === "map" ? "صورة PNG عالية الدقة (4K تقريبًا) + PDF، وتعدّل فروعها بنفسك قبل الرسم." : "PDF بخط عربي حقيقي، نصه قابل للنسخ والبحث."} بدون أخطاء في الكلمات. الأرخص: بدون تكلفة إضافية.
@@ -198,7 +205,7 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
           <Count label="كم شريحة؟" value={Number(s.count) || 0} options={[8, 12, 20]} max={200} unit="شريحة" onChange={(count) => set({ count })} />
           <Choice label="الشرح وين؟" value={String(s.notesMode)} options={[{ id: "slide", label: "على الشريحة" }, { id: "notes", label: "في ملاحظات المحاضر" }, { id: "both", label: "الاثنين" }]} onChange={(notesMode) => set({ notesMode })} />
           <Choice label="الشكل" value={String(s.aspect)} options={[{ id: "16:9", label: "عريض 16:9" }, { id: "4:3", label: "4:3" }]} onChange={(aspect) => set({ aspect })} />
-          <MethodChoice what="slide" value={s.render === "image"} quality={String(s.imageQuality || "high")} perUnit={prices.slide} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q })} />
+          <MethodChoice what="slide" value={s.render === "image"} designed={s.render === "design"} onDesign={() => set({ render: "design" })} quality={String(s.imageQuality || "high")} perUnit={prices.slide} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q })} />
         </>
       );
     case "audio": {
