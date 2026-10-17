@@ -278,7 +278,7 @@ export async function liftOut(userId: string, email: string | null, projectId: s
   const wantPredict = wipe === "predict" && repairReady();
   const usd = cutOut.length * PIECE_USD + (wantPredict ? FILL_USD : 0);
   const job = `piece-${randomUUID()}`;
-  if (usd > 0) await reserveCoins({ id: userId, email }, job, usd, "فكّ عناصر الصورة");
+  if (usd > 0) await reserveCoins({ id: userId, email }, job, usd, "فكّ عناصر الصورة", "image");
   try {
     const pic = await pictureOf(userId, baseId);
     const dataUrl = `data:image/png;base64,${pic.bytes.toString("base64")}`;
@@ -319,7 +319,7 @@ export async function liftOut(userId: string, email: string | null, projectId: s
       ops.unshift({ op: "use_as_base", file: base.id } as Op);
     }
     const spent = usd - (wantPredict && filled !== "predict" ? FILL_USD : 0);
-    if (usd > 0) await settleCoins(job, Math.max(0, spent));
+    if (usd > 0) await settleCoins(job, Math.max(0, spent), "image");
     return { ops, files, base, missed, filled, usd: Math.round(Math.max(0, spent) * 10000) / 10000 };
   } catch (e) {
     if (usd > 0) await refundCoins(job);
@@ -355,7 +355,7 @@ export async function retype(userId: string, email: string | null, projectId: st
 
   const usd = RETEXT_USD + (fill === "predict" ? FILL_USD : 0);
   const job = `retext-${randomUUID()}`;
-  await reserveCoins({ id: userId, email }, job, usd, "إعادة كتابة كلام في الصورة");
+  await reserveCoins({ id: userId, email }, job, usd, "إعادة كتابة كلام في الصورة", "image");
   try {
     const pic = await pictureOf(userId, baseId);
     // the original words, cropped a little wider than their box, are the typeface's reference
@@ -385,7 +385,7 @@ export async function retype(userId: string, email: string | null, projectId: st
     }
     ops.push({ op: "add_image", file: file.id, x: box.x, y: box.y, w: Math.max(2, Math.min(200, box.w)) } as Op);
     const spent = usd - (fill === "predict" && filled !== "predict" ? FILL_USD : 0);
-    await settleCoins(job, Math.max(0, spent));
+    await settleCoins(job, Math.max(0, spent), "image");
     return { ops, file, base, filled, usd: Math.round(Math.max(0, spent) * 10000) / 10000 };
   } catch (e) {
     await refundCoins(job);

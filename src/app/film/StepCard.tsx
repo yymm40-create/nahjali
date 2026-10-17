@@ -53,7 +53,7 @@ export default function StepCard({
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-extrabold">{title} <span className="text-sm text-muted">· النسخة {v.version}</span></h2>
         <span className="flex items-center gap-1.5">
-          {typeof v.data.cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد">{credits(v.data.cost_usd)}</span>}
+          {typeof v.data.cost_usd === "number" && <span className="chip text-xs" title="تكلفة هذا الرد">{credits(v.data.cost_usd, "claude")}</span>}
           <span className={`chip ${statusChip(v.status)}`}>{STATUS_LABELS[v.status]}</span>
         </span>
       </header>

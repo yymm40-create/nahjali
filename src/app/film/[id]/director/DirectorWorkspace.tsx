@@ -198,7 +198,7 @@ export default function DirectorWorkspace({ projectId, stage, versions, superDir
           <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start", superDirector: useSuper })}>
             {busy ? "نرسل…" : "ابدأ مع المخرج"}
           </button>
-          <p className="text-center text-xs font-bold text-muted">كل رد {creditsRange(0.05, 1)}</p>
+          <p className="text-center text-xs font-bold text-muted">كل رد {creditsRange(0.05, 1, "claude")}</p>
         </div>
       ) : (
         <section className="card flex flex-wrap items-center justify-between gap-2 p-4">

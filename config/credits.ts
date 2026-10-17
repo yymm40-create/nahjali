@@ -32,12 +32,26 @@ export interface CreditSettings {
 }
 
 /**
- * «المشهد السينمائي» (owner, 17 October 2026): the balance one cinematic scene costs, end to end — Seedance 2.0 at its
- * 15-second limit in 720p with one redo (2 takes, ¤23), 4 sheets with 2 redraws and 2 style tests (¤13), and the robots'
- * replies at what the film code reserves for each (screenwriter 4, sheet maker 5, director 3, small helpers: ¤40.02) =
- * ¤76.02, rounded up to the whole riyal. (480p would be ¤63.52, 1080p ¤108.52.) The trial is ¤10 (the ¤19 one is gone).
+ * «المشهد السينمائي» (owner, 17 October 2026): the balance one cinematic scene costs, end to end, at the owner's
+ * margins (videos 40٪, pictures 60٪, Claude its real cost + 10٪) — Seedance 2.0 at its 15-second limit in 720p with
+ * one redo (2 takes, ¤24.50), 4 sheets with 2 redraws and 2 style tests (¤16), and the robots' replies at what the film
+ * code reserves for each (screenwriter 4, sheet maker 5, director 3, small helpers: ¤40.02) = ¤80.52, rounded up to the
+ * whole riyal. (480p would be ¤67.52, 1080p ¤115.52.) The trial is ¤10 (the ¤19 one is gone).
  */
-export const SCENE_PACK_SAR = 77;
+export const SCENE_PACK_SAR = 81;
+
+/** What one of each thing costs now (halalas), for «تقدر تسوي فيها»: a standard picture, a 5-second 720p video, a scene. */
+export interface UnitPrices {
+  image: number;
+  video5: number;
+  scene: number;
+}
+/** How many of each a package's balance makes (each on its own: pictures OR videos OR scenes). */
+export function packYield(creditSar: number, u: UnitPrices) {
+  const h = creditSar * 100;
+  const n = (unit: number) => (unit > 0 ? Math.floor(h / unit) : 0);
+  return { images: n(u.image), videos: n(u.video5), scenes: n(u.scene) };
+}
 
 export const DEFAULT_PACKS: Pack[] = [
   { id: "try", name: "تجربة", price: 10, credit: 10, tag: "", note: "تجرب فيها الأقسام" },

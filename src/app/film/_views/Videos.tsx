@@ -81,7 +81,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         {project.series_id && <Link href={`${base}/${id}`} className="text-sm font-bold text-muted">→ {project.title}</Link>}
         <h1 className={project.series_id ? "display text-4xl" : "display text-2xl"}>🎬 توليد الفيديو</h1>
         <p className="text-sm font-bold text-muted">
-          آخر قرار قبل التوليد: ولّد أصوات كل مقطع أول (تروح مع الفيديو مرجعًا فتتحرك الشفاه عليها)، ثم اختر الجودة وولّد. الفيديو حتى الآن <span>{credits(cost.byService.seedance ?? 0)}</span>
+          آخر قرار قبل التوليد: ولّد أصوات كل مقطع أول (تروح مع الفيديو مرجعًا فتتحرك الشفاه عليها)، ثم اختر الجودة وولّد. الفيديو حتى الآن <span>{credits(cost.byService.seedance ?? 0, "video")}</span>
         </p>
       </header>
       <VideosWorkspace

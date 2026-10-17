@@ -47,10 +47,10 @@ export async function make(userId: string, email: string | null, projectId: stri
   const doc = readDoc(project.doc);
   if (ask.kind === "cutout") {
     const job = `cut-${randomUUID()}`;
-    await reserveCoins({ id: userId, email }, job, CUTOUT_USD, "قص الخلفية");
+    await reserveCoins({ id: userId, email }, job, CUTOUT_USD, "قص الخلفية", "image");
     try {
       const made = await cutout(userId, project.id, doc.base?.fileId ?? null, doc.layers.find((l) => l.id === ask.source && l.kind === "image"), ask);
-      await settleCoins(job, CUTOUT_USD);
+      await settleCoins(job, CUTOUT_USD, "image");
       return made;
     } catch (e) {
       await refundCoins(job);

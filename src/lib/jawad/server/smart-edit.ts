@@ -154,8 +154,8 @@ function editLines(def: GeneratorDef, table: Record<string, number | null>) {
   const video = def.output === "video";
   const keys = video ? [EDIT_CLAUDE_KEY, EDIT_FEE_KEY] : [EDIT_FEE_KEY];
   const labels: Record<string, string> = { [EDIT_CLAUDE_KEY]: "جواد يكتب البرومبت المعدّل", [EDIT_FEE_KEY]: "التعديل الذكي" };
-  const lines = keys.map((k) => ({ label: labels[k], centi: table[k] }));
-  return lines.every((l) => l.centi != null) ? (lines as { label: string; centi: number }[]) : null;
+  const lines = keys.map((k) => ({ label: labels[k], centi: table[k], claude: k === EDIT_CLAUDE_KEY }));
+  return lines.every((l) => l.centi != null) ? (lines as { label: string; centi: number; claude: boolean }[]) : null;
 }
 
 export async function smartEdit(user: { id: string }, owner: boolean, b: EditBody, origin: string): Promise<EditResult> {
@@ -271,8 +271,12 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
     const e = evaluate(def, { settings, prompt: placeholder, instructions: "", refStyle, refs: m, strict: !switched }, table);
     if (e.issues.length) return { e, issues: e.issues };
     if (!e.price.ok) return { e, issues: [{ field: "price", message: e.price.reason }] };
-    const lines = [...e.price.lines, ...extra];
-    return { e, lines, coins: coinsOf(lines.reduce((s, l) => s + l.centi, 0)), usd: (e.price.usdCeiling ?? 0) + (def.output === "video" ? EDIT_CLAUDE_USD : 0) };
+    const lines = [...e.price.lines, ...extra.map(({ label, centi }) => ({ label, centi }))];
+    // each part at its own profit: the new picture/video at its kind's (e.price.coins), جواد's writing (Claude) at its
+    // real cost + 10٪, the edit fee at the general margin
+    const sum = (ls: { centi: number }[]) => ls.reduce((s, l) => s + l.centi, 0);
+    const coins = e.price.coins + coinsOf(sum(extra.filter((l) => l.claude)), "claude") + coinsOf(sum(extra.filter((l) => !l.claude)), "other");
+    return { e, lines, coins, usd: (e.price.usdCeiling ?? 0) + (def.output === "video" ? EDIT_CLAUDE_USD : 0) };
   };
   const first = price(meta);
   if (first.issues) return { kind: "issues", issues: first.issues };

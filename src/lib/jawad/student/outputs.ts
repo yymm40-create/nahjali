@@ -96,25 +96,35 @@ const designOf = (o: Output): Design => (o.settings.design as Design) ?? default
 
 // ───────────────────────────── estimates (USD ceilings, shown as coins before the student confirms) ─────────────────────────────
 
+/** What a step's estimate is made of, by kind of price: Claude's writing, GPT Image 2's pictures, ElevenLabs' sound. */
+export type StepParts = { claude: number; image: number; other: number };
+const parts = (claude = 0, image = 0, other = 0): StepParts => ({ claude, image, other });
+export const partsUsd = (p: StepParts) => p.claude + p.image + p.other;
+
 export async function estimate(userId: string, o: Output, action: string, chapter = -1): Promise<number> {
-  if (o.kind === "transcript") return 0;
+  return partsUsd(await estimateParts(userId, o, action, chapter));
+}
+
+/** The estimate split by kind, so each part is charged its own profit (Claude 10٪, pictures 60٪, sound the general). */
+export async function estimateParts(userId: string, o: Output, action: string, chapter = -1): Promise<StepParts> {
+  if (o.kind === "transcript") return parts();
   const c = await loadCtx(userId, o.project_id);
   const chars = allChars(c) + (c.research ? 20_000 : 0);
   // «خطبة المنبر»: the verse's tafsir read from the book and put in plain words
-  if (action === "tafsir") return tafsirCeilingUsd();
-  if (action === "poems") return poemsCeilingUsd();
+  if (action === "tafsir") return parts(tafsirCeilingUsd());
+  if (action === "poems") return parts(poemsCeilingUsd());
   if (action === "plan") {
-    if (o.kind === "book" && o.settings.writing === "verbatim") return 0;
+    if (o.kind === "book" && o.settings.writing === "verbatim") return parts();
     if (o.kind === "audio") {
       // the reading text comes back whole (with diacritics): output tokens up to its length
       const n = audioSourceText(c, o, await depDoc(o)).length;
-      return claudeCeilingUsd(n, n) + Math.ceil(n / 6000) * claudeCeilingUsd(0, 0);
+      return parts(claudeCeilingUsd(n, n) + Math.ceil(n / 6000) * claudeCeilingUsd(0, 0));
     }
-    if (o.kind === "mindmap") return mapPlanUsd(c, o);
-    return claudeCeilingUsd(Math.min(chars, 400_000), 16000);
+    if (o.kind === "mindmap") return parts(mapPlanUsd(c, o));
+    return parts(claudeCeilingUsd(Math.min(chars, 400_000), 16000));
   }
   // «الخريطة الذهنية»: صادق draws it for nothing; only GPT Image 2's maps cost
-  if (o.kind === "mindmap") return mapFinalUsd(o, action);
+  if (o.kind === "mindmap") return parts(0, mapFinalUsd(o, action));
   const plan = o.plan as DocPlan | SlidePlan | QuizPlan | AudioPlan | null;
   const imgs = (list: { image: { mode: string; path: string } }[], only?: number) =>
     list.slice(0, only ?? list.length).filter((x) => x.image.mode === "generate" && !x.image.path).length * IMAGE_USD;
@@ -122,29 +132,29 @@ export async function estimate(userId: string, o: Output, action: string, chapte
     const p = plan as SlidePlan;
     if (asPictures(o)) {
       const per = slideImageUsd(pictureQuality(o));
-      if (action === "revise") return per;
-      return toDraw(o, p, action === "trial" ? 3 : undefined).length * per;
+      if (action === "revise") return parts(0, per);
+      return parts(0, toDraw(o, p, action === "trial" ? 3 : undefined).length * per);
     }
-    return action === "trial" ? imgs(p.slides, 3) : imgs(p.slides);
+    return parts(0, action === "trial" ? imgs(p.slides, 3) : imgs(p.slides));
   }
   if (o.kind === "audio") {
     const p = plan as AudioPlan;
     const n = p.files.reduce((s, f) => s + f.text.length, 0);
-    return (n / 1000) * ELEVEN_PRICE.v4PerKChars * 1.02 + 0.01;
+    return parts(0, 0, (n / 1000) * ELEVEN_PRICE.v4PerKChars * 1.02 + 0.01);
   }
-  if (o.kind === "quiz") return claudeCeilingUsd(Math.min(chars, 300_000), 12000) * Math.max(1, (plan as QuizPlan).rows.length);
+  if (o.kind === "quiz") return parts(claudeCeilingUsd(Math.min(chars, 300_000), 12000) * Math.max(1, (plan as QuizPlan).rows.length));
   // summary / explain / book
   const p = plan as DocPlan;
   const verbatim = o.kind === "book" && o.settings.writing === "verbatim";
   const chapterUsd = (i: number) => (verbatim ? 0 : claudeCeilingUsd(segChars(c, p.chapters[i].segments) + (c.research ? 15_000 : 0) + 4000, 14000));
-  if (action === "trial") return chapterUsd(0) + imgs(p.chapters, 1);
+  if (action === "trial") return parts(chapterUsd(0), imgs(p.chapters, 1));
   if (action === "revise") {
-    return chapter >= 0 && chapter < p.chapters.length ? chapterUsd(chapter) : p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0);
+    return parts(chapter >= 0 && chapter < p.chapters.length ? chapterUsd(chapter) : p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0));
   }
   const done = (o.content as Doc | null)?.chapters?.length ?? 0;
   // a page count may need the chapters written once more to land on it: held, and given back when not needed
   const refit = pagesOf(o.settings) && !verbatim ? p.chapters.reduce((s, _, i) => s + chapterUsd(i), 0) : 0;
-  return p.chapters.reduce((s, _, i) => s + (i < done ? 0 : chapterUsd(i)), 0) + imgs(p.chapters) + refit;
+  return parts(p.chapters.reduce((s, _, i) => s + (i < done ? 0 : chapterUsd(i)), 0) + refit, imgs(p.chapters));
 }
 
 const segChars = (c: Ctx, ids: string[]) => ids.reduce((s, id) => s + (c.seg.get(id)?.text.length ?? 0), 0);

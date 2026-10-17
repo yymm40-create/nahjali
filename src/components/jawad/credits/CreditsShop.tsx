@@ -9,7 +9,7 @@ import AgreeTerms from "@/components/jawad/AgreeTerms";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
-import { bonusPct, CREDITS, type Pack } from "@config/credits";
+import { bonusPct, CREDITS, packYield, type Pack, type UnitPrices } from "@config/credits";
 import type { Bank } from "@config/course";
 
 interface Waiting {
@@ -62,10 +62,20 @@ function Copy({ label, value }: { label: string; value: string }) {
 
 const NUM = ["١", "٢", "٣"];
 
+/** «تقدر تسوي فيها تقريبًا»: what the package's balance makes at today's prices (each on its own, not all together). */
+function YieldLine({ credit, units }: { credit: number; units: UnitPrices }) {
+  const y = packYield(credit, units);
+  const parts = [y.images > 0 && `${y.images} صورة`, y.videos > 0 && `${y.videos} فيديو ٥ ثواني`, y.scenes > 0 && (y.scenes === 1 ? "مشهد سينمائي كامل" : `${y.scenes} مشاهد سينمائية`)].filter(Boolean) as string[];
+  if (!parts.length) return null;
+  return <span className="cs-yield">تقدر تسوي فيها تقريبًا: {parts.join(" · أو ")}</span>;
+}
+
 export default function CreditsShop({
-  packs, featured, payable, hasSupport, user, balance, owner, waiting, initialPack, loginHref, lastName, lastPhone,
+  packs, featured, payable, hasSupport, user, balance, owner, waiting, initialPack, loginHref, lastName, lastPhone, units,
 }: {
   packs: Pack[];
+  /** what a standard picture, a 5-second 720p video and a scene cost now: «تقدر تسوي فيها» under each package */
+  units?: UnitPrices | null;
   featured: string;
   payable: boolean;
   hasSupport: boolean;
@@ -198,6 +208,7 @@ export default function CreditsShop({
                     يوصلك رصيد <Riyal halalas={p.credit * 100} size={15} className="cs-gn" />
                     {bonus > 0 && <em>+{bonus}٪ مجانًا</em>}
                   </span>
+                  {units && <YieldLine credit={p.credit} units={units} />}
                 </button>
               );
             })}

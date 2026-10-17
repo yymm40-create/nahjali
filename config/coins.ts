@@ -29,9 +29,21 @@ export interface Pricing {
   marginPct: number;
   /** the full margin, in percent — the struck «was» price */
   wasMarginPct: number;
+  /** our profit on a PICTURE someone makes (GPT Image 2, Nano Banana, FLUX, the sheets…), in percent */
+  imageMarginPct: number;
+  /** our profit on a VIDEO someone makes (Seedance, Kling, lip-sync, upscaling…), in percent */
+  videoMarginPct: number;
 }
 
-export const DEFAULT_PRICING: Pricing = { usdToSar: 3.75, stepHalalas: 50, marginPct: 30, wasMarginPct: 60 };
+/**
+ * The owner's margins (17 October 2026): pictures 60٪, videos 40٪, Claude's own work 10٪ (its real usage + 10٪,
+ * `claudeHalalas`), everything else (sound, the owner's fixed fees) the general 30٪. The struck «كان» price keeps the
+ * same gap above each as the general one does (+30 points: pictures 90٪, videos 70٪).
+ */
+export const DEFAULT_PRICING: Pricing = { usdToSar: 3.75, stepHalalas: 50, marginPct: 30, wasMarginPct: 60, imageMarginPct: 60, videoMarginPct: 40 };
+
+/** What a price is for: its profit follows it. */
+export type PriceKind = "image" | "video" | "claude" | "other";
 
 let current: Pricing = { ...DEFAULT_PRICING };
 
@@ -44,8 +56,15 @@ export function setPricing(p: Partial<Pricing> | null | undefined) {
     stepHalalas: Number.isInteger(n.stepHalalas) && n.stepHalalas >= 1 ? n.stepHalalas : DEFAULT_PRICING.stepHalalas,
     marginPct: n.marginPct >= 0 ? n.marginPct : DEFAULT_PRICING.marginPct,
     wasMarginPct: n.wasMarginPct >= 0 ? n.wasMarginPct : DEFAULT_PRICING.wasMarginPct,
+    imageMarginPct: n.imageMarginPct >= 0 ? n.imageMarginPct : DEFAULT_PRICING.imageMarginPct,
+    videoMarginPct: n.videoMarginPct >= 0 ? n.videoMarginPct : DEFAULT_PRICING.videoMarginPct,
   };
 }
+
+/** The profit (percent) on a kind of price. Claude's is the platform's 10٪ (see `claudeHalalas`). */
+export const marginFor = (kind: PriceKind, p = current) => (kind === "image" ? p.imageMarginPct : kind === "video" ? p.videoMarginPct : kind === "claude" ? CLAUDE_MARGIN_PCT : p.marginPct);
+/** The struck «was» margin of a kind: the same gap above it as the general one. */
+export const wasMarginFor = (kind: PriceKind, p = current) => marginFor(kind, p) + Math.max(0, p.wasMarginPct - p.marginPct);
 
 /** The dollars behind one halala of cost at the default rate (the generators' default prices are in hundredths of it). */
 export const COIN_COST_USD = SMART_COIN.unitSar / DEFAULT_PRICING.usdToSar;
@@ -62,11 +81,15 @@ export function sellHalalas(cost: number, p = current, marginPct = p.marginPct) 
   return roundUpStep(cost, p) + roundUpStep((cost * marginPct) / 100, p);
 }
 
-/** The struck «was» price (the full margin) for the same cost. */
-export const wasHalalas = (cost: number, p = current) => sellHalalas(cost, p, p.wasMarginPct);
+/** What the customer pays for a cost in halalas of this kind (Claude: its cost + 10٪, only to the halala). */
+export const sellKind = (cost: number, kind: PriceKind = "other", p = current) =>
+  kind === "claude" ? (cost > 0 ? Math.max(1, Math.ceil((cost * (100 + CLAUDE_MARGIN_PCT)) / 100 - 1e-9)) : 0) : sellHalalas(cost, p, marginFor(kind, p));
 
-/** The customer's price, in halalas, for an operation that costs us `usd` (0 for nothing). */
-export const coinsFor = (usd: number) => sellHalalas(costHalalas(usd));
+/** The struck «was» price (the full margin) for the same cost (none for Claude: its price is never discounted). */
+export const wasHalalas = (cost: number, p = current, kind: PriceKind = "other") => (kind === "claude" ? sellKind(cost, kind, p) : sellHalalas(cost, p, wasMarginFor(kind, p)));
+
+/** The customer's price, in halalas, for an operation of this kind that costs us `usd` (0 for nothing). */
+export const coinsFor = (usd: number, kind: PriceKind = "other") => (kind === "claude" ? claudeHalalas(usd) : sellHalalas(costHalalas(usd), current, marginFor(kind)));
 
 /**
  * What a robot's conversation costs the person: Claude's real usage of the chosen model plus the platform's 10% and
