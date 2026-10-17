@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ZAYNAB_GREETING, ZAYNAB_IMAGE, ZAYNAB_MAX_PHOTOS, ZAYNAB_RECIPE, ZAYNAB_SHEET_FILE, ZAYNAB_STYLE_IDS, ZAYNAB_VIEWS, ZAYNAB_VIEW_TILE, zaynabBrief, zaynabInput, zaynabPromptProblems, zaynabQuoteRefs, zaynabViewFile } from "@config/jawad/zaynab";
-import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS, freeFirstOpen } from "@config/jawad/free-first";
+import { ZAYNAB_KEY_PREFIX } from "@config/jawad/zaynab";
+import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS, freeFirstOpen, freeFirstOpenFor } from "@config/jawad/free-first";
 import { FILM_STYLES } from "@config/film-styles";
 import { DEFAULT_SECTIONS, RESERVED_SECTION_IDS } from "@config/jawad/sections";
 import { generatorById } from "@config/jawad/generators";
@@ -113,6 +114,14 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     for (const f of ["src/app/api/jawad/zaynab/route.ts", "src/app/api/jawad/cartoon/route.ts"]) expect(read(f)).toContain("freeFirstEligible(");
     expect(read("src/lib/jawad/server/jobs.ts")).toContain("server.free === true");
     expect(read("src/app/api/jawad/zaynab/route.ts")).toContain("input.count === 1");
+  });
+
+  it("the owner closed the free attempt on «في حضرة السيدة زينب»: paid only, while the cartoon branch keeps its offer", () => {
+    const before = new Date(FREE_FIRST_ENDS_AT).getTime() - 60_000;
+    expect(freeFirstOpenFor(ZAYNAB_KEY_PREFIX, before)).toBe(false);
+    expect(freeFirstOpenFor("cartoon_", before)).toBe(true);
+    expect(freeFirstOpenFor("cartoon_", before + 120_000)).toBe(false);
+    expect(read("src/lib/jawad/server/free-first.ts")).toContain("freeFirstOpenFor(prefix)");
   });
 
   it("Claude knows it", () => {
