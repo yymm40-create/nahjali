@@ -2,6 +2,7 @@
 // ever reaches the scene page), and the cues and scores that come back. Pure.
 
 import { FONT_BY_ID, FONT_LIST } from "@/lib/editor/fonts";
+import { readChoices, type LabChoices } from "@config/editor/lab-options";
 import { CUE_SFX, PASS, RUBRIC, type RubricId } from "./skill";
 
 export const CODE_MAX = 140_000;
@@ -79,6 +80,8 @@ export interface LabPlan {
   music: string;
   /** the files of the owner's Higgsfield skills حيدرة asked to have open while writing and reviewing (catalogue ids) */
   skillRefs: string[];
+  /** the person's picks from the lab's gallery (look, structure, connections, feel, pace, camera, type, finish, ending) — binding */
+  choices: LabChoices;
 }
 
 /** The fonts the lab can load (the catalogue's Arabic families; display first). */
@@ -110,6 +113,7 @@ export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [])
     assets: (Array.isArray(o.assets) ? o.assets : []).map((a) => ({ id: str((a as Record<string, unknown>)?.id, 80), use: str((a as Record<string, unknown>)?.use, 200) })).filter((a) => assetIds.includes(a.id)).slice(0, 12),
     music: str(o.music, 400),
     skillRefs: (Array.isArray(o.skillRefs) ? o.skillRefs : []).map((v) => String(v ?? "").trim()).filter((v) => /^higgsfield-motion(-saas)?\/[\w./#-]+$/.test(v)).slice(0, 12),
+    choices: readChoices(o.choices),
   };
 }
 
