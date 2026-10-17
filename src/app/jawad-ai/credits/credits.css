@@ -9,7 +9,7 @@
 .cs-packs { padding: 6px 0 34px; background: linear-gradient(180deg, transparent, #0e0722 40%); }
 .cs-in { display: grid; gap: 18px; }
 .cs-list { display: grid; gap: 12px; }
-.cs-pack { position: relative; display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "radio name price" "radio get get"; align-items: center; gap: 4px 12px; width: 100%; padding: 16px 16px 14px; border-radius: 20px; border: 2px solid var(--cr-line); background: rgba(255, 255, 255, 0.05); color: inherit; font: inherit; text-align: start; cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.15s; }
+.cs-pack { position: relative; display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "radio name price" "radio get get" "radio yield yield"; align-items: center; gap: 4px 12px; width: 100%; padding: 16px 16px 14px; border-radius: 20px; border: 2px solid var(--cr-line); background: rgba(255, 255, 255, 0.05); color: inherit; font: inherit; text-align: start; cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.15s; }
 .cs-pack .cr-radio { grid-area: radio; }
 .cs-pack.on { border-color: var(--cr-gold); background: rgba(255, 200, 61, 0.1); box-shadow: 0 0 0 4px rgba(255, 138, 31, 0.14), 0 16px 40px -18px rgba(255, 138, 31, 0.7); }
 .cs-pack.on .cr-radio { border-color: var(--cr-gold); }
@@ -24,6 +24,7 @@
 .cs-pn { font-size: 26px; font-weight: 800; }
 .cs-get { grid-area: get; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: #e3dbfb; font-size: 13.5px; }
 .cs-gn { font-weight: 800; }
+.cs-yield { grid-area: yield; color: #c9bfe8; font-size: 12.5px; line-height: 1.6; }
 .cs-get em { font-style: normal; padding: 1px 10px; border-radius: 999px; background: var(--cr-green); color: #04230f; font-weight: 800; font-size: 12px; }
 
 .cs-buy { display: grid; gap: 12px; }
@@ -31,7 +32,7 @@
 @media (min-width: 900px) {
   .cs-in { max-width: 1100px; }
   .cs-list { grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 14px; align-items: stretch; }
-  .cs-pack { grid-template-columns: 1fr; grid-template-areas: "radio" "name" "price" "get"; justify-items: center; text-align: center; gap: 10px; padding: 26px 14px 22px; }
+  .cs-pack { grid-template-columns: 1fr; grid-template-areas: "radio" "name" "price" "get" "yield"; justify-items: center; text-align: center; gap: 10px; padding: 26px 14px 22px; }
   .cs-pack .cr-radio { justify-self: center; }
   .cs-price { justify-self: center; }
   .cs-pn { font-size: 34px; }

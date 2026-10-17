@@ -182,7 +182,7 @@ function CastCard({ c, canEdit, busy, send, needsStyle, hint }: { c: CastView; c
                 title={c.kind !== "style" && needsStyle ? "ارسم صورة «ستايل المسلسل» أول" : undefined}
                 onClick={() => send(`g${c.id}`, { action: "cast_generate", castId: c.id })}
               >
-                {c.url ? "🔁 أعد الرسم" : "🖼️ ارسمها"} · {credits(PICTURE_USD)}
+                {c.url ? "🔁 أعد الرسم" : "🖼️ ارسمها"} · {credits(PICTURE_USD, "image")}
               </button>
               <button type="button" className="btn btn-ghost min-h-9 px-2 text-xs" onClick={() => setEdit(true)}>✏️</button>
               {c.kind !== "style" && (

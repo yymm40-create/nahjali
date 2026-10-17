@@ -25,7 +25,11 @@ describe("«كاظم»", () => {
     expect(t.indexOf(libraryBlock())).toBeLessThan(t.indexOf("EX"));
     expect(t.endsWith("REC")).toBe(true);
     expect(DESIGNER_PLATFORM_RULES).toContain("لا تدّعِ");
-    expect(DESIGNER_PLATFORM_RULES).toContain("بلا أي كتابة");
+    // since «Fix designer text flow» (#366): the writing is drawn INSIDE the design by default ("baked"); a background
+    // with no writing and real text layers ("layers"), or a blank design ("blank"), only when the person asks
+    expect(DESIGNER_PLATFORM_RULES).toContain("طريقة المنصة الأساسية: جواد يرسم التصميم كاملًا بالصورة والكتابة معًا");
+    expect(DESIGNER_PLATFORM_RULES).toMatch(/"layers" ليصنع كاظم الخلفية بلا كتابة/);
+    expect(DESIGNER_PLATFORM_RULES).toContain('"blank"');
     for (const f of FONTS) expect(fontsBlock()).toContain(f.id);
   });
 

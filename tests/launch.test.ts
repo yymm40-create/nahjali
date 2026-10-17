@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bonusPct, CREDITS, DEFAULT_CREDIT_SETTINGS, DEFAULT_PACKS, readCreditSettings, SCENE_PACK_SAR, supportLink } from "@config/credits";
+import { bonusPct, CREDITS, DEFAULT_CREDIT_SETTINGS, DEFAULT_PACKS, packYield, readCreditSettings, SCENE_PACK_SAR, supportLink } from "@config/credits";
 import { claudeHalalas, coinsFor } from "@config/coins";
 import { videoEstimateUsd } from "@config/film";
 import { cleanLinks, cleanTurns } from "@/lib/salman";
@@ -25,13 +25,21 @@ describe("the balance packages", () => {
     expect(c.price - b.price).toBeLessThan(b.price * 0.3);
     expect(bonusPct(c)).toBeGreaterThan(bonusPct(b) + 10);
   });
-  it("«المشهد السينمائي» covers one 15-second Seedance 2.0 scene at 720p with a redo, 4 sheets and the robots' replies", () => {
-    const video = coinsFor(videoEstimateUsd("seedance-2.0", "720p", 15) * 2);
-    const pictures = coinsFor(6 * 0.4 + 2 * 0.07);
+  it("«المشهد السينمائي» covers one 15-second Seedance 2.0 scene at 720p with a redo, 4 sheets and the robots' replies, at the owner's margins", () => {
+    const video = coinsFor(videoEstimateUsd("seedance-2.0", "720p", 15) * 2, "video");
+    const pictures = coinsFor(6 * 0.4 + 2 * 0.07, "image");
     const robots = claudeHalalas(4 * 0.6) + claudeHalalas(5 * 0.8) + claudeHalalas(3 * 1.0) + claudeHalalas(0.3);
     const total = video + pictures + robots;
     expect(SCENE_PACK_SAR * 100).toBeGreaterThanOrEqual(total);
     expect(SCENE_PACK_SAR * 100 - total).toBeLessThan(100);
+    expect(SCENE_PACK_SAR).toBe(81);
+  });
+  it("say what each package makes (pictures, 5-second videos, scenes), each on its own", () => {
+    const u = { image: 100, video5: 450, scene: SCENE_PACK_SAR * 100 };
+    expect(packYield(10, u)).toEqual({ images: 10, videos: 2, scenes: 0 });
+    expect(packYield(SCENE_PACK_SAR, u)).toEqual({ images: 81, videos: 18, scenes: 1 });
+    expect(packYield(660, u).scenes).toBe(8);
+    expect(packYield(10, { image: 0, video5: 0, scene: 0 })).toEqual({ images: 0, videos: 0, scenes: 0 });
   });
   it("never give so much extra that the balance sells under cost (the site's margin is ~30%)", () => {
     for (const p of DEFAULT_PACKS) expect(bonusPct(p)).toBeLessThanOrEqual(25);

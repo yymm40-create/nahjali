@@ -6,7 +6,7 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { GENERATORS } from "@config/jawad/generators";
 import Link from "next/link";
 import { LIBRARY_ADDON, SMART_COIN, fmtSar } from "@config/coins";
-import { coinsOf, wasOf } from "@config/jawad/generators";
+import { coinsOf, priceKindOf, wasOf } from "@config/jawad/generators";
 import { libraryAccess } from "@/lib/jawad/server/library-access";
 import Riyal from "@/components/Riyal";
 
@@ -103,7 +103,7 @@ export default async function JawadCoins() {
                   return (
                     <li key={k.key} className="flex justify-between gap-2">
                       <span className="text-jw-muted">{k.label}</span>
-                      <span className="tabular-nums" dir="ltr">{c == null ? "—" : (<><Riyal halalas={coinsOf(c)} size={14} />{wasOf(c) > coinsOf(c) && <s className="ms-1 text-xs text-jw-faint">{fmtSar(wasOf(c))}</s>}</>)}</span>
+                      <span className="tabular-nums" dir="ltr">{c == null ? "—" : (<><Riyal halalas={coinsOf(c, priceKindOf(g.output))} size={14} />{wasOf(c, priceKindOf(g.output)) > coinsOf(c, priceKindOf(g.output)) && <s className="ms-1 text-xs text-jw-faint">{fmtSar(wasOf(c, priceKindOf(g.output)))}</s>}</>)}</span>
                     </li>
                   );
                 })}

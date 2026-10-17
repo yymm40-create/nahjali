@@ -156,7 +156,7 @@ export async function generateCast(series: FilmSeries, who: { id: string; email?
   const rows = await castOf(series.id);
   const style = rows.find((r) => r.kind === "style");
   if (row.kind !== "style" && style?.status !== "ready") throw new UserError("ولّد صورة «ستايل المسلسل» أول؛ هي مرجع الشكل لكل الشخصيات والبيئات.", 409);
-  const charge = await reserveSeries(series, who, IMAGE_ESTIMATE_USD.sheet + PROMPT_USD, `صورة ${CAST_KINDS[row.kind]} «${row.name}»`, { attempt: true });
+  const charge = await reserveSeries(series, who, IMAGE_ESTIMATE_USD.sheet + PROMPT_USD, `صورة ${CAST_KINDS[row.kind]} «${row.name}»`, { attempt: true, claude: "image" });
   await db().from("film_series_cast").update({ status: "generating", error: null }).eq("id", row.id);
   after(async () => {
     let usd = 0;

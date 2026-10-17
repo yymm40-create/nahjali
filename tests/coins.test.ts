@@ -5,8 +5,8 @@ import { coinsOf, costOf, wasOf } from "@config/jawad/generators";
 describe("riyal pricing: cost → rounded up to half a riyal → + margin (rounded up)", () => {
   beforeEach(() => setPricing(null));
 
-  it("defaults: 3.75 per dollar, half-riyal step, 30% now and 60% struck", () => {
-    expect(getPricing()).toEqual({ usdToSar: 3.75, stepHalalas: 50, marginPct: 30, wasMarginPct: 60 });
+  it("defaults: 3.75 per dollar, half-riyal step, 30% now and 60% struck; pictures 60%, videos 40%", () => {
+    expect(getPricing()).toEqual({ usdToSar: 3.75, stepHalalas: 50, marginPct: 30, wasMarginPct: 60, imageMarginPct: 60, videoMarginPct: 40 });
   });
 
   it("rounds UP to the step: 0.45 → 0.50, 1.10 → 1.50, 1.50 stays", () => {

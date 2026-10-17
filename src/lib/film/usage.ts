@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { refundCoins, reserveCoins, reserveTeamCoins, settleCoins } from "@/lib/coins";
 import { giveAttempt, teamPayment, teamSeriesOf } from "./team";
+import { serviceKind } from "./credits";
 
 /** What a coin movement says in the user's history. */
 const COIN_LABELS: Record<string, string> = {
@@ -119,8 +120,9 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   // «النقود الذكية»: hold the operation's coins (when coins are required); a short balance cancels the job
   try {
     const label = COIN_LABELS[input.operation] ?? input.operation;
-    // Claude's own work (the screenwriter, the sheets maker, the director's replies, سجاد) costs its real usage + 10%
-    const claude = input.service === "anthropic";
+    // the profit follows what the job makes: Claude's own work (the screenwriter, the sheets maker, the director's
+    // replies, سجاد) its real usage + 10٪, a picture 60٪, a video 40٪, the rest the general margin
+    const claude = serviceKind(input.service);
     if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label, claude);
     else await reserveCoins(payer, job.id, input.estimateUsd, label, claude);
   } catch (e) {
@@ -134,7 +136,7 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
 export async function succeedJob(jobId: string, actual: { costUsd: number; units?: number; providerTaskId?: string | null }) {
   const db = createAdminClient();
   const { data: kind } = await db.from("film_jobs").select("service").eq("id", jobId).maybeSingle();
-  await settleCoins(jobId, actual.costUsd, kind?.service === "anthropic").catch((e) => console.error("coin settle failed", e));
+  await settleCoins(jobId, actual.costUsd, serviceKind(kind?.service)).catch((e) => console.error("coin settle failed", e));
   const now = new Date().toISOString();
   await db
     .from("film_jobs")

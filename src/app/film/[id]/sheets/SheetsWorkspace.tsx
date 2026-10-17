@@ -16,7 +16,7 @@ import SheetCards from "./SheetCards";
 import StyleBrowser, { StyleThumb, type StyleCardView } from "@/components/style-map/StyleBrowser";
 
 const MAX_REFERENCE_UPLOADS = 4; // same as lib/film/sheets.ts (that file is server-only)
-const SHEET_COST = `تقريبًا ${credits(0.4)}`;
+const SHEET_COST = `تقريبًا ${credits(0.4, "image")}`;
 import { useFilmBase } from "../../FilmBase";
 
 interface Asset {
@@ -214,7 +214,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <button className="btn btn-primary w-full text-xl" disabled={busy} onClick={() => send({ action: "start" })}>
             {busy ? "نرسل…" : "ابدأ مع صانع الشيت"}
           </button>
-          <p className="text-xs font-bold text-muted">كل رد {creditsRange(0.05, 0.8)}</p>
+          <p className="text-xs font-bold text-muted">كل رد {creditsRange(0.05, 0.8, "claude")}</p>
         </div>
       )}
 
@@ -283,7 +283,7 @@ export default function SheetsWorkspace({ projectId, stage, versions, assets, jo
           <p className="text-sm font-extrabold">⚡ اصنعهم كلهم مع بعض</p>
           {waitingPrompts.length > 1 && (
             <button className="btn btn-primary w-full" disabled={busy || writing} onClick={() => send({ action: "approve_all_prompts" })}>
-              {busy ? "نرسل…" : `✅ اعتمد كل البرومبتات (${waitingPrompts.length}) وولّد صورها مرة وحدة · تقريبًا ${credits(waitingPrompts.length * 0.4)}`}
+              {busy ? "نرسل…" : `✅ اعتمد كل البرومبتات (${waitingPrompts.length}) وولّد صورها مرة وحدة · تقريبًا ${credits(waitingPrompts.length * 0.4, "image")}`}
             </button>
           )}
           {readyImages.length > 1 && (
@@ -579,7 +579,7 @@ function StyleTest({
           <p className="text-sm font-bold text-muted">💡 خريطة {styles.length} ستايل في ١٤ عائلة، كل واحد تحت شركته أو مدرسته (دوّر بالاسم أو بالشركة). اختر ٢ أو ٣ أشكال رسم، نجرّبها على لقطة من قصتك، وبعدين تختار اللي يعجبك — وبعد الاعتماد ينرسم الماستر وكل الشيتات لحالهم.</p>
           <StyleBrowser skin="film" styles={styles} selected={picked} onPick={toggle} cols="grid-cols-2" />
           <button className="btn btn-primary sticky bottom-3 w-full" disabled={busy || picked.length === 0} onClick={() => { onTest(picked); setPicked([]); }}>
-            ولّد صور الاختبار ({picked.length}) · تقريبًا {credits(picked.length * 0.06)}
+            ولّد صور الاختبار ({picked.length}) · تقريبًا {credits(picked.length * 0.06, "image")}
           </button>
         </div>
       )}

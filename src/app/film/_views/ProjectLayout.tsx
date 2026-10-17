@@ -4,7 +4,7 @@ import Link from "next/link";
 import { teamCoinBalance } from "@/lib/coins";
 import { memberRights } from "@/lib/film/team";
 import { rightsText } from "@/lib/film/team-rights";
-import { credits } from "@/lib/film/credits";
+import { creditsByService } from "@/lib/film/credits";
 import { impactsOf } from "@/lib/film/impact";
 import { filmProgress } from "@/lib/film/progress";
 import { projectCost } from "@/lib/film/usage";
@@ -35,7 +35,7 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
   if (!project.series_id) {
     const [progress, impacts, cost] = await Promise.all([filmProgress(project), impactsOf(project.id), projectCost(project.id)]);
     return (
-      <FilmStage projectId={id} title={project.title} kind={project.kind === "film" ? "film" : "scene"} stage={project.stage} videosOpen={Boolean(count)} cost={credits(cost.total)} progress={progress} impacts={impacts}>
+      <FilmStage projectId={id} title={project.title} kind={project.kind === "film" ? "film" : "scene"} stage={project.stage} videosOpen={Boolean(count)} cost={creditsByService(cost.byService)} progress={progress} impacts={impacts}>
         {children}
         {/* سجاد: the consultant, who knows this film */}
         <SajjadPanel kind="film" id={id} />
