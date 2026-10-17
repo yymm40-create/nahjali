@@ -70,6 +70,8 @@ interface Video {
   note: string;
   /** the person's own edited version, uploaded */
   edited: boolean;
+  /** «👄 طابق الشفايف»: this take is another take with its mouth redrawn on the dialogue audio */
+  lipsync?: boolean;
 }
 
 const RESOLUTIONS = Object.keys(VIDEO_RESOLUTIONS) as VideoResolution[];
@@ -353,6 +355,8 @@ export default function VideosWorkspace({
 
   // one take: the video, its actions, its montage note, its notes to the director
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  // «👄 طابق الشفايف»: the take whose choice (normal / Pro) is open
+  const [lipFor, setLipFor] = useState<string | null>(null);
   const saveNote = (v: Video) => {
     const text = noteDraft[v.id];
     if (text === undefined || text === v.note) return;
@@ -392,6 +396,11 @@ export default function VideosWorkspace({
                           <button className="btn btn-ghost min-h-10 px-4 text-sm" onClick={() => send({ action: "reject_video", assetId: v.id })}>ارفضه</button>
                         </>
                       )}
+                      {g.lines.length > 0 && !v.lipsync && v.url && !v.removed && ["generated", "approved"].includes(v.status) && (
+                        <button className="btn btn-secondary min-h-10 px-4 text-sm" title="لو Seedance خربط الكلام العربي: نفس اللقطة بالضبط، والفم بس ينعاد رسمه على صوت الحوار" onClick={() => setLipFor(lipFor === v.id ? null : v.id)}>
+                          👄 طابق الشفايف على الصوت
+                        </button>
+                      )}
                       {studioPath && v.url && !v.removed && ["generated", "approved"].includes(v.status) && (
                         <button className="btn btn-secondary min-h-10 px-4 text-sm" onClick={() => send({ action: "send_to_studio", assetId: v.id })}>
                           🪄 التعديل الذكي
@@ -408,6 +417,15 @@ export default function VideosWorkspace({
                     </div>
                   )}
                 </div>
+                {lipFor === v.id && !busy && (
+                  <div className="space-y-2 rounded-xl bg-surface-2 p-3 text-sm">
+                    <p className="font-bold">نفس اللقطة بالضبط (الوجه والحركة والكاميرا والإضاءة)، ومنطقة الفم بس تنعاد رسمها على صوت الحوار، وتطلع لقطة جديدة مقصوصة على طول الصوت بدون أي تسريع. الأفضل لما الوجه واضح ومتكلم واحد في اللقطة.</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button className="btn btn-secondary min-h-10 text-sm" onClick={() => (setLipFor(null), send({ action: "lipsync", assetId: v.id, pro: false }))}>عادي · تقريبًا {usd((g.durationSec / 60) * 3)}</button>
+                      <button className="btn btn-primary min-h-10 text-sm" onClick={() => (setLipFor(null), send({ action: "lipsync", assetId: v.id, pro: true }))}>أدق (Pro) · تقريبًا {usd((g.durationSec / 60) * 5)}</button>
+                    </div>
+                  </div>
+                )}
                 {feedbackFor === v.id && !busy && (
                   <div className="space-y-2">
                     <textarea
@@ -429,6 +447,7 @@ export default function VideosWorkspace({
                   </label>
                 )}
                 {v.edited && <p className="text-xs font-bold text-teal">📤 نسختك المعدّلة</p>}
+                {v.lipsync && <p className="text-xs font-bold text-teal">👄 نسخة الشفايف المطابقة على الصوت</p>}
               </figure>
   );
 

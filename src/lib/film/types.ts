@@ -41,7 +41,7 @@ export interface FilmAsset {
   updated_at: string;
 }
 
-export type FilmService = "anthropic" | "openai_image" | "seedance" | "elevenlabs";
+export type FilmService = "anthropic" | "openai_image" | "seedance" | "elevenlabs" | "lipsync";
 
 export interface FilmJob {
   id: string;

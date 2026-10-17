@@ -11,6 +11,7 @@ import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
+import { checkLipsyncs, startLipsync } from "./lipsync";
 import { buildVoiceTrack, OWN_TRACK, uploadedVoiceTrack, voiceTrackNote, wavSeconds } from "./voice-track";
 import { checkMp3 } from "@/lib/jawad/student/audio";
 import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
@@ -175,6 +176,8 @@ export type DirectorAction =
   | { action: "upload_video_url"; genId: string; mime: string }
   // «ملاحظة للمونتاج»: what the person didn't like in a take, and where (for the montage, not a new generation)
   | { action: "montage_note"; assetId: string; text: string }
+  // «👄 طابق الشفايف على الصوت»: the take's mouth redrawn on its dialogue audio (the fallback when Seedance garbles it)
+  | { action: "lipsync"; assetId: string; pro?: boolean }
   | { action: "upload_video_confirm"; genId: string; path: string; by?: "haidara"; pieces?: { from: number; to: number; mode: "parts" | "whole"; note?: string }[] }
   // «الحوار من جهازي»: the person's own recording of a shot's dialogue (made in their own program or account)
   | { action: "upload_voice_url"; genId: string; mime: string }
@@ -344,6 +347,11 @@ export async function directorAction(project: FilmProject, user: User, input: Di
       const c = readChoice(input);
       const started = await startVideo(project, user, v, await referenceLibrary(project.id), c.resolution, c.ratio, c.seconds, c.model, c.useVoices, c.voiceSource, c.arabicInPrompt);
       return { jobId: null, warning: started.warning };
+    }
+
+    case "lipsync": {
+      await startLipsync(project, user, String(input.assetId ?? ""), input.pro === true);
+      return { jobId: null };
     }
 
     case "montage_note": {
@@ -760,7 +768,8 @@ export async function checkVideos(project: FilmProject) {
     }
     running++;
   }
-  return running;
+  // the lip-syncs of takes («👄 طابق الشفايف») are checked with the videos
+  return running + (await checkLipsyncs(project).catch(() => 0));
 }
 
 const KIND_FOR = (r: Reply): DirectorKind => {
