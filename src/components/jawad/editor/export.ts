@@ -328,7 +328,7 @@ export async function exportVideo(
   /** Stretches `channels` from sample `at` to the piece [s, e) and plays it there (pitch kept). */
   function place(mix: OfflineAudioContext, gain: GainNode, channels: Float32Array[], sr: number, at: number, speed: number, s: number, e: number, from: number) {
     const outLen = Math.max(1, Math.round(((e - s) / 1000) * sr));
-    const out = stretch(channels, at, speed, outLen);
+    const out = stretch(channels, at, speed, outLen, sr);
     const buf = mix.createBuffer(out.length, outLen, sr);
     out.forEach((d, ch) => buf.copyToChannel(d as Float32Array<ArrayBuffer>, ch));
     const node = mix.createBufferSource();

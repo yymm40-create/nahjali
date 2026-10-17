@@ -53,7 +53,8 @@ export type Run = (cmd: Command | Command[], opts?: { label?: string; coalesce?:
 export type InspectorTab = "basic" | "motion" | "opacity" | "anim" | "fx" | "color" | "backdrop" | "transition" | "sound";
 
 const COLORS = ["#ffffff", "#000000", "#b8f53d", "#facc15", "#f43f5e", "#22d3ee", "#a78bfa", "#fb923c"];
-const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+// YouTube's own steps (and ×3), with a custom value between them like its «مخصص» slider
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];
 const PIP: { label: string; t: Partial<Transform> }[] = [
   { label: "يملأ الإطار", t: { x: 0.5, y: 0.5, scale: 1 } },
   { label: "↖ زاوية", t: { x: 0.25, y: 0.2, scale: 0.36 } },
@@ -508,14 +509,16 @@ export default function Inspector({
           {sound && <Slider label="الصوت" value={Math.round(clip.volume * 100)} min={0} max={200} step={5} disabled={locked} onChange={(v) => set({ volume: v / 100 }, "volume")} format={(v) => `${v}%`} />}
           {a && a.kind !== "image" && (
             <div className="space-y-1">
-              <span className="text-xs text-jw-muted">السرعة (الصوت يحتفظ بطبقته)</span>
+              <span className="text-xs text-jw-muted">السرعة — مثل يوتيوب: الصوت يحتفظ بطبقته ونبرته، بدون صوت «سناجب» ولا ثقل</span>
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="السرعة">
                 {SPEEDS.map((s) => (
                   <button key={s} type="button" role="radio" aria-checked={clip.speed === s} disabled={locked} onClick={() => run({ type: "update_clip", clipId: clip.id, patch: { speed: s } })} dir="ltr" className={`jw-chip !px-2.5 !py-1 !text-xs ${clip.speed === s ? "!border-jw-accent !text-jw-ink" : ""}`}>
-                    ×{s}
+                    {s === 1 ? "عادي" : `×${s}`}
                   </button>
                 ))}
               </div>
+              <Slider label="مخصص" value={clip.speed} min={0.25} max={4} step={0.05} disabled={locked} ltr onChange={(v) => set({ speed: Math.round(v * 100) / 100 }, "speed")} format={(v) => `×${v.toFixed(2)}`} />
+              <p className="text-[11px] text-jw-faint">طول المقطع على التايملاين يصير {formatTime(clipLength(clip))}.</p>
             </div>
           )}
           {sound && soundButtons}
@@ -529,7 +532,7 @@ export default function Inspector({
               </button>
             </div>
           )}
-          {sound && clip.volume > 1 && <p className="text-[11px] text-jw-faint">الصوت فوق ١٠٠٪ يبان في الملف المصدَّر؛ المعاينة تشغّله حتى ١٠٠٪.</p>}
+          {sound && clip.volume > 1 && <p className="text-[11px] text-jw-faint">الصوت فوق ١٠٠٪ يبان في الملف المصدَّر؛ المعاينة تشغّله حتى ١٠٠٪{clip.speed !== 1 ? " (والمقطع المسرّع/المبطّأ كذلك)" : ""}.</p>}
         </div>
       )}
 

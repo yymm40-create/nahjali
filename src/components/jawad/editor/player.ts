@@ -11,6 +11,7 @@ import { gradeView } from "./grade-gl";
 import { Masker } from "./segment";
 import { decodeWhole } from "./audio";
 import { clipSound, soundKey } from "./voice";
+import { stretch } from "./stretch";
 import { nextRate } from "@/lib/editor/shuttle";
 
 export interface PlayerAsset {
@@ -74,6 +75,8 @@ export class Player {
   private nodes = new Map<string, { src: AudioBufferSourceNode; gain: GainNode; key: string }>();
   /** clips' worked sound (noise reduction, effects): ready, being made, or not possible */
   private worked = new Map<string, AudioBuffer | "loading" | "failed">();
+  /** a worked sound played faster or slower: stretched once with its pitch kept, by sound and speed */
+  private stretched = new Map<string, AudioBuffer | "loading">();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -251,12 +254,43 @@ export class Player {
     return !!this.bufferOf(clip, a);
   }
 
-  /** The sound Web Audio plays for a clip: its worked sound when it has effects and that is ready, else the file's. */
+  /**
+   * The sound Web Audio plays for a clip: its worked sound when it has effects and that is ready, else the file's.
+   * A clip faster or slower than ×1 never plays here at a changed rate (that changes the voice's pitch, the "chipmunk"
+   * sound): its plain sound is left to its element, which the browser plays at that speed keeping the pitch — the
+   * same engine YouTube's speed button uses — and its worked sound is first stretched with its pitch kept.
+   */
   private bufferOf(clip: Clip, a: PlayerAsset) {
     const worked = hasSoundFx(clip) ? this.workedOf(clip, a) : null;
-    if (worked) return { buf: worked.buf, worked };
+    if (worked) {
+      if (clip.speed === 1) return { buf: worked.buf, worked };
+      const buf = this.stretchedOf(worked.buf, worked.key, clip.speed);
+      return buf ? { buf, worked: { ...worked, key: `${worked.key}@${clip.speed}` } } : null;
+    }
+    if (clip.speed !== 1) return null;
     const buf = this.soundOf(a);
     return buf ? { buf, worked: null } : null;
+  }
+
+  /** A worked sound at another speed, its pitch kept (made once, a moment after it is first asked for). */
+  private stretchedOf(buf: AudioBuffer, key: string, speed: number) {
+    const k = `${key}@${speed}`;
+    const had = this.stretched.get(k);
+    if (had instanceof AudioBuffer) return had;
+    if (!had && this.ac) {
+      this.stretched.set(k, "loading");
+      const ac = this.ac;
+      setTimeout(() => {
+        const chs = Array.from({ length: buf.numberOfChannels }, (_, ch) => buf.getChannelData(ch));
+        const outLen = Math.max(1, Math.round(buf.length / speed));
+        const out = stretch(chs, 0, speed, outLen, buf.sampleRate);
+        const made = ac.createBuffer(out.length, outLen, buf.sampleRate);
+        out.forEach((d, ch) => made.copyToChannel(d as Float32Array<ArrayBuffer>, ch));
+        this.stretched.set(k, made);
+        if (this.stretched.size > 8) this.stretched.delete(this.stretched.keys().next().value!);
+      }, 0);
+    }
+    return null;
   }
 
   /** Every clip heard in the next few seconds gets its sound scheduled once (volume, fades and ducking as ramps). */
@@ -282,8 +316,8 @@ export class Player {
         }
         if (from >= end) continue;
         const src = ac.createBufferSource();
+        // always ×1 here: a clip at another speed reaches this point only as a sound already stretched to it (pitch kept)
         src.buffer = buf;
-        src.playbackRate.value = c.speed;
         const gain = ac.createGain();
         src.connect(gain).connect(ac.destination);
         if (c.fadeIn || c.fadeOut || track.duck) {
@@ -292,8 +326,8 @@ export class Player {
         } else gain.gain.value = c.volume;
         // Safari refuses a start past the sound's end or a zero length (Chrome lets them pass): those clips stay quiet
         // (a worked sound starts at the clip's own beginning)
-        const offset = Math.max(0, (sourceTime(c, from) - (worked ? c.in : 0)) / 1000);
-        const length = ((end - from) / 1000) * c.speed;
+        const offset = Math.max(0, (sourceTime(c, from) - (worked ? c.in : 0)) / 1000) / c.speed;
+        const length = (end - from) / 1000;
         if (!(offset < buf.duration && length > 0.001)) {
           src.disconnect();
           continue;
@@ -452,8 +486,9 @@ export class Player {
     });
     m.preload = "auto";
     if (m instanceof HTMLVideoElement) m.playsInline = true;
-    // a faster or slower clip keeps its voice's pitch
+    // a faster or slower clip keeps its voice's pitch (older Safari and Firefox know it by their own prefixed name)
     m.preservesPitch = true;
+    Object.assign(m, { webkitPreservesPitch: true, mozPreservesPitch: true });
     m.dataset.src = src;
     m.src = src;
     // while paused, a frame that arrives after a seek is drawn straight away
