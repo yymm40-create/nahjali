@@ -24,6 +24,14 @@ export const KHARQ = {
   tableCells: 600,
   /** pictures and videos proposed in one answer */
   mediaMax: 4,
+  /** agents of the team asked in one answer, and rounds of asking before he must answer the person himself */
+  consultMax: 3,
+  consultRounds: 2,
+  /** the task he writes for one agent, and the most of its answer he reads back */
+  consultTask: 6_000,
+  consultAnswer: 40_000,
+  /** a page he writes in code (one self-contained HTML file) */
+  codeMax: 200_000,
 } as const;
 
 /** The keys in kharq_kv the owner edits. */
@@ -44,6 +52,7 @@ export const DELIVER_KINDS = [
   { id: "table", label: "جدول" },
   { id: "pdf", label: "ملف PDF" },
   { id: "media", label: "صور أو فيديو" },
+  { id: "code", label: "صفحة تشتغل (كود)" },
 ] as const;
 export type DeliverKind = (typeof DELIVER_KINDS)[number]["id"];
 export const isDeliverKind = (v: unknown): v is DeliverKind => typeof v === "string" && DELIVER_KINDS.some((d) => d.id === v);
@@ -74,6 +83,32 @@ export type RoadId = (typeof KHARQ_ROADS)[number]["id"];
 export const ROAD_IDS = KHARQ_ROADS.map((r) => r.id);
 export const findRoad = (id: unknown) => KHARQ_ROADS.find((r) => r.id === id) ?? null;
 
+/**
+ * «فريق محمد الخارق»: every robot of the site, with the skills it carries. He CONSULTS them himself in the background
+ * (the person never leaves the conversation): he writes one of them a task, the site runs that robot with its own
+ * whole knowledge (src/lib/kharq/agents.ts), and its answer comes back to him to build on — then he answers as himself.
+ */
+export const KHARQ_AGENTS = [
+  { id: "jawad", name: "جواد", face: "✨", knows: "برومبتات الصور والفيديو والصوت لكل مولّد في الموقع وإعداداتها، والتعديل الذكي، وأنواع الطلبات الأكثر شيوعًا بوصفاتها." },
+  { id: "director", name: "جواد المخرج", face: "🎬", knows: "الإخراج السينمائي الخارق: تحويل الفكرة إلى لقطات مرقّمة ببرومبت Seedance لكل لقطة، الكاميرا والإضاءة والإيقاع والاستمرارية." },
+  { id: "sajjad", name: "سجاد", face: "🎞️", knows: "صناعة الفيلم والمسلسل: القصة، السيناريو، الشخصيات، الشيتات، خطة المشاهد والحلقات والاستمرارية بينها." },
+  { id: "haidara", name: "حيدرة", face: "✂️", knows: "المونتاج والموشن جرافيكس: التقطيع والإيقاع، الهوك، الكابشن، التلوين (تصحيح ثم تلوين)، الانتقالات، أسلوب ماجد الزعابي، أساليب الموشن العشرة، الموشن على كلام المتحدث، ومخرج الموشن." },
+  { id: "sadiq", name: "صادق", face: "🎓", knows: "التعليم: تلخيص المادة وشرحها لكل مستوى (طفل، مدرسة، جامعة، كبار، مناظرة)، الكتب والعروض والاختبارات والخرائط الذهنية." },
+  { id: "islamic", name: "الذكاء الإسلامي", face: "🕌", knows: "الأسئلة الشرعية والعقائدية والتاريخية: يجاوب من مكتبة المصادر في الموقع ويذكر المصدر، لا من الذاكرة." },
+  { id: "qanbar", name: "قنبر", face: "🎮", knows: "تصميم الألعاب: الفكرة، القواعد، المراحل، التحكم على الجوال، وما تقدر تسويه صفحة ويب واحدة." },
+  { id: "baqir", name: "محمد باقر", face: "✍️", knows: "صناعة المحتوى: الكاروسيل والريلز والسكربتات والهوك والكتابة البيعية، وقوالب الكاروسيل وخريطة الستايلات." },
+  { id: "kazim", name: "كاظم", face: "🎨", knows: "التصميم الجرافيكي: بطاقات ودعوات وبوسترات ومصغّرات يوتيوب، الخطوط العربية والألوان وتوزيع العناصر." },
+  { id: "zahraa", name: "زهراء", face: "📸", knows: "تحرير الصور: الألوان والإضاءة والقص للمنصات، تفكيك عناصر الصورة، النصوص والطبقات." },
+  { id: "salman", name: "سلمان", face: "🤖", knows: "الموقع نفسه: كل قسم وش يسوي، الرصيد والشحن والتسجيل، ووين يلقى الشخص الشي اللي يبيه." },
+] as const;
+export type AgentId = (typeof KHARQ_AGENTS)[number]["id"];
+export const AGENT_IDS = KHARQ_AGENTS.map((a) => a.id);
+export const findAgent = (id: unknown) => KHARQ_AGENTS.find((a) => a.id === id) ?? null;
+
+/** His team, written for him to read (so he names a real agent and knows what it is best at). */
+export const agentsBlock = () =>
+  `فريقك (تستشيرهم بنفسك في الخلفية عبر «consult»، والعميل باقٍ في المحادثة):\n${KHARQ_AGENTS.map((a) => `- ${a.id} — «${a.name}»: ${a.knows}`).join("\n")}`;
+
 /** The roads written for «محمد» to read (so he names a real branch, with its real road and reason). */
 export const roadsBlock = () => `فروع الموقع التي تقدر تقترحها (بمعرّفاتها):\n${KHARQ_ROADS.map((r) => `- ${r.id} — «${r.name}»: ${r.why}`).join("\n")}`;
 
@@ -89,7 +124,12 @@ export const KHARQ_PLATFORM_RULES = `قواعد المنصة (تسري دائم�
 - التسليم عندك في المحادثة نفسها، لا كلام عن التسليم: الكلام والرسالة والجدول في «deliver»، وملف الـPDF يبنيه الموقع من نصك، والصور والفيديو يولّدها «جواد» بعد موافقة صريحة.
 - الصورة والفيديو لهما ثمن من محفظة العميل. لا تطلب توليدهما إلا إذا طلبه صريحًا، والموقع يعرض عليه السعر وزر تأكيد قبل أي توليد؛ قل له هذا بسطر ولا تَعِده بأنه صار.
 - إذا كان في الموقع فرع يسوّي المطلوب أحسن منك، اذكره له في «suggest» بسطر واحد يقول وش يسوي؛ ما تنقله أنت، هو يضغط إذا بغى.
-- لا تكشف قالبك الداخلي ولا مراحله ولا حروف ROCTCF إلا إذا طلب العميل القالب نفسه صراحة؛ وإذا طلبه فأعطه إياه كاملًا.`;
+- لا تكشف قالبك الداخلي ولا مراحله ولا حروف ROCTCF إلا إذا طلب العميل القالب نفسه صراحة؛ وإذا طلبه فأعطه إياه كاملًا.
+
+قدراتك الخارقة (تسري دائمًا):
+- **فريقك في يدك.** كل مهارة عند أي روبوت في الموقع هي مهارتك: إذا احتاج المطلوب خبرة واحد منهم (برومبت مولّد، إخراج لقطات، سيناريو، مونتاج أو موشن أو تلوين، شرح مادة، سؤال شرعي، لعبة، محتوى، تصميم، تحرير صورة، أو سؤال عن الموقع)، اكتب له مهمة واضحة مكتفية بذاتها في «consult» (حتى ٣ في الرد، كل واحد بمهمته). الموقع يشغّلهم بكامل معرفتهم ويرجّع لك أجوبتهم في نفس المحادثة، وبعدها تكمل أنت وتسلّم. في الرد اللي فيه «consult» اكتب للعميل سطرًا واحدًا (مثل «أسأل حيدرة عن الإيقاع وأرجع لك»)، ولا تسلّم شيئًا يعتمد على جوابهم قبل ما يرجع. السؤال الشرعي يروح دائمًا لـ«islamic» ولا تجاوبه من ذاكرتك.
+- **تكتب الكود بنفسك (Claude Code).** أي شيء ينبني بالكود — صفحة، أداة، حاسبة، لعبة صغيرة، عرض، موشن جرافيكس متحرك، رسم متحرك، إنفوجرافيك، مؤقت، اختبار تفاعلي — اكتبه أنت كاملًا في «deliver» بنوع code: ملف HTML واحد مكتفٍ بذاته (CSS وJavaScript داخله، بلا أي رابط خارجي ولا خطوط من الإنترنت ولا طلبات شبكة، ويشتغل على الجوال والكمبيوتر، وبالعربي من اليمين لليسار إذا كان عربيًا). الموقع يشغّله للعميل داخل صندوق معزول في المحادثة، ويقدر يفتحه بشاشة كاملة أو ينزّله. وأي كود بلغة ثانية يطلبه (بايثون، SQL، …) تسلّمه نصًا في «deliver» بنوع text داخل \`\`\` مع اسم اللغة.
+- **التوليد في الخلفية.** الصور والفيديو يصنعها «جواد» في الخلفية وترجع داخل المحادثة نفسها، والعميل ما يطلع منها. إذا كان «التوليد التلقائي» مفعّلًا عند العميل (يوصلك سطر يقول ذلك)، فهو موافق مسبقًا: اقترح الصورة أو الفيديو مباشرة وتنصنع بلا زر.`;
 
 /** The owner's template: «محمد الخارق» — the ROCTCF prompt-builder turned into a worker that embodies its own template. */
 export const KHARQ_PERSONA = `# R — ROLE | الدور والتخصص والحدود

@@ -866,3 +866,6 @@ export async function tellSajjad(filmProjectId: string, text: string) {
     console.error("tell sajjad", e);
   }
 }
+
+/** سجاد's whole persona, for «محمد الخارق» to consult him (src/lib/kharq/agents.ts). */
+export const SAJJAD_PERSONA = PERSONA;

@@ -16,7 +16,7 @@ import QuickReplies from "@/components/jawad/QuickReplies";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import { api, postJson } from "@/lib/fetch";
 import { coinStr } from "@config/coins";
-import { findRoad, KHARQ, KHARQ_STARTS } from "@config/kharq";
+import { findAgent, findRoad, KHARQ, KHARQ_STARTS } from "@config/kharq";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
@@ -35,7 +35,8 @@ interface MediaAsk {
   error?: string;
 }
 interface Deliver { kind: string; title: string; text: string; table: { columns: string[]; rows: string[][] } | null; media: MediaAsk[] }
-interface Msg { role: "user" | "assistant"; text: string; files?: FileView[]; questions?: Question[]; deliver?: Deliver; suggest?: string[]; error?: boolean }
+interface Consult { agent: string; task: string; state: "pending" | "done" | "failed"; answer?: string }
+interface Msg { role: "user" | "assistant"; text: string; files?: FileView[]; questions?: Question[]; deliver?: Deliver; suggest?: string[]; consult?: Consult[]; error?: boolean }
 interface ChatItem { id: string; title: string }
 
 const KIND_IC: Record<FileView["kind"], string> = { image: "🖼️", video: "🎬", audio: "🎵", doc: "📄" };
@@ -93,6 +94,20 @@ function Copy({ text, label = "📋 انسخ" }: { text: string; label?: string 
 
 const tableText = (t: { columns: string[]; rows: string[][] }) => [t.columns.join("\t"), ...t.rows.map((r) => r.join("\t"))].join("\n");
 
+/** A file the person keeps (a page in code), saved from the browser itself. */
+function saveText(text: string, name: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+const fileName = (title: string, ext: string) => `${(title || "ملف").replace(/[\\/:*?"<>|]+/g, " ").trim()}.${ext}`;
+
+const AUTO_KEY = "kh-auto";
+
 export default function KharqChat({ name, loginHref }: { name: string; loginHref: string | null }) {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -105,6 +120,18 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [side, setSide] = useState(false);
+  /** «توليد تلقائي»: what he proposes is made at once, in the background, without a confirm press (remembered here) */
+  const [auto, setAuto] = useState(false);
+  /** his team is being asked (the names, for the line under the conversation) */
+  const [team, setTeam] = useState<string | null>(null);
+  useEffect(() => {
+    try { setAuto(localStorage.getItem(AUTO_KEY) === "1"); } catch { /* private mode: off */ }
+  }, []);
+  const flipAuto = () =>
+    setAuto((v) => {
+      try { localStorage.setItem(AUTO_KEY, v ? "0" : "1"); } catch { /* a convenience */ }
+      return !v;
+    });
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -130,6 +157,14 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
       setLinks(r.links ?? {});
       setPicked({});
       setPending([]);
+      // left while his team was being asked: it goes on now, in this conversation
+      const last = r.chat.messages[r.chat.messages.length - 1];
+      if (last?.role === "assistant" && last.consult?.some((c) => c.state === "pending") && !busy) {
+        setBusy(true);
+        void after(r.chat.id, last)
+          .catch((e) => setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر الرد.", error: true }]))
+          .finally(() => { setBusy(false); setTeam(null); });
+      }
     } catch (e) {
       setMsgs([{ role: "assistant", text: e instanceof Error ? e.message : "تعذّر فتح المحادثة.", error: true }]);
     }
@@ -173,15 +208,35 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
     setBusy(true);
     setMsgs((m) => [...m, { role: "user", text: message || "(ملفات مرفقة)", files: files.length ? files : undefined }]);
     try {
-      const r = await postJson<{ chatId: string; turn: Msg }>("/api/kharq/chat", { chatId, message, model: claude.id, attachments: files.map((f) => f.id) });
+      const r = await postJson<{ chatId: string; turn: Msg }>("/api/kharq/chat", { chatId, message, model: claude.id, attachments: files.map((f) => f.id), auto });
       setChatId(r.chatId);
       setMsgs((m) => [...m, r.turn]);
       void refresh();
+      await after(r.chatId, r.turn);
     } catch (e) {
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر الرد.", error: true }]);
     } finally {
       setBusy(false);
+      setTeam(null);
     }
+  }
+
+  /**
+   * What follows one of his answers, without the person leaving the conversation: his team is asked in the background
+   * and he goes on (as many rounds as he takes), and — with «توليد تلقائي» on — what he proposed is made at once.
+   */
+  async function after(cid: string, turn: Msg) {
+    let t = turn;
+    for (let round = 0; round < 3 && t.consult?.some((c) => c.state === "pending"); round++) {
+      setTeam(t.consult.map((c) => findAgent(c.agent)?.name ?? c.agent).join(" و"));
+      const done = await postJson<{ consult: Consult[] }>("/api/kharq/chat", { chatId: cid, step: "team", model: claude.id });
+      setMsgs((m) => m.map((x, i) => (i === m.length - 1 && x.role === "assistant" ? { ...x, consult: done.consult } : x)));
+      setTeam(null);
+      const next = await postJson<{ chatId: string; turn: Msg }>("/api/kharq/chat", { chatId: cid, step: "go", model: claude.id, auto });
+      setMsgs((m) => [...m, next.turn]);
+      t = next.turn;
+    }
+    if (auto) for (const ask of t.deliver?.media ?? []) if (!ask.jobId && ask.coins !== null) await make(ask, cid);
   }
 
   /** The chosen answers of one question go into the box as one line (many when it allows many). */
@@ -202,14 +257,14 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
   const setAsk = (ask: MediaAsk) =>
     setMsgs((m) => m.map((t) => (t.deliver ? { ...t, deliver: { ...t.deliver, media: t.deliver.media.map((x) => (x.id === ask.id ? ask : x)) } } : t)));
 
-  async function make(ask: MediaAsk) {
-    if (!chatId || working) return;
+  async function make(ask: MediaAsk, cid = chatId) {
+    if (!cid || working) return;
     setWorking(ask.id);
     try {
-      const r = await postJson<{ ask: MediaAsk; link: string | null }>("/api/kharq/make", { chatId, askId: ask.id });
+      const r = await postJson<{ ask: MediaAsk; link: string | null }>("/api/kharq/make", { chatId: cid, askId: ask.id });
       setAsk(r.ask);
       if (r.ask.fileId && r.link) setLinks((l) => ({ ...l, [r.ask.fileId!]: r.link! }));
-      if (r.ask.state === "running") void watch(r.ask);
+      if (r.ask.state === "running") void watch(r.ask, cid);
     } catch (e) {
       setAsk({ ...ask, state: "failed", error: e instanceof Error ? e.message : "تعذّر التوليد." });
     } finally {
@@ -218,12 +273,12 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
   }
 
   const watch = useCallback(
-    async (ask: MediaAsk) => {
-      if (!chatId) return;
+    async (ask: MediaAsk, cid: string | null = chatId) => {
+      if (!cid) return;
       for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 6000));
         try {
-          const r = await postJson<{ ask: MediaAsk; link: string | null }>("/api/kharq/make", { chatId, askId: ask.id, step: "follow" });
+          const r = await postJson<{ ask: MediaAsk; link: string | null }>("/api/kharq/make", { chatId: cid, askId: ask.id, step: "follow" });
           setAsk(r.ask);
           if (r.ask.fileId && r.link) setLinks((l) => ({ ...l, [r.ask.fileId!]: r.link! }));
           if (r.ask.state !== "running") return;
@@ -254,6 +309,23 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
 
   function Delivery({ d, at }: { d: Deliver; at: number }) {
     const words = d.kind === "text" || d.kind === "message" || d.kind === "pdf";
+    if (d.kind === "code") {
+      // a page he wrote in code: run here, fenced off in its own sandbox (src/app/api/kharq/code), never on the server
+      const src = chatId ? `/api/kharq/code?chat=${chatId}&turn=${at}` : null;
+      return (
+        <div className="kh-deliver">
+          <div className="kh-dhead">
+            <b>🧑‍💻 {d.title || "الصفحة"}</b>
+            <span className="kh-dacts">
+              {src && <a className="kh-mini hot" href={src} target="_blank" rel="noopener">⛶ شاشة كاملة</a>}
+              <button type="button" className="kh-mini" onClick={() => saveText(d.text, fileName(d.title, "html"), "text/html")}>⬇️ نزّل الملف</button>
+              <Copy text={d.text} label="📋 انسخ الكود" />
+            </span>
+          </div>
+          {src ? <iframe className="kh-code" src={src} title={d.title || "الصفحة"} sandbox="allow-scripts allow-pointer-lock" loading="lazy" /> : <p className="kh-mnote">تنحفظ المحادثة وتشتغل الصفحة هنا.</p>}
+        </div>
+      );
+    }
     return (
       <div className="kh-deliver">
         <div className="kh-dhead">
@@ -358,7 +430,8 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
               <>
                 <div className="kh-msg bot">
                   <h3>هلا، أنا {KHARQ.persona}</h3>
-                  <p>قل لي وش تبي تحقّق — أي موضوع، وأي حجم. أسألك الأسئلة المهمة بس (بخيارات تضغطها)، وأول ما أفهم بالضبط وش تريد، أسلّمك الشيء نفسه: كلام، رسالة، جدول، ملف PDF، صور، أو فيديو.</p>
+                  <p>قل لي وش تبي تحقّق — أي موضوع، وأي حجم. أسألك الأسئلة المهمة بس (بخيارات تضغطها)، وأول ما أفهم بالضبط وش تريد، أسلّمك الشيء نفسه: كلام، رسالة، جدول، ملف PDF، صور، فيديو، أو صفحة أكتبها لك بالكود وتشتغل هنا.</p>
+                  <p className="kh-dim">وفريق الموقع كله معي: جواد، المخرج، سجاد، حيدرة، صادق، الذكاء الإسلامي، قنبر، محمد باقر، كاظم، زهراء وسلمان — أستشيرهم بنفسي في الخلفية وأنت باقي هنا.</p>
                 </div>
                 <div className="kh-starts">
                   {KHARQ_STARTS.map((s, i) => (
@@ -381,7 +454,24 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
                         {m.files.map((f) => <span key={f.id} className="kh-file">{KIND_IC[f.kind]} {f.name}</span>)}
                       </div>
                     ) : null}
-                    {m.deliver && <Delivery d={m.deliver} at={i} />}
+                    {m.consult?.length ? (
+                      <div className="kh-team">
+                        {m.consult.map((c, k) => {
+                          const a = findAgent(c.agent);
+                          return (
+                            <details key={k} className={`kh-agent ${c.state}`}>
+                              <summary>
+                                <span aria-hidden>{a?.face ?? "🤖"}</span> {a?.name ?? c.agent}
+                                <small>{c.state === "pending" ? " · يشتغل في الخلفية…" : c.state === "done" ? " · رجع بجوابه ✓" : " · ما قدر يجاوب"}</small>
+                              </summary>
+                              <p className="kh-dim">المهمة: {c.task}</p>
+                              {c.answer && <div className="kh-dbody"><Rich text={c.answer} /></div>}
+                            </details>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {m.deliver && <Delivery d={m.deliver} at={msgs.slice(0, i).filter((x) => !x.error).length} />}
                     {m.suggest?.length ? (
                       <div className="kh-roads">
                         {m.suggest.map((id) => {
@@ -424,7 +514,7 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
             {busy && (
               <div className="kh-think">
                 <span className="kh-dots"><span /><span /><span /></span>
-                {KHARQ.persona} يفكر ويجمع المطلوب…
+                {team ? `${KHARQ.persona} يستشير ${team} في الخلفية… خلك هنا، يرجع لك بالجواب.` : `${KHARQ.persona} يفكر ويجمع المطلوب…`}
               </div>
             )}
             <div ref={end} />
@@ -445,6 +535,10 @@ export default function KharqChat({ name, loginHref }: { name: string; loginHref
               <div className="kh-claude">
                 <ClaudeModelPicker disabled={busy} />
                 <p className="kh-dim" style={{ margin: "4px 0 0" }}>هذا الفرع يفكّر بأقصى جهد في كل ردّ؛ وللمشاريع الضخمة اختر «العبقري» أو «الأصيل».</p>
+                <label className="kh-auto">
+                  <input type="checkbox" checked={auto} onChange={flipAuto} />
+                  <span>⚡ توليد تلقائي: الصور والفيديو اللي يقترحها تنصنع على طول في الخلفية (بسعرها من محفظتك) بدون زر تأكيد.</span>
+                </label>
               </div>
               <form className="kh-compose" onSubmit={(e) => { e.preventDefault(); void send(); }}>
                 <input ref={picker} type="file" multiple hidden accept="image/*,video/*,audio/*,.pdf" onChange={(e) => void attach(e.target.files)} />

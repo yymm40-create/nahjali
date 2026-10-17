@@ -3,7 +3,7 @@
 // Server only.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { KHARQ_KV, KHARQ_PERSONA, KHARQ_PLATFORM_RULES, roadsBlock } from "@config/kharq";
+import { agentsBlock, KHARQ_KV, KHARQ_PERSONA, KHARQ_PLATFORM_RULES, roadsBlock } from "@config/kharq";
 
 const db = () => createAdminClient();
 const MAX = 60_000;
@@ -38,5 +38,5 @@ export const briefBlock = (brief: string) =>
  * The whole system text: persona, then what the platform requires, the branches he may point to, and his own record.
  */
 export function systemText(persona: string, brief = "", extra = "") {
-  return [persona, KHARQ_PLATFORM_RULES, roadsBlock(), briefBlock(brief), extra].filter(Boolean).join("\n\n");
+  return [persona, KHARQ_PLATFORM_RULES, roadsBlock(), agentsBlock(), briefBlock(brief), extra].filter(Boolean).join("\n\n");
 }
