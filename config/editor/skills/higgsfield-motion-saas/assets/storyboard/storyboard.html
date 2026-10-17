@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- Storyboard sheet for the approval gate (the format the client approved on BLIP., Reroll, LO.).
+     Render:  node scripts/code/capture.mjs "assets/storyboard/storyboard.html?board=/abs/path/board.js" out_dir --stills 0
+     → out_dir/still_0.00.png. Stills are frames of the FILM ITSELF (stills.sh at each beat's hold pose), so the approved
+     look is the look that ships. Captions in Russian (the client's language); passport + "Отличия от рефов" + estimate. -->
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;background:#0E0B17;color:#EDEAF5;font-family:"Geist","Inter",system-ui,sans-serif}
+  #sheet{width:1960px;padding:56px 40px 48px;box-sizing:border-box}
+  h1{margin:0;font:800 54px/1.05 var(--disp,"Unbounded"),system-ui;letter-spacing:-.02em}
+  .sub{margin:12px 0 36px;color:#9C97AE;font-size:22px}
+  .grid{display:grid;grid-template-columns:repeat(3,620px);gap:30px 20px}
+  .cell img{width:620px;height:349px;display:block;border-radius:10px;object-fit:cover;background:#1b1726}
+  .cap{margin-top:12px;font:600 19px "Geist Mono",monospace;color:var(--acc,#FF6B2C)}
+  .txt{margin-top:6px;font-size:18px;line-height:1.38;color:#CFCAE0}
+  .pass{background:#17131F;border:1px solid #2A2438;border-radius:12px;padding:24px 26px;box-sizing:border-box;min-height:349px}
+  .pass h3{margin:0 0 14px;font:700 22px "Geist Mono",monospace;color:var(--acc,#FF6B2C)}
+  .sw{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}.sw i{width:44px;height:44px;border-radius:8px;display:block;border:1px solid #ffffff22}
+  .fl{margin:4px 0;font-size:24px}.small{font-size:15px;color:#9C97AE;line-height:1.45;margin-top:12px}
+  .diff{margin-top:14px;font-size:16px;line-height:1.45}.diff b{color:var(--acc,#FF6B2C)}
+</style></head><body><div id="sheet"></div>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search), src = q.get('board');
+  await new Promise((r, j) => { const s = document.createElement('script'); s.src = src.startsWith('/') ? 'file://' + src : src; s.onload = r; s.onerror = j; document.head.appendChild(s); });
+  const B = window.BOARD, base = new URL(src.startsWith('/') ? 'file://' + src : src, location.href);
+  const fams = (B.fonts || []).map((f) => f.family.replace(/ /g, '+') + ':wght@' + (f.weight || 400));
+  if (fams.length) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?' + fams.map((f) => 'family=' + f).join('&') + '&family=Geist:wght@400;600&family=Geist+Mono:wght@600;700&display=block'; document.head.appendChild(l); await new Promise((r) => (l.onload = r)); }
+  if (B.accent) document.body.style.setProperty('--acc', B.accent);
+  if (B.fonts && B.fonts[0]) document.body.style.setProperty('--disp', `"${B.fonts[0].family}"`);
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  let h = `<h1>${esc(B.title)}</h1><div class="sub">${esc(B.subtitle || '')}</div><div class="grid">`;
+  B.frames.forEach((f, i) => { h += `<div class="cell"><img src="${new URL(f.img, base).href}"><div class="cap">${String(i + 1).padStart(2, '0')} · ${esc(f.time)} с · ${esc(f.name)}</div><div class="txt">${esc(f.text)}</div></div>`; });
+  const P = B.passport || {};
+  h += `<div class="cell pass"><h3>${esc(P.title || 'Паспорт')}</h3><div class="sw">${(P.swatches || []).map((c) => `<i style="background:${c}" title="${c}"></i>`).join('')}</div>`;
+  (B.fonts || []).forEach((f) => { h += `<div class="fl" style="font-family:'${f.family}';font-weight:${f.weight || 400}">${esc(f.sample || f.family)} <span style="font:15px Geist;color:#9C97AE">· ${esc(f.role || '')}</span></div>`; });
+  h += `<div class="small">${esc(P.tech || '')}</div>`;
+  if (P.diffs) h += `<div class="diff"><b>Отличия от рефов:</b> ${esc(P.diffs)}</div>`;
+  if (P.estimate) h += `<div class="diff"><b>Сроки:</b> ${esc(P.estimate)}</div>`;
+  h += `</div></div>`;
+  document.getElementById('sheet').innerHTML = h;
+  await Promise.all([...document.images].map((im) => (im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))));
+  await Promise.all((B.fonts || []).map((f) => document.fonts.load(`${f.weight || 400} 40px "${f.family}"`, 'AaЯя0')).concat([document.fonts.ready])).catch(() => {});
+  const H = document.getElementById('sheet').offsetHeight;
+  window.__seek = async () => {}; window.__comp = { width: 1960, height: H, fps: 1, duration: 1 };
+})();
+</script></body></html>

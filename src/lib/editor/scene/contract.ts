@@ -77,6 +77,8 @@ export interface LabPlan {
   shots: Shot[];
   assets: { id: string; use: string }[];
   music: string;
+  /** the files of the owner's Higgsfield skills حيدرة asked to have open while writing and reviewing (catalogue ids) */
+  skillRefs: string[];
 }
 
 /** The fonts the lab can load (the catalogue's Arabic families; display first). */
@@ -107,6 +109,7 @@ export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [])
     shots,
     assets: (Array.isArray(o.assets) ? o.assets : []).map((a) => ({ id: str((a as Record<string, unknown>)?.id, 80), use: str((a as Record<string, unknown>)?.use, 200) })).filter((a) => assetIds.includes(a.id)).slice(0, 12),
     music: str(o.music, 400),
+    skillRefs: (Array.isArray(o.skillRefs) ? o.skillRefs : []).map((v) => String(v ?? "").trim()).filter((v) => /^higgsfield-motion(-saas)?\/[\w./#-]+$/.test(v)).slice(0, 12),
   };
 }
 

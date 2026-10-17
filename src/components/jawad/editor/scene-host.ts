@@ -45,6 +45,18 @@ export function sceneFont(role: string, id: string): SceneFont | null {
   return { role, family: `lab-${role}-${id}`, files };
 }
 
+/**
+ * The owner's Higgsfield skill code, given to a scene that uses it (K.HFT = hf-tokens.js, K.HF = hf-motion.js): fetched
+ * once from this site (public/editor/skills/, copied verbatim from config/editor/skills/higgsfield-motion/scripts/) and
+ * run inside the sandboxed scene page before the program.
+ */
+let hfText: Promise<string[]> | null = null;
+export function hfLibs(code: string): Promise<string[]> {
+  if (!/\bK\.HFT?\b/.test(code)) return Promise.resolve([]);
+  hfText ??= Promise.all(["/editor/skills/hf-tokens.js", "/editor/skills/hf-motion.js"].map((u) => fetch(u).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${u} ${r.status}`))))));
+  return hfText.catch((e) => { hfText = null; throw e; });
+}
+
 export class SceneHost {
   private frameEl: HTMLIFrameElement;
   private booted: Promise<void>;
@@ -125,7 +137,9 @@ export class SceneHost {
       }, 60_000);
       this.loading = { ok: (v) => (clearTimeout(timer), ok(v)), no: (e) => (clearTimeout(timer), no(e)) };
       // the bitmaps are copied (not transferred): the host keeps them for the next load
-      this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [] });
+      void hfLibs(code)
+        .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs }))
+        .catch((e) => this.loading?.no(new SceneError(`ما قدرت أحمّل أدوات مهارة Higgsfield (${e instanceof Error ? e.message : e}).`, "load")));
     });
   }
 

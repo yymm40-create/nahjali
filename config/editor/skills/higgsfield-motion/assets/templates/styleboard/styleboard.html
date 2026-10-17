@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="frame" content="2540x4936">
+<title>HFT Styleboard</title>
+<!-- Proof (a): the same 4 archetype frames (title lockup, prompt bar, action pill / CTA, hero object + caption)
+     in every HFT preset, the Higgsfield brand and two derived identities. Each mini-frame is a real 1920x1080
+     composition scaled to 25 %. Everything visual comes from ../hf-tokens.js (semantic tokens, toCSSVars, fontLink).
+     Render: node ../../../scripts/render.mjs <out_dir> styleboard.html  (frame size from the meta above = board size) -->
+<script src="../../../scripts/hf-tokens.js"></script>
+<script src="../shared/hero-glyph.js"></script>
+<script src="styleboard.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #040405; }
+  body { -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
+  .frame { font-kerning: normal; font-optical-sizing: auto; }
+</style>
+</head>
+<body>
+<div id="board"></div>
+<script>SB.render(document.getElementById('board'));</script>
+</body>
+</html>
