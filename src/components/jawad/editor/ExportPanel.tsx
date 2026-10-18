@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { duration, flatten, formatTime, type Timeline } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Dialog from "../Dialog";
@@ -237,11 +237,16 @@ export default function ExportPanel({
     }
   };
 
+  // a finished export is shown only until the window is closed: the next time it opens it is a NEW export (the old one's
+  // «نزّله مرة ثانية» used to stay there and hand back the old file even after the project was edited)
   const close = () => {
     if (phase.k === "running") return;
-    if (phase.k !== "done") setPhase({ k: "idle" });
+    setPhase({ k: "idle" });
     onClose();
   };
+  useEffect(() => {
+    if (open) setPhase((p) => (p.k === "done" || p.k === "error" ? { k: "idle" } : p));
+  }, [open]);
 
   return (
     <Dialog open={open} onClose={close} title="تصدير الفيديو">

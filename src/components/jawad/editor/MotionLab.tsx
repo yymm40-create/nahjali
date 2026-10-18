@@ -265,7 +265,9 @@ export default function MotionLab({
         setCode(s.code || "");
         setReviews(s.reviews || []);
         setReviewMode(s.reviewMode === "fast" || s.reviewMode === "precise" ? s.reviewMode : "balanced");
-        setTransparent(Boolean(s.transparent));
+        // «خلفية شفافة» is never remembered: it sends the film out as a separate WebM that does NOT enter the timeline, so a
+        // choice left on from before made every later scene come out that way (it is switched on again each time, on purpose)
+        setTransparent(false);
         setTransparentCode(Boolean(s.transparentCode));
         setVoiceOn(Boolean(s.voiceOn));
         setMusicMode(s.musicMode === "eleven" || s.musicMode === "none" ? s.musicMode : "code");
