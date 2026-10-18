@@ -6,7 +6,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, callClaudeSearch, claudeCost, claudeWhy, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
-import { checkCommands, context, type Spoken } from "./assistant-core";
+import { asksAboutBackdrop, checkCommands, context, withoutBackdropEdits, type Spoken } from "./assistant-core";
 import { readTimeline } from "./model";
 import { KNOW_HOW } from "./recipes";
 import { GRADE_CHECK, GRADING_KNOW_HOW, gradeBrief, MAX_CHECKS } from "./assistant-guide";
@@ -149,6 +149,7 @@ RULES:
 - A PRECISE WINDOW («ماسك ذكي», by SAM 3: the subject's exact outline, following its shape as it moves) → {"kind":"smart_mask","clipId":...,"prompt":"<what to select as a short English noun phrase: face, sky, person on the right, white robe>","track":true for a moving subject in a video,"layer":N}. Use it whenever a grade or fix must touch exactly one thing (brighten a face, darken the sky, warm a robe, cool the background with invert): in the same answer put that layer's grade change in "commands" (e.g. {"type":"update_clip","clipId":...,"patch":{"grade":{"layer":1,"name":"الوجه","exposure":0.3}}}; for "everything except it" add "mask":{"kind":"ellipse","invert":true} there and the precise outline keeps the invert). The outline replaces that layer's window when it arrives. A rough ellipse/rect with "keys" stays fine for soft, broad areas.
 - MOTION GRAPHICS («موشن جرافيكس», «فيديو توضيحي متحرك», «إنفوجرافيك متحرك», «تايبوغرافي», an animated ad or intro): follow the MOTION GRAPHICS skill below — get the brief in one grouped question (only what's missing), write the script, then build the whole piece from editable clips, with its narration, sounds and music, in one answer.
 - SEEING THE CLIP («شوف المقطع», «وش يصير فيه», «متى يدخل», «قص لما يضحك», «اوصف اللقطات», anything that depends on WHAT HAPPENS in it): when a clip is selected and the request is about its content, the page WATCHES IT WHOLE for you — every frame measured (the cuts, black and frozen moments, motion each second) and many of its frames on numbered sheets with their timeline times ("WATCHED WHOLE" in the request). Work from those: name moments by the tiles' times, cut and place on them. If the request needs that and you only have a few moments (or none) of the clip, send ONLY {"kind":"watch","clipId":<the clip>} with a one-line reply («أشوف المقطع كامل…»): the page watches it and asks you again by itself. Never guess what happens in a clip you have not seen.
+- THE BACKGROUND AND THE COLOUR KEY ("bg", "key") ARE THE PERSON'S OWN SETTINGS, tuned by hand: never change them (not in a command, not inside a program) unless the request itself is about the background, the green screen or the key — and the site drops such a change if it was not asked for. Never tune them "to improve" a clip.
 - If something is missing that only a new shot could fix (e.g. an opening view), offer to make it (make) or add a suggestion with a clear English generation prompt.
 - When something doesn't work or looks wrong («ليش ما يطلع الصوت؟», «ليش الصورة مشعة؟»), find the reason in what you see (a muted or hidden track, a clip past its file, a wrong log or gamut, a file still uploading) and fix it or explain; the site's owner also has «🩺 تشخيص» next to the send button, which reads the browser's error log, the files and the server for a deep check.
 - CLICKABLE ANSWERS: whenever your reply asks the person something or proposes a next step, put 2–5 short answers they can press in "quick" (each a sentence that works as their reply, e.g. «٣٠ ثانية» or «اختر أنت»); the page always adds «✍️ اكتب إجابة مختلفة». Leave "quick" empty when you just did the job and ask nothing.
@@ -544,11 +545,20 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     r.orientation = h.orientation;
     reply += `\n\n${deliveryText(made.design, h)}`;
   }
+  // the background / colour key are the person's own settings: not changed unless the request is about them
+  let safe = valid;
+  if (!asksAboutBackdrop(message)) {
+    const kept = withoutBackdropEdits(valid as { type?: string; patch?: Record<string, unknown> }[]);
+    if (kept.dropped) {
+      safe = kept.cmds as typeof valid;
+      reply += "\n\n(ما لمست إعدادات الخلفية ولا الكي — ما طلبتها.)";
+    }
+  }
   await db().from("editor_ops").insert({ project_id: p.id, version: p.version, actor: "claude", label: usd.toFixed(4) });
-  await appendChat(p, [{ role: "user", text: message }, { role: "assistant", text: reply, ...(valid.length ? { done: valid.length } : {}) }]);
+  await appendChat(p, [{ role: "user", text: message }, { role: "assistant", text: reply, ...(safe.length ? { done: safe.length } : {}) }]);
   return {
     reply,
-    commands: valid,
+    commands: safe,
     suggestions: (answer.suggestions ?? []).slice(0, 4),
     quick: (Array.isArray(answer.quick) ? answer.quick : []).map((q) => String(q).trim().slice(0, 120)).filter(Boolean).slice(0, 5),
     // «الخيارات»: the groups the page shows as buttons (a group without at least two choices is dropped)

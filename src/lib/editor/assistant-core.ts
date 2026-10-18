@@ -87,6 +87,32 @@ export function context(tl: Timeline, assets: ContextAsset[], transcripts: Map<s
   };
 }
 
+/**
+ * The background and the colour key (the green screen, «شيل الخلفية», the blur) are the person's own settings, tuned by
+ * hand: حيدرة and his programs never change them unless the request is about them (the owner, 18 October 2026: the
+ * green background got broken and he doesn't want Claude touching it). Whatever else a command carries stays.
+ */
+export const asksAboutBackdrop = (message: string) =>
+  /(خلفي|كروما|chroma|green ?screen|شاشة خضر|شاشه خضر|الشاشة الخضراء|\bkey\b|\bكي\b|الكي|شيل لون|اشيل لون|غبّش|غبش|blur|despill|ماسك|قص الشخص|background|شفاف|transparent)/i.test(message);
+
+/** The commands without any change to a clip's `bg` or `key` (a command left with nothing to change is dropped). */
+export function withoutBackdropEdits<T extends { type?: string; patch?: Record<string, unknown> }>(cmds: T[]): { cmds: T[]; dropped: number } {
+  let dropped = 0;
+  const out: T[] = [];
+  for (const c of cmds) {
+    if (c && c.type === "update_clip" && c.patch && ("bg" in c.patch || "key" in c.patch)) {
+      const { bg: _bg, key: _key, ...rest } = c.patch;
+      void _bg;
+      void _key;
+      dropped++;
+      if (Object.keys(rest).length) out.push({ ...c, patch: rest });
+      continue;
+    }
+    out.push(c);
+  }
+  return { cmds: out, dropped };
+}
+
 /** Parses Claude's command strings and runs them on a copy: the commands, and the first one that fails (if any). */
 export function checkCommands(tl: Timeline, raw: string[], infos: Map<string, AssetInfo>) {
   const cmds: Command[] = [];

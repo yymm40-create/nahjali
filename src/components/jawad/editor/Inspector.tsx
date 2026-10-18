@@ -39,6 +39,7 @@ import FontPicker from "./FontPicker";
 import FxPanel from "./FxPanel";
 import GradePanel from "./GradePanel";
 import { keyAsk } from "./KeyStudio";
+import { lastBackdrop } from "./backdrop-memory";
 import { allGradeable, gradeable, pasteGradeCommands } from "@/lib/editor/grade-paste";
 import { copyGrade, pasteableGrade } from "./clipboard";
 import OpacityPanel, { KeyControls } from "./OpacityPanel";
@@ -659,6 +660,20 @@ export default function Inspector({
               🎨 شيل لون (Key) — اختر لون ويختفي
             </button>
           </div>
+          {/* the background broke (حيدرة or a program changed it): the last state it had before this one */}
+          {(() => {
+            const before = lastBackdrop(clip);
+            if (!before || locked) return null;
+            return (
+              <button
+                type="button"
+                className="w-full rounded-lg border border-jw-accent bg-jw-accent/10 px-2 py-2 text-xs font-semibold"
+                onClick={() => set({ bg: before.bg, key: before.key }, "bg:restore")}
+              >
+                ↩️ رجّع الخلفية لما كانت
+              </button>
+            );
+          })()}
           {clip.bg?.mode === "blur" && <Slider label="قوة التغبيش" value={clip.bg.blur} min={1} max={100} step={1} disabled={locked} onChange={(v) => set({ bg: { blur: v } }, "bg:blur")} />}
           {clip.bg?.mode === "color" && (
             <label className="flex items-center justify-between gap-2 text-xs text-jw-muted">
