@@ -97,7 +97,7 @@ export default async function JawadCoins() {
               <Link href={`/jawad-ai/credits?pack=${p.id}`} className="flex h-full items-center justify-between gap-3 rounded-lg border border-jw-line p-3 hover:border-jw-accent/50">
                 <span>
                   <span className="block font-medium">{p.name}{p.tag && <span className="jw-chip ms-2 !px-2 !py-0.5 text-xs">{p.tag}</span>}</span>
-                  <span className="block text-xs text-jw-muted">{p.note || `رصيد ${p.credit} ريال`}</span>
+                  <span className="block text-xs text-jw-muted">{p.note || <>رصيد <Riyal halalas={p.credit * 100} size={12} /></>}</span>
                 </span>
                 <span className="flex items-center gap-1 tabular-nums"><Riyal halalas={p.price * 100} size={14} />{bonusPct(p) > 0 && <span className="ms-1 text-xs text-jw-ok">+{bonusPct(p)}٪</span>}</span>
               </Link>

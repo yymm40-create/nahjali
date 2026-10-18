@@ -8,6 +8,10 @@ import { jawadSession, jawadVisibleTo, freeFor } from "@/lib/jawad/server/access
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { barSections } from "@/lib/jawad/server/bar";
 import { giveSignupGift } from "@/lib/gift";
+import { hasPurchased } from "@/lib/credits/orders";
+import { loadCreditSettings } from "@/lib/credits/settings";
+import { bonusPct } from "@config/credits";
+import SubscribePopup from "@/components/jawad/SubscribePopup";
 import InDevelopment from "@/components/jawad/InDevelopment";
 import JawadHeader from "@/components/jawad/JawadHeader";
 import RobotGuide from "@/components/jawad/RobotGuide";
@@ -46,6 +50,11 @@ export default async function JawadLayout({ children }: { children: React.ReactN
     ? await Promise.all([coinBalance(user.id), getUsername(await createClient(), user.id).catch(() => null)])
     : [null, null];
   // «صانع الألعاب», «صانع المحتوى», «المصمم الذكي» and «زهراء» follow their own switches (see barSections)
+  // whoever has not bought a package (and is not on the house) gets the packages in a popup (SubscribePopup)
+  const unpaid = !preview && !owner && !(user && (await freeFor(user)));
+  const popupPacks = unpaid && !(user && (await hasPurchased(user.id).catch(() => false)))
+    ? (await loadCreditSettings().catch(() => null))?.packs.map((p) => ({ id: p.id, name: p.name, price: p.price, credit: p.credit, tag: p.tag, bonus: bonusPct(p) })) ?? []
+    : [];
   const bar = { ...rt, sections: await barSections(rt, user, owner) };
   return (
     <div className={`jw ${readex.variable}`} dir="rtl" lang="ar" style={{ ["--jw-accent" as string]: rt.brand.accent }} suppressHydrationWarning>
@@ -58,6 +67,7 @@ export default async function JawadLayout({ children }: { children: React.ReactN
       <main id="jw-main">{preview ? <InDevelopment logoUrl={rt.brand.logoUrl} customLogo={rt.brand.customLogo} /> : children}</main>
       {/* the page's robot introduces itself (a movable bubble afterwards) */}
       {!preview && <RobotGuide />}
+      {popupPacks.length > 0 && <SubscribePopup packs={popupPacks} />}
     </div>
   );
 }
