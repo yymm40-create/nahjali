@@ -159,3 +159,9 @@ export async function listCreditOrders(status?: CreditStatus): Promise<CreditOrd
   if (error) return [];
   return (data ?? []).map(view);
 }
+
+/** Has this person bought a package (an order the owner confirmed)? */
+export async function hasPurchased(userId: string): Promise<boolean> {
+  const { count, error } = await db().from("credit_orders").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "confirmed");
+  return !error && (count ?? 0) > 0;
+}
