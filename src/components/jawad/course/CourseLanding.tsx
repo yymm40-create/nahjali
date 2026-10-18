@@ -217,12 +217,12 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
             <h2>{unlocked.confirmed ? "✅ اشتراكك مؤكد" : "⏳ تحويلك قيد التأكيد"}</h2>
             <p>
               {unlocked.confirmed ? `أهلًا فيك في ${COURSE.name}.` : "وصلنا طلبك، ونتأكد من التحويل."}{" "}
-              {unlocked.groupLink ? "اطلب الانضمام لمجموعة الواتساب من هنا، ويقبلك المالك بعد التأكد من التحويل:" : "بنرسل لك رابط المجموعة قريبًا."}
+              {unlocked.confirmed ? "دورتك جاهزة في «دوراتي»." : "بعد ما يتأكد المالك من التحويل تظهر دورتك في «دوراتي» مباشرة."}
             </p>
             <div className="cr-actions">
               {unlocked.groupLink && <a className="cr-btn cr-primary" href={unlocked.groupLink} target="_blank" rel="noreferrer">{unlocked.confirmed ? "ادخل المجموعة" : "اطلب الانضمام للمجموعة"}</a>}
               {unlocked.recordedLink && unlocked.products.includes("recorded") && <a className="cr-btn" href={unlocked.recordedLink} target="_blank" rel="noreferrer">افتح الدورة المسجلة</a>}
-              {unlocked.confirmed && <Link className="cr-btn cr-primary" href={LEARN.base}>📚 افتح دروسي</Link>}
+              {unlocked.confirmed && <Link className="cr-btn cr-primary" href={LEARN.base}>📚 افتح دوراتي</Link>}
             </div>
           </div>
         </section>
@@ -231,7 +231,6 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
       <header className="cr-hero">
         <div className="cr-in">
           <span className="cr-eyebrow"><i className="cr-dot" aria-hidden />{COURSE.name}</span>
-          <p className="cr-date">🗓️ {COURSE.schedule.short}</p>
           <h1>{s.headline}</h1>
           <p className="cr-sub">{s.subhead}</p>
 
@@ -244,7 +243,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
             ) : (
               <>
                 <div className="cr-ribbon">
-                  <span>{cur.phase === "A" ? "🔥 عرض الإطلاق" : cur.phase === "B" ? "⚡ عرض اليوم الثاني" : "الأسعار الحالية"}</span>
+                  <span>سعر الدورة</span>
                   {left !== null && <Timer ms={left} />}
                 </div>
                 <div className="cr-buy-body">
@@ -283,7 +282,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
                     <li>🔒 تحويل بنكي مباشر</li>
                     {hasLifetimeAccess(sel.product) && <li>♾️ تسجيل الدورة مدى الحياة</li>}
                     {sel.product === "live" && <li>🎥 حضور مباشر</li>}
-                    <li>💬 مجموعة واتساب خاصة</li>
+                    <li>📚 تظهر في «دوراتي» بعد التأكيد</li>
                   </ul>
                 </div>
               </>
@@ -313,7 +312,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
 
       <section className="cr-band cr-alt">
         <div className="cr-in">
-          <h2 className="cr-h">وش بنسوي في أيام الدورة؟</h2>
+          <h2 className="cr-h">وش بتتعلم؟</h2>
           <ol className="cr-line">
             {s.days.map((d, i) => (
               <li key={i}>
@@ -344,7 +343,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
             <li><b>١</b>سجّل دخولك في الموقع (عشان نسجّل إيميلك).</li>
             <li><b>٢</b>اكتب اسمك ورقم جوالك، واضغط «اشترك الآن».</li>
             <li><b>٣</b>تظهر لك بيانات الحساب (الآيبان والسويفت): انسخها وحوّل المبلغ.</li>
-            <li><b>٤</b>ارجع واضغط «تم التحويل»: يظهر لك رابط مجموعة الواتساب، ويقبلك المالك فيها بعد التأكد من التحويل.</li>
+            <li><b>٤</b>ارجع واضغط «تم التحويل»: بعد ما يتأكد المالك من التحويل تظهر لك الدورة مباشرة في «دوراتي».</li>
           </ol>
         </div>
       </section>
@@ -420,7 +419,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
             {sheet.step === "done" && (
               <>
                 <h3>وصلنا طلبك ✅</h3>
-                <p>راح نتأكد من التحويل ونتواصل معك على الواتساب {phone ? <b dir="ltr">{phone}</b> : null}. الحين اطلب الانضمام لمجموعة الدورة، ويقبلك المالك بعد ما يتأكد من التحويل.</p>
+                <p>راح نتأكد من التحويل، وبعدها تظهر لك الدورة مباشرة في «دوراتي»{phone ? <> (وقد نتواصل معك على <b dir="ltr">{phone}</b>)</> : null}.</p>
                 {group && <a className="cr-cta" href={group} target="_blank" rel="noreferrer"><span className="cr-cta-main">اطلب الانضمام لمجموعة الواتساب</span></a>}
                 <button type="button" className="cr-btn" onClick={() => setSheet(null)}>تمام</button>
               </>

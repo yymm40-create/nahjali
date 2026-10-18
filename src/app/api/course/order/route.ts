@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 export const POST = handle(async (req: Request) => {
   const user = await requireApiUser();
   const b = (await req.json().catch(() => ({}))) as { product?: unknown; name?: unknown; phone?: unknown };
-  if (!isProduct(b.product)) throw new UserError("اختر الدورة اللي تبيها.", 400);
-  const r = await startOrder({ id: user.id, email: user.email }, { product: b.product, name: b.name, phone: b.phone });
+  const product = b.product === undefined ? "recorded" : b.product;
+  if (!isProduct(product)) throw new UserError("اختر الدورة اللي تبيها.", 400);
+  const r = await startOrder({ id: user.id, email: user.email }, { product, name: b.name, phone: b.phone });
   return NextResponse.json(r);
 });
