@@ -9,7 +9,8 @@ import type { CourseView, DayView, LessonView } from "@/lib/learn/server";
 interface Grant { id: string; course_id: string; email: string; created_at: string }
 interface Flag { id: string; email: string; lesson_id: string | null; session_id: string | null; kind: string; detail: string; created_at: string }
 interface Sess { id: string; email: string; lesson_id: string; started_at: string; last_seen: string; served_s: number; pieces: number; revoked: boolean; revoked_reason: string; ip: string }
-interface Data { courses: CourseView[]; grants: Grant[]; flags: Flag[]; sessions: Sess[] }
+interface Code { id: string; course_id: string; code: string; price_sar: number }
+interface Data { courses: CourseView[]; grants: Grant[]; codes?: Code[]; flags: Flag[]; sessions: Sess[] }
 interface Up { p: number; label: string; err?: string }
 
 const URL = "/api/learn/admin";
@@ -113,6 +114,7 @@ export default function LearnAdmin() {
           key={c.id}
           c={c}
           grants={d.grants.filter((g) => g.course_id === c.id)}
+          codes={(d.codes ?? []).filter((x) => x.course_id === c.id)}
           ups={ups}
           act={act}
           addVideo={addVideo}
@@ -149,13 +151,16 @@ export default function LearnAdmin() {
 
 type Act = (body: Record<string, unknown>, ok?: string) => Promise<Record<string, unknown> | null>;
 
-function CourseCard({ c, grants, ups, act, addVideo, reupload, confirmDel }: { c: CourseView; grants: Grant[]; ups: Record<string, Up>; act: Act; addVideo: (d: DayView, f: File) => void; reupload: (l: LessonView, f: File) => void; confirmDel: (w: string) => boolean }) {
+function CourseCard({ c, grants, codes, ups, act, addVideo, reupload, confirmDel }: { c: CourseView; grants: Grant[]; codes: Code[]; ups: Record<string, Up>; act: Act; addVideo: (d: DayView, f: File) => void; reupload: (l: LessonView, f: File) => void; confirmDel: (w: string) => boolean }) {
   const [title, setTitle] = useState(c.title);
   const [summary, setSummary] = useState(c.summary);
   const [email, setEmail] = useState("");
   const [day, setDay] = useState("");
   const [price, setPrice] = useState(c.priceSar ? String(c.priceSar) : "");
   const [copied, setCopied] = useState(false);
+  const [was, setWas] = useState(c.wasSar ? String(c.wasSar) : "");
+  const [codeText, setCodeText] = useState("");
+  const [codePrice, setCodePrice] = useState("");
   const save = (patch: Record<string, unknown>, ok?: string) => act({ action: "course_save", id: c.id, ...patch }, ok);
   return (
     <section className="card space-y-3 p-4">
@@ -167,7 +172,10 @@ function CourseCard({ c, grants, ups, act, addVideo, reupload, confirmDel }: { c
       </div>
       <textarea className="field" rows={2} placeholder="وصف قصير للدورة (اختياري)" maxLength={LEARN.maxSummary} value={summary} onChange={(e) => setSummary(e.target.value)} onBlur={() => summary !== c.summary && void save({ summary }, "انحفظ الوصف")} />
       <div className="flex flex-wrap items-center gap-2 text-sm font-bold">
-        <label className="flex items-center gap-1">💰 سعر البيع (ريال)
+        <label className="flex items-center gap-1">🏷️ السعر قبل الخصم
+          <input className="field w-24" inputMode="numeric" dir="ltr" placeholder="اختياري" value={was} onChange={(e) => setWas(e.target.value.replace(/\D/g, ""))} onBlur={() => was !== (c.wasSar ? String(c.wasSar) : "") && void save({ was: was || null }, "انحفظ")} />
+        </label>
+        <label className="flex items-center gap-1">💰 السعر بعد الخصم (سعر البيع)
           <input className="field w-24" inputMode="numeric" dir="ltr" placeholder="فاضي = غير معروضة" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} onBlur={() => price !== (c.priceSar ? String(c.priceSar) : "") && void save({ price: price || null }, price ? "انحفظ السعر" : "الدورة ما عادت معروضة للبيع")} />
         </label>
         {c.priceSar && c.published ? (
@@ -201,6 +209,18 @@ function CourseCard({ c, grants, ups, act, addVideo, reupload, confirmDel }: { c
       <div className="flex flex-wrap items-end gap-2">
         <input className="field flex-1" value={day} onChange={(e) => setDay(e.target.value)} placeholder="يوم جديد (مثلًا: اليوم ١ — الأساسيات)" maxLength={LEARN.maxTitle} />
         <button type="button" className="btn btn-ghost" onClick={async () => { if (await act({ action: "day_save", courseId: c.id, title: day }, "انضاف اليوم")) setDay(""); }}>➕ أضف يوم</button>
+      </div>
+
+      <div className="space-y-2 border-t border-white/10 pt-3">
+        <h3 className="font-extrabold">🏷️ أكواد الخصم لهذي الدورة (اللي يكتب الكود يشتري بسعره)</h3>
+        <div className="flex flex-wrap gap-2">
+          <input className="field flex-1" dir="ltr" value={codeText} onChange={(e) => setCodeText(e.target.value.toUpperCase())} placeholder="الكود مثل JAWAD20" maxLength={40} />
+          <input className="field w-32" inputMode="numeric" dir="ltr" value={codePrice} onChange={(e) => setCodePrice(e.target.value.replace(/\D/g, ""))} placeholder="السعر بالكود" />
+          <button type="button" className="btn btn-ghost" onClick={async () => { if (await act({ action: "code_save", courseId: c.id, code: codeText, price: codePrice }, "انضاف الكود")) { setCodeText(""); setCodePrice(""); } }}>أضف الكود</button>
+        </div>
+        {codes.map((x) => (
+          <p key={x.id} className="flex items-center gap-2 text-sm font-bold" dir="ltr"><span>{x.code} → {x.price_sar}</span><button type="button" className="chip" onClick={() => void act({ action: "code_delete", id: x.id }, "انشال الكود")}>✖</button></p>
+        ))}
       </div>
 
       <div className="space-y-2 border-t border-white/10 pt-3">

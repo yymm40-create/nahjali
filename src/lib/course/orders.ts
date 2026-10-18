@@ -23,6 +23,8 @@ export interface Order {
   /** the lesson-place course it buys (null on the first orders, before each course had its own page) */
   courseId: string | null;
   courseTitle: string;
+  /** the discount code used, if any */
+  code: string;
   phase: "A" | "B" | "C";
   amount: number;
   was: number;
@@ -45,6 +47,7 @@ const view = (r: Record<string, unknown>): Order => ({
   product: r.product as Product,
   courseId: (r.course_id as string | null) ?? null,
   courseTitle: "",
+  code: String(r.code ?? ""),
   phase: r.phase as Order["phase"],
   amount: Number(r.amount_sar ?? 0),
   was: Number(r.was_sar ?? 0),
@@ -63,6 +66,15 @@ const wrap = (e: { message?: string } | null) => {
   if (e) throw new UserError(/relation|does not exist|schema cache|PGRST205/i.test(e.message ?? "") ? NO_TABLE : "تعذّر تنفيذ الطلب. جرّب مرة ثانية.", 500);
 };
 
+/** The price a course's discount code gives (null when the code isn't one of that course's active codes). */
+export async function codePrice(courseId: string, raw: unknown): Promise<{ code: string; price: number } | null> {
+  const code = String(raw ?? "").trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{2,40}$/.test(code) || !/^[0-9a-f-]{36}$/i.test(courseId)) return null;
+  const { data } = await db().from("learn_codes").select("price_sar").eq("course_id", courseId).eq("code", code).maybeSingle();
+  const price = Number(data?.price_sar) || 0;
+  return price > 0 ? { code, price } : null;
+}
+
 /** The order with its course's name (for the owner's message). */
 async function titled(o: Order): Promise<Order> {
   if (!o.courseId) return o;
@@ -76,13 +88,19 @@ export interface Started {
 }
 
 /** «ادفع الآن»: the order for ONE course at its own price (kept for a few hours), and the bank data to transfer to. */
-export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown }, now = Date.now()): Promise<Started> {
+export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown; code?: unknown }, now = Date.now()): Promise<Started> {
   const s = await loadSettings();
   const courseId = typeof b.courseId === "string" ? b.courseId : "";
-  const { data: course } = /^[0-9a-f-]{36}$/i.test(courseId) ? await db().from("learn_courses").select("id,title,published,price_sar").eq("id", courseId).maybeSingle() : { data: null };
-  const price = Number(course?.price_sar) || 0;
+  const { data: course } = /^[0-9a-f-]{36}$/i.test(courseId) ? await db().from("learn_courses").select("id,title,published,price_sar,was_sar").eq("id", courseId).maybeSingle() : { data: null };
+  let price = Number(course?.price_sar) || 0;
+  const was = Number(course?.was_sar) || 0;
+  // a discount code of THIS course gives its own price
+  const hasCode = typeof b.code === "string" && b.code.trim() !== "";
+  const coded = hasCode && course?.published && price > 0 ? await codePrice(courseId, b.code) : null;
+  if (hasCode && course?.published && price > 0 && !coded) throw new UserError("كود الخصم غير صحيح لهذه الدورة.", 400);
+  if (coded) price = coded.price;
   // a course is on sale while it is shown to students and has a price
-  const offer = course?.published && price > 0 ? offerFor(s, "recorded", now, price) : null;
+  const offer = course?.published && price > 0 ? offerFor(s, "recorded", now, price, was) : null;
   if (!offer) throw new UserError("هذه الدورة غير معروضة للبيع الحين.", 409);
   const name = typeof b.name === "string" ? b.name.trim().replace(/\s+/g, " ") : "";
   if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك الثلاثي (يساعدنا نطابق التحويل).", 400);
@@ -96,11 +114,11 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   if (mine.some((o) => o.status === "confirmed" && o.courseId === courseId)) throw new UserError("اشتراكك مؤكد من قبل ✅", 409);
   const lock = new Date(now + COURSE.lockMinutes * 60_000).toISOString();
   const open = mine.find((o) => o.courseId === courseId && o.status === "started");
-  const base = { email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
+  const base = { code: coded?.code ?? "", email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
   const phase = offersAt(s, now).phase;
   if (open) {
     // the same order again: the price stays while it is kept, else it follows today's
-    const keep = new Date(open.lockedUntil).getTime() > now && open.amount <= offer.price;
+    const keep = new Date(open.lockedUntil).getTime() > now && open.amount <= offer.price && open.code === base.code;
     const patch = keep ? { name, phone, email: base.email, updated_at: base.updated_at } : { ...base, phase };
     const { data, error: e2 } = await db().from("course_orders").update(patch).eq("id", open.id).eq("status", "started").select("*").single();
     wrap(e2);

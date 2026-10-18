@@ -92,7 +92,7 @@ function Copy({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function CourseLanding({ s, courseId, price, serverNow, user, orders, unlocked, buy, loginHref }: { s: PublicCourse; courseId: string; price: number; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string }) {
+export default function CourseLanding({ s, courseId, price, was, serverNow, user, orders, unlocked, buy, loginHref }: { s: PublicCourse; courseId: string; price: number; was: number; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string }) {
   const router = useRouter();
   const [skew] = useState(() => serverNow - Date.now());
   const [now, setNow] = useState(serverNow);
@@ -100,11 +100,11 @@ export default function CourseLanding({ s, courseId, price, serverNow, user, ord
     const t = setInterval(() => setNow(Date.now() + skew), 1000);
     return () => clearInterval(t);
   }, [skew]);
-  const cur = useMemo(() => offersAt(s, now, price), [s, now, price]);
+  const cur = useMemo(() => offersAt(s, now, price, was), [s, now, price, was]);
   const video = useMemo(() => (s.videoFileUrl ? null : embedOf(s.videoUrl)), [s.videoFileUrl, s.videoUrl]);
 
   // coming back from signing in (?buy=…): the payment sheet is already open
-  const [sheet, setSheet] = useState<{ product: Product; step: "form" | "bank" | "done" } | null>(() => (buy && user && offersAt(s, serverNow, price).offers.some((o) => o.product === buy) ? { product: buy, step: "form" } : null));
+  const [sheet, setSheet] = useState<{ product: Product; step: "form" | "bank" | "done" } | null>(() => (buy && user && offersAt(s, serverNow, price, was).offers.some((o) => o.product === buy) ? { product: buy, step: "form" } : null));
   const last = orders[0];
   const [name, setName] = useState(last?.name ?? "");
   const [phone, setPhone] = useState(last?.phone ?? "");
@@ -115,6 +115,19 @@ export default function CourseLanding({ s, courseId, price, serverNow, user, ord
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
   const [group, setGroup] = useState("");
+  // «عندك كود خصم؟»: the code and the price it gives (checked by the server)
+  const [codeText, setCodeText] = useState("");
+  const [coded, setCoded] = useState<{ code: string; price: number } | null>(null);
+  async function applyCode() {
+    setError("");
+    setCoded(null);
+    if (!codeText.trim()) return;
+    try {
+      setCoded(await post<{ code: string; price: number }>("/api/course/code", { courseId, code: codeText }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   function pay(product: Product) {
     setError("");
@@ -129,7 +142,7 @@ export default function CourseLanding({ s, courseId, price, serverNow, user, ord
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone });
+      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone, code: coded?.code });
       setOrder(r.order);
       setBank(r.bank);
       setSheet({ ...sheet, step: "bank" });
@@ -159,7 +172,8 @@ export default function CourseLanding({ s, courseId, price, serverNow, user, ord
   const statusOf = (p: Product) => orders.find((o) => o.product === p || (o.product === "combo" && o.status === "confirmed"));
   const left = cur.endsAt ? cur.endsAt - now : null;
   const lock = order ? Math.max(0, new Date(order.lockedUntil).getTime() - now) : 0;
-  const offer = sheet ? cur.offers.find((o) => o.product === sheet.product) : null;
+  const offerBase = sheet ? cur.offers.find((o) => o.product === sheet.product) : null;
+  const offer = offerBase && coded ? { ...offerBase, price: coded.price, was: Math.max(offerBase.was, offerBase.price) } : offerBase;
 
   // the offer being bought: the one chosen, else the one with a gift, else the first
   const [picked, setPicked] = useState<Product | null>(null);
@@ -391,6 +405,11 @@ export default function CourseLanding({ s, courseId, price, serverNow, user, ord
                     {offer.bonus > 0 && <p className="cr-gift">🌸 + هدية {offer.bonus} زهرة</p>}
                   </div>
                 )}
+                <div className="flex gap-2">
+                  <input dir="ltr" value={codeText} onChange={(e) => { setCodeText(e.target.value); setCoded(null); }} placeholder="كود الخصم (إن وجد)" maxLength={40} />
+                  <button type="button" className="cr-btn" disabled={!codeText.trim()} onClick={() => void applyCode()}>طبّق</button>
+                </div>
+                {coded && <p className="cr-gift">✅ انطبق الكود، سعرك <Coined text={`¤${coded.price}`} size={14} /></p>}
                 <label>الاسم الثلاثي<input value={name} onChange={(e) => setName(e.target.value)} placeholder="كما في حسابك البنكي" autoComplete="name" maxLength={80} /></label>
                 <label>رقم الجوال (واتساب)<input dir="ltr" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" autoComplete="tel" /></label>
                 <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>

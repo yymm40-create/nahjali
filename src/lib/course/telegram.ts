@@ -53,6 +53,7 @@ export function orderText(o: Order, state = ""): string {
     `📱 <code>${esc(o.phone)}</code>`,
     `✉️ ${esc(o.email)}`,
     `📦 ${esc(o.courseTitle || PRODUCT_LABEL[o.product])} — <b>${o.amount} ريال</b>${o.was > o.amount ? ` (قيمتها ${o.was})` : ""}${o.bonus ? ` + ${o.bonus} زهرة هدية` : ""}`,
+    ...(o.code ? [`🏷️ كود الخصم: <code>${esc(o.code)}</code>`] : []),
     `🕒 ${when(o.transferredAt ?? o.createdAt)}`,
     ...(state ? [] : ["✅ بعد ما تضغط «أكّد الدفع» تظهر الدورة في «دوراتي» عنده مباشرة."]),
   ].join("\n");

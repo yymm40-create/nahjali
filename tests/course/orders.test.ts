@@ -66,6 +66,7 @@ const who = { name: "محمد علي حسن", phone: "0501234567" };
 beforeEach(() => {
   tables.course_orders = [];
   tables.learn_grants = [];
+  tables.learn_codes = [];
   tables.learn_courses = [{ id: A, title: "دورة الجواد الأولى", published: true, price_sar: 60 }, { id: B, title: "الدورة الثانية", published: true, price_sar: 90 }];
   grant.mockClear();
   notify.mockClear();
@@ -104,6 +105,27 @@ describe("«ادفع الآن»", () => {
     const b = await startOrder(U, { courseId: B, ...who }, T0);
     await confirmOrder(b.order.id, "owner");
     expect(tables.learn_grants.map((g) => g.course_id)).toEqual([A, B]);
+  });
+
+  it("a course's discount code gives its price; a wrong code, another course's code or none changes nothing", async () => {
+    const { startOrder, codePrice } = await import("@/lib/course/orders");
+    tables.learn_codes = [{ course_id: A, code: "JAWAD20", price_sar: 40 }, { course_id: B, code: "ONLYB", price_sar: 50 }];
+    expect(await codePrice(A, " jawad20 ")).toEqual({ code: "JAWAD20", price: 40 });
+    expect(await codePrice(A, "ONLYB")).toBeNull();
+    expect(await codePrice(A, "bad code!")).toBeNull();
+    const a = await startOrder(U, { courseId: A, code: "jawad20", ...who }, T0);
+    expect(a.order).toMatchObject({ amount: 40, code: "JAWAD20" });
+    // the same open order without the code goes back to the full price
+    const again = await startOrder(U, { courseId: A, ...who }, T0 + 1000);
+    expect(again.order).toMatchObject({ id: a.order.id, amount: 60, code: "" });
+    await expect(startOrder(U, { courseId: A, code: "ONLYB", ...who }, T0)).rejects.toThrow(/كود الخصم/);
+  });
+
+  it("the price before the discount is kept for the strike-through", async () => {
+    const { startOrder } = await import("@/lib/course/orders");
+    tables.learn_courses[0].was_sar = 100;
+    const a = await startOrder(U, { courseId: A, ...who }, T0);
+    expect(a.order).toMatchObject({ amount: 60, was: 100 });
   });
 
   it("refuses a bad name or phone", async () => {

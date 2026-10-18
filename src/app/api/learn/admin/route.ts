@@ -32,7 +32,7 @@ export const POST = handle(async (req: Request) => {
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   switch (b.action) {
     case "course_save":
-      return NextResponse.json({ id: await L.saveCourse({ id: str(b.id) || undefined, title: b.title, summary: b.summary, unlock: b.unlock, published: b.published, price: b.price }) });
+      return NextResponse.json({ id: await L.saveCourse({ id: str(b.id) || undefined, title: b.title, summary: b.summary, unlock: b.unlock, published: b.published, price: b.price, was: b.was }) });
     case "day_save":
       return NextResponse.json({ id: await L.saveDay({ id: str(b.id) || undefined, courseId: str(b.courseId), title: b.title }) });
     case "lesson_create":
@@ -68,6 +68,12 @@ export const POST = handle(async (req: Request) => {
       return NextResponse.json({ ok: true });
     case "grant_past":
       return NextResponse.json({ added: await L.grantPastBuyers(str(b.courseId), user.email ?? user.id) });
+    case "code_save":
+      await L.saveCode(str(b.courseId), b.code, b.price);
+      return NextResponse.json({ ok: true });
+    case "code_delete":
+      await L.deleteCode(str(b.id));
+      return NextResponse.json({ ok: true });
     case "ungrant":
       await L.ungrant(str(b.id));
       return NextResponse.json({ ok: true });
