@@ -2,11 +2,10 @@ import SmartCoin from "@/components/SmartCoin";
 import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadUser } from "@/lib/jawad/server/access";
-import { loadRuntime } from "@/lib/jawad/server/runtime";
-import { GENERATORS } from "@config/jawad/generators";
+import { loadCreditSettings } from "@/lib/credits/settings";
 import Link from "next/link";
-import { LIBRARY_ADDON, SMART_COIN, fmtSar } from "@config/coins";
-import { coinsOf, priceKindOf, wasOf } from "@config/jawad/generators";
+import { LIBRARY_ADDON, SMART_COIN } from "@config/coins";
+import { bonusPct } from "@config/credits";
 import { libraryAccess } from "@/lib/jawad/server/library-access";
 import Riyal from "@/components/Riyal";
 
@@ -44,16 +43,16 @@ function Ring({ pct, tone, children }: { pct: number; tone: string; children: Re
   );
 }
 
-/** The user's «النقود الذكية» inside JAWAD AI: a ring of what is left from the last top-up, the history; the prices for the owner only. */
+/** The user's «النقود الذكية» inside JAWAD AI: a ring of what is left from the last top-up, the history and every package. */
 export default async function JawadCoins() {
   const { user, owner } = await requireJawadUser("/jawad-ai/coins");
-  const [balance, rt, { data: ledger }, library] = await Promise.all([
+  const [balance, credit, { data: ledger }, library] = await Promise.all([
     coinBalance(user.id),
-    loadRuntime(),
+    loadCreditSettings(),
     createAdminClient().from("smart_coin_ledger").select("id,delta,reason,label,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
     libraryAccess(user.id, owner),
   ]);
-  const live = GENERATORS.filter((g) => rt.generators.find((x) => x.id === g.id)?.live || owner);
+  const packs = credit.packs;
   const left = balance ?? 0;
   const { spent, total } = usedSinceTopUp(ledger ?? [], left);
   const pct = owner ? 100 : total > 0 ? Math.max(0, Math.min(100, Math.round((left / total) * 100))) : 0;
@@ -90,31 +89,23 @@ export default async function JawadCoins() {
         <span className={`jw-chip !px-3 !py-1 ${library.active ? "!border-jw-accent/50 text-jw-accent" : ""}`}>{owner ? "مفتوحة لك دائمًا" : library.active ? "مفعّلة" : "غير مفعّلة"}</span>
       </Link>
 
-      {owner && (
       <section className="jw-panel p-5">
-        <h2 className="mb-3 font-semibold">الأسعار الحالية <span className="text-xs font-normal text-jw-faint">(تظهر لك بس)</span></h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {live.map((g) => (
-            <div key={g.id} className="rounded-lg border border-jw-line p-3">
-              <p className="mb-2 font-medium" dir="ltr" style={{ textAlign: "right" }}>{rt.generators.find((x) => x.id === g.id)?.name ?? g.name}</p>
-              <ul className="space-y-1 text-sm">
-                {g.priceKeys.map((k) => {
-                  const c = rt.prices[g.id]?.[k.key];
-                  return (
-                    <li key={k.key} className="flex justify-between gap-2">
-                      <span className="text-jw-muted">{k.label}</span>
-                      <span className="tabular-nums" dir="ltr">{c == null ? "—" : (<><Riyal halalas={coinsOf(c, priceKindOf(g.output))} size={14} />{wasOf(c, priceKindOf(g.output)) > coinsOf(c, priceKindOf(g.output)) && <s className="ms-1 text-xs text-jw-faint">{fmtSar(wasOf(c, priceKindOf(g.output)))}</s>}</>)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+        <h2 className="mb-3 font-semibold">الباقات</h2>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {packs.map((p) => (
+            <li key={p.id}>
+              <Link href={`/jawad-ai/credits?pack=${p.id}`} className="flex h-full items-center justify-between gap-3 rounded-lg border border-jw-line p-3 hover:border-jw-accent/50">
+                <span>
+                  <span className="block font-medium">{p.name}{p.tag && <span className="jw-chip ms-2 !px-2 !py-0.5 text-xs">{p.tag}</span>}</span>
+                  <span className="block text-xs text-jw-muted">{p.note || `رصيد ${p.credit} ريال`}</span>
+                </span>
+                <span className="flex items-center gap-1 tabular-nums"><Riyal halalas={p.price * 100} size={14} />{bonusPct(p) > 0 && <span className="ms-1 text-xs text-jw-ok">+{bonusPct(p)}٪</span>}</span>
+              </Link>
+            </li>
           ))}
-          {!live.length && <p className="text-sm text-jw-muted">لا توجد مولدات متاحة حاليًا.</p>}
-        </div>
-        <p className="mt-3 text-xs text-jw-faint">مقرّبة لأعلى إلى أقرب نصف. المشطوب هو السعر الأصلي قبل خصم الانطلاقة.</p>
+        </ul>
+        <p className="mt-3 text-xs text-jw-faint">كل الباقات متاحة لك دائمًا، حتى الأقل من اللي اشتريته قبل.</p>
       </section>
-      )}
 
       <section className="jw-panel p-5">
         <h2 className="mb-3 font-semibold">السجل</h2>
