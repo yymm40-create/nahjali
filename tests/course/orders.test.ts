@@ -64,81 +64,61 @@ beforeEach(() => {
 });
 
 describe("«ادفع الآن»", () => {
-  it("charges the approved October offer and expires its payment lock at 4pm Saudi time", async () => {
-    const { startOrder, markTransferred } = await import("@/lib/course/orders");
-    const time = Date.parse("2026-10-15T15:30:00+03:00");
-    const end = Date.parse("2026-10-15T16:00:00+03:00");
-    const live = await startOrder(U, { product: "live", ...who }, time);
-    expect(live.order.amount).toBe(50);
-    expect(Date.parse(live.order.lockedUntil)).toBe(end);
-    const combo = await startOrder({ id: "u-2" }, { product: "combo", ...who }, time);
-    expect(combo.order.amount).toBe(80);
-    await expect(markTransferred(U, live.order.id, end)).rejects.toThrow("مهلة");
-  });
-  it("makes an order at the price of the phase, with the bank data to transfer to", async () => {
+  it("makes an order for the recorded course at 60, with the bank data to transfer to, at any time", async () => {
     const { startOrder } = await import("@/lib/course/orders");
-    const r = await startOrder(U, { product: "combo", ...who }, T0 + 2 * H);
-    expect(r.order).toMatchObject({ product: "combo", phase: "A", amount: 40, was: 230, bonus: 0, status: "started", phone: "+966501234567", email: "buyer@example.com" });
-    expect(r.bank.iban).toBe(bank.iban);
-    expect(new Date(r.order.lockedUntil).getTime()).toBe(T0 + 2 * H + 180 * 60_000);
-    const b = await startOrder({ id: "u-2", email: "b@x.com" }, { product: "recorded", ...who }, T0 + 30 * H);
-    expect(b.order).toMatchObject({ phase: "B", amount: 80, was: 150, bonus: 30 });
-    const c = await startOrder({ id: "u-3", email: "c@x.com" }, { product: "live", ...who }, T0 + 60 * H);
-    expect(c.order).toMatchObject({ phase: "C", amount: 80, was: 80 });
+    for (const [i, t] of [T0 - 5 * H, T0 + 2 * H, T0 + 60 * H].entries()) {
+      const r = await startOrder({ id: `u-${i}`, email: `b${i}@example.com` }, { product: "recorded", ...who }, t);
+      expect(r.order).toMatchObject({ product: "recorded", amount: 60, bonus: 0, status: "started", phone: "+966501234567" });
+      expect(new Date(r.order.lockedUntil).getTime()).toBe(t + 180 * 60_000);
+      expect(r.bank.iban).toBe(bank.iban);
+    }
   });
 
-  it("refuses a product that isn't on sale in this phase, a bad name or phone, and a course that hasn't started", async () => {
+  it("refuses the live and the whole course (not on sale), a bad name or phone", async () => {
     const { startOrder } = await import("@/lib/course/orders");
     await expect(startOrder(U, { product: "live", ...who }, T0 + 2 * H)).rejects.toThrow(/غير متاح/);
     await expect(startOrder(U, { product: "combo", ...who }, T0 + 30 * H)).rejects.toThrow(/غير متاح/);
-    await expect(startOrder(U, { product: "combo", name: "م", phone: who.phone }, T0 + 2 * H)).rejects.toThrow(/اسمك/);
-    await expect(startOrder(U, { product: "combo", name: who.name, phone: "123" }, T0 + 2 * H)).rejects.toThrow(/رقم الجوال/);
-    await expect(startOrder(U, { product: "combo", ...who }, T0 - H)).rejects.toThrow(/غير متاح/);
+    await expect(startOrder(U, { product: "recorded", name: "م", phone: who.phone }, T0 + 2 * H)).rejects.toThrow(/اسمك/);
+    await expect(startOrder(U, { product: "recorded", name: who.name, phone: "123" }, T0 + 2 * H)).rejects.toThrow(/رقم الجوال/);
     expect(tables.course_orders).toHaveLength(0);
   });
 
   it("won't take money before the bank data is set", async () => {
     settings = readSettings({ ...settings, bank: {} });
     const { startOrder } = await import("@/lib/course/orders");
-    await expect(startOrder(U, { product: "combo", ...who }, T0 + H)).rejects.toThrow(/بيانات التحويل/);
+    await expect(startOrder(U, { product: "recorded", ...who }, T0 + H)).rejects.toThrow(/بيانات التحويل/);
   });
 
-  it("pressing it again reuses the same order, and keeps the price while it is kept — then follows the new price", async () => {
+  it("pressing it again reuses the same order", async () => {
     const { startOrder } = await import("@/lib/course/orders");
     const a = await startOrder(U, { product: "recorded", ...who }, T0 + 25 * H);
-    expect(a.order.amount).toBe(80);
-    // two hours later the phase changed (after 48 h): the first price is still kept
-    const b = await startOrder(U, { product: "recorded", ...who, name: "محمد علي" }, T0 + 25 * H + 120 * 60_000);
+    const b = await startOrder(U, { product: "recorded", ...who, name: "محمد علي" }, T0 + 25 * H + 60 * 60_000);
     expect(b.order.id).toBe(a.order.id);
-    expect(b.order.amount).toBe(80);
+    expect(b.order.amount).toBe(60);
     expect(b.order.name).toBe("محمد علي");
-    // long after it ran out, in the third phase: the same order, today's price
-    const c = await startOrder(U, { product: "recorded", ...who }, T0 + 60 * H);
-    expect(c.order.id).toBe(a.order.id);
-    expect(c.order).toMatchObject({ amount: 100, phase: "C", bonus: 20 });
     expect(tables.course_orders).toHaveLength(1);
   });
 
   it("limits the open orders of one person", async () => {
     const { startOrder } = await import("@/lib/course/orders");
-    for (let i = 0; i < 4; i++) tables.course_orders.push({ id: `o${i}`, user_id: U.id, product: i % 2 ? "live" : "recorded", status: "transferred", created_at: new Date(T0 + i).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 40, was_sar: 80, bonus_sar: 0, phase: "B", name: "x", phone: "+966501234567", email: "" });
-    // (both products already have an order: a third kind can't be added past the limit)
-    tables.course_orders.push({ id: "o9", user_id: U.id, product: "combo", status: "rejected", created_at: new Date(T0 + 9).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 40, was_sar: 230, bonus_sar: 0, phase: "A", name: "x", phone: "+966501234567", email: "" });
-    await expect(startOrder(U, { product: "combo", ...who }, T0 + 2 * H)).rejects.toThrow(/طلبات مفتوحة/);
+    for (let i = 0; i < 4; i++) tables.course_orders.push({ id: `o${i}`, user_id: U.id, product: "live", status: "transferred", created_at: new Date(T0 + i).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 40, was_sar: 80, bonus_sar: 0, phase: "B", name: "x", phone: "+966501234567", email: "" });
+    await expect(startOrder(U, { product: "recorded", ...who }, T0 + 2 * H)).rejects.toThrow(/طلبات مفتوحة/);
   });
 
-  it("tells a confirmed buyer they are already in", async () => {
+  it("tells a confirmed buyer — of the recorded, the live or the whole course — they are already in", async () => {
     const { startOrder, confirmOrder } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "combo", ...who }, T0 + H);
+    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
     await confirmOrder(a.order.id, "owner");
-    await expect(startOrder(U, { product: "combo", ...who }, T0 + 2 * H)).rejects.toThrow(/مؤكد/);
+    await expect(startOrder(U, { product: "recorded", ...who }, T0 + 2 * H)).rejects.toThrow(/مؤكد/);
+    tables.course_orders.push({ id: "old-live", user_id: "u-9", product: "live", status: "confirmed", created_at: new Date(T0).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 40, was_sar: 80, bonus_sar: 0, phase: "B", name: "x", phone: "+966501234567", email: "" });
+    await expect(startOrder({ id: "u-9", email: "l@x.com" }, { product: "recorded", ...who }, T0 + 2 * H)).rejects.toThrow(/مؤكد/);
   });
 });
 
 describe("«تم التحويل»", () => {
   it("marks it, and tells the owner once", async () => {
     const { startOrder, markTransferred } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "combo", ...who }, T0 + H);
+    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
     const t = await markTransferred({ id: U.id }, a.order.id, T0 + 2 * H);
     expect(t.status).toBe("transferred");
     expect(t.transferredAt).toBe(new Date(T0 + 2 * H).toISOString());
@@ -150,7 +130,7 @@ describe("«تم التحويل»", () => {
 
   it("is refused after the price ran out, for someone else's order, and the buyer is never failed by a broken notification", async () => {
     const { startOrder, markTransferred } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "combo", ...who }, T0 + H);
+    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
     await expect(markTransferred({ id: U.id }, a.order.id, T0 + H + 181 * 60_000)).rejects.toThrow(/انتهت مهلة السعر/);
     await expect(markTransferred({ id: "someone-else" }, a.order.id, T0 + 2 * H)).rejects.toThrow(/ما لقينا/);
     notify.mockRejectedValueOnce(new Error("telegram down"));
@@ -161,11 +141,11 @@ describe("«تم التحويل»", () => {
   });
 });
 
-describe("the group's link", () => {
-  it("is open to a buyer from «تم التحويل» on (the owner approves each join in WhatsApp) and not before, nor after a rejection", async () => {
+describe("what a buyer has", () => {
+  it("opens from «تم التحويل» for the group link only, and the course itself only once the owner confirms", async () => {
     const { startOrder, markTransferred, rejectOrder, myCourse } = await import("@/lib/course/orders");
     expect((await myCourse(U.id)).groupOpen).toBe(false);
-    const a = await startOrder(U, { product: "combo", ...who }, T0 + H);
+    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
     expect((await myCourse(U.id)).groupOpen).toBe(false);
     await markTransferred({ id: U.id }, a.order.id, T0 + 2 * H);
     const m = await myCourse(U.id);
@@ -178,47 +158,45 @@ describe("the group's link", () => {
 });
 
 describe("«أكّد»", () => {
-  it("unlocks the buyer and grants the gift once (1 زهرة = 1 riyal = 100 halalas), however many times it is pressed", async () => {
+  it("unlocks the recorded course for the buyer at once, with no gift", async () => {
     const { startOrder, markTransferred, confirmOrder, myCourse } = await import("@/lib/course/orders");
     const a = await startOrder(U, { product: "recorded", ...who }, T0 + 30 * H);
     await markTransferred({ id: U.id }, a.order.id, T0 + 31 * H);
     const r = await confirmOrder(a.order.id, "تيليجرام", T0 + 32 * H);
     expect(r.already).toBe(false);
-    expect(r.order).toMatchObject({ status: "confirmed", bonus: 30 });
-    expect(grant).toHaveBeenCalledTimes(1);
-    expect(grant).toHaveBeenCalledWith(U.id, 3000, expect.stringContaining("30 زهرة"));
-    const r2 = await confirmOrder(a.order.id, "لوحة", T0 + 33 * H);
-    expect(r2.already).toBe(true);
-    expect(grant).toHaveBeenCalledTimes(1);
+    expect(r.order).toMatchObject({ status: "confirmed", bonus: 0 });
+    expect(grant).not.toHaveBeenCalled();
+    expect((await confirmOrder(a.order.id, "لوحة", T0 + 33 * H)).already).toBe(true);
     const mine = await myCourse(U.id);
     expect(mine.unlocked).toBe(true);
-    expect(mine.groupOpen).toBe(true);
     expect(mine.products).toEqual(["recorded"]);
   });
 
-  it("the whole course unlocks live and recorded; no gift when there is none; a failed grant does not leave the gift marked", async () => {
-    const { startOrder, confirmOrder, myCourse } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "combo", ...who }, T0 + H);
-    await confirmOrder(a.order.id, "owner");
-    expect(grant).not.toHaveBeenCalled();
-    expect((await myCourse(U.id)).products.sort()).toEqual(["combo", "live", "recorded"]);
+  it("whoever bought the live or the whole course also has the recorded one", async () => {
+    const { myCourse } = await import("@/lib/course/orders");
+    const row = (id: string, user: string, product: string) => ({ id, user_id: user, product, status: "confirmed", created_at: new Date(T0).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 40, was_sar: 80, bonus_sar: 0, phase: "A", name: "x", phone: "+966501234567", email: "" });
+    tables.course_orders.push(row("c1", "u-live", "live"), row("c2", "u-combo", "combo"));
+    expect((await myCourse("u-live")).products.sort()).toEqual(["live", "recorded"]);
+    expect((await myCourse("u-combo")).products.sort()).toEqual(["combo", "live", "recorded"]);
+  });
 
-    const b = await startOrder({ id: "u-2", email: "b@x.com" }, { product: "recorded", ...who }, T0 + 30 * H);
+  it("an old order's gift is granted once; a failed grant does not leave it marked", async () => {
+    const { confirmOrder } = await import("@/lib/course/orders");
+    tables.course_orders.push({ id: "g1", user_id: "u-2", product: "recorded", status: "transferred", created_at: new Date(T0).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 80, was_sar: 150, bonus_sar: 30, bonus_granted_at: null, phase: "B", name: "x", phone: "+966501234567", email: "b@x.com" });
     grant.mockRejectedValueOnce(new Error("wallet down"));
-    await expect(confirmOrder(b.order.id, "owner")).rejects.toThrow("wallet down");
-    expect(tables.course_orders.find((r) => r.id === b.order.id)?.bonus_granted_at).toBeNull();
-    // pressing «أكّد» again gives the gift that failed (the order was already confirmed), once
-    const ok = await confirmOrder(b.order.id, "owner");
+    await expect(confirmOrder("g1", "owner")).rejects.toThrow("wallet down");
+    expect(tables.course_orders.find((r) => r.id === "g1")?.bonus_granted_at).toBeNull();
+    const ok = await confirmOrder("g1", "owner");
     expect(ok.already).toBe(true);
     expect(grant).toHaveBeenCalledTimes(2);
-    expect(tables.course_orders.find((r) => r.id === b.order.id)?.bonus_granted_at).toBeTruthy();
-    await confirmOrder(b.order.id, "owner");
+    expect(grant).toHaveBeenLastCalledWith("u-2", 3000, expect.stringContaining("30 زهرة"));
+    await confirmOrder("g1", "owner");
     expect(grant).toHaveBeenCalledTimes(2);
   });
 
   it("a rejected order can't be rejected again, and one the owner already confirmed can't be rejected", async () => {
     const { startOrder, rejectOrder, confirmOrder } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "combo", ...who }, T0 + H);
+    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
     expect((await rejectOrder(a.order.id, "owner", "ما وصل التحويل")).status).toBe("rejected");
     await expect(rejectOrder(a.order.id, "owner")).rejects.toThrow(/ما عاد قابل/);
     await confirmOrder(a.order.id, "owner");

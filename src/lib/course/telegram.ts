@@ -5,6 +5,7 @@
 
 import { createHash } from "crypto";
 import { COURSE, PRODUCT_LABEL, waLink, type CourseSettings } from "@config/course";
+import { LEARN } from "@config/learn";
 import type { Order } from "./orders";
 
 const token = () => process.env.TELEGRAM_BOT_TOKEN ?? "";
@@ -53,17 +54,17 @@ export function orderText(o: Order, state = ""): string {
     `✉️ ${esc(o.email)}`,
     `📦 ${esc(PRODUCT_LABEL[o.product])} — <b>${o.amount} ريال</b>${o.was > o.amount ? ` (قيمتها ${o.was})` : ""}${o.bonus ? ` + ${o.bonus} زهرة هدية` : ""}`,
     `🕒 ${when(o.transferredAt ?? o.createdAt)}`,
-    ...(state ? [] : ["👥 قد يطلب الانضمام لمجموعة الواتساب الحين: اقبله بعد ما تتأكد من التحويل."]),
+    ...(state ? [] : ["✅ بعد ما تضغط «أكّد الدفع» تظهر الدورة في «دوراتي» عنده مباشرة."]),
   ].join("\n");
 }
 
 /** What the owner sends the buyer after confirming: the welcome with the group link. */
 export const welcomeText = (o: Order, s: CourseSettings) =>
-  `هلا ${o.name} 🌸 تم تأكيد اشتراكك في ${COURSE.name} ✅${s.groupLink ? `\nرابط المجموعة: ${s.groupLink}` : ""}${o.bonus ? `\nوانضاف لرصيدك في الجواد ${o.bonus} زهرة هدية 🎁` : ""}`;
+  `هلا ${o.name} 🌸 تم تأكيد اشتراكك في ${COURSE.name} ✅\nتلقاها الحين في حسابك في «دوراتي»: https://www.aljawadai.app${LEARN.base}${s.groupLink ? `\nرابط المجموعة: ${s.groupLink}` : ""}${o.bonus ? `\nوانضاف لرصيدك في الجواد ${o.bonus} زهرة هدية 🎁` : ""}`;
 
 const rows = (o: Order, s: CourseSettings, done: boolean): unknown[][] => [
   ...(done ? [] : [[{ text: "✅ أكّد الدفع", callback_data: `ok:${o.id}` }, { text: "❌ ارفض", callback_data: `no:${o.id}` }]]),
-  ...(o.phone ? [[{ text: done ? "💬 أرسل له رابط المجموعة" : "💬 واتساب", url: waLink(o.phone, done ? welcomeText(o, s) : `هلا ${o.name}، وصلنا تحويلك لـ${COURSE.name}.`) }]] : []),
+  ...(o.phone ? [[{ text: done ? "💬 أرسل له رسالة الترحيب" : "💬 واتساب", url: waLink(o.phone, done ? welcomeText(o, s) : `هلا ${o.name}، وصلنا تحويلك لـ${COURSE.name}.`) }]] : []),
 ];
 export { rows as orderButtons };
 

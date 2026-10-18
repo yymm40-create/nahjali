@@ -5,7 +5,7 @@
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins } from "@/lib/coins";
-import { COURSE, OCTOBER_OFFER, cleanPhone, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
+import { COURSE, cleanPhone, offerFor, offersAt, type Bank, type Product, type CourseSettings } from "@config/course";
 import { loadSettings } from "./settings";
 import { notifyTransfer } from "./telegram";
 
@@ -59,7 +59,7 @@ const wrap = (e: { message?: string } | null) => {
 };
 
 /** Which products a confirmed order covers: the whole course covers live and recorded too. */
-const covers = (have: Product, want: Product) => have === want || have === "combo";
+const covers = (have: Product, want: Product) => have === want || have === "combo" || (have === "live" && want === "recorded");
 
 export interface Started {
   order: Order;
@@ -69,7 +69,8 @@ export interface Started {
 /** «ادفع الآن»: the order for a product at today's price (the price is kept for a few hours), and the bank data to transfer to. */
 export async function startOrder(user: { id: string; email?: string | null }, b: { product: Product; name: unknown; phone: unknown }, now = Date.now()): Promise<Started> {
   const s = await loadSettings();
-  const offer = offerFor(s, b.product, now);
+  // only the recorded course is on sale
+  const offer = b.product === "recorded" ? offerFor(s, b.product, now) : null;
   if (!offer) throw new UserError("هذا الخيار غير متاح الحين؛ حدّث الصفحة وشوف الخيارات المتاحة.", 409);
   const name = typeof b.name === "string" ? b.name.trim().replace(/\s+/g, " ") : "";
   if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك الثلاثي (يساعدنا نطابق التحويل).", 400);
@@ -81,12 +82,10 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   wrap(error);
   const mine = (rows ?? []).map(view);
   if (mine.some((o) => o.status === "confirmed" && covers(o.product, b.product))) throw new UserError("اشتراكك مؤكد من قبل ✅", 409);
-  const offerEnd = now >= OCTOBER_OFFER.startsAt && now < OCTOBER_OFFER.endsAt ? OCTOBER_OFFER.endsAt : Infinity;
-  const lock = new Date(Math.min(now + COURSE.lockMinutes * 60_000, offerEnd)).toISOString();
+  const lock = new Date(now + COURSE.lockMinutes * 60_000).toISOString();
   const open = mine.find((o) => o.product === b.product && o.status === "started");
   const base = { email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
   const phase = offersAt(s, now).phase;
-  if (phase === "soon") throw new UserError("الدورة ما بدأت للحين.", 409);
   if (open) {
     // the same order again: the price stays while it is kept, else it follows today's
     const keep = new Date(open.lockedUntil).getTime() > now && open.amount <= offer.price;
@@ -172,7 +171,8 @@ export async function myCourse(userId: string): Promise<{ orders: Order[]; unloc
   const orders = (data ?? []).map(view);
   const confirmed = orders.filter((o) => o.status === "confirmed");
   // the group link shows from «تم التحويل» on: the owner lets nobody in WhatsApp before he has seen the money
-  return { orders, unlocked: confirmed.length > 0, groupOpen: orders.some((o) => o.status === "transferred" || o.status === "confirmed"), products: [...new Set(confirmed.flatMap((o) => (o.product === "combo" ? (["live", "recorded", "combo"] as Product[]) : [o.product])))] };
+  return { orders, unlocked: confirmed.length > 0, groupOpen: orders.some((o) => o.status === "transferred" || o.status === "confirmed"), // whoever bought the live course (or the whole one) has the recorded course too
+    products: [...new Set(confirmed.flatMap((o) => (o.product === "combo" ? (["live", "recorded", "combo"] as Product[]) : o.product === "live" ? (["live", "recorded"] as Product[]) : [o.product])))] };
 }
 
 export async function listOrders(status?: Status): Promise<Order[]> {

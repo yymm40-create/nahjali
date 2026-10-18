@@ -6,11 +6,11 @@
 // «زهرة» is the gift's name: 1 زهرة = 1 riyal of free balance in the site. Everything here is a DEFAULT the owner edits;
 // the numbers are his words (live was 80, recorded was 150; launch 40; then 80/100). Pure (page and server alike).
 
-import { COIN_MARK } from "./coins";
-
 export const COURSE = {
   base: "/jawad-ai/course",
-  name: "دورة صناعة الفيلم السينمائي بالجواد الذكي",
+  name: "دورة الجواد الذكاء الاصطناعي المسجلة",
+  /** the one price on sale: the recorded course, in riyals */
+  price: 60,
   schedule: {
     short: "الخميس ١٥ · الجمعة ١٦ · السبت ١٧ أكتوبر ٢٠٢٦",
     days: ["الخميس ١٥ أكتوبر ٢٠٢٦", "الجمعة ١٦ أكتوبر ٢٠٢٦", "السبت ١٧ أكتوبر ٢٠٢٦"],
@@ -79,22 +79,21 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   hoursA: 24,
   hoursB: 48,
   prices: { comboA: 40, liveB: 40, recordedB: 80, liveC: 80, recordedC: 100 },
-  was: { live: 80, recorded: 150 },
+  was: { live: 80, recorded: 60 },
   bonus: { comboA: 0, recordedB: 0, recordedC: 0 },
-  headline: "اصنع فيلمك السينمائي من الفكرة إلى المشهد النهائي",
-  subhead: "دورة عملية الخميس والجمعة والسبت (١٥–١٧ أكتوبر ٢٠٢٦): نمشي داخل فرع صناعة الأفلام في الجواد الذكي، سواء اخترت فيلمًا سينمائيًا كاملًا أو مشهدًا قصيرًا، من السيناريست إلى صانع الشيت والمخرج والأصوات ثم المونتاج.",
-  problem: "عندك فكرة فيلم أو مشهد، لكن تضيع بين كتابة السيناريو، تثبيت شكل الشخصيات والأماكن، إخراج اللقطات، توليد الفيديو والصوت، ثم جمعها في عمل واحد. في الدورة تمشي على المسار الحقيقي داخل الجواد الذكي خطوة بخطوة، وتعرف كيف تحصل على نتيجة سينمائية بأقل تجارب مهدرة.",
+  headline: "تعلّم الجواد الذكاء الاصطناعي بفيديوهات مسجلة تشوفها وقت ما تبي",
+  subhead: "دورة مسجلة تمشي فيها على الجواد الذكي خطوة بخطوة: الموقع وأقسامه وروبوتاته، وصناعة الصور والفيديو والأفلام، تشوفها في حسابك وقت ما تبي، من أي جهاز.",
+  problem: "تفتح الأدوات الذكية وتضيع بين عشرات الخيارات، وتصرف رصيدك على تجارب ما تطلع لك. في الدورة تشوف الطريق الصحيح مسجلًا، وتعيد أي درس لين تفهمه.",
   days: [
-    { title: "الخميس ١٥ أكتوبر: القصة والسيناريو", points: ["اختيار المسار: فيلم سينمائي كامل أو مشهد قصير", "السيناريست يحوّل فكرتك إلى مشاهد وحوار وخطة قابلة للصناعة", "تثبيت القصة والشخصيات قبل صرف الرصيد على التوليد"] },
-    { title: "الجمعة ١٦ أكتوبر: صناعة الصورة واللقطات", points: ["صانع الشيت يثبّت شكل الشخصيات والأماكن والأشياء", "المخرج يحوّل كل مشهد إلى لقطات وبرومبتات ومراجع واضحة", "توليد الفيديو والأصوات مع الحفاظ على الاستمرارية والجودة"] },
-    { title: "السبت ١٧ أكتوبر: المونتاج والفيلم النهائي", points: ["جمع اللقطات والصوت في حيدرة كت وإخراج الفيلم", "إضافة الموشن جرافيك والتعديلات المساندة عند الحاجة", "تطبيق عملي تصنع فيه عملك بنفسك مع المراجعة خطوة بخطوة"] },
+    { title: "تعرّف على الجواد الذكي", points: ["جولة في الموقع وأقسامه وروبوتاته", "وين تصرف رصيدك وكيف توفّره"] },
+    { title: "اصنع بالذكاء الاصطناعي", points: ["الصور والفيديو والصوت خطوة بخطوة", "صناعة الفيلم والمشهد السينمائي والمونتاج"] },
   ],
-  risks: ["وصول مدى الحياة للدورة المسجلة فقط", "مجموعة خاصة للمتابعة والأسئلة بعد الدورة", "تواصل مباشر معي لو واجهتك مشكلة"],
+  risks: ["الدورة المسجلة تظهر في حسابك في «دوراتي» مدى الحياة", "تشوفها من أي جهاز وقت ما تبي", "تواصل مباشر معي لو واجهتك مشكلة"],
   videoPath: null,
   videoUrl: "",
   posterPath: null,
   // the course's WhatsApp group: joining needs the owner's approval in WhatsApp, so the link may be shown right after «تم التحويل»
-  groupLink: "https://chat.whatsapp.com/GM4dDzGRevpIlb55Q1HEzo?mode=gi_t",
+  groupLink: "",
   recordedLink: "",
   bank: { holder: "", iban: "", account: "", swift: "", bank: "" },
 };
@@ -108,19 +107,22 @@ export const DEFAULT_SETTINGS: CourseSettings = {
  */
 const OLD_DEFAULTS = {
   headline: [
+    "اصنع فيلمك السينمائي من الفكرة إلى المشهد النهائي",
     "تشتغل على الجواد الذكي بثقة في ٣ أيام: تسوي صورك وفيديوهاتك وتصاميمك بنفسك، وتعرف وين تصرف رصيدك",
     "اصنع فيلمك الأقوى بأقل الأسعار وأسهل الطرق والتقنيات (وأعلى جودة)",
   ],
   subhead: [
+    "دورة عملية الخميس والجمعة والسبت (١٥–١٧ أكتوبر ٢٠٢٦): نمشي داخل فرع صناعة الأفلام في الجواد الذكي، سواء اخترت فيلمًا سينمائيًا كاملًا أو مشهدًا قصيرًا، من السيناريست إلى صانع الشيت والمخرج والأصوات ثم المونتاج.",
     "دورة عملية عن الجواد الذكي نفسه: الموقع وأقسامه وروبوتاته وعروضه، من أول خطوة لين تسوي شغلك أنت.",
     "دورة عملية في ٣ أيام: يومين نمشي فيهم على صناعة الفيلم السينمائي خطوة بخطوة بالجواد الذكي، واليوم الثالث تدريب تسوي فيه فيلمك أنت بنفسك.",
   ],
   problem: [
+    "عندك فكرة فيلم أو مشهد، لكن تضيع بين كتابة السيناريو، تثبيت شكل الشخصيات والأماكن، إخراج اللقطات، توليد الفيديو والصوت، ثم جمعها في عمل واحد. في الدورة تمشي على المسار الحقيقي داخل الجواد الذكي خطوة بخطوة، وتعرف كيف تحصل على نتيجة سينمائية بأقل تجارب مهدرة.",
     "تفتح الأدوات الذكية وتضيع بين عشرات الخيارات، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل أسرع بتكلفة أقل.",
     "تبي تسوي فيلم، لكن الطرق كثيرة والأدوات غالية، وتصرف رصيدك على تجارب ما تطلع لك، وكل مرة تبدأ من الصفر. اللي يعرف الطريق يوصل لأقوى نتيجة بأقل تكلفة وأسهل خطوات.",
   ],
   /** the first day's title of the old three days */
-  day1: ["اليوم الأول: تعرّف على الجواد", "اليوم الأول: صناعة الفيلم السينمائي (١)"],
+  day1: ["اليوم الأول: تعرّف على الجواد", "اليوم الأول: صناعة الفيلم السينمائي (١)", "الخميس ١٥ أكتوبر: القصة والسيناريو"],
   risks: ["الدورة مدى الحياة، مباشرة كانت أو مسجلة"],
 } as const;
 
@@ -210,49 +212,13 @@ export interface Offers {
   next: string;
 }
 
-const HOUR = 3_600_000;
-
-export const OCTOBER_OFFER = {
-  startsAt: Date.parse("2026-10-14T00:00:00+03:00"),
-  endsAt: Date.parse("2026-10-15T16:00:00+03:00"),
-};
-
 /** What is on sale at `now`, and when the price changes. */
 export type Clock = Pick<CourseSettings, "launchAt" | "hoursA" | "hoursB" | "prices" | "was" | "bonus">;
 
-export function offersAt(s: Clock, now: number): Offers {
-  if (now >= OCTOBER_OFFER.startsAt && now < OCTOBER_OFFER.endsAt) {
-    return {
-      phase: "A",
-      offers: [
-        { product: "live", label: PRODUCT_LABEL.live, price: 50, was: s.was.live, bonus: 0 },
-        { product: "combo", label: PRODUCT_LABEL.combo, price: 80, was: s.was.live + s.was.recorded, bonus: s.bonus.comboA },
-      ],
-      endsAt: OCTOBER_OFFER.endsAt,
-      next: "ينتهي العرض الخميس ١٥ أكتوبر الساعة ٤ عصرًا بتوقيت السعودية، ثم تعود أسعار الدورة المعتادة.",
-    };
-  }
-  const start = s.launchAt ? new Date(s.launchAt).getTime() : NaN;
-  if (Number.isNaN(start) || now < start) return { phase: "soon", offers: [], endsAt: Number.isNaN(start) ? null : start, next: "" };
-  const live = (price: number): Offer => ({ product: "live", label: PRODUCT_LABEL.live, price, was: s.was.live, bonus: 0 });
-  const rec = (price: number, bonus: number): Offer => ({ product: "recorded", label: PRODUCT_LABEL.recorded, price, was: s.was.recorded, bonus });
-  if (now < start + s.hoursA * HOUR) {
-    return {
-      phase: "A",
-      offers: [{ product: "combo", label: PRODUCT_LABEL.combo, price: s.prices.comboA, was: s.was.live + s.was.recorded, bonus: s.bonus.comboA }],
-      endsAt: start + s.hoursA * HOUR,
-      next: `بعدها تنقسم الدورة: المباشرة ${COIN_MARK}${s.prices.liveB} والمسجلة ${COIN_MARK}${s.prices.recordedB}`,
-    };
-  }
-  if (now < start + s.hoursB * HOUR) {
-    return {
-      phase: "B",
-      offers: [live(s.prices.liveB), rec(s.prices.recordedB, s.bonus.recordedB)],
-      endsAt: start + s.hoursB * HOUR,
-      next: `بعدها المباشرة ${COIN_MARK}${s.prices.liveC} والمسجلة ${COIN_MARK}${s.prices.recordedC}`,
-    };
-  }
-  return { phase: "C", offers: [live(s.prices.liveC), rec(s.prices.recordedC, s.bonus.recordedC)], endsAt: null, next: "" };
+export function offersAt(s: Clock, _now: number): Offers {
+  void _now;
+  // one thing on sale, always: the recorded course at its one price (no clock, no phases, no live offer)
+  return { phase: "C", offers: [{ product: "recorded", label: PRODUCT_LABEL.recorded, price: COURSE.price, was: s.was.recorded > COURSE.price ? s.was.recorded : COURSE.price, bonus: 0 }], endsAt: null, next: "" };
 }
 
 /** The offer for a product right now, or null when it is not on sale in this phase. */

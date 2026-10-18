@@ -10,7 +10,6 @@ import LayoutToggle from "./LayoutToggle";
 import LoginLink from "./LoginLink";
 import ReportButton from "./ReportButton";
 import ShareReward from "./ShareReward";
-import CoursePromo from "./CoursePromo";
 import MemoryMenu from "./MemoryMenu";
 import SectionsBar from "./SectionsBar";
 import Tour from "./tour/Tour";
@@ -40,7 +39,11 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             {!preview && <SectionsBar sections={sections} siteSections={siteSections} />}
             {/* on a computer: the whole width, or a phone-wide column */}
-            <CoursePromo version={version} />
+            {user && !preview && (
+              <Link href="/jawad-ai/learn" className="sr-pill inline-flex h-9 min-h-9 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-bold sm:px-3" title="دوراتي">
+                📚<span className="hidden sm:inline">&nbsp;دوراتي</span>
+              </Link>
+            )}
             {!preview && <ShareReward version={version} loginHref={`${JAWAD.base}/login?next=${encodeURIComponent(JAWAD.base)}`} />}
             {boss && <ReportButton />}
             {user && !preview && <MemoryMenu />}

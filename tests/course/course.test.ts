@@ -5,73 +5,24 @@ import { countdown, DEFAULT_SETTINGS, embedOf, hasLifetimeAccess, offerFor, offe
 const H = 3_600_000;
 const T0 = Date.parse("2026-10-10T12:00:00Z");
 const S: CourseSettings = { ...DEFAULT_SETTINGS, launchAt: new Date(T0).toISOString() };
-const at = (hours: number) => offersAt(S, T0 + hours * H);
 
-describe("the three prices, by the hours since the reel came out", () => {
-  it("is «قريبًا» until the owner starts the clock", () => {
-    expect(offersAt(DEFAULT_SETTINGS, T0).phase).toBe("soon");
-    expect(offersAt(DEFAULT_SETTINGS, T0).offers).toEqual([]);
-    const before = offersAt(S, T0 - 1000);
-    expect(before.phase).toBe("soon");
-    expect(before.endsAt).toBe(T0);
-  });
-
-  it("first 24 hours: ONE offer, the whole course, at 40 (worth 230)", () => {
-    for (const h of [0, 0.01, 12, 23.99]) {
-      const o = at(h);
-      expect(o.phase).toBe("A");
-      expect(o.offers).toHaveLength(1);
-      expect(o.offers[0]).toMatchObject({ product: "combo", price: 40, was: 230 });
-      expect(o.endsAt).toBe(T0 + 24 * H);
-    }
-    expect(savingPct(at(1).offers[0])).toBe(83);
-    expect(at(1).next).toContain("المباشرة ¤40");
-    expect(at(1).next).not.toMatch(/ريال/);
-  });
-
-  it("24 to 48 hours: live stays 40 (was 80), recorded is 80 (was 150) with the gift", () => {
-    for (const h of [24, 30, 47.99]) {
-      const o = at(h);
-      expect(o.phase).toBe("B");
-      expect(o.offers.map((x) => [x.product, x.price, x.was])).toEqual([["live", 40, 80], ["recorded", 80, 150]]);
-      expect(o.endsAt).toBe(T0 + 48 * H);
-    }
-    expect(savingPct(at(30).offers[0])).toBe(50);
-    expect(savingPct(at(30).offers[1])).toBe(47);
-  });
-
-  it("after 48 hours: live 80 (no strike: it is the usual price), recorded 100 (was 150), for good", () => {
-    for (const h of [48, 72, 5000]) {
-      const o = at(h);
+describe("the one price: the recorded course at 60", () => {
+  it("sells only the recorded course, at 60, whatever the clock says", () => {
+    for (const now of [T0 - 5 * H, T0, T0 + 30 * H, T0 + 5000 * H]) {
+      const o = offersAt(S, now);
       expect(o.phase).toBe("C");
-      expect(o.offers.map((x) => [x.product, x.price, x.was])).toEqual([["live", 80, 80], ["recorded", 100, 150]]);
+      expect(o.offers.map((x) => [x.product, x.price, x.bonus])).toEqual([["recorded", 60, 0]]);
       expect(o.endsAt).toBeNull();
     }
-    expect(savingPct(at(60).offers[0])).toBe(0);
-    expect(savingPct(at(60).offers[1])).toBe(33);
+    expect(offersAt(DEFAULT_SETTINGS, T0).offers).toHaveLength(1);
   });
 
-  it("the gift (زهرات) comes only with what the owner set, and only on the recorded one", () => {
-    const s = readSettings({ ...S, bonus: { comboA: 0, recordedB: 30, recordedC: 20 } });
-    expect(offersAt(s, T0 + 30 * H).offers.map((o) => o.bonus)).toEqual([0, 30]);
-    expect(offersAt(s, T0 + 60 * H).offers.map((o) => o.bonus)).toEqual([0, 20]);
-    expect(at(30).offers.every((o) => o.bonus === 0)).toBe(true);
-  });
-
-  it("a product is on sale only in its phase", () => {
-    expect(offerFor(S, "combo", T0 + 1 * H)?.price).toBe(40);
-    expect(offerFor(S, "live", T0 + 1 * H)).toBeNull();
-    expect(offerFor(S, "combo", T0 + 30 * H)).toBeNull();
-    expect(offerFor(S, "recorded", T0 + 30 * H)?.price).toBe(80);
-    expect(offerFor(S, "recorded", T0 + 60 * H)?.price).toBe(100);
-    expect(offerFor(S, "live", T0 + 60 * H)?.price).toBe(80);
-  });
-
-  it("follows the owner's own hours and prices", () => {
-    const s = readSettings({ launchAt: S.launchAt, hoursA: 6, hoursB: 12, prices: { comboA: 25 } });
-    expect(offersAt(s, T0 + 5 * H).offers[0].price).toBe(25);
-    expect(offersAt(s, T0 + 7 * H).phase).toBe("B");
-    expect(offersAt(s, T0 + 13 * H).phase).toBe("C");
+  it("the live and the whole course are not on sale", () => {
+    expect(offerFor(S, "live", T0)).toBeNull();
+    expect(offerFor(S, "combo", T0)).toBeNull();
+    expect(offerFor(S, "recorded", T0)?.price).toBe(COURSE.price);
+    expect(COURSE.price).toBe(60);
+    expect(savingPct(offersAt(S, T0).offers[0])).toBe(0);
   });
 });
 
@@ -86,7 +37,7 @@ describe("reading the owner's settings", () => {
 
   it("repairs the old default that wrongly promised lifetime access for the live course", () => {
     const s = readSettings({ risks: ["الدورة مدى الحياة، مباشرة كانت أو مسجلة", "مجموعة خاصة"] });
-    expect(s.risks).toEqual(["وصول مدى الحياة للدورة المسجلة فقط", "مجموعة خاصة"]);
+    expect(s.risks).toEqual([DEFAULT_SETTINGS.risks[0], "مجموعة خاصة"]);
   });
 
   it("migrates the former general course copy to the cinematic film course and its dated programme", () => {
@@ -95,8 +46,8 @@ describe("reading the owner's settings", () => {
       subhead: "دورة عملية في ٣ أيام: يومين نمشي فيهم على صناعة الفيلم السينمائي خطوة بخطوة بالجواد الذكي، واليوم الثالث تدريب تسوي فيه فيلمك أنت بنفسك.",
       days: [{ title: "اليوم الأول: صناعة الفيلم السينمائي (١)", points: ["قديم"] }],
     });
-    expect(s.headline).toBe("اصنع فيلمك السينمائي من الفكرة إلى المشهد النهائي");
-    expect(s.subhead).toContain("١٥–١٧ أكتوبر ٢٠٢٦");
+    expect(s.headline).toBe(DEFAULT_SETTINGS.headline);
+    expect(s.subhead).toBe(DEFAULT_SETTINGS.subhead);
     expect(s.days.map((d) => d.title)).toEqual(DEFAULT_SETTINGS.days.map((d) => d.title));
   });
 
@@ -113,10 +64,9 @@ describe("reading the owner's settings", () => {
     expect(readSettings(JSON.parse(JSON.stringify(S)))).toEqual(S);
   });
 
-  it("the WhatsApp group is the owner's own by default, and an empty one he saves stays empty", () => {
-    expect(DEFAULT_SETTINGS.groupLink).toBe("https://chat.whatsapp.com/GM4dDzGRevpIlb55Q1HEzo?mode=gi_t");
-    expect(readSettings({}).groupLink).toBe(DEFAULT_SETTINGS.groupLink);
-    expect(readSettings({ groupLink: "" }).groupLink).toBe("");
+  it("has no WhatsApp group by default (the live course is gone), and only an https link the owner saves is kept", () => {
+    expect(DEFAULT_SETTINGS.groupLink).toBe("");
+    expect(readSettings({}).groupLink).toBe("");
     expect(readSettings({ groupLink: "http://x.com" }).groupLink).toBe("");
   });
 
@@ -171,20 +121,11 @@ describe("phone numbers, WhatsApp, count down and the video", () => {
 });
 
 describe("what the course sells", () => {
-  it("promises your cinematic film from the idea to the last scene, over three days that follow the film's steps", () => {
-    // since «Fix course access promises and cinematic ad» (f797ba5): the headline and the three dated days
-    expect(DEFAULT_SETTINGS.headline).toContain("اصنع فيلمك السينمائي");
-    expect(DEFAULT_SETTINGS.headline).toContain("المشهد النهائي");
-    const [d1, d2, d3] = DEFAULT_SETTINGS.days;
-    expect(DEFAULT_SETTINGS.days).toHaveLength(3);
-    expect(d1.title).toContain("الخميس ١٥ أكتوبر");
-    expect(d1.title).toContain("السيناريو");
-    expect(d2.title).toContain("الجمعة ١٦ أكتوبر");
-    expect(d2.title).toContain("اللقطات");
-    expect(d3.title).toContain("السبت ١٧ أكتوبر");
-    expect(d3.title).toContain("الفيلم النهائي");
-    // the third day ends in hands-on practice
-    expect(d3.points.join(" ")).toContain("تطبيق عملي");
+  it("promises a recorded course about JAWAD AI that the buyer watches in «دوراتي»", () => {
+    expect(COURSE.name).toBe("دورة الجواد الذكاء الاصطناعي المسجلة");
+    expect(DEFAULT_SETTINGS.headline).toContain("مسجلة");
+    expect(DEFAULT_SETTINGS.days.length).toBeGreaterThan(0);
+    expect(DEFAULT_SETTINGS.risks.join(" ")).toContain("دوراتي");
   });
 
   it("gives way to today's words when storage still holds the old defaults, and keeps the owner's own", () => {

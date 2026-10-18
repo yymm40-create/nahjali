@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { CARTOON_GROUPS, CARTOON_PICTURE_DIR, cartoonStylePicturePrompt, CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
-import { DEFAULT_SETTINGS, OCTOBER_OFFER, offersAt, offerFor } from "@config/course";
 import { generatorById } from "@config/jawad/generators";
 import { evaluate } from "@/lib/jawad/engine";
 import { DEFAULT_SECTIONS, sectionPath, RESERVED_SECTION_IDS } from "@config/jawad/sections";
@@ -39,23 +38,6 @@ describe("cartoon journey", () => {
     expect(result.price.ok).toBe(true);
   });
 });
-describe("October course offer", () => {
-  it("activates independently of old stored launch settings, with exact products", () => {
-    const active = offersAt(DEFAULT_SETTINGS, OCTOBER_OFFER.startsAt);
-    expect(active.offers.map(offer => [offer.product, offer.price])).toEqual([["live", 50], ["combo", 80]]);
-    expect(active.endsAt).toBe(Date.parse("2026-10-15T13:00:00Z"));
-    expect(offerFor(DEFAULT_SETTINGS, "recorded", OCTOBER_OFFER.startsAt)).toBeNull();
-  });
-  it("ends exactly at 4pm Saudi time and keeps configured gift amount", () => {
-    expect(offersAt(DEFAULT_SETTINGS, OCTOBER_OFFER.endsAt - 1).offers).toHaveLength(2);
-    expect(offersAt(DEFAULT_SETTINGS, OCTOBER_OFFER.endsAt).offers).toEqual([]);
-    const settings = { ...DEFAULT_SETTINGS, launchAt: "2026-10-01T00:00:00Z", bonus: { ...DEFAULT_SETTINGS.bonus, comboA: 15 } };
-    expect(offerFor(settings, "combo", OCTOBER_OFFER.startsAt)?.bonus).toBe(15);
-    expect(offerFor(settings, "live", OCTOBER_OFFER.endsAt)?.price).toBe(settings.prices.liveC);
-  });
-});
-
-
 describe("the looks, and who the picture is for", () => {
   it("keeps «أنمي معتدل», and every look is a whole look that holds one level of stylisation", () => {
     expect(CARTOON_STYLES.find(style => style.id === "anime")?.name).toBe("أنمي معتدل");

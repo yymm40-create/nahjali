@@ -7,7 +7,7 @@ import { LEARN } from "@config/learn";
 import "@/components/learn/learn.css";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "دروسي", robots: { index: false } };
+export const metadata: Metadata = { title: "دوراتي", robots: { index: false } };
 
 /** The student's place: the courses they may watch. */
 export default async function LearnHome() {
@@ -15,7 +15,7 @@ export default async function LearnHome() {
   const courses = await myCourses(user);
   return (
     <div className="ln-wrap" dir="rtl">
-      <h1 className="text-2xl font-extrabold">📚 دروسي</h1>
+      <h1 className="text-2xl font-extrabold">📚 دوراتي</h1>
       {courses.length ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {courses.map((c) => {
@@ -32,7 +32,7 @@ export default async function LearnHome() {
       ) : (
         <div className="ln-card space-y-2">
           <p className="font-bold">ما عندك دورات مفتوحة لين الحين.</p>
-          <p className="ln-dim">إذا حوّلت وأكّد المالك اشتراكك، تظهر دورتك هنا تلقائيًا.</p>
+          <p className="ln-dim">إذا حوّلت وأكّد المالك اشتراكك، تظهر دورتك هنا مباشرة.</p>
           <Link href={COURSE.base} className="btn btn-primary inline-block">صفحة {COURSE.name}</Link>
         </div>
       )}
