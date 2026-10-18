@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { duration, flatten, formatTime, type Timeline } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
 import Dialog from "../Dialog";
@@ -244,9 +244,12 @@ export default function ExportPanel({
     setPhase({ k: "idle" });
     onClose();
   };
-  useEffect(() => {
-    if (open) setPhase((p) => (p.k === "done" || p.k === "error" ? { k: "idle" } : p));
-  }, [open]);
+  // (also when the parent closes it without going through «close»: the state is reset as the window opens again)
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open && (phase.k === "done" || phase.k === "error")) setPhase({ k: "idle" });
+  }
 
   return (
     <Dialog open={open} onClose={close} title="تصدير الفيديو">
