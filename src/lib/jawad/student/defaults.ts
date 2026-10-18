@@ -22,6 +22,8 @@ export function autoSettings(kind: string, level: string): Record<string, unknow
       return { length: "medium", page: "A4", format: "both", design: defaultDesign("editorial") };
     case "slides":
       return { density: young ? "low" : "medium", aspect: "16:9", notesMode: "both", count: 0, render: "editable", design: defaultDesign(randomStyle()) };
+    case "brochure":
+      return { fold: "tri", density: young ? "low" : "medium", design: defaultDesign(randomStyle()) };
     case "audio":
       return { source: "text", mode: "single" };
     case "mindmap":

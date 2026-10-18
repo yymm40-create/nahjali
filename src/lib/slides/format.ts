@@ -5,8 +5,13 @@
 // sanitizeSlide first: it rebuilds the markup from scratch with only what is allowed (no scripts, no events, no links
 // out, no url() in styles), so a slide can never run anything. Pure: strings in, strings out (client and server).
 
-export type DeckAspect = "16:9" | "4:3";
-export const DECK_SIZE: Record<DeckAspect, { w: number; h: number }> = { "16:9": { w: 1920, h: 1080 }, "4:3": { w: 1440, h: 1080 } };
+/** Slides (16:9, 4:3) and printed pages: A4 portrait ("a4") and A4 landscape ("a4l", a brochure's sides) at 192 dpi, so a 30 px line is about 11 pt. */
+export type DeckAspect = "16:9" | "4:3" | "a4" | "a4l";
+export const DECK_SIZE: Record<DeckAspect, { w: number; h: number }> = { "16:9": { w: 1920, h: 1080 }, "4:3": { w: 1440, h: 1080 }, a4: { w: 1588, h: 2246 }, a4l: { w: 2246, h: 1588 } };
+/** The paper of a printed aspect, in millimetres (null for a screen). */
+export const DECK_PAPER: Partial<Record<DeckAspect, { w: number; h: number }>> = { a4: { w: 210, h: 297 }, a4l: { w: 297, h: 210 } };
+/** One canvas pixel in CSS pixels when printed: the page is 96 dpi in CSS, the canvas 192. */
+export const PRINT_ZOOM = 0.5;
 
 export interface DeckSlide {
   id: string;
@@ -308,7 +313,13 @@ export function deckDocument(deck: Deck, o: { fontCss: string; resolve: (path: s
   const { w, h } = DECK_SIZE[deck.aspect];
   const slides = deck.slides.filter((_, i) => !o.only || o.only.includes(i));
   const csp = o.csp ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https: http:">` : "";
-  const print = o.print ? `@page{size:${w}px ${h}px;margin:0}section[data-slide]{break-after:page;page-break-after:always}section[data-slide]:last-child{break-after:auto;page-break-after:auto}` : "";
+  // a printed page is its real paper size: the 192 dpi canvas is zoomed to 96 dpi CSS pixels (A4 = 794 × 1123 px)
+  const paper = DECK_PAPER[deck.aspect];
+  const print = o.print
+    ? paper
+      ? `@page{size:${paper.w}mm ${paper.h}mm;margin:0}html{zoom:${PRINT_ZOOM}}section[data-slide]{break-after:page;page-break-after:always}section[data-slide]:last-child{break-after:auto;page-break-after:auto}`
+      : `@page{size:${w}px ${h}px;margin:0}section[data-slide]{break-after:page;page-break-after:always}section[data-slide]:last-child{break-after:auto;page-break-after:auto}`
+    : "";
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">${csp}<style>${o.fontCss}\n${baseCss(deck.aspect, deckFontStack(deck))}${print}${o.extraCss ?? ""}</style></head><body>${slides.map((s) => resolveImages(s.html, o.resolve)).join("")}</body></html>`;
 }
 
@@ -366,7 +377,7 @@ export function sigOf(v: unknown): string {
 export function readDeck(v: unknown): Deck | null {
   const d = (v && typeof v === "object" ? v : null) as Partial<Deck> | null;
   if (!d || !Array.isArray(d.slides)) return null;
-  const aspect: DeckAspect = d.aspect === "4:3" ? "4:3" : "16:9";
+  const aspect: DeckAspect = d.aspect === "4:3" || d.aspect === "a4" || d.aspect === "a4l" ? d.aspect : "16:9";
   const ids = new Set<string>();
   const slides = d.slides.slice(0, 120).map((s, i) => {
     let id = String((s as DeckSlide)?.id ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40) || `s${i + 1}`;

@@ -6,7 +6,7 @@ import { coinBalance, coinsRequired, priceOf } from "@/lib/coins";
 import { sniff } from "@/lib/jawad/media";
 import { coinsFor } from "@config/coins";
 import { unlimitedFor } from "@/lib/access";
-import { FONTS, OUTPUT_KINDS, PURPOSES, isDoc, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
+import { FONTS, OUTPUT_KINDS, PURPOSES, isDoc, maxAvailable, SOURCE_MODES, STUDENT, STYLES, STYLE_ROLES, readBrief, readSourceRole, readWish, researchPlaces, type Brief, type Design } from "@config/jawad/student";
 import { kindOffered, STUDENT_BRANCH, type Branch } from "@config/jawad/khateeb";
 import { claudeCeilingUsd, fetchCeilingUsd } from "./claude";
 import { loadCtx } from "./context";
@@ -14,7 +14,9 @@ import { islamicAsk, islamicCeiling } from "./islamic";
 import { addVersion, getFile, getOutput, getProject, latestVersion, outputs, saveOutput, sdb, segments, sources, touch, type Output, type Project, type TextVersion } from "./db";
 import { coverage, extractCeiling, pdfPageCount } from "./extract";
 import { checkKey, createJob, jobMix, jobView, projectJobs, advanceJobs } from "./jobs";
-import type { AudioPlan, Doc, DocPlan, QuizPlan, SermonPlan, SlidePlan } from "./model";
+import type { AudioPlan, BrochurePlan, Doc, DocPlan, QuizPlan, SermonPlan, SlidePlan } from "./model";
+import { isMax } from "./max-make";
+import { slotPatch } from "./deck-make";
 import { passage as quranPassage } from "@/lib/khateeb/quran";
 import { clampMap, type MindPlan } from "./mindmap";
 import { mapImageUsd } from "./mindmap-make";
@@ -564,7 +566,10 @@ function cleanSettings(kind: Output["kind"], s: Body) {
     else if (typeof v === "boolean") out[k] = v;
     else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === "string").slice(0, 10);
   }
-  if (kind === "slides" || kind === "quiz" || kind === "mindmap" || isDoc(kind)) {
+  // «حيدرا ماكس» is only for what has pages; a recording never takes it
+  if (!maxAvailable(kind)) delete out.maker;
+  else if (out.maker !== "max") delete out.maker;
+  if (kind === "slides" || kind === "quiz" || kind === "mindmap" || kind === "brochure" || isDoc(kind)) {
     const d = cleanDesign(s.design);
     if (d) out.design = d;
   }
@@ -612,6 +617,25 @@ function cleanPlan(o: Output, plan: unknown): unknown {
         rendered: rendered(x.rendered),
       })),
     } satisfies SlidePlan;
+  }
+  if (o.kind === "brochure") {
+    const before = ((prev as unknown as BrochurePlan).panels ?? []) as BrochurePlan["panels"];
+    const fold = o.settings.fold === "bi" ? "bi" : "tri";
+    const n = fold === "bi" ? 4 : 6;
+    const roles = (i: number): BrochurePlan["panels"][number]["role"] => (i === 0 ? "cover" : i === n - 1 ? "back" : fold === "tri" && i === 4 ? "flap" : "content");
+    const list = Array.isArray(p.panels) ? p.panels : [];
+    return {
+      title: s(p.title, 300),
+      subtitle: s(p.subtitle, 300),
+      fold,
+      panels: Array.from({ length: n }, (_, i) => {
+        const x = (list[i] ?? {}) as Record<string, unknown>;
+        const im = img(x.image);
+        // a picture whose idea changed is made again (its path is dropped); a kept one stays
+        const kept = before[i]?.image?.path && before[i].image.prompt === im.prompt && before[i].image.mode === im.mode ? before[i].image.path : String(im.mode) === "own" ? im.path : "";
+        return { role: roles(i), title: s(x.title, 300), text: Array.isArray(x.text) ? x.text.slice(0, 12).map((t) => s(t, 600)) : [], visual: s(x.visual, 600), segments: Array.isArray(x.segments) ? x.segments.slice(0, 200).map((t) => s(t, 8)) : [], image: { ...im, path: kept } };
+      }),
+    } satisfies BrochurePlan;
   }
   if (o.kind === "quiz") {
     return { rows: arr(p.rows, (x) => ({ topic: s(x.topic, 300), segments: Array.isArray(x.segments) ? x.segments.slice(0, 200).map((t) => s(t, 8)) : [], counts: Object.fromEntries(["mcq", "tf", "short", "essay", "long", "custom"].map((k) => [k, Math.max(0, Math.min(100, Number((x.counts as Record<string, unknown>)?.[k]) || 0))])) })) } satisfies QuizPlan;
@@ -801,7 +825,7 @@ export async function outputAction(user: User, id: string, b: Body) {
     case "plan_approve": {
       if (!o.plan || o.status !== "plan_review") throw new UserError(NOT_NOW);
       if (o.kind === "sermon" && sermonOf(o).chosen < 0) throw new UserError("اختر موضوع الخطبة أول، وبعدها اعتمد الخطة.");
-      await saveOutput(o.id, { plan_approved: true, stale: false, status: o.kind === "book" || o.kind === "slides" ? "trial_offer" : "ready" });
+      await saveOutput(o.id, { plan_approved: true, stale: false, status: (o.kind === "book" && !isMax(o)) || o.kind === "slides" ? "trial_offer" : "ready" });
       return { ok: true };
     }
     case "trial": {
@@ -843,6 +867,10 @@ export async function outputAction(user: User, id: string, b: Body) {
       const kind = b.kind === "other" ? "other" : "edit";
       if (!["review", "done"].includes(o.status)) throw new UserError(NOT_NOW);
       const requests = [...o.requests, { at: new Date().toISOString(), kind: kind as "edit", text: note }];
+      // «حيدرا ماكس»: one PAGE of a designed output designed again with the request (the editor's «🤖 اطلب من حيدرا ماكس»)
+      if (isMax(o) && o.kind !== "slides" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
+        return run("revise", await estimateParts(user.id, o, "revise", Number(b.chapter)), { note, chapter: Number(b.chapter), requestKind: kind, page: true }, "تعديل الصفحة", "running", { requests, approved: false });
+      }
       if (isDoc(o.kind) || o.kind === "quiz") {
         const chapter = Number.isInteger(b.chapter) ? Number(b.chapter) : -1;
         return run("revise", await estimateParts(user.id, o, o.kind === "quiz" ? "final" : "revise", chapter), { note, chapter, requestKind: kind }, "تعديل الناتج", "running", { requests, approved: false });
@@ -852,7 +880,7 @@ export async function outputAction(user: User, id: string, b: Body) {
         return run("revise", await estimateParts(user.id, o, "revise"), { note, chapter: Number(b.chapter), requestKind: kind }, "رسم الخريطة من جديد", "running", { requests, approved: false });
       }
       // slides designed by صادق: one slide designed again with the request (the editor's «🤖 اطلب من صادق»)
-      if (o.kind === "slides" && o.settings.render === "design" && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
+      if (o.kind === "slides" && isMax(o) && Number.isInteger(b.chapter) && Number(b.chapter) >= 0) {
         return run("revise", await estimateParts(user.id, o, "revise", Number(b.chapter)), { note, chapter: Number(b.chapter), requestKind: kind }, "تعديل الشريحة", "running", { requests, approved: false });
       }
       // slides made as pictures: one slide is drawn again with the request
@@ -861,7 +889,7 @@ export async function outputAction(user: User, id: string, b: Body) {
       }
       // slides / audio: the change goes into the plan (slide map / reading text), which is approved again
       // a deck changed by hand follows the new map again (its hand-edited slides stay as they are)
-      const remap = o.kind === "slides" && o.settings.render === "design" && o.content ? { content: { ...(o.content as Record<string, unknown>), manual: false } } : {};
+      const remap = isMax(o) && o.content ? { content: o.kind === "slides" ? { ...(o.content as Record<string, unknown>), manual: false } : slotPatch(o, { manual: false }) } : {};
       return run("plan", await estimateParts(user.id, o, "plan"), { note, previous: true }, "تعديل الخطة", "planning", { requests, approved: false, ...remap });
     }
     // «خطبة المنبر»: the text is written and shown FIRST; its PDF and Word file are made only after the preacher approves it

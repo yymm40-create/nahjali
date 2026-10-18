@@ -5,7 +5,7 @@
 import { minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
 import { readSermonLength, SERMON_PARTS } from "@config/jawad/khateeb";
 import { poemsCeilingUsd, sermonBrief, sermonPlanStep, tafsirCeilingUsd } from "./sermon";
-import { defaultDesign, isPaged, outputName, pagesOf, readBrief, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
+import { defaultDesign, foldOf, isPaged, outputName, pagesOf, readBrief, STUDENT, wantsDocx, type Design } from "@config/jawad/student";
 import { methodLine, studyAudience } from "@config/jawad/study-methods";
 import { ELEVEN_PRICE } from "@config/jawad/generators";
 import { providerUserId } from "@/lib/jawad/server/providers/common";
@@ -18,15 +18,17 @@ import { askJson, claudeCeilingUsd } from "./claude";
 import { allChars, allText, basedOn, levelLine, loadCtx, researchText, scopeRules, segText, understandingText, type Ctx } from "./context";
 import { getFile, getOutput, joinText, putFile, saveOutput, sdb, sources, type Output } from "./db";
 import type { Handler, Job, StepResult } from "./jobs";
-import { BLOCK_TYPES, docText, emptyImage, type AudioPlan, type Block, type Chapter, type Doc, type DocPlan, type Question, type QuizPlan, type SlidePlan } from "./model";
+import { BLOCK_TYPES, docText, emptyImage, type AudioPlan, type Block, type BrochurePlan, type Chapter, type Doc, type DocPlan, type Question, type QuizPlan, type SlidePlan } from "./model";
 import { docDocx } from "./render/docx";
-import { docHtml, quizHtml, transcriptHtml } from "./render/html";
+import { brochureHtml, docHtml, quizHtml, transcriptHtml } from "./render/html";
 import { colorsOf } from "./render/css";
 import { designFonts, fitPdf, fontFacesData, framePdf, htmlToPdf, slidesPdf, slidesPptx } from "./render/server";
 import { countWords, frontPages, MAX_REFITS, maxChapters, refitRatio, wordBudget, type PageSize } from "./pages";
 import { drawSlide, picturesPdf, picturesPptx, slideImageUsd, slideSig, type SlideQuality } from "./slide-images";
 import { capSlides } from "./draw";
 import { asDesigned, deckContent, deckFiles, deckSlideUsd, deckStep, deckTodo, deckUsd, redesignSlide } from "./deck-make";
+import { isMax, maxFinal, maxUsd } from "./max-make";
+import { slidesSource } from "./max-sources";
 import { capacityOf, compactionLine } from "./capacity";
 import { mapFinalStep, mapFinalUsd, mapPlanStep, mapPlanUsd } from "./mindmap-make";
 
@@ -108,6 +110,15 @@ export async function estimate(userId: string, o: Output, action: string, chapte
 
 /** The estimate split by kind, so each part is charged its own profit (Claude 10٪, pictures 60٪, sound the general). */
 export async function estimateParts(userId: string, o: Output, action: string, chapter = -1): Promise<StepParts> {
+  const base = await estimateBase(userId, o, action, chapter);
+  // «حيدرا ماكس»: the pages' design and check come on top of what the output costs to write (slides count it themselves)
+  if (isMax(o) && o.kind !== "slides" && (action === "final" || action === "revise")) {
+    return { ...base, claude: base.claude + (action === "revise" && chapter >= 0 ? deckSlideUsd(o.kind === "quiz" ? "a4" : "a4l") : maxUsd(o, 0)) };
+  }
+  return base;
+}
+
+async function estimateBase(userId: string, o: Output, action: string, chapter = -1): Promise<StepParts> {
   if (o.kind === "transcript") return parts();
   const c = await loadCtx(userId, o.project_id);
   const chars = allChars(c) + (c.research ? 20_000 : 0);
@@ -122,6 +133,7 @@ export async function estimateParts(userId: string, o: Output, action: string, c
       return parts(claudeCeilingUsd(n, n) + Math.ceil(n / 6000) * claudeCeilingUsd(0, 0));
     }
     if (o.kind === "mindmap") return parts(mapPlanUsd(c, o));
+    if (o.kind === "brochure") return parts(claudeCeilingUsd(Math.min(chars, 300_000), 5000));
     return parts(claudeCeilingUsd(Math.min(chars, 400_000), 16000));
   }
   // «الخريطة الذهنية»: صادق draws it for nothing; only GPT Image 2's maps cost
@@ -135,7 +147,7 @@ export async function estimateParts(userId: string, o: Output, action: string, c
     if (asDesigned(o)) {
       if (action === "revise") return parts(chapter >= 0 ? deckSlideUsd() : deckUsd(p.slides.length));
       const limit = action === "trial" ? 3 : undefined;
-      return parts(deckUsd(deckTodo(o, p, designOf(o), limit)), action === "trial" ? imgs(p.slides, 3) : imgs(p.slides));
+      return parts(deckUsd(deckTodo(o, slidesSource(p, o.settings), designOf(o), limit)), action === "trial" ? imgs(p.slides, 3) : imgs(p.slides));
     }
     if (asPictures(o)) {
       const per = slideImageUsd(pictureQuality(o));
@@ -143,6 +155,9 @@ export async function estimateParts(userId: string, o: Output, action: string, c
       return parts(0, toDraw(o, p, action === "trial" ? 3 : undefined).length * per);
     }
     return parts(0, action === "trial" ? imgs(p.slides, 3) : imgs(p.slides));
+  }
+  if (o.kind === "brochure") {
+    return parts(0, imgs((plan as unknown as BrochurePlan).panels));
   }
   if (o.kind === "audio") {
     const p = plan as AudioPlan;
@@ -333,7 +348,60 @@ async function planStep(job: Job): Promise<StepResult> {
     await saveOutput(o.id, { plan: r.data, plan_approved: false, status: "plan_review", content: null, files: {}, based_on: basedOn(c) }, { kind: "plan", snapshot: r.data, userId: o.user_id });
     return { done: true, usd: r.usd, stage: "توزيع الأسئلة جاهز" };
   }
+  if (o.kind === "brochure") {
+    const fold = foldOf(o.settings);
+    const n = fold === "bi" ? 4 : 6;
+    const roles = fold === "bi" ? "1 = cover, 2 and 3 = content, 4 = back" : "1 = cover, 2 and 3 and 4 = content, 5 = the front flap (the panel that opens first: a short hook, a question or the outline), 6 = back";
+    const r = await askJson<{ title: string; subtitle: string; panels: { role: string; title: string; text: string[]; visual: string; segments: string[] }[] }>({
+      system: `You plan a school BROCHURE («مطوية») from the student's material, in Arabic: one A4 sheet printed on both sides and folded ${fold === "bi" ? "in two (4 panels)" : "in three (6 panels)"}. Return a title, a one-line subtitle and EXACTLY ${n} panels in reading order (${roles}). A brochure is read standing up, so every panel is SHORT and scannable: a clear panel title, then 3–5 short lines (a sentence or a list item each; ~40–55 words in all for a content panel; the cover has only a catchy line, at most 15 words). Build it like the brochures used in schools: an opening that states the topic, content panels that each carry ONE idea (definition, importance, kinds, steps, examples…), a «هل تعلم؟» line written "هل تعلم؟ …" in one content panel, and the back panel with a short conclusion or advice and the sources, written "المراجع: …" (only sources really in the material or the research). Only what the material says${c.project.allow_additions ? " (you may add a little where additions are allowed)" : ""}. visual: a short idea for a picture that suits the panel (cover and content panels), or empty.\n${STUDENT_FIRST}\n${scopeRules(c)}`,
+      parts: [{ type: "text", text: `${base}\n\nUNDERSTANDING:\n${understandingText(c)}\n\nMATERIAL:\n${allText(c)}\n${researchText(c)}` }],
+      schema: BROCHURE_SCHEMA,
+      maxTokens: 6000,
+    });
+    const valid = new Set(c.seg.keys());
+    const roleAt = (i: number): BrochurePlan["panels"][number]["role"] => (i === 0 ? "cover" : i === n - 1 ? "back" : fold === "tri" && i === 4 ? "flap" : "content");
+    const panels = Array.from({ length: n }, (_, i) => {
+      const x = r.data.panels[i];
+      const role = roleAt(i);
+      return { role, title: x?.title ?? "", text: (x?.text ?? []).filter(Boolean), visual: x?.visual ?? "", segments: (x?.segments ?? []).filter((id) => valid.has(id)), image: { ...emptyImage(), prompt: role === "content" || role === "cover" ? (x?.visual ?? "") : "" } };
+    });
+    const plan: BrochurePlan = { title: r.data.title, subtitle: r.data.subtitle, fold, panels };
+    await saveOutput(o.id, { plan, plan_approved: false, status: "plan_review", content: null, files: {}, based_on: basedOn(c) }, { kind: "plan", snapshot: plan, userId: o.user_id });
+    return { done: true, usd: r.usd, stage: "خطة المطوية جاهزة" };
+  }
   throw new Error(`no plan for ${o.kind}`);
+}
+
+const BROCHURE_SCHEMA = {
+  type: "object",
+  properties: {
+    title: str,
+    subtitle: str,
+    panels: {
+      type: "array",
+      items: { type: "object", properties: { role: str, title: str, text: strs, visual: str, segments: strs }, required: ["role", "title", "text", "visual", "segments"], additionalProperties: false },
+    },
+  },
+  required: ["title", "subtitle", "panels"],
+  additionalProperties: false,
+};
+
+/** «المطوية» made the standard way: its pictures one per step, then the two sides printed as a PDF (حيدرا ماكس designs them instead). */
+async function brochureStep(job: Job, o: Output, c: Ctx): Promise<StepResult> {
+  const plan = o.plan as BrochurePlan;
+  const img = await nextImage(o, c, plan.panels);
+  if (img) {
+    await saveOutput(o.id, { plan });
+    return { done: false, usd: img.usd, stage: `صورة الواجهة ${img.k + 1}` };
+  }
+  const design = designOf(o);
+  const { out } = await imageData(plan.panels.map((p) => p.image.path));
+  const fontFaces = await fontFacesData(designFonts(design));
+  const { pdf } = await htmlToPdf(brochureHtml(plan, design, { fontFaces, images: out }));
+  const pdfPath = filePath(o, "brochure.pdf");
+  await putFile(pdfPath, pdf, "application/pdf");
+  await saveOutput(o.id, { status: "review", files: { pdf: pdfPath }, content: { title: plan.title } }, { kind: job.kind === "revise" ? "revision" : "final", snapshot: { plan, files: [pdfPath] }, userId: o.user_id });
+  return { done: true, stage: "المطوية جاهزة للطباعة" };
 }
 
 // ───────────────────────────── audio: the reading text (with any added tashkeel) ─────────────────────────────
@@ -572,10 +640,10 @@ async function trialStep(job: Job): Promise<StepResult> {
       await saveOutput(o.id, { plan });
       return { done: false, usd: img.usd, stage: `صورة الشريحة ${img.k + 1}` };
     }
-    const step = await deckStep(o, plan, designOf(o), 3);
+    const step = await deckStep(o, slidesSource(plan, o.settings), designOf(o), 3);
     if (step) return step;
     const fresh = await getOutput(job.user_id, o.id);
-    const { deck } = deckContent(fresh, plan, designOf(o));
+    const { deck } = deckContent(fresh, slidesSource(plan, o.settings), designOf(o));
     const r = await deckFiles(fresh, deck, 3);
     const files: Record<string, string> = { ...fresh.files, trial_pdf: r.pdfPath };
     delete files.trial_pptx;
@@ -656,6 +724,8 @@ async function quizStep(job: Job, o: Output, c: Ctx): Promise<StepResult> {
     await saveOutput(o.id, { content });
     return { done: false, usd: r.usd, stage: `كتابة الأسئلة: ${content.rowsDone} من ${plan.rows.length}` };
   }
+  // «حيدرا ماكس»: the questions are pages, designed and looked at (the sheet and its answer key)
+  if (isMax(o)) return maxFinal(job, await getOutput(job.user_id, o.id));
   const usage = String(o.settings.usage ?? "both");
   const files: Record<string, string> = {};
   if (usage !== "interactive") {
@@ -739,11 +809,14 @@ async function audioStep(job: Job, o: Output): Promise<StepResult> {
 
 async function finalStep(job: Job): Promise<StepResult> {
   const o = await getOutput(job.user_id, job.output_id!);
-  if (o.kind === "transcript") return transcriptStep(o);
+  // «حيدرا ماكس»: one page of a designed output designed again (no text is written again)
+  if (job.kind === "revise" && job.input.page && isMax(o) && o.kind !== "slides") return maxFinal(job, o);
+  if (o.kind === "transcript") return isMax(o) ? maxFinal(job, o) : transcriptStep(o);
   const c = await loadCtx(job.user_id, o.project_id);
   if (o.kind === "quiz") return quizStep(job, o, c);
   if (o.kind === "audio") return audioStep(job, o);
-  if (o.kind === "mindmap") return mapFinalStep(job, o, c);
+  if (o.kind === "mindmap") return isMax(o) ? maxFinal(job, o) : mapFinalStep(job, o, c);
+  if (o.kind === "brochure") return isMax(o) ? maxFinal(job, o) : brochureStep(job, o, c);
   if (o.kind === "slides" && asPictures(o)) {
     const plan = o.plan as SlidePlan;
     if (job.kind === "revise") {
@@ -772,16 +845,17 @@ async function finalStep(job: Job): Promise<StepResult> {
     const plan = o.plan as SlidePlan;
     const design = designOf(o);
     // «عدّل» on one slide (from the editor or the request box): that slide designed again, then checked
-    if (job.kind === "revise" && Number(job.input.chapter) >= 0 && !job.progress.redesigned) return redesignSlide(o, plan, design, Number(job.input.chapter), String(job.input.note ?? ""));
+    if (job.kind === "revise" && Number(job.input.chapter) >= 0 && !job.progress.redesigned) return redesignSlide(o, slidesSource(plan, o.settings), design, Number(job.input.chapter), String(job.input.note ?? ""));
     const img = await nextImage(o, c, plan.slides);
     if (img) {
       await saveOutput(o.id, { plan });
       return { done: false, usd: img.usd, stage: `صورة الشريحة ${img.k + 1}` };
     }
-    const step = await deckStep(o, plan, design);
+    const src = slidesSource(plan, o.settings);
+    const step = await deckStep(o, src, design);
     if (step) return { ...step, progress: { ...job.progress, ...(step.progress ?? {}) } };
     const fresh = await getOutput(job.user_id, o.id);
-    const dc = deckContent(fresh, plan, design);
+    const dc = deckContent(fresh, src, design);
     const r = await deckFiles(fresh, dc.deck);
     await saveOutput(o.id, { status: "review", content: { ...dc, unchecked: [] }, files: { ...fresh.files, pdf: r.pdfPath, pptx: r.pptxPath } }, { kind: job.kind === "revise" ? "revision" : "final", snapshot: { files: [r.pdfPath, r.pptxPath] }, userId: o.user_id });
     return { done: true, stage: "العرض جاهز: افتح «🎨 محرر العرض» لتعدّله وتعرضه" };
@@ -832,6 +906,8 @@ async function finalStep(job: Job): Promise<StepResult> {
     await saveOutput(o.id, { status: "review", files: {}, content: { ...doc, draft: true } }, { kind: revise ? "revision" : "final", snapshot: doc, userId: o.user_id });
     return { done: true, stage: "نص الخطبة جاهز: راجعه واعتمده ليُصنع الملف" };
   }
+  // «حيدرا ماكس»: the written chapters are laid out as designed pages instead of the template
+  if (isMax(o)) return maxFinal(job, await getOutput(job.user_id, o.id));
   const want = pagesOf(o.settings);
   const pdf = await renderDoc(o, c, doc, plan, false);
   if (want && pdf.pages !== want && words && !revise) {
