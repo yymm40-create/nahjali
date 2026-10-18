@@ -9,7 +9,7 @@ export const maxDuration = 300;
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export const POST = handle(async (request: Request) => {
-  const { user } = await requireJawadApiUser();
+  const { user, owner } = await requireJawadApiUser();
   if (!managedAgentConfigured()) throw new UserError("وكيل جواد المخرج غير مربوط بالخادم بعد.", 503);
   const body = await request.json().catch(() => ({})) as { chatId?: unknown; message?: unknown; attachments?: unknown };
   const message = String(body.message ?? "").trim();
@@ -28,6 +28,7 @@ export const POST = handle(async (request: Request) => {
     if (/42P01|PGRST205|PGRST204|23514|jawad_director_chats|jawad_agent_sessions_context_type_check|context_type/i.test(text)) {
       throw new UserError("جواد المخرج يحتاج هجرة قاعدة البيانات 0074_jawad_director.sql: شغّلها مرة وحدة في Supabase (SQL Editor) ثم جرّب.", 503);
     }
-    throw new UserError("جواد المخرج ما قدر يرد الآن. لم نستخدم أي وكيل بديل؛ جرّب بعد قليل.", 502);
+    // the owner sees the real reason (a short one) so a broken link to the agent can be fixed, others see the plain message
+    throw new UserError(`جواد المخرج ما قدر يرد الآن. لم نستخدم أي وكيل بديل؛ جرّب بعد قليل.${owner ? ` (السبب: ${String(e.message ?? error).replace(/\s+/g, " ").slice(0, 300)})` : ""}`, 502);
   }
 });
