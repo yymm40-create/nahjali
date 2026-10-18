@@ -38,12 +38,32 @@ function localChrome() {
   return null;
 }
 
+/**
+ * The serverless Chromium is unpacked to /tmp once per server: two browsers opened at the same moment (a page's pictures
+ * and its measuring, side by side) used to unpack it twice over each other, and the second one could not start the file
+ * still being written («spawn ETXTBSY»). One unpacking, shared; a start that still finds it busy waits and tries again.
+ */
+let chromiumPath: Promise<string> | null = null;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function openBrowser(): Promise<Browser> {
   const puppeteer = (await import("puppeteer-core")).default;
   const local = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME ? null : localChrome();
   if (local) return puppeteer.launch({ executablePath: local, headless: true, args: ["--no-sandbox", "--font-render-hinting=none"] });
   const chromium = (await import("@sparticuz/chromium")).default;
-  return puppeteer.launch({ executablePath: await chromium.executablePath(), headless: true, args: chromium.args });
+  chromiumPath ??= chromium.executablePath().catch((e) => {
+    chromiumPath = null;
+    throw e;
+  });
+  const executablePath = await chromiumPath;
+  for (let i = 0; ; i++) {
+    try {
+      return await puppeteer.launch({ executablePath, headless: true, args: chromium.args });
+    } catch (e) {
+      if (i >= 3 || !/ETXTBSY/.test(String((e as Error)?.message ?? e))) throw e;
+      await sleep(400 * (i + 1));
+    }
+  }
 }
 
 /** HTML → PDF. Page numbers in the footer when asked. */
