@@ -94,6 +94,18 @@ async function reserved(jobId: string) {
   return rows.length ? { userId: rows[0].user_id, label: rows[0].label, held: -rows.reduce((s, r) => s + r.delta, 0) } : null;
 }
 
+/**
+ * Pay after use (the owner's way for «الطالب الذكي», 18 October 2026: «خذ الفلوس مباشرة»): nothing is held before a
+ * step; when it is done, what it really cost (at the site's margins) is taken from the wallet at once. The wallet may go
+ * below zero by the last step's cost; the next step then waits for a top-up.
+ */
+export async function chargeAfter(userId: string, jobId: string, costUsd: number, label: string, claude: ChargeKind = false) {
+  await loadPricing();
+  const coins = priceOf(costUsd, claude);
+  if (coins > 0) await adjust(userId, -coins, "settle", jobId, label, true);
+  return coins;
+}
+
 /** On success: the held coins become the real charge (the difference is given back, or taken). */
 export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false) {
   await loadPricing();

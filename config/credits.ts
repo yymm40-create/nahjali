@@ -40,22 +40,35 @@ export interface CreditSettings {
  */
 export const SCENE_PACK_SAR = 28;
 
-/** What one of each thing costs now (halalas), for «تقدر تسوي فيها»: a standard picture, a 5-second 720p video, a scene. */
+/**
+ * «الطالب الذكي» (owner, 18 October 2026): ¤12 — one PDF of 5–10 pages turned into ONE output (a summary or an
+ * explanation, the ready template, no generated pictures). Measured on the site's real student projects: a short one
+ * end to end (reading, understanding, plan, writing) came to ¤2.40–¤8 at the owner's margins (Claude its cost + 10٪),
+ * so ¤12 makes one comfortably, often two. Paid after use: nothing is held, each step takes what it really cost.
+ */
+export const STUDENT_PACK_SAR = 12;
+/** What one short PDF → one summary costs on average (halalas), for «تقدر تسوي فيها». */
+export const STUDENT_SUMMARY_HALALAS = 600;
+
+/** What one of each thing costs now (halalas), for «تقدر تسوي فيها»: a standard picture, a 5-second 720p video, a scene, a study summary. */
 export interface UnitPrices {
   image: number;
   video5: number;
   scene: number;
+  /** one short PDF (5–10 pages) → one summary in «الطالب الذكي» */
+  summary: number;
 }
 /** How many of each a package's balance makes (each on its own: pictures OR videos OR scenes). */
 export function packYield(creditSar: number, u: UnitPrices) {
   const h = creditSar * 100;
   const n = (unit: number) => (unit > 0 ? Math.floor(h / unit) : 0);
-  return { images: n(u.image), videos: n(u.video5), scenes: n(u.scene) };
+  return { images: n(u.image), videos: n(u.video5), scenes: n(u.scene), summaries: n(u.summary) };
 }
 
 export const DEFAULT_PACKS: Pack[] = [
   { id: "try", name: "تجربة", price: 10, credit: 10, tag: "", note: "تجرب فيها الأقسام" },
   { id: "scene", name: "المشهد السينمائي", price: SCENE_PACK_SAR, credit: SCENE_PACK_SAR, tag: "", note: "مشهد ١٥ ثانية كامل: سيناريو، ٤ شيتات، فيديو 480p" },
+  { id: "student", name: "الطالب الذكي", price: STUDENT_PACK_SAR, credit: STUDENT_PACK_SAR, tag: "", note: "ملخص أو شرح من ملف PDF قصير (٥–١٠ صفحات)" },
   { id: "basic", name: "الأساسية", price: 99, credit: 100, tag: "", note: "للاستخدام الخفيف" },
   { id: "pro", name: "المحترف", price: 119, credit: 140, tag: "الأكثر طلبًا", note: "صور وفيديوهات أسبوعية" },
   { id: "studio", name: "الاستوديو", price: 279, credit: 330, tag: "", note: "لصنّاع المحتوى" },
@@ -67,7 +80,7 @@ export const DEFAULT_CREDIT_SETTINGS: CreditSettings = { packs: DEFAULT_PACKS, f
 export const CREDITS = {
   base: "/jawad-ai/credits",
   /** how many packages at most */
-  maxPacks: 6,
+  maxPacks: 7,
   /** open orders (not confirmed nor rejected) one person may have */
   maxOpen: 4,
 } as const;
