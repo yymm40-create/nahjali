@@ -49,7 +49,8 @@ const initialSettings = (media: Media, generators: DirectorGenerator[]): MediaSe
   };
 };
 
-export default function DirectorChat({ open, onOpen, onClose, loginHref, generators }: { open: boolean; onOpen: () => void; onClose: () => void; loginHref: string | null; generators: DirectorGenerator[] }) {
+export default function DirectorChat({ open = true, onOpen, onClose, loginHref, generators, mode = "popup" }: { open?: boolean; onOpen?: () => void; onClose?: () => void; loginHref: string | null; generators: DirectorGenerator[]; /** "page": the section's own full page (no launcher, no close); "popup": the studio's floating chat */ mode?: "popup" | "page" }) {
+  const page = mode === "page";
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -64,6 +65,8 @@ export default function DirectorChat({ open, onOpen, onClose, loginHref, generat
   const [handoffBusy, setHandoffBusy] = useState(false);
   const [text, setText] = useState("");
   const [side, setSide] = useState(false);
+  const [library, setLibrary] = useState(false);
+  const [moved, setMoved] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -77,7 +80,7 @@ export default function DirectorChat({ open, onOpen, onClose, loginHref, generat
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, busy]);
 
   const reset = () => {
-    setChatId(null); setMessages([]); setContext(null); setHandoff(""); setLinks({}); setSettings({}); setPending([]); setSide(false);
+    setChatId(null); setMessages([]); setContext(null); setHandoff(""); setMoved(""); setLinks({}); setSettings({}); setPending([]); setSide(false);
   };
 
   const seedSettings = useCallback((items: Message[]) => {
@@ -132,6 +135,8 @@ export default function DirectorChat({ open, onOpen, onClose, loginHref, generat
     try {
       const result = await postJson<{ chatId: string; message: Message; context: ContextState }>("/api/jawad/director/chat", { chatId, message, attachments: files.map((file) => file.id) });
       setChatId(result.chatId); setMessages((current) => [...current, result.message]); setContext(result.context);
+      // the conversation reached its limit: it hands itself over to a new conversation by itself
+      if (result.context.level === "critical") void autoHandoff(result.chatId);
       if (result.message.media) setSettings((current) => ({ ...current, ...Object.fromEntries(result.message.media!.map((media) => [media.id, initialSettings(media, generators)])) }));
       await refresh();
     } catch (error) {
@@ -180,6 +185,17 @@ export default function DirectorChat({ open, onOpen, onClose, loginHref, generat
     finally { setHandoffBusy(false); }
   }
 
+  async function autoHandoff(from: string) {
+    setHandoffBusy(true);
+    setMoved("وصلت المحادثة حد الذاكرة الآمن، فكتب جواد المخرج تسليمه لنفسه وفتح محادثة جديدة يكمل فيها…");
+    try {
+      const result = await postJson<{ chat: Chat }>("/api/jawad/director/handoff", { chatId: from, action: "auto" });
+      setChatId(result.chat.id); setMessages(result.chat.messages); setContext(result.chat.context); setHandoff(result.chat.handoff); seedSettings(result.chat.messages); await refresh();
+      setMoved("انتقلنا لمحادثة جديدة بتسليم جواد المخرج. المحادثة السابقة محفوظة في القائمة.");
+    } catch (error) { setMoved(error instanceof Error ? `${error.message} — تقدر تضغط «جهّز handoff» يدويًا.` : "تعذّر النقل التلقائي؛ اضغط «جهّز handoff» يدويًا."); }
+    finally { setHandoffBusy(false); }
+  }
+
   async function continueHandoff() {
     if (!chatId || !handoff || handoffBusy) return;
     setHandoffBusy(true);
@@ -213,18 +229,20 @@ export default function DirectorChat({ open, onOpen, onClose, loginHref, generat
     </article>;
   }
 
-  if (!open) return <button type="button" className="jd-launch" onClick={onOpen} aria-label="افتح جواد المخرج"><RobotFace id="director" size={38} /><span><strong>جواد المخرج</strong><small>إخراج خارق</small></span></button>;
+  if (!open && !page) return <button type="button" className="jd-launch" onClick={onOpen} aria-label="افتح جواد المخرج"><RobotFace id="director" size={38} /><span><strong>جواد المخرج</strong><small>إخراج خارق</small></span></button>;
 
-  return <div className="jd jd-popup" dir="rtl" role="dialog" aria-modal="true" aria-label="جواد المخرج">
+  return <div className={page ? "jd jd-page" : "jd jd-popup"} dir="rtl" {...(page ? {} : { role: "dialog", "aria-modal": true })} aria-label="جواد المخرج">
     <div className="jd-stage">
       <aside className={`jd-side ${side ? "open" : ""}`}>
         <button className="jd-new" onClick={reset}>＋ محادثة جديدة</button>
         <div className="jd-chat-list">{chats.map((chat) => <div className="jd-chat-row" data-active={chat.id === chatId} key={chat.id} onClick={() => void openChat(chat.id)}><span>{chat.handoffReady ? "↗ " : ""}{chat.title}</span><button onClick={(event) => { event.stopPropagation(); void deleteChat(chat.id); }}>✕</button></div>)}</div>
-        <button type="button" className="jd-back" onClick={onClose}>← ارجع للاستوديو</button>
+        {page ? <Link className="jd-back" href="/jawad-ai">← الرئيسية</Link> : <button type="button" className="jd-back" onClick={onClose}>← ارجع للاستوديو</button>}
       </aside>
       <section className="jd-main">
-        <header className="jd-head"><button className="jd-menu" onClick={() => setSide((value) => !value)}>☰</button><div className="jd-robot"><RobotFace id="director" size={54} /></div><div><h1>جواد المخرج</h1><p>وكيل الإخراج الخارق — ذاكرة مستقلة لكل محادثة</p></div><div className="jd-head-actions"><span className="jd-agent">DIRECTOR AGENT</span>{chatId && <button onClick={() => void prepareHandoff()} disabled={handoffBusy}>{handoffBusy ? "يجهّز…" : handoff ? "حدّث التسليم" : "جهّز handoff"}</button>}{chatId && handoff && <button className="strong" onClick={() => void continueHandoff()} disabled={handoffBusy}>محادثة جديدة بالتسليم</button>}<button className="jd-close" type="button" onClick={onClose} aria-label="إغلاق جواد المخرج">✕</button></div></header>
+        <header className="jd-head"><button className="jd-menu" onClick={() => setSide((value) => !value)}>☰</button><div className="jd-robot"><RobotFace id="director" size={54} /></div><div><h1>جواد المخرج</h1><p>وكيل الإخراج الخارق — ذاكرة مستقلة لكل محادثة</p></div><div className="jd-head-actions"><span className="jd-agent">DIRECTOR AGENT</span>{chatId && <button onClick={() => void prepareHandoff()} disabled={handoffBusy}>{handoffBusy ? "يجهّز…" : handoff ? "حدّث التسليم" : "جهّز handoff"}</button>}{chatId && handoff && <button className="strong" onClick={() => void continueHandoff()} disabled={handoffBusy}>محادثة جديدة بالتسليم</button>}<button type="button" onClick={() => setLibrary((v) => !v)} aria-pressed={library}>🗂️ المكتبة</button>{!page && <button className="jd-close" type="button" onClick={onClose} aria-label="إغلاق جواد المخرج">✕</button>}</div></header>
         {context?.shouldHandoff && <div className={`jd-context ${context.level}`}><div><strong>{context.level === "critical" ? "تنبيه مهم قبل ضغط السياق" : "اقتربت المحادثة من الحد الآمن"}</strong><p>جهّز تسليمًا الآن؛ سيكتب جواد حالته كاملة ثم يرسلها لنفسه في محادثة جديدة مستقلة.</p></div><div className="jd-meter"><i style={{ width: `${context.percent}%` }} /></div><button onClick={() => void prepareHandoff()} disabled={handoffBusy}>{handoffBusy ? "يجهّز…" : handoff ? "حدّث التسليم" : "جهّز handoff"}</button>{handoff && <button className="strong" onClick={() => void continueHandoff()} disabled={handoffBusy}>أرسل التسليم لمحادثة جديدة</button>}</div>}
+        {moved && <div className="jd-context warning" role="status"><div><strong>{moved}</strong></div></div>}
+        {library && <Library messages={messages} links={links} />}
         <div className="jd-feed">
           {loginHref ? <div className="jd-message assistant"><p>سجّل الدخول لفتح جواد المخرج وذاكرته المستقلة.</p><Link className="jd-action" href={loginHref}>تسجيل الدخول</Link></div> : messages.length === 0 ? <><div className="jd-welcome"><RobotFace id="director" size={82} /><div><h2>أنا جواد المخرج</h2><p>هذه غرفة إخراج مستقلة عن جواد العام. كل مشروع جديد يبدأ بذاكرة جديدة، وكل لقطة تحمل مولّدها وجودتها ومدتها وصوتها بنفسها.</p></div></div><div className="jd-starts">{starts.map((item) => <button key={item.title} onClick={() => void send(item.text)}><span>{item.icon}</span><strong>{item.title}</strong></button>)}</div></> : messages.map((message, index) => <div className={`jd-message ${message.role} ${message.error ? "error" : ""}`} key={index}><p className="jd-text">{message.text}</p>{message.files?.length ? <div className="jd-files">{message.files.map((file) => <span key={file.id}>{ICON[file.kind]} {file.name}</span>)}</div> : null}{message.questions?.map((question, qIndex) => <div className="jd-question" key={qIndex}><strong>{question.label}</strong><div>{question.options.map((option) => <button key={option} disabled={busy} onClick={() => void send(option)}>{option}</button>)}</div></div>)}{message.media?.length ? <div className="jd-media-grid"><div className="jd-batch-head"><strong>{message.media.length} توليدات مستقلة</strong>{message.media.filter((media) => !media.jobId).length > 1 && <button className="jd-action" onClick={() => void makeAll(message.media!)}>ولّد المجموعة معًا</button>}</div>{message.media.map((media) => <MediaCard key={media.id} media={media} />)}</div> : null}</div>)}
           {busy && <div className="jd-thinking"><RobotFace id="director" size={28} /> جواد المخرج يراجع الرؤية والإعدادات…</div>}<div ref={end} />
@@ -233,4 +251,14 @@ export default function DirectorChat({ open, onOpen, onClose, loginHref, generat
       </section>
     </div>
   </div>;
+}
+
+
+/** «المكتبة» of the conversation: every picture and clip made in it, ready to open or download. */
+function Library({ messages, links }: { messages: Message[]; links: Record<string, string> }) {
+  const items = messages.flatMap((message) => message.media ?? []).filter((media) => media.state === "done" && media.fileId && links[media.fileId]);
+  return <section className="jd-library" aria-label="مكتبة المحادثة">
+    <header><strong>🗂️ مكتبة المحادثة</strong><span>{items.length ? `${items.length} عمل` : "ما فيه أعمال بعد"}</span><Link href="/jawad-ai/library">كل أعمالي ←</Link></header>
+    {items.length > 0 && <div className="jd-library-grid">{items.map((media) => { const url = links[media.fileId!]; return <figure key={media.id}>{media.kind === "video" ? <video src={url} controls preload="metadata" /> : <Image src={url} alt={media.name} width={320} height={320} unoptimized />}<figcaption>{media.name}<a href={url} download target="_blank" rel="noreferrer">تنزيل</a></figcaption></figure>; })}</div>}
+  </section>;
 }

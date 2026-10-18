@@ -8,6 +8,7 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { worksPage } from "@/lib/jawad/server/works";
 import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 import { STUDIO_SECTION_IDS } from "@config/jawad/sections";
+import { directorGeneratorsOf } from "@/lib/jawad/server/director-generators";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,15 +47,7 @@ export default async function SectionPage({ params }: PageProps<"/jawad-ai/[sect
   const [balance, initialWorks, free] = user && allowed ? await Promise.all([coinBalance(user.id), worksPage(user.id, "all", null).catch(() => null), freeFor(user)]) : [null, null, false];
   const hasImageGenerator = generators.some((generator) => generatorById(generator.id)?.output === "image");
   const freeImageAvailable = Boolean(user && allowed && !free && hasImageGenerator && await signupFreeImageAvailable(user.id, user.created_at));
-  const directorGenerators = generators.flatMap((generator) => {
-    const definition = generatorById(generator.id);
-    if (!definition || (definition.output !== "image" && definition.output !== "video")) return [];
-    const choices = (keys: string[]) => {
-      const option = definition.options.find((item) => keys.includes(item.key));
-      return option?.kind === "choice" ? option.values.map((item) => ({ value: item.value, label: item.label })) : [];
-    };
-    return [{ id: generator.id, name: generator.name, kind: definition.output, resolutions: choices(["resolution"]), aspects: choices(["ratio", "aspect"]) }];
-  });
+  const directorGenerators = directorGeneratorsOf(generators);
 
   return <Studio
       key={s.id}

@@ -18,6 +18,7 @@ export const SECTION_IMPLEMENTATIONS = {
   designer: { label: "المصمم الذكي (محادثة مع «كاظم»: بطاقات وبوسترات ومصغّرات بطبقات نصية)", output: null },
   booklet: { label: "كتيب الجداول الذكي (الكتيب الجاهز للطفل أو جداول يصممها الشخص مع «عباس» أو «زينب»)", output: null },
   photo: { label: "زهراء فوتو ماستر (برنامج تحرير الصور والتصميم المستقل مع الروبوت «زهراء»)", output: null },
+  director: { label: "جواد المخرج (محادثة كاملة بروحها مع مخرج ذكي: يخطط اللقطات ويولّد الصور والفيديو من نفس المحادثة، ويسلّم نفسه لمحادثة جديدة قبل ضغط السياق)", output: null },
   kharq: { label: "محمد الخارق (محادثة عامة في أي موضوع، تفهم المطلوب بالضبط وتسلّم: كلامًا ورسائل وجداول وملفات PDF وصورًا وفيديو)", output: null },
 } as const;
 export type SectionImplementation = keyof typeof SECTION_IMPLEMENTATIONS;
@@ -42,6 +43,7 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
   { id: "video", name: "صناعة الفيديو", icon: "video", implementation: "studio:video", sort: 20, enabled: true },
   { id: "film", name: "الفيلم السينمائي", icon: "film", implementation: "film", sort: 30, enabled: true },
   { id: "editor", name: "حيدرة كت", icon: "scissors", implementation: "editor", sort: 35, enabled: true },
+  { id: "director", name: "جواد المخرج", icon: "film", implementation: "director", sort: 32, enabled: true },
   { id: "audio", name: "صناعة الصوت", icon: "audio", implementation: "studio:audio", sort: 40, enabled: true },
   { id: "student", name: "الطالب الذكي", icon: "book", implementation: "student", sort: 50, enabled: true },
   // in its private trial: the page itself opens for the owner only (src/app/jawad-ai/islamic)
@@ -64,7 +66,7 @@ export const DEFAULT_SECTIONS: SectionDef[] = [
 export const RESERVED_SECTION_IDS = ["cartoon", "memory", "admin", "login", "username", "coins", "credits", "course", "learn", "api", "works", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet", "zaynab"];
 
 /** Implementations with their own fixed pages (one section each, not added again by the owner). */
-export const FIXED_IMPLEMENTATIONS: string[] = ["cartoon", "film", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
+export const FIXED_IMPLEMENTATIONS: string[] = ["cartoon", "film", "director", "student", "editor", "islamic", "games", "content", "designer", "photo", "kharq", "booklet"];
 
 export const STUDIO_SECTION_IDS = ["images", "video", "audio"] as const;
 export const STUDIO_ROOT_ID = "images";
@@ -72,7 +74,7 @@ export const STUDIO_ROOT_ID = "images";
 /** The three legacy studio routes stay valid, but navigation presents them as one adaptive studio. */
 export function unifiedStudioNavigation<T extends { id: string; name: string; icon: string; path: string }>(sections: T[]): T[] {
   return sections
-    .filter((section) => section.id !== "director" && (!STUDIO_SECTION_IDS.includes(section.id as (typeof STUDIO_SECTION_IDS)[number]) || section.id === STUDIO_ROOT_ID))
+    .filter((section) => (!STUDIO_SECTION_IDS.includes(section.id as (typeof STUDIO_SECTION_IDS)[number]) || section.id === STUDIO_ROOT_ID))
     .map((section) => section.id === STUDIO_ROOT_ID ? { ...section, name: "الاستوديو الإبداعي", icon: "wand", path: "/jawad-ai/images" } : section);
 }
 
