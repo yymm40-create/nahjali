@@ -206,18 +206,29 @@ export async function managedAgentTurn(input: ManagedAgentTurn): Promise<Managed
     before = undefined;
   }
 
-  const done = await waitUntilIdle(sessionId, input.timeoutMs ?? 110_000);
-  const fresh = (await events(sessionId)).filter((event) => !seen.has(event.id));
-  const failure = fresh.find((event) => event.type === "session.error");
-  if (failure) throw new Error(failure.error?.message ?? "Managed Agent session failed");
-  const text = fresh
-    .filter((event) => event.type === "agent.message")
-    .flatMap((event) => event.content ?? [])
-    .filter((block) => block.type === "text" && block.text)
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
-  if (!text) throw new Error("Managed Agent returned no text");
+  const deadline = Date.now() + (input.timeoutMs ?? 110_000);
+  // a session can read «idle» for a moment right after it was created or given a message, before the agent starts: so an
+  // idle session that has said nothing yet is waited on again (until the deadline) instead of being taken as an empty answer
+  let done = await waitUntilIdle(sessionId, Math.max(1000, deadline - Date.now()));
+  let text = "";
+  let seenTypes = "";
+  for (;;) {
+    const fresh = (await events(sessionId)).filter((event) => !seen.has(event.id));
+    const failure = fresh.find((event) => event.type === "session.error");
+    if (failure) throw new Error(failure.error?.message ?? "Managed Agent session failed");
+    seenTypes = [...new Set(fresh.map((event) => event.type))].join(",");
+    text = fresh
+      .filter((event) => event.type === "agent.message")
+      .flatMap((event) => event.content ?? [])
+      .filter((block) => block.type === "text" && block.text)
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
+    if (text || Date.now() >= deadline) break;
+    await sleep(1500);
+    done = await waitUntilIdle(sessionId, Math.max(1000, deadline - Date.now()));
+  }
+  if (!text) throw new Error(`Managed Agent returned no text (${done.status}; ${seenTypes || "no events"})`);
   return { text, usd: usdDelta(before, done.usage), usage: usageDelta(before, done.usage), sessionId };
 }
 
