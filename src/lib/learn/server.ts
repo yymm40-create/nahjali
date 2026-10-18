@@ -272,6 +272,16 @@ export async function grant(courseId: string, emailRaw: unknown, by: string) {
   const { error } = await db().from("learn_grants").upsert({ course_id: courseId, email, granted_by: by }, { onConflict: "course_id,email" });
   if (error) throw error;
 }
+/** Opens a course for everyone who bought the earlier course (confirmed orders from before each course had its own page: the whole course and the recorded one). Returns how many e-mails were added or kept. */
+export async function grantPastBuyers(courseId: string, by: string): Promise<number> {
+  const { data, error } = await db().from("course_orders").select("email").eq("status", "confirmed").is("course_id", null).in("product", ["combo", "recorded"]);
+  if (error) throw error;
+  const emails = [...new Set((data ?? []).map((r) => String(r.email ?? "").trim().toLowerCase()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)))];
+  if (!emails.length) return 0;
+  const { error: e2 } = await db().from("learn_grants").upsert(emails.map((email) => ({ course_id: courseId, email, granted_by: by })), { onConflict: "course_id,email" });
+  if (e2) throw e2;
+  return emails.length;
+}
 export async function ungrant(id: string) {
   await db().from("learn_grants").delete().eq("id", id);
 }
