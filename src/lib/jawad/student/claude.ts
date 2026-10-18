@@ -54,20 +54,30 @@ export async function askJson<T>(o: {
   /** the owner is talking: صادق greets «القائد» and opens every detail of the platform to him */
   leader?: boolean;
 }): Promise<{ data: T; usd: number }> {
-  const body = await post(
-    {
-      max_tokens: o.maxTokens ?? 16000,
-      system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, true, o.leader),
-      messages: [{ role: "user", content: o.parts.map(toBlock) }],
-      output_config: { effort: o.effort ?? "medium", format: { type: "json_schema", schema: o.schema } },
-      fallbacks: "default",
-    },
-    "server-side-fallback-2026-07-01",
-  );
+  const call = (maxTokens: number, effort: "low" | "medium" | "high") =>
+    post(
+      {
+        max_tokens: maxTokens,
+        system: siteSystem(`${MATERIAL_RULE}\n\n${o.system}`, true, o.leader),
+        messages: [{ role: "user", content: o.parts.map(toBlock) }],
+        output_config: { effort, format: { type: "json_schema", schema: o.schema } },
+        fallbacks: "default",
+      },
+      "server-side-fallback-2026-07-01",
+    );
+  const asked = o.maxTokens ?? 16000;
+  let body = await call(asked, o.effort ?? "medium");
+  let usd = claudeCost(body.usage);
+  // the thinking shares the answer's budget, so a long answer (a designed page, a long chapter) can run out before it
+  // ends: once more with twice the room and less thinking, before giving up
+  if (body.stop_reason === "max_tokens") {
+    body = await call(Math.min(32_000, asked * 2), "low");
+    usd += claudeCost(body.usage);
+  }
   if (body.stop_reason === "max_tokens") throw new Error("Claude reply was cut off (max_tokens)");
   if (body.stop_reason === "refusal") throw new Error("Claude declined this request");
   const raw = body.content.filter((b) => b.type === "text").map((b) => String(b.text)).join("");
-  return { data: JSON.parse(raw) as T, usd: claudeCost(body.usage) };
+  return { data: JSON.parse(raw) as T, usd };
 }
 
 export interface ResearchSource {
