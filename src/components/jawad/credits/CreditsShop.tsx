@@ -65,7 +65,7 @@ const NUM = ["١", "٢", "٣"];
 /** «تقدر تسوي فيها تقريبًا»: what the package's balance makes at today's prices (each on its own, not all together). */
 function YieldLine({ credit, units }: { credit: number; units: UnitPrices }) {
   const y = packYield(credit, units);
-  const parts = [y.images > 0 && `${y.images} صورة`, y.videos > 0 && `${y.videos} فيديو ٥ ثواني`, y.scenes > 0 && (y.scenes === 1 ? "مشهد سينمائي كامل" : `${y.scenes} مشاهد سينمائية`)].filter(Boolean) as string[];
+  const parts = [y.images > 0 && `${y.images} صورة`, y.videos > 0 && `${y.videos} فيديو ٥ ثواني`, y.scenes > 0 && (y.scenes === 1 ? "مشهد سينمائي كامل" : `${y.scenes} مشاهد سينمائية`), y.summaries > 0 && (y.summaries === 1 ? "ملخص من ملف PDF قصير" : `${y.summaries} ملخصات من ملفات PDF قصيرة`)].filter(Boolean) as string[];
   if (!parts.length) return null;
   return <span className="cs-yield">تقدر تسوي فيها تقريبًا: {parts.join(" · أو ")}</span>;
 }

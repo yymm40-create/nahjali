@@ -2,7 +2,7 @@
 // the owner's live price table and margins (pictures 60٪, videos 40٪) — so every package shows what its balance makes.
 // Server only.
 
-import { SCENE_PACK_SAR, type UnitPrices } from "@config/credits";
+import { SCENE_PACK_SAR, STUDENT_SUMMARY_HALALAS, type UnitPrices } from "@config/credits";
 import { generatorById } from "@config/jawad/generators";
 import { evaluate, priceTable } from "@/lib/jawad/engine";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
@@ -26,5 +26,6 @@ export async function unitPrices(): Promise<UnitPrices> {
     image: price(IMAGE, {}),
     video5: price(VIDEO, { resolution: "720p", duration: 5, ratio: "16:9" }),
     scene: SCENE_PACK_SAR * 100,
+    summary: STUDENT_SUMMARY_HALALAS,
   };
 }

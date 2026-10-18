@@ -10,7 +10,7 @@
 
 import { after } from "next/server";
 import { UserError } from "@/lib/api";
-import { coinsRequired, priceOf, refundCoins, releaseCoins, reserveCoins, settleCoins, type PriceMix } from "@/lib/coins";
+import { chargeAfter, coinBalance, coinsRequired, priceOf, refundCoins, releaseCoins, settleCoins, type PriceMix } from "@/lib/coins";
 import type { PriceKind } from "@config/coins";
 
 /** The steps that are Claude's usage alone (reading the material, researching): priced at the real cost + 10%. */
@@ -105,6 +105,13 @@ export async function createJob(
     if (used + o.estimateUsd > STUDENT.freeDailyUsd) throw new UserError("وصلت حد التجربة المجانية لليوم. كمّل بكرة إن شاء الله 🌙", 429);
   }
 
+  // pay after use: nothing is held; a step starts while the wallet has something in it, and what it really cost is
+  // taken when it is done (see chargeAfter)
+  const pays = o.estimateUsd > 0 && !(await unlimitedFor(user.email)) && (await coinsRequired());
+  if (pays && ((await coinBalance(user.id)) ?? 0) <= 0) {
+    throw new UserError("رصيدك خلص. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك) وكمّل من نفس المكان.", 402);
+  }
+
   const { data, error } = await db
     .from("student_jobs")
     .insert({
@@ -113,7 +120,7 @@ export async function createJob(
       output_id: o.outputId ?? null,
       kind: o.kind,
       idempotency_key: o.key,
-      input: o.input ?? {},
+      input: { ...(o.input ?? {}), ...(pays ? { payAfter: true } : {}) },
       estimate_usd: o.estimateUsd,
       stage: o.stage ?? "في الطابور",
     })
@@ -126,12 +133,6 @@ export async function createJob(
     throw error;
   }
   const job = data as Job;
-  try {
-    if (o.estimateUsd > 0) await reserveCoins(user, job.id, o.estimateUsd, `الطالب الذكي · ${handler.label}`, jobMix(o.kind, o.input));
-  } catch (e) {
-    await db.from("student_jobs").delete().eq("id", job.id);
-    throw e;
-  }
   after(() => runJob(job.id));
   return { job, created: true };
 }
@@ -167,7 +168,9 @@ export async function runJob(id: string) {
       job = { ...job, ...patch };
       if (r.done) {
         await db.from("student_jobs").update({ ...patch, status: "succeeded", finished_at: new Date().toISOString(), lease_until: null }).eq("id", id);
-        await settleCoins(job.id, Number(job.cost_usd), jobMix(job.kind, job.input));
+        // pay after use: what it really cost, taken now; a job started before this way still settles what it held
+        if ((job.input as { payAfter?: boolean } | null)?.payAfter) await chargeAfter(job.user_id, job.id, Number(job.cost_usd), `الطالب الذكي · ${handler.label}`, jobMix(job.kind, job.input));
+        else await settleCoins(job.id, Number(job.cost_usd), jobMix(job.kind, job.input));
         await creditTrial(job);
         await handler.onSuccess?.(job);
         return;

@@ -86,12 +86,12 @@ export function PaidButton({
             {/* what exactly will be made, said by the server before the student agrees (e.g. «ستُرسم ٥ صفحات») */}
             {quote.note && <p className="rounded-xl bg-jw-surface-2 p-3 text-sm font-bold">{quote.note}</p>}
             <div className="jw-panel flex items-center justify-between gap-3 p-3">
-              <span>التكلفة {quote.coins ? "(الحد الأعلى)" : ""}</span>
+              <span>التكلفة {quote.coins ? "(بحدّها الأعلى)" : ""}</span>
               <b className="text-lg">{quote.coins ? <Riyal halalas={quote.coins} size={18} /> : "مجانًا"}</b>
             </div>
             {quote.coins > 0 && (
               <p className="text-xs text-jw-faint">
-                يُحجز هذا المبلغ الآن، ثم يُخصم منه ما كلّفته الخطوة فعلًا ويرجع لك الباقي. إذا فشلت الخطوة يرجع كاملًا.
+                ما ينحجز شي الحين: لما تخلص الخطوة ينخصم ما كلّفته فعلًا (عادة أقل بكثير من هذا الحد). وإذا فشلت ما ينخصم شي.
                 {quote.balance !== null ? <> رصيدك: <Riyal halalas={quote.balance} size={13} />.</> : ""}
               </p>
             )}

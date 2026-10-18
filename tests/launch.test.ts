@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bonusPct, CREDITS, DEFAULT_CREDIT_SETTINGS, DEFAULT_PACKS, packYield, readCreditSettings, SCENE_PACK_SAR, supportLink } from "@config/credits";
+import { bonusPct, CREDITS, DEFAULT_CREDIT_SETTINGS, DEFAULT_PACKS, packYield, readCreditSettings, SCENE_PACK_SAR, STUDENT_PACK_SAR, STUDENT_SUMMARY_HALALAS, supportLink } from "@config/credits";
 import { claudeHalalas, coinsFor } from "@config/coins";
 import { videoEstimateUsd } from "@config/film";
 import { cleanLinks, cleanTurns } from "@/lib/salman";
@@ -8,10 +8,11 @@ import { JAWAD_KNOWLEDGE } from "@config/jawad/knowledge";
 import { NAHJ_ALI_HIDDEN, SITE_NAME } from "@config/site";
 
 describe("the balance packages", () => {
-  it("are six: the ¤10 trial, «المشهد السينمائي» at what one scene costs, then the four as they were", () => {
+  it("are seven: the ¤10 trial, «المشهد السينمائي» at what one scene costs, «الطالب الذكي» at ¤12, then the four as they were", () => {
     expect(DEFAULT_PACKS.map((p) => [p.id, p.price, p.credit])).toEqual([
       ["try", 10, 10],
       ["scene", SCENE_PACK_SAR, SCENE_PACK_SAR],
+      ["student", STUDENT_PACK_SAR, STUDENT_PACK_SAR],
       ["basic", 99, 100],
       ["pro", 119, 140],
       ["studio", 279, 330],
@@ -21,7 +22,7 @@ describe("the balance packages", () => {
     expect(DEFAULT_PACKS).toHaveLength(CREDITS.maxPacks);
     expect(DEFAULT_CREDIT_SETTINGS.featured).toBe("pro");
     // still a push to the next one: «المحترف» only a little dearer than «الأساسية» but with much more
-    const [, , b, c] = DEFAULT_PACKS;
+    const [, , , b, c] = DEFAULT_PACKS;
     expect(c.price - b.price).toBeLessThan(b.price * 0.3);
     expect(bonusPct(c)).toBeGreaterThan(bonusPct(b) + 10);
   });
@@ -35,18 +36,21 @@ describe("the balance packages", () => {
     expect(SCENE_PACK_SAR).toBe(28);
     expect(SCENE_PACK_SAR).toBeLessThanOrEqual(50);
   });
-  it("say what each package makes (pictures, 5-second videos, scenes), each on its own", () => {
-    const u = { image: 100, video5: 450, scene: SCENE_PACK_SAR * 100 };
-    expect(packYield(10, u)).toEqual({ images: 10, videos: 2, scenes: 0 });
-    expect(packYield(SCENE_PACK_SAR, u)).toEqual({ images: 28, videos: 6, scenes: 1 });
+  it("say what each package makes (pictures, 5-second videos, scenes, study summaries), each on its own", () => {
+    const u = { image: 100, video5: 450, scene: SCENE_PACK_SAR * 100, summary: STUDENT_SUMMARY_HALALAS };
+    expect(packYield(10, u)).toEqual({ images: 10, videos: 2, scenes: 0, summaries: 1 });
+    expect(packYield(SCENE_PACK_SAR, u)).toEqual({ images: 28, videos: 6, scenes: 1, summaries: 4 });
     expect(packYield(660, u).scenes).toBe(23);
-    expect(packYield(10, { image: 0, video5: 0, scene: 0 })).toEqual({ images: 0, videos: 0, scenes: 0 });
+    expect(packYield(10, { image: 0, video5: 0, scene: 0, summary: 0 })).toEqual({ images: 0, videos: 0, scenes: 0, summaries: 0 });
+    // «الطالب الذكي» makes one short PDF's summary comfortably, often two (measured: ¤2.40–¤8 each)
+    expect(packYield(STUDENT_PACK_SAR, u).summaries).toBe(2);
+    expect(STUDENT_PACK_SAR).toBe(12);
   });
   it("never give so much extra that the balance sells under cost (the site's margin is ~30%)", () => {
     for (const p of DEFAULT_PACKS) expect(bonusPct(p)).toBeLessThanOrEqual(25);
-    // more balance per riyal as the package grows (after the try and the scene)
+    // more balance per riyal as the package grows (after the try, the scene and the student's)
     const per = DEFAULT_PACKS.map((p) => p.credit / p.price);
-    for (let i = 3; i < per.length; i++) expect(per[i]).toBeGreaterThanOrEqual(per[i - 1] - 1e-9);
+    for (let i = 4; i < per.length; i++) expect(per[i]).toBeGreaterThanOrEqual(per[i - 1] - 1e-9);
   });
   it("read what the owner saved: bad rows dropped, at most six, the featured one kept only if it exists", () => {
     const s = readCreditSettings({
@@ -59,7 +63,7 @@ describe("the balance packages", () => {
     expect(s.whatsapp).toBe("+966501234567");
     expect(readCreditSettings(null).packs).toEqual(DEFAULT_PACKS);
     const many = readCreditSettings({ packs: Array.from({ length: 9 }, (_, i) => ({ id: `p${i}`, name: `ب${i}`, price: i + 1, credit: i + 1 })) });
-    expect(many.packs).toHaveLength(6);
+    expect(many.packs).toHaveLength(7);
   });
   it("«طال الوقت؟» opens a WhatsApp chat with the message written, only when the owner set a number", () => {
     const o = { id: "12345678-aaaa", packName: "المحترف", price: 119, email: "a@b.c" };
