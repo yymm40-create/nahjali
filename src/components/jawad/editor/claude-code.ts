@@ -6,7 +6,7 @@
 //         he LOOKS at them against the same moments before, scores and rewrites → at the bar the LUT goes on the clips
 //         as their own grading layer «Claude Code» (one undo).
 
-import { checkCommands } from "@/lib/editor/assistant-core";
+import { asksAboutBackdrop, checkCommands, withoutBackdropEdits } from "@/lib/editor/assistant-core";
 import { applyAll, type Command } from "@/lib/editor/commands";
 import { MAX_LAYERS, NEUTRAL_GRADE, type Grade } from "@/lib/editor/grade";
 import { duration, findClip, type AssetInfo, type Timeline } from "@/lib/editor/model";
@@ -110,7 +110,9 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
   }
   stopped(d);
   if (!last) throw new Error("ما طلع من البرنامج شي.");
-  const applied = d.run(last.cmds, { label: `حيدرة (Claude Code): ${request.slice(0, 40)}` });
+  // a program cuts and arranges: the background / colour key are the person's own settings, never changed by it
+  const cmds = asksAboutBackdrop(request) ? last.cmds : withoutBackdropEdits(last.cmds as { type?: string; patch?: Record<string, unknown> }[]).cmds;
+  const applied = d.run(cmds as typeof last.cmds, { label: `حيدرة (Claude Code): ${request.slice(0, 40)}` });
   if (!applied) throw new Error("ما قدرت أطبّق التقطيع على التايملاين.");
   const lens = `${sec(duration(start))} → ${sec(duration(last.after))}`;
   return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 Claude Code · ${last.cmds.length} أمر · الطول ${lens}\n${scoreLine(EDIT_RUBRIC, last.review.scores)}`, done: last.cmds.length };

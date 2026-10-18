@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { clipEnd, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
 import { watchClip } from "./watch";
+import { rememberBackdrops } from "./backdrop-memory";
 import { asksToSee, type Watch } from "@/lib/editor/watch";
 import { diagNote, diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
@@ -112,7 +113,7 @@ export default function AssistantPanel({
   selected,
   assets,
   player,
-  run,
+  run: runEditor,
   onUndo,
   onClose,
   readOnly,
@@ -202,6 +203,12 @@ export default function AssistantPanel({
   useEffect(() => {
     tlRef.current = tl;
   }, [tl]);
+  // everything حيدرة applies goes through here: each clip's background and colour key are remembered first, so
+  // «↩️ رجّع الخلفية لما كانت» (its backdrop tab) can put them back if they ever come out broken
+  const run: Run = (c, o) => {
+    rememberBackdrops(tlRef.current);
+    return runEditor(c, o);
+  };
   // «🩺 تشخيص»: the next message asks حيدرة to find what went wrong (the owner only)
   const [diagOn, setDiagOn] = useState(false);
   const end = useRef<HTMLDivElement>(null);
