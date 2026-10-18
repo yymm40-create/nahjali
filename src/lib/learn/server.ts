@@ -123,9 +123,7 @@ export async function saveCourse(b: { id?: string; title?: unknown; summary?: un
     patch.title = title;
   }
   if (b.summary !== undefined) patch.summary = cleanTitle(b.summary, LEARN.maxSummary);
-  // a new course opens for the buyers of the recorded course (the owner can change it)
   if (b.unlock !== undefined) patch.unlock = cleanUnlock(b.unlock);
-  else if (!b.id) patch.unlock = ["recorded"];
   if (b.published !== undefined) patch.published = !!b.published;
   if (b.id) {
     const { error } = await db().from("learn_courses").update(patch).eq("id", b.id);

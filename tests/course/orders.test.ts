@@ -8,9 +8,13 @@ const tables: Record<string, Row[]> = { course_orders: [] };
 let seq = 0;
 
 function builder(table: string) {
-  const st = { op: "select" as "select" | "insert" | "update", filters: [] as ((r: Row) => boolean)[], patch: {} as Row, order: null as null | [string, boolean], limit: 1e9 };
+  const st = { op: "select" as "select" | "insert" | "update" | "upsert", filters: [] as ((r: Row) => boolean)[], patch: {} as Row, order: null as null | [string, boolean], limit: 1e9 };
   const run = (): { data: Row[]; error: null } => {
     const rows = tables[table] ?? (tables[table] = []);
+    if (st.op === "upsert") {
+      rows.push(st.patch);
+      return { data: [st.patch], error: null };
+    }
     if (st.op === "insert") {
       const r = { id: `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`, created_at: new Date(1_800_000_000_000 + seq).toISOString(), status: "started", note: "", bonus_granted_at: null, transferred_at: null, confirmed_at: null, ...st.patch };
       rows.push(r);
@@ -28,6 +32,7 @@ function builder(table: string) {
   const q: Record<string, unknown> = {
     select: () => q,
     insert: (p: Row) => ((st.op = "insert"), (st.patch = p), q),
+    upsert: (p: Row) => ((st.op = "upsert"), (st.patch = p), q),
     update: (p: Row) => ((st.op = "update"), (st.patch = p), q),
     eq: (k: string, v: unknown) => (st.filters.push((r) => r[k] === v), q),
     in: (k: string, v: unknown[]) => (st.filters.push((r) => v.includes(r[k])), q),
@@ -58,6 +63,7 @@ const who = { name: "محمد علي حسن", phone: "0501234567" };
 
 beforeEach(() => {
   tables.course_orders = [];
+  tables.learn_grants = [];
   grant.mockClear();
   notify.mockClear();
   settings = readSettings({ ...DEFAULT_SETTINGS, launchAt: new Date(T0).toISOString(), bank, bonus: { comboA: 0, recordedB: 30, recordedC: 20 } });
@@ -170,6 +176,22 @@ describe("«أكّد»", () => {
     const mine = await myCourse(U.id);
     expect(mine.unlocked).toBe(true);
     expect(mine.products).toEqual(["recorded"]);
+  });
+
+  it("opens ONLY the course this page sells, for the buyer's e-mail — a later course is never opened by it", async () => {
+    const { startOrder, confirmOrder } = await import("@/lib/course/orders");
+    const A = "11111111-1111-4111-8111-111111111111";
+    settings = readSettings({ ...settings, learnCourseId: A });
+    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
+    await confirmOrder(a.order.id, "تيليجرام");
+    await confirmOrder(a.order.id, "تيليجرام");
+    expect(tables.learn_grants.map((g) => [g.course_id, g.email])).toEqual([[A, "buyer@example.com"], [A, "buyer@example.com"]]);
+    // nothing is selected: nothing is opened
+    tables.learn_grants.length = 0;
+    settings = readSettings({ ...settings, learnCourseId: "" });
+    const b = await startOrder({ id: "u-5", email: "z@x.com" }, { product: "recorded", ...who }, T0 + H);
+    await confirmOrder(b.order.id, "تيليجرام");
+    expect(tables.learn_grants).toHaveLength(0);
   });
 
   it("whoever bought the live or the whole course also has the recorded one", async () => {

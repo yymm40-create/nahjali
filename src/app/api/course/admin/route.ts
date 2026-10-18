@@ -4,6 +4,7 @@ import { checkPublicFile, signPublicUpload, type Purpose } from "@/lib/jawad/ser
 import { confirmOrder, listOrders, rejectOrder, type Status } from "@/lib/course/orders";
 import { loadSettings, saveSettings } from "@/lib/course/settings";
 import { ownerChat, setupWebhook, telegramFull, telegramReady, tgSend } from "@/lib/course/telegram";
+import { loadTree } from "@/lib/learn/server";
 import { offersAt } from "@config/course";
 import { isAdmin } from "@config/site";
 import { storage } from "@/lib/storage";
@@ -30,6 +31,7 @@ export const GET = handle(async (req: Request) => {
     now: Date.now(),
     phase: offersAt(settings, Date.now()).phase,
     orders,
+    courses: (await loadTree().catch(() => [])).map((c) => ({ id: c.id, title: c.title })),
     telegram: { token: telegramReady(), chat: !!ownerChat(), ready: telegramFull() },
   });
 });
