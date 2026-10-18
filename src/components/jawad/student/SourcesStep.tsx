@@ -176,7 +176,7 @@ export default function SourcesStep({ p, onContinue }: { p: ProjectHook; onConti
 
         <div className="jw-panel space-y-3 p-4">
           <b className="block">▶️ أو رابط فيديو (يوتيوب، تيك توك…)</b>
-          <p className="text-xs text-jw-muted">يسمعه ElevenLabs ويكتب كلامه كامل مع الأوقات. يُحجز مبلغ ٣ ساعات ويُخصم بس طول المقطع الفعلي. استخدم مقاطع لك حق استخدامها.</p>
+          <p className="text-xs text-jw-muted">يسمعه ElevenLabs ويكتب كلامه كامل مع الأوقات. ما ينحجز شي: ينخصم بس طول المقطع الفعلي بعد ما يخلص. استخدم مقاطع لك حق استخدامها.</p>
           <div className="flex flex-wrap gap-2">
             <input className="jw-input min-w-0 flex-1" dir="ltr" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" aria-label="رابط الفيديو" />
             <PaidButton
