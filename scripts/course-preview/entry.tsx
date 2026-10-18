@@ -17,6 +17,7 @@ createRoot(document.getElementById("root")!).render(
     s={s}
     courseId="00000000-0000-4000-8000-000000000001"
     price={60}
+    was={100}
     serverNow={now}
     user={q.get("signed") === "1" ? { email: "me@example.com" } : null}
     orders={[]}

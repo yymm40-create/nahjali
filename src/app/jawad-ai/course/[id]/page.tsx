@@ -37,5 +37,5 @@ export default async function CourseSalePage({ params, searchParams }: { params:
   const confirmed = own.some((o) => o.status === "confirmed");
   const unlocked: Unlocked | null = own.some((o) => o.status === "transferred" || o.status === "confirmed") ? { confirmed, products: confirmed ? ["recorded"] : [], groupLink: "", recordedLink: "" } : null;
   const view = { ...publicView(s), headline: course.title, subhead: course.summary || s.subhead, problem: "", days: [] };
-  return <CourseLanding s={view} courseId={course.id} price={course.priceSar} serverNow={nowMs()} user={user?.email ? { email: user.email } : null} orders={orders} unlocked={unlocked} buy={isProduct(buy) ? buy : null} loginHref={`${JAWAD.base}/login`} />;
+  return <CourseLanding s={view} courseId={course.id} price={course.priceSar} was={course.wasSar ?? course.priceSar} serverNow={nowMs()} user={user?.email ? { email: user.email } : null} orders={orders} unlocked={unlocked} buy={isProduct(buy) ? buy : null} loginHref={`${JAWAD.base}/login`} />;
 }

@@ -219,14 +219,14 @@ export interface Offers {
 /** What is on sale at `now`, and when the price changes. */
 export type Clock = Pick<CourseSettings, "launchAt" | "hoursA" | "hoursB" | "prices" | "was" | "bonus">;
 
-export function offersAt(s: Clock, _now: number, price: number = COURSE.price): Offers {
+export function offersAt(s: Clock, _now: number, price: number = COURSE.price, was: number = price): Offers {
   void _now;
   // one thing on sale, always: the recorded course at its one price (no clock, no phases, no live offer)
-  return { phase: "C", offers: [{ product: "recorded", label: PRODUCT_LABEL.recorded, price, was: price, bonus: 0 }], endsAt: null, next: "" };
+  return { phase: "C", offers: [{ product: "recorded", label: PRODUCT_LABEL.recorded, price, was: Math.max(was, price), bonus: 0 }], endsAt: null, next: "" };
 }
 
 /** The offer for a product right now, or null when it is not on sale in this phase. */
-export const offerFor = (s: Clock, product: Product, now: number, price?: number): Offer | null => offersAt(s, now, price).offers.find((o) => o.product === product) ?? null;
+export const offerFor = (s: Clock, product: Product, now: number, price?: number, was?: number): Offer | null => offersAt(s, now, price, was).offers.find((o) => o.product === product) ?? null;
 
 /** The saving in percent when `was` is higher than `price`. */
 export const savingPct = (o: Pick<Offer, "price" | "was">) => (o.was > o.price ? Math.round((1 - o.price / o.was) * 100) : 0);

@@ -38,6 +38,8 @@ export interface CourseView {
   published: boolean;
   /** the price it is sold at from its own page (SAR); null = not for sale */
   priceSar: number | null;
+  /** the price before the discount (shown struck through) */
+  wasSar: number | null;
   position: number;
   days: DayView[];
 }
@@ -66,6 +68,7 @@ export async function loadTree(opts: { courseId?: string; onlyPublished?: boolea
     unlock: cleanUnlock(c.unlock),
     published: !!c.published,
     priceSar: Number(c.price_sar) > 0 ? Number(c.price_sar) : null,
+    wasSar: Number(c.was_sar) > 0 ? Number(c.was_sar) : null,
     position: Number(c.position),
     days: (days.data ?? [])
       .filter((d) => d.course_id === c.id)
@@ -117,7 +120,7 @@ const nextPosition = async (table: "learn_courses" | "learn_days" | "learn_lesso
   return (Number(data?.[0]?.position) || 0) + 1;
 };
 
-export async function saveCourse(b: { id?: string; title?: unknown; summary?: unknown; unlock?: unknown; published?: unknown; price?: unknown }) {
+export async function saveCourse(b: { id?: string; title?: unknown; summary?: unknown; unlock?: unknown; published?: unknown; price?: unknown; was?: unknown }) {
   const title = cleanTitle(b.title);
   if (!b.id && !title) throw new UserError("اكتب اسم الدورة.", 400);
   const patch: Record<string, unknown> = {};
@@ -128,6 +131,10 @@ export async function saveCourse(b: { id?: string; title?: unknown; summary?: un
   if (b.summary !== undefined) patch.summary = cleanTitle(b.summary, LEARN.maxSummary);
   if (b.unlock !== undefined) patch.unlock = cleanUnlock(b.unlock);
   if (b.published !== undefined) patch.published = !!b.published;
+  if (b.was !== undefined) {
+    const n = Math.round(Number(b.was));
+    patch.was_sar = Number.isFinite(n) && n > 0 ? Math.min(n, 100000) : null;
+  }
   if (b.price !== undefined) {
     const n = Math.round(Number(b.price));
     patch.price_sar = Number.isFinite(n) && n > 0 ? Math.min(n, 100000) : null;
@@ -286,13 +293,29 @@ export async function ungrant(id: string) {
   await db().from("learn_grants").delete().eq("id", id);
 }
 
+export const cleanCode = (v: unknown) => String(v ?? "").trim().toUpperCase();
+export const validCode = (c: string) => /^[A-Z0-9_-]{2,40}$/.test(c);
+
+export async function saveCode(courseId: string, codeRaw: unknown, priceRaw: unknown) {
+  const code = cleanCode(codeRaw);
+  const price = Math.round(Number(priceRaw));
+  if (!validCode(code)) throw new UserError("الكود حروف إنجليزية وأرقام فقط (٢ إلى ٤٠).", 400);
+  if (!Number.isFinite(price) || price < 1 || price > 100000) throw new UserError("اكتب السعر بعد الكود بالريال.", 400);
+  const { error } = await db().from("learn_codes").upsert({ course_id: courseId, code, price_sar: price, active: true }, { onConflict: "course_id,code" });
+  if (error) throw error;
+}
+export async function deleteCode(id: string) {
+  await db().from("learn_codes").delete().eq("id", id);
+}
+
 export async function adminExtras() {
-  const [grants, flags, sessions] = await Promise.all([
+  const [grants, flags, sessions, codes] = await Promise.all([
     db().from("learn_grants").select("id,course_id,email,created_at").order("created_at", { ascending: false }).limit(500),
     db().from("learn_flags").select("id,email,lesson_id,session_id,kind,detail,created_at").order("created_at", { ascending: false }).limit(60),
     db().from("learn_sessions").select("id,email,lesson_id,started_at,last_seen,served_s,pieces,revoked,revoked_reason,ip").order("started_at", { ascending: false }).limit(40),
+    db().from("learn_codes").select("id,course_id,code,price_sar,created_at").order("created_at", { ascending: false }).limit(200),
   ]);
-  return { grants: grants.data ?? [], flags: flags.data ?? [], sessions: sessions.data ?? [] };
+  return { grants: grants.data ?? [], flags: flags.data ?? [], sessions: sessions.data ?? [], codes: codes.data ?? [] };
 }
 
 export async function revokeSession(id: string, reason = "owner") {
