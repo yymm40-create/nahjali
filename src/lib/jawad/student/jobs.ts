@@ -27,7 +27,6 @@ export function jobMix(kind: string, input?: Record<string, unknown> | null): Pr
   return CLAUDE_ONLY_KINDS.has(kind) || kind === "plan" ? "claude" : kind === "pictures" ? "image" : "other";
 }
 import { unlimitedFor } from "@/lib/access";
-import { STUDENT } from "@config/jawad/student";
 import { sdb } from "./db";
 import { HANDLERS } from "./handlers";
 
@@ -93,17 +92,6 @@ export async function createJob(
   // One open job per project at a time: outputs are made one after the other, in the student's order
   const { data: busy } = await db.from("student_jobs").select("id").eq("project_id", o.projectId).in("status", ["queued", "running"]).limit(1);
   if (busy?.length) throw new UserError("فيه عملية شغالة على هذه المادة، انتظر تخلص ثم كمّل.", 409);
-
-  // Free trial (no coins taken): a daily ceiling per person, so nobody can repeat paid steps without end
-  if (o.estimateUsd > 0 && !(await unlimitedFor(user.email)) && !(await coinsRequired())) {
-    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-    const { data: today } = await db.from("student_jobs").select("estimate_usd,cost_usd,status").eq("user_id", user.id).gte("created_at", since);
-    const used = ((today ?? []) as { estimate_usd: number; cost_usd: number; status: string }[]).reduce(
-      (s, j) => s + (j.status === "succeeded" ? Number(j.cost_usd) : j.status === "failed" ? 0 : Number(j.estimate_usd)),
-      0,
-    );
-    if (used + o.estimateUsd > STUDENT.freeDailyUsd) throw new UserError("وصلت حد التجربة المجانية لليوم. كمّل بكرة إن شاء الله 🌙", 429);
-  }
 
   // pay after use: nothing is held; a step starts while the wallet has something in it, and what it really cost is
   // taken when it is done (see chargeAfter)

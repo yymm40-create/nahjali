@@ -136,16 +136,9 @@ function cleanBrief(v: unknown): Brief {
   });
 }
 
-/** Materials each person may make in «الطالب الذكي» (the owner's choice); the owner and free guests have no limit. */
-export const MATERIALS_PER_PERSON = 2;
-/** How many materials this person has made so far (kept on the account, so deleting one does not give it back). */
-export const materialsMade = (user: { app_metadata?: Record<string, unknown> }) => Number(user.app_metadata?.student_made ?? 0) || 0;
+// No limit on how many materials a person makes (the owner, 18 October 2026): the old two-materials trial cap is gone.
 
-export async function createProject(user: User & { app_metadata?: Record<string, unknown> }, b: Body, branch: Branch = STUDENT_BRANCH) {
-  const made = materialsMade(user);
-  // the cap is the free trial of «الطالب الذكي»; the hidden branch is paid for as it is used, with no count
-  const limited = branch === STUDENT_BRANCH && !(await unlimitedFor(user.email));
-  if (limited && made >= MATERIALS_PER_PERSON) throw new UserError(`لكل حساب ${MATERIALS_PER_PERSON} مادتان فقط في «الطالب الذكي»، واستخدمتهما.`, 403);
+export async function createProject(user: User, b: Body, branch: Branch = STUDENT_BRANCH) {
   const row = { user_id: user.id, title: text(b.title, 200) || "مادة جديدة", level: text(b.level, 120), audience: text(b.audience, 300) };
   const brief = cleanBrief(b.brief);
   let { data, error } = await sdb().from("student_projects").insert({ ...row, brief, branch }).select("id").single();
@@ -153,7 +146,6 @@ export async function createProject(user: User & { app_metadata?: Record<string,
   if ((error?.code === "42703" || error?.code === "PGRST204") && branch !== STUDENT_BRANCH) throw new UserError("«الخطيب الذكي» ما تجهّز بعد: شغّل ملف SQL رقم 0065 في Supabase.", 503);
   if (error?.code === "42703" || error?.code === "PGRST204") ({ data, error } = await sdb().from("student_projects").insert(row).select("id").single());
   if (error || !data) throw error?.code === "42P01" ? new UserError("قسم «الطالب الذكي» قيد التجهيز: شغّل ملف SQL رقم 0026.", 503) : (error ?? new Error("no project"));
-  if (limited) await sdb().auth.admin.updateUserById(user.id, { app_metadata: { ...(user.app_metadata ?? {}), student_made: made + 1 } });
   return data.id as string;
 }
 

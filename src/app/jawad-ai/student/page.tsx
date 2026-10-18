@@ -18,6 +18,6 @@ export default async function StudentPage() {
   if (!section || (!section.enabled && !owner)) notFound();
   if (user && !(await can(user.email, "student"))) return <SectionClosed icon="🎒" name={section.name} />;
   const projects = user ? await listProjects(user.id).catch(() => null) : [];
-  return <StudentHome name={section.name} projects={projects} loginHref={user ? null : jawadLogin(STUDENT.base)} left={null} />;
+  return <StudentHome name={section.name} projects={projects} loginHref={user ? null : jawadLogin(STUDENT.base)} />;
 }
 

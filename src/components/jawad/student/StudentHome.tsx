@@ -24,10 +24,8 @@ export default function StudentHome({
   name,
   projects,
   loginHref = null,
-  left = null,
 }: {
   /** materials this person can still make (null: no limit) */
-  left?: number | null;
   name: string;
   /** signed-out visitor: where to sign in before making anything */
   loginHref?: string | null;
@@ -209,7 +207,6 @@ export default function StudentHome({
             مادة جديدة
           </h2>
           <p className="text-sm text-jw-muted">اكتب اسم المادة واختر من وين المحتوى، وبعدها تحط ملفاتك.</p>
-          {left !== null && <p className={`text-xs font-bold ${left ? "text-jw-accent" : "text-jw-danger"}`}>{left ? `متبقٍّ لك ${left === 1 ? "مادة واحدة" : "مادتان"} من ٢ — اكتب اسمًا واضحًا قبل «ابدأ»` : "استخدمت المادتين المتاحتين لحسابك."}</p>}
         </div>
         <div>
           <label className="jw-label" htmlFor="st-title">اسم المادة</label>
@@ -239,7 +236,7 @@ export default function StudentHome({
         <AutoSwitch on={auto} onChange={setAuto} />
         <ErrorLine error={error} />
         <div className="text-center">
-          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-10 !text-base" onClick={create} disabled={busy || going || left === 0}>
+          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !px-10 !text-base" onClick={create} disabled={busy || going}>
             {busy || going ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : <Icon name="sparkles" size={18} />}
             {loginHref ? "سجّل دخولك وابدأ" : going ? "جارٍ الفتح…" : "ابدأ"}
           </button>
