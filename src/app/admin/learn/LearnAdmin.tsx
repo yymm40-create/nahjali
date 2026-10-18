@@ -209,6 +209,7 @@ function CourseCard({ c, grants, ups, act, addVideo, reupload, confirmDel }: { c
           <input className="field flex-1" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
           <button type="button" className="btn btn-ghost" onClick={async () => { if (await act({ action: "grant", courseId: c.id, email }, "انضاف")) setEmail(""); }}>أضف</button>
         </div>
+        <button type="button" className="btn btn-ghost" onClick={() => void act({ action: "grant_past", courseId: c.id }, "انفتحت الدورة لكل مشتري الدورة الماضية (تطلع إيملاتهم تحت)")}>🎁 افتحها لكل من اشترى الدورة الماضية (كاملة أو مسجلة)</button>
         {grants.map((g) => (
           <p key={g.id} className="flex items-center gap-2 text-sm font-bold" dir="ltr"><span>{g.email}</span><button type="button" className="chip" onClick={() => void act({ action: "ungrant", id: g.id }, "انشال")}>✖</button></p>
         ))}

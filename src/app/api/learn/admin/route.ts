@@ -66,6 +66,8 @@ export const POST = handle(async (req: Request) => {
     case "grant":
       await L.grant(str(b.courseId), b.email, user.email ?? user.id);
       return NextResponse.json({ ok: true });
+    case "grant_past":
+      return NextResponse.json({ added: await L.grantPastBuyers(str(b.courseId), user.email ?? user.id) });
     case "ungrant":
       await L.ungrant(str(b.id));
       return NextResponse.json({ ok: true });
