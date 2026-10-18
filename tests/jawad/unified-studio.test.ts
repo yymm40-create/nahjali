@@ -3,14 +3,12 @@ import { DEFAULT_SECTIONS, sectionPath, unifiedStudioNavigation } from "@config/
 
 describe("unified creative studio", () => {
   it("shows image, video and audio as one navigation item", () => {
-    const sections = unifiedStudioNavigation([
-      ...DEFAULT_SECTIONS.map((section) => ({ ...section, path: sectionPath(section) })),
-      { id: "director", name: "جواد المخرج", icon: "film", implementation: "film" as const, sort: 25, enabled: true, path: "/jawad-ai/director" },
-    ]);
+    const sections = unifiedStudioNavigation(DEFAULT_SECTIONS.map((section) => ({ ...section, path: sectionPath(section) })));
     expect(sections.filter((section) => ["images", "video", "audio"].includes(section.id))).toEqual([
       expect.objectContaining({ id: "images", name: "الاستوديو الإبداعي", path: "/jawad-ai/images" }),
     ]);
-    expect(sections.some((section) => section.id === "director")).toBe(false);
+    // «جواد المخرج» is a section of its own now, not part of the studio
+    expect(sections.some((section) => section.id === "director")).toBe(true);
   });
 
   it("keeps the old routes available for direct links", () => {
