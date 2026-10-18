@@ -180,7 +180,9 @@ export async function runJob(id: string) {
       await db.from("student_jobs").update(patch).eq("id", id);
     }
   } catch (e) {
-    const message = e instanceof UserError ? e.message : "تعذّر إكمال هذه الخطوة. ما انخصم منك شيء، وتقدر تعيد المحاولة.";
+    // the reason itself rides along in brackets (short), so a report from the page says what really went wrong
+    const why = (e instanceof Error ? e.message : String(e ?? "")).replace(/\s+/g, " ").replace(/sk-[A-Za-z0-9_-]{8,}/g, "…").trim().slice(0, 180);
+    const message = e instanceof UserError ? e.message : `تعذّر إكمال هذه الخطوة${why ? ` (${job.kind}${job.stage ? ` · ${job.stage}` : ""}: ${why})` : ""}. ما انخصم منك شيء، وتقدر تعيد المحاولة.`;
     console.error("student job failed", job.kind, job.id, e);
     await db.from("student_jobs").update({ status: "failed", error: message, finished_at: new Date().toISOString(), lease_until: null }).eq("id", id);
     await refundCoins(job.id);
