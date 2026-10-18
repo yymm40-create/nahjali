@@ -117,6 +117,28 @@ export interface SlidePlan {
   slides: Slide[];
 }
 
+/**
+ * «مطوية»: the panels in the order of their NUMBERS (the order they are read in): 1 the cover; a tri-fold has the content in
+ * 2·3·4, the front flap 5 and the back 6; a bi-fold has the content in 2·3 and the back 4. Each one short (a panel is a third
+ * or a half of an A4 side).
+ */
+export interface BrochurePanel {
+  role: "cover" | "flap" | "content" | "back";
+  title: string;
+  /** the lines of the panel (short: a list item, a sentence); «هل تعلم؟» and the sources are lines too */
+  text: string[];
+  /** the picture proposed for the panel */
+  visual: string;
+  segments: string[];
+  image: ImageChoice;
+}
+export interface BrochurePlan {
+  title: string;
+  subtitle: string;
+  fold: "tri" | "bi";
+  panels: BrochurePanel[];
+}
+
 export interface Question {
   type: string;
   question: string;

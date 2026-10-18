@@ -5,7 +5,7 @@
 
 import { QUESTION_TYPES } from "@config/jawad/student";
 import Icon from "@/components/jawad/Icon";
-import type { AudioPlan, DocPlan, ImageChoice, QuizPlan, Slide, SlidePlan } from "@/lib/jawad/student/model";
+import type { AudioPlan, BrochurePlan, DocPlan, ImageChoice, QuizPlan, Slide, SlidePlan } from "@/lib/jawad/student/model";
 import { emptyImage } from "@/lib/jawad/student/model";
 import { MAP_TYPES, fromOutline, toOutline, type MapType, type MindMap, type MindPlan } from "@/lib/jawad/student/mindmap";
 import { useState } from "react";
@@ -301,6 +301,39 @@ function MapOutline({ map, n, onChange }: { map: MindMap; n: number; onChange: (
       <p className="text-[11px] text-jw-faint">
         {branches} فرع رئيسي · {map.branches.reduce((s, b) => s + b.children.length, 0)} فرع فرعي{map.links.length ? ` · ${map.links.length} رابط بين الفروع` : ""}
       </p>
+    </div>
+  );
+}
+
+/** «المطوية»: each panel (cover, content, flap, back) as a title and its lines; a picture idea for the ones that can carry it. */
+export function BrochurePlanEditor({ plan, onChange, images }: { plan: BrochurePlan; onChange: (p: BrochurePlan) => void; images: Img[] }) {
+  const ROLE = { cover: "الغلاف", flap: "اللسان الأمامي", content: "محتوى", back: "الخلفية" } as const;
+  const set = (i: number, patch: Partial<BrochurePlan["panels"][number]>) => onChange({ ...plan, panels: plan.panels.map((p, k) => (k === i ? { ...p, ...patch } : p)) });
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="jw-label">عنوان المطوية</span>
+          <input className="jw-input" value={plan.title} onChange={(e) => onChange({ ...plan, title: e.target.value })} />
+        </label>
+        <label className="block text-sm">
+          <span className="jw-label">العنوان الفرعي</span>
+          <input className="jw-input" value={plan.subtitle} onChange={(e) => onChange({ ...plan, subtitle: e.target.value })} />
+        </label>
+      </div>
+      <p className="text-xs text-jw-muted">الواجهات بترتيب القراءة (١ الغلاف). كل سطر في الصندوق نقطة أو جملة قصيرة؛ المطوية تنقرأ وقوفًا، فخلّها مختصرة.</p>
+      {plan.panels.map((p, i) => (
+        <div key={i} className="space-y-2 rounded-2xl border border-jw-line bg-white p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <b>
+              {(i + 1).toLocaleString("ar")}. {ROLE[p.role]}
+            </b>
+            <input className="jw-input flex-1" value={p.title} onChange={(e) => set(i, { title: e.target.value })} aria-label={`عنوان الواجهة ${i + 1}`} />
+          </div>
+          <textarea className="jw-textarea text-sm" rows={Math.min(8, Math.max(3, p.text.length + 1))} value={p.text.join("\n")} onChange={(e) => set(i, { text: e.target.value.split("\n") })} aria-label={`سطور الواجهة ${i + 1}`} />
+          {(p.role === "content" || p.role === "cover") && <ImagePick value={p.image} onChange={(image) => set(i, { image })} images={images} />}
+        </div>
+      ))}
     </div>
   );
 }

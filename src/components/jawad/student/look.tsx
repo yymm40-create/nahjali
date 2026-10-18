@@ -11,6 +11,7 @@ export const KIND_LOOK: Record<string, { emoji: string; grad: string }> = {
   preread: { emoji: "🧭", grad: "linear-gradient(135deg,#14b8a6,#0ea5e9)" },
   mindmap: { emoji: "🧠", grad: "linear-gradient(135deg,#22c55e,#0ea5e9 55%,#a855f7)" },
   chat: { emoji: "💬", grad: "linear-gradient(135deg,#8b5cf6,#d946ef)" },
+  brochure: { emoji: "📰", grad: "linear-gradient(135deg,#f59e0b,#ef4444 60%,#8b5cf6)" },
   sermon: { emoji: "🕌", grad: "linear-gradient(135deg,#0f766e,#d4a017)" },
 };
 
@@ -41,6 +42,18 @@ export function KindSample({ kind }: { kind: string }) {
               <span key={i} className="block h-6 rounded-md bg-white/25" />
             ))}
           </div>
+        </div>
+      );
+    case "brochure":
+      return (
+        <div className="flex aspect-video gap-0.5 rounded-xl bg-white p-1.5 shadow-inner" dir="rtl">
+          {["#f59e0b", "#fff7ed", "#ffedd5"].map((c, i) => (
+            <div key={i} className="flex-1 space-y-1 rounded-md p-1.5" style={{ background: c }}>
+              <span className="block h-1.5 w-2/3 rounded-full" style={{ background: i ? "#ea580c" : "#fff" }} />
+              {line("100%", i ? "rgba(29,22,64,.18)" : "rgba(255,255,255,.7)")}
+              {line("80%", i ? "rgba(29,22,64,.18)" : "rgba(255,255,255,.7)")}
+            </div>
+          ))}
         </div>
       );
     case "book":

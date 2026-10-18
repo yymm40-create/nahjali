@@ -2,7 +2,8 @@
 // print PDFs with Chromium and by the pages for live previews (same HTML, same CSS — what is previewed is what prints).
 
 import { STYLES, type Design } from "@config/jawad/student";
-import type { Block, Doc, Question, SlidePlan } from "../model";
+import type { Block, BrochurePlan, Doc, Question, SlidePlan } from "../model";
+import { BROCHURE_SIDES } from "../max-sources";
 import { frontPages } from "../pages";
 import { designCss, styleFor } from "./css";
 
@@ -267,4 +268,51 @@ body{font-size:13px;padding:14px;background:${design.custom?.colors.bg ?? st.col
 .chapter-open{padding:10px 12px;border-radius:6px;margin-bottom:10px}
 .chapter-open h2{font-size:20px}`;
   return page(css, `<div class="s-${design.main}" style="background:var(--paper);padding:14px;border-radius:8px"><div class="chapter-open s-${styleFor(design, "story")}"><h2>${esc(doc.chapters[0].title)}</h2></div>${doc.chapters[0].blocks.map((b) => blockHtml(b, design, { fontFaces })).join("")}</div>`, "sample");
+}
+
+// ───────────────────────────── a brochure (مطوية) ─────────────────────────────
+
+/**
+ * The brochure's two sides on A4 landscape (the standard maker): equal columns, one panel each, in the Arabic fold order
+ * (BROCHURE_SIDES, left → right as the sheet lies; a right-to-left row lists them from the right). Print double-sided,
+ * flipped on the SHORT edge.
+ */
+export function brochureHtml(plan: BrochurePlan, design: Design, o: RenderOpts) {
+  const sides = BROCHURE_SIDES[plan.fold === "bi" ? "bi" : "tri"];
+  const css = `${designCss(design, o.fontFaces)}
+@page{size:297mm 210mm;margin:0}
+.side{width:297mm;height:210mm;display:flex;flex-direction:row;overflow:hidden;break-after:page;position:relative}
+.side:last-child{break-after:auto}
+.panel{flex:1 1 0;min-width:0;height:100%;padding:14mm 11mm;display:flex;flex-direction:column;gap:3.2mm;position:relative;background:var(--paper);overflow:hidden}
+.panel:nth-child(even){background:color-mix(in srgb,var(--accent) 6%,var(--paper))}
+.panel + .panel{border-inline-end:.3mm dashed var(--line)}
+.panel h2{font-size:17pt;color:var(--accent);margin:0;padding-bottom:2mm;border-bottom:.7mm solid var(--accent2)}
+.panel p,.panel li{font-size:10.6pt;line-height:1.75;margin:0}
+.panel ul{margin:0;padding-inline-start:1.2em;display:flex;flex-direction:column;gap:1.6mm}
+.panel img{width:100%;max-height:52mm;object-fit:cover;border-radius:var(--radius)}
+.panel.cover,.panel.back{background:var(--accent);color:#fff;justify-content:center;text-align:center}
+.panel.cover h1{font-size:30pt;color:#fff;line-height:1.3}
+.panel.cover h2,.panel.back h2{color:#fff;border-color:rgba(255,255,255,.6)}
+.panel.cover .sub{font-size:13pt;opacity:.92}
+.panel.flap{justify-content:center;text-align:center}
+.panel.flap h2{font-size:20pt}
+.panel .tip{border:.4mm dashed var(--accent2);border-radius:var(--radius);padding:2.4mm 3mm;background:color-mix(in srgb,var(--accent2) 10%,transparent)}
+.panel .src{font-size:8.6pt;color:var(--muted)}
+.panel.back p,.panel.back li,.panel.back .src{color:#fff}`;
+  const panel = (n: number) => {
+    const p = plan.panels[n - 1];
+    if (!p) return `<div class="panel"></div>`;
+    const img = p.image.path && o.images?.[p.image.path] ? `<img src="${o.images[p.image.path]}" alt="">` : "";
+    const lines = p.text.filter(Boolean);
+    const isTip = (l: string) => /^(هل تعلم|💡)/.test(l.trim());
+    const tips = lines.filter(isTip), rest = lines.filter((l) => !isTip(l));
+    const src = p.role === "back" ? rest.filter((l) => /^(المراجع|المصدر|المصادر)/.test(l.trim())) : [];
+    const body = rest.filter((l) => !src.includes(l));
+    const list = body.length > 2 ? `<ul>${body.map((l) => `<li>${rich(l)}</li>`).join("")}</ul>` : body.map((l) => `<p>${rich(l)}</p>`).join("");
+    const head = p.role === "cover" ? `<h1>${rich(plan.title || p.title)}</h1><div class="sub">${rich(plan.subtitle || p.title)}</div>` : `<h2>${rich(p.title)}</h2>`;
+    return `<div class="panel ${p.role}">${head}${img}${p.role === "cover" ? "" : list}${tips.map((t) => `<div class="tip">${rich(t)}</div>`).join("")}${src.map((l) => `<div class="src">${rich(l)}</div>`).join("")}</div>`;
+  };
+  // a right-to-left row lays its first child at the right edge: the sheet's columns, listed left → right, are reversed
+  const side = (nums: number[]) => `<section class="side s-${design.main}">${[...nums].reverse().map(panel).join("")}</section>`;
+  return page(css, side(sides.outside) + side(sides.inside), plan.title);
 }

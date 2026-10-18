@@ -5,16 +5,18 @@
 import { UserError } from "@/lib/api";
 import { defaultDesign, type Design } from "@config/jawad/student";
 import { getOutput, putFile, saveOutput, signFile, type Output } from "./db";
-import type { SlidePlan } from "./model";
-import { deckContent, deckFiles } from "./deck-make";
+import { deckContent, deckFiles, maxFiles, slotOf, slotPatch } from "./deck-make";
+import { maxSourceFor } from "./max-sources";
+import { isMax } from "./max-make";
 import { deckImages, readDeck } from "@/lib/slides/format";
 
 const designOf = (o: Output): Design => (o.settings.design as Design) ?? defaultDesign("editorial");
-const NOT_DECK = "هذا العرض ما انصمم بمصمم العروض.";
+const NOT_DECK = "هذا الناتج ما انصمم بحيدرا ماكس.";
 
 function mine(o: Output) {
-  if (o.kind !== "slides" || o.settings.render !== "design" || !o.plan) throw new UserError(NOT_DECK, 400);
-  const c = deckContent(o, o.plan as SlidePlan, designOf(o));
+  const src = isMax(o) ? maxSourceFor(o) : null;
+  if (!src) throw new UserError(NOT_DECK, 400);
+  const c = deckContent(o, src, designOf(o));
   if (!c.deck.slides.length) throw new UserError("العرض لسا ما انصمم.", 409);
   return c;
 }
@@ -29,14 +31,14 @@ export async function deckView(userId: string, id: string) {
       images[p] = await signFile(p, 3600);
     } catch {}
   }
-  const stale = ((o.content ?? {}) as { stale?: Record<string, boolean> }).stale ?? {};
+  const stale = ((slotOf(o) as { stale?: Record<string, boolean> }).stale) ?? {};
   return { id: o.id, projectId: o.project_id, title: o.title, status: o.status, deck: c.deck, images, stale, files: Object.keys(o.files ?? {}) };
 }
 
 export async function deckAction(userId: string, id: string, b: Record<string, unknown>) {
   const o = await getOutput(userId, id);
   const c = mine(o);
-  const content = (o.content ?? {}) as Record<string, unknown>;
+  const content = slotOf(o) as Record<string, unknown>;
   switch (b.action) {
     case "deck_get":
       return deckView(userId, id);
@@ -53,7 +55,7 @@ export async function deckAction(userId: string, id: string, b: Record<string, u
       });
       const deck = { ...c.deck, title: sent.title || c.deck.title, slides };
       const changedOrder = slides.length !== c.deck.slides.length || slides.some((s, i) => c.deck.slides[i]?.id !== s.id);
-      await saveOutput(o.id, { content: { ...content, deck, unchecked: [], manual: Boolean(content.manual) || changedOrder || slides.some((s) => s.edited), stale: { pdf: true, pptx: true } } });
+      await saveOutput(o.id, { content: slotPatch(o, { deck, unchecked: [], manual: Boolean(content.manual) || changedOrder || slides.some((s) => s.edited), stale: { pdf: true, pptx: true } }) });
       return { ok: true };
     }
     case "deck_image": {
@@ -69,12 +71,21 @@ export async function deckAction(userId: string, id: string, b: Record<string, u
     }
     case "deck_export": {
       const kind = b.kind === "pptx" ? "pptx" : "pdf";
+      const name = (o.title || "عرض").replace(/[\\/:*?"<>|]/g, "");
+      if (o.kind !== "slides") {
+        // a printed output: its files again, from the deck as it is now (a PPTX is only for slides)
+        const made = await maxFiles(o, c.deck);
+        const fresh = await getOutput(userId, id);
+        await saveOutput(o.id, { files: { ...fresh.files, ...made }, content: slotPatch(fresh, { stale: { pdf: false, pptx: false } }) });
+        const key = String(b.file ?? "") in made ? String(b.file) : (made.pdf ? "pdf" : Object.keys(made)[0]);
+        return { url: await signFile(made[key], 600, `${name}.${made[key].endsWith(".png") ? "png" : "pdf"}`) };
+      }
       const r = await deckFiles(o, c.deck, undefined, kind);
       const path = kind === "pdf" ? r.pdfPath : r.pptxPath;
-      const stale = { ...((content.stale as Record<string, boolean>) ?? {}), [kind]: false };
       const fresh = await getOutput(userId, id);
-      await saveOutput(o.id, { files: { ...fresh.files, [kind]: path }, content: { ...((fresh.content ?? {}) as Record<string, unknown>), stale } });
-      return { url: await signFile(path, 600, `${(o.title || "عرض").replace(/[\\/:*?"<>|]/g, "")}.${kind}`) };
+      const stale = { ...(((slotOf(fresh) as { stale?: Record<string, boolean> }).stale) ?? {}), [kind]: false };
+      await saveOutput(o.id, { files: { ...fresh.files, [kind]: path }, content: slotPatch(fresh, { stale }) });
+      return { url: await signFile(path, 600, `${name}.${kind}`) };
     }
   }
   throw new UserError("طلب غير معروف.", 400);

@@ -4,7 +4,7 @@
 // under his message: a card with a button. Nothing is made, and nothing is charged, until the student presses it.
 // Pure: reading and checking his marker, and the instruction that teaches it to him.
 
-import { OUTPUT_KINDS, outputName, type OutputKind } from "@config/jawad/student";
+import { MAX_NAME, OUTPUT_KINDS, maxAvailable, outputName, type OutputKind } from "@config/jawad/student";
 import { canTogether } from "./merge-parts";
 
 export const OFFER_MAX = 4;
@@ -14,6 +14,8 @@ export interface OfferItem {
   kind: OutputKind;
   /** the student's special wishes for this output, in their words (may be empty) */
   note: string;
+  /** made by «حيدرا ماكس» (Claude Code designs it in code, then it opens in the editor) */
+  maker?: "max";
 }
 export interface Offer {
   items: OfferItem[];
@@ -51,7 +53,8 @@ export function splitOffer(reply: string, allowed: readonly string[] = chatMakeK
         const o = (x ?? {}) as Record<string, unknown>;
         const kind = String(o.kind ?? "");
         if (!allowed.includes(kind) || items.some((i) => i.kind === kind)) continue;
-        items.push({ kind: kind as OutputKind, note: String(o.note ?? "").replace(/\s+/g, " ").trim().slice(0, NOTE_MAX) });
+        const max = (o.maker === "max" || o.max === true) && maxAvailable(kind);
+        items.push({ kind: kind as OutputKind, note: String(o.note ?? "").replace(/\s+/g, " ").trim().slice(0, NOTE_MAX), ...(max ? { maker: "max" as const } : {}) });
         if (items.length >= OFFER_MAX) break;
       }
     } catch {
@@ -72,7 +75,7 @@ export function startBody(offer: Pick<Offer, "items" | "together">) {
   return {
     action: "start",
     ...(offer.together ? { together: true } : {}),
-    outputs: offer.items.map((i) => ({ kind: i.kind, settings: {} })),
+    outputs: offer.items.map((i) => ({ kind: i.kind, settings: i.maker === "max" ? { maker: "max", ...(i.kind === "slides" ? { render: "design" } : {}) } : {} })),
     special: offer.items
       .filter((i) => i.note)
       .map((i) => `${outputName(i.kind)}: ${i.note}`)
@@ -90,9 +93,11 @@ export function makeRules(made: { kind: string; title: string; status: string }[
     ...menu,
     have.length ? `Already in this material: ${have.join("; ")}.` : "Nothing has been made yet in this material.",
     "When — and only when — the student asks you to make or prepare something (a summary, an explanation, a quiz, slides, a recording, a mind map, a book or PDF, a pre-lesson paper…), or says yes to what you offered, answer in one or two short sentences saying what you will make and how it follows what they asked, then finish the message with ONE marker line, alone on the last line:",
-    '[[MAKE]]{"outputs":[{"kind":"summary","note":"their special wishes for it, in their words, or empty"}]}',
+    '[[MAKE]]{"outputs":[{"kind":"summary","note":"their special wishes for it, in their words, or empty"},{"kind":"brochure","note":"","maker":"max"}]}',
+    `EVERY output except the recording (audio) can be made by «${MAX_NAME}» — the option "maker":"max". ${MAX_NAME} is Claude Code: it designs the output page by page IN CODE (free layout built for THIS content, drawn in a real browser, looked at, measured and fixed), and the student then edits it by hand in the editor («محرر العرض») and downloads the PDF (slides also as an editable PPTX). Add "maker":"max" ONLY when the student asks for it by any of its names («حيدرا ماكس», «ماكس», «كلاود كود», «Claude Code», «صممه بالكود», «تصميم احترافي حر») — otherwise leave it out, the standard way is cheaper. If the student asks "make EVERYTHING / all the options" you may put up to 4 outputs in one marker (the menu's most useful), and say that more can follow. A Max output is a PDF only (no Word file), and its page count follows the content.`,
+    `The brochure («مطوية», kind "brochure") is one A4 landscape sheet printed on both sides and folded in three (6 panels) or in two (4 panels); the student can say which fold in "note" ("ثنائية الطي" or "ثلاثية الطي").`,
     "At most 4 outputs, one of each kind, kinds only from the menu above. Put in \"note\" only what the student actually asked for that output (its focus, its examples, its length, its tone); never invent wishes.",
-    "When the student wants SEVERAL outputs to come out together in ONE PDF (\"في ملف واحد\", \"PDF واحد\", \"كلها مع بعض\"), put \"together\":true next to \"outputs\" in the same marker (only with two or more of: summary, explain, preread, transcript, book, slides, quiz); the page then puts them in one PDF by itself when they are all finished.",
+    "When the student wants SEVERAL outputs to come out together in ONE PDF (\"في ملف واحد\", \"PDF واحد\", \"كلها مع بعض\"), put \"together\":true next to \"outputs\" in the same marker (only with two or more of: summary, explain, preread, transcript, book, slides, quiz, brochure); the page then puts them in one PDF by itself when they are all finished.",
     "To put the student's finished PDFs together in one file (when they ask to merge, combine or gather the outputs into one PDF), finish with the single line:",
     "[[MERGE]]",
     "The merge takes only what is finished now. If the student asks to make something AND merge, use the [[MAKE]] marker alone, and tell them to ask you for the merge once it is finished.",

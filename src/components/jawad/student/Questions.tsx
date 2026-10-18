@@ -8,7 +8,7 @@ import { useBranch } from "./branch";
 import { useState } from "react";
 import { coinStr } from "@config/coins";
 import { COUNTED_KINDS, chosenPages } from "@/lib/jawad/student/draw";
-import { FONTS, FORMATS, MAX_PAGES, OUTPUT_KINDS, STYLES, isPaged, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { BROCHURE_FOLDS, FONTS, FORMATS, MAX_HINT, MAX_NAME, MAX_PAGES, OUTPUT_KINDS, STYLES, isPaged, maxAvailable, maxOn, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
 import { MAP_GRADES, MAP_TYPES, gradeOf } from "@/lib/jawad/student/mindmap";
 import { PICTURE_KINDS } from "./autopilot";
@@ -42,6 +42,8 @@ export function defaults(kind: OutputKind, level: string): S {
       return { length: "medium", page: "A4", format: "both", occasion: "", poemsFor: "", poems: "" };
     case "slides":
       return { density: "medium", count: 0, aspect: "16:9", notesMode: "both", render: "editable", imageQuality: "high" };
+    case "brochure":
+      return { fold: "tri", density: young ? "low" : "medium", audience: "" };
     case "audio":
       return { source: "text", mode: "single" };
     case "mindmap":
@@ -105,8 +107,8 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange, de
         {onDesign && (
           <button type="button" aria-pressed={designed} onClick={onDesign} className={`relative rounded-2xl p-3 text-start text-white ${designed ? "ring-4 ring-amber-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
             <span className="absolute top-2 left-2 rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold">جديد ✨</span>
-            <b className="block">🎨 {A} يصممها + محرر وعرض</b>
-            <span className="block text-xs text-white/90">كل شريحة تصميم حر مثل المصممين (صور، أشكال، ألوان)، يراجعها {A} وهي مرسومة ويصلّحها. بعدها تعدّلها بنفسك في «محرر العرض»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX نصها قابل للتعديل.</span>
+            <b className="block">🧑‍💻 {MAX_NAME} (Claude Code)</b>
+            <span className="block text-xs text-white/90">{what === "slide" ? "كل شريحة تصميم حر مثل المصممين (صور، أشكال، ألوان)، يراجعها وهي مرسومة ويصلّحها. بعدها تعدّلها بنفسك في «المحرر»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX نصها قابل للتعديل." : "كل خريطة تصميم حر بالكود على فروعك، يراجعها وهي مرسومة ويصلّحها. بعدها تعدّلها بنفسك في «المحرر» وتنزّلها صورة و PDF."}</span>
           </button>
         )}
         <button type="button" aria-pressed={!value && !designed} onClick={() => onChange(false, quality)} className={`rounded-2xl border bg-white p-3 text-start ${!value && !designed ? "border-transparent ring-4 ring-violet-300" : "border-jw-line"}`}>
@@ -135,7 +137,42 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange, de
   );
 }
 
-export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"]; level?: string }) {
+/** «🧑‍💻 حيدرا ماكس» under every output that has pages: the output designed in code by Claude Code, then edited by hand in the editor. */
+export function MaxChoice({ kind, s, set }: { kind: OutputKind; s: S; set: (patch: S) => void }) {
+  if (kind === "audio") {
+    return (
+      <p className="rounded-xl border border-jw-line bg-white p-3 text-xs text-jw-muted" role="note">
+        🧑‍💻 {MAX_NAME} ما يخص التسجيل الصوتي: التسجيل ما فيه صفحات تتصمم (الصوت يطلع بصوت ElevenLabs أو صوتك). يخدمك في كل ناتج غيره.
+      </p>
+    );
+  }
+  const on = maxOn(s);
+  return (
+    <button type="button" role="switch" aria-checked={on} onClick={() => set(on ? { maker: "", ...(kind === "slides" ? { render: "editable" } : {}) } : { maker: "max", ...(kind === "slides" ? { render: "design" } : {}) })} className={`relative w-full rounded-2xl p-3 text-start text-white ${on ? "ring-4 ring-amber-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
+      <span className="absolute top-2 left-2 rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold">جديد ✨</span>
+      <b className="block">{on ? "✓ " : ""}🧑‍💻 {MAX_NAME} (Claude Code)</b>
+      <span className="block text-xs text-white/90">
+        {MAX_HINT}
+        {isPaged(kind) || kind === "sermon" || kind === "transcript" ? " يطلع PDF فقط (بدون ملف Word)، وعدد الصفحات يتبع المحتوى." : ""}
+        {kind === "quiz" ? " ورقة الأسئلة وورقة الإجابات صفحات مصممة." : ""}
+        {kind === "brochure" ? " الوجهان (الخارجي والداخلي) يصممهما على قياس الطي." : ""}
+      </span>
+    </button>
+  );
+}
+
+export function Questions(p: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"]; level?: string }) {
+  // slides and maps carry their own card (next to the other ways to make them); every other output gets the switch below its questions
+  const own = p.kind === "slides" || p.kind === "mindmap";
+  return (
+    <>
+      <KindQuestions {...p} />
+      {maxAvailable(p.kind) || p.kind === "audio" ? own ? null : <MaxChoice kind={p.kind} s={p.s} set={p.set} /> : null}
+    </>
+  );
+}
+
+function KindQuestions({ kind, s, set, chosen, prices, level = "" }: { kind: OutputKind; s: S; set: (patch: S) => void; chosen: OutputKind[]; prices: ProjectHook["state"]["prices"]; level?: string }) {
   const { assistant: A } = useBranch();
   // the level of each output (the owner's words): light, medium, deep, deepest — instead of a school level for the whole material
   const density = <Choice label="المستوى" value={String(s.density)} options={LEVEL_OPTIONS} onChange={(density) => set({ density })} />;
@@ -205,7 +242,7 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
           <Count label="كم شريحة؟" value={Number(s.count) || 0} options={[8, 12, 20]} max={200} unit="شريحة" onChange={(count) => set({ count })} />
           <Choice label="الشرح وين؟" value={String(s.notesMode)} options={[{ id: "slide", label: "على الشريحة" }, { id: "notes", label: "في ملاحظات المحاضر" }, { id: "both", label: "الاثنين" }]} onChange={(notesMode) => set({ notesMode })} />
           <Choice label="الشكل" value={String(s.aspect)} options={[{ id: "16:9", label: "عريض 16:9" }, { id: "4:3", label: "4:3" }]} onChange={(aspect) => set({ aspect })} />
-          <MethodChoice what="slide" value={s.render === "image"} designed={s.render === "design"} onDesign={() => set({ render: "design" })} quality={String(s.imageQuality || "high")} perUnit={prices.slide} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q })} />
+          <MethodChoice what="slide" value={s.render === "image"} designed={maxOn(s)} onDesign={() => set({ render: "design", maker: "max" })} quality={String(s.imageQuality || "high")} perUnit={prices.slide} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q, maker: "" })} />
         </>
       );
     case "audio": {
@@ -255,11 +292,23 @@ export function Questions({ kind, s, set, chosen, prices, level = "" }: { kind: 
           <p className="text-[11px] text-jw-faint">{s.mapType && s.mapType !== "auto" ? MAP_TYPES.find((t) => t.id === s.mapType)?.hint : "يختار الشكل اللي يناسب كل جزء: شعاعية للحفظ، شجرية للتصنيف، مفاهيمية للعلاقات، تسلسلية للخطوات."}</p>
           <Choice label="كم خريطة؟" value={String(s.scope ?? "one")} options={[{ id: "one", label: "خريطة وحدة للمادة كلها" }, { id: "sections", label: "خريطة شاملة + خريطة لكل قسم" }]} onChange={(scope) => set({ scope })} />
           <p className="text-[11px] text-jw-faint">الدرجة حسب مستواك ({MAP_GRADES[gradeOf(level)].name}): {MAP_GRADES[gradeOf(level)].says}.</p>
-          <MethodChoice what="map" value={s.render === "image"} quality={String(s.imageQuality || "high")} perUnit={prices.map} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q })} />
-          <button type="button" role="switch" aria-checked={s.recall !== false} onClick={() => set({ recall: s.recall === false })} className={`w-full rounded-2xl border p-3 text-start ${s.recall !== false ? "border-transparent bg-emerald-50 ring-4 ring-emerald-200" : "border-jw-line bg-white"}`}>
+          <MethodChoice what="map" value={s.render === "image" && !maxOn(s)} designed={maxOn(s)} onDesign={() => set({ maker: "max", render: "editable" })} quality={String(s.imageQuality || "high")} perUnit={prices.map} free={prices.free} onChange={(draw, q) => set({ render: draw ? "image" : "editable", imageQuality: q, maker: "" })} />
+          {maxOn(s) ? <p className="text-[11px] text-jw-faint">مع {MAX_NAME} كل خريطة صفحة مصممة؛ نسخة التسميع الفاضية ما تنصنع معه (تقدر تنسخ الخريطة في المحرر وتمسح فروعها).</p> : <button type="button" role="switch" aria-checked={s.recall !== false} onClick={() => set({ recall: s.recall === false })} className={`w-full rounded-2xl border p-3 text-start ${s.recall !== false ? "border-transparent bg-emerald-50 ring-4 ring-emerald-200" : "border-jw-line bg-white"}`}>
             <b className="block">{s.recall !== false ? "✓ " : ""}🧠 نسخة التسميع (أقوى طريقة للحفظ)</b>
             <span className="block text-xs text-jw-muted">نفس الخريطة بفروع فاضية: تملاها من ذاكرتك وتقارن بالأصل، وتعيدها بعد يوم وأسبوع وشهر. مجانية.</span>
-          </button>
+          </button>}
+        </>
+      );
+    case "brochure":
+      return (
+        <>
+          <Choice label="نوع الطي" value={String(s.fold ?? "tri")} options={BROCHURE_FOLDS.map((f) => ({ id: f.id as string, label: `${f.name} (${f.panels.toLocaleString("ar")} واجهات)` }))} onChange={(fold) => set({ fold })} />
+          <p className="text-[11px] text-jw-faint">{BROCHURE_FOLDS.find((f) => f.id === (s.fold ?? "tri"))?.hint}. ورقة A4 بالعرض بوجهين، تطبعها على الوجهين (اقلب على الحافة القصيرة) وتطويها.</p>
+          <Choice label="المستوى" value={String(s.density)} options={LEVEL_OPTIONS.slice(0, 3)} onChange={(density) => set({ density })} />
+          <label className="block space-y-1 text-sm">
+            <span className="font-semibold">لمن المطوية؟ (اختياري)</span>
+            <input className="jw-input" value={String(s.audience ?? "")} maxLength={300} onChange={(e) => set({ audience: e.target.value })} placeholder="مثال: طلاب الصف الثالث المتوسط، أولياء الأمور، زوار المعرض المدرسي" />
+          </label>
         </>
       );
     case "chat":

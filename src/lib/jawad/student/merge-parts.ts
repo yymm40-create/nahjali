@@ -41,7 +41,7 @@ export function mergeParts(list: MergeItem[], ids?: string[]): { parts: MergePar
 
 
 /** The outputs that make a PDF (a recording, a conversation and a mind map do not), so "all in one PDF" has meaning for them. */
-export const PDF_KINDS = ["summary", "explain", "preread", "transcript", "book", "slides", "quiz"] as const;
+export const PDF_KINDS = ["summary", "explain", "preread", "transcript", "book", "slides", "quiz", "brochure"] as const;
 export const pdfKinds = (kinds: readonly string[]) => kinds.filter((k) => (PDF_KINDS as readonly string[]).includes(k));
 /** "In one PDF" is offered from two outputs that can make one. */
 export const canTogether = (kinds: readonly string[]) => pdfKinds(kinds).length >= 2;

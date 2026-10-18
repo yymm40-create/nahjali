@@ -143,7 +143,7 @@ export function rolesBrief(roles: unknown[]): string {
   return ["EACH SOURCE HAS A ROLE, written in its label («نموذج أتبعه», «مادة علمية», «مرجع إضافي»):", ...lines].join("\n");
 }
 
-export type OutputKind = "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat" | "mindmap" | "sermon";
+export type OutputKind = "summary" | "explain" | "preread" | "transcript" | "book" | "slides" | "audio" | "quiz" | "chat" | "mindmap" | "sermon" | "brochure";
 
 export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] = [
   // only in the hidden «الخطيب الذكي» (see config/jawad/khateeb.ts): never offered to the student
@@ -157,6 +157,7 @@ export const OUTPUT_KINDS: { kind: OutputKind; name: string; blurb: string }[] =
   { kind: "audio", name: "تسجيل صوتي", blurb: "قراءة صوتية بـ ElevenLabs، ملف واحد أو عدة ملفات." },
   { kind: "mindmap", name: "خريطة ذهنية", blurb: "خريطة احترافية بدرجتها حسب عمرك (شعاعية، شجرية، مفاهيمية أو تسلسلية)، صورة عالية الجودة يصممها صادق أو يرسمها GPT Image 2، مع نسخة فارغة تسمّع فيها." },
   { kind: "quiz", name: "اختبار", blurb: "أسئلة من المادة بصعوبة وعدد وأنواع تحددها." },
+  { kind: "brochure", name: "مطوية", blurb: "مطوية مدرسية ثلاثية أو ثنائية الطي على ورقة A4 بوجهين: غلاف، مقدمة، محاور، «هل تعلم؟»، خاتمة ومراجع، جاهزة للطباعة." },
   { kind: "chat", name: "محادثة مع صادق", blurb: "تناقش صادق في الموضوع وتسأله، ويبحث لك لو طلبت؛ المحادثة محفوظة مع مادتك." },
 ];
 export const outputName = (k: string) => OUTPUT_KINDS.find((o) => o.kind === k)?.name ?? k;
@@ -353,7 +354,27 @@ export const ISLAMIC_WAYS = [
 // ───────────────────────────── the student's own choices for a file ─────────────────────────────
 
 /** Outputs with a design (style, fonts): the design step is shown when one of them is chosen. */
-export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book", "sermon", "slides", "quiz", "mindmap"];
+export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book", "sermon", "slides", "quiz", "mindmap", "brochure"];
+
+// ───────────────────────────── «حيدرا ماكس» ─────────────────────────────
+// The option every output has: the output is DESIGNED IN CODE by «Claude Code» (the page designer of src/lib/slides): every
+// page freely laid out for THIS content, drawn in a real browser, looked at, measured and fixed until it passes — then
+// opened in «محرر العرض» to edit by hand, and exported as PDF (the slides also as an editable PPTX). Kept in the
+// output's settings as `maker: "max"` (the older slides setting `render: "design"` means the same).
+export const MAX_NAME = "حيدرا ماكس";
+export const MAX_HINT = "يصممه Claude Code بالكود صفحة صفحة: تصميم حر على مادتك (مب قالب)، يشوفه مرسوم ويصلّحه، وبعدها تعدّله بنفسك في المحرر وتنزّله PDF.";
+/** Outputs that can be made by حيدرا ماكس: everything with something to see; a spoken recording has no pages to design. */
+export const MAX_KINDS: readonly string[] = ["summary", "explain", "preread", "transcript", "book", "slides", "quiz", "mindmap", "sermon", "brochure"];
+export const maxAvailable = (kind: string) => MAX_KINDS.includes(kind);
+export const maxOn = (s: Record<string, unknown> | null | undefined) => s?.maker === "max" || s?.render === "design";
+
+/** The folds of a «مطوية»: one A4 sheet printed on both sides (landscape), turned on its short edge. */
+export const BROCHURE_FOLDS = [
+  { id: "tri", name: "ثلاثية الطي", panels: 6, hint: "٦ واجهات: الغلاف، اللسان الأمامي، ٣ واجهات للمحتوى، والخلفية" },
+  { id: "bi", name: "ثنائية الطي", panels: 4, hint: "٤ واجهات: الغلاف، واجهتان للمحتوى، والخلفية" },
+] as const;
+export type BrochureFold = (typeof BROCHURE_FOLDS)[number]["id"];
+export const foldOf = (s: Record<string, unknown>): BrochureFold => (s.fold === "bi" ? "bi" : "tri");
 
 /** Written outputs made as pages (PDF, and Word when asked): they take a page count, a file format and a design. */
 export const PAGED_KINDS = ["summary", "explain", "preread", "book"] as const;

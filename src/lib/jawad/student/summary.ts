@@ -2,7 +2,7 @@
 // page (the page count, the file type, the density, the difficulty…), and every output is created with them; this line
 // is what each output's panel shows afterwards instead of asking the same questions again. Pure.
 
-import { FORMATS, QUESTION_TYPES, formatOf, pagesOf, type OutputKind } from "@config/jawad/student";
+import { FORMATS, MAX_NAME, QUESTION_TYPES, formatOf, maxAvailable, maxOn, pagesOf, type OutputKind } from "@config/jawad/student";
 import { readSermonLength } from "@config/jawad/khateeb";
 import { MAP_TYPES } from "./mindmap";
 
@@ -40,7 +40,7 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
     case "slides": {
       const n = Math.max(0, Math.round(Number(s.count) || 0));
       out.push(n ? `${n} شريحة` : "عدد الشرائح حسب المادة");
-      out.push(s.render === "image" ? "تُرسم صورًا" : s.render === "design" ? "يصممها صادق + محرر وعرض" : "شرائح قابلة للتعديل");
+      out.push(s.render === "image" ? "تُرسم صورًا" : maxOn(s) ? `${MAX_NAME}: يصممها Claude Code + محرر وعرض` : "شرائح قابلة للتعديل");
       if (NOTES[str(s.notesMode)]) out.push(NOTES[str(s.notesMode)]);
       out.push(s.aspect === "4:3" ? "4:3" : "عريض 16:9");
       break;
@@ -60,8 +60,13 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
     case "mindmap":
       out.push(MAP_TYPES.find((t) => t.id === s.mapType)?.name ?? "النوع يختاره صادق");
       out.push(s.scope === "sections" ? "شاملة + خريطة لكل قسم" : "خريطة وحدة");
-      out.push(s.render === "image" ? "يرسمها GPT Image 2" : "يصممها صادق");
-      if (s.recall !== false) out.push("مع نسخة التسميع");
+      out.push(maxOn(s) ? `${MAX_NAME}: يصممها Claude Code` : s.render === "image" ? "يرسمها GPT Image 2" : "يصممها صادق");
+      if (s.recall !== false && !maxOn(s)) out.push("مع نسخة التسميع");
+      break;
+    case "brochure":
+      out.push(s.fold === "bi" ? "ثنائية الطي (٤ واجهات)" : "ثلاثية الطي (٦ واجهات)");
+      if (DENSITY[str(s.density)]) out.push(DENSITY[str(s.density)]);
+      if (str(s.audience).trim()) out.push(`لـ ${str(s.audience).trim().slice(0, 40)}`);
       break;
     case "audio":
       out.push(s.mode === "multi" ? "ملف لكل قسم" : "ملف واحد");
@@ -69,6 +74,7 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
     default:
       break;
   }
+  if (maxOn(s) && maxAvailable(kind) && kind !== "slides" && kind !== "mindmap") out.push(`${MAX_NAME}: يصممه Claude Code`);
   return out;
 }
 

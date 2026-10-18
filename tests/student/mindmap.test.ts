@@ -32,8 +32,8 @@ describe("«خريطة ذهنية» is an output of «الطالب الذكي»"
   });
 
   it("has its migration (the database allows the kind)", () => {
-    // the latest migration that sets the list (0066 added the sermon)
-    const sql = read("supabase/migrations/0066_khateeb_sermon.sql");
+    // the latest migration that sets the list (0076 added the brochure)
+    const sql = read("supabase/migrations/0076_student_brochure.sql");
     expect(sql).toContain("'mindmap'");
     for (const k of OUTPUT_KINDS) expect(sql, k.kind).toContain(`'${k.kind}'`);
   });
@@ -212,7 +212,7 @@ describe("the pipeline", () => {
 
   it("is approved straight to «ready» (no paid trial), and one map can be drawn again", () => {
     const actions = read("src/lib/jawad/student/actions.ts");
-    expect(actions).toContain('o.kind === "book" || o.kind === "slides" ? "trial_offer" : "ready"');
+    expect(actions).toContain('(o.kind === "book" && !isMax(o)) || o.kind === "slides" ? "trial_offer" : "ready"');
     expect(actions).toContain('o.kind === "mindmap" && o.settings.render === "image"');
   });
 });

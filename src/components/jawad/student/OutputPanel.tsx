@@ -5,13 +5,13 @@ import { useEffect, useState } from "react";
 import Icon from "@/components/jawad/Icon";
 import { settingsLine } from "@/lib/jawad/student/summary";
 import CapacityAsk from "./CapacityAsk";
-import { DENSITIES, DESIGNED_KINDS, FORMATS, OUTPUT_STATUS, QUESTION_TYPES, STUDENT, emptyWish, formatOf, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
+import { BROCHURE_FOLDS, DENSITIES, DESIGNED_KINDS, FORMATS, MAX_NAME, maxAvailable, maxOn, OUTPUT_STATUS, QUESTION_TYPES, STUDENT, emptyWish, formatOf, type Design, type DesignWish, type OutputKind } from "@config/jawad/student";
 import { readSermonLength, SERMON_LENGTHS } from "@config/jawad/khateeb";
-import type { AudioPlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
+import type { AudioPlan, BrochurePlan, Doc, DocPlan, QuizPlan, SlidePlan } from "@/lib/jawad/student/model";
 import type { OutputView } from "./client";
-import { AudioPlanEditor, DocPlanEditor, MindPlanEditor, QuizPlanEditor, SlideMapEditor } from "./PlanEditors";
+import { AudioPlanEditor, BrochurePlanEditor, DocPlanEditor, MindPlanEditor, QuizPlanEditor, SlideMapEditor } from "./PlanEditors";
 import type { MindPlan } from "@/lib/jawad/student/mindmap";
-import { defaults, DesignStep, Questions } from "./Questions";
+import { defaults, DesignStep, MaxChoice, Questions } from "./Questions";
 import { AudioResult, DocView, FileLinks, MindmapResult, PdfFrame, QuizPlay, SlidesFonts, TranscriptView } from "./Results";
 import type { ProjectHook } from "./StudentProject";
 import { ErrorLine, Gate, JobStatus, PaidButton, Seg, useAsync } from "./ui";
@@ -197,9 +197,10 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
       {plan !== null && ["plan_review", "ready", "trial_offer", "trial_review", "failed"].includes(o.status) && !mine && (
         <div className="space-y-3">
           <CapacityAsk o={o} additionsAllowed={p.state.project.allow_additions === true} act={act} running={running} />
-          <h3 className="font-semibold">{o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : o.kind === "mindmap" ? "فروع الخريطة" : "الخطة والفهرس"}</h3>
+          <h3 className="font-semibold">{o.kind === "brochure" ? "خطة المطوية" : o.kind === "slides" ? "خريطة الشرائح" : o.kind === "quiz" ? "توزيع الأسئلة" : o.kind === "audio" ? "نص القراءة" : o.kind === "mindmap" ? "فروع الخريطة" : "الخطة والفهرس"}</h3>
           {o.kind === "sermon" && <SermonPlan o={o} plan={plan as DocPlan} act={act} running={running} />}
           {(o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book") && <DocPlanEditor plan={plan as DocPlan} onChange={setPlan} labels={labels} images={images} withImages={o.kind === "book"} />}
+          {o.kind === "brochure" && <BrochurePlanEditor plan={plan as BrochurePlan} onChange={setPlan} images={images} />}
           {o.kind === "slides" && <SlideMapEditor plan={plan as SlidePlan} onChange={setPlan} images={images} />}
           {o.kind === "quiz" && <QuizPlanEditor plan={plan as QuizPlan} onChange={setPlan} wanted={Number(o.settings.count) || 10} customType={str(o.settings.customType)} />}
           {o.kind === "audio" && <AudioPlanEditor plan={plan as AudioPlan} onChange={setPlan} />}
@@ -268,19 +269,27 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
             return <p className={`text-sm ${got === want ? "text-jw-ok" : "text-jw-warn"}`}>{got === want ? `✓ ${got.toLocaleString("ar")} صفحة بالضبط مثل ما طلبت` : `طلع ${got.toLocaleString("ar")} صفحة (طلبت ${want.toLocaleString("ar")}) — هذا أقرب ما وصل له بدون ما يحذف من المادة. اطلب تعديل لو تبيه أقصر أو أطول.`}</p>;
           })()}
           {o.kind === "book" && <PdfFrame o={o} name="pdf" />}
+          {o.kind === "brochure" && (
+            <>
+              {maxOn(o.settings) && <MaxResultBar o={o} text="🧑‍💻 مطويتك جاهزة: وجهان بتصميم حر على قياس الطي. عدّلهما في المحرر ونزّل الـ PDF." />}
+              <PdfFrame o={o} name="pdf" />
+              <p className="rounded-xl bg-jw-surface-2 p-3 text-sm text-jw-muted" role="note">
+                🖨️ <b>للطباعة:</b> الورقة A4 بالعرض، اطبعها على الوجهين واختر «اقلب على الحافة القصيرة»، ثم اطوها {o.settings.fold === "bi" ? "من المنتصف" : "ثلاث طيّات: اللسان (٥) يُطوى للداخل أولًا"}. الغلاف هو الواجهة ١.
+              </p>
+            </>
+          )}
+          {maxOn(o.settings) && maxAvailable(o.kind) && !["slides", "brochure", "audio"].includes(o.kind) && (
+            <>
+              <MaxResultBar o={o} text="🧑‍💻 صفحاتك جاهزة: صمّمها حيدرا ماكس صفحة صفحة. عدّلها في المحرر ونزّل الـ PDF." />
+              {o.kind !== "mindmap" && <PdfFrame o={o} name={o.kind === "quiz" ? "quiz_pdf" : "pdf"} />}
+            </>
+          )}
           {o.kind === "slides" && (
             <>
               {((o.content as { overflow?: number[] } | null)?.overflow ?? []).length > 0 && (
                 <p className="text-sm text-jw-warn">شرائح نصها أطول من مساحتها حتى بعد تصغير الخط: {(o.content as { overflow: number[] }).overflow.join("، ")}. وزّعها على شرائح أكثر من الخريطة.</p>
               )}
-              {o.settings.render === "design" && (
-                <div className="flex flex-wrap items-center gap-2 rounded-2xl p-3 text-white" style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
-                  <b className="flex-1">🎨 عرضك جاهز: عدّل نصه وصوره، اعرضه شاشة كاملة، ونزّله PDF أو PPTX.</b>
-                  <a className="jw-btn jw-btn-primary" href={`${STUDENT.base}/deck/${o.id}`}>
-                    افتح محرر العرض
-                  </a>
-                </div>
-              )}
+              {maxOn(o.settings) && <MaxResultBar o={o} text="🧑‍💻 عرضك جاهز: عدّل نصه وصوره، اعرضه شاشة كاملة، ونزّله PDF أو PPTX." />}
               <PdfFrame o={o} name="pdf" />
               {o.settings.render !== "image" && <SlidesFonts design={o.settings.design} />}
             </>
@@ -303,7 +312,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
           )}
           {o.kind === "quiz" && o.settings.usage !== "sheet" && <QuizPlay o={o} />}
           {o.kind === "mindmap" && <MindmapResult o={o} />}
-          {["summary", "explain", "preread", "transcript", "book", "quiz"].includes(o.kind) && o.content !== null && <PicturesPanel o={o} act={act} running={running} />}
+          {["summary", "explain", "preread", "transcript", "book", "quiz"].includes(o.kind) && o.content !== null && !maxOn(o.settings) && <PicturesPanel o={o} act={act} running={running} />}
 
           {o.status === "review" ? (
             <Gate
@@ -341,7 +350,7 @@ function DocOutputPanel({ p, o, onRemade }: { p: ProjectHook; o: OutputView; onR
 }
 
 function RequestButton({ o, note, kind, act, running }: { o: OutputView; note: string; kind: "edit" | "other"; act: (b: S) => Promise<unknown>; running: boolean }) {
-  const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "sermon" ? (o.content as Doc | null) : null;
+  const doc = o.kind === "summary" || o.kind === "explain" || o.kind === "preread" || o.kind === "book" || o.kind === "sermon" ? (maxOn(o.settings) ? null : (o.content as Doc | null)) : null;
   const pictures = o.kind === "slides" && o.settings.render === "image" ? (o.plan as SlidePlan | null) : null;
   const maps = o.kind === "mindmap" && o.settings.render === "image" ? (o.plan as MindPlan | null) : null;
   const [chapter, setChapter] = useState(-1);
@@ -391,7 +400,28 @@ function Field({ s, set, k, label, ph, area }: { s: S; set: (p: S) => void; k: s
   );
 }
 
-function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S) => void; outputs: OutputView[] }) {
+function KindSettings(p: { o: OutputView; s: S; set: (p: S) => void; outputs: OutputView[] }) {
+  return (
+    <div className="space-y-3">
+      <KindFields {...p} />
+      {p.o.kind !== "slides" && (maxAvailable(p.o.kind) || p.o.kind === "audio") && <MaxChoice kind={p.o.kind as OutputKind} s={p.s} set={p.set} />}
+    </div>
+  );
+}
+
+/** «افتح المحرر» for an output made by حيدرا ماكس. */
+function MaxResultBar({ o, text }: { o: OutputView; text: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-2xl p-3 text-white" style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
+      <b className="flex-1">{text}</b>
+      <a className="jw-btn jw-btn-primary" href={`${STUDENT.base}/deck/${o.id}`}>
+        افتح محرر العرض
+      </a>
+    </div>
+  );
+}
+
+function KindFields({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S) => void; outputs: OutputView[] }) {
   const density = (
     <div className="space-y-1">
       <span className="jw-label">كثافة النص</span>
@@ -481,7 +511,7 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
               <button
                 type="button"
                 aria-pressed={s.render === "image"}
-                onClick={() => set({ render: "image" })}
+                onClick={() => set({ render: "image", maker: "" })}
                 className={`relative overflow-hidden rounded-2xl p-4 text-start text-white transition-transform hover:-translate-y-0.5 ${s.render === "image" ? "ring-4 ring-pink-300" : "opacity-90"}`}
                 style={{ background: "linear-gradient(135deg,#7c3aed,#db2777 55%,#f97316)" }}
               >
@@ -494,23 +524,23 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
               </button>
               <button
                 type="button"
-                aria-pressed={s.render === "design"}
-                onClick={() => set({ render: "design" })}
-                className={`relative overflow-hidden rounded-2xl p-4 text-start text-white transition-transform hover:-translate-y-0.5 md:col-span-2 ${s.render === "design" ? "ring-4 ring-amber-300" : "opacity-90"}`}
+                aria-pressed={maxOn(s)}
+                onClick={() => set({ render: "design", maker: "max" })}
+                className={`relative overflow-hidden rounded-2xl p-4 text-start text-white transition-transform hover:-translate-y-0.5 md:col-span-2 ${maxOn(s) ? "ring-4 ring-amber-300" : "opacity-90"}`}
                 style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}
               >
                 <span className="absolute top-3 left-3 rounded-full bg-white/25 px-2 py-0.5 text-[11px] font-bold">جديد ✨</span>
                 <span className="block text-2xl" aria-hidden>
                   🎨
                 </span>
-                <b className="block text-lg">صادق يصممها + محرر وعرض</b>
-                <span className="block text-sm text-white/90">تصميم حر لكل شريحة (صور، أشكال، ألوان)، يراجعه صادق وهو مرسوم. تعدّل نصها وصورها في «محرر العرض»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX قابل للتعديل.</span>
+                <b className="block text-lg">{MAX_NAME} (Claude Code)</b>
+                <span className="block text-sm text-white/90">تصميم حر لكل شريحة بالكود (صور، أشكال، ألوان)، يراجعه وهو مرسوم. تعدّل نصها وصورها في «محرر العرض»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX قابل للتعديل.</span>
               </button>
               <button
                 type="button"
-                aria-pressed={s.render !== "image" && s.render !== "design"}
-                onClick={() => set({ render: "editable" })}
-                className={`rounded-2xl border bg-white p-4 text-start transition-transform hover:-translate-y-0.5 ${s.render !== "image" && s.render !== "design" ? "border-jw-accent ring-4 ring-violet-200" : "border-jw-line"}`}
+                aria-pressed={s.render !== "image" && !maxOn(s)}
+                onClick={() => set({ render: "editable", maker: "" })}
+                className={`rounded-2xl border bg-white p-4 text-start transition-transform hover:-translate-y-0.5 ${s.render !== "image" && !maxOn(s) ? "border-jw-accent ring-4 ring-violet-200" : "border-jw-line"}`}
               >
                 <span className="block text-2xl" aria-hidden>
                   🧩
@@ -553,6 +583,23 @@ function KindSettings({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S)
           </div>
           <div className="sm:col-span-2">
             <Field s={s} set={set} k="extra" label="ملاحظات أخرى" area />
+          </div>
+        </div>
+      );
+    case "brochure":
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1 sm:col-span-2">
+            <span className="jw-label">نوع الطي</span>
+            <Seg label="نوع الطي" value={str(s.fold, "tri") as "tri"} options={BROCHURE_FOLDS.map((f) => ({ id: f.id, label: `${f.name} (${f.panels.toLocaleString("ar")} واجهات)` }))} onChange={(fold) => set({ fold })} />
+            <p className="text-xs text-jw-faint">{BROCHURE_FOLDS.find((f) => f.id === str(s.fold, "tri"))?.hint}. إن غيّرت الطي بعد الخطة تُعاد الخطة على عدد الواجهات الجديد.</p>
+          </div>
+          <Field s={s} set={set} k="title" label="عنوان المطوية (اختياري)" />
+          <Field s={s} set={set} k="audience" label="لمن المطوية؟" ph="طلاب الصف، أولياء الأمور، معرض مدرسي…" />
+          <Field s={s} set={set} k="purpose" label="الغرض" ph="توعية، مراجعة، تعريف بموضوع…" />
+          {density}
+          <div className="sm:col-span-2">
+            <Field s={s} set={set} k="extra" label="ملاحظات أخرى (الألوان، الشعار، ما تبي عليه الغلاف…)" area />
           </div>
         </div>
       );
