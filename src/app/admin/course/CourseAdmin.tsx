@@ -24,7 +24,6 @@ interface Data {
   now: number;
   phase: "soon" | "A" | "B" | "C";
   orders: Order[];
-  courses?: { id: string; title: string }[];
   telegram: { token: boolean; chat: boolean; ready: boolean };
 }
 const URL = "/api/course/admin";
@@ -200,14 +199,6 @@ export default function CourseAdmin() {
           <Txt label="رقم الحساب" value={s.bank.account} onChange={(v) => set("bank", { ...s.bank, account: v })} ltr />
           <Txt label="رمز السويفت" value={s.bank.swift} onChange={(v) => set("bank", { ...s.bank, swift: v })} ltr />
         </div>
-        <label className="grid gap-1 text-sm font-bold">
-          📚 الدورة اللي تنزل عند من يشتري (من /admin/learn)
-          <select className="field" value={s.learnCourseId} onChange={(e) => set("learnCourseId", e.target.value)}>
-            <option value="">— لا شيء (ما تنزل دورة تلقائيًا) —</option>
-            {(d?.courses ?? []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-          </select>
-          <span className="text-xs font-normal opacity-70">المشتري ينفتح له هذه الدورة بالذات فقط، وأي دورة مسجلة تضيفها بعدين ما تنزل له إلا لو اشتراها.</span>
-        </label>
         <h3 className="font-extrabold">🔗 روابط تظهر لمن يتأكد دفعه فقط</h3>
         <Txt label="رابط مجموعة الدورة (واتساب أو تيليجرام)" value={s.groupLink} onChange={(v) => set("groupLink", v)} ltr ph="https://chat.whatsapp.com/…" />
         <Txt label="رابط الدورة المسجلة (لمن اشترى المسجلة)" value={s.recordedLink} onChange={(v) => set("recordedLink", v)} ltr />

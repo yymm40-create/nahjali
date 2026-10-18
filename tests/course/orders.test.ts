@@ -58,12 +58,15 @@ vi.mock("@/lib/course/telegram", () => ({ notifyTransfer: (...a: unknown[]) => n
 const T0 = Date.parse("2026-10-10T12:00:00Z");
 const H = 3_600_000;
 const bank = { holder: "علي", iban: "SA0380000000608010167519", account: "608010167519", swift: "RIBLSARI", bank: "بنك" };
+const A = "11111111-1111-4111-8111-111111111111";
+const B = "22222222-2222-4222-8222-222222222222";
 const U = { id: "u-1", email: "buyer@example.com" };
 const who = { name: "محمد علي حسن", phone: "0501234567" };
 
 beforeEach(() => {
   tables.course_orders = [];
   tables.learn_grants = [];
+  tables.learn_courses = [{ id: A, title: "دورة الجواد الأولى", published: true, price_sar: 60 }, { id: B, title: "الدورة الثانية", published: true, price_sar: 90 }];
   grant.mockClear();
   notify.mockClear();
   settings = readSettings({ ...DEFAULT_SETTINGS, launchAt: new Date(T0).toISOString(), bank, bonus: { comboA: 0, recordedB: 30, recordedC: 20 } });
@@ -73,32 +76,53 @@ describe("«ادفع الآن»", () => {
   it("makes an order for the recorded course at 60, with the bank data to transfer to, at any time", async () => {
     const { startOrder } = await import("@/lib/course/orders");
     for (const [i, t] of [T0 - 5 * H, T0 + 2 * H, T0 + 60 * H].entries()) {
-      const r = await startOrder({ id: `u-${i}`, email: `b${i}@example.com` }, { product: "recorded", ...who }, t);
+      const r = await startOrder({ id: `u-${i}`, email: `b${i}@example.com` }, { courseId: A, ...who }, t);
       expect(r.order).toMatchObject({ product: "recorded", amount: 60, bonus: 0, status: "started", phone: "+966501234567" });
       expect(new Date(r.order.lockedUntil).getTime()).toBe(t + 180 * 60_000);
       expect(r.bank.iban).toBe(bank.iban);
     }
   });
 
-  it("refuses the live and the whole course (not on sale), a bad name or phone", async () => {
+  it("each course is sold on its own, at its own price; one that is hidden, unpriced or unknown is not sold", async () => {
     const { startOrder } = await import("@/lib/course/orders");
-    await expect(startOrder(U, { product: "live", ...who }, T0 + 2 * H)).rejects.toThrow(/غير متاح/);
-    await expect(startOrder(U, { product: "combo", ...who }, T0 + 30 * H)).rejects.toThrow(/غير متاح/);
-    await expect(startOrder(U, { product: "recorded", name: "م", phone: who.phone }, T0 + 2 * H)).rejects.toThrow(/اسمك/);
-    await expect(startOrder(U, { product: "recorded", name: who.name, phone: "123" }, T0 + 2 * H)).rejects.toThrow(/رقم الجوال/);
+    const a = await startOrder(U, { courseId: A, ...who }, T0);
+    const b = await startOrder(U, { courseId: B, ...who }, T0);
+    expect([a.order.courseId, a.order.amount, b.order.courseId, b.order.amount]).toEqual([A, 60, B, 90]);
+    tables.learn_courses[1].published = false;
+    await expect(startOrder({ id: "u-8" }, { courseId: B, ...who }, T0)).rejects.toThrow(/غير معروضة/);
+    tables.learn_courses[0].price_sar = null;
+    await expect(startOrder({ id: "u-8" }, { courseId: A, ...who }, T0)).rejects.toThrow(/غير معروضة/);
+    await expect(startOrder({ id: "u-8" }, { courseId: "33333333-3333-4333-8333-333333333333", ...who }, T0)).rejects.toThrow(/غير معروضة/);
+    await expect(startOrder({ id: "u-8" }, { courseId: "x", ...who }, T0)).rejects.toThrow(/غير معروضة/);
+  });
+
+  it("buying one course doesn't say «already in» for another, and each order opens its own course only", async () => {
+    const { startOrder, confirmOrder } = await import("@/lib/course/orders");
+    const a = await startOrder(U, { courseId: A, ...who }, T0);
+    await confirmOrder(a.order.id, "owner");
+    await expect(startOrder(U, { courseId: A, ...who }, T0)).rejects.toThrow(/مؤكد/);
+    const b = await startOrder(U, { courseId: B, ...who }, T0);
+    await confirmOrder(b.order.id, "owner");
+    expect(tables.learn_grants.map((g) => g.course_id)).toEqual([A, B]);
+  });
+
+  it("refuses a bad name or phone", async () => {
+    const { startOrder } = await import("@/lib/course/orders");
+    await expect(startOrder(U, { courseId: A, name: "م", phone: who.phone }, T0 + 2 * H)).rejects.toThrow(/اسمك/);
+    await expect(startOrder(U, { courseId: A, name: who.name, phone: "123" }, T0 + 2 * H)).rejects.toThrow(/رقم الجوال/);
     expect(tables.course_orders).toHaveLength(0);
   });
 
   it("won't take money before the bank data is set", async () => {
     settings = readSettings({ ...settings, bank: {} });
     const { startOrder } = await import("@/lib/course/orders");
-    await expect(startOrder(U, { product: "recorded", ...who }, T0 + H)).rejects.toThrow(/بيانات التحويل/);
+    await expect(startOrder(U, { courseId: A, ...who }, T0 + H)).rejects.toThrow(/بيانات التحويل/);
   });
 
   it("pressing it again reuses the same order", async () => {
     const { startOrder } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + 25 * H);
-    const b = await startOrder(U, { product: "recorded", ...who, name: "محمد علي" }, T0 + 25 * H + 60 * 60_000);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + 25 * H);
+    const b = await startOrder(U, { courseId: A, ...who, name: "محمد علي" }, T0 + 25 * H + 60 * 60_000);
     expect(b.order.id).toBe(a.order.id);
     expect(b.order.amount).toBe(60);
     expect(b.order.name).toBe("محمد علي");
@@ -108,23 +132,21 @@ describe("«ادفع الآن»", () => {
   it("limits the open orders of one person", async () => {
     const { startOrder } = await import("@/lib/course/orders");
     for (let i = 0; i < 4; i++) tables.course_orders.push({ id: `o${i}`, user_id: U.id, product: "live", status: "transferred", created_at: new Date(T0 + i).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 40, was_sar: 80, bonus_sar: 0, phase: "B", name: "x", phone: "+966501234567", email: "" });
-    await expect(startOrder(U, { product: "recorded", ...who }, T0 + 2 * H)).rejects.toThrow(/طلبات مفتوحة/);
+    await expect(startOrder(U, { courseId: A, ...who }, T0 + 2 * H)).rejects.toThrow(/طلبات مفتوحة/);
   });
 
-  it("tells a confirmed buyer — of the recorded, the live or the whole course — they are already in", async () => {
+  it("tells a confirmed buyer of that course they are already in", async () => {
     const { startOrder, confirmOrder } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + H);
     await confirmOrder(a.order.id, "owner");
-    await expect(startOrder(U, { product: "recorded", ...who }, T0 + 2 * H)).rejects.toThrow(/مؤكد/);
-    tables.course_orders.push({ id: "old-live", user_id: "u-9", product: "live", status: "confirmed", created_at: new Date(T0).toISOString(), locked_until: new Date(T0).toISOString(), amount_sar: 40, was_sar: 80, bonus_sar: 0, phase: "B", name: "x", phone: "+966501234567", email: "" });
-    await expect(startOrder({ id: "u-9", email: "l@x.com" }, { product: "recorded", ...who }, T0 + 2 * H)).rejects.toThrow(/مؤكد/);
+    await expect(startOrder(U, { courseId: A, ...who }, T0 + 2 * H)).rejects.toThrow(/مؤكد/);
   });
 });
 
 describe("«تم التحويل»", () => {
   it("marks it, and tells the owner once", async () => {
     const { startOrder, markTransferred } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + H);
     const t = await markTransferred({ id: U.id }, a.order.id, T0 + 2 * H);
     expect(t.status).toBe("transferred");
     expect(t.transferredAt).toBe(new Date(T0 + 2 * H).toISOString());
@@ -136,7 +158,7 @@ describe("«تم التحويل»", () => {
 
   it("is refused after the price ran out, for someone else's order, and the buyer is never failed by a broken notification", async () => {
     const { startOrder, markTransferred } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + H);
     await expect(markTransferred({ id: U.id }, a.order.id, T0 + H + 181 * 60_000)).rejects.toThrow(/انتهت مهلة السعر/);
     await expect(markTransferred({ id: "someone-else" }, a.order.id, T0 + 2 * H)).rejects.toThrow(/ما لقينا/);
     notify.mockRejectedValueOnce(new Error("telegram down"));
@@ -151,7 +173,7 @@ describe("what a buyer has", () => {
   it("opens from «تم التحويل» for the group link only, and the course itself only once the owner confirms", async () => {
     const { startOrder, markTransferred, rejectOrder, myCourse } = await import("@/lib/course/orders");
     expect((await myCourse(U.id)).groupOpen).toBe(false);
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + H);
     expect((await myCourse(U.id)).groupOpen).toBe(false);
     await markTransferred({ id: U.id }, a.order.id, T0 + 2 * H);
     const m = await myCourse(U.id);
@@ -166,7 +188,7 @@ describe("what a buyer has", () => {
 describe("«أكّد»", () => {
   it("unlocks the recorded course for the buyer at once, with no gift", async () => {
     const { startOrder, markTransferred, confirmOrder, myCourse } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + 30 * H);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + 30 * H);
     await markTransferred({ id: U.id }, a.order.id, T0 + 31 * H);
     const r = await confirmOrder(a.order.id, "تيليجرام", T0 + 32 * H);
     expect(r.already).toBe(false);
@@ -180,18 +202,10 @@ describe("«أكّد»", () => {
 
   it("opens ONLY the course this page sells, for the buyer's e-mail — a later course is never opened by it", async () => {
     const { startOrder, confirmOrder } = await import("@/lib/course/orders");
-    const A = "11111111-1111-4111-8111-111111111111";
-    settings = readSettings({ ...settings, learnCourseId: A });
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + H);
     await confirmOrder(a.order.id, "تيليجرام");
     await confirmOrder(a.order.id, "تيليجرام");
-    expect(tables.learn_grants.map((g) => [g.course_id, g.email])).toEqual([[A, "buyer@example.com"], [A, "buyer@example.com"]]);
-    // nothing is selected: nothing is opened
-    tables.learn_grants.length = 0;
-    settings = readSettings({ ...settings, learnCourseId: "" });
-    const b = await startOrder({ id: "u-5", email: "z@x.com" }, { product: "recorded", ...who }, T0 + H);
-    await confirmOrder(b.order.id, "تيليجرام");
-    expect(tables.learn_grants).toHaveLength(0);
+    expect(new Set(tables.learn_grants.map((g) => `${g.course_id}|${g.email}`))).toEqual(new Set([`${A}|buyer@example.com`]));
   });
 
   it("whoever bought the live or the whole course also has the recorded one", async () => {
@@ -218,7 +232,7 @@ describe("«أكّد»", () => {
 
   it("a rejected order can't be rejected again, and one the owner already confirmed can't be rejected", async () => {
     const { startOrder, rejectOrder, confirmOrder } = await import("@/lib/course/orders");
-    const a = await startOrder(U, { product: "recorded", ...who }, T0 + H);
+    const a = await startOrder(U, { courseId: A, ...who }, T0 + H);
     expect((await rejectOrder(a.order.id, "owner", "ما وصل التحويل")).status).toBe("rejected");
     await expect(rejectOrder(a.order.id, "owner")).rejects.toThrow(/ما عاد قابل/);
     await confirmOrder(a.order.id, "owner");

@@ -154,6 +154,8 @@ function CourseCard({ c, grants, ups, act, addVideo, reupload, confirmDel }: { c
   const [summary, setSummary] = useState(c.summary);
   const [email, setEmail] = useState("");
   const [day, setDay] = useState("");
+  const [price, setPrice] = useState(c.priceSar ? String(c.priceSar) : "");
+  const [copied, setCopied] = useState(false);
   const save = (patch: Record<string, unknown>, ok?: string) => act({ action: "course_save", id: c.id, ...patch }, ok);
   return (
     <section className="card space-y-3 p-4">
@@ -164,6 +166,16 @@ function CourseCard({ c, grants, ups, act, addVideo, reupload, confirmDel }: { c
         <button type="button" className="chip" onClick={() => confirmDel(`دورة «${c.title}» بكل أيامها وفيديوهاتها`) && void act({ action: "delete", kind: "course", id: c.id }, "انحذفت الدورة")}>🗑️</button>
       </div>
       <textarea className="field" rows={2} placeholder="وصف قصير للدورة (اختياري)" maxLength={LEARN.maxSummary} value={summary} onChange={(e) => setSummary(e.target.value)} onBlur={() => summary !== c.summary && void save({ summary }, "انحفظ الوصف")} />
+      <div className="flex flex-wrap items-center gap-2 text-sm font-bold">
+        <label className="flex items-center gap-1">💰 سعر البيع (ريال)
+          <input className="field w-24" inputMode="numeric" dir="ltr" placeholder="فاضي = غير معروضة" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} onBlur={() => price !== (c.priceSar ? String(c.priceSar) : "") && void save({ price: price || null }, price ? "انحفظ السعر" : "الدورة ما عادت معروضة للبيع")} />
+        </label>
+        {c.priceSar && c.published ? (
+          <button type="button" className="chip" onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/jawad-ai/course/${c.id}`); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* the link is below */ } }}>{copied ? "✓ اننسخ" : "🔗 انسخ رابط الشراء"}</button>
+        ) : (
+          <span className="text-muted">تنباع من رابطها الخاص لما تحط سعر وتخليها «ظاهرة للطلاب».</span>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-3 text-sm font-bold">
         <label className="flex items-center gap-1"><input type="checkbox" checked={c.published} onChange={(e) => void save({ published: e.target.checked }, e.target.checked ? "الدورة ظاهرة للطلاب" : "الدورة مخفية")} /> ظاهرة للطلاب</label>
         <span className="text-muted">تفتح لمن اشترى:</span>

@@ -23,7 +23,7 @@ export const GET = handle(async () => {
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /**
- * course_save {id?, title, summary, unlock[], published} · day_save {id?, courseId, title} · lesson_create {dayId, title} → {id, key}
+ * course_save {id?, title, summary, unlock[], published, price} · day_save {id?, courseId, title} · lesson_create {dayId, title} → {id, key}
  * lesson_restart {id} → {key} · lesson_sign {id, ns[]} → {urls} · lesson_finish {id, manifest} · lesson_rename {id, title}
  * delete {kind, id} · move {kind, id, dir} · grant {courseId, email} · ungrant {id} · kill {id}
  */
@@ -32,7 +32,7 @@ export const POST = handle(async (req: Request) => {
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   switch (b.action) {
     case "course_save":
-      return NextResponse.json({ id: await L.saveCourse({ id: str(b.id) || undefined, title: b.title, summary: b.summary, unlock: b.unlock, published: b.published }) });
+      return NextResponse.json({ id: await L.saveCourse({ id: str(b.id) || undefined, title: b.title, summary: b.summary, unlock: b.unlock, published: b.published, price: b.price }) });
     case "day_save":
       return NextResponse.json({ id: await L.saveDay({ id: str(b.id) || undefined, courseId: str(b.courseId), title: b.title }) });
     case "lesson_create":
