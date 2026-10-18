@@ -17,6 +17,7 @@ import {
   Mp4OutputFormat,
   Output,
   UrlSource,
+  WebMOutputFormat,
   type WrappedCanvas,
 } from "mediabunny";
 import { wantedEncode } from "./perf-bench";
@@ -58,6 +59,8 @@ export interface ExportOpts {
   range?: { from: number; to: number } | null;
   audioOnly?: boolean;
   mute?: boolean;
+  /** a transparent background kept: a WebM (VP9 with an alpha channel, Opus sound) — an MP4 can't be transparent */
+  transparent?: boolean;
 }
 
 /** Can this browser make the file at all? (WebCodecs: Chrome/Edge 94+, Safari 16.4+/17, recent Firefox.) */
@@ -93,27 +96,41 @@ export async function exportVideo(
   // «الأداء»: the encoder's hardware hint, only when the browser confirms an encoder with it exists for this very size
   // and codec (a hint it can't meet is an error in Chromium; «no-preference» never is)
   let hw: HwHint = "no-preference";
-  const videoCodec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width, height, bitrate: plan.bitrate, frameRate: fps });
+  // a transparent background: only VP9 keeps an alpha channel in a browser encoder (muxed into WebM)
+  const alpha = !!opts.transparent && !audioOnly;
+  const videoCodec = alpha
+    ? (await canEncodeVideo("vp9", { width, height, bitrate: plan.bitrate, frameRate: fps, alpha: "keep" }).catch(() => false))
+      ? ("vp9" as const)
+      : null
+    : await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width, height, bitrate: plan.bitrate, frameRate: fps });
   if (videoCodec) {
     const want = wantedEncode();
-    if (want !== "no-preference" && (await canEncodeVideo(videoCodec, { width, height, bitrate: plan.bitrate, frameRate: fps, hardwareAcceleration: want }).catch(() => false))) hw = want;
+    if (want !== "no-preference" && (await canEncodeVideo(videoCodec, { width, height, bitrate: plan.bitrate, frameRate: fps, hardwareAcceleration: want, ...(alpha ? { alpha: "keep" as const } : {}) }).catch(() => false))) hw = want;
   }
+  if (!videoCodec && alpha) throw new ExportError("متصفحك ما يقدر يصدّر فيديو بخلفية شفافة. جرّب Chrome أو Edge على الكمبيوتر.");
   if (!videoCodec && !audioOnly) throw new ExportError(`متصفحك ما يقدر يصدّر فيديو بمقاس ${width}×${height}. اختر دقة أقل (أو جرّب Chrome أو Edge على الكمبيوتر).`);
 
   // sound: clips we can hear
   const hasSound = (c: Clip) => !c.text && !!c.assetId && byId.get(c.assetId)!.kind !== "image" && byId.get(c.assetId)!.hasAudio;
   const audible: { track: Track; c: Clip }[] = tl.tracks.flatMap((track) => (track.muted || opts.mute ? [] : track.clips.filter((c) => c.volume > 0 && hasSound(c)).map((c) => ({ track, c }))));
   const spans = voiceSpans(tl, hasSound);
-  const sound = audible.length ? await soundCodec(plan.audioBitrate) : null;
+  // (a WebM carries Opus, not AAC)
+  const sound = audible.length
+    ? alpha
+      ? (await canEncodeAudio("opus", { numberOfChannels: 2, sampleRate: SAMPLE_RATE, bitrate: 160_000 }).catch(() => false))
+        ? { codec: "opus" as const, bitrate: 160_000 }
+        : null
+      : await soundCodec(plan.audioBitrate)
+    : null;
   const audioCodec = sound?.codec ?? null;
   if (audioOnly && !audioCodec) throw new ExportError(audible.length ? "متصفحك ما يقدر يحفظ الصوت. جرّب Chrome أو Edge على الكمبيوتر." : "ما فيه صوت في هذي المنطقة تصدّره.");
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext("2d", { alpha: false })!;
-  const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-  const video = audioOnly ? null : new CanvasSource(canvas, { codec: videoCodec!, bitrate: plan.bitrate, keyFrameInterval: 2, hardwareAcceleration: hw });
+  const ctx = canvas.getContext("2d", { alpha })!;
+  const output = new Output({ format: alpha ? new WebMOutputFormat() : new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+  const video = audioOnly ? null : new CanvasSource(canvas, { codec: videoCodec!, bitrate: plan.bitrate, keyFrameInterval: 2, hardwareAcceleration: hw, alpha: alpha ? "keep" : "discard" });
   if (video) output.addVideoTrack(video, { frameRate: fps });
   const audio = audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: sound!.bitrate }) : null;
   if (audio) output.addAudioTrack(audio);
@@ -152,7 +169,10 @@ export async function exportVideo(
     const times = function* () {
       for (let f = first; f <= last; f++) yield Math.max(0, sourceTime(c, (f * 1000) / fps) / 1000);
     };
-    const s: Stream = { it: new CanvasSink(track, { poolSize: 3 }).canvasesAtTimestamps(times()), idx: first - 1, first, last, cur: null };
+    // a transparent video (a WebM with alpha: a motion piece with no background) keeps its empty places empty; the others
+    // are read as before (without the cost of an alpha channel)
+    const see = await track.canBeTransparent().catch(() => false);
+    const s: Stream = { it: new CanvasSink(track, { poolSize: 3, alpha: see }).canvasesAtTimestamps(times()), idx: first - 1, first, last, cur: null };
     streams.set(c.id, s);
     return s;
   }
@@ -216,10 +236,17 @@ export async function exportVideo(
         }
         // drawFrame draws in the timeline's units; one scale maps them to the output size
         ctx.setTransform(width / tl.width, 0, 0, height / tl.height, 0, 0);
+        // a transparent frame starts empty (the last frame's pixels must not show through) and gets no background fill
+        if (alpha) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, width, height);
+          ctx.restore();
+        }
         // (the grade always shows in the file, whatever the preview's before/after view)
         setExporting(true);
         try {
-          drawFrame(ctx, tl, ms, (c) => now.get(c.id) ?? null);
+          drawFrame(ctx, tl, ms, (c) => now.get(c.id) ?? null, { transparent: alpha });
         } finally {
           setExporting(false);
         }
@@ -239,7 +266,7 @@ export async function exportVideo(
   const buf = (output.target as BufferTarget).buffer;
   if (!buf) throw new ExportError("ما انكتب الملف؛ جرّب مرة ثانية.");
   onProgress(1);
-  return { blob: new Blob([buf], { type: audioOnly ? "audio/mp4" : "video/mp4" }), width, height, codec: videoCodec ?? "", audio: audioCodec, lostSound: audible.length > 0 && !audioCodec };
+  return { blob: new Blob([buf], { type: audioOnly ? "audio/mp4" : alpha ? "video/webm" : "video/mp4" }), width, height, codec: videoCodec ?? "", audio: audioCodec, lostSound: audible.length > 0 && !audioCodec };
 
   /**
    * The mixed sound of [from, to) ms: every audible clip's decoded sound placed at its moment, its loudness following

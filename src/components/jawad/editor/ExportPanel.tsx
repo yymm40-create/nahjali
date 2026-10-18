@@ -31,9 +31,10 @@ import { toSRT } from "./captions";
 import { packProject, saveFile } from "./package";
 
 /** what to save: the whole video, the picture without sound, the sound alone, the subtitles, or the frame under the playhead */
-type What = "video" | "mute" | "audio" | "srt" | "frame";
+type What = "video" | "alpha" | "mute" | "audio" | "srt" | "frame";
 const WHATS: { id: What; icon: string; name: string; hint: string }[] = [
   { id: "video", icon: "🎬", name: "الفيديو مع الصوت", hint: "ملف MP4 كامل" },
+  { id: "alpha", icon: "🪟", name: "فيديو بخلفية شفافة", hint: "ملف WebM يحفظ الأماكن الفاضية شفافة" },
   { id: "mute", icon: "🔇", name: "الفيديو بدون صوت", hint: "الصورة بروحها MP4" },
   { id: "audio", icon: "🎧", name: "الصوت بروحه", hint: "ملف M4A" },
   { id: "srt", icon: "💬", name: "الكابشن SRT", hint: "ملف الترجمة" },
@@ -116,8 +117,8 @@ export default function ExportPanel({
   const total = use ? use.to - use.from : total0;
   const plan = exportPlan(tl, { res, quality, fps: fpsFrom }, source, total);
   const stem = exportName(title, plan).replace(/\.mp4$/i, "") + (use ? `-${formatTime(use.from).replace(/[:.]/g, "-")}_${formatTime(use.to).replace(/[:.]/g, "-")}` : "");
-  const name = `${stem}.${what === "audio" ? "m4a" : "mp4"}`;
-  const picture = what === "video" || what === "mute";
+  const name = `${stem}.${what === "audio" ? "m4a" : what === "alpha" ? "webm" : "mp4"}`;
+  const picture = what === "video" || what === "mute" || what === "alpha";
   // whole-video upscale: only for the video with sound, made by the site (not the desktop program's local files), up to 5 minutes, and when it isn't 4K already
   const longSide = Math.max(plan.width, plan.height);
   const upWhy = !onUpscaleExport ? null : desktop() ? "برنامج حيدرة على الكمبيوتر يحفظ الملفات عندك بس، وما تروح لخادم رفع الدقة؛ استخدم المتصفح." : total > UPSCALE_EXPORT_MAX_MS ? "رفع الدقة لفيديو حتى ٥ دقائق؛ حدّد منطقة أقصر (In و Out)." : longSide >= 3800 ? "التصدير الحين 4K أصلًا؛ اختر دقة أقل (مثل 1080p) وارفعها بعدين." : null;
@@ -173,7 +174,7 @@ export default function ExportPanel({
             }
           },
           ac.signal,
-          { range: use, audioOnly: what === "audio", mute: what === "mute" },
+          { range: use, audioOnly: what === "audio", mute: what === "mute", transparent: what === "alpha" },
         );
       // The links to the files live a few hours: a long session (or a file moved between sequences) can leave one dead,
       // and the browser then says only «Failed to fetch». The links are renewed first, and once more if it still fails.
@@ -296,6 +297,7 @@ export default function ExportPanel({
 
             {what === "frame" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">يحفظ الصورة اللي واقف عليها المؤشر الحين <b dir="ltr">({formatTime(player?.ms ?? 0)})</b> بجودة المشروع الكاملة وبتدريجها، PNG.</p>}
             {what === "srt" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">{srt ? `ملف ترجمة جاهز${use ? " للمنطقة المحددة (يبدأ من الصفر)" : ""}.` : "ما فيه كابشن للحين؛ سوّه من «الكابشن» أول."}</p>}
+            {what === "alpha" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">يحفظ الأماكن الفاضية في التايملاين شفافة (ملف WebM بصوته)، عشان تركّبه فوق أي خلفية في برنامج ثاني. الـMP4 ما يقدر يكون شفاف، فيطلع له خلفية سودا. ما يشتغل إلا في Chrome أو Edge على الكمبيوتر.</p>}
             {what === "audio" && <p className="rounded-lg bg-jw-surface-2 p-2.5 text-xs leading-6">الصوت المدموج كله (الكلام والموسيقى والمؤثرات بنفس المستويات) في ملف M4A، مدته <span dir="ltr">{formatTime(total)}</span>.</p>}
 
             {picture && (<>

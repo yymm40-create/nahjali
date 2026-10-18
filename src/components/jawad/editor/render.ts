@@ -195,14 +195,17 @@ export function layersAt(tl: Timeline, ms: number): Layer[] {
 }
 
 /** Draws in the timeline's own units (tl.width × tl.height); the caller's transform maps them to its canvas. */
-export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: number, frameOf: (clip: Clip, ms: number) => Frame | null) {
+export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: number, frameOf: (clip: Clip, ms: number) => Frame | null, o: { transparent?: boolean } = {}) {
   const W = tl.width;
   const H = tl.height;
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = tl.background;
-  ctx.fillRect(0, 0, W, H);
-  ctx.restore();
+  // a transparent export (WebM with alpha) keeps empty places empty: no background colour under the clips
+  if (!o.transparent) {
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = tl.background;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
   for (const l of layersAt(tl, ms)) {
     if ("solid" in l) {
       if (l.alpha <= 0) continue;
