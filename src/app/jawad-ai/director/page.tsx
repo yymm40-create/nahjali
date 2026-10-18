@@ -14,11 +14,11 @@ export default async function DirectorPage() {
   const [{ user, owner }, rt] = await Promise.all([jawadSession(), loadRuntime()]);
   const section = rt.sections.find((s) => s.implementation === "director");
   if (!section || (!section.enabled && !owner)) notFound();
-  if (!user) return <DirectorChat mode="page" open onOpen={() => {}} onClose={() => {}} loginHref={jawadLogin("/jawad-ai/director")} generators={[]} />;
+  if (!user) return <DirectorChat mode="page" loginHref={jawadLogin("/jawad-ai/director")} generators={[]} />;
   const perms = await accessOf(user.email);
   const live = rt.generators
     .filter((g) => (g.live || (owner && g.keyConfigured && rt.migrated)))
     .filter((g) => { const d = generatorById(g.id); return d && (d.output === "image" || d.output === "video") && perms.has(permForGenerator(d)); })
     .map((g) => ({ id: g.id, name: g.name }));
-  return <DirectorChat mode="page" open onOpen={() => {}} onClose={() => {}} loginHref={null} generators={directorGeneratorsOf(live)} />;
+  return <DirectorChat mode="page" loginHref={null} generators={directorGeneratorsOf(live)} />;
 }
