@@ -37,3 +37,9 @@ export async function continueDirectorHandoff(userId: string, chatId: string) {
   const child = await getDirectorChat(userId, childId);
   return { chat: child };
 }
+
+/** The conversation reached its limit: it writes its own handoff and a new conversation takes it over, in one step. */
+export async function autoDirectorHandoff(userId: string, chatId: string) {
+  await prepareDirectorHandoff(userId, chatId);
+  return continueDirectorHandoff(userId, chatId);
+}
