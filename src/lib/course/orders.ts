@@ -137,6 +137,15 @@ async function grantGift(o: Order, at: string): Promise<Order> {
   }
 }
 
+/** The course this page sells opens for THIS buyer only (their e-mail is added to it): a course added later never opens by itself. */
+async function openCourse(o: Order) {
+  const id = (await loadSettings()).learnCourseId;
+  const email = o.email.trim().toLowerCase();
+  if (!id || !email) return;
+  const { error } = await db().from("learn_grants").upsert({ course_id: id, email, granted_by: "شراء" }, { onConflict: "course_id,email" });
+  if (error) console.error("course open", error);
+}
+
 /** The owner saw the money: the buyer is unlocked and the gift is granted (once, even if the first try failed). */
 export async function confirmOrder(id: string, by: string, now = Date.now()): Promise<{ order: Order; already: boolean }> {
   const at = new Date(now).toISOString();
@@ -149,6 +158,7 @@ export async function confirmOrder(id: string, by: string, now = Date.now()): Pr
     row = cur;
   }
   const o = view(row);
+  if (o.status === "confirmed") await openCourse(o);
   return { order: o.status === "confirmed" ? await grantGift(o, at) : o, already: !data };
 }
 

@@ -71,6 +71,8 @@ export interface CourseSettings {
   /** the WhatsApp group: shown after «تم التحويل» (the owner approves each join request there); the recorded course only once confirmed */
   groupLink: string;
   recordedLink: string;
+  /** the lesson-place course (learn_courses id) this page sells: a confirmed buyer gets THAT course only, never a later one */
+  learnCourseId: string;
   bank: Bank;
 }
 
@@ -95,6 +97,7 @@ export const DEFAULT_SETTINGS: CourseSettings = {
   // the course's WhatsApp group: joining needs the owner's approval in WhatsApp, so the link may be shown right after «تم التحويل»
   groupLink: "",
   recordedLink: "",
+  learnCourseId: "",
   bank: { holder: "", iban: "", account: "", swift: "", bank: "" },
 };
 
@@ -187,6 +190,7 @@ export function readSettings(raw: unknown): CourseSettings {
     // (absent = the default; an empty one the owner saved stays empty)
     groupLink: o.groupLink === undefined ? d.groupLink : link(o.groupLink),
     recordedLink: link(o.recordedLink),
+    learnCourseId: typeof o.learnCourseId === "string" && /^[0-9a-f-]{36}$/i.test(o.learnCourseId) ? o.learnCourseId : "",
     bank: { holder: text(bk.holder, 120), iban: text(bk.iban, 60).replace(/\s+/g, " "), account: text(bk.account, 60), swift: text(bk.swift, 30), bank: text(bk.bank, 120) },
   };
 }
