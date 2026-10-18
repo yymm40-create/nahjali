@@ -237,11 +237,19 @@ export default function ExportPanel({
     }
   };
 
+  // a finished export is shown only until the window is closed: the next time it opens it is a NEW export (the old one's
+  // «نزّله مرة ثانية» used to stay there and hand back the old file even after the project was edited)
   const close = () => {
     if (phase.k === "running") return;
-    if (phase.k !== "done") setPhase({ k: "idle" });
+    setPhase({ k: "idle" });
     onClose();
   };
+  // (also when the parent closes it without going through «close»: the state is reset as the window opens again)
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open && (phase.k === "done" || phase.k === "error")) setPhase({ k: "idle" });
+  }
 
   return (
     <Dialog open={open} onClose={close} title="تصدير الفيديو">
