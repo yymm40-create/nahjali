@@ -22,6 +22,12 @@ export const POST = handle(async (request: Request) => {
   } catch (error) {
     if (error instanceof UserError) throw error;
     console.error("director chat", error);
+    // the director's tables and session type come from migration 0074: without it nothing can be saved, so say so plainly
+    const e = (error ?? {}) as { code?: unknown; message?: unknown };
+    const text = `${String(e.code ?? "")} ${String(e.message ?? error)}`;
+    if (/42P01|PGRST205|PGRST204|23514|jawad_director_chats|jawad_agent_sessions_context_type_check|context_type/i.test(text)) {
+      throw new UserError("جواد المخرج يحتاج هجرة قاعدة البيانات 0074_jawad_director.sql: شغّلها مرة وحدة في Supabase (SQL Editor) ثم جرّب.", 503);
+    }
     throw new UserError("جواد المخرج ما قدر يرد الآن. لم نستخدم أي وكيل بديل؛ جرّب بعد قليل.", 502);
   }
 });
