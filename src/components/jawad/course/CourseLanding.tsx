@@ -92,7 +92,7 @@ function Copy({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function CourseLanding({ s, serverNow, user, orders, unlocked, buy, loginHref }: { s: PublicCourse; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string }) {
+export default function CourseLanding({ s, courseId, price, serverNow, user, orders, unlocked, buy, loginHref }: { s: PublicCourse; courseId: string; price: number; serverNow: number; user: { email: string } | null; orders: OrderView[]; unlocked: Unlocked | null; buy: Product | null; loginHref: string }) {
   const router = useRouter();
   const [skew] = useState(() => serverNow - Date.now());
   const [now, setNow] = useState(serverNow);
@@ -100,11 +100,11 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
     const t = setInterval(() => setNow(Date.now() + skew), 1000);
     return () => clearInterval(t);
   }, [skew]);
-  const cur = useMemo(() => offersAt(s, now), [s, now]);
+  const cur = useMemo(() => offersAt(s, now, price), [s, now, price]);
   const video = useMemo(() => (s.videoFileUrl ? null : embedOf(s.videoUrl)), [s.videoFileUrl, s.videoUrl]);
 
   // coming back from signing in (?buy=…): the payment sheet is already open
-  const [sheet, setSheet] = useState<{ product: Product; step: "form" | "bank" | "done" } | null>(() => (buy && user && offersAt(s, serverNow).offers.some((o) => o.product === buy) ? { product: buy, step: "form" } : null));
+  const [sheet, setSheet] = useState<{ product: Product; step: "form" | "bank" | "done" } | null>(() => (buy && user && offersAt(s, serverNow, price).offers.some((o) => o.product === buy) ? { product: buy, step: "form" } : null));
   const last = orders[0];
   const [name, setName] = useState(last?.name ?? "");
   const [phone, setPhone] = useState(last?.phone ?? "");
@@ -119,7 +119,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
   function pay(product: Product) {
     setError("");
     if (!user) {
-      router.push(`${loginHref}?next=${encodeURIComponent(`${COURSE.base}?buy=${product}`)}`);
+      router.push(`${loginHref}?next=${encodeURIComponent(`${COURSE.base}/${courseId}?buy=${product}`)}`);
       return;
     }
     setSheet({ product, step: "form" });
@@ -129,7 +129,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { product: sheet.product, name, phone });
+      const r = await post<{ order: OrderView; bank: Bank }>("/api/course/order", { courseId, name, phone });
       setOrder(r.order);
       setBank(r.bank);
       setSheet({ ...sheet, step: "bank" });
@@ -303,14 +303,14 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
         </div>
       </header>
 
-      <section className="cr-band">
+      {s.problem && <section className="cr-band">
         <div className="cr-in">
           <h2 className="cr-h">وش المشكلة؟</h2>
           <p className="cr-lead">{s.problem}</p>
         </div>
-      </section>
+      </section>}
 
-      <section className="cr-band cr-alt">
+      {s.days.length > 0 && <section className="cr-band cr-alt">
         <div className="cr-in">
           <h2 className="cr-h">وش بتتعلم؟</h2>
           <ol className="cr-line">
@@ -325,7 +325,7 @@ export default function CourseLanding({ s, serverNow, user, orders, unlocked, bu
             ))}
           </ol>
         </div>
-      </section>
+      </section>}
 
       {s.risks.length > 0 && (
         <section className="cr-band">

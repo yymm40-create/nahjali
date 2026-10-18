@@ -36,6 +36,8 @@ export interface CourseView {
   summary: string;
   unlock: Product[];
   published: boolean;
+  /** the price it is sold at from its own page (SAR); null = not for sale */
+  priceSar: number | null;
   position: number;
   days: DayView[];
 }
@@ -63,6 +65,7 @@ export async function loadTree(opts: { courseId?: string; onlyPublished?: boolea
     summary: String(c.summary ?? ""),
     unlock: cleanUnlock(c.unlock),
     published: !!c.published,
+    priceSar: Number(c.price_sar) > 0 ? Number(c.price_sar) : null,
     position: Number(c.position),
     days: (days.data ?? [])
       .filter((d) => d.course_id === c.id)
@@ -114,7 +117,7 @@ const nextPosition = async (table: "learn_courses" | "learn_days" | "learn_lesso
   return (Number(data?.[0]?.position) || 0) + 1;
 };
 
-export async function saveCourse(b: { id?: string; title?: unknown; summary?: unknown; unlock?: unknown; published?: unknown }) {
+export async function saveCourse(b: { id?: string; title?: unknown; summary?: unknown; unlock?: unknown; published?: unknown; price?: unknown }) {
   const title = cleanTitle(b.title);
   if (!b.id && !title) throw new UserError("اكتب اسم الدورة.", 400);
   const patch: Record<string, unknown> = {};
@@ -125,6 +128,10 @@ export async function saveCourse(b: { id?: string; title?: unknown; summary?: un
   if (b.summary !== undefined) patch.summary = cleanTitle(b.summary, LEARN.maxSummary);
   if (b.unlock !== undefined) patch.unlock = cleanUnlock(b.unlock);
   if (b.published !== undefined) patch.published = !!b.published;
+  if (b.price !== undefined) {
+    const n = Math.round(Number(b.price));
+    patch.price_sar = Number.isFinite(n) && n > 0 ? Math.min(n, 100000) : null;
+  }
   if (b.id) {
     const { error } = await db().from("learn_courses").update(patch).eq("id", b.id);
     if (error) throw error;

@@ -11,7 +11,7 @@ vi.mock("@/lib/course/orders", () => ({ confirmOrder: (...a: unknown[]) => confi
 const settings = readSettings({ ...DEFAULT_SETTINGS, groupLink: "https://chat.whatsapp.com/abc" });
 vi.mock("@/lib/course/settings", () => ({ loadSettings: async () => settings }));
 
-const order = (o: Partial<Order> = {}): Order => ({ id: "11111111-1111-4111-8111-111111111111", userId: "u", email: "a@b.com", name: "محمد <b>علي</b>", phone: "+966501234567", product: "recorded", phase: "B", amount: 80, was: 150, bonus: 30, status: "transferred", lockedUntil: "2026-10-10T12:00:00Z", transferredAt: "2026-10-10T10:00:00Z", confirmedAt: null, bonusGrantedAt: null, note: "", createdAt: "2026-10-10T09:00:00Z", ...o });
+const order = (o: Partial<Order> = {}): Order => ({ id: "11111111-1111-4111-8111-111111111111", userId: "u", email: "a@b.com", name: "محمد <b>علي</b>", phone: "+966501234567", product: "recorded", courseId: null, courseTitle: "", phase: "B", amount: 80, was: 150, bonus: 30, status: "transferred", lockedUntil: "2026-10-10T12:00:00Z", transferredAt: "2026-10-10T10:00:00Z", confirmedAt: null, bonusGrantedAt: null, note: "", createdAt: "2026-10-10T09:00:00Z", ...o });
 
 const calls: { method: string; body: Record<string, unknown> }[] = [];
 const OWNER = "777";

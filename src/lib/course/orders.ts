@@ -20,6 +20,9 @@ export interface Order {
   name: string;
   phone: string;
   product: Product;
+  /** the lesson-place course it buys (null on the first orders, before each course had its own page) */
+  courseId: string | null;
+  courseTitle: string;
   phase: "A" | "B" | "C";
   amount: number;
   was: number;
@@ -40,6 +43,8 @@ const view = (r: Record<string, unknown>): Order => ({
   name: String(r.name ?? ""),
   phone: String(r.phone ?? ""),
   product: r.product as Product,
+  courseId: (r.course_id as string | null) ?? null,
+  courseTitle: "",
   phase: r.phase as Order["phase"],
   amount: Number(r.amount_sar ?? 0),
   was: Number(r.was_sar ?? 0),
@@ -58,20 +63,27 @@ const wrap = (e: { message?: string } | null) => {
   if (e) throw new UserError(/relation|does not exist|schema cache|PGRST205/i.test(e.message ?? "") ? NO_TABLE : "تعذّر تنفيذ الطلب. جرّب مرة ثانية.", 500);
 };
 
-/** Which products a confirmed order covers: the whole course covers live and recorded too. */
-const covers = (have: Product, want: Product) => have === want || have === "combo" || (have === "live" && want === "recorded");
+/** The order with its course's name (for the owner's message). */
+async function titled(o: Order): Promise<Order> {
+  if (!o.courseId) return o;
+  const { data } = await db().from("learn_courses").select("title").eq("id", o.courseId).maybeSingle();
+  return { ...o, courseTitle: String(data?.title ?? "") };
+}
 
 export interface Started {
   order: Order;
   bank: Bank;
 }
 
-/** «ادفع الآن»: the order for a product at today's price (the price is kept for a few hours), and the bank data to transfer to. */
-export async function startOrder(user: { id: string; email?: string | null }, b: { product: Product; name: unknown; phone: unknown }, now = Date.now()): Promise<Started> {
+/** «ادفع الآن»: the order for ONE course at its own price (kept for a few hours), and the bank data to transfer to. */
+export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown }, now = Date.now()): Promise<Started> {
   const s = await loadSettings();
-  // only the recorded course is on sale
-  const offer = b.product === "recorded" ? offerFor(s, b.product, now) : null;
-  if (!offer) throw new UserError("هذا الخيار غير متاح الحين؛ حدّث الصفحة وشوف الخيارات المتاحة.", 409);
+  const courseId = typeof b.courseId === "string" ? b.courseId : "";
+  const { data: course } = /^[0-9a-f-]{36}$/i.test(courseId) ? await db().from("learn_courses").select("id,title,published,price_sar").eq("id", courseId).maybeSingle() : { data: null };
+  const price = Number(course?.price_sar) || 0;
+  // a course is on sale while it is shown to students and has a price
+  const offer = course?.published && price > 0 ? offerFor(s, "recorded", now, price) : null;
+  if (!offer) throw new UserError("هذه الدورة غير معروضة للبيع الحين.", 409);
   const name = typeof b.name === "string" ? b.name.trim().replace(/\s+/g, " ") : "";
   if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك الثلاثي (يساعدنا نطابق التحويل).", 400);
   const phone = cleanPhone(b.phone);
@@ -81,9 +93,9 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   const { data: rows, error } = await db().from("course_orders").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50);
   wrap(error);
   const mine = (rows ?? []).map(view);
-  if (mine.some((o) => o.status === "confirmed" && covers(o.product, b.product))) throw new UserError("اشتراكك مؤكد من قبل ✅", 409);
+  if (mine.some((o) => o.status === "confirmed" && o.courseId === courseId)) throw new UserError("اشتراكك مؤكد من قبل ✅", 409);
   const lock = new Date(now + COURSE.lockMinutes * 60_000).toISOString();
-  const open = mine.find((o) => o.product === b.product && o.status === "started");
+  const open = mine.find((o) => o.courseId === courseId && o.status === "started");
   const base = { email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
   const phase = offersAt(s, now).phase;
   if (open) {
@@ -95,7 +107,7 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
     return { order: view(data!), bank: s.bank };
   }
   if (mine.filter((o) => o.status === "started" || o.status === "transferred").length >= COURSE.maxOpen) throw new UserError("عندك طلبات مفتوحة كثيرة؛ انتظر تأكيد الموجودة أو تواصل معنا.", 429);
-  const { data, error: e3 } = await db().from("course_orders").insert({ user_id: user.id, product: b.product, ...base, phase }).select("*").single();
+  const { data, error: e3 } = await db().from("course_orders").insert({ user_id: user.id, product: "recorded", course_id: courseId, ...base, phase }).select("*").single();
   wrap(e3);
   return { order: view(data!), bank: s.bank };
 }
@@ -115,7 +127,7 @@ export async function markTransferred(user: { id: string }, orderId: string, now
   const done = data ? view(data) : o;
   // the owner's phone: a failure to message must never fail the buyer (the dashboard lists the order anyway)
   try {
-    await notifyTransfer(done, await loadSettings());
+    await notifyTransfer(await titled(done), await loadSettings());
   } catch (e) {
     console.error("course notify", e);
   }
@@ -139,7 +151,7 @@ async function grantGift(o: Order, at: string): Promise<Order> {
 
 /** The course this page sells opens for THIS buyer only (their e-mail is added to it): a course added later never opens by itself. */
 async function openCourse(o: Order) {
-  const id = (await loadSettings()).learnCourseId;
+  const id = o.courseId || (await loadSettings()).learnCourseId;
   const email = o.email.trim().toLowerCase();
   if (!id || !email) return;
   const { error } = await db().from("learn_grants").upsert({ course_id: id, email, granted_by: "شراء" }, { onConflict: "course_id,email" });
@@ -159,7 +171,7 @@ export async function confirmOrder(id: string, by: string, now = Date.now()): Pr
   }
   const o = view(row);
   if (o.status === "confirmed") await openCourse(o);
-  return { order: o.status === "confirmed" ? await grantGift(o, at) : o, already: !data };
+  return { order: await titled(o.status === "confirmed" ? await grantGift(o, at) : o), already: !data };
 }
 
 export async function rejectOrder(id: string, by: string, note = ""): Promise<Order> {
@@ -172,7 +184,7 @@ export async function rejectOrder(id: string, by: string, note = ""): Promise<Or
 
 export async function getOrder(id: string): Promise<Order | null> {
   const { data } = await db().from("course_orders").select("*").eq("id", id).maybeSingle();
-  return data ? view(data) : null;
+  return data ? await titled(view(data)) : null;
 }
 
 /** A person's latest order of each product, and what their confirmed ones unlock. */

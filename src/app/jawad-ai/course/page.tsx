@@ -1,28 +1,40 @@
 import type { Metadata } from "next";
-import CourseLanding, { type OrderView, type Unlocked } from "@/components/jawad/course/CourseLanding";
-import { myCourse } from "@/lib/course/orders";
-import { loadSettings, publicView } from "@/lib/course/settings";
-import { jawadSession } from "@/lib/jawad/server/access";
-import { COURSE, isProduct } from "@config/course";
-import { JAWAD } from "@config/jawad/brand";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import Riyal from "@/components/Riyal";
+import { loadTree } from "@/lib/learn/server";
+import { COURSE } from "@config/course";
 import "./course.css";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "الدورات", description: "دورات الجواد الذكي المسجلة." };
 
-const nowMs = () => Date.now();
-
-export async function generateMetadata(): Promise<Metadata> {
-  const s = await loadSettings();
-  return { title: COURSE.name, description: s.subhead, openGraph: { title: COURSE.name, description: s.subhead, type: "website" } };
-}
-
-/** «دورة الجواد الذكي»: the sales page. Open to everyone with the link; paying needs an account. */
-export default async function CoursePage({ searchParams }: { searchParams: Promise<{ buy?: string }> }) {
-  const { buy } = await searchParams;
-  const [{ user }, s] = await Promise.all([jawadSession(), loadSettings()]);
-  const mine = user ? await myCourse(user.id).catch(() => null) : null;
-  const orders: OrderView[] = (mine?.orders ?? []).map((o) => ({ id: o.id, product: o.product, status: o.status, amount: o.amount, bonus: o.bonus, lockedUntil: o.lockedUntil, name: o.name, phone: o.phone }));
-  // the group link shows from «تم التحويل» (the owner approves each join in WhatsApp); the recorded course only once confirmed
-  const unlocked: Unlocked | null = mine?.groupOpen ? { confirmed: mine.unlocked, products: mine.products, groupLink: s.groupLink, recordedLink: mine.unlocked ? s.recordedLink : "" } : null;
-  return <CourseLanding s={publicView(s)} serverNow={nowMs()} user={user?.email ? { email: user.email } : null} orders={orders} unlocked={unlocked} buy={isProduct(buy) ? buy : null} loginHref={`${JAWAD.base}/login`} />;
+/** The courses on sale, each with its own page and price. One course: straight to its page. */
+export default async function CoursesPage() {
+  const list = (await loadTree({ onlyPublished: true }).catch(() => [])).filter((c) => c.priceSar);
+  if (list.length === 1) redirect(`${COURSE.base}/${list[0].id}`);
+  return (
+    <div className="cr" dir="rtl">
+      <section className="cr-band">
+        <div className="cr-in">
+          <h1 className="cr-h">الدورات</h1>
+          {list.length ? (
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {list.map((c) => (
+                <li key={c.id}>
+                  <Link href={`${COURSE.base}/${c.id}`} className="cr-btn block p-4">
+                    <b className="block text-lg">{c.title}</b>
+                    {c.summary && <span className="cr-mute block">{c.summary}</span>}
+                    <Riyal halalas={(c.priceSar ?? 0) * 100} size={26} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="cr-lead">ما فيه دورات معروضة للبيع الحين.</p>
+          )}
+        </div>
+      </section>
+    </div>
+  );
 }
