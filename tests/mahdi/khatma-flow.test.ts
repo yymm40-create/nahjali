@@ -7,7 +7,7 @@ import { claimPortion, extendKhatma, khatmaView, markPortion, nextKhatma, releas
 
 const G = "group-1";
 const MEMBERS = ["leader", "ali", "hasan"];
-const S = { division: "juz" as const, weeks: 1, endDow: 4, endHour: 21, timeZone: "Asia/Riyadh", noRepeat: 2, active: true };
+const S = { division: "juz" as const, range: { from: 1, to: 30 }, weeks: 1, endDow: 4, endHour: 21, timeZone: "Asia/Riyadh", noRepeat: 2, active: true };
 
 describe("«الختمة العلوية» on the server", () => {
   let db: SupabaseClient;
@@ -78,6 +78,26 @@ describe("«الختمة العلوية» on the server", () => {
     expect((await view("leader")).readers).toMatchObject([{ portion: 4, status: "reading" }]);
   });
 
+  it("a stretch of the Quran in pages: only its pages, done when they are read; what was read before stays locked across divisions", async () => {
+    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "page", range: { from: 1, to: 10 } });
+    let v = await view("ali");
+    expect(v.khatma).toMatchObject({ division: "page", range: { from: 1, to: 10 }, total: 10 });
+    expect(v.portions!.filter((x) => x !== "out")).toHaveLength(10);
+    await expect(claimPortion(db, G, "ali", MEMBERS, 11)).rejects.toThrow();
+    for (let n = 1; n <= 10; n++) {
+      await claimPortion(db, G, "ali", MEMBERS, n);
+      await markPortion(db, G, "ali", MEMBERS, n, "done");
+    }
+    expect((await view("ali")).khatma).toMatchObject({ status: "done", done: 10 });
+    // the next khatma, cut in hizb over the whole Quran: hizb 1 (pages 1–11) holds what ali read
+    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "hizb", range: { from: 1, to: 60 } });
+    vi.setSystemTime(new Date("2026-10-22T18:00:01Z"));
+    v = await view("ali");
+    expect(v.khatma).toMatchObject({ number: 2, division: "hizb", total: 60 });
+    expect(v.portions!.slice(0, 2)).toEqual(["blocked", "free"]);
+    expect(tables.mahdi_khatma_claims.find((c) => c.portion === 1)).toMatchObject({ from_v: 1, to_v: 7 });
+  });
+
   it("every portion read → the khatma is done; the next starts after its night with the same dedication", async () => {
     await saveSettings(db, G, "leader", MEMBERS, S);
     await dedicate(db, G, "صاحب العصر والزمان عجل الله فرجه", "المرحوم الحاج علي");
@@ -104,7 +124,7 @@ describe("«الختمة العلوية» on the server", () => {
   });
 
   it("the lock lasts for the number of khatmas the leader chose, then opens again", async () => {
-    await saveSettings(db, G, "leader", MEMBERS, { ...S, noRepeat: 1, division: "hizb" });
+    await saveSettings(db, G, "leader", MEMBERS, { ...S, noRepeat: 1, division: "hizb", range: { from: 1, to: 60 } });
     await claimPortion(db, G, "ali", MEMBERS, 7);
     await markPortion(db, G, "ali", MEMBERS, 7, "done");
     for (const end of ["2026-10-22T18:00:01Z", "2026-10-29T18:00:01Z"]) {
@@ -140,10 +160,10 @@ describe("«الختمة العلوية» on the server", () => {
 
   it("a new cut applies now only while nobody took a portion; stopping closes it until set up again", async () => {
     await saveSettings(db, G, "leader", MEMBERS, S);
-    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "quarter" });
+    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "quarter", range: { from: 1, to: 240 } });
     expect((await view("ali")).khatma).toMatchObject({ division: "quarter", total: 240 });
     await claimPortion(db, G, "ali", MEMBERS, 240);
-    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "hizb" });
+    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "hizb", range: { from: 1, to: 60 } });
     expect((await view("ali")).khatma).toMatchObject({ division: "quarter", total: 240 });
     expect(tables.mahdi_khatma_settings[0].division).toBe("hizb");
     await stopKhatma(db, G);
@@ -151,7 +171,7 @@ describe("«الختمة العلوية» on the server", () => {
     expect(v.settings!.active).toBe(false);
     expect(v.khatma!.status).toBe("closed");
     await expect(claimPortion(db, G, "ali", MEMBERS, 1)).rejects.toThrow();
-    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "hizb" });
+    await saveSettings(db, G, "leader", MEMBERS, { ...S, division: "hizb", range: { from: 1, to: 60 } });
     v = await view("ali");
     expect(v.khatma).toMatchObject({ number: 2, status: "open", division: "hizb", total: 60 });
   });

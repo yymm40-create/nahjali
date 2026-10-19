@@ -2,7 +2,7 @@
 // rules on the in-memory database.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { dailyQuarters, habitValueAfter, juzOf, khatmaStats, nextQuarter, quartersText } from "@/lib/mahdi/khatma/mine";
+import { dailyCount, dailyQuarters, habitValueAfter, juzOf, khatmaStats, nextPortion, nextQuarter, quartersText, unitText } from "@/lib/mahdi/khatma/mine";
 import { linkHabit, loadMyKhatma, readQuarters, startMyKhatma, stopMyKhatma, unreadQuarter, updateMyKhatma } from "@/lib/mahdi/server/my-khatma";
 import { homeWidgets, parseWidgets, WIDGETS } from "@/lib/mahdi/home-widgets";
 import { MAHDI_FEATURES } from "@config/mahdi/app-knowledge";
@@ -70,8 +70,8 @@ describe("«ختمتي» on the server", () => {
     const { db, tables } = fakeDb();
     expect(await loadMyKhatma(db, ME)).toMatchObject({ ready: true, current: null, history: [] });
     await expect(readQuarters(db, ME, "2026-10-19", [1])).rejects.toThrow(/ما عندك ختمة مفتوحة/);
-    await startMyKhatma(db, ME, "2026-10-19", 30, "صاحب العصر والزمان عجل الله فرجه", "");
-    await expect(startMyKhatma(db, ME, "2026-10-19", 30, "", "")).rejects.toThrow(/عندك ختمة مفتوحة/);
+    await startMyKhatma(db, ME, "2026-10-19", { days: 30, unit: "quarter", range: { from: 1, to: 240 }, dedicatedTo: "صاحب العصر والزمان عجل الله فرجه", forSoulOf: "" });
+    await expect(startMyKhatma(db, ME, "2026-10-19", { days: 30, unit: "quarter", range: { from: 1, to: 240 }, dedicatedTo: "", forSoulOf: "" })).rejects.toThrow(/عندك ختمة مفتوحة/);
     await linkHabit(db, ME, "habit-1");
 
     expect(await readQuarters(db, ME, "2026-10-19", [1, 2, 3])).toEqual({ added: [1, 2, 3], finished: false });
@@ -86,7 +86,7 @@ describe("«ختمتي» on the server", () => {
       { quarter: 3, readOn: "2026-10-19" },
       { quarter: 4, readOn: "2026-10-20" },
     ]);
-    await updateMyKhatma(db, ME, { days: 60, for_soul_of: "المرحوم الحاج علي" });
+    await updateMyKhatma(db, ME, "2026-10-21", { days: 60, forSoulOf: "المرحوم الحاج علي" });
 
     const rest = Array.from({ length: 240 }, (_, i) => i + 1).filter((q) => ![1, 3, 4].includes(q));
     expect(await readQuarters(db, ME, "2026-11-01", rest)).toMatchObject({ finished: true });
@@ -94,7 +94,7 @@ describe("«ختمتي» on the server", () => {
     expect(mine.ready && mine.current).toMatchObject({ status: "done", finishedOn: "2026-11-01", days: 60, forSoulOf: "المرحوم الحاج علي" });
     await expect(readQuarters(db, ME, "2026-11-01", [1])).rejects.toThrow();
 
-    await startMyKhatma(db, ME, "2026-11-02", 30, "", "");
+    await startMyKhatma(db, ME, "2026-11-02", { days: 30, unit: "quarter", range: { from: 1, to: 240 }, dedicatedTo: "", forSoulOf: "" });
     mine = await loadMyKhatma(db, ME);
     expect(mine.ready && mine.current).toMatchObject({ number: 2, status: "open", habitId: "habit-1", startedOn: "2026-11-02" });
     expect(mine.ready && mine.current!.reads).toEqual([]);
@@ -105,13 +105,48 @@ describe("«ختمتي» on the server", () => {
   });
   it("ending a khatma before it is finished keeps what was read in it", async () => {
     const { db } = fakeDb();
-    await startMyKhatma(db, ME, "2026-10-19", 10, "", "");
+    await startMyKhatma(db, ME, "2026-10-19", { days: 10, unit: "quarter", range: { from: 1, to: 240 }, dedicatedTo: "", forSoulOf: "" });
     await readQuarters(db, ME, "2026-10-19", [1, 2]);
     await stopMyKhatma(db, ME, "2026-10-20");
     const mine = await loadMyKhatma(db, ME);
     expect(mine.ready && mine.current).toMatchObject({ status: "stopped", finishedOn: "2026-10-20" });
     expect(mine.ready && mine.current!.reads).toHaveLength(2);
     await expect(unreadQuarter(db, ME, 1)).rejects.toThrow();
+  });
+});
+
+describe("a part of the Quran, not only a whole khatma", () => {
+  const ME = "me";
+  it("pages 1–20 in 5 days: 4 pages a day, and where to go on stays inside the stretch", () => {
+    expect(dailyCount(20, 5)).toBe(4);
+    expect(unitText("page", 4)).toBe("4 صفحات");
+    expect(unitText("juz", 1)).toBe("جزء");
+    expect(nextPortion([], { from: 5, to: 9 })).toBe(5);
+    expect(nextPortion([5, 6, 7], { from: 5, to: 9 })).toBe(8);
+    expect(nextPortion([5, 6, 7, 8, 9, 30], { from: 5, to: 9 })).toBeNull();
+    const s = khatmaStats([{ quarter: 1, readOn: "2026-10-19" }, { quarter: 50, readOn: "2026-10-19" }], "2026-10-19", 5, "2026-10-19", { from: 1, to: 20 });
+    expect(s).toMatchObject({ total: 20, perDay: 4, read: 1, todayCount: 1, next: 2 });
+  });
+  it("on the server: juz 28–30; outside it refused; the cut stays once reading started, the stretch may change; done when it is all read", async () => {
+    const { db } = fakeDb();
+    await startMyKhatma(db, ME, "2026-10-19", { days: 3, unit: "juz", range: { from: 28, to: 30 }, dedicatedTo: "", forSoulOf: "" });
+    await expect(readQuarters(db, ME, "2026-10-19", [27])).rejects.toThrow(/خارج/);
+    await readQuarters(db, ME, "2026-10-19", [28]);
+    await expect(updateMyKhatma(db, ME, "2026-10-19", { unit: "page", range: { from: 1, to: 604 } })).rejects.toThrow(/ما يتغير تقسيمها/);
+    // the stretch itself may change: down to juz 28–29…
+    await updateMyKhatma(db, ME, "2026-10-19", { range: { from: 28, to: 29 } });
+    let mine = await loadMyKhatma(db, ME);
+    expect(mine.ready && mine.current).toMatchObject({ unit: "juz", range: { from: 28, to: 29 }, status: "open" });
+    expect(await readQuarters(db, ME, "2026-10-20", [29])).toMatchObject({ finished: true });
+    mine = await loadMyKhatma(db, ME);
+    expect(mine.ready && mine.current).toMatchObject({ status: "done", finishedOn: "2026-10-20" });
+  });
+  it("before reading, the cut may change too", async () => {
+    const { db } = fakeDb();
+    await startMyKhatma(db, ME, "2026-10-19", { days: 30, unit: "quarter", range: { from: 1, to: 240 }, dedicatedTo: "", forSoulOf: "" });
+    await updateMyKhatma(db, ME, "2026-10-19", { unit: "page", range: { from: 1, to: 50 } });
+    const mine = await loadMyKhatma(db, ME);
+    expect(mine.ready && mine.current).toMatchObject({ unit: "page", range: { from: 1, to: 50 } });
   });
 });
 
@@ -136,6 +171,9 @@ describe("it is a main branch, tied to the habits", () => {
     expect(sql).toContain("references public.mahdi_habits (id) on delete set null");
     expect(sql).toMatch(/revoke all on public\.mahdi_my_khatmas, public\.mahdi_my_khatma_reads from anon, authenticated/);
     expect(MAHDI_FEATURES.find((f) => f.id === "khatma")!.how.join(" ")).toContain("ورد الختمة العلوية");
+    const parts = read("supabase/migrations/0082_mahdi_khatma_parts.sql");
+    for (const x of ["'page', 'juz', 'hizb', 'half', 'quarter'", "range_from", "from_v", "portion between 1 and 604", "quarter between 1 and 604"]) expect(parts).toContain(x);
+    expect(MAHDI_FEATURES.find((f) => f.id === "khatma")!.how.join(" ")).toContain("مو شرط ختمة كاملة");
     expect(JAWAD_KNOWLEDGE).toContain("«ختمتي»");
   });
 });
