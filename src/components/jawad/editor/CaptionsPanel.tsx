@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { CAPTION_STYLES, clipLength, formatTime, type CaptionStyle, type Timeline } from "@/lib/editor/model";
-import Dialog from "../Dialog";
+import DockFrame from "./DockFrame";
 import Icon from "../Icon";
 import { parseSRT, toSRT } from "./captions";
 import { captionSources, poemCaptions, spokenCaptions } from "./captions-make";
@@ -17,7 +17,7 @@ const LANGS = [
 ] as const;
 
 /** «كابشن»: what is said, written on the video word by word; a poem's verses on its recitation; SRT in and out. */
-export default function CaptionsPanel({ open, onClose, projectId, tl, assets, run, flash }: { open: boolean; onClose: () => void; projectId: string; tl: Timeline; assets: Map<string, EditorAsset>; run: Run; flash: (t: string, bad?: boolean) => void }) {
+export default function CaptionsPanel({ dock, open, onClose, projectId, tl, assets, run, flash }: { /** the editor's right column (a computer) */ dock?: HTMLElement | null; open: boolean; onClose: () => void; projectId: string; tl: Timeline; assets: Map<string, EditorAsset>; run: Run; flash: (t: string, bad?: boolean) => void }) {
   const [tab, setTab] = useState<Tab>("auto");
   const [lang, setLang] = useState<string>("ar");
   const [style, setStyle] = useState<CaptionStyle>("karaoke");
@@ -103,7 +103,7 @@ export default function CaptionsPanel({ open, onClose, projectId, tl, assets, ru
   );
 
   return (
-    <Dialog open={open} onClose={() => !busy && onClose()} title="الكابشن">
+    <DockFrame dock={dock} open={open} onClose={() => !busy && onClose()} title="الكابشن">
       <div className="space-y-4 p-4">
         <div className="jw-seg" role="tablist">
           <button type="button" role="tab" aria-selected={tab === "auto"} onClick={() => setTab("auto")}>تلقائي من الكلام</button>
@@ -175,6 +175,6 @@ export default function CaptionsPanel({ open, onClose, projectId, tl, assets, ru
         {error && <p className="error-box text-sm">{error}</p>}
         <p className="text-[11px] text-jw-faint">مجاني حاليًا، حتى {120} دقيقة تفريغ في اليوم.</p>
       </div>
-    </Dialog>
+    </DockFrame>
   );
 }

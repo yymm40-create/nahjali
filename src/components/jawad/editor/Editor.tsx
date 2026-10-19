@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { apply, applyAll, CommandError, type Applied, type ClipPatch, type Command } from "@/lib/editor/commands";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
 import SequenceTabs from "./SequenceTabs";
-import { DEFAULT_LAYOUT, firstRect, onScreen, PANELS, readLayout, saveLayout, type Layout, type PanelId } from "./layout";
+import { DEFAULT_LAYOUT, firstRect, onScreen, PANELS, readLayout, saveLayout, type Layout, type PanelId, type Rect } from "./layout";
 import { ATTRS, copyClips, pasteable, type Attr } from "./clipboard";
 import { gradeView, setGradeView } from "./grade-gl";
 import { allTracks, flatten, clipEnd, duration, findClip, formatTime, mainTrack, type AssetInfo, type Clip, type Timeline as TL, type TrackKind } from "@/lib/editor/model";
@@ -46,7 +46,7 @@ import { makeProxy, needsProxy, proxyUrl } from "./proxy";
 import { FONTS, setFonts } from "./render";
 import ShortcutsPage from "./ShortcutsPage";
 import KeyStudio from "./KeyStudio";
-import MenuBar, { PageTabs, type MenuAct } from "./MenuBar";
+import MenuBar, { type MenuAct } from "./MenuBar";
 import CommandBar from "./CommandBar";
 import ClipStrip from "./ClipStrip";
 import ScopesPanel from "./ScopesPanel";
@@ -75,7 +75,8 @@ interface Step {
 }
 
 /** the quick tools shown at first (the person adds or removes more) */
-const DEFAULT_TOOLS = ["split", "delete", "duplicate", "copy", "paste", "text", "captions"];
+// (the rest lives in the menus at the top left, or on the keyboard: no tool twice on the screen)
+const DEFAULT_TOOLS = ["split", "delete", "duplicate", "text"];
 
 const info = (a: EditorAsset): AssetInfo => ({ id: a.id, kind: a.kind, durationMs: a.durationMs, width: a.width, height: a.height, hasAudio: a.hasAudio });
 const SAVE_DELAY = 1200;
@@ -102,12 +103,15 @@ const THEMES = {
 } as const satisfies Record<string, { label: string; icon: string; hint: string; rail: "side" | "clouds" | "pages"; mirror: boolean; scale: number; font: string | null; swatch: string[] }>;
 type ThemeId = keyof typeof THEMES;
 const RAIL_NAV = {
+  // «كاب كت»: the menus as tabs at the top of the left column, their contents under them
+  tabs: "cut-tabs hidden lg:grid",
   side: "jw-glass jw-scroll my-2 hidden w-[4.25rem] shrink-0 flex-col gap-0.5 overflow-y-auto rounded-2xl p-1 lg:flex",
   clouds: "jw-scroll mx-2 mt-1 hidden gap-2 overflow-x-auto px-1 pb-2 pt-1 lg:flex",
   pages: "jw-glass jw-scroll mx-2 mb-2 hidden gap-px overflow-x-auto p-0.5 lg:flex",
   // (the phone keeps its own tool bar)
 } as const;
 const RAIL_ITEM = {
+  tabs: "flex-col justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-[10.5px] leading-tight",
   side: "flex-col gap-0.5 rounded-xl px-0.5 py-1 text-[10px] leading-tight",
   clouds: "min-w-[4.75rem] flex-col justify-center gap-0.5 rounded-full px-3 py-2 text-xs font-bold",
   pages: "gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide",
@@ -148,6 +152,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
   { id: "captions", label: "كابشن", icon: "type", hint: "كابشن تلقائي، مزامنة قصيدة، SRT" },
   { id: "styles", label: "أساليب", icon: "sparkles", hint: "أساليب مونتاج جاهزة بضغطة" },
   { id: "project", label: "المشروع", icon: "ratio", hint: "المقاس، الخلفية، المغناطيس" },
+  { id: "haidara", label: "حيدرة", icon: "sparkles", hint: "حيدرة: قل له وش تبي ويعدّل المونتاج" },
 ];
 
 const SAVE_TEXT: Record<SaveState, string> = { saved: "محفوظ", dirty: "تعديلات…", saving: "نحفظ…", error: "ما انحفظ، نعيد…", conflict: "تغيّر من مكان ثاني" };
@@ -175,7 +180,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [assisting, setAssisting] = useState(false);
   const [chat, setChat] = useState(false);
   // the left side's section (a computer): the library, a clip's settings, the ready styles, the project
-  const [rail, setRail] = useState<"media" | "inspector" | "styles" | "project">("media");
+  const [rail, setRail] = useState<"media" | "inspector" | "styles" | "project" | "haidara">("media");
+  // «كاب كت»: the right column, where an option that needs its own window opens (the captions, the export)
+  const [rightEl, setRightEl] = useState<HTMLDivElement | null>(null);
   // the whole editor's size (people pick it; kept on this device)
   const [ui, setUi] = useState(1);
   // the look (kept on this device): colours, shapes and where the sections sit
@@ -501,7 +508,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     const kind = selected.length === 1 ? kindOfClip(tl, assets, selected[0]) : null;
     setSeen({ sel: selected, kind });
     if (kind) {
-      if (rail !== "inspector") setRail("inspector");
+      if (rail !== "inspector" && rail !== "haidara") setRail("inspector");
       const next = wantTab ?? (kind === seen.kind && TABS_OF[kind].includes(tab) ? tab : MAIN_TAB[kind]);
       if (next !== tab) setTab(next);
       if (wantTab) setWantTab(null);
@@ -510,7 +517,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // picking one clip shows its settings on the left
   const pick = useCallback((ids: string[]) => {
     setSelected(ids);
-    if (ids.length === 1) setRail("inspector");
+    if (ids.length === 1) setRail((r) => (r === "haidara" ? r : "inspector"));
   }, []);
   useEffect(() => {
     if (!big) return;
@@ -574,6 +581,16 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     }
   };
   const openClaude = (on?: boolean) => {
+    // a computer: حيدرة is one of the menus at the top left (his conversation shows under them)
+    if (wideRef.current) {
+      const open = on ?? railRef.current !== "haidara";
+      if (open) {
+        setAssisting(true);
+        setChat(true);
+        setRail("haidara");
+      } else if (railRef.current === "haidara") setRail("media");
+      return;
+    }
     setAssisting((v) => on ?? !v);
     setChat((v) => on ?? !v);
   };
@@ -592,6 +609,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     return () => clearTimeout(t);
   }, []);
 
+  const wideRef = useRef(wide);
+  const railRef = useRef(rail);
+  useEffect(() => {
+    wideRef.current = wide;
+    railRef.current = rail;
+  }, [wide, rail]);
   const tlRef = useRef(tl);
   const titleRef = useRef(title);
   const labelRef = useRef("");
@@ -1527,11 +1550,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     },
   });
   // the sections: a rail at the side, big clouds over the timeline (children), or page tabs at the bottom (cinema)
-  const railNav = (variant: "side" | "clouds" | "pages") => (
+  const railNav = (variant: "side" | "clouds" | "pages" | "tabs") => (
     <nav className={`${RAIL_NAV[variant]} ${variant === "side" ? "lg:order-last" : ""}`} aria-label="أقسام المحرر">
       {RAIL.filter((r) => !r.tab || !seen.kind || rail !== "inspector" || TABS_OF[seen.kind].includes(r.tab)).map((r, i) => {
             const label = r.id === "edit" && seen.kind && rail === "inspector" ? EDIT_LABEL[seen.kind] : r.label;
-            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.tab ? rail === "inspector" && tab === r.tab : false;
+            const on = r.id === "media" ? rail === "media" : r.id === "styles" ? rail === "styles" : r.id === "project" ? rail === "project" : r.id === "haidara" ? rail === "haidara" : r.tab ? rail === "inspector" && tab === r.tab : false;
             return (
               <button
                 key={r.id}
@@ -1540,10 +1563,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
                 title={r.hint}
                 onClick={() => {
                   if (r.id === "captions") return setCaptioning(true);
+                  if (r.id === "haidara") return openClaude(true);
                   if (r.tab) {
                     setTab(r.tab);
                     setRail("inspector");
                   } else setRail(r.id as "media" | "styles" | "project");
+                  if (variant === "tabs") setSheet(null);
                 }}
                 className={`jw-3d flex shrink-0 items-center ${RAIL_ITEM[variant]} ${on ? "jw-rail-on" : variant === "clouds" ? `jw-cloud-${i % 5} text-jw-ink` : "bg-jw-surface text-jw-muted hover:text-jw-ink"}`}
               >
@@ -1708,11 +1733,12 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   ];
 
   // «واجهتي» while drawing: where each panel sits, and the floating windows
-  const floated = (id: PanelId) => (wide && !(id === "preview" && full) && !(id === "chat" && chatBig) ? layout.float[id] : undefined);
+  // «كاب كت» (the owner): the places are fixed — the menus top left, the screen in the middle, a second window top right
+  const floated = (id: PanelId): Rect | undefined => (void id, undefined);
   const placeStyle = (id: PanelId, docked?: React.CSSProperties): React.CSSProperties | undefined => {
     if (!wide) return undefined;
     const r = floated(id);
-    const order = layout.order.indexOf(id) + 1;
+    const order = id === "preview" ? 2 : id === "panel" ? 3 : 1;
     return r ? { left: r.x, top: r.y, width: r.w, height: r.h, order } : { ...docked, order };
   };
   const floatCls = (id: PanelId) => (floated(id) ? `lg:!fixed ${front === id ? "lg:!z-[57]" : "lg:!z-[56]"} lg:!m-0 lg:!flex lg:flex-col lg:overflow-hidden lg:rounded-2xl lg:border lg:border-jw-line lg:!bg-jw-surface lg:shadow-2xl lg:[resize:both]` : "");
@@ -1806,7 +1832,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </span>
         {ws && wide && (
           <>
-            <PageTabs ws={ws} page={page} onAct={menuAct} />
+            {/* (the pages are the menus at the top left now; the colour room and the others stay in the menu bar) */}
             <CommandBar disabled={readOnly} onSend={(text) => pluginCtx().ask(text)} />
           </>
         )}
@@ -1818,67 +1844,34 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <Icon name="focus" size={15} /> <span className="hidden xl:inline">تركيز</span>
           </button>
         )}
-        <button type="button" className="jw-btn jw-3d hidden shrink-0 text-xs lg:inline-flex" onClick={() => setKeysOpen("page")} title="الاختصارات: اختصارات بريمير ودافنشي وكاب كت وفاينل كت تشتغل هنا">
-          <Icon name="keyboard" size={15} /> <span className="hidden xl:inline">الاختصارات</span>
-        </button>
-        {/* the app's install button (the look is the pro look; the older themes are gone) */}
-        <div className="relative shrink-0">
-          <button type="button" className="jw-btn jw-3d" onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="ثبّت حيدرة كت كتطبيق">
-            <Icon name="download" size={16} /> <span className="hidden md:inline">التطبيق</span>
-          </button>
-          {picking && (
-            <div role="menu" aria-label="التطبيق" className="jw-glass absolute end-0 top-full z-50 mt-2 w-[20rem] max-w-[90vw] rounded-2xl p-2">
-              <InstallApp />
-            </div>
-          )}
-        </div>
         {making.length > 0 && (
           <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-jw-accent/40 bg-jw-accent/10 px-2.5 py-1 text-[11px] font-semibold text-jw-accent" title={making.map((m) => m.name).join("، ")} aria-live="polite">
             <span className="jw-spinner !h-3 !w-3" /> حيدرة يصنع {making.length === 1 ? `«${making[0].name.slice(0, 24)}»` : `${making.length} أشياء`}
           </span>
         )}
-        {/* «واجهتي»: where the panels sit, and which float as windows */}
-        <div className="relative hidden lg:block">
-          <button type="button" className={`jw-btn jw-3d !min-h-9 shrink-0 text-xs ${layoutOpen ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setLayoutOpen((v) => !v)} aria-expanded={layoutOpen} title="رتّب واجهتك: أماكن اللوحات، ونوافذ تطفو">
-            <Icon name="grid" size={15} /> واجهتي
+        {/* «⋯ المزيد»: what is used now and then (the shortcuts, the app, the editor's size) — one button instead of four */}
+        <div className="relative shrink-0">
+          <button type="button" className={`jw-btn jw-3d ${picking ? "border-jw-accent text-jw-accent" : ""}`} onClick={() => setPicking((v) => !v)} aria-expanded={picking} title="المزيد: الاختصارات، التطبيق، حجم الواجهة">
+            <Icon name="grid" size={16} /> <span className="hidden md:inline">المزيد</span>
           </button>
-          {layoutOpen && (
-            <div role="menu" aria-label="واجهتي" className="absolute end-0 top-full z-50 mt-2 w-80 space-y-2 rounded-2xl border border-jw-line bg-jw-surface p-3 shadow-2xl">
-              <p className="text-[11px] text-jw-muted">رتّب اللوحات من اليمين لليسار، أو طلّع أي وحدة نافذة تسحبها لأي مكان وتكبّرها من زاويتها.</p>
-              {layout.order.map((id, i) => (
-                <div key={id} className="flex items-center gap-1.5 rounded-xl border border-jw-line p-1.5">
-                  <span className="flex-1 text-xs font-semibold">{PANELS[id]}</span>
-                  <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-30" disabled={i === 0 || !!layout.float[id]} onClick={() => moveDocked(id, -1)} aria-label={`حرّك ${PANELS[id]} يمين`} title="يمين">
-                    <Icon name="chevronRight" size={14} />
-                  </button>
-                  <button type="button" className="grid h-7 w-7 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink disabled:opacity-30" disabled={i === layout.order.length - 1 || !!layout.float[id]} onClick={() => moveDocked(id, 1)} aria-label={`حرّك ${PANELS[id]} يسار`} title="يسار">
-                    <Icon name="chevronLeft" size={14} />
-                  </button>
-                  <button type="button" role="menuitemcheckbox" aria-checked={!!layout.float[id]} className={`rounded-lg px-2 py-1 text-[11px] ${layout.float[id] ? "bg-jw-accent text-jw-on-accent" : "bg-jw-surface-2 text-jw-muted hover:text-jw-ink"}`} onClick={() => floatToggle(id)}>
-                    {layout.float[id] ? "نافذة ✓" : "نافذة"}
-                  </button>
-                </div>
-              ))}
-              <p className="text-[11px] text-jw-faint">عرض لوحة الإعدادات: اسحب حافتها. الحجم كله: من أزرار − و + جنب.</p>
-              <button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => putLayout(DEFAULT_LAYOUT)}>
-                رجّع الواجهة الأصلية
+          {picking && (
+            <div role="menu" aria-label="المزيد" className="jw-glass absolute end-0 top-full z-50 mt-2 w-[20rem] max-w-[90vw] space-y-2 rounded-2xl p-2">
+              <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-jw-surface-2" onClick={() => { setPicking(false); setKeysOpen("page"); }}>
+                <Icon name="keyboard" size={15} /> الاختصارات (بريمير، دافنشي، كاب كت، فاينل كت)
               </button>
+              <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm">
+                <span>حجم الواجهة</span>
+                <div className="flex items-center rounded-xl border border-jw-line bg-jw-surface-2" role="group" aria-label="حجم الواجهة">
+                  <button type="button" className="grid h-8 w-8 place-items-center rounded-s-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui <= 0.7} onClick={() => sizeUi(-0.1)} aria-label="صغّر الواجهة"><Icon name="zoomOut" size={15} /></button>
+                  <button type="button" className="min-w-11 text-[11px] tabular-nums text-jw-muted hover:text-jw-ink" onClick={() => sizeUi(1 - ui)} title="الحجم الطبيعي" dir="ltr">{Math.round(ui * 100)}%</button>
+                  <button type="button" className="grid h-8 w-8 place-items-center rounded-e-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui >= 1.4} onClick={() => sizeUi(0.1)} aria-label="كبّر الواجهة"><Icon name="zoomIn" size={15} /></button>
+                </div>
+              </div>
+              <div className="border-t border-jw-line pt-2"><InstallApp /></div>
             </div>
           )}
         </div>
-        {/* the whole editor's size */}
-        <div className="hidden items-center rounded-xl border border-jw-line bg-jw-surface-2 sm:flex" role="group" aria-label="حجم الواجهة">
-          <button type="button" className="grid h-8 w-8 place-items-center rounded-s-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui <= 0.7} onClick={() => sizeUi(-0.1)} aria-label="صغّر الواجهة" title="صغّر الواجهة">
-            <Icon name="zoomOut" size={15} />
-          </button>
-          <button type="button" className="min-w-11 text-[11px] tabular-nums text-jw-muted hover:text-jw-ink" onClick={() => sizeUi(1 - ui)} title="الحجم الطبيعي" dir="ltr">
-            {Math.round(ui * 100)}%
-          </button>
-          <button type="button" className="grid h-8 w-8 place-items-center rounded-e-xl text-jw-muted hover:text-jw-ink disabled:opacity-40" disabled={ui >= 1.4} onClick={() => sizeUi(0.1)} aria-label="كبّر الواجهة" title="كبّر الواجهة">
-            <Icon name="zoomIn" size={15} />
-          </button>
-        </div>
-        <span className="hidden lg:contents"><button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="مساعدك: قل له وش تبي ويعدّل التايملاين">
+        <span className="lg:hidden"><button type="button" className={`jw-btn jw-3d shrink-0 ${assisting ? "border-jw-accent text-jw-accent" : ""}`} disabled={readOnly} onClick={() => openClaude()} aria-pressed={assisting} title="حيدرة">
           <span className="jw-orb h-4 w-4" aria-hidden /> حيدرة
         </button></span>
         <button type="button" className="jw-btn jw-btn-primary jw-3d shrink-0" disabled={readOnly || !total} onClick={() => setExporting(true)}>
@@ -1906,13 +1899,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         {sheet && <button type="button" aria-label="إغلاق" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSheet(null)} />}
         {/* حيدرة: a small bubble with his face (dragged anywhere, folded to the side); pressed, his conversation pops up
             in his own black-and-lime window over the work, and «صغّر» folds it back to the bubble */}
-        {!assisting && (
+        {!assisting && !wide && (
           <MovableBubble id="haidara-chat" corner="left" size={52} label="حيدرة: كلّمني وأعدّل لك المونتاج" gradient="linear-gradient(135deg, #c6ff1a, #3f5a00)" onPress={() => openClaude(true)}>
             <RobotFace id="haidara" size={38} />
           </MovableBubble>
         )}
 
-        {assisting && !(chatDock && wide) && (
+        {assisting && !wide && (
           <aside className={`hd-pop ${chatBig ? "big" : ""}`} ref={sizeChat} aria-label="حيدرة" dir="rtl">
             <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
               <Guard name="حيدرة"><AssistantPanel big={chatBig} onBig={() => setChatBig((v) => !v)} onDock={wide ? () => setChatDock(true) : undefined} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => (setChatBig(false), openClaude(false))} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number) => openLab(brief, secs)} /></Guard>
@@ -1979,6 +1972,15 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           </div>
         )}
 
+        {/* «كاب كت»: the left column — the menus as tabs at its top, what each opens under them (حيدرة too); on a phone
+            its parts stay the bottom sheets they were (display: contents) */}
+        <div className={`cut-left ${colorRoom || big ? "contents" : "contents lg:relative lg:my-2 lg:flex lg:min-h-0 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl jw-glass-lg"}`} style={wide && !colorRoom && !big ? { order: 3, width: layout.panelW } : undefined}>
+          {wide && !big && !colorRoom && railNav("tabs")}
+          {wide && assisting && !big && !colorRoom && (
+            <div className={`hd-left min-h-0 flex-1 flex-col ${rail === "haidara" ? "flex" : "hidden"}`} aria-label="حيدرة" dir="rtl">
+              <Guard name="حيدرة"><AssistantPanel big={false} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number) => openLab(brief, secs)} /></Guard>
+            </div>
+          )}
         <aside
           className={`${sheet === "library" ? "fixed inset-x-0 bottom-0 z-50 flex h-[72dvh] rounded-t-2xl shadow-2xl" : "hidden"} flex-col bg-jw-surface lg:relative lg:z-auto ${rail === "media" && !big ? "lg:flex" : "lg:hidden"} jw-glass-lg lg:my-2 lg:h-auto lg:w-80 lg:shrink-0 lg:rounded-2xl ${rail === "media" ? floatCls("panel") : ""}`}
           style={placeStyle("panel", { width: layout.panelW })}
@@ -2027,12 +2029,17 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
             <PluginTools inline ctx={pluginCtx} run={run} flash={flash} readOnly={readOnly} />
           </div>
         </aside>
+        </div>
+
+        {/* «كاب كت»: the right column — an option that needs its own window opens here (the captions, the export) */}
+        {wide && !big && !colorRoom && (
+          <div ref={setRightEl} className={`cut-right jw-glass-lg my-2 min-h-0 w-[min(380px,30vw)] shrink-0 flex-col overflow-hidden rounded-2xl ${captioning || exporting ? "flex" : "hidden"}`} style={{ order: 1 }} />
+        )}
 
         {/* the rail of sections at the side (the blue and nature looks) */}
-        {T.rail === "side" && !big && railNav("side")}
+        {/* (the menus are the tabs of the left column now) */}
       </div>
 
-      {T.rail === "clouds" && !big && railNav("clouds")}
 
       {/* transport and tools */}
       <div className="jw-glass mx-2 my-1 flex items-center gap-1 rounded-2xl px-2 py-1" dir="rtl">
@@ -2098,7 +2105,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </button>
       </div>
 
-      {assisting && chatDock && wide && (
+      {false && assisting && chatDock && wide && (
         <aside className="hd-pop dock" ref={sizeChat} aria-label="حيدرة" dir="rtl">
           <div className="flex min-h-0 flex-1 flex-col" style={chatZoom !== 1 ? { zoom: chatZoom } : undefined}>
             <Guard name="حيدرة"><AssistantPanel big={false} docked onDock={() => setChatDock(false)} mode={chatMode} zoom={chatZoom} onZoom={zoomChat} ask={ask} onAssets={addAssets} onSeparate={separateClip} onSceneCut={(id: string) => sceneCut(id, "normal", () => {}, new AbortController().signal)} onUpscale={readOnly ? undefined : upscale} projectId={project.id} tl={tl} selected={selected} assets={assetMap} player={player} run={run} onUndo={undo} onClose={() => openClaude(false)} readOnly={readOnly} diag={owner ? diagApp : undefined} onLab={readOnly ? undefined : (brief: string, secs: number) => openLab(brief, secs)} /></Guard>
@@ -2106,7 +2113,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </aside>
       )}
       {!(big && !wide) && <Guard name="التعديل الذكي"><SmartFix projectId={project.id} tl={tl} assets={assetMap} selected={selected} run={run} player={player} onAssets={addAssets} flash={flash} readOnly={readOnly} studioPath={studioPath} /></Guard>}
-      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? (ws ? "hidden lg:flex lg:h-[36%] lg:min-h-[200px]" : "hidden lg:flex lg:h-[16%] lg:min-h-[110px]") : colorRoom ? "hidden" : bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[30%] lg:min-h-[200px]"}`} style={tlH && wide && !big && !bigPage ? { height: tlH, minHeight: 0 } : undefined}>
+      <div className={`jw-glass relative mx-2 mb-2 shrink-0 flex-col overflow-hidden rounded-2xl ${big ? (ws ? "hidden lg:flex lg:h-[36%] lg:min-h-[200px]" : "hidden lg:flex lg:h-[16%] lg:min-h-[110px]") : colorRoom ? "hidden" : bigPage ? "hidden lg:flex lg:h-[16%] lg:min-h-[110px]" : "flex h-[42%] min-h-[190px] lg:h-[36%] lg:min-h-[240px]"}`} style={tlH && wide && !big && !bigPage ? { height: tlH, minHeight: 0 } : undefined}>
         {/* its top edge: drag to make the timeline taller or shorter (double-click: the usual height) */}
         {wide && !big && (
           <div role="separator" aria-orientation="horizontal" aria-label="غيّر ارتفاع التايملاين" title="اسحب لتطويل التايملاين أو تقصيره (ضغطتين: الارتفاع الأصلي)" className="absolute inset-x-8 top-0 z-20 h-2 cursor-row-resize rounded-full hover:bg-jw-accent/40" onPointerDown={dragTimeline} onDoubleClick={resetTimeline} />
@@ -2121,7 +2128,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </div>
       </div>
 
-      {T.rail === "pages" && !big && !colorRoom && railNav("pages")}
 
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
@@ -2169,9 +2175,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           if (files.length && !readOnly) dropFiles(files, at(), null);
         }}
       />
-      <CaptionsPanel open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
+      <CaptionsPanel dock={rightEl} open={captioning} onClose={() => setCaptioning(false)} projectId={project.id} tl={tl} assets={assetMap} run={run} flash={flash} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       <ExportPanel
+        dock={rightEl}
         open={exporting}
         onClose={() => setExporting(false)}
         projectId={project.id}
