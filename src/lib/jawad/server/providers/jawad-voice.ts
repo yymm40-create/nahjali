@@ -10,6 +10,7 @@
 import { ProviderError, rejectedMessage } from "./common";
 import { falFile, falReady, falRun, falUrl } from "./fal";
 import { joinWavs, readWav, splitForSpeech, writeWav, type HabibiDialect } from "../../voice-text";
+import { habibiModelFor } from "@config/jawad/voice-licences";
 
 export type JawadEngine = "habibi" | "chatterbox";
 
@@ -54,7 +55,7 @@ async function habibiSpeak(o: JawadSpeech) {
   const url = process.env.HABIBI_URL;
   if (!url) throw new ProviderError("rejected", "محرك «حبيبي» غير مفعّل على الخادم (HABIBI_URL).", "HABIBI_URL missing");
   if (!o.refText.trim()) throw new ProviderError("rejected", "هذا الصوت بلا نصّ مرجعي؛ أعد أخذ البصمة.", "habibi needs ref_text");
-  const body = { inputs: { ref_audio_url: o.refUrl, ref_text: o.refText, gen_text: o.text, dialect: o.dialect ?? "UNK", model_type: "Unified", speed: o.speed ?? 1, remove_silence: true } };
+  const body = { inputs: { ref_audio_url: o.refUrl, ref_text: o.refText, gen_text: o.text, dialect: o.dialect ?? "UNK", model_type: habibiModelFor(o.dialect), speed: o.speed ?? 1, remove_silence: true } };
   let res: Response;
   try {
     res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", ...(process.env.HABIBI_TOKEN ? { Authorization: `Bearer ${process.env.HABIBI_TOKEN}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(280_000) });
