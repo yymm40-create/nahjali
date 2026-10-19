@@ -9,9 +9,9 @@ import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import Sheet from "@/components/mahdi/Sheet";
 import { useMahdi } from "@/components/mahdi/Provider";
+import PartPicker, { partText, type Part } from "@/components/mahdi/khatma/PartPicker";
 import {
-  DIVISION_LABEL,
-  DIVISIONS,
+  isFull,
   khatmaEnd,
   nightName,
   nightText,
@@ -19,11 +19,13 @@ import {
   portionSummary,
   portionTitle,
   type Division,
+  type PortionRange,
   type PortionState,
 } from "@/lib/mahdi/khatma/portions";
 
 interface Settings {
   division: Division;
+  range: PortionRange;
   weeks: number;
   endDow: number;
   endHour: number;
@@ -35,6 +37,7 @@ interface Khatma {
   id: string;
   number: number;
   division: Division;
+  range: PortionRange;
   startsAt: string;
   endsAt: string;
   status: "open" | "done" | "closed";
@@ -53,7 +56,7 @@ interface View {
   khatma?: Khatma | null;
   portions?: PortionState[];
   readers?: { portion: number; name: string; status: "reading" | "done"; claimedAt: string }[];
-  history?: { number: number; status: string; division: Division; done: number; total: number; dedicatedTo: string; forSoulOf: string; endsAt: string }[];
+  history?: { number: number; status: string; division: Division; range: PortionRange; done: number; total: number; dedicatedTo: string; forSoulOf: string; endsAt: string }[];
 }
 
 /** The colours of a portion: green read, yellow being read, grey read before (locked), the gold line free. */
@@ -62,6 +65,7 @@ const STATE_STYLE: Record<Exclude<PortionState, "taken">, React.CSSProperties> =
   reading: { borderColor: "#eab308", background: "color-mix(in srgb, #eab308 22%, var(--m-surface-2))" },
   done: { borderColor: "#22c55e", background: "color-mix(in srgb, #22c55e 24%, var(--m-surface-2))" },
   blocked: { borderColor: "var(--m-line)", background: "var(--m-track)", opacity: 0.5, filter: "grayscale(1)", cursor: "not-allowed" },
+  out: { display: "none" },
 };
 
 const HOURS = [18, 19, 20, 21, 22, 23];
@@ -131,7 +135,7 @@ export default function KhatmaPage() {
         <h1 className="m-display text-3xl">{khatma ? t.khatma.number(khatma.number) : t.khatma.title}</h1>
         {khatma && (
           <p className="m-num text-sm m-muted">
-            {DIVISION_LABEL[khatma.division].all} · {khatma.status === "open" && !khatma.overdue ? t.khatma.endsAt(nightText(khatma.endsAt, tz)) : t.khatma.endedAt(nightText(khatma.endsAt, tz))}
+            {partText({ unit: khatma.division, range: khatma.range })} · {khatma.status === "open" && !khatma.overdue ? t.khatma.endsAt(nightText(khatma.endsAt, tz)) : t.khatma.endedAt(nightText(khatma.endsAt, tz))}
           </p>
         )}
       </header>
@@ -142,6 +146,20 @@ export default function KhatmaPage() {
         group.isLeader ? <SettingsForm busy={busy} act={act} /> : <p className="m-card p-5 text-center m-muted">{t.khatma.notStartedMember}</p>
       ) : (
         <>
+          {group.isLeader && (
+            <details className="m-card p-4" open={!khatma}>
+              <summary className="cursor-pointer font-semibold">⚙️ {t.khatma.settings}</summary>
+              <p className="mt-1 text-xs m-muted">التقسيم، الجزء اللي تختمونه، ليلة الختم، والإهداء.</p>
+              <div className="mt-3 space-y-4">
+                <SettingsForm busy={busy} act={act} current={settings} lockedDivision={Boolean(khatma && khatma.status === "open" && (khatma.done || khatma.reading))} />
+                {khatma && <Dedication key={`${khatma.id}:${khatma.dedicatedTo}:${khatma.forSoulOf}`} k={khatma} busy={busy} act={act} />}
+                {settings.active && (
+                  <button type="button" className="m-btn m-btn-danger w-full" onClick={() => setStop(true)}>{t.khatma.stop}</button>
+                )}
+              </div>
+            </details>
+          )}
+
           {khatma && <Progress k={khatma} />}
           {khatma && (khatma.dedicatedTo || khatma.forSoulOf) && (
             <section className="m-card space-y-1 p-4 text-center">
@@ -201,15 +219,11 @@ export default function KhatmaPage() {
 
           {khatma && (
             <section className="space-y-3" aria-labelledby="grid">
-              <h2 id="grid" className="text-lg font-semibold">{DIVISION_LABEL[khatma.division].all}</h2>
+              <h2 id="grid" className="text-lg font-semibold">{partText({ unit: khatma.division, range: khatma.range })}</h2>
               <p className="text-sm m-muted">{t.khatma.gridHint}</p>
               <Legend />
               <Grid division={khatma.division} states={portions} onPick={(n) => setPick(n)} open={khatma.status === "open"} noRepeat={settings.noRepeat} />
             </section>
-          )}
-
-          {group.isLeader && khatma && (
-            <Dedication key={`${khatma.id}:${khatma.dedicatedTo}:${khatma.forSoulOf}`} k={khatma} busy={busy} act={act} />
           )}
 
           {group.isLeader && data.readers && data.readers.length > 0 && khatma && (
@@ -229,18 +243,6 @@ export default function KhatmaPage() {
             </section>
           )}
 
-          {group.isLeader && (
-            <details className="m-card p-4">
-              <summary className="cursor-pointer font-semibold">{t.khatma.settings}</summary>
-              <div className="mt-3 space-y-3">
-                <SettingsForm busy={busy} act={act} current={settings} lockedDivision={Boolean(khatma && khatma.status === "open" && (khatma.done || khatma.reading))} />
-                {settings.active && (
-                  <button type="button" className="m-btn m-btn-danger w-full" onClick={() => setStop(true)}>{t.khatma.stop}</button>
-                )}
-              </div>
-            </details>
-          )}
-
           {(data.history?.length ?? 0) > 0 && (
             <section className="space-y-2">
               <h2 className="text-lg font-semibold">{t.khatma.historyTitle}</h2>
@@ -249,6 +251,7 @@ export default function KhatmaPage() {
                   <li key={h.number} className="m-num flex flex-wrap items-center gap-2 px-4 py-3">
                     <span className="font-semibold">{t.khatma.number(h.number)}</span>
                     <span className="m-muted">· {h.status === "done" ? `✅ ${t.khatma.historyDone}` : t.khatma.historyClosed(h.done, h.total)}</span>
+                    {h.range && !isFull(h.division, h.range) && <span className="m-muted">· {partText({ unit: h.division, range: h.range })}</span>}
                     {(h.dedicatedTo || h.forSoulOf) && <span className="w-full m-muted">{[h.dedicatedTo && `${t.khatma.dedicatedTo}: ${h.dedicatedTo}`, h.forSoulOf && `${t.khatma.forSoulOf}: ${h.forSoulOf}`].filter(Boolean).join(" · ")}</span>}
                   </li>
                 ))}
@@ -331,20 +334,28 @@ function Legend() {
   );
 }
 
-/** The portions, grouped under their juz (for a hizb or smaller); what someone else took is not shown. */
+/**
+ * The portions of this khatma, grouped under their juz (for pages and the hizb divisions); what someone else took and
+ * what lies outside the stretch the khatma covers are not shown.
+ */
 function Grid({ division, states, onPick, open, noRepeat }: { division: Division; states: PortionState[]; onPick: (n: number) => void; open: boolean; noRepeat: number }) {
   const { id } = useParams<{ id: string }>();
   const groups = useMemo(() => {
-    const per = states.length / 30;
-    if (division === "juz") return [{ juz: 0, items: states.map((s, i) => ({ s, n: i + 1 })) }];
-    return Array.from({ length: 30 }, (_, j) => ({ juz: j + 1, items: states.slice(j * per, (j + 1) * per).map((s, i) => ({ s, n: j * per + i + 1 })) }));
+    const all = states.map((s, i) => ({ s, n: i + 1 }));
+    if (division === "juz") return [{ juz: 0, items: all }];
+    const byJuz = new Map<number, typeof all>();
+    for (const x of all) {
+      const juz = Math.ceil(portionQuarters(division, x.n).fromQ / 8);
+      byJuz.set(juz, [...(byJuz.get(juz) ?? []), x]);
+    }
+    return [...byJuz].map(([juz, items]) => ({ juz, items }));
   }, [division, states]);
-  const visible = states.filter((s) => s !== "taken").length;
+  const visible = states.filter((s) => s !== "taken" && s !== "out").length;
   if (!visible) return <p className="m-card p-5 text-center m-muted">{t.khatma.noneFree}</p>;
   return (
     <div className="space-y-4">
       {groups.map((g) => {
-        const items = g.items.filter((x) => x.s !== "taken");
+        const items = g.items.filter((x) => x.s !== "taken" && x.s !== "out");
         if (!items.length) return null;
         return (
           <div key={g.juz} className="space-y-2">
@@ -355,7 +366,7 @@ function Grid({ division, states, onPick, open, noRepeat }: { division: Division
                 const body = (
                   <>
                     <span className="block text-sm font-semibold">{portionTitle(division, n)}</span>
-                    <span className="block truncate text-xs m-muted" dir="rtl">{opening}</span>
+                    {opening && <span className="block truncate text-xs m-muted" dir="rtl">{opening}</span>}
                     <span className="m-num block text-[11px] m-muted">{range}</span>
                   </>
                 );
@@ -390,12 +401,10 @@ function Grid({ division, states, onPick, open, noRepeat }: { division: Division
 
 function PortionCard({ division, n }: { division: Division; n: number }) {
   const { range, opening } = portionSummary(division, n);
-  const q = portionQuarters(division, n);
   return (
     <div className="space-y-2 text-center">
-      <p className="text-2xl leading-loose" style={{ fontFamily: "var(--font-quran), serif" }}>{opening}…</p>
+      {opening && <p className="text-2xl leading-loose" style={{ fontFamily: "var(--font-quran), serif" }}>{opening}…</p>}
       <p className="m-num text-sm m-muted">{range}</p>
-      <p className="m-num text-xs m-muted">{q.toQ - q.fromQ + 1 === 1 ? "ربع حزب" : `${q.toQ - q.fromQ + 1} أرباع`}</p>
     </div>
   );
 }
@@ -405,7 +414,8 @@ function Dedication({ k, busy, act }: { k: Khatma; busy: boolean; act: (b: objec
   const [soul, setSoul] = useState(k.forSoulOf);
   return (
     <form
-      className="m-card space-y-3 p-4"
+      className="space-y-3 border-t pt-4"
+      style={{ borderColor: "var(--m-line)" }}
       onSubmit={(e) => {
         e.preventDefault();
         void act({ action: "dedicate", dedicatedTo: to, forSoulOf: soul }, t.khatma.dedicated);
@@ -428,7 +438,7 @@ function Dedication({ k, busy, act }: { k: Khatma; busy: boolean; act: (b: objec
 
 function SettingsForm({ busy, act, current, lockedDivision = false }: { busy: boolean; act: (b: object, done: string) => Promise<boolean>; current?: Settings; lockedDivision?: boolean }) {
   const tz = useMemo(() => current?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "Asia/Riyadh", [current]);
-  const [division, setDivision] = useState<Division>(current?.division ?? "hizb");
+  const [part, setPart] = useState<Part>({ unit: current?.division ?? "hizb", range: current?.range ?? { from: 1, to: 60 } });
   const [weeks, setWeeks] = useState(current?.weeks ?? 1);
   const [endDow, setEndDow] = useState(current?.endDow ?? 4);
   const [endHour, setEndHour] = useState(current?.endHour ?? 21);
@@ -447,21 +457,13 @@ function SettingsForm({ busy, act, current, lockedDivision = false }: { busy: bo
       className={current ? "space-y-4" : "m-card space-y-4 p-4"}
       onSubmit={(e) => {
         e.preventDefault();
-        void act({ action: "setup", division, weeks, endDow, endHour, noRepeat, timeZone: tz }, current?.active ? t.khatma.saved : t.khatma.started);
+        const whole = isFull(part.unit, part.range);
+        void act({ action: "setup", division: part.unit, rangeFrom: whole ? null : part.range.from, rangeTo: whole ? null : part.range.to, weeks, endDow, endHour, noRepeat, timeZone: tz }, current?.active ? t.khatma.saved : t.khatma.started);
       }}
     >
       {!current && <h2 className="text-lg font-semibold">{t.khatma.setupTitle}</h2>}
-      <fieldset className="space-y-2">
-        <legend className="m-label">{t.khatma.division}</legend>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup">
-          {DIVISIONS.map((d) => (
-            <button key={d} type="button" role="radio" aria-checked={division === d} className="m-option min-h-11 px-3 text-sm font-semibold" onClick={() => setDivision(d)}>
-              {DIVISION_LABEL[d].all}
-            </button>
-          ))}
-        </div>
-        {lockedDivision && current && division !== current.division && <p className="text-xs m-muted">{t.khatma.divisionLater}</p>}
-      </fieldset>
+      <PartPicker value={part} onChange={setPart} />
+      {lockedDivision && current && (part.unit !== current.division || part.range.from !== current.range.from || part.range.to !== current.range.to) && <p className="text-xs m-muted">{t.khatma.divisionLater}</p>}
       <fieldset className="space-y-2">
         <legend className="m-label">{t.khatma.every}</legend>
         <div className="grid grid-cols-4 gap-2" role="radiogroup">

@@ -1,88 +1,167 @@
-// «الختمة العلوية»: how the Quran is shared out (juz, hizb, half hizb, quarter hizb), each portion's exact first and
-// last verse, which portions a reader may take, and the weekly schedule. Pure: used by the page and the server.
+// «الختمة العلوية»: how the Quran is shared out (pages, juz, hizb, half hizb, quarter hizb), each portion's exact first
+// and last verse, the part a khatma covers (the whole Quran or a stretch of it), which portions a reader may take, and
+// the weekly schedule. Pure: used by the page and the server.
 
-import { AYAH_COUNTS, QUARTER_STARTS, QUARTER_WORDS, SURA_NAMES } from "./quran-map";
+import { AYAH_COUNTS, PAGE_STARTS, QUARTER_STARTS, QUARTER_WORDS, SURA_NAMES } from "./quran-map";
 
-export const DIVISIONS = ["juz", "hizb", "half", "quarter"] as const;
+export const DIVISIONS = ["page", "juz", "hizb", "half", "quarter"] as const;
 export type Division = (typeof DIVISIONS)[number];
 
-/** How many hizb quarters one portion holds, per division. 240 quarters = the whole Quran. */
-const QUARTERS_PER: Record<Division, number> = { juz: 8, hizb: 4, half: 2, quarter: 1 };
+/** How many portions the whole Quran makes, per division. */
+const COUNT: Record<Division, number> = { page: 604, juz: 30, hizb: 60, half: 120, quarter: 240 };
+/** How many hizb quarters one portion holds (pages do not follow the quarters). */
+const QUARTERS_PER: Record<Exclude<Division, "page">, number> = { juz: 8, hizb: 4, half: 2, quarter: 1 };
 
-export const portionCount = (d: Division) => 240 / QUARTERS_PER[d];
+export const portionCount = (d: Division) => COUNT[d];
 
 export const isDivision = (v: unknown): v is Division => typeof v === "string" && (DIVISIONS as readonly string[]).includes(v);
 
-/** The quarters a portion covers, 1–240, both ends included. */
-export function portionQuarters(d: Division, n: number): { fromQ: number; toQ: number } {
-  if (!Number.isInteger(n) || n < 1 || n > portionCount(d)) throw new RangeError(`portion ${n} of ${d}`);
-  const size = QUARTERS_PER[d];
-  return { fromQ: (n - 1) * size + 1, toQ: n * size };
-}
-
 export type VerseRef = readonly [sura: number, aya: number];
 
-/** The verse just before another (the last verse of the Quran for the end). */
+// where each surah starts in the 6236 verses (verse numbers across the whole Quran, 1-based)
+const SURA_OFFSET: number[] = [];
+AYAH_COUNTS.reduce((sum, n, i) => ((SURA_OFFSET[i] = sum), sum + n), 0);
+export const TOTAL_VERSES = 6236;
+
+/** A verse's number across the whole Quran, 1–6236. */
+export const verseIndex = ([s, a]: VerseRef) => SURA_OFFSET[s - 1] + a;
+
+/** The verse just before another. */
 function verseBefore([s, a]: VerseRef): VerseRef {
   if (a > 1) return [s, a - 1];
   return [s - 1, AYAH_COUNTS[s - 2]];
 }
 
+const LAST: VerseRef = [114, 6];
+const startOf = (starts: readonly (readonly [number, number])[], i: number): VerseRef => [starts[i][0], starts[i][1]];
+
 /** The exact first and last verse of a portion. */
 export function portionVerses(d: Division, n: number): { from: VerseRef; to: VerseRef } {
-  const { fromQ, toQ } = portionQuarters(d, n);
-  const from = QUARTER_STARTS[fromQ - 1];
-  const to = toQ === 240 ? ([114, AYAH_COUNTS[113]] as const) : verseBefore(QUARTER_STARTS[toQ]);
-  return { from: [from[0], from[1]], to };
+  if (!Number.isInteger(n) || n < 1 || n > portionCount(d)) throw new RangeError(`portion ${n} of ${d}`);
+  if (d === "page") return { from: startOf(PAGE_STARTS, n - 1), to: n === 604 ? LAST : verseBefore(PAGE_STARTS[n]) };
+  const size = QUARTERS_PER[d];
+  const fromQ = (n - 1) * size + 1;
+  const toQ = n * size;
+  return { from: startOf(QUARTER_STARTS, fromQ - 1), to: toQ === 240 ? LAST : verseBefore(QUARTER_STARTS[toQ]) };
+}
+
+/** The verses a portion covers, as numbers across the whole Quran (to compare portions cut differently). */
+export function portionSpan(d: Division, n: number): { fromV: number; toV: number } {
+  const { from, to } = portionVerses(d, n);
+  return { fromV: verseIndex(from), toV: verseIndex(to) };
+}
+
+/** The hizb quarter a verse is in. */
+export function quarterOf(v: VerseRef): number {
+  const i = verseIndex(v);
+  let q = 1;
+  while (q < 240 && verseIndex(QUARTER_STARTS[q]) <= i) q++;
+  return q;
+}
+
+/** The quarters a portion covers or touches, 1–240 (a page may start or end inside a quarter). */
+export function portionQuarters(d: Division, n: number): { fromQ: number; toQ: number } {
+  if (d !== "page") {
+    if (!Number.isInteger(n) || n < 1 || n > portionCount(d)) throw new RangeError(`portion ${n} of ${d}`);
+    const size = QUARTERS_PER[d];
+    return { fromQ: (n - 1) * size + 1, toQ: n * size };
+  }
+  const { from, to } = portionVerses(d, n);
+  return { fromQ: quarterOf(from), toQ: quarterOf(to) };
+}
+
+/** The verses of a stretch of quarters (what khatmas kept before pages existed stored). */
+export function quarterSpan(fromQ: number, toQ: number) {
+  return { fromV: portionSpan("quarter", fromQ).fromV, toV: portionSpan("quarter", toQ).toV };
 }
 
 const ORD = ["الأول", "الثاني", "الثالث", "الرابع"];
 
-/** «الجزء ٣» · «الحزب ٥» · «الحزب ٥ · النصف الثاني» · «الحزب ٥ · الربع الثالث». */
+/** «صفحة ٢٣» · «الجزء ٣» · «الحزب ٥» · «الحزب ٥ · النصف الثاني» · «الحزب ٥ · الربع الثالث». */
 export function portionTitle(d: Division, n: number): string {
+  if (d === "page") return `صفحة ${n}`;
   if (d === "juz") return `الجزء ${n}`;
   if (d === "hizb") return `الحزب ${n}`;
   if (d === "half") return `الحزب ${Math.ceil(n / 2)} · النصف ${ORD[(n - 1) % 2]}`;
   return `الحزب ${Math.ceil(n / 4)} · الربع ${ORD[(n - 1) % 4]}`;
 }
 
-/** The division's name for one portion (جزء، حزب…) and for the whole set. */
-export const DIVISION_LABEL: Record<Division, { one: string; all: string }> = {
-  juz: { one: "جزء", all: "٣٠ جزءًا" },
-  hizb: { one: "حزب", all: "٦٠ حزبًا" },
-  half: { one: "نصف حزب", all: "١٢٠ نصف حزب" },
-  quarter: { one: "ربع حزب", all: "٢٤٠ ربع حزب" },
+/** The division's name for one portion (صفحة، جزء، حزب…), for several, and for the whole Quran cut that way. */
+export const DIVISION_LABEL: Record<Division, { one: string; many: string; all: string; unit: string }> = {
+  page: { one: "صفحة", many: "صفحات", all: "٦٠٤ صفحات", unit: "صفحة" },
+  juz: { one: "جزء", many: "أجزاء", all: "٣٠ جزءًا", unit: "جزء" },
+  hizb: { one: "حزب", many: "أحزاب", all: "٦٠ حزبًا", unit: "حزب" },
+  half: { one: "نصف حزب", many: "أنصاف أحزاب", all: "١٢٠ نصف حزب", unit: "نصف حزب" },
+  quarter: { one: "ربع حزب", many: "أرباع أحزاب", all: "٢٤٠ ربع حزب", unit: "ربع" },
 };
+
+/** «٣ أجزاء» · «١٢ صفحة» — a number of portions of a division. */
+export function amountText(d: Division, n: number) {
+  const l = DIVISION_LABEL[d];
+  return n === 1 ? `${l.one}` : n === 2 ? `${n} ${l.one}` : n <= 10 ? `${n} ${l.many}` : `${n} ${l.one}`;
+}
 
 export const verseName = ([s, a]: VerseRef) => `${SURA_NAMES[s - 1]} ${a}`;
 
-/** «من البقرة ٢٦ إلى البقرة ٤٣» and the first words the portion opens with. */
+/** «البقرة ٢٦ – البقرة ٤٣» and, for the hizb divisions, the first words the portion opens with (how readers name it). */
 export function portionSummary(d: Division, n: number) {
   const { from, to } = portionVerses(d, n);
-  return { from, to, range: `${verseName(from)} – ${verseName(to)}`, opening: QUARTER_WORDS[portionQuarters(d, n).fromQ - 1] };
+  return { from, to, range: `${verseName(from)} – ${verseName(to)}`, opening: d === "page" ? "" : QUARTER_WORDS[portionQuarters(d, n).fromQ - 1] };
 }
 
-/** Whether two quarter ranges share a quarter (the same Quran read again). */
-export const overlaps = (a: { fromQ: number; toQ: number }, b: { fromQ: number; toQ: number }) => a.fromQ <= b.toQ && b.fromQ <= a.toQ;
+// ── The part a khatma covers: the whole Quran, or a stretch of it in the khatma's division (e.g. juz 1–5, pages 1–100) ──
 
-export type PortionState = "free" | "reading" | "done" | "blocked" | "taken";
+export interface PortionRange {
+  from: number;
+  to: number;
+}
+
+export const fullRange = (d: Division): PortionRange => ({ from: 1, to: portionCount(d) });
+
+/** The stretch, checked against the division; null or anything wrong = the whole Quran. */
+export function cleanRange(d: Division, from: unknown, to: unknown): PortionRange {
+  const f = Number(from);
+  const t = Number(to);
+  if (!Number.isInteger(f) || !Number.isInteger(t) || f < 1 || t > portionCount(d) || f > t) return fullRange(d);
+  return { from: f, to: t };
+}
+
+export const rangeSize = (r: PortionRange) => r.to - r.from + 1;
+export const isFull = (d: Division, r: PortionRange) => r.from === 1 && r.to === portionCount(d);
+export const inRange = (r: PortionRange, n: number) => n >= r.from && n <= r.to;
+
+/** «القرآن كاملًا» or «من الجزء ١ إلى الجزء ٥». */
+export function rangeTitle(d: Division, r: PortionRange) {
+  if (isFull(d, r)) return "القرآن كاملًا";
+  if (r.from === r.to) return portionTitle(d, r.from);
+  return `من ${portionTitle(d, r.from)} إلى ${portionTitle(d, r.to)}`;
+}
+
+/** Whether two verse spans share a verse (the same Quran read again). */
+export const overlaps = (a: { fromV: number; toV: number }, b: { fromV: number; toV: number }) => a.fromV <= b.toV && b.fromV <= a.toV;
+
+export type PortionState = "free" | "reading" | "done" | "blocked" | "taken" | "out";
 
 /**
- * Every portion of a khatma as one reader sees it: their own (reading / done), someone else's (taken — hidden from
- * them), one they read in the khatmas the leader counts back (blocked — shown grey, not pressable), or free.
+ * Every portion of a khatma as one reader sees it (index = portion number − 1): their own (reading / done), someone
+ * else's (taken — hidden from them), one they read in the khatmas the leader counts back (blocked — grey, not
+ * pressable), outside the stretch this khatma covers (out — not shown), or free.
  */
 export function portionStates(
   d: Division,
   claims: { portion: number; userId: string | null; status: "reading" | "done" }[],
   me: string,
-  readBefore: { fromQ: number; toQ: number }[],
+  readBefore: { fromV: number; toV: number }[],
+  range: PortionRange = fullRange(d),
 ): PortionState[] {
   const byPortion = new Map(claims.map((c) => [c.portion, c]));
   return Array.from({ length: portionCount(d) }, (_, i) => {
-    const c = byPortion.get(i + 1);
+    const n = i + 1;
+    if (!inRange(range, n)) return "out";
+    const c = byPortion.get(n);
     if (c) return c.userId === me ? c.status : "taken";
-    const q = portionQuarters(d, i + 1);
-    return readBefore.some((r) => overlaps(q, r)) ? "blocked" : "free";
+    const span = portionSpan(d, n);
+    return readBefore.some((r) => overlaps(span, r)) ? "blocked" : "free";
   });
 }
 

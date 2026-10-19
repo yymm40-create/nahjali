@@ -1,10 +1,12 @@
-// SERVER ONLY. «الختمة العلوية» · «ختمتي»: a person's own khatma (migration 0081). Every function takes the signed-in
-// account's id and touches only its rows (the tables are server-only).
+// SERVER ONLY. «الختمة العلوية» · «ختمتي»: a person's own khatma (migrations 0081, 0082) — the whole Quran or a stretch
+// of it, in pages, juz, hizb, half or quarter hizb. Every function takes the signed-in account's id and touches only its
+// rows (the tables are server-only). In the reads, `quarter` is the portion number in the khatma's division.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { UserError } from "./api";
-import { QUARTERS } from "../khatma/mine";
+import { cleanRange, inRange, isDivision, isFull, rangeSize, type Division, type PortionRange } from "../khatma/portions";
 
-const MISSING = ["42P01", "PGRST204", "PGRST205"];
+// a table or (before 0082) a column not there yet
+const MISSING = ["42P01", "42703", "PGRST204", "PGRST205"];
 
 export interface MyKhatmaRow {
   id: string;
@@ -16,8 +18,15 @@ export interface MyKhatmaRow {
   dedicated_to: string;
   for_soul_of: string;
   habit_id: string | null;
+  unit: string;
+  range_from: number | null;
+  range_to: number | null;
 }
-const COLS = "id, number, days, started_on, status, finished_on, dedicated_to, for_soul_of, habit_id";
+const COLS = "id, number, days, started_on, status, finished_on, dedicated_to, for_soul_of, habit_id, unit, range_from, range_to";
+
+const unitOf = (k: MyKhatmaRow): Division => (isDivision(k.unit) ? k.unit : "quarter");
+const rangeOf = (k: MyKhatmaRow) => cleanRange(unitOf(k), k.range_from, k.range_to);
+const rangeCols = (u: Division, r: PortionRange) => (isFull(u, r) ? { range_from: null, range_to: null } : { range_from: r.from, range_to: r.to });
 
 const view = (k: MyKhatmaRow) => ({
   id: k.id,
@@ -29,9 +38,11 @@ const view = (k: MyKhatmaRow) => ({
   dedicatedTo: k.dedicated_to,
   forSoulOf: k.for_soul_of,
   habitId: k.habit_id,
+  unit: unitOf(k),
+  range: rangeOf(k),
 });
 
-/** My khatma now (the latest one, open or not), what I read in it, and the ones before. undefined = 0081 not run yet. */
+/** My khatma now (the latest one, open or not), what I read in it, and the ones before. ready false = 0081/0082 not run yet. */
 export async function loadMyKhatma(db: SupabaseClient, me: string) {
   const { data, error } = await db.from("mahdi_my_khatmas").select(COLS).eq("user_id", me).order("number", { ascending: false }).limit(12);
   if (error && MISSING.includes(error.code ?? "")) return { ready: false as const };
@@ -55,8 +66,30 @@ async function openKhatma(db: SupabaseClient, me: string) {
   return k;
 }
 
+async function readsIn(db: SupabaseClient, k: MyKhatmaRow) {
+  const { data, error } = await db.from("mahdi_my_khatma_reads").select("quarter").eq("khatma_id", k.id);
+  if (error) throw error;
+  return (data ?? []).map((r) => r.quarter as number);
+}
+
+/** Marks the khatma finished when every portion of its stretch is read. */
+async function finishIfRead(db: SupabaseClient, k: MyKhatmaRow, today: string, read: number[]) {
+  const r = rangeOf(k);
+  const done = new Set(read.filter((n) => inRange(r, n))).size >= rangeSize(r);
+  if (done) await db.from("mahdi_my_khatmas").update({ status: "done", finished_on: today }).eq("id", k.id).eq("status", "open");
+  return done;
+}
+
+export interface NewKhatma {
+  days: number;
+  unit: Division;
+  range: PortionRange;
+  dedicatedTo: string;
+  forSoulOf: string;
+}
+
 /** A new khatma (the habit linked to the last one stays linked). Only when none is open. */
-export async function startMyKhatma(db: SupabaseClient, me: string, today: string, days: number, dedicatedTo: string, forSoulOf: string) {
+export async function startMyKhatma(db: SupabaseClient, me: string, today: string, k: NewKhatma) {
   const { data: last, error } = await db.from("mahdi_my_khatmas").select(COLS).eq("user_id", me).order("number", { ascending: false }).limit(1).maybeSingle();
   if (error) throw error;
   const prev = last as MyKhatmaRow | null;
@@ -64,46 +97,60 @@ export async function startMyKhatma(db: SupabaseClient, me: string, today: strin
   const { error: e2 } = await db.from("mahdi_my_khatmas").insert({
     user_id: me,
     number: (prev?.number ?? 0) + 1,
-    days,
+    days: k.days,
+    unit: k.unit,
+    ...rangeCols(k.unit, k.range),
     started_on: today,
-    dedicated_to: dedicatedTo,
-    for_soul_of: forSoulOf,
+    dedicated_to: k.dedicatedTo,
+    for_soul_of: k.forSoulOf,
     habit_id: prev?.habit_id ?? null,
   });
   if (e2?.code === "23505") throw new UserError("بدأت الختمة من قبل.", 409);
   if (e2) throw e2;
 }
 
-/** Quarters read today. Those already read stay as they were. Returns the ones newly read (for the habit). */
-export async function readQuarters(db: SupabaseClient, me: string, today: string, quarters: number[]) {
+/** Portions read today. Those already read stay as they were. Returns the ones newly read (for the habit). */
+export async function readQuarters(db: SupabaseClient, me: string, today: string, portions: number[]) {
   const k = await openKhatma(db, me);
-  const { data: had, error } = await db.from("mahdi_my_khatma_reads").select("quarter").eq("khatma_id", k.id).in("quarter", quarters);
-  if (error) throw error;
-  const old = new Set((had ?? []).map((r) => r.quarter as number));
-  const fresh = quarters.filter((q) => !old.has(q));
+  const r = rangeOf(k);
+  if (portions.some((n) => !inRange(r, n))) throw new UserError("هذا خارج الجزء اللي حددته لختمتك.", 400);
+  const old = new Set(await readsIn(db, k));
+  const fresh = portions.filter((q) => !old.has(q));
   if (fresh.length) {
     const { error: e2 } = await db.from("mahdi_my_khatma_reads").insert(fresh.map((quarter) => ({ khatma_id: k.id, user_id: me, quarter, read_on: today })));
     if (e2 && e2.code !== "23505") throw e2;
   }
-  const { count } = await db.from("mahdi_my_khatma_reads").select("quarter", { count: "exact", head: true }).eq("khatma_id", k.id);
-  const finished = (count ?? 0) >= QUARTERS;
-  if (finished) await db.from("mahdi_my_khatmas").update({ status: "done", finished_on: today }).eq("id", k.id).eq("status", "open");
+  const finished = await finishIfRead(db, k, today, [...old, ...fresh]);
   return { added: fresh, finished };
 }
 
-/** A quarter marked by mistake: not read any more. Returns the day it had been read on (to take it back from the habit). */
-export async function unreadQuarter(db: SupabaseClient, me: string, quarter: number) {
+/** A portion marked by mistake: not read any more. Returns the day it had been read on (to take it back from the habit). */
+export async function unreadQuarter(db: SupabaseClient, me: string, portion: number) {
   const k = await openKhatma(db, me);
-  const { data, error } = await db.from("mahdi_my_khatma_reads").delete().eq("khatma_id", k.id).eq("user_id", me).eq("quarter", quarter).select("read_on");
+  const { data, error } = await db.from("mahdi_my_khatma_reads").delete().eq("khatma_id", k.id).eq("user_id", me).eq("quarter", portion).select("read_on");
   if (error) throw error;
   return { readOn: (data?.[0]?.read_on as string | undefined) ?? null };
 }
 
-/** The open khatma's pace and dedication. */
-export async function updateMyKhatma(db: SupabaseClient, me: string, patch: { days?: number; dedicated_to?: string; for_soul_of?: string }) {
+/**
+ * The open khatma's settings: its pace, dedication and the stretch it covers. The way it is cut (pages, juz…) changes
+ * only while nothing is read in it (what was read is counted in its own portions).
+ */
+export async function updateMyKhatma(db: SupabaseClient, me: string, today: string, patch: { days?: number; dedicatedTo?: string; forSoulOf?: string; unit?: Division; range?: PortionRange }) {
   const k = await openKhatma(db, me);
-  const { error } = await db.from("mahdi_my_khatmas").update(patch).eq("id", k.id);
+  const read = await readsIn(db, k);
+  const unit = patch.unit ?? unitOf(k);
+  if (unit !== unitOf(k) && read.length) throw new UserError("بديت تقرأ في هذه الختمة، فما يتغير تقسيمها. أنهِها وابدأ ختمة جديدة بالتقسيم اللي تبيه.", 409);
+  const row: Record<string, unknown> = {};
+  if (patch.days !== undefined) row.days = patch.days;
+  if (patch.dedicatedTo !== undefined) row.dedicated_to = patch.dedicatedTo;
+  if (patch.forSoulOf !== undefined) row.for_soul_of = patch.forSoulOf;
+  if (patch.unit !== undefined) row.unit = unit;
+  if (patch.range !== undefined) Object.assign(row, rangeCols(unit, patch.range));
+  const { error } = await db.from("mahdi_my_khatmas").update(row).eq("id", k.id);
   if (error) throw error;
+  // a smaller stretch may already be all read
+  await finishIfRead(db, { ...k, ...row, unit } as MyKhatmaRow, today, read);
 }
 
 /** Ends the open khatma before it is finished (what was read stays in its record). */

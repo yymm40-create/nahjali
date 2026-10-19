@@ -1,6 +1,6 @@
 "use client";
 
-// «ختمتي»: my khatma from the server, its actions, and the link with «لأجل المهدي»'s habits — a quarter read here adds
+// «ختمتي»: my khatma from the server, its actions, and the link with «لأجل المهدي»'s habits — a portion read here adds
 // one to the linked habit on that day (a done/not-done habit becomes done), and one marked by mistake takes it back.
 // The habit's log goes through the app's own log queue (instant on the screen, sent when online), like every tap.
 
@@ -9,6 +9,7 @@ import { useMahdi } from "@/components/mahdi/Provider";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { isDueOn, versionAt } from "@/lib/mahdi/engine";
 import { habitValueAfter, type MyRead } from "@/lib/mahdi/khatma/mine";
+import type { Division, PortionRange } from "@/lib/mahdi/khatma/portions";
 
 export interface MyKhatma {
   id: string;
@@ -20,6 +21,9 @@ export interface MyKhatma {
   dedicatedTo: string;
   forSoulOf: string;
   habitId: string | null;
+  /** how it is cut, and the stretch of the Quran it covers (portion numbers in that division) */
+  unit: Division;
+  range: PortionRange;
 }
 export interface MyKhatmaData {
   ready: boolean;
@@ -48,7 +52,7 @@ export function useMyKhatma() {
   const habitId = data?.current?.habitId ?? null;
   const habit = habitId ? (state.snap.habits.find((h) => h.id === habitId) ?? null) : null;
 
-  /** Moves the linked habit's log on a day by `n` quarters (nothing when it does not run that day). */
+  /** Moves the linked habit's log on a day by `n` portions (nothing when it does not run that day). */
   const bumpHabit = useCallback(
     (date: string, n: number) => {
       if (!habit || !n) return;
@@ -77,7 +81,7 @@ export function useMyKhatma() {
     }
   }, [toast]);
 
-  /** Marks quarters read today; the habit gets the new ones. */
+  /** Marks portions read today; the habit gets the new ones. */
   const read = useCallback(
     async (quarters: number[]) => {
       const r = await post<{ added: number[]; finished: boolean; today: string }>({ action: "read", quarters });
@@ -90,7 +94,7 @@ export function useMyKhatma() {
     [post, bumpHabit, toast],
   );
 
-  /** A quarter marked by mistake: back to unread, and taken back from the habit on the day it had been read. */
+  /** A portion marked by mistake: back to unread, and taken back from the habit on the day it had been read. */
   const unread = useCallback(
     async (quarter: number) => {
       const r = await post<{ readOn: string | null }>({ action: "unread", quarter }, "رجع غير مقروء.");

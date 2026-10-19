@@ -6,17 +6,23 @@ import { t } from "@/lib/mahdi/i18n";
 import Icon from "@/components/mahdi/Icon";
 import QuranText, { QuranSource, usePortionWords } from "@/components/mahdi/khatma/QuranText";
 import { useMyKhatma } from "@/components/mahdi/khatma/useMyKhatma";
-import { nextQuarter, QUARTERS } from "@/lib/mahdi/khatma/mine";
-import { portionTitle } from "@/lib/mahdi/khatma/portions";
+import { nextPortion } from "@/lib/mahdi/khatma/mine";
+import { fullRange, inRange, portionCount, portionTitle } from "@/lib/mahdi/khatma/portions";
 
-/** «ختمتي»: one hizb quarter in the mushaf's script, «قرأته ✓ والتالي» (fills the linked habit), and the way round. */
+/**
+ * «ختمتي»: one portion of my khatma (a page, juz, hizb, half or quarter hizb — the khatma's own division) in the
+ * mushaf's script, «قرأته ✓ والتالي» (fills the linked habit), and the way to the one before and after.
+ */
 export default function MyKhatmaReader() {
   const q = Number(useParams<{ q: string }>().q);
   const router = useRouter();
   const k = useMyKhatma();
-  const valid = Number.isInteger(q) && q >= 1 && q <= QUARTERS;
-  const { words, error } = usePortionWords(valid ? "quarter" : undefined, q);
   const cur = k.data?.current;
+  // a khatma ended or not started reads by quarters, the whole Quran
+  const unit = cur?.status === "open" ? cur.unit : (cur?.unit ?? "quarter");
+  const range = cur?.status === "open" ? cur.range : fullRange(unit);
+  const valid = Number.isInteger(q) && q >= 1 && q <= portionCount(unit);
+  const { words, error } = usePortionWords(k.data && valid ? unit : undefined, q);
   const open = cur?.status === "open";
   const read = cur?.reads.find((r) => r.quarter === q);
 
@@ -24,12 +30,12 @@ export default function MyKhatmaReader() {
     const r = await k.read([q]);
     if (!r || r.finished) return router.push("/mahdi/khatma");
     if (goOn) {
-      const next = nextQuarter([...(cur?.reads.map((x) => x.quarter) ?? []), q]);
+      const next = nextPortion([...(cur?.reads.map((x) => x.quarter) ?? []), q], range);
       router.push(next ? `/mahdi/khatma/read/${next}` : "/mahdi/khatma");
     }
   }
 
-  if (!valid) return <p className="m-card p-5 text-center">{t.errors.notFound}</p>;
+  if (k.data && !valid) return <p className="m-card p-5 text-center">{t.errors.notFound}</p>;
   return (
     <div className="space-y-5">
       <Link href="/mahdi/khatma" className="m-btn m-btn-quiet m-btn-sm -ms-3">
@@ -47,6 +53,8 @@ export default function MyKhatmaReader() {
               <p className="text-center text-sm m-muted">
                 ابدأ ختمتك من <Link href="/mahdi/khatma" className="underline">«ختمتي»</Link> عشان ينحسب لك اللي تقرؤه.
               </p>
+            ) : !inRange(range, q) ? (
+              <p className="text-center text-sm m-muted">هذا خارج الجزء اللي حددته لختمتك.</p>
             ) : read ? (
               <>
                 <p className="text-center font-semibold" style={{ color: "#22c55e" }}>✅ قرأته</p>
@@ -61,15 +69,15 @@ export default function MyKhatmaReader() {
             )}
           </div>
           {/* like turning the mushaf's pages: the one before on the right, the next on the left */}
-          <nav className="grid grid-cols-2 gap-2" aria-label="الأرباع">
-            {q > 1 ? (
+          <nav className="grid grid-cols-2 gap-2" aria-label="التنقل">
+            {q > range.from ? (
               <Link href={`/mahdi/khatma/read/${q - 1}`} className="m-btn m-btn-ghost m-btn-sm">
-                <Icon name="chevronRight" size={16} /> {portionTitle("quarter", q - 1)}
+                <Icon name="chevronRight" size={16} /> {portionTitle(unit, q - 1)}
               </Link>
             ) : <span />}
-            {q < QUARTERS ? (
+            {q < range.to ? (
               <Link href={`/mahdi/khatma/read/${q + 1}`} className="m-btn m-btn-ghost m-btn-sm">
-                {portionTitle("quarter", q + 1)} <Icon name="chevronLeft" size={16} />
+                {portionTitle(unit, q + 1)} <Icon name="chevronLeft" size={16} />
               </Link>
             ) : <span />}
           </nav>

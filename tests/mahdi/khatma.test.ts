@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 import quran from "../../assets/quran/quran-uthmani.json";
 import { AYAH_COUNTS, QUARTER_STARTS, QUARTER_WORDS, SURA_NAMES } from "@/lib/mahdi/khatma/quran-map";
 import {
+  cleanRange,
   DIVISIONS,
+  fullRange,
+  portionSpan,
+  quarterOf,
+  quarterSpan,
+  rangeTitle,
   followingEnd,
   khatmaEnd,
   nextSlot,
@@ -83,7 +89,7 @@ describe("«الختمة العلوية»: the Quran text is the verified one, w
 
 describe("the portions cover the whole Quran, once, in order", () => {
   it.each(DIVISIONS)("%s", (d: Division) => {
-    expect(portionCount(d)).toBe({ juz: 30, hizb: 60, half: 120, quarter: 240 }[d]);
+    expect(portionCount(d)).toBe({ page: 604, juz: 30, hizb: 60, half: 120, quarter: 240 }[d]);
     let next: [number, number] = [1, 1];
     let verses = 0;
     for (let n = 1; n <= portionCount(d); n++) {
@@ -132,15 +138,50 @@ describe("who may take what", () => {
       ],
       "me",
       // last khatma I read juz 3 (quarters 17–24) = hizb 5 and 6
-      [{ fromQ: 17, toQ: 24 }],
+      [quarterSpan(17, 24)],
     );
     expect(states.slice(0, 7)).toEqual(["done", "reading", "taken", "free", "blocked", "blocked", "free"]);
     expect(states).toHaveLength(60);
   });
   it("a quarter read before locks the whole juz that contains it", () => {
-    const states = portionStates("juz", [], "me", [{ fromQ: 9, toQ: 9 }]);
+    const states = portionStates("juz", [], "me", [quarterSpan(9, 9)]);
     expect(states[1]).toBe("blocked");
     expect(states.filter((s) => s === "blocked")).toHaveLength(1);
+  });
+});
+
+describe("pages and a stretch of the Quran", () => {
+  it("the 604 pages of the Madinah mushaf, at their known starts", () => {
+    expect(portionVerses("page", 1)).toEqual({ from: [1, 1], to: [1, 7] });
+    expect(portionVerses("page", 2)).toEqual({ from: [2, 1], to: [2, 5] });
+    expect(portionVerses("page", 3).from).toEqual([2, 6]);
+    expect(portionVerses("page", 604)).toEqual({ from: [112, 1], to: [114, 6] });
+    // juz 2 opens page 22, juz 30 page 582
+    expect(portionVerses("page", 22).from).toEqual([2, 142]);
+    expect(portionVerses("page", 582).from).toEqual([78, 1]);
+    expect(portionTitle("page", 23)).toBe("صفحة 23");
+    expect(quarterOf([2, 142])).toBe(9);
+    expect(portionQuarters("page", 1)).toEqual({ fromQ: 1, toQ: 1 });
+  });
+  it("a page and a hizb are compared by their verses", () => {
+    const hizb1 = portionSpan("hizb", 1); // al-Fatiha 1 – al-Baqara 74
+    expect(hizb1).toEqual({ fromV: 1, toV: 81 });
+    const states = portionStates("page", [], "me", [hizb1]);
+    expect(states[0]).toBe("blocked");
+    expect(states[10]).toBe("blocked"); // page 11 holds al-Baqara 74
+    expect(states[11]).toBe("free");
+  });
+  it("a stretch: only its portions are shown; anything wrong means the whole Quran", () => {
+    expect(cleanRange("juz", 1, 5)).toEqual({ from: 1, to: 5 });
+    expect(cleanRange("juz", 5, 1)).toEqual(fullRange("juz"));
+    expect(cleanRange("page", 1, 605)).toEqual(fullRange("page"));
+    expect(cleanRange("hizb", null, null)).toEqual({ from: 1, to: 60 });
+    expect(rangeTitle("juz", { from: 1, to: 5 })).toBe("من الجزء 1 إلى الجزء 5");
+    expect(rangeTitle("page", fullRange("page"))).toBe("القرآن كاملًا");
+    const states = portionStates("juz", [], "me", [], { from: 28, to: 30 });
+    expect(states.filter((x) => x === "free")).toHaveLength(3);
+    expect(states[26]).toBe("out");
+    expect(states[27]).toBe("free");
   });
 });
 

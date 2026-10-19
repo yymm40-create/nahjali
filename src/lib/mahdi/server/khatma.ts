@@ -6,12 +6,35 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { t } from "../i18n";
 import { UserError } from "./api";
 import { peopleInfo } from "./groups";
-import { followingEnd, isDivision, khatmaEnd, portionCount, portionQuarters, portionStates, type Division, type PortionState, type Schedule } from "../khatma/portions";
+import { parseIntIn } from "./validate";
+import {
+  cleanRange,
+  followingEnd,
+  fullRange,
+  portionCount,
+  inRange,
+  isDivision,
+  isFull,
+  khatmaEnd,
+  overlaps,
+  portionQuarters,
+  portionSpan,
+  portionStates,
+  quarterSpan,
+  rangeSize,
+  type Division,
+  type PortionRange,
+  type PortionState,
+  type Schedule,
+} from "../khatma/portions";
 
-const MISSING = ["42P01", "PGRST204", "PGRST205"];
+// a table or (before 0082) a column not there yet
+const MISSING = ["42P01", "42703", "PGRST204", "PGRST205"];
 
 export interface KhatmaSettings extends Schedule {
   division: Division;
+  /** the stretch of the Quran each khatma covers, in the division's portions (the whole Quran by default) */
+  range: PortionRange;
   noRepeat: number;
   active: boolean;
 }
@@ -26,26 +49,42 @@ interface Round {
   finished_at: string | null;
   dedicated_to: string;
   for_soul_of: string;
+  range_from: number | null;
+  range_to: number | null;
 }
+
+/** The stretch a khatma covers (empty = the whole Quran). */
+const roundRange = (r: { division: Division; range_from: number | null; range_to: number | null }) => cleanRange(r.division, r.range_from, r.range_to);
+/** What is stored for a stretch: nothing for the whole Quran. */
+const rangeCols = (d: Division, r: PortionRange) => (isFull(d, r) ? { range_from: null, range_to: null } : { range_from: r.from, range_to: r.to });
 
 interface Claim {
   portion: number;
   from_q: number;
   to_q: number;
+  from_v: number | null;
+  to_v: number | null;
   user_id: string | null;
   status: "reading" | "done";
   claimed_at: string;
 }
 
-const ROUND = "id, number, division, starts_at, ends_at, status, finished_at, dedicated_to, for_soul_of";
+const ROUND = "id, number, division, starts_at, ends_at, status, finished_at, dedicated_to, for_soul_of, range_from, range_to";
+
+/** The stretch of the Quran asked for (portion numbers in the division); none = the whole Quran. */
+export function parsePart(d: Division, from: unknown, to: unknown): PortionRange {
+  if ((from == null || from === "") && (to == null || to === "")) return fullRange(d);
+  const f = parseIntIn(from, 1, portionCount(d));
+  return { from: f, to: parseIntIn(to, f, portionCount(d)) };
+}
 
 /** The group's khatma settings; null = not set up yet; undefined = the tables are not there yet (migration 0080). */
 export async function loadSettings(db: SupabaseClient, groupId: string): Promise<KhatmaSettings | null | undefined> {
-  const { data, error } = await db.from("mahdi_khatma_settings").select("division, weeks, end_dow, end_hour, time_zone, no_repeat, active").eq("group_id", groupId).maybeSingle();
+  const { data, error } = await db.from("mahdi_khatma_settings").select("division, weeks, end_dow, end_hour, time_zone, no_repeat, active, range_from, range_to").eq("group_id", groupId).maybeSingle();
   if (error && MISSING.includes(error.code ?? "")) return undefined;
   if (error) throw error;
   if (!data) return null;
-  return { division: data.division, weeks: data.weeks, endDow: data.end_dow, endHour: data.end_hour, timeZone: data.time_zone, noRepeat: data.no_repeat, active: data.active };
+  return { division: data.division, range: cleanRange(data.division, data.range_from, data.range_to), weeks: data.weeks, endDow: data.end_dow, endHour: data.end_hour, timeZone: data.time_zone, noRepeat: data.no_repeat, active: data.active };
 }
 
 async function lastRound(db: SupabaseClient, groupId: string): Promise<Round | null> {
@@ -55,7 +94,7 @@ async function lastRound(db: SupabaseClient, groupId: string): Promise<Round | n
 }
 
 async function claimsOf(db: SupabaseClient, khatmaId: string): Promise<Claim[]> {
-  const { data, error } = await db.from("mahdi_khatma_claims").select("portion, from_q, to_q, user_id, status, claimed_at").eq("khatma_id", khatmaId);
+  const { data, error } = await db.from("mahdi_khatma_claims").select("portion, from_q, to_q, from_v, to_v, user_id, status, claimed_at").eq("khatma_id", khatmaId);
   if (error) throw error;
   return (data ?? []) as Claim[];
 }
@@ -66,6 +105,7 @@ async function startRound(db: SupabaseClient, groupId: string, s: KhatmaSettings
     group_id: groupId,
     number: (prev?.number ?? 0) + 1,
     division: s.division,
+    ...rangeCols(s.division, s.range),
     starts_at: startsAt.toISOString(),
     ends_at: endsAt.toISOString(),
     // the dedication carries on to the next khatma; the leader changes it when they want
@@ -86,8 +126,9 @@ export async function syncKhatma(db: SupabaseClient, groupId: string, s: KhatmaS
     const claims = await claimsOf(db, round.id);
     const gone = claims.filter((c) => c.status === "reading" && (!c.user_id || !active.has(c.user_id))).map((c) => c.portion);
     if (gone.length) await db.from("mahdi_khatma_claims").delete().eq("khatma_id", round.id).eq("status", "reading").in("portion", gone);
-    const done = claims.filter((c) => c.status === "done").length;
-    if (done >= portionCount(round.division)) {
+    const range = roundRange(round);
+    const done = claims.filter((c) => c.status === "done" && inRange(range, c.portion)).length;
+    if (done >= rangeSize(range)) {
       await db.from("mahdi_khatmas").update({ status: "done", finished_at: now.toISOString() }).eq("id", round.id).eq("status", "open");
       round = { ...round, status: "done", finished_at: now.toISOString() };
     }
@@ -99,15 +140,16 @@ export async function syncKhatma(db: SupabaseClient, groupId: string, s: KhatmaS
   return round;
 }
 
-/** The quarters I finished in the `count` khatmas before khatma number `number`: those may not be taken again yet. */
+/** The verses I finished in the `count` khatmas before khatma number `number`: those may not be taken again yet. */
 async function readBefore(db: SupabaseClient, groupId: string, me: string, number: number, count: number) {
   if (count <= 0 || number <= 1) return [];
   const { data: rounds, error } = await db.from("mahdi_khatmas").select("id").eq("group_id", groupId).lt("number", number).gte("number", number - count);
   if (error) throw error;
   if (!rounds?.length) return [];
-  const { data, error: e2 } = await db.from("mahdi_khatma_claims").select("from_q, to_q").eq("user_id", me).eq("status", "done").in("khatma_id", rounds.map((r) => r.id));
+  const { data, error: e2 } = await db.from("mahdi_khatma_claims").select("from_q, to_q, from_v, to_v").eq("user_id", me).eq("status", "done").in("khatma_id", rounds.map((r) => r.id));
   if (e2) throw e2;
-  return (data ?? []).map((c) => ({ fromQ: c.from_q as number, toQ: c.to_q as number }));
+  // claims kept before 0082 have only their quarters
+  return (data ?? []).map((c) => (c.from_v && c.to_v ? { fromV: c.from_v as number, toV: c.to_v as number } : quarterSpan(c.from_q as number, c.to_q as number)));
 }
 
 /** Everything the khatma page shows to one member (and, for the leader, who reads what). */
@@ -119,11 +161,12 @@ export async function khatmaView(db: SupabaseClient, groupId: string, me: string
   const { data: past } = await db.from("mahdi_khatmas").select(ROUND).eq("group_id", groupId).order("number", { ascending: false }).range(round ? 1 : 0, 6);
   const history = await Promise.all(((past ?? []) as Round[]).map(async (r) => {
     const { count } = await db.from("mahdi_khatma_claims").select("portion", { count: "exact", head: true }).eq("khatma_id", r.id).eq("status", "done");
-    return { number: r.number, status: r.status, division: r.division, endsAt: r.ends_at, finishedAt: r.finished_at, done: count ?? 0, total: portionCount(r.division), dedicatedTo: r.dedicated_to, forSoulOf: r.for_soul_of };
+    return { number: r.number, status: r.status, division: r.division, range: roundRange(r), endsAt: r.ends_at, finishedAt: r.finished_at, done: count ?? 0, total: rangeSize(roundRange(r)), dedicatedTo: r.dedicated_to, forSoulOf: r.for_soul_of };
   }));
   if (!round) return { ready: true as const, settings, khatma: null, portions: [], history };
   const claims = await claimsOf(db, round.id);
-  const states: PortionState[] = portionStates(round.division, claims.map((c) => ({ portion: c.portion, userId: c.user_id, status: c.status })), me, await readBefore(db, groupId, me, round.number, settings.noRepeat));
+  const range = roundRange(round);
+  const states: PortionState[] = portionStates(round.division, claims.map((c) => ({ portion: c.portion, userId: c.user_id, status: c.status })), me, await readBefore(db, groupId, me, round.number, settings.noRepeat), range);
   const now = Date.now();
   let readers: { portion: number; name: string; status: "reading" | "done"; claimedAt: string }[] | undefined;
   if (isLeader) {
@@ -137,6 +180,7 @@ export async function khatmaView(db: SupabaseClient, groupId: string, me: string
       id: round.id,
       number: round.number,
       division: round.division,
+      range,
       startsAt: round.starts_at,
       endsAt: round.ends_at,
       status: round.status,
@@ -145,9 +189,9 @@ export async function khatmaView(db: SupabaseClient, groupId: string, me: string
       overdue: round.status === "open" && new Date(round.ends_at).getTime() <= now,
       dedicatedTo: round.dedicated_to,
       forSoulOf: round.for_soul_of,
-      done: claims.filter((c) => c.status === "done").length,
-      reading: claims.filter((c) => c.status === "reading").length,
-      total: portionCount(round.division),
+      done: claims.filter((c) => c.status === "done" && inRange(range, c.portion)).length,
+      reading: claims.filter((c) => c.status === "reading" && inRange(range, c.portion)).length,
+      total: rangeSize(range),
     },
     portions: states,
     readers,
@@ -163,9 +207,10 @@ async function current(db: SupabaseClient, groupId: string, activeIds: string[])
   return { s, round };
 }
 
+/** A portion of this khatma (inside the stretch it covers). */
 function requirePortion(round: Round, v: unknown) {
   const n = Number(v);
-  if (!Number.isInteger(n) || n < 1 || n > portionCount(round.division)) throw new UserError(t.errors.invalid, 400);
+  if (!Number.isInteger(n) || !inRange(roundRange(round), n)) throw new UserError(t.errors.invalid, 400);
   return n;
 }
 
@@ -175,9 +220,10 @@ export async function claimPortion(db: SupabaseClient, groupId: string, me: stri
   if (!round || round.status !== "open") throw new UserError(t.khatma.notOpen, 409);
   const n = requirePortion(round, portion);
   const q = portionQuarters(round.division, n);
+  const span = portionSpan(round.division, n);
   const before = await readBefore(db, groupId, me, round.number, s.noRepeat);
-  if (before.some((r) => r.fromQ <= q.toQ && q.fromQ <= r.toQ)) throw new UserError(t.khatma.readBefore(s.noRepeat), 409);
-  const { error } = await db.from("mahdi_khatma_claims").insert({ khatma_id: round.id, group_id: groupId, portion: n, from_q: q.fromQ, to_q: q.toQ, user_id: me, status: "reading" });
+  if (before.some((r) => overlaps(span, r))) throw new UserError(t.khatma.readBefore(s.noRepeat), 409);
+  const { error } = await db.from("mahdi_khatma_claims").insert({ khatma_id: round.id, group_id: groupId, portion: n, from_q: q.fromQ, to_q: q.toQ, from_v: span.fromV, to_v: span.toV, user_id: me, status: "reading" });
   if (error?.code === "23505") throw new UserError(t.khatma.taken, 409);
   if (error) throw error;
 }
@@ -211,13 +257,14 @@ export async function freePortion(db: SupabaseClient, groupId: string, activeIds
 
 /**
  * The leader sets the khatma up (or changes it). The first khatma starts now when there is none running. A new way of
- * cutting it applies to the running khatma only while nobody has taken a portion; otherwise from the next one.
+ * cutting it, or a new stretch of the Quran, applies to the running khatma only while nobody has taken a portion;
+ * otherwise from the next one.
  */
 export async function saveSettings(db: SupabaseClient, groupId: string, me: string, activeIds: string[], s: KhatmaSettings) {
   const old = await loadSettings(db, groupId);
   const newNight = !old || old.weeks !== s.weeks || old.endDow !== s.endDow || old.endHour !== s.endHour || old.timeZone !== s.timeZone;
   const { error } = await db.from("mahdi_khatma_settings").upsert(
-    { group_id: groupId, division: s.division, weeks: s.weeks, end_dow: s.endDow, end_hour: s.endHour, time_zone: s.timeZone, no_repeat: s.noRepeat, active: true, created_by: me },
+    { group_id: groupId, division: s.division, ...rangeCols(s.division, s.range), weeks: s.weeks, end_dow: s.endDow, end_hour: s.endHour, time_zone: s.timeZone, no_repeat: s.noRepeat, active: true, created_by: me },
     { onConflict: "group_id" },
   );
   if (error) throw error;
@@ -229,8 +276,9 @@ export async function saveSettings(db: SupabaseClient, groupId: string, me: stri
   }
   if (round.status === "open") {
     const { count } = await db.from("mahdi_khatma_claims").select("portion", { count: "exact", head: true }).eq("khatma_id", round.id);
-    const patch: Record<string, string> = {};
-    if (!count && round.division !== s.division) patch.division = s.division;
+    const patch: Record<string, string | number | null> = {};
+    const r = roundRange(round);
+    if (!count && (round.division !== s.division || r.from !== s.range.from || r.to !== s.range.to)) Object.assign(patch, { division: s.division, ...rangeCols(s.division, s.range) });
     // a new night moves the running khatma's end too, while it is still ahead (an end the leader extended stays otherwise)
     const end = khatmaEnd(new Date(round.starts_at), s);
     if (newNight && end.getTime() > Date.now()) patch.ends_at = end.toISOString();
@@ -294,8 +342,10 @@ export async function myKhatmas(db: SupabaseClient, me: string, groups: { id: st
   const { data: settings, error } = await db.from("mahdi_khatma_settings").select("group_id, active").in("group_id", ids);
   if (error && MISSING.includes(error.code ?? "")) return { ready: false, groups: [] as unknown[] };
   if (error) throw error;
-  const { data: rounds } = await db.from("mahdi_khatmas").select("id, group_id, number, division, ends_at, status").in("group_id", ids).order("number", { ascending: false });
-  const latest = new Map<string, { id: string; number: number; division: Division; ends_at: string; status: string }>();
+  const { data: rounds, error: e2 } = await db.from("mahdi_khatmas").select("id, group_id, number, division, ends_at, status, range_from, range_to").in("group_id", ids).order("number", { ascending: false });
+  if (e2 && MISSING.includes(e2.code ?? "")) return { ready: false, groups: [] as unknown[] };
+  if (e2) throw e2;
+  const latest = new Map<string, { id: string; number: number; division: Division; ends_at: string; status: string; range_from: number | null; range_to: number | null }>();
   for (const r of rounds ?? []) if (!latest.has(r.group_id)) latest.set(r.group_id, r);
   const out = await Promise.all(groups.map(async (g) => {
     const r = latest.get(g.id);
@@ -310,7 +360,7 @@ export async function myKhatmas(db: SupabaseClient, me: string, groups: { id: st
         status: r.status,
         endsAt: r.ends_at,
         done: (claims ?? []).filter((c) => c.status === "done").length,
-        total: portionCount(r.division),
+        total: rangeSize(roundRange(r)),
         mine: (claims ?? []).filter((c) => c.user_id === me).length,
       },
     };

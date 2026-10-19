@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { groupMembers, requireGroup } from "@/lib/mahdi/server/groups";
-import { claimPortion, dedicate, extendKhatma, freePortion, khatmaView, markPortion, nextKhatma, saveSettings, stopKhatma } from "@/lib/mahdi/server/khatma";
+import { claimPortion, dedicate, parsePart, extendKhatma, freePortion, khatmaView, markPortion, nextKhatma, saveSettings, stopKhatma } from "@/lib/mahdi/server/khatma";
 import { cleanLine, oneOf, parseIntIn, parseTimeZone } from "@/lib/mahdi/server/validate";
 import { DIVISIONS } from "@/lib/mahdi/khatma/portions";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -29,7 +29,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
 /**
  * Khatma actions:
  *   members: claim { portion } · done { portion } · undone { portion } · release { portion }
- *   the leader: setup { division, weeks, endDow, endHour, noRepeat } · dedicate { dedicatedTo, forSoulOf } · extend { days }
+ *   the leader: setup { division, rangeFrom?, rangeTo?, weeks, endDow, endHour, noRepeat } · dedicate { dedicatedTo, forSoulOf } · extend { days }
  *               next (close it at its night, or start the next after a finished one) · stop · free { portion }
  */
 export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
@@ -48,9 +48,11 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
   }
   if (!isLeader) throw new UserError(t.groups.notMember, 403);
   switch (body.action) {
-    case "setup":
+    case "setup": {
+      const division = oneOf(body.division, DIVISIONS);
       await saveSettings(db, id, user.id, activeIds, {
-        division: oneOf(body.division, DIVISIONS),
+        division,
+        range: parsePart(division, body.rangeFrom, body.rangeTo),
         weeks: parseIntIn(body.weeks, 1, 4),
         endDow: parseIntIn(body.endDow, 0, 6),
         endHour: parseIntIn(body.endHour, 0, 23),
@@ -59,6 +61,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
         active: true,
       });
       return ok();
+    }
     case "dedicate":
       await dedicate(db, id, cleanLine(body.dedicatedTo, 120), cleanLine(body.forSoulOf, 120));
       return ok();

@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { MAHDI_LIMITS } from "@config/mahdi";
 import { todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
-import { dailyQuarters, QUARTERS } from "@/lib/mahdi/khatma/mine";
+import { dailyCount } from "@/lib/mahdi/khatma/mine";
+import { DIVISION_LABEL, DIVISIONS, rangeSize } from "@/lib/mahdi/khatma/portions";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { linkHabit, loadMyKhatma, readQuarters, startMyKhatma, stopMyKhatma, unreadQuarter, updateMyKhatma } from "@/lib/mahdi/server/my-khatma";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
-import { cleanLine, parseIntIn } from "@/lib/mahdi/server/validate";
+import { cleanLine, oneOf, parseIntIn } from "@/lib/mahdi/server/validate";
+import { parsePart } from "@/lib/mahdi/server/khatma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /** «ختمتي»: my own khatma now, what I read in it, and the ones before. */
@@ -15,11 +17,14 @@ export const GET = mahdiRoute(async (req: Request) => {
   return NextResponse.json({ ...(await loadMyKhatma(createAdminClient(), user.id)), today: todayIn(profile.timeZone) }, { headers: { "Cache-Control": "private, no-store" } });
 });
 
-const quarter = (v: unknown) => parseIntIn(v, 1, QUARTERS);
+/** A portion number (checked against the khatma's own stretch by the server functions). */
+const portion = (v: unknown) => parseIntIn(v, 1, 604);
 
 /**
- * «ختمتي» actions: start { days, dedicatedTo, forSoulOf } · read { quarters: [] } · unread { quarter } ·
- * update { days, dedicatedTo, forSoulOf } · stop · link { habitId | null } · habit_new { projectId? } (a habit made for it).
+ * «ختمتي» actions: start { unit, rangeFrom?, rangeTo?, days, dedicatedTo, forSoulOf } · read { quarters: [] } ·
+ * unread { quarter } · update { unit?, rangeFrom?, rangeTo?, days?, dedicatedTo?, forSoulOf? } · stop ·
+ * link { habitId | null } · habit_new { projectId? } (a habit made for it). `quarter(s)` = portion numbers in the
+ * khatma's division (pages, juz, hizb, half or quarter hizb); no range = the whole Quran.
  * The habit's log is moved by the page (like every other log), with what these return.
  */
 export const POST = mahdiRoute(async (req: Request) => {
@@ -28,23 +33,37 @@ export const POST = mahdiRoute(async (req: Request) => {
   const db = createAdminClient();
   const today = todayIn(profile.timeZone);
   switch (body.action) {
-    case "start":
-      await startMyKhatma(db, user.id, today, parseIntIn(body.days, 1, 365), cleanLine(body.dedicatedTo, 120), cleanLine(body.forSoulOf, 120));
+    case "start": {
+      const unit = body.unit === undefined ? "quarter" : oneOf(body.unit, DIVISIONS);
+      await startMyKhatma(db, user.id, today, {
+        days: parseIntIn(body.days, 1, 365),
+        unit,
+        range: parsePart(unit, body.rangeFrom, body.rangeTo),
+        dedicatedTo: cleanLine(body.dedicatedTo, 120),
+        forSoulOf: cleanLine(body.forSoulOf, 120),
+      });
       return NextResponse.json({ ok: true });
+    }
     case "read": {
-      if (!Array.isArray(body.quarters) || !body.quarters.length || body.quarters.length > QUARTERS) throw new UserError(t.errors.invalid, 400);
-      const r = await readQuarters(db, user.id, today, [...new Set(body.quarters.map(quarter))]);
+      if (!Array.isArray(body.quarters) || !body.quarters.length || body.quarters.length > 604) throw new UserError(t.errors.invalid, 400);
+      const r = await readQuarters(db, user.id, today, [...new Set(body.quarters.map(portion))]);
       return NextResponse.json({ ...r, today });
     }
     case "unread":
-      return NextResponse.json(await unreadQuarter(db, user.id, quarter(body.quarter)));
-    case "update":
-      await updateMyKhatma(db, user.id, {
+      return NextResponse.json(await unreadQuarter(db, user.id, portion(body.quarter)));
+    case "update": {
+      const unit = body.unit !== undefined ? oneOf(body.unit, DIVISIONS) : undefined;
+      const mine = unit ? null : await loadMyKhatma(db, user.id);
+      const rangeUnit = unit ?? (mine?.ready && mine.current ? mine.current.unit : "quarter");
+      await updateMyKhatma(db, user.id, today, {
         ...(body.days !== undefined ? { days: parseIntIn(body.days, 1, 365) } : {}),
-        ...(body.dedicatedTo !== undefined ? { dedicated_to: cleanLine(body.dedicatedTo, 120) } : {}),
-        ...(body.forSoulOf !== undefined ? { for_soul_of: cleanLine(body.forSoulOf, 120) } : {}),
+        ...(body.dedicatedTo !== undefined ? { dedicatedTo: cleanLine(body.dedicatedTo, 120) } : {}),
+        ...(body.forSoulOf !== undefined ? { forSoulOf: cleanLine(body.forSoulOf, 120) } : {}),
+        ...(unit ? { unit } : {}),
+        ...("rangeFrom" in body || "rangeTo" in body || unit ? { range: parsePart(rangeUnit, body.rangeFrom, body.rangeTo) } : {}),
       });
       return NextResponse.json({ ok: true });
+    }
     case "stop":
       await stopMyKhatma(db, user.id, today);
       return NextResponse.json({ ok: true });
@@ -60,7 +79,7 @@ export const POST = mahdiRoute(async (req: Request) => {
       return NextResponse.json({ ok: true });
     }
     case "habit_new": {
-      // a habit made for the khatma: «ورد الختمة العلوية», counted in hizb quarters, today's portion as its daily goal
+      // a habit made for the khatma: «ورد الختمة العلوية», counted in the khatma's portions, today's portion as its daily goal
       const mine = await loadMyKhatma(db, user.id);
       if (!mine.ready || !mine.current || mine.current.status !== "open") throw new UserError("ابدأ ختمتك أول.", 409);
       const [{ count: habits }, { count: projects }] = await Promise.all([
@@ -84,12 +103,12 @@ export const POST = mahdiRoute(async (req: Request) => {
           p_name: "ورد الختمة العلوية",
           p_icon: "📖",
           p_category: "القرآن",
-          p_notes: "يتسجل وحده من «الختمة العلوية»: كل ربع حزب تقرؤه هناك يضيف واحد.",
+          p_notes: `يتسجل وحده من «الختمة العلوية»: كل ${DIVISION_LABEL[mine.current.unit].one} تقرؤه هناك يضيف واحد.`,
           p_reminder: null,
           p_start: today,
           p_measure: "count",
-          p_target: dailyQuarters(mine.current.days),
-          p_unit: "ربع",
+          p_target: dailyCount(rangeSize(mine.current.range), mine.current.days),
+          p_unit: DIVISION_LABEL[mine.current.unit].unit,
           p_freq: "daily",
           p_days: [],
         }),
