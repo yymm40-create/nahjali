@@ -281,12 +281,15 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   // THE FRAME THE PERSON ASKED FOR, in their own words («اقسمني نصين», «سو مربع صغير») or by a skill's name — and
   // whether there is a FILMED clip with speech to put it on. Together they are an order, not a suggestion: such a
   // request gets motion on the person's own video, never a full-screen storyboard that covers them.
-  const wantFrame = named?.talk ?? talkLayoutInText(message);
   const spoken = new Set([...transcripts].filter(([, v]) => v && Object.keys(v).length).map(([id]) => id));
   const onTl = tl.tracks.flatMap((t) => t.clips);
   const talkingClip = onTl.find((c) => c.assetId && spoken.has(c.assetId)) ?? null;
   // a filmed clip with no captions yet still forbids a full-screen storyboard: the captions come first («talk_motion»)
   const filmedClip = talkingClip ?? onTl.find((c) => c.assetId && infos.get(c.assetId)?.kind === "video") ?? null;
+  // «سوّ له مونتاج» on a filmed video with no frame named: the full reel edit — motion on their words in the default
+  // «mix» (the screen cut in two, a box, a corner circle, back full screen), without them having to say how
+  const montageAsk = /مونتاج|منتج|منتاج|montage|edit (it|this|my)/i.test(message) && !ten && !named;
+  const wantFrame = named?.talk ?? talkLayoutInText(message) ?? (montageAsk && filmedClip ? "mix" : null);
   const frameOrder = Boolean(wantFrame && filmedClip);
   // a motion request: the closest worked pieces of the site's bank (same feeling and skill, then the topic's words) ride with it as examples
   const motionAsk = Boolean((named && !named.talk) || feeling || /موشن|motion|إنفوجرافيك|انفوجرافيك|تايبوغرافي|كلمات طائرة/i.test(message));
