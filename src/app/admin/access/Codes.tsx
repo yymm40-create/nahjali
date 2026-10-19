@@ -3,12 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { postJson } from "@/lib/fetch";
-import { codeOpen, PERMS, type CodeRow, type CodeUse, type Perm } from "@config/access";
+import { codeOpen, codeWelcome, PERMS, type CodeRow, type CodeUse, type Perm } from "@config/access";
+import { CLAUDE_MODELS, type ClaudeModelKey } from "@config/claude-models";
+import Coined from "@/components/Coined";
+import Riyal from "@/components/Riyal";
 
 interface Props {
   codes: CodeRow[];
   uses: CodeUse[];
+  /** halalas each code's gift put in wallets so far (by code id) */
+  gifted?: Record<string, number>;
 }
+
+/** Whether a code carries a gift (points, cost price, a Claude ceiling or Seedance 2.0 generations). */
+const hasGift = (c: Pick<CodeRow, "giftSar" | "atCost" | "claudeModel" | "videoGens">) => c.giftSar > 0 || c.atCost || c.claudeModel !== null || c.videoGens !== null;
 
 const fmt = (iso: string) => new Date(iso).toLocaleString("ar", { timeZone: "Asia/Riyadh", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 const label = (p: Perm) => PERMS.find((x) => x.key === p)?.label ?? p;
@@ -21,7 +29,7 @@ function state(c: CodeRow) {
 }
 
 /** «الأكواد»: many codes, each with its own sections and time, standing alone — none touches another. */
-export default function Codes({ codes, uses }: Props) {
+export default function Codes({ codes, uses, gifted = {} }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -32,6 +40,11 @@ export default function Codes({ codes, uses }: Props) {
   const [hours, setHours] = useState("");
   const [people, setPeople] = useState("");
   const [free, setFree] = useState(false);
+  // the gift: points in the wallet, everything at cost, the Claude ceiling, Seedance 2.0 generations
+  const [giftSar, setGiftSar] = useState("");
+  const [atCost, setAtCost] = useState(false);
+  const [claudeModel, setClaudeModel] = useState<ClaudeModelKey | "">("");
+  const [videoGens, setVideoGens] = useState("");
 
   async function send(body: Record<string, unknown>, done: string) {
     setBusy(true);
@@ -65,7 +78,7 @@ export default function Codes({ codes, uses }: Props) {
         onSubmit={async (e) => {
           e.preventDefault();
           const ok = await send(
-            { action: "codes_new", label: name, code: text, perms, expiresAt: expires ? new Date(expires).toISOString() : null, validHours: hours || null, maxUses: people || null, unlimited: free },
+            { action: "codes_new", label: name, code: text, perms, expiresAt: expires ? new Date(expires).toISOString() : null, validHours: hours || null, maxUses: people || null, unlimited: free, giftSar: giftSar || 0, atCost, claudeModel: claudeModel || null, videoGens: videoGens || null },
             "انسوى الكود",
           );
           if (ok) {
@@ -76,6 +89,10 @@ export default function Codes({ codes, uses }: Props) {
             setHours("");
             setPeople("");
             setFree(false);
+            setGiftSar("");
+            setAtCost(false);
+            setClaudeModel("");
+            setVideoGens("");
           }
         }}
       >
@@ -113,6 +130,39 @@ export default function Codes({ codes, uses }: Props) {
           <input type="checkbox" checked={free} onChange={(e) => setFree(e.target.checked)} />
           ♾️ بلا حدود: اللي يدخل بهذا الكود ما ينخصم منه شي (مجاني له حتى لو الموقع مدفوع)
         </label>
+        <div className="space-y-2 rounded-2xl border border-line p-3">
+          <p className="font-extrabold">🎁 هدية الكود (لمن يدخل به)</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <label className="space-y-1 text-xs font-bold text-muted">
+              نقاط تنزل في حسابه (بالريال، مرة وحدة)
+              <input className="field" inputMode="numeric" value={giftSar} onChange={(e) => setGiftSar(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="مثلًا 35" />
+            </label>
+            <label className="space-y-1 text-xs font-bold text-muted">
+              أعلى موديل كلاود له
+              <select className="field" value={claudeModel} onChange={(e) => setClaudeModel(e.target.value as ClaudeModelKey | "")}>
+                <option value="">كل الموديلات</option>
+                {CLAUDE_MODELS.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.name} · {m.tagline}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs font-bold text-muted">
+              توليدات Seedance 2.0 (أقصى عدد)
+              <input className="field" inputMode="numeric" value={videoGens} onChange={(e) => setVideoGens(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="فاضي = بلا حد" />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox" checked={atCost} onChange={(e) => setAtCost(e.target.checked)} />
+            💵 كل شي يشتريه بسعر الأداة نفسها (ربحك صفر)، وكلاود بمدخلاته ومخرجاته
+          </label>
+          {Number(giftSar) > 0 && (
+            <p className="text-sm font-bold text-teal">
+              {Number(people) > 0 ? <>المجموع لـ {people} أشخاص: {giftSar} × {people} = <Riyal halalas={Number(giftSar) * Number(people) * 100} size={14} /></> : <>لكل شخص: <Riyal halalas={Number(giftSar) * 100} size={14} /> (حدد «أقصى عدد أشخاص» عشان يطلع لك المجموع)</>}
+            </p>
+          )}
+        </div>
         <button className="btn btn-primary min-h-12 px-5" disabled={busy || !name.trim() || !perms.length}>
           سوّ الكود
         </button>
@@ -142,6 +192,40 @@ export default function Codes({ codes, uses }: Props) {
                 <p className="select-all rounded-xl bg-surface-2 px-3 py-2 text-center font-mono text-lg font-extrabold tracking-wider" dir="ltr">
                   {c.code}
                 </p>
+                {hasGift(c) && (
+                  <div className="space-y-1 rounded-xl bg-gold/10 p-2.5 text-xs font-bold">
+                    <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span>🎁 هدية الكود:</span>
+                      {c.giftSar > 0 && (
+                        <span className="inline-flex items-center gap-1">
+                          <Riyal halalas={c.giftSar * 100} size={13} /> لكل شخص
+                        </span>
+                      )}
+                      {c.atCost && <span>💵 بسعر الأداة (بدون ربح)</span>}
+                      {c.claudeModel && <span>🤖 كلاود حتى «{CLAUDE_MODELS.find((m) => m.key === c.claudeModel)?.name}»</span>}
+                      {c.videoGens !== null && <span>🎬 Seedance 2.0: {c.videoGens} توليد</span>}
+                    </p>
+                    {c.giftSar > 0 && (
+                      <p className="flex flex-wrap items-center gap-1 text-muted">
+                        نزل للحين: <Riyal halalas={gifted[c.id] ?? 0} size={12} /> لـ {mine.length} {mine.length === 1 ? "شخص" : "أشخاص"}
+                        {c.maxUses ? (
+                          <>
+                            {" "}· لو اكتمل العدد ({c.maxUses}): <Riyal halalas={c.giftSar * c.maxUses * 100} size={12} />
+                          </>
+                        ) : null}
+                      </p>
+                    )}
+                    <details>
+                      <summary className="cursor-pointer text-muted">وش يشوفه اللي يدخل بالكود</summary>
+                      <ul className="mt-1 list-disc space-y-0.5 ps-5 font-semibold">
+                        {codeWelcome(c).map((l) => (
+                          <li key={l}><Coined text={l} size={12} /></li>
+                        ))}
+                      </ul>
+                    </details>
+                  </div>
+                )}
+                <GiftEditor c={c} busy={busy} send={send} />
                 <div className="flex flex-wrap gap-1.5">
                   {c.perms.map((p) => (
                     <span key={p} className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold">
@@ -175,3 +259,34 @@ export default function Codes({ codes, uses }: Props) {
     </section>
   );
 }
+
+/** Changes a code's gift after it was made (it reaches people who enter after the change; those already in keep theirs). */
+function GiftEditor({ c, busy, send }: { c: CodeRow; busy: boolean; send: (body: Record<string, unknown>, done: string) => Promise<boolean> }) {
+  const [gift, setGift] = useState(String(c.giftSar || ""));
+  const [model, setModel] = useState<ClaudeModelKey | "">(c.claudeModel ?? "");
+  const [gens, setGens] = useState(c.videoGens === null ? "" : String(c.videoGens));
+  return (
+    <details className="text-xs font-bold">
+      <summary className="cursor-pointer text-muted">تعديل الهدية</summary>
+      <div className="mt-2 grid gap-2 sm:grid-cols-4">
+        <input className="field" inputMode="numeric" value={gift} onChange={(e) => setGift(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="نقاط (ريال)" aria-label="نقاط الهدية" />
+        <select className="field" value={model} onChange={(e) => setModel(e.target.value as ClaudeModelKey | "")} aria-label="أعلى موديل كلاود">
+          <option value="">كل موديلات كلاود</option>
+          {CLAUDE_MODELS.map((m) => (
+            <option key={m.key} value={m.key}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+        <input className="field" inputMode="numeric" value={gens} onChange={(e) => setGens(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Seedance 2.0 (فاضي = بلا حد)" aria-label="توليدات Seedance 2.0" />
+        <button type="button" className="btn btn-ghost min-h-10 px-3" disabled={busy} onClick={() => send({ action: "codes_set", id: c.id, giftSar: gift || 0, claudeModel: model || null, videoGens: gens || null }, "انحفظت الهدية")}>
+          احفظ
+        </button>
+      </div>
+      <button type="button" aria-pressed={c.atCost} className={`btn mt-2 min-h-9 px-3 text-xs ${c.atCost ? "bg-gold text-on-gold" : "btn-ghost"}`} disabled={busy} onClick={() => send({ action: "codes_set", id: c.id, atCost: !c.atCost }, c.atCost ? "رجع بالسعر العادي" : "صار بسعر الأداة")}>
+        💵 {c.atCost ? "بسعر الأداة (بدون ربح)" : "بالسعر العادي"}
+      </button>
+    </details>
+  );
+}
+

@@ -2,6 +2,8 @@
 // free and unlimited; everyone else finds them closed. «لأجل المهدي» is not in it: it stays open to everyone.
 // The owner and the co-owner (config/site.ts) always have everything. Pure (pages and server alike).
 
+import { capClaudeModel, CLAUDE_MODELS, type ClaudeModelKey } from "./claude-models";
+
 export const PERMS = [
   { key: "image", label: "🖼️ صناعة الصور", hint: "مولّدات الصور في الجواد" },
   { key: "video", label: "🎬 صناعة الفيديو", hint: "مولّدات الفيديو والتعديل الذكي" },
@@ -40,7 +42,20 @@ export const PUBLIC_PERMS: Perm[] = ALL_PERMS;
 export interface Access {
   perms: Set<Perm>;
   unlimited: boolean;
+  /** what the codes this person entered (and that still open) give besides sections: see `perksByCodes` */
+  perks: Perks;
 }
+
+/** The gift side of the codes a person entered: pricing at cost, a Claude ceiling, Seedance 2.0 generations. */
+export interface Perks {
+  /** everything they buy costs what the tool costs us: no profit */
+  atCost: boolean;
+  /** the dearest Claude model they may use (the cheapest ceiling among their codes); null = any */
+  claudeModel: ClaudeModelKey | null;
+  /** at most this many Seedance 2.0 generations, counted from `since` (the earliest entry of a code that sets it); null = no ceiling */
+  videoGens: { cap: number; since: string } | null;
+}
+export const NO_PERKS: Perks = { atCost: false, claudeModel: null, videoGens: null };
 
 // ───────── the owner's codes («الأكواد»): many, each with its own sections and time ─────────
 
@@ -59,6 +74,14 @@ export interface CodeRow {
   enabled: boolean;
   /** whoever enters it makes for free, without a wallet */
   unlimited: boolean;
+  /** riyals put in the wallet of whoever enters it, once (0: none) */
+  giftSar: number;
+  /** whoever enters it pays the tool's cost for everything they buy (no profit) */
+  atCost: boolean;
+  /** the dearest Claude model they may use (null: any) */
+  claudeModel: ClaudeModelKey | null;
+  /** at most this many Seedance 2.0 generations for them (null: no ceiling) */
+  videoGens: number | null;
 }
 export interface CodeUse {
   codeId: string;
@@ -89,6 +112,44 @@ export function permsByCodes(codes: CodeRow[], uses: CodeUse[], now = Date.now()
 
 /** Whether one of the codes a person entered (and that still opens) makes them unlimited. */
 export const unlimitedByCodes = (codes: CodeRow[], uses: CodeUse[], now = Date.now()) => codes.some((c) => c.unlimited && codeOpen(c, uses.find((u) => u.codeId === c.id), now));
+
+/** What the codes a person entered (each still open) give besides sections; every code stands alone, the strictest ceiling wins. */
+export function perksByCodes(codes: CodeRow[], uses: CodeUse[], now = Date.now()): Perks {
+  const out: Perks = { atCost: false, claudeModel: null, videoGens: null };
+  const order = ["haiku", "sonnet", "opus", "fable"];
+  for (const c of codes) {
+    const use = uses.find((u) => u.codeId === c.id);
+    if (!codeOpen(c, use, now)) continue;
+    if (c.atCost) out.atCost = true;
+    if (c.claudeModel && (!out.claudeModel || order.indexOf(c.claudeModel) < order.indexOf(out.claudeModel))) out.claudeModel = c.claudeModel;
+    if (c.videoGens !== null && use) {
+      // two codes with a ceiling: the smaller one, counted from the earlier entry
+      const cur = out.videoGens;
+      out.videoGens = cur ? { cap: Math.min(cur.cap, c.videoGens), since: cur.since < use.at ? cur.since : use.at } : { cap: c.videoGens, since: use.at };
+    }
+  }
+  return out;
+}
+
+/** The Claude model id to serve a person whose codes cap it (their pick, unless dearer than the ceiling). */
+export const claudeIdFor = (picked: unknown, perks: Perks) => capClaudeModel(picked, perks.claudeModel);
+
+/** «تقدر تسوي فيها»: what a code gives, in plain words, shown to the person who enters it (the gift, then each perk). A price is written «¤35»: the page draws the coin's logo for it. */
+export function codeWelcome(c: Pick<CodeRow, "label" | "perms" | "giftSar" | "atCost" | "claudeModel" | "videoGens" | "validHours" | "unlimited">): string[] {
+  const lines: string[] = [];
+  if (c.giftSar > 0) lines.push(`نزّل في حسابك ¤${c.giftSar} هدية (نقاطك). تنخصم منها كل عملية بعد ما تخلص، وما ينخصم شي من عملية فشلت.`);
+  if (c.unlimited) lines.push("تسوي بلا حدود: ما ينخصم منك شي.");
+  else if (c.atCost) lines.push("كل شي تشتريه بسعر الأداة نفسها بدون أي ربح علينا، وكلاود يحسب مدخلاته ومخرجاته بسعر استخدامه الفعلي.");
+  if (c.claudeModel) {
+    const m = CLAUDE_MODELS.find((x) => x.key === c.claudeModel)!;
+    lines.push(`كلاود: موديل «${m.name}» (${m.tagline}) هو الأعلى المتاح لك؛ لو اخترت أغلى منه يشتغل «${m.name}».`);
+  }
+  if (c.videoGens !== null) lines.push(`فيديو Seedance 2.0: ${c.videoGens === 0 ? "ما هو متاح" : c.videoGens === 1 ? "توليد واحد" : c.videoGens === 2 ? "توليدان" : `${c.videoGens} توليدات`} (حتى ١٥ ثانية للتوليد، والعربي في الحوار ما يدعمه رسميًا).`);
+  const names = c.perms.map((p) => PERMS.find((x) => x.key === p)?.label).filter(Boolean);
+  if (names.length) lines.push(`انفتح لك: ${names.join("، ")}.`);
+  if (c.validHours) lines.push(`مدة استخدامك ${c.validHours} ساعة من دخولك.`);
+  return lines;
+}
 
 /** Sections from the owner's form: only the known ones, no repeats. */
 export const normalizePerms = (v: unknown): Perm[] => (Array.isArray(v) ? [...new Set(v.filter(isPerm))] : []);

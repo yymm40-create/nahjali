@@ -9,6 +9,7 @@ import { learn, memoryFor } from "@/lib/memory/server";
 import { withClaude } from "@/lib/film/claude-model";
 import { claudeModelOf } from "@config/claude-models";
 import { isAdmin } from "@config/site";
+import { claudeFor } from "@/lib/access-perks";
 
 export interface RobotUser {
   id: string;
@@ -53,7 +54,8 @@ export async function remembering<T>(userId: string, run: () => Promise<T>, memo
 }
 
 export async function robotTurn<T extends { usd: number }>(user: RobotUser, modelId: unknown, label: string, run: () => Promise<T>, memo?: Memo<T>, options: RobotTurnOptions = {}): Promise<T & { model: string; coins: number }> {
-  const model = claudeModelOf(modelId);
+  // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
+  const model = claudeModelOf(await claudeFor(user.email, modelId));
   const bill = await claudeMeter({ id: user.id, email: user.email, owner: isAdmin(user.email), team: user.team }, model, label);
   const out = await withClaude(model.id, () => options.memory === "isolated" ? withMemory("", run) : remembering(user.id, run, memo));
   const coins = await bill.settle(out.usd).catch((e) => {

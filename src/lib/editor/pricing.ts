@@ -7,6 +7,7 @@ import { getLimit, type LimitKey } from "@/lib/film/limits";
 import { sellKind, type PriceKind } from "@config/coins";
 import { claudeModelOf } from "@config/claude-models";
 import { withClaude } from "@/lib/film/claude-model";
+import { claudeFor } from "@/lib/access-perks";
 
 export interface Who {
   id: string;
@@ -43,7 +44,8 @@ export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_pric
  * call takes nothing. `usdOf` reads the real cost from what `run` returned.
  */
 export async function claudeCharged<T>(who: Who, modelId: unknown, label: string, run: () => Promise<T>, usdOf: (r: T) => number, memo?: Memo<T>): Promise<T & { model: string; coins: number }> {
-  const model = claudeModelOf(modelId);
+  // a code may cap the model (the owner's «الأكواد»): a dearer pick is served by the ceiling's model
+  const model = claudeModelOf(await claudeFor(who.email, modelId));
   const bill = await claudeMeter(who, model, label);
   // the person's memory («ذاكرتي») is read by حيدرة too, and learns from the turn
   const out = await withClaude(model.id, () => remembering(who.id, run, memo));

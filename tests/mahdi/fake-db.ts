@@ -9,6 +9,8 @@ const UNIQUE: Record<string, string[][]> = {
   mahdi_khatma_claims: [["khatma_id", "portion"]],
   mahdi_my_khatmas: [["id"], ["user_id", "number"]],
   mahdi_my_khatma_reads: [["khatma_id", "quarter"]],
+  site_codes: [["id"], ["code"]],
+  site_code_uses: [["code_id", "email"]],
 };
 
 export function fakeDb() {
@@ -31,9 +33,20 @@ export function fakeDb() {
       if (opts?.head) this.head = true;
       return this;
     }
-    eq(c: string, v: unknown) { this.filters.push((r) => r[c] === v); return this; }
+    // a column, or a path into a json column: «meta->>model»
+    private val(r: Row, c: string) {
+      const [col, key] = c.split("->>");
+      return key ? (r[col] as Record<string, unknown> | undefined)?.[key] : r[col];
+    }
+    eq(c: string, v: unknown) { this.filters.push((r) => this.val(r, c) === v); return this; }
+    neq(c: string, v: unknown) { this.filters.push((r) => this.val(r, c) !== v); return this; }
+    not(c: string, op: string, v: string) {
+      const list = op === "in" ? v.replace(/[()]/g, "").split(",") : [v];
+      this.filters.push((r) => !list.includes(String(this.val(r, c))));
+      return this;
+    }
     lt(c: string, v: number) { this.filters.push((r) => (r[c] as number) < v); return this; }
-    gte(c: string, v: number) { this.filters.push((r) => (r[c] as number) >= v); return this; }
+    gte(c: string, v: number | string) { this.filters.push((r) => (r[c] as number | string) >= v); return this; }
     in(c: string, v: unknown[]) { this.filters.push((r) => v.includes(r[c])); return this; }
     order(c: string, o?: { ascending?: boolean }) { this.sort = [c, o?.ascending !== false]; return this; }
     limit(n: number) { this.lim = [0, n - 1]; return this; }

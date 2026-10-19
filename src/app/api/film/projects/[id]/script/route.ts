@@ -3,6 +3,7 @@ import { handle } from "@/lib/api";
 import { getOwnedProject, requireFilmApiUser } from "@/lib/film/access";
 import { withClaude } from "@/lib/film/claude-model";
 import { latestScriptJob, scriptAction, type ScriptAction } from "@/lib/film/script";
+import { claudeFor } from "@/lib/access-perks";
 
 // The assistant's reply is written in the background (after()), within this route's time limit
 export const maxDuration = 800;
@@ -13,7 +14,7 @@ export const POST = handle(async (req: Request, { params }: { params: Promise<{ 
   const { id } = await params;
   const project = await getOwnedProject(id, user.id, "screenwriter");
   const body = (await req.json().catch(() => ({}))) as ScriptAction;
-  const jobId = await withClaude((body as { model?: unknown }).model, () => scriptAction(project, user, body));
+  const jobId = await withClaude(await claudeFor(user.email, (body as { model?: unknown }).model), () => scriptAction(project, user, body));
   return NextResponse.json({ jobId });
 });
 

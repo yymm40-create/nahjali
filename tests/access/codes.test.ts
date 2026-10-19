@@ -3,7 +3,7 @@ import { ALL_PERMS, codeOpen, unlimitedByCodes, NAMED_ONLY, newCodeText, normali
 
 const NOW = Date.parse("2026-10-08T12:00:00Z");
 const hour = 3600_000;
-const code = (id: string, o: Partial<CodeRow> = {}): CodeRow => ({ id, label: id, code: id.toUpperCase().repeat(4), perms: ["games"], expiresAt: null, validHours: null, maxUses: null, enabled: true, unlimited: false, ...o });
+const code = (id: string, o: Partial<CodeRow> = {}): CodeRow => ({ id, label: id, code: id.toUpperCase().repeat(4), perms: ["games"], expiresAt: null, validHours: null, maxUses: null, enabled: true, unlimited: false, giftSar: 0, atCost: false, claudeModel: null, videoGens: null, ...o });
 const use = (codeId: string, ago = 0): CodeUse => ({ codeId, email: "a@b.co", at: new Date(NOW - ago).toISOString() });
 
 describe("«الأكواد»: each code stands alone", () => {

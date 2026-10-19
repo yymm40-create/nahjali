@@ -25,6 +25,8 @@ import {
 } from "@config/film-prompts/director";
 
 import { storage } from "@/lib/storage";
+import { requireSeedanceRoom } from "@/lib/access-perks";
+import { isAdmin } from "@config/site";
 const STAGE = "director";
 const VIDEO_OP = "director_video";
 const ESTIMATE_USD = 1;
@@ -627,6 +629,8 @@ async function startVideo(project: FilmProject, user: User, v: DirectorVersion, 
     prompt += voiceTrackNote(t);
     durationSec = Math.min(VIDEO_MODELS[model].maxSeconds, Math.max(durationSec, Math.ceil(t.seconds) + 1));
   }
+  // a code that allows only some Seedance 2.0 generations (the owner's «الأكواد»): checked before anything is made
+  if (model === "seedance-2.0" && !isAdmin(user.email)) await requireSeedanceRoom(user);
   const { count } = await db().from("film_jobs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("operation", VIDEO_OP).eq("status", "running");
   if ((count ?? 0) >= MAX_VIDEOS_AT_ONCE) throw new UserError(`فيه ${MAX_VIDEOS_AT_ONCE} فيديوهات تتولد الحين، انتظر واحد يخلص.`, 409);
   const meta = { model, durationSec, resolution, ratio: ratio || v.data.ratio || "16:9", generateAudio: v.data.generate_audio ?? true, ...(voiceTrack ? { voiceTrack } : {}) };

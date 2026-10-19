@@ -16,14 +16,18 @@ export default async function AccessPage() {
   const user = await requireUser("/admin/access");
   if (!isAdmin(user.email)) notFound();
   const db = createAdminClient();
-  const [{ error }, rows, secret, grants, ownCodes, ownUses] = await Promise.all([
+  const [{ error }, rows, secret, grants, ownCodes, ownUses, ownGifts] = await Promise.all([
     db.from("site_access").select("email", { head: true, count: "exact" }),
     accessList(),
     db.from("site_secret").select("code,code_id,enabled").eq("id", 1).maybeSingle(),
     db.from("site_code_grants").select("email,code_id,created_at").order("created_at", { ascending: false }).limit(500),
     db.from("site_codes").select("*").order("created_at", { ascending: false }),
     db.from("site_code_uses").select("code_id,email,at").order("at", { ascending: false }).limit(2000),
+    // what each code's gift put in wallets (migration 0083: without it the list is empty, nothing breaks)
+    db.from("site_code_uses").select("code_id,gifted_halalas").limit(5000),
   ]);
+  const gifted: Record<string, number> = {};
+  for (const r of ownGifts.data ?? []) gifted[r.code_id as string] = (gifted[r.code_id as string] ?? 0) + Number(r.gifted_halalas ?? 0);
   return (
     <div className="space-y-5">
       <header className="space-y-1">
@@ -47,6 +51,7 @@ export default async function AccessPage() {
         <Codes
           codes={(ownCodes.data ?? []).map(codeFromRow)}
           uses={(ownUses.data ?? []).map((u) => ({ codeId: u.code_id as string, email: u.email as string, at: u.at as string }))}
+          gifted={gifted}
         />
       )}
       {!secret.error && (

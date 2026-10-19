@@ -5,7 +5,8 @@
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@config/site";
-import { ALL_PERMS, isPerm, OPEN_PERMS, PUBLIC_PERMS, permsByCodes, unlimitedByCodes, type Access, type CodeRow, type CodeUse, type Perm } from "@config/access";
+import { ALL_PERMS, isPerm, NO_PERKS, OPEN_PERMS, PUBLIC_PERMS, perksByCodes, permsByCodes, unlimitedByCodes, type Access, type CodeRow, type CodeUse, type Perm } from "@config/access";
+import { isClaudeModelKey } from "@config/claude-models";
 import { isPublicOpen } from "@/lib/launch";
 
 export type { Perm };
@@ -43,6 +44,11 @@ export const codeFromRow = (r: Record<string, unknown>): CodeRow => ({
   maxUses: (r.max_uses as number | null) ?? null,
   enabled: Boolean(r.enabled),
   unlimited: Boolean(r.unlimited),
+  // the gift side (migration 0083): a missing column reads as «no gift»
+  giftSar: Math.max(0, Math.round(Number(r.gift_sar) || 0)),
+  atCost: Boolean(r.at_cost),
+  claudeModel: isClaudeModelKey(r.claude_model) ? r.claude_model : null,
+  videoGens: r.video_gens === null || r.video_gens === undefined ? null : Math.max(0, Math.round(Number(r.video_gens) || 0)),
 });
 
 async function load(email: string): Promise<Access> {
@@ -65,7 +71,7 @@ async function load(email: string): Promise<Access> {
   const perms = new Set<Perm>([...(open ? PUBLIC_PERMS : []), ...(byCode ? OPEN_PERMS : []), ...((data?.perms as string[] | undefined) ?? []).filter(isPerm), ...permsByCodes(codes, mine)]);
   // free («بلا حدود»): the all-opening code, the e-mail marked so, or an unlimited code that still opens
   const unlimited = byCode || Boolean(data?.unlimited) || unlimitedByCodes(codes, mine);
-  const access = { perms, unlimited };
+  const access = { perms, unlimited, perks: perksByCodes(codes, mine) };
   memo.set(email, { at: Date.now(), access });
   return access;
 }
@@ -73,9 +79,9 @@ async function load(email: string): Promise<Access> {
 /** The whole access of this person: the sections, and whether they make for free. */
 export const fullAccessOf = cache(async (email: string | null | undefined): Promise<Access> => {
   const mail = email?.toLowerCase();
-  if (!mail) return { perms: new Set(), unlimited: false };
-  if (isAdmin(mail)) return { perms: new Set(ALL_PERMS), unlimited: true };
-  return load(mail).catch(() => ({ perms: new Set<Perm>(), unlimited: false }));
+  if (!mail) return { perms: new Set(), unlimited: false, perks: NO_PERKS };
+  if (isAdmin(mail)) return { perms: new Set(ALL_PERMS), unlimited: true, perks: NO_PERKS };
+  return load(mail).catch(() => ({ perms: new Set<Perm>(), unlimited: false, perks: NO_PERKS }));
 });
 
 /** What this person may use (everything for the owner and co-owner; nothing signed out). */
@@ -110,3 +116,7 @@ export function permForGenerator(def: { id: string; output: string }): Perm {
   if (def.output === "video") return "video";
   return /sfx|music/.test(def.id) ? "music" : "voice";
 }
+
+/** What this person's codes give besides sections: pricing at cost, a Claude ceiling, Seedance 2.0 generations. */
+export const perksOf = async (email: string | null | undefined) => (await fullAccessOf(email)).perks;
+

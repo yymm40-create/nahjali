@@ -10,11 +10,12 @@
 
 import { findStyle } from "@config/film-styles";
 import { withStyle } from "@config/jawad/style-prompt";
-import { coinStr } from "@config/coins";
+import { coinStr, costOfLines } from "@config/coins";
 import { MINIMAX_PRICE, minimaxSpeech } from "./providers/minimax";
 import { jawadSpeak } from "./providers/jawad-voice";
 import { jawadReference, onceReferenceText } from "./voices";
-import { can, permForGenerator } from "@/lib/access";
+import { can, perksOf, permForGenerator } from "@/lib/access";
+import { requireSeedanceRoom, SEEDANCE_20_GENERATOR } from "@/lib/access-perks";
 import { PERMS } from "@config/access";
 import { holdTeamCoins, refundTeamCoins } from "@/lib/coins";
 import { giveAttempt } from "@/lib/film/team";
@@ -222,6 +223,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // The same click again: the job it already made (no new check, no new charge)
   const existing = await db().from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key).maybeSingle();
   if (existing.data) return { kind: "existing", job: existing.data as JobRow, balance: null };
+  // a code that allows only some Seedance 2.0 generations (the owner's «الأكواد»): the ceiling is checked before anything is made
+  if (def.id === SEEDANCE_20_GENERATOR && !owner) await requireSeedanceRoom(user);
 
   const rt = await loadRuntime();
   if (!rt.migrated) throw new UserError("منصة JAWAD AI قيد التجهيز (قاعدة البيانات).", 503);
@@ -286,8 +289,12 @@ export async function createJob(user: { id: string; email?: string | null }, own
   // The user confirms the exact amount: any difference (a price changed since the page loaded) is asked again
   // «أول تجربة مجانية»: set only by the server after it checked the offer and that this is the account's first attempt
   const freeFirst = server.free === true && !signupFreeImage;
-  const chargeCoins = signupFreeImage || freeFirst ? 0 : e.price.coins;
-  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : e.price.lines, prices: table };
+  // a code's «بسعر التكلفة»: the tool's own cost (the price table's lines, in hundredths of a halala), no profit
+  const atCost = !owner && !server.team && !signupFreeImage && !freeFirst && e.price.coins > 0 && (await perksOf(user.email)).atCost;
+  const payCoins = atCost ? costOfLines(e.price.lines) : e.price.coins;
+  const payLines = atCost ? [{ label: "بسعر التكلفة (بدون ربح)", centi: payCoins * 100 }] : e.price.lines;
+  const chargeCoins = signupFreeImage || freeFirst ? 0 : payCoins;
+  if (Number(b.expectedCoins) !== chargeCoins) return { kind: "price_changed", coins: chargeCoins, lines: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : payLines, prices: table };
 
   // «الفصل الذكي»: the frames the studio took of the video are kept with the job (Claude watches them for the music
   // and the effects; the dialogue needs only the video)
@@ -307,8 +314,8 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const modelPrompt = style ? withStyle(asWritten, style.text, def.output === "video" ? style.videoText : undefined) : asWritten;
 
   // made inside a team series' edit («المسلسل الذكي»): its «نقود الفريق الذكي» pays, not the person's own coins
-  const teamPays = !signupFreeImage && !freeFirst && !owner && !!server.team && e.price.coins > 0;
-  const charge = !signupFreeImage && !freeFirst && !owner && !server.team && e.price.coins > 0;
+  const teamPays = !signupFreeImage && !freeFirst && !owner && !!server.team && payCoins > 0;
+  const charge = !signupFreeImage && !freeFirst && !owner && !server.team && payCoins > 0;
   const { data, error } = await db().rpc("jawad_create_job", {
     p_job: {
       user_id: user.id,
@@ -323,7 +330,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
       inputs: { settings: e.settings, instructions, refStyle, origin, ...(server.cartoon ? { cartoon: server.cartoon } : {}), ...(modelPrompt !== prompt ? { modelPrompt } : {}), ...(style ? { styleId: style.id } : {}), ...(video ? { video } : {}), ...(server.library ? { library: server.library } : {}), ...(signupFreeImage ? { signupFreeImage: true } : {}) },
       refs: meta.map((m) => ({ uploadId: m.id, kind: m.kind, role: m.role, name: m.name })),
       price_coins: chargeCoins,
-      price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : e.price.lines,
+      price_breakdown: signupFreeImage ? [{ label: "صورة ترحيبية مجانية", centi: 0 }] : freeFirst ? [{ label: "أول تجربة مجانية", centi: 0 }] : payLines,
       pricing_version: priceVersion(table),
       cost_usd_estimate: e.price.usdCeiling ?? "",
     },
@@ -335,7 +342,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
     // No job: the frames kept for it go too
     if (video) await removeFrames(video);
     const msg = String(error.message ?? "");
-    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${coinStr(e.price.coins)}.`, 402);
+    if (msg.includes("JAWAD_INSUFFICIENT")) throw new UserError(`رصيدك من النقود الذكية لا يكفي: هذا التوليد يحتاج ${coinStr(payCoins)}.`, 402);
     if (msg.includes("JAWAD_BUSY")) throw new UserError(`عندك ${MAX_ACTIVE_JOBS} توليدات قيد العمل. انتظر حتى ينتهي أحدها.`, 429);
     if (msg.includes("JAWAD_FREE_IMAGE_USED")) throw new UserError("استعملت الصورة المجانية لحسابك من قبل.", 409);
     throw error;
@@ -344,7 +351,7 @@ export async function createJob(user: { id: string; email?: string | null }, own
   const { data: job } = await db().from("jawad_jobs").select("*").eq("id", row.job_id).single();
   if (row.created && teamPays) {
     try {
-      await holdTeamCoins(server.team!, user, e.price.coins, row.job_id, coinLabel(def));
+      await holdTeamCoins(server.team!, user, payCoins, row.job_id, coinLabel(def));
     } catch (err) {
       await finishJob(job as JobRow, "cancelled", { message: "رصيد نقود الفريق الذكي ما يكفي." }).catch(() => {});
       throw err;

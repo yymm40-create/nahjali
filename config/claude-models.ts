@@ -92,3 +92,15 @@ export const CLAUDE_MARGIN_PCT = 10;
 
 /** Where the person's choice is kept on this device. */
 export const CLAUDE_MODEL_KEY = "jw-claude-model";
+
+/** From the cheapest to the dearest: a code may cap the model a person uses at one of these. */
+const RANK: ClaudeModelKey[] = ["haiku", "sonnet", "opus", "fable"];
+export const isClaudeModelKey = (v: unknown): v is ClaudeModelKey => typeof v === "string" && (RANK as string[]).includes(v);
+
+/** The model id to serve: the person's pick, unless it is dearer than the cap (a code's «الأقصى»), then the cap's model. */
+export function capClaudeModel(id: unknown, cap: ClaudeModelKey | null | undefined): string {
+  const picked = claudeModelOf(id);
+  if (!cap) return picked.id;
+  return RANK.indexOf(picked.key) > RANK.indexOf(cap) ? CLAUDE_MODELS.find((m) => m.key === cap)!.id : picked.id;
+}
+

@@ -3,6 +3,7 @@ import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { forgetAccess } from "@/lib/access";
 import { isPerm, newCodeText, normalizePerms } from "@config/access";
+import { isClaudeModelKey } from "@config/claude-models";
 import { ABOVE_YOU, isAdmin, mayActOn } from "@config/site";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -72,10 +73,31 @@ const whole = (v: unknown, min: number, max: number) => {
   return n;
 };
 
+/** The gift columns (migration 0083). */
+const GIFT_KEYS = ["gift_sar", "at_cost", "claude_model", "video_gens"];
+const NO_GIFT = "هدايا الأكواد ما انضافت للحين: شغّل ملف SQL رقم 0083 في Supabase.";
+/**
+ * The gift part of a code from the owner's form: `giftSar` (0–1000 riyals), `atCost`, `claudeModel` (a key or empty) and
+ * `videoGens` (a number or empty = no ceiling). With `onlySent`, only what the request carries (for an update).
+ */
+function gift(b: Record<string, unknown>, onlySent = false): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!onlySent || "giftSar" in b) out.gift_sar = whole(b.giftSar, 0, 1000) ?? 0;
+  if (!onlySent || "atCost" in b) out.at_cost = b.atCost === true;
+  if (!onlySent || "claudeModel" in b) {
+    const m = b.claudeModel;
+    if (m !== null && m !== undefined && m !== "" && !isClaudeModelKey(m)) throw new UserError("موديل كلاود غير معروف.", 400);
+    out.claude_model = m ? m : null;
+  }
+  if (!onlySent || "videoGens" in b) out.video_gens = whole(b.videoGens, 0, 1000);
+  return out;
+}
+
 /**
  * «الأكواد» — many codes, each with its own sections and time, standing alone:
- *   codes_new     { label, code?, perms, expiresAt?, validHours?, maxUses?, unlimited? }   a new code (made for you when the text is empty; `unlimited`: free for whoever enters by it)
- *   codes_set     { id, enabled?, unlimited? }                                  switch ONE code off or on, or its «بلا حدود»
+ *   codes_new     { label, code?, perms, expiresAt?, validHours?, maxUses?, unlimited?, giftSar?, atCost?, claudeModel?, videoGens? }   a new code (made for you when the text is empty; `unlimited`: free for whoever enters by it;
+ *                 the gift: `giftSar` riyals in the wallet once per person, `atCost` everything at the tool's cost, `claudeModel` the dearest Claude model, `videoGens` Seedance 2.0 generations)
+ *   codes_set     { id, enabled?, unlimited?, atCost?, giftSar?, claudeModel?, videoGens? }   switch ONE code off or on, or its «بلا حدود», or change its gift (the gift only reaches people who enter after the change)
  *   codes_delete  { id }                                                       remove a code (closes only what it opened)
  *   codes_unuse   { id, email }                                                close ONE person's entry of ONE code
  */
@@ -98,14 +120,17 @@ async function codes(action: string, b: Record<string, unknown>) {
       if (Number.isNaN(t.getTime()) || t.getTime() <= Date.now()) throw new UserError("وقت الانتهاء لازم يكون في المستقبل.", 400);
       expiresAt = t.toISOString();
     }
+    // the gift columns are sent only when the owner set a gift, so a site that has not run 0083 still makes ordinary codes
+    const g = gift(b);
+    const hasGift = Number(g.gift_sar) > 0 || g.at_cost === true || g.claude_model !== null || g.video_gens !== null;
     const { data, error } = await db
       .from("site_codes")
-      .insert({ label, code, perms, expires_at: expiresAt, valid_hours: whole(b.validHours, 1, 8760), max_uses: whole(b.maxUses, 1, 10000), enabled: true, unlimited: b.unlimited === true })
+      .insert({ label, code, perms, expires_at: expiresAt, valid_hours: whole(b.validHours, 1, 8760), max_uses: whole(b.maxUses, 1, 10000), enabled: true, unlimited: b.unlimited === true, ...(hasGift ? g : {}) })
       .select("id,code")
       .single();
     if (error) {
       if (error.code === "23505") throw new UserError("هذا الكود مستخدم؛ اختر نص ثاني.", 409);
-      throw new UserError(NO_TABLE, 500);
+      throw new UserError(hasGift && error.code === "42703" ? NO_GIFT : NO_TABLE, 500);
     }
     return { ok: true, id: data.id, code: data.code };
   }
@@ -115,9 +140,10 @@ async function codes(action: string, b: Record<string, unknown>) {
     const patch: Record<string, unknown> = {};
     if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
     if (typeof b.unlimited === "boolean") patch.unlimited = b.unlimited;
+    Object.assign(patch, gift(b, true));
     if (!Object.keys(patch).length) throw new UserError("طلب غير صحيح.", 400);
     const { error } = await db.from("site_codes").update(patch).eq("id", id);
-    if (error) throw new UserError(NO_TABLE, 500);
+    if (error) throw new UserError(Object.keys(patch).some((k) => GIFT_KEYS.includes(k)) ? NO_GIFT : NO_TABLE, 500);
   } else if (action === "codes_delete") {
     const { error } = await db.from("site_codes").delete().eq("id", id);
     if (error) throw new UserError(NO_TABLE, 500);
