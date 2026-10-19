@@ -914,6 +914,28 @@ export const ar = {
   },
 
   // «شاركنا رأيك»: feedback to the owner
+  // «المسبحة»: a counter at the top of every screen, optionally adding each count to one of today's habits
+  tasbih: {
+    title: "المسبحة",
+    open: "افتح المسبحة",
+    add: "سبّح (+١)",
+    minus: "إنقاص واحد",
+    reset: "تصفير",
+    resetAgain: "اضغط مرة ثانية للتصفير",
+    resetDone: "صُفّرت المسبحة.",
+    count: (n: string) => `العدد ${n}`,
+    link: "اربطها بعادة",
+    linkHint: "إذا ربطتها بعادة، كل ضغطة تنضاف لها اليوم (والإنقاص ينقص منها).",
+    linkNone: "بدون ربط",
+    linked: (h: string) => `مربوطة بـ «${h}»: كل ضغطة تنضاف لها اليوم.`,
+    progress: (v: string, target: string) => `اليوم: ${v} من ${target}`,
+    progressNoTarget: (v: string) => `اليوم: ${v}`,
+    addCurrent: (n: string) => `وأضف الـ ${n} اللي عدّيتها الحين`,
+    unlink: "فك الربط",
+    noHabits: "ما عندك عادات اليوم تنعدّ (عدد أو كمية). أضف عادة مثل «تسبيح ١٠٠ مرة» وتقدر تربطها.",
+    resetHint: "التصفير يصفّر المسبحة بس، وما يمس اللي انضاف للعادة.",
+  },
+
   feedback: {
     title: "شاركنا رأيك",
     cta: "شاركنا رأيك",
