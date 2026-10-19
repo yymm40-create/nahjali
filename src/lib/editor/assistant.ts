@@ -377,6 +377,13 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
   const check = (raw: string[]) => checkCommands(tl, raw, infos);
 
   let answer = r.data;
+  // an answer with nothing in it (no words, no steps, no question) — the model sometimes returns an empty reply: asked
+  // once more so the person never sees an empty bubble
+  const empty = (a: Answer) => !a.reply?.trim() && !(a.commands ?? []).length && !(a.requests ?? []).length && !(a.options ?? []).length && !a.motion?.trim() && !a.talk?.trim();
+  if (empty(answer)) {
+    const again = await ask([...merged, { role: "assistant", content: r.raw || "{}" }, { role: "user", content: "Your answer was empty. Answer the person's last message now: a short reply in their language, and the commands or requests it needs." }]).catch(() => null);
+    if (again && !empty(again.data)) answer = again.data;
+  }
   let result = check(answer.commands ?? []);
   if (result.error) {
     // one correction round: Claude sees what failed
@@ -526,7 +533,9 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     .slice(0, 4);
   requests.push(...sfxRequests);
   // «نص الهوك»: the hook designer works now (web research, then the design), and its delivery is the answer
-  let reply = answer.reply + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "") + motionNote;
+  // never an empty bubble: say what was done, or that the request needs saying again
+  const said = answer.reply?.trim() || (valid.length ? `تم ✓ نفذت ${valid.length} خطوة على التايملاين.` : (answer.options ?? []).length ? "اختر من الخيارات تحت:" : (answer.requests ?? []).length ? "بدأت على طلبك…" : "ما وصلني رد واضح هالمرة؛ أعد رسالتك أو وضّحها شوي وأنا أكمل.");
+  let reply = said + (result.error ? `\n\n(ما قدرت أنفذ كل الخطوات: ${result.error.message})` : "") + motionNote;
   // «اصنع لي…»: each priced now with JAWAD AI's prices (the page shows the price and starts it)
   for (const r of requests.filter((x) => x.kind === "make").slice(0, 3 + sfxRequests.length)) {
     const planned = await planMake(who, { ...(r as unknown as MakeSpec), makeKind: r.makeKind as MakeKind, place: (r.place || "over") as MakePlace }, tl.width / tl.height);

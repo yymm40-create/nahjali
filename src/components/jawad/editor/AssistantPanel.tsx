@@ -522,7 +522,7 @@ export default function AssistantPanel({
         done = applied ? r.commands.length : 0;
         if (applied) now = (applied as { timeline: Timeline }).timeline;
       }
-      setMsgs((m) => [...m, { role: "assistant", text: r.reply, done, suggestions: r.suggestions, ...(r.quick?.length ? { quick: r.quick } : {}), ...(r.options?.length ? { options: r.options } : {}) }]);
+      setMsgs((m) => [...m, { role: "assistant", text: r.reply?.trim() || (done ? `تم ✓ نفذت ${done} خطوة.` : "ما وصلني رد هالمرة؛ أعد رسالتك وأنا أكمل."), done, suggestions: r.suggestions, ...(r.quick?.length ? { quick: r.quick } : {}), ...(r.options?.length ? { options: r.options } : {}) }]);
       // a colour change: حيدرة looks at the result (pictures and scopes) and corrects it until it is right
       if (r.checkClipId && done) await checkColour(r.checkClipId, message, now);
       // what Claude asked to be made: made one by one, then placed (each its own undo)
