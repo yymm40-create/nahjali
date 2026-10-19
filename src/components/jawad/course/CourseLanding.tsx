@@ -244,11 +244,11 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
 
       <header className="cr-hero">
         <div className="cr-in">
-          <span className="cr-eyebrow"><i className="cr-dot" aria-hidden />{COURSE.name}</span>
-          <h1>{s.headline}</h1>
-          <p className="cr-sub">{s.subhead}</p>
+          <span className="cr-kicker cr-reveal">الدورة · مسجلة</span>
+          <h1 className="cr-reveal" style={{ ["--i" as string]: 1 }}>{s.headline}</h1>
+          <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>{s.subhead}</p>
 
-          <section className="cr-buy" id="buy" ref={buyRef} aria-label="الاشتراك">
+          <section className="cr-buy cr-reveal" style={{ ["--i" as string]: 3 }} id="buy" ref={buyRef} aria-label="الاشتراك">
             {cur.phase === "soon" || !sel ? (
               <div className="cr-soon">
                 <b>🔔 التسجيل يفتح قريبًا</b>
@@ -319,14 +319,14 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
 
       {s.problem && <section className="cr-band">
         <div className="cr-in">
-          <h2 className="cr-h">وش المشكلة؟</h2>
+          <h2 className="cr-h" data-k="المشكلة · ٠١">وش المشكلة؟</h2>
           <p className="cr-lead">{s.problem}</p>
         </div>
       </section>}
 
       {s.days.length > 0 && <section className="cr-band cr-alt">
         <div className="cr-in">
-          <h2 className="cr-h">وش بتتعلم؟</h2>
+          <h2 className="cr-h" data-k="المحتوى · ٠٢">وش بتتعلم؟</h2>
           <ol className="cr-line">
             {s.days.map((d, i) => (
               <li key={i}>
@@ -344,7 +344,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
       {s.risks.length > 0 && (
         <section className="cr-band">
           <div className="cr-in">
-            <h2 className="cr-h">تشترك وأنت مطمّن</h2>
+            <h2 className="cr-h" data-k="الضمان · ٠٣">تشترك وأنت مطمّن</h2>
             <ul className="cr-checks">{s.risks.map((r, i) => <li key={i}><span aria-hidden>✓</span>{r}</li>)}</ul>
           </div>
         </section>
@@ -352,7 +352,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
 
       <section className="cr-band cr-alt">
         <div className="cr-in">
-          <h2 className="cr-h">كيف تدفع؟ ٤ خطوات</h2>
+          <h2 className="cr-h" data-k="الدفع · ٤ خطوات">كيف تدفع؟</h2>
           <ol className="cr-steps">
             <li><b>١</b>سجّل دخولك في الموقع (عشان نسجّل إيميلك).</li>
             <li><b>٢</b>اكتب اسمك ورقم جوالك، واضغط «اشترك الآن».</li>
@@ -446,7 +446,7 @@ export default function CourseLanding({ s, courseId, price, was, serverNow, user
           </div>
         </div>
       )}
-      <p className="cr-foot"><Link href="/jawad-ai">الجواد الذكي</Link></p>
+      <p className="cr-foot"><Link href={COURSE.base}>← كل الدورات</Link> · <Link href="/jawad-ai">الجواد الذكي</Link></p>
     </div>
   );
 }

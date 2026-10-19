@@ -29,6 +29,8 @@ export interface CreditSettings {
   featured: string;
   /** the owner's WhatsApp number for «طال الوقت؟ راسلنا» (empty: the link is not shown) */
   whatsapp: string;
+  /** built-in packages the owner deleted on purpose (they are not added back) */
+  removed?: string[];
 }
 
 /**
@@ -75,12 +77,15 @@ export const DEFAULT_PACKS: Pack[] = [
   { id: "business", name: "الأعمال", price: 549, credit: 660, tag: "أفضل قيمة", note: "للمتاجر والفرق" },
 ];
 
+/** Built-in packages added after owners had saved their own list: they appear in a saved list too (see readCreditSettings). */
+export const LATER_PACKS = ["scene", "student"] as const;
+
 export const DEFAULT_CREDIT_SETTINGS: CreditSettings = { packs: DEFAULT_PACKS, featured: "pro", whatsapp: "" };
 
 export const CREDITS = {
   base: "/jawad-ai/credits",
   /** how many packages at most */
-  maxPacks: 7,
+  maxPacks: 9,
   /** open orders (not confirmed nor rejected) one person may have */
   maxOpen: 4,
 } as const;
@@ -111,9 +116,19 @@ export function readCreditSettings(raw: unknown): CreditSettings {
     packs.push({ id, name, price, credit, tag: text(p.tag, 20), note: text(p.note, 60) });
     if (packs.length >= CREDITS.maxPacks) break;
   }
+  const removed = (Array.isArray(o.removed) ? o.removed : []).filter((x): x is string => typeof x === "string").slice(0, 20);
+  // packages the owner ordered AFTER the saved list was made (the student's ¤12, the scene): added in their place, unless he deleted them
+  if (packs.length) {
+    for (const id of LATER_PACKS) {
+      if (packs.some((p) => p.id === id) || removed.includes(id) || packs.length >= CREDITS.maxPacks) continue;
+      const d = DEFAULT_PACKS.find((p) => p.id === id)!;
+      const at = packs.findIndex((p) => p.price > d.price);
+      packs.splice(at < 0 ? packs.length : at, 0, { ...d });
+    }
+  }
   const list = packs.length ? packs : DEFAULT_PACKS;
   const featured = typeof o.featured === "string" && list.some((p) => p.id === o.featured) ? o.featured : list[Math.min(2, list.length - 1)].id;
-  return { packs: list, featured, whatsapp: cleanPhone(o.whatsapp) ?? "" };
+  return { packs: list, featured, whatsapp: cleanPhone(o.whatsapp) ?? "", removed };
 }
 
 export const packOf = (s: CreditSettings, id: unknown) => s.packs.find((p) => p.id === id) ?? null;

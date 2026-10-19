@@ -14,28 +14,35 @@ export default async function LearnHome() {
   const { user } = await requireJawadUser(LEARN.base);
   const courses = await myCourses(user);
   return (
-    <div className="ln-wrap" dir="rtl">
-      <h1 className="text-2xl font-extrabold">📚 دوراتي</h1>
-      {courses.length ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {courses.map((c) => {
-            const lessons = c.days.flatMap((d) => d.lessons).filter((l) => l.status === "ready").length;
-            return (
-              <Link key={c.id} href={`${LEARN.base}/${c.id}`} className="ln-card block">
-                <h2 className="font-extrabold">{c.title}</h2>
-                {c.summary && <p className="ln-dim mt-1">{c.summary}</p>}
-                <p className="ln-dim mt-2">{c.days.length} أيام · {lessons} فيديو{!c.published && " · (مخفية عن الطلاب)"}</p>
-              </Link>
-            );
-          })}
+    <div className="ln-page" dir="rtl">
+      <div className="ln-wrap">
+        <div>
+          <span className="ln-kicker">دوراتي · {String(courses.length).padStart(2, "0")}</span>
+          <h1 className="ln-title">دوراتك</h1>
         </div>
-      ) : (
-        <div className="ln-card space-y-2">
-          <p className="font-bold">ما عندك دورات مفتوحة لين الحين.</p>
-          <p className="ln-dim">إذا حوّلت وأكّد المالك اشتراكك، تظهر دورتك هنا مباشرة.</p>
-          <Link href={COURSE.base} className="btn btn-primary inline-block">صفحة {COURSE.name}</Link>
-        </div>
-      )}
+        {courses.length ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {courses.map((c) => {
+              const lessons = c.days.flatMap((d) => d.lessons).filter((l) => l.status === "ready").length;
+              return (
+                <Link key={c.id} href={`${LEARN.base}/${c.id}`} className="ln-card">
+                  <div className="ln-art" aria-hidden>🎬</div>
+                  <h2 className="text-lg font-extrabold">{c.title}</h2>
+                  {c.summary && <p className="ln-dim">{c.summary}</p>}
+                  <p className="ln-dim">{c.days.length} أيام · {lessons} فيديو{!c.published && " · (مخفية عن الطلاب)"}</p>
+                  <span className="ln-go">ابدأ المشاهدة ←</span>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="ln-card space-y-2">
+            <p className="font-bold">ما عندك دورات مفتوحة لين الحين.</p>
+            <p className="ln-dim">إذا حوّلت وأكّد المالك اشتراكك، تظهر دورتك هنا مباشرة.</p>
+          </div>
+        )}
+        <Link href={COURSE.base} className="ln-btn dark justify-self-start">🛒 تصفّح الدورات واشترِ</Link>
+      </div>
     </div>
   );
 }

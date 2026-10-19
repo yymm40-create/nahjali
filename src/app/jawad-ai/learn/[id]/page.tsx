@@ -18,9 +18,11 @@ export default async function LearnCoursePage({ params, searchParams }: { params
   const course = (await myCourses(user)).find((c) => c.id === id);
   if (!course) notFound();
   return (
-    <div className="ln-wrap" dir="rtl">
-      <Link href={LEARN.base} className="ln-dim">→ دروسي</Link>
-      <LearnCourse course={course} initial={l ?? null} />
+    <div className="ln-page" dir="rtl">
+      <div className="ln-wrap">
+        <Link href={LEARN.base} className="ln-dim">→ دوراتي</Link>
+        <LearnCourse course={course} initial={l ?? null} />
+      </div>
     </div>
   );
 }
