@@ -110,7 +110,13 @@ export const SCENE_RUNTIME_JS = String.raw`
       if (!acc) { acc = new OffscreenCanvas(K.W, K.H); accX = acc.getContext("2d", { willReadFrequently: true }); }
       if (acc.width !== K.W || acc.height !== K.H) { acc.width = K.W; acc.height = K.H; }
       accX.globalCompositeOperation = "source-over"; accX.globalAlpha = 1; accX.clearRect(0, 0, K.W, K.H);
-      for (var i = 0; i < n; i++) { drawOnce(m.t + ((i + 0.5) / n - 0.5) * shutter / (m.fps || 30)); accX.globalAlpha = 1 / (i + 1); accX.drawImage(canvas, 0, 0); }
+      // a hard cut (scene({ cuts })) is never straddled: a sub-frame on the other side of it is held on this frame's side
+      var cuts = Array.isArray(def.cuts) ? def.cuts : [];
+      for (var i = 0; i < n; i++) {
+        var ts = m.t + ((i + 0.5) / n - 0.5) * shutter / (m.fps || 30);
+        for (var ci = 0; ci < cuts.length; ci++) { var c = Number(cuts[ci]); if (m.t >= c && ts < c) ts = c; else if (m.t < c && ts >= c) ts = c - 1e-4; }
+        drawOnce(ts); accX.globalAlpha = 1 / (i + 1); accX.drawImage(canvas, 0, 0);
+      }
       out = acc;
     } else drawOnce(m.t);
     var w = Math.max(1, Math.round(K.W * (m.scale || 1))), h = Math.max(1, Math.round(K.H * (m.scale || 1)));

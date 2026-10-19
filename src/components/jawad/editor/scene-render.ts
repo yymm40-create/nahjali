@@ -30,6 +30,20 @@ export async function probe(host: SceneHost, duration: number, n = 16): Promise<
 
 /** One contact sheet: `count` frames from `from` to `to`, tiled with the time under each (what a director scans). */
 export async function contactSheet(host: SceneHost, from: number, to: number, count = 24, cols = 6): Promise<string> {
+  return sheetAt(host, Array.from({ length: count }, (_, i) => Math.min(from + ((to - from) * i) / (count - 1 || 1), to - 1e-3)), cols);
+}
+
+/** The frames around each shot change of the plan: one frame before the cut, on it, and one after (the owner's QA). */
+export function cutTimes(changes: number[], duration: number, fps = 30, most = 5): number[] {
+  const at = [...new Set(changes.map((c) => Math.round(c * fps) / fps))].filter((c) => c > 0.05 && c < duration - 0.05).sort((a, b) => a - b);
+  // spread over the piece when there are more changes than cells
+  const pick = at.length <= most ? at : Array.from({ length: most }, (_, i) => at[Math.round((i * (at.length - 1)) / (most - 1))]);
+  return pick.flatMap((c) => [c - 1 / fps, c, c + 1 / fps]).map((t) => Math.min(Math.max(0, t), duration - 1e-3));
+}
+
+/** A sheet of the frames at exactly these times, tiled with the time under each. */
+export async function sheetAt(host: SceneHost, times: number[], cols = 6): Promise<string> {
+  const count = times.length;
   const cellW = host.w >= host.h ? 320 : 180;
   const cellH = Math.round((cellW * host.h) / host.w);
   const rows = Math.ceil(count / cols);
@@ -41,8 +55,8 @@ export async function contactSheet(host: SceneHost, from: number, to: number, co
   g.font = "600 14px sans-serif";
   g.textAlign = "center";
   for (let i = 0; i < count; i++) {
-    const t = from + ((to - from) * i) / (count - 1 || 1);
-    const bm = await host.frame(Math.min(t, to - 1e-3), { scale: cellW / host.w });
+    const t = times[i];
+    const bm = await host.frame(t, { scale: cellW / host.w });
     const x = (i % cols) * cellW, y = Math.floor(i / cols) * (cellH + pad);
     g.drawImage(bm, x, y, cellW, cellH);
     bm.close();

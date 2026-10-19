@@ -313,7 +313,7 @@ export const SCENE_KIT_JS = String.raw`
   // ── film finish ──
   var grainTiles = null;
   K.grain = function (ctx, t, o) {
-    o = o || {}; var amt = o.amount === undefined ? 0.06 : o.amount; if (amt <= 0) return;
+    o = o || {}; var amt = o.amount === undefined ? 0.02 : o.amount; if (amt <= 0) return;
     if (!grainTiles) { grainTiles = []; for (var g = 0; g < 4; g++) { var c = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(256, 256) : document.createElement("canvas"); c.width = c.height = 256; var x = c.getContext("2d", { willReadFrequently: true }), im = x.createImageData(256, 256), r = K.rng(100 + g); for (var i = 0; i < im.data.length; i += 4) { var v = r() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); grainTiles.push(c); } }
     var tile = grainTiles[(((Math.floor(t * 24) || 0) % 4) + 4) % 4]; if (!tile) return;
     ctx.save(); ctx.globalCompositeOperation = "overlay"; ctx.globalAlpha = amt; ctx.fillStyle = ctx.createPattern(tile, "repeat"); ctx.fillRect(0, 0, K.W, K.H); ctx.restore();
@@ -363,6 +363,44 @@ export const SCENE_KIT_JS = String.raw`
     ctx.save(); if (o.radius) { K.roundRect(ctx, x, y, w, h, o.radius); ctx.clip(); }
     ctx.globalAlpha *= o.alpha === undefined ? 1 : o.alpha; ctx.drawImage(im, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); ctx.restore(); return true;
   };
+
+  // ── the owner's motion grammar (higgsfield-motion-saas, assets/film-template/engine.js), as calls ──
+  // a DISCRETE change (a word swapped in, a typed character, a cut) lands on a frame, so the sub-frame blur never doubles it
+  K.TQ = function (t) { var f = K.fps || 30; return Math.round(t * f) / f; };
+  var bz = function (a, b, c, d) { var f = null; return function (x) { f = f || K.bezier(a, b, c, d); return f(x); }; };
+  K.E = {
+    lin: function (p) { return p; },
+    in: function (k) { k = k || 3; return function (p) { return Math.pow(p, k); }; },
+    out: function (k) { k = k || 3; return function (p) { return 1 - Math.pow(1 - p, k); }; },
+    inOut: function (k) { k = k || 3; return function (p) { return p < 0.5 ? Math.pow(2 * p, k) / 2 : 1 - Math.pow(2 - 2 * p, k) / 2; }; },
+    soft: bz(0.16, 1, 0.3, 1), smooth: bz(0.5, 0, 0.1, 1), glide: bz(0.45, 0, 0.55, 1), sine: bz(0.37, 0, 0.63, 1),
+    expoIn: bz(0.7, 0, 0.84, 0), needle: bz(0.95, 0, 0.05, 1), into: bz(0.5, 0, 0.85, 0.625), settle: bz(0.2, 0.7, 0.05, 1),
+    morph1: bz(0.66, 0, 0.9, 0.1), morph2: bz(0.07, 0.44, 0.16, 1), width: bz(0.75, 0, 0.25, 1),
+    back: function (s) { s = s === undefined ? 1.2 : s; return function (p) { return 1 + (s + 1) * Math.pow(p - 1, 3) + s * Math.pow(p - 1, 2); }; },
+  };
+  // keys that never stop at a middle key: [[t, v], [t, v, easeIntoThisKey], …] (numbers or arrays), smooth by default
+  K.kf = function (t, keys) {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (var i = 1; i < keys.length; i++) {
+      var k1 = keys[i], k0 = keys[i - 1];
+      if (t <= k1[0]) { var q = (k1[2] || K.E.smooth)(K.clamp((t - k0[0]) / ((k1[0] - k0[0]) || 1e-9))); return Array.isArray(k0[1]) ? k0[1].map(function (a, j) { return a + (k1[1][j] - a) * q; }) : k0[1] + (k1[1] - k0[1]) * q; }
+    }
+    return keys[keys.length - 1][1];
+  };
+  // zoom in LOG space (equal ratios feel equal); the needle puts its fastest frame ON the cut
+  K.zoom = function (t, t0, t1, a, b, e) { return Math.exp(K.lerp(Math.log(a), Math.log(b), (e || K.E.smooth)(K.clamp((t - t0) / ((t1 - t0) || 1e-9))))); };
+  K.needle = function (t, cut, a, b, h) { h = h === undefined ? 0.2 : h; return K.zoom(t, cut - h, cut + h - 1 / (K.fps || 30), a, b, K.E.needle); };
+  // scale/rotate about a pivot (the "parent null"): ctx is transformed, draw after it inside save/restore
+  K.about = function (ctx, px, py, s, dx, dy, r) { ctx.translate(px + (dx || 0), py + (dy || 0)); if (r) ctx.rotate(r); ctx.scale(s, s); ctx.translate(-px, -py); };
+  // entrances: a pop (≈6% overshoot), a soft settle (none), the After Effects inertial bounce and a rise into it
+  K.pop = function (t, t0, d) { d = d || 0.5; var x = (t - t0) / d; if (x <= 0) return 0; if (x >= 1) return 1; return 1 - Math.exp(-6.5 * x) * Math.cos(10.5 * x); };
+  K.settle = function (t, t0, d) { d = d || 0.6; var x = t - t0; if (x <= 0) return 0; if (x >= d) return 1; var k = 7 / d; return 1 - (1 + k * x) * Math.exp(-k * x); };
+  K.bounce = function (dt, v, amp, freq, decay) { amp = amp === undefined ? 0.0375 : amp; freq = freq || 1.8; decay = decay || 3.2; return dt <= 0 ? 0 : v * amp * Math.sin(freq * dt * K.TAU) / Math.exp(decay * dt); };
+  K.rise = function (dt, dist, v) { v = v || 1860; var T = dist / v; if (dt < 0) return dist; if (dt < T) return dist * (1 - dt / T); return -K.bounce(dt - T, v); };
+  // typing with a human cadence (Latin by characters; Arabic: pass words joined, and type whole words)
+  K.cadence = function (n, T0, T1, seed) { var r = K.rng(seed || 4242), d = [], out = [T0], sum = 0, i; for (i = 1; i < n; i++) { var v = 0.55 + 0.9 * r(); d.push(v); sum += v; } sum = sum || 1; for (i = 0; i < d.length; i++) out.push(out[i] + (d[i] / sum) * (T1 - T0)); return out; };
+  K.typedN = function (times, t) { t = K.TQ(t); var n = 0; while (n < times.length && times[n] <= t + 1e-6) n++; return n; };
+  K.caretOn = function (t, tEnd, hz) { hz = hz || 2; return t < tEnd ? 1 : Math.floor((t - tEnd) * hz * 2) % 2 === 0 ? 1 : 0; };
 
   // ── the person's own filmed video (when the piece is built on it): the runtime hands in the frame of now ──
   K.footage = null;
@@ -439,6 +477,7 @@ CANVAS · K.W, K.H (frame size), K.ctx, K.canvas, K.glCanvas (a WebGL canvas for
 PARTICLES · K.textPoints(str,{x,y,size,weight,family,step=4,max,seed})→points · K.imagePoints(id,{x,y,w,h,step,max})→points with their colours · K.sample(drawFn,{step,max,seed})→points · K.swarm(points,{from:"scatter"|"center"|"bottom"|"edge"|"explode",seed,size=2.2,delay=0.35,wave,waveSpan,text,spread,color}) → swarm.draw(ctx,p 0..1,t,{color,ownColor,curl=160,alpha,ease,additive=true,sizeLanded}) (p 0→1 assembles out of dust; 1→0 dissolves)
 LIQUID · K.metaballs(ctx,[{x,y,r}],{color|gradient:[c1,c2],res=0.25,threshold=1,edge=0.25,alpha,soften})
 LIGHT · K.glow(ctx,drawFn,{blur=24,wide,alpha,comp}) · K.bloom(ctx,{strength=0.55,radius=18,threshold=1.15,res}) (call near the end) · K.lightSweep(ctx,p,clipFn,{angle=-22,width=0.18,color,alpha}) · K.echo(ctx,t,drawFn(ctx,t'),{copies=5,dt=0.035,alpha=0.5,tint})
-FILM · K.grain(ctx,t,{amount=0.06}) · K.vignette(ctx,{amount=0.45,inner=0.35,color}) · K.rgbSplit(ctx,px,{dy,bg}) · K.glass(ctx,x,y,w,h,{radius=28,blur=26,tint,border,borderColor,shadow})
+FILM · K.grain(ctx,t,{amount=0.02}) (the owner's taste: ≤ 0.02–0.04 or none) · K.vignette(ctx,{amount=0.45,inner=0.35,color}) · K.rgbSplit(ctx,px,{dy,bg}) · K.glass(ctx,x,y,w,h,{radius=28,blur=26,tint,border,borderColor,shadow})
 SPACE · K.camera({x,y,z,fov=900,roll}) · K.project(cam,x,y,z)→{x,y,s} · K.inSpace(ctx,cam,z,drawFn,{dof,focus}) (nearer layers move and grow more: parallax, push-ins, fly-throughs; dof blurs what is off focus)
+GRAMMAR (the owner's skill, as calls) · K.TQ(t) (snap a DISCRETE change — a word swapped in, a typed character — to a frame: never swap on a raw word time) · K.E.{lin,in(k),out(k),inOut(k),soft,smooth,glide,sine,expoIn,needle,into,settle,morph1,morph2,width,back(s)} · K.kf(t,[[t,v],[t,v,ease]…]) (never stops at a middle key) · K.zoom(t,t0,t1,a,b,ease) (log space) · K.needle(t,cut,a,b,h=0.2) (fastest frame ON the cut) · K.about(ctx,px,py,s,dx,dy,r) (scale/rotate about a pivot: the parent null) · K.pop(t,t0,d) · K.settle(t,t0,d) · K.bounce(dt,v) · K.rise(dt,dist,v)→y offset (AE inertial bounce entrance) · K.cadence(n,T0,T1,seed)→times · K.typedN(times,t) · K.caretOn(t,tEnd) · start the next move at ≈0.45 of the current one (overlap, never a dead stop) · scene({ cuts:[t…] }) lists the hard cuts: motion-blur sub-frames never straddle one
 ASSETS · K.img(id)→ImageBitmap|null · K.picture(ctx,id,x,y,w,h,{fit:"cover"|"contain",radius,alpha}) · K.assets (all pictures by id)`;

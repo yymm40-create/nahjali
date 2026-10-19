@@ -106,11 +106,12 @@ function faceSummary(f: FootageFace[]): string {
 /** Everything حيدرة is told about the video in the plan, the code and the review. */
 export function footageText(f: FootageMeta): string {
   const lines = footageLines(f.words);
-  const timed = f.words.slice(0, 900).map((w) => `${w.w}@${w.s.toFixed(2)}`).join(" ");
+  // numbered, so a moment is chosen by its words (#i … #j) and its time is read from here — never invented
+  const timed = f.words.slice(0, 900).map((w, i) => `#${i} ${w.w}@${w.s.toFixed(2)}`).join(" ");
   return `THE PERSON'S OWN FILMED VIDEO — «${f.name}», ${f.seconds.toFixed(2)} s, ${f.w}×${f.h}; ${faceSummary(f.face)}.
 WHAT THEY SAY (spoken lines with their times, seconds from the start of the piece):
 ${lines.length ? lines.map((l, i) => `${i + 1}. ${l.from.toFixed(2)}–${l.to.toFixed(2)} s: «${l.text}»`).join("\n") : "(no clear speech was heard — build on what you see in the frames)"}
-${timed ? `EVERY WORD WITH THE SECOND IT STARTS: ${timed}` : ""}`;
+${timed ? `EVERY WORD, NUMBERED, WITH THE SECOND IT STARTS (pick each moment by its word numbers and take its time from here — never estimate a time; snap a word-timed swap to a frame with K.TQ): ${timed}` : ""}`;
 }
 
 /** The craft of the edit (given to the plan, the code and the review when the piece is built on the person's video). */
@@ -121,13 +122,13 @@ THE NON-NEGOTIABLES
 2. The frame changes WITH THE WORDS. Every change lands on a word boundary from the timed words (a change starts 0.1–0.2 s before the key word, so the picture arrives as the word is said). Never two changes inside 1.2 s; never a hold longer than ~5 s without something new (a push-in, a word typed beside them, a change of frame).
 3. Every shot names how their video sits ("frame" in the plan) — and two shots in a row never use the same one:
    • full — they fill the frame (cover, the face kept in), with a slow push-in (zoom 1.00 → 1.06 over the shot) or a punch-in on a key word (zoom 1.25 in 0.25 s, eased).
-   • card — their video shrinks into a floating rounded card (radius ≈ 3–4% of the frame, a soft long shadow, maybe a 2–6° perspective tilt) on a DESIGNED STAGE (a soft gradient or paper ground with grain, thin UI labels in the corners, a grid or a glow), with the key line typed beside or under it.
+   • card — their video shrinks into a floating rounded card (radius ≈ 3–4% of the frame, a soft long shadow, kept FLAT — never tilted into 3D to fake depth; depth comes from a motivated camera move) on a DESIGNED STAGE (a soft gradient or paper ground, a grid or a glow — no HUD rows, no corner marks, no labels that are not the content itself), with the key line typed beside or under it.
    • split — the frame is cut in two (portrait: top/bottom; landscape: left/right): they are in one half with the face centred in it, the explainer is drawn in the other; the divide moves in on a spring and leaves on one.
    • corner — they become a small circle or rounded box in a corner (face filling it) while the explainer fills the rest.
    • away — they disappear (the voice goes on) and a FULL-SCREEN motion explainer shows what they are saying: tool icons drawn in code on rounded tiles assembling into a grid, a timeline of clips sliding in, an easing curve drawing itself, a chart growing, a phone UI, a number counting, a before/after. 1.5–3.5 s, then they come back (the card flies back in and grows to full, a zoom through the explainer, a mask wipe on the beat).
    • over — they stay full and kinetic words appear beside them (never on the face: K.footage.draw returns where the face landed; keep text out of that box with a margin).
-4. They are seen talking most of the time: at least half of the piece shows their face (full, card, split, corner or over); open on them (or on a hook that cuts to them inside 1.5 s) and end on them.
-5. The explainers come FROM THEIR WORDS. When they name a thing (a tool, an app, a place, a number, a list, a step, a before/after), draw it — never decoration for its own sake. Icons are drawn in code (rounded tiles, line icons, real shapes), never emoji. A number they say counts up as they say it. A list they say builds item by item on each item's word.
+4. They are seen talking most of the time: at least half of the piece shows their face (full, card, split, corner or over); open on them (or on a hook that cuts to them inside 1.5 s). THE ENDING: their last line on them, then a short clean end card (1.5–2.5 s): the one idea of the piece in their words, centred on the stage, no person, held still (their voice may finish under it).
+5. The explainers come FROM THEIR WORDS. When they name a thing (a tool, an app, a place, a number, a list, a step, a before/after), show it — never decoration for its own sake. Generic icons are drawn in code (rounded tiles, line icons, real shapes), never emoji. NEVER draw another company's logo or app icon: a named app or brand is its NAME written in type on a plain labelled tile (with a generic icon for its kind — a camera for a photo app, a play triangle for a video app). Never write computer-vision labels or tracking tags on their real video. A number they say counts up as they say it. A list they say builds item by item on each item's word.
 6. On-screen words are THEIR key words, exactly as they said them (Arabic as spoken; another language as spoken) — a headline of 1–5 words per moment, mixing a heavy weight with a light or italic one, typed or masked in on the word. Not full captions.
 7. Whenever they are shown, their WHOLE FACE is inside the visible part (K.footage.draw keeps it in by default), never cut by a panel's edge, never under text, never under the platform's buttons (portrait: keep the face above 0.78 of H).
 8. Transitions are motion, not cuts: the card scales and slides on K.ease.silk / springs (8–16 frames), the divide sweeps, a blur-to-sharp, a mask wipe; one whoosh / pop on each change, soft under the voice.
