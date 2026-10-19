@@ -3,6 +3,7 @@
 import Link from "next/link";
 import BookletCard from "@/components/mahdi/BookletCard";
 import HealthCard from "@/components/mahdi/health/HealthCard";
+import KhatmaCard from "@/components/mahdi/khatma/KhatmaCard";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { MAHDI_LIMITS, designOf, type MahdiTheme } from "@config/mahdi";
@@ -106,6 +107,7 @@ export default function MorePage() {
         ))}
       </nav>
       <HealthCard />
+      <KhatmaCard />
       <BookletCard />
       <FeedbackCard place="more" />
       <InstallCard />

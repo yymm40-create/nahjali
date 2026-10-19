@@ -109,7 +109,7 @@ export default function KhatmaPage() {
     return (
       <div className="m-card space-y-4 p-6 text-center">
         <p>{error}</p>
-        <Link href="/mahdi/khatma" className="m-btn m-btn-ghost">{t.khatma.title}</Link>
+        <Link href="/mahdi/khatma/groups" className="m-btn m-btn-ghost">{t.khatma.title}</Link>
       </div>
     );
   }

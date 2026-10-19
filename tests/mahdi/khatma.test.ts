@@ -185,7 +185,7 @@ describe("the branch is wired in", () => {
     expect(sql).toContain("primary key (khatma_id, portion)");
     expect(sql).toContain("unique (group_id, number)");
     expect(sql).toMatch(/revoke all on public\.mahdi_khatma_settings, public\.mahdi_khatmas, public\.mahdi_khatma_claims from anon, authenticated/);
-    expect(read("src/app/mahdi/(app)/khatma/[id]/read/[n]/page.tsx")).toContain("tanzil.net");
+    expect(read("src/components/mahdi/khatma/QuranText.tsx")).toContain("tanzil.net");
     // a member who leaves or is removed gives back what they were reading
     expect(read("src/app/api/mahdi/groups/[id]/route.ts").match(/releaseReader\(/g)).toHaveLength(2);
   });

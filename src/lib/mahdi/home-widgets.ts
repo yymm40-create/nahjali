@@ -6,7 +6,7 @@
 // how far am I in today's habits, how far in today's reading goal, and what is left to tap. Everything else can be
 // added, removed and moved by the person.
 
-export type WidgetId = "habits" | "reading" | "quick" | "priorities" | "tasks" | "week" | "book" | "phrase" | "projects" | "health" | "booklet" | "stories";
+export type WidgetId = "habits" | "reading" | "quick" | "priorities" | "tasks" | "week" | "book" | "phrase" | "projects" | "health" | "khatma" | "booklet" | "stories";
 
 export interface WidgetDef {
   id: WidgetId;
@@ -27,6 +27,7 @@ export const WIDGETS: readonly WidgetDef[] = [
   { id: "phrase", name: "كلمة اليوم", hint: "عبارة تحفيزية تتغير كل يوم", size: "full" },
   { id: "projects", name: "عاداتي حسب المشاريع", hint: "القائمة الكاملة مقسمة على مشاريعك", size: "full" },
   { id: "health", name: "الصحة العلوية", hint: "تمرين اليوم وتقدّمك", size: "full" },
+  { id: "khatma", name: "الختمة العلوية", hint: "ختمتك للقرآن ووين وصلت", size: "full" },
   { id: "booklet", name: "الكتيّب", hint: "كتيّب لأجل المهدي", size: "full" },
   { id: "stories", name: "قصص المتابَعين", hint: "قصص من تتابعهم في المجتمع", size: "full" },
 ];
