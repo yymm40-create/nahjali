@@ -23,7 +23,6 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dictionOf, ELEVEN_PRICE, generatorById, GPT_IMAGE_2_SIZES, SEEDREAM_SIZES, JAWAD_VOICE_PRICE, MUSIC_REF_MS, MUSIC_REF_USE } from "@config/jawad/generators";
-import type { HabibiDialect } from "../voice-text";
 import { MAX_ACTIVE_JOBS } from "@config/jawad/brand";
 import type { GeneratorDef, RefRole, RefStyle, Settings } from "@config/jawad/types";
 import { evaluate, priceVersion } from "../engine";
@@ -496,18 +495,16 @@ async function runSync(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
   }
 
   if (def.provider.id === "jawad") {
-    // «صوت الجواد»: the person's own reference recording speaks the text (Habibi on our endpoint, or Chatterbox on fal)
+    // «صوت الجواد»: the person's own reference recording speaks the text (VoiceStudio on our own server)
     const voice = await resolveVoice(job.user_id, String(s.voice));
     if (!voice.ok) throw new ProviderError("rejected", voice.reason, `voice ${String(s.voice)}`);
     if (voice.provider !== "jawad") throw new ProviderError("rejected", "هذا الصوت محفوظ عند مزوّد آخر؛ خذ بصمة صوتك في «صوت الجواد» واخترها.", `voice provider ${voice.provider}`);
-    const engine = s.engine === "habibi" || s.engine === "chatterbox" ? s.engine : undefined;
-    const dialect = typeof s.dialect === "string" ? (s.dialect as HabibiDialect) : undefined;
     // a recording made for this one reading: its words are written now (a library voice keeps them from its saving)
-    const refText = voice.once && engine !== "chatterbox" ? await onceReferenceText(voice.voiceId) : voice.refText ?? "";
-    const r = await jawadSpeak({ refUrl: await jawadReference(voice.voiceId), refText, text: job.prompt, engine: voice.once && !refText ? "chatterbox" : engine, dialect, speed: Number(s.speed) || 1 });
+    const refText = voice.once ? await onceReferenceText(voice.voiceId) : voice.refText ?? "";
+    const r = await jawadSpeak({ refUrl: await jawadReference(voice.voiceId), refText, text: job.prompt, speed: Number(s.speed) || 1 });
     await db().from("jawad_jobs").update({ status: "saving", lease_until: later(LEASE_MS) }).eq("id", job.id);
     await saveOutput(job, 0, r.audio, "audio/wav", "wav", { durationMs: r.durationMs ?? undefined });
-    await finishJob(job, "succeeded", { costUsd: (job.prompt.length / 1000) * (r.engine === "habibi" ? JAWAD_VOICE_PRICE.habibiPerKChars : JAWAD_VOICE_PRICE.chatterboxPerKChars), units: { characters: job.prompt.length, engine: r.engine } });
+    await finishJob(job, "succeeded", { costUsd: (job.prompt.length / 1000) * JAWAD_VOICE_PRICE.perKChars, units: { characters: job.prompt.length, engine: r.engine } });
     return;
   }
 

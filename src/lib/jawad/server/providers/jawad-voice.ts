@@ -1,112 +1,117 @@
-// «صوت الجواد» — JAWAD's own voice engine: open models that copy any voice from a short recording and speak Arabic,
-// with no dependence on ElevenLabs, MiniMax or OpenAI. Two engines behind one door:
-//   · «حبيبي» (Habibi-TTS, SJTU X-LANCE, 2026): made for Arabic, 12 dialects, zero-shot cloning — runs on the site's
-//     own GPU endpoint (a Hugging Face Inference Endpoint with voice-engine/habibi/handler.py; env HABIBI_URL + token).
-//   · Chatterbox Multilingual (Resemble AI, MIT): 23 languages with Arabic, hosted on fal (env FAL_KEY), 300
-//     characters a request — a long text is spoken in pieces and joined here.
-// A voice is a reference recording of the person (kept in storage, 10 s – 2 min) plus the words said in it.
+// «صوت الجواد» — JAWAD's own voice engine, now VoiceStudio (open source, github.com/debpalash/VoiceStudio) running on the
+// owner's own server, with no dependence on ElevenLabs, MiniMax or OpenAI. The site talks to its OpenAI-compatible
+// API (POST /v1/audio/speech) and keeps each person's voice there as a profile (POST /profiles), made from the person's
+// reference recording that stays in the site's storage. Env: VOICESTUDIO_URL (the server's address, e.g. https://…:3900),
+// VOICESTUDIO_KEY (its OMNIVOICE_API_KEY), and optionally VOICESTUDIO_ENGINE (an engine id such as "voxcpm2"; empty = the
+// server's active engine). A voice is a reference recording of the person (10 s – 3 min) plus the words said in it.
 // Server only.
 
+import { createHash } from "crypto";
 import { ProviderError, rejectedMessage } from "./common";
-import { falFile, falReady, falRun, falUrl } from "./fal";
-import { joinWavs, readWav, splitForSpeech, writeWav, type HabibiDialect } from "../../voice-text";
-import { habibiModelFor } from "@config/jawad/voice-licences";
+import { joinWavs, readWav, splitForSpeech, writeWav } from "../../voice-text";
 
-export type JawadEngine = "habibi" | "chatterbox";
+/** What one thousand characters cost on our own server (an L4 at about $1/h, ~20 s of speech a minute of GPU): an estimate. */
+export const VOICESTUDIO_PER_KCHARS = 0.02;
+/** One call of the server takes at most 4096 characters; longer texts are spoken in pieces and joined here. */
+const PIECE_MAX = 3500;
 
-export const CHATTERBOX_MODEL = "fal-ai/chatterbox/text-to-speech/multilingual";
-/** fal's published price: $0.025 per 1,000 characters. */
-export const CHATTERBOX_PER_KCHARS = 0.025;
-/** What one minute of our own Habibi endpoint costs when it runs (an L4/A10G at about $1/h, ~20 s of speech a minute of GPU). */
-export const HABIBI_USD_PER_KCHARS = 0.02;
-const CHATTERBOX_MAX = 300;
-
-export const habibiReady = () => Boolean(process.env.HABIBI_URL);
-export const chatterboxReady = () => falReady();
-export const jawadVoiceReady = () => habibiReady() || chatterboxReady();
-/** The engines that can speak now, best for Arabic first. */
-export const jawadEngines = (): JawadEngine[] => [...(habibiReady() ? (["habibi"] as const) : []), ...(chatterboxReady() ? (["chatterbox"] as const) : [])];
+export const jawadVoiceReady = () => Boolean(process.env.VOICESTUDIO_URL);
 
 export interface JawadSpeech {
-  /** the reference recording (a short-lived link the engine can fetch) */
+  /** the reference recording (a short-lived link the server's profile is made from, the first time) */
   refUrl: string;
-  /** the words said in the recording (Habibi needs them; Chatterbox ignores them) */
+  /** the words said in the recording */
   refText: string;
   text: string;
-  engine?: JawadEngine;
-  dialect?: HabibiDialect;
   speed?: number;
 }
 
-/** Text → WAV in the reference voice. Falls back from Habibi to Chatterbox when Habibi is not configured. */
-export async function jawadSpeak(o: JawadSpeech): Promise<{ audio: Buffer; mime: "audio/wav"; durationMs: number | null; engine: JawadEngine }> {
-  const engine: JawadEngine = o.engine === "chatterbox" ? "chatterbox" : habibiReady() ? "habibi" : "chatterbox";
-  if (engine === "habibi") {
-    const r = await habibiSpeak(o);
-    return { ...r, engine };
-  }
-  const r = await chatterboxSpeak(o);
-  return { ...r, engine };
-}
+const base = () => (process.env.VOICESTUDIO_URL ?? "").replace(/\/+$/, "");
+const headers = (extra: Record<string, string> = {}): Record<string, string> => ({ ...(process.env.VOICESTUDIO_KEY ? { Authorization: `Bearer ${process.env.VOICESTUDIO_KEY}` } : {}), ...extra });
 
-// ───────── Habibi: our own endpoint (voice-engine/habibi/handler.py) ─────────
-
-async function habibiSpeak(o: JawadSpeech) {
-  const url = process.env.HABIBI_URL;
-  if (!url) throw new ProviderError("rejected", "محرك «حبيبي» غير مفعّل على الخادم (HABIBI_URL).", "HABIBI_URL missing");
-  if (!o.refText.trim()) throw new ProviderError("rejected", "هذا الصوت بلا نصّ مرجعي؛ أعد أخذ البصمة.", "habibi needs ref_text");
-  const body = { inputs: { ref_audio_url: o.refUrl, ref_text: o.refText, gen_text: o.text, dialect: o.dialect ?? "UNK", model_type: habibiModelFor(o.dialect), speed: o.speed ?? 1, remove_silence: true } };
-  let res: Response;
+/** The profile name of a voice: stable for the same recording (the link's path, never its token). */
+export function profileName(refUrl: string): string {
+  let path = refUrl;
   try {
-    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", ...(process.env.HABIBI_TOKEN ? { Authorization: `Bearer ${process.env.HABIBI_TOKEN}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(280_000) });
-  } catch (e) {
-    throw new ProviderError("unknown", "محرك «حبيبي» ما رد الآن (قد يكون يستيقظ؛ جرّب بعد دقيقة).", `habibi fetch: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  const text = await res.text();
-  // a scaled-to-zero endpoint answers 503 while it starts: said plainly, nothing charged
-  if (res.status === 503) throw new ProviderError("unknown", "محرك «حبيبي» يستيقظ الآن (دقيقة أو دقيقتين)؛ جرّب مرة ثانية.", `habibi 503 ${text.slice(0, 200)}`);
-  if (!res.ok) throw new ProviderError("rejected", rejectedMessage(res.status, text), `habibi ${res.status} ${text.slice(0, 300)}`);
-  let out: { audio_base64?: string; sample_rate?: number; error?: string };
-  try {
-    out = JSON.parse(text);
+    path = new URL(refUrl).pathname;
   } catch {
-    throw new ProviderError("rejected", "رد محرك «حبيبي» غير مفهوم.", `habibi body ${text.slice(0, 200)}`);
+    /* a bare path */
   }
-  if (out.error || !out.audio_base64) throw new ProviderError("rejected", "محرك «حبيبي» ما قدر ينطق هذا النص.", `habibi: ${out.error ?? "no audio"}`);
-  const audio = Buffer.from(out.audio_base64, "base64");
-  const w = readWav(new Uint8Array(audio));
-  return { audio, mime: "audio/wav" as const, durationMs: w ? Math.round((w.data.length / ((w.channels * w.bits) / 8) / w.rate) * 1000) : null };
+  return `jv-${createHash("sha1").update(path).digest("hex").slice(0, 20)}`;
 }
 
-// ───────── Chatterbox on fal: 300 characters a call, spoken in pieces and joined ─────────
+const known = new Set<string>();
 
-async function chatterboxSpeak(o: JawadSpeech) {
-  if (!chatterboxReady()) throw new ProviderError("rejected", "محرك Chatterbox غير مفعّل على الخادم (FAL_KEY).", "FAL_KEY missing");
-  const pieces = splitForSpeech(o.text, CHATTERBOX_MAX);
-  if (!pieces.length) throw new ProviderError("rejected", "ما فيه نص أنطقه.", "empty text");
-  const arabic = /[؀-ۿ]/.test(o.text);
-  const wavs: Uint8Array[] = [];
-  // a few at a time: fal queues them, and the order is kept by index
-  const results = await Promise.all(
-    pieces.map((text) =>
-      falRun<Record<string, unknown>>(CHATTERBOX_MODEL, { text, voice: o.refUrl, custom_audio_language: arabic ? "arabic" : "english", exaggeration: 0.5, temperature: 0.7, cfg_scale: 0.5 }, 240_000).catch((e) => {
-        throw e instanceof ProviderError ? new ProviderError(e.outcome, "تعذّر توليد الكلام بمحرك Chatterbox الآن؛ جرّب مرة ثانية.", e.detail) : e;
-      }),
-    ),
-  );
-  for (const out of results) {
-    const url = falUrl(out, "audio");
-    if (!url) throw new ProviderError("rejected", "ما رجع Chatterbox بملف صوت.", `chatterbox keys: ${Object.keys(out).join(",")}`);
-    const bytes = new Uint8Array(await falFile(url));
-    // fal returns WAV; anything else is wrapped as-is only when alone
-    if (!readWav(bytes)) {
-      if (results.length === 1) return { audio: Buffer.from(bytes), mime: "audio/wav" as const, durationMs: null };
-      throw new ProviderError("rejected", "رد Chatterbox بصيغة غير متوقعة.", "chatterbox non-wav piece");
+async function call(path: string, init: RequestInit, what: string, timeoutMs = 280_000): Promise<Response> {
+  if (!jawadVoiceReady()) throw new ProviderError("rejected", "محرك «صوت الجواد» غير مفعّل على الخادم (VOICESTUDIO_URL).", "VOICESTUDIO_URL missing");
+  try {
+    return await fetch(base() + path, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (e) {
+    throw new ProviderError("unknown", "خادم «صوت الجواد» ما رد الآن؛ جرّب بعد دقيقة.", `voicestudio ${what}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** Makes sure the voice exists on the server as a profile (made once from the reference recording). */
+async function ensureProfile(name: string, o: JawadSpeech) {
+  if (known.has(name)) return;
+  const list = await call("/profiles", { headers: headers() }, "list profiles", 30_000);
+  if (list.ok) {
+    const rows = (await list.json().catch(() => [])) as { name?: string }[];
+    if (Array.isArray(rows) && rows.some((r) => r?.name === name)) {
+      known.add(name);
+      return;
     }
-    wavs.push(bytes);
+  }
+  const ref = await fetch(o.refUrl, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
+  if (!ref?.ok) throw new ProviderError("rejected", "تسجيل البصمة ما لقيناه؛ خذ بصمة جديدة.", `reference ${ref?.status ?? "unreachable"}`);
+  const bytes = new Uint8Array(await ref.arrayBuffer());
+  const mime = ref.headers.get("content-type") || "audio/wav";
+  const form = new FormData();
+  form.set("name", name);
+  form.set("kind", "clone");
+  form.set("language", "Auto");
+  form.set("ref_text", o.refText);
+  form.set("ref_audio", new Blob([bytes], { type: mime }), mime.includes("mpeg") ? "ref.mp3" : "ref.wav");
+  const made = await call("/profiles", { method: "POST", headers: headers(), body: form }, "create profile", 120_000);
+  const body = await made.text();
+  if (!made.ok) throw new ProviderError("rejected", rejectedMessage(made.status, body), `voicestudio profile ${made.status} ${body.slice(0, 300)}`);
+  known.add(name);
+}
+
+async function speakPiece(name: string, text: string, speed: number, arabic: boolean) {
+  const res = await call(
+    "/v1/audio/speech",
+    {
+      method: "POST",
+      headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ model: process.env.VOICESTUDIO_ENGINE || "tts-1", input: text, voice: name, response_format: "wav", speed, ...(arabic ? { language: "ar" } : {}) }),
+    },
+    "speech",
+  );
+  if (res.status === 503) throw new ProviderError("unknown", "خادم «صوت الجواد» يستيقظ الآن؛ جرّب مرة ثانية بعد دقيقة.", "voicestudio 503");
+  if (res.status === 404) known.delete(name);
+  if (!res.ok) throw new ProviderError("rejected", rejectedMessage(res.status, await res.text()), `voicestudio speech ${res.status}`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (!readWav(bytes)) throw new ProviderError("rejected", "رد خادم «صوت الجواد» بصيغة غير متوقعة.", "voicestudio non-wav");
+  return bytes;
+}
+
+/** Text → WAV in the reference voice. */
+export async function jawadSpeak(o: JawadSpeech): Promise<{ audio: Buffer; mime: "audio/wav"; durationMs: number | null; engine: "voicestudio" }> {
+  const pieces = splitForSpeech(o.text, PIECE_MAX);
+  if (!pieces.length) throw new ProviderError("rejected", "ما فيه نص أنطقه.", "empty text");
+  const name = profileName(o.refUrl);
+  await ensureProfile(name, o);
+  const arabic = /[؀-ۿ]/.test(o.text);
+  const speed = Math.min(4, Math.max(0.25, o.speed ?? 1));
+  const wavs: Uint8Array[] = [];
+  for (const piece of pieces) wavs.push(await speakPiece(name, piece, speed, arabic));
+  if (wavs.length === 1) {
+    const w = readWav(wavs[0]);
+    return { audio: Buffer.from(wavs[0]), mime: "audio/wav", durationMs: w ? Math.round((w.data.length / ((w.channels * w.bits) / 8) / w.rate) * 1000) : null, engine: "voicestudio" };
   }
   const joined = joinWavs(wavs, 180);
-  return { audio: Buffer.from(joined.wav), mime: "audio/wav" as const, durationMs: joined.durationMs };
+  return { audio: Buffer.from(joined.wav), mime: "audio/wav", durationMs: joined.durationMs, engine: "voicestudio" };
 }
 
 /** A silent WAV of `ms` (for tests and previews). */

@@ -241,7 +241,7 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       meta: { speaker: line.speaker, text: line.line, voice, ...(emotion ? { emotion } : {}), durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
     });
     if (error) throw error;
-    await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * (resolved.provider === "minimax" ? MINIMAX_PRICE.hdPerKChars : resolved.provider === "jawad" ? JAWAD_VOICE_PRICE.chatterboxPerKChars : ELEVEN_PRICE.v4PerKChars) + spoken.usd, units: spoken.text.length });
+    await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * (resolved.provider === "minimax" ? MINIMAX_PRICE.hdPerKChars : resolved.provider === "jawad" ? JAWAD_VOICE_PRICE.perKChars : ELEVEN_PRICE.v4PerKChars) + spoken.usd, units: spoken.text.length });
     return { jobId: job.id, status: "succeeded" };
   } catch (e) {
     console.error("film voice line failed", line.key, e);

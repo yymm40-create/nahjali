@@ -1249,58 +1249,31 @@ export const JAWAD_VOICE_ID = "jawad-voice";
  * this one reading and never kept as a voice (u:, one of their uploads, cleaned by «Claude Code» first). */
 export const JAWAD_VOICE = /^[vu]:[0-9a-f-]{36}$/;
 export const JAWAD_CLONE_KEY = "voice:clone";
-/** Chatterbox on fal: $0.025 per 1,000 characters; Habibi on our own endpoint about $0.02 (an L4 at ~$1/h). */
-export const JAWAD_VOICE_PRICE = { chatterboxPerKChars: 0.025, habibiPerKChars: 0.02, cloneUsd: 0.02 };
+/** VoiceStudio on our own server: about $0.02 per 1,000 characters (an L4 at ~$1/h, an estimate); the voiceprint costs its transcription. */
+export const JAWAD_VOICE_PRICE = { perKChars: 0.02, cloneUsd: 0.02 };
 const jvMode: ModeDef = { id: "text_to_speech", label: "نص إلى كلام", refStyle: "none", refs: {}, promptRequired: true };
 const jawadVoice: GeneratorDef = {
   id: JAWAD_VOICE_ID,
   name: "صوت الجواد",
   output: "audio",
   defaultSection: "audio",
-  provider: { id: "jawad", label: "محرك الجواد (حبيبي · Chatterbox)" },
-  model: { id: "habibi-unified", family: "Habibi-TTS / Chatterbox Multilingual", version: "2026-01" },
-  api: { name: "HABIBI_URL (Hugging Face endpoint, voice-engine/habibi) · fal.ai queue · fal-ai/chatterbox/text-to-speech/multilingual", endpoint: "POST HABIBI_URL · POST https://queue.fal.run/fal-ai/chatterbox/text-to-speech/multilingual", tracking: "async", progress: "none", cancel: "none" },
+  provider: { id: "jawad", label: "محرك الجواد (VoiceStudio)" },
+  model: { id: "voicestudio", family: "VoiceStudio", version: "2026" },
+  api: { name: "VOICESTUDIO_URL (VoiceStudio on our own server) · OpenAI-compatible API", endpoint: "POST VOICESTUDIO_URL/v1/audio/speech · POST VOICESTUDIO_URL/profiles", tracking: "async", progress: "none", cancel: "none" },
   modes: [jvMode],
   options: [
     { key: "voice", label: "الصوت", kind: "choice", ltr: true, default: "", values: [], accepts: JAWAD_VOICE, picker: "voice" },
-    {
-      key: "engine", label: "المحرك", kind: "choice", default: "auto",
-      values: [
-        { value: "auto", label: "تلقائي", hint: "حبيبي إن كان مفعّلًا، وإلا Chatterbox" },
-        { value: "habibi", label: "حبيبي (عربي)", hint: "مصنوع للعربية ولهجاتها" },
-        { value: "chatterbox", label: "Chatterbox", hint: "٢٣ لغة منها العربية" },
-      ],
-    },
-    {
-      // every dialect stays offered (the owner's decision); the model behind each is chosen in providers/jawad-voice.ts
-      key: "dialect", label: "اللهجة (حبيبي)", kind: "choice", default: "UNK",
-      values: [
-        { value: "UNK", label: "من العينة" },
-        { value: "MSA", label: "فصحى" },
-        { value: "SAU", label: "سعودي" },
-        { value: "UAE", label: "إماراتي" },
-        { value: "IRQ", label: "عراقي" },
-        { value: "EGY", label: "مصري" },
-        { value: "LEV", label: "شامي" },
-        { value: "OMN", label: "عُماني" },
-        { value: "ALG", label: "جزائري" },
-        { value: "MAR", label: "مغربي" },
-        { value: "TUN", label: "تونسي" },
-        { value: "SDN", label: "سوداني" },
-        { value: "LBY", label: "ليبي" },
-      ],
-    },
     { key: "speed", label: "السرعة", kind: "choice", default: "1", values: [{ value: "0.85", label: "أبطأ" }, { value: "1", label: "عادية" }, { value: "1.15", label: "أسرع" }] },
   ],
   files: {},
   prompt: { label: "النص المنطوق", placeholder: "اكتب الكلام كما سيُنطق، بالعربي (مشكّل أو بلا تشكيل)…", max: 4000, arabic: true },
   priceKeys: [
-    { key: "chars:1k", label: "كل ١٠٠٠ حرف", defaultCenti: centiFor(JAWAD_VOICE_PRICE.chatterboxPerKChars), basis: `سعر fal المنشور لـ Chatterbox Multilingual: $${JAWAD_VOICE_PRICE.chatterboxPerKChars} لكل ١٠٠٠ حرف؛ حبيبي على خادمنا نحو $${JAWAD_VOICE_PRICE.habibiPerKChars}` },
+    { key: "chars:1k", label: "كل ١٠٠٠ حرف", defaultCenti: centiFor(JAWAD_VOICE_PRICE.perKChars), basis: `تقدير تشغيل VoiceStudio على خادمنا: نحو $${JAWAD_VOICE_PRICE.perKChars} لكل ١٠٠٠ حرف (كرت L4 بنحو دولار للساعة)` },
     { key: JAWAD_CLONE_KEY, label: "بصمة صوت من تسجيل (للمرة)", defaultCenti: centiFor(JAWAD_VOICE_PRICE.cloneUsd), basis: "لا نسخ عند مزوّد: التسجيل يُحفظ في مكتبتك ويُكتب ما قيل فيه مرة واحدة (كلفة الكتابة فقط)" },
   ],
   modeFor: () => jvMode,
   rules(d) {
-    const notes = ["محرك الموقع نفسه: صوتك من تسجيل ١٠ ثوانٍ فأكثر، بلا حد لعدد الأصوات وبلا رسوم نسخ. يتكلم العربية بلهجاتها (حبيبي) أو ٢٣ لغة (Chatterbox)."];
+    const notes = ["محرك الموقع نفسه: صوتك من تسجيل ١٠ ثوانٍ فأكثر، بلا حد لعدد الأصوات وبلا رسوم نسخ."];
     if (!d.settings.voice) notes.unshift("خذ بصمة صوتك أولًا (🎙️ بصمة صوتك) ثم اختره هنا؛ هذا المحرك يتكلم بأصوات مكتبتك فقط.");
     return { options: opt(jawadVoice.options), issues: [], notes };
   },
@@ -1310,18 +1283,13 @@ const jawadVoice: GeneratorDef = {
     const k = Math.max(1, Math.ceil(d.prompt.length / 1000));
     return total([{ label: `${k} × ١٠٠٠ حرف`, centi: k * per }], jawadVoice.costUsd(d, jvMode));
   },
-  costUsd: (d) => (Math.max(1, d.prompt.length) / 1000) * JAWAD_VOICE_PRICE.chatterboxPerKChars,
+  costUsd: (d) => (Math.max(1, d.prompt.length) / 1000) * JAWAD_VOICE_PRICE.perKChars,
   sources: [
-    { label: "Habibi-TTS — unified dialectal Arabic TTS (SJTU X-LANCE, Jan 2026): paper", url: "https://arxiv.org/abs/2601.13802", checked: "2026-10-08" },
-    { label: "Habibi-TTS — models and licences on Hugging Face (MSA/EGY/IRQ/ALG/MAR: Apache 2.0; Unified/SAU/UAE: CC-BY-NC-SA)", url: "https://huggingface.co/SWivid/Habibi-TTS", checked: "2026-10-08" },
-    { label: "Habibi-TTS — code (MIT) and CLI", url: "https://github.com/SWivid/Habibi-TTS", checked: "2026-10-08" },
-    { label: "fal.ai — Chatterbox Multilingual (text ≤ 300 chars, voice = reference audio URL, custom_audio_language: arabic; $0.025 / 1k chars)", url: "https://fal.ai/models/fal-ai/chatterbox/text-to-speech/multilingual/api", checked: "2026-10-08" },
-    { label: "Resemble AI — Chatterbox (MIT), 23 languages incl. Arabic, 10-second zero-shot cloning", url: "https://github.com/resemble-ai/chatterbox", checked: "2026-10-08" },
+    { label: "VoiceStudio — open-source local-first voice studio (cloning, design, dubbing; OpenAI-compatible /v1/audio/speech)", url: "https://github.com/debpalash/VoiceStudio", checked: "2026-10-19" },
   ],
   verification: [
-    { item: "حبيبي", status: "unverified", note: "يعمل عندما يُضبط HABIBI_URL (نقطة Hugging Face من voice-engine/habibi) وHABIBI_TOKEN؛ بدونهما يتكلم Chatterbox عبر fal." },
-    { item: "العربية", status: "unverified", note: "جودة اللهجات تُجرَّب بالأذن؛ أصحاب حبيبي يقولون إنه ينافس Eleven v3." },
-    { item: "السعر", status: "verified", note: `Chatterbox $${JAWAD_VOICE_PRICE.chatterboxPerKChars} لكل ١٠٠٠ حرف (fal)؛ حبيبي بسعر ساعة الخادم.` },
+    { item: "VoiceStudio", status: "unverified", note: "يعمل عندما يُضبط VOICESTUDIO_URL (خادم VoiceStudio) وVOICESTUDIO_KEY، واختياريًا VOICESTUDIO_ENGINE؛ لم يُجرَّب صوته الخليجي بعد." },
+    { item: "السعر", status: "unverified", note: `تقدير: $${JAWAD_VOICE_PRICE.perKChars} لكل ١٠٠٠ حرف بسعر ساعة الخادم.` },
   ],
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };

@@ -102,20 +102,3 @@ export function joinWavs(pieces: Uint8Array[], gapMs = 180): { wav: Uint8Array; 
   return { wav: writeWav(data, rate, channels, bits), durationMs: Math.round((total / frame / rate) * 1000) };
 }
 
-/** Habibi's dialect ids and their Arabic names (the licence of each model is noted in the generator). */
-export const HABIBI_DIALECTS = [
-  { id: "MSA", ar: "فصحى" },
-  { id: "SAU", ar: "سعودي" },
-  { id: "UAE", ar: "إماراتي" },
-  { id: "IRQ", ar: "عراقي" },
-  { id: "EGY", ar: "مصري" },
-  { id: "LEV", ar: "شامي" },
-  { id: "OMN", ar: "عُماني" },
-  { id: "ALG", ar: "جزائري" },
-  { id: "MAR", ar: "مغربي" },
-  { id: "TUN", ar: "تونسي" },
-  { id: "SDN", ar: "سوداني" },
-  { id: "LBY", ar: "ليبي" },
-  { id: "UNK", ar: "يحدّده من العينة" },
-] as const;
-export type HabibiDialect = (typeof HABIBI_DIALECTS)[number]["id"];

@@ -24,107 +24,95 @@ const wavOf = (ms: number, rate = 24000) => {
   return out;
 };
 
-describe("«صوت الجواد» provider", () => {
+describe("«صوت الجواد» provider (VoiceStudio)", () => {
   const env = { ...process.env };
-  let calls: { url: string; body?: unknown }[] = [];
+  let calls: { method: string; url: string; body?: unknown; form?: FormData }[] = [];
+  let profiles: { name: string }[] = [];
   beforeEach(() => {
     calls = [];
-    process.env.FAL_KEY = "test";
-    delete process.env.HABIBI_URL;
+    profiles = [];
+    process.env.VOICESTUDIO_URL = "https://vs.test:3900/";
+    process.env.VOICESTUDIO_KEY = "key";
+    delete process.env.VOICESTUDIO_ENGINE;
+    vi.resetModules();
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
-        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-        calls.push({ url, body });
-        // fal: submit → status → result → file
-        if (url.startsWith("https://queue.fal.run/")) return new Response(JSON.stringify({ request_id: "r1", status_url: `https://q/status/${calls.length}`, response_url: `https://q/result/${calls.length}` }));
-        if (url.startsWith("https://q/status/")) return new Response(JSON.stringify({ status: "COMPLETED" }));
-        if (url.startsWith("https://q/result/")) return new Response(JSON.stringify({ audio: { url: `https://files/${url.split("/").pop()}.wav` } }));
-        if (url.startsWith("https://files/")) return new Response(wavOf(400));
-        // Habibi endpoint
-        if (url.startsWith("https://habibi.test/")) {
-          if (body?.inputs?.gen_text === "sleep") return new Response("starting", { status: 503 });
-          return new Response(JSON.stringify({ audio_base64: Buffer.from(wavOf(900)).toString("base64"), sample_rate: 24000, format: "wav" }));
+        const method = init?.method ?? "GET";
+        const isForm = init?.body instanceof FormData;
+        calls.push({ method, url, body: init?.body && !isForm ? JSON.parse(String(init.body)) : undefined, form: isForm ? (init!.body as FormData) : undefined });
+        if (url.startsWith("https://ref/")) return new Response(wavOf(1000), { headers: { "content-type": "audio/wav" } });
+        if (url === "https://vs.test:3900/profiles" && method === "GET") return new Response(JSON.stringify(profiles));
+        if (url === "https://vs.test:3900/profiles" && method === "POST") {
+          profiles.push({ name: String((init!.body as FormData).get("name")) });
+          return new Response(JSON.stringify({ id: "p1" }));
+        }
+        if (url === "https://vs.test:3900/v1/audio/speech") {
+          const b = JSON.parse(String(init!.body));
+          if (b.input === "sleep") return new Response("starting", { status: 503 });
+          return new Response(wavOf(400), { headers: { "content-type": "audio/wav" } });
         }
         return new Response("nope", { status: 404 });
       }),
     );
-    vi.useFakeTimers({ shouldAdvanceTime: true, advanceTimeDelta: 50 });
   });
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
     process.env = { ...env };
   });
 
-  it("Chatterbox: a long Arabic text goes in pieces of ≤ 300 characters and comes back as one WAV", async () => {
-    const { jawadSpeak } = await import("@/lib/jawad/server/providers/jawad-voice");
-    const text = Array.from({ length: 12 }, (_, i) => `هذه جملة رقم ${i + 1} في نص طويل عن فضل الصدقة والعلم والعمل.`).join(" ");
-    const r = await jawadSpeak({ refUrl: "https://ref/x.wav", refText: "", text });
-    expect(r.engine).toBe("chatterbox");
+  it("makes the voice a profile once from the reference recording, then speaks with its name", async () => {
+    const { jawadSpeak, profileName } = await import("@/lib/jawad/server/providers/jawad-voice");
+    const r = await jawadSpeak({ refUrl: "https://ref/u/voice.wav?token=a", refText: "مرحبا بكم", text: "السلام عليكم ورحمة الله" });
+    expect(r.engine).toBe("voicestudio");
     expect(r.mime).toBe("audio/wav");
-    const submits = calls.filter((c) => c.url.startsWith("https://queue.fal.run/fal-ai/chatterbox/text-to-speech/multilingual"));
-    expect(submits.length).toBeGreaterThan(1);
-    for (const s of submits) {
-      const b = s.body as { text: string; voice: string; custom_audio_language: string };
-      expect(b.text.length).toBeLessThanOrEqual(300);
-      expect(b.voice).toBe("https://ref/x.wav");
-      expect(b.custom_audio_language).toBe("arabic");
+    expect(r.durationMs).toBe(400);
+    const made = calls.filter((c) => c.method === "POST" && c.url.endsWith("/profiles"));
+    expect(made).toHaveLength(1);
+    expect(made[0].form!.get("kind")).toBe("clone");
+    expect(made[0].form!.get("ref_text")).toBe("مرحبا بكم");
+    const name = profileName("https://ref/u/voice.wav?token=a");
+    expect(made[0].form!.get("name")).toBe(name);
+    // the same recording under another token is the same voice
+    expect(profileName("https://ref/u/voice.wav?token=b")).toBe(name);
+    const speech = calls.find((c) => c.url.endsWith("/v1/audio/speech"))!.body as Record<string, unknown>;
+    expect(speech).toMatchObject({ model: "tts-1", voice: name, response_format: "wav", language: "ar" });
+    // the second reading finds the profile: no new one
+    await jawadSpeak({ refUrl: "https://ref/u/voice.wav?token=c", refText: "مرحبا بكم", text: "مرة ثانية" });
+    expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/profiles"))).toHaveLength(1);
+  });
+
+  it("a long text goes in pieces and comes back as one WAV; the engine can be pinned", async () => {
+    process.env.VOICESTUDIO_ENGINE = "voxcpm2";
+    const { jawadSpeak } = await import("@/lib/jawad/server/providers/jawad-voice");
+    const text = Array.from({ length: 160 }, (_, i) => `هذه جملة رقم ${i + 1} في نص طويل عن فضل الصدقة والعلم والعمل.`).join(" ");
+    const r = await jawadSpeak({ refUrl: "https://ref/u/long.wav", refText: "x", text });
+    const speeches = calls.filter((c) => c.url.endsWith("/v1/audio/speech")).map((c) => c.body as { input: string; model: string });
+    expect(speeches.length).toBeGreaterThan(1);
+    for (const s of speeches) {
+      expect(s.input.length).toBeLessThanOrEqual(3500);
+      expect(s.model).toBe("voxcpm2");
     }
-    expect(submits.map((s) => (s.body as { text: string }).text).join(" ")).toBe(text);
-    const w = readWav(new Uint8Array(r.audio))!;
-    // the pieces plus a breath between each two
-    expect(r.durationMs).toBe(submits.length * 400 + (submits.length - 1) * 180);
-    expect(w.rate).toBe(24000);
+    expect(speeches.map((s) => s.input).join(" ")).toBe(text);
+    expect(r.durationMs).toBe(speeches.length * 400 + (speeches.length - 1) * 180);
+    expect(readWav(new Uint8Array(r.audio))!.rate).toBe(24000);
   });
 
-  it("Habibi when configured: one call with the reference words and the dialect; 503 while waking is said plainly", async () => {
-    process.env.HABIBI_URL = "https://habibi.test/";
-    process.env.HABIBI_TOKEN = "tok";
-    const { jawadSpeak } = await import("@/lib/jawad/server/providers/jawad-voice");
-    const r = await jawadSpeak({ refUrl: "https://ref/x.wav", refText: "مرحبا بكم", text: "السلام عليكم ورحمة الله", dialect: "SAU" });
-    expect(r.engine).toBe("habibi");
-    expect(r.durationMs).toBe(900);
-    const call = calls.find((c) => c.url.startsWith("https://habibi.test/"))!;
-    expect((call.body as { inputs: { dialect: string; ref_text: string } }).inputs).toMatchObject({ dialect: "SAU", ref_text: "مرحبا بكم" });
-    await expect(jawadSpeak({ refUrl: "https://ref/x.wav", refText: "x", text: "sleep" })).rejects.toMatchObject({ userMessage: expect.stringMatching(/يستيقظ/) });
-    // asked for Chatterbox explicitly: Habibi is skipped
-    const c = await jawadSpeak({ refUrl: "https://ref/x.wav", refText: "x", text: "قصير", engine: "chatterbox" });
-    expect(c.engine).toBe("chatterbox");
-  });
-
-  it("Habibi without the reference words refuses before calling the endpoint", async () => {
-    process.env.HABIBI_URL = "https://habibi.test/";
-    const { jawadSpeak } = await import("@/lib/jawad/server/providers/jawad-voice");
-    await expect(jawadSpeak({ refUrl: "https://ref/x.wav", refText: "", text: "نص" })).rejects.toMatchObject({ userMessage: expect.stringMatching(/نصّ مرجعي/) });
-    expect(calls.some((c) => c.url.startsWith("https://habibi.test/"))).toBe(false);
-  });
-
-  it("knows which engines are on", async () => {
-    const { jawadEngines, jawadVoiceReady } = await import("@/lib/jawad/server/providers/jawad-voice");
-    expect(jawadEngines()).toEqual(["chatterbox"]);
-    process.env.HABIBI_URL = "https://habibi.test/";
-    expect(jawadEngines()).toEqual(["habibi", "chatterbox"]);
-    delete process.env.FAL_KEY;
-    delete process.env.HABIBI_URL;
+  it("says a waking server plainly, and refuses when no server is set", async () => {
+    const { jawadSpeak, jawadVoiceReady } = await import("@/lib/jawad/server/providers/jawad-voice");
+    await expect(jawadSpeak({ refUrl: "https://ref/u/w.wav", refText: "x", text: "sleep" })).rejects.toMatchObject({ userMessage: expect.stringMatching(/يستيقظ/) });
+    delete process.env.VOICESTUDIO_URL;
     expect(jawadVoiceReady()).toBe(false);
+    await expect(jawadSpeak({ refUrl: "https://ref/u/w.wav", refText: "x", text: "نص" })).rejects.toMatchObject({ userMessage: expect.stringMatching(/غير مفعّل/) });
   });
-});
 
-
-describe("«صوت الجواد»: كل اللهجات تبقى معروضة، بلا أي وسم (قرار المالك — لا يُغيَّر)", () => {
-  it("offers every dialect and says nothing about licences or marks anywhere in the generator's text", async () => {
+  it("the generator offers only the voice and the speed, and no old engine is left in the code", async () => {
     const { generatorById } = await import("@config/jawad/generators");
-    const g = generatorById("jawad-voice")!;
-    const dialects = (g.options.find((o) => o.key === "dialect") as { values: { value: string; label: string }[] }).values;
-    expect(dialects.map((v) => v.value).sort()).toEqual(["ALG", "EGY", "IRQ", "LBY", "LEV", "MAR", "MSA", "OMN", "SAU", "SDN", "TUN", "UAE", "UNK"]);
-    const visible = JSON.stringify([g.options, g.notes, g.verification]);
-    for (const w of ["تجاري", "🟢", "🟠"]) expect(visible).not.toContain(w);
-  });
-  it("each dialect still asks Habibi for the model made for it", async () => {
-    const { habibiModelFor } = await import("@config/jawad/voice-licences");
-    for (const d of ["MSA", "EGY", "IRQ", "ALG", "MAR"]) expect(habibiModelFor(d)).toBe("Specialized");
-    for (const d of ["SAU", "UAE", "LEV", "UNK", undefined]) expect(habibiModelFor(d)).toBe("Unified");
+    expect(generatorById("jawad-voice")!.options.map((o) => o.key)).toEqual(["voice", "speed"]);
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["src/lib/jawad/server/providers/jawad-voice.ts", "config/jawad/generators.ts", "src/lib/jawad/server/jobs.ts", "src/lib/jawad/server/runtime.ts"]) {
+      expect(readFileSync(f, "utf8")).not.toMatch(/habibi|chatterbox|HABIBI_URL/i);
+    }
   });
 });
