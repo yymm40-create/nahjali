@@ -221,7 +221,7 @@ ${voiceText(b)}` : ""}${footagePart(b, true)}
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`}
 Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.
 
-${openRefs(knownRefs(plan.skillRefs)).text}`,
+${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
     },
   ];
   const r = await ask<{ code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high");
@@ -246,7 +246,7 @@ export async function labReview(p: EditorProject, who: Who, b: Record<string, un
     {
       type: "text",
       text: `REVIEW ROUND ${round} of ${maxRounds}${round === maxRounds ? " (the last: identify the most important remaining corrections precisely)" : ""}. Be a HARSH motion director, not a proud author.
-Below: ${sheets.length} contact sheet(s) (the frames of the whole piece in order, the time under each) and ${stills.length} full-size still(s)${times.length ? ` at ${times.map((t) => `${t.toFixed(2)} s`).join(", ")}` : ""}, rendered from THE PROGRAM. Judge what you SEE, not what the code intends.
+Below: ${sheets.length} contact sheet(s) (the frames of the whole piece in order, the time under each${sheets.length > 2 ? "; the LAST sheet is the shot changes, each as three frames — one before the cut, on it, one after: look there for doubled half-transparent text, a frame blended across a hard cut, a zoom that flips direction across the cut, a jump in position or a pop" : ""}) and ${stills.length} full-size still(s)${times.length ? ` at ${times.map((t) => `${t.toFixed(2)} s`).join(", ")}` : ""}, rendered from THE PROGRAM. Judge what you SEE, not what the code intends.
 Score every criterion 1–10 (10 = indistinguishable from a top studio): ${RUBRIC.map((r) => `${r.id}: ${r.en}`).join(" | ")}.
 Check the blacklist. Name the 3 worst problems with their times and the exact fix. ${reviewOnly ? "Return code as an empty string. A separate writing step will apply your exact corrections; describe the fixes precisely and do not claim you applied them." : `If ANY score is below ${PASS}, return the COMPLETE revised program that fixes them (keep what already works); otherwise return code as an empty string.`}
 Judge it also against the owner's Higgsfield skills (their non-negotiables, their motion grammar and their QA list).
@@ -256,7 +256,7 @@ Check the sound by reading sound() and the cues against what you see at those ti
 THE PROGRAM:
 ${code}
 
-${openRefs(knownRefs(plan.skillRefs)).text}`,
+${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
     },
     ...sheets.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `CONTACT SHEET ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...stills.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `STILL ${i + 1}${times[i] !== undefined ? ` (t = ${times[i].toFixed(2)} s)` : ""}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),

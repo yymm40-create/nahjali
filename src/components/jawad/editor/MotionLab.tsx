@@ -19,7 +19,7 @@ import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGroup } from "@config/editor/lab-options";
 import { SceneError, SceneHost, sceneFont, type SceneInfo } from "./scene-host";
-import { contactSheet, frameCost, probe, renderVideo, reviewTimes, stills } from "./scene-render";
+import { contactSheet, cutTimes, frameCost, sheetAt, probe, renderVideo, reviewTimes, stills } from "./scene-render";
 import { download } from "./export";
 import LabVoice, { type LabVoiceTake } from "./LabVoice";
 import { mixSoundtrack, SoundPreview } from "./lab-sound";
@@ -41,7 +41,7 @@ const VIEWS: { id: View; ar: string }[] = [
   { id: "export", ar: "التصدير" },
 ];
 const REVIEW_MODES = {
-  fast: { label: "سريع", rounds: 0, description: "فحص التشغيل فقط، بدون مراجعة جودة. الأسرع." },
+  fast: { label: "بدون مراجعة", rounds: 0, description: "فحص التشغيل فقط، بدون مراجعة جودة. الأسرع والأرخص (الافتراضي)." },
   balanced: { label: "متوازن", rounds: 1, description: "مراجعة جودة واحدة وتصحيح عند الحاجة." },
   precise: { label: "دقيق", rounds: MAX_ROUNDS, description: `حتى ${MAX_ROUNDS} جولات، ويتوقف مبكرًا إذا اجتاز. أطول.` },
 } as const;
@@ -227,7 +227,8 @@ export default function MotionLab({
   const [code, setCode] = useState("");
   const [info, setInfo] = useState<SceneInfo | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [reviewMode, setReviewMode] = useState<ReviewMode>("balanced");
+  // the owner's choice: no visual review unless the person asks for it before building (it takes longer and costs more)
+  const [reviewMode, setReviewMode] = useState<ReviewMode>("fast");
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   // the sound: the person's own voice (recorded, cleaned by Claude Code), the music, and the mix heard with the picture
@@ -286,7 +287,6 @@ export default function MotionLab({
         setSay(s.say || "");
         setCode(s.code || "");
         setReviews(s.reviews || []);
-        setReviewMode(s.reviewMode === "fast" || s.reviewMode === "precise" ? s.reviewMode : "balanced");
         // «خلفية شفافة» is never remembered: it sends the film out as a separate WebM that does NOT enter the timeline, so a
         // choice left on from before made every later scene come out that way (it is switched on again each time, on purpose)
         setTransparent(false);
@@ -518,7 +518,7 @@ export default function MotionLab({
       setTransparentCode(transparent);
       const rounds = REVIEW_MODES[reviewMode].rounds;
       if (rounds > 0) setStage("reviewing");
-      else say1("✅ اجتاز المشهد فحص التشغيل. اخترت السريع؛ لم تُجرَ مراجعة جودة بصرية.");
+      else say1("✅ اجتاز المشهد فحص التشغيل (بدون مراجعة جودة، الوضع الافتراضي). تبي مراجعة؟ غيّر «مستوى الفحص» وابنِ من جديد.");
       const done: Review[] = [];
       for (let round = 1; round <= rounds; round++) {
         const h = host.current!;
@@ -529,6 +529,9 @@ export default function MotionLab({
         say1(`🎬 الجولة ${round} من ${rounds}: أصوّر ${perSheet * 2} لقطة لورقتي التلامس و${shotTimes.length} لقطات كاملة${cost > 150 ? " (خفّفتها لأن المشهد ثقيل على جهازك)" : ""}…`);
         const half = got.duration / 2;
         const sheets = [await contactSheet(h, 0, half, perSheet, 3), await contactSheet(h, half, got.duration, perSheet, 3)];
+        // the third sheet: every shot change seen one frame before, on, and after the cut
+        const cuts = cutTimes(built.shots.map((x) => x.from), got.duration, 30, cost > 400 ? 3 : 5);
+        if (cuts.length) sheets.push(await sheetAt(h, cuts, 3));
         const times = shotTimes;
         const shots = await stills(h, times, got.duration);
         say1("🧐 حيدرة يراجع كمخرج قاسي…");
@@ -1024,6 +1027,9 @@ export default function MotionLab({
                           <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || (voiceOn && !take && !source)} onClick={build} title={voiceOn && !take && !source ? "سجّل صوتك أول" : undefined}>
                             🎬 {voiceOn && !take && !source ? "سجّل صوتك أول ↑" : code ? "ابنِ من جديد وراجع" : "اعتمد الخطة وابنِ"}
                           </button>
+                          <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("build")} title="تقدر تضيف مراجعة جودة قبل البناء (تاخذ وقت أطول)">
+                            🔍 {REVIEW_MODES[reviewMode].label}
+                          </button>
                           <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("style")}>
                             غيّر الأسلوب
                           </button>
@@ -1053,6 +1059,7 @@ export default function MotionLab({
                       </label>
                     ))}
                   </div>
+                  {reviewMode !== "fast" && <p className="m-0 mt-2 font-bold" role="note" style={{ color: "var(--jw-accent)" }}>⏳ تنبيه: المراجعة تخلي البناء ياخذ وقت أطول بكثير{reviewMode === "precise" ? " (لحد ٣ جولات)" : ""}، وكل جولة تنحسب من رصيدك.</p>}
                 </fieldset>
                 {plan && !busy && (
                   <div className="flex flex-wrap gap-2">

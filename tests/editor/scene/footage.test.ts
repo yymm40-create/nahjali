@@ -163,3 +163,32 @@ describe("حيدرة on the person's video", () => {
     expect(footageText(readFootage(footage)!)).toContain("1.20–2.30 s: «الأدوات كلها»");
   });
 });
+
+describe("the owner's motion grammar in the kit", () => {
+  it("snaps discrete changes to frames, zooms in log space with the needle's peak on the cut, and keys without a dead stop", () => {
+    const K = kit() as unknown as Record<string, unknown> & { fps: number; TQ: (t: number) => number; zoom: (...a: number[]) => number; needle: (...a: number[]) => number; kf: (t: number, k: unknown[]) => number; E: Record<string, (p: number) => number>; typedN: (times: number[], t: number) => number; cadence: (n: number, a: number, b: number) => number[] };
+    K.fps = 30;
+    expect(K.TQ(1.016)).toBeCloseTo(1, 6);
+    expect(K.TQ(1.02)).toBeCloseTo(1 + 1 / 30, 6);
+    // log space: the halfway point of 1 → 4 (linear ease) is 2, not 2.5
+    expect(K.zoom(0.5, 0, 1, 1, 4, K.E.lin as never)).toBeCloseTo(2, 6);
+    const step = (t: number) => K.needle(t + 1 / 30, 2, 1, 3) - K.needle(t, 2, 1, 3);
+    const steps = Array.from({ length: 12 }, (_, i) => 1.8 + i / 30).map((t) => [t, step(t)]);
+    const biggest = steps.reduce((a, b) => (b[1] > a[1] ? b : a));
+    expect(Math.abs(biggest[0] - (2 - 1 / 30))).toBeLessThan(1 / 30 + 1e-6);
+    expect(K.kf(1, [[0, 0], [2, 10]])).toBeGreaterThan(0);
+    const times = K.cadence(5, 0, 1);
+    expect(times).toHaveLength(5);
+    expect(times[4]).toBeCloseTo(1, 6);
+    expect(K.typedN(times, 1)).toBe(5);
+  });
+
+  it("never lets a motion-blur sub-frame straddle a listed hard cut, and the grain default follows the owner's taste", () => {
+    expect(SCENE_RUNTIME_JS).toContain("var cuts = Array.isArray(def.cuts) ? def.cuts : []");
+    expect(SCENE_KIT_JS).toContain("o.amount === undefined ? 0.02 : o.amount");
+    expect(FOOTAGE_SKILL).toContain("NEVER draw another company's logo");
+    expect(FOOTAGE_SKILL).toContain("never tilted into 3D");
+    expect(FOOTAGE_SKILL).toContain("short clean end card");
+    expect(FOOTAGE_SKILL).not.toContain("labels in the corners");
+  });
+});

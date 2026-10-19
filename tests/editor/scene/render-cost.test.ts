@@ -58,3 +58,12 @@ describe("«مختبر الموشن»: what a frame really costs before hundreds
     vi.restoreAllMocks();
   });
 });
+
+describe("the frames the review sees at each cut", () => {
+  it("takes one frame before, on and after every shot change, inside the piece, spread when there are many", async () => {
+    const { cutTimes } = await import("@/components/jawad/editor/scene-render");
+    expect(cutTimes([0, 2, 5], 10)).toEqual([2 - 1 / 30, 2, 2 + 1 / 30, 5 - 1 / 30, 5, 5 + 1 / 30]);
+    expect(cutTimes([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 10, 30, 3)).toHaveLength(9);
+    expect(cutTimes([0], 10)).toEqual([]);
+  });
+});
