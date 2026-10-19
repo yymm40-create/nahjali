@@ -182,7 +182,7 @@ export async function claimPortion(db: SupabaseClient, groupId: string, me: stri
   if (error) throw error;
 }
 
-/** My portion: read (done), not read yet (back to reading), or given back (released). */
+/** My portion: read (done), not read yet (back to reading), or given back (released — I backed out, read or not). */
 export async function markPortion(db: SupabaseClient, groupId: string, me: string, activeIds: string[], portion: unknown, to: "done" | "reading" | "release") {
   const { round } = await current(db, groupId, activeIds);
   if (!round) throw new UserError(t.khatma.notOpen, 409);
@@ -192,20 +192,21 @@ export async function markPortion(db: SupabaseClient, groupId: string, me: strin
   const mine = db.from("mahdi_khatma_claims");
   const { data, error } =
     to === "release"
-      ? await mine.delete().eq("khatma_id", round.id).eq("portion", n).eq("user_id", me).eq("status", "reading").select("portion")
+      ? await mine.delete().eq("khatma_id", round.id).eq("portion", n).eq("user_id", me).select("portion")
       : await mine.update({ status: to, done_at: to === "done" ? new Date().toISOString() : null }).eq("khatma_id", round.id).eq("portion", n).eq("user_id", me).select("portion");
   if (error) throw error;
   if (!data?.length) throw new UserError(t.errors.notFound, 404);
   if (to === "done") await syncKhatma(db, groupId, (await loadSettings(db, groupId))!, activeIds);
 }
 
-/** The leader frees a portion someone took and is not reading. */
+/** The leader takes a reader off a portion (being read or marked read), so it is free for someone else. */
 export async function freePortion(db: SupabaseClient, groupId: string, activeIds: string[], portion: unknown) {
   const { round } = await current(db, groupId, activeIds);
   if (!round || round.status !== "open") throw new UserError(t.khatma.notOpen, 409);
   const n = requirePortion(round, portion);
-  const { error } = await db.from("mahdi_khatma_claims").delete().eq("khatma_id", round.id).eq("portion", n).eq("status", "reading");
+  const { data, error } = await db.from("mahdi_khatma_claims").delete().eq("khatma_id", round.id).eq("portion", n).select("portion");
   if (error) throw error;
+  if (!data?.length) throw new UserError(t.errors.notFound, 404);
 }
 
 /**

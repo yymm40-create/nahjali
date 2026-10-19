@@ -5,10 +5,11 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
+import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
 import QuranText, { QuranSource, usePortionWords } from "@/components/mahdi/khatma/QuranText";
-import type { Division, PortionState } from "@/lib/mahdi/khatma/portions";
+import { portionTitle, type Division, type PortionState } from "@/lib/mahdi/khatma/portions";
 
 interface View {
   ready: boolean;
@@ -26,6 +27,7 @@ export default function KhatmaReader() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
+  const [ask, setAsk] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -71,13 +73,14 @@ export default function KhatmaReader() {
             {state === "reading" && open && (
               <>
                 <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("done", t.khatma.markedDone)}>{t.khatma.markDone}</button>
-                <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => act("release", t.khatma.released)}>{t.khatma.release}</button>
+                <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => setAsk(true)}>{t.khatma.release}</button>
               </>
             )}
             {state === "done" && (
               <>
                 <p className="text-center font-semibold" style={{ color: "#22c55e" }}>✅ {t.khatma.legendDone}</p>
                 {open && <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => act("undone", t.khatma.legendReading)}>{t.khatma.undo}</button>}
+                {open && <button type="button" className="m-btn m-btn-quiet w-full" disabled={busy} onClick={() => setAsk(true)}>{t.khatma.release}</button>}
               </>
             )}
             {state === "free" && open && <button type="button" className="m-btn m-btn-primary w-full" disabled={busy} onClick={() => act("claim", t.khatma.claimed)}>{t.khatma.claim}</button>}
@@ -85,6 +88,16 @@ export default function KhatmaReader() {
           </div>
           <QuranSource words={words} />
         </>
+      )}
+      {view?.khatma && (
+        <ConfirmSheet
+          open={ask}
+          onClose={() => setAsk(false)}
+          title={t.khatma.withdrawTitle(portionTitle(view.khatma.division, n))}
+          body={t.khatma.withdrawBody}
+          confirmLabel={t.khatma.withdraw}
+          onConfirm={async () => void (await act("release", t.khatma.released))}
+        />
       )}
     </div>
   );

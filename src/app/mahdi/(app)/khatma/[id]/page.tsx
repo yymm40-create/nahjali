@@ -78,6 +78,8 @@ export default function KhatmaPage() {
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<number | null>(null);
   const [stop, setStop] = useState(false);
+  // backing out of my portion, or the leader taking a reader off one: asked first
+  const [confirm, setConfirm] = useState<{ kind: "withdraw"; n: number } | { kind: "remove"; n: number; name: string } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -180,14 +182,17 @@ export default function KhatmaPage() {
               <h2 id="mine" className="text-lg font-semibold">أنصبتي</h2>
               <ul className="space-y-2">
                 {mine.map(({ s, n }) => (
-                  <li key={n}>
-                    <Link href={`/mahdi/khatma/${id}/read/${n}`} className="m-card flex items-center gap-3 border-2 p-3" style={STATE_STYLE[s as "reading" | "done"]}>
+                  <li key={n} className="m-card flex items-center gap-2 border-2 p-3" style={STATE_STYLE[s as "reading" | "done"]}>
+                    <Link href={`/mahdi/khatma/${id}/read/${n}`} className="flex min-w-0 flex-1 items-center gap-3">
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold">{portionTitle(khatma.division, n)}</span>
                         <span className="m-num block text-sm m-muted">{portionSummary(khatma.division, n).range} · {s === "done" ? t.khatma.legendDone : t.khatma.legendReading}</span>
                       </span>
                       <span className="m-btn m-btn-ghost m-btn-sm">{t.khatma.read}</span>
                     </Link>
+                    {khatma.status === "open" && (
+                      <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={() => setConfirm({ kind: "withdraw", n })}>{t.khatma.withdraw}</button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -215,8 +220,8 @@ export default function KhatmaPage() {
                   <li key={r.portion} className="flex items-center gap-2 py-2">
                     <span className="inline-block size-3 shrink-0 rounded-full" style={{ background: r.status === "done" ? "#22c55e" : "#eab308" }} />
                     <span className="min-w-0 flex-1">{portionTitle(khatma.division, r.portion)} · <strong>{t.mawla(r.name)}</strong></span>
-                    {r.status === "reading" && khatma.status === "open" && (
-                      <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={() => act({ action: "free", portion: r.portion }, t.khatma.freed)}>{t.khatma.free}</button>
+                    {khatma.status === "open" && (
+                      <button type="button" className="m-btn m-btn-quiet m-btn-sm" disabled={busy} onClick={() => setConfirm({ kind: "remove", n: r.portion, name: r.name })}>{t.khatma.removeReader}</button>
                     )}
                   </li>
                 ))}
@@ -274,6 +279,21 @@ export default function KhatmaPage() {
             <button type="button" className="m-btn m-btn-ghost w-full" onClick={() => setPick(null)}>{t.common.cancel}</button>
           </div>
         </Sheet>
+      )}
+
+      {khatma && (
+        <ConfirmSheet
+          open={Boolean(confirm)}
+          onClose={() => setConfirm(null)}
+          title={confirm?.kind === "remove" ? t.khatma.removeReaderTitle(t.mawla(confirm.name), portionTitle(khatma.division, confirm.n)) : confirm ? t.khatma.withdrawTitle(portionTitle(khatma.division, confirm.n)) : ""}
+          body={confirm?.kind === "remove" ? t.khatma.removeReaderBody : t.khatma.withdrawBody}
+          confirmLabel={confirm?.kind === "remove" ? t.khatma.removeReader : t.khatma.withdraw}
+          onConfirm={async () => {
+            const c = confirm;
+            if (!c) return;
+            await act(c.kind === "remove" ? { action: "free", portion: c.n } : { action: "release", portion: c.n }, c.kind === "remove" ? t.khatma.freed : t.khatma.released);
+          }}
+        />
       )}
 
       <ConfirmSheet open={stop} onClose={() => setStop(false)} title={t.khatma.stopTitle} body={t.khatma.stopBody} confirmLabel={t.khatma.stop} onConfirm={async () => void (await act({ action: "stop" }, t.khatma.stoppedDone))} />
