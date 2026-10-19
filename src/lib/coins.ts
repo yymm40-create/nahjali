@@ -4,9 +4,9 @@
 
 import { UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { claudeHalalas, coinStr, coinsFor, setPricing, type PriceKind, type Pricing } from "@config/coins";
+import { claudeHalalas, coinStr, coinsFor, costHalalas, setPricing, type PriceKind, type Pricing } from "@config/coins";
 import type { ClaudeModel } from "@config/claude-models";
-import { unlimitedFor } from "@/lib/access";
+import { fullAccessOf, unlimitedFor } from "@/lib/access";
 
 const db = () => createAdminClient();
 
@@ -18,7 +18,10 @@ export type PriceMix = Partial<Record<PriceKind, number>>;
  */
 export type ChargeKind = boolean | PriceKind | PriceMix;
 const kindOf = (k: boolean | PriceKind | undefined): PriceKind => (k === true ? "claude" : k === false || k == null ? "other" : k);
-export function priceOf(usd: number, k: ChargeKind | undefined): number {
+export function priceOf(usd: number, k: ChargeKind | undefined, atCost = false): number {
+  // a code's «بسعر التكلفة»: what the provider charges us (Claude: its real input + output + cache usage), to the halala,
+  // with no profit and no rounding up to the step
+  if (atCost) return usd > 0 ? costHalalas(usd) : 0;
   if (k && typeof k === "object") {
     const parts = Object.entries(k).filter(([, v]) => Number(v) > 0) as [PriceKind, number][];
     const all = parts.reduce((s, [, v]) => s + v, 0);
@@ -26,6 +29,23 @@ export function priceOf(usd: number, k: ChargeKind | undefined): number {
     return parts.reduce((s, [kind, v]) => s + coinsFor((usd * v) / all, kind), 0);
   }
   return coinsFor(usd, kindOf(k));
+}
+
+/** Whether this account entered a code that prices everything at cost (no profit): the email is looked up once in a while. */
+const emails = new Map<string, { at: number; email: string | null }>();
+export async function atCostFor(userId: string, email?: string | null): Promise<boolean> {
+  let mail = email ?? null;
+  if (!mail) {
+    const hit = emails.get(userId);
+    if (hit && Date.now() - hit.at < 300_000) mail = hit.email;
+    else {
+      const { data } = await db().auth.admin.getUserById(userId).catch(() => ({ data: null }));
+      mail = data?.user?.email ?? null;
+      emails.set(userId, { at: Date.now(), email: mail });
+    }
+  }
+  if (!mail) return false;
+  return (await fullAccessOf(mail).catch(() => null))?.perks.atCost === true;
 }
 
 /** The user's balance (0 without a wallet, or null if the coin tables don't exist yet). */
@@ -73,6 +93,18 @@ async function adjust(userId: string, delta: number, reason: string, ref: string
 /** The owner adds (or takes back, with a negative amount) coins for a user. */
 export const grantCoins = (userId: string, amount: number, note: string) => adjust(userId, amount, "grant", note, note, true);
 
+/**
+ * A gift of coins that can be given only once for the same `ref` (a code's gift for one person): a second call with the
+ * same ref changes nothing. Returns whether it was given now.
+ */
+export async function giftCoinsOnce(userId: string, halalas: number, ref: string, label: string): Promise<boolean> {
+  if (!(halalas > 0)) return false;
+  const seen = await db().from("smart_coin_ledger").select("id").eq("user_id", userId).eq("ref", ref).limit(1);
+  if (seen.data?.length) return false;
+  await adjust(userId, halalas, "grant", ref, label, true);
+  return true;
+}
+
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
 /**
  * `kind`: what the job makes — "claude" (or `true`): Claude's usage alone, its real cost + the platform's 10٪;
@@ -105,7 +137,7 @@ async function reserved(jobId: string) {
  */
 export async function chargeAfter(userId: string, jobId: string, costUsd: number, label: string, claude: ChargeKind = false) {
   await loadPricing();
-  const coins = priceOf(costUsd, claude);
+  const coins = priceOf(costUsd, claude, await atCostFor(userId));
   if (coins > 0) await adjust(userId, -coins, "settle", jobId, label, true);
   return coins;
 }
@@ -117,7 +149,7 @@ export async function settleCoins(jobId: string, costUsd: number, claude: Charge
   const r = await reserved(jobId);
   // a job marked with nothing held (pay after use) is charged here; one that held its estimate gets the difference back
   if (!r || r.held < 0) return;
-  const diff = r.held - priceOf(costUsd, claude);
+  const diff = r.held - priceOf(costUsd, claude, await atCostFor(r.userId));
   if (diff !== 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
 }
 
@@ -246,6 +278,7 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
   if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
   await loadPricing();
   // pay after use: a reply starts while the wallet has anything in it, and takes what it really cost after
+  const atCost = !who.team && (await atCostFor(who.id, who.email));
   const balance = who.team ? await teamCoinBalance(who.team) : await coinBalance(who.id);
   if (balance !== null && balance <= 0) {
     throw new UserError(`رصيدك خلص. اشحن رصيدك من صفحة «اشحن رصيدك» (زر «+ اشحن» جنب رصيدك) وكمّل المحادثة مع «${model.name}».`, 402);
@@ -255,7 +288,8 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
     free: false,
     charged: 0,
     settle: async (usd: number) => {
-      const coins = claudeHalalas(usd);
+      // a code's «بسعر التكلفة»: the real usage with no +10%
+      const coins = atCost ? priceOf(usd, "claude", true) : claudeHalalas(usd);
       if (coins <= 0) return 0;
       if (who.team) await adjustTeam(who.team, who.id, -coins, "settle", ref, label, true);
       else await adjust(who.id, -coins, "settle", ref, label, true);

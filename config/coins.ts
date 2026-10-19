@@ -72,6 +72,9 @@ export const COIN_COST_USD = SMART_COIN.unitSar / DEFAULT_PRICING.usdToSar;
 /** A cost in dollars, in halalas (rounded up to the halala). */
 export const costHalalas = (usd: number, p = current) => Math.max(0, Math.ceil(usd * p.usdToSar * 100 - 1e-9));
 
+/** A price table's lines (the cost, in hundredths of a halala) as halalas at cost: no profit, up to the halala, at least one. */
+export const costOfLines = (lines: { centi: number }[]) => Math.max(1, Math.ceil(lines.reduce((sum, l) => sum + l.centi, 0) / 100 - 1e-9));
+
 /** Rounded UP to the step: 45 halalas → 50 (half a riyal); 110 → 150. */
 export const roundUpStep = (halalas: number, p = current) => (halalas <= 0 ? 0 : Math.ceil(halalas / p.stepHalalas - 1e-9) * p.stepHalalas);
 

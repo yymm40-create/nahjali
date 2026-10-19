@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import Coined from "@/components/Coined";
 
 const ASKED = "secret-asked";
 const PENDING = "secret-pending";
@@ -37,6 +38,8 @@ export default function SecretGate() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // after a code that carries a gift: what it gave, before the page reloads
+  const [welcome, setWelcome] = useState<string[] | null>(null);
 
   useEffect(() => {
     // asked for by hand (the 🗝️ in the header, a «عندي كود سري» button): always opens, even when the site is open
@@ -83,7 +86,11 @@ export default function SecretGate() {
       if (!r.ok) throw new Error(j.error ?? "تعذّر التحقق.");
       write(ASKED, "1");
       write(PENDING, null);
-      window.location.reload();
+      if (Array.isArray(j.welcome) && j.welcome.length > 1) {
+        setWelcome(j.welcome as string[]);
+        setOpen(true);
+        setBar(false);
+      } else window.location.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذّر التحقق.");
     } finally {
@@ -110,6 +117,24 @@ export default function SecretGate() {
       {error && !open && <span className="w-full text-center text-xs font-bold text-red-300">{error}</span>}
     </form>
   );
+  if (welcome) {
+    return (
+      <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="welcome-title" dir="rtl">
+        <div className="w-full max-w-sm space-y-4 rounded-3xl bg-white p-6 text-slate-900 shadow-2xl">
+          <p className="text-center text-5xl" aria-hidden>🎁</p>
+          <h2 id="welcome-title" className="text-center text-2xl font-extrabold">انفتح لك الكود</h2>
+          <ul className="space-y-2 text-sm font-bold text-slate-700">
+            {welcome.map((l) => (
+              <li key={l} className="rounded-2xl bg-slate-50 px-3 py-2"><Coined text={l} size={14} /></li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => window.location.reload()} className="w-full rounded-2xl bg-sky-600 py-3 font-extrabold text-white">
+            ابدأ
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (!open) return topBar || null;
 
   return (

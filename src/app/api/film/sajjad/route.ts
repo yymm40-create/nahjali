@@ -3,6 +3,7 @@ import { handle } from "@/lib/api";
 import { requireFilmApiUser } from "@/lib/film/access";
 import { withClaude } from "@/lib/film/claude-model";
 import { applySajjad, askSajjad, decideResearch, dropSajjad, sajjadChat } from "@/lib/film/sajjad";
+import { claudeFor } from "@/lib/access-perks";
 
 export const maxDuration = 120;
 
@@ -19,10 +20,10 @@ export const POST = handle(async (req: Request) => {
   const b = (await req.json().catch(() => ({}))) as { kind?: unknown; id?: unknown; text?: unknown; action?: unknown; approve?: unknown; drop?: unknown; model?: unknown; proposalId?: unknown };
   if (b.action === "research") return NextResponse.json({ research: await decideResearch(b.kind, b.id, user.id, b) });
   // «تدخّل سجاد»: his proposed changes to the work, applied or dropped
-  if (b.action === "apply") return NextResponse.json(await withClaude(b.model, () => applySajjad(b.kind, b.id, user, b.proposalId)));
+  if (b.action === "apply") return NextResponse.json(await withClaude(await claudeFor(user.email, b.model), () => applySajjad(b.kind, b.id, user, b.proposalId)));
   if (b.action === "drop") {
     await dropSajjad(b.kind, b.id, user.id, b.proposalId);
     return NextResponse.json({ ok: true });
   }
-  return NextResponse.json(await withClaude(b.model, () => askSajjad(b.kind, b.id, user, b.text)));
+  return NextResponse.json(await withClaude(await claudeFor(user.email, b.model), () => askSajjad(b.kind, b.id, user, b.text)));
 });

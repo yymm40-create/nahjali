@@ -3,7 +3,8 @@ import { isPublicOpen } from "@/lib/launch";
 import { handle, requireApiUser, UserError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { codeFromRow, forgetAccess, hasAnyAccess } from "@/lib/access";
-import { codeOpen } from "@config/access";
+import { codeOpen, codeWelcome } from "@config/access";
+import { giftCoinsOnce } from "@/lib/coins";
 
 const TRIES_PER_HOUR = 8;
 
@@ -36,9 +37,22 @@ export const POST = handle(async (req: Request) => {
     if (!had) {
       const { error: e0 } = await db.from("site_code_uses").insert({ code_id: row.id, email, at: use.at });
       if (e0) throw e0;
+      // the code's gift (migration 0083): the riyals go to the wallet once per person; if they can't, the entry is undone
+      // so the person can try again, and nothing is half-given
+      if (row.giftSar > 0) {
+        try {
+          const given = await giftCoinsOnce(user.id, row.giftSar * 100, `code-gift:${row.id}`, `هدية كود «${row.label}»`);
+          if (given) await db.from("site_code_uses").update({ gifted_halalas: row.giftSar * 100 }).eq("code_id", row.id).eq("email", email);
+        } catch (e) {
+          await db.from("site_code_uses").delete().eq("code_id", row.id).eq("email", email);
+          throw e;
+        }
+      }
     }
     forgetAccess(email);
-    return NextResponse.json({ ok: true, open: await hasAnyAccess(email), opened: row.perms });
+    // what it gave, in plain words (the gift line only the first time)
+    const welcome = codeWelcome({ ...row, giftSar: had ? 0 : row.giftSar });
+    return NextResponse.json({ ok: true, open: await hasAnyAccess(email), opened: row.perms, first: !had, welcome });
   }
 
   const { data: s, error } = await db.from("site_secret").select("code,code_id,enabled").eq("id", 1).maybeSingle();
