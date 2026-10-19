@@ -54,7 +54,7 @@ describe("reading the site's code", () => {
   });
 
   it("searches by text or /regex/, narrows by path, and puts the tests last", async () => {
-    const hits = await searchCode("callClaudeJson");
+    const hits = await searchCode("callClaudeJson", { max: 80 });
     expect(hits.length).toBeGreaterThan(5);
     expect(hits.some((h) => h.path === "src/lib/film/anthropic.ts")).toBe(true);
     const narrow = await searchCode("callClaudeJson", { in: "src/lib/diagnose" });

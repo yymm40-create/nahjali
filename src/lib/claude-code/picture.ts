@@ -68,7 +68,7 @@ async function ask<T>(user: RobotUser, model: unknown, label: string, parts: Cla
 
 /** The person's photos to PUT IN the picture as they are (the scene has them as photo1…photo4). */
 function photosParts(raw: unknown): ClaudePart[] {
-  const list = (Array.isArray(raw) ? raw : []).map(jpeg).filter((x): x is string => !!x).slice(0, 4);
+  const list = (Array.isArray(raw) ? raw : []).map(jpeg).filter((x): x is string => !!x).slice(0, 10);
   if (!list.length) return [];
   return [
     { type: "text", text: `THE PERSON'S PHOTOS TO PLACE IN THE PICTURE (${list.length}): the scene has them as K.img("photo1")…K.img("photo${list.length}") — draw each one INTO the design with K.picture(ctx, "photoN", x, y, w, h, { fit: "cover", radius }) or ctx.drawImage(K.img("photoN"), …), as the request says (a speaker in a frame, a large hero portrait, a logo). Keep every face EXACTLY as photographed: never redraw, distort, stretch or cover a face with text or shapes. You may crop and scale (keeping the proportions), clip to a frame or a shape, fade the edges into the background with gradient masks (on an offscreen layer: K.layer(name) with globalCompositeOperation "destination-in"/"destination-out"), grade it (ctx.filter: grayscale, sepia, contrast, brightness) and blend it (a double exposure over the scene). Every photo given must appear.` },

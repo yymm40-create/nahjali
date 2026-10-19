@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import Icon from "@/components/jawad/Icon";
 import { PICTURE_RUBRIC } from "@/lib/claude-code/picture-rubric";
-import { drawWithCode, savePicture, smallJpeg, type DrawStep } from "./draw";
+import { drawWithCode, PHOTOS_MAX, PHOTOS_PER_ROUND, savePicture, smallJpeg, type DrawStep } from "./draw";
 
 const uid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().replace(/-/g, "") : `${Date.now()}${Math.random().toString(36).slice(2)}`);
 
@@ -42,7 +42,7 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
     const key = uid();
     try {
       const references = place ? [] : (await Promise.all(refUrls.slice(0, 4).map(smallJpeg))).filter((x): x is string => !!x);
-      const r = await drawWithCode({ prompt, aspect, style: styleText, references, photos: place ? refUrls.slice(0, 4) : [], model: claude.id, signal: abort.current.signal, onStep: setStep });
+      const r = await drawWithCode({ prompt, aspect, style: styleText, references, photos: place ? refUrls.slice(0, PHOTOS_MAX) : [], model: claude.id, signal: abort.current.signal, onStep: setStep });
       setStep({ text: "أحفظ الصورة في أعمالك…", preview: step?.preview });
       const saved = await savePicture<{ job: J }>({ idempotencyKey: key, png: r.png, prompt, aspect, sectionId, styleId, model: claude.id, rounds: r.rounds, scores: r.scores });
       onSaved(saved.job);
@@ -85,7 +85,7 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
         <input type="checkbox" className="mt-0.5" checked={place} disabled={busy} onChange={(e) => setPlace(e.target.checked)} />
         <span>
           📷 حط الصور المرفقة داخل التصميم كما هي (صور أشخاص مثل الخطيب أو الرادود، أو شعار)
-          <span className="block text-jw-faint">{refUrls.length ? `الوجه ينحط بالضبط بدون إعادة رسم (${Math.min(refUrls.length, 4)} صورة).` : "أرفق الصور من خانة «المراجع» فوق، حتى ٤ صور."}</span>
+          <span className="block text-jw-faint">{refUrls.length ? `الوجه ينحط بالضبط بدون إعادة رسم (${Math.min(refUrls.length, PHOTOS_MAX)} صورة${refUrls.length > PHOTOS_PER_ROUND ? "، على جولتين" : ""}).` : `أرفق الصور من خانة «المراجع» فوق، حتى ${PHOTOS_PER_ROUND} صور في الجولة وحتى ${PHOTOS_MAX} على جولتين.`}</span>
         </span>
       </label>
       {error && <p className="text-xs text-jw-danger" role="alert">{error}</p>}

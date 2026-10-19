@@ -4,7 +4,7 @@
 // fix, then he LOOKS at what it produced (the pictures, the timeline after), scores it like a harsh expert and rewrites
 // it until it passes, and only then is it applied. Pure text and numbers.
 
-import { AUDIO_KIT_API, EDIT_KIT_API, GRADE_KIT_API, GRADE_LUT_SIZE } from "./compute";
+import { AUDIO_KIT_API, EDIT_KIT_API, GRADE_KIT_API, GRADE_LUT_SIZE, LAYOUT_KIT_API } from "./compute";
 
 /** Every round of a program: write → run → (fix) → look → score; it is applied only when every score is ≥ PASS. */
 export const CODE_PASS = 8;
@@ -85,3 +85,27 @@ Build it like a dialogue editor, in this order, each step one short commented li
 4. K.A.normalizeSpeech to about −18 dBFS, then K.A.limit at −1.5 dBFS, then K.A.fade (10 ms in, 30 ms out).
 
 ${AUDIO_KIT_API}`;
+
+export const LAYOUT_RUBRIC = [
+  { id: "ask", ar: "الطلب", en: "It does exactly what the person asked — every photo placed, every word written or changed as given, nothing they did not ask for" },
+  { id: "composition", ar: "التكوين", en: "One clear hero and reading order, balanced margins, nothing cut by the edge, related things grouped, deliberate negative space" },
+  { id: "faces", ar: "الوجوه", en: "Every face and every word is visible and uncovered (no text or shape over a face, nothing hiding a word)" },
+  { id: "type", ar: "الخط", en: "Arabic text readable at phone size: clear hierarchy (size and weight), ≤ 2 families, contrast with what is behind it, aligned" },
+  { id: "finish", ar: "اللمسة", en: "It looks designed: consistent spacing and sizes, frames and shapes that serve the content, a professional finish" },
+] as const;
+
+export const LAYOUT_CONTRACT = `THE LAYOUT PROGRAM YOU WRITE — one JavaScript program (no HTML, no imports) that defines:
+
+function layout(D, K) {
+  // D = the design as it is now: { width, height (px), bg, base: { w, h } | null, layers: [ { id, kind: "text"|"image"|"shape", x, y, w, h (%), … } ],
+  //     files: [ { id, w, h, name } ] (the project's pictures you may place), fonts: [ ids ] }
+  // return [ command, … ]: the editor's own commands as OBJECTS (the same commands «زهراء» writes: add_text, add_image, add_shape, update, move, order, align, delete, duplicate, bg, crop, crop_ratio, canvas, use_as_base …)
+}
+
+The page runs layout(D, K), applies the commands to a COPY of the design, renders it and shows you before and after; nothing reaches the person's project until it passes. So:
+- Compute every position and size from the facts in D (the canvas, each picture's real shape from D.files, the layers' boxes): never type a number you did not compute. Keep pictures in their own shape (K.imageW), never stretched.
+- Use only ids that are in D (layers, files, fonts). To CHANGE a word use update with its id; to WRITE new words use add_text; to PLACE a photo use add_image with its file id, then update it for its frame, size and opacity.
+- Never put text or a shape over a face; give text a calm area or a dim shape behind it (add_shape before add_text, so it sits under).
+- Arabic is written exactly as the person gave it. Return the whole job in one array (commands run in order, each on the result of the last).
+
+${LAYOUT_KIT_API}`;

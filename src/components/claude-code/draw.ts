@@ -32,11 +32,16 @@ async function bitmapTo(bm: ImageBitmap, type: "image/png" | "image/jpeg", maxSi
   return url.split(",")[1];
 }
 
-/** A photo to PLACE in the picture, at full size for the scene (long side up to 2048), or null when it can't be read. */
-async function photoBitmap(url: string): Promise<ImageBitmap | null> {
+/** Photos placed in one drawing; more are added in a second round on top of the first (owner's decision). */
+export const PHOTOS_PER_ROUND = 10;
+/** Photos in all (two rounds). */
+export const PHOTOS_MAX = PHOTOS_PER_ROUND * 2;
+
+/** A photo to PLACE in the picture, at full size for the scene (long side up to `side`), or null when it can't be read. */
+async function photoBitmap(url: string, side: number): Promise<ImageBitmap | null> {
   try {
     const bm = await createImageBitmap(await (await fetch(url)).blob());
-    const k = Math.min(1, 2048 / Math.max(bm.width, bm.height));
+    const k = Math.min(1, side / Math.max(bm.width, bm.height));
     if (k >= 1) return bm;
     const out = await createImageBitmap(bm, { resizeWidth: Math.round(bm.width * k), resizeHeight: Math.round(bm.height * k), resizeQuality: "high" });
     bm.close();
@@ -46,12 +51,35 @@ async function photoBitmap(url: string): Promise<ImageBitmap | null> {
   }
 }
 
+type DrawOptions = { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content" };
+
 /**
  * Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. `photos` are the person's pictures to PUT IN
- * the picture as they are (a speaker's photo, a logo): handed to the scene as photo1…photo4 and shown to Claude.
+ * the picture as they are (a speaker's photo, a logo): handed to the scene as photo1…photo10 and shown to Claude. More
+ * than ten (up to twenty) are placed in a SECOND drawing whose base is the first picture.
  */
-export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content" }): Promise<DrawResult> {
-  const loaded = (await Promise.all((o.photos ?? []).slice(0, 4).map(async (url) => ({ bm: await photoBitmap(url), small: await smallJpeg(url) })))).filter((p): p is { bm: ImageBitmap; small: string } => !!p.bm && !!p.small);
+export async function drawWithCode(o: DrawOptions): Promise<DrawResult> {
+  const all = (o.photos ?? []).slice(0, PHOTOS_MAX);
+  if (all.length <= PHOTOS_PER_ROUND) return drawOnce({ ...o, photos: all });
+  const first = await drawOnce({ ...o, photos: all.slice(0, PHOTOS_PER_ROUND), onStep: (s) => o.onStep({ ...s, text: `الجولة ١ من ٢ (أول ${PHOTOS_PER_ROUND} صور) — ${s.text}` }) });
+  const rest = all.slice(PHOTOS_PER_ROUND);
+  const second = await drawOnce({
+    ...o,
+    prompt: `${o.prompt}
+
+SECOND ROUND: photo1 is the design as it stands after the first round (its first ${PHOTOS_PER_ROUND} photos already placed): draw it as the base filling the whole frame, change nothing in it, and add the remaining ${rest.length} photo${rest.length > 1 ? "s" : ""} (photo2…photo${rest.length + 1}) where the request says, in the same style, without covering a face or a word that is already there.`,
+    references: [],
+    photos: [`data:image/png;base64,${first.png}`, ...rest],
+    onStep: (s) => o.onStep({ ...s, text: `الجولة ٢ من ٢ (الصور الباقية) — ${s.text}` }),
+  });
+  return { ...second, rounds: first.rounds + second.rounds, coins: first.coins + second.coins };
+}
+
+async function drawOnce(o: DrawOptions): Promise<DrawResult> {
+  const list = o.photos ?? [];
+  // many photos: a little smaller each, so ten full pictures fit a phone's memory
+  const side = list.length > 4 ? 1600 : 2048;
+  const loaded = (await Promise.all(list.map(async (url) => ({ bm: await photoBitmap(url, side), small: await smallJpeg(url) })))).filter((p): p is { bm: ImageBitmap; small: string } => !!p.bm && !!p.small);
   const assets = loaded.map((p, i) => ({ id: `photo${i + 1}`, bitmap: p.bm }));
   const photos = loaded.map((p) => p.small);
   const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...body }, o.signal);

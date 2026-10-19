@@ -9,12 +9,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ADJUSTS, ADJUST_GROUPS, FILTERS, HSL_BANDS, HSL_PARTS, NO_ADJUST, PHOTO, RATIOS, SIZE_PRESETS, hslKey, type AdjustKey, type HslBand } from "@config/photo";
 import { LAYER_EFFECTS } from "@config/designer";
-import { applyOp, docChanges, readDoc, type Op, type PhotoDoc, type PhotoLayer, type ShapeLayer, type TextLayer } from "@/lib/photo/doc";
+import { applyOp, applyOps, docChanges, readDoc, readOps, type Op, type PhotoDoc, type PhotoLayer, type ShapeLayer, type TextLayer } from "@/lib/photo/doc";
 import { postJson } from "@/lib/fetch";
 import { loadFont, type FontDef } from "@/components/jawad/designer/LayerEditor";
-import { ProgramError, runGrade, toBase64 } from "@/components/claude-code/compute-host";
+import { ProgramError, runGrade, runLayout, toBase64 } from "@/components/claude-code/compute-host";
 import { GRADE_LUT_SIZE } from "@/lib/claude-code/compute";
-import { CODE_FIXES, CODE_ROUNDS, GRADE_RUBRIC } from "@/lib/claude-code/skill";
+import { CODE_FIXES, CODE_ROUNDS, GRADE_RUBRIC, LAYOUT_RUBRIC } from "@/lib/claude-code/skill";
 import { applyLut } from "@/lib/photo/pixels";
 import { ensureFonts, exportBlob, loadImageUrl, renderPhoto, type Box } from "./render";
 
@@ -520,6 +520,82 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     }
   }
 
+  /** «Claude Code» design (the other way beside her plain commands): زهراء writes a layout program from the design's
+   * facts, it runs here in the sandbox, its commands are applied to a COPY and drawn, she looks at before and after and
+   * rewrites it while it is below the bar; only then is the design changed (one undo). Placing photos, arranging and
+   * composing layers, writing and changing words. */
+  async function runCodeLayout(request: string) {
+    const d0 = docRef.current;
+    if (!d0) return;
+    const api = <T,>(body: Record<string, unknown>) => postJson<T>("/api/photo/code", { request, ...body });
+    const ctx = { files: ctxFiles, fonts: fontIds };
+    const facts = {
+      width: d0.width,
+      height: d0.height,
+      bg: d0.bg,
+      base: d0.base ? { w: d0.base.w, h: d0.base.h } : null,
+      layers: d0.layers,
+      files: files.filter((f) => f.role !== "export").map((f) => ({ id: f.id, w: f.width, h: f.height, name: f.name })),
+      fonts: fontIds,
+    };
+    const pics = new Map(images);
+    const draw = async (d: PhotoDoc) => {
+      // the pictures the design now uses, loaded before it is drawn
+      const need = [...(d.base ? [d.base.fileId] : []), ...d.layers.flatMap((l) => (l.kind === "image" ? [l.fileId] : []))].filter((id) => !pics.has(id));
+      for (const [id, im] of await Promise.all(need.map(async (id) => [id, await loadImageUrl(`/api/photo/image?id=${id}`).catch(() => null)] as const))) if (im) pics.set(id, im);
+      await ensureFonts(d, fonts);
+      const c = document.createElement("canvas");
+      renderPhoto(c, d, { scale: Math.min(1, PHOTO.previewSide / Math.max(d.width, d.height)), images: pics, fonts });
+      return c.toDataURL("image/jpeg", 0.82).split(",")[1];
+    };
+    try {
+      setBusy("🧑‍💻 Claude Code يكتب برنامج التصميم…");
+      const before = await draw(d0);
+      let w = await api<{ code: string; problems: string[] }>({ action: "layout_write", before, facts });
+      let code = w.code;
+      let problems = w.problems;
+      let last: { doc: PhotoDoc; verdict: string; scores: Record<string, number>; pass: boolean } | null = null;
+      for (let round = 1; round <= CODE_ROUNDS; round++) {
+        let next: PhotoDoc | null = null;
+        for (let fix = 0; ; fix++) {
+          try {
+            if (problems.length) throw new ProgramError(problems.join("; "));
+            setBusy(`أشغّل برنامج التصميم${round > 1 ? ` (جولة ${round})` : ""}…`);
+            const raw = await runLayout(code, facts);
+            const { ops, error } = readOps(raw);
+            if (error) throw new ProgramError(error);
+            const res = applyOps(d0, ops, ctx);
+            if (res.error) throw new ProgramError(`command ${res.error.index + 1} (${res.error.op}) failed: ${res.error.message}`);
+            next = res.doc;
+            break;
+          } catch (e) {
+            if (!(e instanceof ProgramError) || fix >= CODE_FIXES) throw e instanceof ProgramError ? new Error(`برنامج التصميم ما اشتغل: ${e.message}`) : e;
+            setBusy("البرنامج طلع فيه خطأ — زهراء تصلّحه…");
+            w = await api<{ code: string; problems: string[] }>({ action: "layout_write", before, facts, code, errors: `${e.message}\n${e.stack2}` });
+            code = w.code;
+            problems = w.problems;
+          }
+        }
+        const after = await draw(next);
+        setBusy(`زهراء تشوف التصميم وتقيّمه (جولة ${round} من ${CODE_ROUNDS})…`);
+        const r = await api<{ review: { scores: Record<string, number>; pass: boolean; verdict: string }; code: string; problems: string[] }>({ action: "layout_review", before, after, facts, code, round });
+        last = { doc: next, verdict: r.review.verdict, scores: r.review.scores, pass: r.review.pass };
+        if (r.review.pass || !r.code) break;
+        code = r.code;
+        problems = r.problems;
+      }
+      if (!last) return;
+      const done = last;
+      setImages(new Map(pics));
+      change(() => done.doc);
+      setMessages((m) => [...m, { role: "assistant", text: `${done.pass ? "✅" : "⚠️"} ${done.verdict}\n🧑‍💻 Claude Code · ${LAYOUT_RUBRIC.map((x) => `${x.ar} ${done.scores[x.id] ?? "—"}`).join(" · ")}` }]);
+    } catch (e) {
+      setMessages((m) => [...m, { role: "assistant", text: (e as Error).message, error: true }]);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function send(text: string) {
     const message = text.trim();
     if (!message || typing || !docRef.current) return;
@@ -528,7 +604,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     setTyping(true);
     try {
       const preview = await previewB64();
-      const r = await postJson<{ reply: string; doc: PhotoDoc; changes: string[]; suggestions: string[]; jawad: Ask | null; code: { prompt: string } | null; returnTo: boolean }>("/api/photo/chat", { projectId, message, doc: docRef.current, preview });
+      const r = await postJson<{ reply: string; doc: PhotoDoc; changes: string[]; suggestions: string[]; jawad: Ask | null; code: { prompt: string; mode?: "grade" | "layout" } | null; returnTo: boolean }>("/api/photo/chat", { projectId, message, doc: docRef.current, preview });
       const before = docRef.current;
       const next = readDoc(r.doc);
       if (docChanges(before, next).length) {
@@ -542,7 +618,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
       if (r.returnTo) setAskReturn(true);
       setTyping(false);
       if (r.jawad) await runMake(r.jawad);
-      if (r.code) await runCodeGrade(r.code.prompt);
+      if (r.code) await (r.code.mode === "layout" ? runCodeLayout(r.code.prompt) : runCodeGrade(r.code.prompt));
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", text: (e as Error).message, error: true }]);
     } finally {

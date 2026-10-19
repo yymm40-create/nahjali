@@ -59,7 +59,8 @@ export async function produce(userId: string, chatId: string, o: { owner?: boole
   if (!base) throw new UserError("ما لقينا التصميم في المحادثة.", 409);
   const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" };
   const { list } = await attachmentsOf(userId, p.refs);
-  const refs = list.filter((a) => a.kind === "image").map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
+  // GPT Image 2 takes six references at most (the photos to place come first)
+  const refs = list.filter((a) => a.kind === "image").slice(0, 6).map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
 
   let usd = 0;
   let fix = "";
@@ -142,7 +143,7 @@ export async function codeBrief(userId: string, chatId: string) {
   const links = await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id));
   // the photos to put in the design go into the scene as they are; the other pictures are references for the look
   const place = new Set(p.place ?? []);
-  const photos = [...links].filter(([id]) => place.has(id)).map(([, url]) => url).slice(0, 4);
+  const photos = [...links].filter(([id]) => place.has(id)).map(([, url]) => url).slice(0, 20);
   const urls = [...links].filter(([id]) => !place.has(id)).map(([, url]) => url);
   return { prompt: artworkPrompt({ prompt: p.artwork, refs: urls.length, textMode: "baked", layers: p.layers }), aspect: p.aspect, refs: urls.slice(0, 4), photos };
 }
