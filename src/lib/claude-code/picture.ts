@@ -66,6 +66,16 @@ async function ask<T>(user: RobotUser, model: unknown, label: string, parts: Cla
   });
 }
 
+/** The person's photos to PUT IN the picture as they are (the scene has them as photo1…photo4). */
+function photosParts(raw: unknown): ClaudePart[] {
+  const list = (Array.isArray(raw) ? raw : []).map(jpeg).filter((x): x is string => !!x).slice(0, 4);
+  if (!list.length) return [];
+  return [
+    { type: "text", text: `THE PERSON'S PHOTOS TO PLACE IN THE PICTURE (${list.length}): the scene has them as K.img("photo1")…K.img("photo${list.length}") — draw each one INTO the design with K.picture(ctx, "photoN", x, y, w, h, { fit: "cover", radius }) or ctx.drawImage(K.img("photoN"), …), as the request says (a speaker in a frame, a large hero portrait, a logo). Keep every face EXACTLY as photographed: never redraw, distort, stretch or cover a face with text or shapes. You may crop and scale (keeping the proportions), clip to a frame or a shape, fade the edges into the background with gradient masks (on an offscreen layer: K.layer(name) with globalCompositeOperation "destination-in"/"destination-out"), grade it (ctx.filter: grayscale, sepia, contrast, brightness) and blend it (a double exposure over the scene). Every photo given must appear.` },
+    ...list.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `PHOTO photo${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
+  ];
+}
+
 function refsParts(raw: unknown): ClaudePart[] {
   const list = (Array.isArray(raw) ? raw : []).map(jpeg).filter((x): x is string => !!x).slice(0, 4);
   return list.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `REFERENCE ${i + 1} (take its colours, type and finish — never copy its content unless asked):` }, { type: "image64", data: d, mediaType: "image/jpeg" }]);
@@ -89,6 +99,7 @@ ${style ? `THE LOOK the person chose («الستايل»), to follow in every sh
 ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this):\n${errors || "(no error text)"}` : ""}
 Return the COMPLETE program and the two fonts it uses.`,
     },
+    ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
   const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, previous ? "Claude Code · تصليح الصورة" : "Claude Code · رسم الصورة", parts, WRITE_SCHEMA, 64_000);
@@ -115,6 +126,7 @@ ${code}`,
     },
     { type: "text", text: "THE PICTURE:" },
     { type: "image64", data: still, mediaType: "image/jpeg" },
+    ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
   const r = await ask<Record<string, unknown>>(user, b.model, `Claude Code · مراجعة الصورة ${round}`, parts, REVIEW_SCHEMA, 64_000);

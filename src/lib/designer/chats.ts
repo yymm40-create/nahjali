@@ -53,6 +53,8 @@ export interface PendingDesign {
   keep: string | null;
   /** who draws it: GPT Image 2 through جواد (default), or «Claude Code» in the person's browser */
   maker?: "gpt" | "code";
+  /** of `refs`, the photos to PUT IN the design as they are (a speaker, a baby, a logo): Claude Code draws them in unchanged */
+  place?: string[];
 }
 
 export interface Chat {
@@ -134,6 +136,7 @@ export function readPending(v: unknown): PendingDesign | null {
     layers: readLayers(p.layers),
     keep,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
+    ...(Array.isArray(p.place) && p.place.length ? { place: p.place.filter((r): r is string => typeof r === "string").slice(0, 4) } : {}),
   };
 }
 

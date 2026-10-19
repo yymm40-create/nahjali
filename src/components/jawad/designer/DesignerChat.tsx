@@ -199,11 +199,11 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     setBusy("drawing");
     setCodeStep(null);
     try {
-      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[] } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
+      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[] } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
       if (r.code) {
         // «Claude Code»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork
         const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, model: claudeId.current, from: "designer", onStep: (s) => setCodeStep(s.text) });
+        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", onStep: (s) => setCodeStep(s.text) });
         setCodeStep("أحفظ التصميم…");
         const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
         putDesign(() => saved.design);
