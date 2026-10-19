@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import SmartCoin from "@/components/SmartCoin";
+import { useAtCost } from "@/components/usePerks";
 import { fmtSar } from "@config/coins";
 
 /** Fired by the studio whenever the server reports a new balance (after a charge or a refund). */
@@ -14,6 +15,8 @@ export const announceBalance = (balance: number | null | undefined) => {
 /** «النقود الذكية» in the header; the owner has no limit. */
 export default function CoinBalance({ initial, unlimited }: { initial: number | null; unlimited: boolean }) {
   const [balance, setBalance] = useState(initial);
+  // a code that prices everything at the tool's cost: the coin is orange (SmartCoin) and says so here
+  const atCost = useAtCost();
   useEffect(() => {
     const on = (e: Event) => setBalance((e as CustomEvent<number>).detail);
     window.addEventListener(BALANCE_EVENT, on);
@@ -30,6 +33,7 @@ export default function CoinBalance({ initial, unlimited }: { initial: number | 
       >
         <SmartCoin size={18} />
         <span dir="ltr" className="tabular-nums">{text}</span>
+        {atCost && <span className="text-[11px] font-bold text-orange-500 max-sm:hidden">بسعر الأداة</span>}
       </Link>
       {/* «اشحن رصيدك»: the packages (bank transfer) */}
       {!unlimited && (

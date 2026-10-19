@@ -35,6 +35,7 @@ import MorePrompts from "./MorePrompts";
 import { findStyle } from "@config/film-styles";
 import { refMeta, type Draft, type RefItem, type StudioProps, type UploadView } from "./types";
 import Coined from "@/components/Coined";
+import { useAtCost } from "@/components/usePerks";
 import ClaudeCodeCard from "@/components/claude-code/ClaudeCodeCard";
 
 /** The person is on another tab: the title changes until they come back, and a system notification when allowed. */
@@ -276,11 +277,13 @@ export default function Studio({ section, studioSections, generators, directorGe
     return () => window.removeEventListener(BALANCE_EVENT, on);
   }, []);
 
+  // a code's «بسعر الأداة»: the quote is the tool's own cost (the server charges the same)
+  const atCost = useAtCost();
   // A performance description only goes to generators that take one (it stays in the draft for when the user switches back)
   const instructions = def?.extraText ? draft.instructions : "";
   const ev = useMemo(
-    () => (def ? evaluate(def, { settings, prompt: draft.prompt, instructions, refStyle, refs: draft.refs.map(refMeta) }, prices[def.id] ?? {}) : null),
-    [def, settings, draft.prompt, instructions, refStyle, draft.refs, prices],
+    () => (def ? evaluate(def, { settings, prompt: draft.prompt, instructions, refStyle, refs: draft.refs.map(refMeta), atCost }, prices[def.id] ?? {}) : null),
+    [def, settings, draft.prompt, instructions, refStyle, draft.refs, prices, atCost],
   );
 
   // ── editing ──
@@ -531,7 +534,7 @@ export default function Studio({ section, studioSections, generators, directorGe
   const pick = (names: string[] | null | undefined) => (names ? draft.refs.filter((r) => names.includes(r.name)) : draft.refs);
   const extras = def?.output === "audio" ? [] : (draft.extra ?? []).filter((x) => x.prompt.trim());
   const plan = def && extras.length
-    ? [{ prompt: draft.prompt, refs: pick(draft.mainRefs) }, ...extras.map((x) => ({ prompt: x.prompt, refs: pick(x.refs) }))].map((x) => ({ ...x, ev: evaluate(def, { settings, prompt: x.prompt, instructions, refStyle, refs: x.refs.map(refMeta) }, prices[def.id] ?? {}) }))
+    ? [{ prompt: draft.prompt, refs: pick(draft.mainRefs) }, ...extras.map((x) => ({ prompt: x.prompt, refs: pick(x.refs) }))].map((x) => ({ ...x, ev: evaluate(def, { settings, prompt: x.prompt, instructions, refStyle, refs: x.refs.map(refMeta), atCost }, prices[def.id] ?? {}) }))
     : null;
   const price = plan ? (plan.every((x) => x.ev.price.ok) ? plan.reduce((t, x) => t + (x.ev.price.ok ? x.ev.price.coins : 0), 0) : null) : ev?.price.ok ? ev.price.coins : null;
   async function submitAll() {

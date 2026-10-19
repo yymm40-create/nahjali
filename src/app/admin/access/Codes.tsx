@@ -6,6 +6,7 @@ import { postJson } from "@/lib/fetch";
 import { codeOpen, codeWelcome, PERMS, type CodeRow, type CodeUse, type Perm } from "@config/access";
 import { CLAUDE_MODELS, type ClaudeModelKey } from "@config/claude-models";
 import Coined from "@/components/Coined";
+import SmartCoin from "@/components/SmartCoin";
 import Riyal from "@/components/Riyal";
 
 interface Props {
@@ -155,7 +156,7 @@ export default function Codes({ codes, uses, gifted = {} }: Props) {
           </div>
           <label className="flex items-center gap-2 text-sm font-bold">
             <input type="checkbox" checked={atCost} onChange={(e) => setAtCost(e.target.checked)} />
-            💵 كل شي يشتريه بسعر الأداة نفسها (ربحك صفر)، وكلاود بمدخلاته ومخرجاته
+            <SmartCoin size={16} tone="orange" /> نقود برتقالية: كل شي يشتريه بسعر الأداة نفسها (ربحك صفر)، وكلاود بمدخلاته ومخرجاته، ولا يظهر البرتقالي إلا لمن دخل بهذا الكود
           </label>
           {Number(giftSar) > 0 && (
             <p className="text-sm font-bold text-teal">
@@ -201,7 +202,11 @@ export default function Codes({ codes, uses, gifted = {} }: Props) {
                           <Riyal halalas={c.giftSar * 100} size={13} /> لكل شخص
                         </span>
                       )}
-                      {c.atCost && <span>💵 بسعر الأداة (بدون ربح)</span>}
+                      {c.atCost && (
+                        <span className="inline-flex items-center gap-1">
+                          <SmartCoin size={13} tone="orange" /> نقود برتقالية (بسعر الأداة، بدون ربح)
+                        </span>
+                      )}
                       {c.claudeModel && <span>🤖 كلاود حتى «{CLAUDE_MODELS.find((m) => m.key === c.claudeModel)?.name}»</span>}
                       {c.videoGens !== null && <span>🎬 Seedance 2.0: {c.videoGens} توليد</span>}
                     </p>
@@ -284,7 +289,7 @@ function GiftEditor({ c, busy, send }: { c: CodeRow; busy: boolean; send: (body:
         </button>
       </div>
       <button type="button" aria-pressed={c.atCost} className={`btn mt-2 min-h-9 px-3 text-xs ${c.atCost ? "bg-gold text-on-gold" : "btn-ghost"}`} disabled={busy} onClick={() => send({ action: "codes_set", id: c.id, atCost: !c.atCost }, c.atCost ? "رجع بالسعر العادي" : "صار بسعر الأداة")}>
-        💵 {c.atCost ? "بسعر الأداة (بدون ربح)" : "بالسعر العادي"}
+        <SmartCoin size={14} tone={c.atCost ? "orange" : "sky"} /> {c.atCost ? "نقود برتقالية: بسعر الأداة (بدون ربح)" : "نقود عادية: بالسعر العادي"}
       </button>
     </details>
   );

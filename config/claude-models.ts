@@ -97,6 +97,9 @@ export const CLAUDE_MODEL_KEY = "jw-claude-model";
 const RANK: ClaudeModelKey[] = ["haiku", "sonnet", "opus", "fable"];
 export const isClaudeModelKey = (v: unknown): v is ClaudeModelKey => typeof v === "string" && (RANK as string[]).includes(v);
 
+/** The models a person may pick under a code's ceiling (all of them without one). */
+export const modelsUpTo = (cap: ClaudeModelKey | null | undefined): readonly ClaudeModel[] => (cap ? CLAUDE_MODELS.filter((m) => RANK.indexOf(m.key) <= RANK.indexOf(cap)) : CLAUDE_MODELS);
+
 /** The model id to serve: the person's pick, unless it is dearer than the cap (a code's «الأقصى»), then the cap's model. */
 export function capClaudeModel(id: unknown, cap: ClaudeModelKey | null | undefined): string {
   const picked = claudeModelOf(id);
