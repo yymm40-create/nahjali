@@ -51,6 +51,8 @@ export interface SlidesBlock {
   styleId: string;
   templateId: string;
   report?: string;
+  /** "code": the slides are drawn by «Claude Code» in the person's browser (absent = GPT Image 2 through جواد) */
+  maker?: "code";
 }
 
 /** One picture or video «محمد باقر» asked جواد for (outside a carousel), and where it stands. */
@@ -122,6 +124,8 @@ export interface PendingProduce {
   refs?: string[];
   /** "fix": only these slides are drawn again, in a carousel that exists */
   mode: "all" | "fix";
+  /** "code": «Claude Code» draws each slide in the person's browser (absent = GPT Image 2 through جواد) */
+  maker?: "code";
   /** made in this production so far */
   made: Slide[];
   failed: SlideFailure[];
@@ -233,6 +237,7 @@ export function cleanHistory(raw: unknown): Turn[] {
         running: s.running === true,
         total: num(s.total),
         styleId: str(s.styleId, 60),
+        ...(s.maker === "code" ? { maker: "code" as const } : {}),
         templateId: str(s.templateId, 60),
         ...(typeof s.report === "string" && s.report ? { report: s.report.slice(0, 4000) } : {}),
       };
@@ -266,6 +271,7 @@ export function readPending(v: unknown): PendingProduce | null {
     templateId: str(p.templateId, 60),
     ...(Array.isArray(p.refs) && p.refs.length ? { refs: p.refs.filter((r): r is string => typeof r === "string").slice(0, 6) } : {}),
     mode: p.mode === "fix" ? "fix" : "all",
+    ...(p.maker === "code" ? { maker: "code" as const } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),
     carry: objs(p.carry).map(readFailure),

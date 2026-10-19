@@ -20,7 +20,7 @@ import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt,
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
 import { findStyle } from "@config/film-styles";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
-import { addProducedFromOutput, attachmentsOf, deleteProduced, producedBytes, producedRow } from "./files";
+import { addProduced, addProducedFromOutput, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, uploadLinks } from "./files";
 import { checkSlide, fixNote, type SlideCheck } from "./verify";
 
 /** GPT Image 2 for the slides: the standard sizes (a 1:1 slide is 1024×1024), high quality for readable Arabic. */
@@ -48,6 +48,16 @@ export interface Produced {
   total: number;
   report: string | null;
   usd: number;
+  /** «Claude Code»: the next slide for the page to draw in code (then it sends the picture back) */
+  code?: CodeSlide;
+}
+
+/** One slide «Claude Code» draws in the person's browser: its full brief (the exact writing in it), shape and references. */
+export interface CodeSlide {
+  n: number;
+  prompt: string;
+  aspect: string;
+  refs: string[];
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -210,6 +220,7 @@ async function planRetry(userId: string, chat: Chat, ns: number[] | "failed"): P
     styleId: block.styleId,
     templateId: block.templateId,
     mode: "fix",
+    ...(block.maker === "code" ? { maker: "code" as const } : {}),
     made: [],
     failed: [],
     carry: block.failed.filter((f) => !slides.some((s) => s.n === f.n)),
@@ -237,8 +248,16 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   const base = new Map((messages[at]?.slides?.items ?? []).map((s) => [s.n, s]));
   const who: DeskWho = { id: userId, email: o.email, owner: await unlimitedFor(o.email), origin: o.origin ?? "" };
   const c = { userId, chatId, owner: !!o.owner, who, t0, total: p.mode === "all" ? p.slides.length : Math.max(base.size, ...p.slides.map((s) => s.n)) };
+  const finish = (results: SlideResult[]) => settle({ userId, chatId, chat: chat!, p, messages, at, base }, results);
   const done = new Set([...p.made.map((s) => s.n), ...p.failed.map((f) => f.n)]);
   const todo = p.slides.filter((s) => !done.has(s.n)).sort((a, b) => a.n - b.n);
+
+  // «Claude Code»: nothing is drawn here — the page gets the next slide's brief, draws it, and sends it back
+  if (p.maker === "code") {
+    const next = todo.find((s) => s.n === 1) ?? todo[0];
+    const state = await finish([]);
+    return next ? { ...state, code: await codeSlide(userId, chatId, p, next, c.total, base.get(1) ?? p.made.find((s) => s.n === 1) ?? null) } : state;
+  }
 
   // the reference of every slide: slide 1 (made now, or the one that stands)
   const ref1 = p.made.find((s) => s.n === 1) ?? base.get(1);
@@ -258,8 +277,13 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   const first = todo.find((s) => s.n === 1);
   const batch = !refBytes && first ? [first] : todo.slice(0, CHUNK);
 
+  return finish(await Promise.all(batch.map((s) => makeSlide(c, p, s, ref, mine))));
+}
+
+/** What is made and what failed is put in the carousel and saved; the state the page shows is returned. */
+async function settle(o: { userId: string; chatId: string; chat: Chat; p: PendingProduce; messages: Chat["messages"]; at: number; base: Map<number, Slide> }, results: SlideResult[]): Promise<Produced> {
+  const { userId, chatId, p, messages, at, base } = o;
   let usd = 0;
-  const results = await Promise.all(batch.map((s) => makeSlide(c, p, s, ref, mine)));
   for (const r of results) {
     usd += r.usd;
     if (r.made) {
@@ -286,6 +310,7 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
     total: p.mode === "all" ? p.slides.length : sorted.length,
     styleId: p.styleId,
     templateId: p.templateId,
+    ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(old?.report && left.length ? { report: old.report } : {}),
   };
   let report: string | null = null;
@@ -297,4 +322,49 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   await saveChat(userId, chatId, { messages, pending: left.length ? p : null, addUsd: usd });
 
   return { chatId, aspect: p.aspect, slides: sorted, todo: left, failed: block.failed, running: left.length > 0, total: block.total, report, usd: Math.round(usd * 10000) / 10000 };
+}
+
+// ───────── «Claude Code»: the slides drawn in code in the person's browser ─────────
+
+/** The brief of one slide for «Claude Code»: the slide's full prompt (its exact writing), the shape, slide 1 and the person's pictures as references. */
+async function codeSlide(userId: string, chatId: string, p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null): Promise<CodeSlide> {
+  const refs: string[] = [];
+  if (slide1 && s.n !== 1) {
+    const url = (await producedLinks(userId, chatId)).get(slide1.fileId);
+    if (url) refs.push(url);
+  }
+  const { list } = await attachmentsOf(userId, p.refs ?? []);
+  const mine = [...(await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id))).values()];
+  refs.push(...mine);
+  const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, withRef: refs.length > mine.length, userRefs: mine.length });
+  return { n: s.n, prompt, aspect: p.aspect, refs: refs.slice(0, 4) };
+}
+
+/** The PNG the page drew from Claude Code's program becomes slide `n` of the carousel being made. */
+export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; rounds?: unknown; scores?: unknown }): Promise<Produced> {
+  const chat = await getChat(userId, chatId);
+  if (!chat) throw new Error("chat not found");
+  const p = chat.pending;
+  if (!p || p.maker !== "code") throw new UserError("ما فيه كاروسيل ينتظر Claude Code في هذي المحادثة.", 409);
+  const s = p.slides.find((x) => x.n === Number(b.n));
+  if (!s || p.made.some((x) => x.n === s.n) || p.failed.some((x) => x.n === s.n)) throw new UserError("هذي الشريحة مو بانتظار الرسم.", 409);
+  const data = typeof b.png === "string" ? b.png.replace(/^data:image\/png;base64,/, "") : "";
+  if (!data || data.length > 16_000_000 || !/^[A-Za-z0-9+/]+=*$/.test(data)) throw new UserError("ما وصلت صورة الشريحة.", 400);
+  const bytes = Buffer.from(data, "base64");
+  const sharp = (await import("sharp")).default;
+  const meta = await sharp(bytes).metadata().catch(() => null);
+  if (meta?.format !== "png" || !meta.width || !meta.height) throw new UserError("صورة الشريحة مو صالحة.", 400);
+  const file = await addProduced({
+    userId,
+    chatId,
+    bytes,
+    name: `slide-${String(s.n).padStart(2, "0")}`,
+    width: meta.width,
+    height: meta.height,
+    meta: { slide: s.n, aspect: p.aspect, text: s.text, prompt: s.prompt, styleId: p.styleId, templateId: p.templateId, batch: p.id, ...(p.refs?.length ? { refs: p.refs } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null } },
+  });
+  const messages = [...chat.messages];
+  const at = Math.min(p.at, messages.length - 1);
+  const base = new Map((messages[at]?.slides?.items ?? []).map((x) => [x.n, x]));
+  return settle({ userId, chatId, chat, p, messages, at, base }, [{ made: { n: s.n, fileId: file.id, name: file.name, text: s.text }, usd: 0 }]);
 }

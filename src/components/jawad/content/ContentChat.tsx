@@ -15,11 +15,12 @@ import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import QuickReplies, { Swatches } from "@/components/jawad/QuickReplies";
 import { answerLine, DELEGATE_LINE, moodLine, motionLine, stripMarks, styleLine, templateLine } from "@/lib/content/marks";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
+import { drawWithCode, smallJpeg } from "@/components/claude-code/draw";
 
 interface FileView { id: string; kind: "image" | "video" | "audio" | "doc"; name: string; durationMs: number | null; url?: string | null }
 interface SlideView { n: number; fileId: string; name: string; text: string; url: string | null; download: string | null; flag?: string; fixed?: boolean }
 interface FailView { n: number; reason: string; detail?: string; text: string }
-interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string }
+interface SlidesView { aspect: string; items: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report?: string; maker?: "code" }
 interface MediaView {
   id: string; kind: "image" | "video"; name: string; aspect: string; refs?: string[]; state: "todo" | "running" | "done" | "failed";
   url?: string | null; download?: string | null; error?: string; detail?: string; transient?: boolean; tries?: number;
@@ -279,7 +280,7 @@ export function Questions({ questions, gal, disabled, onSend, onWrite }: { quest
 }
 
 /** The carousel of an answer: tiles in order, the drawing ones as moving placeholders, each made one with its check. */
-export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void }) {
+export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s: SlidesView; busy: boolean; owner: boolean; onRetry: (ns: number[] | "failed") => void; onDownloadAll: () => void; step?: string | null }) {
   const ns = [...new Set([...s.items.map((i) => i.n), ...s.todo])].sort((a, b) => a - b);
   const done = s.items.filter((i) => !s.todo.includes(i.n)).length;
   const aspect = s.aspect.replace(":", " / ") || "1 / 1";
@@ -289,8 +290,17 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll }: { s: Slide
         <div className="ct-progress" role="status" aria-live="polite">
           <span className="ct-spin" aria-hidden />
           <div>
-            <b>جواد يولّد الشرائح بـ GPT Image 2… ({done} من {s.total})</b>
-            <small>محمد باقر سلّم الطلب لجواد، وكل شريحة يولّدها جواد ثم يفحص باقر كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+            {s.maker === "code" ? (
+              <>
+                <b>🧑‍💻 Claude Code يرسم الشرائح بالكود… ({done} من {s.total})</b>
+                <small>{step ? `${step} — ` : ""}يكتب برنامج كل شريحة ويرسمها هنا في صفحتك ويشوفها ويعيد كتابتها لين تنجح (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+              </>
+            ) : (
+              <>
+                <b>جواد يولّد الشرائح بـ GPT Image 2… ({done} من {s.total})</b>
+                <small>محمد باقر سلّم الطلب لجواد، وكل شريحة يولّدها جواد ثم يفحص باقر كتابتها العربية، وتأخذ نحو دقيقة. لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
+              </>
+            )}
             <span className="bar"><i style={{ width: `${s.total ? Math.round((done / s.total) * 100) : 0}%` }} /></span>
           </div>
         </div>
@@ -388,6 +398,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"" | "writing" | "producing">("");
+  /** what «Claude Code» is doing on the slide it draws now */
+  const [codeStep, setCodeStep] = useState<string | null>(null);
+  /** the mind the person picked, for «Claude Code»'s drawing (read inside the produce loop) */
+  const claudeId = useRef("");
   const [side, setSide] = useState(false);
   const [pending, setPending] = useState<FileView[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -434,14 +448,25 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
     setBusy("producing");
     let first = true;
+    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[] } };
+    const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}) }));
     try {
-      for (let guard = 0; guard < 40; guard++) {
-        const r = await postJson<{ aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null }>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
+      for (let guard = 0; guard < 80; guard++) {
+        let r = await postJson<Step>("/api/content/produce", { chatId: id, ...(first && retry ? { retry } : {}) });
         first = false;
-        putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report }));
+        show(r);
+        if (r.code) {
+          // «Claude Code» (حيدرة ماكس): the slide is drawn here in code, looked at and rewritten, then sent back as the slide
+          const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
+          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, model: claudeId.current, from: "content", onStep: (st) => setCodeStep(st.text) });
+          setCodeStep(null);
+          r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
+          show(r);
+        }
         if (!r.running) break;
       }
     } catch (e) {
+      setCodeStep(null);
       putSlides((old) => ({ aspect: old?.aspect ?? "", items: old?.items ?? [], todo: [], failed: old?.failed ?? [], running: false, total: old?.total ?? 0, report: old?.report }));
       setMsgs((m) => [...m, { role: "assistant", text: e instanceof Error ? e.message : "تعذّر إنتاج الشرائح.", error: true }]);
     } finally {
@@ -515,6 +540,9 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   }
 
   const [claude] = useClaudeModel();
+  useEffect(() => {
+    claudeId.current = claude.id;
+  }, [claude.id]);
 
   async function send(text = q) {
     const message = text.trim();
@@ -651,6 +679,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                       owner={!!owner}
                       onRetry={(ns) => chatId && void runProduce(chatId, ns)}
                       onDownloadAll={() => downloadAll(m.slides!.items)}
+                      step={codeStep}
                     />
                   )}
                   {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} />}
