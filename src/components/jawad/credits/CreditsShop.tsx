@@ -9,6 +9,7 @@ import AgreeTerms from "@/components/jawad/AgreeTerms";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
+import SmartCoin from "@/components/SmartCoin";
 import { bonusPct, CREDITS, packYield, type Pack, type UnitPrices } from "@config/credits";
 import type { Bank } from "@config/course";
 
@@ -62,6 +63,34 @@ function Copy({ label, value }: { label: string; value: string }) {
 
 const NUM = ["١", "٢", "٣"];
 
+/** A number that rolls into place like an odometer (each digit spins from 0 to itself). */
+function Roll({ value }: { value: number }) {
+  const digits = String(Math.round(value)).split("");
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setOn(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+  return (
+    <span className="cs-roll" aria-label={String(value)}>
+      {digits.map((d, i) => (
+        <span key={i} aria-hidden>
+          <i style={{ transform: `translateY(-${on ? Number(d) : 0}em)`, transitionDelay: `${i * 90}ms` }}>
+            {Array.from({ length: 10 }, (_, k) => <b key={k}>{k}</b>)}
+          </i>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** What a package makes, as lines (each on its own: pictures OR videos OR scenes OR summaries). */
+function yieldLines(credit: number, units: UnitPrices | null | undefined): string[] {
+  if (!units) return [];
+  const y = packYield(credit, units);
+  return [y.images > 0 && `${y.images} صورة`, y.videos > 0 && `${y.videos} فيديو ٥ ثواني`, y.scenes > 0 && (y.scenes === 1 ? "مشهد سينمائي كامل" : `${y.scenes} مشاهد سينمائية`), y.summaries > 0 && (y.summaries === 1 ? "ملخص من ملف PDF قصير" : `${y.summaries} ملخصات من ملفات PDF قصيرة`)].filter(Boolean) as string[];
+}
+
 /** «تقدر تسوي فيها تقريبًا»: what the package's balance makes at today's prices (each on its own, not all together). */
 function YieldLine({ credit, units }: { credit: number; units: UnitPrices }) {
   const y = packYield(credit, units);
@@ -103,6 +132,15 @@ export default function CreditsShop({
   // the terms are read (or at least agreed to) before any money moves
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
+  // «بس يضغط فوق تطلع له بشكل رهيب وواضح»: the package pressed, opened big
+  const [spot, setSpot] = useState<string | null>(null);
+  const spotPack = packs.find((p) => p.id === spot) ?? null;
+  useEffect(() => {
+    if (!spot) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setSpot(null);
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [spot]);
 
   function buy() {
     setError("");
@@ -110,6 +148,7 @@ export default function CreditsShop({
       router.push(`${loginHref}?next=${encodeURIComponent(`${CREDITS.base}?pack=${sel.id}`)}`);
       return;
     }
+    setSpot(null);
     setStep("form");
   }
   async function start() {
@@ -164,9 +203,9 @@ export default function CreditsShop({
     <div className="cr cs" dir="rtl">
       <header className="cr-hero cs-hero">
         <div className="cr-in">
-          <span className="cr-eyebrow"><i className="cr-dot" aria-hidden />رصيد الجواد الذكي</span>
-          <h1>اشحن رصيدك وابدأ تصنع</h1>
-          <p className="cr-sub">صور وفيديوهات وأصوات وتصاميم بالذكاء الاصطناعي. ادفع مرة وحدة بتحويل بنكي، وكل ما زادت الباقة زاد رصيدك المجاني.</p>
+          <span className="cr-kicker cr-reveal">الرصيد · الباقات</span>
+          <h1 className="cr-reveal" style={{ ["--i" as string]: 1 }}>اشحن رصيدك <em>وابدأ تصنع</em></h1>
+          <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>صور وفيديوهات وأصوات وتصاميم بالذكاء الاصطناعي. ادفع مرة وحدة بتحويل بنكي، وكل ما زادت الباقة زاد رصيدك المجاني.</p>
           {user && (
             <p className="cs-balance">
               رصيدك الحالي: {owner ? <b dir="ltr">∞</b> : <Riyal halalas={balance ?? 0} size={18} className="cs-bal" />}
@@ -191,12 +230,12 @@ export default function CreditsShop({
       <section className="cs-packs" ref={listRef} aria-label="الباقات">
         <div className="cr-in cs-in">
           <div className="cs-list" role="radiogroup" aria-label="اختر الباقة" style={{ ["--n" as string]: packs.length }}>
-            {packs.map((p) => {
+            {packs.map((p, i) => {
               const on = p.id === sel.id;
               const star = p.id === featured;
               const bonus = bonusPct(p);
               return (
-                <button key={p.id} type="button" role="radio" aria-checked={on} className={`cs-pack${on ? " on" : ""}${star ? " star" : ""}`} onClick={() => setPicked(p.id)}>
+                <button key={p.id} type="button" role="radio" aria-checked={on} className={`cs-pack cr-reveal${on ? " on" : ""}${star ? " star" : ""}`} style={{ ["--i" as string]: i + 3 }} onClick={() => { setPicked(p.id); setSpot(p.id); }}>
                   {p.tag && <span className="cs-tag">{p.tag}</span>}
                   <span className="cr-radio" aria-hidden />
                   <span className="cs-name">
@@ -209,6 +248,7 @@ export default function CreditsShop({
                     {bonus > 0 && <em>+{bonus}٪ مجانًا</em>}
                   </span>
                   {units && <YieldLine credit={p.credit} units={units} />}
+                  <span className="cs-more" aria-hidden>اضغط للتفاصيل ←</span>
                 </button>
               );
             })}
@@ -227,7 +267,7 @@ export default function CreditsShop({
 
       <section className="cr-band cr-alt">
         <div className="cr-in">
-          <h2 className="cr-h">كيف تشحن؟ ٣ خطوات</h2>
+          <h2 className="cr-h" data-k="الطريقة · ٣ خطوات">كيف تشحن؟</h2>
           <ol className="cr-steps">
             <li><b>١</b>اختر الباقة واضغط «اشحن الآن»، واكتب اسمك وجوالك.</li>
             <li><b>٢</b>تظهر لك بيانات الحساب: انسخها وحوّل المبلغ، ثم اضغط «تم التحويل».</li>
@@ -238,20 +278,42 @@ export default function CreditsShop({
 
       <section className="cr-band">
         <div className="cr-in">
-          <h2 className="cr-h">أسئلة سريعة</h2>
+          <h2 className="cr-h" data-k="أسئلة · سريعة">قبل ما تشحن</h2>
           <dl className="cs-faq">
-            <dt>وش أقدر أسوي بالرصيد؟</dt>
-            <dd>كل أقسام الجواد: صور، فيديو، أصوات وموسيقى، أفلام، مونتاج حيدرة، المحتوى مع محمد باقر، التصاميم مع كاظم، وتحرير الصور مع زهراء. سعر كل عملية يظهر لك قبل ما تضغط «توليد».</dd>
-            <dt>متى يوصلني الرصيد؟</dt>
-            <dd>بعد ما نتأكد من وصول التحويل، عادةً خلال وقت قصير إن شاء الله.{hasSupport ? " وإذا طال الوقت تقدر تراسلنا على واتساب من نفس الصفحة." : ""}</dd>
-            <dt>لو فشل التوليد؟</dt>
-            <dd>يرجع رصيده لك تلقائيًا.</dd>
+            <div><dt>وش أقدر أسوي بالرصيد؟</dt>
+            <dd>كل أقسام الجواد: صور، فيديو، أصوات وموسيقى، أفلام، مونتاج حيدرة، الطالب الذكي، المحتوى مع محمد باقر، التصاميم مع كاظم، وتحرير الصور مع زهراء. سعر كل عملية يظهر لك قبل ما تضغط «توليد».</dd></div>
+            <div><dt>متى يوصلني الرصيد؟</dt>
+            <dd>بعد ما نتأكد من وصول التحويل، عادةً خلال وقت قصير إن شاء الله.{hasSupport ? " وإذا طال الوقت تقدر تراسلنا على واتساب من نفس الصفحة." : ""}</dd></div>
+            <div><dt>لو فشل التوليد؟</dt>
+            <dd>يرجع رصيده لك تلقائيًا.</dd></div>
           </dl>
           <p className="cs-back"><Link href="/jawad-ai">← ارجع للجواد الذكي</Link></p>
         </div>
       </section>
 
-      {!step && (
+      {spotPack && (
+        <div className="cs-spot" role="dialog" aria-modal="true" aria-label={`باقة ${spotPack.name}`} onClick={(e) => e.target === e.currentTarget && setSpot(null)}>
+          <div className={`cs-spot-card${spotPack.id === featured ? " star" : ""}`}>
+            <button type="button" className="cr-x" aria-label="إغلاق" onClick={() => setSpot(null)}>✕</button>
+            <span className="cr-kicker">باقة · {String(packs.indexOf(spotPack) + 1).padStart(2, "0")} / {String(packs.length).padStart(2, "0")}</span>
+            <h3>{spotPack.name}{spotPack.tag && <> <span className="cs-tag !static !inline-block align-middle">{spotPack.tag}</span></>}</h3>
+            {spotPack.note && <p className="cs-note">{spotPack.note}</p>}
+            <div className="cs-spot-price"><span className="cs-unit"><SmartCoin size={46} /></span><Roll key={spotPack.id} value={spotPack.price} /></div>
+            <ul className="cs-spot-get">
+              <li><i className="cs-ok">✓</i><span>يوصلك رصيد <Riyal halalas={spotPack.credit * 100} size={15} className="font-extrabold" /> في حسابك{bonusPct(spotPack) > 0 ? ` (+${bonusPct(spotPack)}٪ مجانًا)` : ""}</span></li>
+              {yieldLines(spotPack.credit, units).map((l) => <li key={l}><i className="cs-ok">✓</i>تقدر تسوي فيها {l}</li>)}
+              <li><i className="cs-ok">✓</i>التوليد الفاشل يرجع رصيده</li>
+            </ul>
+            <button type="button" className="cr-cta" disabled={!payable} onClick={buy}>
+              <span className="cr-cta-main">اشحن هذي الباقة</span>
+              <span className="cs-cta-price" dir="ltr"><Riyal halalas={spotPack.price * 100} size={20} /></span>
+            </button>
+            {!payable && <p className="cr-urgent">الدفع يفتح بعد قليل إن شاء الله.</p>}
+          </div>
+        </div>
+      )}
+
+      {!step && !spotPack && (
         <div className={`cr-sticky${atList ? " hide" : ""}`} aria-hidden={atList}>
           <div className="cr-sprice">
             <span className="cs-sname">باقة {sel.name}</span>

@@ -39,6 +39,10 @@ export default function JawadHeader({ rt, user, owner, balance, username, previe
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             {!preview && <SectionsBar sections={sections} siteSections={siteSections} />}
             {/* on a computer: the whole width, or a phone-wide column */}
+            {/* «الدورات»: the shop of courses, for everyone (buying is a page of its own, apart from «دوراتي») */}
+            <Link href="/jawad-ai/course" className="jw-course-pill inline-flex h-9 min-h-9 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-bold sm:px-3" title="الدورات: اشترِ دورة">
+              🛒<span className="hidden sm:inline">&nbsp;الدورات</span>
+            </Link>
             {user && !preview && (
               <Link href="/jawad-ai/learn" className="sr-pill inline-flex h-9 min-h-9 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-bold sm:px-3" title="دوراتي">
                 📚<span className="hidden sm:inline">&nbsp;دوراتي</span>

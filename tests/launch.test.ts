@@ -19,7 +19,7 @@ describe("the balance packages", () => {
       ["business", 549, 660],
     ]);
     expect(DEFAULT_PACKS.some((p) => p.price === 19)).toBe(false);
-    expect(DEFAULT_PACKS).toHaveLength(CREDITS.maxPacks);
+    expect(DEFAULT_PACKS.length).toBeLessThanOrEqual(CREDITS.maxPacks);
     expect(DEFAULT_CREDIT_SETTINGS.featured).toBe("pro");
     // still a push to the next one: «المحترف» only a little dearer than «الأساسية» but with much more
     const [, , , b, c] = DEFAULT_PACKS;
@@ -57,13 +57,20 @@ describe("the balance packages", () => {
       packs: [{ id: "A b!", name: "س", price: 10, credit: 12 }, { id: "x", name: "", price: 5, credit: 5 }, { id: "y", name: "ص", price: -1, credit: 5 }, { id: "ab", name: "مكرر", price: 1, credit: 1 }],
       featured: "zzz",
       whatsapp: "0501234567",
+      removed: ["scene", "student"],
     });
     expect(s.packs.map((p) => p.id)).toEqual(["ab"]);
     expect(s.featured).toBe("ab");
     expect(s.whatsapp).toBe("+966501234567");
     expect(readCreditSettings(null).packs).toEqual(DEFAULT_PACKS);
     const many = readCreditSettings({ packs: Array.from({ length: 9 }, (_, i) => ({ id: `p${i}`, name: `ب${i}`, price: i + 1, credit: i + 1 })) });
-    expect(many.packs).toHaveLength(7);
+    expect(many.packs).toHaveLength(CREDITS.maxPacks);
+  });
+  it("a list the owner saved before «الطالب الذكي» (¤12) existed shows it too, in its place by price — unless he deleted it", () => {
+    const old = { packs: DEFAULT_PACKS.filter((p) => p.id !== "student" && p.id !== "scene"), featured: "pro" };
+    const ids = readCreditSettings(old).packs.map((p) => p.id);
+    expect(ids).toEqual(["try", "student", "scene", "basic", "pro", "studio", "business"]);
+    expect(readCreditSettings({ ...old, removed: ["student"] }).packs.map((p) => p.id)).not.toContain("student");
   });
   it("«طال الوقت؟» opens a WhatsApp chat with the message written, only when the owner set a number", () => {
     const o = { id: "12345678-aaaa", packName: "المحترف", price: 119, email: "a@b.c" };

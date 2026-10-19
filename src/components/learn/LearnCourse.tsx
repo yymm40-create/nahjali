@@ -14,7 +14,8 @@ export default function LearnCourse({ course, initial }: { course: CourseView; i
   return (
     <>
       <div>
-        <h1 className="text-2xl font-extrabold">{course.title}</h1>
+        <span className="ln-kicker">الدورة · {lessons.length} فيديو</span>
+        <h1 className="ln-title">{course.title}</h1>
         {course.summary && <p className="ln-dim mt-1">{course.summary}</p>}
       </div>
       <div className="ln-grid">
@@ -24,7 +25,7 @@ export default function LearnCourse({ course, initial }: { course: CourseView; i
               <SecurePlayer key={cur.id} lessonId={cur.id} title={cur.title} onEnd={() => undefined} />
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-extrabold">{cur.title}</h2>
-                {next && <button type="button" className="btn btn-ghost" onClick={() => setId(next.id)}>التالي: {next.title} ⟵</button>}
+                {next && <button type="button" className="ln-btn dark" onClick={() => setId(next.id)}>التالي: {next.title} ←</button>}
               </div>
             </>
           ) : (

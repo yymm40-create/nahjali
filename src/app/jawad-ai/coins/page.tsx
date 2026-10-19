@@ -58,7 +58,7 @@ export default async function JawadCoins() {
   const pct = owner ? 100 : total > 0 ? Math.max(0, Math.min(100, Math.round((left / total) * 100))) : 0;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 px-4 pb-16 pt-6">
+    <div className="jw-paper"><div className="mx-auto max-w-4xl space-y-5 px-4 pb-16 pt-6">
       <section className="jw-panel flex flex-col items-center gap-5 p-6 sm:flex-row sm:justify-around">
         <Ring pct={pct} tone={pct > 40 ? "#22c55e" : pct > 15 ? "#f59e0b" : "#ef4444"}>
           <span className="text-xs text-jw-muted">باقي لك</span>
@@ -76,7 +76,7 @@ export default async function JawadCoins() {
               <li className="flex items-center justify-between gap-3 border-t border-jw-line pt-2 font-semibold"><span>آخر شحنة كان مجموعها</span><Riyal halalas={total} size={14} /></li>
             </ul>
           )}
-          {!owner && <Link href="/jawad-ai/credits" className="block rounded-2xl bg-gradient-to-b from-amber-300 to-orange-500 px-5 py-3 text-center text-base font-bold text-[#2a1200] shadow-lg">💳 اشحن رصيدك</Link>}
+          {!owner && <Link href="/jawad-ai/credits" className="block rounded-full bg-[#141414] px-5 py-3 text-center text-base font-bold text-white shadow-lg">💳 اشحن رصيدك</Link>}
           <p className="text-xs text-jw-faint">كل توليد يبين سعره على زر «توليد» قبل ما تضغط، والتوليد الفاشل يرجع رصيده.</p>
         </div>
       </section>
@@ -127,6 +127,6 @@ export default async function JawadCoins() {
           </ul>
         )}
       </section>
-    </div>
+    </div></div>
   );
 }
