@@ -5,6 +5,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { todayIn } from "@/lib/mahdi/engine";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { groupCount, groupMembers, groupRanking, groupWorks, MAX_GROUPS, MAX_GROUP_WORKS, MAX_MEMBERS, requireGroup } from "@/lib/mahdi/server/groups";
+import { releaseReader } from "@/lib/mahdi/server/khatma";
 import { cleanText, oneOf, parseDate, requireName } from "@/lib/mahdi/server/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -79,6 +80,8 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
     case "leave": {
       if (isLeader) throw new UserError(t.groups.leaderLeave, 400);
       await db.from("mahdi_group_members").delete().eq("group_id", id).eq("user_id", user.id);
+      // what they were reading in «الختمة العلوية» goes back to the others (what they read stays read)
+      await releaseReader(db, id, user.id);
       return ok();
     }
     case "work_toggle": {
@@ -168,6 +171,7 @@ export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
       const uid = await target();
       if (uid === user.id) throw new UserError(t.groups.leaderLeave, 400);
       await db.from("mahdi_group_members").delete().eq("group_id", id).eq("user_id", uid);
+      await releaseReader(db, id, uid);
       return ok();
     }
     case "transfer": {

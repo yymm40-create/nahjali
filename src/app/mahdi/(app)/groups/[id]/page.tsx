@@ -137,6 +137,17 @@ export default function GroupPage() {
         <p className="m-num text-sm m-muted">{t.groups.members(active.length)}</p>
       </header>
 
+      <Link href={`/mahdi/khatma/${id}`} className="m-card flex items-center gap-3 p-4">
+        <span className="grid size-10 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, #16a34a 18%, transparent)", color: "#16a34a" }}>
+          <Icon name="book" size={21} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">{t.khatma.groupCard}</span>
+          <span className="block text-sm m-muted">{t.khatma.groupCardHint}</span>
+        </span>
+        <Icon name="chevronLeft" size={18} />
+      </Link>
+
       <section className="space-y-3" aria-labelledby="group-works">
         <div className="flex items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, var(--m-gold) 16%, transparent)", color: "var(--m-gold)" }}>
