@@ -6,7 +6,7 @@ import { DESIGNER_PLATFORM_RULES, KAZEM_PERSONA } from "@config/designer";
 
 describe("تغذية العزاء الحسيني", () => {
   it("covers the occasions, the Instagram formats, the elements, the writing, the colours and the red lines", () => {
-    for (const s of ["محرم", "الأربعين", "الفاطمية", "٤:٥", "كاروسيل", "القربة", "ذو الجناح", "زيارة عاشوراء", "لا تُرسم وجوه", "لا دماء"]) expect(HUSSEINI_MOURNING_FEED).toContain(s);
+    for (const s of ["محرم", "الأربعين", "الفاطمية", "٤:٥", "كاروسيل", "القربة", "ذو الجناح", "زيارة عاشوراء", "لا تُرسم وجوه", "لا جراح", "للاستيحاء والتعلّم، لا للنسخ", "تعريض مزدوج"]) expect(HUSSEINI_MOURNING_FEED).toContain(s);
   });
   it("reaches كاظم and محمد باقر in every conversation", () => {
     expect(designerSystem("persona")).toContain(HUSSEINI_MOURNING_FEED);
@@ -40,5 +40,24 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     const page = readFileSync("src/components/jawad/content/ContentChat.tsx", "utf8");
     expect(page).toContain('from: "content"');
     expect(page).toContain("n: r.code.n, png: drawn.png");
+  });
+});
+
+describe("Claude Code يحط صور الأشخاص في التصميم", () => {
+  it("كاظم marks the photos to place, and they reach the scene as photo1… unchanged", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { readPending } = await import("@/lib/designer/chats");
+    const p = readPending({ id: "d", at: 1, kind: "husseini_mourning", aspect: "1:1", textMode: "baked", artwork: "a poster", refs: ["a", "b"], layers: [], keep: null, maker: "code", place: ["a"] });
+    expect(p?.place).toEqual(["a"]);
+    expect(DESIGNER_PLATFORM_RULES).toContain('"place"');
+    expect(readFileSync("src/lib/designer/chat.ts", "utf8")).toContain('"place", "layers"]');
+    expect(readFileSync("src/lib/designer/produce.ts", "utf8")).toContain("refs: urls.slice(0, 4), photos }");
+    const draw = readFileSync("src/components/claude-code/draw.ts", "utf8");
+    expect(draw).toContain("id: `photo${i + 1}`, bitmap: p.bm");
+    expect(draw).toContain("await host.load(code, { w: W, h: H, assets,");
+    const picture = readFileSync("src/lib/claude-code/picture.ts", "utf8");
+    expect(picture).toContain("Keep every face EXACTLY as photographed");
+    expect(picture.match(/\.\.\.photosParts\(b\.photos\)/g)?.length).toBe(2);
+    expect(readFileSync("src/components/claude-code/ClaudeCodeCard.tsx", "utf8")).toContain("حط الصور المرفقة داخل التصميم كما هي");
   });
 });

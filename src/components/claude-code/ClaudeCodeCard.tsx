@@ -28,6 +28,8 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ verdict: string; scores: Record<string, number>; pass: boolean } | null>(null);
   const [error, setError] = useState("");
+  /** the attached pictures go INTO the picture as they are (people's photos, a logo), not only as references for the look */
+  const [place, setPlace] = useState(false);
   const abort = useRef<AbortController | null>(null);
 
   async function start() {
@@ -39,8 +41,8 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
     abort.current = new AbortController();
     const key = uid();
     try {
-      const references = (await Promise.all(refUrls.slice(0, 4).map(smallJpeg))).filter((x): x is string => !!x);
-      const r = await drawWithCode({ prompt, aspect, style: styleText, references, model: claude.id, signal: abort.current.signal, onStep: setStep });
+      const references = place ? [] : (await Promise.all(refUrls.slice(0, 4).map(smallJpeg))).filter((x): x is string => !!x);
+      const r = await drawWithCode({ prompt, aspect, style: styleText, references, photos: place ? refUrls.slice(0, 4) : [], model: claude.id, signal: abort.current.signal, onStep: setStep });
       setStep({ text: "أحفظ الصورة في أعمالك…", preview: step?.preview });
       const saved = await savePicture<{ job: J }>({ idempotencyKey: key, png: r.png, prompt, aspect, sectionId, styleId, model: claude.id, rounds: r.rounds, scores: r.scores });
       onSaved(saved.job);
@@ -79,6 +81,13 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
           <p className="text-jw-muted">انحفظت في «أعمالي».</p>
         </div>
       )}
+      <label className="flex items-start gap-2 text-xs">
+        <input type="checkbox" className="mt-0.5" checked={place} disabled={busy} onChange={(e) => setPlace(e.target.checked)} />
+        <span>
+          📷 حط الصور المرفقة داخل التصميم كما هي (صور أشخاص مثل الخطيب أو الرادود، أو شعار)
+          <span className="block text-jw-faint">{refUrls.length ? `الوجه ينحط بالضبط بدون إعادة رسم (${Math.min(refUrls.length, 4)} صورة).` : "أرفق الصور من خانة «المراجع» فوق، حتى ٤ صور."}</span>
+        </span>
+      </label>
       {error && <p className="text-xs text-jw-danger" role="alert">{error}</p>}
       <div className="flex gap-2">
         <button type="button" className="jw-btn flex-1" disabled={busy || !!disabledReason} onClick={() => void start()} title={disabledReason ?? undefined}>

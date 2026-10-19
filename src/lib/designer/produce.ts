@@ -104,15 +104,15 @@ export async function retry(userId: string, chat: Chat): Promise<void> {
   if (at < 0 || !d) throw new UserError("ما فيه تصميم نعيد رسمه.", 409);
   const prompt = await lastPrompt(chat, at);
   if (!prompt) throw new UserError("ما لقينا توجيه الرسم لإعادته.", 409);
-  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, textMode: prompt.textMode, artwork: prompt.artwork, refs: prompt.refs, layers: prompt.layers, keep: null, ...(prompt.maker === "code" ? { maker: "code" as const } : {}) };
+  const pending: PendingDesign = { id: d.id, at, kind: prompt.kind, aspect: d.aspect, textMode: prompt.textMode, artwork: prompt.artwork, refs: prompt.refs, layers: prompt.layers, keep: null, ...(prompt.maker === "code" ? { maker: "code" as const } : {}), ...(prompt.place?.length ? { place: prompt.place } : {}) };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design: { ...d, state: "drawing", error: undefined, detail: undefined, flag: undefined } };
   await saveChat(userId, chat.id, { messages, pending });
 }
 
 /** The prompt a design was (or is to be) drawn with: the pending order, else what its artwork's record keeps. */
-async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; refs: string[]; kind: PendingDesign["kind"]; textMode: PendingDesign["textMode"]; layers: PendingDesign["layers"]; maker?: PendingDesign["maker"] } | null> {
-  if (chat.pending && chat.pending.at === at && chat.pending.artwork) return { artwork: chat.pending.artwork, refs: chat.pending.refs, kind: chat.pending.kind, textMode: chat.pending.textMode, layers: chat.pending.layers, maker: chat.pending.maker };
+async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; refs: string[]; kind: PendingDesign["kind"]; textMode: PendingDesign["textMode"]; layers: PendingDesign["layers"]; maker?: PendingDesign["maker"]; place?: string[] } | null> {
+  if (chat.pending && chat.pending.at === at && chat.pending.artwork) return { artwork: chat.pending.artwork, refs: chat.pending.refs, kind: chat.pending.kind, textMode: chat.pending.textMode, layers: chat.pending.layers, maker: chat.pending.maker, place: chat.pending.place };
   const d = chat.messages[at].design;
   if (!d?.artwork) return null;
   const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -126,6 +126,7 @@ async function lastPrompt(chat: Chat, at: number): Promise<{ artwork: string; re
     textMode: meta.textMode === "baked" || meta.textMode === "blank" ? meta.textMode : "layers",
     layers: readLayers(meta.textPlan ?? d.layers),
     ...(meta.maker === "code" ? { maker: "code" as const } : {}),
+    ...(Array.isArray(meta.place) && meta.place.length ? { place: meta.place.filter((r): r is string => typeof r === "string") } : {}),
   };
 }
 
@@ -139,8 +140,11 @@ export async function codeBrief(userId: string, chatId: string) {
   if (!p || p.maker !== "code") return null;
   const { list } = await attachmentsOf(userId, p.refs);
   const links = await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id));
-  const urls = [...links.values()];
-  return { prompt: artworkPrompt({ prompt: p.artwork, refs: urls.length, textMode: "baked", layers: p.layers }), aspect: p.aspect, refs: urls.slice(0, 4) };
+  // the photos to put in the design go into the scene as they are; the other pictures are references for the look
+  const place = new Set(p.place ?? []);
+  const photos = [...links].filter(([id]) => place.has(id)).map(([, url]) => url).slice(0, 4);
+  const urls = [...links].filter(([id]) => !place.has(id)).map(([, url]) => url);
+  return { prompt: artworkPrompt({ prompt: p.artwork, refs: urls.length, textMode: "baked", layers: p.layers }), aspect: p.aspect, refs: urls.slice(0, 4), photos };
 }
 
 /** The PNG the page drew from Claude Code's program becomes the pending design's artwork. */
@@ -158,7 +162,7 @@ export async function produceFromCode(userId: string, chatId: string, b: { png?:
   const sharp = (await import("sharp")).default;
   const meta = await sharp(bytes).metadata().catch(() => null);
   if (meta?.format !== "png" || !meta.width || !meta.height) throw new UserError("صورة التصميم مو صالحة.", 400);
-  const file = await addFile({ userId, chatId, bytes, name: `artwork-${p.id}`, role: "artwork", width: meta.width, height: meta.height, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: "baked", textPlan: p.layers, refs: p.refs, maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null } } });
+  const file = await addFile({ userId, chatId, bytes, name: `artwork-${p.id}`, role: "artwork", width: meta.width, height: meta.height, meta: { prompt: p.artwork, aspect: p.aspect, kind: p.kind, textMode: "baked", textPlan: p.layers, refs: p.refs, ...(p.place?.length ? { place: p.place } : {}), maker: "code", claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null } } });
   const design: Design = { ...base, artwork: file.id, width: meta.width, height: meta.height, textMode: "baked", layers: [], state: "ready" };
   const messages = [...chat.messages];
   messages[at] = { ...messages[at], design };

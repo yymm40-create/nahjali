@@ -38,7 +38,7 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "kind", "aspect", "text_mode", "maker", "artwork", "refs", "layers"],
+      required: ["on", "kind", "aspect", "text_mode", "maker", "artwork", "refs", "place", "layers"],
       description: "طلب التصميم، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
@@ -48,6 +48,7 @@ export const ANSWER_SCHEMA = {
         maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم: gpt = GPT Image 2 عبر جواد (الافتراضي للصور الواقعية والأشخاص)؛ code = «Claude Code» يرسمه بالكود (الكتابة الحرفية والأشكال)" },
         artwork: { type: "string", description: "توجيه التصميم بالإنجليزية، أو فارغ لإبقاء الصورة الحالية وتبديل الطبقات فقط" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة المسلَّمة مرجعًا للرسم، أو فارغة" },
+        place: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل التي تُوضع داخل التصميم كما هي (صورة الخطيب أو الرادود أو المولود أو الشعار) — مع Claude Code تنحط الصورة نفسها بلا إعادة رسم للوجه؛ أو فارغة" },
         layers: {
           type: "array",
           items: {
@@ -86,7 +87,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; kind: string; aspect: string; text_mode: string; maker?: string; artwork: string; refs: string[]; layers: unknown[] };
+  produce: { on: boolean; kind: string; aspect: string; text_mode: string; maker?: string; artwork: string; refs: string[]; place?: string[]; layers: unknown[] };
   split: { on: boolean; ref: string };
 }
 
@@ -167,7 +168,9 @@ export async function say(userId: string, chatId: string | null, message: string
     const maker = a.produce.maker === "code" ? "code" : "gpt";
     // «Claude Code» draws the whole design with its writing: always baked
     const textMode = maker === "code" ? "baked" : a.produce.text_mode === "layers" || a.produce.text_mode === "blank" ? a.produce.text_mode : "baked";
-    const refs = (Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((x) => mine.has(x)).slice(0, 6);
+    // the photos to put in the design as they are (Claude Code places them; GPT Image 2 gets them as references too)
+    const place = (Array.isArray(a.produce.place) ? a.produce.place : []).filter((x) => mine.has(x)).slice(0, 4);
+    const refs = [...new Set([...place, ...(Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((x) => mine.has(x))])].slice(0, 6);
     const prevAt = lastDesignAt(history);
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
     const keep = !artwork && prev?.artwork && prev.state === "ready" ? prev.artwork : null;
@@ -180,7 +183,7 @@ export async function say(userId: string, chatId: string | null, message: string
       const visibleLayers = textMode === "layers" ? layers : [];
       const design: Design = { id: randomUUID().slice(0, 8), aspect: keep && prev ? prev.aspect : aspect, ...size, artwork: keep, textMode, layers: visibleLayers, state: keep ? "ready" : "drawing" };
       reply.design = design;
-      if (!keep) pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep: null, ...(maker === "code" ? { maker } : {}) };
+      if (!keep) pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep: null, ...(maker === "code" ? { maker } : {}), ...(place.length ? { place } : {}) };
       else reply.text += "\n\n🧩 أبقيت الصورة ووضعت الطبقات الجديدة في محرر الطبقات.";
     }
   }

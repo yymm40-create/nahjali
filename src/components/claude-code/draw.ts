@@ -32,9 +32,29 @@ async function bitmapTo(bm: ImageBitmap, type: "image/png" | "image/jpeg", maxSi
   return url.split(",")[1];
 }
 
-/** Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. */
-export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content" }): Promise<DrawResult> {
-  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, from: o.from ?? "studio", ...body }, o.signal);
+/** A photo to PLACE in the picture, at full size for the scene (long side up to 2048), or null when it can't be read. */
+async function photoBitmap(url: string): Promise<ImageBitmap | null> {
+  try {
+    const bm = await createImageBitmap(await (await fetch(url)).blob());
+    const k = Math.min(1, 2048 / Math.max(bm.width, bm.height));
+    if (k >= 1) return bm;
+    const out = await createImageBitmap(bm, { resizeWidth: Math.round(bm.width * k), resizeHeight: Math.round(bm.height * k), resizeQuality: "high" });
+    bm.close();
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. `photos` are the person's pictures to PUT IN
+ * the picture as they are (a speaker's photo, a logo): handed to the scene as photo1…photo4 and shown to Claude.
+ */
+export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; photos?: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content" }): Promise<DrawResult> {
+  const loaded = (await Promise.all((o.photos ?? []).slice(0, 4).map(async (url) => ({ bm: await photoBitmap(url), small: await smallJpeg(url) })))).filter((p): p is { bm: ImageBitmap; small: string } => !!p.bm && !!p.small);
+  const assets = loaded.map((p, i) => ({ id: `photo${i + 1}`, bitmap: p.bm }));
+  const photos = loaded.map((p) => p.small);
+  const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...body }, o.signal);
   let coins = 0;
   o.onStep({ text: "🧑‍💻 Claude Code يكتب برنامج الصورة…" });
   type Wrote = { code: string; problems: string[]; fonts: { head: string; body: string }; size: [number, number]; notes: string; coins: number };
@@ -54,7 +74,7 @@ export async function drawWithCode(o: { prompt: string; aspect: string; style: s
         try {
           if (problems.length) throw new SceneError(problems.join("; "), "check");
           o.onStep({ text: `أرسم الصورة من البرنامج${round > 1 ? ` (جولة ${round})` : ""}…` });
-          await host.load(code, { w: W, h: H, fonts: [sceneFont("head", fonts.head), sceneFont("body", fonts.body)].filter((f): f is NonNullable<typeof f> => !!f) });
+          await host.load(code, { w: W, h: H, assets, fonts: [sceneFont("head", fonts.head), sceneFont("body", fonts.body)].filter((f): f is NonNullable<typeof f> => !!f) });
           bm = await host.frame(0);
           break;
         } catch (e) {
@@ -80,6 +100,7 @@ export async function drawWithCode(o: { prompt: string; aspect: string; style: s
     return { ...best!, coins };
   } finally {
     host.destroy();
+    for (const a of assets) a.bitmap.close();
   }
 }
 
