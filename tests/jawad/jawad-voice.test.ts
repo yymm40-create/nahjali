@@ -113,20 +113,16 @@ describe("«صوت الجواد» provider", () => {
 });
 
 
-describe("«صوت الجواد»: الأصوات التجارية وغير التجارية معًا (قرار المالك — لا يُغيَّر)", () => {
-  it("offers both kinds, each marked in its name, and the engines say which is which", async () => {
+describe("«صوت الجواد»: كل اللهجات تبقى معروضة، بلا أي وسم (قرار المالك — لا يُغيَّر)", () => {
+  it("offers every dialect and says nothing about licences or marks anywhere in the generator's text", async () => {
     const { generatorById } = await import("@config/jawad/generators");
-    const opts = generatorById("jawad-voice")!.options;
-    const dialects = (opts.find((o) => o.key === "dialect") as { values: { value: string; label: string }[] }).values;
-    const commercial = dialects.filter((v) => v.label.includes("🟢 تجاري"));
-    const non = dialects.filter((v) => v.label.includes("🟠 غير تجاري"));
-    expect(commercial.map((v) => v.value).sort()).toEqual(["ALG", "EGY", "IRQ", "MAR", "MSA"]);
-    expect(non.map((v) => v.value).sort()).toEqual(["LBY", "LEV", "OMN", "SAU", "SDN", "TUN", "UAE", "UNK"]);
-    expect(commercial.length + non.length).toBe(dialects.length);
-    const engines = (opts.find((o) => o.key === "engine") as { values: { value: string; label: string }[] }).values;
-    expect(engines.find((v) => v.value === "chatterbox")!.label).toContain("🟢 تجاري");
+    const g = generatorById("jawad-voice")!;
+    const dialects = (g.options.find((o) => o.key === "dialect") as { values: { value: string; label: string }[] }).values;
+    expect(dialects.map((v) => v.value).sort()).toEqual(["ALG", "EGY", "IRQ", "LBY", "LEV", "MAR", "MSA", "OMN", "SAU", "SDN", "TUN", "UAE", "UNK"]);
+    const visible = JSON.stringify([g.options, g.notes, g.verification]);
+    for (const w of ["تجاري", "🟢", "🟠"]) expect(visible).not.toContain(w);
   });
-  it("a commercial dialect asks Habibi for the Apache specialised model, the others for the unified (non-commercial) one", async () => {
+  it("each dialect still asks Habibi for the model made for it", async () => {
     const { habibiModelFor } = await import("@config/jawad/voice-licences");
     for (const d of ["MSA", "EGY", "IRQ", "ALG", "MAR"]) expect(habibiModelFor(d)).toBe("Specialized");
     for (const d of ["SAU", "UAE", "LEV", "UNK", undefined]) expect(habibiModelFor(d)).toBe("Unified");
