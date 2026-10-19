@@ -15,6 +15,7 @@ import type {
 } from "@config/jawad/types";
 import { findMentions, looksLikeRef, sameName } from "./mentions";
 import { coinsOf, priceKindOf, wasOf } from "@config/jawad/generators";
+import { costOfLines } from "@config/coins";
 
 export interface EvalInput {
   settings: Settings;
@@ -24,6 +25,8 @@ export interface EvalInput {
   refs: RefMeta[];
   /** Server: a sent value the generator does not support is refused (the studio instead falls back to the default). */
   strict?: boolean;
+  /** A code's «بسعر الأداة»: the price is the tool's own cost from the price table, no profit, nothing struck through. */
+  atCost?: boolean;
 }
 
 export interface Evaluation {
@@ -198,7 +201,7 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
   // the profit follows what is made: a picture 60٪, a video 40٪, sound the general margin (config/coins.ts)
   const kind = priceKindOf(def.output);
   const centi = quoted.ok ? quoted.lines.reduce((sum, l) => sum + l.centi, 0) : 0;
-  const price: PriceResult = quoted.ok ? { ...quoted, coins: coinsOf(centi, kind), was: wasOf(centi, kind) } : quoted;
+  const price: PriceResult = quoted.ok ? (input.atCost && centi > 0 ? { ...quoted, coins: costOfLines(quoted.lines), was: undefined } : { ...quoted, coins: coinsOf(centi, kind), was: wasOf(centi, kind) }) : quoted;
   if (!price.ok) issues.push({ field: "price", message: price.reason });
 
   return {

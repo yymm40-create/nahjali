@@ -7,6 +7,7 @@ import Link from "next/link";
 import { LIBRARY_ADDON, SMART_COIN } from "@config/coins";
 import { bonusPct } from "@config/credits";
 import { libraryAccess } from "@/lib/jawad/server/library-access";
+import { perksOf } from "@/lib/access";
 import Riyal from "@/components/Riyal";
 
 export const metadata = { title: "النقود الذكية" };
@@ -46,11 +47,12 @@ function Ring({ pct, tone, children }: { pct: number; tone: string; children: Re
 /** The user's «النقود الذكية» inside JAWAD AI: a ring of what is left from the last top-up, the history and every package. */
 export default async function JawadCoins() {
   const { user, owner } = await requireJawadUser("/jawad-ai/coins");
-  const [balance, credit, { data: ledger }, library] = await Promise.all([
+  const [balance, credit, { data: ledger }, library, perks] = await Promise.all([
     coinBalance(user.id),
     loadCreditSettings(),
     createAdminClient().from("smart_coin_ledger").select("id,delta,reason,label,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
     libraryAccess(user.id, owner),
+    perksOf(user.email),
   ]);
   const packs = credit.packs;
   const left = balance ?? 0;
@@ -80,6 +82,15 @@ export default async function JawadCoins() {
           <p className="text-xs text-jw-faint">كل توليد يبين سعره على زر «توليد» قبل ما تضغط، والتوليد الفاشل يرجع رصيده.</p>
         </div>
       </section>
+
+      {perks.atCost && !owner && (
+        <section className="flex items-start gap-3 rounded-2xl border border-orange-400/50 bg-orange-500/10 p-4" aria-label="نقودك البرتقالية">
+          <SmartCoin size={28} />
+          <p className="text-sm">
+            <b className="text-orange-600">نقودك برتقالية.</b> دخلت بكود خاص، فكل شي تشتريه في الموقع بسعر الأداة نفسها بدون أي ربح، وكلاود يحسب مدخلاته ومخرجاته بسعر استخدامه الفعلي. اللون البرتقالي ما يظهر إلا لمن دخل بكود مثل كودك.
+          </p>
+        </section>
+      )}
 
       <Link href="/jawad-ai/library" className="jw-panel flex flex-wrap items-center justify-between gap-3 p-5 hover:border-jw-accent/50">
         <span>

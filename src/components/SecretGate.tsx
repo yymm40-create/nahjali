@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Coined from "@/components/Coined";
+import { forgetPerks } from "@/components/usePerks";
 
 const ASKED = "secret-asked";
 const PENDING = "secret-pending";
@@ -86,6 +87,8 @@ export default function SecretGate() {
       if (!r.ok) throw new Error(j.error ?? "تعذّر التحقق.");
       write(ASKED, "1");
       write(PENDING, null);
+      // the code may have turned the coin orange: the pages ask again
+      forgetPerks();
       if (Array.isArray(j.welcome) && j.welcome.length > 1) {
         setWelcome(j.welcome as string[]);
         setOpen(true);
