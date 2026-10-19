@@ -12,6 +12,7 @@ import { spokenWords } from "./captions-make";
 import { faceTrack } from "./face";
 import { framesOf } from "./media";
 import type { EditorAsset } from "./types";
+import { postJson } from "@/lib/fetch";
 
 /** The clip the piece is built on: which file, which part of it, how fast. */
 export interface FootageSource {
@@ -45,7 +46,7 @@ export class FootageReader {
   private constructor(private s: FootageSource) {}
 
   /** Opens the file; the frames come out no bigger than `maxSide` (the piece's own long side is enough). */
-  static async open(s: FootageSource, maxSide: number): Promise<FootageReader> {
+  static async open(s: FootageSource, maxSide: number, alpha = false): Promise<FootageReader> {
     const r = new FootageReader(s);
     r.input = new Input({ source: new UrlSource(s.url), formats: ALL_FORMATS });
     const track = await r.input.getPrimaryVideoTrack();
@@ -55,7 +56,8 @@ export class FootageReader {
     r.w = Math.max(2, Math.round(track.displayWidth * k));
     r.h = Math.max(2, Math.round(track.displayHeight * k));
     // four canvases in turn: the frame shown, the next one, and the one being decoded never share one
-    r.sink = new CanvasSink(track, { width: r.w, height: r.h, fit: "fill", poolSize: 4 });
+    // alpha: the person cut out («قص الشخص», VP9 with an alpha channel) keeps its empty places empty
+    r.sink = new CanvasSink(track, { width: r.w, height: r.h, fit: "fill", poolSize: 4, alpha });
     return r;
   }
 
@@ -146,4 +148,21 @@ export async function footageSound(s: FootageSource): Promise<Blob | null> {
 /** A few frames of the video for حيدرة's eyes (JPEG, base64), when what was learnt about it is already kept. */
 export async function footageFrames(s: FootageSource): Promise<string[]> {
   return (await framesOf(s.url, "video", s.in, s.out, 4, 480).catch(() => [])).map((f) => f.data);
+}
+
+/**
+ * «قص الشخص»: the person cut out of the clip's whole file (made once on the server and kept with it), as a link to a
+ * WebM with alpha; asked again every few seconds while it is being made. `onStep` hears how long it has been.
+ */
+export async function footageMatte(projectId: string, assetId: string, onStep: (t: string) => void, signal?: AbortSignal): Promise<string> {
+  const started = Date.now();
+  for (;;) {
+    if (signal?.aborted) throw new DOMException("cancelled", "AbortError");
+    const r = await postJson<{ url?: string; pending?: boolean; error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "lab_matte", assetId }, signal);
+    if (r.error) throw new Error(r.error);
+    if (r.url) return r.url;
+    if (Date.now() - started > 20 * 60_000) throw new Error("قص الشخص أخذ أكثر من ٢٠ دقيقة؛ جرّب مرة ثانية بعد شوي.");
+    onStep(`✂️ أقص الشخص من فيديوك بجودة عالية… ${Math.round((Date.now() - started) / 1000)} ث`);
+    await new Promise((ok) => setTimeout(ok, 6000));
+  }
 }

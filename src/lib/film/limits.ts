@@ -18,6 +18,7 @@ export const LIMITS = {
   editor_price_music: { label: "سعر دقيقة موسيقى في حيدرة كت (هللة)", hint: "تكلفة بالهللة، ElevenLabs Music؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_sfx: { label: "سعر المؤثر الصوتي في حيدرة كت (هللة)", hint: "تكلفة بالهللة، ElevenLabs؛ مؤثر دخول وخروج نص الهوك؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
   editor_price_upscale: { label: "سعر دقيقة رفع الدقة في حيدرة كت (هللة)", hint: "تكلفة بالهللة، Topaz عبر fal: ‎$0.08 لكل ثانية بدقة 4K و‎$0.02 بدقة 1080p؛ ٠ = متاح للمالك وحده (ما ينفتح لغيره بدون سعر)", default: 0, perUser: false },
+  editor_price_matte: { label: "سعر دقيقة قص الشخص في مختبر الموشن (هللة)", hint: "تكلفة بالهللة، VEED عبر fal: ‎$0.012 لكل 30 إطار (≈‎$0.72 للدقيقة بـ30 إطار)، بحواف محسّنة؛ ٠ = متاح للمالك وحده", default: 270, perUser: false },
   editor_price_stems: { label: "سعر دقيقة فصل الأصوات في حيدرة كت (هللة)", hint: "تكلفة بالهللة، كلام وموسيقى ومؤثرات؛ بس إذا النقود مطلوبة؛ ٠ = مجاني", default: 0, perUser: false },
 } as const;
 export type LimitKey = keyof typeof LIMITS;

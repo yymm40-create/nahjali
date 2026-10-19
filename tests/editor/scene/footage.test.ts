@@ -192,3 +192,24 @@ describe("the owner's motion grammar in the kit", () => {
     expect(FOOTAGE_SKILL).not.toContain("labels in the corners");
   });
 });
+
+describe("«✂️ الكلام ورا الراس» — the person alone over the words", () => {
+  it("draws only the cut-out person with the plain draw's crop (scaled to its own size), and nothing before it arrives", () => {
+    const K = kit();
+    const F = K.useFootage({ w: 1280, h: 720, duration: 5, person: true, face: [{ t: 0, x: 0.5, y: 0.3, w: 0.1, h: 0.2 }] })! as Footage & { hasPerson: boolean; personFrame: { width: number; height: number } | null };
+    expect(F.hasPerson).toBe(true);
+    const { ctx, drawn } = recorder();
+    F.frame = { width: 1280, height: 720 };
+    F.draw(ctx, 0, 0, 1080, 1920, { person: true });
+    expect(drawn).toHaveLength(0);
+    F.personFrame = { width: 640, height: 360 };
+    F.draw(ctx, 0, 0, 1080, 1920);
+    F.draw(ctx, 0, 0, 1080, 1920, { person: true });
+    const [plain, person] = drawn;
+    expect(person.slice(0, 4).map((v) => v * 2)).toEqual(plain.slice(0, 4));
+    expect(person.slice(4)).toEqual(plain.slice(4));
+    expect(SCENE_RUNTIME_JS).toContain("K.footage.personFrame = m.person");
+    expect(footageText(readFootage({ seconds: 5, person: true })!)).toContain("THE PERSON IS CUT OUT TOO");
+    expect(footageText(readFootage({ seconds: 5 })!)).not.toContain("THE PERSON IS CUT OUT TOO");
+  });
+});

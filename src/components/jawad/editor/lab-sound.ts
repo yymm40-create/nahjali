@@ -1,9 +1,10 @@
 // «مختبر الموشن» — the piece's SOUND, in the browser: the soundtrack the scene wrote in code (sound(K, S)), the
 // library's sounds at the scene's cues, the person's own recorded voice (cleaned by Claude Code), and music when asked,
-// mixed into one stereo track (the music ducked under the voice, the level kept under 0 dBFS) — heard in the preview
+// mixed into one stereo track (the music ducked under the voice, mastered to −14 LUFS with the true peak under −1.5 dBTP) — heard in the preview
 // with the picture and muxed INTO the exported video, so the film comes out with its sound.
 
 import { frameLevels } from "@/lib/claude-code/voice-measure";
+import { master } from "@/lib/editor/loudness";
 
 export const MIX_RATE = 48000;
 
@@ -73,18 +74,8 @@ export async function mixSoundtrack(o: MixIn): Promise<AudioBuffer> {
     }
   }
   const out = await ctx.startRendering();
-  let peak = 0;
-  for (let c = 0; c < out.numberOfChannels; c++) {
-    const d = out.getChannelData(c);
-    for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
-  }
-  if (peak > 0.95) {
-    const k = 0.95 / peak;
-    for (let c = 0; c < out.numberOfChannels; c++) {
-      const d = out.getChannelData(c);
-      for (let i = 0; i < d.length; i++) d[i] *= k;
-    }
-  }
+  // mastered like a reel: −14 LUFS, true peak under −1.5 dBTP (the channels are changed in place)
+  master(Array.from({ length: out.numberOfChannels }, (_, c) => out.getChannelData(c)), out.sampleRate);
   return out;
 }
 

@@ -72,6 +72,8 @@ export class SceneHost {
   fps = 30;
   /** the person's video, when the piece is built on it: its frame at t (decoded here, handed to the page with each frame) */
   video: ((t: number, scale: number) => Promise<ImageBitmap | null>) | null = null;
+  /** «قص الشخص»: the person alone (alpha) at t, handed in with the frame too */
+  person: ((t: number, scale: number) => Promise<ImageBitmap | null>) | null = null;
 
   constructor() {
     const el = document.createElement("iframe");
@@ -167,13 +169,14 @@ export class SceneHost {
     const id = ++this.seq;
     // the person's video at this moment goes in with the request (transferred: the page closes the one before)
     const video = this.video ? await this.video(t, o.scale ?? 1).catch(() => null) : null;
+    const person = this.person ? await this.person(t, o.scale ?? 1).catch(() => null) : null;
     return new Promise<ImageBitmap>((ok, no) => {
       const timer = setTimeout(() => {
         this.waits.delete(id);
         no(new SceneError(`الفريم عند ${t.toFixed(2)} ث أخذ أكثر من ٢٠ ثانية (المشهد ثقيل جدًا).`, "frame", t));
       }, 20_000);
       this.waits.set(id, { ok, no, timer });
-      this.post({ type: "frame", id, t, scale: o.scale ?? 1, sub: o.sub ?? 1, shutter: o.shutter ?? 0, fps: this.fps, video }, video ? [video] : []);
+      this.post({ type: "frame", id, t, scale: o.scale ?? 1, sub: o.sub ?? 1, shutter: o.shutter ?? 0, fps: this.fps, video, person }, [video, person].filter((x): x is ImageBitmap => Boolean(x)));
     });
   }
 

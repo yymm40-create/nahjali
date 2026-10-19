@@ -1,4 +1,5 @@
 import { checkUpscale, startUpscale } from "@/lib/editor/upscale";
+import { labMatte } from "@/lib/editor/matte";
 import { NextResponse } from "next/server";
 import { handOff, loadChat } from "@/lib/editor/chat";
 import { claudeCharged } from "@/lib/editor/pricing";
@@ -64,7 +65,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -153,6 +154,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "key_check":
       return NextResponse.json(await keyCheck(p, who, b));
     // «🎬 مختبر الموشن»: حيدرة plans, writes and reviews a motion piece made in code (the browser renders it)
+    case "lab_matte":
+      return NextResponse.json(await labMatte(p, who, b), noStore);
     case "lab_plan":
       return b.stream ? labResponse(() => labPlan(p, who, b)) : NextResponse.json(await labPlan(p, who, b));
     case "lab_write":
