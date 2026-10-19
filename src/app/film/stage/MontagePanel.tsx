@@ -74,7 +74,6 @@ export default function MontagePanel({ filmId, filmTitle, takes, editExists, sce
           <p className="text-xs font-bold text-muted">لقطات بلا فيديو بعد: {takes.filter((t) => !t.url).map((t) => (t.removed ? `${t.genId} (انحذف بعد ٧ أيام)` : t.genId)).join("، ")}</p>
         )}
         <OpenEdit filmId={filmId} exists={editExists} disabled={!playable.length} filmTitle={filmTitle} cut={takes.map((t) => ({ genId: t.genId, name: t.name, videoId: t.videoId, note: t.note }))} />
-        <p className="text-xs text-muted">بعد تصدير الفيلم بـ٣ أيام تنحذف ملفات المونتاج، والفيديوهات اللي في المونتاج ما تنحذف قبلها.</p>
       </section>
 
       <section className="card space-y-3 p-4">

@@ -16,7 +16,6 @@ import { allTracks, emptyTimeline, isProjectKind, PROJECT_KINDS, readTimeline, t
 import { storage } from "@/lib/storage";
 export const EDITOR_BUCKET = "editor";
 /** Media of a project is deleted this long after its export (the person downloads the video first). */
-export const PURGE_AFTER_MS = 3 * 86_400_000;
 const LINK_SECONDS = 6 * 3600;
 const MAX_PROJECTS = 200;
 const MAX_ASSETS = 500;
@@ -108,7 +107,7 @@ const summary = (p: EditorProject): ProjectSummary => ({
   kind: p.kind,
   updatedAt: p.updated_at,
   exportedAt: p.exported_at,
-  purgeAt: p.purge_at,
+  purgeAt: null, // (no project is deleted after an export any more)
   purged: !!p.purged_at,
   filmProjectId: p.film_project_id,
   clips: (p.timeline?.tracks ?? []).reduce((n, t) => n + (t.clips?.length ?? 0), 0),
@@ -282,7 +281,7 @@ export async function history(projectId: string) {
 // ---------- media ----------
 
 export function stillOpen(p: EditorProject) {
-  if (p.purged_at) throw new UserError("انحذفت ملفات هذا المشروع بعد ٣ أيام من تصديره. ابدأ مشروعًا جديدًا.", 410);
+  if (p.purged_at) throw new UserError("انحذفت ملفات هذا المشروع. ابدأ مشروعًا جديدًا.", 410);
 }
 
 /**
@@ -634,15 +633,15 @@ export async function signExportUpload(p: EditorProject, b: { bytes?: unknown } 
   return { signedUrl: signed.data.signedUrl };
 }
 
-/** The export finished (downloaded in the browser): from now the project's files are deleted after 3 days. */
+/** The export finished (downloaded in the browser). Nothing is deleted any more: a project's files stay until the person deletes it. */
 export async function markExported(p: EditorProject, b: { saved?: unknown }) {
   stillOpen(p);
   const now = Date.now();
   const path = `${p.user_id}/${p.id}/export.mp4`;
   const saved = b.saved === true && (await storedSize(EDITOR_BUCKET, path)) != null;
-  const patch = { exported_at: new Date(now).toISOString(), purge_at: new Date(now + PURGE_AFTER_MS).toISOString(), export_path: saved ? path : null };
+  const patch = { exported_at: new Date(now).toISOString(), export_path: saved ? path : null };
   await db().from("editor_projects").update(patch).eq("id", p.id);
-  return { purgeAt: patch.purge_at, exportUrl: saved ? ((await storage.from(EDITOR_BUCKET).createSignedUrl(path, LINK_SECONDS, { download: `${p.title || "montage"}.mp4` })).data?.signedUrl ?? null) : null };
+  return { purgeAt: null as string | null, exportUrl: saved ? ((await storage.from(EDITOR_BUCKET).createSignedUrl(path, LINK_SECONDS, { download: `${p.title || "montage"}.mp4` })).data?.signedUrl ?? null) : null };
 }
 
 export async function exportLink(p: EditorProject) {
@@ -665,18 +664,10 @@ async function removeFiles(p: EditorProject) {
 }
 
 /**
- * The cron's part: projects 3 days after export lose their files (uploads and the exported copy); the timeline and
- * the record stay so the page can say what happened. Uploads never confirmed within a day are dropped too.
+ * The cron's part: uploads never confirmed within a week are dropped. Projects are NOT deleted after an export any more
+ * (only ones already purged earlier stay read-only).
  */
 export async function sweepEditor() {
-  const now = new Date().toISOString();
-  const { data, error } = await db().from("editor_projects").select("*").lt("purge_at", now).is("purged_at", null).limit(50);
-  if (error) return { purged: 0, stale: 0 };
-  for (const p of (data ?? []) as EditorProject[]) {
-    await removeFiles(p);
-    await db().from("editor_assets").update({ status: "missing" }).eq("project_id", p.id);
-    await db().from("editor_projects").update({ purged_at: now, export_path: null }).eq("id", p.id);
-  }
   // A very large file can take more than a day to send, so unfinished uploads are given a week (as R2 keeps their parts)
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const { data: stale } = await db().from("editor_assets").select("id,bucket,path").eq("status", "pending").lt("created_at", weekAgo).limit(200);
@@ -685,7 +676,7 @@ export async function sweepEditor() {
     await storage.from(EDITOR_BUCKET).remove(list.filter((r) => r.bucket === EDITOR_BUCKET).map((r) => r.path));
     await db().from("editor_assets").delete().in("id", list.map((r) => r.id));
   }
-  return { purged: (data ?? []).length, stale: list.length };
+  return { purged: 0, stale: list.length };
 }
 
 /** Film maker videos an unexported (or not yet deleted) edit still uses: the film's 7-day clean-up skips them. */

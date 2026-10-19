@@ -46,9 +46,7 @@ const UPSCALE_EXPORT_MAX_MS = 5 * 60_000;
 
 type Phase = { k: "idle" } | { k: "running"; p: number } | { k: "done"; r: ExportResult; saved: boolean | null; purgeAt: string | null; local?: boolean; file: string } | { k: "error"; m: string };
 
-const when = (iso: string) => new Date(iso).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
-
-/** «صدّر»: 720p or 1080p, made in this browser; then the file downloads and the 3-day countdown starts. */
+/** «صدّر»: 720p or 1080p, made in this browser; then the file downloads. */
 export default function ExportPanel({
   open,
   onClose,
@@ -76,7 +74,7 @@ export default function ExportPanel({
   range: { from: number; to: number } | null;
   onRange: (r: { from: number; to: number } | null) => void;
   player: Player | null;
-  onExported: (purgeAt: string) => void;
+  onExported: (purgeAt: string | null) => void;
   /** «رفع دقة الفيديو كامل»: the finished file goes up and is upscaled whole; the page saves the result when it is ready (none: not offered) */
   onUpscaleExport?: (file: File, target: "4k" | "1080p", name: string) => void;
 }) {
@@ -203,13 +201,13 @@ export default function ExportPanel({
       download(r.blob, name);
       // «رفع دقة الفيديو كامل»: the same file goes up and is upscaled whole; the 4K file downloads by itself when it is ready
       if (upOn && upTarget && onUpscaleExport) onUpscaleExport(new File([r.blob], name, { type: "video/mp4" }), upTarget, `${stem}-${upTarget === "4k" ? "4K" : "1080p"}.mp4`);
-      // only the whole video starts the 3-day countdown and keeps a copy; a part, a muted picture or the sound alone is just saved
+      // only the whole video keeps a copy with the project; a part, a muted picture or the sound alone is just saved
       if (what !== "video" || use) {
         setPhase({ k: "done", r, saved: false, purgeAt: null, local: true, file: name });
         return;
       }
       setPhase({ k: "done", r, saved: null, purgeAt: null, file: name });
-      // a copy with the project (deleted with it after 3 days); if it can't be stored → just not kept
+      // a copy with the project; if it can't be stored → just not kept
       let saved = false;
       // (the desktop program keeps everything on the computer: no copy goes up)
       if (!desktop()) {
@@ -227,7 +225,7 @@ export default function ExportPanel({
           saved = false;
         }
       }
-      const m = await postJson<{ purgeAt: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "exported", saved });
+      const m = await postJson<{ purgeAt: string | null }>(`/api/jawad/editor/projects/${projectId}`, { action: "exported", saved });
       setPhase({ k: "done", r, saved, purgeAt: m.purgeAt, file: name });
       onExported(m.purgeAt);
     } catch (err) {
@@ -477,16 +475,6 @@ export default function ExportPanel({
             <button type="button" className="jw-btn w-full" onClick={() => download(phase.r.blob, phase.file)}>
               <Icon name="download" size={16} /> نزّله مرة ثانية
             </button>
-            {phase.local ? null : phase.purgeAt ? (
-              <p className="rounded-lg border border-jw-warn/40 bg-jw-warn/10 p-3 text-xs leading-6 text-jw-warn">
-                <Icon name="clock" size={13} className="inline" /> مقاطع هذا المشروع وملفاته تنحذف <b>{when(phase.purgeAt)}</b> (بعد ٣ أيام من التصدير). تأكد إن الفيديو محفوظ عندك.
-                {phase.saved ? " حفظنا نسخة منه مع المشروع لين ذاك الوقت." : " ما قدرنا نحفظ نسخة منه عندنا (حجمه أكبر من المسموح حاليًا)، فاحتفظ بالملف اللي نزل."}
-              </p>
-            ) : (
-              <p className="text-xs text-jw-faint">
-                <span className="jw-spinner" /> نحفظ نسخة مع المشروع…
-              </p>
-            )}
             <button type="button" className="jw-btn jw-btn-quiet w-full" onClick={() => { setPhase({ k: "idle" }); onClose(); }}>
               رجوع للمونتاج
             </button>

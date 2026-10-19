@@ -416,7 +416,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [tlLook, setTlLook] = useState<"classic" | "pro">("classic");
   // a request for Claude from a button (a ready style): the panel opens and sends it
   const [ask, setAsk] = useState<{ text: string; n: number } | null>(null);
-  const [purgeAt, setPurgeAt] = useState(project.purgeAt);
   const [thumbs, setThumbs] = useState<Record<string, string | null>>({});
   const [waves, setWaves] = useState<Record<string, string | null>>({});
   const [tab, setTab] = useState<InspectorTab>("basic");
@@ -1500,18 +1499,6 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     return () => window.removeEventListener("keydown", fn);
   }, []);
 
-  // the time left before the project's files are deleted (3 days after export)
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    const t0 = setTimeout(() => setNow(Date.now()), 0);
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    return () => {
-      clearTimeout(t0);
-      clearInterval(t);
-    };
-  }, []);
-  const hoursLeft = purgeAt && now ? Math.max(0, Math.ceil((new Date(purgeAt).getTime() - now) / 3_600_000)) : null;
-
   // a heavy project gets a word of warning once
   useEffect(() => {
     const clips = project.timeline.tracks.reduce((n, t) => n + t.clips.length, 0);
@@ -1909,22 +1896,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         </div>
       )}
       {readOnly ? (
-        <p className="bg-jw-danger/15 px-3 py-2 text-xs">انحذفت ملفات هذا المشروع بعد ٣ أيام من تصديره (كما نبّهنا). التايملاين باقٍ للعرض فقط؛ ابدأ مشروعًا جديدًا لمونتاج جديد.</p>
-      ) : (
-        hoursLeft != null && (
-          <p className="flex flex-wrap items-center gap-2 bg-jw-warn/15 px-3 py-1.5 text-xs text-jw-warn">
-            <Icon name="clock" size={13} />
-            <span className="flex-1">
-              ملفات هذا المشروع تنحذف خلال {hoursLeft > 24 ? `${Math.ceil(hoursLeft / 24)} أيام` : `${hoursLeft} ساعة`}. تأكد إن الفيديو محفوظ عندك.
-            </span>
-            {exportUrl && (
-              <a className="underline" href={exportUrl}>
-                نزّل آخر تصدير
-              </a>
-            )}
-          </p>
-        )
-      )}
+        <p className="bg-jw-danger/15 px-3 py-2 text-xs">انحذفت ملفات هذا المشروع. التايملاين باقٍ للعرض فقط؛ ابدأ مشروعًا جديدًا لمونتاج جديد.</p>
+      ) : null}
 
       {colorRoom && !big && <ClipStrip tl={tl} assets={assetMap} thumbs={thumbs} selected={selected} onPick={pick} player={player} />}
 
@@ -2210,7 +2183,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         range={exportRange && exportRange.to > exportRange.from ? exportRange : null}
         onRange={(r) => setRangeIO(r ? { from: r.from, to: r.to } : { from: null, to: null })}
         player={player}
-        onExported={(p) => setPurgeAt(p)}
+        onExported={() => undefined}
         onUpscaleExport={readOnly ? undefined : (file, target, name) => {
           uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `expup:${target}:${name}`, first: true }]);
           flash("نرفع الفيديو المصدَّر ونرسله لرفع الدقة…");
