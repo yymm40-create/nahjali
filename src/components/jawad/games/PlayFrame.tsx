@@ -5,10 +5,12 @@
 // An error the game hits is reported once (the owner of the game sees it and can have it fixed).
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { PLAYS, playSource } from "@/lib/games/plays-shared";
 
 const never = () => () => {};
 
 const LOCAL = (id: string) => `jw-game-save:${id}`;
+const VISITOR = "jw-game-visitor";
 const pack = (d: Record<string, string>) => encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(d)))));
 
 export default function PlayFrame({ id, title, src, makeHref, loginHref = "/jawad-ai/login" }: { id: string; title: string; src: string; makeHref: string; loginHref?: string }) {
@@ -45,6 +47,58 @@ export default function PlayFrame({ id, title, src, makeHref, loginHref = "/jawa
     window.addEventListener("message", onSave);
     return () => window.removeEventListener("message", onSave);
   }, [id, save]);
+  // the game's counter: a sitting while the game is on screen, its seconds sent every few (and when the page is left);
+  // this browser has its own random id, so a player is counted once however many times they open it
+  const ready = !!save;
+  useEffect(() => {
+    if (!ready) return;
+    let visitor = "";
+    try {
+      visitor = localStorage.getItem(VISITOR) ?? "";
+      if (!visitor) localStorage.setItem(VISITOR, (visitor = crypto.randomUUID().replace(/-/g, "")));
+    } catch {
+      visitor = crypto.randomUUID().replace(/-/g, "");
+    }
+    const url = `/api/games/play/${id}/visit`;
+    const source = playSource({ referrer: document.referrer, ua: navigator.userAgent, search: window.location.search, host: window.location.hostname });
+    let session: string | null = null;
+    let last = Date.now();
+    const body = (add: number) => JSON.stringify({ visitor, session, add, source });
+    const send = (add: number) =>
+      void fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: body(add), keepalive: true })
+        .then((r) => r.json())
+        .then((r: { session?: string | null }) => {
+          if (r.session) session = r.session;
+        })
+        .catch(() => null);
+    const since = () => {
+      const add = Math.round((Date.now() - last) / 1000);
+      last = Date.now();
+      return add;
+    };
+    send(0);
+    const t = setInterval(() => {
+      if (document.visibilityState !== "visible") {
+        last = Date.now();
+        return;
+      }
+      const add = since();
+      if (add > 0) send(add);
+    }, PLAYS.tickSeconds * 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        last = Date.now();
+        return;
+      }
+      const add = since();
+      if (add > 0 && session) navigator.sendBeacon?.(url, body(add));
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [id, ready]);
   // full screen where the browser allows it on an element (not iPhone Safari)
   const canFull = useSyncExternalStore(never, () => !!document.documentElement.requestFullscreen, () => false);
 

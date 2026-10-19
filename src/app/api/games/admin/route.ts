@@ -4,6 +4,7 @@ import { claudeTrouble } from "@/lib/film/anthropic";
 import { getVisibility, setVisibility } from "@/lib/games/access";
 import { countGames, listGames, parseGameLines, putGames, removeGames, updateGame } from "@/lib/games/library";
 import { getPersona, resetPersona, savePersona } from "@/lib/games/persona";
+import { allGamesStats } from "@/lib/games/plays";
 import { deleteRun, ESTIMATE_USD, listRuns, runStatus, startRun, stepRun, worst, type Mode } from "@/lib/games/tests";
 import { isAdmin } from "@config/site";
 
@@ -16,11 +17,13 @@ async function owner() {
   return user;
 }
 
-/** The dashboard's view: the persona, the library, the latest test runs. */
+/** The dashboard's view: the persona, the library, the latest test runs (or `?plays=1`: every game's counter). */
 export const GET = handle(async (req: Request) => {
   await owner();
-  const run = new URL(req.url).searchParams.get("run");
+  const q = new URL(req.url).searchParams;
+  const run = q.get("run");
   if (run) return NextResponse.json({ status: await runStatus(run), worst: await worst(run) });
+  if (q.get("plays")) return NextResponse.json(await allGamesStats());
   const [persona, games, count, runs, visibility] = await Promise.all([getPersona(), listGames(), countGames(), listRuns(), getVisibility()]);
   return NextResponse.json({ visibility, persona, games, count, runs, estimate: ESTIMATE_USD });
 });

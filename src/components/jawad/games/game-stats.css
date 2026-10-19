@@ -1,0 +1,21 @@
+/* «📊 الإحصائيات» of a game — on the dark game card and on the light dashboard alike (drawn from the text's colour). */
+.gst { display: grid; gap: 12px; margin-top: 6px; padding: 12px; border-radius: 16px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); background: color-mix(in srgb, currentColor 5%, transparent); }
+.gst-note { margin: 6px 0 0; font-size: 13px; opacity: 0.85; line-height: 1.8; }
+.gst-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.gst-tiles div { display: grid; gap: 2px; padding: 8px; border-radius: 12px; background: color-mix(in srgb, currentColor 7%, transparent); text-align: center; }
+.gst-tiles b { font-size: 20px; font-weight: 800; color: #22d3ee; line-height: 1.2; }
+.gst-tiles span { font-size: 11.5px; opacity: 0.8; }
+.gst-block h4 { margin: 0 0 6px; font-size: 13px; font-weight: 800; }
+.gst-days { display: flex; align-items: flex-end; gap: 4px; height: 90px; direction: ltr; }
+.gst-day { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; }
+.gst-day i { display: block; width: 100%; min-height: 2px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #22d3ee, #a78bfa); }
+.gst-day small { font-size: 9.5px; opacity: 0.75; height: 12px; }
+.gst-axis { display: flex; justify-content: space-between; font-size: 10.5px; opacity: 0.7; direction: ltr; }
+.gst-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.gst-list li { display: grid; grid-template-columns: 90px minmax(0, 1fr) 36px; align-items: center; gap: 8px; font-size: 12.5px; }
+.gst-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gst-list i { height: 8px; border-radius: 99px; background: color-mix(in srgb, currentColor 10%, transparent); overflow: hidden; }
+.gst-list em { display: block; height: 100%; border-radius: 99px; background: #f472b6; }
+.gst-list b { text-align: end; }
+.gst-foot { margin: 0; font-size: 11.5px; opacity: 0.75; line-height: 1.8; }
+@media (max-width: 420px) { .gst-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
