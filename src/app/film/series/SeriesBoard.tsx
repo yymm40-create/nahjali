@@ -92,7 +92,7 @@ function EpisodeBlock({ seriesId, ep, busy, send, canAssign, team }: { seriesId:
             <Link
               href={`${base}/${s.id}`}
               title={`المشهد ${s.number} · ${s.title} · ${s.stageLabel}`}
-              className={`grid h-16 w-16 place-items-center rounded-2xl text-center text-xs font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 ${s.saved ? "bg-gradient-to-b from-[#f6cf6e] to-[#e2a72c] text-[#0b1d47]" : "bg-[#0b1d47] text-white"}`}
+              className={`grid h-16 w-16 place-items-center rounded-2xl text-center text-xs font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 ${s.saved ? "bg-[var(--film-blue)] text-white" : "bg-[var(--film-navy)] text-white"}`}
             >
               <span className="text-xl leading-none" aria-hidden>{s.saved ? "🏆" : s.icon}</span>
               <span>{s.number}</span>
@@ -100,7 +100,7 @@ function EpisodeBlock({ seriesId, ep, busy, send, canAssign, team }: { seriesId:
           </li>
         ))}
         <li className="shrink-0">
-          <button type="button" className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-dashed border-[#1f63f0] text-2xl font-extrabold text-[#1f63f0]" onClick={() => setPrep({})} aria-label="أضف مشهد">
+          <button type="button" className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-dashed border-[var(--film-blue)] text-2xl font-extrabold text-[var(--film-blue)]" onClick={() => setPrep({})} aria-label="أضف مشهد">
             +
           </button>
         </li>
@@ -116,7 +116,7 @@ function EpisodeBlock({ seriesId, ep, busy, send, canAssign, team }: { seriesId:
               <Link href={`${base}/${s.id}`} className="min-w-0 flex-1">
                 <p className="truncate font-extrabold">{s.number}. {s.title}</p>
                 <p className="text-xs font-bold text-muted">{s.saved ? "🏆 المشهد الناجح محفوظ" : `في مرحلة: ${s.stageLabel}`}</p>
-                {nameOf(s.assignedTo) && !canAssign && <p className="text-xs font-extrabold text-[#1f63f0]">👤 <bdi dir="ltr">@{nameOf(s.assignedTo)}</bdi></p>}
+                {nameOf(s.assignedTo) && !canAssign && <p className="text-xs font-extrabold text-[var(--film-blue)]">👤 <bdi dir="ltr">@{nameOf(s.assignedTo)}</bdi></p>}
               </Link>
               {canAssign && team.length > 0 && (
                 <select className="field !h-9 !w-28 !px-2 !py-0 text-xs" value={s.assignedTo ?? ""} aria-label="مين يسويه" disabled={busy} onChange={(e) => send({ action: "assign_scene", sceneId: s.id, userId: e.target.value })}>
@@ -127,7 +127,7 @@ function EpisodeBlock({ seriesId, ep, busy, send, canAssign, team }: { seriesId:
                 </select>
               )}
               {!s.prepared && s.stage === "screenwriter" && (
-                <button type="button" className="rounded-full bg-[#e2a72c]/25 px-2 py-1 text-[11px] font-extrabold" onClick={() => setPrep({ sceneId: s.id, title: s.title })} title="سجاد يفهم المشهد ويحدد شخصياته وبيئاته">
+                <button type="button" className="rounded-full bg-[var(--film-hl)]/25 px-2 py-1 text-[11px] font-extrabold" onClick={() => setPrep({ sceneId: s.id, title: s.title })} title="سجاد يفهم المشهد ويحدد شخصياته وبيئاته">
                   <RobotFace id="sajjad" size={18} /> جهّزه
                 </button>
               )}

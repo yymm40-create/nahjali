@@ -476,7 +476,7 @@ function MapChoices({
                   <button key={k} className={`chip ${c === k ? "bg-gold text-on-gold" : ""}`} onClick={() => setChoices({ ...choices, [m.id]: k })}>{label}</button>
                 ))}
                 {castFor(m, seriesCast) && (
-                  <button className="chip border-2 border-[#1f63f0]" disabled={!!uploading} onClick={() => takeFromSeries([{ sheetId: m.id, castId: castFor(m, seriesCast)!.id }])}>
+                  <button className="chip border-2 border-[var(--film-blue)]" disabled={!!uploading} onClick={() => takeFromSeries([{ sheetId: m.id, castId: castFor(m, seriesCast)!.id }])}>
                     📚 من المسلسل: {castFor(m, seriesCast)!.name}
                   </button>
                 )}

@@ -1,62 +1,63 @@
-/* «الفيلم السينمائي» — a bright studio in the JAWAD logo's colours: deep navy for the words, electric blue for what is
-   chosen and alive, the logo's gold for the main buttons, on white and the palest blue (black only in small touches:
-   the reels' hubs, the clapper's stripes). Film reels turn slowly in the background, a strip of film runs across,
-   a spotlight falls from above; cards rise in smoothly, choices are big cards to swipe between. */
+/* «الفيلم السينمائي» — the short scene, the film and the series, in the site's PAPER studio (the owner, 19 October 2026:
+   «غيّر الألوان بشكل كامل والتصميم وطريقة ظهور الأشياء، والهيكلة العامة خلها»): warm paper with a faint dot grid, white
+   cards with long soft shadows, near-black for the words and the main buttons, ONE orange for what is chosen and alive,
+   a small monospace label for the step you are on; every card rises in on its cue. The old navy / blue / gold names stay
+   as variables so every page follows: navy → ink, blue → the orange, gold → the near-black of the buttons. */
 
 .jw [data-jw-section="film"] {
-  --jw-bg: #f4f7ff;
-  --jw-bg-2: #eaf0ff;
+  --jw-bg: #f6f5f1;
+  --jw-bg-2: #efede8;
   --jw-surface: #ffffff;
-  --jw-surface-2: #eef3ff;
-  --jw-surface-3: #dfe8ff;
-  --jw-line: rgba(15, 42, 110, 0.12);
-  --jw-line-strong: rgba(15, 42, 110, 0.24);
-  --jw-ink: #0b1d47;
-  --jw-muted: #44557f;
-  --jw-faint: #7584ab;
-  --jw-accent: #1f63f0;
+  --jw-surface-2: #f6f5f1;
+  --jw-surface-3: #ebe8e2;
+  --jw-line: #e7e3dc;
+  --jw-line-strong: #d9d4cb;
+  --jw-ink: #121212;
+  --jw-muted: #6d6a64;
+  --jw-faint: #a29e96;
+  --jw-accent: #e8572a;
   --jw-on-accent: #ffffff;
-  --jw-radius: 18px;
-  --film-navy: #0b1d47;
-  --film-blue: #1f63f0;
-  --film-glow: #3b8cff;
-  --film-gold: #e2a72c;
-  --film-gold-2: #f6cf6e;
+  --jw-radius: 22px;
+  --film-navy: #141414;
+  --film-blue: #e8572a;
+  --film-glow: #ff8a5c;
+  --film-gold: #141414;
+  --film-gold-2: #2b2b2b;
+  /* a highlight (what used to be the gold edges): the orange, used thinly */
+  --film-hl: #e8572a;
+  --film-soft: #fdeee7;
+  --film-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   --line: var(--jw-line);
-  /* the site's widgets inside: gold main buttons (the logo's gold), blue for what is approved/chosen */
-  --gold: var(--film-gold);
-  --gold-2: var(--film-gold-2);
-  --on-gold: var(--film-navy);
-  --teal: #1f63f0;
-  --teal-2: #164bc0;
+  /* the site's widgets inside: near-black main buttons, the orange for what is approved/chosen */
+  --gold: #141414;
+  --gold-2: #2b2b2b;
+  --on-gold: #ffffff;
+  --teal: #e8572a;
+  --teal-2: #c2410c;
   color-scheme: light;
   position: relative;
   isolation: isolate;
   min-height: 100dvh;
-  background:
-    radial-gradient(70% 45% at 50% -5%, rgba(59, 140, 255, 0.18), transparent 70%),
-    radial-gradient(40% 30% at 100% 30%, rgba(226, 167, 44, 0.1), transparent 70%),
-    radial-gradient(45% 35% at 0% 80%, rgba(31, 99, 240, 0.08), transparent 70%),
-    var(--jw-bg);
+  background: radial-gradient(circle at 1px 1px, rgba(20, 16, 10, 0.075) 1px, transparent 1.2px) 0 0 / 22px 22px, var(--jw-bg);
   color: var(--jw-ink);
 }
 
-/* ── the cards: white glass with a thin gold edge on top, a soft blue shadow; they rise in ── */
+/* ── the cards: white, a long soft shadow, no coloured edge; they rise in one after the other ── */
 .jw [data-jw-section="film"] .card {
-  background: color-mix(in srgb, #ffffff 88%, transparent);
-  backdrop-filter: blur(8px);
+  background: #ffffff;
   border: 1px solid var(--jw-line);
-  border-top: 2px solid color-mix(in srgb, var(--film-gold) 55%, transparent);
   border-radius: var(--jw-radius);
-  box-shadow: 0 1px 0 #fff inset, 0 14px 34px -18px rgba(15, 42, 110, 0.35);
-  animation: film-rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  box-shadow: 0 1px 2px rgba(20, 16, 10, 0.05), 0 22px 48px -28px rgba(20, 16, 10, 0.28);
+  animation: film-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
 }
 .jw [data-jw-section="film"] a.card:hover,
 .jw [data-jw-section="film"] .film-hover:hover {
   transform: translateY(-3px);
-  box-shadow: 0 1px 0 #fff inset, 0 22px 40px -18px rgba(15, 42, 110, 0.45);
+  box-shadow: 0 2px 4px rgba(20, 16, 10, 0.05), 0 40px 80px -36px rgba(20, 16, 10, 0.4);
 }
+/* the step's title: big and tight */
+.jw [data-jw-section="film"] .film-shell h1 { letter-spacing: -0.02em; }
 .jw [data-jw-section="film"] .space-y-4 > .card:nth-child(2),
 .jw [data-jw-section="film"] .space-y-5 > .card:nth-child(2) { animation-delay: 0.05s; }
 .jw [data-jw-section="film"] .space-y-4 > .card:nth-child(3),
@@ -65,7 +66,7 @@
 .jw [data-jw-section="film"] .space-y-5 > .card:nth-child(n + 4) { animation-delay: 0.15s; }
 
 @keyframes film-rise {
-  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -74,15 +75,19 @@
   transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 .jw [data-jw-section="film"] .btn:active:not(:disabled) { transform: scale(0.97); }
+/* the main button: a near-black pill (the one thing to press); the second: the orange */
 .jw [data-jw-section="film"] .btn-primary {
-  background: linear-gradient(180deg, var(--film-gold-2), var(--film-gold));
-  color: var(--film-navy);
-  box-shadow: 0 8px 22px -10px rgba(226, 167, 44, 0.75), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
-}
-.jw [data-jw-section="film"] .btn-secondary {
-  background: linear-gradient(180deg, #2f74ff, var(--film-blue));
+  background: #141414;
   color: #fff;
-  box-shadow: 0 8px 22px -12px rgba(31, 99, 240, 0.8);
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 16px 30px -14px rgba(20, 16, 10, 0.55);
+}
+.jw [data-jw-section="film"] .btn-primary:hover:not(:disabled) { background: #000; }
+.jw [data-jw-section="film"] .btn-secondary {
+  background: var(--film-blue);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 14px 28px -14px rgba(232, 87, 42, 0.8);
 }
 .jw [data-jw-section="film"] .display {
   color: var(--film-navy);
@@ -91,6 +96,7 @@
 .jw [data-jw-section="film"] .chip {
   background: var(--jw-surface-2);
   color: var(--film-navy);
+  border: 1px solid var(--jw-line);
 }
 
 /* ── big option cards in a swipe row ── */
@@ -122,25 +128,23 @@
   overflow: hidden;
   color: #fff;
   background:
-    radial-gradient(120% 70% at 85% 0%, rgba(59, 140, 255, 0.55), transparent 60%),
-    linear-gradient(160deg, #163a8f, var(--film-navy) 70%);
-  box-shadow: 0 24px 50px -24px rgba(11, 29, 71, 0.75);
+    radial-gradient(110% 60% at 85% 0%, rgba(232, 87, 42, 0.55), transparent 60%),
+    linear-gradient(160deg, #2a2a2a, #121212 70%);
+  box-shadow: 0 30px 60px -30px rgba(20, 16, 10, 0.7);
   transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease;
   animation: film-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-.film-option:hover { transform: translateY(-6px) rotate(-0.4deg); box-shadow: 0 30px 60px -24px rgba(11, 29, 71, 0.85); }
+.film-option:hover { transform: translateY(-6px); box-shadow: 0 40px 70px -30px rgba(20, 16, 10, 0.8); }
 .film-option:active { transform: scale(0.98); }
 .film-option[data-tone="gold"] {
-  color: var(--film-navy);
+  color: #fff;
   background:
-    radial-gradient(110% 70% at 15% 0%, rgba(255, 255, 255, 0.65), transparent 60%),
-    linear-gradient(160deg, var(--film-gold-2), var(--film-gold));
+    radial-gradient(110% 70% at 15% 0%, rgba(255, 255, 255, 0.35), transparent 60%),
+    linear-gradient(160deg, #ff8a5c, #e8572a);
 }
 .film-option[data-tone="light"] {
   color: var(--film-navy);
-  background:
-    radial-gradient(110% 70% at 85% 0%, rgba(59, 140, 255, 0.22), transparent 60%),
-    linear-gradient(160deg, #ffffff, #e6eeff);
+  background: #ffffff;
   border: 1px solid var(--jw-line);
 }
 .film-option[aria-disabled="true"] { filter: grayscale(0.6); opacity: 0.6; }
@@ -177,7 +181,8 @@
 }
 .film-option h3 { font-size: 1.5rem; font-weight: 800; line-height: 1.3; }
 .film-option p { font-size: 0.9rem; opacity: 0.85; line-height: 1.6; }
-.film-option[data-active="true"] { outline: 3px solid var(--film-gold); outline-offset: 3px; }
+.film-option[data-active="true"] { outline: 3px solid var(--film-blue); outline-offset: 3px; }
+.film-option .film-option-step { font-family: var(--film-mono); letter-spacing: 0.08em; }
 
 /* project navigation: a thin scrollable strip, not a row of heavy cards */
 .film-steps .film-swipe {
@@ -195,7 +200,7 @@
   border-radius: 12px;
   background: color-mix(in srgb, var(--jw-surface) 88%, transparent);
   color: var(--jw-muted);
-  box-shadow: 0 8px 20px -18px rgba(11, 29, 71, 0.75);
+  box-shadow: 0 1px 2px rgba(20, 16, 10, 0.05);
   font-size: 0.76rem;
   font-weight: 900;
   white-space: nowrap;
@@ -204,10 +209,10 @@
 .film-step-tab:hover { color: var(--film-navy); border-color: var(--jw-line-strong); }
 .film-step-tab:active { transform: scale(0.96); }
 .film-step-tab[data-active="true"] {
-  background: linear-gradient(180deg, var(--film-gold-2), var(--film-gold));
-  border-color: var(--film-gold);
-  color: var(--film-navy);
-  box-shadow: 0 8px 22px -14px rgba(226, 167, 44, 0.8);
+  background: #141414;
+  border-color: #141414;
+  color: #fff;
+  box-shadow: 0 12px 24px -14px rgba(20, 16, 10, 0.7);
 }
 .film-step-tab[data-done="true"]:not([data-active="true"]) { color: var(--film-blue); }
 .film-step-tab[aria-disabled="true"] { cursor: not-allowed; opacity: 0.48; filter: grayscale(0.5); }
@@ -233,7 +238,7 @@
   color: var(--film-navy);
   font-size: 0.75rem;
   font-weight: 900;
-  box-shadow: 0 8px 20px -16px rgba(11, 29, 71, 0.7);
+  box-shadow: 0 1px 2px rgba(20, 16, 10, 0.05);
   transition: background 0.2s, transform 0.15s;
 }
 .film-back:hover { background: var(--jw-surface-2); }
@@ -251,7 +256,7 @@
   position: absolute;
   width: 260px;
   height: 260px;
-  opacity: 0.13;
+  opacity: 0.05;
   animation: film-spin 60s linear infinite;
 }
 .film-decor .reel.a { inset-block-start: -60px; inset-inline-end: -70px; }
@@ -261,7 +266,7 @@
   inset-inline: -10%;
   inset-block-start: 38%;
   height: 120px;
-  opacity: 0.09;
+  opacity: 0.04;
   transform: rotate(-8deg);
 }
 .film-decor .strip-holes {
@@ -272,7 +277,7 @@
   inset-block-start: 14%;
   inset-inline-start: 6%;
   width: 70px;
-  opacity: 0.12;
+  opacity: 0.06;
   animation: film-float 7s ease-in-out infinite;
 }
 .film-decor .spot {
@@ -281,7 +286,7 @@
   inset-inline-start: 30%;
   width: 40%;
   height: 80%;
-  background: conic-gradient(from 180deg at 50% 0%, transparent 160deg, rgba(59, 140, 255, 0.1) 175deg, rgba(255, 255, 255, 0.25) 180deg, rgba(59, 140, 255, 0.1) 185deg, transparent 200deg);
+  background: conic-gradient(from 180deg at 50% 0%, transparent 160deg, rgba(232, 87, 42, 0.06) 175deg, rgba(255, 255, 255, 0.5) 180deg, rgba(232, 87, 42, 0.06) 185deg, transparent 200deg);
   filter: blur(6px);
   animation: film-sway 12s ease-in-out infinite;
 }
@@ -304,7 +309,7 @@
   place-items: center;
   background: #fff;
   border: 1px solid var(--jw-line);
-  box-shadow: 0 8px 20px -10px rgba(11, 29, 71, 0.5);
+  box-shadow: 0 8px 20px -10px rgba(20, 16, 10, 0.4);
   font-size: 1.1rem;
 }
 
@@ -319,15 +324,12 @@
 
 /* the whole JAWAD page around the film section turns to the film's light studio (not only its column) */
 .jw:has([data-jw-section="film"]) {
-  --jw-bg: #f4f7ff;
-  background:
-    radial-gradient(70% 45% at 50% -5%, rgba(59, 140, 255, 0.16), transparent 70%),
-    radial-gradient(40% 30% at 100% 30%, rgba(226, 167, 44, 0.08), transparent 70%),
-    #f4f7ff;
+  --jw-bg: #f6f5f1;
+  background: radial-gradient(circle at 1px 1px, rgba(20, 16, 10, 0.075) 1px, transparent 1.2px) 0 0 / 22px 22px, #f6f5f1;
 }
 html:has([data-jw-section="film"]),
 html:has([data-jw-section="film"]) body {
-  background: #f4f7ff;
+  background: #f6f5f1;
   color-scheme: light;
 }
 
@@ -373,22 +375,22 @@ html:has([data-jw-section="film"]) body {
   border-radius: 999px;
   color: #fff;
   font-weight: 900;
-  background: linear-gradient(135deg, #163a8f, #0b1d47);
-  border: 2px solid #e2a72c;
-  box-shadow: 0 14px 30px -12px rgba(11, 29, 71, 0.7), 0 0 0 4px rgba(226, 167, 44, 0.18);
+  background: #141414;
+  border: 2px solid #e8572a;
+  box-shadow: 0 14px 30px -12px rgba(20, 16, 10, 0.7), 0 0 0 4px rgba(232, 87, 42, 0.18);
   animation: sajjad-breathe 3.2s ease-in-out infinite;
 }
 .sajjad-fab:hover { transform: translateY(-2px); }
 .sajjad-face { display: inline-block; font-size: 1.35rem; line-height: 1; }
 .sajjad-fab .sajjad-face { animation: sajjad-nod 4s ease-in-out infinite; }
 .sajjad-panel {
-  background: linear-gradient(180deg, #f8faff, #eef3ff);
-  color: #0b1d47;
-  box-shadow: -20px 0 50px -20px rgba(11, 29, 71, 0.45);
+  background: #f6f5f1;
+  color: #121212;
+  box-shadow: -20px 0 50px -20px rgba(20, 16, 10, 0.45);
   animation: sajjad-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 @keyframes sajjad-in { from { transform: translateX(100%); } }
-@keyframes sajjad-breathe { 0%, 100% { box-shadow: 0 14px 30px -12px rgba(11, 29, 71, 0.7), 0 0 0 4px rgba(226, 167, 44, 0.18); } 50% { box-shadow: 0 14px 30px -12px rgba(11, 29, 71, 0.7), 0 0 0 8px rgba(226, 167, 44, 0.1); } }
+@keyframes sajjad-breathe { 0%, 100% { box-shadow: 0 14px 30px -12px rgba(20, 16, 10, 0.7), 0 0 0 4px rgba(232, 87, 42, 0.18); } 50% { box-shadow: 0 14px 30px -12px rgba(20, 16, 10, 0.7), 0 0 0 8px rgba(232, 87, 42, 0.1); } }
 @keyframes sajjad-nod { 0%, 80%, 100% { transform: rotate(0); } 85% { transform: rotate(-10deg); } 92% { transform: rotate(8deg); } }
 @media (prefers-reduced-motion: reduce) {
   .sajjad-fab, .sajjad-fab .sajjad-face, .sajjad-panel { animation: none; }

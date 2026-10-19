@@ -120,7 +120,7 @@ function MemberRow({ m, busy, send }: { m: Member; busy: boolean; send: (b: Reco
             {STAGES.map((st) => {
               const on = stages.includes(st.key);
               return (
-                <button key={st.key} type="button" aria-pressed={on} className={`flex items-center gap-2 rounded-xl border-2 px-2 py-2 text-start text-xs ${on ? "border-[#e2a72c] bg-[#e2a72c]/15" : "border-line opacity-70"}`} onClick={() => setStages(on ? stages.filter((k) => k !== st.key) : [...stages, st.key])}>
+                <button key={st.key} type="button" aria-pressed={on} className={`flex items-center gap-2 rounded-xl border-2 px-2 py-2 text-start text-xs ${on ? "border-[var(--film-hl)] bg-[var(--film-hl)]/15" : "border-line opacity-70"}`} onClick={() => setStages(on ? stages.filter((k) => k !== st.key) : [...stages, st.key])}>
                   <span className="text-lg" aria-hidden>{st.icon}</span>
                   <span className="flex-1">{st.label}</span>
                   <span aria-hidden>{on ? "✅" : "⛔"}</span>

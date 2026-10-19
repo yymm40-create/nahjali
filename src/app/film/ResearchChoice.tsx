@@ -17,7 +17,7 @@ export default function ResearchChoice({ value, onChange, compact }: { value: "y
           <button
             key={o.v}
             type="button"
-            className={`rounded-2xl border-2 p-3 text-start transition ${value === o.v ? "border-[#1f63f0] bg-[#eef3ff]" : "border-black/10 bg-white hover:border-black/30"}`}
+            className={`rounded-2xl border-2 p-3 text-start transition ${value === o.v ? "border-[var(--film-blue)] bg-[var(--film-soft)]" : "border-black/10 bg-white hover:border-black/30"}`}
             aria-pressed={value === o.v}
             onClick={() => onChange(o.v)}
           >

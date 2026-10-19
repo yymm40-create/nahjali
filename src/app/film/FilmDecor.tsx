@@ -13,7 +13,7 @@ export default function FilmDecor() {
       <Reel className="reel a" />
       <Reel className="reel b" />
       <svg className="strip" viewBox="0 0 1200 120" preserveAspectRatio="none">
-        <rect width="1200" height="120" fill="#0b1d47" />
+        <rect width="1200" height="120" fill="#141414" />
         <g className="strip-holes" fill="#ffffff">
           {Array.from({ length: 70 }, (_, i) => (
             <g key={i}>
@@ -23,16 +23,16 @@ export default function FilmDecor() {
           ))}
         </g>
         {Array.from({ length: 8 }, (_, i) => (
-          <rect key={i} x={i * 150 + 12} y="30" width="126" height="60" rx="4" fill={i % 2 ? "#1f63f0" : "#e2a72c"} opacity="0.55" />
+          <rect key={i} x={i * 150 + 12} y="30" width="126" height="60" rx="4" fill={i % 2 ? "#e8572a" : "#ff8a5c"} opacity="0.55" />
         ))}
       </svg>
       <svg className="clap" viewBox="0 0 100 90">
         <g transform="rotate(-12 10 30)">
-          <rect x="6" y="20" width="88" height="16" rx="3" fill="#0b1d47" />
+          <rect x="6" y="20" width="88" height="16" rx="3" fill="#141414" />
           {[0, 1, 2, 3].map((i) => <polygon key={i} points={`${14 + i * 21},20 ${26 + i * 21},20 ${18 + i * 21},36 ${6 + i * 21},36`} fill="#ffffff" />)}
         </g>
-        <rect x="6" y="38" width="88" height="48" rx="4" fill="#0b1d47" />
-        <rect x="14" y="48" width="72" height="4" rx="2" fill="#e2a72c" />
+        <rect x="6" y="38" width="88" height="48" rx="4" fill="#141414" />
+        <rect x="14" y="48" width="72" height="4" rx="2" fill="#ff8a5c" />
         <rect x="14" y="60" width="50" height="4" rx="2" fill="#3b8cff" />
         <rect x="14" y="72" width="60" height="4" rx="2" fill="#ffffff" opacity="0.7" />
       </svg>
@@ -44,12 +44,12 @@ export default function FilmDecor() {
 function Reel({ className }: { className: string }) {
   return (
     <svg className={className} viewBox="0 0 200 200">
-      <circle cx="100" cy="100" r="96" fill="#0b1d47" stroke="#e2a72c" strokeWidth="5" />
+      <circle cx="100" cy="100" r="96" fill="#141414" stroke="#ff8a5c" strokeWidth="5" />
       {[0, 1, 2, 3, 4].map((i) => {
         const a = (i * 72 * Math.PI) / 180;
         return <circle key={i} cx={Math.round((100 + Math.cos(a) * 52) * 100) / 100} cy={Math.round((100 + Math.sin(a) * 52) * 100) / 100} r="25" fill="#f4f7ff" />;
       })}
-      <circle cx="100" cy="100" r="16" fill="#1f63f0" />
+      <circle cx="100" cy="100" r="16" fill="#e8572a" />
       <circle cx="100" cy="100" r="6" fill="#050b1c" />
     </svg>
   );

@@ -10,7 +10,7 @@ export type AlertView = { id: string; sceneId: string; where: string; severity: 
 
 const SEV: Record<AlertView["severity"], { label: string; cls: string }> = {
   high: { label: "مهم", cls: "bg-[#dc2626] text-white" },
-  medium: { label: "فجوة", cls: "bg-[#e2a72c] text-black" },
+  medium: { label: "فجوة", cls: "bg-[var(--film-hl)] text-black" },
   low: { label: "ملاحظة", cls: "bg-black/10" },
 };
 
@@ -102,7 +102,7 @@ export default function ContinuityAlerts({ seriesId, alerts, sceneId, scenes = [
 
   if (!alerts.length && !scenes.length) return null;
   return (
-    <section className="space-y-2 rounded-2xl border-2 border-[#e2a72c]/60 bg-[#fffbeb] p-3" aria-label="رقابة الاستمرارية">
+    <section className="space-y-2 rounded-2xl border-2 border-[var(--film-hl)]/60 bg-[var(--film-soft)] p-3" aria-label="رقابة الاستمرارية">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-black">🧭 رقابة الاستمرارية {alerts.length ? <span className="chip bg-[#dc2626] text-xs text-white">{alerts.length}</span> : <span className="chip text-xs">ما فيه فجوات مفتوحة</span>}</p>
         {canAct && scenes.length > 0 && (
@@ -123,7 +123,7 @@ export default function ContinuityAlerts({ seriesId, alerts, sceneId, scenes = [
 
       {popup.length > 0 && (
         <div className="fixed inset-0 z-[290] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={closePopup} role="dialog" aria-label="تنبيه من سجاد">
-          <div className="max-h-[85dvh] w-full max-w-lg space-y-3 overflow-y-auto rounded-3xl bg-[#fffbeb] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[85dvh] w-full max-w-lg space-y-3 overflow-y-auto rounded-3xl bg-[var(--film-soft)] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <span className="text-3xl" aria-hidden><RobotFace id="sajjad" size={40} /></span>
               <div>

@@ -48,14 +48,14 @@ export default function JourneyUpgrade({ targetType, targetId, initialKind, titl
 
   if (done) return <p className="rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-4 text-sm font-extrabold leading-7 text-emerald-800">{done}</p>;
   if (!open) return (
-    <section className="card space-y-2 border-2 border-[#1f63f0] p-4">
+    <section className="card space-y-2 border-2 border-[var(--film-blue)] p-4">
       <p className="flex items-center gap-2 font-black"><RobotFace id="sajjad" size={24} /> حدّث مشروعك إلى رحلة سجاد الجديدة</p>
       <p className="text-sm font-bold leading-7 text-muted">نحتفظ بكل السيناريوهات والصور والفيديوهات والنسخ الموجودة. سجاد يقرأها، يسألك فقط عن الناقص المؤثر، وبعد تأكيدك يثبت فهمًا موحدًا للمراحل القادمة.</p>
       <button type="button" className="btn btn-primary w-full" onClick={() => setOpen(true)}>ابدأ التحويل الآمن</button>
     </section>
   );
   return (
-    <section className="card space-y-3 border-2 border-[#1f63f0] p-4">
+    <section className="card space-y-3 border-2 border-[var(--film-blue)] p-4">
       <header><p className="font-black">تحويل إلى الرحلة الجديدة</p><p className="text-xs font-bold text-muted">ما راح نحذف أي ملف أو نسخة أو قرار معتمد.</p></header>
       {targetType === "project" && !intake && (
         <div className="grid grid-cols-2 gap-2">
