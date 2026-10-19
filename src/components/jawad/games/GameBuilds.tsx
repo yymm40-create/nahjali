@@ -2,13 +2,14 @@
 
 // «اصنع اللعبة» in the conversation with «قنبر»: the builds of a conversation (driven step by step until they are ready, also
 // after a reload), the sheet that starts one (with or without drawn pictures, and what they cost), and each game's card — its
-// cover, its progress, «▶ العب الحين», its link to copy or send on WhatsApp, and «✏️ عدّل» to change it at the client's word.
+// cover, its progress, «▶ العب الحين», its link to copy or send on WhatsApp, «✏️ عدّل» to change it at the client's word, and «📊 الإحصائيات» (who played it).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
 import { api, postJson } from "@/lib/fetch";
 import { findClaudeModel } from "@config/claude-models";
 import { GAME_BUILD } from "@config/games-build";
+import GameStats from "./GameStats";
 
 /** The mind that writes every game (the fastest at code), by our own name. */
 const WRITER = findClaudeModel(GAME_BUILD.model)?.name ?? "";
@@ -213,6 +214,7 @@ export function BuildCard({ b, note, onEdit, onRetry, onRemove }: { b: Build; no
   const [editing, setEditing] = useState(false);
   const [change, setChange] = useState("");
   const [copied, setCopied] = useState(false);
+  const [stats, setStats] = useState(false);
   const url = typeof window === "undefined" ? b.link : `${window.location.origin}${b.link}`;
   const share = `جرّب لعبتي «${b.title}» 🎮\n${url}`;
   const building = b.status === "building";
@@ -280,7 +282,9 @@ export function BuildCard({ b, note, onEdit, onRetry, onRemove }: { b: Build; no
               <button type="button" className="gm-btn" onClick={copy}>{copied ? "انسخ ✓" : "🔗 انسخ الرابط"}</button>
               <a className="gm-btn" href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noopener">واتساب</a>
               <button type="button" className="gm-btn" onClick={() => setEditing((v) => !v)} aria-expanded={editing}>✏️ عدّل</button>
+              <button type="button" className="gm-btn" onClick={() => setStats((v) => !v)} aria-expanded={stats}>📊 الإحصائيات</button>
             </div>
+            {stats && <GameStats id={b.id} />}
             {b.playerErrors > 0 && !editing && (
               <div className="gm-bwarn">
                 ⚠️ صار خطأ في اللعبة عند أحد اللاعبين.
