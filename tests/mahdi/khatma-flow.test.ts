@@ -58,6 +58,26 @@ describe("«الختمة العلوية» on the server", () => {
     expect((await khatmaView(db, G, "hasan", false, ["leader", "hasan"])).portions![2]).toBe("free");
   });
 
+  it("a reader backs out of a portion (read or not), and the leader takes a reader off one; either way someone else takes it", async () => {
+    await saveSettings(db, G, "leader", MEMBERS, S);
+    await claimPortion(db, G, "ali", MEMBERS, 4);
+    await markPortion(db, G, "ali", MEMBERS, 4, "done");
+    // ali backs out even after marking it read
+    await markPortion(db, G, "ali", MEMBERS, 4, "release");
+    expect((await view("hasan")).portions![3]).toBe("free");
+    await claimPortion(db, G, "hasan", MEMBERS, 4);
+    // only the one reading it can back out
+    await expect(markPortion(db, G, "ali", MEMBERS, 4, "release")).rejects.toThrow();
+    expect((await view("hasan")).portions![3]).toBe("reading");
+    // the leader takes hasan off it (read or not), and ali takes it
+    await markPortion(db, G, "hasan", MEMBERS, 4, "done");
+    await freePortion(db, G, MEMBERS, 4);
+    expect((await view("ali")).portions![3]).toBe("free");
+    await expect(freePortion(db, G, MEMBERS, 4)).rejects.toThrow();
+    await claimPortion(db, G, "ali", MEMBERS, 4);
+    expect((await view("leader")).readers).toMatchObject([{ portion: 4, status: "reading" }]);
+  });
+
   it("every portion read → the khatma is done; the next starts after its night with the same dedication", async () => {
     await saveSettings(db, G, "leader", MEMBERS, S);
     await dedicate(db, G, "صاحب العصر والزمان عجل الله فرجه", "المرحوم الحاج علي");
