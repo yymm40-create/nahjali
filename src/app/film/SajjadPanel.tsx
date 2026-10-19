@@ -211,13 +211,13 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
                 </div>
               )}
               {messages.map((m, i) => (
-                <div key={i} className={`max-w-[92%] space-y-1 rounded-2xl p-3 text-sm leading-7 ${m.role === "user" ? "ms-auto bg-[#0b1d47] text-white" : "me-auto bg-white shadow-sm"}`}>
+                <div key={i} className={`max-w-[92%] space-y-1 rounded-2xl p-3 text-sm leading-7 ${m.role === "user" ? "ms-auto bg-[var(--film-navy)] text-white" : "me-auto bg-white shadow-sm"}`}>
                   {m.role === "user" && m.username && <p className="text-[11px] font-extrabold opacity-70" dir="ltr">@{m.username}</p>}
                   <p className="whitespace-pre-wrap font-bold">{m.text}</p>
                   {m.changes?.length ? (
                     <div className="flex flex-wrap gap-1 pt-1">
                       {m.changes.map((c) => (
-                        <span key={c} className="rounded-full bg-[#e2a72c]/20 px-2 py-0.5 text-[11px] font-extrabold">{c}</span>
+                        <span key={c} className="rounded-full bg-[var(--film-hl)]/20 px-2 py-0.5 text-[11px] font-extrabold">{c}</span>
                       ))}
                     </div>
                   ) : null}
@@ -226,14 +226,14 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
               {busy && <p className="me-auto rounded-2xl bg-white p-3 text-sm font-bold text-muted shadow-sm">سجاد يفكّر…</p>}
 
               {questions.length > 0 && !busy && (
-                <div className="space-y-3 rounded-2xl border-2 border-[#e2a72c] bg-white/80 p-3">
+                <div className="space-y-3 rounded-2xl border-2 border-[var(--film-hl)] bg-white/80 p-3">
                   <p className="text-xs font-extrabold text-muted">جاوب اللي تعرفه، واللي ما تعرفه خلّه (ترجع له متى ما تبي):</p>
                   {questions.map((q, i) => (
                     <div key={i} className="space-y-1.5">
                       <p className="text-sm font-extrabold">{q.question}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {q.options.map((o) => (
-                          <button key={o} type="button" className={`rounded-full border px-3 py-1 text-xs font-bold ${answers[i] === o ? "border-[#1f63f0] bg-[#1f63f0] text-white" : "border-black/15 bg-white"}`} onClick={() => setAnswers({ ...answers, [i]: answers[i] === o ? "" : o })}>
+                          <button key={o} type="button" className={`rounded-full border px-3 py-1 text-xs font-bold ${answers[i] === o ? "border-[var(--film-blue)] bg-[var(--film-blue)] text-white" : "border-black/15 bg-white"}`} onClick={() => setAnswers({ ...answers, [i]: answers[i] === o ? "" : o })}>
                             {o}
                           </button>
                         ))}
@@ -301,12 +301,12 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
               {approved > 0 && !pending.length && loaded && <p className="text-center text-[11px] font-extrabold text-[#16a34a]">✅ {approved} نتائج بحث معتمدة داخلة في الشغل</p>}
 
               {plan && canEdit && (
-                <div className="space-y-2 rounded-2xl border-2 border-[#1f63f0] bg-white p-3 text-sm">
+                <div className="space-y-2 rounded-2xl border-2 border-[var(--film-blue)] bg-white p-3 text-sm">
                   <p className="font-black">📋 الخطة المقترحة</p>
                   {plan.note && <p className="font-bold text-muted">{plan.note}</p>}
                   <ol className="space-y-2">
                     {plan.episodes.map((e) => (
-                      <li key={e.number} className="rounded-xl bg-[#eef3ff] p-2">
+                      <li key={e.number} className="rounded-xl bg-[var(--film-soft)] p-2">
                         <p className="font-extrabold">الحلقة {e.number}{e.title ? ` · ${e.title}` : ""}</p>
                         {e.summary && <p className="text-xs font-bold text-muted">{e.summary}</p>}
                         <ul className="mt-1 space-y-0.5 text-xs font-bold">

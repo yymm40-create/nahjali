@@ -68,7 +68,7 @@ export default async function ProjectLayoutView({ id, base, children }: { id: st
         <FilmBackButton fallback={base} className="film-back" />
         {scene && (
           <>
-            <Link href={scene.href} className="inline-flex items-center gap-1 rounded-full bg-[#0b1d47] px-3 py-1 text-xs font-extrabold text-white">
+            <Link href={scene.href} className="inline-flex items-center gap-1 rounded-full bg-[var(--film-navy)] px-3 py-1 text-xs font-extrabold text-white">
               → {scene.text}
             </Link>
             {scene.team && (

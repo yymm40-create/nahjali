@@ -42,7 +42,7 @@ export default function StepWhy({ step, sajjad = true }: { step: string; sajjad?
     );
   }
   return (
-    <aside className="space-y-2 rounded-2xl border border-[#e2a72c]/50 bg-white/80 p-3 text-sm leading-7" aria-label={`ليش خطوة ${w.title}`}>
+    <aside className="space-y-2 rounded-2xl border border-[var(--film-hl)]/50 bg-white/80 p-3 text-sm leading-7" aria-label={`ليش خطوة ${w.title}`}>
       <p className="font-black">💡 خطوة «{w.title}»</p>
       {/* what to do here first, in one line; the why and what comes after only when asked */}
       <p className="text-base leading-8"><b>وش تسوي هنا:</b> {w.doHere}</p>

@@ -64,7 +64,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
   const answered = u?.questions.map((q, i) => (answers[i]?.trim() ? `${q.question} ← ${answers[i].trim()}` : "")).filter(Boolean) ?? [];
 
   return (
-    <div className="space-y-3 rounded-2xl border-2 border-[#e2a72c] bg-white/80 p-3">
+    <div className="space-y-3 rounded-2xl border-2 border-[var(--film-hl)] bg-white/80 p-3">
       <header className="flex items-center justify-between gap-2">
         <p className="font-black"><RobotFace id="sajjad" size={18} /> {sceneId ? "جهّز المشهد مع سجاد" : "مشهد جديد مع سجاد"}</p>
         <button type="button" className="text-xs font-bold underline" onClick={onClose}>إغلاق</button>
@@ -75,12 +75,12 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
           <input className="field" placeholder="عنوان المشهد (اختياري)" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />
           <p className="text-sm font-extrabold">تبي تكتب المشهد بنفسك، ولا سجاد يكتبه؟</p>
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" aria-pressed={mode === "mine"} className={`rounded-2xl border-2 p-3 text-start ${mode === "mine" ? "border-[#1f63f0] bg-[#1f63f0]/10" : "border-line"}`} onClick={() => setMode("mine")}>
+            <button type="button" aria-pressed={mode === "mine"} className={`rounded-2xl border-2 p-3 text-start ${mode === "mine" ? "border-[var(--film-blue)] bg-[var(--film-blue)]/10" : "border-line"}`} onClick={() => setMode("mine")}>
               <span className="block text-2xl" aria-hidden>✍️</span>
               <span className="block text-sm font-black">أكتبه بنفسي</span>
               <span className="block text-xs font-bold text-muted">وسجاد يفهمه ويتأكد</span>
             </button>
-            <button type="button" aria-pressed={mode === "sajjad"} className={`rounded-2xl border-2 p-3 text-start ${mode === "sajjad" ? "border-[#1f63f0] bg-[#1f63f0]/10" : "border-line"}`} onClick={() => setMode("sajjad")}>
+            <button type="button" aria-pressed={mode === "sajjad"} className={`rounded-2xl border-2 p-3 text-start ${mode === "sajjad" ? "border-[var(--film-blue)] bg-[var(--film-blue)]/10" : "border-line"}`} onClick={() => setMode("sajjad")}>
               <span className="block text-2xl" aria-hidden><RobotFace id="sajjad" size={32} /></span>
               <span className="block text-sm font-black">خل سجاد يكتبه</span>
               <span className="block text-xs font-bold text-muted">من المسلسل والحلقة</span>
@@ -105,7 +105,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
             <span className="text-sm font-extrabold">{mode === "sajjad" ? "المشهد كما كتبه سجاد (عدّل عليه لو تبي)" : "مشهدك"}</span>
             <textarea className="field min-h-32 text-sm leading-7" maxLength={20000} value={story} onChange={(e) => setStory(e.target.value)} />
           </label>
-          <div className="space-y-2 rounded-2xl bg-[#eef3ff] p-3 text-sm">
+          <div className="space-y-2 rounded-2xl bg-[var(--film-soft)] p-3 text-sm">
             <p className="font-black">فهمي للمشهد {u.number}{title ? ` «${title}»` : ""}:</p>
             <p className="whitespace-pre-wrap font-bold leading-7">{u.understanding}</p>
             <Chips label="الشخصيات" items={u.characters} />
@@ -119,7 +119,7 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
                   <p className="text-sm font-extrabold">{q.question}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {q.options.map((o) => (
-                      <button key={o} type="button" className={`rounded-full border px-3 py-1 text-xs font-bold ${answers[i] === o ? "border-[#1f63f0] bg-[#1f63f0] text-white" : "border-black/15"}`} onClick={() => setAnswers({ ...answers, [i]: o })}>{o}</button>
+                      <button key={o} type="button" className={`rounded-full border px-3 py-1 text-xs font-bold ${answers[i] === o ? "border-[var(--film-blue)] bg-[var(--film-blue)] text-white" : "border-black/15"}`} onClick={() => setAnswers({ ...answers, [i]: o })}>{o}</button>
                     ))}
                   </div>
                 </div>
@@ -162,7 +162,7 @@ function Chips({ label, items }: { label: string; items: Who[] }) {
       <p className="text-xs font-extrabold text-muted">{label}:</p>
       <div className="flex flex-wrap gap-1.5">
         {items.map((x) => (
-          <span key={x.name} title={x.note} className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${x.existing ? "bg-[#0b1d47] text-white" : "bg-[#e2a72c]/25"}`}>
+          <span key={x.name} title={x.note} className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${x.existing ? "bg-[var(--film-navy)] text-white" : "bg-[var(--film-hl)]/25"}`}>
             {x.existing ? "✅" : "🆕"} {x.name}
           </span>
         ))}
