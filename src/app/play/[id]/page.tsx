@@ -49,5 +49,5 @@ export default async function PlayPage({ params }: { params: Promise<{ id: strin
       </main>
     );
   }
-  return <PlayFrame id={id} title={g.title} src={pagePath(id, g.version)} makeHref={GAMES.base} />;
+  return <PlayFrame id={id} title={g.title} src={pagePath(id, g.version)} makeHref={GAMES.base} loginHref="/jawad-ai/login" />;
 }

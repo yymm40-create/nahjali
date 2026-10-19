@@ -8,9 +8,43 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 const never = () => () => {};
 
-export default function PlayFrame({ id, title, src, makeHref }: { id: string; title: string; src: string; makeHref: string }) {
+const LOCAL = (id: string) => `jw-game-save:${id}`;
+const pack = (d: Record<string, string>) => encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(d)))));
+
+export default function PlayFrame({ id, title, src, makeHref, loginHref = "/jawad-ai/login" }: { id: string; title: string; src: string; makeHref: string; loginHref?: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [toast, setToast] = useState("");
+  // «احفظ تقدمك»: the game's progress on the player's site account (on this device until they sign in)
+  const [save, setSave] = useState<{ signedIn: boolean; email: string | null; data: Record<string, string> } | null>(null);
+  useEffect(() => {
+    let local: Record<string, string> = {};
+    try {
+      local = JSON.parse(localStorage.getItem(LOCAL(id)) ?? "{}") ?? {};
+    } catch {}
+    fetch(`/api/games/play/${id}/save`)
+      .then((r) => r.json())
+      .then((r: { signedIn: boolean; email: string | null; data: Record<string, string> | null }) => {
+        // signed in for the first time with progress on this device: it goes to the account
+        const data = r.data ?? local;
+        if (r.signedIn && !r.data && Object.keys(local).length) void fetch(`/api/games/play/${id}/save`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: local }) });
+        setSave({ signedIn: r.signedIn, email: r.email, data });
+      })
+      .catch(() => setSave({ signedIn: false, email: null, data: local }));
+  }, [id]);
+  useEffect(() => {
+    if (!save) return;
+    const onSave = (e: MessageEvent) => {
+      if (e.source !== frame.current?.contentWindow) return;
+      const d = e.data as { jwGame?: string; data?: unknown } | null;
+      if (d?.jwGame !== "save" || !d.data || typeof d.data !== "object") return;
+      try {
+        localStorage.setItem(LOCAL(id), JSON.stringify(d.data));
+      } catch {}
+      if (save.signedIn) void fetch(`/api/games/play/${id}/save`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: d.data }) }).catch(() => null);
+    };
+    window.addEventListener("message", onSave);
+    return () => window.removeEventListener("message", onSave);
+  }, [id, save]);
   // full screen where the browser allows it on an element (not iPhone Safari)
   const canFull = useSyncExternalStore(never, () => !!document.documentElement.requestFullscreen, () => false);
 
@@ -63,19 +97,24 @@ export default function PlayFrame({ id, title, src, makeHref }: { id: string; ti
           <b>الجواد الذكي</b>
         </a>
         <span className="pl-title">{title}</span>
+        {save && (save.signedIn ? (
+          <span className="pl-btn" title={save.email ?? ""}>💾 تقدمك محفوظ</span>
+        ) : (
+          <a className="pl-btn" href={`${loginHref}?next=${encodeURIComponent(`/play/${id}`)}`} title="سجّل دخول بإيميلك ويتحفظ تقدمك على حسابك">🔐 احفظ تقدمك</a>
+        ))}
         <button type="button" className="pl-btn" onClick={() => void share()} aria-label="شارك اللعبة">↗ شارك</button>
         {canFull && <button type="button" className="pl-btn" onClick={full} aria-label="ملء الشاشة">⛶</button>}
         <a className="pl-btn hot" href={makeHref} target="_blank" rel="noopener">🎮 اصنع لعبتك</a>
       </header>
-      <iframe
+      {save && <iframe
         ref={frame}
         className="pl-frame"
-        src={src}
+        src={Object.keys(save.data).length ? `${src}#jws=${pack(save.data)}` : src}
         title={title}
         sandbox="allow-scripts allow-pointer-lock"
         allow="autoplay; fullscreen; gamepad"
         onLoad={() => frame.current?.focus()}
-      />
+      />}
       {toast && <div className="pl-toast" role="status">{toast}</div>}
     </div>
   );

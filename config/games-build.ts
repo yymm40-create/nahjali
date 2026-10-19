@@ -99,7 +99,7 @@ HARD RULES:
 - One complete HTML document: <html lang="ar" dir="rtl">, <meta charset="utf-8">, <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">, all CSS in <style>, all JavaScript in ONE plain inline <script> at the end of <body> (not a module).
 - NOTHING from outside and no network: no CDN, no library, no web font (system fonts only, e.g. system-ui, "Segoe UI", Tahoma), no fetch / XMLHttpRequest / WebSocket / EventSource, no <form>, no <iframe>, no links that leave the page. alert / confirm / prompt are blocked: show everything on the page.
 - Pictures ONLY through their exact placeholders {{asset:ID}} given to you, e.g. new Image() with .src = "{{asset:hero}}" or CSS background-image: url("{{asset:bg}}"). Sprites come with a transparent background, trimmed tight to the subject. Load them all before the start screen's «ابدأ» is enabled, with a timeout, and if one fails (onerror) draw a simple coloured shape or an emoji in its place: the game must never depend on a picture. Never read pixels back from a canvas that has pictures on it (getImageData, toDataURL): it is blocked there; collide by shapes (circles, boxes).
-- localStorage may be blocked: any use only inside try { … } catch (e) {}. No cookies.
+- SAVING: the site keeps the player's progress on their account. Use localStorage (it is given to the game) to save the best score, the reached level, unlocked things and settings — on every change that matters — and read them on start; still only inside try { … } catch (e) {}. No cookies.
 - Phone first and also computer: fill the screen (100dvh, no scrollbars), handle resize and orientation change, a canvas sized to devicePixelRatio. Touch: big on-screen controls (at least 56px) or taps/swipes/drags, with touch-action: none and preventDefault so the page never scrolls or zooms while playing, and no text selection or long-press menu. Keyboard (arrows / WASD / space / Enter) and mouse also work.
 - Screens: a start screen (the title, how to play in 1–3 short lines, a big «ابدأ» button), the game (score and lives/time always visible, a pause button), and an end screen (the result, the best score, a big «العب مرة ثانية»). The game pauses by itself when the page is hidden (visibilitychange).
 - requestAnimationFrame with time-based movement (delta time, capped), so it runs the same at 60 or 120 Hz; difficulty that rises gently; clear feedback (little effects, a shake, a flash, floating score).
@@ -239,12 +239,34 @@ export function pageProblems(html: string, assetIds: string[]): string[] {
 /** Watches a game's page for errors: a short note on the game (so a player is not left with a frozen screen) and a word to the play page. */
 const WATCH = `<script>(function(){var n=0,box=null;function say(m){m=String(m||"خطأ").slice(0,300);try{parent.postMessage({jwGame:"error",message:m},"*")}catch(e){}if(n++>2)return;try{if(!box){box=document.createElement("div");box.setAttribute("style","position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:rgba(127,29,29,.92);color:#fff;font:600 13px system-ui,Tahoma,sans-serif;padding:8px 12px;border-radius:12px;direction:rtl;text-align:right;pointer-events:none");(document.body||document.documentElement).appendChild(box)}box.textContent="صار خطأ في اللعبة: "+m.slice(0,140);clearTimeout(box.t);box.t=setTimeout(function(){box.remove();box=null},5000)}catch(e){}}window.addEventListener("error",function(e){if(e&&e.message)say(e.message+(e.lineno?" (سطر "+e.lineno+")":""))});window.addEventListener("unhandledrejection",function(e){var r=e&&e.reason;say(r&&r.message||r)});})();</script>`;
 
+/**
+ * «احفظ تقدمك»: the game's own storage, given back to it. A game runs in a sandbox where the browser's storage is blocked,
+ * so this stands in for it: what the game keeps with localStorage (or window.JawadSave) lives here, comes in with the page
+ * (the play page puts it after the address's «#jws=», never sent to the server) and every change is handed to the play
+ * page, which keeps it on the player's site account (or on their device before they sign in).
+ */
+const SAVE = `<script>(function(){var m={};try{var h=location.hash.match(/[#&]jws=([^&]*)/);if(h){var o=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(h[1])))));if(o&&typeof o==="object")m=o}}catch(e){}var t=0;function push(){clearTimeout(t);t=setTimeout(function(){try{parent.postMessage({jwGame:"save",data:m},"*")}catch(e){}},400)}var has=function(k){return Object.prototype.hasOwnProperty.call(m,k)};var s={getItem:function(k){k=String(k);return has(k)?m[k]:null},setItem:function(k,v){m[String(k)]=String(v);push()},removeItem:function(k){delete m[String(k)];push()},clear:function(){m={};push()},key:function(i){return Object.keys(m)[i]||null}};Object.defineProperty(s,"length",{get:function(){return Object.keys(m).length}});try{Object.defineProperty(window,"localStorage",{value:s,configurable:true})}catch(e){}window.JawadSave={get:function(k){return s.getItem(k)},set:function(k,v){s.setItem(k,typeof v==="string"?v:JSON.stringify(v))},remove:function(k){s.removeItem(k)}};})();</script>`;
+
+/** What a game saved, as the server keeps it: text keys and text values only, bounded. */
+export function cleanSave(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  let size = 0;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 200)) {
+    if (typeof v !== "string" || k.length > 200) continue;
+    size += k.length + v.length;
+    if (size > 60_000) break;
+    out[k] = v;
+  }
+  return out;
+}
+
 /** The page as it is served: each placeholder becomes the picture's address (one that couldn't be drawn becomes an empty one, so the game's onerror draws its fallback), with the error watch first. */
 export function assemble(html: string, urls: Record<string, string | null | undefined>): string {
   const page = html.replace(/\{\{\s*asset:([^}\s]+)\s*\}\}/g, (_, id: string) => urls[id] || "data:,");
   const head = /<head\b[^>]*>/i.exec(page);
-  if (head) return page.slice(0, head.index + head[0].length) + WATCH + page.slice(head.index + head[0].length);
-  return WATCH + page;
+  if (head) return page.slice(0, head.index + head[0].length) + SAVE + WATCH + page.slice(head.index + head[0].length);
+  return SAVE + WATCH + page;
 }
 
 /**
