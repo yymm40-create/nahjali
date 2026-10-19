@@ -91,8 +91,12 @@ interface Box {
   base: string[];
 }
 
-const MIN_PPS = 1;
-const MAX_PPS = 400;
+/** the zoom's range in pixels per second: from a 4-hour film on one screen (0.02) to single frames (1500) */
+export const MIN_PPS = 0.02;
+export const MAX_PPS = 1500;
+/** the room above the tracks (drop a clip there: a new track) and under them */
+const GAP_TOP = 26;
+const GAP_BOTTOM = 56;
 const RULER = 26;
 const RULER_PHONE = 18;
 const SNAP_PX = 10;
@@ -106,8 +110,8 @@ const fits = (track: Track, c: Clip, assets: Map<string, EditorAsset>, onSound: 
 
 /** Ruler steps that keep labels ~80px apart at any zoom. */
 function rulerStep(pps: number) {
-  const steps = [100, 200, 500, 1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000];
-  return steps.find((s) => (s * pps) / 1000 >= 80) ?? 600_000;
+  const steps = [40, 100, 200, 500, 1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000, 1_200_000, 1_800_000, 3_600_000, 7_200_000];
+  return steps.find((s) => (s * pps) / 1000 >= 80) ?? 7_200_000;
 }
 
 const TRACK_KINDS: { kind: Track["kind"]; label: string; icon: "layers" | "music" | "type" }[] = [
@@ -132,7 +136,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   for (const kind of ["video", "audio", "text"] as const) tl.tracks.filter((t) => t.kind === kind).forEach((t, i) => labels.set(t.id, `${kind === "video" ? "V" : kind === "audio" ? "A" : "T"}${i + 1}`));
   // a phone (CapCut's way): no track heads, the playhead fixed in the middle and the clips slide under it; half a screen
   // of room on each side lets the very start and the end reach it
-  const HEAD = compact ? 0 : 144;
+  const HEAD = compact ? 0 : 168;
   const scroller = useRef<HTMLDivElement>(null);
   const [pad, setPad] = useState(0);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -165,7 +169,8 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
     const visual = tl.tracks.filter((t) => t.kind !== "audio").reverse();
     return [...visual, ...tl.tracks.filter((t) => t.kind === "audio")];
   }, [tl.tracks]);
-  const height = (t: Track) => (t.id === main?.id ? (compact ? 56 : 60) : t.kind === "audio" ? (compact ? 30 : 38) : compact ? 30 : 44);
+  // a computer: tall enough that a clip's picture or waveform shows under its name
+  const height = (t: Track) => (t.id === main?.id ? (compact ? 56 : 74) : t.kind === "audio" ? (compact ? 30 : 52) : t.kind === "text" ? (compact ? 30 : 40) : compact ? 30 : 56);
 
   const lanePx = (ms: number) => (ms * pps) / 1000;
   const contentW = compact ? X0 + lanePx(total) + pad + 56 : HEAD + lanePx(total + 15_000) + 80;
@@ -698,7 +703,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         }}
       >
         {!pro && track.color && <span className="pointer-events-none absolute inset-0 border-s-4" style={{ borderColor: track.color, background: `${track.color}33` }} />}
-        <span className={`pointer-events-none absolute inset-x-0 top-0 truncate px-1.5 py-0.5 font-medium ${pro ? "h-[14px] bg-black/35 py-0 text-[10px] leading-[14px]" : "bg-gradient-to-b from-black/60 to-transparent"}`} dir="auto">
+        <span className={`pointer-events-none absolute truncate font-medium ${pro ? "inset-x-0 top-0 h-[14px] bg-black/35 px-1.5 py-0 text-[10px] leading-[14px]" : compact ? "inset-x-0 top-0 bg-gradient-to-b from-black/60 to-transparent px-1.5 py-0.5" : `start-1 top-1 max-w-[calc(100%-8px)] rounded bg-black/55 px-1.5 text-[10px] leading-4 backdrop-blur-[2px] ${lanePx(end - start) < 36 ? "hidden" : ""}`}`} dir="auto">
           {c.text ? c.text.body : nestName ? `🎞 ${nestName}` : compact ? formatTime(clipLength(c)) : (a?.name ?? "")} {c.speed !== 1 && <b>×{c.speed}</b>}
         </span>
         {!compact && lanePx(end - start) > 60 && (
@@ -754,7 +759,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
   const dragging = drag?.moved ? drag : null;
   const rulerH = compact ? RULER_PHONE : RULER;
   const rowTop = (id: string) => {
-    let y = rulerH;
+    let y = rulerH + (compact ? 0 : GAP_TOP);
     for (const t of ordered) {
       if (t.id === id) return y;
       y += height(t);
@@ -784,7 +789,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
         </div>
       )}
       <div ref={scroller} className="jw-scroll relative min-h-0 flex-1 overflow-auto overscroll-contain" style={{ touchAction: "pan-x pan-y" }} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop}>
-        <div ref={content} className="relative" style={{ width: contentW, minHeight: "100%" }}>
+        <div ref={content} className="relative" style={{ width: contentW, minWidth: "100%", minHeight: "100%" }}>
           {/* ruler */}
           <div className="sticky top-0 z-20 flex" style={{ height: compact ? RULER_PHONE : RULER }}>
             {!compact && <div className="sticky left-0 z-30 flex items-center gap-0.5 border-b border-e border-jw-line bg-jw-surface px-1" style={{ width: HEAD, minWidth: HEAD }}>
@@ -799,6 +804,17 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
               <button type="button" className="grid h-6 w-6 place-items-center rounded text-jw-muted hover:bg-jw-surface-2 hover:text-jw-ink" onClick={() => zoomTo(pps * 1.6)} aria-label="تكبير" title="تكبير">
                 <Icon name="zoomIn" size={14} />
               </button>
+              {/* the zoom as a slider (on a log scale: from hours on one screen to single frames) */}
+              <input
+                type="range"
+                className="h-1 w-12 min-w-0 flex-1 cursor-pointer accent-[var(--jw-accent)]"
+                min={0}
+                max={1000}
+                value={Math.round((Math.log(pps / MIN_PPS) / Math.log(MAX_PPS / MIN_PPS)) * 1000)}
+                onChange={(e) => zoomTo(MIN_PPS * Math.pow(MAX_PPS / MIN_PPS, Number(e.target.value) / 1000))}
+                aria-label="تكبير التايملاين"
+                title="كبّر أو صغّر التايملاين (من ساعات في الشاشة لين الفريم)"
+              />
               {!readOnly && (
                 <button type="button" className={`grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-2 hover:text-jw-ink ${adding ? "bg-jw-accent/15 text-jw-accent" : "text-jw-muted"}`} onClick={() => setAdding((v) => !v)} aria-label="أضف مسار" title="أضف مسار" aria-expanded={adding}>
                   <Icon name="plus" size={14} />
@@ -841,6 +857,13 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
             </div>
           </div>
 
+          {/* room above the tracks: drop a clip here to make a new track */}
+          {!compact && (
+            <div className="flex" style={{ height: GAP_TOP }} aria-hidden>
+              <div className="sticky left-0 z-10 shrink-0 border-e border-jw-line bg-jw-surface" style={{ width: HEAD, minWidth: HEAD }} />
+              <div className="flex-1 border-b border-dashed border-jw-line/70" />
+            </div>
+          )}
           {/* tracks */}
           {ordered.map((track) => {
             const isMain = track.id === main?.id;
@@ -908,6 +931,13 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
               </div>
             );
           })}
+          {/* room under the tracks */}
+          {!compact && (
+            <div className="flex" style={{ height: GAP_BOTTOM }} aria-hidden>
+              <div className="sticky left-0 z-10 shrink-0 border-e border-jw-line bg-jw-surface" style={{ width: HEAD, minWidth: HEAD }} />
+              <div className="flex-1" />
+            </div>
+          )}
           {dropAt && (
             <div className="pointer-events-none absolute bottom-0 z-30 w-0.5 bg-jw-accent shadow-[0_0_10px_var(--jw-accent)]" style={{ top: RULER, left: X0 + lanePx(dropAt.ms) }}>
               <span className="absolute -top-0.5 left-1 whitespace-nowrap rounded bg-jw-accent px-1.5 py-0.5 text-[10px] text-jw-on-accent" dir="rtl">
@@ -940,7 +970,7 @@ export default function Timeline({ tl, assets, thumbs, waves, selected, onSelect
             />
           )}
           {moving?.ghostTrack === "new" && (
-            <div className="pointer-events-none absolute inset-x-0 z-20 border-2 border-dashed border-jw-accent bg-jw-accent/10 text-center text-xs text-jw-accent" style={{ top: RULER, height: 30 }}>
+            <div className="pointer-events-none absolute inset-x-0 z-20 border-2 border-dashed border-jw-accent bg-jw-accent/10 text-center text-xs text-jw-accent" style={{ top: RULER, height: compact ? 30 : GAP_TOP }}>
               اترك هنا: مسار جديد
             </div>
           )}

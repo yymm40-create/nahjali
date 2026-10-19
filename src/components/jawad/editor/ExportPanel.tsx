@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { duration, flatten, formatTime, type Timeline } from "@/lib/editor/model";
 import { api, postJson } from "@/lib/fetch";
-import Dialog from "../Dialog";
+import DockFrame from "./DockFrame";
 import Icon from "../Icon";
 import { desktop } from "./desktop";
 import { canExport, download, exportVideo, ExportError, type ExportResult } from "./export";
@@ -48,6 +48,7 @@ type Phase = { k: "idle" } | { k: "running"; p: number } | { k: "done"; r: Expor
 
 /** «صدّر»: 720p or 1080p, made in this browser; then the file downloads. */
 export default function ExportPanel({
+  dock,
   open,
   onClose,
   projectId,
@@ -62,6 +63,8 @@ export default function ExportPanel({
   onExported,
   onUpscaleExport,
 }: {
+  /** the editor's right column (a computer) */
+  dock?: HTMLElement | null;
   open: boolean;
   onClose: () => void;
   projectId: string;
@@ -251,7 +254,7 @@ export default function ExportPanel({
   }
 
   return (
-    <Dialog open={open} onClose={close} title="تصدير الفيديو">
+    <DockFrame dock={dock} open={open} onClose={close} title="تصدير الفيديو">
       <div className="space-y-4 p-4">
         {phase.k === "idle" || phase.k === "error" ? (
           <>
@@ -481,6 +484,6 @@ export default function ExportPanel({
           </div>
         )}
       </div>
-    </Dialog>
+    </DockFrame>
   );
 }

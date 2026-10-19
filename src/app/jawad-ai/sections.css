@@ -630,3 +630,16 @@
     color: var(--jw-ink);
   }
 }
+
+/* ——— حيدرة كت «كاب كت» (the owner): every menu at the top left as tabs, what it opens right under it in the same column;
+   the screen fixed in the middle; a second window at the top right; the timeline under it all ——— */
+.cut-tabs { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 3px; padding: 6px; border-bottom: 1px solid var(--jw-line); background: color-mix(in srgb, var(--jw-surface-2) 70%, transparent); flex: none; }
+.cut-tabs > button { background: transparent; color: var(--jw-muted); box-shadow: none !important; transform: none !important; min-height: 46px; }
+.cut-tabs > button:hover { background: var(--jw-surface-3); color: var(--jw-ink); }
+.cut-tabs > button.jw-rail-on, .cut-tabs > button[aria-pressed="true"] { background: color-mix(in srgb, var(--jw-accent) 16%, transparent); color: var(--jw-ink); outline: 1px solid color-mix(in srgb, var(--jw-accent) 55%, transparent); }
+@media (min-width: 1024px) {
+  /* what a tab opens fills the column under the tabs (the old side panels, each its own size, are now one place) */
+  .cut-left > aside { width: 100% !important; margin: 0 !important; flex: 1 1 auto; min-height: 0; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; border: 0 !important; backdrop-filter: none !important; order: 0 !important; }
+  .cut-left > .hd-left { min-height: 0; }
+  .cut-left > .hd-left > * { flex: 1 1 auto; min-height: 0; }
+}
