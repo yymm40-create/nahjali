@@ -364,6 +364,64 @@ export const SCENE_KIT_JS = String.raw`
     ctx.globalAlpha *= o.alpha === undefined ? 1 : o.alpha; ctx.drawImage(im, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); ctx.restore(); return true;
   };
 
+  // ── the person's own filmed video (when the piece is built on it): the runtime hands in the frame of now ──
+  K.footage = null;
+  K.useFootage = function (m) {
+    if (!m) { K.footage = null; return null; }
+    var faces = (m.face || []).slice().sort(function (a, b) { return a.t - b.t; });
+    var F = { w: m.w || 1080, h: m.h || 1920, duration: m.duration || 0, words: m.words || [], lines: m.lines || [], frame: null, t: 0 };
+    F.faceAt = function (t) {
+      if (t === undefined) t = F.t;
+      if (!faces.length) return { x: 0.5, y: 0.36, w: 0.3, h: 0.3 };
+      if (t <= faces[0].t) return faces[0];
+      var last = faces[faces.length - 1];
+      if (t >= last.t) return last;
+      for (var i = 1; i < faces.length; i++) if (faces[i].t >= t) {
+        var a = faces[i - 1], b = faces[i], k = K.smooth(a.t, b.t, t);
+        return { x: K.lerp(a.x, b.x, k), y: K.lerp(a.y, b.y, k), w: K.lerp(a.w, b.w, k), h: K.lerp(a.h, b.h, k) };
+      }
+      return last;
+    };
+    F.wordAt = function (t) {
+      if (t === undefined) t = F.t;
+      for (var i = 0; i < F.words.length; i++) if (F.words[i].s <= t && t < Math.max(F.words[i].e, F.words[i].s + 0.05)) return F.words[i];
+      return null;
+    };
+    // the part of the picture that fills a w×h box with the face kept in it (headroom: the face a little above the middle)
+    F.crop = function (bw, bh, o) {
+      o = o || {};
+      var fw = F.frame ? F.frame.width : F.w, fh = F.frame ? F.frame.height : F.h;
+      if (o.fit === "contain") { var c = Math.min(bw / fw, bh / fh); return { sx: 0, sy: 0, sw: fw, sh: fh, s: c, dx: (bw - fw * c) / 2, dy: (bh - fh * c) / 2, dw: fw * c, dh: fh * c }; }
+      var z = Math.max(1, o.zoom || 1), s = Math.max(bw / fw, bh / fh) * z, sw = Math.min(fw, bw / s), sh = Math.min(fh, bh / s);
+      var f = F.faceAt(o.t), cx = (o.cx !== undefined ? o.cx : f.x) * fw, cy = (o.cy !== undefined ? o.cy : f.y) * fh;
+      var sx = K.clamp(cx - sw / 2, 0, Math.max(0, fw - sw)), sy = K.clamp(cy - sh * (o.cy !== undefined ? 0.5 : 0.42), 0, Math.max(0, fh - sh));
+      return { sx: sx, sy: sy, sw: sw, sh: sh, s: bw / sw, dx: 0, dy: 0, dw: bw, dh: bh };
+    };
+    F.draw = function (ctx, x, y, w, h, o) {
+      o = o || {};
+      var c = F.crop(w, h, o), im = F.frame, r = o.circle ? Math.min(w, h) / 2 : Math.max(0, o.radius || 0);
+      ctx.save();
+      if (o.alpha !== undefined) ctx.globalAlpha *= K.clamp(o.alpha);
+      if (o.shadow) {
+        var sb = typeof o.shadow === "number" ? o.shadow : Math.round(Math.min(K.W, K.H) * 0.06);
+        ctx.save(); ctx.shadowColor = o.shadowColor || "rgba(12,10,24,0.38)"; ctx.shadowBlur = sb; ctx.shadowOffsetY = sb * 0.45;
+        K.roundRect(ctx, x + c.dx, y + c.dy, c.dw, c.dh, r); ctx.fillStyle = "#15151a"; ctx.fill(); ctx.restore();
+      }
+      ctx.save();
+      K.roundRect(ctx, x + c.dx, y + c.dy, c.dw, c.dh, r); ctx.clip();
+      if (im) ctx.drawImage(im, c.sx, c.sy, c.sw, c.sh, x + c.dx, y + c.dy, c.dw, c.dh);
+      else { ctx.fillStyle = "#26262b"; ctx.fillRect(x + c.dx, y + c.dy, c.dw, c.dh); }
+      ctx.restore();
+      if (o.border) { K.roundRect(ctx, x + c.dx + o.border / 2, y + c.dy + o.border / 2, c.dw - o.border, c.dh - o.border, Math.max(0, r - o.border / 2)); ctx.lineWidth = o.border; ctx.strokeStyle = o.borderColor || "rgba(255,255,255,0.6)"; ctx.stroke(); }
+      ctx.restore();
+      var f = F.faceAt(o.t), fw = im ? im.width : F.w, fh = im ? im.height : F.h, k = c.dw / c.sw;
+      return { x: x + c.dx + ((f.x - f.w / 2) * fw - c.sx) * k, y: y + c.dy + ((f.y - f.h / 2) * fh - c.sy) * k, w: f.w * fw * k, h: f.h * fh * k };
+    };
+    F.full = function (ctx, o) { return F.draw(ctx, 0, 0, K.W, K.H, o); };
+    K.footage = F;
+    return F;
+  };
+
   if (typeof window !== "undefined") window.K = K;
   if (typeof module !== "undefined" && module.exports) module.exports = K;
   return K;

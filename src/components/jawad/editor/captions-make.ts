@@ -31,20 +31,25 @@ async function uploadSound(projectId: string, s: CaptionSource, label: string, o
   return sign.path;
 }
 
+/** What is said in one clip: its words in the file's own time (ms), written by ElevenLabs Scribe. */
+export async function spokenWords(projectId: string, s: CaptionSource, lang: string, label: string, onStep: (t: string) => void): Promise<SpokenWord[]> {
+  const ask = (path?: string) => postJson<{ words?: SpokenWord[]; need?: "audio" }>(`/api/jawad/editor/projects/${projectId}`, { action: "transcribe", assetId: s.asset.id, from: s.clip.in, to: s.clip.out, language: lang, path });
+  onStep(`${label}: نسمع ونكتب…`);
+  let r = await ask();
+  if (r.need) {
+    const path = await uploadSound(projectId, s, label, onStep);
+    onStep(`${label}: نسمع ونكتب…`);
+    r = await ask(path);
+  }
+  return r.words ?? [];
+}
+
 /** What is said in the clips, as caption lines on the timeline (shorter lines in a tall video). */
 export async function spokenCaptions(projectId: string, tl: Timeline, sources: CaptionSource[], lang: string, onStep: (t: string) => void): Promise<{ items: CaptionItem[]; words: number }> {
   const heard: SpokenWord[] = [];
   for (const [i, s] of sources.entries()) {
     const label = sources.length > 1 ? `المقطع ${i + 1} من ${sources.length}` : "المقطع";
-    const ask = (path?: string) => postJson<{ words?: SpokenWord[]; need?: "audio" }>(`/api/jawad/editor/projects/${projectId}`, { action: "transcribe", assetId: s.asset.id, from: s.clip.in, to: s.clip.out, language: lang, path });
-    onStep(`${label}: نسمع ونكتب…`);
-    let r = await ask();
-    if (r.need) {
-      const path = await uploadSound(projectId, s, label, onStep);
-      onStep(`${label}: نسمع ونكتب…`);
-      r = await ask(path);
-    }
-    heard.push(...onTimeline(s.clip, r.words ?? []));
+    heard.push(...onTimeline(s.clip, await spokenWords(projectId, s, lang, label, onStep)));
   }
   if (!heard.length) throw new Error("ما سمعنا كلامًا واضحًا في المقاطع المختارة.");
   return { items: phrases(heard, tl.height > tl.width ? 4 : 7), words: heard.length };

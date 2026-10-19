@@ -34,6 +34,17 @@ const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length
  * time), the biggest face each time, the middle of them kept; with the source's size. Null when no face is found.
  */
 export async function faceIn(url: string, fromMs: number, toMs: number): Promise<{ face: FaceBox; width: number; height: number } | null> {
+  const r = await faceTrack(url, fromMs, toMs, 5);
+  const found = r.samples.map((s) => s.face);
+  if (!found.length) return null;
+  return { face: { x: median(found.map((f) => f.x)), y: median(found.map((f) => f.y)), w: median(found.map((f) => f.w)), h: median(found.map((f) => f.h)) }, width: r.width, height: r.height };
+}
+
+/**
+ * The face at `n` moments spread over `fromMs`–`toMs` (source time): the biggest face each time, as it moves — what
+ * «مختبر الموشن» keeps the face framed with when it builds a piece on the person's video. Moments with no face are left out.
+ */
+export async function faceTrack(url: string, fromMs: number, toMs: number, n: number): Promise<{ samples: { ms: number; face: FaceBox }[]; width: number; height: number }> {
   const det = await detector();
   const v = document.createElement("video");
   v.crossOrigin = "anonymous";
@@ -52,26 +63,25 @@ export async function faceIn(url: string, fromMs: number, toMs: number): Promise
     c.width = Math.max(1, Math.round(v.videoWidth * k));
     c.height = Math.max(1, Math.round(v.videoHeight * k));
     const g = c.getContext("2d")!;
-    const found: FaceBox[] = [];
+    const samples: { ms: number; face: FaceBox }[] = [];
     const span = Math.max(0, toMs - fromMs);
-    for (let i = 0; i < 5; i++) {
-      const t = (fromMs + (span * (i + 0.5)) / 5) / 1000;
+    for (let i = 0; i < n; i++) {
+      const ms = fromMs + (span * (i + 0.5)) / n;
       await new Promise<void>((ok) => {
         const done = () => {
           v.removeEventListener("seeked", done);
           ok();
         };
         v.addEventListener("seeked", done);
-        v.currentTime = Math.min(Math.max(0, t), Math.max(0, v.duration - 0.05));
+        v.currentTime = Math.min(Math.max(0, ms / 1000), Math.max(0, v.duration - 0.05));
         setTimeout(done, 3000);
       });
       g.drawImage(v, 0, 0, c.width, c.height);
       const r = det.detect(c);
       const best = r.detections.map((d) => d.boundingBox).filter((b): b is NonNullable<typeof b> => !!b).sort((a, b) => b.width * b.height - a.width * a.height)[0];
-      if (best) found.push({ x: (best.originX + best.width / 2) / c.width, y: (best.originY + best.height / 2) / c.height, w: best.width / c.width, h: best.height / c.height });
+      if (best) samples.push({ ms: Math.round(ms), face: { x: (best.originX + best.width / 2) / c.width, y: (best.originY + best.height / 2) / c.height, w: best.width / c.width, h: best.height / c.height } });
     }
-    if (!found.length) return null;
-    return { face: { x: median(found.map((f) => f.x)), y: median(found.map((f) => f.y)), w: median(found.map((f) => f.w)), h: median(found.map((f) => f.h)) }, width: v.videoWidth, height: v.videoHeight };
+    return { samples, width: v.videoWidth, height: v.videoHeight };
   } finally {
     v.removeAttribute("src");
     v.load();
