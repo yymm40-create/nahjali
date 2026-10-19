@@ -70,6 +70,8 @@ export class SceneHost {
   w = 0;
   h = 0;
   fps = 30;
+  /** the person's video, when the piece is built on it: its frame at t (decoded here, handed to the page with each frame) */
+  video: ((t: number, scale: number) => Promise<ImageBitmap | null>) | null = null;
 
   constructor() {
     const el = document.createElement("iframe");
@@ -140,7 +142,7 @@ export class SceneHost {
   }
 
   /** Loads a program (its pictures as bitmaps, its fonts by URL); resolves with what the scene says about itself. */
-  async load(code: string, o: { w: number; h: number; fps?: number; assets?: { id: string; bitmap: ImageBitmap }[]; fonts?: SceneFont[]; voice?: { text: string; from: number; to: number }[] }): Promise<SceneInfo> {
+  async load(code: string, o: { w: number; h: number; fps?: number; assets?: { id: string; bitmap: ImageBitmap }[]; fonts?: SceneFont[]; voice?: { text: string; from: number; to: number }[]; footage?: Record<string, unknown> | null }): Promise<SceneInfo> {
     await this.booted;
     this.w = o.w;
     this.h = o.h;
@@ -155,21 +157,23 @@ export class SceneHost {
       this.loading = { ok: (v) => (clearTimeout(timer), ok(v)), no: (e) => (clearTimeout(timer), no(e)) };
       // the bitmaps are copied (not transferred): the host keeps them for the next load
       void hfLibs(code)
-        .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs, voice: o.voice ?? [] }))
+        .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs, voice: o.voice ?? [], footage: o.footage ?? null }))
         .catch((e) => this.loading?.no(new SceneError(`ما قدرت أحمّل أدوات مهارة Higgsfield (${e instanceof Error ? e.message : e}).`, "load")));
     });
   }
 
   /** The frame at t seconds (scale ≤ 1 for previews; sub sub-frames across the shutter for motion blur). */
-  frame(t: number, o: { scale?: number; sub?: number; shutter?: number } = {}): Promise<ImageBitmap> {
+  async frame(t: number, o: { scale?: number; sub?: number; shutter?: number } = {}): Promise<ImageBitmap> {
     const id = ++this.seq;
+    // the person's video at this moment goes in with the request (transferred: the page closes the one before)
+    const video = this.video ? await this.video(t, o.scale ?? 1).catch(() => null) : null;
     return new Promise<ImageBitmap>((ok, no) => {
       const timer = setTimeout(() => {
         this.waits.delete(id);
         no(new SceneError(`الفريم عند ${t.toFixed(2)} ث أخذ أكثر من ٢٠ ثانية (المشهد ثقيل جدًا).`, "frame", t));
       }, 20_000);
       this.waits.set(id, { ok, no, timer });
-      this.post({ type: "frame", id, t, scale: o.scale ?? 1, sub: o.sub ?? 1, shutter: o.shutter ?? 0, fps: this.fps });
+      this.post({ type: "frame", id, t, scale: o.scale ?? 1, sub: o.sub ?? 1, shutter: o.shutter ?? 0, fps: this.fps, video }, video ? [video] : []);
     });
   }
 

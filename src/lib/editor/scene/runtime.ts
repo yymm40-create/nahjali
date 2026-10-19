@@ -76,6 +76,9 @@ export const SCENE_RUNTIME_JS = String.raw`
     K.W = m.w; K.H = m.h; K.fps = m.fps || 30; K.ctx = ctx; K.canvas = canvas; K.glCanvas = gl; K.assets = {};
     // the person's own voice, when the piece is built on it: its lines and when each is said
     K.voice = Array.isArray(m.voice) ? m.voice : [];
+    // the person's own filmed video, when the piece is built on it: its words, its face, and (per frame) its picture of now
+    if (K.footage && K.footage.frame && K.footage.frame.close) K.footage.frame.close();
+    K.useFootage(m.footage || null);
     for (var i = 0; i < (m.assets || []).length; i++) K.assets[m.assets[i].id] = m.assets[i].bitmap;
     K.fonts = {};
     var faces = (m.fonts || []).map(function (f) {
@@ -97,6 +100,11 @@ export const SCENE_RUNTIME_JS = String.raw`
     post({ type: "ready", duration: Number(def.duration) || 0, cues: Array.isArray(def.cues) ? def.cues : [], blur: Number(def.blur) || 0, bpm: Number(def.bpm) || 0, title: String(def.title || ""), sound: typeof def.sound === "function" });
   }
   async function frame(m) {
+    if (K.footage) {
+      // the video's frame of now, handed in by the host (decoded there: this page has no network and no media)
+      if (m.video) { if (K.footage.frame && K.footage.frame !== m.video && K.footage.frame.close) K.footage.frame.close(); K.footage.frame = m.video; }
+      K.footage.t = m.t;
+    }
     var n = Math.max(1, Math.min(8, Math.round(m.sub || 1))), shutter = Math.max(0, Math.min(1, def.blur === undefined ? (m.shutter || 0) : Number(def.blur))), out = canvas;
     if (n > 1 && shutter > 0) {
       if (!acc) { acc = new OffscreenCanvas(K.W, K.H); accX = acc.getContext("2d", { willReadFrequently: true }); }

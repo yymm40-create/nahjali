@@ -60,7 +60,7 @@ describe("مختبر الموشن · كتالوج الخيارات", () => {
     const director = read("src/lib/editor/scene/director.ts");
     expect(director).toContain("choicesText(choices)");
     expect(director).toContain("choicesRefs(choices)");
-    expect(director).toContain("const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id)), choices };");
+    expect(director).toContain("const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id), foot?.seconds), choices");
     const lab = read("src/components/jawad/editor/MotionLab.tsx");
     expect(lab).toContain("LAB_GROUPS");
     expect(lab).toContain("choices");

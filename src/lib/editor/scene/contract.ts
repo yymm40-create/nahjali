@@ -4,6 +4,7 @@
 import { FONT_BY_ID, FONT_LIST } from "@/lib/editor/fonts";
 import { readChoices, type LabChoices } from "@config/editor/lab-options";
 import { CUE_SFX, PASS, RUBRIC, type RubricId } from "./skill";
+import { FRAMES, type FootageFrame } from "./footage";
 
 export const CODE_MAX = 140_000;
 export const SECONDS = { min: 3, max: 60 } as const;
@@ -63,6 +64,8 @@ export interface Shot {
   text: string;
   transition: string;
   sound: string;
+  /** on the person's own video: how it sits in this shot (full, card, split, corner, away, over); "" otherwise */
+  frame: FootageFrame | "";
 }
 export interface LabPlan {
   title: string;
@@ -90,15 +93,16 @@ export interface LabPlan {
 export const LAB_FONTS = FONT_LIST.filter((f) => ["sans", "display", "kufi", "naskh"].includes(f.kind)).map((f) => f.id);
 const font = (v: unknown, d: string) => (typeof v === "string" && FONT_BY_ID.has(v) ? v : d);
 
-/** حيدرة's plan made safe (every field bounded; unknown fonts fall back to good ones). */
-export function readPlan(raw: unknown, seconds: number, assetIds: string[] = []): LabPlan {
+/** حيدرة's plan made safe (every field bounded; unknown fonts fall back to good ones). A piece on the person's video
+ * (`fixed`) lasts exactly the video's length, whatever the plan says. */
+export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [], fixed?: number): LabPlan {
   const o = (raw ?? {}) as Record<string, unknown>;
   const pal = (o.palette ?? {}) as Record<string, unknown>;
   const fo = (o.fonts ?? {}) as Record<string, unknown>;
-  const secs = num(o.seconds, SECONDS.min, SECONDS.max, seconds);
+  const secs = fixed ?? num(o.seconds, SECONDS.min, SECONDS.max, seconds);
   const shots = (Array.isArray(o.shots) ? o.shots : []).slice(0, 40).map((x) => {
     const s = (x ?? {}) as Record<string, unknown>;
-    return { from: num(s.from, 0, secs, 0), to: num(s.to, 0, secs, secs), what: str(s.what, 400), motion: str(s.motion, 300), camera: str(s.camera, 200), text: str(s.text, 160), transition: str(s.transition, 200), sound: str(s.sound, 160) };
+    return { from: num(s.from, 0, secs, 0), to: num(s.to, 0, secs, secs), what: str(s.what, 400), motion: str(s.motion, 300), camera: str(s.camera, 200), text: str(s.text, 160), transition: str(s.transition, 200), sound: str(s.sound, 160), frame: ((FRAMES as readonly string[]).includes(String(s.frame)) ? String(s.frame) : "") as FootageFrame | "" };
   }).filter((s) => s.to > s.from);
   return {
     title: str(o.title, 80) || "موشن",

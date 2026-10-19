@@ -91,7 +91,7 @@ const SCHEMA = {
           prompt: { type: "string", description: "music: English description (genre, mood, instruments, tempo). make: the generator's prompt (image/video/sfx/music: detailed English; speech: the exact words to be spoken, in their language). Else empty." },
           at: { type: "number", description: "timeline ms where it goes (hook/music/make), usually 0 or the playhead" },
           lengthMs: { type: "number", description: "music: length in ms (usually the video's length). Else 0." },
-          clipId: { type: "string", description: "separate: the clip whose sound to split; scene_cut / smart_mask: the clip; code_grade: the clips to grade, ids separated by commas. Else empty." },
+          clipId: { type: "string", description: "separate: the clip whose sound to split; scene_cut / smart_mask: the clip; code_grade: the clips to grade, ids separated by commas; motion_lab: the person's talking clip when the lab builds the piece on it. Else empty." },
         },
       },
     },
@@ -526,7 +526,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     }
   }
   const requests = (answer.requests ?? [])
-    .filter((r) => ((r.kind === "motion_lab" || r.kind === "code_edit") && r.prompt.trim()) || (r.kind === "code_grade" && r.prompt.trim() && r.clipId.split(",").some((id) => tl.tracks.some((t) => t.clips.some((c) => c.id === id.trim())))) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "watch" || r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
+    .filter((r) => ((r.kind === "motion_lab" || r.kind === "code_edit") && r.prompt.trim()) || (r.kind === "motion_lab" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || (r.kind === "code_grade" && r.prompt.trim() && r.clipId.split(",").some((id) => tl.tracks.some((t) => t.clips.some((c) => c.id === id.trim())))) || (r.kind === "hook_design" && r.text.trim() && r.domain.trim() && r.age.trim()) || ((r.kind === "music" || r.kind === "make") && r.prompt.trim()) || r.kind === "captions" || r.kind === "voiceprint" || (r.kind === "talk_motion" && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))) || ((r.kind === "watch" || r.kind === "separate" || r.kind === "scene_cut" || r.kind === "upscale" || (r.kind === "smart_mask" && r.prompt.trim())) && tl.tracks.some((t) => t.clips.some((c) => c.id === r.clipId))))
     // the same thing asked twice in one answer (same kind, words and place) is made once
     .filter((r, i, all) => all.findIndex((x) => x.kind === r.kind && x.prompt.trim() === r.prompt.trim() && x.text.trim() === r.text.trim() && x.clipId === r.clipId && (x.makeKind ?? "") === (r.makeKind ?? "")) === i)
     // a motion piece's sounds are the engine's (above); Claude's own sfx requests for it would double them
