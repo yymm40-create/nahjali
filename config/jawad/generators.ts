@@ -8,6 +8,7 @@
 
 import { COIN_COST_USD, sellKind, wasHalalas, getPricing, type PriceKind } from "../coins";
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
+import { HABIBI_COMMERCIAL, LICENCE_MARK } from "./voice-licences";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
 
@@ -1267,27 +1268,21 @@ const jawadVoice: GeneratorDef = {
       key: "engine", label: "المحرك", kind: "choice", default: "auto",
       values: [
         { value: "auto", label: "تلقائي", hint: "حبيبي إن كان مفعّلًا، وإلا Chatterbox" },
-        { value: "habibi", label: "حبيبي (عربي)", hint: "مصنوع للعربية ولهجاتها" },
-        { value: "chatterbox", label: "Chatterbox", hint: "٢٣ لغة منها العربية" },
+        { value: "habibi", label: "حبيبي (عربي)", hint: "مصنوع للعربية ولهجاتها؛ تجاري أو غير تجاري حسب اللهجة المختارة" },
+        { value: "chatterbox", label: `Chatterbox · ${LICENCE_MARK.commercial}`, hint: "٢٣ لغة منها العربية (رخصة MIT)" },
       ],
     },
     {
+      // the owner's decision: BOTH the commercial (Apache-2.0) and the non-commercial (CC-BY-NC-SA) voices are offered, each marked
+      // (config/jawad/voice-licences.ts) — never remove either kind
       key: "dialect", label: "اللهجة (حبيبي)", kind: "choice", default: "UNK",
-      values: [
-        { value: "UNK", label: "من العينة" },
-        { value: "MSA", label: "فصحى" },
-        { value: "SAU", label: "سعودي" },
-        { value: "UAE", label: "إماراتي" },
-        { value: "IRQ", label: "عراقي" },
-        { value: "EGY", label: "مصري" },
-        { value: "LEV", label: "شامي" },
-        { value: "OMN", label: "عُماني" },
-        { value: "ALG", label: "جزائري" },
-        { value: "MAR", label: "مغربي" },
-        { value: "TUN", label: "تونسي" },
-        { value: "SDN", label: "سوداني" },
-        { value: "LBY", label: "ليبي" },
-      ],
+      values: ([
+        ["UNK", "من العينة"], ["MSA", "فصحى"], ["SAU", "سعودي"], ["UAE", "إماراتي"], ["IRQ", "عراقي"], ["EGY", "مصري"], ["LEV", "شامي"],
+        ["OMN", "عُماني"], ["ALG", "جزائري"], ["MAR", "مغربي"], ["TUN", "تونسي"], ["SDN", "سوداني"], ["LBY", "ليبي"],
+      ] as const).map(([value, name]) => {
+        const commercial = (HABIBI_COMMERCIAL as readonly string[]).includes(value);
+        return { value, label: `${name} · ${commercial ? LICENCE_MARK.commercial : LICENCE_MARK.noncommercial}`, hint: commercial ? "نموذج Apache 2.0: يجوز بيع ما يُصنع به" : "نموذج CC-BY-NC-SA: للاستخدام غير التجاري فقط" };
+      }),
     },
     { key: "speed", label: "السرعة", kind: "choice", default: "1", values: [{ value: "0.85", label: "أبطأ" }, { value: "1", label: "عادية" }, { value: "1.15", label: "أسرع" }] },
   ],
@@ -1299,7 +1294,7 @@ const jawadVoice: GeneratorDef = {
   ],
   modeFor: () => jvMode,
   rules(d) {
-    const notes = ["محرك الموقع نفسه: صوتك من تسجيل ١٠ ثوانٍ فأكثر، بلا حد لعدد الأصوات وبلا رسوم نسخ. يتكلم العربية بلهجاتها (حبيبي) أو ٢٣ لغة (Chatterbox)."];
+    const notes = ["محرك الموقع نفسه: صوتك من تسجيل ١٠ ثوانٍ فأكثر، بلا حد لعدد الأصوات وبلا رسوم نسخ. يتكلم العربية بلهجاتها (حبيبي) أو ٢٣ لغة (Chatterbox).", "الأصوات التجارية (🟢) يجوز بيع ما يُصنع بها؛ غير التجارية (🟠) للاستخدام غير التجاري فقط، واختيارها مسؤولية صاحب المنصة."];
     if (!d.settings.voice) notes.unshift("خذ بصمة صوتك أولًا (🎙️ بصمة صوتك) ثم اختره هنا؛ هذا المحرك يتكلم بأصوات مكتبتك فقط.");
     return { options: opt(jawadVoice.options), issues: [], notes };
   },
