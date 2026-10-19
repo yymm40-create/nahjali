@@ -112,6 +112,20 @@ export function KeyControls({ clip, locked, set }: { clip: Clip; locked: boolean
                 <button type="button" disabled={locked} className={`${btn} border-jw-accent/60`} onClick={() => ask("ai")} title="حيدرة يشوف الماسك والنتيجة ويصلّح الإعدادات (من رصيدك مثل محادثته)">
                   🤖 حيدرة يضبط الكي
                 </button>
+                <button
+                  type="button"
+                  disabled={locked}
+                  className={`${btn} !border-jw-danger/50 text-jw-danger`}
+                  onClick={() => {
+                    // «ابدأ من الصفر»: كل إعدادات هالمقطع (لون، سماحية، تنظيف، شعر، ثبات…) تتصفّر أول — أي ضبط سابق كان
+                    // يسبّب فوضى ما يبقى يتراكم — وبعدها يُكتشف اللون من جديد من الفريم كأنه أول مرة
+                    set({ key: { ...NEW_KEY, kind: "chroma" } }, "key:reset");
+                    ask("auto");
+                  }}
+                  title="يصفّر كل إعدادات الكي لهذا المقطع ويعيد الكشف من جديد"
+                >
+                  ♻️ ابدأ من الصفر
+                </button>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] text-jw-muted">لون الشاشة</span>
