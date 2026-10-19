@@ -7,6 +7,8 @@ import { addChallenges, chunks, loadHabitData } from "./bulk";
 import { boardScore, rankEntries, rankReading, readingTotalsFor, MIN_GOALS, type LeaderboardPeriod } from "./leaderboard";
 import { addDays, todayIn } from "../engine";
 import { avatarUrl } from "./rows";
+import { cleanPerms, type Seat } from "../groups/program";
+import { programMissing } from "./group-program";
 
 /** The cookie that carries a group's join token while the visitor signs up or in (a week at most). */
 export const GROUP_JOIN_COOKIE = "mahdi_gjoin";
@@ -71,14 +73,23 @@ export async function listMyGroups(db: SupabaseClient, me: string) {
   };
 }
 
-/** The group, if I'm an active member (or, with `allowInvited`, invited). Otherwise a "not available" error. */
+/**
+ * The group, if I'm an active member (or, with `allowInvited`, invited), with my seat in it (leader, an admin and their
+ * permissions, or a member). Otherwise a "not available" error.
+ */
 export async function requireGroup(db: SupabaseClient, groupId: string, me: string, allowInvited = false) {
-  const [{ data: group }, { data: member }] = await Promise.all([
-    db.from("mahdi_groups").select("id, name, leader_id").eq("id", groupId).maybeSingle(),
-    db.from("mahdi_group_members").select("status").eq("group_id", groupId).eq("user_id", me).maybeSingle(),
-  ]);
+  const read = (cols: string) => db.from("mahdi_group_members").select(cols).eq("group_id", groupId).eq("user_id", me).maybeSingle();
+  const [{ data: group }, first] = await Promise.all([db.from("mahdi_groups").select("id, name, leader_id").eq("id", groupId).maybeSingle(), read("status, role, perms, appointed_by")]);
+  // before migration 0083 there are no admins: only the status
+  const member = (programMissing(first.error) ? (await read("status")).data : first.data) as { status: MemberRow["status"]; role?: string; perms?: unknown; appointed_by?: string | null } | null;
   if (!group || !member || (member.status !== "active" && !allowInvited)) throw new UserError(t.groups.notMember, 404);
-  return { group: group as { id: string; name: string; leader_id: string }, status: member.status as MemberRow["status"] };
+  const seat: Seat = {
+    userId: me,
+    role: group.leader_id === me ? "leader" : member.status === "active" && member.role === "admin" ? "admin" : "member",
+    perms: group.leader_id === me ? [] : cleanPerms(member.perms),
+    appointedBy: member.appointed_by ?? null,
+  };
+  return { group: group as { id: string; name: string; leader_id: string }, status: member.status, seat };
 }
 
 /** How many groups I am in or invited to. */

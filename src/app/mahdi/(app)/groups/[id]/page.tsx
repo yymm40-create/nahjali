@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
@@ -11,6 +11,10 @@ import BoardList, { type BoardRow } from "@/components/mahdi/BoardList";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
+import Sheet from "@/components/mahdi/Sheet";
+import GroupProgram, { type ProgramData } from "@/components/mahdi/groups/GroupProgram";
+import GroupStats from "@/components/mahdi/groups/GroupStats";
+import { GROUP_PERMS, type GroupPerm } from "@/lib/mahdi/groups/program";
 
 interface Member {
   displayName: string;
@@ -19,9 +23,16 @@ interface Member {
   status: "invited" | "active";
   leader: boolean;
   mine: boolean;
+  admin?: boolean;
+  perms?: GroupPerm[];
+  appointedBy?: string;
+  canRemove?: boolean;
+  canAdmin?: boolean;
 }
 interface Detail {
   group: { id: string; name: string; isLeader: boolean };
+  me?: { role: "leader" | "admin" | "member"; perms: GroupPerm[]; grantable: GroupPerm[]; seatsReady: boolean };
+  program?: ProgramData;
   members: Member[];
   requests?: { displayName: string; username: string; avatarUrl: string | null }[];
   ranking: { ranked: BoardRow[]; unranked: { displayName: string; username: string; avatarUrl: string | null; mine: boolean }[]; min?: number };
@@ -30,8 +41,14 @@ interface Detail {
   today: string;
 }
 type Confirm = { kind: "remove" | "transfer"; m: Member } | { kind: "leave" | "delete" } | null;
+type Tab = "home" | "program" | "stats" | "people";
+const TABS: Tab[] = ["home", "program", "stats", "people"];
 
-/** One group: its closed ranking (week / month, commitment / reading), its members, and the leader's tools. */
+/**
+ * One group, run like its own «لأجل المهدي»: its khatma, shared works and closed ranking; its program (projects and
+ * habits its leaders build); every member's numbers and comparisons; its members, the admins under the leader and
+ * their permissions. Each tool shows to whoever holds its permission (the leader holds them all).
+ */
 export default function GroupPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -50,6 +67,12 @@ export default function GroupPage() {
   const [workCadence, setWorkCadence] = useState<"daily" | "once">("daily");
   const [workDate, setWorkDate] = useState("");
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const params = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const want = params.get("tab") as Tab | null;
+    return want && TABS.includes(want) ? want : "home";
+  });
+  const [perms, setPerms] = useState<{ m: Member; list: GroupPerm[] } | null>(null);
   const key = `${period}:${metric}:${reload}`;
   // the join link (the leader's): its token comes from the server once asked
   const [token, setToken] = useState<string | null>(null);
@@ -125,6 +148,13 @@ export default function GroupPage() {
   const { group, members, ranking } = data;
   const active = members.filter((m) => m.status === "active");
   const invited = members.filter((m) => m.status === "invited");
+  // what I may do here (before migration 0083 the leader alone, as before)
+  const mine = data.me?.perms ?? [];
+  const may = (perm: GroupPerm) => group.isLeader || mine.includes(perm);
+  const pickTab = (next: Tab) => {
+    setTab(next);
+    window.history.replaceState(null, "", next === "home" ? window.location.pathname : `?tab=${next}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -135,7 +165,25 @@ export default function GroupPage() {
         <p className="m-eyebrow">{t.groups.title}</p>
         <h1 className="m-display text-3xl">{group.name}</h1>
         <p className="m-num text-sm m-muted">{t.groups.members(active.length)}</p>
+        {data.me?.role === "admin" && (
+          <p className="text-sm">
+            <span className="m-chip m-chip-gold">{t.groups.admin}</span> <span className="m-muted">{t.groups.admins.yours}: {mine.map((x) => t.groups.admins.short[x]).join("، ")}</span>
+          </p>
+        )}
       </header>
+
+      <div className="m-card grid grid-cols-4 gap-1 p-1" role="tablist" aria-label={group.name}>
+        {TABS.map((k) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={`min-h-10 rounded-xl px-2 text-sm font-semibold transition-colors ${tab === k ? "" : "m-muted"}`} style={tab === k ? { background: "var(--m-gold)", color: "var(--m-gold-ink)" } : undefined} onClick={() => pickTab(k)}>
+            {t.groups.tabs[k]}
+          </button>
+        ))}
+      </div>
+
+      {tab === "program" && <GroupProgram groupId={id} program={data.program ?? { ready: false, projects: [], habits: [] }} canEdit={may("program")} onChanged={() => setReload((n) => n + 1)} />}
+      {tab === "stats" && <GroupStats groupId={id} reload={reload} />}
+
+      {tab === "home" && (<>
 
       <Link href={`/mahdi/khatma/${id}`} className="m-card flex items-center gap-3 p-4">
         <span className="grid size-10 shrink-0 place-items-center rounded-2xl" style={{ background: "color-mix(in srgb, #16a34a 18%, transparent)", color: "#16a34a" }}>
@@ -190,7 +238,7 @@ export default function GroupPage() {
                     <span className="block h-full rounded-full transition-[width]" style={{ width: `${work.memberCount ? Math.round(work.doneCount / work.memberCount * 100) : 0}%`, background: "var(--m-gold)" }} />
                   </span>
                 </span>
-                {group.isLeader && (
+                {may("program") && (
                   <button type="button" className="m-icon-btn m-btn-ghost shrink-0" disabled={workBusy === work.id} aria-label={t.groups.workRemove} onClick={() => act({ action: "work_archive", workId: work.id }, t.groups.workArchived)}>
                     <Icon name="trash" size={16} />
                   </button>
@@ -200,7 +248,7 @@ export default function GroupPage() {
           </ul>
         )}
 
-        {group.isLeader && data.worksReady && (
+        {may("program") && data.worksReady && (
           <form
             className="m-card space-y-3 p-4"
             onSubmit={(event) => {
@@ -267,6 +315,9 @@ export default function GroupPage() {
         </div>
       </section>
 
+      </>)}
+
+      {tab === "people" && (<>
       <section className="space-y-3" aria-labelledby="members">
         <h2 id="members" className="text-lg font-semibold">{t.groups.membersTitle}</h2>
         <ul className="m-card divide-y" style={{ borderColor: "var(--m-line)" }}>
@@ -278,22 +329,41 @@ export default function GroupPage() {
                 <span className="flex flex-wrap items-center gap-2 text-sm m-muted">
                   {m.username && <bdi dir="auto">{m.username}</bdi>}
                   {m.leader && <span className="m-chip m-chip-gold">{t.groups.leader}</span>}
+                  {m.admin && <span className="m-chip m-chip-gold">{t.groups.admin}</span>}
                   {m.status === "invited" && <span className="m-chip">{t.groups.pending}</span>}
                 </span>
+                {m.admin && (m.perms?.length ?? 0) > 0 && (
+                  <span className="mt-0.5 block text-xs m-muted">
+                    {m.perms!.map((x) => t.groups.admins.short[x]).join("، ")}
+                    {m.appointedBy && ` · ${t.groups.admins.by(m.appointedBy)}`}
+                  </span>
+                )}
               </span>
-              {group.isLeader && !m.mine && (
-                <span className="flex gap-1">
-                  {m.status === "active" && (
+              {!m.mine && (group.isLeader || m.canRemove || m.canAdmin) && (
+                <span className="flex flex-wrap gap-1">
+                  {m.canAdmin && (
+                    <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setPerms({ m, list: m.perms?.length ? m.perms : [] })}>
+                      {m.admin ? t.groups.admins.edit : t.groups.admins.make}
+                    </button>
+                  )}
+                  {group.isLeader && m.status === "active" && (
                     <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setConfirm({ kind: "transfer", m })}>{t.groups.makeLeader}</button>
                   )}
-                  <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setConfirm({ kind: "remove", m })}>{t.groups.remove}</button>
+                  {(m.canRemove ?? group.isLeader) && <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setConfirm({ kind: "remove", m })}>{t.groups.remove}</button>}
                 </span>
               )}
             </li>
           ))}
         </ul>
 
-        {group.isLeader && (data.requests?.length ?? 0) > 0 && (
+        {may("admins") && (
+          <p className="m-note text-sm">
+            <b>{t.groups.admins.title}:</b> {t.groups.admins.hint}
+            {data.me && !data.me.seatsReady && ` ${t.groups.admins.notReady}`}
+          </p>
+        )}
+
+        {may("members") && (data.requests?.length ?? 0) > 0 && (
           <div className="m-card space-y-2 p-4">
             <h3 className="font-semibold">{t.groups.requestsTitle}</h3>
             <ul className="divide-y" style={{ borderColor: "var(--m-line)" }}>
@@ -309,7 +379,7 @@ export default function GroupPage() {
           </div>
         )}
 
-        {group.isLeader && (
+        {may("members") && (
           <div className="m-card space-y-3 p-4">
             <h3 className="font-semibold">{t.groups.linkTitle}</h3>
             <p className="text-sm m-muted">{t.groups.linkHint}</p>
@@ -330,7 +400,7 @@ export default function GroupPage() {
           </div>
         )}
 
-        {group.isLeader && (
+        {may("members") && (
           <form
             className="m-card space-y-2 p-4"
             onSubmit={(e) => {
@@ -348,7 +418,7 @@ export default function GroupPage() {
       </section>
 
       <section className="m-card space-y-2 p-4">
-        {group.isLeader && (
+        {may("settings") && (
           rename === null ? (
             <button type="button" className="m-btn m-btn-ghost w-full justify-start" onClick={() => setRename(group.name)}>
               <Icon name="edit" /> {t.groups.rename}
@@ -378,6 +448,44 @@ export default function GroupPage() {
         {group.isLeader && <p className="text-sm m-muted">{t.groups.leaderLeave}</p>}
         <p className="m-num text-center text-xs m-muted">{fmtNum(members.length)} / 50</p>
       </section>
+      </>)}
+
+      <Sheet open={Boolean(perms)} onClose={() => setPerms(null)} title={perms ? t.groups.admins.sheetTitle(perms.m.displayName) : ""}>
+        {perms && (
+          <div className="space-y-4">
+            <p className="text-sm m-muted">{t.groups.admins.hint}</p>
+            <ul className="space-y-2">
+              {GROUP_PERMS.filter((x) => data.me?.grantable.includes(x) || group.isLeader).map((x) => (
+                <li key={x}>
+                  <label className="m-option flex min-h-12 cursor-pointer items-center gap-3 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      className="size-5"
+                      checked={perms.list.includes(x)}
+                      onChange={() => setPerms((cur) => (cur ? { ...cur, list: cur.list.includes(x) ? cur.list.filter((y) => y !== x) : [...cur.list, x] } : cur))}
+                    />
+                    <span className="text-sm font-semibold">{t.groups.admins.perms[x]}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="m-btn m-btn-primary w-full"
+              disabled={busy || !perms.list.length}
+              onClick={() => act({ action: "admin_set", username: perms.m.username, perms: perms.list }, t.groups.admins.saved, () => (setPerms(null), setReload((n) => n + 1)))}
+            >
+              {t.common.save}
+            </button>
+            {!perms.list.length && <p className="text-sm m-muted">{t.groups.admins.none}</p>}
+            {perms.m.admin && (
+              <button type="button" className="m-btn m-btn-danger w-full" disabled={busy} onClick={() => act({ action: "admin_remove", username: perms.m.username }, t.groups.admins.removed, () => (setPerms(null), setReload((n) => n + 1)))}>
+                {t.groups.admins.remove}
+              </button>
+            )}
+          </div>
+        )}
+      </Sheet>
 
       <ConfirmSheet
         open={Boolean(confirm)}

@@ -11,7 +11,7 @@ import { t } from "@/lib/mahdi/i18n";
 import Icon from "../Icon";
 import LogSheet from "../LogSheet";
 import { useMahdi } from "../Provider";
-import { bySort, CHALLENGE_GROUP } from "@/lib/mahdi/client/derive";
+import { bySort, CHALLENGE_GROUP, projectHref } from "@/lib/mahdi/client/derive";
 import Tick, { shapeFor, useTickPref } from "./Tick";
 import { useHabitTap, useDay, XP_PER, type DayHabit } from "./useDay";
 
@@ -50,7 +50,7 @@ function groupsOf(habits: DayHabit[]): Group[] {
     let g = groups.get(id);
     if (!g) {
       const isChallenge = id === CHALLENGE_GROUP;
-      g = { key: id, name: isChallenge ? t.challenges.title : h.project?.name ?? "عادات", icon: isChallenge ? "🕌" : h.project?.icon ?? "", color: h.project?.color ?? "gold", href: isChallenge ? "/mahdi/challenges" : `/mahdi/projects/${id}`, habits: [], done: 0 };
+      g = { key: id, name: isChallenge ? t.challenges.title : h.project?.name ?? "عادات", icon: isChallenge ? "🕌" : h.project?.icon ?? "", color: h.project?.color ?? "gold", href: projectHref(h.project ?? { id }), habits: [], done: 0 };
       groups.set(id, g);
       order.set(id, h.project?.sortOrder ?? 9999);
     }

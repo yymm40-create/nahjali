@@ -4,6 +4,8 @@ import { isISODate, todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { fromDbError, mahdiRoute, readJson, requireProfile, UserError, UUID_RE } from "@/lib/mahdi/server/api";
 import { parseValue } from "@/lib/mahdi/server/validate";
+import { groupHabitWindows, setGroupLog } from "@/lib/mahdi/server/group-program";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 interface Result {
   habitId: string;
@@ -43,6 +45,11 @@ export const PUT = mahdiRoute(async (req: Request) => {
     }
   }
 
+  // My groups' habits come as "g:<id>"; their first day is the habit's start or the day I joined, in a group I'm active in
+  const groupIds = [...new Set(ids.filter((x) => x.startsWith("g:")).map((x) => x.slice(2)).filter((x) => UUID_RE.test(x)))];
+  const admin = groupIds.length ? createAdminClient() : null;
+  const groupWindow = admin ? await groupHabitWindows(admin, profile.userId, groupIds) : new Map<string, { groupId: string; start: string }>();
+
   // First day of each habit (only the user's own habits come back, thanks to RLS)
   const startOf = new Map<string, string>();
   if (habitIds.length) {
@@ -60,9 +67,10 @@ export const PUT = mahdiRoute(async (req: Request) => {
     const date = typeof o.date === "string" ? o.date : "";
     const fail = (error: string) => results.push({ habitId, date, error });
     const isChallenge = habitId.startsWith("c:");
-    if ((!isChallenge && !UUID_RE.test(habitId)) || !isISODate(date)) return fail(t.errors.invalid);
+    const group = habitId.startsWith("g:") ? groupWindow.get(habitId.slice(2)) : undefined;
+    if ((!isChallenge && !habitId.startsWith("g:") && !UUID_RE.test(habitId)) || !isISODate(date)) return fail(t.errors.invalid);
     const win = challengeWindow.get(habitId);
-    const start = isChallenge ? win?.start : startOf.get(habitId);
+    const start = habitId.startsWith("g:") ? group?.start : isChallenge ? win?.start : startOf.get(habitId);
     if (!start) return fail(t.errors.notFound);
     if (win?.end && date > win.end) return fail(t.errors.invalid);
     if (date > today) return fail(t.errors.futureDate);
@@ -76,6 +84,14 @@ export const PUT = mahdiRoute(async (req: Request) => {
     const ts = Number(o.ts);
     // A client clock far in the future would make its edit impossible to correct later
     const clientTs = Number.isFinite(ts) && ts > 1.5e12 && ts < now + 5 * 60_000 ? ts : now;
+    if (group && admin) {
+      try {
+        results.push({ habitId, date, value: await setGroupLog(admin, habitId.slice(2), group.groupId, profile.userId, date, value, new Date(clientTs).toISOString()) });
+      } catch {
+        fail(t.errors.generic);
+      }
+      return;
+    }
     const { data, error } = await supabase.rpc(isChallenge ? "mahdi_set_challenge_log" : "mahdi_set_log", {
       ...(isChallenge ? { p_challenge: habitId.slice(2) } : { p_habit: habitId }),
       p_date: date,

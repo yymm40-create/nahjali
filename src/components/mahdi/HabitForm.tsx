@@ -5,11 +5,21 @@ import { MAHDI_LIMITS, UNIT_CHOICES } from "@config/mahdi";
 import type { Freq, Measure } from "@/lib/mahdi/engine";
 import { orderedWeekdays, t } from "@/lib/mahdi/i18n";
 import { bySort, currentVersion, parseNumberInput } from "@/lib/mahdi/client/derive";
-import type { Habit } from "@/lib/mahdi/types";
+import type { Habit, Project } from "@/lib/mahdi/types";
 import Icon from "./Icon";
 import IconPicker from "./IconPicker";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
+
+/**
+ * Where a habit or project form saves when it is not the person's own: «إخوة الولاية» build their group's program with
+ * the very same forms. `projects` are the ones to choose from; `save` gets what the person's own API would (the new
+ * habit's fields, or the changed ones with `config` when the goal changed) and returns the id.
+ */
+export interface FormTarget {
+  projects: Project[];
+  save: (body: Record<string, unknown>, id?: string) => Promise<string>;
+}
 
 /** Create or edit a habit. The basics come first; category, start date, reminder and notes are under "more". */
 export default function HabitForm({
@@ -18,16 +28,18 @@ export default function HabitForm({
   habit,
   projectId,
   onSaved,
+  target,
 }: {
   open: boolean;
   onClose: () => void;
   habit?: Habit;
   projectId?: string;
   onSaved?: (id: string) => void;
+  target?: FormTarget;
 }) {
   return (
     <Sheet open={open} onClose={onClose} title={habit ? t.habit.editTitle : t.habit.newTitle} wide>
-      {open && <Form habit={habit} projectId={projectId} onClose={onClose} onSaved={onSaved} />}
+      {open && <Form habit={habit} projectId={projectId} onClose={onClose} onSaved={onSaved} target={target} />}
     </Sheet>
   );
 }
@@ -58,11 +70,11 @@ function Stepper({ value, onChange, min, max, label }: { value: number; onChange
   );
 }
 
-function Form({ habit, projectId, onClose, onSaved }: { habit?: Habit; projectId?: string; onClose: () => void; onSaved?: (id: string) => void }) {
+function Form({ habit, projectId, onClose, onSaved, target }: { habit?: Habit; projectId?: string; onClose: () => void; onSaved?: (id: string) => void; target?: FormTarget }) {
   const { store, state, toast } = useMahdi();
   const { today } = state;
   const weekStart = state.snap.profile.weekStart;
-  const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
+  const projects = (target?.projects ?? state.snap.projects).filter((p) => !p.archivedAt).sort(bySort);
   const cur = habit ? currentVersion(habit, today) : null;
   const notStarted = Boolean(habit && habit.versions.length === 1 && habit.versions[0].effectiveFrom > today);
 
@@ -112,7 +124,14 @@ function Form({ habit, projectId, onClose, onSaved }: { habit?: Habit; projectId
     setError("");
     const details = { name: name.trim(), icon, category, notes, reminderTime: reminder || null };
     try {
-      if (habit) {
+      if (target) {
+        const body = habit
+          ? { ...details, ...(project !== habit.projectId ? { projectId: project } : {}), ...(configChanged ? { config: cfg } : {}) }
+          : { ...details, ...cfg, projectId: project, startDate };
+        const id = await target.save(body, habit?.id);
+        toast(t.common.saved);
+        onSaved?.(id);
+      } else if (habit) {
         await store.mutate(`/api/mahdi/habits/${habit.id}`, "PATCH", {
           ...details,
           ...(project !== habit.projectId ? { projectId: project } : {}),

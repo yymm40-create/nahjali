@@ -2,7 +2,8 @@
 import { versionAt, type ISODate, type Item, type Version } from "../engine";
 import { fmtNum, joinDays, t } from "../i18n";
 import { addDays, maxDate, minDate } from "../engine";
-import type { Challenge, Habit, Membership, Phrase, PhraseContext, Snapshot } from "../types";
+import type { Challenge, Habit, Membership, Phrase, PhraseContext, Project, Snapshot } from "../types";
+import type { GroupProject } from "../groups/program";
 
 export const toItems = (habits: Habit[], logs: Snapshot["logs"]): Item[] =>
   habits.map((h) => ({ id: h.id, projectId: h.projectId, versions: h.versions, logs: logs[h.id] ?? {} }));
@@ -97,5 +98,19 @@ export function challengeHabits(snap: Snapshot): Habit[] {
   return out;
 }
 
-/** The details page of a habit, or of a challenge for ids like "c:<id>". */
-export const itemHref = (id: string) => (id.startsWith("c:") ? `/mahdi/challenges/${id.slice(2)}` : `/mahdi/habits/${id}`);
+/** The details page of a habit, of a challenge for ids like "c:<id>", or of a group's habit ("g:<id>": its group). */
+export const itemHref = (id: string) => (id.startsWith("c:") ? `/mahdi/challenges/${id.slice(2)}` : id.startsWith("g:") ? `/mahdi/groups/h/${id.slice(2)}` : `/mahdi/habits/${id}`);
+
+/** «إخوة الولاية»: my groups' habits ("g:<id>", in projects "gp:<id>"), logged and scored like my own. */
+export const groupHabits = (snap: Snapshot): Habit[] => snap.groupPlan?.habits ?? [];
+export const groupProjects = (snap: Snapshot): GroupProject[] => snap.groupPlan?.projects ?? [];
+
+/** My live projects in their order, then my groups' projects (those come from the group, after mine). */
+export const dayProjects = (snap: Snapshot): (Project | GroupProject)[] => [...snap.projects.filter((p) => !p.archivedAt).sort(bySort), ...groupProjects(snap)];
+
+/** Where a project's heading leads: my project's page, the challenges, or the group a group's project belongs to. */
+export function projectHref(p: { id: string; groupId?: string }) {
+  if (p.id === CHALLENGE_GROUP) return "/mahdi/challenges";
+  if (p.groupId) return `/mahdi/groups/${p.groupId}?tab=program`;
+  return `/mahdi/projects/${p.id}`;
+}

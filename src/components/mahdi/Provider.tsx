@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { UNDO_MS } from "@config/mahdi";
 import { buildTimeline, type Item, type Timeline } from "@/lib/mahdi/engine";
 import { createStore, type MahdiStore, type StoreState } from "@/lib/mahdi/client/store";
-import { challengeHabits, toItems } from "@/lib/mahdi/client/derive";
+import { challengeHabits, groupHabits, toItems } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import type { Habit, Snapshot } from "@/lib/mahdi/types";
 
@@ -75,7 +75,7 @@ export default function MahdiProvider({ initial, children }: { initial: Snapshot
   }, [store]);
 
   const { snap } = state;
-  const allHabits = useMemo(() => [...snap.habits, ...challengeHabits(snap)], [snap]);
+  const allHabits = useMemo(() => [...snap.habits, ...challengeHabits(snap), ...groupHabits(snap)], [snap]);
   const items = useMemo(() => toItems(allHabits, state.logs), [allHabits, state.logs]);
   const timeline = useMemo(
     () => buildTimeline(items, state.snap.logsFrom, state.today, { asOf: state.today, weekStart: state.snap.profile.weekStart }),

@@ -3,7 +3,7 @@
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { addDays, daySeries, dayStreak, monthSeries, scoreBy, startOfWeek, summarize, weekGoals, weekSeries, weekStreak } from "@/lib/mahdi/engine";
 import { fmtDate, fmtMonth, fmtNum, fmtPct, fmtPoints, t } from "@/lib/mahdi/i18n";
-import { bySort } from "@/lib/mahdi/client/derive";
+import { bySort, groupProjects, projectHref } from "@/lib/mahdi/client/derive";
 import { weekInsights } from "@/lib/mahdi/client/insights";
 import DayBars from "@/components/mahdi/DayBars";
 import TrendLine from "@/components/mahdi/TrendLine";
@@ -23,12 +23,12 @@ export default function ProgressPage() {
   const weeks = weekStreak(timeline, CONSISTENCY_THRESHOLD);
   const byProject = scoreBy(goals, (i) => i.projectId);
   const byHabit = scoreBy(goals, (i) => i.itemId);
-  const projects = snap.projects.filter((p) => byProject.has(p.id)).sort(bySort);
+  const projects = [...snap.projects.filter((p) => byProject.has(p.id)).sort(bySort), ...groupProjects(snap).filter((p) => byProject.has(p.id))];
   const habits = snap.habits.filter((h) => byHabit.has(h.id)).sort((a, b) => (byHabit.get(b.id)!.score ?? 0) - (byHabit.get(a.id)!.score ?? 0));
   const trendW = weekSeries(timeline, today, 12).map((w) => ({ key: w.weekStart, label: fmtDate(w.weekStart), score: w.score }));
   const trendM = monthSeries(timeline, today, 6).map((m) => ({ key: m.monthStart, label: fmtMonth(m.monthStart), score: m.score }));
   const hasData = week.required > 0 || last.required > 0;
-  const color = (projectId: string) => snap.projects.find((p) => p.id === projectId)?.color ?? "gold";
+  const color = (projectId: string) => projects.find((p) => p.id === projectId)?.color ?? "gold";
 
   return (
     <div className="space-y-6">
@@ -65,7 +65,7 @@ export default function ProgressPage() {
               <h2 className="font-semibold">{t.progress.byProject}</h2>
               <ul className="space-y-3">
                 {projects.map((p) => (
-                  <BarRow key={p.id} color={p.color} label={`${p.icon ? `${p.icon} ` : ""}${p.name}`} score={byProject.get(p.id)!.score} href={`/mahdi/projects/${p.id}`} />
+                  <BarRow key={p.id} color={p.color} label={`${p.icon ? `${p.icon} ` : ""}${p.name}`} score={byProject.get(p.id)!.score} href={projectHref(p)} />
                 ))}
               </ul>
             </section>
