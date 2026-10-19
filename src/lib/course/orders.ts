@@ -91,7 +91,7 @@ export interface Started {
 export async function startOrder(user: { id: string; email?: string | null }, b: { courseId: unknown; name: unknown; phone: unknown; code?: unknown }, now = Date.now()): Promise<Started> {
   const s = await loadSettings();
   const courseId = typeof b.courseId === "string" ? b.courseId : "";
-  const { data: course } = /^[0-9a-f-]{36}$/i.test(courseId) ? await db().from("learn_courses").select("id,title,published,price_sar,was_sar").eq("id", courseId).maybeSingle() : { data: null };
+  const { data: course } = /^[0-9a-f-]{36}$/i.test(courseId) ? await db().from("learn_courses").select("*").eq("id", courseId).maybeSingle() : { data: null };
   let price = Number(course?.price_sar) || 0;
   const was = Number(course?.was_sar) || 0;
   // a discount code of THIS course gives its own price
@@ -114,12 +114,12 @@ export async function startOrder(user: { id: string; email?: string | null }, b:
   if (mine.some((o) => o.status === "confirmed" && o.courseId === courseId)) throw new UserError("اشتراكك مؤكد من قبل ✅", 409);
   const lock = new Date(now + COURSE.lockMinutes * 60_000).toISOString();
   const open = mine.find((o) => o.courseId === courseId && o.status === "started");
-  const base = { code: coded?.code ?? "", email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
+  const base = { ...(coded ? { code: coded.code } : {}), email: user.email ?? "", name, phone, phase: "A" as const, amount_sar: offer.price, was_sar: offer.was, bonus_sar: offer.bonus, locked_until: lock, updated_at: new Date(now).toISOString() };
   const phase = offersAt(s, now).phase;
   if (open) {
     // the same order again: the price stays while it is kept, else it follows today's
-    const keep = new Date(open.lockedUntil).getTime() > now && open.amount <= offer.price && open.code === base.code;
-    const patch = keep ? { name, phone, email: base.email, updated_at: base.updated_at } : { ...base, phase };
+    const keep = new Date(open.lockedUntil).getTime() > now && open.amount <= offer.price && open.code === (coded?.code ?? "");
+    const patch = keep ? { name, phone, email: base.email, updated_at: base.updated_at } : { ...base, ...(open.code && !coded ? { code: "" } : {}), phase };
     const { data, error: e2 } = await db().from("course_orders").update(patch).eq("id", open.id).eq("status", "started").select("*").single();
     wrap(e2);
     return { order: view(data!), bank: s.bank };
