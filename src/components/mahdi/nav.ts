@@ -36,6 +36,7 @@ export function navGroups(username: string | null): NavGroup[] {
         HABITS,
         READING,
         { href: "/mahdi/health", label: "الصحة العلوية", icon: "streak", color: "#ef4444", match: starts("/mahdi/health") },
+        { href: "/mahdi/khatma", label: t.khatma.title, icon: "book", color: "#16a34a", match: starts("/mahdi/khatma") },
         PROGRESS,
         { href: "/mahdi/challenges", label: t.challenges.title, icon: "flag", color: "#eab308", match: starts("/mahdi/challenges") },
       ],

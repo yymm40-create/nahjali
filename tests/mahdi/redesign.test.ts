@@ -66,7 +66,7 @@ describe("«لأجل المهدي» redesign: four looks", () => {
 describe("the side menu (☰) holds everything", () => {
   const all = navGroups("ali").flatMap((g) => g.items);
   it("every place of the app is in it, each once", () => {
-    for (const href of ["/mahdi", "/mahdi/projects", "/mahdi/reading", "/mahdi/health", "/mahdi/progress", "/mahdi/challenges", "/mahdi/community", "/mahdi/stories", "/mahdi/groups", "/mahdi/u/ali", "/mahdi/inbox", "/mahdi/more", "/mahdi/more/rewards", "/mahdi/more/family", "/mahdi/more/privacy", "/mahdi/more/notifications"])
+    for (const href of ["/mahdi", "/mahdi/projects", "/mahdi/reading", "/mahdi/health", "/mahdi/khatma", "/mahdi/progress", "/mahdi/challenges", "/mahdi/community", "/mahdi/stories", "/mahdi/groups", "/mahdi/u/ali", "/mahdi/inbox", "/mahdi/more", "/mahdi/more/rewards", "/mahdi/more/family", "/mahdi/more/privacy", "/mahdi/more/notifications"])
       expect(all.map((n) => n.href), href).toContain(href);
     expect(new Set(all.map((n) => n.href)).size).toBe(all.length);
     expect(new Set(all.map((n) => n.label)).size).toBe(all.length);
