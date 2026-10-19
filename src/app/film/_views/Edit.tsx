@@ -73,7 +73,6 @@ export default async function EditView({ id, base }: { id: string; base: string 
         )}
         {ready.length < cut.length && ready.length > 0 && <p className="text-xs font-bold text-muted">المقاطع اللي ما تولّدت تقدر تضيفها بعدين من «من أعمالي» داخل حيدرة كت.</p>}
         <OpenEdit filmId={id} exists={!!editId} disabled={!ready.length} filmTitle={project.title} cut={cut.map((c) => ({ genId: c.genId, name: c.name, videoId: c.video?.id ?? null, note: c.video?.note ?? "" }))} />
-        <p className="text-xs text-muted">بعد تصدير الفيلم بـ٣ أيام تنحذف ملفات المونتاج، والفيديوهات اللي في المونتاج ما تنحذف قبلها.</p>
       </section>
 
       <section className="card space-y-3 p-4">

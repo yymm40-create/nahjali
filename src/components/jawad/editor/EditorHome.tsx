@@ -154,7 +154,6 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
                 </label>
               </li>
               {projects.map((p) => {
-                const left = p.purgeAt && now ? Math.max(0, Math.ceil((new Date(p.purgeAt).getTime() - now) / 3_600_000)) : null;
                 return (
                   <li key={p.id} className="relative">
                     <Link href={`/jawad-ai/editor/${p.id}`} className="jw-panel flex aspect-[4/5] w-full flex-col overflow-hidden p-0 transition hover:border-jw-accent">
@@ -166,9 +165,9 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
                         <span className="block truncate text-[11px] text-jw-muted">
                           {p.clips} مقطع{now ? ` · ${ago(p.updatedAt, now)}` : ""}
                         </span>
-                        {(p.purged || left != null) && (
+                        {p.purged && (
                           <span className="block truncate text-[10px] text-jw-danger">
-                            {p.purged ? "انحذفت ملفاته" : `تنحذف ملفاته خلال ${left! > 24 ? `${Math.ceil(left! / 24)} أيام` : `${left} ساعة`}`}
+                            انحذفت ملفاته
                           </span>
                         )}
                       </span>
@@ -184,9 +183,6 @@ export default function EditorHome({ name, projects: initial, loginHref }: { nam
           {projects?.length === 0 && !loginHref && <p className="text-xs text-jw-faint">ما عندك مشاريع بعد؛ اضغط «مشروع جديد».</p>}
         </section>
 
-        <p className="text-xs text-jw-faint">
-          <Icon name="clock" size={12} className="inline" /> بعد تصدير أي مشروع بـ٣ أيام تنحذف مقاطعه وملفاته من عندنا (ننبهك قبلها)، فاحتفظ بالفيديو اللي نزل على جهازك.
-        </p>
       </div>
       {wizard && <NewProject onClose={() => setWizard(false)} />}
     </div>

@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   await advanceOpenJobs(undefined, 50).catch((e) => console.error("jawad sweep failed", e));
   // «الطالب الذكي»: projects idle for 30 days are deleted with their files; unfinished steps continue
   await studentSweep().catch((e) => console.error("student sweep failed", e));
-  // «حيدرة كت»: 3 days after an export the project's clips and files are deleted (the person was warned)
+  // «حيدرة كت»: only unfinished uploads are dropped (projects are no longer deleted after an export)
   await sweepEditor().catch((e) => console.error("editor sweep failed", e));
   return NextResponse.json({ ok: true, checked });
 }
