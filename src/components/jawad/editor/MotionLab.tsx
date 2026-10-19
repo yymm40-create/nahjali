@@ -19,14 +19,14 @@ import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGroup } from "@config/editor/lab-options";
 import { SceneError, SceneHost, sceneFont, type SceneInfo } from "./scene-host";
-import { contactSheet, cutTimes, frameCost, sheetAt, probe, renderVideo, reviewTimes, stills } from "./scene-render";
+import { canExport, contactSheet, cutTimes, frameCost, sheetAt, probe, renderVideo, reviewTimes, stills } from "./scene-render";
 import { download } from "./export";
 import LabVoice, { type LabVoiceTake } from "./LabVoice";
 import { mixSoundtrack, SoundPreview } from "./lab-sound";
 import { makeMusicAsset } from "./make";
 import { drawDemo, STUDIO, type Swatch } from "./lab-demos";
 import type { EditorAsset } from "./types";
-import { footageFrames, footageSeconds, footageSound, FootageReader, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
+import { footageFrames, footageMatte, footageSeconds, footageSound, FootageReader, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
 import { footageLines, type FootageFrame, type FootageMeta } from "@/lib/editor/scene/footage";
 import "./motion-lab.css";
 
@@ -69,6 +69,8 @@ interface Saved {
   /** «🎥 على فيديوك»: the timeline clip the piece is built on, and what was learnt about it (words, face) */
   footId?: string | null;
   footMeta?: FootageMeta | null;
+  /** «✂️ الكلام ورا الراس»: the person cut out for the piece */
+  personOn?: boolean;
 }
 /** how the person's video sits in a shot, in the plan's list */
 const FRAME_AR: Record<FootageFrame, string> = { full: "🧍 ملء الشاشة", card: "🪟 بطاقة عائمة", split: "◧ شاشة مقسومة", corner: "⭕ بالزاوية", away: "✨ موشن كامل", over: "🔤 كلام بجنبك" };
@@ -243,6 +245,18 @@ export default function MotionLab({
   const [footId, setFootId] = useState<string | null>(initialFootage);
   const [foot, setFoot] = useState<FootageInfo | null>(null);
   const reader = useRef<{ key: string; r: FootageReader } | null>(null);
+  // can this browser make the film at all? (Safari on iPhone often cannot encode) — asked once, before any paid step
+  const [encodes, setEncodes] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void canExport(width, height).then((ok) => live && setEncodes(ok));
+    return () => {
+      live = false;
+    };
+  }, [width, height]);
+  // «✂️ الكلام ورا الراس»: the person cut out of the clip (made once on the server), and its reader
+  const [personOn, setPersonOn] = useState(false);
+  const matte = useRef<{ key: string; url: string; r: FootageReader | null } | null>(null);
   const footVoice = useRef<{ key: string; blob: Blob | null } | null>(null);
   // «خلفية شفافة»: الطلب نفسه (تقدر تشيله قبل ما تبني، أو بعد ما يخلص)، وهل الكود المحفوظ يطابقه فعلًا
   const [transparent, setTransparent] = useState(false);
@@ -269,7 +283,7 @@ export default function MotionLab({
   // the clip the piece is built on (only while it is still on the timeline as it was)
   const source = useMemo(() => footageClips.find((c) => c.clipId === footId) ?? null, [footageClips, footId]);
   const sourceKey = source ? `${source.clipId}:${source.assetId}:${source.in}:${source.out}` : "";
-  const footMeta = source && foot && Math.abs(foot.meta.seconds - footageSeconds(source)) < 0.05 ? foot.meta : null;
+  const footMeta = source && foot && Math.abs(foot.meta.seconds - footageSeconds(source)) < 0.05 ? { ...foot.meta, person: personOn } : null;
 
   // the lab remembers its work on this device (a refresh keeps the plan, the program and the reviews)
   useEffect(() => {
@@ -296,6 +310,7 @@ export default function MotionLab({
         if (!initialFootage && s.footId) {
           setFootId(s.footId);
           if (s.footMeta) setFoot({ meta: s.footMeta, frames: [] });
+          setPersonOn(Boolean(s.personOn));
         }
         if (s.plan && !initialBrief) {
           setStage(s.code ? "ready" : "plan");
@@ -309,12 +324,12 @@ export default function MotionLab({
   }, [projectId, initialBrief, initialFootage]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, footMeta: foot?.meta ?? null } satisfies Saved));
+      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, footMeta: foot?.meta ?? null, personOn } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, foot]);
-  useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close(), reader.current?.r.close()), []);
+  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, foot, personOn]);
+  useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close(), reader.current?.r.close(), matte.current?.r?.close()), []);
   // حيدرة opened the lab (again) on one of the person's clips: that clip is the one, learnt afresh
   useEffect(() => {
     if (!initialFootage) return;
@@ -336,6 +351,17 @@ export default function MotionLab({
     if (!source) return null;
     if (footVoice.current?.key !== sourceKey) footVoice.current = { key: sourceKey, blob: await footageSound(source) };
     return footVoice.current.blob;
+  };
+  /** «✂️ الكلام ورا الراس»: the person cut out (asked of the server once per file, then kept), opened as a reader */
+  const personReader = async () => {
+    if (!source) return null;
+    const key = `${source.assetId}`;
+    if (matte.current?.key !== key || !matte.current.url) {
+      say1("✂️ أقص الشخص من فيديوك بجودة عالية (مرة وحدة للمقطع)…");
+      matte.current = { key, url: await footageMatte(projectId, source.assetId, say1, abort.current?.signal), r: null };
+    }
+    if (!matte.current.r) matte.current.r = await FootageReader.open({ ...source, url: matte.current.url }, Math.max(width, height), true);
+    return matte.current.r;
   };
   /** the reader of the video's frames, opened once for this clip */
   const footReader = async () => {
@@ -404,7 +430,10 @@ export default function MotionLab({
     // the person's video: its frames are read here and handed to the page with every frame it draws
     const rd = source && footMeta ? await footReader() : null;
     if (rd) h.video = (t, scale) => rd.at(t, scale);
-    const footage = rd && footMeta ? { w: rd.w, h: rd.h, duration: footMeta.seconds, words: footMeta.words, lines: footageLines(footMeta.words), face: footMeta.face } : null;
+    // «✂️ الكلام ورا الراس»: the cut-out person, read with the same times (it covers the whole file)
+    const pr = rd && source && personOn ? await personReader() : null;
+    if (pr) h.person = (t, scale) => pr.at(t, scale);
+    const footage = rd && footMeta ? { w: rd.w, h: rd.h, duration: footMeta.seconds, words: footMeta.words, lines: footageLines(footMeta.words), face: footMeta.face, person: Boolean(pr) } : null;
     const got = await h.load(program, { w: width, h: height, fps: 30, assets: bitmaps, fonts, voice: source ? [] : (take?.lines ?? []), footage });
     if (!(got.duration > 0)) throw new SceneError("المشهد ما حدد مدته (duration).", "load");
     const bad = await probe(h, got.duration);
@@ -448,14 +477,14 @@ export default function MotionLab({
     setNow(0);
     try {
       // the person's video: what they say (with every word's time), where the face is, and a few frames — learnt once
-      let meta = footMeta, frames = foot?.frames ?? [];
+      let meta: FootageMeta | null = footMeta, frames = foot?.frames ?? [];
       if (source && !meta) {
         const a = assets.find((x) => x.id === source.assetId);
         if (!a) throw new Error("ما لقيت ملف الفيديو في مكتبتك.");
         say1("🎥 أجهّز فيديوك لحيدرة…");
         const info = await prepareFootage(projectId, source, a, say1);
         setFoot(info);
-        meta = info.meta;
+        meta = { ...info.meta, person: personOn };
         frames = info.frames;
       } else if (source && !frames.length) {
         frames = await footageFrames(source);
@@ -820,6 +849,11 @@ export default function MotionLab({
           ))}
         </nav>
 
+        {encodes === false && (
+          <p role="alert" className="mlab-error m-0">
+            ⚠️ متصفحك ما يقدر يصدّر فيديو بمقاس {width}×{height} (غالبًا Safari على الآيفون أو الآيباد). تقدر تخطّط وتشوف المعاينة، لكن التصدير يحتاج Chrome أو Edge على كمبيوتر — افتح نفس المشروع هناك قبل ما تبني عشان ما تخسر وقت.
+          </p>
+        )}
         <div className="mlab-body">
           <section className="mlab-main">
             {view === "brief" && (
@@ -838,6 +872,15 @@ export default function MotionLab({
                         </button>
                       ))}
                     </div>
+                    {source && (
+                      <label className="flex items-start gap-3">
+                        <input type="checkbox" className="mt-1.5 h-4 w-4" checked={personOn} onChange={(e) => setPersonOn(e.target.checked)} disabled={busy} />
+                        <span>
+                          <b>✂️ الكلام ورا الراس</b>
+                          <span className="mlab-tip block">يقص الشخص من الفيديو بحواف ناعمة (الشعر بعد) مرة وحدة للمقطع، عشان حيدرة يحط الكلمة الكبيرة وراك. ينحسب بدقائق الملف، وياخذ دقايق قبل البناء.</span>
+                        </span>
+                      </label>
+                    )}
                     {source && <p className="m-0 font-bold" style={{ color: "var(--jw-ok)" }}>✓ المشهد بيكون بطول مقطعك ({footageSeconds(source).toFixed(1)} ث) وبصوتك الأصلي، وينزل مكانه في التايملاين.</p>}
                   </div>
                 )}

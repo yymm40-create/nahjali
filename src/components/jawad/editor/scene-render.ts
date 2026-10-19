@@ -115,7 +115,8 @@ function sliceOf(buf: AudioBuffer, from: number, to: number): AudioBuffer {
 
 export async function renderVideo(host: SceneHost, o: { duration: number; fps: number; blur: number; sub?: number; /** خلفية شفافة: WebM (VP9) بقناة ألفا بدل MP4 */ transparent?: boolean; /** the piece's mixed sound, muxed into the file */ audio?: AudioBuffer | null }, onProgress: (p: number, frame: number, frames: number) => void, signal?: AbortSignal): Promise<Blob> {
   const w = host.w - (host.w % 2), h = host.h - (host.h % 2);
-  const bitrate = Math.round(w * h * o.fps * 0.16);
+  // ≈20 Mbps at 1080×1920 30 fps (the owner's skill asks 24–30 for 1080p; the platforms re-encode anyway)
+  const bitrate = Math.round(w * h * o.fps * 0.32);
   // transparent: only VP9 keeps an alpha channel in a browser encoder, muxed into WebM (MP4/H.264 has no alpha)
   const codec = o.transparent ? ((await canEncodeVideo("vp9", { width: w, height: h, bitrate, alpha: "keep" }).catch(() => false)) ? "vp9" : null) : await getFirstEncodableVideoCodec(["avc", "vp9", "av1"], { width: w, height: h, bitrate });
   if (!codec) throw new Error(o.transparent ? "متصفحك ما يقدر يصدّر فيديو بخلفية شفافة. جرّب Chrome أو Edge على الكمبيوتر." : `متصفحك ما يقدر يصدّر فيديو بمقاس ${w}×${h}. جرّب Chrome أو Edge على الكمبيوتر.`);
@@ -156,4 +157,15 @@ export async function renderVideo(host: SceneHost, o: { duration: number; fps: n
   await output.finalize();
   onProgress(1, frames, frames);
   return new Blob([(output.target as BufferTarget).buffer!], { type: o.transparent ? "video/webm" : "video/mp4" });
+}
+
+/** Can this browser make the film at all (Safari on iPhone often decodes but cannot encode H.264)? Asked before any work. */
+export async function canExport(width: number, height: number, transparent = false): Promise<boolean> {
+  const w = width - (width % 2), h = height - (height % 2), bitrate = Math.round(w * h * 30 * 0.32);
+  try {
+    if (transparent) return await canEncodeVideo("vp9", { width: w, height: h, bitrate, alpha: "keep" });
+    return Boolean(await getFirstEncodableVideoCodec(["avc", "vp9", "av1"], { width: w, height: h, bitrate }));
+  } catch {
+    return false;
+  }
 }

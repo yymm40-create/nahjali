@@ -407,7 +407,7 @@ export const SCENE_KIT_JS = String.raw`
   K.useFootage = function (m) {
     if (!m) { K.footage = null; return null; }
     var faces = (m.face || []).slice().sort(function (a, b) { return a.t - b.t; });
-    var F = { w: m.w || 1080, h: m.h || 1920, duration: m.duration || 0, words: m.words || [], lines: m.lines || [], frame: null, t: 0 };
+    var F = { w: m.w || 1080, h: m.h || 1920, duration: m.duration || 0, words: m.words || [], lines: m.lines || [], frame: null, personFrame: null, hasPerson: !!m.person, t: 0 };
     F.faceAt = function (t) {
       if (t === undefined) t = F.t;
       if (!faces.length) return { x: 0.5, y: 0.36, w: 0.3, h: 0.3 };
@@ -438,6 +438,19 @@ export const SCENE_KIT_JS = String.raw`
     F.draw = function (ctx, x, y, w, h, o) {
       o = o || {};
       var c = F.crop(w, h, o), im = F.frame, r = o.circle ? Math.min(w, h) / 2 : Math.max(0, o.radius || 0);
+      // «قص الشخص»: the person alone, with the same crop (its picture may be another size), over whatever is drawn
+      if (o.person) {
+        var pf = F.personFrame;
+        if (pf && im) {
+          var kx = pf.width / im.width, ky = pf.height / im.height;
+          ctx.save(); if (o.alpha !== undefined) ctx.globalAlpha *= K.clamp(o.alpha);
+          K.roundRect(ctx, x + c.dx, y + c.dy, c.dw, c.dh, r); ctx.clip();
+          ctx.drawImage(pf, c.sx * kx, c.sy * ky, c.sw * kx, c.sh * ky, x + c.dx, y + c.dy, c.dw, c.dh);
+          ctx.restore();
+        }
+        var f0 = F.faceAt(o.t), fw0 = im ? im.width : F.w, fh0 = im ? im.height : F.h, k0 = c.dw / c.sw;
+        return { x: x + c.dx + ((f0.x - f0.w / 2) * fw0 - c.sx) * k0, y: y + c.dy + ((f0.y - f0.h / 2) * fh0 - c.sy) * k0, w: f0.w * fw0 * k0, h: f0.h * fh0 * k0 };
+      }
       ctx.save();
       if (o.alpha !== undefined) ctx.globalAlpha *= K.clamp(o.alpha);
       if (o.shadow) {

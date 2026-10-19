@@ -42,6 +42,8 @@ scene({
     if (!away || t < 4.2 || t > 5.8) {
       var x = at(t, 1) * W, y = at(t, 2) * H, w = at(t, 3) * W, h = at(t, 4) * H, r = at(t, 5) * Math.min(w, h);
       var face = F.draw(ctx, x, y, w, h, { zoom: t < 2 ? 1 + t * 0.03 : 1, radius: r, shadow: w < W * 0.95 });
+      // «الكلام ورا الراس»: the big word, then the person alone on top of it
+      if (t < 2 && F.hasPerson) { K.text(ctx, "POWER", W * 0.5, H * 0.3, { size: W * 0.34, weight: 900, family: K.fonts.head, color: "#ffd84a", align: "center" }); F.draw(ctx, x, y, w, h, { zoom: 1 + t * 0.03, radius: r, person: true }); }
       if (t < 2) K.text(ctx, "the power of", W * 0.5, Math.min(H * 0.8, face.y + face.h + H * 0.1), { size: W * 0.09, weight: 800, family: K.fonts.head, color: "#ffffff", align: "center", shadow: true });
       if (t > 6 && t < 8) K.text(ctx, K.counter(K.seg(t, 6.2, 1.2), 0, 120, { suffix: "+" }), W * 0.5, H * 0.75, { size: W * 0.2, weight: 900, family: K.fonts.head, color: "#3b2bd6", align: "center" });
       // the face box, outlined (the test checks it lands on the face)
@@ -58,7 +60,7 @@ declare global {
   }
 }
 
-window.runLab = async (url: string) => {
+window.runLab = async (url: string, matteUrl?: string) => {
   const out: Record<string, unknown> = {};
   const s: FootageSource = { clipId: "c1", assetId: "a1", name: "talk", url, in: 500, out: 10500, speed: 1, start: 0, hasAudio: true };
   const seconds = (s.out - s.in) / 1000;
@@ -78,14 +80,17 @@ window.runLab = async (url: string) => {
   out.reader = `${r.w}×${r.h}`;
   const host = new SceneHost();
   host.video = (t, scale) => r.at(t, scale);
+  const pr = matteUrl ? await FootageReader.open({ ...s, url: matteUrl }, Math.max(W, H), true) : null;
+  if (pr) host.person = (t, scale) => pr.at(t, scale);
   const words = [{ w: "the", s: 0.2, e: 0.4 }, { w: "power", s: 0.4, e: 0.8 }, { w: "of", s: 0.8, e: 1.0 }];
-  const info = await host.load(PROGRAM, { w: W, h: H, fps: 30, footage: { w: r.w, h: r.h, duration: seconds, words, lines: footageLines(words), face } });
+  const info = await host.load(PROGRAM, { w: W, h: H, fps: 30, footage: { w: r.w, h: r.h, duration: seconds, words, lines: footageLines(words), face, person: Boolean(pr) } });
   out.duration = info.duration;
   const bad = await probe(host, info.duration);
   out.probe = bad ? `${bad.where} ${bad.message}` : "ok";
   out.sheet = await contactSheet(host, 0, info.duration, 12, 6);
   const voice = await footageSound(s);
   out.voiceBytes = voice?.size ?? 0;
+  out.sheetFirst = await contactSheet(host, 0, 1.9, 6, 6);
   const audio = await mixSoundtrack({ duration: info.duration, synth: null, cues: [], voice, music: null });
   const started = performance.now();
   const blob = await renderVideo(host, { duration: info.duration, fps: 30, blur: 0, audio }, () => {});

@@ -11,6 +11,8 @@ import puppeteer from "puppeteer-core";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const video = resolve(process.argv[2]);
 const out = process.argv[3] ?? join(tmpdir(), "lab-footage-preview");
+// an optional cut-out of the person (a WebM with alpha), as «قص الشخص» returns it
+const matte = process.argv[4] ? resolve(process.argv[4]) : null;
 mkdirSync(out, { recursive: true });
 await build({
   entryPoints: [join(root, "scripts/lab-footage-preview/entry.ts")], bundle: true, outfile: join(out, "bundle.js"), format: "iife",
@@ -20,8 +22,9 @@ const html = `<!doctype html><meta charset=utf-8><body><script src="/bundle.js">
 const server = createServer((req, res) => {
   if (req.url === "/") return void res.writeHead(200, { "content-type": "text/html" }).end(html);
   if (req.url === "/bundle.js") return void res.writeHead(200, { "content-type": "text/javascript" }).end(readFileSync(join(out, "bundle.js")));
-  if (req.url === "/talk.mp4") {
-    const size = statSync(video).size, buf = readFileSync(video);
+  if (req.url === "/talk.mp4" || (matte && req.url === "/matte.webm")) {
+    const file = req.url === "/talk.mp4" ? video : matte;
+    const size = statSync(file).size, buf = readFileSync(file);
     const m = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? "");
     if (!m) return void res.writeHead(200, { "content-type": "video/mp4", "content-length": size, "accept-ranges": "bytes", "access-control-allow-origin": "*" }).end(buf);
     const a = Number(m[1]), b = m[2] ? Math.min(size - 1, Number(m[2])) : size - 1;
@@ -36,9 +39,11 @@ const page = await browser.newPage();
 page.on("console", (m) => console.log("page:", m.text()));
 page.on("pageerror", (e) => console.log("page error:", e.message));
 await page.goto(`http://127.0.0.1:${port}/`);
-const r = await page.evaluate((u) => window.runLab(u), `http://127.0.0.1:${port}/talk.mp4`);
+const r = await page.evaluate((u, m) => window.runLab(u, m), `http://127.0.0.1:${port}/talk.mp4`, matte ? `http://127.0.0.1:${port}/matte.webm` : undefined);
 writeFileSync(join(out, "sheet.jpg"), Buffer.from(r.sheet, "base64"));
 writeFileSync(join(out, "film.mp4"), Buffer.from(r.mp4, "base64"));
+writeFileSync(join(out, "sheet-first.jpg"), Buffer.from(r.sheetFirst, "base64"));
+delete r.sheetFirst;
 delete r.sheet;
 delete r.mp4;
 console.log(JSON.stringify(r, null, 1));

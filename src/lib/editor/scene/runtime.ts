@@ -103,6 +103,7 @@ export const SCENE_RUNTIME_JS = String.raw`
     if (K.footage) {
       // the video's frame of now, handed in by the host (decoded there: this page has no network and no media)
       if (m.video) { if (K.footage.frame && K.footage.frame !== m.video && K.footage.frame.close) K.footage.frame.close(); K.footage.frame = m.video; }
+      if (m.person) { if (K.footage.personFrame && K.footage.personFrame !== m.person && K.footage.personFrame.close) K.footage.personFrame.close(); K.footage.personFrame = m.person; }
       K.footage.t = m.t;
     }
     var n = Math.max(1, Math.min(8, Math.round(m.sub || 1))), shutter = Math.max(0, Math.min(1, def.blur === undefined ? (m.shutter || 0) : Number(def.blur))), out = canvas;

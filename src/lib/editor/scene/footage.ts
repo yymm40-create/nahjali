@@ -35,6 +35,8 @@ export interface FootageMeta {
   h: number;
   words: FootageWord[];
   face: FootageFace[];
+  /** «قص الشخص»: the person cut out is handed in too (words can go behind their head) */
+  person?: boolean;
 }
 
 const num = (v: unknown, lo: number, hi: number, d: number) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : d);
@@ -71,6 +73,7 @@ export function readFootage(raw: unknown): FootageMeta | null {
     h: Math.round(num(o.h, 16, 8192, 1920)),
     words,
     face,
+    person: o.person === true,
   };
 }
 
@@ -108,7 +111,7 @@ export function footageText(f: FootageMeta): string {
   const lines = footageLines(f.words);
   // numbered, so a moment is chosen by its words (#i … #j) and its time is read from here — never invented
   const timed = f.words.slice(0, 900).map((w, i) => `#${i} ${w.w}@${w.s.toFixed(2)}`).join(" ");
-  return `THE PERSON'S OWN FILMED VIDEO — «${f.name}», ${f.seconds.toFixed(2)} s, ${f.w}×${f.h}; ${faceSummary(f.face)}.
+  return `${f.person ? `${FOOTAGE_PERSON_API}\n\n` : ""}THE PERSON'S OWN FILMED VIDEO — «${f.name}», ${f.seconds.toFixed(2)} s, ${f.w}×${f.h}; ${faceSummary(f.face)}.
 WHAT THEY SAY (spoken lines with their times, seconds from the start of the piece):
 ${lines.length ? lines.map((l, i) => `${i + 1}. ${l.from.toFixed(2)}–${l.to.toFixed(2)} s: «${l.text}»`).join("\n") : "(no clear speech was heard — build on what you see in the frames)"}
 ${timed ? `EVERY WORD, NUMBERED, WITH THE SECOND IT STARTS (pick each moment by its word numbers and take its time from here — never estimate a time; snap a word-timed swap to a frame with K.TQ): ${timed}` : ""}`;
@@ -142,3 +145,6 @@ K.footage.full(ctx, {zoom, cx, cy}) → the same, filling the frame.
 K.footage.faceAt(t) → {x,y,w,h} the face's centre and size in fractions of the video's picture (smoothed between the measured moments).
 K.footage.wordAt(t) → {w,s,e} the word being said at t, or null · K.footage.words → every word [{w,s,e}] (seconds) · K.footage.lines → spoken lines [{text,from,to}] · K.footage.w / .h (its picture size) · K.footage.duration.
 Draw the video with K.footage.draw — never with K.img or drawImage on K.footage.frame yourself (it would lose the face framing).`;
+
+/** Told only when the person was cut out for this piece. */
+export const FOOTAGE_PERSON_API = `THE PERSON IS CUT OUT TOO (K.footage.hasPerson = true): K.footage.draw(ctx, x, y, w, h, { …the same options…, person: true }) draws ONLY the person (hair and all, transparent around them) with exactly the crop the plain draw uses. That is the "words behind the head" look of the viral reels: draw the video (or the stage), then the big key word, then the same draw with person:true on top — the word sits BEHIND them. Use it on 1–3 moments (a hook word, the big idea), never on every shot; on a designed stage you may also drop their room entirely (stage, then the person alone). Keep the face uncovered as always.`;
