@@ -11,6 +11,7 @@ import AssistantFloat from "./AssistantFloat";
 import { FeedbackPrompt, FeedbackSheet } from "./Feedback";
 import HabitForm from "./HabitForm";
 import Icon from "./Icon";
+import TasbihButton from "./Tasbih";
 import { BOTTOM, navGroups } from "./nav";
 import ProjectForm from "./ProjectForm";
 import { useMahdi } from "./Provider";
@@ -139,6 +140,7 @@ export default function AppShell({ children, familyMember = false }: { children:
           </button>
           <Link href="/mahdi" className="m-brand flex min-w-0 flex-1 items-center gap-2 lg:hidden"><BrandLogo size={48} /><span className="truncate">{t.brand}</span></Link>
           <span className="hidden flex-1 lg:block" />
+          <TasbihButton />
           <Link
             href="/mahdi/inbox"
             className="m-menu-btn relative"
