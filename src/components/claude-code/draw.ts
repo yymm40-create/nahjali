@@ -33,7 +33,7 @@ async function bitmapTo(bm: ImageBitmap, type: "image/png" | "image/jpeg", maxSi
 }
 
 /** Draws the picture by program, with up to CODE_ROUNDS looks and rewrites. */
-export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" }): Promise<DrawResult> {
+export async function drawWithCode(o: { prompt: string; aspect: string; style: string; references: string[]; model: string; signal?: AbortSignal; onStep: (s: DrawStep) => void; from?: "studio" | "designer" | "content" }): Promise<DrawResult> {
   const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, from: o.from ?? "studio", ...body }, o.signal);
   let coins = 0;
   o.onStep({ text: "🧑‍💻 Claude Code يكتب برنامج الصورة…" });

@@ -2,6 +2,7 @@
 // the whole system text of a conversation (persona + the platform's rules + the tools + the examples of the turn +
 // the project's record). Server only.
 
+import { HUSSEINI_MOURNING_FEED } from "@config/husseini-mourning";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BAQIR_PERSONA, CONTENT_KV, CONTENT_PLATFORM_RULES, CONTENT_TOOLS } from "@config/content";
 import { CAROUSEL_TEMPLATES, designSystem, findTemplate, structureName } from "@config/content-templates";
@@ -38,7 +39,7 @@ export async function resetPersona() {
  * extra blocks (the catalogues, what the person chose, the closest examples) and the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
+  return [persona, CONTENT_PLATFORM_RULES, CONTENT_TOOLS, HUSSEINI_MOURNING_FEED, ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
 }
 
 /** The two galleries the person can pick from, one line each (always the same text, so it caches). */

@@ -10,6 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generatorById } from "@config/jawad/generators";
 import { pictureSize } from "@/lib/claude-code/picture-rubric";
 import { designerAllowed } from "@/lib/designer/access";
+import { contentAllowed } from "@/lib/content/access";
 import { loadRuntime, JAWAD_BUCKET } from "./runtime";
 import { storage } from "@/lib/storage";
 import { jobViews } from "./works";
@@ -22,6 +23,7 @@ export const CLAUDE_CODE_NAME = "Claude Code";
 /** May this person use «Claude Code» pictures? The same door as the studio's pictures (or «المصمم الذكي», for its designs). */
 export async function canDraw(email: string | null | undefined, from?: unknown) {
   if (from === "designer") return designerAllowed(email);
+  if (from === "content") return contentAllowed(email);
   const def = generatorById("openai-gpt-image-2");
   return Boolean(def && (await can(email, permForGenerator(def))));
 }

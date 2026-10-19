@@ -5,6 +5,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DESIGNER_KV, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, KAZEM_PERSONA } from "@config/designer";
 import { libraryBlock } from "@config/designer-library";
+import { HUSSEINI_MOURNING_FEED } from "@config/husseini-mourning";
 import { FONTS } from "@config/jawad/student";
 
 const db = () => createAdminClient();
@@ -40,5 +41,5 @@ export function fontsBlock(): string {
  * library, then the project's record.
  */
 export function systemText(persona: string, parts: string[] = [], record = "") {
-  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, fontsBlock(), libraryBlock(), ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
+  return [persona, DESIGNER_PLATFORM_RULES, DESIGNER_TOOLS, fontsBlock(), libraryBlock(), HUSSEINI_MOURNING_FEED, ...parts, record ? `سجل المشروع الحالي (كما حفظته آخر مرة؛ حدّثه في "record" عند أي تغيير):\n${record}` : ""].filter(Boolean).join("\n\n");
 }
