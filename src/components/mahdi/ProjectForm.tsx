@@ -4,37 +4,41 @@ import { useState } from "react";
 import { MAHDI_LIMITS, PROJECT_COLORS, PROJECT_SUGGESTIONS, type ProjectColor } from "@config/mahdi";
 import { t } from "@/lib/mahdi/i18n";
 import type { Project } from "@/lib/mahdi/types";
+import type { FormTarget } from "./HabitForm";
 import IconPicker from "./IconPicker";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
 
-/** Create or edit a project (name, icon, colour). */
+/** Create or edit a project (name, icon, colour): the person's own, or a group's (`target`, see HabitForm). */
 export default function ProjectForm({
   open,
   onClose,
   project,
   onSaved,
+  target,
 }: {
   open: boolean;
   onClose: () => void;
   project?: Project;
   onSaved?: (id: string) => void;
+  target?: FormTarget;
 }) {
   return (
     <Sheet open={open} onClose={onClose} title={project ? t.project.editTitle : t.project.newTitle}>
-      {open && <Form project={project} onClose={onClose} onSaved={onSaved} />}
+      {open && <Form project={project} onClose={onClose} onSaved={onSaved} target={target} />}
     </Sheet>
   );
 }
 
-function Form({ project, onClose, onSaved }: { project?: Project; onClose: () => void; onSaved?: (id: string) => void }) {
+function Form({ project, onClose, onSaved, target }: { project?: Project; onClose: () => void; onSaved?: (id: string) => void; target?: FormTarget }) {
   const { store, state, toast } = useMahdi();
+  const existing = target?.projects ?? state.snap.projects;
   const [name, setName] = useState(project?.name ?? "");
   const [icon, setIcon] = useState(project?.icon ?? "");
-  const [color, setColor] = useState<ProjectColor>(project?.color ?? PROJECT_COLORS[state.snap.projects.length % PROJECT_COLORS.length]);
+  const [color, setColor] = useState<ProjectColor>(project?.color ?? PROJECT_COLORS[existing.length % PROJECT_COLORS.length]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const taken = new Set(state.snap.projects.map((p) => p.name));
+  const taken = new Set(existing.map((p) => p.name));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,7 +47,11 @@ function Form({ project, onClose, onSaved }: { project?: Project; onClose: () =>
     setError("");
     try {
       const body = { name: name.trim(), icon, color };
-      if (project) {
+      if (target) {
+        const id = await target.save(body, project?.id);
+        toast(t.common.saved);
+        onSaved?.(id);
+      } else if (project) {
         await store.mutate(`/api/mahdi/projects/${project.id}`, "PATCH", body);
         toast(t.common.saved);
         onSaved?.(project.id);

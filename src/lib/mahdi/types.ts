@@ -1,6 +1,7 @@
 // Data shapes shared by the server, the browser store and (later) a native app.
 import type { MahdiTheme, ProjectColor } from "@config/mahdi";
 import type { BookUnit, ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
+import type { GroupPlan } from "./groups/program";
 
 export interface Shrine {
   id: string;
@@ -90,6 +91,8 @@ export interface Snapshot {
   /** «مهام اليوم»: today's tasks; `tasksReady` is false until SQL 0036 runs. */
   tasks: DayTask[];
   tasksReady: boolean;
+  /** «إخوة الولاية»: the programs of my groups (their projects «gp:<id>» and habits «g:<id>»), logged like my own habits. */
+  groupPlan?: GroupPlan | null;
 }
 
 /** A task for one day only (not a habit): a checklist item, optionally at a time, optionally filling a habit. */

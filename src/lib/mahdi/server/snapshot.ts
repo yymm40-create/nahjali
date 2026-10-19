@@ -3,6 +3,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HISTORY_DAYS } from "@config/mahdi";
 import { addDays, todayIn } from "../engine";
 import type { Challenge, DayTask, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { loadGroupPlan } from "./group-program";
 import { DEFAULT_GOALS, loadReading, loadUsername } from "./reading";
 import { habitsFromRows, projectFromRow, shrineFromRow, type HabitRow, type LogRow, type ProjectRow, type ShrineRow, type VersionRow } from "./rows";
 
@@ -48,7 +50,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
   const today = todayIn(profile.timeZone);
   const logsFrom = addDays(today, -HISTORY_DAYS);
 
-  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs] = await Promise.all([
+  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups] = await Promise.all([
     getShrines(),
     supabase
       .from("mahdi_phrases")
@@ -69,12 +71,16 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     selectAll<LogRow>((a, b) =>
       supabase.from("mahdi_logs").select("habit_id,log_date,value").gte("log_date", logsFrom).order("habit_id").order("log_date").range(a, b),
     ),
+    // my groups' programs arrive with migration 0083; until it runs (or with no group), nothing
+    loadGroupPlan(createAdminClient(), profile.userId, logsFrom).catch(() => null),
   ]);
 
   const byHabit: Snapshot["logs"] = {};
   for (const l of logs) (byHabit[l.habit_id] ??= {})[l.log_date] = Number(l.value);
   // Joined challenges log like habits, under "c:<challenge id>"
   for (const [id, days] of Object.entries(extra.challenges.logs)) byHabit[`c:${id}`] = days;
+  // and my groups' habits under "g:<habit id>"
+  if (groups) Object.assign(byHabit, groups.logs);
 
   return {
     profile,
@@ -90,6 +96,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     today,
     tasks: tasks ?? [],
     tasksReady: tasks !== null,
+    groupPlan: groups?.plan ?? null,
   };
 }
 

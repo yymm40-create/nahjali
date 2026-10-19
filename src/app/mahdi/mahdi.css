@@ -1639,3 +1639,16 @@ html:has(.mahdi-root[data-mtheme="pop"]) body { background: #fff4dc; }
 .m-qrow[data-done="true"] .m-qbox.m-shaped,
 .m-xp[data-done="true"] .m-xp-box.m-shaped { background: transparent !important; border-color: transparent !important; box-shadow: none !important; animation: none; }
 .m-circle[data-done="true"] .m-circle-face.m-shaped { background: var(--m-bg) !important; animation: none; }
+
+/* «إخوة الولاية» · comparing members: categorical slots 1–4 (validated), stepped for dark themes by the colour scheme
+   (the plain value first, for browsers without light-dark()). */
+body {
+  --m-s1: #2a78d6;
+  --m-s1: light-dark(#2a78d6, #3987e5);
+  --m-s2: #eb6834;
+  --m-s2: light-dark(#eb6834, #d95926);
+  --m-s3: #1baf7a;
+  --m-s3: light-dark(#1baf7a, #199e70);
+  --m-s4: #eda100;
+  --m-s4: light-dark(#eda100, #c98500);
+}

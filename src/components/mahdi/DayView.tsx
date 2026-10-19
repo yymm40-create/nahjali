@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { addDays, dayGoals, daySeries, dayScore, dayStreak, daysSinceLastActivity, periodGoalsOn, startOfWeek, weekScore, type ISODate, type Instance } from "@/lib/mahdi/engine";
 import { fmtDateLong, fmtHijri, fmtPct, fmtRelativeDay, t } from "@/lib/mahdi/i18n";
-import { bySort, CHALLENGE_GROUP, habitStatus, pickPhrase } from "@/lib/mahdi/client/derive";
+import type { GroupProject } from "@/lib/mahdi/groups/program";
+import { bySort, CHALLENGE_GROUP, groupProjects, habitStatus, pickPhrase, projectHref } from "@/lib/mahdi/client/derive";
 import type { Project } from "@/lib/mahdi/types";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import BookletCard from "./BookletCard";
@@ -50,18 +51,20 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
 
   const challengeGroup: Project = { id: CHALLENGE_GROUP, name: t.challenges.title, icon: "🕌", color: "gold", sortOrder: 9999, archivedAt: null };
   const hasChallenges = allHabits.some((h) => h.projectId === CHALLENGE_GROUP);
-  const groups = [...projects, ...(hasChallenges ? [challengeGroup] : [])]
+  // my groups' projects come after mine (only those with something today), each saying which group it is from
+  const fromGroups = groupProjects(snap);
+  const groups = [...projects, ...fromGroups, ...(hasChallenges ? [challengeGroup] : [])]
     .map((p) => ({
       project: p,
       day: day.filter((i) => i.projectId === p.id).sort((a, b) => habitById.get(a.itemId)!.sortOrder - habitById.get(b.itemId)!.sortOrder),
       periods: periods.filter((i) => i.projectId === p.id),
       hasHabits: allHabits.some((h) => h.projectId === p.id),
     }))
-    .filter((g) => g.day.length || g.periods.length || !g.hasHabits);
+    .filter((g) => g.day.length || g.periods.length || (!g.hasHabits && !(g.project as Partial<GroupProject>).groupId));
 
   const row = (i: Instance) => {
     const h = habitById.get(i.itemId);
-    return h ? <HabitRow key={i.key} habit={h} inst={i} date={date} project={projects.find((p) => p.id === h.projectId) ?? challengeGroup} /> : null;
+    return h ? <HabitRow key={i.key} habit={h} inst={i} date={date} project={projects.find((p) => p.id === h.projectId) ?? fromGroups.find((p) => p.id === h.projectId) ?? challengeGroup} /> : null;
   };
 
   return (
@@ -153,9 +156,10 @@ export default function DayView({ date: requested, home = false }: { date?: ISOD
                 <div className="flex items-center gap-2">
                   <span className="m-dot" style={{ background: "var(--pc)" }} />
                   <h2 id={`g-${p.id}`} className="flex-1 truncate font-semibold">
-                    <Link href={p.id === CHALLENGE_GROUP ? "/mahdi/challenges" : `/mahdi/projects/${p.id}`}>{p.icon && <span aria-hidden="true">{p.icon} </span>}{p.name}</Link>
+                    <Link href={projectHref(p)}>{p.icon && <span aria-hidden="true">{p.icon} </span>}{p.name}</Link>
+                    {(p as Partial<GroupProject>).groupName && <span className="ms-2 text-xs font-normal m-muted">{t.groups.program.inDay((p as GroupProject).groupName)}</span>}
                   </h2>
-                  {p.id !== CHALLENGE_GROUP && (
+                  {p.id !== CHALLENGE_GROUP && !(p as Partial<GroupProject>).groupId && (
                     <button type="button" className="m-icon-btn" aria-label={t.add.habitIn(p.name)} onClick={() => setNewHabitIn(p.id)}>
                       <Icon name="plus" size={20} />
                     </button>

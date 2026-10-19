@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { dayGoals, daySeries, dayScore, dayStreak, startOfWeek, weekScore, goalProgress } from "@/lib/mahdi/engine";
 import { fmtDateLong, fmtHijri, fmtNum, fmtPct, t } from "@/lib/mahdi/i18n";
-import { bySort, CHALLENGE_GROUP, pickPhrase } from "@/lib/mahdi/client/derive";
+import { bySort, CHALLENGE_GROUP, groupProjects, pickPhrase, projectHref } from "@/lib/mahdi/client/derive";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { WIDGETS, homeWidgets, moveWidget, widgetDef, type WidgetId } from "@/lib/mahdi/home-widgets";
@@ -280,7 +280,7 @@ function ByProject() {
   const projects = useMemo(() => state.snap.projects.filter((p) => !p.archivedAt).sort(bySort), [state.snap.projects]);
   const byId = useMemo(() => new Map(allHabits.map((h) => [h.id, h])), [allHabits]);
   const challenge: Project = { id: CHALLENGE_GROUP, name: t.challenges.title, icon: "🕌", color: "gold", sortOrder: 9999, archivedAt: null };
-  const groups = [...projects, challenge].map((p) => ({ p, d: day.filter((i) => i.projectId === p.id) })).filter((g) => g.d.length);
+  const groups = [...projects, ...groupProjects(state.snap), challenge].map((p) => ({ p, d: day.filter((i) => i.projectId === p.id) })).filter((g) => g.d.length);
   if (!groups.length) return null;
   return (
     <div className="space-y-4">
@@ -288,7 +288,7 @@ function ByProject() {
         <section key={p.id} className={`m-card p-${p.color} px-4 py-3`} aria-labelledby={`hp-${p.id}`}>
           <h2 id={`hp-${p.id}`} className="flex items-center gap-2 font-semibold">
             <span className="m-dot" style={{ background: "var(--pc)" }} />
-            <Link href={p.id === CHALLENGE_GROUP ? "/mahdi/challenges" : `/mahdi/projects/${p.id}`}>
+            <Link href={projectHref(p)}>
               {p.icon && <span aria-hidden="true">{p.icon} </span>}
               {p.name}
             </Link>

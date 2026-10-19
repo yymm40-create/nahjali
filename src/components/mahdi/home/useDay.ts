@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from "react";
 import { addDays, dayGoals, daySeries, dayScore, dayStreak, goalProgress, startOfWeek, versionAt, weekScore, type Instance } from "@/lib/mahdi/engine";
-import { bySort } from "@/lib/mahdi/client/derive";
+import { dayProjects } from "@/lib/mahdi/client/derive";
 import { t } from "@/lib/mahdi/i18n";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import type { Habit, Project } from "@/lib/mahdi/types";
@@ -30,7 +30,7 @@ export function useDay() {
   const { reading, summary } = useReading();
   const today = state.today;
   return useMemo(() => {
-    const projects = state.snap.projects.filter((p) => !p.archivedAt).sort(bySort);
+    const projects = dayProjects(state.snap);
     const byId = new Map(allHabits.map((h) => [h.id, h]));
     const day = dayGoals(timeline, today);
     const score = dayScore(timeline, today);
@@ -59,7 +59,7 @@ export function useDay() {
       level: Math.floor(xp / XP_LEVEL) + 1,
       levelXp: xp % XP_LEVEL,
     };
-  }, [state.snap.projects, state.snap.profile.weekStart, state.logs, allHabits, timeline, today, reading.goals.daily, summary]);
+  }, [state.snap, state.logs, allHabits, timeline, today, reading.goals.daily, summary]);
 }
 
 /** Reading done as words: «٢٠ د من ٣٠ د». */

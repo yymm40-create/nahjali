@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { groupMembers, requireGroup } from "@/lib/mahdi/server/groups";
+import { can } from "@/lib/mahdi/groups/program";
 import { claimPortion, dedicate, parsePart, extendKhatma, freePortion, khatmaView, markPortion, nextKhatma, saveSettings, stopKhatma } from "@/lib/mahdi/server/khatma";
 import { cleanLine, oneOf, parseIntIn, parseTimeZone } from "@/lib/mahdi/server/validate";
 import { DIVISIONS } from "@/lib/mahdi/khatma/portions";
@@ -13,10 +14,11 @@ async function setup(req: Request, params: Ctx["params"]) {
   const { user, profile } = await requireProfile(req);
   const id = requireId((await params).id);
   const db = createAdminClient();
-  const { group } = await requireGroup(db, id, user.id);
+  const { group, seat } = await requireGroup(db, id, user.id);
   const members = await groupMembers(db, id, group.leader_id);
   const activeIds = members.filter((m) => m.status === "active").map((m) => m.userId);
-  return { db, id, user, profile, group, isLeader: group.leader_id === user.id, activeIds };
+  // the leader, or an admin given «الختمة», runs the khatma
+  return { db, id, user, profile, group, isLeader: can(seat, "khatma"), activeIds };
 }
 
 /** The group's «الختمة العلوية» as I see it (members only). */
@@ -29,7 +31,7 @@ export const GET = mahdiRoute(async (req: Request, { params }: Ctx) => {
 /**
  * Khatma actions:
  *   members: claim { portion } · done { portion } · undone { portion } · release { portion }
- *   the leader: setup { division, rangeFrom?, rangeTo?, weeks, endDow, endHour, noRepeat } · dedicate { dedicatedTo, forSoulOf } · extend { days }
+ *   the leader (or an admin with «الختمة»): setup { division, rangeFrom?, rangeTo?, weeks, endDow, endHour, noRepeat } · dedicate { dedicatedTo, forSoulOf } · extend { days }
  *               next (close it at its night, or start the next after a finished one) · stop · free { portion }
  */
 export const POST = mahdiRoute(async (req: Request, { params }: Ctx) => {
