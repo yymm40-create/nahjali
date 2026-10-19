@@ -399,7 +399,7 @@ async function cloneMinimax(user: { id: string }, owner: boolean, b: { key?: unk
 
 /**
  * «بصمة صوتك» in JAWAD's own engine: nothing is sent to a provider — the recording (10 s – 3 min) is kept in the
- * person's library as the voice itself, and what is said in it is written once (Habibi reads the words with the
+ * person's library as the voice itself, and what is said in it is written once (the engine reads the words with the
  * sound). No limit on the number of voices. Charged only the transcription's small price.
  */
 async function cloneJawad(user: { id: string }, owner: boolean, b: { key?: unknown; uploadId?: unknown; name?: unknown; consent?: unknown; referenceText?: unknown }): Promise<VoiceView> {
@@ -425,7 +425,7 @@ async function cloneJawad(user: { id: string }, owner: boolean, b: { key?: unkno
     const path = `${user.id}/voices/jw-${Date.now()}.${rec.mime === "audio/wav" ? "wav" : "mp3"}`;
     const up = await storage.from(JAWAD_BUCKET).upload(path, rec.bytes, { contentType: rec.mime, upsert: true });
     if (up.error) throw new Error(up.error.message);
-    // what is said in it: given by the page, else written by Scribe (Habibi needs the words; Chatterbox doesn't)
+    // what is said in it: given by the page, else written by Scribe
     let referenceText = typeof b.referenceText === "string" ? b.referenceText.trim().slice(0, 2000) : "";
     if (!referenceText) {
       try {
@@ -435,7 +435,7 @@ async function cloneJawad(user: { id: string }, owner: boolean, b: { key?: unkno
         console.warn("jawad voice: reference transcript", e instanceof Error ? e.message : e);
       }
     }
-    return await insertVoice(user.id, { voiceId: path, name, description: referenceText ? "" : "بلا نص مرجعي (Chatterbox فقط)", origin: "clone", sample: path, coins, copy: false, provider: "jawad", referenceText });
+    return await insertVoice(user.id, { voiceId: path, name, description: referenceText ? "" : "بلا نص مرجعي", origin: "clone", sample: path, coins, copy: false, provider: "jawad", referenceText });
   } catch (e) {
     await releaseCoins(user.id, coins, ref, LABEL);
     if (e instanceof UserError) throw e;
@@ -443,7 +443,7 @@ async function cloneJawad(user: { id: string }, owner: boolean, b: { key?: unkno
   }
 }
 
-/** What is said in a recording made for one reading (Habibi needs the words; Chatterbox doesn't): written by Scribe. */
+/** What is said in a recording made for one reading: written by Scribe. */
 export async function onceReferenceText(path: string): Promise<string> {
   try {
     const { data } = await storage.from(JAWAD_BUCKET).download(path);

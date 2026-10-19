@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HABIBI_DIALECTS, joinWavs, readWav, splitForSpeech, writeWav } from "@/lib/jawad/voice-text";
+import { joinWavs, readWav, splitForSpeech, writeWav } from "@/lib/jawad/voice-text";
 
 describe("«صوت الجواد»: a text in pieces the model takes at once", () => {
   it("cuts at sentence ends, never inside a word, within the limit", () => {
@@ -49,9 +49,5 @@ describe("joining the pieces' WAV files", () => {
     expect(() => joinWavs([tone(100), new Uint8Array([1, 2, 3])])).toThrow();
     expect(() => joinWavs([tone(100), tone(100, 16000)])).toThrow();
     expect(() => joinWavs([])).toThrow();
-  });
-  it("lists Habibi's dialects with the sample-inferred one last", () => {
-    expect(HABIBI_DIALECTS[0].id).toBe("MSA");
-    expect(HABIBI_DIALECTS[HABIBI_DIALECTS.length - 1].id).toBe("UNK");
   });
 });
