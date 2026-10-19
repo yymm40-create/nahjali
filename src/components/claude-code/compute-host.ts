@@ -47,6 +47,9 @@ export const runGrade = (code: string, size = GRADE_LUT_SIZE) => run("grade", co
 /** An edit program run on the timeline's facts: the commands it returns. */
 export const runEdit = (code: string, facts: unknown) => run("edit", code, { input: facts }, (m) => (Array.isArray(m.commands) ? m.commands : []) as unknown[]);
 
+/** A layout program run on a photo design's facts: the editor commands it returns. */
+export const runLayout = (code: string, facts: unknown) => run("layout", code, { input: facts }, (m) => (Array.isArray(m.commands) ? m.commands : []) as unknown[]);
+
 /** A voice-cleaning program run on a recording (mono samples): the cleaned samples (the input is copied, never moved). */
 export const runClean = (code: string, samples: Float32Array, rate: number) => {
   const copy = new Float32Array(samples);

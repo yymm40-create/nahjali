@@ -132,11 +132,11 @@ export function readPending(v: unknown): PendingDesign | null {
     aspect,
     textMode: p.textMode === "baked" || p.textMode === "blank" ? p.textMode : "layers",
     artwork,
-    refs: (Array.isArray(p.refs) ? p.refs : []).filter((r): r is string => typeof r === "string").slice(0, 6),
+    refs: (Array.isArray(p.refs) ? p.refs : []).filter((r): r is string => typeof r === "string").slice(0, 20),
     layers: readLayers(p.layers),
     keep,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
-    ...(Array.isArray(p.place) && p.place.length ? { place: p.place.filter((r): r is string => typeof r === "string").slice(0, 4) } : {}),
+    ...(Array.isArray(p.place) && p.place.length ? { place: p.place.filter((r): r is string => typeof r === "string").slice(0, 20) } : {}),
   };
 }
 

@@ -169,8 +169,8 @@ export async function say(userId: string, chatId: string | null, message: string
     // «Claude Code» draws the whole design with its writing: always baked
     const textMode = maker === "code" ? "baked" : a.produce.text_mode === "layers" || a.produce.text_mode === "blank" ? a.produce.text_mode : "baked";
     // the photos to put in the design as they are (Claude Code places them; GPT Image 2 gets them as references too)
-    const place = (Array.isArray(a.produce.place) ? a.produce.place : []).filter((x) => mine.has(x)).slice(0, 4);
-    const refs = [...new Set([...place, ...(Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((x) => mine.has(x))])].slice(0, 6);
+    const place = (Array.isArray(a.produce.place) ? a.produce.place : []).filter((x) => mine.has(x)).slice(0, 20);
+    const refs = [...new Set([...place, ...(Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((x) => mine.has(x))])].slice(0, 20);
     const prevAt = lastDesignAt(history);
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
     const keep = !artwork && prev?.artwork && prev.state === "ready" ? prev.artwork : null;

@@ -40,9 +40,9 @@ export const ANSWER_SCHEMA = {
     claude_code: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "prompt"],
-      description: "«Claude Code» للألوان: on=true حين يطلب العميل لوكًا أو تلوينًا أو تصحيح ألوان للصورة (سينمائي، دافئ، فيلم قديم، ألوان مرجع…) — بدل شرائح الألوان تكتب له اللوك بالكلمات، وهو يكتب برنامج التلوين ويطبّقه بعد ما يشوفه ويقيّمه. on=false غير ذلك.",
-      properties: { on: { type: "boolean" }, prompt: { type: "string", description: "اللوك المطلوب بالكلمات (المزاج، المرجع، وما يُحمى كالبشرة)" } },
+      required: ["on", "mode", "prompt"],
+      description: "«Claude Code» (يسمّيه صاحب المنصة «حيدرة ماكس»): on=true مع mode=\"grade\" حين يطلب العميل لوكًا أو تلوينًا أو تصحيح ألوان (سينمائي، دافئ، فيلم قديم، ألوان مرجع…)؛ أو mode=\"layout\" — الخيار الثاني بجانب أوامرك العادية — حين يطلب العميل تركيبًا أو ترتيبًا أو تصميمًا كاملًا للطبقات: وضع صور (عدة صور أشخاص في إطارات، شبكة صور، صورة بطلة)، تركيب العناصر المفككة من جديد، كتابة نصوص كثيرة أو تغيير النصوص وترتيبها، أو يطلب Claude Code بالاسم. Claude Code يكتب برنامجًا يحسب كل موضع ومقاس من حقائق التصميم، يشوف النتيجة ويقيّمها ويعيد كتابته لين تنجح، ثم يطبّقها مرة وحدة. التعديل الصغير الواحد يبقى بأوامرك (ops). on=false غير ذلك.",
+      properties: { on: { type: "boolean" }, mode: { type: "string", enum: ["grade", "layout"] }, prompt: { type: "string", description: "grade: اللوك المطلوب بالكلمات (المزاج، المرجع، وما يُحمى كالبشرة). layout: الطلب كاملًا بالكلمات (ما يُوضع وأين، النصوص حرفيًا، الأسلوب، ما لا يُغطّى كالوجوه)" } },
     },
   },
 } as const;
@@ -54,7 +54,7 @@ interface Answer {
   record: string;
   jawad: { on: boolean; kind: string; prompt: string; aspect: string; target: string; source: string };
   return_to: string;
-  claude_code?: { on: boolean; prompt: string };
+  claude_code?: { on: boolean; mode?: string; prompt: string };
 }
 
 /** What جواد is asked, after the checks. */
@@ -73,7 +73,7 @@ export interface Said {
   suggestions: string[];
   jawad: JawadAsk | null;
   /** «Claude Code»: the look to grade the base picture to, by program (the page runs it) */
-  code: { prompt: string } | null;
+  code: { prompt: string; mode: "grade" | "layout" } | null;
   returnTo: boolean;
   usd: number;
   /** the command that stopped the rest, if any */
@@ -150,6 +150,8 @@ export async function say(userId: string, email: string | null, p: { projectId: 
   const suggestions = (Array.isArray(a.suggestions) ? a.suggestions : []).map((s) => String(s).trim().slice(0, 100)).filter(Boolean).slice(0, 4);
   const messages: PhotoTurn[] = [...project.messages, { role: "user" as const, text: message }, { role: "assistant" as const, text: reply, ...(suggestions.length ? { suggestions } : {}) }].slice(-200);
   await saveProject(userId, project.id, { doc: res.doc, messages, ...(a.record?.trim() ? { record: a.record.trim() } : {}), addUsd: usd });
-  const code = a.claude_code?.on && String(a.claude_code.prompt ?? "").trim() && res.doc.base ? { prompt: String(a.claude_code.prompt).trim().slice(0, 2000) } : null;
+  const codeMode = a.claude_code?.mode === "layout" ? ("layout" as const) : ("grade" as const);
+  // colour needs a picture to grade; the design works on any canvas
+  const code = a.claude_code?.on && String(a.claude_code.prompt ?? "").trim() && (codeMode === "layout" || res.doc.base) ? { prompt: String(a.claude_code.prompt).trim().slice(0, codeMode === "layout" ? 3000 : 2000), mode: codeMode } : null;
   return { reply, doc: res.doc, changes: docChanges(before, res.doc), suggestions, jawad, code, returnTo, usd: Math.round(usd * 10000) / 10000, stopped };
 }

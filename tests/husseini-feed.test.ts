@@ -61,3 +61,29 @@ describe("Claude Code يحط صور الأشخاص في التصميم", () => {
     expect(readFileSync("src/components/claude-code/ClaudeCodeCard.tsx", "utf8")).toContain("حط الصور المرفقة داخل التصميم كما هي");
   });
 });
+
+describe("زهراء: Claude Code يركّب التصميم بالبرنامج", () => {
+  it("a layout program is checked like the others, and its kit computes in percent of the canvas", async () => {
+    const { checkProgram, LAYOUT_KIT_API, computeDoc } = await import("@/lib/claude-code/compute");
+    expect(checkProgram("layout", "function layout(D, K) { return []; }").ok).toBe(true);
+    expect(checkProgram("layout", "function edit(T, K) { return []; }").problems.join()).toContain("function layout(D, K)");
+    expect(checkProgram("layout", "function layout(D, K) { return fetch('x'); }").ok).toBe(false);
+    expect(LAYOUT_KIT_API).toContain("K.grid(");
+    expect(computeDoc()).toContain('m.kind === "layout"');
+  });
+  it("زهراء chooses it from her chat, and the page applies it to a copy before the design changes", async () => {
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/lib/photo/chat.ts", "utf8")).toContain('mode: { type: "string", enum: ["grade", "layout"] }');
+    expect(readFileSync("src/app/api/photo/code/route.ts", "utf8")).toContain('b.action === "layout_review"');
+    const page = readFileSync("src/components/jawad/photo/PhotoEditor.tsx", "utf8");
+    expect(page).toContain("const res = applyOps(d0, ops, ctx);");
+    expect(page).toContain('r.code.mode === "layout" ? runCodeLayout(r.code.prompt)');
+  });
+  it("ten photos in one drawing, twenty on two rounds", async () => {
+    const { readFileSync } = await import("node:fs");
+    const draw = readFileSync("src/components/claude-code/draw.ts", "utf8");
+    expect(draw).toContain("export const PHOTOS_PER_ROUND = 10;");
+    expect(draw).toContain("SECOND ROUND: photo1 is the design as it stands");
+    expect(readFileSync("src/lib/claude-code/picture.ts", "utf8")).toContain(".slice(0, 10);\n  if (!list.length) return [];");
+  });
+});

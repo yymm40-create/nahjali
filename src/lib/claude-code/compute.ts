@@ -5,13 +5,14 @@
 //   grade(c, K) → [r, g, b]       a colour grade as a function of one colour; the page samples it into a 3D LUT
 //   edit(T, K)  → [command, …]    the timeline's edit, computed from the facts of the timeline (clips, words, silences)
 //   clean(A, K) → Float32Array    a voice recording cleaned (silences cut, hum and rumble out, level evened, peaks held)
+//   layout(D, K) → [op, …]        «زهراء فوتو ماستر»'s design: layers placed, photos arranged, words written and changed
 // Pure strings and checks (no DOM here); the host is src/components/claude-code/compute-host.ts.
 
 export const PROGRAM_MAX = 60_000;
 /** The LUT edge a grade program is sampled at (25³: smooth enough for any grade, small enough to keep in the timeline). */
 export const GRADE_LUT_SIZE = 25;
 
-export type ProgramKind = "grade" | "edit" | "clean";
+export type ProgramKind = "grade" | "edit" | "clean" | "layout";
 
 /** Things a program must never contain (the page blocks them anyway; this tells Claude before it runs). */
 const FORBIDDEN: [RegExp, string][] = [
@@ -24,8 +25,8 @@ const FORBIDDEN: [RegExp, string][] = [
   [/Math\.random\s*\(|Date\.now|new\s+Date\s*\(|performance\.now|setTimeout|setInterval/, "clocks or unseeded randomness (use K.rng)"],
 ];
 
-const ENTRY: Record<ProgramKind, RegExp> = { grade: /\bfunction\s+grade\s*\(|\bgrade\s*=\s*(\(|function)/, edit: /\bfunction\s+edit\s*\(|\bedit\s*=\s*(\(|function)/, clean: /\bfunction\s+clean\s*\(|\bclean\s*=\s*(\(|function)/ };
-const SIGNATURE: Record<ProgramKind, string> = { grade: "function grade(c, K)", edit: "function edit(T, K)", clean: "function clean(A, K)" };
+const ENTRY: Record<ProgramKind, RegExp> = { grade: /\bfunction\s+grade\s*\(|\bgrade\s*=\s*(\(|function)/, edit: /\bfunction\s+edit\s*\(|\bedit\s*=\s*(\(|function)/, clean: /\bfunction\s+clean\s*\(|\bclean\s*=\s*(\(|function)/, layout: /\bfunction\s+layout\s*\(|\blayout\s*=\s*(\(|function)/ };
+const SIGNATURE: Record<ProgramKind, string> = { grade: "function grade(c, K)", edit: "function edit(T, K)", clean: "function clean(A, K)", layout: "function layout(D, K)" };
 
 /** The program as it will run, and what is wrong with it before it ever runs. */
 export function checkProgram(kind: ProgramKind, code: unknown): { ok: boolean; problems: string[]; code: string } {
@@ -86,6 +87,15 @@ K.A.compress(s, rate, { threshDb = -24, ratio = 2.5, attackMs = 10, releaseMs = 
 K.A.normalizeSpeech(s, rate, targetDb = -20) → the speech frames brought to targetDb RMS
 K.A.limit(s, ceilingDb = -1.5) → peaks held under the ceiling (soft, no hard clipping)
 K.A.fade(s, rate, inMs = 10, outMs = 30)`;
+
+export const LAYOUT_KIT_API = `THE LAYOUT KIT (K) — every position and size is a PERCENT of the canvas (x, y = a layer's centre; w, h = its width and height; a text's size = % of the canvas height), exactly like the editor's commands:
+K.layersOf(D, kind) → the layers of that kind ("text" | "image" | "shape"), in stacking order (first = bottom) · K.layer(D, id) → a layer or null
+K.fit(iw, ih, bw, bh, mode = "cover") → { w, h } an iw×ih picture scaled into a bw×bh box ("cover" fills it, "contain" fits inside) — pixels in, pixels out
+K.pct(px, D, axis) → pixels as a percent of the canvas ("x" = of its width, "y" = of its height) · K.px(pct, D, axis) → the other way
+K.imageW(file, hPct, D) → the width (%) a picture of that file takes when its height is hPct (%), keeping its shape
+K.grid(n, cols, area, gap = 0) → n boxes { x, y, w, h } (centres, %) filling area { x, y, w, h } (its top-left corner and size, %), row by row
+K.textW(text, sizePct, D) → about how wide (%) one line of that Arabic text is at that size · K.lines(text, sizePct, maxW, D) → the text broken into lines that fit maxW (%)
+K.round(x, d = 0) → x rounded to d decimals · K.clamp(x, lo, hi) · K.sortBy(list, key) · K.sum(list, f)`;
 
 /** The kit's code inside the page (plain JS). */
 const KIT_JS = String.raw`
@@ -152,7 +162,7 @@ var K = (function () {
   K.hueWeight = function (c, centre, width) { var o = K.toHsl(c), d = Math.abs((((o.h - centre) % 360) + 540) % 360 - 180); return (1 - K.smoothstep(width * 0.5, width, d)) * K.smoothstep(0.05, 0.2, o.s); };
   K.rng = function (seed) { var a = seed >>> 0 || 1; return function () { a |= 0; a = (a + 0x6d2b79f5) | 0; var t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
   // ── edit ──
-  K.round = function (x) { return Math.round(x); };
+  K.round = function (x, d) { var m = Math.pow(10, d === undefined ? 0 : d); return Math.round(x * m) / m; };
   K.sortBy = function (list, key) { var f = typeof key === "function" ? key : function (o) { return o[key]; }; return list.slice().sort(function (a, b) { return f(a) - f(b); }); };
   K.sum = function (list, f) { var s = 0; for (var i = 0; i < list.length; i++) s += f ? f(list[i]) : list[i]; return s; };
   K.merge = function (ranges, gap) { gap = gap || 0; var r = (ranges || []).map(function (x) { return [Math.round(Math.min(x[0], x[1])), Math.round(Math.max(x[0], x[1]))]; }).filter(function (x) { return x[1] > x[0]; }).sort(function (a, b) { return a[0] - b[0]; }), out = []; for (var i = 0; i < r.length; i++) { var l = out[out.length - 1]; if (l && r[i][0] - l[1] <= gap) l[1] = Math.max(l[1], r[i][1]); else out.push(r[i].slice()); } return out; };
@@ -163,6 +173,16 @@ var K = (function () {
   K.words = function (T) { var out = []; (T.speech || []).forEach(function (s) { (s.phrases || []).forEach(function (p) { out.push({ clipId: s.clipId, s: p[0], e: p[1], w: p[2] }); }); }); return K.sortBy(out, "s"); };
   K.clipsOf = function (T, kind) { var out = []; (T.tracks || []).forEach(function (t) { if (!kind || t.kind === kind) t.clips.forEach(function (c) { var o = {}; for (var k in c) o[k] = c[k]; o.trackId = t.id; out.push(o); }); }); return K.sortBy(out, "start"); };
   K.main = function (T) { return (T.tracks || []).find(function (t) { return t.kind === "video"; }) || null; };
+  // ── layout (percent of the canvas, like the photo editor's commands) ──
+  K.layersOf = function (D, kind) { return (D.layers || []).filter(function (l) { return !kind || l.kind === kind; }); };
+  K.layer = function (D, id) { return (D.layers || []).find(function (l) { return l.id === id; }) || null; };
+  K.fit = function (iw, ih, bw, bh, mode) { var s = (mode === "contain" ? Math.min : Math.max)(bw / iw, bh / ih); return { w: iw * s, h: ih * s }; };
+  K.pct = function (px, D, axis) { return (px / (axis === "y" ? D.height : D.width)) * 100; };
+  K.px = function (p, D, axis) { return (p / 100) * (axis === "y" ? D.height : D.width); };
+  K.imageW = function (file, hPct, D) { var f = typeof file === "string" ? (D.files || []).find(function (x) { return x.id === file; }) : file; if (!f) throw new Error("no file " + file); return ((hPct / 100) * D.height * (f.w / f.h) / D.width) * 100; };
+  K.grid = function (n, cols, area, gap) { gap = gap || 0; cols = Math.max(1, cols); var rows = Math.max(1, Math.ceil(n / cols)), w = (area.w - gap * (cols - 1)) / cols, h = (area.h - gap * (rows - 1)) / rows, out = []; for (var i = 0; i < n; i++) { var r = Math.floor(i / cols), c = i % cols; out.push({ x: area.x + c * (w + gap) + w / 2, y: area.y + r * (h + gap) + h / 2, w: w, h: h }); } return out; };
+  K.textW = function (text, size, D) { return (String(text).length * 0.5 * (size / 100) * D.height / D.width) * 100; };
+  K.lines = function (text, size, maxW, D) { var words = String(text).split(/\s+/), out = [], cur = ""; words.forEach(function (w) { var t = cur ? cur + " " + w : w; if (cur && K.textW(t, size, D) > maxW) { out.push(cur); cur = w; } else cur = t; }); if (cur) out.push(cur); return out; };
   // ── audio ──
   var A = {};
   A.db = function (x) { return x > 1e-9 ? 20 * Math.log10(x) : -180; };
@@ -263,6 +283,12 @@ const RUNTIME_JS = String.raw`
     if (!Array.isArray(cmds)) throw new Error("edit(T, K) must return an array of commands, it returned " + typeof cmds);
     post({ type: "result", id: m.id, commands: JSON.parse(JSON.stringify(cmds)) });
   }
+  function runLayout(m) {
+    var fn = entry(m.code, "layout"); if (!fn) throw new Error("the program must define function layout(D, K)");
+    var ops = fn(JSON.parse(JSON.stringify(m.input)), K);
+    if (!Array.isArray(ops)) throw new Error("layout(D, K) must return an array of commands, it returned " + typeof ops);
+    post({ type: "result", id: m.id, commands: JSON.parse(JSON.stringify(ops)) });
+  }
   function runClean(m) {
     var fn = entry(m.code, "clean"); if (!fn) throw new Error("the program must define function clean(A, K)");
     var src = new Float32Array(m.samples), v = fn({ rate: m.rate, samples: src, seconds: src.length / m.rate }, K);
@@ -277,7 +303,7 @@ const RUNTIME_JS = String.raw`
     if (e.source !== parent) return;
     var m = e.data || {};
     if (m.type !== "run") return;
-    try { if (m.kind === "grade") runGrade(m); else if (m.kind === "edit") runEdit(m); else if (m.kind === "clean") runClean(m); else throw new Error("unknown program kind"); }
+    try { if (m.kind === "grade") runGrade(m); else if (m.kind === "edit") runEdit(m); else if (m.kind === "clean") runClean(m); else if (m.kind === "layout") runLayout(m); else throw new Error("unknown program kind"); }
     catch (err) { post({ type: "error", id: m.id, message: String((err && err.message) || err), stack: String((err && err.stack) || "").split("\n").slice(0, 4).join("\n") }); }
   });
   post({ type: "boot" });
