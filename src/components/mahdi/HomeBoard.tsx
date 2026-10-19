@@ -20,6 +20,7 @@ import DayPriorities from "./DayPriorities";
 import DayTasks from "./DayTasks";
 import HabitRow from "./HabitRow";
 import HealthCard from "./health/HealthCard";
+import KhatmaCard from "./khatma/KhatmaCard";
 import Icon from "./Icon";
 import ProgressRing from "./ProgressRing";
 import ProjectForm from "./ProjectForm";
@@ -167,6 +168,8 @@ function Widget({ id, list }: { id: WidgetId; list: WidgetId[] }) {
         return <ByProject />;
       case "health":
         return <HealthCard />;
+      case "khatma":
+        return <KhatmaCard />;
       case "booklet":
         return <BookletCard />;
       case "stories":
