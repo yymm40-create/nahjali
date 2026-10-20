@@ -1345,7 +1345,7 @@ export default function MotionLab({
                     <input type="checkbox" className="mt-1.5 h-4 w-4" checked={voiceOn} onChange={(e) => setVoiceOn(e.target.checked)} disabled={busy} />
                     <span>
                       <b>🎙️ بصوتي</b>
-                      <span className="mlab-tip block">حيدرة يكتب لك نص قصير، تقرأه وتسجّله، Claude Code ينظّفه، والحركة تنبني على كلامك. صوتك أنت، مب صوت مولّد.</span>
+                      <span className="mlab-tip block">حيدرة يكتب لك نص قصير، تقرأه وتسجّله، حيدرا ماكس ينظّفه، والحركة تنبني على كلامك. صوتك أنت، مب صوت مولّد.</span>
                     </span>
                   </label>
                   <div className="mlab-pills">

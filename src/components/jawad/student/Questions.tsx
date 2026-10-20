@@ -107,7 +107,7 @@ export function MethodChoice({ what, value, quality, perUnit, free, onChange, de
         {onDesign && (
           <button type="button" aria-pressed={designed} onClick={onDesign} className={`relative rounded-2xl p-3 text-start text-white ${designed ? "ring-4 ring-amber-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
             <span className="absolute top-2 left-2 rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold">جديد ✨</span>
-            <b className="block">🧑‍💻 {MAX_NAME} (Claude Code)</b>
+            <b className="block">🧑‍💻 {MAX_NAME}</b>
             <span className="block text-xs text-white/90">{what === "slide" ? "كل شريحة تصميم حر مثل المصممين (صور، أشكال، ألوان)، يراجعها وهي مرسومة ويصلّحها. بعدها تعدّلها بنفسك في «المحرر»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX نصها قابل للتعديل." : "كل خريطة تصميم حر بالكود على فروعك، يراجعها وهي مرسومة ويصلّحها. بعدها تعدّلها بنفسك في «المحرر» وتنزّلها صورة و PDF."}</span>
           </button>
         )}
@@ -150,7 +150,7 @@ export function MaxChoice({ kind, s, set }: { kind: OutputKind; s: S; set: (patc
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => set(on ? { maker: "", ...(kind === "slides" ? { render: "editable" } : {}) } : { maker: "max", ...(kind === "slides" ? { render: "design" } : {}) })} className={`relative w-full rounded-2xl p-3 text-start text-white ${on ? "ring-4 ring-amber-300" : "opacity-90"}`} style={{ background: "linear-gradient(135deg,#1e1245,#5b21b6 60%,#f59e0b)" }}>
       <span className="absolute top-2 left-2 rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold">جديد ✨</span>
-      <b className="block">{on ? "✓ " : ""}🧑‍💻 {MAX_NAME} (Claude Code)</b>
+      <b className="block">{on ? "✓ " : ""}🧑‍💻 {MAX_NAME}</b>
       <span className="block text-xs text-white/90">
         {MAX_HINT}
         {isPaged(kind) || kind === "sermon" || kind === "transcript" ? " يطلع PDF فقط (بدون ملف Word)، وعدد الصفحات يتبع المحتوى." : ""}

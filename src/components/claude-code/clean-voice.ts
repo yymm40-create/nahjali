@@ -102,7 +102,7 @@ export async function cleanVoice(o: { blob: Blob; model: string; from: "studio" 
   const { samples, rate } = await decodeMono(o.blob);
   const before = voiceStats(samples, rate);
   const waveBefore = waveformPng(samples, rate);
-  o.onStep("🧑‍💻 Claude Code يكتب برنامج تنظيف التسجيل…");
+  o.onStep("🧑‍💻 حيدرا ماكس يكتب برنامج تنظيف التسجيل…");
   type Wrote = { code: string; problems: string[] };
   let w = await call<Wrote>({ action: "voice_write", stats: statsLine(before), wave: waveBefore });
   let code = w.code;
@@ -119,14 +119,14 @@ export async function cleanVoice(o: { blob: Blob; model: string; from: "studio" 
         break;
       } catch (e) {
         if (!(e instanceof ProgramError) || fix >= CODE_FIXES) throw e instanceof ProgramError ? new Error(`برنامج التنظيف ما اشتغل: ${e.message}`) : e;
-        o.onStep("البرنامج طلع فيه خطأ — Claude Code يصلّحه…");
+        o.onStep("البرنامج طلع فيه خطأ — حيدرا ماكس يصلّحه…");
         w = await call<Wrote>({ action: "voice_write", stats: statsLine(before), wave: waveBefore, code, errors: `${e.message}\n${e.stack2}` });
         code = w.code;
         problems = w.problems;
       }
     }
     const after = voiceStats(out, rate);
-    o.onStep(`Claude Code يراجع النتيجة (جولة ${round} من ${CODE_ROUNDS})…`);
+    o.onStep(`حيدرا ماكس يراجع النتيجة (جولة ${round} من ${CODE_ROUNDS})…`);
     const r = await call<{ review: { scores: Record<string, number>; pass: boolean; verdict: string }; code: string; problems: string[] }>({ action: "voice_review", code, round, before: statsLine(before), after: statsLine(after), waveBefore, waveAfter: waveformPng(out, rate) });
     last = { out, after, ...r.review };
     if (r.review.pass || !r.code) break;
@@ -142,6 +142,6 @@ export async function cleanVoice(o: { blob: Blob; model: string; from: "studio" 
     verdict: res.verdict,
     scores: res.scores,
     pass: res.pass,
-    line: `${res.pass ? "✅" : "⚠️"} ${res.verdict}\n🧑‍💻 Claude Code · الطول ${before.seconds} ← ${res.after.seconds} ث · مستوى الكلام ${before.speechDb} ← ${res.after.speechDb} dB · أطول سكتة ${before.longestPauseMs} ← ${res.after.longestPauseMs} ms\n${VOICE_RUBRIC.map((x) => `${x.ar} ${res.scores[x.id] ?? "—"}`).join(" · ")}`,
+    line: `${res.pass ? "✅" : "⚠️"} ${res.verdict}\n🧑‍💻 حيدرا ماكس · الطول ${before.seconds} ← ${res.after.seconds} ث · مستوى الكلام ${before.speechDb} ← ${res.after.speechDb} dB · أطول سكتة ${before.longestPauseMs} ← ${res.after.longestPauseMs} ms\n${VOICE_RUBRIC.map((x) => `${x.ar} ${res.scores[x.id] ?? "—"}`).join(" · ")}`,
   };
 }

@@ -533,7 +533,7 @@ function KindFields({ o, s, set, outputs }: { o: OutputView; s: S; set: (p: S) =
                 <span className="block text-2xl" aria-hidden>
                   🎨
                 </span>
-                <b className="block text-lg">{MAX_NAME} (Claude Code)</b>
+                <b className="block text-lg">{MAX_NAME}</b>
                 <span className="block text-sm text-white/90">تصميم حر لكل شريحة بالكود (صور، أشكال، ألوان)، يراجعه وهو مرسوم. تعدّل نصها وصورها في «محرر العرض»، تعرضها شاشة كاملة، وتنزّلها PDF و PPTX قابل للتعديل.</span>
               </button>
               <button

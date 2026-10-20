@@ -53,7 +53,7 @@ export async function produce(userId: string, chatId: string, o: { owner?: boole
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
   if (!p) throw new UserError("ما فيه تصميم ينتظر الرسم في هذي المحادثة.", 409);
-  if (p.maker === "code") throw new UserError("هذا التصميم يرسمه Claude Code في صفحتك.", 409);
+  if (p.maker === "code") throw new UserError("هذا التصميم يرسمه حيدرا ماكس في صفحتك.", 409);
   const at = Math.min(p.at, chat.messages.length - 1);
   const base = chat.messages[at]?.design;
   if (!base) throw new UserError("ما لقينا التصميم في المحادثة.", 409);
@@ -153,7 +153,7 @@ export async function produceFromCode(userId: string, chatId: string, b: { png?:
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
-  if (!p || p.maker !== "code") throw new UserError("ما فيه تصميم ينتظر Claude Code في هذي المحادثة.", 409);
+  if (!p || p.maker !== "code") throw new UserError("ما فيه تصميم ينتظر حيدرا ماكس في هذي المحادثة.", 409);
   const at = Math.min(p.at, chat.messages.length - 1);
   const base = chat.messages[at]?.design;
   if (!base) throw new UserError("ما لقينا التصميم في المحادثة.", 409);

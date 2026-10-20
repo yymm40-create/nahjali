@@ -394,7 +394,7 @@ export default function AssistantPanel({
       setMsgs((m) => [...m, { role: "assistant", text: cleaned.line }]);
     } catch (e) {
       if ((e as Error).name === "AbortError") throw e;
-      setMsgs((m) => [...m, { role: "assistant", text: `ما قدرت أنظّف التسجيل بـ Claude Code (${(e as Error).message}) — أخذت البصمة من التسجيل كما هو.`, error: true }]);
+      setMsgs((m) => [...m, { role: "assistant", text: `ما قدرت أنظّف التسجيل بـ حيدرا ماكس (${(e as Error).message}) — أخذت البصمة من التسجيل كما هو.`, error: true }]);
     }
     const { wav, seconds } = await wavOf(source);
     if (!window.confirm(`أؤكد إن الصوت في هذا التسجيل (${Math.round(seconds)} ث) صوتي، أو عندي إذن صاحبه أنسخه.`)) throw new Error("ما أخذت البصمة (ما تأكدنا من الإذن).");

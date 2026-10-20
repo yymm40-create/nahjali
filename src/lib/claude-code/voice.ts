@@ -12,7 +12,7 @@ import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, VOICE_CONTRACT, VOICE_RUBRIC }
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 const png = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(v) && v.length < 800_000 ? v : null);
 
-const SYSTEM = (who: string) => `You are «${who}», working in your «Claude Code» mode as the dialogue editor of a voice recording (never call yourself Claude).
+const SYSTEM = (who: string) => `You are «${who}», working in your «حيدرا ماكس» mode as the dialogue editor of a voice recording (never call yourself Claude).
 
 ${CLAUDE_CODE_WAY}
 
@@ -36,13 +36,13 @@ const REVIEW_SCHEMA = {
 };
 
 async function ask<T>(user: RobotUser, who: string, model: unknown, label: string, parts: ClaudePart[], schema: object) {
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("Claude Code غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(180_000);
   return robotTurn(user, model, label, async () => {
     const r = await callClaudeJson<T>({ system: SYSTEM(who), turns: [{ role: "user", content: parts }], schema, maxTokens: 12_000, effort: "medium", fallback: true, signal: deadline }).catch((e) => {
       console.error("claude code voice", label, e);
       if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.", 504);
-      throw new UserError(claudeWhy(e, "ما قدر Claude Code ينظّف التسجيل الحين. جرّب مرة ثانية.", user.email), 502);
+      throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس ينظّف التسجيل الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
   });
@@ -59,7 +59,7 @@ export async function voiceWrite(user: RobotUser, who: string, b: Record<string,
     { type: "text", text: `${previous ? "FIX the cleaning program below." : "WRITE the cleaning program for this recording."}\nWHAT IT IS FOR: ${text(b.purpose, 200) || "a voiceprint"}\nTHE RECORDING NOW: ${stats}\n${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox):\n${text(b.errors, 4000) || "(no error text)"}` : ""}` },
     ...pic("ITS WAVEFORM (time left → right, the level in dB as the band's height; red marks are frames at or near clipping):", png(b.wave)),
   ];
-  const r = await ask<{ code: string; notes: string }>(user, who, b.model, previous ? "Claude Code · تصليح تنظيف الصوت" : "Claude Code · برنامج تنظيف الصوت", parts, WRITE_SCHEMA);
+  const r = await ask<{ code: string; notes: string }>(user, who, b.model, previous ? "حيدرا ماكس · تصليح تنظيف الصوت" : "حيدرا ماكس · برنامج تنظيف الصوت", parts, WRITE_SCHEMA);
   const chk = checkProgram("clean", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins };
 }
@@ -75,7 +75,7 @@ export async function voiceReview(user: RobotUser, who: string, b: Record<string
     ...pic("WAVEFORM BEFORE:", png(b.waveBefore)),
     ...pic("WAVEFORM AFTER:", png(b.waveAfter)),
   ];
-  const r = await ask<Record<string, unknown>>(user, who, b.model, `Claude Code · مراجعة تنظيف الصوت ${round}`, parts, REVIEW_SCHEMA);
+  const r = await ask<Record<string, unknown>>(user, who, b.model, `حيدرا ماكس · مراجعة تنظيف الصوت ${round}`, parts, REVIEW_SCHEMA);
   const s = (r.data.scores ?? {}) as Record<string, unknown>;
   const scores = Object.fromEntries(VOICE_RUBRIC.map((x) => [x.id, Math.max(1, Math.min(10, Math.round(Number(s[x.id]) || 1)))])) as Record<string, number>;
   const pass = Object.values(scores).every((v) => v >= CODE_PASS);

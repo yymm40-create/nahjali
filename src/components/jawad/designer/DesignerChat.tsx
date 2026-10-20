@@ -420,7 +420,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                         <div className="dz-progress" role="status" aria-live="polite">
                           <span className="dz-spin" aria-hidden />
                           <div>
-                            <b>{busy === "splitting" ? "نفكّك الصورة إلى طبقات…" : codeStep ? `🧑‍💻 Claude Code: ${codeStep}` : "جواد يرسم الصورة بـ GPT Image 2…"}</b>
+                            <b>{busy === "splitting" ? "نفكّك الصورة إلى طبقات…" : codeStep ? `🧑‍💻 حيدرا ماكس: ${codeStep}` : "جواد يرسم الصورة بـ GPT Image 2…"}</b>
                             <small>{busy === "splitting" ? "نقصّ العنصر الرئيسي بخلفية شفافة ونضعه فوق الصورة الأصلية (نحو نصف دقيقة)." : codeStep ? "Claude يكتب برنامج التصميم ويرسمه هنا ويشوفه ويعيد كتابته لين ينجح (دقايق). لا تقفل الصفحة." : "صورة بلا كتابة، تأخذ نحو دقيقة، ثم يفتح محرر الطبقات. لا تقفل الصفحة."}</small>
                           </div>
                         </div>

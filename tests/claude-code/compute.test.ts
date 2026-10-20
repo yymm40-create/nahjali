@@ -148,7 +148,7 @@ describe("«Claude Code» · pictures drawn in code in the image studio", () => 
     expect(save).toContain("idempotency_key");
     expect(read("src/lib/claude-code/picture.ts")).toContain("robotTurn(");
     expect(read("src/components/jawad/studio/Studio.tsx")).toContain("<ClaudeCodeCard<JobView>");
-    expect(read("config/jawad/assistant.ts")).toContain("ارسم بـ Claude Code");
+    expect(read("config/jawad/assistant.ts")).toContain("ارسم بـ حيدرا ماكس");
     expect(read("config/jawad/knowledge.ts")).toContain("THE WAY THE SITE'S ROBOTS EXECUTE");
   });
 });
@@ -170,7 +170,7 @@ describe("«Claude Code» · زهراء and كاظم", () => {
     applyLut(copy, n, id);
     for (let i = 0; i < px.length; i++) expect(Math.abs(copy[i] - px[i])).toBeLessThanOrEqual(1);
     const data = Buffer.from(id).toString("base64");
-    expect(readPhotoLut({ size: 3, data })).toEqual({ name: "Claude Code", size: 3, data });
+    expect(readPhotoLut({ size: 3, data })).toEqual({ name: "حيدرا ماكس", size: 3, data });
     expect(readPhotoLut({ size: 4, data })).toBeNull();
     expect(readPhotoLut({ size: 3, data: "x!" })).toBeNull();
     const doc = docFromPicture({ id: "f", w: 800, h: 600 });
@@ -178,7 +178,7 @@ describe("«Claude Code» · زهراء and كاظم", () => {
     expect("doc" in r && r.doc.lut?.size).toBe(3);
     const withLut = (r as { doc: typeof doc }).doc;
     expect(readDoc(JSON.parse(JSON.stringify(withLut))).lut?.data).toBe(data);
-    expect(describeDoc(withLut)).toContain("Claude Code");
+    expect(describeDoc(withLut)).toContain("حيدرا ماكس");
     const off = applyOp(withLut, { op: "lut", clear: true } as never);
     expect("doc" in off && off.doc.lut).toBeNull();
     const reset = applyOp(withLut, { op: "adjust_reset" } as never);
@@ -198,7 +198,7 @@ describe("«Claude Code» · زهراء and كاظم", () => {
     expect(produce).toContain("export async function produceFromCode");
     expect(produce).toContain('maker: "code"');
     expect(read("src/components/jawad/designer/DesignerChat.tsx")).toContain('from: "designer"');
-    expect(read("config/designer.ts")).toContain("«Claude Code» (maker = \"code\")");
+    expect(read("config/designer.ts")).toContain("«حيدرا ماكس» (maker = \"code\")");
     expect(read("src/lib/jawad/server/claude-code-picture.ts")).toContain('from === "designer"');
   });
 });

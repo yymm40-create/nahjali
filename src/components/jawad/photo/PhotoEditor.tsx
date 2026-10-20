@@ -469,7 +469,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
     if (!d0?.base) return;
     const api = <T,>(body: Record<string, unknown>) => postJson<T>("/api/photo/code", { request: look, ...body });
     try {
-      setBusy("🧑‍💻 Claude Code يكتب برنامج التلوين…");
+      setBusy("🧑‍💻 حيدرا ماكس يكتب برنامج التلوين…");
       await ensureFonts(d0, fonts);
       // the base as it looks now without any earlier Claude Code colour: what the program grades
       const c0 = document.createElement("canvas");
@@ -511,8 +511,8 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
         problems = r.problems;
       }
       if (!last) return;
-      op({ op: "lut", name: "Claude Code", size: GRADE_LUT_SIZE, data: toBase64(last.lut) } as Op);
-      setMessages((m) => [...m, { role: "assistant", text: `${last!.pass ? "✅" : "⚠️"} ${last!.verdict}\n🧑‍💻 Claude Code · ${GRADE_RUBRIC.map((x) => `${x.ar} ${last!.scores[x.id] ?? "—"}`).join(" · ")}` }]);
+      op({ op: "lut", name: "حيدرا ماكس", size: GRADE_LUT_SIZE, data: toBase64(last.lut) } as Op);
+      setMessages((m) => [...m, { role: "assistant", text: `${last!.pass ? "✅" : "⚠️"} ${last!.verdict}\n🧑‍💻 حيدرا ماكس · ${GRADE_RUBRIC.map((x) => `${x.ar} ${last!.scores[x.id] ?? "—"}`).join(" · ")}` }]);
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", text: (e as Error).message, error: true }]);
     } finally {
@@ -549,7 +549,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
       return c.toDataURL("image/jpeg", 0.82).split(",")[1];
     };
     try {
-      setBusy("🧑‍💻 Claude Code يكتب برنامج التصميم…");
+      setBusy("🧑‍💻 حيدرا ماكس يكتب برنامج التصميم…");
       const before = await draw(d0);
       let w = await api<{ code: string; problems: string[] }>({ action: "layout_write", before, facts });
       let code = w.code;
@@ -588,7 +588,7 @@ export default function PhotoEditor({ projectId, persona }: { projectId: string;
       const done = last;
       setImages(new Map(pics));
       change(() => done.doc);
-      setMessages((m) => [...m, { role: "assistant", text: `${done.pass ? "✅" : "⚠️"} ${done.verdict}\n🧑‍💻 Claude Code · ${LAYOUT_RUBRIC.map((x) => `${x.ar} ${done.scores[x.id] ?? "—"}`).join(" · ")}` }]);
+      setMessages((m) => [...m, { role: "assistant", text: `${done.pass ? "✅" : "⚠️"} ${done.verdict}\n🧑‍💻 حيدرا ماكس · ${LAYOUT_RUBRIC.map((x) => `${x.ar} ${done.scores[x.id] ?? "—"}`).join(" · ")}` }]);
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", text: (e as Error).message, error: true }]);
     } finally {

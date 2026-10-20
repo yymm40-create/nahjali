@@ -15,7 +15,7 @@ import { CLAUDE_CODE_WAY, CODE_PASS, CODE_ROUNDS, LAYOUT_CONTRACT, LAYOUT_RUBRIC
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 const jpeg = (v: unknown) => (typeof v === "string" && /^[A-Za-z0-9+/=]+$/.test(v) && v.length < 1_200_000 ? v : null);
 
-const SYSTEM = (who: string) => `You are «${who}», working in your «Claude Code» mode as the designer and compositor of «زهراء فوتو ماستر» (never call yourself Claude).
+const SYSTEM = (who: string) => `You are «${who}», working in your «حيدرا ماكس» mode as the designer and compositor of «زهراء فوتو ماستر» (never call yourself Claude).
 
 ${CLAUDE_CODE_WAY}
 
@@ -42,13 +42,13 @@ const REVIEW_SCHEMA = {
 };
 
 async function ask<T>(user: RobotUser, who: string, model: unknown, label: string, parts: ClaudePart[], schema: object) {
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("Claude Code غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(240_000);
   return robotTurn(user, model, label, async () => {
     const r = await callClaudeJson<T>({ system: SYSTEM(who), turns: [{ role: "user", content: parts }], schema, maxTokens: 24_000, effort: "high", fallback: true, signal: deadline }).catch((e) => {
       console.error("claude code layout", label, e);
       if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.", 504);
-      throw new UserError(claudeWhy(e, "ما قدر Claude Code يرتّب التصميم الحين. جرّب مرة ثانية.", user.email), 502);
+      throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يرتّب التصميم الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
   });
@@ -71,7 +71,7 @@ export async function layoutWrite(user: RobotUser, who: string, b: Record<string
     { type: "text", text: `${previous ? "FIX the layout program below." : "WRITE the layout program."}\nTHE REQUEST: ${request}\nD (the design's facts, exactly what your program receives):\n${facts}\n${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox or the editor):\n${text(b.errors, 4000) || "(no error text)"}` : ""}\nThe design as it looks now:` },
     { type: "image64", data: before, mediaType: "image/jpeg" },
   ];
-  const r = await ask<{ code: string; notes: string }>(user, who, b.model, previous ? "Claude Code · تصليح التصميم" : "Claude Code · برنامج التصميم", parts, WRITE_SCHEMA);
+  const r = await ask<{ code: string; notes: string }>(user, who, b.model, previous ? "حيدرا ماكس · تصليح التصميم" : "حيدرا ماكس · برنامج التصميم", parts, WRITE_SCHEMA);
   const chk = checkProgram("layout", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins };
 }
@@ -91,7 +91,7 @@ export async function layoutReview(user: RobotUser, who: string, b: Record<strin
     { type: "text", text: "AFTER:" },
     { type: "image64", data: after, mediaType: "image/jpeg" },
   ];
-  const r = await ask<Record<string, unknown>>(user, who, b.model, `Claude Code · مراجعة التصميم ${round}`, parts, REVIEW_SCHEMA);
+  const r = await ask<Record<string, unknown>>(user, who, b.model, `حيدرا ماكس · مراجعة التصميم ${round}`, parts, REVIEW_SCHEMA);
   const s = (r.data.scores ?? {}) as Record<string, unknown>;
   const scores = Object.fromEntries(LAYOUT_RUBRIC.map((x) => [x.id, Math.max(1, Math.min(10, Math.round(Number(s[x.id]) || 1)))])) as Record<string, number>;
   const pass = Object.values(scores).every((v) => v >= CODE_PASS);

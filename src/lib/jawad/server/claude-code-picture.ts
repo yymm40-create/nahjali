@@ -18,7 +18,7 @@ import type { JobRow } from "./jobs";
 
 const db = () => createAdminClient();
 export const CLAUDE_CODE_GENERATOR = "claude-code";
-export const CLAUDE_CODE_NAME = "Claude Code";
+export const CLAUDE_CODE_NAME = "حيدرا ماكس";
 
 /** May this person use «Claude Code» pictures? The same door as the studio's pictures (or «المصمم الذكي», for its designs). */
 export async function canDraw(email: string | null | undefined, from?: unknown) {
@@ -61,7 +61,7 @@ export async function savePicture(user: { id: string; email?: string | null }, b
       inputs: { settings: { aspect: String(b.aspect ?? "1:1") }, ...(typeof b.styleId === "string" && b.styleId ? { styleId: b.styleId } : {}), claudeCode: { rounds: Math.round(Number(b.rounds) || 0), scores: b.scores ?? null } },
       refs: [],
       price_coins: 0,
-      price_breakdown: [{ label: "Claude Code · حسب استخدام Claude", centi: 0 }],
+      price_breakdown: [{ label: "حيدرا ماكس · حسب الاستخدام", centi: 0 }],
       charged: false,
       charge_state: "none",
       status: "saving",

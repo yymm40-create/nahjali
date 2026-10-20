@@ -16,7 +16,7 @@ import { postJson } from "@/lib/fetch";
 import { ProgramError, runEdit, runGrade, toBase64 } from "@/components/claude-code/compute-host";
 import type { Run } from "./Inspector";
 
-export const CODE_LAYER_NAME = "Claude Code";
+export const CODE_LAYER_NAME = "حيدرا ماكس";
 
 type Frame = { t: number; data: string; graded?: boolean; scope?: unknown };
 export interface Look {
@@ -71,7 +71,7 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
   d.busy("نسمع الصوت ونلقى السكتات…");
   const quiet = await d.quiet();
   stopped(d);
-  d.busy("حيدرة يكتب برنامج التقطيع (Claude Code)…");
+  d.busy("حيدرة يكتب برنامج التقطيع…");
   let w = await api<Wrote>(d, "code_edit_write", { request, timeline: start, quiet, playhead: d.playhead, selected: d.selected });
   let code = w.code;
   let problems = w.problems;
@@ -112,10 +112,10 @@ export async function codeEdit(d: CodeDeps, request: string): Promise<CodeOutcom
   if (!last) throw new Error("ما طلع من البرنامج شي.");
   // a program cuts and arranges: the background / colour key are the person's own settings, never changed by it
   const cmds = asksAboutBackdrop(request) ? last.cmds : withoutBackdropEdits(last.cmds as { type?: string; patch?: Record<string, unknown> }[]).cmds;
-  const applied = d.run(cmds as typeof last.cmds, { label: `حيدرة (Claude Code): ${request.slice(0, 40)}` });
+  const applied = d.run(cmds as typeof last.cmds, { label: `حيدرا ماكس: ${request.slice(0, 40)}` });
   if (!applied) throw new Error("ما قدرت أطبّق التقطيع على التايملاين.");
   const lens = `${sec(duration(start))} → ${sec(duration(last.after))}`;
-  return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 Claude Code · ${last.cmds.length} أمر · الطول ${lens}\n${scoreLine(EDIT_RUBRIC, last.review.scores)}`, done: last.cmds.length };
+  return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 حيدرا ماكس · ${last.cmds.length} أمر · الطول ${lens}\n${scoreLine(EDIT_RUBRIC, last.review.scores)}`, done: last.cmds.length };
 }
 
 /** Which grading layer the program's LUT goes on: its own (if it is there already), else a new one, else the last. */
@@ -141,7 +141,7 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
   }
   if (!before.length) throw new Error("ما قدرت أشوف المقاطع.");
   stopped(d);
-  d.busy("حيدرة يكتب برنامج التلوين (Claude Code)…");
+  d.busy("حيدرة يكتب برنامج التلوين…");
   let w = await api<Wrote>(d, "code_grade_write", { request, timeline: start, looks: before });
   let code = w.code;
   let problems = w.problems;
@@ -179,6 +179,6 @@ export async function codeGrade(d: CodeDeps, request: string, clipIds: string[])
   if (!last) throw new Error("ما طلع من البرنامج شي.");
   const data = toBase64(last.lut);
   const cmds: Command[] = clips.map((c) => ({ type: "update_clip", clipId: c.id, patch: { grade: { layer: codeLayer(findClip(d.timeline(), c.id)?.clip.grades ?? c.grades), on: true, name: CODE_LAYER_NAME, lut: { name: CODE_LAYER_NAME, size: GRADE_LUT_SIZE, data }, lutAmount: 1 } } }));
-  if (!d.run(cmds, { label: `حيدرة يلوّن (Claude Code): ${request.slice(0, 40)}` })) throw new Error("ما قدرت أحط التلوين على المقاطع.");
-  return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 Claude Code · LUT ${GRADE_LUT_SIZE}³ على ${clips.length} مقطع (طبقة «${CODE_LAYER_NAME}»)\n${scoreLine(GRADE_RUBRIC, last.review.scores)}`, done: cmds.length };
+  if (!d.run(cmds, { label: `حيدرة يلوّن: ${request.slice(0, 40)}` })) throw new Error("ما قدرت أحط التلوين على المقاطع.");
+  return { text: `${last.review.pass ? "✅" : "⚠️"} ${last.review.verdict}\n🧑‍💻 حيدرا ماكس · LUT ${GRADE_LUT_SIZE}³ على ${clips.length} مقطع (طبقة «${CODE_LAYER_NAME}»)\n${scoreLine(GRADE_RUBRIC, last.review.scores)}`, done: cmds.length };
 }

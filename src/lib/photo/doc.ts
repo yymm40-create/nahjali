@@ -89,7 +89,7 @@ export function readPhotoLut(v: unknown): PhotoLut | null {
   if (!(size >= 2 && size <= 33) || typeof o.data !== "string" || !/^[A-Za-z0-9+/]+=*$/.test(o.data)) return null;
   const bytes = Math.floor((o.data.length * 3) / 4) - (o.data.endsWith("==") ? 2 : o.data.endsWith("=") ? 1 : 0);
   if (bytes !== size * size * size * 3) return null;
-  return { name: typeof o.name === "string" ? o.name.slice(0, 60) : "Claude Code", size, data: o.data };
+  return { name: typeof o.name === "string" ? o.name.slice(0, 60) : "حيدرا ماكس", size, data: o.data };
 }
 
 const FULL: Rect = { x: 0, y: 0, w: 1, h: 1 };
@@ -442,7 +442,7 @@ export function applyOp(doc: PhotoDoc, op: Op, ctx: OpContext = {}): { doc: Phot
         return { doc: d };
       }
       const l = readPhotoLut(op);
-      if (!l) return { error: "ألوان Claude Code غير صالحة." };
+      if (!l) return { error: "ألوان حيدرا ماكس غير صالحة." };
       d.lut = l;
       return { doc: d };
     }
@@ -629,7 +629,7 @@ export function describeDoc(doc: PhotoDoc, files: { id: string; name: string; w:
   } else lines.push("الصورة الأساسية: لا شيء (لوحة بلون)");
   const adj = ADJUSTS.filter((a) => doc.adjust[a.key] !== 0).map((a) => `${a.key}=${doc.adjust[a.key]}`);
   lines.push(`الشرائح: ${adj.length ? adj.join("، ") : "كلها صفر"}؛ الفلتر: ${doc.filter.id}${doc.filter.id !== "none" ? ` بقوة ${doc.filter.strength}` : ""} (${FILTERS.find((f) => f.id === doc.filter.id)?.name ?? ""})`);
-  if (doc.lut) lines.push(`ألوان «Claude Code» مطبّقة على الصورة الأساسية فوق الشرائح (LUT ${doc.lut.size}³). تشيلها بـ {"op":"lut","clear":true}.`);
+  if (doc.lut) lines.push(`ألوان «حيدرا ماكس» مطبّقة على الصورة الأساسية فوق الشرائح (LUT ${doc.lut.size}³). تشيلها بـ {"op":"lut","clear":true}.`);
   lines.push(doc.layers.length ? "الطبقات من الأسفل إلى الأعلى:" : "الطبقات: لا شيء");
   for (const l of doc.layers) {
     if (l.kind === "text") lines.push(`- ${l.id} نص «${l.text.replace(/\n/g, " / ").slice(0, 120)}» خط ${l.font} حجم ${round(l.size, 10)}% لون ${l.color} عند (${round(l.x, 10)}, ${round(l.y, 10)}) عرض ${round(l.w, 10)}% محاذاة ${l.align} تأثير ${l.effect}${l.effect !== "none" ? ` ${l.effectColor}` : ""} وزن ${l.weight} دوران ${l.rotate} شفافية ${l.opacity}`);

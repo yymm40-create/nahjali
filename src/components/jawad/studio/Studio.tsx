@@ -934,7 +934,7 @@ export default function Studio({ section, studioSections, generators, directorGe
                 styleText={draft.styleId ? findStyle(draft.styleId)?.text ?? "" : ""}
                 refUrls={draft.refs.filter((r) => r.kind === "image" && r.url).map((r) => r.url!)}
                 sectionId={activeSection.id}
-                disabledReason={!user ? "سجّل الدخول للرسم بـ Claude Code." : !allowed ? "المنصة مغلقة لحسابك." : null}
+                disabledReason={!user ? "سجّل الدخول للرسم بـ حيدرا ماكس." : !allowed ? "المنصة مغلقة لحسابك." : null}
                 onSaved={(job) => {
                   setItems((cur) => (filter === "all" || filter === "image" ? [job, ...cur.filter((c) => c.id !== job.id)] : cur));
                   setTab("works");

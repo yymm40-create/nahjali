@@ -48,7 +48,7 @@ export default function LabVoice({ script, model, value, onChange, disabled }: {
           note = r.line;
         } catch (e) {
           if (e instanceof DOMException && e.name === "AbortError") throw e;
-          note = `ما نظّفه Claude Code (${e instanceof Error ? e.message : e}) — استخدمت تسجيلك كما هو.`;
+          note = `ما نظّفه حيدرا ماكس (${e instanceof Error ? e.message : e}) — استخدمت تسجيلك كما هو.`;
         }
       }
       setStep("أقيس متى تنقال كل جملة…");
@@ -107,7 +107,7 @@ export default function LabVoice({ script, model, value, onChange, disabled }: {
       )}
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" className="mt-1 h-4 w-4" checked={clean} onChange={(e) => setClean(e.target.checked)} disabled={busy || Boolean(rec)} />
-        <span><b>🧑‍💻 Claude Code ينظّف التسجيل</b> <span className="mlab-tip">(السكتات الطويلة، الطنين، توزين الصوت) قبل ما يبني عليه</span></span>
+        <span><b>🧑‍💻 حيدرا ماكس ينظّف التسجيل</b> <span className="mlab-tip">(السكتات الطويلة، الطنين، توزين الصوت) قبل ما يبني عليه</span></span>
       </label>
       <div className="flex flex-wrap gap-2">
         {rec ? (

@@ -84,7 +84,7 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
   const photos = loaded.map((p) => p.small);
   const call = <T>(body: Record<string, unknown>) => postJson<T>(URL, { model: o.model, prompt: o.prompt, aspect: o.aspect, style: o.style, references: o.references, photos, from: o.from ?? "studio", ...body }, o.signal);
   let coins = 0;
-  o.onStep({ text: "🧑‍💻 Claude Code يكتب برنامج الصورة…" });
+  o.onStep({ text: "🧑‍💻 حيدرا ماكس يكتب برنامج الصورة…" });
   type Wrote = { code: string; problems: string[]; fonts: { head: string; body: string }; size: [number, number]; notes: string; coins: number };
   let w = await call<Wrote>({ action: "write" });
   coins += w.coins ?? 0;
@@ -107,7 +107,7 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
           break;
         } catch (e) {
           if (!(e instanceof SceneError) || fix >= CODE_FIXES) throw e instanceof SceneError ? new Error(`برنامج الصورة ما اشتغل بعد ${fix + 1} محاولات: ${e.message}`) : e;
-          o.onStep({ text: "البرنامج طلع فيه خطأ — Claude Code يصلّحه…" });
+          o.onStep({ text: "البرنامج طلع فيه خطأ — حيدرا ماكس يصلّحه…" });
           w = await call<Wrote>({ action: "write", code, errors: `${e.where}: ${e.message}\n${e.stack2}` });
           coins += w.coins ?? 0;
           code = w.code;
@@ -117,7 +117,7 @@ async function drawOnce(o: DrawOptions): Promise<DrawResult> {
       const png = await bitmapTo(bm, "image/png");
       const still = await bitmapTo(bm, "image/jpeg", 1280, 0.85);
       bm.close();
-      o.onStep({ text: `Claude Code يشوف الصورة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
+      o.onStep({ text: `حيدرا ماكس يشوف الصورة ويقيّمها (جولة ${round} من ${CODE_ROUNDS})…`, preview: `data:image/jpeg;base64,${still}` });
       const r = await call<{ review: { scores: Record<string, number>; pass: boolean; verdict: string }; code: string; problems: string[]; coins: number }>({ action: "review", code, still, round });
       coins += r.coins ?? 0;
       best = { png, scores: r.review.scores, pass: r.review.pass, verdict: r.review.verdict, rounds: round, coins };

@@ -292,7 +292,7 @@ export function SlidesBox({ s, busy, owner, onRetry, onDownloadAll, step }: { s:
           <div>
             {s.maker === "code" ? (
               <>
-                <b>🧑‍💻 Claude Code يرسم الشرائح بالكود… ({done} من {s.total})</b>
+                <b>🧑‍💻 حيدرا ماكس يرسم الشرائح بالكود… ({done} من {s.total})</b>
                 <small>{step ? `${step} — ` : ""}يكتب برنامج كل شريحة ويرسمها هنا في صفحتك ويشوفها ويعيد كتابتها لين تنجح (دقايق للشريحة). لا تقفل الصفحة؛ تظهر الشرائح هنا واحدة بعد واحدة.</small>
               </>
             ) : (

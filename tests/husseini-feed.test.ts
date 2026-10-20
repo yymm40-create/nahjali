@@ -32,7 +32,7 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     expect(readPending({ id: "x", aspect: "1:1", slides: [{ n: 1, text: "", prompt: "a" }], at: 1, mode: "all", made: [], failed: [], carry: [] })?.maker).toBeUndefined();
     const { CONTENT_TOOLS, CONTENT_PLATFORM_RULES } = await import("@config/content");
     expect(CONTENT_TOOLS).toContain('"maker"');
-    expect(CONTENT_PLATFORM_RULES).toContain("حيدرة ماكس");
+    expect(CONTENT_PLATFORM_RULES).toContain("حيدرا ماكس");
   });
   it("the page draws a slide in code and sends it back to the produce step", async () => {
     const { readFileSync } = await import("node:fs");

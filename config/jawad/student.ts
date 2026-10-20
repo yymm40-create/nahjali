@@ -360,7 +360,7 @@ export const DESIGNED_KINDS: string[] = ["summary", "explain", "preread", "book"
 // opened in «محرر العرض» to edit by hand, and exported as PDF (the slides also as an editable PPTX). Kept in the
 // output's settings as `maker: "max"` (the older slides setting `render: "design"` means the same).
 export const MAX_NAME = "حيدرا ماكس";
-export const MAX_HINT = "يصممه Claude Code بالكود صفحة صفحة: تصميم حر على مادتك (مب قالب)، يشوفه مرسوم ويصلّحه، وبعدها تعدّله بنفسك في المحرر وتنزّله PDF.";
+export const MAX_HINT = "يصممه حيدرا ماكس بالكود صفحة صفحة: تصميم حر على مادتك (مب قالب)، يشوفه مرسوم ويصلّحه، وبعدها تعدّله بنفسك في المحرر وتنزّله PDF.";
 /** Outputs that can be made by حيدرا ماكس: everything with something to see; a spoken recording has no pages to design. */
 export const MAX_KINDS: readonly string[] = ["summary", "explain", "preread", "transcript", "book", "slides", "quiz", "mindmap", "sermon", "brochure"];
 export const maxAvailable = (kind: string) => MAX_KINDS.includes(kind);

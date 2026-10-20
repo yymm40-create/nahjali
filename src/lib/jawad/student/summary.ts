@@ -40,7 +40,7 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
     case "slides": {
       const n = Math.max(0, Math.round(Number(s.count) || 0));
       out.push(n ? `${n} شريحة` : "عدد الشرائح حسب المادة");
-      out.push(s.render === "image" ? "تُرسم صورًا" : maxOn(s) ? `${MAX_NAME}: يصممها Claude Code + محرر وعرض` : "شرائح قابلة للتعديل");
+      out.push(s.render === "image" ? "تُرسم صورًا" : maxOn(s) ? `${MAX_NAME}: يصممها بالكود + محرر وعرض` : "شرائح قابلة للتعديل");
       if (NOTES[str(s.notesMode)]) out.push(NOTES[str(s.notesMode)]);
       out.push(s.aspect === "4:3" ? "4:3" : "عريض 16:9");
       break;
@@ -60,7 +60,7 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
     case "mindmap":
       out.push(MAP_TYPES.find((t) => t.id === s.mapType)?.name ?? "النوع يختاره صادق");
       out.push(s.scope === "sections" ? "شاملة + خريطة لكل قسم" : "خريطة وحدة");
-      out.push(maxOn(s) ? `${MAX_NAME}: يصممها Claude Code` : s.render === "image" ? "يرسمها GPT Image 2" : "يصممها صادق");
+      out.push(maxOn(s) ? `${MAX_NAME}: يصممها بالكود` : s.render === "image" ? "يرسمها GPT Image 2" : "يصممها صادق");
       if (s.recall !== false && !maxOn(s)) out.push("مع نسخة التسميع");
       break;
     case "brochure":
@@ -74,7 +74,7 @@ export function settingsParts(kind: OutputKind | string, s: S): string[] {
     default:
       break;
   }
-  if (maxOn(s) && maxAvailable(kind) && kind !== "slides" && kind !== "mindmap") out.push(`${MAX_NAME}: يصممه Claude Code`);
+  if (maxOn(s) && maxAvailable(kind) && kind !== "slides" && kind !== "mindmap") out.push(`${MAX_NAME}: يصممه بالكود`);
   return out;
 }
 

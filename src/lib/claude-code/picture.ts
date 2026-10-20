@@ -16,7 +16,7 @@ import { PICTURE_RUBRIC, pictureSize } from "./picture-rubric";
 
 export { PICTURE_RUBRIC, PICTURE_SIZES, pictureSize } from "./picture-rubric";
 
-const SYSTEM = `You are «جواد»'s creative coder at JAWAD AI, drawing a PICTURE IN CODE — «Claude Code» (never call yourself Claude). You design and code the picture yourself, new for this request: there is no image model, only your program.
+const SYSTEM = `You are «جواد»'s creative coder at JAWAD AI, drawing a PICTURE IN CODE — «حيدرا ماكس» (never call yourself Claude). You design and code the picture yourself, new for this request: there is no image model, only your program.
 
 ${CLAUDE_CODE_WAY}
 
@@ -54,13 +54,13 @@ const font = (v: unknown, d: string) => (typeof v === "string" && LAB_FONTS.incl
 const fontMenu = () => LAB_FONTS.map((id) => `${id} (${FONT_BY_ID.get(id)?.kind})`).join(", ");
 
 async function ask<T>(user: RobotUser, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number) {
-  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("Claude Code غير مفعّل على الخادم.", 503);
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرا ماكس غير مفعّل على الخادم.", 503);
   const deadline = AbortSignal.timeout(300_000);
   return robotTurn(user, model, label, async () => {
     const r = await callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort: "high", fallback: true, signal: deadline }).catch((e) => {
       console.error("claude code picture", label, e);
       if (deadline.aborted) throw new UserError("خدمة الذكاء الاصطناعي تأخرت. أعد المحاولة.", 504);
-      throw new UserError(claudeWhy(e, "ما قدر Claude Code يكمل الصورة الحين. جرّب مرة ثانية.", user.email), 502);
+      throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الصورة الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
   });
@@ -102,7 +102,7 @@ Return the COMPLETE program and the two fonts it uses.`,
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, previous ? "Claude Code · تصليح الصورة" : "Claude Code · رسم الصورة", parts, WRITE_SCHEMA, 64_000);
+  const r = await ask<{ code: string; fonts: { head: string; body: string }; notes: string }>(user, b.model, previous ? "حيدرا ماكس · تصليح الصورة" : "حيدرا ماكس · رسم الصورة", parts, WRITE_SCHEMA, 64_000);
   const chk = checkScene(r.data.code);
   return { code: chk.code, problems: chk.problems, fonts: { head: font(r.data.fonts?.head, LAB_FONTS[0]), body: font(r.data.fonts?.body, LAB_FONTS[0]) }, notes: text(r.data.notes, 600), size: [w, h], coins: r.coins, model: r.model };
 }
@@ -129,7 +129,7 @@ ${code}`,
     ...photosParts(b.photos),
     ...refsParts(b.references),
   ];
-  const r = await ask<Record<string, unknown>>(user, b.model, `Claude Code · مراجعة الصورة ${round}`, parts, REVIEW_SCHEMA, 64_000);
+  const r = await ask<Record<string, unknown>>(user, b.model, `حيدرا ماكس · مراجعة الصورة ${round}`, parts, REVIEW_SCHEMA, 64_000);
   const s = (r.data.scores ?? {}) as Record<string, unknown>;
   const scores = Object.fromEntries(PICTURE_RUBRIC.map((x) => [x.id, Math.max(1, Math.min(10, Math.round(Number(s[x.id]) || 1)))])) as Record<string, number>;
   const pass = Object.values(scores).every((v) => v >= CODE_PASS);

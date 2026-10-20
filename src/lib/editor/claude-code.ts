@@ -23,7 +23,7 @@ import { assetViews, stillOpen, type EditorProject } from "./server";
 const db = () => createAdminClient();
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 
-const IDENTITY = `You are «حيدرة», the editor and colourist of «حيدرة كت» (never call yourself Claude). Here you are working in your «Claude Code» mode.
+const IDENTITY = `You are «حيدرة», the editor and colourist of «حيدرة كت» (never call yourself Claude). Here you are working in your «حيدرا ماكس» mode.
 
 ${CLAUDE_CODE_WAY}`;
 
@@ -108,7 +108,7 @@ ${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the sandbox or 
 Write the COMPLETE program.`,
     },
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, "edit", previous ? "حيدرة · Claude Code · تصليح التقطيع" : "حيدرة · Claude Code · برنامج التقطيع", parts, WRITE_SCHEMA, 32_000);
+  const r = await ask<{ code: string; notes: string }>(who, b.model, "edit", previous ? "حيدرا ماكس · تصليح التقطيع" : "حيدرا ماكس · برنامج التقطيع", parts, WRITE_SCHEMA, 32_000);
   const chk = checkProgram("edit", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), facts, coins: r.coins, model: r.model };
 }
@@ -138,7 +138,7 @@ THE TIMELINE AFTER (the same shape):
 ${JSON.stringify(after.facts)}`,
     },
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, "edit", `حيدرة · Claude Code · مراجعة التقطيع ${round}`, parts, reviewSchema("edit"), 32_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, "edit", `حيدرا ماكس · مراجعة التقطيع ${round}`, parts, reviewSchema("edit"), 32_000);
   const review = readReview("edit", r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkProgram("edit", r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
@@ -170,7 +170,7 @@ Write the COMPLETE program.`,
     },
     ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: `CLIP ${i + 1} (${l.clipId}):` }, ...lookParts(l)]),
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, "grade", previous ? "حيدرة · Claude Code · تصليح التلوين" : "حيدرة · Claude Code · برنامج التلوين", parts, WRITE_SCHEMA, 24_000);
+  const r = await ask<{ code: string; notes: string }>(who, b.model, "grade", previous ? "حيدرا ماكس · تصليح التلوين" : "حيدرا ماكس · برنامج التلوين", parts, WRITE_SCHEMA, 24_000);
   const chk = checkProgram("grade", r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
 }
@@ -196,7 +196,7 @@ ${code}`,
     },
     ...looks.flatMap((l, i): ClaudePart[] => [{ type: "text", text: `CLIP ${i + 1} (${l.clipId}):` }, ...lookParts(l)]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, "grade", `حيدرة · Claude Code · مراجعة التلوين ${round}`, parts, reviewSchema("grade"), 24_000);
+  const r = await ask<Record<string, unknown>>(who, b.model, "grade", `حيدرا ماكس · مراجعة التلوين ${round}`, parts, reviewSchema("grade"), 24_000);
   const review = readReview("grade", r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkProgram("grade", r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };

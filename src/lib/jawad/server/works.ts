@@ -57,7 +57,7 @@ export async function jobViews(jobs: JobRow[]): Promise<JobView[]> {
       providerStatus: j.provider_status,
       progress: j.progress,
       generatorId: j.generator_id,
-      generatorName: rt.generators.find((g) => g.id === j.generator_id)?.name ?? def?.name ?? (j.generator_id === "claude-code" ? "Claude Code" : j.generator_id),
+      generatorName: rt.generators.find((g) => g.id === j.generator_id)?.name ?? def?.name ?? (j.generator_id === "claude-code" ? "حيدرا ماكس" : j.generator_id),
       sectionId: j.section_id,
       outputKind: j.output_kind,
       mode: j.mode,

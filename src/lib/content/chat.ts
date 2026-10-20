@@ -57,7 +57,7 @@ export const ANSWER_SCHEMA = {
       properties: {
         on: { type: "boolean" },
         mode: { type: "string", enum: ["all", "fix"], description: "all: كاروسيل جديد؛ fix: إعادة رسم شرائح بعينها من آخر كاروسيل" },
-        maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم الشرائح: gpt = GPT Image 2 عبر جواد (الصور الواقعية والأشخاص وصور العميل)؛ code = «Claude Code» (حيدرة ماكس) يرسمها بالكود في صفحة العميل (الكتابة العربية حرفية بخطوط الموقع، تصاميم الكتابة والأشكال والإنفوجرافيك)" },
+        maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم الشرائح: gpt = GPT Image 2 عبر جواد (الصور الواقعية والأشخاص وصور العميل)؛ code = «حيدرا ماكس» يرسمها بالكود في صفحة العميل (الكتابة العربية حرفية بخطوط الموقع، تصاميم الكتابة والأشكال والإنفوجرافيك)" },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9"] },
         template_id: { type: "string", description: "معرّف القالب الذي اختاره العميل، أو فارغ" },
         style_id: { type: "string", description: "معرّف الستايل الكرتوني الذي اختاره العميل، أو فارغ" },

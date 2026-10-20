@@ -345,7 +345,7 @@ export async function produceFromCode(userId: string, chatId: string, b: { n?: u
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");
   const p = chat.pending;
-  if (!p || p.maker !== "code") throw new UserError("ما فيه كاروسيل ينتظر Claude Code في هذي المحادثة.", 409);
+  if (!p || p.maker !== "code") throw new UserError("ما فيه كاروسيل ينتظر حيدرا ماكس في هذي المحادثة.", 409);
   const s = p.slides.find((x) => x.n === Number(b.n));
   if (!s || p.made.some((x) => x.n === s.n) || p.failed.some((x) => x.n === s.n)) throw new UserError("هذي الشريحة مو بانتظار الرسم.", 409);
   const data = typeof b.png === "string" ? b.png.replace(/^data:image\/png;base64,/, "") : "";

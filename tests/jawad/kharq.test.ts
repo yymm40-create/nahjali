@@ -219,7 +219,7 @@ describe("«محمد الخارق» is خارق — the whole site's team is his
     for (const a of KHARQ_AGENTS) expect(a.knows.length, a.id).toBeGreaterThan(20);
     // the religious question is never his own memory's; he writes code himself; the pictures come back to the chat
     expect(KHARQ_PLATFORM_RULES).toContain("«islamic»");
-    expect(KHARQ_PLATFORM_RULES).toContain("Claude Code");
+    expect(KHARQ_PLATFORM_RULES).toContain("حيدرا ماكس");
     expect(KHARQ_PLATFORM_RULES).toContain("التوليد في الخلفية");
   });
 

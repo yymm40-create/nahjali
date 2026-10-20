@@ -45,10 +45,10 @@ export const ANSWER_SCHEMA = {
         kind: { type: "string", enum: ["wedding", "husseini_joy", "husseini_mourning", "newborn", "thumbnail", "latmiya", "other"] },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9", "3:2"] },
         text_mode: { type: "string", enum: ["baked", "layers", "blank"], description: "baked افتراضيًا: النص داخل الصورة؛ layers: طبقات حقيقية؛ blank: بلا كتابة" },
-        maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم: gpt = GPT Image 2 عبر جواد (الافتراضي للصور الواقعية والأشخاص)؛ code = «Claude Code» يرسمه بالكود (الكتابة الحرفية والأشكال)" },
+        maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم: gpt = GPT Image 2 عبر جواد (الافتراضي للصور الواقعية والأشخاص)؛ code = «حيدرا ماكس» يرسمه بالكود (الكتابة الحرفية والأشكال)" },
         artwork: { type: "string", description: "توجيه التصميم بالإنجليزية، أو فارغ لإبقاء الصورة الحالية وتبديل الطبقات فقط" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة المسلَّمة مرجعًا للرسم، أو فارغة" },
-        place: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل التي تُوضع داخل التصميم كما هي (صورة الخطيب أو الرادود أو المولود أو الشعار) — مع Claude Code تنحط الصورة نفسها بلا إعادة رسم للوجه؛ أو فارغة" },
+        place: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل التي تُوضع داخل التصميم كما هي (صورة الخطيب أو الرادود أو المولود أو الشعار) — مع حيدرا ماكس تنحط الصورة نفسها بلا إعادة رسم للوجه؛ أو فارغة" },
         layers: {
           type: "array",
           items: {

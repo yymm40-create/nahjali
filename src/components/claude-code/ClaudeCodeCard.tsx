@@ -57,11 +57,11 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
   }
 
   return (
-    <section className="space-y-2 rounded-xl border border-jw-line bg-jw-surface-2 p-3" aria-label="Claude Code">
+    <section className="space-y-2 rounded-xl border border-jw-line bg-jw-surface-2 p-3" aria-label="حيدرا ماكس">
       <div className="flex items-start gap-2">
         <span className="text-xl" aria-hidden>🧑‍💻</span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold">Claude Code <span className="text-xs font-normal text-jw-muted">· يرسم الصورة بالكود</span></p>
+          <p className="text-sm font-bold">حيدرا ماكس <span className="text-xs font-normal text-jw-muted">· يرسم الصورة بالكود</span></p>
           <p className="text-xs text-jw-muted">بدل مولّد الصور: Claude يكتب برنامج الصورة، يرسمها هنا، يشوفها ويقيّمها ويعيد كتابتها لين تنجح. الكتابة العربية تطلع حرفيًا، والأشكال حادة بأي مقاس. السعر حسب استخدام Claude.</p>
         </div>
       </div>
@@ -91,7 +91,7 @@ export default function ClaudeCodeCard<J>({ prompt, aspect, styleId, styleText, 
       {error && <p className="text-xs text-jw-danger" role="alert">{error}</p>}
       <div className="flex gap-2">
         <button type="button" className="jw-btn flex-1" disabled={busy || !!disabledReason} onClick={() => void start()} title={disabledReason ?? undefined}>
-          {busy ? <span className="jw-spinner" /> : <Icon name="sparkles" size={16} />} ارسم بـ Claude Code
+          {busy ? <span className="jw-spinner" /> : <Icon name="sparkles" size={16} />} ارسم بـ حيدرا ماكس
         </button>
         {busy && <button type="button" className="jw-btn" onClick={() => abort.current?.abort()}>⏹️ وقّف</button>}
       </div>

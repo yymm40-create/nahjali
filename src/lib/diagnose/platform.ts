@@ -47,12 +47,12 @@ const SCHEMA = {
       description: `Files to read, with a line range (max ${MAX_READ_LINES} lines each; max 4 per round).`,
     },
     reply: { type: "string", description: "FINAL answer to the owner in Gulf Arabic (empty while done=false): what happened; the cause, and how sure you are; what is missing or in conflict (name the file and the line); what he can do now; and what to send you if you cannot tell." },
-    developerMessage: { type: "string", description: "FINAL message in English for the developer (Claude Code) to fix it without asking anything: the symptom, the exact evidence (log lines, statuses, numbers), the cause, the file paths and line numbers, the proposed change, and how to verify. Empty while done=false, or when nothing needs fixing." },
+    developerMessage: { type: "string", description: "FINAL message in English for the developer to fix it without asking anything: the symptom, the exact evidence (log lines, statuses, numbers), the cause, the file paths and line numbers, the proposed change, and how to verify. Empty while done=false, or when nothing needs fixing." },
     missing: { type: "array", items: { type: "string" }, description: "FINAL: what the owner must send or do (a screenshot, an e-mail, the text of an error, a migration to run, a key to set) — short Arabic items. Empty when nothing." },
   },
 };
 
-const SYSTEM = `You are the site's DIAGNOSTICIAN, talking to its owner («القائد») who builds it with a developer (Claude Code). He describes something that went wrong or asks "why can't you do X?" or "why can't this person use Y?", in Gulf Arabic, often loosely. Your job is to find out WHY, by yourself, and to explain it so he can act on it or copy your developer message and send it on.
+const SYSTEM = `You are the site's DIAGNOSTICIAN, talking to its owner («القائد») who builds it with a developer. He describes something that went wrong or asks "why can't you do X?" or "why can't this person use Y?", in Gulf Arabic, often loosely. Your job is to find out WHY, by yourself, and to explain it so he can act on it or copy your developer message and send it on.
 
 You are given: his words; the conversation so far; the browser report (the page he was on, the errors, rejected promises and failed requests with the server's words); and the SERVER STATE (which services are set up — yes/no, never the values; which database tables and columns the migrations expect but the database does NOT have, each with the migration file to run; the latest failed generations with their error; the charging settings; and the access, wallet and plan of any person whose e-mail he mentioned). The platform's knowledge text (above) says how everything is meant to work.
 
