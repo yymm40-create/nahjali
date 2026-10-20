@@ -349,7 +349,11 @@ const heardOf = (j: { language_code?: string; text?: string; words?: { text: str
  * link to a file in our storage (under 2 GB). It runs in the background when ElevenLabs allows it (`{ id }`, read
  * later with elevenTranscript); otherwise the whole result is waited for (`{ heard }`).
  */
-export async function elevenTranscribeUrl(o: { url: string; languageCode?: string | null }): Promise<{ id: string } | { heard: Heard }> {
+/**
+ * Speech to text from a link. With a speech-to-text webhook in the ElevenLabs account it runs in the background (an id
+ * to poll); without one the request is waited for, at most `waitMs` (it must end before the server function does).
+ */
+export async function elevenTranscribeUrl(o: { url: string; languageCode?: string | null; waitMs?: number }): Promise<{ id: string } | { heard: Heard }> {
   const form = (background: boolean) => {
     const f = new FormData();
     f.append("model_id", "scribe_v2");
@@ -369,7 +373,7 @@ export async function elevenTranscribeUrl(o: { url: string; languageCode?: strin
     // no speech-to-text webhook in the account: the same request, waited for
     if (!(e instanceof ProviderError) || !/webhook/i.test(e.detail)) throw e;
   }
-  const res = await call("/v1/speech-to-text", { method: "POST", body: form(false), timeoutMs: 290_000 }, "stt-url");
+  const res = await call("/v1/speech-to-text", { method: "POST", body: form(false), timeoutMs: o.waitMs ?? 290_000 }, "stt-url");
   return { heard: heardOf(await res.json()) };
 }
 
