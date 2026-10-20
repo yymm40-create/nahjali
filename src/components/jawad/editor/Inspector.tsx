@@ -1,5 +1,7 @@
 "use client";
 
+import LabPiece from "./LabPiece";
+import type { LabSource } from "./MotionLab";
 import { useEffect, useState } from "react";
 import { setStemQuality, stemQuality, type StemQuality } from "./make";
 import type { Sensitivity } from "@/lib/editor/scenes";
@@ -117,6 +119,7 @@ export default function Inspector({
   projectId,
   onSceneCut,
   onUpscale,
+  onLabEdit,
   onExtend,
   onSync,
   syncing = false,
@@ -150,6 +153,8 @@ export default function Inspector({
   syncing?: boolean;
   /** «رفع الدقة»: the clip's video sent to be upscaled (720p/1080p → 4K) */
   onUpscale?: (assetId: string, target: "4k" | "1080p") => void;
+  /** a film made in «مختبر الموشن»: its texts and colours edited (rendered again), or back to the lab's conversation */
+  onLabEdit?: (assetId: string, source: LabSource, params: Record<string, string>, auto: boolean) => void;
   /** Seedance continuation placed directly before/after this video. */
   onExtend?: (clipId: string, edge: "start" | "end", seconds: number, prompt: string, quality: "720p" | "1080p", withSound: boolean) => Promise<void>;
 }) {
@@ -453,6 +458,7 @@ export default function Inspector({
               </div>
             </div>
           )}
+          {a?.lab && a.status === "ready" && onLabEdit && projectId && <LabPiece projectId={projectId} assetId={a.id} disabled={locked} onEdit={onLabEdit} />}
           {a?.kind === "video" && a.status === "ready" && onUpscale && (
             <div className="space-y-1.5 rounded-xl border border-jw-line p-2.5">
               <p className="text-xs font-semibold">⬆️ رفع الدقة بالذكاء الاصطناعي</p>

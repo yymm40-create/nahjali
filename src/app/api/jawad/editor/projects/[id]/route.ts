@@ -1,5 +1,6 @@
 import { checkUpscale, startUpscale } from "@/lib/editor/upscale";
 import { labMatte } from "@/lib/editor/matte";
+import { readLabSource, saveLabSource } from "@/lib/editor/lab-source";
 import { NextResponse } from "next/server";
 import { handOff, loadChat } from "@/lib/editor/chat";
 import { claudeCharged } from "@/lib/editor/pricing";
@@ -10,7 +11,7 @@ import { can } from "@/lib/access";
 import type { Command } from "@/lib/editor/commands";
 import { importSfx } from "@/lib/editor/sfx-library";
 import { keyCheck } from "@/lib/editor/key-check";
-import { labPlan, labReview, labWrite } from "@/lib/editor/scene/director";
+import { labChat, labPlan, labReview, labWrite } from "@/lib/editor/scene/director";
 import { labResponse } from "@/lib/editor/scene/response";
 import { codeEditReview, codeEditWrite, codeGradeReview, codeGradeWrite } from "@/lib/editor/claude-code";
 import {
@@ -65,7 +66,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -154,10 +155,16 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "key_check":
       return NextResponse.json(await keyCheck(p, who, b));
     // «🎬 مختبر الموشن»: حيدرة plans, writes and reviews a motion piece made in code (the browser renders it)
+    case "lab_source_save":
+      return NextResponse.json(await saveLabSource(p, b));
+    case "lab_source_get":
+      return NextResponse.json(await readLabSource(p, b), noStore);
     case "lab_matte":
       return NextResponse.json(await labMatte(p, who, b), noStore);
     case "lab_plan":
       return b.stream ? labResponse(() => labPlan(p, who, b)) : NextResponse.json(await labPlan(p, who, b));
+    case "lab_chat":
+      return b.stream ? labResponse(() => labChat(p, who, b)) : NextResponse.json(await labChat(p, who, b));
     case "lab_write":
       return b.stream ? labResponse(() => labWrite(p, who, b)) : NextResponse.json(await labWrite(p, who, b));
     case "lab_review":

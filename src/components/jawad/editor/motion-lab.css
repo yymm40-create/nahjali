@@ -423,3 +423,8 @@
   inset-inline-end: max(16px, env(safe-area-inset-right));
   z-index: 1000;
 }
+
+/* «💬 المحادثة»: the lab as a conversation */
+.mlab-bubble { max-width: 88%; padding: 10px 14px; border-radius: 18px; line-height: 1.7; white-space: pre-wrap; font-size: 15px; }
+.mlab-bubble.me { align-self: flex-start; background: var(--jw-accent); color: #fff; border-end-start-radius: 6px; }
+.mlab-bubble.him { align-self: flex-end; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.1); border-end-end-radius: 6px; }

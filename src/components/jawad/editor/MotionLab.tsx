@@ -18,7 +18,7 @@ import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scen
 import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGroup } from "@config/editor/lab-options";
-import { SceneError, SceneHost, sceneFont, type SceneInfo } from "./scene-host";
+import { SceneError, SceneHost, sceneFont, type SceneInfo, type ScenePar } from "./scene-host";
 import { canExport, contactSheet, cutTimes, frameCost, sheetAt, probe, renderVideo, reviewTimes, stills } from "./scene-render";
 import { download } from "./export";
 import LabVoice, { type LabVoiceTake } from "./LabVoice";
@@ -32,8 +32,9 @@ import "./motion-lab.css";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
 /** the five steps of the window (what the person is looking at; the stage is what حيدرة is doing) */
-type View = "brief" | "style" | "plan" | "build" | "export";
+type View = "chat" | "brief" | "style" | "plan" | "build" | "export";
 const VIEWS: { id: View; ar: string }[] = [
+  { id: "chat", ar: "💬 المحادثة" },
   { id: "brief", ar: "الفكرة" },
   { id: "style", ar: "الأسلوب" },
   { id: "plan", ar: "الخطة" },
@@ -71,6 +72,30 @@ interface Saved {
   footMeta?: FootageMeta | null;
   /** «✂️ الكلام ورا الراس»: the person cut out for the piece */
   personOn?: boolean;
+  chat?: ChatMsg[];
+  params?: Record<string, string>;
+}
+/** one turn of the lab's conversation */
+interface ChatMsg {
+  role: "user" | "assistant";
+  text: string;
+}
+/** The scene a finished film was made from, kept with the film (so it stays editable on the timeline). */
+export interface LabSource {
+  v: 1;
+  plan: LabPlan;
+  code: string;
+  params: Record<string, string>;
+  /** the scene's editable values as it declared them */
+  fields?: ScenePar[];
+  picks: string[];
+  choices: LabChoices;
+  musicMode: MusicMode;
+  brief: string;
+  footage: FootageSource | null;
+  footMeta: FootageMeta | null;
+  personOn: boolean;
+  chat: ChatMsg[];
 }
 /** how the person's video sits in a shot, in the plan's list */
 const FRAME_AR: Record<FootageFrame, string> = { full: "🧍 ملء الشاشة", card: "🪟 بطاقة عائمة", split: "◧ شاشة مقسومة", corner: "⭕ بالزاوية", away: "✨ موشن كامل", over: "🔤 كلام بجنبك" };
@@ -195,6 +220,8 @@ export default function MotionLab({
   onMinimize,
   footageClips = [],
   initialFootage = null,
+  initialSource = null,
+  onUpload,
 }: {
   projectId: string;
   width: number;
@@ -203,7 +230,7 @@ export default function MotionLab({
   initialBrief?: string;
   initialSeconds?: number;
   /** the finished film, its cues and whether music is wanted (the editor uploads it and places everything) */
-  onFilm: (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipId: string }) => void;
+  onFilm: (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipId: string }, lab?: { source: LabSource; replaceAssetId: string | null }) => void;
   onClose: () => void;
   /** folded to the pill — kept by the editor, so its «مختبر الموشن» button can bring the window back */
   minimized: boolean;
@@ -212,10 +239,25 @@ export default function MotionLab({
   footageClips?: FootageSource[];
   /** opened by حيدرة on one of them */
   initialFootage?: string | null;
+  /** a film of the timeline opened again: its scene, the values to apply, and whether to render it straight away */
+  initialSource?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null;
+  /** a picture from the device, attached in the conversation: up to the library, then usable in the scene */
+  onUpload?: (file: File) => Promise<EditorAsset>;
 }) {
   const [claude] = useClaudeModel();
   const [stage, setStage] = useState<Stage>("brief");
-  const [view, setView] = useState<View>("brief");
+  // the lab opens on the conversation (the person writes what they want; the steps stay for whoever likes them)
+  const [view, setView] = useState<View>("chat");
+  const [chat, setChat] = useState<ChatMsg[]>([]);
+  const [chatText, setChatText] = useState("");
+  const [attachOpen, setAttachOpen] = useState(false);
+  // pictures attached in the conversation from the device: in the library now, until the editor's list has them
+  const [extra, setExtra] = useState<EditorAsset[]>([]);
+  // «✏️ النصوص والألوان»: the person's own values over the scene's (shown text and main colours)
+  const [params, setParams] = useState<Record<string, string>>({});
+  const chatEnd = useRef<HTMLDivElement>(null);
+  // «♻️ طبّق» from the timeline renders once
+  const autoDone = useRef(false);
   const [brief, setBrief] = useState(initialBrief);
   const [seconds, setSeconds] = useState(() => SECONDS.reduce((a, b) => (Math.abs(b - (initialSeconds || 15)) < Math.abs(a - (initialSeconds || 15)) ? b : a), 15));
   const [intensity, setIntensity] = useState(4);
@@ -276,17 +318,47 @@ export default function MotionLab({
   const say1 = (s: string) => setLog((l) => [...l.slice(-30), s]);
 
   // pictures from the library the scene may use, with short ids حيدرة writes in his code (a1, a2…)
-  const images = useMemo(() => assets.filter((a) => a.kind === "image" && a.url && a.status === "ready").slice(0, 24), [assets]);
+  const images = useMemo(() => {
+    const all = [...extra.filter((x) => !assets.some((a) => a.id === x.id)), ...assets];
+    return all.filter((a) => a.kind === "image" && a.url && a.status === "ready").slice(0, 40);
+  }, [assets, extra]);
   const chosen = useMemo(() => picks.map((id, i) => ({ short: `a${i + 1}`, asset: images.find((a) => a.id === id)! })).filter((x) => x.asset), [picks, images]);
   const assetList = chosen.map((c) => ({ id: c.short, name: c.asset.name, w: c.asset.width ?? 0, h: c.asset.height ?? 0 }));
   const chosenCards = useMemo(() => chosenOptions(choices), [choices]);
   // the clip the piece is built on (only while it is still on the timeline as it was)
-  const source = useMemo(() => footageClips.find((c) => c.clipId === footId) ?? null, [footageClips, footId]);
+  // (a film opened again from the timeline keeps the clip it was built on, even if that clip has moved since)
+  const [savedFoot, setSavedFoot] = useState<FootageSource | null>(null);
+  const source = useMemo(() => footageClips.find((c) => c.clipId === footId) ?? (savedFoot && savedFoot.clipId === footId ? savedFoot : null), [footageClips, footId, savedFoot]);
   const sourceKey = source ? `${source.clipId}:${source.assetId}:${source.in}:${source.out}` : "";
   const footMeta = source && foot && Math.abs(foot.meta.seconds - footageSeconds(source)) < 0.05 ? { ...foot.meta, person: personOn } : null;
 
   // the lab remembers its work on this device (a refresh keeps the plan, the program and the reviews)
   useEffect(() => {
+    // a film of the timeline opened again: its own scene, not the lab's last work
+    if (initialSource) {
+      const src = initialSource.source;
+      const tm = setTimeout(() => {
+        setPlan(src.plan);
+        setCode(src.code);
+        setBrief(src.brief || "");
+        setPicks(src.picks || []);
+        setChoices(src.choices || {});
+        setMusicMode(src.musicMode || "code");
+        setParams({ ...(src.params || {}), ...(initialSource.params || {}) });
+        setChat(src.chat || []);
+        setReviews([]);
+        if (src.footage) {
+          setSavedFoot(src.footage);
+          setFootId(src.footage.clipId);
+          if (src.footMeta) setFoot({ meta: src.footMeta, frames: [] });
+          setPersonOn(Boolean(src.personOn));
+        }
+        setStage("ready");
+        setView(initialSource.auto ? "export" : "chat");
+        autoDone.current = false;
+      }, 0);
+      return () => clearTimeout(tm);
+    }
     try {
       const s = JSON.parse(localStorage.getItem(key(projectId)) ?? "null") as Saved | null;
       if (!s) return;
@@ -312,6 +384,10 @@ export default function MotionLab({
           if (s.footMeta) setFoot({ meta: s.footMeta, frames: [] });
           setPersonOn(Boolean(s.personOn));
         }
+        if (!initialSource) {
+          setChat(Array.isArray(s.chat) ? s.chat.slice(-40) : []);
+          setParams(s.params && typeof s.params === "object" ? s.params : {});
+        }
         if (s.plan && !initialBrief) {
           setStage(s.code ? "ready" : "plan");
           setView(s.code ? "export" : "plan");
@@ -321,14 +397,14 @@ export default function MotionLab({
     } catch {
       /* a fresh start */
     }
-  }, [projectId, initialBrief, initialFootage]);
+  }, [projectId, initialBrief, initialFootage, initialSource]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, footMeta: foot?.meta ?? null, personOn } satisfies Saved));
+      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-40), params } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, foot, personOn]);
+  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, foot, personOn, chat, params]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close(), reader.current?.r.close(), matte.current?.r?.close()), []);
   // حيدرة opened the lab (again) on one of the person's clips: that clip is the one, learnt afresh
   useEffect(() => {
@@ -413,7 +489,7 @@ export default function MotionLab({
   }, [projectId, claude.id]);
 
   /** The scene page with this program, its fonts and its pictures; the probe catches a bug before anything else. */
-  const loadCode = async (program: string, p: LabPlan) => {
+  const loadCode = async (program: string, p: LabPlan, values: Record<string, string> = params) => {
     host.current?.destroy();
     const h = new SceneHost();
     host.current = h;
@@ -434,7 +510,7 @@ export default function MotionLab({
     const pr = rd && source && personOn ? await personReader() : null;
     if (pr) h.person = (t, scale) => pr.at(t, scale);
     const footage = rd && footMeta ? { w: rd.w, h: rd.h, duration: footMeta.seconds, words: footMeta.words, lines: footageLines(footMeta.words), face: footMeta.face, person: Boolean(pr) } : null;
-    const got = await h.load(program, { w: width, h: height, fps: 30, assets: bitmaps, fonts, voice: source ? [] : (take?.lines ?? []), footage });
+    const got = await h.load(program, { w: width, h: height, fps: 30, assets: bitmaps, fonts, voice: source ? [] : (take?.lines ?? []), footage, params: values });
     if (!(got.duration > 0)) throw new SceneError("المشهد ما حدد مدته (duration).", "load");
     const bad = await probe(h, got.duration);
     if (bad) throw bad;
@@ -468,12 +544,13 @@ export default function MotionLab({
     throw new Error("المشهد فيه خطأ ما قدر حيدرة يصلحه بعد محاولتين. عدّل الخطة أو جرّب مرة ثانية.");
   };
 
-  const makePlan = async () => {
+  /** The plan (from the steps, or from the conversation with `o.brief`); in the conversation the view stays put. */
+  const makePlan = async (o: { brief?: string; quiet?: boolean } = {}): Promise<LabPlan | null> => {
     setError(null);
     abort.current?.abort();
     abort.current = new AbortController();
     setStage("planning");
-    setView("plan");
+    if (!o.quiet) setView("plan");
     setNow(0);
     try {
       // the person's video: what they say (with every word's time), where the face is, and a few frames — learnt once
@@ -491,7 +568,7 @@ export default function MotionLab({
         setFoot((f) => (f ? { ...f, frames } : f));
       }
       const r = await call<{ plan: LabPlan; say: string }>("lab_plan", {
-        brief: tweak && plan ? `${brief}\n\nتعديل على الخطة السابقة («${plan.title}»): ${tweak}` : brief,
+        brief: o.brief ?? (tweak && plan ? `${brief}\n\nتعديل على الخطة السابقة («${plan.title}»): ${tweak}` : brief),
         seconds,
         intensity,
         brand,
@@ -510,20 +587,26 @@ export default function MotionLab({
       setCode("");
       setReviews([]);
       setStage("plan");
+      if (o.brief) setBrief(o.brief);
+      return r.plan;
     } catch (e) {
+      if (o.quiet) throw e;
       if (!(e instanceof DOMException && e.name === "AbortError")) setError(e instanceof Error ? e.message : String(e));
       setStage(plan ? "plan" : "brief");
       if (!plan) setView("brief");
+      return null;
     }
   };
 
   /** Builds, then the director's rounds: render sheets and stills, he scores and rewrites, until it passes. */
-  const build = async () => {
-    if (!plan) return;
+  const planNow = plan;
+  const build = async (given?: LabPlan, o: { quiet?: boolean; fresh?: boolean } = {}): Promise<boolean> => {
+    const plan = given ?? planNow;
+    if (!plan) return false;
     if (voiceOn && !take && !source) {
       setError("سجّل صوتك أول (تحت الخطة)، وبعدها حيدرة يبني الحركة على كلامك.");
       setView("plan");
-      return;
+      return false;
     }
     const built = sized(plan);
     if (built.seconds !== plan.seconds) setPlan(built);
@@ -537,10 +620,10 @@ export default function MotionLab({
     setLog([]);
     setReviews([]);
     setStage("building");
-    setView("build");
+    if (!o.quiet) setView("build");
     setNow(0);
     try {
-      let { program, got } = await buildRunning(built, code);
+      let { program, got } = await buildRunning(built, o.fresh ? "" : code);
       stop();
       setCode(program);
       setInfo(got);
@@ -579,14 +662,16 @@ export default function MotionLab({
         setInfo(got);
       }
       setStage("ready");
-      setView("export");
-      void seekTo(Math.min(got.duration * 0.3, 2));
+      if (!o.quiet) setView("export");
+      void seekTo(Math.min(got.duration * 0.3, 2), got);
       void refreshSound(got);
+      return true;
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
       else setError(e instanceof Error ? e.message : String(e));
       setStage(code ? "ready" : "plan");
-      if (!code) setView("plan");
+      if (!code && !o.quiet) setView("plan");
+      return false;
     }
   };
 
@@ -627,9 +712,9 @@ export default function MotionLab({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, info]);
-  const seekTo = async (v: number) => {
+  const seekTo = async (v: number, got: SceneInfo | null = info) => {
     setT(v);
-    if (!host.current || !info) return;
+    if (!host.current || !got) return;
     try {
       const bm = await host.current.frame(v, { scale: Math.min(1, 540 / Math.max(width, height)) });
       const c = viewCanvas.current;
@@ -650,7 +735,7 @@ export default function MotionLab({
     try {
       const g = await loadCode(code, plan);
       setInfo(g);
-      void seekTo(Math.min(g.duration * 0.3, 2));
+      void seekTo(Math.min(g.duration * 0.3, 2), g);
       void refreshSound(g);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -674,7 +759,7 @@ export default function MotionLab({
       setTransparentCode(true);
       setStage("ready");
       void refreshSound(got);
-      void seekTo(Math.min(got.duration * 0.3, 2));
+      void seekTo(Math.min(got.duration * 0.3, 2), got);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") say1("⏹️ أوقفت الشغل.");
       else setError(e instanceof Error ? e.message : String(e));
@@ -743,7 +828,10 @@ export default function MotionLab({
       if (alsoDownload) download(blob, `${stem}.mp4`);
       // the sound is already inside the film: nothing placed twice (a silent scene keeps the old way: its cues on tracks)
       // on the person's video the piece takes the clip's place: it lands where the clip starts, and the clip is muted
-      onFilm(file, audio ? [] : readCues(info.cues, info.duration), null, source ? { at: source.start, muteClipId: source.clipId } : undefined);
+      // the scene goes with the film, so it stays editable on the timeline (a film opened again replaces its old one)
+      const lab: LabSource = { v: 1, plan, code, params, fields: info.params ?? [], picks, choices, musicMode, brief, footage: source, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-30) };
+      const replacing = initialSource?.assetId ?? null;
+      onFilm(file, audio ? [] : readCues(info.cues, info.duration), null, source && !replacing ? { at: source.start, muteClipId: source.clipId } : undefined, { source: lab, replaceAssetId: replacing });
       setStage("ready");
       setRenderAt(null);
       say1(audio ? "✅ نزل المقطع في التايملاين وصوته داخله (المؤثرات" + (take || source ? " وصوتك" : "") + (musicMode !== "none" ? " والموسيقى" : "") + ")." : "✅ نزل المقطع في التايملاين.");
@@ -754,6 +842,102 @@ export default function MotionLab({
       setStage("ready");
     }
   };
+
+  /** «✏️ النصوص والألوان»: the scene loaded again with the person's values (the preview shows them; the export uses them) */
+  const applyParams = async (values: Record<string, string>) => {
+    if (!code || !plan) return;
+    setError(null);
+    try {
+      const g = await loadCode(code, plan, values);
+      setInfo(g);
+      void seekTo(t, g);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const say2 = (text: string) => setChat((c) => [...c, { role: "assistant", text }]);
+  /** «💬»: one message of the conversation — حيدرة answers, plans and builds, or changes the scene himself */
+  const send = async (raw?: string) => {
+    const message = (raw ?? chatText).trim();
+    if (!message || busy) return;
+    setChatText("");
+    const history = chat.slice(-20);
+    setChat((c) => [...c, { role: "user", text: message }]);
+    setError(null);
+    abort.current?.abort();
+    abort.current = new AbortController();
+    setStage("planning");
+    setNow(0);
+    try {
+      const r = await call<{ reply: string; action: "none" | "plan" | "code"; brief: string; code: string; problems: string[] }>("lab_chat", {
+        message,
+        history,
+        plan,
+        code,
+        params,
+        seconds: plan?.seconds ?? seconds,
+        assets: assetList,
+        ...soundBody(),
+      });
+      say2(r.reply);
+      if (r.action === "plan") {
+        const p = await makePlan({ brief: r.brief, quiet: true });
+        if (!p) throw new Error("ما قدرت أكتب الخطة.");
+        say2(`📝 الخطة: «${p.title}» — ${p.idea}${p.wow ? ` · اللحظة المبهرة: ${p.wow}` : ""}. أبنيها الحين…`);
+        const ok = await build(p, { quiet: true, fresh: true });
+        say2(ok ? "✅ جاهز! شغّل المعاينة على اليمين. تبي تعدّل شي؟ قل لي بكلامك، أو ارفق شعار وأحطه." : "⚠️ ما اكتمل البناء؛ شوف السبب تحت، وقل لي «جرّب مرة ثانية».");
+      } else if (r.action === "code" && plan) {
+        setStage("building");
+        const built = sized(plan);
+        const { program, got } = await buildRunning(built, r.code, r.problems.length ? `The program breaks the machine's rules: ${r.problems.join("; ")}` : "");
+        setCode(program);
+        setInfo(got);
+        setStage("ready");
+        void seekTo(Math.min(t, got.duration - 0.05), got);
+        void refreshSound(got);
+        say2("✅ عدّلته، شوف المعاينة.");
+      } else setStage(code ? "ready" : plan ? "plan" : "brief");
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") say2("⏹️ وقفت.");
+      else say2(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
+      setStage(code ? "ready" : plan ? "plan" : "brief");
+    }
+  };
+
+  /** 📎 a picture from the device: up to the library, then the scene can draw it (a logo, a product…) */
+  const attachFiles = async (files: File[]) => {
+    if (!onUpload) return;
+    for (const f of files.slice(0, 4)) {
+      try {
+        say2(`⏫ أرفع «${f.name}»…`);
+        const a = await onUpload(f);
+        setExtra((x) => [...x, a]);
+        setPicks((p) => [...p.filter((id) => id !== a.id), a.id].slice(-12));
+        say2(`📎 وصلت «${a.name}». قل لي وين تبيها (مثلًا: «حط الشعار في النهاية كبير»).`);
+      } catch (e) {
+        say2(`⚠️ ما قدرت أرفع «${f.name}»: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+  };
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ block: "end" });
+  }, [chat.length]);
+
+  // a film opened from the timeline with new values and «طبّق»: loaded, then rendered straight away (the pill shows it)
+  useEffect(() => {
+    if (!initialSource?.auto || autoDone.current || !code || !plan) return;
+    const tm = setTimeout(() => {
+      if (!info) {
+        if (stage === "ready") void reopen();
+        return;
+      }
+      autoDone.current = true;
+      void exportFilm();
+    }, 0);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSource, code, plan, info, stage]);
 
   const busy = stage === "planning" || stage === "building" || stage === "reviewing" || stage === "rendering";
   useEffect(() => {
@@ -794,8 +978,8 @@ export default function MotionLab({
   };
 
   /** which steps the person may open now (a plan needs an idea; the build and the export need a plan / a scene) */
-  const canOpen = (v: View) => (v === "brief" || v === "style" ? true : v === "plan" ? Boolean(plan) || stage === "planning" : v === "build" ? Boolean(plan) : Boolean(code));
-  const doneStep = (v: View) => (v === "brief" ? brief.trim().length >= 3 || Boolean(source) : v === "style" ? chosenCards.length > 0 : v === "plan" ? Boolean(plan) : v === "build" ? Boolean(code) : false);
+  const canOpen = (v: View) => (v === "chat" || v === "brief" || v === "style" ? true : v === "plan" ? Boolean(plan) || stage === "planning" : v === "build" ? Boolean(plan) : Boolean(code));
+  const doneStep = (v: View) => (v === "chat" ? false : v === "brief" ? brief.trim().length >= 3 || Boolean(source) : v === "style" ? chosenCards.length > 0 : v === "plan" ? Boolean(plan) : v === "build" ? Boolean(code) : false);
 
   if (!portalReady) return null;
 
@@ -856,6 +1040,104 @@ export default function MotionLab({
         )}
         <div className="mlab-body">
           <section className="mlab-main">
+            {view === "chat" && (
+              <div className="mlab-card mlab-chat flex flex-col gap-3">
+                <div className="mlab-chat-log flex max-h-[52vh] min-h-[260px] flex-col gap-2 overflow-y-auto" aria-live="polite">
+                  {!chat.length && (
+                    <div className="mlab-tip">
+                      <p className="m-0 font-bold" style={{ color: "var(--jw-ink)" }}>🤖 هلا! قل لي وش الموشن اللي تبيه، وأنا أخطط وأبني وأوريك.</p>
+                      <p className="m-0 mt-1">مثلًا: «إعلان ١٠ ثواني لتطبيقي، الكلمة تنبني من غبار ذهبي، وفي الآخر الشعار». ولو عندك شعار أو صورة منتج، ارفقها بـ📎.</p>
+                      {!!footageClips.length && <p className="m-0 mt-1">وتقدر تبنيه على فيديو تتكلم فيه من «الفكرة» ← «🎥 على فيديوك».</p>}
+                    </div>
+                  )}
+                  {chat.map((m, i) => (
+                    <div key={i} className={`mlab-bubble ${m.role === "user" ? "me" : "him"}`}>
+                      {m.text}
+                    </div>
+                  ))}
+                  {busy && (
+                    <div className="mlab-bubble him flex items-center gap-2">
+                      <span className="jw-spinner !h-3.5 !w-3.5" aria-hidden /> {log[log.length - 1] ?? `حيدرة ${stageAr}…`} {elapsed}
+                    </div>
+                  )}
+                  <div ref={chatEnd} />
+                </div>
+                {!!chosen.length && (
+                  <div className="mlab-chips">
+                    {chosen.map((c) => (
+                      <span key={c.asset.id} className="mlab-chip">
+                        📎 {c.short}: {c.asset.name.slice(0, 20)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {attachOpen && (
+                  <div className="flex flex-col gap-2 rounded-xl border border-white/10 p-2">
+                    {onUpload && (
+                      <label className="jw-btn !min-h-10 cursor-pointer">
+                        ⏫ ارفع صورة من جهازك (شعار، منتج…)
+                        <input type="file" accept="image/*" multiple hidden disabled={busy} onChange={(e) => (void attachFiles([...(e.target.files ?? [])]), setAttachOpen(false))} />
+                      </label>
+                    )}
+                    {!!images.length && (
+                      <div className="flex flex-wrap gap-2">
+                        {images.map((a) => {
+                          const on = picks.includes(a.id);
+                          return (
+                            <button key={a.id} type="button" className="mlab-thumb" aria-pressed={on} disabled={busy} onClick={() => setPicks(on ? picks.filter((x) => x !== a.id) : [...picks, a.id].slice(0, 12))} title={a.name}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={a.url!} alt={a.name} />
+                              {on && <span className="tag">a{picks.indexOf(a.id) + 1}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-end gap-2">
+                  <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ارفق صورة" title="ارفق صورة (شعار، منتج…)" disabled={busy} onClick={() => setAttachOpen((v) => !v)}>
+                    📎
+                  </button>
+                  <textarea
+                    className="jw-textarea flex-1"
+                    rows={2}
+                    value={chatText}
+                    onChange={(e) => setChatText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void send();
+                      }
+                    }}
+                    placeholder={code ? "عدّل بكلامك: «خلّ اللون ذهبي»، «حط الشعار في النهاية»، «أسرع شوي»…" : "وش الموشن اللي تبيه؟"}
+                    disabled={busy}
+                  />
+                  {busy ? (
+                    <button type="button" className="jw-btn !min-h-12" onClick={cancel}>
+                      إيقاف
+                    </button>
+                  ) : (
+                    <button type="button" className="jw-btn jw-btn-primary !min-h-12" disabled={!chatText.trim()} onClick={() => void send()}>
+                      إرسال
+                    </button>
+                  )}
+                </div>
+                {code && info && !busy && (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="jw-btn jw-btn-primary !min-h-11" onClick={() => setView("export")}>
+                      ⬇️ صدّره للتايملاين ←
+                    </button>
+                    {!!info.params?.length && (
+                      <button type="button" className="jw-btn !min-h-11" onClick={() => setView("export")}>
+                        ✏️ النصوص والألوان
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {view === "brief" && (
               <>
                 {!!footageClips.length && (
@@ -950,7 +1232,7 @@ export default function MotionLab({
                       {images.map((a) => {
                         const on = picks.includes(a.id);
                         return (
-                          <button key={a.id} type="button" className="mlab-thumb" aria-pressed={on} disabled={busy} onClick={() => setPicks(on ? picks.filter((x) => x !== a.id) : [...picks, a.id].slice(0, 8))} title={a.name}>
+                          <button key={a.id} type="button" className="mlab-thumb" aria-pressed={on} disabled={busy} onClick={() => setPicks(on ? picks.filter((x) => x !== a.id) : [...picks, a.id].slice(0, 12))} title={a.name}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={a.url!} alt={a.name} />
                             {on && <span className="tag">a{picks.indexOf(a.id) + 1}</span>}
@@ -972,7 +1254,7 @@ export default function MotionLab({
                   <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || (brief.trim().length < 3 && !source)} onClick={() => setView("style")}>
                     التالي: اختر الأسلوب ←
                   </button>
-                  <button type="button" className="jw-btn !min-h-12" disabled={busy || (brief.trim().length < 3 && !source)} onClick={makePlan}>
+                  <button type="button" className="jw-btn !min-h-12" disabled={busy || (brief.trim().length < 3 && !source)} onClick={() => void makePlan()}>
                     🧠 اكتب الخطة مباشرة (حيدرة يختار كل شيء)
                   </button>
                 </div>
@@ -1001,7 +1283,7 @@ export default function MotionLab({
                 </div>
                 <Gallery choices={choices} onChange={setChoices} disabled={busy} />
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || (brief.trim().length < 3 && !source)} onClick={makePlan}>
+                  <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || (brief.trim().length < 3 && !source)} onClick={() => void makePlan()}>
                     {stage === "planning" ? <span className="jw-spinner !border-white/40 !border-t-white" aria-hidden /> : "🧠"} اكتب الخطة
                   </button>
                   <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("brief")}>
@@ -1062,12 +1344,12 @@ export default function MotionLab({
                       <div className="flex flex-col gap-3">
                         <div className="flex gap-2">
                           <input className="jw-input flex-1" value={tweak} onChange={(e) => setTweak(e.target.value)} placeholder="عدّل الخطة: خلّ الهوك أقوى، غيّر الألوان، أضف رقم…" disabled={busy} />
-                          <button type="button" className="jw-btn" disabled={busy || !tweak.trim()} onClick={makePlan}>
+                          <button type="button" className="jw-btn" disabled={busy || !tweak.trim()} onClick={() => void makePlan()}>
                             عدّل
                           </button>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || (voiceOn && !take && !source)} onClick={build} title={voiceOn && !take && !source ? "سجّل صوتك أول" : undefined}>
+                          <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" disabled={busy || (voiceOn && !take && !source)} onClick={() => void build()} title={voiceOn && !take && !source ? "سجّل صوتك أول" : undefined}>
                             🎬 {voiceOn && !take && !source ? "سجّل صوتك أول ↑" : code ? "ابنِ من جديد وراجع" : "اعتمد الخطة وابنِ"}
                           </button>
                           <button type="button" className="jw-btn !min-h-12" disabled={busy} onClick={() => setView("build")} title="تقدر تضيف مراجعة جودة قبل البناء (تاخذ وقت أطول)">
@@ -1106,7 +1388,7 @@ export default function MotionLab({
                 </fieldset>
                 {plan && !busy && (
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" onClick={build}>
+                    <button type="button" className="jw-btn jw-btn-primary !min-h-12 !text-base" onClick={() => void build()}>
                       🎬 {code ? "ابنِ من جديد وراجع" : "ابنِ المشهد"}
                     </button>
                     {code && (
@@ -1132,6 +1414,30 @@ export default function MotionLab({
                   <button type="button" className="jw-btn jw-btn-primary !min-h-12 w-full" onClick={reopen}>
                     ▶️ شغّل المشهد المحفوظ
                   </button>
+                )}
+                {info && !!info.params?.length && (
+                  <div className="mlab-card flex flex-col gap-3">
+                    <h3>✏️ النصوص والألوان</h3>
+                    <p className="mlab-tip m-0">عدّل أي نص أو لون، واضغط «طبّق» تشوفه في المعاينة. ينحفظ مع المقطع، وتقدر تعدّله بعدين من التايملاين بعد.</p>
+                    {info.params.map((f) => (
+                      <label key={f.id} className="flex items-center gap-2">
+                        <span className="w-28 shrink-0 text-sm font-bold">{f.label}</span>
+                        {f.type === "color" ? (
+                          <input type="color" className="h-9 w-14" value={/^#[0-9a-f]{6}$/i.test(params[f.id] ?? f.value) ? (params[f.id] ?? f.value) : "#000000"} disabled={busy} onChange={(e) => setParams((p) => ({ ...p, [f.id]: e.target.value }))} />
+                        ) : (
+                          <input className="jw-input flex-1" value={params[f.id] ?? f.value} disabled={busy} onChange={(e) => setParams((p) => ({ ...p, [f.id]: e.target.value }))} />
+                        )}
+                      </label>
+                    ))}
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="jw-btn jw-btn-primary !min-h-11" disabled={busy} onClick={() => void applyParams(params)}>
+                        ♻️ طبّق في المعاينة
+                      </button>
+                      <button type="button" className="jw-btn !min-h-11" disabled={busy || !Object.keys(params).length} onClick={() => (setParams({}), void applyParams({}))}>
+                        ↺ رجّع الأصل
+                      </button>
+                    </div>
+                  </div>
                 )}
                 {info && (
                   <div className="mlab-card flex flex-col gap-3">
@@ -1168,7 +1474,9 @@ export default function MotionLab({
                         ? `أرندر ${Math.round(progress * 100)}٪${renderAt ? ` · إطار ${renderAt.frame} من ${renderAt.frames} · يبقى ${mmss(renderAt.leftMs)}` : ""}`
                         : transparent && !source
                           ? "⬇️ صدّر الملف الشفاف ونزّله"
-                          : "⬇️ صدّره ونزّله في التايملاين"}
+                          : initialSource
+                            ? "♻️ صدّره وبدّل المقطع اللي في التايملاين"
+                            : "⬇️ صدّره ونزّله في التايملاين"}
                     </button>
                     <p className="mlab-tip m-0">{source ? "يتصدّر على جهازك بـ ٣٠ فريم وبصوتك الأصلي، وينزل في التايملاين مكان مقطعك (المقطع الأصلي يبقى تحته بدون صوت)." : transparent ? "يتصدّر WebM بقناة شفافية (ألفا) على جهازك وينزل مباشرة، وصوته داخله." : "يتصدّر على جهازك بـ ٣٠ فريم مع ضبابية حركة، ويدخل التايملاين عند مؤشر الوقت وصوته داخله."}</p>
                   </div>

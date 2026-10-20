@@ -23,6 +23,7 @@ function at(t, i) { var v = R[0][i]; for (var k = 1; k < R.length; k++) { var p 
 scene({
   title: "test", duration: F ? F.duration : 10, bpm: 120, background: "#f4f1ea", blur: 0,
   cues: [{ t: 1.9, sfx: "transition-whoosh-fast" }],
+  params: { line: { label: "السطر", type: "text", value: "the power of" }, ink: { label: "اللون", type: "color", value: "#ffffff" } },
   draw: function (K, t, ctx) {
     var W = K.W, H = K.H;
     // the stage: a soft gradient with grain
@@ -44,7 +45,7 @@ scene({
       var face = F.draw(ctx, x, y, w, h, { zoom: t < 2 ? 1 + t * 0.03 : 1, radius: r, shadow: w < W * 0.95 });
       // «الكلام ورا الراس»: the big word, then the person alone on top of it
       if (t < 2 && F.hasPerson) { K.text(ctx, "POWER", W * 0.5, H * 0.3, { size: W * 0.34, weight: 900, family: K.fonts.head, color: "#ffd84a", align: "center" }); F.draw(ctx, x, y, w, h, { zoom: 1 + t * 0.03, radius: r, person: true }); }
-      if (t < 2) K.text(ctx, "the power of", W * 0.5, Math.min(H * 0.8, face.y + face.h + H * 0.1), { size: W * 0.09, weight: 800, family: K.fonts.head, color: "#ffffff", align: "center", shadow: true });
+      if (t < 2) K.text(ctx, K.p("line", "the power of"), W * 0.5, Math.min(H * 0.8, face.y + face.h + H * 0.1), { size: W * 0.09, weight: 800, family: K.fonts.head, color: K.p("ink", "#ffffff"), align: "center", shadow: true });
       if (t > 6 && t < 8) K.text(ctx, K.counter(K.seg(t, 6.2, 1.2), 0, 120, { suffix: "+" }), W * 0.5, H * 0.75, { size: W * 0.2, weight: 900, family: K.fonts.head, color: "#3b2bd6", align: "center" });
       // the face box, outlined (the test checks it lands on the face)
       ctx.save(); ctx.strokeStyle = "#ff0066"; ctx.lineWidth = 4; ctx.strokeRect(face.x, face.y, face.w, face.h); ctx.restore();
@@ -83,7 +84,8 @@ window.runLab = async (url: string, matteUrl?: string) => {
   const pr = matteUrl ? await FootageReader.open({ ...s, url: matteUrl }, Math.max(W, H), true) : null;
   if (pr) host.person = (t, scale) => pr.at(t, scale);
   const words = [{ w: "the", s: 0.2, e: 0.4 }, { w: "power", s: 0.4, e: 0.8 }, { w: "of", s: 0.8, e: 1.0 }];
-  const info = await host.load(PROGRAM, { w: W, h: H, fps: 30, footage: { w: r.w, h: r.h, duration: seconds, words, lines: footageLines(words), face, person: Boolean(pr) } });
+  const info = await host.load(PROGRAM, { w: W, h: H, fps: 30, footage: { w: r.w, h: r.h, duration: seconds, words, lines: footageLines(words), face, person: Boolean(pr) }, params: { line: "مرحبا يا جماعة", ink: "#ff3366" } });
+  out.params = info.params;
   out.duration = info.duration;
   const bad = await probe(host, info.duration);
   out.probe = bad ? `${bad.where} ${bad.message}` : "ok";
