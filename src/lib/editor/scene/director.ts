@@ -201,7 +201,7 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
   const assets = assetsOf(b.assets);
   const plan = readPlan(b.plan, Number(b.seconds) || 15, assets.map((a) => a.id), footageOf(b)?.seconds);
   const f = frameOf(p);
-  const previous = typeof b.code === "string" ? text(b.code, 140_000) : "";
+  const previous = typeof b.code === "string" ? b.code.trim() : "";
   const errors = text(b.errors, 4000);
   // «خلفية شفافة»: the person wants the subject alone, to composite over something else — no fill at all
   const transparent = b.transparent === true;
@@ -238,8 +238,8 @@ export async function labReview(p: EditorProject, who: Who, b: Record<string, un
   if (!code) throw new UserError("ما وصلني المشهد.", 400);
   const sheets = pics(b.sheets, 3), stills = pics(b.stills, 6);
   if (!sheets.length && !stills.length) throw new UserError("ما وصلتني صور المشهد.", 400);
-  const maxRounds = Math.max(1, Math.min(MAX_ROUNDS, Math.round(Number(b.maxRounds) || MAX_ROUNDS)));
-  const round = Math.max(1, Math.min(maxRounds, Math.round(Number(b.round) || 1)));
+  const maxRounds = Math.max(1, Math.round(Number(b.maxRounds) || MAX_ROUNDS));
+  const round = Math.max(1, Math.round(Number(b.round) || 1));
   const times = (Array.isArray(b.times) ? b.times : []).map(Number).filter(Number.isFinite).slice(0, 6);
   const reviewOnly = b.reviewOnly === true;
   const parts: ClaudePart[] = [

@@ -70,9 +70,9 @@ export function hfLibs(code: string): Promise<string[]> {
 export class SceneHost {
   private frameEl: HTMLIFrameElement;
   private booted: Promise<void>;
-  private waits = new Map<number, { ok: (v: ImageBitmap) => void; no: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  private waits = new Map<number, { ok: (v: ImageBitmap) => void; no: (e: Error) => void }>();
   private loading: { ok: (v: SceneInfo) => void; no: (e: Error) => void } | null = null;
-  private sounds = new Map<number, { ok: (v: { L: Float32Array; R: Float32Array } | null) => void; no: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  private sounds = new Map<number, { ok: (v: { L: Float32Array; R: Float32Array } | null) => void; no: (e: Error) => void }>();
   private seq = 0;
   private listener: (e: MessageEvent) => void;
   w = 0;
@@ -97,7 +97,6 @@ export class SceneHost {
       if (m.type === "sound" && m.id !== undefined) {
         const w = this.sounds.get(m.id);
         if (w) {
-          clearTimeout(w.timer);
           this.sounds.delete(m.id);
           w.ok(m.none || !m.L || !m.R ? null : { L: m.L, R: m.R });
         }
@@ -112,7 +111,6 @@ export class SceneHost {
       if (m.type === "frame" && m.id !== undefined) {
         const w = this.waits.get(m.id);
         if (w && m.bitmap) {
-          clearTimeout(w.timer);
           this.waits.delete(m.id);
           w.ok(m.bitmap);
         }
@@ -122,12 +120,10 @@ export class SceneHost {
         const err = new SceneError(String(m.message ?? "خطأ في المشهد"), String(m.where ?? ""), m.t, String(m.stack ?? ""));
         if (m.id !== undefined && this.sounds.has(m.id)) {
           const w = this.sounds.get(m.id)!;
-          clearTimeout(w.timer);
           this.sounds.delete(m.id);
           w.no(err);
         } else if (m.id !== undefined && this.waits.has(m.id)) {
           const w = this.waits.get(m.id)!;
-          clearTimeout(w.timer);
           this.waits.delete(m.id);
           w.no(err);
         } else if (this.loading) {
@@ -135,7 +131,6 @@ export class SceneHost {
           this.loading = null;
         } else
           for (const [id, w] of this.waits) {
-            clearTimeout(w.timer);
             this.waits.delete(id);
             w.no(err);
           }
@@ -158,13 +153,7 @@ export class SceneHost {
     this.h = o.h;
     this.fps = o.fps ?? 30;
     return new Promise<SceneInfo>((ok, no) => {
-      const timer = setTimeout(() => {
-        if (this.loading) {
-          this.loading = null;
-          no(new SceneError("المشهد ما جهز خلال دقيقة (setup ثقيل جدًا أو معلّق).", "load"));
-        }
-      }, 60_000);
-      this.loading = { ok: (v) => (clearTimeout(timer), ok(v)), no: (e) => (clearTimeout(timer), no(e)) };
+      this.loading = { ok, no };
       // the bitmaps are copied (not transferred): the host keeps them for the next load
       void hfLibs(code)
         .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs, voice: o.voice ?? [], footage: o.footage ?? null, params: o.params ?? {} }))
@@ -179,11 +168,7 @@ export class SceneHost {
     const video = this.video ? await this.video(t, o.scale ?? 1).catch(() => null) : null;
     const person = this.person ? await this.person(t, o.scale ?? 1).catch(() => null) : null;
     return new Promise<ImageBitmap>((ok, no) => {
-      const timer = setTimeout(() => {
-        this.waits.delete(id);
-        no(new SceneError(`الفريم عند ${t.toFixed(2)} ث أخذ أكثر من ٢٠ ثانية (المشهد ثقيل جدًا).`, "frame", t));
-      }, 20_000);
-      this.waits.set(id, { ok, no, timer });
+      this.waits.set(id, { ok, no });
       this.post({ type: "frame", id, t, scale: o.scale ?? 1, sub: o.sub ?? 1, shutter: o.shutter ?? 0, fps: this.fps, video, person }, [video, person].filter((x): x is ImageBitmap => Boolean(x)));
     });
   }
@@ -192,20 +177,14 @@ export class SceneHost {
   sound(rate = 48000): Promise<{ L: Float32Array; R: Float32Array } | null> {
     const id = ++this.seq;
     return new Promise((ok, no) => {
-      const timer = setTimeout(() => {
-        this.sounds.delete(id);
-        no(new SceneError("صوت المشهد أخذ أكثر من دقيقة.", "sound"));
-      }, 60_000);
-      this.sounds.set(id, { ok, no, timer });
+      this.sounds.set(id, { ok, no });
       this.post({ type: "sound", id, rate });
     });
   }
 
   destroy() {
     window.removeEventListener("message", this.listener);
-    for (const w of this.waits.values()) clearTimeout(w.timer);
     this.waits.clear();
-    for (const w of this.sounds.values()) clearTimeout(w.timer);
     this.sounds.clear();
     this.frameEl.remove();
   }
