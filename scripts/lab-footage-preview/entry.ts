@@ -2,7 +2,7 @@
 // sandboxed scene page frame by frame, a program written on K.footage (full → card → away → split → corner → full),
 // contact sheets, and the final MP4 rendered with the video's own sound. Driven by run.mjs.
 import { SceneHost } from "@/components/jawad/editor/scene-host";
-import { FootageReader, footageSound, type FootageSource } from "@/components/jawad/editor/lab-footage";
+import { FootageReader, footageFrames, FootageSet, footageSound, footageTotal, type FootageSource } from "@/components/jawad/editor/lab-footage";
 import { faceTrack } from "@/components/jawad/editor/face";
 import { contactSheet, probe, renderVideo } from "@/components/jawad/editor/scene-render";
 import { mixSoundtrack } from "@/components/jawad/editor/lab-sound";
@@ -64,7 +64,9 @@ declare global {
 window.runLab = async (url: string, matteUrl?: string) => {
   const out: Record<string, unknown> = {};
   const s: FootageSource = { clipId: "c1", assetId: "a1", name: "talk", url, in: 500, out: 10500, speed: 1, start: 0, hasAudio: true };
-  const seconds = (s.out - s.in) / 1000;
+  // a second clip after the first (several clips joined in the order chosen)
+  const s2: FootageSource = { ...s, clipId: "c2", in: 6000, out: 9000 };
+  const seconds = footageTotal([s, s2]);
   let face: { t: number; x: number; y: number; w: number; h: number }[] = [];
   try {
     const tr = await faceTrack(url, s.in, s.out, 8);
@@ -77,7 +79,8 @@ window.runLab = async (url: string, matteUrl?: string) => {
   }
   out.face = face;
   const W = 1080, H = 1920;
-  const r = await FootageReader.open(s, Math.max(W, H));
+  const r = await FootageSet.open([s, s2], Math.max(W, H));
+  out.frames = (await footageFrames([s, s2])).length;
   out.reader = `${r.w}×${r.h}`;
   const host = new SceneHost();
   host.video = (t, scale) => r.at(t, scale);
@@ -90,10 +93,11 @@ window.runLab = async (url: string, matteUrl?: string) => {
   const bad = await probe(host, info.duration);
   out.probe = bad ? `${bad.where} ${bad.message}` : "ok";
   out.sheet = await contactSheet(host, 0, info.duration, 12, 6);
-  const voice = await footageSound(s);
-  out.voiceBytes = voice?.size ?? 0;
+  const voiceParts = await footageSound([s, s2]);
+  out.voiceParts = voiceParts.map((p) => p.at);
+  out.voiceBytes = voiceParts[0]?.blob.size ?? 0;
   out.sheetFirst = await contactSheet(host, 0, 1.9, 6, 6);
-  const audio = await mixSoundtrack({ duration: info.duration, synth: null, cues: [], voice, music: null });
+  const audio = await mixSoundtrack({ duration: info.duration, synth: null, cues: [], voice: null, voiceParts, music: null });
   const started = performance.now();
   const blob = await renderVideo(host, { duration: info.duration, fps: 30, blur: 0, audio }, () => {});
   out.renderMs = Math.round(performance.now() - started);

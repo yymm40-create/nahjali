@@ -87,3 +87,14 @@ export async function faceTrack(url: string, fromMs: number, toMs: number, n: nu
     v.load();
   }
 }
+
+/** The biggest face on each of these pictures (fractions of the picture), or null where there is none. */
+export async function facesIn(images: ImageBitmap[]): Promise<(FaceBox | null)[]> {
+  if (!images.length) return [];
+  const det = await detector();
+  return images.map((b) => {
+    const r = det.detect(b);
+    const best = r.detections.map((d) => d.boundingBox).filter((x): x is NonNullable<typeof x> => !!x).sort((a, c) => c.width * c.height - a.width * a.height)[0];
+    return best ? { x: (best.originX + best.width / 2) / b.width, y: (best.originY + best.height / 2) / b.height, w: best.width / b.width, h: best.height / b.height } : null;
+  });
+}

@@ -26,7 +26,7 @@ import { mixSoundtrack, SoundPreview } from "./lab-sound";
 import { makeMusicAsset } from "./make";
 import { drawDemo, STUDIO, type Swatch } from "./lab-demos";
 import type { EditorAsset } from "./types";
-import { footageFrames, footageMatte, footageSeconds, footageSound, FootageReader, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
+import { footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
 import { footageLines, type FootageFrame, type FootageMeta } from "@/lib/editor/scene/footage";
 import "./motion-lab.css";
 
@@ -69,6 +69,8 @@ interface Saved {
   musicMode?: MusicMode;
   /** «🎥 على فيديوك»: the timeline clip the piece is built on, and what was learnt about it (words, face) */
   footId?: string | null;
+  /** several clips, joined in the order chosen */
+  footIds?: string[];
   footMeta?: FootageMeta | null;
   /** «✂️ الكلام ورا الراس»: the person cut out for the piece */
   personOn?: boolean;
@@ -92,7 +94,8 @@ export interface LabSource {
   choices: LabChoices;
   musicMode: MusicMode;
   brief: string;
-  footage: FootageSource | null;
+  /** the clip(s) it was built on, in order (one object in films made before several clips could be chosen) */
+  footage: FootageSource[] | FootageSource | null;
   footMeta: FootageMeta | null;
   personOn: boolean;
   chat: ChatMsg[];
@@ -230,7 +233,7 @@ export default function MotionLab({
   initialBrief?: string;
   initialSeconds?: number;
   /** the finished film, its cues and whether music is wanted (the editor uploads it and places everything) */
-  onFilm: (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipId: string }, lab?: { source: LabSource; replaceAssetId: string | null }) => void;
+  onFilm: (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, lab?: { source: LabSource; replaceAssetId: string | null }) => void;
   onClose: () => void;
   /** folded to the pill — kept by the editor, so its «مختبر الموشن» button can bring the window back */
   minimized: boolean;
@@ -284,9 +287,10 @@ export default function MotionLab({
   const [alsoDownload, setAlsoDownload] = useState(false);
   const preview = useRef<SoundPreview | null>(null);
   // «🎥 على فيديوك»: the clip chosen, what was learnt about it, its frames' reader and its own sound
-  const [footId, setFootId] = useState<string | null>(initialFootage);
+  // the clips the piece is built on, in the order the person chose them (joined one after another)
+  const [footIds, setFootIds] = useState<string[]>(initialFootage ? [initialFootage] : []);
   const [foot, setFoot] = useState<FootageInfo | null>(null);
-  const reader = useRef<{ key: string; r: FootageReader } | null>(null);
+  const reader = useRef<{ key: string; r: FootageSet } | null>(null);
   // can this browser make the film at all? (Safari on iPhone often cannot encode) — asked once, before any paid step
   const [encodes, setEncodes] = useState<boolean | null>(null);
   useEffect(() => {
@@ -298,8 +302,8 @@ export default function MotionLab({
   }, [width, height]);
   // «✂️ الكلام ورا الراس»: the person cut out of the clip (made once on the server), and its reader
   const [personOn, setPersonOn] = useState(false);
-  const matte = useRef<{ key: string; url: string; r: FootageReader | null } | null>(null);
-  const footVoice = useRef<{ key: string; blob: Blob | null } | null>(null);
+  const matte = useRef<{ key: string; urls: Map<string, string>; r: FootageSet | null }>({ key: "", urls: new Map(), r: null });
+  const footVoice = useRef<{ key: string; parts: { blob: Blob; at: number }[] } | null>(null);
   // «خلفية شفافة»: الطلب نفسه (تقدر تشيله قبل ما تبني، أو بعد ما يخلص)، وهل الكود المحفوظ يطابقه فعلًا
   const [transparent, setTransparent] = useState(false);
   const [transparentCode, setTransparentCode] = useState(false);
@@ -327,10 +331,12 @@ export default function MotionLab({
   const chosenCards = useMemo(() => chosenOptions(choices), [choices]);
   // the clip the piece is built on (only while it is still on the timeline as it was)
   // (a film opened again from the timeline keeps the clip it was built on, even if that clip has moved since)
-  const [savedFoot, setSavedFoot] = useState<FootageSource | null>(null);
-  const source = useMemo(() => footageClips.find((c) => c.clipId === footId) ?? (savedFoot && savedFoot.clipId === footId ? savedFoot : null), [footageClips, footId, savedFoot]);
-  const sourceKey = source ? `${source.clipId}:${source.assetId}:${source.in}:${source.out}` : "";
-  const footMeta = source && foot && Math.abs(foot.meta.seconds - footageSeconds(source)) < 0.05 ? { ...foot.meta, person: personOn } : null;
+  const [savedFoots, setSavedFoots] = useState<FootageSource[]>([]);
+  const sources = useMemo(() => footIds.map((id) => footageClips.find((c) => c.clipId === id) ?? savedFoots.find((c) => c.clipId === id)).filter((c): c is FootageSource => Boolean(c)), [footageClips, footIds, savedFoots]);
+  // the first one: where the piece goes on the timeline (and «is there a video at all»)
+  const source = sources[0] ?? null;
+  const sourceKey = sources.map((c) => `${c.clipId}:${c.assetId}:${c.in}:${c.out}`).join("|");
+  const footMeta = source && foot && Math.abs(foot.meta.seconds - footageTotal(sources)) < 0.05 ? { ...foot.meta, person: personOn } : null;
 
   // the lab remembers its work on this device (a refresh keeps the plan, the program and the reviews)
   useEffect(() => {
@@ -347,9 +353,10 @@ export default function MotionLab({
         setParams({ ...(src.params || {}), ...(initialSource.params || {}) });
         setChat(src.chat || []);
         setReviews([]);
-        if (src.footage) {
-          setSavedFoot(src.footage);
-          setFootId(src.footage.clipId);
+        const list = Array.isArray(src.footage) ? src.footage : src.footage ? [src.footage] : [];
+        if (list.length) {
+          setSavedFoots(list);
+          setFootIds(list.map((c) => c.clipId));
           if (src.footMeta) setFoot({ meta: src.footMeta, frames: [] });
           setPersonOn(Boolean(src.personOn));
         }
@@ -379,8 +386,9 @@ export default function MotionLab({
         setTransparentCode(Boolean(s.transparentCode));
         setVoiceOn(Boolean(s.voiceOn));
         setMusicMode(s.musicMode === "eleven" || s.musicMode === "none" ? s.musicMode : "code");
-        if (!initialFootage && s.footId) {
-          setFootId(s.footId);
+        const ids = s.footIds ?? (s.footId ? [s.footId] : []);
+        if (!initialFootage && ids.length) {
+          setFootIds(ids);
           if (s.footMeta) setFoot({ meta: s.footMeta, frames: [] });
           setPersonOn(Boolean(s.personOn));
         }
@@ -400,18 +408,18 @@ export default function MotionLab({
   }, [projectId, initialBrief, initialFootage, initialSource]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-40), params } satisfies Saved));
+      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-40), params } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footId, foot, personOn, chat, params]);
+  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, foot, personOn, chat, params]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close(), reader.current?.r.close(), matte.current?.r?.close()), []);
   // حيدرة opened the lab (again) on one of the person's clips: that clip is the one, learnt afresh
   useEffect(() => {
     if (!initialFootage) return;
     const tm = setTimeout(() => {
-      setFootId(initialFootage);
-      setFoot((f) => (f && footId === initialFootage ? f : null));
+      setFootIds([initialFootage]);
+      setFoot((f) => (f && footIds.length === 1 && footIds[0] === initialFootage ? f : null));
     }, 0);
     return () => clearTimeout(tm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -424,27 +432,32 @@ export default function MotionLab({
   const sized = (p: LabPlan): LabPlan => (source && footMeta ? { ...p, seconds: footMeta.seconds } : take ? { ...p, seconds: Math.max(p.seconds, Math.ceil((take.seconds + 1) * 2) / 2) } : p);
   /** the video's own sound (the person's voice), cut once for the mix */
   const footSound = async () => {
-    if (!source) return null;
-    if (footVoice.current?.key !== sourceKey) footVoice.current = { key: sourceKey, blob: await footageSound(source) };
-    return footVoice.current.blob;
+    if (!sources.length) return [];
+    if (footVoice.current?.key !== sourceKey) footVoice.current = { key: sourceKey, parts: await footageSound(sources) };
+    return footVoice.current.parts;
   };
   /** «✂️ الكلام ورا الراس»: the person cut out (asked of the server once per file, then kept), opened as a reader */
   const personReader = async () => {
-    if (!source) return null;
-    const key = `${source.assetId}`;
-    if (matte.current?.key !== key || !matte.current.url) {
-      say1("✂️ أقص الشخص من فيديوك بجودة عالية (مرة وحدة للمقطع)…");
-      matte.current = { key, url: await footageMatte(projectId, source.assetId, say1, abort.current?.signal), r: null };
+    if (!sources.length) return null;
+    const m = matte.current;
+    for (const s of sources)
+      if (!m.urls.has(s.assetId)) {
+        say1(`✂️ أقص الشخص من «${s.name.slice(0, 30)}» بجودة عالية (مرة وحدة للملف)…`);
+        m.urls.set(s.assetId, await footageMatte(projectId, s.assetId, say1, abort.current?.signal));
+      }
+    if (m.key !== sourceKey || !m.r) {
+      m.r?.close();
+      m.r = await FootageSet.open(sources.map((s) => ({ ...s, url: m.urls.get(s.assetId)! })), Math.max(width, height), true);
+      m.key = sourceKey;
     }
-    if (!matte.current.r) matte.current.r = await FootageReader.open({ ...source, url: matte.current.url }, Math.max(width, height), true);
-    return matte.current.r;
+    return m.r;
   };
   /** the reader of the video's frames, opened once for this clip */
   const footReader = async () => {
-    if (!source) return null;
+    if (!sources.length) return null;
     if (reader.current?.key !== sourceKey) {
       reader.current?.r.close();
-      reader.current = { key: sourceKey, r: await FootageReader.open(source, Math.max(width, height)) };
+      reader.current = { key: sourceKey, r: await FootageSet.open(sources, Math.max(width, height)) };
     }
     return reader.current.r;
   };
@@ -459,9 +472,10 @@ export default function MotionLab({
       const links = await libraryLinks();
       const cues = readCues(o.got.cues, o.got.duration).flatMap((c) => (links.get(c.sfx) ? [{ url: links.get(c.sfx)!, t: c.t, vol: c.vol }] : []));
       // the voice that leads the mix: the person's video's own sound, or their recorded narration
-      const voice = source ? await footSound() : (take?.blob ?? null);
-      if (!synth && !cues.length && !voice && !o.music) return null;
-      const mix = await mixSoundtrack({ duration: o.got.duration, synth, cues, voice, music: o.music ?? null });
+      const parts = source ? await footSound() : [];
+      const voice = source ? null : (take?.blob ?? null);
+      if (!synth && !cues.length && !voice && !parts.length && !o.music) return null;
+      const mix = await mixSoundtrack({ duration: o.got.duration, synth, cues, voice, voiceParts: parts, music: o.music ?? null });
       return mix;
     } finally {
       setSoundBusy(false);
@@ -556,15 +570,13 @@ export default function MotionLab({
       // the person's video: what they say (with every word's time), where the face is, and a few frames — learnt once
       let meta: FootageMeta | null = footMeta, frames = foot?.frames ?? [];
       if (source && !meta) {
-        const a = assets.find((x) => x.id === source.assetId);
-        if (!a) throw new Error("ما لقيت ملف الفيديو في مكتبتك.");
-        say1("🎥 أجهّز فيديوك لحيدرة…");
-        const info = await prepareFootage(projectId, source, a, say1);
+        say1(sources.length > 1 ? `🎥 أجهّز مقاطعك الـ${sources.length} لحيدرة (ورا بعض بالترتيب)…` : "🎥 أجهّز فيديوك لحيدرة…");
+        const info = await prepareFootage(projectId, sources, [...extra, ...assets], say1);
         setFoot(info);
         meta = { ...info.meta, person: personOn };
         frames = info.frames;
       } else if (source && !frames.length) {
-        frames = await footageFrames(source);
+        frames = await footageFrames(sources);
         setFoot((f) => (f ? { ...f, frames } : f));
       }
       const r = await call<{ plan: LabPlan; say: string }>("lab_plan", {
@@ -829,9 +841,9 @@ export default function MotionLab({
       // the sound is already inside the film: nothing placed twice (a silent scene keeps the old way: its cues on tracks)
       // on the person's video the piece takes the clip's place: it lands where the clip starts, and the clip is muted
       // the scene goes with the film, so it stays editable on the timeline (a film opened again replaces its old one)
-      const lab: LabSource = { v: 1, plan, code, params, fields: info.params ?? [], picks, choices, musicMode, brief, footage: source, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-30) };
+      const lab: LabSource = { v: 1, plan, code, params, fields: info.params ?? [], picks, choices, musicMode, brief, footage: sources.length ? sources : null, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-30) };
       const replacing = initialSource?.assetId ?? null;
-      onFilm(file, audio ? [] : readCues(info.cues, info.duration), null, source && !replacing ? { at: source.start, muteClipId: source.clipId } : undefined, { source: lab, replaceAssetId: replacing });
+      onFilm(file, audio ? [] : readCues(info.cues, info.duration), null, source && !replacing ? { at: source.start, muteClipIds: sources.map((c) => c.clipId) } : undefined, { source: lab, replaceAssetId: replacing });
       setStage("ready");
       setRenderAt(null);
       say1(audio ? "✅ نزل المقطع في التايملاين وصوته داخله (المؤثرات" + (take || source ? " وصوتك" : "") + (musicMode !== "none" ? " والموسيقى" : "") + ")." : "✅ نزل المقطع في التايملاين.");
@@ -1145,15 +1157,28 @@ export default function MotionLab({
                     <span className="mlab-label">🎥 على فيديوك (اختياري)</span>
                     <p className="mlab-tip m-0">اختر مقطع تتكلم فيه من التايملاين، وحيدرة يبني المونتاج حوله بالكود: متى تكون ملء الشاشة، ومتى تصغر في بطاقة، ومتى تنقسم الشاشة، ومتى تختفي ويطلع موشن يشرح كلامك، وبعدها ترجع. يقرر كل هذا من كلامك نفسه، بدون ما تقول له.</p>
                     <div className="mlab-pills">
-                      <button type="button" className="mlab-pill" aria-pressed={!source} disabled={busy} onClick={() => setFootId(null)}>
+                      <button type="button" className="mlab-pill" aria-pressed={!source} disabled={busy} onClick={() => (setFootIds([]), setFoot(null))}>
                         بدون فيديو
                       </button>
-                      {footageClips.map((c) => (
-                        <button key={c.clipId} type="button" className="mlab-pill" aria-pressed={footId === c.clipId} disabled={busy} onClick={() => (setFootId(c.clipId), setFoot(null), setVoiceOn(false), setTransparent(false))} title={c.name}>
-                          🎥 {c.name.slice(0, 24)} · {Math.round(footageSeconds(c))} ث
-                        </button>
-                      ))}
+                      {footageClips.map((c) => {
+                        const n = footIds.indexOf(c.clipId);
+                        const full = n < 0 && footageTotal(sources) + footageSeconds(c) > 120.5;
+                        return (
+                          <button
+                            key={c.clipId}
+                            type="button"
+                            className="mlab-pill"
+                            aria-pressed={n >= 0}
+                            disabled={busy || full}
+                            title={full ? "المجموع يتعدى ١٢٠ ثانية" : c.name}
+                            onClick={() => (setFootIds((ids) => (ids.includes(c.clipId) ? ids.filter((x) => x !== c.clipId) : [...ids, c.clipId])), setFoot(null), setVoiceOn(false), setTransparent(false))}
+                          >
+                            {n >= 0 ? `${n + 1} ✓` : "🎥"} {c.name.slice(0, 24)} · {Math.round(footageSeconds(c))} ث
+                          </button>
+                        );
+                      })}
                     </div>
+                    {footageClips.length > 1 && <p className="mlab-tip m-0">تقدر تختار أكثر من مقطع: تنضم ورا بعض بترتيب اختيارك (الرقم على كل واحد)، والمجموع لحد ١٢٠ ثانية.</p>}
                     {source && (
                       <label className="flex items-start gap-3">
                         <input type="checkbox" className="mt-1.5 h-4 w-4" checked={personOn} onChange={(e) => setPersonOn(e.target.checked)} disabled={busy} />
@@ -1163,7 +1188,7 @@ export default function MotionLab({
                         </span>
                       </label>
                     )}
-                    {source && <p className="m-0 font-bold" style={{ color: "var(--jw-ok)" }}>✓ المشهد بيكون بطول مقطعك ({footageSeconds(source).toFixed(1)} ث) وبصوتك الأصلي، وينزل مكانه في التايملاين.</p>}
+                    {source && <p className="m-0 font-bold" style={{ color: "var(--jw-ok)" }}>✓ المشهد بيكون بطول {sources.length > 1 ? `مقاطعك الـ${sources.length} مع بعض` : "مقطعك"} ({footageTotal(sources).toFixed(1)} ث) وبصوتك الأصلي، وينزل مكانه في التايملاين.</p>}
                   </div>
                 )}
                 <div className="mlab-card">

@@ -1067,14 +1067,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     setLabMin(auto);
     setLab({ brief: "", source: { assetId, source, params, auto } });
   };
-  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipId: string }, labOf?: { source: LabSource; replaceAssetId: string | null }) => {
+  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, labOf?: { source: LabSource; replaceAssetId: string | null }) => {
     const at = Math.round(place?.at ?? player?.ms ?? 0);
     const key = Math.random().toString(36).slice(2);
     if (labOf) labFilms.current.set(key, labOf);
     // built on the person's own clip: the piece lands on its own track over it, and the clip under it is muted (its
     // voice is inside the piece already); a film opened again from the timeline takes the old one's place instead
     uploads.add([film], [{ at, trackId: place ? "new" : null, mode: "one", group: `lab:${key}`, first: true }]);
-    if (place && findClip(tlRef.current, place.muteClipId)) run({ type: "update_clip", clipId: place.muteClipId, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
+    for (const id of place?.muteClipIds ?? []) if (findClip(tlRef.current, id)) run({ type: "update_clip", clipId: id, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
     flash("🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
     setLab(null);
     setLabMin(false);

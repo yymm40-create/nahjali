@@ -9,8 +9,7 @@ import type { FootageFace, FootageMeta, FootageWord } from "@/lib/editor/scene/f
 import { FOOTAGE_MAX } from "@/lib/editor/scene/footage";
 import { extractSound } from "./captions";
 import { spokenWords } from "./captions-make";
-import { faceTrack } from "./face";
-import { framesOf } from "./media";
+import { facesIn } from "./face";
 import type { EditorAsset } from "./types";
 import { postJson } from "@/lib/fetch";
 
@@ -108,46 +107,153 @@ export interface FootageInfo {
   frames: string[];
 }
 
-export async function prepareFootage(projectId: string, s: FootageSource, a: EditorAsset, onStep: (t: string) => void): Promise<FootageInfo> {
+/** A step that must never hang the plan: it gives up after `ms` (the lab goes on without it). */
+function within<T>(p: Promise<T>, ms: number, why: string): Promise<T> {
+  return new Promise<T>((ok, no) => {
+    const tm = setTimeout(() => no(new Error(why)), ms);
+    p.then((v) => (clearTimeout(tm), ok(v)), (e) => (clearTimeout(tm), no(e)));
+  });
+}
+
+/** Frames of a clip at these piece seconds, read by the same decoder the render uses (no <video> element). */
+async function grab(s: FootageSource, times: number[], side: number): Promise<ImageBitmap[]> {
+  const r = await FootageReader.open(s, side);
+  try {
+    const out: ImageBitmap[] = [];
+    for (const t of times) {
+      const b = await r.at(t);
+      if (b) out.push(b);
+    }
+    return out;
+  } finally {
+    r.close();
+  }
+}
+
+const jpeg64 = async (b: ImageBitmap, height: number) => {
+  const k = Math.min(1, height / b.height);
+  const c = new OffscreenCanvas(Math.max(1, Math.round(b.width * k)), Math.max(1, Math.round(b.height * k)));
+  c.getContext("2d")!.drawImage(b, 0, 0, c.width, c.height);
+  const buf = new Uint8Array(await (await c.convertToBlob({ type: "image/jpeg", quality: 0.8 })).arrayBuffer());
+  let str = "";
+  for (let i = 0; i < buf.length; i += 0x8000) str += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return btoa(str);
+};
+
+/** What one clip says and where its face is, in that clip's own seconds (from its start as it plays). */
+async function learnOne(projectId: string, s: FootageSource, a: EditorAsset, label: string, onStep: (t: string) => void) {
   const seconds = footageSeconds(s);
   const toPiece = (ms: number) => Math.round(((ms - s.in) / s.speed / 1000) * 1000) / 1000;
   let words: FootageWord[] = [];
   if (s.hasAudio) {
     try {
-      const heard = await spokenWords(projectId, { clip: { id: s.clipId, in: s.in, out: s.out } as Clip, asset: a }, "ar", "فيديوك", onStep);
+      const heard = await within(spokenWords(projectId, { clip: { id: s.clipId, in: s.in, out: s.out } as Clip, asset: a }, "ar", label, onStep), 4 * 60_000, "الكتابة أخذت وقت طويل");
       words = heard.filter((w) => w.s >= s.in && w.s < s.out).map((w) => ({ w: w.w, s: toPiece(w.s), e: toPiece(Math.min(w.e, s.out)) })).filter((w) => w.s < seconds);
     } catch (e) {
-      onStep(`⚠️ ما قدرت أكتب كلامك (${e instanceof Error ? e.message : e}) — حيدرة يبني على الصورة.`);
+      onStep(`⚠️ ${label}: ما قدرت أكتب الكلام (${e instanceof Error ? e.message : e}) — حيدرة يبني على الصورة.`);
     }
   }
-  onStep("🙂 أتتبّع وجهك في الفيديو عشان ما ينقص في أي إطار…");
+  onStep(`🙂 ${label}: أتتبّع الوجه عشان ما ينقص في أي إطار…`);
   let face: FootageFace[] = [];
   let w = a.width ?? 1080, h = a.height ?? 1920;
   try {
-    const tr = await faceTrack(s.url, s.in, s.out, Math.round(Math.min(40, Math.max(6, seconds / 1.5))));
-    face = tr.samples.map((x) => ({ t: toPiece(x.ms), ...x.face }));
-    if (tr.width && tr.height) [w, h] = [tr.width, tr.height];
-  } catch {
-    onStep("⚠️ ما قدرت أتتبّع الوجه؛ حيدرة يأطّر من الصور.");
+    const n = Math.round(Math.min(60, Math.max(8, seconds * 2)));
+    const times = Array.from({ length: n }, (_, i) => ((i + 0.5) * seconds) / n);
+    const shots = await within(grab(s, times, 640), 60_000, "قراءة الفيديو أخذت وقت طويل");
+    if (shots[0]) [w, h] = [shots[0].width, shots[0].height];
+    const found = await within(facesIn(shots), 45_000, "أداة الوجه ما ردّت");
+    face = found.flatMap((f, i) => (f ? [{ t: Math.round(times[i] * 1000) / 1000, ...f }] : []));
+    shots.forEach((b) => b.close());
+    if (!face.length) onStep(`⚠️ ${label}: ما لقيت وجه واضح؛ حيدرة يأطّر من الصور.`);
+  } catch (e) {
+    onStep(`⚠️ ${label}: ما قدرت أتتبّع الوجه (${e instanceof Error ? e.message : e})؛ حيدرة يأطّر من الصور.`);
+  }
+  return { seconds, words, face, w, h };
+}
+
+/** Several clips joined one after another in the order chosen: what the lab learns about all of them, on one clock. */
+export async function prepareFootage(projectId: string, list: FootageSource[], assets: EditorAsset[], onStep: (t: string) => void): Promise<FootageInfo> {
+  let at = 0, w = 0, h = 0;
+  const words: FootageWord[] = [], face: FootageFace[] = [];
+  for (const [i, s] of list.entries()) {
+    const a = assets.find((x) => x.id === s.assetId);
+    if (!a) throw new Error(`ما لقيت ملف «${s.name}» في مكتبتك.`);
+    const one = await learnOne(projectId, s, a, list.length > 1 ? `المقطع ${i + 1} من ${list.length}` : "فيديوك", onStep);
+    words.push(...one.words.map((x) => ({ ...x, s: Math.round((x.s + at) * 1000) / 1000, e: Math.round((x.e + at) * 1000) / 1000 })));
+    face.push(...one.face.map((f) => ({ ...f, t: Math.round((f.t + at) * 1000) / 1000 })));
+    if (!w) [w, h] = [one.w, one.h];
+    at += one.seconds;
   }
   onStep("🖼️ ألقط صور من الفيديو لحيدرة…");
-  const frames = await footageFrames(s);
-  return { meta: { name: s.name, seconds: Math.round(seconds * 1000) / 1000, w, h, words, face }, frames };
+  const frames = await footageFrames(list).catch(() => []);
+  return { meta: { name: list.map((s) => s.name).join(" + ").slice(0, 120), seconds: Math.round(Math.min(FOOTAGE_MAX, at) * 1000) / 1000, w, h, words, face }, frames };
 }
 
-/** The video's own sound (the person's voice), for the piece's mix. */
-export async function footageSound(s: FootageSource): Promise<Blob | null> {
-  if (!s.hasAudio) return null;
-  try {
-    return (await extractSound(s.url, s.in, s.out)).blob;
-  } catch {
-    return null;
+/** The piece's length on several clips: all of them, one after another. */
+export const footageTotal = (list: FootageSource[]) => Math.min(FOOTAGE_MAX, list.reduce((a, s) => a + footageSeconds(s), 0));
+
+/** The clips' own sound (the person's voice), each from where its clip starts in the piece, for the mix. */
+export async function footageSound(list: FootageSource[]): Promise<{ blob: Blob; at: number }[]> {
+  const out: { blob: Blob; at: number }[] = [];
+  let at = 0;
+  for (const s of list) {
+    if (s.hasAudio) {
+      try {
+        out.push({ blob: (await extractSound(s.url, s.in, s.out)).blob, at });
+      } catch {
+        /* a clip without readable sound plays silent */
+      }
+    }
+    at += footageSeconds(s);
   }
+  return out;
 }
 
-/** A few frames of the video for حيدرة's eyes (JPEG, base64), when what was learnt about it is already kept. */
-export async function footageFrames(s: FootageSource): Promise<string[]> {
-  return (await framesOf(s.url, "video", s.in, s.out, 4, 480).catch(() => [])).map((f) => f.data);
+/** A few frames of the video(s) for حيدرة's eyes (JPEG, base64), spread over the whole piece. */
+export async function footageFrames(list: FootageSource[]): Promise<string[]> {
+  const out: string[] = [];
+  const per = Math.max(1, Math.ceil(4 / list.length));
+  for (const s of list.slice(0, 4)) {
+    const secs = footageSeconds(s);
+    const shots = await within(grab(s, Array.from({ length: per }, (_, i) => ((i + 0.5) * secs) / per), 720), 45_000, "timeout").catch(() => []);
+    for (const b of shots) {
+      out.push(await jpeg64(b, 480));
+      b.close();
+    }
+  }
+  return out.slice(0, 4);
+}
+
+/** Several clips read as one: the frame of the piece's second t comes from the clip playing then. */
+export class FootageSet {
+  private constructor(
+    private readers: FootageReader[],
+    private starts: number[],
+  ) {}
+  get w() {
+    return this.readers[0]?.w ?? 0;
+  }
+  get h() {
+    return this.readers[0]?.h ?? 0;
+  }
+  static async open(list: FootageSource[], maxSide: number, alpha = false): Promise<FootageSet> {
+    const readers: FootageReader[] = [], starts: number[] = [];
+    let at = 0;
+    for (const s of list) {
+      readers.push(await FootageReader.open(s, maxSide, alpha));
+      starts.push(at);
+      at += footageSeconds(s);
+    }
+    return new FootageSet(readers, starts);
+  }
+  at(t: number, scale = 1) {
+    let i = this.starts.length - 1;
+    while (i > 0 && t < this.starts[i]) i--;
+    return this.readers[i]?.at(t - this.starts[i], scale) ?? Promise.resolve(null);
+  }
+  close() {
+    this.readers.forEach((r) => r.close());
+  }
 }
 
 /**
