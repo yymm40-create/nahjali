@@ -95,9 +95,17 @@ export const SCENE_RUNTIME_JS = String.raw`
     if (window.HF) K.HF = window.HF;
     new Function("scene", "K", m.code)(scene, K);
     if (!def || typeof def.draw !== "function") throw new Error("the scene must call scene({ duration, draw(K, t, ctx) { … } })");
+    // the editable values: the scene's own, with what the person changed on the timeline over them
+    var ps = def.params && typeof def.params === "object" ? def.params : {}, over = m.params || {}, plist = [];
+    K.P = {};
+    Object.keys(ps).slice(0, 16).forEach(function (k) {
+      var d = ps[k] || {}, type = d.type === "color" ? "color" : "text";
+      K.P[k] = over[k] !== undefined && over[k] !== null ? String(over[k]) : String(d.value === undefined ? "" : d.value);
+      plist.push({ id: k, label: String(d.label || k), type: type, value: String(d.value === undefined ? "" : d.value) });
+    });
     if (def.three) { K.THREE = await import("three"); K.addon = function (p) { return import("three/addons/" + p); }; }
     if (typeof def.setup === "function") await def.setup(K, ctx);
-    post({ type: "ready", duration: Number(def.duration) || 0, cues: Array.isArray(def.cues) ? def.cues : [], blur: Number(def.blur) || 0, bpm: Number(def.bpm) || 0, title: String(def.title || ""), sound: typeof def.sound === "function" });
+    post({ type: "ready", duration: Number(def.duration) || 0, cues: Array.isArray(def.cues) ? def.cues : [], blur: Number(def.blur) || 0, bpm: Number(def.bpm) || 0, title: String(def.title || ""), sound: typeof def.sound === "function", params: plist });
   }
   async function frame(m) {
     if (K.footage) {

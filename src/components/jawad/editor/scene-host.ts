@@ -14,6 +14,14 @@ export interface SceneInfo {
   title: string;
   /** the scene writes its own soundtrack in code (sound(K, S)) */
   sound?: boolean;
+  /** the editable values (every shown text and the main colours), with the scene's own value of each */
+  params?: ScenePar[];
+}
+export interface ScenePar {
+  id: string;
+  label: string;
+  type: "text" | "color";
+  value: string;
 }
 export interface SceneFont {
   role: string;
@@ -85,7 +93,7 @@ export class SceneHost {
     this.booted = new Promise((r) => (boot = r));
     this.listener = (e: MessageEvent) => {
       if (e.source !== el.contentWindow) return;
-      const m = (e.data ?? {}) as { type?: string; id?: number; bitmap?: ImageBitmap; message?: string; where?: string; t?: number; stack?: string; none?: boolean; L?: Float32Array; R?: Float32Array } & Omit<Partial<SceneInfo>, "sound"> & { sound?: boolean };
+      const m = (e.data ?? {}) as { type?: string; id?: number; bitmap?: ImageBitmap; message?: string; where?: string; t?: number; stack?: string; none?: boolean; L?: Float32Array; R?: Float32Array } & Omit<Partial<SceneInfo>, "sound"> & { sound?: boolean; params?: ScenePar[] };
       if (m.type === "sound" && m.id !== undefined) {
         const w = this.sounds.get(m.id);
         if (w) {
@@ -97,7 +105,7 @@ export class SceneHost {
       }
       if (m.type === "boot") return boot();
       if (m.type === "ready" && this.loading) {
-        this.loading.ok({ duration: Number(m.duration) || 0, cues: m.cues ?? [], blur: Number(m.blur) || 0, bpm: Number(m.bpm) || 0, title: String(m.title ?? ""), sound: Boolean(m.sound) });
+        this.loading.ok({ duration: Number(m.duration) || 0, cues: m.cues ?? [], blur: Number(m.blur) || 0, bpm: Number(m.bpm) || 0, title: String(m.title ?? ""), sound: Boolean(m.sound), params: Array.isArray(m.params) ? (m.params as ScenePar[]).slice(0, 16) : [] });
         this.loading = null;
         return;
       }
@@ -144,7 +152,7 @@ export class SceneHost {
   }
 
   /** Loads a program (its pictures as bitmaps, its fonts by URL); resolves with what the scene says about itself. */
-  async load(code: string, o: { w: number; h: number; fps?: number; assets?: { id: string; bitmap: ImageBitmap }[]; fonts?: SceneFont[]; voice?: { text: string; from: number; to: number }[]; footage?: Record<string, unknown> | null }): Promise<SceneInfo> {
+  async load(code: string, o: { w: number; h: number; fps?: number; assets?: { id: string; bitmap: ImageBitmap }[]; fonts?: SceneFont[]; voice?: { text: string; from: number; to: number }[]; footage?: Record<string, unknown> | null; params?: Record<string, string> }): Promise<SceneInfo> {
     await this.booted;
     this.w = o.w;
     this.h = o.h;
@@ -159,7 +167,7 @@ export class SceneHost {
       this.loading = { ok: (v) => (clearTimeout(timer), ok(v)), no: (e) => (clearTimeout(timer), no(e)) };
       // the bitmaps are copied (not transferred): the host keeps them for the next load
       void hfLibs(code)
-        .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs, voice: o.voice ?? [], footage: o.footage ?? null }))
+        .then((libs) => this.post({ type: "load", code, w: o.w, h: o.h, fps: this.fps, assets: o.assets ?? [], fonts: o.fonts ?? [], libs, voice: o.voice ?? [], footage: o.footage ?? null, params: o.params ?? {} }))
         .catch((e) => this.loading?.no(new SceneError(`ما قدرت أحمّل أدوات مهارة Higgsfield (${e instanceof Error ? e.message : e}).`, "load")));
     });
   }

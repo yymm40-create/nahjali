@@ -2,7 +2,7 @@
 // sandboxed scene page frame by frame, a program written on K.footage (full → card → away → split → corner → full),
 // contact sheets, and the final MP4 rendered with the video's own sound. Driven by run.mjs.
 import { SceneHost } from "@/components/jawad/editor/scene-host";
-import { FootageReader, footageSound, type FootageSource } from "@/components/jawad/editor/lab-footage";
+import { FootageReader, footageFrames, FootageSet, footageSound, footageTotal, type FootageSource } from "@/components/jawad/editor/lab-footage";
 import { faceTrack } from "@/components/jawad/editor/face";
 import { contactSheet, probe, renderVideo } from "@/components/jawad/editor/scene-render";
 import { mixSoundtrack } from "@/components/jawad/editor/lab-sound";
@@ -23,6 +23,7 @@ function at(t, i) { var v = R[0][i]; for (var k = 1; k < R.length; k++) { var p 
 scene({
   title: "test", duration: F ? F.duration : 10, bpm: 120, background: "#f4f1ea", blur: 0,
   cues: [{ t: 1.9, sfx: "transition-whoosh-fast" }],
+  params: { line: { label: "السطر", type: "text", value: "the power of" }, ink: { label: "اللون", type: "color", value: "#ffffff" } },
   draw: function (K, t, ctx) {
     var W = K.W, H = K.H;
     // the stage: a soft gradient with grain
@@ -44,7 +45,7 @@ scene({
       var face = F.draw(ctx, x, y, w, h, { zoom: t < 2 ? 1 + t * 0.03 : 1, radius: r, shadow: w < W * 0.95 });
       // «الكلام ورا الراس»: the big word, then the person alone on top of it
       if (t < 2 && F.hasPerson) { K.text(ctx, "POWER", W * 0.5, H * 0.3, { size: W * 0.34, weight: 900, family: K.fonts.head, color: "#ffd84a", align: "center" }); F.draw(ctx, x, y, w, h, { zoom: 1 + t * 0.03, radius: r, person: true }); }
-      if (t < 2) K.text(ctx, "the power of", W * 0.5, Math.min(H * 0.8, face.y + face.h + H * 0.1), { size: W * 0.09, weight: 800, family: K.fonts.head, color: "#ffffff", align: "center", shadow: true });
+      if (t < 2) K.text(ctx, K.p("line", "the power of"), W * 0.5, Math.min(H * 0.8, face.y + face.h + H * 0.1), { size: W * 0.09, weight: 800, family: K.fonts.head, color: K.p("ink", "#ffffff"), align: "center", shadow: true });
       if (t > 6 && t < 8) K.text(ctx, K.counter(K.seg(t, 6.2, 1.2), 0, 120, { suffix: "+" }), W * 0.5, H * 0.75, { size: W * 0.2, weight: 900, family: K.fonts.head, color: "#3b2bd6", align: "center" });
       // the face box, outlined (the test checks it lands on the face)
       ctx.save(); ctx.strokeStyle = "#ff0066"; ctx.lineWidth = 4; ctx.strokeRect(face.x, face.y, face.w, face.h); ctx.restore();
@@ -63,7 +64,9 @@ declare global {
 window.runLab = async (url: string, matteUrl?: string) => {
   const out: Record<string, unknown> = {};
   const s: FootageSource = { clipId: "c1", assetId: "a1", name: "talk", url, in: 500, out: 10500, speed: 1, start: 0, hasAudio: true };
-  const seconds = (s.out - s.in) / 1000;
+  // a second clip after the first (several clips joined in the order chosen)
+  const s2: FootageSource = { ...s, clipId: "c2", in: 6000, out: 9000 };
+  const seconds = footageTotal([s, s2]);
   let face: { t: number; x: number; y: number; w: number; h: number }[] = [];
   try {
     const tr = await faceTrack(url, s.in, s.out, 8);
@@ -76,22 +79,25 @@ window.runLab = async (url: string, matteUrl?: string) => {
   }
   out.face = face;
   const W = 1080, H = 1920;
-  const r = await FootageReader.open(s, Math.max(W, H));
+  const r = await FootageSet.open([s, s2], Math.max(W, H));
+  out.frames = (await footageFrames([s, s2])).length;
   out.reader = `${r.w}×${r.h}`;
   const host = new SceneHost();
   host.video = (t, scale) => r.at(t, scale);
   const pr = matteUrl ? await FootageReader.open({ ...s, url: matteUrl }, Math.max(W, H), true) : null;
   if (pr) host.person = (t, scale) => pr.at(t, scale);
   const words = [{ w: "the", s: 0.2, e: 0.4 }, { w: "power", s: 0.4, e: 0.8 }, { w: "of", s: 0.8, e: 1.0 }];
-  const info = await host.load(PROGRAM, { w: W, h: H, fps: 30, footage: { w: r.w, h: r.h, duration: seconds, words, lines: footageLines(words), face, person: Boolean(pr) } });
+  const info = await host.load(PROGRAM, { w: W, h: H, fps: 30, footage: { w: r.w, h: r.h, duration: seconds, words, lines: footageLines(words), face, person: Boolean(pr) }, params: { line: "مرحبا يا جماعة", ink: "#ff3366" } });
+  out.params = info.params;
   out.duration = info.duration;
   const bad = await probe(host, info.duration);
   out.probe = bad ? `${bad.where} ${bad.message}` : "ok";
   out.sheet = await contactSheet(host, 0, info.duration, 12, 6);
-  const voice = await footageSound(s);
-  out.voiceBytes = voice?.size ?? 0;
+  const voiceParts = await footageSound([s, s2]);
+  out.voiceParts = voiceParts.map((p) => p.at);
+  out.voiceBytes = voiceParts[0]?.blob.size ?? 0;
   out.sheetFirst = await contactSheet(host, 0, 1.9, 6, 6);
-  const audio = await mixSoundtrack({ duration: info.duration, synth: null, cues: [], voice, music: null });
+  const audio = await mixSoundtrack({ duration: info.duration, synth: null, cues: [], voice: null, voiceParts, music: null });
   const started = performance.now();
   const blob = await renderVideo(host, { duration: info.duration, fps: 30, blur: 0, audio }, () => {});
   out.renderMs = Math.round(performance.now() - started);

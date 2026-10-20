@@ -82,6 +82,19 @@ export async function loadPricing(force = false): Promise<Pricing> {
   return (await import("@config/coins")).getPricing();
 }
 
+/**
+ * «مراقبة الأكواد»: an operation that cost the account nothing (an «بلا حدود» code, the owner) is still written down
+ * with what it would have cost at the site's prices (migration 0085; without it nothing is kept and nothing breaks).
+ */
+export async function logFree(userId: string, ref: string, label: string, halalas: number) {
+  await db().from("site_free_usage").insert({ user_id: userId, ref, label: label.slice(0, 200), halalas: Math.max(0, Math.round(halalas)) }).then(() => {}, () => {});
+}
+
+/** A free operation that failed: off the record (it cost nothing). */
+export async function dropFree(ref: string) {
+  await db().from("site_free_usage").delete().eq("ref", ref).then(() => {}, () => {});
+}
+
 async function adjust(userId: string, delta: number, reason: string, ref: string, label: string, allowNegative = false) {
   const { data, error } = await db().rpc("adjust_smart_coins", {
     p_user: userId, p_delta: delta, p_reason: reason, p_ref: ref, p_label: label, p_allow_negative: allowNegative,
@@ -111,7 +124,11 @@ export async function giftCoinsOnce(userId: string, halalas: number, ref: string
  * "image" 60٪; "video" 40٪; anything else the general margin (config/coins.ts).
  */
 export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string, claude: ChargeKind = false) {
-  if ((await unlimitedFor(user.email)) || !(await coinsRequired())) return;
+  if ((await unlimitedFor(user.email)) || !(await coinsRequired())) {
+    // free: the job is written down now, and its real value filled in when it is done (settleCoins)
+    await logFree(user.id, jobId, label, 0);
+    return;
+  }
   void estimateUsd;
   void claude;
   // pay after use (the owner, 18 October 2026: «على كل شيء يطلع في النهاية تأخذ الفلوس مباشرة»): nothing is held — the
@@ -147,8 +164,13 @@ export async function settleCoins(jobId: string, costUsd: number, claude: Charge
   await loadPricing();
   await settleTeamCoins(jobId, costUsd, claude);
   const r = await reserved(jobId);
+  if (!r) {
+    // a free account's job: its value at the site's prices goes on the record kept for it
+    await db().from("site_free_usage").update({ halalas: priceOf(costUsd, claude) }).eq("ref", jobId).then(() => {}, () => {});
+    return;
+  }
   // a job marked with nothing held (pay after use) is charged here; one that held its estimate gets the difference back
-  if (!r || r.held < 0) return;
+  if (r.held < 0) return;
   const diff = r.held - priceOf(costUsd, claude, await atCostFor(r.userId));
   if (diff !== 0) await adjust(r.userId, diff, "settle", jobId, r.label, true);
 }
@@ -156,6 +178,8 @@ export async function settleCoins(jobId: string, costUsd: number, claude: Charge
 /** On failure: every held coin goes back (failed operations cost nothing). */
 export async function refundCoins(jobId: string) {
   await refundTeamCoins(jobId);
+  // a free account's failed job cost nothing: off the record
+  await db().from("site_free_usage").delete().eq("ref", jobId).then(() => {}, () => {});
   const r = await reserved(jobId);
   if (r && r.held > 0) await adjust(r.userId, r.held, "refund", jobId, r.label, true);
 }
@@ -274,7 +298,8 @@ export interface ClaudeBill {
  * takes what the reply really cost + 10% (pay after use). Free for the owner and unlimited accounts.
  */
 export async function claudeMeter(who: { id: string; email?: string | null; owner?: boolean; team?: string | null }, model: ClaudeModel, label: string): Promise<ClaudeBill> {
-  const bill: ClaudeBill = { free: true, charged: 0, settle: async () => 0 };
+  // free: nothing is taken, but the reply's value at the site's price is written down (code monitoring)
+  const bill: ClaudeBill = { free: true, charged: 0, settle: async (usd: number) => (await logFree(who.id, `claude:${crypto.randomUUID()}`, label, claudeHalalas(usd)), 0) };
   if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
   await loadPricing();
   // pay after use: a reply starts while the wallet has anything in it, and takes what it really cost after

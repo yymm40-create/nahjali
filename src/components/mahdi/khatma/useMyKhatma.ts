@@ -98,11 +98,41 @@ export function useMyKhatma() {
   const unread = useCallback(
     async (quarter: number) => {
       const r = await post<{ readOn: string | null }>({ action: "unread", quarter }, "رجع غير مقروء.");
-      if (r?.readOn) bumpHabit(r.readOn, -1);
+      // what was carried («وين وصلت») never went to the habit, so nothing comes back from it
+      if (r?.readOn && !(data?.current && r.readOn < data.current.startedOn)) bumpHabit(r.readOn, -1);
       return r;
     },
-    [post, bumpHabit],
+    [post, bumpHabit, data],
   );
 
-  return { data, error, busy, habit, post, read, unread, refresh: () => setReload((x) => x + 1), state, store, toast };
+  /** «وين وصلت»: portions already finished before (not today's reading, so the habit is not touched). */
+  const carry = useCallback(
+    async (quarters: number[]) => {
+      if (!quarters.length) return null;
+      return post<{ added: number[]; finished: boolean }>({ action: "carry", quarters }, "انسجّل اللي خلّصته ✓");
+    },
+    [post],
+  );
+
+  /** Several portions back to unread (one message, one reload). The ones read today are taken back from the habit. */
+  const unreadMany = useCallback(
+    async (quarters: number[]) => {
+      setBusy(true);
+      try {
+        for (const quarter of quarters) {
+          const r = await mahdiFetch<{ readOn: string | null }>("/api/mahdi/khatma/mine", { method: "POST", json: { action: "unread", quarter } });
+          if (r.readOn && !(data?.current && r.readOn < data.current.startedOn)) bumpHabit(r.readOn, -1);
+        }
+        toast("رجعت غير مقروءة.");
+      } catch (e) {
+        toast((e as Error).message);
+      } finally {
+        setBusy(false);
+        setReload((x) => x + 1);
+      }
+    },
+    [bumpHabit, data, toast],
+  );
+
+  return { data, error, busy, habit, post, read, unread, unreadMany, carry, refresh: () => setReload((x) => x + 1), state, store, toast };
 }

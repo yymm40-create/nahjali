@@ -193,6 +193,9 @@ export default function Codes({ codes, uses, gifted = {} }: Props) {
                 <p className="select-all rounded-xl bg-surface-2 px-3 py-2 text-center font-mono text-lg font-extrabold tracking-wider" dir="ltr">
                   {c.code}
                 </p>
+                <a href={`/admin/access/codes/${c.id}`} className="btn btn-ghost min-h-10 w-full text-sm font-extrabold">
+                  📊 راقب استخدامه: مين دخل فيه، كم صرف كل واحد، في إيش ومتى ({mine.length})
+                </a>
                 {hasGift(c) && (
                   <div className="space-y-1 rounded-xl bg-gold/10 p-2.5 text-xs font-bold">
                     <p className="flex flex-wrap items-center gap-x-3 gap-y-1">

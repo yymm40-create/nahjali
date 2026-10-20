@@ -30,7 +30,7 @@ import SmartFix from "./SmartFix";
 import { PluginTools } from "./plugins";
 import { familyOf, loadFont, loadFontsOf } from "./fontload";
 import { makeMusicAsset, separateAsset, stemQuality } from "./make";
-import MotionLab from "./MotionLab";
+import MotionLab, { type LabSource } from "./MotionLab";
 import { sourceOf, type FootageSource } from "./lab-footage";
 import type { Cue } from "@/lib/editor/scene/contract";
 import { placeStems } from "@/lib/editor/make";
@@ -252,7 +252,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [layoutOpen, setLayoutOpen] = useState(false);
   // «🎬 مختبر الموشن»: open, with a brief (from حيدرة's chat or empty)
-  const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null } | null>(null);
+  const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null } | null>(null);
+  // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene)
+  const labWaits = useRef(new Map<string, { ok: (a: EditorAsset) => void; no: (e: Error) => void }>());
+  const labFilms = useRef(new Map<string, { source: LabSource; replaceAssetId: string | null }>());
   // the lab folded to its pill: kept here, so «مختبر الموشن» in the toolbar brings the same work back instead of
   // looking like a dead button (the window stays mounted while it is folded, and the work carries on)
   const [labMin, setLabMin] = useState(false);
@@ -904,6 +907,23 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           void upscaleWhole(a, target === "1080p" ? "1080p" : "4k", name.join(":"));
           return;
         }
+        // «مختبر الموشن»: a picture attached in its conversation stays in the library (the lab is told it is up)
+        if (place?.group.startsWith("lib:")) {
+          const w = labWaits.current.get(place.group.slice(4));
+          labWaits.current.delete(place.group.slice(4));
+          w?.ok(a);
+          return;
+        }
+        // its finished film: the scene kept with it, and — opened again from the timeline — swapped in for the old one
+        if (place?.group.startsWith("lab:")) {
+          const f = labFilms.current.get(place.group.slice(4));
+          labFilms.current.delete(place.group.slice(4));
+          if (f) void postJson(`/api/jawad/editor/projects/${project.id}`, { action: "lab_source_save", assetId: a.id, source: f.source }).then(() => addAssets([{ ...a, lab: true }])).catch(() => flash("نزل المقطع، بس ما انحفظ مشهده للتعديل بعدين.", true));
+          if (f?.replaceAssetId) {
+            if (!run({ type: "swap_asset", from: f.replaceAssetId, to: a.id }, { label: "عدّلت قطعة الموشن" })) placeAsset(a, place);
+            return;
+          }
+        }
         // a saved project's file: kept until all are up, then its timeline comes back pointing at them
         const w = pkgWait.current;
         if (w && place?.group.startsWith("pkg:")) {
@@ -917,7 +937,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         // each uploaded file goes on the timeline: pictures after what is there (or where it was dropped), sound from the start
         placeAsset(a, place);
       },
-      [addAssets, placeAsset, commit, flash, upscaleWhole],
+      [addAssets, placeAsset, commit, flash, upscaleWhole, project.id, run],
     ),
   );
   const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
@@ -1032,12 +1052,29 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   };
   // «🎬 مختبر الموشن»: the rendered film goes up and onto the timeline at the playhead, its sound cues on their own
   // sound tracks at their moments (a few tracks, so cues close together don't push each other), music under it
-  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipId: string }) => {
+  /** a picture attached in the lab's conversation: up to the library (never onto the timeline), resolved when it is there */
+  const labUpload = (file: File) =>
+    new Promise<EditorAsset>((ok, no) => {
+      const key = Math.random().toString(36).slice(2);
+      labWaits.current.set(key, { ok, no });
+      uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `lib:${key}`, first: true }]);
+      setTimeout(() => {
+        if (labWaits.current.delete(key)) no(new Error("الرفع أخذ وقت طويل."));
+      }, 5 * 60_000);
+    });
+  /** «✏️ عدّل» on a film made in the lab: the lab opens on its scene (or renders it again with new values at once) */
+  const editLabPiece = (assetId: string, source: LabSource, params: Record<string, string>, auto: boolean) => {
+    setLabMin(auto);
+    setLab({ brief: "", source: { assetId, source, params, auto } });
+  };
+  const placeFilm = async (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, labOf?: { source: LabSource; replaceAssetId: string | null }) => {
     const at = Math.round(place?.at ?? player?.ms ?? 0);
+    const key = Math.random().toString(36).slice(2);
+    if (labOf) labFilms.current.set(key, labOf);
     // built on the person's own clip: the piece lands on its own track over it, and the clip under it is muted (its
-    // voice is inside the piece already)
-    uploads.add([film], [{ at, trackId: place ? "new" : null, mode: "one", group: `lab-${at}`, first: true }]);
-    if (place && findClip(tlRef.current, place.muteClipId)) run({ type: "update_clip", clipId: place.muteClipId, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
+    // voice is inside the piece already); a film opened again from the timeline takes the old one's place instead
+    uploads.add([film], [{ at, trackId: place ? "new" : null, mode: "one", group: `lab:${key}`, first: true }]);
+    for (const id of place?.muteClipIds ?? []) if (findClip(tlRef.current, id)) run({ type: "update_clip", clipId: id, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
     flash("🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
     setLab(null);
     setLabMin(false);
@@ -2035,7 +2072,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
           <SheetGrip onClose={() => setSheet(null)} title={one ? "تعديل المقطع" : "المشروع"} />
           <div className={`jw-scroll min-h-0 flex-1 ${colorRoom && one ? "overflow-hidden" : "overflow-y-auto"}`}>
             {colorRoom && !one && <p className="room-empty p-6 text-center">اختر لقطة من الشريط فوق عشان تلوّنها.</p>}
-            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onExtend={readOnly ? undefined : extendClip} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
+            <Guard name="الإعدادات"><Inspector page={bigPage} projectId={project.id} onSync={readOnly ? undefined : (ids) => void syncClips(ids)} syncing={syncing} tl={tl} selected={selected} assets={assetMap} run={run} readOnly={readOnly} player={player} tab={tab} onTab={setTab} flash={flash} rail={wide} projectView={wide && rail === "project"} thumbs={thumbs} onSceneCut={sceneCut} onUpscale={readOnly ? undefined : upscale} onLabEdit={readOnly ? undefined : editLabPiece} onExtend={readOnly ? undefined : extendClip} onSeparate={(id) => separateClip(id).catch((e) => flash(e instanceof Error ? e.message : "تعذّر الفصل.", true))} /></Guard>
           </div>
         </aside>
 
@@ -2149,7 +2186,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
 
-      {lab && !readOnly && <MotionLab projectId={project.id} width={tl.width} height={tl.height} assets={assets} initialBrief={lab.brief} initialSeconds={lab.seconds} footageClips={footageClips} initialFootage={lab.clipId ?? null} onFilm={placeFilm} onClose={() => (setLab(null), setLabMin(false))} minimized={labMin} onMinimize={setLabMin} />}
+      {lab && !readOnly && <MotionLab projectId={project.id} width={tl.width} height={tl.height} assets={assets} initialBrief={lab.brief} initialSeconds={lab.seconds} footageClips={footageClips} initialFootage={lab.clipId ?? null} initialSource={lab.source ?? null} onUpload={labUpload} onFilm={placeFilm} onClose={() => (setLab(null), setLabMin(false))} minimized={labMin} onMinimize={setLabMin} />}
       {dropAsk && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" onClick={() => setDropAsk(null)}>
           <div role="dialog" aria-modal="true" aria-label="كيف أرتّب الملفات؟" className="w-full max-w-sm space-y-3 rounded-2xl border border-jw-line bg-jw-surface p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>

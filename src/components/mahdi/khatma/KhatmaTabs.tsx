@@ -10,7 +10,7 @@ const UUID = /^\/mahdi\/khatma\/[0-9a-f-]{36}/;
 
 export default function KhatmaTabs() {
   const path = usePathname() ?? "";
-  if (path.includes("/read/")) return null;
+  if (path.includes("/read/") || path.includes("/free/")) return null;
   const groups = path.startsWith("/mahdi/khatma/groups") || UUID.test(path);
   return (
     <div className="mb-5 space-y-3">

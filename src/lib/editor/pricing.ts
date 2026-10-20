@@ -2,7 +2,7 @@
 // the prices are 0 or «النقود الذكية مطلوبة» is off; a price is held before the paid call and given back if it fails.
 
 import { remembering, type Memo } from "@/lib/claude-run";
-import { claudeMeter, coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
+import { logFree, dropFree, claudeMeter, coinsRequired, holdCoins, holdTeamCoins, refundTeamCoins, releaseCoins } from "@/lib/coins";
 import { getLimit, type LimitKey } from "@/lib/film/limits";
 import { sellKind, type PriceKind } from "@config/coins";
 import { claudeModelOf } from "@config/claude-models";
@@ -25,8 +25,11 @@ const PRICE_KIND: Partial<Record<LimitKey, PriceKind>> = { editor_price_hook: "i
  * asks, when coins aren't required, or when the price is 0.
  */
 export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_price_${string}`>, units: number, label: string, run: () => Promise<T>) {
-  const coins = who.owner || !(await coinsRequired()) ? 0 : sellKind(Math.ceil((await getLimit(price)) * units), PRICE_KIND[price] ?? "other");
+  const value = sellKind(Math.ceil((await getLimit(price)) * units), PRICE_KIND[price] ?? "other");
+  const coins = who.owner || !(await coinsRequired()) ? 0 : value;
   const ref = `editor:${price}:${crypto.randomUUID()}`;
+  // free for this account: written down with its value (code monitoring)
+  if (!coins && value > 0) await logFree(who.id, ref, label, value);
   if (who.team) await holdTeamCoins(who.team, who, coins, ref, label);
   else await holdCoins(who.id, coins, ref, label);
   try {
@@ -34,6 +37,7 @@ export async function charged<T>(who: Who, price: Extract<LimitKey, `editor_pric
   } catch (e) {
     if (who.team) await refundTeamCoins(ref).catch(() => {});
     else await releaseCoins(who.id, coins, ref, label).catch(() => {});
+    if (!coins) await dropFree(ref);
     throw e;
   }
 }
