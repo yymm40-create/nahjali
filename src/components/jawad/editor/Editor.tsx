@@ -255,7 +255,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // «🎬 مختبر الموشن»: open, with a brief (from حيدرة's chat or empty)
   const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null } | null>(null);
   // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene)
-  const labWaits = useRef(new Map<string, { ok: (a: EditorAsset) => void; no: (e: Error) => void }>());
+  const labWaits = useRef(new Map<string, { ok: (a: EditorAsset) => void; no: (e: Error) => void; progress?: (p: number) => void }>());
   const labFilms = useRef(new Map<string, { source: LabSource; replaceAssetId: string | null }>());
   // the lab folded to its pill: kept here, so «مختبر الموشن» in the toolbar brings the same work back instead of
   // looking like a dead button (the window stays mounted while it is folded, and the work carries on)
@@ -947,6 +947,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       labWaits.current.get(k)?.no(new Error(message || "تعذّر الرفع."));
       labWaits.current.delete(k);
     }, []),
+    // how far a file for the lab is up (the lab shows it: the editor's own list sits under the lab's window)
+    useCallback((place?: { group: string }, p?: number) => {
+      if (place?.group.startsWith("lib:")) labWaits.current.get(place.group.slice(4))?.progress?.(p ?? 0);
+    }, []),
   );
   const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
   const dropFiles = (files: File[], at: number, trackId: string | null, mode?: "stack" | "line") => {
@@ -1061,10 +1065,10 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // «🎬 مختبر الموشن»: the rendered film goes up and onto the timeline at the playhead, its sound cues on their own
   // sound tracks at their moments (a few tracks, so cues close together don't push each other), music under it
   /** a picture attached in the lab's conversation: up to the library (never onto the timeline), resolved when it is there */
-  const labUpload = (file: File) =>
+  const labUpload = (file: File, onProgress?: (p: number) => void) =>
     new Promise<EditorAsset>((ok, no) => {
       const key = Math.random().toString(36).slice(2);
-      labWaits.current.set(key, { ok, no });
+      labWaits.current.set(key, { ok, no, progress: onProgress });
       // no clock of its own: it ends when the file is up, or when the upload fails
       uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `lib:${key}`, first: true }]);
     });

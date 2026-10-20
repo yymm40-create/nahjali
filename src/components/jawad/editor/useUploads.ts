@@ -57,16 +57,18 @@ function writeResume(key: string, v: (PartsUpload & { mime: string }) | null) {
  * Files from the device, one after another: read in the browser, sent straight to storage with a one-time link, then
  * checked by the server. Each finished file goes to `onDone` (the editor puts it on the timeline).
  */
-export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: Placement) => void, onFail?: (place: Placement | undefined, message: string) => void) {
+export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: Placement) => void, onFail?: (place: Placement | undefined, message: string) => void, onProgress?: (place: Placement | undefined, p: number) => void) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const queue = useRef<{ key: string; file: File; place?: Placement }[]>([]);
   const busy = useRef(false);
   const done = useRef(onDone);
   const failed = useRef(onFail);
+  const progressed = useRef(onProgress);
   useEffect(() => {
     done.current = onDone;
     failed.current = onFail;
-  }, [onDone, onFail]);
+    progressed.current = onProgress;
+  }, [onDone, onFail, onProgress]);
 
   const patch = (key: string, p: Partial<UploadItem>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...p } : x)));
 
@@ -111,7 +113,7 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: P
           const before = readResume(rk);
           let s: Started = before ? { id: before.id, mime: before.mime, multipart: before } : await start();
           if (s.multipart) {
-            const progress = (p: number) => patch(key, { progress: p });
+            const progress = (p: number) => (patch(key, { progress: p }), progressed.current?.(place, p));
             writeResume(rk, { id: s.id, mime: s.mime, ...s.multipart });
             try {
               await sendInParts(projectId, { id: s.id, ...s.multipart }, file, progress);
@@ -125,7 +127,7 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: P
             }
             writeResume(rk, null);
           } else {
-            await putWithProgress(s.signedUrl!, file, s.mime, (p) => patch(key, { progress: p }));
+            await putWithProgress(s.signedUrl!, file, s.mime, (p) => (patch(key, { progress: p }), progressed.current?.(place, p)));
           }
           const r = await postJson<{ asset: EditorAsset }>(`/api/jawad/editor/projects/${projectId}`, {
             action: "confirm_upload",
