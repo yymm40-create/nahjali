@@ -122,7 +122,7 @@ type StreamBody = Record<string, unknown> & { stop_reason?: string; content?: { 
  * long one (a director's shot map, every sheet's prompt) is never cut by a clock on the whole answer — only a line
  * that goes quiet for CLAUDE_IDLE_MS is dropped and tried again. Returns the message as the non-streamed API would.
  */
-export async function claudeStream(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS): Promise<StreamBody> {
+export async function claudeStream(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS, resume?: ResumeOpts): Promise<StreamBody> {
   let last: unknown;
   const payload = JSON.stringify({ ...(JSON.parse(init.body) as Record<string, unknown>), stream: true });
   for (let i = 0; i < tries; i++) {
@@ -147,7 +147,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
         if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
         continue;
       }
-      const out = await readStream(res.body, quiet);
+      const out = await readStream(res.body, quiet, resume);
       clearTimeout(timer);
       return out;
     } catch (e) {
@@ -166,7 +166,16 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
 }
 
 /** Puts a streamed message back together (its text, why it stopped, its usage and model). */
-export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}): Promise<StreamBody> {
+/**
+ * A reply that is worth continuing rather than starting again (a long program): `stopAt` is when to stop reading (the
+ * platform ends a request at a fixed time) and anything cut off after some text came back is returned as what was
+ * written so far — `stop_reason` "deadline" or "interrupted" — for the caller to continue from there.
+ */
+export interface ResumeOpts {
+  stopAt?: number;
+}
+
+export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}, resume?: ResumeOpts): Promise<StreamBody> {
   const blocks: { type: string; text?: string }[] = [];
   const msg: StreamBody = { content: blocks };
   let usage: Record<string, unknown> = {};
@@ -213,18 +222,30 @@ export async function readStream(stream: ReadableStream<Uint8Array>, alive: () =
       }
     }
   };
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    alive();
-    buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-    let cut: number;
-    while ((cut = buf.indexOf("\n\n")) >= 0) {
-      handle(buf.slice(0, cut));
-      buf = buf.slice(cut + 2);
+  const written = () => blocks.some((b) => b?.type === "text" && b.text);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      alive();
+      buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      let cut: number;
+      while ((cut = buf.indexOf("\n\n")) >= 0) {
+        handle(buf.slice(0, cut));
+        buf = buf.slice(cut + 2);
+      }
+      if (resume?.stopAt && Date.now() >= resume.stopAt && !msg.stop_reason) {
+        await reader.cancel().catch(() => undefined);
+        msg.stop_reason = "deadline";
+        break;
+      }
     }
+    if (buf.trim() && !msg.stop_reason) handle(buf);
+  } catch (e) {
+    // cut off (the line dropped, the API busy) after part of it was written: that part is kept, not thrown away
+    if (!resume || !written()) throw e;
+    msg.stop_reason = "interrupted";
   }
-  if (buf.trim()) handle(buf);
   if (!msg.stop_reason) throw new Error("Claude stream ended before the reply did (terminated)");
   msg.content = blocks.filter(Boolean);
   msg.usage = usage as unknown as ClaudeUsage;
@@ -287,6 +308,7 @@ export async function callClaudeJson<T>({
   leader = false,
   timeoutMs,
   signal,
+  resume,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -300,7 +322,9 @@ export async function callClaudeJson<T>({
   /** the longest one attempt may take (default CLAUDE_TIMEOUT_MS); a long conversation like حيدرة's asks for more */
   timeoutMs?: number;
   signal?: AbortSignal;
-}): Promise<{ data: T; raw: string; usage: ClaudeUsage }> {
+  /** a long reply that is continued rather than started again: read until `stopAt`, and what was written is returned (`partial`) */
+  resume?: ResumeOpts;
+}): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
   const asked = currentClaude();
@@ -337,11 +361,17 @@ export async function callClaudeJson<T>({
         output_config: { ...(asked.effort ? { effort: level } : {}), format: { type: "json_schema", schema } },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
-    }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0));
+    }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0), resume);
     return b;
   };
 
   let body = await call(effort);
+  if (body.stop_reason === "deadline" || body.stop_reason === "interrupted") {
+    // cut before it ended: what was written so far goes back (its output counted at least by its length)
+    const written = (body.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
+    const usage = withModel(body.usage as ClaudeUsage, body.model, asked);
+    return { data: {} as T, raw: written, usage: { ...usage, output_tokens: Math.max(usage.output_tokens ?? 0, Math.ceil(written.length / 3)) }, partial: true };
+  }
   // the model's thinking shares the reply's token budget: a long request can use it all before the answer ends.
   // Once more, thinking less, before giving up.
   if (body.stop_reason === "max_tokens" && asked.effort && effort !== "low") body = await call("low");
