@@ -6,24 +6,25 @@ import { useState } from "react";
 import { CONSISTENCY_THRESHOLD } from "@config/mahdi";
 import { buildTimeline, dayScore, dayStreak, startOfWeek, summarize, weekGoals } from "@/lib/mahdi/engine";
 import { fmtPct, t } from "@/lib/mahdi/i18n";
-import { bySort, currentVersion, describeGoal, habitStatus } from "@/lib/mahdi/client/derive";
+import { bySort, currentVersion, describeGoal, habitStatus, habitTint } from "@/lib/mahdi/client/derive";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import DayBars from "@/components/mahdi/DayBars";
 import HabitForm from "@/components/mahdi/HabitForm";
 import Icon from "@/components/mahdi/Icon";
 import ProjectForm from "@/components/mahdi/ProjectForm";
+import GoalPlanView from "@/components/mahdi/goals/GoalPlanView";
 import { useMahdi } from "@/components/mahdi/Provider";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
 import { daySeries } from "@/lib/mahdi/engine";
 
-/** One project: its own progress, streak and habits, plus edit / archive / delete. */
+/** One project (or strategic goal, with its milestones): its own progress, streak and habits, plus edit / archive / delete. */
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { state, store, items, toast } = useMahdi();
   const { snap, today } = state;
   const [editing, setEditing] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<{ milestoneId: string | null } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const project = snap.projects.find((p) => p.id === id);
@@ -50,6 +51,7 @@ export default function ProjectPage() {
     archived: habits.filter((h) => habitStatus(h, today) === "archived"),
   };
   const archived = Boolean(project.archivedAt);
+  const isGoal = project.kind === "goal" && Boolean(project.goal);
 
   async function setArchived(value: boolean) {
     setBusy(true);
@@ -78,15 +80,16 @@ export default function ProjectPage() {
   const habitLine = (h: (typeof habits)[number], index?: number) => {
     const v = currentVersion(h, today);
     return (
-      <li key={h.id} className="flex items-center gap-2 py-2">
+      <li key={h.id} className="flex items-center gap-2 py-2" style={habitTint(h)}>
         <Link href={`/mahdi/habits/${h.id}`} className="min-w-0 flex-1 rounded-xl p-1">
           <span className="block truncate font-semibold">
+            {h.color && <span className="m-dot me-1.5 inline-block align-middle" style={{ background: "var(--pc)" }} aria-hidden="true" />}
             {h.icon && <span aria-hidden="true">{h.icon} </span>}
             {h.name}
           </span>
           <span className="block truncate text-sm m-muted">{v ? describeGoal(v, snap.profile.weekStart) : ""}</span>
         </Link>
-        {index !== undefined && (
+        {index !== undefined && !isGoal && (
           <>
             <button type="button" className="m-icon-btn" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`${t.project.moveUp}: ${h.name}`}>
               <Icon name="chevronUp" size={20} />
@@ -137,21 +140,35 @@ export default function ProjectPage() {
         <DayBars points={daySeries(tl, today, 7)} today={today} />
       </section>
 
+      {isGoal && (
+        <GoalPlanView
+          project={project}
+          habits={groups.active}
+          renderHabit={(h) => habitLine(h)}
+          onAddHabit={(milestoneId) => setAdding({ milestoneId })}
+        />
+      )}
+
+      {(!isGoal || groups.paused.length > 0 || groups.archived.length > 0) && (
       <section className="m-card px-4 py-3">
+        {!isGoal && (
+        <>
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">{t.project.habits}</h2>
           {!archived && (
-            <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setAdding(true)}>
+            <button type="button" className="m-btn m-btn-ghost m-btn-sm" onClick={() => setAdding({ milestoneId: null })}>
               <Icon name="plus" size={18} /> {t.project.addHabit}
             </button>
           )}
         </div>
         {habits.length === 0 && (
-          <button type="button" className="m-btn m-btn-primary my-3 w-full" onClick={() => setAdding(true)} disabled={archived}>
+          <button type="button" className="m-btn m-btn-primary my-3 w-full" onClick={() => setAdding({ milestoneId: null })} disabled={archived}>
             <Icon name="plus" /> {t.home.emptyHabits}
           </button>
         )}
         <ul className="divide-y" style={{ borderColor: "var(--m-line)" }}>{groups.active.map((h, i) => habitLine(h, archived ? undefined : i))}</ul>
+        </>
+        )}
         {groups.paused.length > 0 && (
           <>
             <p className="m-eyebrow mt-3">{t.project.pausedHabits}</p>
@@ -165,6 +182,7 @@ export default function ProjectPage() {
           </>
         )}
       </section>
+      )}
 
       <section className="flex flex-wrap gap-3">
         <button type="button" className="m-btn m-btn-ghost" disabled={busy} onClick={() => setArchived(!archived)}>
@@ -176,7 +194,7 @@ export default function ProjectPage() {
       </section>
 
       <ProjectForm open={editing} onClose={() => setEditing(false)} project={project} />
-      <HabitForm open={adding} onClose={() => setAdding(false)} projectId={project.id} />
+      <HabitForm open={Boolean(adding)} onClose={() => setAdding(null)} projectId={project.id} milestoneId={adding?.milestoneId ?? undefined} />
       <ConfirmSheet
         open={deleting}
         onClose={() => setDeleting(false)}

@@ -5,14 +5,16 @@ import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import type { VersionRow } from "@/lib/mahdi/server/rows";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
-import { cleanIcon, cleanLine, cleanText, oneOf, parseConfig, parseTime, requireName } from "@/lib/mahdi/server/validate";
+import { checkGoals, milestoneForHabit } from "@/lib/mahdi/server/goals";
+import { cleanIcon, cleanLine, cleanText, oneOf, parseConfig, parseHabitColor, parseTime, requireName } from "@/lib/mahdi/server/validate";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /**
  * Edits a habit.
  * - name, icon, category, notes, reminderTime: stable details, changed in place.
- * - projectId: moves the habit (its history moves with it).
+ * - projectId: moves the habit (its history moves with it, its milestone does not).
+ * - color, milestoneId: its colour and the milestone of its strategic goal it serves (SQL 0086).
  * - config (measure, target, unit, freq, days) or state (active / paused / archived): a NEW VERSION from today,
  *   so every earlier day keeps being measured against the goal it had then.
  */
@@ -40,6 +42,17 @@ export const PATCH = mahdiRoute(async (req: Request, { params }: Ctx) => {
     details.project_id = target.id;
   }
   if (Object.keys(details).length) check(await supabase.from("mahdi_habits").update(details).eq("id", id));
+
+  const plan: Record<string, unknown> = {};
+  if ("color" in body) plan.color = parseHabitColor(body.color);
+  const projectNow = (details.project_id as string | undefined) ?? habit.project_id;
+  if ("milestoneId" in body) plan.milestone_id = await milestoneForHabit(supabase, body.milestoneId, projectNow);
+  else if (details.project_id) plan.milestone_id = null;
+  if (Object.keys(plan).length) {
+    const res = await supabase.from("mahdi_habits").update(plan).eq("id", id);
+    // moving a habit before SQL 0086 has no milestone to clear
+    if (!(res.error && !("color" in body) && !("milestoneId" in body))) checkGoals(res);
+  }
 
   const wantsConfig = "config" in body;
   const wantsState = "state" in body;

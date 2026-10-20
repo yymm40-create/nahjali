@@ -11,7 +11,7 @@ import { t } from "@/lib/mahdi/i18n";
 import Icon from "../Icon";
 import LogSheet from "../LogSheet";
 import { useMahdi } from "../Provider";
-import { bySort, CHALLENGE_GROUP, projectHref } from "@/lib/mahdi/client/derive";
+import { bySort, CHALLENGE_GROUP, habitTint, projectHref } from "@/lib/mahdi/client/derive";
 import Tick, { shapeFor, useTickPref } from "./Tick";
 import { useHabitTap, useDay, XP_PER, type DayHabit } from "./useDay";
 
@@ -115,7 +115,7 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
                 {[...g.habits].sort((a, b) => Number(a.inst.progress >= 1) - Number(b.inst.progress >= 1)).map((h) => (
                   <Tap key={h.inst.key} h={h} date={d.today}>
                     {(x) => (
-                      <button type="button" className={`m-quick-btn p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
+                      <button type="button" className={`m-quick-btn p-${h.project?.color ?? "gold"}`} style={habitTint(h.habit)} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
                         <span className="m-quick-ic" aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={30} /> : h.habit.icon || "•"}</span>
                         <span className="line-clamp-2">{h.habit.name}</span>
                         {amount(h) && <span className="m-num text-xs opacity-80">{amount(h)}</span>}
@@ -141,7 +141,7 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
                   <Tap key={h.inst.key} h={h} date={d.today}>
                     {(x) => (
                       <li>
-                        <button type="button" className={`m-qrow p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
+                        <button type="button" className={`m-qrow p-${h.project?.color ?? "gold"}`} style={habitTint(h.habit)} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
                           <span className={`m-qbox ${x.done ? "m-shaped" : ""}`} aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={shapeOf(h) === "big" ? 28 : 26} /> : ""}</span>
                           <span className="min-w-0 flex-1 truncate text-start">{h.habit.icon && <span aria-hidden="true">{h.habit.icon} </span>}{h.habit.name}</span>
                           {amount(h) && <span className="m-num text-xs m-muted">{amount(h)}</span>}
@@ -165,7 +165,7 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
                 {g.habits.map((h) => (
                   <Tap key={h.inst.key} h={h} date={d.today}>
                     {(x) => (
-                      <button type="button" className={`m-circle p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
+                      <button type="button" className={`m-circle p-${h.project?.color ?? "gold"}`} style={habitTint(h.habit)} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap} onContextMenu={(e) => { e.preventDefault(); x.setOpen(true); }}>
                         <span className="m-circle-ring" style={{ "--p": `${Math.min(1, h.inst.progress) * 360}deg` } as React.CSSProperties}>
                           <span className={`m-circle-face ${x.done ? "m-shaped" : ""}`} aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={54} /> : h.habit.icon || "•"}</span>
                         </span>
@@ -222,8 +222,8 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
               {(x) => (
                 <div className="flex items-stretch gap-2.5">
                   <small className="m-num w-11 shrink-0 pt-3 m-muted">{h.habit.reminderTime ?? "—"}</small>
-                  <span className={`w-1 rounded-full p-${h.project?.color ?? "gold"}`} style={{ background: "var(--pc)", opacity: x.done ? 1 : 0.35 }} />
-                  <button type="button" className={`m-tl my-1 flex flex-1 items-center gap-2 p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
+                  <span className={`w-1 rounded-full p-${h.project?.color ?? "gold"}`} style={{ ...habitTint(h.habit), background: "var(--pc)", opacity: x.done ? 1 : 0.35 }} />
+                  <button type="button" className={`m-tl my-1 flex flex-1 items-center gap-2 p-${h.project?.color ?? "gold"}`} style={habitTint(h.habit)} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
                     <b className="min-w-0 flex-1 truncate text-start">{h.habit.icon && <span aria-hidden="true">{h.habit.icon} </span>}{h.habit.name}</b>
                     <span className="m-num text-sm">{x.done ? <Tick shape={shapeOf(h)} size={22} /> : amount(h)}</span>
                   </button>
@@ -246,7 +246,7 @@ export default function DesignQuick({ style }: { style: QuickStyle }) {
               {g.habits.map((h) => (
                 <Tap key={h.inst.key} h={h} date={d.today}>
                   {(x) => (
-                    <button type="button" className={`m-xp flex w-full items-center gap-2 p-2.5 p-${h.project?.color ?? "gold"}`} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
+                    <button type="button" className={`m-xp flex w-full items-center gap-2 p-2.5 p-${h.project?.color ?? "gold"}`} style={habitTint(h.habit)} data-done={x.done} aria-pressed={x.v?.measure === "check" ? x.done : undefined} aria-label={x.label} onClick={x.tap}>
                       <span className={`m-xp-box ${x.done ? "m-shaped" : ""}`} aria-hidden="true">{x.done ? <Tick shape={shapeOf(h)} size={26} /> : ""}</span>
                       <span className="min-w-0 flex-1 truncate text-start">{h.habit.icon} {h.habit.name}</span>
                       <small className="m-num" style={{ color: "var(--m-gold)" }}>+{XP_PER}</small>

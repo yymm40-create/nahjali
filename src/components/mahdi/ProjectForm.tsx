@@ -5,11 +5,16 @@ import { MAHDI_LIMITS, PROJECT_COLORS, PROJECT_SUGGESTIONS, type ProjectColor } 
 import { t } from "@/lib/mahdi/i18n";
 import type { Project } from "@/lib/mahdi/types";
 import type { FormTarget } from "./HabitForm";
+import GoalForm from "./goals/GoalForm";
+import Icon from "./Icon";
 import IconPicker from "./IconPicker";
 import { useMahdi } from "./Provider";
 import Sheet from "./Sheet";
 
-/** Create or edit a project (name, icon, colour): the person's own, or a group's (`target`, see HabitForm). */
+/**
+ * Create or edit a project (name, icon, colour): the person's own, or a group's (`target`, see HabitForm). A new one of
+ * the person's own starts with a choice: an ordinary project, or a strategic goal («هدف استراتيجي», see goals/GoalForm).
+ */
 export default function ProjectForm({
   open,
   onClose,
@@ -23,9 +28,32 @@ export default function ProjectForm({
   onSaved?: (id: string) => void;
   target?: FormTarget;
 }) {
+  const [kind, setKind] = useState<"project" | "goal" | null>(null);
+  const close = () => {
+    setKind(null);
+    onClose();
+  };
+  const chosen = project ? (project.kind === "goal" && project.goal ? "goal" : "project") : target ? "project" : kind;
+  const title = project ? (chosen === "goal" ? t.goal.editTitle : t.project.editTitle) : chosen === "goal" ? t.goal.newTitle : chosen ? t.project.newTitle : t.goal.kindTitle;
   return (
-    <Sheet open={open} onClose={onClose} title={project ? t.project.editTitle : t.project.newTitle}>
-      {open && <Form project={project} onClose={onClose} onSaved={onSaved} target={target} />}
+    <Sheet open={open} onClose={close} title={title} wide={chosen === "goal"}>
+      {open && !chosen && (
+        <div className="grid gap-3" role="radiogroup" aria-label={t.goal.kindTitle}>
+          {(["project", "goal"] as const).map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={false} className="m-option flex items-center gap-3 p-4 text-start" onClick={() => setKind(k)}>
+              <span className="grid size-11 shrink-0 place-items-center rounded-full" style={{ background: "var(--m-surface-2)" }}>
+                <Icon name={k === "goal" ? "target" : "projects"} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-lg font-semibold">{t.goal.kinds[k].label}</span>
+                <span className="m-hint block">{t.goal.kinds[k].hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {open && chosen === "goal" && <GoalForm project={project} onClose={close} onSaved={onSaved} />}
+      {open && chosen === "project" && <Form project={project} onClose={close} onSaved={onSaved} target={target} />}
     </Sheet>
   );
 }

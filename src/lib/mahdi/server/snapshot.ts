@@ -2,11 +2,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { HISTORY_DAYS } from "@config/mahdi";
 import { addDays, todayIn } from "../engine";
-import type { Challenge, DayTask, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
+import type { Challenge, DayTask, Milestone, NotificationSettings, Phrase, Profile, Shrine, Snapshot } from "../types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadGroupPlan } from "./group-program";
 import { DEFAULT_GOALS, loadReading, loadUsername } from "./reading";
-import { habitsFromRows, projectFromRow, shrineFromRow, type HabitRow, type LogRow, type ProjectRow, type ShrineRow, type VersionRow } from "./rows";
+import { habitsFromRows, milestoneFromRow, projectFromRow, shrineFromRow, type HabitRow, type LogRow, type MilestoneRow, type ProjectRow, type ShrineRow, type VersionRow } from "./rows";
 
 const PAGE = 1000; // Supabase returns at most 1000 rows per request
 
@@ -50,7 +50,7 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
   const today = todayIn(profile.timeZone);
   const logsFrom = addDays(today, -HISTORY_DAYS);
 
-  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups] = await Promise.all([
+  const [shrines, phrases, extra, reading, username, tasks, projects, habits, versions, logs, groups, plan] = await Promise.all([
     getShrines(),
     supabase
       .from("mahdi_phrases")
@@ -73,6 +73,8 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     ),
     // my groups' programs arrive with migration 0083; until it runs (or with no group), nothing
     loadGroupPlan(createAdminClient(), profile.userId, logsFrom).catch(() => null),
+    // strategic goals' milestones arrive with migration 0086; until it runs, none
+    loadMilestones(supabase).catch(() => ({ milestones: [], logs: {} })),
   ]);
 
   const byHabit: Snapshot["logs"] = {};
@@ -97,7 +99,22 @@ export async function loadSnapshot(supabase: SupabaseClient, profile: Profile): 
     tasks: tasks ?? [],
     tasksReady: tasks !== null,
     groupPlan: groups?.plan ?? null,
+    milestones: plan.milestones,
+    milestoneLogs: plan.logs,
   };
+}
+
+/** Strategic goals' milestones and everything logged towards them (through RLS: the user's own). */
+export async function loadMilestones(supabase: SupabaseClient): Promise<{ milestones: Milestone[]; logs: Record<string, Record<string, number>> }> {
+  const [rows, logRows] = await Promise.all([
+    selectAll<MilestoneRow>((a, b) => supabase.from("mahdi_milestones").select("*").order("sort_order").order("created_at").range(a, b)),
+    selectAll<{ milestone_id: string; log_date: string; value: number | string }>((a, b) =>
+      supabase.from("mahdi_milestone_logs").select("milestone_id,log_date,value").order("milestone_id").order("log_date").range(a, b),
+    ),
+  ]);
+  const logs: Record<string, Record<string, number>> = {};
+  for (const l of logRows) (logs[l.milestone_id] ??= {})[l.log_date] = Number(l.value);
+  return { milestones: rows.map(milestoneFromRow), logs };
 }
 
 export interface TaskRow {

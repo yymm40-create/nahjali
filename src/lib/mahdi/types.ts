@@ -1,5 +1,5 @@
 // Data shapes shared by the server, the browser store and (later) a native app.
-import type { MahdiTheme, ProjectColor } from "@config/mahdi";
+import type { MahdiTheme, MilestonePeriod, ProjectColor } from "@config/mahdi";
 import type { BookUnit, ISODate, ReadingGoals, ReadingSession, Version } from "./engine";
 import type { GroupPlan } from "./groups/program";
 
@@ -44,6 +44,49 @@ export interface Project {
   color: ProjectColor;
   sortOrder: number;
   archivedAt: string | null;
+  /** «مشروع» or «هدف استراتيجي» (migration 0086; older rows are projects) */
+  kind?: "project" | "goal";
+  /** a strategic goal's plan (only when kind is "goal") */
+  goal?: GoalPlan | null;
+}
+
+/** An obstacle between the person and their strategic goal; each one is meant to become a milestone. */
+export interface GoalObstacle {
+  id: string;
+  text: string;
+}
+
+/**
+ * A strategic goal: long-term and not counted. It is written as one statement with its purpose («لماذا»), how success
+ * will look, and a horizon; then the obstacles in the way (mental contrasting, WOOP) become counted milestones.
+ */
+export interface GoalPlan {
+  statement: string;
+  why: string;
+  vision: string;
+  /** by when (null = open) */
+  horizon: ISODate | null;
+  obstacles: GoalObstacle[];
+  /** habits under each milestone, or general habits for the whole goal */
+  habitScope: "milestone" | "general";
+  /** the last periodic review (a date) */
+  reviewedAt: ISODate | null;
+}
+
+/** «هدف مرحلي»: a counted target per period (week … two months), a road to the strategic goal. */
+export interface Milestone {
+  id: string;
+  projectId: string;
+  title: string;
+  /** the obstacle it removes, and the if-then plan («إذا … فإني …») */
+  obstacle: string;
+  plan: string;
+  target: number;
+  unit: string;
+  period: MilestonePeriod;
+  startsOn: ISODate;
+  doneAt: string | null;
+  sortOrder: number;
 }
 
 export interface Habit {
@@ -58,6 +101,10 @@ export interface Habit {
   sortOrder: number;
   /** Oldest first. */
   versions: Version[];
+  /** under a milestone of its strategic goal (null = general) */
+  milestoneId?: string | null;
+  /** a HABIT_COLORS key (null = the project's colour) */
+  color?: string | null;
 }
 
 export type PhraseContext = "home" | "day_complete" | "weekly" | "monthly" | "comeback" | "milestone" | "notification";
@@ -83,6 +130,9 @@ export interface Snapshot {
   username: string | null;
   projects: Project[];
   habits: Habit[];
+  /** strategic goals' milestones, and what was done towards each (milestoneId → date → value); empty before SQL 0086 */
+  milestones?: Milestone[];
+  milestoneLogs?: Record<string, Record<ISODate, number>>;
   /** habitId → date → value. Only days from `logsFrom` on. */
   logs: Record<string, Record<ISODate, number>>;
   logsFrom: ISODate;

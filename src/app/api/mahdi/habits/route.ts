@@ -4,7 +4,8 @@ import { addDays, todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
-import { cleanIcon, cleanLine, cleanText, parseConfig, parseDate, parseTime, requireName } from "@/lib/mahdi/server/validate";
+import { checkGoals, milestoneForHabit } from "@/lib/mahdi/server/goals";
+import { cleanIcon, cleanLine, cleanText, parseConfig, parseDate, parseHabitColor, parseTime, requireName } from "@/lib/mahdi/server/validate";
 
 /** Creates a habit with its first goal. Returns the new id and a fresh snapshot. */
 export const POST = mahdiRoute(async (req: Request) => {
@@ -22,6 +23,10 @@ export const POST = mahdiRoute(async (req: Request) => {
   const start = body.startDate === undefined ? today : parseDate(body.startDate);
   if (start < addDays(today, -5 * 366) || start > addDays(today, 366)) throw new UserError(t.errors.invalid, 400);
   const config = parseConfig(body);
+  // a colour and a milestone (SQL 0086) are set right after the habit is made
+  const extra: Record<string, unknown> = {};
+  if ("color" in body && body.color !== null) extra.color = parseHabitColor(body.color);
+  if (body.milestoneId) extra.milestone_id = await milestoneForHabit(supabase, body.milestoneId, projectId);
 
   const id = check(
     await supabase.rpc("mahdi_create_habit", {
@@ -39,5 +44,6 @@ export const POST = mahdiRoute(async (req: Request) => {
       p_days: config.days,
     }),
   ) as string;
+  if (Object.keys(extra).length) checkGoals(await supabase.from("mahdi_habits").update(extra).eq("id", id));
   return NextResponse.json({ id, snapshot: await loadSnapshot(supabase, profile) });
 });

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { versionAt, type ISODate, type Instance } from "@/lib/mahdi/engine";
 import { fmtNum, t } from "@/lib/mahdi/i18n";
-import { describeGoal, quantity } from "@/lib/mahdi/client/derive";
+import { habitColorHex } from "@config/mahdi";
+import { describeGoal, habitTint, quantity } from "@/lib/mahdi/client/derive";
 import type { Habit, Project } from "@/lib/mahdi/types";
 import Icon from "./Icon";
 import LogSheet from "./LogSheet";
@@ -28,7 +29,7 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
   const dayValue = state.logs[habit.id]?.[date] ?? 0;
   const done = inst.progress >= 1;
   const todayDone = v.measure === "check" && dayValue >= 1;
-  const color = `var(--p-${project?.color ?? "gold"})`;
+  const color = habitColorHex(habit.color) ?? `var(--p-${project?.color ?? "gold"})`;
   const weekly = inst.kind !== "day";
   const periodLabel = inst.kind === "week" ? t.home.thisWeek : inst.kind === "month" ? t.home.thisMonth : "";
 
@@ -65,7 +66,7 @@ export default function HabitRow({ habit, inst, date, project }: { habit: Habit;
         : `${t.habit.addAmount}: ${habit.name}`;
 
   return (
-    <li className={`p-${project?.color ?? "gold"} flex items-center gap-3 py-2.5`}>
+    <li className={`p-${project?.color ?? "gold"} flex items-center gap-3 py-2.5`} style={habitTint(habit)}>
       <button type="button" onClick={tap} className="m-tap" data-done={done || todayDone} aria-label={tapLabel} aria-pressed={v.measure === "check" ? todayDone : undefined}>
         <ProgressRing value={inst.progress} size={52} stroke={4} color={color}>
           {done || todayDone ? (

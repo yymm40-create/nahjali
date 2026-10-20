@@ -9,3 +9,4 @@ export * from "./compare";
 export * from "./milestones";
 export * from "./reminders";
 export * from "./reading";
+export * from "./goal-plan";

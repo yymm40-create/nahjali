@@ -4,9 +4,17 @@ import { fmtNum, joinDays, t } from "../i18n";
 import { addDays, maxDate, minDate } from "../engine";
 import type { Challenge, Habit, Membership, Phrase, PhraseContext, Project, Snapshot } from "../types";
 import type { GroupProject } from "../groups/program";
+import type { CSSProperties } from "react";
+import { habitColorHex } from "@config/mahdi";
 
 export const toItems = (habits: Habit[], logs: Snapshot["logs"]): Item[] =>
   habits.map((h) => ({ id: h.id, projectId: h.projectId, versions: h.versions, logs: logs[h.id] ?? {} }));
+
+/** A habit's own colour as `--pc` (inline, so it wins over the project's colour class); undefined = the project's. */
+export function habitTint(h: Pick<Habit, "color"> | null | undefined): CSSProperties | undefined {
+  const hex = habitColorHex(h?.color);
+  return hex ? ({ "--pc": hex } as CSSProperties) : undefined;
+}
 
 /** The goal in effect today, or the first one if the habit starts later. */
 export function currentVersion(h: Habit, today: ISODate): Version | null {

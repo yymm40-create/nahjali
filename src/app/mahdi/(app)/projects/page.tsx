@@ -66,7 +66,9 @@ export default function ProjectsPage() {
                     {p.icon && <span aria-hidden="true">{p.icon} </span>}
                     {p.name}
                   </span>
+                  {p.kind === "goal" && <span className="m-chip shrink-0 px-2 text-xs">{t.goal.badge}</span>}
                 </span>
+                {p.kind === "goal" && p.goal?.statement && <span className="m-muted line-clamp-2 block text-sm">{p.goal.statement}</span>}
                 <span className="m-num block text-sm m-muted">
                   {t.units.habits(habitCount(p.id))} · {t.project.today} {fmtPct(day?.score ?? null)} · {t.project.week} {fmtPct(week.score)}
                 </span>

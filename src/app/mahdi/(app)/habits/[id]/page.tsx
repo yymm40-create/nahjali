@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { addDays, buildTimeline, itemStreak, startOfWeek, summarize, weekGoals, type HabitState } from "@/lib/mahdi/engine";
 import { fmtDate, fmtNum, fmtPct, t, weekdayName } from "@/lib/mahdi/i18n";
-import { currentVersion, describeGoal, habitStatus } from "@/lib/mahdi/client/derive";
+import { currentVersion, describeGoal, habitStatus, habitTint } from "@/lib/mahdi/client/derive";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import HabitForm from "@/components/mahdi/HabitForm";
 import Icon from "@/components/mahdi/Icon";
@@ -54,7 +54,7 @@ export default function HabitPage() {
   }
 
   return (
-    <div className={`p-${project?.color ?? "gold"} space-y-6`}>
+    <div className={`p-${project?.color ?? "gold"} space-y-6`} style={habitTint(habit)}>
       <header className="space-y-2">
         <Link href={project ? `/mahdi/projects/${project.id}` : "/mahdi/projects"} className="m-btn m-btn-quiet m-btn-sm -ms-3">
           <Icon name="chevronRight" size={18} /> {project?.name ?? t.nav.projects}

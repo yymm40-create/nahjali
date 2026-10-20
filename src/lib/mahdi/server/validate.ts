@@ -1,8 +1,9 @@
 // SERVER ONLY. Checks every value that comes from the browser before it reaches the database
 // (the database checks again with its own constraints).
-import { MAHDI_LIMITS, MAHDI_THEMES, PROJECT_COLORS, type MahdiTheme, type ProjectColor } from "@config/mahdi";
+import { GOAL_LIMITS, HABIT_COLORS, MAHDI_LIMITS, MAHDI_THEMES, MILESTONE_PERIODS, PROJECT_COLORS, type MahdiTheme, type MilestonePeriod, type ProjectColor } from "@config/mahdi";
 import { isISODate, isTimeZone, type Freq, type ISODate, type Measure } from "../engine";
 import { t } from "../i18n";
+import type { GoalPlan } from "../types";
 import { UserError } from "./api";
 
 const invalid = (msg: string = t.errors.invalid) => new UserError(msg, 400);
@@ -116,5 +117,42 @@ export function parseConfig(b: Record<string, unknown>): HabitConfig {
 export function parseValue(v: unknown): number {
   const n = Number(v);
   if (!Number.isFinite(n) || n < 0 || n > MAHDI_LIMITS.maxValue) throw invalid();
+  return Math.round(n * 100) / 100;
+}
+
+/** A habit's colour key, or null for the project's colour. */
+export function parseHabitColor(v: unknown): string | null {
+  if (v === null || v === "" || v === undefined) return null;
+  return oneOf(v, HABIT_COLORS.map((c) => c.key));
+}
+
+/** A strategic goal's plan (see GoalPlan). The statement is required; the rest may stay empty. */
+export function parseGoal(v: unknown): GoalPlan {
+  if (!v || typeof v !== "object") throw invalid();
+  const g = v as Record<string, unknown>;
+  const statement = requireName(g.statement, GOAL_LIMITS.statementMax);
+  const optionalDate = (d: unknown) => (d === null || d === undefined || d === "" ? null : parseDate(d));
+  const raw = Array.isArray(g.obstacles) ? g.obstacles.slice(0, GOAL_LIMITS.maxObstacles) : [];
+  const obstacles = raw
+    .map((o) => (o && typeof o === "object" ? (o as Record<string, unknown>) : {}))
+    .map((o) => ({ id: cleanLine(o.id, 40).replace(/[^\w-]/g, ""), text: cleanLine(o.text, GOAL_LIMITS.obstacleMax) }))
+    .filter((o) => o.id && o.text);
+  return {
+    statement,
+    why: cleanText(g.why, GOAL_LIMITS.whyMax),
+    vision: cleanText(g.vision, GOAL_LIMITS.visionMax),
+    horizon: optionalDate(g.horizon),
+    obstacles,
+    habitScope: g.habitScope === "general" ? "general" : "milestone",
+    reviewedAt: optionalDate(g.reviewedAt),
+  };
+}
+
+export const parsePeriod = (v: unknown): MilestonePeriod => oneOf(v, MILESTONE_PERIODS);
+
+/** A milestone's counted target. */
+export function parseMilestoneTarget(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  if (!Number.isFinite(n) || n <= 0 || n > MAHDI_LIMITS.maxValue) throw invalid();
   return Math.round(n * 100) / 100;
 }
