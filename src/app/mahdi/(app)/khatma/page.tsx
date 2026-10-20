@@ -7,7 +7,10 @@ import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import PartPicker, { partText, type Part } from "@/components/mahdi/khatma/PartPicker";
 import { useMyKhatma, type MyKhatma } from "@/components/mahdi/khatma/useMyKhatma";
-import { dailyCount, khatmaStats, unitText } from "@/lib/mahdi/khatma/mine";
+import FreeReading from "@/components/mahdi/khatma/FreeReading";
+import { TimeHabitLink, useReaderState } from "@/components/mahdi/khatma/ReaderClock";
+import { dailyCount, isCarried, khatmaStats, unitText } from "@/lib/mahdi/khatma/mine";
+import { minutesText, portionsBefore, unreadOf, wholeMinutes } from "@/lib/mahdi/khatma/reader";
 import { DIVISION_LABEL, fullRange, isFull, portionQuarters, portionSummary, portionTitle, rangeSize, type Division, type PortionRange } from "@/lib/mahdi/khatma/portions";
 
 const PACES = [
@@ -37,6 +40,8 @@ export default function MyKhatmaPage() {
   return (
     <div className="space-y-6">
       {cur?.status === "open" ? <Open k={k} /> : <Start k={k} last={cur ?? null} />}
+      <FreeReading compact />
+      <ReadingTime />
       <History items={[...(cur && cur.status !== "open" ? [cur] : []), ...(data.history ?? [])]} />
     </div>
   );
@@ -88,6 +93,9 @@ function Start({ k, last }: { k: K; last: MyKhatma | null }) {
   const [days, setDays] = useState(last?.days ?? 30);
   const [to, setTo] = useState(last?.dedicatedTo ?? "");
   const [soul, setSoul] = useState(last?.forSoulOf ?? "");
+  const [reached, setReached] = useState(0);
+  // a different stretch or cut starts from its beginning
+  const pickPart = (p: Part) => (setPart(p), setReached(0));
   return (
     <section className="space-y-4">
       {last?.status === "done" && (
@@ -102,10 +110,20 @@ function Start({ k, last }: { k: K; last: MyKhatma | null }) {
           <h2 className="text-lg font-semibold">{last ? "ابدأ ختمة جديدة" : "ابدأ ختمتك"}</h2>
           <p className="text-sm m-muted">القرآن كاملًا أو جزء معيّن منه، بالصفحات أو الأجزاء أو الأحزاب أو أنصافها أو أرباعها. تتابع وين وصلت، وكل نصيب تقرؤه ينضاف لعادتك في «لأجل المهدي».</p>
         </div>
-        <PartPicker value={part} onChange={setPart} />
-        <Pace days={days} setDays={setDays} total={rangeSize(part.range)} unit={part.unit} />
+        <PartPicker value={part} onChange={pickPart} />
+        <ReachedPicker unit={part.unit} range={part.range} value={reached} onChange={setReached} />
+        <Pace days={days} setDays={setDays} total={rangeSize(part.range) - Math.max(0, reached - part.range.from)} unit={part.unit} />
         <Dedication to={to} setTo={setTo} soul={soul} setSoul={setSoul} optional />
-        <button type="button" className="m-btn m-btn-primary w-full" disabled={k.busy} onClick={() => void k.post({ action: "start", ...rangeBody(part), days, dedicatedTo: to, forSoulOf: soul }, "بسم الله، بدأت ختمتك.")}>
+        <button
+          type="button"
+          className="m-btn m-btn-primary w-full"
+          disabled={k.busy}
+          onClick={async () => {
+            const r = await k.post({ action: "start", ...rangeBody(part), days, dedicatedTo: to, forSoulOf: soul }, "بسم الله، بدأت ختمتك.");
+            // where they had reached: everything before it counts as read
+            if (r && reached > 0) await k.carry(portionsBefore(part.range, reached));
+          }}
+        >
           📖 ابدأ
         </button>
       </div>
@@ -119,6 +137,12 @@ function Open({ k }: { k: K }) {
   const s = useMemo(() => khatmaStats(cur.reads, cur.startedOn, cur.days, today, cur.range), [cur, today]);
   const readSet = useMemo(() => new Set(cur.reads.map((r) => r.quarter)), [cur.reads]);
   const [stop, setStop] = useState(false);
+  const [reached, setReached] = useState(0);
+  const [edit, setEdit] = useState(false);
+  const [picked, setPicked] = useState<Set<number>>(() => new Set());
+  const carriedSet = useMemo(() => new Set(cur.reads.filter((r) => isCarried(r, cur.startedOn)).map((r) => r.quarter)), [cur]);
+  const pickedUnread = [...picked].filter((n) => !readSet.has(n));
+  const pickedRead = [...picked].filter((n) => readSet.has(n));
   const pct = Math.round((s.read / s.total) * 100);
   const next = s.next ? portionSummary(cur.unit, s.next) : null;
   const u = cur.unit;
@@ -166,7 +190,56 @@ function Open({ k }: { k: K }) {
 
       <HabitLink k={k} />
 
-      <KhatmaMap unit={u} range={cur.range} read={readSet} next={s.next} />
+      <section className="m-card space-y-3 p-4" aria-labelledby="reached">
+        <div>
+          <h2 id="reached" className="font-semibold">📍 وين وصلت؟</h2>
+          <p className="text-sm m-muted">إذا كنت خلّصت جزء من القرآن قبل، حدّد وين وصلت أو اللي خلّصته، فينحسب مقروء من غير ما يدخل في ورد اليوم ولا عادتك.{s.carried > 0 ? ` (حاليًا ${s.carried} ${DIVISION_LABEL[u].one} مسجّلة خلّصتها قبل)` : ""}</p>
+        </div>
+        <ReachedPicker unit={u} range={cur.range} value={reached} onChange={setReached} />
+        <button
+          type="button"
+          className="m-btn m-btn-primary w-full"
+          disabled={k.busy || reached === 0 || unreadOf(portionsBefore(cur.range, reached), readSet).length === 0}
+          onClick={async () => {
+            await k.carry(unreadOf(portionsBefore(cur.range, reached), readSet));
+            setReached(0);
+          }}
+        >
+          خلّصت كل اللي قبله
+        </button>
+        <button type="button" className="m-btn m-btn-ghost w-full" aria-pressed={edit} onClick={() => (setEdit((v) => !v), setPicked(new Set()))}>
+          {edit ? "إغلاق التحديد" : `✋ أو حدّد ${DIVISION_LABEL[u].many} اللي خلّصتها على الخريطة`}
+        </button>
+      </section>
+
+      <KhatmaMap unit={u} range={cur.range} read={readSet} carried={carriedSet} next={s.next} edit={edit} picked={picked} onPick={(n) => setPicked((p) => { const x = new Set(p); if (x.has(n)) x.delete(n); else x.add(n); return x; })} />
+      {edit && (
+        <div className="m-card sticky bottom-24 z-10 space-y-2 p-3 lg:bottom-4">
+          <p className="m-num text-sm">محدّد {picked.size}</p>
+          <button
+            type="button"
+            className="m-btn m-btn-primary w-full"
+            disabled={k.busy || pickedUnread.length === 0}
+            onClick={async () => {
+              await k.carry(pickedUnread);
+              setPicked(new Set());
+            }}
+          >
+            سجّل اللي ما قرأته منها: خلّصتها ({pickedUnread.length})
+          </button>
+          <button
+            type="button"
+            className="m-btn m-btn-ghost w-full"
+            disabled={k.busy || pickedRead.length === 0}
+            onClick={async () => {
+              await k.unreadMany(pickedRead);
+              setPicked(new Set());
+            }}
+          >
+            أرجع المقروء منها غير مقروء ({pickedRead.length})
+          </button>
+        </div>
+      )}
 
       <ConfirmSheet
         open={stop}
@@ -181,7 +254,7 @@ function Open({ k }: { k: K }) {
 }
 
 /** Every portion of the khatma as a square under its juz (green = read, the gold border = where to go on). */
-function KhatmaMap({ unit, range, read, next }: { unit: Division; range: PortionRange; read: Set<number>; next: number | null }) {
+function KhatmaMap({ unit, range, read, carried, next, edit, picked, onPick }: { unit: Division; range: PortionRange; read: Set<number>; carried: Set<number>; next: number | null; edit: boolean; picked: Set<number>; onPick: (n: number) => void }) {
   const groups = useMemo(() => {
     const byJuz = new Map<number, number[]>();
     for (let n = range.from; n <= range.to; n++) {
@@ -194,29 +267,33 @@ function KhatmaMap({ unit, range, read, next }: { unit: Division; range: Portion
   return (
     <section className="space-y-2" aria-labelledby="map">
       <h2 id="map" className="text-lg font-semibold">خريطة الختمة</h2>
-      <p className="text-sm m-muted">كل مربع {DIVISION_LABEL[unit].one}؛ الأخضر قرأته. اضغط على أي واحد تفتحه.</p>
+      <p className="text-sm m-muted">كل مربع {DIVISION_LABEL[unit].one}؛ الأخضر قرأته (الباهت اللي خلّصته قبل). {edit ? "اضغط على اللي تبي تحدّده." : "اضغط على أي واحد تفتحه."}</p>
       <ol className="grid gap-1.5">
         {groups.map(([juz, ns]) => (
           <li key={juz} className="flex items-start gap-2">
             {juz > 0 && <span className="m-num w-16 shrink-0 pt-1.5 text-xs font-semibold">الجزء {juz}</span>}
             <span className="flex flex-1 flex-wrap gap-1">
-              {ns.map((n) => (
-                <Link
-                  key={n}
-                  href={`/mahdi/khatma/read/${n}`}
-                  aria-label={`${portionTitle(unit, n)}${read.has(n) ? " · قرأته" : ""}`}
-                  title={portionTitle(unit, n)}
-                  className={`m-num grid h-7 place-items-center rounded-md border text-[10px] ${labelled ? "min-w-8 px-1" : "w-7"}`}
-                  style={{
-                    background: read.has(n) ? GREEN : "var(--m-surface-2)",
-                    color: read.has(n) ? "#fff" : undefined,
-                    borderColor: n === next ? "var(--m-gold)" : read.has(n) ? GREEN : "var(--m-line)",
-                    borderWidth: n === next ? 2 : 1,
-                  }}
-                >
-                  {labelled ? n : ""}
-                </Link>
-              ))}
+              {ns.map((n) => {
+                const style = {
+                  background: read.has(n) ? GREEN : "var(--m-surface-2)",
+                  color: read.has(n) ? "#fff" : undefined,
+                  opacity: carried.has(n) && !picked.has(n) ? 0.65 : 1,
+                  borderColor: picked.has(n) ? "var(--m-ink)" : n === next ? "var(--m-gold)" : read.has(n) ? GREEN : "var(--m-line)",
+                  borderWidth: picked.has(n) || n === next ? 2 : 1,
+                  boxShadow: picked.has(n) ? "0 0 0 2px color-mix(in srgb, var(--m-gold) 60%, transparent)" : undefined,
+                } as React.CSSProperties;
+                const cls = `m-num grid h-7 place-items-center rounded-md border text-[10px] ${labelled ? "min-w-8 px-1" : "w-7"}`;
+                const label = `${portionTitle(unit, n)}${read.has(n) ? (carried.has(n) ? " · خلّصتها قبل" : " · قرأته") : ""}`;
+                return edit ? (
+                  <button key={n} type="button" aria-pressed={picked.has(n)} aria-label={label} title={label} className={cls} style={style} onClick={() => onPick(n)}>
+                    {labelled ? n : picked.has(n) ? "✓" : ""}
+                  </button>
+                ) : (
+                  <Link key={n} href={`/mahdi/khatma/read/${n}`} aria-label={label} title={label} className={cls} style={style}>
+                    {labelled ? n : ""}
+                  </Link>
+                );
+              })}
             </span>
             <span className="m-num w-10 shrink-0 pt-1.5 text-end text-[11px] m-muted">{ns.filter((n) => read.has(n)).length}/{ns.length}</span>
           </li>
@@ -337,6 +414,38 @@ function Settings({ k, onStop }: { k: K; onStop: () => void }) {
         <button type="button" className="m-btn m-btn-danger w-full" onClick={onStop}>أنهِ هذه الختمة</button>
       </form>
     </details>
+  );
+}
+
+/** «وين وصلت؟»: where the person is in the stretch (everything before it is already finished). 0 = from the start. */
+function ReachedPicker({ unit, range, value, onChange }: { unit: Division; range: PortionRange; value: number; onChange: (n: number) => void }) {
+  const options = useMemo(() => Array.from({ length: range.to - range.from }, (_, i) => range.from + 1 + i), [range]);
+  const label = (n: number) => {
+    const s = portionSummary(unit, n);
+    return `${portionTitle(unit, n)} — ${s.opening ? `«${s.opening}» · ` : ""}${s.range}`;
+  };
+  return (
+    <label className="block space-y-1">
+      <span className="m-label">📍 وين وصلت في القرآن؟</span>
+      <select className="m-field" value={value} onChange={(e) => onChange(Number(e.target.value))} aria-label="وين وصلت">
+        <option value={0}>من البداية (ما خلّصت شي)</option>
+        {options.map((n) => <option key={n} value={n}>وصلت إلى {label(n)}</option>)}
+      </select>
+      {value > 0 && <span className="m-hint block">كل اللي قبله يُحسب مقروء، وما ينحسب في ورد اليوم ولا في عادتك.</span>}
+    </label>
+  );
+}
+
+/** The time read today, and the habit it fills. */
+function ReadingTime() {
+  const { state, setHabit } = useReaderState();
+  if (!state) return null;
+  return (
+    <section className="m-card space-y-2 p-4" aria-labelledby="read-time">
+      <h2 id="read-time" className="font-semibold">⏱ وقت القراءة</h2>
+      <p className="m-num text-sm m-muted">قرأت اليوم {minutesText(wholeMinutes(state.todaySeconds))}. العدّاد يشتغل فوق القارئ، ويحسب وقتك وأنت فاتح الصفحة.</p>
+      <TimeHabitLink reader={state} onChange={(id) => void setHabit(id)} />
+    </section>
   );
 }
 
