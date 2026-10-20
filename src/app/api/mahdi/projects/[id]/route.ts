@@ -4,11 +4,12 @@ import { todayIn } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
-import { cleanIcon, parseBool, parseColor, requireName } from "@/lib/mahdi/server/validate";
+import { checkGoals } from "@/lib/mahdi/server/goals";
+import { cleanIcon, parseBool, parseColor, parseGoal, requireName } from "@/lib/mahdi/server/validate";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Renames, recolours, archives or brings back a project. */
+/** Renames, recolours, archives or brings back a project; edits a strategic goal's plan (`goal`). */
 export const PATCH = mahdiRoute(async (req: Request, { params }: Ctx) => {
   const { supabase, profile } = await requireProfile(req);
   const id = requireId((await params).id);
@@ -23,6 +24,7 @@ export const PATCH = mahdiRoute(async (req: Request, { params }: Ctx) => {
   if ("icon" in body) fields.icon = cleanIcon(body.icon);
   if ("color" in body) fields.color = parseColor(body.color);
   if (Object.keys(fields).length) check(await supabase.from("mahdi_projects").update(fields).eq("id", id));
+  if ("goal" in body) checkGoals(await supabase.from("mahdi_projects").update({ goal: parseGoal(body.goal) }).eq("id", id).eq("kind", "goal"));
 
   if ("archived" in body) {
     const archive = parseBool(body.archived);

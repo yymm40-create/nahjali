@@ -6,6 +6,7 @@ import type { Freq, Measure } from "@/lib/mahdi/engine";
 import { orderedWeekdays, t } from "@/lib/mahdi/i18n";
 import { bySort, currentVersion, parseNumberInput } from "@/lib/mahdi/client/derive";
 import type { Habit, Project } from "@/lib/mahdi/types";
+import HabitColorPicker from "./HabitColorPicker";
 import Icon from "./Icon";
 import IconPicker from "./IconPicker";
 import { useMahdi } from "./Provider";
@@ -21,12 +22,16 @@ export interface FormTarget {
   save: (body: Record<string, unknown>, id?: string) => Promise<string>;
 }
 
-/** Create or edit a habit. The basics come first; category, start date, reminder and notes are under "more". */
+/**
+ * Create or edit a habit. The basics come first; category, start date, reminder and notes are under "more". The
+ * person's own habits also take a colour, and under a strategic goal the milestone they serve (`milestoneId`).
+ */
 export default function HabitForm({
   open,
   onClose,
   habit,
   projectId,
+  milestoneId,
   onSaved,
   target,
 }: {
@@ -34,12 +39,13 @@ export default function HabitForm({
   onClose: () => void;
   habit?: Habit;
   projectId?: string;
+  milestoneId?: string;
   onSaved?: (id: string) => void;
   target?: FormTarget;
 }) {
   return (
     <Sheet open={open} onClose={onClose} title={habit ? t.habit.editTitle : t.habit.newTitle} wide>
-      {open && <Form habit={habit} projectId={projectId} onClose={onClose} onSaved={onSaved} target={target} />}
+      {open && <Form habit={habit} projectId={projectId} milestoneId={milestoneId} onClose={onClose} onSaved={onSaved} target={target} />}
     </Sheet>
   );
 }
@@ -70,7 +76,21 @@ function Stepper({ value, onChange, min, max, label }: { value: number; onChange
   );
 }
 
-function Form({ habit, projectId, onClose, onSaved, target }: { habit?: Habit; projectId?: string; onClose: () => void; onSaved?: (id: string) => void; target?: FormTarget }) {
+function Form({
+  habit,
+  projectId,
+  milestoneId,
+  onClose,
+  onSaved,
+  target,
+}: {
+  habit?: Habit;
+  projectId?: string;
+  milestoneId?: string;
+  onClose: () => void;
+  onSaved?: (id: string) => void;
+  target?: FormTarget;
+}) {
   const { store, state, toast } = useMahdi();
   const { today } = state;
   const weekStart = state.snap.profile.weekStart;
@@ -94,8 +114,23 @@ function Form({ habit, projectId, onClose, onSaved, target }: { habit?: Habit; p
   const [startDate, setStartDate] = useState(habit?.versions[0]?.effectiveFrom ?? today);
   const [reminder, setReminder] = useState(habit?.reminderTime ?? "");
   const [notes, setNotes] = useState(habit?.notes ?? "");
+  const [color, setColor] = useState<string | null>(habit?.color ?? null);
+  const [milestone, setMilestone] = useState<string>(habit?.milestoneId ?? milestoneId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // under a strategic goal whose habits go under its milestones, the habit picks one (or stays general)
+  const goal = target ? null : state.snap.projects.find((p) => p.id === project && p.kind === "goal" && p.goal);
+  const milestones = goal && goal.goal?.habitScope === "milestone" ? (state.snap.milestones ?? []).filter((m) => m.projectId === goal.id && !m.doneAt) : [];
+  const chosenMilestone = milestones.some((m) => m.id === milestone) ? milestone : "";
+  // only what changed is sent, so editing a habit works before SQL 0086 too
+  const planFields = () => {
+    const out: Record<string, unknown> = {};
+    if (target) return out;
+    if (color !== (habit?.color ?? null)) out.color = color;
+    if ((chosenMilestone || null) !== (habit?.milestoneId ?? null) && (chosenMilestone || habit?.milestoneId)) out.milestoneId = chosenMilestone || null;
+    return out;
+  };
 
   const periodic = freq === "weekly" || freq === "monthly";
   const finalUnit = (customUnit || unit).trim();
@@ -134,13 +169,14 @@ function Form({ habit, projectId, onClose, onSaved, target }: { habit?: Habit; p
       } else if (habit) {
         await store.mutate(`/api/mahdi/habits/${habit.id}`, "PATCH", {
           ...details,
+          ...planFields(),
           ...(project !== habit.projectId ? { projectId: project } : {}),
           ...(configChanged ? { config: cfg } : {}),
         });
         toast(t.common.saved);
         onSaved?.(habit.id);
       } else {
-        const res = await store.mutate<{ id: string }>("/api/mahdi/habits", "POST", { ...details, ...cfg, projectId: project, startDate });
+        const res = await store.mutate<{ id: string }>("/api/mahdi/habits", "POST", { ...details, ...cfg, ...planFields(), projectId: project, startDate });
         toast(t.common.saved);
         onSaved?.(res.id);
       }
@@ -173,6 +209,22 @@ function Form({ habit, projectId, onClose, onSaved, target }: { habit?: Habit; p
           </select>
         </label>
       )}
+
+      {milestones.length > 0 && (
+        <label className="block">
+          <span className="m-label">{t.milestone.pick}</span>
+          <select className="m-field" value={chosenMilestone} onChange={(e) => setMilestone(e.target.value)}>
+            <option value="">{t.milestone.general}</option>
+            {milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {!target && <HabitColorPicker value={color} onChange={setColor} />}
 
       <fieldset>
         <legend className="m-label">{t.habit.measureTitle}</legend>

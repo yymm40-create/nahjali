@@ -4,7 +4,7 @@ import { isMahdiAsk, MAHDI_BRIEF, MAHDI_AUDIENCES, MAHDI_FEATURES, MAHDI_CONTENT
 describe("what محمد باقر knows about «لأجل المهدي»", () => {
   it("covers every part of the app", () => {
     const ids = MAHDI_FEATURES.map((f) => f.id);
-    for (const id of ["habits", "today", "progress", "rewards", "reading", "health", "challenges", "community", "groups", "family", "share", "notify", "look", "assistant"]) expect(ids).toContain(id);
+    for (const id of ["habits", "today", "progress", "rewards", "reading", "health", "challenges", "community", "groups", "family", "share", "notify", "look", "assistant", "goals"]) expect(ids).toContain(id);
     for (const f of MAHDI_FEATURES) {
       expect(f.forWho.length, f.id).toBeGreaterThan(3);
       expect(f.problem.length, f.id).toBeGreaterThan(3);

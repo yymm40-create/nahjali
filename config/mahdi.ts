@@ -84,6 +84,56 @@ export const DEFAULT_SHRINE = "imam-ali";
 export const PROJECT_COLORS = ["gold", "emerald", "lapis", "turquoise", "garnet", "amber", "olive", "stone"] as const;
 export type ProjectColor = (typeof PROJECT_COLORS)[number];
 
+/**
+ * Habit colours: the person picks one per habit and it shows on the habit's tick, bar and dot (keys stored in the
+ * database; null = the project's colour). Mid tones, so each one reads on light and dark designs.
+ */
+export const HABIT_COLORS = [
+  { key: "ruby", name: "ياقوتي", hex: "#e5484d" },
+  { key: "rose", name: "وردي", hex: "#e93d82" },
+  { key: "pink", name: "زهري", hex: "#d6409f" },
+  { key: "plum", name: "برقوقي", hex: "#ab4aba" },
+  { key: "purple", name: "بنفسجي", hex: "#8e4ec6" },
+  { key: "violet", name: "أرجواني", hex: "#6e56cf" },
+  { key: "indigo", name: "نيلي", hex: "#3e63dd" },
+  { key: "blue", name: "أزرق", hex: "#0b84f3" },
+  { key: "sky", name: "سماوي", hex: "#29a9e0" },
+  { key: "cyan", name: "فيروزي", hex: "#00a2c7" },
+  { key: "teal", name: "أخضر مزرق", hex: "#12a594" },
+  { key: "jade", name: "يشمي", hex: "#29a383" },
+  { key: "green", name: "أخضر", hex: "#30a46c" },
+  { key: "grass", name: "عشبي", hex: "#46a758" },
+  { key: "lime", name: "ليموني", hex: "#8db32a" },
+  { key: "olive", name: "زيتوني", hex: "#8a8f3c" },
+  { key: "yellow", name: "أصفر", hex: "#e2b203" },
+  { key: "amber", name: "كهرماني", hex: "#f5a524" },
+  { key: "orange", name: "برتقالي", hex: "#f76b15" },
+  { key: "coral", name: "مرجاني", hex: "#e54d2e" },
+  { key: "brown", name: "بني", hex: "#a07553" },
+  { key: "bronze", name: "برونزي", hex: "#a18072" },
+  { key: "gold", name: "ذهبي", hex: "#c9a227" },
+  { key: "slate", name: "رصاصي", hex: "#6b7a90" },
+] as const;
+export type HabitColor = (typeof HABIT_COLORS)[number]["key"];
+export const habitColorHex = (key: string | null | undefined) => HABIT_COLORS.find((c) => c.key === key)?.hex ?? null;
+
+/** A milestone («هدف مرحلي») is measured over one of these periods, again and again. */
+export const MILESTONE_PERIODS = ["week", "2weeks", "month", "2months"] as const;
+export type MilestonePeriod = (typeof MILESTONE_PERIODS)[number];
+
+/** Strategic goals: research says few at once (OKR/Hoshin: 3–5; we advise 3) and a handful of milestones each. */
+export const GOAL_LIMITS = {
+  advisedGoals: 3,
+  statementMax: 300,
+  whyMax: 400,
+  visionMax: 400,
+  obstacleMax: 200,
+  maxObstacles: 12,
+  milestoneTitleMax: 80,
+  planMax: 200,
+  maxMilestones: 12,
+};
+
 /** Suggested names in onboarding and in "new project" (the user can type any name). */
 export const PROJECT_SUGGESTIONS = [
   { name: "العبادة", icon: "📿" },

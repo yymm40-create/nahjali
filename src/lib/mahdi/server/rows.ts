@@ -1,7 +1,7 @@
 // Database rows (snake_case) → app shapes (camelCase).
-import type { MahdiTheme, ProjectColor } from "@config/mahdi";
+import type { MahdiTheme, MilestonePeriod, ProjectColor } from "@config/mahdi";
 import type { Freq, HabitState, Measure, Version } from "../engine";
-import type { Habit, Profile, Project, Shrine } from "../types";
+import type { GoalPlan, Habit, Milestone, Profile, Project, Shrine } from "../types";
 import { publicFileUrl } from "@/lib/storage/public";
 
 export interface ShrineRow {
@@ -42,6 +42,23 @@ export interface ProjectRow {
   color: ProjectColor;
   sort_order: number;
   archived_at: string | null;
+  /** migration 0086 */
+  kind?: "project" | "goal" | null;
+  goal?: unknown;
+}
+export interface MilestoneRow {
+  id: string;
+  user_id: string;
+  project_id: string;
+  title: string;
+  obstacle: string;
+  plan: string;
+  target: number | string;
+  unit: string;
+  period: MilestonePeriod;
+  starts_on: string;
+  done_at: string | null;
+  sort_order: number;
 }
 export interface HabitRow {
   id: string;
@@ -53,6 +70,9 @@ export interface HabitRow {
   notes: string;
   reminder_time: string | null;
   sort_order: number;
+  /** migration 0086 */
+  milestone_id?: string | null;
+  color?: string | null;
 }
 export interface VersionRow {
   habit_id: string;
@@ -111,6 +131,43 @@ export const projectFromRow = (r: ProjectRow): Project => ({
   color: r.color,
   sortOrder: r.sort_order,
   archivedAt: r.archived_at,
+  kind: r.kind === "goal" ? "goal" : "project",
+  goal: r.kind === "goal" ? goalFromJson(r.goal) : null,
+});
+
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+const date = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+
+/** A stored goal plan, read defensively (it is free JSON). */
+export function goalFromJson(v: unknown): GoalPlan {
+  const g = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  const obstacles = Array.isArray(g.obstacles) ? g.obstacles : [];
+  return {
+    statement: str(g.statement),
+    why: str(g.why),
+    vision: str(g.vision),
+    horizon: date(g.horizon),
+    obstacles: obstacles
+      .filter((o): o is Record<string, unknown> => Boolean(o) && typeof o === "object")
+      .map((o) => ({ id: str(o.id), text: str(o.text) }))
+      .filter((o) => o.id && o.text),
+    habitScope: g.habitScope === "general" ? "general" : "milestone",
+    reviewedAt: date(g.reviewedAt),
+  };
+}
+
+export const milestoneFromRow = (r: MilestoneRow): Milestone => ({
+  id: r.id,
+  projectId: r.project_id,
+  title: r.title,
+  obstacle: r.obstacle,
+  plan: r.plan,
+  target: Number(r.target),
+  unit: r.unit,
+  period: r.period,
+  startsOn: r.starts_on,
+  doneAt: r.done_at,
+  sortOrder: r.sort_order,
 });
 
 export const versionFromRow = (r: VersionRow): Version => ({
@@ -140,5 +197,7 @@ export function habitsFromRows(habits: HabitRow[], versions: VersionRow[]): Habi
     reminderTime: h.reminder_time ? h.reminder_time.slice(0, 5) : null,
     sortOrder: h.sort_order,
     versions: byHabit.get(h.id) ?? [],
+    milestoneId: h.milestone_id ?? null,
+    color: h.color ?? null,
   }));
 }
