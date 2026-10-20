@@ -16,6 +16,7 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scene/contract";
 import { storeOf } from "./lab-tabs";
+import { LabSetupError, onDeviceOnly } from "./footage-check";
 import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGroup } from "@config/editor/lab-options";
@@ -27,7 +28,7 @@ import { mixSoundtrack, SoundPreview } from "./lab-sound";
 import { makeMusicAsset } from "./make";
 import { drawDemo, STUDIO, type Swatch } from "./lab-demos";
 import type { EditorAsset } from "./types";
-import { checkFootage, footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, FootageUnavailable, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
+import { checkFootage, footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
 import { footageLines, type FootageFrame, type FootageMeta } from "@/lib/editor/scene/footage";
 import "./motion-lab.css";
 
@@ -119,6 +120,23 @@ const libraryLinks = () =>
       return new Map<string, string>();
     }));
 const key = (id: string) => `jw-lab-${id}`;
+/** The library copy of a video that lives only on the computer, kept so it is never put up twice. */
+const readServerCopy = (projectId: string, localAssetId: string): string => {
+  try {
+    const v = JSON.parse(localStorage.getItem(`jw-lab-up-${projectId}`) ?? "{}") as Record<string, unknown>;
+    return typeof v[localAssetId] === "string" ? (v[localAssetId] as string) : "";
+  } catch {
+    return "";
+  }
+};
+const saveServerCopy = (projectId: string, localAssetId: string, copyId: string) => {
+  try {
+    const v = JSON.parse(localStorage.getItem(`jw-lab-up-${projectId}`) ?? "{}") as Record<string, unknown>;
+    localStorage.setItem(`jw-lab-up-${projectId}`, JSON.stringify({ ...v, [localAssetId]: copyId }));
+  } catch {
+    /* not kept */
+  }
+};
 
 /** A short fingerprint of a text (to tell whether a kept half-written program belongs to this very request). */
 const hashOf = (s: string) => {
@@ -474,14 +492,46 @@ export default function MotionLab({
     if (footVoice.current?.key !== sourceKey) footVoice.current = { key: sourceKey, parts: await footageSound(sources) };
     return footVoice.current.parts;
   };
+  /** The video kept only on the computer, put up to the library (once) so the server can work on it; returns its asset's id. */
+  const serverCopy = async (s: FootageSource) => {
+    if (!onUpload) throw new LabSetupError("ما أقدر أرفع الفيديو من هنا؛ ارفعه للمكتبة من المتصفح وجرّب.");
+    say1(`⬆️ أرفع «${s.name.slice(0, 30)}» للمكتبة عشان القص (مرة وحدة، حسب حجم الملف)…`);
+    const blob = await (await fetch(s.url)).blob();
+    const asset = await onUpload(new File([blob], /\.[a-z0-9]{2,5}$/i.test(s.name) ? s.name : `${s.name}.mp4`, { type: blob.type || "video/mp4" }));
+    return asset.id;
+  };
   /** «✂️ الكلام ورا الراس»: the person cut out (asked of the server once per file, then kept), opened as a reader */
   const personReader = async () => {
     if (!sources.length) return null;
     const m = matte.current;
     for (const s of sources)
       if (!m.urls.has(s.assetId)) {
-        say1(`✂️ أقص الشخص من «${s.name.slice(0, 30)}» بجودة عالية (مرة وحدة للملف)…`);
-        m.urls.set(s.assetId, await footageMatte(projectId, s.assetId, say1, abort.current?.signal));
+        // a video that lives only on the computer is put up to the library first (once): the cut-out is made on the server
+        const cut = async (assetId: string) => {
+          say1(`✂️ أقص الشخص من «${s.name.slice(0, 30)}» بجودة عالية (مرة وحدة للملف)…`);
+          return footageMatte(projectId, assetId, say1, abort.current?.signal);
+        };
+        const stop = (e: unknown) => abort.current?.signal.aborted || (e instanceof DOMException && e.name === "AbortError");
+        try {
+          if (!onDeviceOnly(s.url)) m.urls.set(s.assetId, await cut(s.assetId));
+          else {
+            const had = readServerCopy(projectId, s.assetId);
+            try {
+              if (!had) throw new Error("none");
+              m.urls.set(s.assetId, await cut(had));
+            } catch (e) {
+              // only a copy that is gone from the library is put up again; any other failure is the cut-out's own
+              if (stop(e) || (had && !(e instanceof Error && /اختر فيديو جاهز/.test(e.message)))) throw e;
+              const copy = await serverCopy(s);
+              saveServerCopy(projectId, s.assetId, copy);
+              m.urls.set(s.assetId, await cut(copy));
+            }
+          }
+        } catch (e) {
+          // the cut-out failed (not the scene): said as it is, and حيدرة is not asked to fix a scene for it
+          if (stop(e) || e instanceof LabSetupError) throw e;
+          throw new LabSetupError(`قص الشخص ما تم: ${e instanceof Error ? e.message : e}`);
+        }
       }
     if (m.key !== sourceKey || !m.r) {
       m.r?.close();
@@ -616,7 +666,7 @@ export default function MotionLab({
         return { program, got };
       } catch (e) {
         // the person's video is gone: no change to the scene can bring it back, so حيدرة is not asked to fix it
-        if (e instanceof FootageUnavailable) throw e;
+        if (e instanceof LabSetupError) throw e;
         const se = e instanceof SceneError ? e : new SceneError(String(e), "load");
         why = `${se.where === "frame" ? `At t = ${se.t?.toFixed(2)} s the frame threw` : "Loading the scene threw"}: ${se.message}\n${se.stack2}`;
         say1(`⚠️ ${se.message}`);
