@@ -17,7 +17,7 @@ import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scene/contract";
 import { storeOf } from "./lab-tabs";
 import { lowerEffort } from "@/lib/editor/scene/resume";
-import { LabSetupError, onDeviceOnly } from "./footage-check";
+import { LabSetupError, onDeviceOnly, readLocalFile } from "./footage-check";
 import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGroup } from "@config/editor/lab-options";
@@ -500,7 +500,7 @@ export default function MotionLab({
     if (!onUpload) throw new LabSetupError("ما أقدر أرفع الفيديو من هنا؛ ارفعه للمكتبة من المتصفح وجرّب.");
     const name = s.name.slice(0, 30);
     say1(`⬆️ جاري قراءة «${name}» من جهازك… (بدون ما تسوي شي)`);
-    const blob = await (await fetch(s.url)).blob();
+    const blob = await readLocalFile(s.url, (done, total) => sayLive(`⬆️ جاري قراءة «${name}» من جهازك: ${Math.round((done / total) * 100)}٪ من ${Math.max(1, Math.round(total / 1_048_576))} ميغا…`));
     const mb = Math.max(1, Math.round(blob.size / 1_048_576));
     const live = (p: number) => sayLive(`⬆️ جاري رفع «${name}» تلقائيًا لمكتبة المشروع: ${Math.round(p * 100)}٪ من ${mb} ميغا. القص يحتاج الفيديو على الخادم، وهذا يصير مرة وحدة بس. تقدر تصغّر النافذة.`);
     live(0);
