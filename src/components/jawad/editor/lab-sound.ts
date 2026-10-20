@@ -25,6 +25,8 @@ export interface MixIn {
   cues: { url: string; t: number; vol: number }[];
   /** the person's recorded voice (already cleaned), from the start */
   voice: Blob | null;
+  /** or the voice in parts, each from its second (the person's clips one after another) */
+  voiceParts?: { blob: Blob; at: number }[];
   /** music made for it (a link), when asked */
   music: string | null;
 }
@@ -42,7 +44,22 @@ export async function mixSoundtrack(o: MixIn): Promise<AudioBuffer> {
     src.connect(g).connect(ctx.destination);
     src.start(Math.max(0, at));
   };
-  const voice = o.voice ? await decode(ctx, o.voice) : null;
+  let voice = o.voice ? await decode(ctx, o.voice) : null;
+  if (!voice && o.voiceParts?.length) {
+    // the parts laid on one track of the piece's length (it leads the mix and the music ducks under it, as one voice)
+    const joined = ctx.createBuffer(2, length, MIX_RATE);
+    for (const part of o.voiceParts) {
+      const b = await decode(ctx, part.blob);
+      if (!b) continue;
+      const from = Math.round(part.at * MIX_RATE);
+      for (let c = 0; c < 2; c++) {
+        const src = b.getChannelData(Math.min(c, b.numberOfChannels - 1));
+        const n = Math.min(src.length, length - from);
+        if (n > 0) joined.getChannelData(c).set(src.subarray(0, n), from);
+      }
+    }
+    voice = joined;
+  }
   // under a voice the effects and the music step back
   const under = voice ? 0.6 : 1;
   if (o.synth) {
