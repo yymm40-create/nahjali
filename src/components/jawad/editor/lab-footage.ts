@@ -13,6 +13,9 @@ import { faceTrack } from "./face";
 import { framesOf } from "./media";
 import type { EditorAsset } from "./types";
 import { postJson } from "@/lib/fetch";
+import { checkFootage } from "./footage-check";
+
+export { FootageUnavailable, checkFootage } from "./footage-check";
 
 /** The clip the piece is built on: which file, which part of it, how fast. */
 export interface FootageSource {
@@ -47,6 +50,7 @@ export class FootageReader {
 
   /** Opens the file; the frames come out no bigger than `maxSide` (the piece's own long side is enough). */
   static async open(s: FootageSource, maxSide: number, alpha = false): Promise<FootageReader> {
+    await checkFootage(s.url);
     const r = new FootageReader(s);
     r.input = new Input({ source: new UrlSource(s.url), formats: ALL_FORMATS });
     const track = await r.input.getPrimaryVideoTrack();
