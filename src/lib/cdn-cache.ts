@@ -12,16 +12,36 @@ export const CDN_CACHE_CONTROL = "s-maxage=20, stale-while-revalidate=40";
 /** The query that gives the signed-out copy its own address (so the CDN never mixes it with a signed-in request's). */
 export const CDN_KEY_PARAM = "_a";
 
-const AUTH_COOKIE = /^sb-.*auth-token/;
+/** This project's reference in its Supabase address (https://<ref>.supabase.co). */
+export const projectRef = (supabaseUrl: string | undefined) => {
+  try {
+    return supabaseUrl ? new URL(supabaseUrl).hostname.split(".")[0] : null;
+  } catch {
+    return null;
+  }
+};
 
-export const hasAuthCookie = (cookieNames: Iterable<string>) => [...cookieNames].some((n) => AUTH_COOKIE.test(n));
+/** The names of Supabase's sign-in cookie for this project: the cookie itself and its first chunk. */
+export const authCookieNames = (ref: string) => [`sb-${ref}-auth-token`, `sb-${ref}-auth-token.0`];
 
-export function cdnCacheable(req: { method: string; path: string; search: string; cookieNames: Iterable<string>; header: (name: string) => string | null }): boolean {
+/**
+ * Whether one of those cookies is present. next.config.ts decides «no sign-in cookie» with exactly these two names, so the
+ * proxy must decide with exactly the same ones: a cookie of another project (or any other name) is neither a session here
+ * nor a reason to treat the visit differently.
+ */
+export const hasAuthCookie = (cookieNames: Iterable<string>, ref: string) => {
+  const mine = authCookieNames(ref);
+  return [...cookieNames].some((n) => mine.includes(n));
+};
+
+export function cdnCacheable(req: { method: string; path: string; search: string; cookieNames: Iterable<string>; ref: string | null; header: (name: string) => string | null }): boolean {
   return (
+    // without the project's reference the sign-in cookie can't be told apart: nothing is kept
+    req.ref !== null &&
     req.method === "GET" &&
     CDN_PAGES.has(req.path) &&
     req.search === "" &&
-    !hasAuthCookie(req.cookieNames) &&
+    !hasAuthCookie(req.cookieNames, req.ref) &&
     // the client router's data and prefetch requests are not the page (they vary by router state)
     !req.header("rsc") &&
     !req.header("next-router-prefetch") &&

@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { CDN_CACHE_CONTROL, CDN_PAGES } from "./src/lib/cdn-cache";
+import { authCookieNames, CDN_CACHE_CONTROL, CDN_PAGES, projectRef } from "./src/lib/cdn-cache";
 
 const CDN_PAGES_LIST = [...CDN_PAGES];
 
@@ -28,14 +28,12 @@ const SECURITY_HEADERS = [
 
 // The public JAWAD pages for a visitor with no sign-in cookie are kept by the Vercel CDN for a few seconds (see src/lib/cdn-cache.ts;
 // the proxy gives that copy its own address). The cookie is Supabase's «sb-<project>-auth-token», possibly in chunks («.0»).
-const authCookie = supabase ? `sb-${supabase.hostname.split(".")[0]}-auth-token` : null;
-const CDN_HEADERS = authCookie
+const ref = projectRef(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const CDN_HEADERS = ref
   ? CDN_PAGES_LIST.map((source) => ({
       source,
-      missing: [
-        { type: "cookie" as const, key: authCookie },
-        { type: "cookie" as const, key: `${authCookie}.0` },
-      ],
+      // exactly the names the proxy tests (authCookieNames): the two must agree on who is signed out
+      missing: authCookieNames(ref).map((key) => ({ type: "cookie" as const, key })),
       headers: [{ key: "Vercel-CDN-Cache-Control", value: CDN_CACHE_CONTROL }],
     }))
   : [];

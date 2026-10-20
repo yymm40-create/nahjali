@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { BOOKLET_PATHS, JAWAD_PATH_HEADER, NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER } from "@config/site";
 import { can } from "@/lib/access";
-import { CDN_CACHE_CONTROL, CDN_KEY_PARAM, cdnCacheable } from "@/lib/cdn-cache";
+import { CDN_CACHE_CONTROL, CDN_KEY_PARAM, cdnCacheable, projectRef } from "@/lib/cdn-cache";
 import { clientIp, rulesFor, take } from "@/lib/rate-limit";
 
 // Pages that require a signed-in user
@@ -116,7 +116,7 @@ export async function proxy(request: NextRequest) {
   // their own address so a signed-in request is never served the kept copy
   if (
     !user &&
-    cdnCacheable({ method: request.method, path, search: request.nextUrl.search, cookieNames: request.cookies.getAll().map((c) => c.name), header: (n) => request.headers.get(n) })
+    cdnCacheable({ method: request.method, path, search: request.nextUrl.search, cookieNames: request.cookies.getAll().map((c) => c.name), ref: projectRef(process.env.NEXT_PUBLIC_SUPABASE_URL), header: (n) => request.headers.get(n) })
   ) {
     const url = request.nextUrl.clone();
     url.searchParams.set(CDN_KEY_PARAM, "1");
