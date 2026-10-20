@@ -111,14 +111,6 @@ export interface FootageInfo {
   frames: string[];
 }
 
-/** A step that must never hang the plan: it gives up after `ms` (the lab goes on without it). */
-function within<T>(p: Promise<T>, ms: number, why: string): Promise<T> {
-  return new Promise<T>((ok, no) => {
-    const tm = setTimeout(() => no(new Error(why)), ms);
-    p.then((v) => (clearTimeout(tm), ok(v)), (e) => (clearTimeout(tm), no(e)));
-  });
-}
-
 /** Frames of a clip at these piece seconds, read by the same decoder the render uses (no <video> element). */
 async function grab(s: FootageSource, times: number[], side: number): Promise<ImageBitmap[]> {
   const r = await FootageReader.open(s, side);
@@ -151,7 +143,7 @@ async function learnOne(projectId: string, s: FootageSource, a: EditorAsset, lab
   let words: FootageWord[] = [];
   if (s.hasAudio) {
     try {
-      const heard = await within(spokenWords(projectId, { clip: { id: s.clipId, in: s.in, out: s.out } as Clip, asset: a }, "ar", label, onStep), 4 * 60_000, "الكتابة أخذت وقت طويل");
+      const heard = await spokenWords(projectId, { clip: { id: s.clipId, in: s.in, out: s.out } as Clip, asset: a }, "ar", label, onStep);
       words = heard.filter((w) => w.s >= s.in && w.s < s.out).map((w) => ({ w: w.w, s: toPiece(w.s), e: toPiece(Math.min(w.e, s.out)) })).filter((w) => w.s < seconds);
     } catch (e) {
       onStep(`⚠️ ${label}: ما قدرت أكتب الكلام (${e instanceof Error ? e.message : e}) — حيدرة يبني على الصورة.`);
@@ -161,11 +153,11 @@ async function learnOne(projectId: string, s: FootageSource, a: EditorAsset, lab
   let face: FootageFace[] = [];
   let w = a.width ?? 1080, h = a.height ?? 1920;
   try {
-    const n = Math.round(Math.min(60, Math.max(8, seconds * 2)));
+    const n = Math.round(Math.max(8, seconds * 2));
     const times = Array.from({ length: n }, (_, i) => ((i + 0.5) * seconds) / n);
-    const shots = await within(grab(s, times, 640), 60_000, "قراءة الفيديو أخذت وقت طويل");
+    const shots = await grab(s, times, 640);
     if (shots[0]) [w, h] = [shots[0].width, shots[0].height];
-    const found = await within(facesIn(shots), 45_000, "أداة الوجه ما ردّت");
+    const found = await facesIn(shots);
     face = found.flatMap((f, i) => (f ? [{ t: Math.round(times[i] * 1000) / 1000, ...f }] : []));
     shots.forEach((b) => b.close());
     if (!face.length) onStep(`⚠️ ${label}: ما لقيت وجه واضح؛ حيدرة يأطّر من الصور.`);
@@ -219,7 +211,7 @@ export async function footageFrames(list: FootageSource[]): Promise<string[]> {
   const per = Math.max(1, Math.ceil(4 / list.length));
   for (const s of list.slice(0, 4)) {
     const secs = footageSeconds(s);
-    const shots = await within(grab(s, Array.from({ length: per }, (_, i) => ((i + 0.5) * secs) / per), 720), 45_000, "timeout").catch(() => []);
+    const shots = await grab(s, Array.from({ length: per }, (_, i) => ((i + 0.5) * secs) / per), 720).catch(() => []);
     for (const b of shots) {
       out.push(await jpeg64(b, 480));
       b.close();
@@ -271,7 +263,6 @@ export async function footageMatte(projectId: string, assetId: string, onStep: (
     const r = await postJson<{ url?: string; pending?: boolean; error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action: "lab_matte", assetId }, signal);
     if (r.error) throw new Error(r.error);
     if (r.url) return r.url;
-    if (Date.now() - started > 20 * 60_000) throw new Error("قص الشخص أخذ أكثر من ٢٠ دقيقة؛ جرّب مرة ثانية بعد شوي.");
     onStep(`✂️ أقص الشخص من فيديوك بجودة عالية… ${Math.round((Date.now() - started) / 1000)} ث`);
     await new Promise((ok) => setTimeout(ok, 6000));
   }

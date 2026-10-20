@@ -40,9 +40,9 @@ describe("what the lab accepts from حيدرة", () => {
     expect(cues[0].vol).toBe(1);
     expect(cues[1].vol).toBe(0.8);
   });
-  it("bounds the plan: length, tempo, colours, fonts, shots, assets", () => {
+  it("makes the plan safe: tempo, colours, fonts, shots, assets (no ceiling on its length)", () => {
     const p = readPlan({ seconds: 500, bpm: 999, palette: { bg: "red", accent: "#FFAA00" }, fonts: { head: "nope", body: "cairo" }, shots: [{ from: 0, to: 3, what: "x" }, { from: 4, to: 2 }], assets: [{ id: "a1", use: "logo" }, { id: "zz", use: "?" }] }, 15, ["a1"]);
-    expect(p.seconds).toBe(60);
+    expect(p.seconds).toBe(500);
     expect(p.bpm).toBe(180);
     expect(p.palette.bg).toBe("#0b0b10");
     expect(p.palette.accent).toBe("#ffaa00");

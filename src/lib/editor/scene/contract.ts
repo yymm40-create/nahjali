@@ -6,8 +6,7 @@ import { readChoices, type LabChoices } from "@config/editor/lab-options";
 import { CUE_SFX, PASS, RUBRIC, type RubricId } from "./skill";
 import { FRAMES, type FootageFrame } from "./footage";
 
-export const CODE_MAX = 140_000;
-export const SECONDS = { min: 3, max: 60 } as const;
+export const SECONDS = { min: 3, max: Number.POSITIVE_INFINITY } as const;
 
 /** Things a scene program must never contain (the page blocks them anyway; this tells حيدرة before it runs). */
 const FORBIDDEN: [RegExp, string][] = [
@@ -24,7 +23,6 @@ export function checkScene(code: unknown): { ok: boolean; problems: string[]; co
   const s = typeof code === "string" ? code.replace(/^```[a-z]*\n?|```\s*$/g, "").trim() : "";
   const problems: string[] = [];
   if (!s) problems.push("the program is empty");
-  if (s.length > CODE_MAX) problems.push(`the program is longer than ${CODE_MAX} characters`);
   if (!/\bscene\s*\(\s*\{/.test(s)) problems.push("the program never calls scene({ … })");
   if (!/\bdraw\s*[:(]/.test(s)) problems.push("the scene has no draw(K, t, ctx)");
   for (const [re, why] of FORBIDDEN) if (re.test(s)) problems.push(`it uses ${why}`);
@@ -100,7 +98,7 @@ export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [],
   const pal = (o.palette ?? {}) as Record<string, unknown>;
   const fo = (o.fonts ?? {}) as Record<string, unknown>;
   const secs = fixed ?? num(o.seconds, SECONDS.min, SECONDS.max, seconds);
-  const shots = (Array.isArray(o.shots) ? o.shots : []).slice(0, 40).map((x) => {
+  const shots = (Array.isArray(o.shots) ? o.shots : []).map((x) => {
     const s = (x ?? {}) as Record<string, unknown>;
     return { from: num(s.from, 0, secs, 0), to: num(s.to, 0, secs, secs), what: str(s.what, 400), motion: str(s.motion, 300), camera: str(s.camera, 200), text: str(s.text, 160), transition: str(s.transition, 200), sound: str(s.sound, 160), frame: ((FRAMES as readonly string[]).includes(String(s.frame)) ? String(s.frame) : "") as FootageFrame | "" };
   }).filter((s) => s.to > s.from);

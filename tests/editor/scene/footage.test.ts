@@ -90,12 +90,12 @@ describe("K.footage — the person's video inside the scene", () => {
 });
 
 describe("what the browser says about the video", () => {
-  it("is bounded: a too-short video is no video, words and faces are cleaned and sorted, the length is capped", () => {
+  it("is bounded: a too-short video is no video, words and faces are cleaned and sorted, the length has no ceiling", () => {
     expect(readFootage(null)).toBeNull();
     expect(readFootage({ seconds: 1 })).toBeNull();
     const f = readFootage({ name: "  كلامي  ", seconds: 900, w: 1280, h: 720, words: [{ w: "ثانية", s: 2, e: 2.4 }, { w: "أول", s: 0.5, e: 0.9 }, { w: "", s: 1 }, { w: "بعيد", s: -3 }], face: [{ t: 3, x: 2, y: 0.4, w: 0.1, h: 0.2 }, { t: 1, x: 0.5, y: 0.4, w: 0.1, h: 0.2 }] })!;
     expect(f.name).toBe("كلامي");
-    expect(f.seconds).toBe(120);
+    expect(f.seconds).toBe(900);
     expect(f.words.map((w) => w.w)).toEqual(["أول", "ثانية"]);
     expect(f.face.map((x) => x.t)).toEqual([1, 3]);
     expect(f.face[1].x).toBe(1);

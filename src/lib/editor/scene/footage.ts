@@ -6,7 +6,8 @@
 // decides every frame change from their words (their times come from the transcript) without being told how.
 // What the lab sends about the video, read and bounded here, and the texts حيدرة is given. Pure.
 
-export const FOOTAGE_MAX = 120;
+// no ceiling on the video's length (the owner's rule: no limit of the lab's own)
+export const FOOTAGE_MAX = Number.POSITIVE_INFINITY;
 export const FOOTAGE_MIN = 2;
 /** How the person's video sits in each shot (the plan names one per shot). */
 export const FRAMES = ["full", "card", "split", "corner", "away", "over"] as const;
@@ -49,7 +50,6 @@ export function readFootage(raw: unknown): FootageMeta | null {
   const seconds = num(o.seconds, 0, FOOTAGE_MAX, 0);
   if (seconds < FOOTAGE_MIN) return null;
   const words = (Array.isArray(o.words) ? o.words : [])
-    .slice(0, 2400)
     .map((x) => {
       const w = (x ?? {}) as Record<string, unknown>;
       // a word outside the piece (before it, after it, or with no time) is dropped, not moved to its edge
@@ -60,7 +60,6 @@ export function readFootage(raw: unknown): FootageMeta | null {
     .filter((w) => w.w && w.s >= 0)
     .sort((a, b) => a.s - b.s);
   const face = (Array.isArray(o.face) ? o.face : [])
-    .slice(0, 200)
     .map((x) => {
       const f = (x ?? {}) as Record<string, unknown>;
       return { t: r3(num(f.t, 0, seconds, 0)), x: r3(num(f.x, 0, 1, 0.5)), y: r3(num(f.y, 0, 1, 0.4)), w: r3(num(f.w, 0.02, 1, 0.3)), h: r3(num(f.h, 0.02, 1, 0.3)) };

@@ -120,9 +120,6 @@ const libraryLinks = () =>
 const key = (id: string) => `jw-lab-${id}`;
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
 const INTENSITY: [number, string][] = [[1, "هادئ وفخم"], [3, "متوازن"], [4, "قوي"], [5, "ناري"]];
-const FIXES = 2;
-/** What a render should fit inside before the lab trims the motion blur to make it (about four minutes). */
-const RENDER_BUDGET_MS = 4 * 60_000;
 /** Milliseconds as «٢:٣٠» (minutes and seconds), for a wait a person is watching. */
 const mmss = (ms: number) => `${Math.floor(Math.max(0, ms) / 60_000)}:${String(Math.round((Math.max(0, ms) % 60_000) / 1000)).padStart(2, "0")}`;
 const subscribeToClient = () => () => undefined;
@@ -499,6 +496,8 @@ export default function MotionLab({
       throw e;
     });
     if (result.error) throw new Error(result.error);
+    // the server's answer is written as it is made: when the platform ends the request first, what arrives is empty
+    if (!result || Object.keys(result).length === 0) throw new Error("انقطع رد الخادم قبل ما يكتمل (الخطوة أخذت أطول من وقت الطلب عند المنصة). جرّب مرة ثانية.");
     return result;
   }, [projectId, claude.id]);
 
@@ -534,9 +533,10 @@ export default function MotionLab({
   /** Writes (or fixes) until the program runs cleanly in the page; returns it with what the scene says. */
   const buildRunning = async (p: LabPlan, previous = "", errors = "") => {
     let program = previous, why = errors;
-    for (let attempt = 0; attempt <= FIXES; attempt++) {
+    // no count of its own (the owner's rule): حيدرة fixes until the scene runs, and «إلغاء» is what stops it
+    for (let attempt = 0; ; attempt++) {
       if (!program || why) {
-        say1(attempt === 0 && !previous ? "✍️ حيدرة يكتب المشهد بالكود…" : `🛠️ حيدرة يصلّح خطأ في المشهد (${attempt}/${FIXES})…`);
+        say1(attempt === 0 && !previous ? "✍️ حيدرة يكتب المشهد بالكود…" : `🛠️ حيدرة يصلّح خطأ في المشهد (المحاولة ${attempt})…`);
         const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: assetList, transparent, ...soundBody(), ...(program ? { code: program, errors: why } : {}) });
         if (r.notes) say1(r.notes);
         program = r.code;
@@ -557,7 +557,6 @@ export default function MotionLab({
         say1(`⚠️ ${se.message}`);
       }
     }
-    throw new Error("المشهد فيه خطأ ما قدر حيدرة يصلحه بعد محاولتين. عدّل الخطة أو جرّب مرة ثانية.");
   };
 
   /** The plan (from the steps, or from the conversation with `o.brief`); in the conversation the view stays put. */
@@ -795,17 +794,9 @@ export default function MotionLab({
     try {
       const frames = Math.max(1, Math.round(info.duration * 30));
       // what one frame really costs on THIS device with THIS scene, measured before committing to hundreds of them
-      let sub = info.blur > 0 ? 6 : 1;
+      const sub = info.blur > 0 ? 6 : 1;
       const ms = await frameCost(host.current, info.duration, sub, signal);
-      let plannedMs = ms * frames;
-      if (info.blur > 0) {
-        // a heavy scene with motion blur: fewer sub-frames rather than a render nobody can wait for
-        while (plannedMs > RENDER_BUDGET_MS && sub > 1) {
-          sub = sub === 6 ? 3 : sub === 3 ? 2 : 1;
-          plannedMs = (ms / (info.blur > 0 ? 6 : 1)) * sub * frames;
-        }
-        if (sub < 6) say1(`⚙️ المشهد ثقيل على جهازك: خفّضت ضبابية الحركة من ٦ لقطات فرعية إلى ${sub} عشان يخلص في وقت معقول.`);
-      }
+      const plannedMs = ms * frames;
       const makingTransparent = transparent && transparentCode && !source;
       // the film's sound, mixed for it (ElevenLabs' music made now when chosen) and muxed INTO the file
       let audio = soundtrack;
@@ -1165,15 +1156,14 @@ export default function MotionLab({
                       </button>
                       {footageClips.map((c) => {
                         const n = footIds.indexOf(c.clipId);
-                        const full = n < 0 && footageTotal(sources) + footageSeconds(c) > 120.5;
                         return (
                           <button
                             key={c.clipId}
                             type="button"
                             className="mlab-pill"
                             aria-pressed={n >= 0}
-                            disabled={busy || full}
-                            title={full ? "المجموع يتعدى ١٢٠ ثانية" : c.name}
+                            disabled={busy}
+                            title={c.name}
                             onClick={() => (setFootIds((ids) => (ids.includes(c.clipId) ? ids.filter((x) => x !== c.clipId) : [...ids, c.clipId])), setFoot(null), setVoiceOn(false), setTransparent(false))}
                           >
                             {n >= 0 ? `${n + 1} ✓` : "🎥"} {c.name.slice(0, 24)} · {Math.round(footageSeconds(c))} ث
@@ -1181,7 +1171,7 @@ export default function MotionLab({
                         );
                       })}
                     </div>
-                    {footageClips.length > 1 && <p className="mlab-tip m-0">تقدر تختار أكثر من مقطع: تنضم ورا بعض بترتيب اختيارك (الرقم على كل واحد)، والمجموع لحد ١٢٠ ثانية.</p>}
+                    {footageClips.length > 1 && <p className="mlab-tip m-0">تقدر تختار أكثر من مقطع: تنضم ورا بعض بترتيب اختيارك (الرقم على كل واحد)، بدون حد للمجموع.</p>}
                     {source && (
                       <label className="flex items-start gap-3">
                         <input type="checkbox" className="mt-1.5 h-4 w-4" checked={personOn} onChange={(e) => setPersonOn(e.target.checked)} disabled={busy} />
