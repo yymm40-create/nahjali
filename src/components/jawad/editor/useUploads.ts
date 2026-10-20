@@ -57,14 +57,16 @@ function writeResume(key: string, v: (PartsUpload & { mime: string }) | null) {
  * Files from the device, one after another: read in the browser, sent straight to storage with a one-time link, then
  * checked by the server. Each finished file goes to `onDone` (the editor puts it on the timeline).
  */
-export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: Placement) => void) {
+export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: Placement) => void, onFail?: (place: Placement | undefined, message: string) => void) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const queue = useRef<{ key: string; file: File; place?: Placement }[]>([]);
   const busy = useRef(false);
   const done = useRef(onDone);
+  const failed = useRef(onFail);
   useEffect(() => {
     done.current = onDone;
-  }, [onDone]);
+    failed.current = onFail;
+  }, [onDone, onFail]);
 
   const patch = (key: string, p: Partial<UploadItem>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...p } : x)));
 
@@ -138,7 +140,9 @@ export function useUploads(projectId: string, onDone: (a: EditorAsset, place?: P
           if (m.playable) setItems((xs) => xs.filter((x) => x.key !== key));
           else patch(key, { progress: 1 });
         } catch (err) {
-          patch(key, { error: err instanceof Error ? err.message : "تعذّر الرفع." });
+          const why = err instanceof Error ? err.message : "تعذّر الرفع.";
+          patch(key, { error: why });
+          failed.current?.(place, why);
         }
       }
     } finally {

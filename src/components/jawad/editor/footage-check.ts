@@ -1,8 +1,16 @@
 // «مختبر الموشن» on the person's video: is the file there at all? A file kept on the computer (haidara-media://) that was
 // moved or deleted, or a link that stopped opening, is not a bug in the scene, so حيدرة must not be asked to "fix" it.
 
-/** The video cannot be opened (missing or no longer served); the message says what to do. */
-export class FootageUnavailable extends Error {
+/** A step of getting the video ready failed: nothing in the scene can fix it, so حيدرة is not asked to (the message says what to do). */
+export class LabSetupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LabSetupError";
+  }
+}
+
+/** The video cannot be opened (missing or no longer served). */
+export class FootageUnavailable extends LabSetupError {
   constructor(url: string, status?: number) {
     super(
       url.startsWith("haidara-media:")
@@ -12,6 +20,9 @@ export class FootageUnavailable extends Error {
     this.name = "FootageUnavailable";
   }
 }
+
+/** A video kept on the computer by the desktop program (it never reaches the server: no cut-out, no upscale). */
+export const onDeviceOnly = (url: string) => url.startsWith("haidara-media:");
 
 /** Asks for the first byte of the file: a missing file is refused here, before anything is planned or written. */
 export async function checkFootage(url: string, signal?: AbortSignal): Promise<void> {

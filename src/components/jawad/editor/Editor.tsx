@@ -940,6 +940,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       },
       [addAssets, placeAsset, commit, flash, upscaleWhole, project.id, run],
     ),
+    // a failed upload for the lab (a picture, or a video that has to be on the server): the lab is told, it does not wait for ever
+    useCallback((place?: { group: string }, message?: string) => {
+      if (!place?.group.startsWith("lib:")) return;
+      const k = place.group.slice(4);
+      labWaits.current.get(k)?.no(new Error(message || "تعذّر الرفع."));
+      labWaits.current.delete(k);
+    }, []),
   );
   const [dropAsk, setDropAsk] = useState<{ files: File[]; at: number; trackId: string | null } | null>(null);
   const dropFiles = (files: File[], at: number, trackId: string | null, mode?: "stack" | "line") => {
@@ -1058,10 +1065,8 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     new Promise<EditorAsset>((ok, no) => {
       const key = Math.random().toString(36).slice(2);
       labWaits.current.set(key, { ok, no });
+      // no clock of its own: it ends when the file is up, or when the upload fails
       uploads.add([file], [{ at: 0, trackId: null, mode: "one", group: `lib:${key}`, first: true }]);
-      setTimeout(() => {
-        if (labWaits.current.delete(key)) no(new Error("الرفع أخذ وقت طويل."));
-      }, 5 * 60_000);
     });
   /** «✏️ عدّل» on a film made in the lab: the lab opens on its scene (or renders it again with new values at once) */
   const editLabPiece = (assetId: string, source: LabSource, params: Record<string, string>, auto: boolean) => {
