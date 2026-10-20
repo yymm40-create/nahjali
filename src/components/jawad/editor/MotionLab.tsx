@@ -26,7 +26,7 @@ import { mixSoundtrack, SoundPreview } from "./lab-sound";
 import { makeMusicAsset } from "./make";
 import { drawDemo, STUDIO, type Swatch } from "./lab-demos";
 import type { EditorAsset } from "./types";
-import { footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
+import { checkFootage, footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, FootageUnavailable, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
 import { footageLines, type FootageFrame, type FootageMeta } from "@/lib/editor/scene/footage";
 import "./motion-lab.css";
 
@@ -550,6 +550,8 @@ export default function MotionLab({
         const got = await loadCode(program, p);
         return { program, got };
       } catch (e) {
+        // the person's video is gone: no change to the scene can bring it back, so حيدرة is not asked to fix it
+        if (e instanceof FootageUnavailable) throw e;
         const se = e instanceof SceneError ? e : new SceneError(String(e), "load");
         why = `${se.where === "frame" ? `At t = ${se.t?.toFixed(2)} s the frame threw` : "Loading the scene threw"}: ${se.message}\n${se.stack2}`;
         say1(`⚠️ ${se.message}`);
@@ -570,6 +572,7 @@ export default function MotionLab({
       // the person's video: what they say (with every word's time), where the face is, and a few frames — learnt once
       let meta: FootageMeta | null = footMeta, frames = foot?.frames ?? [];
       if (source && !meta) {
+        for (const s of sources) await checkFootage(s.url, abort.current?.signal);
         say1(sources.length > 1 ? `🎥 أجهّز مقاطعك الـ${sources.length} لحيدرة (ورا بعض بالترتيب)…` : "🎥 أجهّز فيديوك لحيدرة…");
         const info = await prepareFootage(projectId, sources, [...extra, ...assets], say1);
         setFoot(info);
