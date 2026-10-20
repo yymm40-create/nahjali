@@ -585,7 +585,7 @@ export default function AssistantPanel({
             const out = q.kind === "code_edit" ? await codeEdit(codeDeps(signal), q.prompt) : await codeGrade(codeDeps(signal), q.prompt, q.clipId.split(",").map((x) => x.trim()).filter(Boolean));
             setMsgs((m) => [...m, { role: "assistant", text: out.text, done: out.done }]);
           } else if (q.kind === "motion_lab") {
-            // «🎬 مختبر الموشن»: the lab opens with حيدرة's brief (the person presses «اكتب الخطة»), on their filmed clip when he named one
+            // «🎬 مختبر الموشن»: the lab opens on its conversation with حيدرة's brief and writes the scenario by itself, on their filmed clip when he named one
             const onClip = q.clipId && findClip(tlRef.current, q.clipId) ? q.clipId : null;
             onLab?.(q.prompt, Number(q.seconds) || 15, onClip);
           } else if (q.kind === "watch") {

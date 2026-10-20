@@ -28,8 +28,8 @@ const providerError = (err: unknown): never => {
   throw err;
 };
 
-/** A made file stored with the project and listed in its library. */
-async function addFile(p: EditorProject, o: { bytes: Buffer; mime: string; ext: string; kind: "image" | "audio"; name: string; durationMs?: number | null; width?: number | null; height?: number | null; meta?: Record<string, unknown> }) {
+/** A made file stored with the project and listed in its library (a generated sound or picture); returns the library item. */
+export async function addFile(p: EditorProject, o: { bytes: Buffer; mime: string; ext: string; kind: "image" | "audio"; name: string; durationMs?: number | null; width?: number | null; height?: number | null; meta?: Record<string, unknown> }) {
   const path = `${p.user_id}/${p.id}/gen/${randomUUID()}.${o.ext}`;
   const up = await storage().from(EDITOR_BUCKET).upload(path, o.bytes, { contentType: o.mime, upsert: false });
   if (up.error) throw new UserError("ما قدرنا نحفظ الملف؛ جرّب مرة ثانية.", 500);

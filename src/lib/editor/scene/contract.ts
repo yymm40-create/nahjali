@@ -85,7 +85,18 @@ export interface LabPlan {
   choices: LabChoices;
   /** «🎙️ بصوتي»: the lines the person will record, with the seconds planned for each (empty: no voice) */
   narration: { text: string; from: number; to: number }[];
+  /** pictures the piece needs that nobody gave (a texture, a prop, a backdrop): GPT Image 2 makes each one, without any
+   * writing, before the program is written (the lab writes every word itself) */
+  pictures?: LabPicture[];
 }
+/** One picture GPT Image 2 makes for the piece: its English prompt (no words in it), a short Arabic name, and its use. */
+export interface LabPicture {
+  prompt: string;
+  name: string;
+  use: string;
+  aspect: string;
+}
+const PIC_ASPECTS = ["1:1", "9:16", "16:9", "4:5", "3:4", "4:3", "2:3", "3:2"];
 
 /** The fonts the lab can load (the catalogue's Arabic families; display first). */
 export const LAB_FONTS = FONT_LIST.filter((f) => ["sans", "display", "kufi", "naskh"].includes(f.kind)).map((f) => f.id);
@@ -122,6 +133,10 @@ export function readPlan(raw: unknown, seconds: number, assetIds: string[] = [],
       const n = (x ?? {}) as Record<string, unknown>;
       return { text: str(n.text, 300), from: num(n.from, 0, secs, 0), to: num(n.to, 0, secs, secs) };
     }).filter((n) => n.text),
+    pictures: (Array.isArray(o.pictures) ? o.pictures : []).slice(0, 12).map((x) => {
+      const q = (x ?? {}) as Record<string, unknown>;
+      return { prompt: str(q.prompt, 1500), name: str(q.name, 60), use: str(q.use, 200), aspect: PIC_ASPECTS.includes(String(q.aspect)) ? String(q.aspect) : "1:1" };
+    }).filter((q) => q.prompt.length >= 8).slice(0, 4),
   };
 }
 

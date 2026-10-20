@@ -13,6 +13,9 @@ import { importSfx } from "@/lib/editor/sfx-library";
 import { keyCheck } from "@/lib/editor/key-check";
 import { labChat, labPlan, labReview, labWrite } from "@/lib/editor/scene/director";
 import { labResponse } from "@/lib/editor/scene/response";
+import { labCoverReview, labCoverWrite } from "@/lib/editor/scene/cover";
+import { labPicture } from "@/lib/editor/scene/pictures";
+import { deleteLabChat, getLabChat, listLabChats, renameLabChat, saveLabChat } from "@/lib/editor/lab-chats";
 import { codeEditReview, codeEditWrite, codeGradeReview, codeGradeWrite } from "@/lib/editor/claude-code";
 import {
   addLocalAsset,
@@ -66,7 +69,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -162,15 +165,32 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "lab_matte":
       return NextResponse.json(await labMatte(p, who, b), noStore);
     // the lab's Claude steps read against the request's own clock (the platform ends it at maxDuration)
+    // the lab's conversations, kept on the server (migration 0087): list, open, save, rename, delete
+    case "lab_chats":
+      return NextResponse.json(await listLabChats(p, user.id), noStore);
+    case "lab_chat_get":
+      return NextResponse.json(await getLabChat(p, user.id, b.id), noStore);
+    case "lab_chat_put":
+      return NextResponse.json(await saveLabChat(p, user.id, b));
+    case "lab_chat_rename":
+      return NextResponse.json(await renameLabChat(p, user.id, b));
+    case "lab_chat_del":
+      return NextResponse.json(await deleteLabChat(p, user.id, b));
+    case "lab_cover_write":
+      return b.stream ? labResponse((onText) => labCoverWrite(p, who, b, onText), b.watch === true) : NextResponse.json(await labCoverWrite(p, who, b));
+    case "lab_cover_review":
+      return b.stream ? labResponse(() => labCoverReview(p, who, b)) : NextResponse.json(await labCoverReview(p, who, b));
+    case "lab_picture":
+      return NextResponse.json(await labPicture(p, who, b, new URL(req.url).origin));
     case "lab_plan":
       b.__at = Date.now();
-      return b.stream ? labResponse(() => labPlan(p, who, b)) : NextResponse.json(await labPlan(p, who, b));
+      return b.stream ? labResponse((onText) => labPlan(p, who, b, onText), b.watch === true) : NextResponse.json(await labPlan(p, who, b));
     case "lab_chat":
       b.__at = Date.now();
-      return b.stream ? labResponse(() => labChat(p, who, b)) : NextResponse.json(await labChat(p, who, b));
+      return b.stream ? labResponse((onText) => labChat(p, who, b, onText), b.watch === true) : NextResponse.json(await labChat(p, who, b));
     case "lab_write":
       b.__at = Date.now();
-      return b.stream ? labResponse(() => labWrite(p, who, b)) : NextResponse.json(await labWrite(p, who, b));
+      return b.stream ? labResponse((onText) => labWrite(p, who, b, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, b));
     case "lab_review":
       b.__at = Date.now();
       return b.stream ? labResponse(() => labReview(p, who, b)) : NextResponse.json(await labReview(p, who, b));

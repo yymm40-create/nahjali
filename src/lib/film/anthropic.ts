@@ -122,7 +122,7 @@ type StreamBody = Record<string, unknown> & { stop_reason?: string; content?: { 
  * long one (a director's shot map, every sheet's prompt) is never cut by a clock on the whole answer — only a line
  * that goes quiet for CLAUDE_IDLE_MS is dropped and tried again. Returns the message as the non-streamed API would.
  */
-export async function claudeStream(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS, resume?: ResumeOpts): Promise<StreamBody> {
+export async function claudeStream(url: string, init: RequestInit & { body: string }, tries = CLAUDE_TRIES, idleMs = CLAUDE_IDLE_MS, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
   let last: unknown;
   const payload = JSON.stringify({ ...(JSON.parse(init.body) as Record<string, unknown>), stream: true });
   for (let i = 0; i < tries; i++) {
@@ -147,7 +147,7 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
         if (Number.isFinite(after) && after > 0) await nap(Math.min(after * 1000, 8000));
         continue;
       }
-      const out = await readStream(res.body, quiet, resume);
+      const out = await readStream(res.body, quiet, resume, onText);
       clearTimeout(timer);
       return out;
     } catch (e) {
@@ -174,8 +174,10 @@ export async function claudeStream(url: string, init: RequestInit & { body: stri
 export interface ResumeOpts {
   stopAt?: number;
 }
+/** Each piece of the reply's text as it is written (a page watching حيدرة write his program). Never changes the reply. */
+export type OnText = (piece: string) => void;
 
-export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}, resume?: ResumeOpts): Promise<StreamBody> {
+export async function readStream(stream: ReadableStream<Uint8Array>, alive: () => void = () => {}, resume?: ResumeOpts, onText?: OnText): Promise<StreamBody> {
   const blocks: { type: string; text?: string }[] = [];
   const msg: StreamBody = { content: blocks };
   let usage: Record<string, unknown> = {};
@@ -206,7 +208,16 @@ export async function readStream(stream: ReadableStream<Uint8Array>, alive: () =
       case "content_block_delta": {
         const d = (ev.delta ?? {}) as { type?: string; text?: string };
         const b = blocks[Number(ev.index)];
-        if (d.type === "text_delta" && b) b.text = (b.text ?? "") + (d.text ?? "");
+        if (d.type === "text_delta" && b) {
+          b.text = (b.text ?? "") + (d.text ?? "");
+          if (onText && d.text) {
+            try {
+              onText(d.text);
+            } catch {
+              /* a watcher never breaks the reply */
+            }
+          }
+        }
         break;
       }
       case "message_delta": {
@@ -310,6 +321,7 @@ export async function callClaudeJson<T>({
   signal,
   resume,
   rawText = false,
+  onText,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -327,6 +339,8 @@ export async function callClaudeJson<T>({
   resume?: ResumeOpts;
   /** the reply is the raw text as written (no JSON format imposed, nothing parsed): for continuing a cut JSON reply */
   rawText?: boolean;
+  /** each piece of the reply as it is written (only watched; a retried attempt starts its pieces again) */
+  onText?: OnText;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -364,7 +378,7 @@ export async function callClaudeJson<T>({
         output_config: { ...(asked.effort ? { effort: level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
-    }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0), resume);
+    }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0), resume, onText);
     return b;
   };
 

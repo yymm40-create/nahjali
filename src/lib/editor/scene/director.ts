@@ -7,7 +7,7 @@
 
 import { UserError } from "@/lib/api";
 import { claudeModelOf } from "@config/claude-models";
-import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart } from "@/lib/film/anthropic";
+import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart, type OnText } from "@/lib/film/anthropic";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { MOTION_DIRECTOR_SKILL_TEXT } from "@/lib/editor/motion-director-text";
 import { claudeCharged, type Who } from "@/lib/editor/pricing";
@@ -53,7 +53,7 @@ function frameOf(p: EditorProject) {
 const PLAN_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "music", "narration", "skillRefs", "say"],
+  required: ["title", "idea", "hook", "format", "wow", "intensity", "seconds", "bpm", "palette", "fonts", "shots", "assets", "pictures", "music", "narration", "skillRefs", "say"],
   properties: {
     title: { type: "string" },
     idea: { type: "string", description: "the one idea in one sentence" },
@@ -75,6 +75,11 @@ const PLAN_SCHEMA = {
       },
     },
     assets: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "use"], properties: { id: { type: "string" }, use: { type: "string" } } } },
+    pictures: {
+      type: "array",
+      description: "0–4 pictures the piece truly needs that nobody gave and code cannot draw well (a photoreal texture, a product or prop, a real-looking backdrop, a rich illustration). GPT Image 2 makes each one WITHOUT any writing (you write every word in code). Usually [] — code draws most things better.",
+      items: { type: "object", additionalProperties: false, required: ["prompt", "name", "use", "aspect"], properties: { prompt: { type: "string", description: "English, detailed: subject, style matching the palette, lighting, composition, empty space where your type goes; never any text" }, name: { type: "string", description: "Arabic, 2–4 words" }, use: { type: "string", description: "where and how the scene uses it" }, aspect: { type: "string", enum: ["1:1", "9:16", "16:9", "4:5", "3:4", "4:3", "2:3", "3:2"] } } },
+    },
     music: { type: "string", description: "the music bed in words (mood, tempo, instruments), or empty" },
     narration: {
       type: "array",
@@ -153,7 +158,7 @@ type Asked<T> = { data: T; coins: number; model: string; partialRaw?: undefined 
  * twice and no step ever starts again from nothing. `effortCap` (from the page, after a request went by in thought alone)
  * makes the model think less.
  */
-async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "low" | "medium" | "high" | "xhigh" = "high"): Promise<Asked<T>> {
+async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "low" | "medium" | "high" | "xhigh" = "high", onText?: OnText): Promise<Asked<T>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
   const written = typeof b.partialRaw === "string" ? b.partialRaw : "";
   const level = effortAtMost(effort, b.effortCap);
@@ -165,7 +170,7 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
     b.model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: turn }], schema, maxTokens, effort: level, fallback: true, resume: { stopAt }, rawText: Boolean(written) }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: turn }], schema, maxTokens, effort: level, fallback: true, resume: { stopAt }, rawText: Boolean(written), onText }).catch((e) => {
         console.error("motion lab", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
@@ -186,7 +191,7 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
 }
 
 /** 1 · PLAN: the idea, the look and the shot list (the person approves it before any code). */
-export async function labPlan(p: EditorProject, who: Who, b: Record<string, unknown>) {
+export async function labPlan(p: EditorProject, who: Who, b: Record<string, unknown>, onText?: OnText) {
   stillOpen(p);
   const foot = footageOf(b);
   // on the person's own video the idea may be left to him: the edit comes from what they say
@@ -219,7 +224,7 @@ ${openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)]).text}`,
     ...footFrames.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `THEIR VIDEO, FRAME ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...refs.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `REFERENCE ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b, "مختبر الموشن · الخطة", parts, PLAN_SCHEMA, 12000, "high");
+  const r = await ask<Record<string, unknown>>(who, b, "مختبر الموشن · الخطة", parts, PLAN_SCHEMA, 12000, "high", onText);
   if (r.partialRaw !== undefined) return r;
   // the picks ride with the plan, so writing and review see them too
   const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id), foot?.seconds), choices, ...(foot ? { narration: [] } : {}) };
@@ -227,7 +232,7 @@ ${openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)]).text}`,
 }
 
 /** 2 · WRITE: the scene program on the kit, from the approved plan (or a fix of the last one, from its errors). */
-export async function labWrite(p: EditorProject, who: Who, b: Record<string, unknown>) {
+export async function labWrite(p: EditorProject, who: Who, b: Record<string, unknown>, onText?: OnText) {
   stillOpen(p);
   const assets = assetsOf(b.assets);
   const plan = readPlan(b.plan, Number(b.seconds) || 15, assets.map((a) => a.id), footageOf(b)?.seconds);
@@ -255,7 +260,7 @@ Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}
 ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
     },
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high");
+  const r = await ask<{ code: string; notes: string }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high", onText);
   if (r.partialRaw !== undefined) return r;
   const chk = checkScene(r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
@@ -303,10 +308,11 @@ ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text
 const CHAT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "action", "brief", "code"],
+  required: ["reply", "action", "brief", "code", "options"],
   properties: {
     reply: { type: "string", description: "to the person, Gulf Arabic, short (1–3 sentences): what you understood and what you are doing, or the answer / the one question" },
-    action: { type: "string", enum: ["none", "plan", "code"], description: "none = only talk; plan = (re)write the plan from `brief`; code = the COMPLETE revised program in `code`" },
+    action: { type: "string", enum: ["none", "plan", "code", "cover", "render"], description: "none = only talk; plan = (re)write the scenario from `brief`; code = the COMPLETE revised program in `code`; cover = design the piece's cover now; render = make the final film now" },
+    options: { type: "array", items: { type: "string" }, description: "0–4 short replies the person can press next (Gulf Arabic, 2–5 words each, e.g. «اعتمد وابنِ»، «أسرع شوي»، «صمّم الكفر»); [] when nothing obvious" },
     brief: { type: "string", description: "action plan: the complete creative brief from the whole conversation (the idea, length, tone, every word to show, colours, what to avoid); else empty" },
     code: { type: "string", description: "action code: the COMPLETE revised scene program (it replaces the old one); else empty" },
   },
@@ -318,7 +324,7 @@ const CHAT_SCHEMA = {
  * (re)plan from a brief he writes out of the whole conversation, or change the program himself (the page runs it,
  * fixes any error with him, and shows it).
  */
-export async function labChat(p: EditorProject, who: Who, b: Record<string, unknown>) {
+export async function labChat(p: EditorProject, who: Who, b: Record<string, unknown>, onText?: OnText) {
   stillOpen(p);
   const message = text(b.message, 4000);
   if (!message) throw new UserError("اكتب لحيدرة وش تبي.");
@@ -339,7 +345,10 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
       text: `THE LAB IS A CONVERSATION. The person talks to you like to a motion designer sitting next to them. Read the whole conversation and their new message, then decide ONE action:
 - "plan": there is no piece yet (and the message says what they want — go, never interview them; ask only if you truly cannot start), OR they ask for a different idea, structure, length or style → write "brief": the complete creative brief from the WHOLE conversation (everything they asked so far, in their words and yours).
 - "code": there is a piece and they ask for a change that keeps its idea (a colour, a word, a size, a speed, an element added or removed, a logo or picture they attached placed in it, the sound, a moment moved) → return the COMPLETE revised program in "code", changing only what they asked and keeping everything else exactly as it is (timing, params, cues, sound).
+- "cover": there is a piece and they ask for its cover / thumbnail («سو كفر»، «ثمبنيل») → the lab designs it next (any words they want on it go in "brief").
+- "render": there is a piece and they ask to export / render / put it on the timeline («صدّره»، «رندر»، «نزّله») → the lab renders the final film.
 - "none": a question, a thanks, or nothing to change → just "reply".
+THE WAY OF WORKING (the owner's skills): the scenario comes first and is approved before any code; after it every note changes ONLY what the person named and keeps everything else as it is; a version the person has seen is never overwritten (the lab keeps each one).
 "reply" is always filled, in Gulf Arabic, short and warm, never technical (no code words).
 FRAME: ${f.w}×${f.h} (${f.shape})
 PICTURES THE SCENE CAN DRAW (by id, with K.img / K.picture): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"} — a picture they just attached is listed here; when they say «هذا الشعار» / «حط اللوقو», it is the newest one: draw the REAL picture (K.picture), never redraw a logo yourself.
@@ -349,17 +358,19 @@ ${Object.keys(params).length ? `THE VALUES THEY EDITED (params → their value; 
 ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${code ? `\n\n${SCENE_CONTRACT_NOTE}` : ""}`,
     },
   ];
-  const r = await ask<{ reply: string; action: string; brief: string; code: string }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium");
+  const r = await ask<{ reply: string; action: string; brief: string; code: string; options?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium", onText);
   if (r.partialRaw !== undefined) return r;
-  let action = r.data.action === "plan" || r.data.action === "code" ? r.data.action : "none";
-  // a change asked with no piece yet is a plan; a program that breaks the machine's rules goes back as an error to fix
-  if (action === "code" && !code) action = "plan";
+  let action = ["plan", "code", "cover", "render"].includes(r.data.action) ? r.data.action : "none";
+  // a change asked with no piece yet is a plan (and so is a cover or a render of nothing); a program that breaks the
+  // machine's rules goes back as an error to fix
+  if ((action === "code" || action === "cover" || action === "render") && !code) action = "plan";
   const revised = action === "code" ? checkScene(r.data.code) : null;
   if (action === "code" && !revised?.code) action = "none";
   return {
     reply: text(r.data.reply, 1200) || "تمام.",
     action,
-    brief: action === "plan" ? text(r.data.brief, 6000) || message : "",
+    brief: action === "plan" ? text(r.data.brief, 6000) || message : action === "cover" ? text(r.data.brief, 1200) : "",
+    options: (Array.isArray(r.data.options) ? r.data.options : []).map((o) => text(o, 40)).filter(Boolean).slice(0, 4),
     code: revised?.code ?? "",
     problems: revised?.problems ?? [],
     coins: r.coins,
