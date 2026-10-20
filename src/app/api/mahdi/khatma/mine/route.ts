@@ -5,7 +5,7 @@ import { t } from "@/lib/mahdi/i18n";
 import { dailyCount } from "@/lib/mahdi/khatma/mine";
 import { DIVISION_LABEL, DIVISIONS, rangeSize } from "@/lib/mahdi/khatma/portions";
 import { check, mahdiRoute, readJson, requireId, requireProfile, UserError } from "@/lib/mahdi/server/api";
-import { linkHabit, loadMyKhatma, readQuarters, startMyKhatma, stopMyKhatma, unreadQuarter, updateMyKhatma } from "@/lib/mahdi/server/my-khatma";
+import { carryQuarters, linkHabit, loadMyKhatma, readQuarters, startMyKhatma, stopMyKhatma, unreadQuarter, updateMyKhatma } from "@/lib/mahdi/server/my-khatma";
 import { loadSnapshot } from "@/lib/mahdi/server/snapshot";
 import { cleanLine, oneOf, parseIntIn } from "@/lib/mahdi/server/validate";
 import { parsePart } from "@/lib/mahdi/server/khatma";
@@ -22,6 +22,7 @@ const portion = (v: unknown) => parseIntIn(v, 1, 604);
 
 /**
  * «ختمتي» actions: start { unit, rangeFrom?, rangeTo?, days, dedicatedTo, forSoulOf } · read { quarters: [] } ·
+ * carry { quarters: [] } («وين وصلت»: already finished, not today's reading) ·
  * unread { quarter } · update { unit?, rangeFrom?, rangeTo?, days?, dedicatedTo?, forSoulOf? } · stop ·
  * link { habitId | null } · habit_new { projectId? } (a habit made for it). `quarter(s)` = portion numbers in the
  * khatma's division (pages, juz, hizb, half or quarter hizb); no range = the whole Quran.
@@ -48,6 +49,11 @@ export const POST = mahdiRoute(async (req: Request) => {
       if (!Array.isArray(body.quarters) || !body.quarters.length || body.quarters.length > 604) throw new UserError(t.errors.invalid, 400);
       const r = await readQuarters(db, user.id, today, [...new Set(body.quarters.map(portion))]);
       return NextResponse.json({ ...r, today });
+    }
+    case "carry": {
+      // «وين وصلت»: what was already finished (not today's reading, so the habit is not touched)
+      if (!Array.isArray(body.quarters) || !body.quarters.length || body.quarters.length > 604) throw new UserError(t.errors.invalid, 400);
+      return NextResponse.json(await carryQuarters(db, user.id, today, [...new Set(body.quarters.map(portion))]));
     }
     case "unread":
       return NextResponse.json(await unreadQuarter(db, user.id, portion(body.quarter)));

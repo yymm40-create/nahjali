@@ -3,6 +3,7 @@
 // rows (the tables are server-only). In the reads, `quarter` is the portion number in the khatma's division.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { UserError } from "./api";
+import { carriedDay } from "../khatma/mine";
 import { cleanRange, inRange, isDivision, isFull, rangeSize, type Division, type PortionRange } from "../khatma/portions";
 
 // a table or (before 0082) a column not there yet
@@ -119,6 +120,25 @@ export async function readQuarters(db: SupabaseClient, me: string, today: string
   if (fresh.length) {
     const { error: e2 } = await db.from("mahdi_my_khatma_reads").insert(fresh.map((quarter) => ({ khatma_id: k.id, user_id: me, quarter, read_on: today })));
     if (e2 && e2.code !== "23505") throw e2;
+  }
+  const finished = await finishIfRead(db, k, today, [...old, ...fresh]);
+  return { added: fresh, finished };
+}
+
+/**
+ * «وين وصلت»: portions the person had already finished before (or outside) the khatma's reading. They count as read, but
+ * not as today's, nor for the habit: they are kept with the day before the khatma started. Returns the ones newly marked.
+ */
+export async function carryQuarters(db: SupabaseClient, me: string, today: string, portions: number[]) {
+  const k = await openKhatma(db, me);
+  const r = rangeOf(k);
+  if (portions.some((n) => !inRange(r, n))) throw new UserError("هذا خارج الجزء اللي حددته لختمتك.", 400);
+  const old = new Set(await readsIn(db, k));
+  const fresh = portions.filter((q) => !old.has(q));
+  if (fresh.length) {
+    const day = carriedDay(k.started_on);
+    const { error } = await db.from("mahdi_my_khatma_reads").insert(fresh.map((quarter) => ({ khatma_id: k.id, user_id: me, quarter, read_on: day })));
+    if (error && error.code !== "23505") throw error;
   }
   const finished = await finishIfRead(db, k, today, [...old, ...fresh]);
   return { added: fresh, finished };

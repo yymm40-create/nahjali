@@ -9,6 +9,8 @@ const UNIQUE: Record<string, string[][]> = {
   mahdi_khatma_claims: [["khatma_id", "portion"]],
   mahdi_my_khatmas: [["id"], ["user_id", "number"]],
   mahdi_my_khatma_reads: [["khatma_id", "quarter"]],
+  mahdi_quran_time: [["user_id", "read_on"]],
+  mahdi_quran_reader: [["user_id"]],
   site_codes: [["id"], ["code"]],
   site_code_uses: [["code_id", "email"]],
 };

@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { t } from "@/lib/mahdi/i18n";
 import Icon from "@/components/mahdi/Icon";
 import QuranText, { QuranSource, usePortionWords } from "@/components/mahdi/khatma/QuranText";
+import ReaderClock from "@/components/mahdi/khatma/ReaderClock";
 import { useMyKhatma } from "@/components/mahdi/khatma/useMyKhatma";
-import { nextPortion } from "@/lib/mahdi/khatma/mine";
+import { khatmaStats, nextPortion, unitText } from "@/lib/mahdi/khatma/mine";
 import { fullRange, inRange, portionCount, portionTitle } from "@/lib/mahdi/khatma/portions";
 
 /**
@@ -25,6 +26,9 @@ export default function MyKhatmaReader() {
   const { words, error } = usePortionWords(k.data && valid ? unit : undefined, q);
   const open = cur?.status === "open";
   const read = cur?.reads.find((r) => r.quarter === q);
+  // the khatma's own line on the clock at the top: how much is read, and today's portion
+  const stats = open && cur && k.data ? khatmaStats(cur.reads, cur.startedOn, cur.days, k.data.today, cur.range) : null;
+  const extra = stats ? `ختمتي: قرأت ${stats.read} من ${stats.total} · ورد اليوم ${stats.todayCount}/${stats.perDay}${stats.todayLeft ? ` (باقي ${unitText(unit, stats.todayLeft)})` : " ✅"}` : undefined;
 
   async function markRead(goOn: boolean) {
     const r = await k.read([q]);
@@ -41,6 +45,7 @@ export default function MyKhatmaReader() {
       <Link href="/mahdi/khatma" className="m-btn m-btn-quiet m-btn-sm -ms-3">
         <Icon name="chevronRight" size={18} /> ختمتي
       </Link>
+      <ReaderClock extra={extra} />
       {error && !words ? (
         <p className="m-card p-5 text-center">{error}</p>
       ) : !words ? (

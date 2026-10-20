@@ -45,17 +45,27 @@ export interface MyRead {
   readOn: ISODate;
 }
 
+/**
+ * A portion read before the khatma began («وين وصلت»: what the person had already finished) is kept with the day before
+ * it started. It counts as read, but not as today's reading, nor towards the streak, nor towards the habit.
+ */
+export const carriedDay = (startedOn: ISODate): ISODate => addDays(startedOn, -1);
+export const isCarried = (r: MyRead, startedOn: ISODate) => r.readOn < startedOn;
+
 /** How the khatma stands today (`reads[].quarter` is the portion number in the khatma's division). */
 export function khatmaStats(reads: MyRead[], startedOn: ISODate, days: number, today: ISODate, range: PortionRange = fullRange("quarter")) {
   const inside = reads.filter((r) => inRange(range, r.quarter));
   const total = rangeSize(range);
-  const perDay = dailyCount(total, days);
+  // what was already finished when the khatma began is not part of the plan: the pace is for what was left
+  const carried = new Set(inside.filter((r) => isCarried(r, startedOn)).map((r) => r.quarter)).size;
+  const perDay = dailyCount(Math.max(1, total - carried), days);
   const read = new Set(inside.map((r) => r.quarter)).size;
+  const readSince = read - carried;
   const dayNo = Math.max(1, diffDays(today, startedOn) + 1);
   const todayCount = inside.filter((r) => r.readOn === today).length;
-  // where the plan expects them to be by the end of today
-  const expected = Math.min(total, perDay * dayNo);
-  const readDays = new Set(inside.map((r) => r.readOn));
+  // where the plan expects them to be by the end of today (of what they started with)
+  const expected = Math.min(Math.max(0, total - carried), perDay * dayNo);
+  const readDays = new Set(inside.filter((r) => !isCarried(r, startedOn)).map((r) => r.readOn));
   // the days in a row with reading, up to today (a day not yet read today does not break it)
   let streak = 0;
   for (let d = readDays.has(today) ? today : addDays(today, -1); readDays.has(d); d = addDays(d, -1)) streak++;
@@ -64,14 +74,15 @@ export function khatmaStats(reads: MyRead[], startedOn: ISODate, days: number, t
     total,
     perDay,
     read,
+    carried,
     left,
     todayCount,
     todayLeft: Math.max(0, perDay - todayCount),
     dayNo,
     expected,
     /** portions behind the plan (0 when on time or ahead) */
-    behind: Math.max(0, expected - read),
-    ahead: Math.max(0, read - expected),
+    behind: Math.max(0, expected - readSince),
+    ahead: Math.max(0, readSince - expected),
     streak,
     finishBy: addDays(startedOn, days - 1),
     daysToFinish: left === 0 ? 0 : Math.ceil(left / perDay),
