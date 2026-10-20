@@ -72,3 +72,16 @@ describe("reading what a cut reply had written", () => {
     expect(m.stop_reason).toBe("end_turn");
   });
 });
+
+describe("a lab step cut by the request's time, continued by the next request", () => {
+  it("the effort goes one step down, and a cap from the page never raises it", async () => {
+    const { lowerEffort, effortAtMost } = await import("@/lib/editor/scene/resume");
+    expect(lowerEffort("high")).toBe("medium");
+    expect(lowerEffort("medium")).toBe("low");
+    expect(lowerEffort("low")).toBe("low");
+    expect(effortAtMost("high", "medium")).toBe("medium");
+    expect(effortAtMost("medium", "high")).toBe("medium");
+    expect(effortAtMost("high", undefined)).toBe("high");
+    expect(effortAtMost("high", "nonsense")).toBe("high");
+  });
+});

@@ -309,6 +309,7 @@ export async function callClaudeJson<T>({
   timeoutMs,
   signal,
   resume,
+  rawText = false,
 }: {
   system: string;
   turns: ClaudeTurn[];
@@ -324,6 +325,8 @@ export async function callClaudeJson<T>({
   signal?: AbortSignal;
   /** a long reply that is continued rather than started again: read until `stopAt`, and what was written is returned (`partial`) */
   resume?: ResumeOpts;
+  /** the reply is the raw text as written (no JSON format imposed, nothing parsed): for continuing a cut JSON reply */
+  rawText?: boolean;
 }): Promise<{ data: T; raw: string; usage: ClaudeUsage; partial?: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -358,7 +361,7 @@ export async function callClaudeJson<T>({
         max_tokens: maxTokens,
         system: siteSystem(system, true, leader),
         messages,
-        output_config: { ...(asked.effort ? { effort: level } : {}), format: { type: "json_schema", schema } },
+        output_config: { ...(asked.effort ? { effort: level } : {}), ...(rawText ? {} : { format: { type: "json_schema", schema } }) },
         ...(withFallback ? { fallbacks: "default" } : {}),
       }),
     }, CLAUDE_TRIES, Math.max(CLAUDE_IDLE_MS, timeoutMs ?? 0), resume);
@@ -380,6 +383,7 @@ export async function callClaudeJson<T>({
 
   const textOf = (b: Awaited<ReturnType<typeof call>>) => (b.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
   let raw = textOf(body);
+  if (rawText) return { data: undefined as T, raw, usage: withModel(body.usage as ClaudeUsage, body.model, asked) };
   try {
     return { data: JSON.parse(raw) as T, raw, usage: withModel(body.usage as ClaudeUsage, body.model, asked) };
   } catch {

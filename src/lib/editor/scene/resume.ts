@@ -40,10 +40,18 @@ export function stitchCode(written: string, rest: string): string {
   return written + head;
 }
 
-/** The continuation request's own words (appended to the writing request). */
+/** The continuation request's own words (a part added after the step's request). */
 export const continueAsk = (written: string) => `
-YOUR REPLY WAS CUT OFF. THIS IS WHAT YOU HAD ALREADY WRITTEN OF THE PROGRAM (do not write it again):
+YOUR REPLY WAS CUT OFF BEFORE IT ENDED. THIS IS EXACTLY WHAT YOU HAD ALREADY WRITTEN OF YOUR JSON REPLY (do not write it again):
 <<<WRITTEN
 ${written}
 WRITTEN>>>
-Return in "code" ONLY the rest of the program: begin at the very next character after the last one above (even in the middle of a word, a string or a line), never restart and never repeat a line that is already written. The finished program is the written part followed by yours, and it must be complete.`;
+Now output ONLY the remaining characters of that same JSON reply, as plain text: begin at the very next character after the last one above (even in the middle of a word, a string, an escape or a line), never restart, never repeat anything already written, no code fences, no commentary. The written part followed by your output must be one complete, valid JSON document that satisfies the schema you were given.`;
+
+/** The effort below this one (the next request thinks less when a whole request went by with nothing written). */
+export const lowerEffort = (e: string): "low" | "medium" | "high" | "xhigh" => (e === "xhigh" ? "high" : e === "high" ? "medium" : "low");
+export const effortAtMost = <E extends "low" | "medium" | "high" | "xhigh">(e: E, cap: unknown): "low" | "medium" | "high" | "xhigh" => {
+  const rank = { low: 0, medium: 1, high: 2, xhigh: 3 } as const;
+  const c = typeof cap === "string" && cap in rank ? (cap as keyof typeof rank) : null;
+  return c && rank[c] < rank[e] ? c : e;
+};

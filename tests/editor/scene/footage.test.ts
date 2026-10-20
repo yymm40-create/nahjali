@@ -139,7 +139,9 @@ describe("حيدرة on the person's video", () => {
   it("plans with no brief, on the video's length, with the craft, the timed words and its frames — and no narration", async () => {
     s.reply = { title: "مونتاج", seconds: 30, narration: [{ text: "لا", from: 0, to: 1 }], shots: [{ from: 0, to: 12.5, what: "w", motion: "", camera: "", text: "", transition: "", sound: "", frame: "full" }] };
     const { labPlan } = await import("@/lib/editor/scene/director");
-    const r = await labPlan(project, who, { brief: "", footage, footage_frames: ["/9j/4AAQ", "/9j/4AAQ"], voice: "own" });
+    const got = await labPlan(project, who, { brief: "", footage, footage_frames: ["/9j/4AAQ", "/9j/4AAQ"], voice: "own" });
+    if (!("plan" in got)) throw new Error("cut");
+    const r = got;
     expect(r.plan.seconds).toBe(12.5);
     expect(r.plan.narration).toEqual([]);
     expect(r.plan.shots[0].frame).toBe("full");

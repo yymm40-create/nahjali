@@ -15,7 +15,7 @@ import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS, readPlan, readReview, SECONDS, type LabPlan } from "./contract";
 import { EXEMPLARS } from "./exemplars";
 import { MAX_ROUNDS, MOTION_LAB_SKILL, PASS, RUBRIC } from "./skill";
-import { continueAsk, partialCode, stitchCode } from "./resume";
+import { continueAsk, effortAtMost, stitchCode } from "./resume";
 import { ALWAYS_AT_PLAN, HF_LAB_TEXT, knownRefs, openRefs } from "./higgsfield";
 import { choicesRefs, choicesText, readChoices } from "@config/editor/lab-options";
 import { FOOTAGE_KIT_API, FOOTAGE_SKILL, footageText, readFootage, type FootageMeta } from "./footage";
@@ -140,20 +140,49 @@ const exemplarsText = () => EXEMPLARS.map((e) => `<example name="${e.name}" show
 const planText = (p: LabPlan) => JSON.stringify(p, null, 1);
 const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 64_000 : 128_000;
 
-async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" | "xhigh" = "high", resume?: { stopAt: number }) {
+/**
+ * How long one request may read Claude's reply before it hands back what it has: the platform ends a request at
+ * 800 s, counted from its start (`b.__at`, stamped by the route), and the step's own work before Claude is in that.
+ */
+const WINDOW_MS = 660_000;
+type Asked<T> = { data: T; coins: number; model: string; partialRaw?: undefined } | { data?: undefined; coins: number; model: string; partialRaw: string; noProgress: boolean; effortUsed: string };
+
+/**
+ * One Claude step of the lab. A reply the request's time cannot hold comes back as `partialRaw` (the JSON written so far),
+ * and the page sends the same request again with it: this one continues from its last character, so nothing is written
+ * twice and no step ever starts again from nothing. `effortCap` (from the page, after a request went by in thought alone)
+ * makes the model think less.
+ */
+async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "low" | "medium" | "high" | "xhigh" = "high"): Promise<Asked<T>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
-  // no deadline of the lab's own (the owner's rule): a step runs as long as the platform's route allows
-  return claudeCharged(
+  const written = typeof b.partialRaw === "string" ? b.partialRaw : "";
+  const level = effortAtMost(effort, b.effortCap);
+  const stopAt = (typeof b.__at === "number" ? b.__at : Date.now()) + WINDOW_MS;
+  const turn: ClaudePart[] = written ? [...parts, { type: "text", text: continueAsk(written) }] : parts;
+  // no deadline of the lab's own (the owner's rule): a step runs as long as the platform's route allows, then goes on in the next
+  const r = await claudeCharged(
     who,
-    model,
+    b.model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true, ...(resume ? { resume } : {}) }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: turn }], schema, maxTokens, effort: level, fallback: true, resume: { stopAt }, rawText: Boolean(written) }).catch((e) => {
         console.error("motion lab", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
   );
+  if (r.partial) {
+    const now = stitchCode(written, r.raw);
+    return { partialRaw: now, noProgress: now.length <= written.length, effortUsed: level, coins: r.coins, model: r.model };
+  }
+  if (!written) return { data: r.data, coins: r.coins, model: r.model };
+  const whole = stitchCode(written, r.raw);
+  try {
+    return { data: JSON.parse(whole) as T, coins: r.coins, model: r.model };
+  } catch {
+    console.error("motion lab", label, "continued reply is not JSON", whole.slice(-200));
+    throw new UserError("ما قدرت أجمع رد حيدرة بعد ما انقطع. جرّب مرة ثانية.", 502);
+  }
 }
 
 /** 1 · PLAN: the idea, the look and the shot list (the person approves it before any code). */
@@ -190,18 +219,15 @@ ${openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)]).text}`,
     ...footFrames.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `THEIR VIDEO, FRAME ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...refs.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `REFERENCE ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, "مختبر الموشن · الخطة", parts, PLAN_SCHEMA, 12000, "high");
+  const r = await ask<Record<string, unknown>>(who, b, "مختبر الموشن · الخطة", parts, PLAN_SCHEMA, 12000, "high");
+  if (r.partialRaw !== undefined) return r;
   // the picks ride with the plan, so writing and review see them too
   const plan = { ...readPlan(r.data, seconds, assets.map((a) => a.id), foot?.seconds), choices, ...(foot ? { narration: [] } : {}) };
   return { plan, say: text(r.data.say, 600), coins: r.coins, model: r.model };
 }
 
 /** 2 · WRITE: the scene program on the kit, from the approved plan (or a fix of the last one, from its errors). */
-/** How long one writing request reads before it hands back what it has (the platform ends a request at 800 s). */
-const WRITE_WINDOW_MS = 700_000;
-
 export async function labWrite(p: EditorProject, who: Who, b: Record<string, unknown>) {
-  const stopAt = Date.now() + WRITE_WINDOW_MS;
   stillOpen(p);
   const assets = assetsOf(b.assets);
   const plan = readPlan(b.plan, Number(b.seconds) || 15, assets.map((a) => a.id), footageOf(b)?.seconds);
@@ -229,17 +255,9 @@ Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}
 ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
     },
   ];
-  // a program cut off in an earlier request: this one continues from its last character
-  const written = typeof b.partial === "string" ? b.partial : "";
-  if (written) parts[0] = { type: "text", text: `${(parts[0] as { text: string }).text}\n${continueAsk(written)}` };
-  const r = await ask<{ code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous || b.lessThinking === true ? "medium" : "high", { stopAt });
-  if (r.partial) {
-    // the time of this request ran out: what is written so far goes back, and the page asks again from there
-    const now = stitchCode(written, partialCode(r.raw));
-    // the whole request went on thinking and wrote nothing new: the next one is asked to think less
-    return { code: "", problems: [], notes: "", partial: now, thinkingOnly: now.length <= written.length, coins: r.coins, model: r.model };
-  }
-  const chk = checkScene(written ? stitchCode(written, r.data.code) : r.data.code);
+  const r = await ask<{ code: string; notes: string }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high");
+  if (r.partialRaw !== undefined) return r;
+  const chk = checkScene(r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
 }
 
@@ -275,7 +293,8 @@ ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text
     ...sheets.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `CONTACT SHEET ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
     ...stills.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `STILL ${i + 1}${times[i] !== undefined ? ` (t = ${times[i].toFixed(2)} s)` : ""}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
   ];
-  const r = await ask<Record<string, unknown>>(who, b.model, `مختبر الموشن · مراجعة ${round}`, parts, REVIEW_SCHEMA, reviewOnly ? 12000 : outputBudget(b.model), "high");
+  const r = await ask<Record<string, unknown>>(who, b, `مختبر الموشن · مراجعة ${round}`, parts, REVIEW_SCHEMA, reviewOnly ? 12000 : outputBudget(b.model), "high");
+  if (r.partialRaw !== undefined) return r;
   const review = readReview(r.data);
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
@@ -330,7 +349,8 @@ ${Object.keys(params).length ? `THE VALUES THEY EDITED (params → their value; 
 ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${code ? `\n\n${SCENE_CONTRACT_NOTE}` : ""}`,
     },
   ];
-  const r = await ask<{ reply: string; action: string; brief: string; code: string }>(who, b.model, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium");
+  const r = await ask<{ reply: string; action: string; brief: string; code: string }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium");
+  if (r.partialRaw !== undefined) return r;
   let action = r.data.action === "plan" || r.data.action === "code" ? r.data.action : "none";
   // a change asked with no piece yet is a plan; a program that breaks the machine's rules goes back as an error to fix
   if (action === "code" && !code) action = "plan";

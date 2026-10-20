@@ -16,6 +16,7 @@ import { useClaudeModel } from "@/components/robots/claude-model";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scene/contract";
 import { storeOf } from "./lab-tabs";
+import { lowerEffort } from "@/lib/editor/scene/resume";
 import { LabSetupError, onDeviceOnly } from "./footage-check";
 import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
@@ -588,15 +589,31 @@ export default function MotionLab({
   const call = useCallback(async <T,>(action: string, body: Record<string, unknown>) => {
     // no clock of the lab's own (the owner's rule): the only thing that stops a step is «إلغاء»
     const outer = abort.current?.signal;
-    const result = await postJson<T & { error?: string }>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body, stream: true }, outer).catch((e: unknown) => {
-      if (outer?.aborted) throw new DOMException("cancelled", "AbortError");
-      throw e;
-    });
-    if (result.error) throw new Error(result.error);
-    // the server's answer is written as it is made: when the platform ends the request first, what arrives is empty
-    if (!result || Object.keys(result).length === 0) throw new Error("انقطع رد الخادم قبل ما يكتمل (الخطوة أخذت أطول من وقت الطلب عند المنصة). جرّب مرة ثانية.");
-    return result;
-  }, [projectId, claude.id]);
+    // a step the platform's request time cannot hold is continued in the next request from where it stopped: what was
+    // written so far is kept here and on the device (a closed tab loses nothing), and a request that went by in thought
+    // alone makes the next one think less
+    const sig = hashOf(JSON.stringify({ action, body }));
+    let partialRaw = readPart(store, sig), cap: string | undefined, stuck = 0;
+    for (;;) {
+      if (partialRaw) say1(`⏳ انتهى وقت الطلب عند المنصة قبل ما يكمل حيدرة؛ أكمل من نفس النقطة (وصل ${Math.round(partialRaw.length / 1000)} ألف حرف) — ما أبدأ من جديد.`);
+      const result = await postJson<T & { error?: string; partialRaw?: string; noProgress?: boolean; effortUsed?: string }>(`/api/jawad/editor/projects/${projectId}`, { action, model: claude.id, ...body, stream: true, ...(partialRaw ? { partialRaw } : {}), ...(cap ? { effortCap: cap } : {}) }, outer).catch((e: unknown) => {
+        if (outer?.aborted) throw new DOMException("cancelled", "AbortError");
+        throw e;
+      });
+      if (result.error) throw new Error(result.error);
+      // the server's answer is written as it is made: when the platform ends the request first, what arrives is empty
+      if (!result || Object.keys(result).length === 0) throw new Error("انقطع رد الخادم قبل ما يكتمل (الخطوة أخذت أطول من وقت الطلب عند المنصة). جرّب مرة ثانية.");
+      if (typeof result.partialRaw !== "string") {
+        savePart(store, "", "");
+        return result;
+      }
+      stuck = result.partialRaw.length > partialRaw.length ? 0 : stuck + 1;
+      if (result.noProgress) cap = lowerEffort(result.effortUsed ?? cap ?? "high");
+      if (stuck >= 3) throw new Error("حيدرة ما تقدّم في آخر ثلاث طلبات (كل طلب انقضى وقته بدون ما يكتب). جرّب مرة ثانية.");
+      partialRaw = result.partialRaw;
+      savePart(store, sig, partialRaw);
+    }
+  }, [projectId, claude.id, store]);
 
   /** The scene page with this program, its fonts and its pictures; the probe catches a bug before anything else. */
   const loadCode = async (program: string, p: LabPlan, values: Record<string, string> = params) => {
@@ -627,30 +644,6 @@ export default function MotionLab({
     return got;
   };
 
-  /**
-   * One writing step. A program too long for one request comes back in pieces: what was written so far is kept (here and on
-   * the device, so a cut line or a closed tab loses nothing) and the next request continues from its last character.
-   */
-  const writeOnce = async (body: Record<string, unknown>) => {
-    const sig = hashOf(JSON.stringify({ plan: body.plan, code: body.code ?? "", errors: body.errors ?? "", t: body.transparent === true }));
-    let partial = readPart(store, sig);
-    let stuck = 0, lessThinking = false;
-    for (;;) {
-      if (partial) say1(`⏳ أكمل الكتابة من نفس النقطة (كُتب ${Math.round(partial.length / 1000)} ألف حرف) — ما أبدأ من جديد.`);
-      const r = await call<{ code: string; problems: string[]; notes: string; partial?: string; thinkingOnly?: boolean }>("lab_write", { ...body, ...(partial ? { partial } : {}), ...(lessThinking ? { lessThinking } : {}) });
-      if (typeof r.partial !== "string") {
-        savePart(store, "", "");
-        return r;
-      }
-      // the request's time ran out with the program unfinished: ask again from where it stopped
-      stuck = r.partial.length > partial.length ? 0 : stuck + 1;
-      if (r.thinkingOnly) lessThinking = true;
-      if (stuck >= 3) throw new Error("الكتابة ما تقدّمت في آخر طلبين. جرّب مرة ثانية.");
-      partial = r.partial;
-      savePart(store, sig, partial);
-    }
-  };
-
   /** Writes (or fixes) until the program runs cleanly in the page; returns it with what the scene says. */
   const buildRunning = async (p: LabPlan, previous = "", errors = "") => {
     let program = previous, why = errors;
@@ -658,7 +651,7 @@ export default function MotionLab({
     for (let attempt = 0; ; attempt++) {
       if (!program || why) {
         say1(attempt === 0 && !previous ? "✍️ حيدرة يكتب المشهد بالكود…" : `🛠️ حيدرة يصلّح خطأ في المشهد (المحاولة ${attempt})…`);
-        const r = await writeOnce({ plan: p, seconds: p.seconds, assets: assetList, transparent, ...soundBody(), ...(program ? { code: program, errors: why } : {}) });
+        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: assetList, transparent, ...soundBody(), ...(program ? { code: program, errors: why } : {}) });
         if (r.notes) say1(r.notes);
         program = r.code;
         if (r.problems.length) {

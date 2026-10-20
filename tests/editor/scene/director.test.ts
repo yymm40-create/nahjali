@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EXEMPLARS } from "@/lib/editor/scene/exemplars";
 import { RUBRIC } from "@/lib/editor/scene/skill";
 
+/** a step's whole answer (a cut one, continued by the next request, is not what these tests look at) */
+const whole = <T>(r: T): Exclude<T, { partialRaw: string }> => {
+  if (r && typeof (r as { partialRaw?: unknown }).partialRaw === "string") throw new Error("cut");
+  return r as Exclude<T, { partialRaw: string }>;
+};
+
 // The lab's three calls with a made-up model: what حيدرة is told, and how his answers are checked.
 const s = vi.hoisted(() => ({ calls: [] as { system: string; text: string; images: number; maxTokens: number }[], reply: {} as unknown }));
 vi.mock("@/lib/film/anthropic", () => ({
@@ -29,7 +35,7 @@ describe("«🎬 مختبر الموشن» on the server", () => {
   it("plans from the brief, the references and the assets, with the owner's skill as the method", async () => {
     s.reply = { title: "إطلاق", idea: "فكرة", hook: "غبار", format: "DUST TO WORD", wow: "x", intensity: 5, seconds: 15, bpm: 120, palette: { bg: "#0b0b10", ink: "#f2f0eb", accent: "#d78d45", second: "#493cca", muted: "#726d68" }, fonts: { head: "alexandria", body: "cairo" }, shots: [{ from: 0, to: 15, what: "w", motion: "m", camera: "c", text: "ابدأ", transition: "t", sound: "s" }], assets: [{ id: "a1", use: "logo" }], music: "dark pulse", say: "جاهز" };
     const { labPlan } = await import("@/lib/editor/scene/director");
-    const r = await labPlan(project, who, { brief: "إعلان لتطبيق", seconds: 15, assets: [{ id: "a1", name: "شعار", w: 512, h: 512 }], references: [jpg, jpg] });
+    const r = whole(await labPlan(project, who, { brief: "إعلان لتطبيق", seconds: 15, assets: [{ id: "a1", name: "شعار", w: 512, h: 512 }], references: [jpg, jpg] }));
     expect(r.plan.fonts).toEqual({ head: "alexandria", body: "cairo" });
     expect(r.plan.assets).toEqual([{ id: "a1", use: "logo" }]);
     const c = s.calls[0];
@@ -45,12 +51,12 @@ describe("«🎬 مختبر الموشن» on the server", () => {
   it("writes with the reference scenes, fixes with the error, and flags a program that breaks the rules", async () => {
     const { labWrite } = await import("@/lib/editor/scene/director");
     s.reply = { code: EXEMPLARS[0].code, notes: "كتبت" };
-    const ok = await labWrite(project, who, { plan: { seconds: 6 }, seconds: 6 });
+    const ok = whole(await labWrite(project, who, { plan: { seconds: 6 }, seconds: 6 }));
     expect(ok.problems).toEqual([]);
     expect(s.calls[0].text).toContain('<example name="من الغبار إلى الكلمة"');
     expect(s.calls[0].maxTokens).toBeGreaterThanOrEqual(32000);
     s.reply = { code: "scene({ duration: 3, draw: function (K, t, ctx) { fetch('x'); } });", notes: "" };
-    const bad = await labWrite(project, who, { plan: {}, code: "scene({draw(){}})", errors: "At t = 1.20 s the frame threw: x is not defined" });
+    const bad = whole(await labWrite(project, who, { plan: {}, code: "scene({draw(){}})", errors: "At t = 1.20 s the frame threw: x is not defined" }));
     expect(bad.problems.join(" ")).toMatch(/network/);
     expect(s.calls[1].text).toContain("At t = 1.20 s the frame threw");
     expect(s.calls[1].text).not.toContain("<example");
@@ -72,18 +78,18 @@ describe("«🎬 مختبر الموشن» on the server", () => {
     const { labReview } = await import("@/lib/editor/scene/director");
     const high = Object.fromEntries(RUBRIC.map((r) => [r.id, 9]));
     s.reply = { scores: high, worst: [], verdict: "ممتاز", code: "" };
-    const pass = await labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [jpg, jpg], stills: [jpg, jpg, jpg], times: [0.4, 2, 4], round: 1 });
+    const pass = whole(await labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [jpg, jpg], stills: [jpg, jpg, jpg], times: [0.4, 2, 4], round: 1 }));
     expect(pass.review.pass).toBe(true);
     expect(pass.code).toBe("");
     expect(s.calls[0].images).toBe(5);
     expect(s.calls[0].text).toContain("HARSH motion director");
     s.reply = { scores: { ...high, wow: 5 }, worst: [{ t: 1, problem: "مسطح", fix: "عمق" }], verdict: "يحتاج", code: EXEMPLARS[2].code };
-    const again = await labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [jpg], stills: [], round: 3 });
+    const again = whole(await labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [jpg], stills: [], round: 3 }));
     expect(again.review.pass).toBe(false);
     expect(again.code).toBe(EXEMPLARS[2].code.trim());
     expect(s.calls[1].text).toContain("the last");
     s.reply = { scores: { ...high, wow: 5 }, worst: [{ t: 1, problem: "مسطح", fix: "عمق" }], verdict: "يحتاج", code: "" };
-    const critique = await labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [jpg], reviewOnly: true });
+    const critique = whole(await labReview(project, who, { plan: {}, code: EXEMPLARS[1].code, sheets: [jpg], reviewOnly: true }));
     expect(critique.review.pass).toBe(false);
     expect(critique.review.worst[0].fix).toBe("عمق");
     expect(critique.code).toBe("");
