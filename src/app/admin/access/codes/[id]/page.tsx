@@ -88,7 +88,7 @@ export default async function CodeWatch({ params }: { params: Promise<{ id: stri
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <Link href="/admin/access" className="text-sm font-bold text-muted">→ السماح والأكواد</Link>
+        <Link href="/jawad-ai/admin/access" className="text-sm font-bold text-muted">→ السماح والأكواد</Link>
         <h1 className="display text-3xl">📊 مراقبة الكود «{code.label}»</h1>
         <p className="font-mono text-lg font-extrabold" dir="ltr">{code.code}</p>
         <p className="text-sm font-bold text-muted">
