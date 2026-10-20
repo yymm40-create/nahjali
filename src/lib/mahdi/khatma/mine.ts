@@ -37,6 +37,17 @@ export function nextPortion(read: Iterable<number>, range: PortionRange): number
   return null;
 }
 
+/**
+ * «مب شرط بالترتيب»: where to go on from the portion just read, wherever it was — the first unread after it, else the first
+ * unread of the stretch; null when all are read.
+ */
+export function nextAfter(read: Iterable<number>, range: PortionRange, from: number): number | null {
+  const set = new Set([...read].filter((n) => inRange(range, n)));
+  for (let n = Math.max(range.from, from + 1); n <= range.to; n++) if (!set.has(n)) return n;
+  for (let n = range.from; n <= range.to; n++) if (!set.has(n)) return n;
+  return null;
+}
+
 /** The same for the whole Quran in quarters. */
 export const nextQuarter = (read: Iterable<number>) => nextPortion(read, fullRange("quarter"));
 

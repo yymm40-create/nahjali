@@ -2,7 +2,7 @@
 // whose minutes fill a reading habit.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { carriedDay, isCarried, khatmaStats } from "@/lib/mahdi/khatma/mine";
+import { carriedDay, isCarried, khatmaStats, nextAfter, nextPortion } from "@/lib/mahdi/khatma/mine";
 import { CLOCK, clockText, firstPage, habitAfterReading, isTimeHabit, minutesInUnit, minutesText, pageOfVerse, portionsBefore, unreadOf, wholeMinutes } from "@/lib/mahdi/khatma/reader";
 import { carryQuarters, loadMyKhatma, readQuarters, startMyKhatma, unreadQuarter } from "@/lib/mahdi/server/my-khatma";
 import { addTime, loadReader, setFreePage, setTimeHabit } from "@/lib/mahdi/server/quran-reader";
@@ -125,5 +125,22 @@ describe("the reader's wiring", () => {
   it("«وين وصلت» never touches the habit", () => {
     expect(read("src/app/api/mahdi/khatma/mine/route.ts")).toMatch(/case "carry"/);
     expect(read("src/components/mahdi/khatma/useMyKhatma.ts")).toMatch(/r\.readOn < data\.current\.startedOn/);
+  });
+});
+
+describe("reading wherever they like", () => {
+  it("goes on from the portion just read: the next unread after it, else the first unread; null when all are read", () => {
+    const r = { from: 1, to: 10 };
+    expect(nextAfter([1, 2, 3], r, 7)).toBe(8);
+    expect(nextAfter([1, 2, 3, 7, 8, 9, 10], r, 7)).toBe(4);
+    expect(nextAfter([5, 6], r, 5)).toBe(7);
+    expect(nextAfter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], r, 3)).toBeNull();
+    // the same set in order goes after the furthest read instead
+    expect(nextPortion([1, 2, 3, 7], r)).toBe(8);
+    expect(nextAfter([1, 2, 3, 7], r, 2)).toBe(4);
+  });
+  it("the choice is on the khatma page and the reader follows it", () => {
+    expect(read("src/app/mahdi/(app)/khatma/page.tsx")).toMatch(/أقرأ من أي مكان/);
+    expect(read("src/app/mahdi/(app)/khatma/read/[q]/page.tsx")).toMatch(/order === "free" \? nextAfter/);
   });
 });

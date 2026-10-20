@@ -9,6 +9,7 @@ import PartPicker, { partText, type Part } from "@/components/mahdi/khatma/PartP
 import { useMyKhatma, type MyKhatma } from "@/components/mahdi/khatma/useMyKhatma";
 import FreeReading from "@/components/mahdi/khatma/FreeReading";
 import { TimeHabitLink, useReaderState } from "@/components/mahdi/khatma/ReaderClock";
+import { useReadOrder } from "@/components/mahdi/khatma/useReadOrder";
 import { dailyCount, isCarried, khatmaStats, unitText } from "@/lib/mahdi/khatma/mine";
 import { minutesText, portionsBefore, unreadOf, wholeMinutes } from "@/lib/mahdi/khatma/reader";
 import { DIVISION_LABEL, fullRange, isFull, portionQuarters, portionSummary, portionTitle, rangeSize, type Division, type PortionRange } from "@/lib/mahdi/khatma/portions";
@@ -137,6 +138,8 @@ function Open({ k }: { k: K }) {
   const s = useMemo(() => khatmaStats(cur.reads, cur.startedOn, cur.days, today, cur.range), [cur, today]);
   const readSet = useMemo(() => new Set(cur.reads.map((r) => r.quarter)), [cur.reads]);
   const [stop, setStop] = useState(false);
+  const [order, setOrder] = useReadOrder();
+  const [openAny, setOpenAny] = useState("");
   const [reached, setReached] = useState(0);
   const [edit, setEdit] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(() => new Set());
@@ -180,12 +183,33 @@ function Open({ k }: { k: K }) {
           {s.behind > 0 ? ` متأخر عن خطتك ${unitText(u, s.behind)}.` : s.ahead > 0 ? ` متقدّم على خطتك ${unitText(u, s.ahead)} 🌟` : ""}
           {s.streak > 1 ? ` · ${s.streak} أيام ورا بعض 🔥` : ""}
         </p>
-        {next && s.next && (
-          <Link href={`/mahdi/khatma/read/${s.next}`} className="m-btn m-btn-primary w-full">
-            📖 كمّل القراءة: {portionTitle(u, s.next)}
-          </Link>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="طريقة القراءة">
+          <button type="button" role="radio" aria-checked={order === "order"} className="m-option min-h-11 px-2 text-sm font-semibold" onClick={() => setOrder("order")}>بالترتيب</button>
+          <button type="button" role="radio" aria-checked={order === "free"} className="m-option min-h-11 px-2 text-sm font-semibold" onClick={() => setOrder("free")}>أقرأ من أي مكان</button>
+        </div>
+        {order === "free" ? (
+          <div className="space-y-2">
+            <p className="text-xs m-muted">مب شرط بالترتيب: اختر أي {DIVISION_LABEL[u].one} ما قرأته وافتحه، وبعد ما تخلّصه «والتالي» يكمّل لك من عنده.</p>
+            <div className="flex gap-2">
+              <select className="m-field flex-1" value={openAny} onChange={(e) => setOpenAny(e.target.value)} aria-label="اختر وين تقرأ">
+                <option value="">اختر وين تقرأ…</option>
+                {Array.from({ length: cur.range.to - cur.range.from + 1 }, (_, i) => cur.range.from + i).filter((n) => !readSet.has(n)).map((n) => (
+                  <option key={n} value={n}>{portionTitle(u, n)} · {portionSummary(u, n).range}</option>
+                ))}
+              </select>
+              <Link href={openAny ? `/mahdi/khatma/read/${openAny}` : "#"} aria-disabled={!openAny} className={`m-btn m-btn-primary ${openAny ? "" : "pointer-events-none opacity-50"}`}>افتح</Link>
+            </div>
+          </div>
+        ) : (
+          <>
+            {next && s.next && (
+              <Link href={`/mahdi/khatma/read/${s.next}`} className="m-btn m-btn-primary w-full">
+                📖 كمّل القراءة: {portionTitle(u, s.next)}
+              </Link>
+            )}
+            {next && <p className="m-num text-center text-xs m-muted">{next.opening ? `يبدأ بـ «${next.opening}» · ` : ""}{next.range}</p>}
+          </>
         )}
-        {next && <p className="m-num text-center text-xs m-muted">{next.opening ? `يبدأ بـ «${next.opening}» · ` : ""}{next.range}</p>}
       </section>
 
       <HabitLink k={k} />
