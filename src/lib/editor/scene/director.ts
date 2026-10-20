@@ -266,3 +266,72 @@ ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text
   const revised = !review.pass && typeof r.data.code === "string" && r.data.code.trim() ? checkScene(r.data.code) : null;
   return { review, code: revised?.ok ? revised.code : "", problems: revised && !revised.ok ? revised.problems : [], coins: r.coins, model: r.model };
 }
+
+const CHAT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reply", "action", "brief", "code"],
+  properties: {
+    reply: { type: "string", description: "to the person, Gulf Arabic, short (1–3 sentences): what you understood and what you are doing, or the answer / the one question" },
+    action: { type: "string", enum: ["none", "plan", "code"], description: "none = only talk; plan = (re)write the plan from `brief`; code = the COMPLETE revised program in `code`" },
+    brief: { type: "string", description: "action plan: the complete creative brief from the whole conversation (the idea, length, tone, every word to show, colours, what to avoid); else empty" },
+    code: { type: "string", description: "action code: the COMPLETE revised scene program (it replaces the old one); else empty" },
+  },
+};
+
+/**
+ * 0 · CHAT: the lab as a conversation. The person writes what they want — a new piece, a change («كبّر الشعار»،
+ * «خلّ اللون ذهبي»، «أسرع شوي»), a picture they attached (a logo, a product) — and حيدرة answers and decides: talk only,
+ * (re)plan from a brief he writes out of the whole conversation, or change the program himself (the page runs it,
+ * fixes any error with him, and shows it).
+ */
+export async function labChat(p: EditorProject, who: Who, b: Record<string, unknown>) {
+  stillOpen(p);
+  const message = text(b.message, 4000);
+  if (!message) throw new UserError("اكتب لحيدرة وش تبي.");
+  const assets = assetsOf(b.assets);
+  const hasPlan = Boolean(b.plan && typeof b.plan === "object");
+  const foot = footageOf(b);
+  const plan = hasPlan ? readPlan(b.plan, Number(b.seconds) || 15, assets.map((a) => a.id), foot?.seconds) : null;
+  const code = typeof b.code === "string" ? checkScene(b.code).code : "";
+  const history = (Array.isArray(b.history) ? b.history : []).slice(-20).map((m) => {
+    const o = (m ?? {}) as Record<string, unknown>;
+    return `${o.role === "assistant" ? "حيدرة" : "الشخص"}: ${text(o.text, 1500)}`;
+  });
+  const params = (b.params && typeof b.params === "object" ? b.params : {}) as Record<string, unknown>;
+  const f = frameOf(p);
+  const parts: ClaudePart[] = [
+    {
+      type: "text",
+      text: `THE LAB IS A CONVERSATION. The person talks to you like to a motion designer sitting next to them. Read the whole conversation and their new message, then decide ONE action:
+- "plan": there is no piece yet (and the message says what they want — go, never interview them; ask only if you truly cannot start), OR they ask for a different idea, structure, length or style → write "brief": the complete creative brief from the WHOLE conversation (everything they asked so far, in their words and yours).
+- "code": there is a piece and they ask for a change that keeps its idea (a colour, a word, a size, a speed, an element added or removed, a logo or picture they attached placed in it, the sound, a moment moved) → return the COMPLETE revised program in "code", changing only what they asked and keeping everything else exactly as it is (timing, params, cues, sound).
+- "none": a question, a thanks, or nothing to change → just "reply".
+"reply" is always filled, in Gulf Arabic, short and warm, never technical (no code words).
+FRAME: ${f.w}×${f.h} (${f.shape})
+PICTURES THE SCENE CAN DRAW (by id, with K.img / K.picture): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"} — a picture they just attached is listed here; when they say «هذا الشعار» / «حط اللوقو», it is the newest one: draw the REAL picture (K.picture), never redraw a logo yourself.
+${history.length ? `THE CONVERSATION SO FAR:\n${history.join("\n")}\n` : ""}THEIR NEW MESSAGE: ${message}
+${plan ? `THE CURRENT PLAN: ${planText(plan)}` : "There is no plan yet."}
+${Object.keys(params).length ? `THE VALUES THEY EDITED (params → their value; keep them unless they ask otherwise): ${JSON.stringify(params).slice(0, 3000)}` : ""}
+${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${code ? `\n\n${SCENE_CONTRACT_NOTE}` : ""}`,
+    },
+  ];
+  const r = await ask<{ reply: string; action: string; brief: string; code: string }>(who, b.model, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium");
+  let action = r.data.action === "plan" || r.data.action === "code" ? r.data.action : "none";
+  // a change asked with no piece yet is a plan; a program that breaks the machine's rules goes back as an error to fix
+  if (action === "code" && !code) action = "plan";
+  const revised = action === "code" ? checkScene(r.data.code) : null;
+  if (action === "code" && !revised?.code) action = "none";
+  return {
+    reply: text(r.data.reply, 1200) || "تمام.",
+    action,
+    brief: action === "plan" ? text(r.data.brief, 6000) || message : "",
+    code: revised?.code ?? "",
+    problems: revised?.problems ?? [],
+    coins: r.coins,
+    model: r.model,
+  };
+}
+
+/** What a revised program must keep (said briefly; the full contract is in the system prompt). */
+const SCENE_CONTRACT_NOTE = `Keep the machine's rules (a frame depends only on t; every shown word and the main colours are params read with K.p; the same duration unless asked; cues and sound() kept in step with what moves).`;

@@ -39,10 +39,16 @@ scene({
   blur: 0.5,                      // motion-blur shutter 0–1 (0.5 = 180°): averaged sub-frames on export; 0 for crisp UI
   three: false,                   // true → K.THREE (three.js ${"0.170.0"}) and K.addon("postprocessing/EffectComposer.js") are loaded; render into K.glCanvas and draw it onto ctx
   cues: [ { t: 0.0, sfx: "transition-whoosh-fast" }, { t: 1.2, sfx: "hit-bass-hit", vol: 0.8 } ], // sound on the frames that change
+  params: {                       // EDITABLE on the timeline: every word shown on screen and the 2–4 main colours (≤ 16, Arabic labels)
+    title: { label: "العنوان", type: "text", value: "ابدأ اليوم" },
+    accent: { label: "لون التمييز", type: "color", value: "#e8572a" },
+  },
   setup(K, ctx) { /* once: sample particles, measure text, build three.js scenes. May be async. */ },
   draw(K, t, ctx) { /* the frame at time t (seconds). Pure: depends only on t and what setup built. */ },
   sound(K, S) { /* the soundtrack, made in code, timed to your own frames (see THE SOUND below) */ },
 });
+
+EDITABLE (the person edits the finished piece on the timeline, and it is rendered again with their values): EVERY word shown on screen and the 2–4 main colours of the palette are params, always read in draw with K.p("id", fallback) — never hard-code a shown word or a main colour. The layout must survive a longer or shorter text (K.fit / K.wrap), and a colour change must keep contrast. Words spoken by the person's video are not params.
 
 HARD RULES OF THE MACHINE
 - A frame depends ONLY on t. No state carried from one draw to the next (no "x += …" across frames, no counters), no Math.random (use K.rng(seed) in setup or K.hash), no Date/performance/timers/requestAnimationFrame (they are frozen). Springs and retargets: K.spring / K.springTo (a sum of one spring per change: still a function of t).

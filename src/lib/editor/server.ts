@@ -87,6 +87,8 @@ export interface AssetView {
   outputId: string | null;
   status: AssetRow["status"];
   url: string | null;
+  /** made in «مختبر الموشن»: its scene (plan, program, editable texts and colours) is kept with it, to edit again */
+  lab?: boolean;
 }
 
 export interface ProjectSummary {
@@ -206,6 +208,7 @@ const view = (r: AssetRow, signed: string | null): AssetView => {
   outputId: typeof r.meta?.outputId === "string" ? r.meta.outputId : r.origin === "jawad" && typeof r.meta?.sourceId === "string" ? r.meta.sourceId : null,
   status: url || r.status !== "ready" ? r.status : "missing",
   url,
+  ...(r.meta?.lab ? { lab: true } : {}),
   };
 };
 

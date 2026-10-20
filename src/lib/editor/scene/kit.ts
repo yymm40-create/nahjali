@@ -402,6 +402,10 @@ export const SCENE_KIT_JS = String.raw`
   K.typedN = function (times, t) { t = K.TQ(t); var n = 0; while (n < times.length && times[n] <= t + 1e-6) n++; return n; };
   K.caretOn = function (t, tEnd, hz) { hz = hz || 2; return t < tEnd ? 1 : Math.floor((t - tEnd) * hz * 2) % 2 === 0 ? 1 : 0; };
 
+  // ── the editable values (texts and colours the person changes on the timeline): K.p(id) reads one ──
+  K.P = {};
+  K.p = function (id, d) { return K.P && K.P[id] !== undefined && K.P[id] !== null && K.P[id] !== "" ? K.P[id] : d; };
+
   // ── the person's own filmed video (when the piece is built on it): the runtime hands in the frame of now ──
   K.footage = null;
   K.useFootage = function (m) {
