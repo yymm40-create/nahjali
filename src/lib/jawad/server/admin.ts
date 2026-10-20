@@ -11,12 +11,15 @@ import { cleanAccent } from "@config/jawad/brand";
 import { DEFAULT_SECTIONS, FIXED_IMPLEMENTATIONS, isImplementation, RESERVED_SECTION_IDS, SECTION_ICONS, SECTION_IMPLEMENTATIONS } from "@config/jawad/sections";
 import { probe, sniff } from "../media";
 import { AD_SLOTS, cleanAdHref, emptyAd, type AdContent, type AdRow, type AdSlot } from "./ads";
-import { JAWAD_PUBLIC_BUCKET, loadRuntime } from "./runtime";
+import { forgetRuntime, JAWAD_PUBLIC_BUCKET, loadRuntime } from "./runtime";
 
 import { storage } from "@/lib/storage";
 const db = () => createAdminClient();
 const NOT_MIGRATED = "جداول JAWAD AI غير موجودة بعد: شغّل ملف SQL رقم 0017 في Supabase.";
+// every save in this file goes through here: the platform's remembered sections, prices and brand are forgotten on this
+// instance, so the owner sees the change at once (other instances catch up within ~20 s, see loadRuntime)
 const must = (error: { message?: string } | null) => {
+  forgetRuntime();
   if (error) throw new UserError(/relation|does not exist|schema cache/i.test(error.message ?? "") ? NOT_MIGRATED : "تعذّر الحفظ. جرّب مرة ثانية.", 500);
 };
 

@@ -3,6 +3,7 @@
 // code defaults apply (generators stay off for users, the owner can still try them).
 
 import { cache } from "react";
+import { ttlCache } from "@/lib/ttl-cache";
 import { loadPricing } from "@/lib/coins";
 import type { Pricing } from "@config/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -76,7 +77,7 @@ interface GeneratorRow { id: string; display_name: string | null; sample_path: s
 interface PriceRow { generator_id: string; price_key: string; centicoins: number }
 interface SettingRow { key: string; value: Record<string, unknown> }
 
-export const loadRuntime = cache(async (): Promise<Runtime> => {
+const loadRuntimeFresh = async (): Promise<Runtime> => {
   const db = createAdminClient();
   const [sec, gen, pri, set] = await Promise.all([
     db.from("jawad_sections").select("id,name,icon,implementation,sort,enabled"),
@@ -147,7 +148,13 @@ export const loadRuntime = cache(async (): Promise<Runtime> => {
     prices,
     pricing,
   };
-});
+};
+
+/** The platform's sections, generators and prices: asked once in a few seconds for everyone (the owner's change shows within ~20 s), once per request after that. */
+const runtimeMemo = ttlCache(20_000, loadRuntimeFresh);
+export const loadRuntime = cache(() => runtimeMemo());
+/** After the owner changes the sections or prices on this instance. */
+export const forgetRuntime = () => runtimeMemo.clear();
 
 /** Sections users can see (enabled; studio sections only when they have a live generator, unless `owner`). */
 export function visibleSections(rt: Runtime, owner: boolean) {
