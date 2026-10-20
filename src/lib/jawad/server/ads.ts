@@ -2,6 +2,7 @@
 // The owner edits a draft (previewed on the admin page) and publishes it; visitors only ever see published ads.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ttlCache } from "@/lib/ttl-cache";
 import { publicUrl } from "./runtime";
 
 export const AD_SLOTS = ["main", "side_top", "side_bottom"] as const;
@@ -74,10 +75,12 @@ export async function adRows(): Promise<AdRow[]> {
   return (data ?? []) as AdRow[];
 }
 
-/** The published, enabled ad of each slot (null: nothing published there). */
+const liveRows = ttlCache(20_000, adRows);
+
+/** The published, enabled ad of each slot (null: nothing published there). Asked once in a few seconds for everyone. */
 export async function liveAds(): Promise<Record<AdSlot, AdView | null>> {
   const out: Record<AdSlot, AdView | null> = { main: null, side_top: null, side_bottom: null };
-  for (const r of await adRows()) {
+  for (const r of await liveRows()) {
     const c = r.live;
     if (c?.enabled && c.media && AD_SLOTS.includes(c.slot) && !out[c.slot]) out[c.slot] = adView(r.id, c);
   }
