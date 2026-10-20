@@ -189,16 +189,19 @@ describe("«Claude Code» · زهراء and كاظم", () => {
     expect(read("src/app/api/photo/code/route.ts")).toContain("gradeReview");
   });
 
-  it("كاظم: «Claude Code» draws the design in the page, always with its writing, and keeps it as the artwork", () => {
+  it("كاظم: «حيدرا ماكس» draws EVERY design in the page with its writing (GPT Image 2 only paints its picture) and keeps it as the artwork", () => {
     const chat = read("src/lib/designer/chat.ts");
-    expect(chat).toContain('maker: { type: "string", enum: ["gpt", "code"]');
-    expect(chat).toContain('maker === "code" ? "baked"');
+    expect(chat).toContain('const maker = "code" as const;');
+    expect(chat).toContain('const textMode = "baked" as const;');
+    expect(chat).toContain('picture: { type: "string"');
     const produce = read("src/lib/designer/produce.ts");
     expect(produce).toContain("export async function codeBrief");
     expect(produce).toContain("export async function produceFromCode");
     expect(produce).toContain('maker: "code"');
     expect(read("src/components/jawad/designer/DesignerChat.tsx")).toContain('from: "designer"');
-    expect(read("config/designer.ts")).toContain("«حيدرا ماكس» (maker = \"code\")");
+    expect(produce).toContain("${p.picture}\\n\\n${NO_TEXT_RULE}");
+    expect(produce).not.toContain("checkSlide");
+    expect(read("config/designer.ts")).toContain("طريقة المنصة الوحيدة لصناعة التصميم");
     expect(read("src/lib/jawad/server/claude-code-picture.ts")).toContain('from === "designer"');
   });
 });

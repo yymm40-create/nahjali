@@ -51,8 +51,12 @@ export interface PendingDesign {
   layers: Layer[];
   /** the artwork to keep when `artwork` is empty (a designer_files row) */
   keep: string | null;
-  /** who draws it: GPT Image 2 through جواد (default), or «Claude Code» in the person's browser */
+  /** who designs it: «حيدرا ماكس» in the person's browser (every design now; "gpt" only on orders saved before) */
   maker?: "gpt" | "code";
+  /** the picture GPT Image 2 paints for the design FIRST (English; no writing in it), when it needs one */
+  picture?: string;
+  /** that picture once painted (or a previous design's, kept): a designer_files row */
+  art?: string;
   /** of `refs`, the photos to PUT IN the design as they are (a speaker, a baby, a logo): Claude Code draws them in unchanged */
   place?: string[];
 }
@@ -137,6 +141,8 @@ export function readPending(v: unknown): PendingDesign | null {
     keep,
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
     ...(Array.isArray(p.place) && p.place.length ? { place: p.place.filter((r): r is string => typeof r === "string").slice(0, 20) } : {}),
+    ...(typeof p.picture === "string" && p.picture.trim() ? { picture: p.picture.trim().slice(0, 4000) } : {}),
+    ...(typeof p.art === "string" && p.art ? { art: p.art } : {}),
   };
 }
 

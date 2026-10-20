@@ -150,6 +150,9 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
   const [busy, setBusy] = useState<"" | "writing" | "drawing" | "splitting">("");
   // «Claude Code» drawing the design here: what it is doing now (null when GPT Image 2 draws it)
   const [codeStep, setCodeStep] = useState<string | null>(null);
+  // what «حيدرا ماكس» has done so far for the design being drawn (its steps, and the last picture he looked at)
+  const [codeLog, setCodeLog] = useState<string[]>([]);
+  const [codePreview, setCodePreview] = useState<string | null>(null);
   // the person's Claude model, for «Claude Code» (read inside the produce step, which never changes)
   const claudeId = useRef("");
   const [saving, setSaving] = useState(false);
@@ -194,17 +197,22 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
       return copy;
     });
 
-  /** The produce step: جواد draws the artwork (one call, about a minute), then the editor opens. */
+  /** The produce step: the picture it needs (GPT Image 2, no writing) is painted on the server, then «حيدرا ماكس»
+   * designs it here in code — every step and every picture he looks at shown as it happens — and it is kept. */
   const runProduce = useCallback(async (id: string, retry = false) => {
     setBusy("drawing");
-    setCodeStep(null);
+    const step = (text: string) => (setCodeStep(text), setCodeLog((l) => [...l.slice(-8), text]));
+    setCodeLog([]);
+    setCodePreview(null);
+    step("أجهّز التصميم (وإذا يحتاج صورة مرسومة، جواد يرسمها بـ GPT Image 2 بدون كتابة)…");
     try {
-      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[] } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
+      const r = await postJson<{ design?: DesignView; code?: { prompt: string; aspect: string; refs: string[]; photos?: string[]; picture?: boolean } }>("/api/designer/produce", { chatId: id, ...(retry ? { retry: true } : {}) });
       if (r.code) {
-        // «Claude Code»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork
+        if (r.code.picture) step("🖼️ صورة التصميم جاهزة من GPT Image 2 (بدون كتابة) — حيدرا ماكس يحطها ويكتب الكلام فوقها.");
+        // «حيدرا ماكس»: the design is drawn here in code, looked at and rewritten, then kept as the design's artwork
         const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", onStep: (s) => setCodeStep(s.text) });
-        setCodeStep("أحفظ التصميم…");
+        const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "designer", onStep: (s) => (step(s.text), s.preview && setCodePreview(s.preview)) });
+        step("أحفظ التصميم…");
         const saved = await postJson<{ design: DesignView }>("/api/designer/produce", { chatId: id, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
         putDesign(() => saved.design);
       } else if (r.design) putDesign(() => r.design!);
@@ -213,6 +221,7 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
     } finally {
       setBusy("");
       setCodeStep(null);
+      setCodePreview(null);
     }
   }, []);
 
@@ -420,8 +429,16 @@ export default function DesignerChat({ name, persona, loginHref, owner, photo, i
                         <div className="dz-progress" role="status" aria-live="polite">
                           <span className="dz-spin" aria-hidden />
                           <div>
-                            <b>{busy === "splitting" ? "نفكّك الصورة إلى طبقات…" : codeStep ? `🧑‍💻 حيدرا ماكس: ${codeStep}` : "جواد يرسم الصورة بـ GPT Image 2…"}</b>
-                            <small>{busy === "splitting" ? "نقصّ العنصر الرئيسي بخلفية شفافة ونضعه فوق الصورة الأصلية (نحو نصف دقيقة)." : codeStep ? "Claude يكتب برنامج التصميم ويرسمه هنا ويشوفه ويعيد كتابته لين ينجح (دقايق). لا تقفل الصفحة." : "صورة بلا كتابة، تأخذ نحو دقيقة، ثم يفتح محرر الطبقات. لا تقفل الصفحة."}</small>
+                            <b>{busy === "splitting" ? "نفكّك الصورة إلى طبقات…" : codeStep ? `🧑‍💻 حيدرا ماكس: ${codeStep}` : "حيدرا ماكس يجهّز التصميم…"}</b>
+                            <small>{busy === "splitting" ? "نقصّ العنصر الرئيسي بخلفية شفافة ونضعه فوق الصورة الأصلية (نحو نصف دقيقة)." : "حيدرا ماكس يكتب برنامج التصميم ويرسمه هنا ويشوفه ويعيد كتابته لين ينجح (دقايق). لا تقفل الصفحة."}</small>
+                            {busy !== "splitting" && codeLog.length > 1 && (
+                              <ul className="m-0 mt-1 list-none p-0 text-xs opacity-80">
+                                {codeLog.slice(0, -1).map((l, k) => (
+                                  <li key={k}>✓ {l}</li>
+                                ))}
+                              </ul>
+                            )}
+                            {busy !== "splitting" && codePreview && <img src={codePreview} alt="آخر نسخة شافها حيدرا ماكس" className="mt-2 max-h-64 rounded-lg" />}
                           </div>
                         </div>
                       )}

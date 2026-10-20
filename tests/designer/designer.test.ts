@@ -25,11 +25,12 @@ describe("«كاظم»", () => {
     expect(t.indexOf(libraryBlock())).toBeLessThan(t.indexOf("EX"));
     expect(t.endsWith("REC")).toBe(true);
     expect(DESIGNER_PLATFORM_RULES).toContain("لا تدّعِ");
-    // since «Fix designer text flow» (#366): the writing is drawn INSIDE the design by default ("baked"); a background
-    // with no writing and real text layers ("layers"), or a blank design ("blank"), only when the person asks
-    expect(DESIGNER_PLATFORM_RULES).toContain("طريقة المنصة الأساسية: جواد يرسم التصميم كاملًا بالصورة والكتابة معًا");
-    expect(DESIGNER_PLATFORM_RULES).toMatch(/"layers" ليصنع كاظم الخلفية بلا كتابة/);
-    expect(DESIGNER_PLATFORM_RULES).toContain('"blank"');
+    // the owner's order (21 October 2026): «حيدرا ماكس» designs every design in code; GPT Image 2 only paints the
+    // picture it needs, with no writing — there is no third way
+    expect(DESIGNER_PLATFORM_RULES).toContain("طريقة المنصة الوحيدة لصناعة التصميم");
+    expect(DESIGNER_PLATFORM_RULES).toContain("بدون أي كتابة فيها");
+    expect(DESIGNER_PLATFORM_RULES).toContain("لا يوجد طريق ثالث");
+    expect(DESIGNER_PLATFORM_RULES).not.toContain("جواد يرسم التصميم كاملًا بالصورة والكتابة");
     for (const f of FONTS) expect(fontsBlock()).toContain(f.id);
   });
 
@@ -38,8 +39,8 @@ describe("«كاظم»", () => {
     expect(ANSWER_SCHEMA.properties.questions.items.properties.kind.enum).toEqual(["choice", "source", "directions", "fonts"]);
     expect(ANSWER_SCHEMA.properties.produce.properties.kind.enum).toEqual(DESIGN_KINDS.map((k) => k.id));
     expect(ANSWER_SCHEMA.properties.produce.properties.aspect.enum).toEqual(Object.keys(DESIGN_ASPECTS));
-    expect(ANSWER_SCHEMA.properties.produce.properties.text_mode.enum).toEqual(["baked", "layers", "blank"]);
-    expect(ANSWER_SCHEMA.properties.produce.required).toContain("text_mode");
+    expect(ANSWER_SCHEMA.properties.produce.required).toEqual(["on", "kind", "aspect", "picture", "picture_keep", "artwork", "refs", "place", "layers"]);
+    expect(Object.keys(ANSWER_SCHEMA.properties.produce.properties)).not.toContain("maker");
     for (const field of ["\"reply\"", "\"questions\"", "\"record\"", "\"produce\"", "\"split\"", "kind=\"source\"", "kind=\"fonts\"", "kind=\"directions\"", "\"layers\"", "#RRGGBB"]) expect(DESIGNER_TOOLS).toContain(field);
   });
 });

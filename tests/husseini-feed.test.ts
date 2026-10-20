@@ -51,7 +51,7 @@ describe("Claude Code يحط صور الأشخاص في التصميم", () => {
     expect(p?.place).toEqual(["a"]);
     expect(DESIGNER_PLATFORM_RULES).toContain('"place"');
     expect(readFileSync("src/lib/designer/chat.ts", "utf8")).toContain('"place", "layers"]');
-    expect(readFileSync("src/lib/designer/produce.ts", "utf8")).toContain("refs: urls.slice(0, 4), photos }");
+    expect(readFileSync("src/lib/designer/produce.ts", "utf8")).toContain("refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) }");
     const draw = readFileSync("src/components/claude-code/draw.ts", "utf8");
     expect(draw).toContain("id: `photo${i + 1}`, bitmap: p.bm");
     expect(draw).toContain("await host.load(code, { w: W, h: H, assets,");

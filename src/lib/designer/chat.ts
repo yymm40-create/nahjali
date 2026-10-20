@@ -38,15 +38,15 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "kind", "aspect", "text_mode", "maker", "artwork", "refs", "place", "layers"],
+      required: ["on", "kind", "aspect", "picture", "picture_keep", "artwork", "refs", "place", "layers"],
       description: "طلب التصميم، فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
         kind: { type: "string", enum: ["wedding", "husseini_joy", "husseini_mourning", "newborn", "thumbnail", "latmiya", "other"] },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9", "3:2"] },
-        text_mode: { type: "string", enum: ["baked", "layers", "blank"], description: "baked افتراضيًا: النص داخل الصورة؛ layers: طبقات حقيقية؛ blank: بلا كتابة" },
-        maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم: gpt = GPT Image 2 عبر جواد (الافتراضي للصور الواقعية والأشخاص)؛ code = «حيدرا ماكس» يرسمه بالكود (الكتابة الحرفية والأشكال)" },
-        artwork: { type: "string", description: "توجيه التصميم بالإنجليزية، أو فارغ لإبقاء الصورة الحالية وتبديل الطبقات فقط" },
+        picture: { type: "string", description: "إذا احتاج التصميم صورة مرسومة (منظر، خلفية واقعية، رسمة، عنصر) لا يقدر الكود يرسمها: توجيهها بالإنجليزية لـ GPT Image 2 — بدون أي كتابة فيها أبدًا، ومع مناطق هادئة للكتابة. وإلا فارغ (حيدرا ماكس يرسم كل شي بالكود)." },
+        picture_keep: { type: "boolean", description: "true لإبقاء صورة التصميم السابق كما هي (لما يتغير الكلام أو الألوان أو الترتيب فقط)" },
+        artwork: { type: "string", description: "توجيه التصميم كاملًا بالإنجليزية لـ «حيدرا ماكس»: الأسلوب، الألوان، الخطوط، التكوين، مكان كل كلمة وكل صورة" },
         refs: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل المرفقة المسلَّمة مرجعًا للرسم، أو فارغة" },
         place: { type: "array", items: { type: "string" }, description: "معرّفات (id) صور العميل التي تُوضع داخل التصميم كما هي (صورة الخطيب أو الرادود أو المولود أو الشعار) — مع حيدرا ماكس تنحط الصورة نفسها بلا إعادة رسم للوجه؛ أو فارغة" },
         layers: {
@@ -87,7 +87,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; kind: string; aspect: string; text_mode: string; maker?: string; artwork: string; refs: string[]; place?: string[]; layers: unknown[] };
+  produce: { on: boolean; kind: string; aspect: string; picture?: string; picture_keep?: boolean; artwork: string; refs: string[]; place?: string[]; layers: unknown[] };
   split: { on: boolean; ref: string };
 }
 
@@ -165,26 +165,26 @@ export async function say(userId: string, chatId: string | null, message: string
     const aspect: DesignAspect = isDesignAspect(a.produce.aspect) ? a.produce.aspect : ((style?.aspects[0] as DesignAspect | undefined) ?? "1:1");
     const artwork = String(a.produce.artwork ?? "").trim().slice(0, 6000);
     const layers = readLayers(a.produce.layers, style?.directions[0]?.fonts.body ?? "readex");
-    const maker = a.produce.maker === "code" ? "code" : "gpt";
-    // «Claude Code» draws the whole design with its writing: always baked
-    const textMode = maker === "code" ? "baked" : a.produce.text_mode === "layers" || a.produce.text_mode === "blank" ? a.produce.text_mode : "baked";
-    // the photos to put in the design as they are (Claude Code places them; GPT Image 2 gets them as references too)
+    // «حيدرا ماكس» designs every design in code with its exact writing; GPT Image 2 only paints the picture it needs
+    const maker = "code" as const;
+    const textMode = "baked" as const;
+    const picture = String(a.produce.picture ?? "").trim().slice(0, 4000);
+    // the photos to put in the design as they are («حيدرا ماكس» places them; the other pictures are references)
     const place = (Array.isArray(a.produce.place) ? a.produce.place : []).filter((x) => mine.has(x)).slice(0, 20);
     const refs = [...new Set([...place, ...(Array.isArray(a.produce.refs) ? a.produce.refs : []).filter((x) => mine.has(x))])].slice(0, 20);
     const prevAt = lastDesignAt(history);
     const prev = prevAt >= 0 ? history[prevAt].design : undefined;
-    const keep = !artwork && prev?.artwork && prev.state === "ready" ? prev.artwork : null;
-    if (!artwork && !keep) {
-      reply.text += "\n\n⚠️ لم أجد صورة قائمة أبقيها ولا توجيهًا جديدًا للرسم؛ اطلب التصميم من جديد.";
-    } else if (textMode !== "blank" && !layers.length) {
+    // a note that changes only the words, the colours or the layout keeps the picture that was painted
+    const keptArt = !picture && a.produce.picture_keep === true && prev?.art ? prev.art : undefined;
+    const keep = null;
+    if (!artwork) {
+      reply.text += "\n\n⚠️ لم أجد توجيهًا للتصميم؛ اطلب التصميم من جديد.";
+    } else if (!layers.length) {
       reply.text += "\n\n⚠️ لم تُحدَّد طبقات نص للتصميم؛ أعطني النصوص كما تريدها ثم اطلب التصميم من جديد.";
     } else {
-      const size = keep && prev ? { width: prev.width, height: prev.height } : sizeOf(aspect);
-      const visibleLayers = textMode === "layers" ? layers : [];
-      const design: Design = { id: randomUUID().slice(0, 8), aspect: keep && prev ? prev.aspect : aspect, ...size, artwork: keep, textMode, layers: visibleLayers, state: keep ? "ready" : "drawing" };
+      const design: Design = { id: randomUUID().slice(0, 8), aspect, ...sizeOf(aspect), artwork: keep, textMode, layers: [], state: "drawing" };
       reply.design = design;
-      if (!keep) pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep: null, ...(maker === "code" ? { maker } : {}), ...(place.length ? { place } : {}) };
-      else reply.text += "\n\n🧩 أبقيت الصورة ووضعت الطبقات الجديدة في محرر الطبقات.";
+      pending = { id: design.id, at, kind, aspect, textMode, artwork, refs, layers, keep, maker, ...(place.length ? { place } : {}), ...(picture ? { picture } : keptArt ? { art: keptArt } : {}) };
     }
   }
 

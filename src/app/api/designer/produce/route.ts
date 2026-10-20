@@ -3,7 +3,7 @@ import { handle, UserError } from "@/lib/api";
 import { requireDesignerUser } from "@/lib/designer/access";
 import { getChat } from "@/lib/designer/chats";
 import { fileLinks } from "@/lib/designer/files";
-import { codeBrief, produce, produceFromCode, retry, type Produced } from "@/lib/designer/produce";
+import { codeBrief, produceFromCode, retry } from "@/lib/designer/produce";
 import { isAdmin } from "@config/site";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,9 @@ export const maxDuration = 300;
 const UUID = /^[0-9a-f-]{36}$/i;
 
 /**
- * «المصمم الذكي» · the produce step: draws the artwork of the design «كاظم» ordered (GPT Image 2 through جواد, with no
- * text in it), checks it, and answers with the design for the layers editor. `retry` draws the last design again.
+ * «المصمم الذكي» · the produce step, in two calls: first the brief «حيدرا ماكس» designs from (جواد paints the picture it
+ * needs first, with GPT Image 2 and no writing in it); then the PNG the page drew comes back and becomes the design.
+ * `retry` draws the last design again.
  */
 export const POST = handle(async (req: Request) => {
   const { user } = await requireDesignerUser();
@@ -26,14 +27,13 @@ export const POST = handle(async (req: Request) => {
       if (!chat) throw new UserError("ما لقينا هذي المحادثة.", 404);
       await retry(user.id, chat);
     }
-    // «Claude Code»: the page draws the design itself — first it gets the brief, then it sends the picture back
-    let r: Produced;
-    if (typeof b.png === "string") r = await produceFromCode(user.id, chatId, b);
-    else {
-      const brief = await codeBrief(user.id, chatId);
-      if (brief) return NextResponse.json({ code: brief });
-      r = await produce(user.id, chatId, { owner: isAdmin(user.email), email: user.email, origin: new URL(req.url).origin });
+    // «حيدرا ماكس»: the page draws the design itself — first it gets the brief, then it sends the picture back
+    if (typeof b.png !== "string") {
+      const brief = await codeBrief(user.id, chatId, { email: user.email, origin: new URL(req.url).origin });
+      if (!brief) throw new UserError("ما فيه تصميم ينتظر الرسم في هذي المحادثة.", 409);
+      return NextResponse.json({ code: brief });
     }
+    const r = await produceFromCode(user.id, chatId, b);
     const links = await fileLinks(user.id, chatId);
     return NextResponse.json({
       ...r,

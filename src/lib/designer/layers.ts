@@ -73,6 +73,8 @@ export interface Design {
   flag?: string;
   /** the final PNG the person saved (a designer_files row) */
   final?: string;
+  /** the picture GPT Image 2 painted for it (no writing in it; a designer_files row), placed by «حيدرا ماكس» */
+  art?: string;
 }
 
 export const DESIGN_FONT_IDS = FONTS.map((f) => f.id);
@@ -162,6 +164,7 @@ export function readDesign(v: unknown): Design | null {
   if (typeof o.detail === "string" && o.detail) d.detail = o.detail.slice(0, 400);
   if (typeof o.flag === "string" && o.flag) d.flag = o.flag.slice(0, 300);
   if (typeof o.final === "string" && o.final) d.final = o.final;
+  if (typeof o.art === "string" && o.art) d.art = o.art;
   return d;
 }
 
