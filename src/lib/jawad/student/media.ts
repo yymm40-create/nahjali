@@ -34,6 +34,12 @@ export const MEDIA_TYPES: Record<string, string> = {
 };
 /** Stop waiting for ElevenLabs after this (a video of several hours is done well before). */
 const GIVE_UP_MS = 3 * 3600_000;
+/**
+ * Without a speech-to-text webhook in the ElevenLabs account the transcription is one long request: it is given up
+ * well inside the server function's 300 s, so a long clip fails clearly instead of the function being stopped
+ * mid-request, the job started again and again, and the material shown «busy» for hours.
+ */
+const SYNC_WAIT_MS = 200_000;
 
 export const mediaUsd = (seconds: number) => (Math.max(60, seconds) / 3600) * SCRIBE_USD_PER_HOUR + 0.005;
 
@@ -103,9 +109,12 @@ async function step(job: Job): Promise<StepResult> {
   const tid = typeof job.progress.tid === "string" ? job.progress.tid : null;
   try {
     if (!tid) {
+      // a run stopped in the middle of the waited-for request (the server's time ran out): do not send it again
+      if (job.progress.waiting) throw new UserError(TOO_LONG);
+      await sdb().from("student_jobs").update({ progress: { ...job.progress, waiting: true } }).eq("id", job.id);
       const url = typeof job.input.path === "string" ? (await storage.from(STUDENT.bucket).createSignedUrl(job.input.path, 6 * 3600)).data?.signedUrl : String(job.input.url ?? "");
       if (!url) throw new UserError("ما لقينا الملف. ارفعه مرة ثانية.");
-      const r = await elevenTranscribeUrl({ url, languageCode: (job.input.language as string) || null });
+      const r = await elevenTranscribeUrl({ url, languageCode: (job.input.language as string) || null, waitMs: SYNC_WAIT_MS });
       if ("heard" in r) return finish(job, r.heard);
       return { done: false, progress: { tid: r.id, since: Date.now() }, stage: "ElevenLabs يفرّغ الكلام…" };
     }
@@ -116,9 +125,12 @@ async function step(job: Job): Promise<StepResult> {
     await new Promise((ok) => setTimeout(ok, 6000));
     return { done: false, stage: `ElevenLabs يفرّغ الكلام… (${Math.max(1, Math.round(waited / 60_000))} د)` };
   } catch (e) {
-    if (e instanceof ProviderError) throw new UserError(e.userMessage);
+    if (e instanceof ProviderError) throw new UserError(/stt-url: .*(timeout|aborted)/i.test(e.detail) ? TOO_LONG : e.userMessage);
     throw e;
   }
 }
+
+const TOO_LONG =
+  "المقطع طويل ولم يكتمل تفريغه في الوقت المتاح. ما انخصم منك شيء. جرّب مقطعًا أقصر، أو اطلب من الإدارة تفعيل التفريغ بالخلفية (Webhook في ElevenLabs) للمقاطع الطويلة.";
 
 export const mediaHandler: Handler = { label: "تفريغ الفيديو والصوت", step };
