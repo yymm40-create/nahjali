@@ -9,12 +9,13 @@
 // bar (up to three rounds) → the final film is rendered here at 30 fps with motion blur and lands on the timeline with
 // its sound cues (and, if asked, music from ElevenLabs). The window is a solid studio: five steps, one at a time.
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api, postJson } from "@/lib/fetch";
 import { useClaudeModel } from "@/components/robots/claude-model";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import { readCues, type Cue, type LabPlan, type Review } from "@/lib/editor/scene/contract";
+import { storeOf } from "./lab-tabs";
 import { MAX_ROUNDS, PASS, RUBRIC } from "@/lib/editor/scene/skill";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { LAB_GROUPS, chosenOptions, type ChoiceKey, type LabChoices, type LabGroup } from "@config/editor/lab-options";
@@ -118,6 +119,30 @@ const libraryLinks = () =>
       return new Map<string, string>();
     }));
 const key = (id: string) => `jw-lab-${id}`;
+
+/** A short fingerprint of a text (to tell whether a kept half-written program belongs to this very request). */
+const hashOf = (s: string) => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
+/** The half-written program kept on the device for this project's current writing request (empty when none). */
+const readPart = (id: string, sig: string): string => {
+  try {
+    const v = JSON.parse(localStorage.getItem(`jw-lab-part-${id}`) ?? "null") as { sig?: string; partial?: string } | null;
+    return v && v.sig === sig && typeof v.partial === "string" ? v.partial : "";
+  } catch {
+    return "";
+  }
+};
+const savePart = (id: string, sig: string, partial: string) => {
+  try {
+    if (partial) localStorage.setItem(`jw-lab-part-${id}`, JSON.stringify({ sig, partial }));
+    else localStorage.removeItem(`jw-lab-part-${id}`);
+  } catch {
+    /* not kept */
+  }
+};
 const SECONDS = [6, 10, 15, 20, 30, 45, 60];
 const INTENSITY: [number, string][] = [[1, "هادئ وفخم"], [3, "متوازن"], [4, "قوي"], [5, "ناري"]];
 /** Milliseconds as «٢:٣٠» (minutes and seconds), for a wait a person is watching. */
@@ -218,6 +243,11 @@ export default function MotionLab({
   onClose,
   minimized,
   onMinimize,
+  tabId = "main",
+  active = true,
+  tabBar = null,
+  onStatus,
+  onTitle,
   footageClips = [],
   initialFootage = null,
   initialSource = null,
@@ -235,6 +265,16 @@ export default function MotionLab({
   /** folded to the pill — kept by the editor, so its «مختبر الموشن» button can bring the window back */
   minimized: boolean;
   onMinimize: (v: boolean) => void;
+  /** which tab of the lab this is: its work is kept apart from the other tabs' (the first tab keeps the lab's old key) */
+  tabId?: string;
+  /** the tab on show; the others stay mounted (their work goes on) but hidden */
+  active?: boolean;
+  /** the strip of tabs, drawn at the top of the window */
+  tabBar?: ReactNode;
+  /** what this tab is doing, for the folded pill and the tab strip */
+  onStatus?: (s: { busy: boolean; label: string; work: boolean }) => void;
+  /** the tab's name: its plan's title, or the start of its idea */
+  onTitle?: (t: string) => void;
   /** «🎥 على فيديوك»: the video clips on the timeline the piece can be built on */
   footageClips?: FootageSource[];
   /** opened by حيدرة on one of them */
@@ -245,6 +285,7 @@ export default function MotionLab({
   onUpload?: (file: File) => Promise<EditorAsset>;
 }) {
   const [claude] = useClaudeModel();
+  const store = storeOf(projectId, tabId);
   const [stage, setStage] = useState<Stage>("brief");
   // the lab opens on the conversation (the person writes what they want; the steps stay for whoever likes them)
   const [view, setView] = useState<View>("chat");
@@ -364,7 +405,7 @@ export default function MotionLab({
       return () => clearTimeout(tm);
     }
     try {
-      const s = JSON.parse(localStorage.getItem(key(projectId)) ?? "null") as Saved | null;
+      const s = JSON.parse(localStorage.getItem(key(store)) ?? "null") as Saved | null;
       if (!s) return;
       const tm = setTimeout(() => {
         if (!initialBrief) setBrief(s.brief);
@@ -402,14 +443,14 @@ export default function MotionLab({
     } catch {
       /* a fresh start */
     }
-  }, [projectId, initialBrief, initialFootage, initialSource]);
+  }, [store, initialBrief, initialFootage, initialSource]);
   useEffect(() => {
     try {
-      localStorage.setItem(key(projectId), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-40), params } satisfies Saved));
+      localStorage.setItem(key(store), JSON.stringify({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-40), params } satisfies Saved));
     } catch {
       /* not kept */
     }
-  }, [projectId, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, foot, personOn, chat, params]);
+  }, [store, brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, foot, personOn, chat, params]);
   useEffect(() => () => (host.current?.destroy(), abort.current?.abort(), preview.current?.close(), reader.current?.r.close(), matte.current?.r?.close()), []);
   // حيدرة opened the lab (again) on one of the person's clips: that clip is the one, learnt afresh
   useEffect(() => {
@@ -530,6 +571,30 @@ export default function MotionLab({
     return got;
   };
 
+  /**
+   * One writing step. A program too long for one request comes back in pieces: what was written so far is kept (here and on
+   * the device, so a cut line or a closed tab loses nothing) and the next request continues from its last character.
+   */
+  const writeOnce = async (body: Record<string, unknown>) => {
+    const sig = hashOf(JSON.stringify({ plan: body.plan, code: body.code ?? "", errors: body.errors ?? "", t: body.transparent === true }));
+    let partial = readPart(store, sig);
+    let stuck = 0, lessThinking = false;
+    for (;;) {
+      if (partial) say1(`⏳ أكمل الكتابة من نفس النقطة (كُتب ${Math.round(partial.length / 1000)} ألف حرف) — ما أبدأ من جديد.`);
+      const r = await call<{ code: string; problems: string[]; notes: string; partial?: string; thinkingOnly?: boolean }>("lab_write", { ...body, ...(partial ? { partial } : {}), ...(lessThinking ? { lessThinking } : {}) });
+      if (typeof r.partial !== "string") {
+        savePart(store, "", "");
+        return r;
+      }
+      // the request's time ran out with the program unfinished: ask again from where it stopped
+      stuck = r.partial.length > partial.length ? 0 : stuck + 1;
+      if (r.thinkingOnly) lessThinking = true;
+      if (stuck >= 3) throw new Error("الكتابة ما تقدّمت في آخر طلبين. جرّب مرة ثانية.");
+      partial = r.partial;
+      savePart(store, sig, partial);
+    }
+  };
+
   /** Writes (or fixes) until the program runs cleanly in the page; returns it with what the scene says. */
   const buildRunning = async (p: LabPlan, previous = "", errors = "") => {
     let program = previous, why = errors;
@@ -537,7 +602,7 @@ export default function MotionLab({
     for (let attempt = 0; ; attempt++) {
       if (!program || why) {
         say1(attempt === 0 && !previous ? "✍️ حيدرة يكتب المشهد بالكود…" : `🛠️ حيدرة يصلّح خطأ في المشهد (المحاولة ${attempt})…`);
-        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: assetList, transparent, ...soundBody(), ...(program ? { code: program, errors: why } : {}) });
+        const r = await writeOnce({ plan: p, seconds: p.seconds, assets: assetList, transparent, ...soundBody(), ...(program ? { code: program, errors: why } : {}) });
         if (r.notes) say1(r.notes);
         program = r.code;
         if (r.problems.length) {
@@ -955,7 +1020,15 @@ export default function MotionLab({
   }, [busy, stage]);
   const elapsed = busy ? mmss(now) : "";
   const last = reviews[reviews.length - 1];
+  // folded, or another tab on show: the window is hidden, never taken apart — the work in it goes on
+  const hidden = minimized || !active;
   const stageAr = stage === "planning" ? "يخطّط" : stage === "building" ? "يكتب الكود" : stage === "reviewing" ? "يراجع" : stage === "rendering" ? "يرندر" : "";
+  // what this tab is doing, told to the tab strip and the folded pill (the pill belongs to the strip: it speaks for every tab)
+  const statusLabel = busy ? `${stageAr}${stage === "rendering" ? ` ${Math.round(progress * 100)}٪${renderAt ? ` · يبقى ${mmss(renderAt.leftMs)}` : ""}` : ` ${elapsed}`}` : "جاهز";
+  const hasWork = Boolean(plan || code || chat.length);
+  useEffect(() => onStatus?.({ busy, label: statusLabel, work: hasWork }), [onStatus, busy, statusLabel, hasWork]);
+  const tabTitle = plan?.title || brief.trim().slice(0, 28);
+  useEffect(() => onTitle?.(tabTitle), [onTitle, tabTitle]);
 
   // don't lose a build, a review round or a render to an accidental tab close
   useEffect(() => {
@@ -989,20 +1062,12 @@ export default function MotionLab({
 
   if (!portalReady) return null;
 
-  if (minimized)
-    return createPortal(
-      <button type="button" className="jw-btn jw-btn-primary jw-3d mlab-fill !min-h-12 gap-2 !rounded-full !px-4 shadow-2xl" onClick={() => setMinimized(false)} aria-label="رجّع مختبر الموشن">
-        {busy ? <span className="jw-spinner" /> : <span aria-hidden>✅</span>}
-        🎬 {busy ? `${stageAr}${stage === "rendering" ? ` ${Math.round(progress * 100)}٪${renderAt ? ` · يبقى ${mmss(renderAt.leftMs)}` : ""}` : ` ${elapsed}`}` : "جاهز — افتح المختبر"}
-      </button>,
-      document.body,
-    );
-
   const pillClass = (on: boolean) => `mlab-pill${on ? "" : ""}`;
 
   return createPortal(
-    <div className="mlab-overlay" role="dialog" aria-modal="true" aria-label="مختبر الموشن" dir="rtl">
+    <div className="mlab-overlay" role="dialog" aria-modal="true" aria-label="مختبر الموشن" dir="rtl" style={hidden ? { display: "none" } : undefined}>
       <div className="mlab">
+        {tabBar}
         <header className="mlab-head">
           <div className="min-w-0">
             <h2 className="mlab-title">

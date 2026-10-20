@@ -15,6 +15,7 @@ import { stillOpen, type EditorProject } from "@/lib/editor/server";
 import { checkScene, LAB_FONTS, readPlan, readReview, SECONDS, type LabPlan } from "./contract";
 import { EXEMPLARS } from "./exemplars";
 import { MAX_ROUNDS, MOTION_LAB_SKILL, PASS, RUBRIC } from "./skill";
+import { continueAsk, partialCode, stitchCode } from "./resume";
 import { ALWAYS_AT_PLAN, HF_LAB_TEXT, knownRefs, openRefs } from "./higgsfield";
 import { choicesRefs, choicesText, readChoices } from "@config/editor/lab-options";
 import { FOOTAGE_KIT_API, FOOTAGE_SKILL, footageText, readFootage, type FootageMeta } from "./footage";
@@ -139,7 +140,7 @@ const exemplarsText = () => EXEMPLARS.map((e) => `<example name="${e.name}" show
 const planText = (p: LabPlan) => JSON.stringify(p, null, 1);
 const outputBudget = (model: unknown) => claudeModelOf(model).key === "haiku" ? 64_000 : 128_000;
 
-async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" | "xhigh" = "high") {
+async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart[], schema: object, maxTokens: number, effort: "medium" | "high" | "xhigh" = "high", resume?: { stopAt: number }) {
   if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
   // no deadline of the lab's own (the owner's rule): a step runs as long as the platform's route allows
   return claudeCharged(
@@ -147,7 +148,7 @@ async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart
     model,
     label,
     () =>
-      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true }).catch((e) => {
+      callClaudeJson<T>({ system: SYSTEM, turns: [{ role: "user", content: parts }], schema, maxTokens, effort, fallback: true, ...(resume ? { resume } : {}) }).catch((e) => {
         console.error("motion lab", label, e);
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
@@ -196,7 +197,11 @@ ${openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)]).text}`,
 }
 
 /** 2 · WRITE: the scene program on the kit, from the approved plan (or a fix of the last one, from its errors). */
+/** How long one writing request reads before it hands back what it has (the platform ends a request at 800 s). */
+const WRITE_WINDOW_MS = 700_000;
+
 export async function labWrite(p: EditorProject, who: Who, b: Record<string, unknown>) {
+  const stopAt = Date.now() + WRITE_WINDOW_MS;
   stillOpen(p);
   const assets = assetsOf(b.assets);
   const plan = readPlan(b.plan, Number(b.seconds) || 15, assets.map((a) => a.id), footageOf(b)?.seconds);
@@ -224,8 +229,17 @@ Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}
 ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
     },
   ];
-  const r = await ask<{ code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high");
-  const chk = checkScene(r.data.code);
+  // a program cut off in an earlier request: this one continues from its last character
+  const written = typeof b.partial === "string" ? b.partial : "";
+  if (written) parts[0] = { type: "text", text: `${(parts[0] as { text: string }).text}\n${continueAsk(written)}` };
+  const r = await ask<{ code: string; notes: string }>(who, b.model, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous || b.lessThinking === true ? "medium" : "high", { stopAt });
+  if (r.partial) {
+    // the time of this request ran out: what is written so far goes back, and the page asks again from there
+    const now = stitchCode(written, partialCode(r.raw));
+    // the whole request went on thinking and wrote nothing new: the next one is asked to think less
+    return { code: "", problems: [], notes: "", partial: now, thinkingOnly: now.length <= written.length, coins: r.coins, model: r.model };
+  }
+  const chk = checkScene(written ? stitchCode(written, r.data.code) : r.data.code);
   return { code: chk.code, problems: chk.problems, notes: text(r.data.notes, 600), coins: r.coins, model: r.model };
 }
 

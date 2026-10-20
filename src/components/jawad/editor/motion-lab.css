@@ -428,3 +428,99 @@
 .mlab-bubble { max-width: 88%; padding: 10px 14px; border-radius: 18px; line-height: 1.7; white-space: pre-wrap; font-size: 15px; }
 .mlab-bubble.me { align-self: flex-start; background: var(--jw-accent); color: #fff; border-end-start-radius: 6px; }
 .mlab-bubble.him { align-self: flex-end; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.1); border-end-end-radius: 6px; }
+
+/* the lab's tabs (a whole lab of its own in each, like a browser's) */
+.mlab-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 12px 0;
+  overflow-x: auto;
+  background: #07090b;
+  border-bottom: 1px solid var(--jw-line);
+  scrollbar-width: none;
+}
+.mlab-tabs::-webkit-scrollbar {
+  display: none;
+}
+.mlab-tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: 280px;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid var(--jw-line);
+  border-bottom: none;
+  background: var(--jw-surface-2);
+  color: var(--jw-muted);
+}
+.mlab-tab[data-on="true"] {
+  background: #0f1216;
+  color: var(--jw-ink);
+  border-color: var(--jw-line-strong);
+  box-shadow: inset 0 3px 0 var(--jw-accent);
+}
+.mlab-tab-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 6px 6px 6px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.mlab-tab-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mlab-tab-state {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--jw-accent);
+  color: var(--jw-on-accent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mlab-tab-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-inline-end: 6px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mlab-tab-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.mlab-tab-new {
+  flex: 0 0 auto;
+  min-width: 42px;
+  min-height: 38px;
+  margin-bottom: 2px;
+  border: 1px dashed var(--jw-line-strong);
+  border-radius: 10px;
+  background: none;
+  color: var(--jw-accent);
+  font-size: 18px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.mlab-tab-new:hover {
+  background: var(--jw-accent-soft);
+}

@@ -30,7 +30,8 @@ import SmartFix from "./SmartFix";
 import { PluginTools } from "./plugins";
 import { familyOf, loadFont, loadFontsOf } from "./fontload";
 import { makeMusicAsset, separateAsset, stemQuality } from "./make";
-import MotionLab, { type LabSource } from "./MotionLab";
+import { type LabSource } from "./MotionLab";
+import MotionLabTabs from "./MotionLabTabs";
 import { sourceOf, type FootageSource } from "./lab-footage";
 import type { Cue } from "@/lib/editor/scene/contract";
 import { placeStems } from "@/lib/editor/make";
@@ -1076,8 +1077,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     uploads.add([film], [{ at, trackId: place ? "new" : null, mode: "one", group: `lab:${key}`, first: true }]);
     for (const id of place?.muteClipIds ?? []) if (findClip(tlRef.current, id)) run({ type: "update_clip", clipId: id, patch: { volume: 0 } }, { label: "مختبر الموشن على فيديوك" });
     flash("🎬 نرفع المقطع وننزّله عند مؤشر الوقت…");
-    setLab(null);
-    setLabMin(false);
+    // the lab's tabs close their finished tab themselves (the lab stays for the others)
     if (cues.length) {
       try {
         const ids = [...new Set(cues.map((c) => c.sfx))];
@@ -2186,7 +2186,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       {/* the phone's tool bar (CapCut's way): a row of tools; a section or a selected clip brings its own row */}
       <PhoneTools selected={oneKind} hasAudio={!!oneAsset?.hasAudio} total={total} readOnly={readOnly} on={phoneAct} />
 
-      {lab && !readOnly && <MotionLab projectId={project.id} width={tl.width} height={tl.height} assets={assets} initialBrief={lab.brief} initialSeconds={lab.seconds} footageClips={footageClips} initialFootage={lab.clipId ?? null} initialSource={lab.source ?? null} onUpload={labUpload} onFilm={placeFilm} onClose={() => (setLab(null), setLabMin(false))} minimized={labMin} onMinimize={setLabMin} />}
+      {lab && !readOnly && <MotionLabTabs projectId={project.id} width={tl.width} height={tl.height} assets={assets} lab={lab} footageClips={footageClips} onUpload={labUpload} onFilm={placeFilm} onClose={() => (setLab(null), setLabMin(false))} minimized={labMin} onMinimize={setLabMin} />}
       {dropAsk && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" onClick={() => setDropAsk(null)}>
           <div role="dialog" aria-modal="true" aria-label="كيف أرتّب الملفات؟" className="w-full max-w-sm space-y-3 rounded-2xl border border-jw-line bg-jw-surface p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
