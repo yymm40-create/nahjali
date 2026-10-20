@@ -161,13 +161,18 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       return NextResponse.json(await readLabSource(p, b), noStore);
     case "lab_matte":
       return NextResponse.json(await labMatte(p, who, b), noStore);
+    // the lab's Claude steps read against the request's own clock (the platform ends it at maxDuration)
     case "lab_plan":
+      b.__at = Date.now();
       return b.stream ? labResponse(() => labPlan(p, who, b)) : NextResponse.json(await labPlan(p, who, b));
     case "lab_chat":
+      b.__at = Date.now();
       return b.stream ? labResponse(() => labChat(p, who, b)) : NextResponse.json(await labChat(p, who, b));
     case "lab_write":
+      b.__at = Date.now();
       return b.stream ? labResponse(() => labWrite(p, who, b)) : NextResponse.json(await labWrite(p, who, b));
     case "lab_review":
+      b.__at = Date.now();
       return b.stream ? labResponse(() => labReview(p, who, b)) : NextResponse.json(await labReview(p, who, b));
     // «Claude Code»: حيدرة executes cuts, arrangement and colour as programs the browser runs (write · fix · review)
     case "code_edit_write":

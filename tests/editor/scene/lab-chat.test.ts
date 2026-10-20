@@ -32,6 +32,7 @@ describe("the lab as a conversation", () => {
     const { labChat } = await import("@/lib/editor/scene/director");
     s.reply = { reply: "تمام", action: "code", brief: "", code: "" };
     const r = await labChat(project, who, { message: "إعلان لتطبيقي", history: [{ role: "user", text: "أبي شي ذهبي" }] });
+    if (!("reply" in r)) throw new Error("cut");
     expect(r.action).toBe("plan");
     expect(r.brief).toBe("إعلان لتطبيقي");
     expect(s.calls[0].text).toContain("THE CONVERSATION SO FAR:\nالشخص: أبي شي ذهبي");
@@ -42,6 +43,7 @@ describe("the lab as a conversation", () => {
     const { labChat } = await import("@/lib/editor/scene/director");
     s.reply = { reply: "حطيته", action: "code", brief: "", code: program };
     const r = await labChat(project, who, { message: "حط الشعار في النهاية", plan: { title: "x", seconds: 4 }, code: program, assets: [{ id: "a1", name: "logo.png", w: 512, h: 512 }], params: { title: "مرحبا" } });
+    if (!("reply" in r)) throw new Error("cut");
     expect(r.action).toBe("code");
     expect(r.code).toContain("K.p('title'");
     expect(s.calls[0].text).toContain("a1 = «logo.png» 512×512");
