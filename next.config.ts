@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import { CDN_CACHE_CONTROL, CDN_PAGES } from "./src/lib/cdn-cache";
+
+const CDN_PAGES_LIST = [...CDN_PAGES];
 
 // Shrine pictures approved in /admin/mahdi live in Supabase's public «mahdi-shrines» folder
 const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL) : null;
@@ -23,6 +26,20 @@ const SECURITY_HEADERS = [
   ...(prod ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }] : []),
 ];
 
+// The public JAWAD pages for a visitor with no sign-in cookie are kept by the Vercel CDN for a few seconds (see src/lib/cdn-cache.ts;
+// the proxy gives that copy its own address). The cookie is Supabase's «sb-<project>-auth-token», possibly in chunks («.0»).
+const authCookie = supabase ? `sb-${supabase.hostname.split(".")[0]}-auth-token` : null;
+const CDN_HEADERS = authCookie
+  ? CDN_PAGES_LIST.map((source) => ({
+      source,
+      missing: [
+        { type: "cookie" as const, key: authCookie },
+        { type: "cookie" as const, key: `${authCookie}.0` },
+      ],
+      headers: [{ key: "Vercel-CDN-Cache-Control", value: CDN_CACHE_CONTROL }],
+    }))
+  : [];
+
 const nextConfig: NextConfig = {
   // no «X-Powered-By: Next.js»: nothing told about what runs the site
   poweredByHeader: false,
@@ -35,6 +52,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
+      ...CDN_HEADERS,
       { source: "/", headers: [SITE_CSP] },
       { source: "/:path((?!api/games/play/|api/kharq/code).*)", headers: [SITE_CSP] },
     ];
