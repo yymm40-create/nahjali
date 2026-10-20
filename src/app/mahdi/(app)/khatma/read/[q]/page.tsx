@@ -6,8 +6,9 @@ import { t } from "@/lib/mahdi/i18n";
 import Icon from "@/components/mahdi/Icon";
 import QuranText, { QuranSource, usePortionWords } from "@/components/mahdi/khatma/QuranText";
 import ReaderClock from "@/components/mahdi/khatma/ReaderClock";
+import { useReadOrder } from "@/components/mahdi/khatma/useReadOrder";
 import { useMyKhatma } from "@/components/mahdi/khatma/useMyKhatma";
-import { khatmaStats, nextPortion, unitText } from "@/lib/mahdi/khatma/mine";
+import { khatmaStats, nextAfter, nextPortion, unitText } from "@/lib/mahdi/khatma/mine";
 import { fullRange, inRange, portionCount, portionTitle } from "@/lib/mahdi/khatma/portions";
 
 /**
@@ -18,6 +19,7 @@ export default function MyKhatmaReader() {
   const q = Number(useParams<{ q: string }>().q);
   const router = useRouter();
   const k = useMyKhatma();
+  const [order] = useReadOrder();
   const cur = k.data?.current;
   // a khatma ended or not started reads by quarters, the whole Quran
   const unit = cur?.status === "open" ? cur.unit : (cur?.unit ?? "quarter");
@@ -34,7 +36,9 @@ export default function MyKhatmaReader() {
     const r = await k.read([q]);
     if (!r || r.finished) return router.push("/mahdi/khatma");
     if (goOn) {
-      const next = nextPortion([...(cur?.reads.map((x) => x.quarter) ?? []), q], range);
+      const done = [...(cur?.reads.map((x) => x.quarter) ?? []), q];
+      // in order: after the furthest read; reading wherever they like: the next unread after this one
+      const next = order === "free" ? nextAfter(done, range, q) : nextPortion(done, range);
       router.push(next ? `/mahdi/khatma/read/${next}` : "/mahdi/khatma");
     }
   }
