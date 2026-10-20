@@ -83,7 +83,7 @@ function refsParts(raw: unknown): ClaudePart[] {
 
 /** WRITE (or FIX after the scene page threw) the picture's program. */
 export async function pictureWrite(user: RobotUser, b: Record<string, unknown>) {
-  const prompt = text(b.prompt, 6000);
+  const prompt = text(b.prompt, 16000);
   if (prompt.length < 2) throw new UserError("اكتب وش تبي في الصورة.", 400);
   const [w, h] = pictureSize(b.aspect);
   const style = text(b.style, 2000);
@@ -109,7 +109,7 @@ Return the COMPLETE program and the two fonts it uses.`,
 
 /** REVIEW: he looks at the rendered picture, scores it, and rewrites the program below the bar. */
 export async function pictureReview(user: RobotUser, b: Record<string, unknown>) {
-  const prompt = text(b.prompt, 6000);
+  const prompt = text(b.prompt, 16000);
   const code = checkScene(b.code).code;
   const still = jpeg(b.still);
   if (!code || !still) throw new UserError("ما وصلتني الصورة أو البرنامج.", 400);

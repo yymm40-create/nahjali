@@ -4,6 +4,7 @@
 // made inside the call; a video takes minutes, so it is started and the page asks again until جواد has it ready.
 // Server only.
 
+import { NO_TEXT_RULE } from "@config/designer";
 import { randomUUID } from "crypto";
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
@@ -52,7 +53,8 @@ async function makeImage(c: { userId: string; chatId: string; who: DeskWho; owne
   item.state = "running";
   item.tries = (item.tries ?? 0) + 1;
   try {
-    const r = await deskImage(c.who, { key: key(), kind: "image", prompt: item.prompt, aspect: item.aspect, quality: item.quality, resolution: item.resolution, refs: await refsOf(c.userId, item) });
+    // a single picture is painted with no writing in it (the owner's order: any words are «حيدرا ماكس»'s, in code)
+    const r = await deskImage(c.who, { key: key(), kind: "image", prompt: `${item.prompt}\n\n${NO_TEXT_RULE}`, aspect: item.aspect, quality: item.quality, resolution: item.resolution, refs: await refsOf(c.userId, item) });
     item.desk = deskOf(r.receipt);
     item.jobId = r.receipt.jobId;
     const file = await addProducedFromOutput({ userId: c.userId, chatId: c.chatId, out: r.out, name: item.name || "image", meta: { media: item.id, prompt: item.prompt, desk: r.receipt } });

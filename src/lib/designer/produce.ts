@@ -13,6 +13,7 @@ import { BAKED_TEXT_RULE, NO_TEXT_RULE, type DesignerTextMode } from "@config/de
 import { getChat, saveChat, type Chat, type PendingDesign } from "./chats";
 import { addFile, addFileFromOutput, attachmentsOf, fileLinks, uploadLinks } from "./files";
 import { readLayers, type Design } from "./layers";
+import { COVER_RULES_TEXT } from "@/lib/editor/cover-skill-text";
 
 /** GPT Image 2 for the artwork: the high tier (the design is exported at this size), high quality. */
 export const IMAGE_TIER = "hi" as const;
@@ -113,7 +114,9 @@ export async function codeBrief(userId: string, chatId: string, o: { email?: str
   const photos = [...(artUrl ? [artUrl] : []), ...[...links].filter(([id]) => place.has(id)).map(([, url]) => url)].slice(0, 20);
   const urls = [...links].filter(([id]) => !place.has(id)).map(([, url]) => url);
   const prompt = artworkPrompt({ prompt: p.artwork, refs: urls.length, textMode: "baked", layers: p.layers });
-  return { prompt: artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt, aspect: p.aspect, refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) };
+  // a YouTube thumbnail (a latmiya's too) follows the owner's cover skill: its sizes that read on a phone, word for word
+  const cover = p.kind === "thumbnail" || p.kind === "latmiya" ? `\n\nTHE OWNER'S COVER SKILL — its rules file, word for word (this is a YouTube thumbnail: follow its ▶️ part):\n${COVER_RULES_TEXT}` : "";
+  return { prompt: `${artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt}${cover}`, aspect: p.aspect, refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) };
 }
 
 /** The PNG the page drew from «حيدرا ماكس»'s program becomes the pending design's artwork. */

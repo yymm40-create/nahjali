@@ -159,7 +159,7 @@ const RAIL: { id: string; label: string; icon: string; tab?: InspectorTab; hint:
 
 const SAVE_TEXT: Record<SaveState, string> = { saved: "محفوظ", dirty: "تعديلات…", saving: "نحفظ…", error: "ما انحفظ، نعيد…", conflict: "تغيّر من مكان ثاني" };
 
-export default function Editor({ project, initialAssets, exportUrl, backHref, studioPath = null, owner = false }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string; studioPath?: string | null; /** the site's owner: «🩺 تشخيص» in حيدرة */ owner?: boolean }) {
+export default function Editor({ project, initialAssets, exportUrl, backHref, studioPath = null, owner = false, labChat = null }: { project: EditorProjectView; initialAssets: EditorAsset[]; exportUrl: string | null; backHref: string; studioPath?: string | null; /** the site's owner: «🩺 تشخيص» in حيدرة */ owner?: boolean; /** «?lab=»: open «مختبر الموشن» on this conversation */ labChat?: string | null }) {
   const readOnly = project.purged;
   const wide = useWide();
   const [tl, setTl] = useState(project.timeline);
@@ -253,7 +253,7 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [layoutOpen, setLayoutOpen] = useState(false);
   // «🎬 مختبر الموشن»: open, with a brief (from حيدرة's chat or empty)
-  const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null } | null>(null);
+  const [lab, setLab] = useState<{ brief: string; seconds?: number; clipId?: string | null; chatId?: string | null; source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null } | null>(() => (labChat && !project.purged ? { brief: "", chatId: labChat } : null));
   // the lab's uploads: a picture attached in its conversation (library only), and its finished film (with its scene)
   const labWaits = useRef(new Map<string, { ok: (a: EditorAsset) => void; no: (e: Error) => void; progress?: (p: number) => void }>());
   const labFilms = useRef(new Map<string, { source: LabSource; replaceAssetId: string | null }>());

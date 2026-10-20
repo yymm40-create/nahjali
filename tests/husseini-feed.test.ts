@@ -31,8 +31,10 @@ describe("محمد باقر: Claude Code يرسم الكاروسيل", () => {
     expect(p?.maker).toBe("code");
     expect(readPending({ id: "x", aspect: "1:1", slides: [{ n: 1, text: "", prompt: "a" }], at: 1, mode: "all", made: [], failed: [], carry: [] })?.maker).toBeUndefined();
     const { CONTENT_TOOLS, CONTENT_PLATFORM_RULES } = await import("@config/content");
-    expect(CONTENT_TOOLS).toContain('"maker"');
-    expect(CONTENT_PLATFORM_RULES).toContain("حيدرا ماكس");
+    // the owner's order: every new carousel is designed by «حيدرا ماكس»; GPT Image 2 only paints a slide's picture
+    expect(CONTENT_TOOLS).toContain('"picture"');
+    expect(CONTENT_TOOLS).not.toContain('"maker"');
+    expect(CONTENT_PLATFORM_RULES).toContain("طريقة المنصة الوحيدة للكاروسيل");
   });
   it("the page draws a slide in code and sends it back to the produce step", async () => {
     const { readFileSync } = await import("node:fs");
@@ -51,7 +53,7 @@ describe("Claude Code يحط صور الأشخاص في التصميم", () => {
     expect(p?.place).toEqual(["a"]);
     expect(DESIGNER_PLATFORM_RULES).toContain('"place"');
     expect(readFileSync("src/lib/designer/chat.ts", "utf8")).toContain('"place", "layers"]');
-    expect(readFileSync("src/lib/designer/produce.ts", "utf8")).toContain("refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) }");
+    expect(readFileSync("src/lib/designer/produce.ts", "utf8")).toContain("refs: urls.slice(0, 4), photos, picture: Boolean(artUrl) };");
     const draw = readFileSync("src/components/claude-code/draw.ts", "utf8");
     expect(draw).toContain("id: `photo${i + 1}`, bitmap: p.bm");
     expect(draw).toContain("await host.load(code, { w: W, h: H, assets,");

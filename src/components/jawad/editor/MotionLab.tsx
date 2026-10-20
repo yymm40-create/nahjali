@@ -77,6 +77,8 @@ interface Saved {
   made?: Record<string, string>;
   /** the cover designed for the piece (its program and headline; the picture itself is in the library) */
   cover?: { code: string; headline: string; assetId: string | null; review: CoverScores | null } | null;
+  /** a conversation another robot opened with a brief (محمد باقر's motion piece): the scenario is written by itself */
+  autoPlan?: boolean;
 }
 /** One build the person has seen: what it was made from (a note never writes over it). */
 interface Version {
@@ -503,7 +505,19 @@ export default function MotionLab({
     setMade(s.made && typeof s.made === "object" ? s.made : {});
     setCover(s.cover ?? null);
     if (s.plan && !initialBrief) setStage(s.code ? "ready" : "plan");
+    // handed over with a brief and nothing made yet: the scenario comes by itself (scenario first, then «اعتمد وابنِ»)
+    if (s.autoPlan && !s.plan && s.brief) setAutoBrief(s.brief);
   };
+  const [autoBrief, setAutoBrief] = useState("");
+  useEffect(() => {
+    if (!autoBrief) return;
+    const tm = setTimeout(() => {
+      setAutoBrief("");
+      void makePlan({ brief: autoBrief });
+    }, 300);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBrief]);
 
   // the lab remembers its work on this device AND on the server (a refresh, another device: the conversation is there)
   useEffect(() => {

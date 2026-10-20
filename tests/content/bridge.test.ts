@@ -1,3 +1,4 @@
+import { NO_TEXT_RULE } from "@config/designer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Chat, MediaItem } from "@/lib/content/chats";
 
@@ -88,7 +89,8 @@ describe("pictures: what Baqir asks reaches جواد as asked (30)", () => {
     start([item({ ...c, prompt: `p ${c.aspect}` })]);
     const r = await step();
     expect(st.img).toHaveLength(1);
-    expect(st.img[0]).toMatchObject({ kind: "image", prompt: `p ${c.aspect}`, aspect: c.aspect, quality: c.quality, resolution: c.resolution });
+    // a single picture is painted with no writing in it (the words are «حيدرا ماكس»'s, in code)
+    expect(st.img[0]).toMatchObject({ kind: "image", prompt: `p ${c.aspect}\n\n${NO_TEXT_RULE}`, aspect: c.aspect, quality: c.quality, resolution: c.resolution });
     expect(r.items[0].state).toBe("done");
     expect(got()[0].fileId).toBeTruthy();
     expect(r.running).toBe(false);

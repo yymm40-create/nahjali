@@ -19,6 +19,8 @@ export interface LabOpen {
   brief: string;
   seconds?: number;
   clipId?: string | null;
+  /** one of the lab's conversations on the server, opened in a tab */
+  chatId?: string | null;
   source?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null;
 }
 
@@ -33,7 +35,7 @@ interface Status {
 }
 
 const newId = () => Math.random().toString(36).slice(2, 8);
-const hasOpen = (o: LabOpen | null | undefined) => Boolean(o && (o.brief || o.clipId || o.source));
+const hasOpen = (o: LabOpen | null | undefined) => Boolean(o && (o.brief || o.clipId || o.source || o.chatId));
 
 export default function MotionLabTabs({
   projectId,
@@ -66,10 +68,12 @@ export default function MotionLabTabs({
     const saved = typeof window === "undefined" ? null : readTabs(projectId);
     if (saved) {
       if (!hasOpen(lab)) return saved;
-      const t: OpenTab = { id: newId(), title: NEW_TITLE, open: lab };
+      const there = lab.chatId ? saved.tabs.find((t) => t.chatId === lab.chatId) : undefined;
+      if (there) return { ...saved, active: there.id };
+      const t: OpenTab = { id: newId(), title: NEW_TITLE, open: lab, ...(lab.chatId ? { chatId: lab.chatId } : {}) };
       return { tabs: [...saved.tabs, t], active: t.id };
     }
-    return { tabs: [{ id: "main", title: NEW_TITLE, open: hasOpen(lab) ? lab : undefined }], active: "main" };
+    return { tabs: [{ id: "main", title: NEW_TITLE, open: hasOpen(lab) ? lab : undefined, ...(lab.chatId ? { chatId: lab.chatId } : {}) }], active: "main" };
   });
   const [status, setStatus] = useState<Record<string, Status>>({});
   const { tabs, active } = state;
@@ -79,8 +83,11 @@ export default function MotionLabTabs({
   if (seen !== lab) {
     setSeen(lab);
     if (hasOpen(lab)) {
-      const t: OpenTab = { id: newId(), title: NEW_TITLE, open: lab };
-      setState((s) => ({ tabs: [...s.tabs, t], active: t.id }));
+      const t: OpenTab = { id: newId(), title: NEW_TITLE, open: lab, ...(lab.chatId ? { chatId: lab.chatId } : {}) };
+      setState((s) => {
+        const there = lab.chatId ? s.tabs.find((x) => x.chatId === lab.chatId) : undefined;
+        return there ? { ...s, active: there.id } : { tabs: [...s.tabs, t], active: t.id };
+      });
     }
   }
 

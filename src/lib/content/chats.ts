@@ -107,7 +107,8 @@ export interface Turn {
   /** pictures and videos this answer handed to جواد (filled by the media step) */
   media?: MediaBlock;
   /** an edit room this answer opened in «حيدرة كت» */
-  editor?: { id: string; title: string };
+  /** the edit room in «حيدرة كت» (and, for a motion piece, the «مختبر الموشن» conversation it opens on) */
+  editor?: { id: string; title: string; lab?: string };
   error?: boolean;
 }
 
@@ -115,7 +116,9 @@ export interface Turn {
 export interface PendingProduce {
   id: string;
   aspect: CarouselAspect;
-  slides: { n: number; text: string; prompt: string }[];
+  slides: { n: number; text: string; prompt: string; picture?: string }[];
+  /** the pictures GPT Image 2 painted for slides (no writing in them), by slide number → content_files id */
+  arts?: Record<string, string>;
   /** the message index the slides are attached to */
   at: number;
   styleId: string;
@@ -124,7 +127,8 @@ export interface PendingProduce {
   refs?: string[];
   /** "fix": only these slides are drawn again, in a carousel that exists */
   mode: "all" | "fix";
-  /** "code": «Claude Code» draws each slide in the person's browser (absent = GPT Image 2 through جواد) */
+  /** "code": «حيدرا ماكس» designs each slide in the person's browser (every new carousel; absent only on carousels
+   * ordered before, which GPT Image 2 finishes as they were) */
   maker?: "code";
   /** made in this production so far */
   made: Slide[];
@@ -248,7 +252,7 @@ export function cleanHistory(raw: unknown): Turn[] {
       if (items.length) turn.media = { items };
     }
     const e = m.editor as Record<string, unknown> | undefined;
-    if (e && typeof e === "object" && typeof e.id === "string") turn.editor = { id: e.id, title: str(e.title, 120) };
+    if (e && typeof e === "object" && typeof e.id === "string") turn.editor = { id: e.id, title: str(e.title, 120), ...(typeof e.lab === "string" && /^[0-9a-f-]{36}$/i.test(e.lab) ? { lab: e.lab } : {}) };
     out.push(turn);
   }
   return out;
@@ -259,7 +263,7 @@ export function readPending(v: unknown): PendingProduce | null {
   const p = v as Record<string, unknown>;
   const slides = objs(p.slides)
     .filter((s) => typeof s.prompt === "string")
-    .map((s, i) => ({ n: num(s.n) || i + 1, text: str(s.text, 2000), prompt: str(s.prompt, 4000) }))
+    .map((s, i) => ({ n: num(s.n) || i + 1, text: str(s.text, 2000), prompt: str(s.prompt, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: str(s.picture, 3000) } : {}) }))
     .slice(0, CONTENT.maxSlides);
   if (!slides.length) return null;
   return {
@@ -272,6 +276,7 @@ export function readPending(v: unknown): PendingProduce | null {
     ...(Array.isArray(p.refs) && p.refs.length ? { refs: p.refs.filter((r): r is string => typeof r === "string").slice(0, 6) } : {}),
     mode: p.mode === "fix" ? "fix" : "all",
     ...(p.maker === "code" ? { maker: "code" as const } : {}),
+    ...(p.arts && typeof p.arts === "object" && !Array.isArray(p.arts) ? { arts: Object.fromEntries(Object.entries(p.arts as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> } : {}),
     made: objs(p.made).filter((x) => typeof x.fileId === "string").map(readSlide),
     failed: objs(p.failed).map(readFailure),
     carry: objs(p.carry).map(readFailure),

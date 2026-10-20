@@ -34,7 +34,7 @@ interface Msg {
   questions?: Question[];
   slides?: SlidesView;
   media?: { items: MediaView[] };
-  editor?: { id: string; title: string };
+  editor?: { id: string; title: string; lab?: string };
   error?: boolean;
 }
 interface ChatItem { id: string; title: string }
@@ -448,7 +448,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
   const runProduce = useCallback(async (id: string, retry?: number[] | "failed") => {
     setBusy("producing");
     let first = true;
-    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[] } };
+    type Step = { aspect: string; slides: SlideView[]; todo: number[]; failed: FailView[]; running: boolean; total: number; report: string | null; code?: { n: number; prompt: string; aspect: string; refs: string[]; photos?: string[] } };
     const show = (r: Step) => putSlides((old) => ({ aspect: r.aspect || old?.aspect || "", items: r.slides, todo: r.todo, failed: r.failed, running: r.running, total: r.total, report: r.report ?? old?.report, ...(r.code || old?.maker === "code" ? { maker: "code" as const } : {}) }));
     try {
       for (let guard = 0; guard < 80; guard++) {
@@ -456,9 +456,10 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
         first = false;
         show(r);
         if (r.code) {
-          // «Claude Code» (حيدرة ماكس): the slide is drawn here in code, looked at and rewritten, then sent back as the slide
+          // «حيدرا ماكس»: the slide is drawn here in code (its painted picture placed in it), looked at and rewritten, then sent back
           const refs = (await Promise.all(r.code.refs.map(smallJpeg))).filter((x): x is string => !!x);
-          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, model: claudeId.current, from: "content", onStep: (st) => setCodeStep(st.text) });
+          if (r.code.photos?.length) setCodeStep(`🖼️ صورة الشريحة ${r.code.n} جاهزة من GPT Image 2 (بدون كتابة)`);
+          const drawn = await drawWithCode({ prompt: r.code.prompt, aspect: r.code.aspect, style: "", references: refs, photos: r.code.photos ?? [], model: claudeId.current, from: "content", onStep: (st) => setCodeStep(st.text) });
           setCodeStep(null);
           r = await postJson<Step>("/api/content/produce", { chatId: id, n: r.code.n, png: drawn.png, rounds: drawn.rounds, scores: drawn.scores });
           show(r);
@@ -555,7 +556,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
     let produceId: string | null = null;
     let mediaId: string | null = null;
     try {
-      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string } | null; media: MediaView[] | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
+      const r = await postJson<{ chatId: string; text: string; questions: Question[] | null; pending: Pending | null; editor: { id: string; title: string; lab?: string } | null; media: MediaView[] | null }>("/api/content/chat", { chatId, message, attachments: files.map((f) => f.id), model: claude.id });
       setChatId(r.chatId);
       setMsgs((m) => {
         const copy = [...m];
@@ -685,7 +686,7 @@ export default function ContentChat({ name, persona, loginHref, owner }: { name:
                   {m.media && <MediaBox items={m.media.items} busy={!!busy} owner={!!owner} onRetry={(ids) => chatId && void runMedia(chatId, ids)} />}
                   {m.editor && (
                     <div className="ct-actions">
-                      <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}`}>🎬 افتح غرفة المونتاج «{m.editor.title}» مع حيدرة</Link>
+                      <Link className="ct-mini" href={`/jawad-ai/editor/${m.editor.id}${m.editor.lab ? `?lab=${m.editor.lab}` : ""}`}>{m.editor.lab ? `🎬 افتح «${m.editor.title}» في مختبر الموشن` : `🎬 افتح غرفة المونتاج «${m.editor.title}» مع حيدرة`}</Link>
                     </div>
                   )}
                   {i === lastAssistant && !busy && !loginHref && m.questions?.length ? (

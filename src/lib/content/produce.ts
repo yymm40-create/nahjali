@@ -1,6 +1,8 @@
-// «صانع المحتوى» — the produce step: the slides of a carousel «محمد باقر» ordered. He does not draw them himself: each
-// slide is a request handed to جواد's desk (src/lib/content/jawad.ts), who makes it with GPT Image 2 as an ordinary
-// JAWAD AI job (so it is also in «أعمالي»), and «محمد باقر» checks the result.
+// «صانع المحتوى» — the produce step: the slides of a carousel «محمد باقر» ordered. Every new carousel is designed by
+// «حيدرا ماكس» in code in the person's browser, slide by slide (the exact Arabic writing, the shapes, the layout); a slide
+// that needs a painted picture gets it FIRST from جواد with GPT Image 2 — with no writing in it — and he places it. The
+// part below the «حيدرا ماكس» line is that. The older way (GPT Image 2 drawing whole slides with their writing, then a
+// check of its Arabic) only finishes carousels that were ordered before it ended:
 //
 // It works a few slides at a time (the page calls it again until nothing is left), so each call finishes well inside
 // the server's time limit and the page can show the slides as they arrive:
@@ -18,6 +20,7 @@ import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
 import { deskImage, deskReference, DeskError, type DeskOutput, type DeskReceipt, type DeskWho } from "./jawad";
 import { ARABIC_TEXT_RULES } from "@config/content-templates";
+import { NO_TEXT_RULE } from "@config/designer";
 import { findStyle } from "@config/film-styles";
 import { getChat, saveChat, type Chat, type PendingProduce, type Slide, type SlideFailure, type SlidesBlock } from "./chats";
 import { addProduced, addProducedFromOutput, attachmentsOf, deleteProduced, producedBytes, producedLinks, producedRow, uploadLinks } from "./files";
@@ -52,12 +55,14 @@ export interface Produced {
   code?: CodeSlide;
 }
 
-/** One slide «Claude Code» draws in the person's browser: its full brief (the exact writing in it), shape and references. */
+/** One slide «حيدرا ماكس» draws in the person's browser: its full brief (the exact writing in it), shape, references,
+ * and the photos to place in it as they are (its painted picture first). */
 export interface CodeSlide {
   n: number;
   prompt: string;
   aspect: string;
   refs: string[];
+  photos: string[];
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -256,7 +261,7 @@ export async function produce(userId: string, chatId: string, o: { retry?: numbe
   if (p.maker === "code") {
     const next = todo.find((s) => s.n === 1) ?? todo[0];
     const state = await finish([]);
-    return next ? { ...state, code: await codeSlide(userId, chatId, p, next, c.total, base.get(1) ?? p.made.find((s) => s.n === 1) ?? null) } : state;
+    return next ? { ...state, code: await codeSlide(userId, chatId, messages, p, next, c.total, base.get(1) ?? p.made.find((s) => s.n === 1) ?? null, who) } : state;
   }
 
   // the reference of every slide: slide 1 (made now, or the one that stands)
@@ -326,21 +331,45 @@ async function settle(o: { userId: string; chatId: string; chat: Chat; p: Pendin
 
 // ───────── «Claude Code»: the slides drawn in code in the person's browser ─────────
 
-/** The brief of one slide for «Claude Code»: the slide's full prompt (its exact writing), the shape, slide 1 and the person's pictures as references. */
-async function codeSlide(userId: string, chatId: string, p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null): Promise<CodeSlide> {
+/** What «حيدرا ماكس» is told about the painted picture he places in a slide (it is photo1). */
+const ART_NOTE = 'photo1 is the PICTURE painted for this slide by GPT Image 2 (it has no writing in it): place it as the slide asks (crop it with K.picture, frame it, grade it to the carousel\'s palette) and set EVERY word yourself in code. Never paint text into it or redraw it.';
+
+/** The brief of one slide for «حيدرا ماكس»: the slide's full prompt (its exact writing), the shape, slide 1 and the
+ * person's pictures as references — and its painted picture, made now by GPT Image 2 (no writing) when it needs one. */
+async function codeSlide(userId: string, chatId: string, messages: Chat["messages"], p: PendingProduce, s: PendingProduce["slides"][number], total: number, slide1: Slide | null, who: DeskWho): Promise<CodeSlide> {
+  let art = p.arts?.[String(s.n)] ?? null;
+  if (!art && s.picture) {
+    // the person's own pictures guide the painting (a product, a logo's colours); it never carries any writing
+    const { list } = await attachmentsOf(userId, p.refs ?? []);
+    const refs = list.filter((a) => a.kind === "image").slice(0, 6).map((a, i) => ({ uploadId: a.id, name: `ref${i + 1}` }));
+    const style = p.styleId ? findStyle(p.styleId) : null;
+    try {
+      const r = await deskImage(who, { key: `c-${randomUUID().replace(/-/g, "")}`, kind: "image", prompt: [s.picture, style ? `ILLUSTRATION STYLE (verbatim): ${style.text}` : "", NO_TEXT_RULE].filter(Boolean).join("\n\n"), aspect: p.aspect, resolution: IMAGE_TIER, quality: IMAGE_QUALITY, refs });
+      const file = await addProducedFromOutput({ userId, chatId, out: r.out, name: `picture-${String(s.n).padStart(2, "0")}`, meta: { slide: s.n, picture: s.picture, aspect: p.aspect, batch: p.id, desk: r.receipt } });
+      art = file.id;
+      p.arts = { ...(p.arts ?? {}), [String(s.n)]: art };
+      // kept with the carousel (the messages as this call just saved them), so it is painted once
+      await saveChat(userId, chatId, { messages, pending: p });
+    } catch (e) {
+      console.error("content slide picture", e instanceof DeskError ? e.detail : e);
+      throw new UserError(e instanceof DeskError ? e.reason : "ما قدر جواد يرسم صورة الشريحة الحين؛ جرّب مرة ثانية.", 502);
+    }
+  }
+  const links = await producedLinks(userId, chatId);
   const refs: string[] = [];
   if (slide1 && s.n !== 1) {
-    const url = (await producedLinks(userId, chatId)).get(slide1.fileId);
+    const url = links.get(slide1.fileId);
     if (url) refs.push(url);
   }
   const { list } = await attachmentsOf(userId, p.refs ?? []);
   const mine = [...(await uploadLinks(userId, list.filter((a) => a.kind === "image").map((a) => a.id))).values()];
   refs.push(...mine);
+  const artUrl = art ? (links.get(art) ?? null) : null;
   const prompt = slidePrompt({ n: s.n, total, prompt: s.prompt, styleId: p.styleId, withRef: refs.length > mine.length, userRefs: mine.length });
-  return { n: s.n, prompt, aspect: p.aspect, refs: refs.slice(0, 4) };
+  return { n: s.n, prompt: artUrl ? `${prompt}\n\n${ART_NOTE}` : prompt, aspect: p.aspect, refs: refs.slice(0, 4), photos: artUrl ? [artUrl] : [] };
 }
 
-/** The PNG the page drew from Claude Code's program becomes slide `n` of the carousel being made. */
+/** The PNG the page drew from «حيدرا ماكس»'s program becomes slide `n` of the carousel being made. */
 export async function produceFromCode(userId: string, chatId: string, b: { n?: unknown; png?: unknown; rounds?: unknown; scores?: unknown }): Promise<Produced> {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new Error("chat not found");

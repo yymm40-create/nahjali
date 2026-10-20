@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isLeader, callClaudeJson, claudeCost, type ClaudePart, type ClaudeTurn } from "@/lib/film/anthropic";
 import { createEditorProject, requireEditorProject } from "@/lib/editor/server";
 import { appendChat } from "@/lib/editor/chat";
+import { saveLabChat } from "@/lib/editor/lab-chats";
 import { CONTENT, isCarouselAspect, type CarouselAspect } from "@config/content";
 import { contentExamplesBrief, nearestContentExamples } from "@config/content-examples";
 import { nearestTemplateExamples, templateExamplesBrief } from "@config/content-template-examples";
@@ -52,12 +53,11 @@ export const ANSWER_SCHEMA = {
     produce: {
       type: "object",
       additionalProperties: false,
-      required: ["on", "mode", "maker", "aspect", "template_id", "style_id", "refs", "slides"],
-      description: "إنتاج كاروسيل بـ GPT Image 2، فقط بعد طلب صريح. on=false بدون إنتاج.",
+      required: ["on", "mode", "aspect", "template_id", "style_id", "refs", "slides"],
+      description: "إنتاج كاروسيل: «حيدرا ماكس» يصمم كل شريحة بالكود، وGPT Image 2 يرسم صورها بدون كتابة. فقط بعد طلب صريح. on=false بدون إنتاج.",
       properties: {
         on: { type: "boolean" },
         mode: { type: "string", enum: ["all", "fix"], description: "all: كاروسيل جديد؛ fix: إعادة رسم شرائح بعينها من آخر كاروسيل" },
-        maker: { type: "string", enum: ["gpt", "code"], description: "من يرسم الشرائح: gpt = GPT Image 2 عبر جواد (الصور الواقعية والأشخاص وصور العميل)؛ code = «حيدرا ماكس» يرسمها بالكود في صفحة العميل (الكتابة العربية حرفية بخطوط الموقع، تصاميم الكتابة والأشكال والإنفوجرافيك)" },
         aspect: { type: "string", enum: ["1:1", "2:3", "9:16", "16:9"] },
         template_id: { type: "string", description: "معرّف القالب الذي اختاره العميل، أو فارغ" },
         style_id: { type: "string", description: "معرّف الستايل الكرتوني الذي اختاره العميل، أو فارغ" },
@@ -67,11 +67,12 @@ export const ANSWER_SCHEMA = {
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["n", "text", "prompt"],
+            required: ["n", "text", "prompt", "picture"],
             properties: {
               n: { type: "integer", description: "رقم الشريحة من 1" },
               text: { type: "string", description: "النص المعتمد الظاهر على الشريحة كما هو" },
-              prompt: { type: "string", description: "توجيه الصورة بالإنجليزية: نظام التصميم المشترك كاملًا ثم ما يخص هذه الشريحة، والنص العربي حرفيًا بين علامتي اقتباس مزدوجتين" },
+              prompt: { type: "string", description: "توجيه تصميم الشريحة بالإنجليزية لـ «حيدرا ماكس»: نظام التصميم المشترك كاملًا ثم ما يخص هذه الشريحة، والنص العربي حرفيًا بين علامتي اقتباس مزدوجتين" },
+              picture: { type: "string", description: "إذا احتاجت الشريحة صورة مرسومة (شخص، منتج، مشهد، رسمة) ما يرسمها الكود زين: توجيهها بالإنجليزية لـ GPT Image 2 بدون أي كتابة فيها أبدًا وبنفس ستايل الكاروسيل؛ وإلا فارغ" },
             },
           },
         },
@@ -125,7 +126,7 @@ interface Answer {
   reply: string;
   questions: unknown;
   record: string;
-  produce: { on: boolean; mode: string; maker?: string; aspect: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string }[] };
+  produce: { on: boolean; mode: string; aspect: string; template_id: string; style_id: string; refs?: string[]; slides: { n: number; text: string; prompt: string; picture?: string }[] };
   generate?: { on: boolean; items: { kind: string; name: string; prompt: string; aspect: string; quality: string; resolution: string; seconds: number; with_sound: boolean; refs: string[] }[] };
   handoff: { on: boolean; title: string; shape: string; package: string; storyboard?: string };
 }
@@ -137,7 +138,7 @@ export interface Reply {
   usd: number;
   /** slides are waiting to be made (the page calls the produce step) */
   pending: { total: number; mode: "all" | "fix"; todo: number[] } | null;
-  editor: { id: string; title: string } | null;
+  editor: { id: string; title: string; lab?: string } | null;
   /** pictures or videos were handed to جواد (the page calls the media step) */
   media: MediaItem[] | null;
 }
@@ -224,12 +225,13 @@ export async function say(userId: string, chatId: string | null, message: string
     const slides = a.produce.slides
       .filter((s) => s && typeof s.prompt === "string" && s.prompt.trim())
       .slice(0, CONTENT.maxSlides)
-      .map((s, i) => ({ n: Number(s.n) || i + 1, text: String(s.text ?? "").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000) }))
+      .map((s, i) => ({ n: Number(s.n) || i + 1, text: String(s.text ?? "").slice(0, 2000), prompt: s.prompt.trim().slice(0, 4000), ...(typeof s.picture === "string" && s.picture.trim() ? { picture: s.picture.trim().slice(0, 3000) } : {}) }))
       .sort((x, y) => x.n - y.n);
     const templateId = a.produce.template_id && findTemplate(a.produce.template_id) ? a.produce.template_id : "";
     const styleId = a.produce.style_id && findStyle(a.produce.style_id) ? a.produce.style_id : "";
     const fixAt = a.produce.mode === "fix" ? lastSlidesAt({ messages: history }) : -1;
-    const code = a.produce.maker === "code" ? { maker: "code" as const } : {};
+    // «حيدرا ماكس» designs every slide in code (the owner's order: him and GPT Image 2 for the pictures, no third way)
+    const code = { maker: "code" as const };
     if (slides.length && fixAt >= 0) {
       // draw these slides again in the carousel that exists
       const block = history[fixAt].slides!;
@@ -269,12 +271,14 @@ export async function say(userId: string, chatId: string | null, message: string
   }
 
   // a package for «حيدرة»: an edit room in «حيدرة كت», the package first in its conversation, the files in its library
-  let editor: { id: string; title: string } | null = null;
+  let editor: { id: string; title: string; lab?: string } | null = null;
   if (a.handoff?.on && typeof a.handoff.package === "string" && a.handoff.package.trim()) {
     try {
       editor = await openEditRoom(userId, a.handoff, history);
       reply.editor = editor;
-      reply.text += `\n\n🎬 فتحت غرفة مونتاج باسم «${editor.title}» في «حيدرة كت»، ووضعت الحزمة الكاملة أول المحادثة مع حيدرة، ونقلت ملفاتك المرفقة إلى مكتبتها.`;
+      reply.text += editor.lab
+        ? `\n\n🎬 فتحت «${editor.title}» في «مختبر الموشن» داخل «حيدرة كت»: محادثة جاهزة فيها الحزمة كاملة، يكتب فيها حيدرة السيناريو أول ما تفتحها، وتعتمده ويبنيه بالكود قدامك. ونقلت ملفاتك المرفقة إلى مكتبتها.`
+        : `\n\n🎬 فتحت غرفة مونتاج باسم «${editor.title}» في «حيدرة كت»، ووضعت الحزمة الكاملة أول المحادثة مع حيدرة، ونقلت ملفاتك المرفقة إلى مكتبتها.`;
     } catch (e) {
       console.error("content handoff", e);
       reply.text += `\n\n⚠️ لم أتمكن من فتح غرفة المونتاج في «حيدرة كت» الآن (${e instanceof UserError ? e.message : "خطأ في الخادم"}). الحزمة جاهزة أعلاه؛ اطلب التسليم مرة ثانية بعد قليل.`;
@@ -331,5 +335,12 @@ async function openEditRoom(userId: string, h: Answer["handoff"], history: Turn[
     }
   }
   await appendChat(p, [{ role: "assistant", text: `📨 محمد باقر سلّمني حزمة «${title}» كاملة: الهدف والجمهور، السكربت المعتمد، المشاهد والنصوص الظاهرة، قرارات الصوت والموسيقى، والقيود${seen.size ? `، ومعها ${seen.size} ملفات في المكتبة` : ""}. قول لي «ابدأ» وأنفّذها، أو اسألني عن أي جزء منها.` }]).catch(() => {});
-  return { id: p.id, title };
+  // a motion piece goes straight to «مختبر الموشن»: a conversation of its own with the package as its brief, which
+  // writes the scenario by itself when it is opened (before migration 0087 the package stays with حيدرة, as before)
+  let lab: string | undefined;
+  if (sb || /موشن|motion/i.test(pkg)) {
+    const r = await saveLabChat(p, userId, { title, state: { brief: pkg.slice(0, 6000), seconds: 15, chat: [{ role: "user", text: `📨 من محمد باقر — «${title}»:\n${pkg.slice(0, 1800)}` }], autoPlan: true } }).catch((e: unknown) => (console.error("content handoff lab", e), null));
+    if (r?.id) lab = r.id;
+  }
+  return { id: p.id, title, ...(lab ? { lab } : {}) };
 }
