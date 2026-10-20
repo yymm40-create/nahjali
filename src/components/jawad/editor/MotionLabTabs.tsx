@@ -52,7 +52,7 @@ export default function MotionLabTabs({
   assets: EditorAsset[];
   lab: LabOpen;
   footageClips?: FootageSource[];
-  onUpload?: (file: File) => Promise<EditorAsset>;
+  onUpload?: (file: File, onProgress?: (p: number) => void) => Promise<EditorAsset>;
   onFilm: (film: File, cues: Cue[], music: { prompt: string; ms: number } | null, place?: { at: number; muteClipIds: string[] }, lab?: { source: LabSource; replaceAssetId: string | null }) => void;
   onClose: () => void;
   minimized: boolean;

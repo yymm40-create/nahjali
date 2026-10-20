@@ -300,7 +300,7 @@ export default function MotionLab({
   /** a film of the timeline opened again: its scene, the values to apply, and whether to render it straight away */
   initialSource?: { assetId: string; source: LabSource; params?: Record<string, string>; auto?: boolean } | null;
   /** a picture from the device, attached in the conversation: up to the library, then usable in the scene */
-  onUpload?: (file: File) => Promise<EditorAsset>;
+  onUpload?: (file: File, onProgress?: (p: number) => void) => Promise<EditorAsset>;
 }) {
   const [claude] = useClaudeModel();
   const store = storeOf(projectId, tabId);
@@ -376,6 +376,8 @@ export default function MotionLab({
   const portalReady = useSyncExternalStore(subscribeToClient, () => true, () => false);
   const setMinimized = onMinimize;
   const say1 = (s: string) => setLog((l) => [...l.slice(-30), s]);
+  /** a line that keeps changing (a percentage): it takes the place of the one before it when that is a ⬆️ line */
+  const sayLive = (s: string) => setLog((l) => (l.length && l[l.length - 1].startsWith("⬆️") ? [...l.slice(0, -1), s] : [...l.slice(-30), s]));
 
   // pictures from the library the scene may use, with short ids حيدرة writes in his code (a1, a2…)
   const images = useMemo(() => {
@@ -495,9 +497,13 @@ export default function MotionLab({
   /** The video kept only on the computer, put up to the library (once) so the server can work on it; returns its asset's id. */
   const serverCopy = async (s: FootageSource) => {
     if (!onUpload) throw new LabSetupError("ما أقدر أرفع الفيديو من هنا؛ ارفعه للمكتبة من المتصفح وجرّب.");
-    say1(`⬆️ أرفع «${s.name.slice(0, 30)}» للمكتبة عشان القص (مرة وحدة، حسب حجم الملف)…`);
+    const name = s.name.slice(0, 30);
+    say1(`⬆️ جاري قراءة «${name}» من جهازك… (بدون ما تسوي شي)`);
     const blob = await (await fetch(s.url)).blob();
-    const asset = await onUpload(new File([blob], /\.[a-z0-9]{2,5}$/i.test(s.name) ? s.name : `${s.name}.mp4`, { type: blob.type || "video/mp4" }));
+    const mb = Math.max(1, Math.round(blob.size / 1_048_576));
+    const live = (p: number) => sayLive(`⬆️ جاري رفع «${name}» تلقائيًا لمكتبة المشروع: ${Math.round(p * 100)}٪ من ${mb} ميغا. القص يحتاج الفيديو على الخادم، وهذا يصير مرة وحدة بس. تقدر تصغّر النافذة.`);
+    live(0);
+    const asset = await onUpload(new File([blob], /\.[a-z0-9]{2,5}$/i.test(s.name) ? s.name : `${s.name}.mp4`, { type: blob.type || "video/mp4" }), live);
     return asset.id;
   };
   /** «✂️ الكلام ورا الراس»: the person cut out (asked of the server once per file, then kept), opened as a reader */
