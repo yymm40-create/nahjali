@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { BOOKLET_PATHS, JAWAD_PATH_HEADER, NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER } from "@config/site";
 import { can } from "@/lib/access";
+import { CDN_CACHE_CONTROL, CDN_KEY_PARAM, cdnCacheable } from "@/lib/cdn-cache";
 import { clientIp, rulesFor, take } from "@/lib/rate-limit";
 
 // Pages that require a signed-in user
@@ -109,6 +110,19 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/login";
     url.search = `?next=${encodeURIComponent(path)}`;
     return NextResponse.redirect(url);
+  }
+
+  // the public pages for a visitor who has not signed in: kept by the CDN for a few seconds (see src/lib/cdn-cache.ts), under
+  // their own address so a signed-in request is never served the kept copy
+  if (
+    !user &&
+    cdnCacheable({ method: request.method, path, search: request.nextUrl.search, cookieNames: request.cookies.getAll().map((c) => c.name), header: (n) => request.headers.get(n) })
+  ) {
+    const url = request.nextUrl.clone();
+    url.searchParams.set(CDN_KEY_PARAM, "1");
+    const kept = NextResponse.rewrite(url, forward);
+    kept.headers.set("Vercel-CDN-Cache-Control", CDN_CACHE_CONTROL);
+    return kept;
   }
 
   return response;
