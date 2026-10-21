@@ -59,7 +59,10 @@ describe("the looks, and who the picture is for", () => {
 
   it("writes the identity rules image models get wrong, and never mixes levels of realism", () => {
     const prompt = cartoonImagePrompt(cartoonInput({ ...input, style: "soft-2d" }));
-    for (const rule of ["HOLD ONE LEVEL OF STYLISATION", "DO NOT BEAUTIFY", "do not smooth the skin", "do not slim or lengthen the face", "do not straighten the teeth", "glasses", "freckles", "the references are the identity, not the rendering"]) expect(prompt).toContain(rule);
+    for (const rule of ["PRIORITY 1 — THE STYLE, COMPLETELY", "HOLD ONE LEVEL OF STYLISATION", "REDESIGN the person entirely", "Nothing of the photograph survives", "PRIORITY 2 — THE LIKENESS, INSIDE THE STYLE", "the style wins", "glasses", "freckles"]) expect(prompt).toContain(rule);
+    // the style comes before the likeness, and nothing holds the photograph's own realism any more
+    expect(prompt.indexOf("PRIORITY 1")).toBeLessThan(prompt.indexOf("PRIORITY 2"));
+    for (const old of ["DO NOT BEAUTIFY", "do not shrink the nose", "do not enlarge the eyes"]) expect(prompt).not.toContain(old);
     expect(prompt).toContain("Modern 2D television animation");
   });
   it("offers only three looks — 3D, 2D and أنمي — and refuses the rest for a new run", () => {
@@ -80,7 +83,7 @@ describe("the looks, and who the picture is for", () => {
     expect(child).not.toBe(grown);
     // the research's own finding: a nudge towards childlike proportions, never a balloon head, and the real face kept
     expect(child).toContain("a nudge, NOT a balloon head");
-    expect(child).toContain("never at the cost of the real face");
+    expect(child).toContain("the person still recognisable");
     expect(grown).toContain("seven and a half heads");
     // and the audience reaches the film too
     expect(cartoonVideoPrompt(cartoonInput({ ...input, audience: "child" }))).toContain("Made FOR A CHILD");
@@ -115,7 +118,8 @@ describe("the photograph itself, redrawn", () => {
     expect(prompt).not.toContain("OUTFIT:");
     expect(prompt).not.toContain("hands and knees");
     // the identity rules still hold, for each of them
-    expect(prompt).toContain("DO NOT BEAUTIFY");
+    expect(prompt).toContain("PRIORITY 1 — THE STYLE");
+    expect(prompt).toContain("FULLY REDRAWN in the style");
     expect(prompt).toContain("apply to EACH person");
     // the follow-up picture keeps the same scene
     expect(cartoonImagePrompt(scene, true)).toContain("the same scene again");
