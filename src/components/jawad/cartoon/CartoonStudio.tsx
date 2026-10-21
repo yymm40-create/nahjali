@@ -9,11 +9,9 @@ import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
 import Doodles from "./Doodles";
 import FilmPanel from "./FilmPanel";
-import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS } from "@config/jawad/free-first";
+import { CARTOON_OFFER } from "@config/jawad/cartoon-offer";
 
 type Quote = { imageCoins: number; videoCoins: number; directorCoins?: number; parts?: number; totalCoins: number };
-/** the end of «أول تجربة مجانية» (config/jawad/free-first.ts), shown to the person in their own clock */
-const offerEnd = () => new Date(FREE_FIRST_ENDS_AT).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
 type Run = { key: string; input: CartoonInput; error?: string; jobs: JobView[] };
 const INITIAL: CartoonInput = { mode: "scene", aspect: "9:16", style: "stylistic-drift", audience: "family", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "custom", customStory: "", place: "garden", scenes: [], heightCm: null, weightKg: null, count: 1, video: false, consent: false };
 async function api<T>(body?: unknown): Promise<T> {
@@ -35,6 +33,9 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   const [places, setPlaces] = useState<Record<string, string>>({});
   // «أول تجربة مجانية»: this account's first picture is free while the offer is open
   const [firstFree, setFirstFree] = useState(false);
+  // the opening offer: the places left, and whether this account's first film is free (config/jawad/cartoon-offer.ts)
+  const [offer, setOffer] = useState<{ pictures: number; videos: number } | null>(null);
+  const [freeVideo, setFreeVideo] = useState(false);
   // the owner sees the film prompts (he makes films elsewhere with them); nobody else does
   const [owner, setOwner] = useState(false);
   const reload = () => { void api<{ runs: Run[] }>().then(data => setRuns(data.runs)).catch(() => {}); };
@@ -48,8 +49,8 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
-        const data = await api<{ runs: Run[]; firstFree?: boolean; owner?: boolean }>();
-        if (!stopped) { setRuns(data.runs); setFirstFree(data.firstFree === true); setOwner(data.owner === true); }
+        const data = await api<{ runs: Run[]; firstFree?: boolean; freeVideo?: boolean; offer?: { pictures: number; videos: number }; owner?: boolean }>();
+        if (!stopped) { setRuns(data.runs); setFirstFree(data.firstFree === true); setFreeVideo(data.freeVideo === true); setOffer(data.offer ?? null); setOwner(data.owner === true); }
       } catch (error) {
         if (!stopped) setError((error as Error).message);
       } finally {
@@ -116,7 +117,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   return <main className="ct-page" dir="rtl">
     <Doodles />
     <Link href="/jawad-ai/images" className="ct-back">← رجوع للاستوديو الإبداعي</Link>
-    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>حوّل صورتك كما هي بكل من فيها، أو اصنع منك شخصية جديدة: صورة بخلفية رمادية، أو كاركتر شيت كامل تستخدمه في فيلمك.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>وبعد الصورة: حوّلها لفيلم · ١٥ ثانية</span></div>{firstFree && <p className="ct-offer">🎁 أول تجربة مجانية! صورتك الأولى علينا لمدة {FREE_FIRST_HOURS} ساعة — العرض ينتهي {offerEnd()}</p>}</header>
+    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>حوّل صورتك كما هي بكل من فيها، أو اصنع منك شخصية جديدة: صورة بخلفية رمادية، أو كاركتر شيت كامل تستخدمه في فيلمك.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>وبعد الصورة: حوّلها لفيلم · ١٥ ثانية</span></div>{offer && (offer.pictures > 0 || offer.videos > 0) && <p className="ct-offer">🎁 عرض الافتتاح: أول {CARTOON_OFFER.pictures} حساب محاولتهم الأولى مجانية (صورة){offer.pictures > 0 ? ` — باقي ${offer.pictures}` : " — خلصت"}، وأول {CARTOON_OFFER.videos === 2 ? "حسابين" : CARTOON_OFFER.videos + " حسابات"} فيلمهم الأول مجاني (١٥ ثانية){offer.videos > 0 ? ` — باقي ${offer.videos}` : " — خلص"}.{firstFree ? " صورتك الأولى علينا ✨" : ""}{freeVideo ? " وفيلمك الأول علينا 🎬" : ""}</p>}</header>
     <div className="ct-layout"><section className="ct-card">
       <fieldset disabled={!!busy}>
         <h2>١. وش نسوي بصورتك؟</h2>

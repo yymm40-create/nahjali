@@ -7,7 +7,7 @@ import { handle, UserError } from "@/lib/api";
 import { coinBalance, holdCoins } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
-import { freeFirstEligible } from "@/lib/jawad/server/free-first";
+import { cartoonFree, cartoonOfferLeft } from "@/lib/jawad/server/cartoon-offer";
 import { cartoonQuote, continueCartoon, directCartoon, filmRefs, filmSource, planOf, requireCreated } from "@/lib/jawad/server/cartoon";
 import { placeSheets } from "@/lib/jawad/server/cartoon-pictures";
 import { uploadFromOutput } from "@/lib/jawad/server/uploads";
@@ -61,8 +61,12 @@ async function film(req: Request, body: Record<string, unknown>, user: { id: str
   }
   const live = rt.generators.find(generator => generator.id === CARTOON_VIDEO);
   if (!live || !(live.live || (owner && live.keyConfigured)) || !(await can(user.email, permForGenerator(generatorById(CARTOON_VIDEO)!)))) throw new UserError("صناعة الفيلم غير متاحة لحسابك حاليًا.", 403);
-  const quote = await cartoonQuote(input);
-  if (body.action === "film_quote") return NextResponse.json({ quote, free: owner });
+  const full = await cartoonQuote(input);
+  // the opening offer: only the first 2 accounts get one film free — its first part (and the director's work on it)
+  const freeVideo = !owner && (await cartoonFree(user.id, "video"));
+  const perDirector = input.scenes.length ? full.directorCoins / input.scenes.length : 0;
+  const quote = freeVideo ? { ...full, videoCoins: full.videoCoins - full.partCoins, directorCoins: full.directorCoins - perDirector, totalCoins: full.totalCoins - full.partCoins - perDirector } : full;
+  if (body.action === "film_quote") return NextResponse.json({ quote, free: owner, freeVideo });
   if (!isUuid(body.key)) throw new UserError("معرّف طلب غير صالح.", 400);
   const key = "cartoon_film_" + body.key;
   const db = createAdminClient();
@@ -76,9 +80,9 @@ async function film(req: Request, body: Record<string, unknown>, user: { id: str
   const result = requireCreated(await createJob(user as Parameters<typeof createJob>[0], owner, {
     idempotencyKey: key + "_0", generatorId: CARTOON_VIDEO, sectionId: quote.videoSection,
     prompt: cartoonVideoPrompt(input, 0, refs.length > 1), settings: cartoonVideoSettings(input),
-    refs, refStyle: "references", expectedCoins: quote.partCoins,
-  }, new URL(req.url).origin, { cartoon: { key, parent, source: outputId, input, videoCoins: quote.partCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000 } }));
-  const directorCoins = owner || !input.scenes.length ? 0 : Math.round((quote.directorCoins / input.scenes.length) * written);
+    refs, refStyle: "references", expectedCoins: freeVideo ? 0 : full.partCoins,
+  }, new URL(req.url).origin, { free: freeVideo, cartoon: { key, parent, source: outputId, input, videoCoins: full.partCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000, ...(freeVideo ? { freeOffer: "video" as const } : {}) } }));
+  const directorCoins = owner ? 0 : Math.max(0, Math.round(perDirector * written - (freeVideo && input.directed?.[0] ? perDirector : 0)));
   if (directorCoins && result.kind === "created") await holdCoins(user.id, directorCoins, `cartoon-director:${key}`, "JAWAD AI · المخرج الخارق · فيلم الكرتون").catch(error => console.error("cartoon director charge", error));
   return NextResponse.json({ key, jobs: await jobViews([result.job], { owner }) });
 }
@@ -103,7 +107,8 @@ export const POST = handle(async (req: Request) => {
   const key = "cartoon_" + body.key;
   const db = createAdminClient();
   const existing = isUuid(body.key) ? await db.from("jawad_jobs").select("*").eq("user_id", user.id).eq("idempotency_key", key + "_0").maybeSingle() : { data: null };
-  const firstFree = !owner && !existing.data && (await freeFirstEligible(user.id, "cartoon_"));
+  // the opening offer: the first 20 accounts get their first attempt's picture free (config/jawad/cartoon-offer.ts)
+  const firstFree = !owner && !existing.data && (await cartoonFree(user.id, "pic"));
   const quote = firstFree ? { ...full, imageCoins: full.imageCoins - CARTOON_PRICE, totalCoins: full.totalCoins - CARTOON_PRICE } : full;
   if (body.action === "quote") return NextResponse.json({ quote, free: owner, firstFree });
   if (!isUuid(body.key)) throw new UserError("معرّف طلب غير صالح.", 400);
@@ -122,7 +127,7 @@ export const POST = handle(async (req: Request) => {
     idempotencyKey: key + "_0", generatorId: CARTOON_IMAGE, sectionId: quote.imageSection,
     prompt: cartoonImagePrompt(input), settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: 1 },
     refs: body.uploads.map((uploadId: string) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: firstFree ? 0 : CARTOON_PRICE,
-  }, new URL(req.url).origin, { free: firstFree, cartoon: { key, input, videoCoins: quote.partCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000 } }));
+  }, new URL(req.url).origin, { free: firstFree, cartoon: { key, input, videoCoins: quote.partCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000, ...(firstFree ? { freeOffer: "pic" as const } : {}) } }));
   // only the parts the director actually wrote are paid, once the run has really started
   if (directorCoins && result.kind === "created") await holdCoins(user.id, directorCoins, `cartoon-director:${key}`, "JAWAD AI · المخرج الخارق · فيلم الكرتون").catch(error => console.error("cartoon director charge", error));
   return NextResponse.json({ key, jobs: await jobViews([result.job], { owner }) });
@@ -145,8 +150,9 @@ export const GET = handle(async () => {
   // the prompts are the owner's alone (he makes films elsewhere with them); nobody else sees them
   const views = await jobViews(jobs, { owner });
   const runOf = (job: JobRow) => { const plan = planOf(job); return plan ? plan.parent ?? plan.key : undefined; };
-  const firstFree = !owner && (await freeFirstEligible(user.id, "cartoon_"));
-  return NextResponse.json({ firstFree, owner, runs: [...new Set(jobs.map(runOf).filter(Boolean))].map(key => {
+  const firstFree = !owner && (await cartoonFree(user.id, "pic"));
+  const freeVideo = !owner && (await cartoonFree(user.id, "video"));
+  return NextResponse.json({ firstFree, freeVideo, offer: await cartoonOfferLeft(), owner, runs: [...new Set(jobs.map(runOf).filter(Boolean))].map(key => {
     // the run's own choices are those of its pictures (a film made later only adds to it)
     const mine = jobs.filter(job => runOf(job) === key);
     const plan = planOf(mine.find(job => !planOf(job)!.parent) ?? mine[0])!;
