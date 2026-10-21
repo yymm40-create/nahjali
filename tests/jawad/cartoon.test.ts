@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CARTOON_PLACES, cartoonParts, cartoonPlaceSheetPrompt, CARTOON_GROUPS, CARTOON_PICTURE_DIR, cartoonStylePicturePrompt, CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
+import { CARTOON_CHOICES, cartoonStyleLabel, CARTOON_PLACES, cartoonParts, cartoonPlaceSheetPrompt, CARTOON_GROUPS, CARTOON_PICTURE_DIR, cartoonStylePicturePrompt, CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
 import { generatorById } from "@config/jawad/generators";
 import { evaluate } from "@/lib/jawad/engine";
 import { DEFAULT_SECTIONS, sectionPath, RESERVED_SECTION_IDS } from "@config/jawad/sections";
-const input = { style: "cinematic-3d", audience: "child", age: "baby", movement: "crawl", outfit: "بدلة فضاء", interests: "", story: "garden", customStory: "", count: 2, video: true, consent: true };
+const input = { style: "stylistic-drift", audience: "child", age: "baby", movement: "crawl", outfit: "بدلة فضاء", interests: "", story: "garden", customStory: "", count: 2, video: true, consent: true };
 describe("cartoon journey", () => {
   it("requires valid choices and explicit consent", () => {
     expect(() => cartoonInput({ ...input, consent: false })).toThrow();
@@ -58,9 +58,18 @@ describe("the looks, and who the picture is for", () => {
   });
 
   it("writes the identity rules image models get wrong, and never mixes levels of realism", () => {
-    const prompt = cartoonImagePrompt(cartoonInput({ ...input, style: "anime" }));
+    const prompt = cartoonImagePrompt(cartoonInput({ ...input, style: "soft-2d" }));
     for (const rule of ["HOLD ONE LEVEL OF STYLISATION", "DO NOT BEAUTIFY", "do not smooth the skin", "do not slim or lengthen the face", "do not straighten the teeth", "glasses", "freckles", "the references are the identity, not the rendering"]) expect(prompt).toContain(rule);
-    expect(prompt).toContain("Moderate anime cel work");
+    expect(prompt).toContain("Modern 2D television animation");
+  });
+  it("offers only three looks — 3D, 2D and أنمي — and refuses the rest for a new run", () => {
+    expect(CARTOON_CHOICES.map(choice => [choice.id, choice.label])).toEqual([["stylistic-drift", "3D"], ["soft-2d", "2D"], ["game-2-5d", "أنمي"]]);
+    for (const choice of CARTOON_CHOICES) expect(cartoonInput({ ...input, style: choice.id }).style).toBe(choice.id);
+    expect(() => cartoonInput({ ...input, style: "anime" })).toThrow("3D");
+    expect(cartoonStyleLabel("game-2-5d")).toBe("أنمي");
+    // a run made before keeps its look's name
+    expect(cartoonStyleLabel("anime")).toBe("أنمي معتدل");
+    expect(cartoonImagePrompt(cartoonInput(input))).toContain("stylistic-drift look");
   });
 
   it("asks who the picture is FOR, and that changes the drawing", () => {
@@ -139,7 +148,7 @@ describe("the games, anime and kids shelves, and the looks' pictures", () => {
     const ids = CARTOON_STYLES.map(style => style.id);
     for (const id of ["game-2-5d", "pixel", "voxel", "anime-action", "anime-sky", "retro-anime", "chibi", "vinyl-toy", "felt"]) expect(ids).toContain(id);
     expect(CARTOON_STYLES.find(style => style.id === "game-2-5d")?.name).toBe("لعبة 2.5D");
-    expect(CARTOON_STYLES.length).toBe(21);
+    expect(CARTOON_STYLES.length).toBe(22);
     for (const style of CARTOON_STYLES) expect(Object.keys(CARTOON_GROUPS)).toContain(style.group);
     // every shelf has looks, and anime has several
     for (const group of Object.keys(CARTOON_GROUPS)) expect(CARTOON_STYLES.some(style => style.group === group)).toBe(true);

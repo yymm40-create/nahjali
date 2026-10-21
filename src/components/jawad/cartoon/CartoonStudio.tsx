@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CARTOON_GROUPS, CARTOON_PARTS_MAX, CARTOON_PLACES, CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MODES, CARTOON_MOVES, cartoonParts, movementAsked, nearestAspect, type CartoonInput, type CartoonPlace } from "@config/jawad/cartoon";
+import { CARTOON_CHOICES, cartoonStyleLabel, CARTOON_PARTS_MAX, CARTOON_PLACES, CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MODES, CARTOON_MOVES, cartoonParts, movementAsked, nearestAspect, type CartoonInput, type CartoonPlace } from "@config/jawad/cartoon";
 import Riyal from "@/components/Riyal";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
@@ -14,7 +14,7 @@ type Quote = { imageCoins: number; videoCoins: number; directorCoins?: number; p
 /** the end of «أول تجربة مجانية» (config/jawad/free-first.ts), shown to the person in their own clock */
 const offerEnd = () => new Date(FREE_FIRST_ENDS_AT).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
 type Run = { key: string; input: CartoonInput; error?: string; jobs: JobView[] };
-const INITIAL: CartoonInput = { mode: "scene", aspect: "9:16", style: "cinematic-3d", audience: "family", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "custom", customStory: "", place: "garden", scenes: [""], heightCm: null, weightKg: null, count: 1, video: false, consent: false };
+const INITIAL: CartoonInput = { mode: "scene", aspect: "9:16", style: "stylistic-drift", audience: "family", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "custom", customStory: "", place: "garden", scenes: [""], heightCm: null, weightKg: null, count: 1, video: false, consent: false };
 async function api<T>(body?: unknown): Promise<T> {
   const response = await fetch("/api/jawad/cartoon", body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { cache: "no-store" });
   const data = await response.json();
@@ -28,8 +28,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   const [error, setError] = useState("");
   const [quote, setQuote] = useState<{ value: Quote; snapshot: string; free: boolean } | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
-  // the shelf of looks shown («all» = every look) and the looks' pictures (drawn once by the owner; none yet = a coloured tile)
-  const [shelf, setShelf] = useState<"all" | keyof typeof CARTOON_GROUPS>("all");
+  // the looks' pictures (drawn once by the owner; none yet = a coloured tile)
   const [pictures, setPictures] = useState<Record<string, string>>({});
   // the places' environment sheets drawn by the owner, by «place--look» (a place without one shows its icon)
   const [places, setPlaces] = useState<Record<string, string>>({});
@@ -134,9 +133,8 @@ export default function CartoonStudio({ userId }: { userId: string }) {
         <div className="ct-refs">{uploads.map(upload => <div key={upload.id}>{upload.url && <img src={upload.url} alt="مرجع الشخصية" />}<button type="button" aria-label="حذف المرجع" onClick={() => { setUploads(current => current.filter(item => item.id !== upload.id)); setQuote(null); requestKey.current = null; }}>×</button></div>)}</div>
         <h2>٣. لمين الصورة؟</h2><p>يغيّر شكل الشخصية: صورة الطفل تنرسم أبسط وأدفأ وأوضح، وصورة الكبار بنِسب طبيعية وتفاصيل أكثر.</p>
         <div className="ct-aud">{(Object.entries(CARTOON_AUDIENCES) as [CartoonInput["audience"], string][]).map(([id, label]) => <button type="button" key={id} className={input.audience === id ? "chosen" : ""} aria-pressed={input.audience === id} onClick={() => change({ audience: id })}>{label}</button>)}</div>
-        <h2>٤. اختر عالمك</h2>
-        <div className="ct-shelves" role="tablist" aria-label="أقسام الستايلات"><button type="button" role="tab" aria-selected={shelf === "all"} className={shelf === "all" ? "chosen" : ""} onClick={() => setShelf("all")}>✨ الكل ({CARTOON_STYLES.length})</button>{(Object.entries(CARTOON_GROUPS) as [keyof typeof CARTOON_GROUPS, (typeof CARTOON_GROUPS)[keyof typeof CARTOON_GROUPS]][]).map(([id, group]) => <button type="button" role="tab" aria-selected={shelf === id} key={id} className={shelf === id ? "chosen" : ""} onClick={() => setShelf(id)}>{group.icon} {group.name} ({CARTOON_STYLES.filter(style => style.group === id).length})</button>)}</div>
-        <div className="ct-styles">{CARTOON_STYLES.map((style, index) => ({ style, index })).filter(({ style }) => shelf === "all" || style.group === shelf).map(({ style, index }) => <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}>{pictures[style.id] ? <img className="ct-pic" src={pictures[style.id]} alt={style.name} loading="lazy" /> : <span className={"ct-tile t" + (index % 6)} aria-hidden="true">{style.icon}</span>}<span className="ct-name">{style.name}</span><small>{style.hint}</small>{style.fits === input.audience && <b>⭐ يناسب اختيارك</b>}</button>)}</div>
+        <h2>٤. اختر الستايل</h2><p>ثلاث ستايلات: 3D أو 2D أو أنمي — والفيلم يطلع بنفس الستايل.</p>
+        <div className="ct-styles ct-choices">{CARTOON_CHOICES.map((choice, index) => { const style = CARTOON_STYLES.find(item => item.id === choice.id)!; return <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}>{pictures[style.id] ? <img className="ct-pic" src={pictures[style.id]} alt={choice.label} loading="lazy" /> : <span className={"ct-tile t" + (index % 6)} aria-hidden="true">{style.icon}</span>}<span className="ct-name">{choice.label}</span><small>{style.name} — {style.hint}</small></button>; })}</div>
         <div className="ct-fields">
           {input.mode !== "scene" && <label>العمر بالتحديد (اختياري)<input maxLength={60} value={input.desiredAge} placeholder="مثلًا: ٨ أشهر، ٧ سنوات…" onChange={event => change({ desiredAge: event.target.value })} /></label>}
           {input.mode !== "scene" && <label>العمر في الصورة الجديدة<select value={input.age} onChange={event => change({ age: event.target.value as CartoonInput["age"] })}>{Object.entries(CARTOON_AGES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>}
@@ -172,7 +170,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
       {error && <p className="ct-feedback" role="status">{error}</p>}
       <Link href="/jawad-ai/works">كل أعمالي المحفوظة ↗</Link>
     </aside></div>
-    <section className="ct-results"><h2>رحلاتك الأخيرة</h2>{!runs.length && <p>هنا تظهر شخصيتك ونتائجك بعد البدء.</p>}{runs.map(run => <article className="ct-card" key={run.key}><h3>{CARTOON_MODES[run.input.mode] ?? CARTOON_MODES.character} · {CARTOON_STYLES.find(style => style.id === run.input.style)?.name} · {run.input.count} صور{run.input.video ? " + فيلم" + (cartoonParts(run.input) > 1 ? " " + cartoonParts(run.input) + "×١٥ث" : "") : ""}</h3>{run.error && <p role="alert">{run.error}</p>}<div className="ct-gallery">{run.jobs.map(job => <div key={job.id}><p>{job.outputKind === "video" ? "الفيلم" : "الشخصية"} · {stageLabel(job.status)}</p>{job.error && <p role="alert">{job.error}</p>}{job.outputs.map(output => <figure key={output.id}>{output.url && (output.kind === "video" ? <video src={output.url} controls playsInline /> : <img src={output.url} alt="شخصيتك الكرتونية" />)}<a href={output.downloadUrl} download>تنزيل النتيجة ↓</a></figure>)}</div>)}</div></article>)}</section>
+    <section className="ct-results"><h2>رحلاتك الأخيرة</h2>{!runs.length && <p>هنا تظهر شخصيتك ونتائجك بعد البدء.</p>}{runs.map(run => <article className="ct-card" key={run.key}><h3>{CARTOON_MODES[run.input.mode] ?? CARTOON_MODES.character} · {cartoonStyleLabel(run.input.style)} · {run.input.count} صور{run.input.video ? " + فيلم" + (cartoonParts(run.input) > 1 ? " " + cartoonParts(run.input) + "×١٥ث" : "") : ""}</h3>{run.error && <p role="alert">{run.error}</p>}<div className="ct-gallery">{run.jobs.map(job => <div key={job.id}><p>{job.outputKind === "video" ? "الفيلم" : "الشخصية"} · {stageLabel(job.status)}</p>{job.error && <p role="alert">{job.error}</p>}{job.outputs.map(output => <figure key={output.id}>{output.url && (output.kind === "video" ? <video src={output.url} controls playsInline /> : <img src={output.url} alt="شخصيتك الكرتونية" />)}<a href={output.downloadUrl} download>تنزيل النتيجة ↓</a></figure>)}</div>)}</div></article>)}</section>
   </main>;
 }
 

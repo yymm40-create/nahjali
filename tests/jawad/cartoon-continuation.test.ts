@@ -25,7 +25,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 import { continueCartoon } from "@/lib/jawad/server/cartoon";
-const input = cartoonInput({ style: "cinematic-3d", age: "child", movement: "walk", story: "garden", count: 2, video: true, consent: true });
+const input = cartoonInput({ style: "stylistic-drift", age: "child", movement: "walk", story: "garden", count: 2, video: true, consent: true });
 function row(id: string, position: number, status = "succeeded", plan = input) {
   return { id, user_id: "u1", status, idempotency_key: "cartoon_test_" + position, generator_id: CARTOON_IMAGE, inputs: { origin: "https://example.com", cartoon: { key: "cartoon_test", input: plan, position, videoCoins: 4000, expiresAt: Date.now() + 60000 } } };
 }
@@ -73,11 +73,11 @@ describe("cartoon continuation", () => {
     await expect(continueCartoon("root")).rejects.toThrow("تغيّر السعر");
   });
   it("films each 15-second part in turn at the same price, with the place's sheet when it is drawn", async () => {
-    const story = cartoonInput({ style: "cinematic-3d", age: "child", movement: "walk", story: "custom", place: "house", scenes: ["plays with blocks", "builds a tower"], count: 1, video: true, consent: true });
+    const story = cartoonInput({ style: "stylistic-drift", age: "child", movement: "walk", story: "custom", place: "house", scenes: ["plays with blocks", "builds a tower"], count: 1, video: true, consent: true });
     mocks.rows = [row("root", 0, "succeeded", story)];
     mocks.sheet.mockResolvedValue(new Uint8Array([1, 2, 3]));
     await continueCartoon("root");
-    expect(mocks.sheet).toHaveBeenCalledWith("house", "cinematic-3d");
+    expect(mocks.sheet).toHaveBeenCalledWith("house", "stylistic-drift");
     expect(mocks.create.mock.calls[0][2]).toMatchObject({ idempotencyKey: "cartoon_test_1", generatorId: CARTOON_VIDEO, expectedCoins: 4000, refs: [{ uploadId: "upload1", name: "character" }, { uploadId: "place1", name: "place" }] });
     expect(mocks.create.mock.calls[0][2].prompt).toContain("part 1 of 2");
     mocks.rows.push(row("part1", 1, "succeeded", story));

@@ -17,6 +17,16 @@ export const CARTOON_PRICE = 200;
  */
 export const CARTOON_STYLES = [
   {
+    id: "stylistic-drift",
+    group: "world",
+    name: "الانحراف الأسلوبي",
+    icon: "✨",
+    hint: "ثلاثي أبعاد عصري منمّق: تظليل مسطّح وألوان قوية وإضاءة سينمائية",
+    fits: "all",
+    real: "modern stylised 3D: deliberately pushed graphic shapes, far from a real face, held at that level everywhere",
+    text: "Modern stylized 3D animation (the stylistic-drift look): deliberate anime-influenced distortion of the shapes, exaggerated squash and stretch, flatter shading ramps with crisp graphic shadow shapes, punchy saturated colour, graphic simplification of secondary detail, expressive posing, cinematic lighting with a warm key and a coloured rim retained, solid three-dimensional form and consistent anatomy.",
+  },
+  {
     id: "cinematic-3d",
     group: "world",
     name: "سينمائي 3D",
@@ -232,6 +242,19 @@ export type CartoonStyle = (typeof CARTOON_STYLES)[number]["id"];
 /** The looks only this page has (games and toys): the shared style map keeps the library's own 100, so these are not in it. */
 export const CARTOON_ONLY: readonly string[] = ["game-2-5d", "pixel", "voxel", "vinyl-toy", "felt"];
 
+/**
+ * The ONLY looks the person can choose here now (the owner's choice), each shown by the simple word people use for it.
+ * The rest stay listed above so a run made before keeps its name and its look.
+ */
+export const CARTOON_CHOICES = [
+  { id: "stylistic-drift", label: "3D" },
+  { id: "soft-2d", label: "2D" },
+  { id: "game-2-5d", label: "أنمي" },
+] as const;
+export const cartoonOffered = (id: unknown) => CARTOON_CHOICES.some(choice => choice.id === id);
+/** The word a look is shown by («3D», «2D», «أنمي»), or its own name for a look no longer offered. */
+export const cartoonStyleLabel = (id: string) => CARTOON_CHOICES.find(choice => choice.id === id)?.label ?? CARTOON_STYLES.find(style => style.id === id)?.name ?? "";
+
 /** The shelves the styles are shown under (the person can still see them all at once). */
 export const CARTOON_GROUPS = {
   world: { name: "عوالم سينمائية", icon: "🎬" },
@@ -374,7 +397,7 @@ export const cartoonParts = (input: Pick<CartoonInput, "mode" | "video" | "scene
 export function cartoonInput(raw: unknown): CartoonInput {
   const value = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const field = (name: string, max: number) => String(value[name] ?? "").trim().slice(0, max);
-  if (!CARTOON_STYLES.some(style => style.id === value.style)) throw new Error("اختر الستايل.");
+  if (!cartoonOffered(value.style)) throw new Error("اختر الستايل: 3D أو 2D أو أنمي.");
   const mode: CartoonMode = Object.hasOwn(CARTOON_MODES, String(value.mode)) ? (value.mode as CartoonMode) : "character";
   if (!Object.hasOwn(CARTOON_AGES, String(value.age)) || !Object.hasOwn(CARTOON_MOVES, String(value.movement))) throw new Error("اختر العمر والحركة.");
   const story = (Object.hasOwn(CARTOON_STORIES, String(value.story)) ? value.story : "garden") as CartoonInput["story"];
