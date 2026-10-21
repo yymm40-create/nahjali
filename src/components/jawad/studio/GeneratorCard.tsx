@@ -48,7 +48,10 @@ export function GeneratorPicker({
   current,
   onPick,
   owner,
+  title = "اختر المولد",
 }: {
+  /** the unified studio names the kind picked (image / video / sound): only its generators are listed */
+  title?: string;
   open: boolean;
   onClose: () => void;
   generators: StudioGenerator[];
@@ -57,7 +60,7 @@ export function GeneratorPicker({
   owner: boolean;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} title="اختر المولد">
+    <Dialog open={open} onClose={onClose} title={title}>
       <ul className="jw-scroll grid max-h-[70dvh] grid-cols-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2">
         {generators.map((g) => {
           const def = generatorById(g.id)!;
