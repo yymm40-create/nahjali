@@ -1,7 +1,13 @@
 // «اشحن رصيدك» — an order to top up the balance: started (the bank data shown) → «تم التحويل» (the owner's phone buzzes) → the owner's
 // «✅» adds the balance ONCE (credited_at is marked first, so a repeat can never add it twice) or «❌». Server only.
+// The order also keeps where the buyer came from (`source`, migration 0090; the insert works without the column too) and the
+// confirm that adds the balance reports the Purchase to Meta's Conversions API when it is set up (never waited for).
 
+import { after } from "next/server";
 import { UserError } from "@/lib/api";
+import { sendPurchase } from "@/lib/meta-capi";
+import { SOURCE_KEYS } from "@/lib/track";
+import type { AdContext } from "@/lib/track-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantCoins } from "@/lib/coins";
 import { cleanPhone, type Bank } from "@config/course";
@@ -30,6 +36,8 @@ export interface CreditOrder {
   creditedAt: string | null;
   note: string;
   createdAt: string;
+  /** where the buyer came from (utm_*, ref, click ids, landing, last; Meta's fbp/fbc; the buyer's ip/ua), or null */
+  source: Record<string, string> | null;
 }
 
 const view = (r: Record<string, unknown>): CreditOrder => ({
@@ -48,15 +56,45 @@ const view = (r: Record<string, unknown>): CreditOrder => ({
   creditedAt: (r.credited_at as string | null) ?? null,
   note: String(r.note ?? ""),
   createdAt: String(r.created_at),
+  source: r.source && typeof r.source === "object" && !Array.isArray(r.source) ? (r.source as Record<string, string>) : null,
 });
+
+/** The page's source object, checked: known keys only (ten at most), strings cut to 100 characters; the request's ad data on top. */
+export function cleanSource(input: unknown, ad?: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      if (Object.keys(out).length >= 10) break;
+      if (SOURCE_FIELDS.has(k) && typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 100);
+    }
+  }
+  if (ad?.fbp) out.fbp = ad.fbp.slice(0, 100);
+  if (ad?.fbc) out.fbc = ad.fbc.slice(0, 100);
+  if (ad?.ip) out.ip = ad.ip.slice(0, 45);
+  if (ad?.ua) out.ua = ad.ua.slice(0, 200);
+  return Object.keys(out).length ? out : null;
+}
+const SOURCE_FIELDS = new Set<string>([...SOURCE_KEYS, "landing", "last"]);
+
+/** The database has no `source` column yet (migration 0090 not run): Postgres 42703, or PostgREST's schema cache PGRST204. */
+const noSourceColumn = (e: { code?: string; message?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204") && /source/i.test(e.message ?? "");
+
+/** Writes the order with its source; when the column is missing, once more without it. */
+async function saveOrder<T extends { data: unknown; error: { code?: string; message?: string } | null }>(run: (withSource: boolean) => PromiseLike<T>): Promise<T> {
+  const first = await run(true);
+  return first.error && noSourceColumn(first.error) ? run(false) : first;
+}
 
 const NO_TABLE = "شحن الرصيد ما انضاف للحين في قاعدة البيانات: شغّل ملف SQL رقم 0049 في Supabase.";
 const wrap = (e: { message?: string } | null) => {
   if (e) throw new UserError(/relation|does not exist|schema cache|PGRST205/i.test(e.message ?? "") ? NO_TABLE : "تعذّر تنفيذ الطلب. جرّب مرة ثانية.", 500);
 };
 
-/** «ادفع الآن»: the order for a package and the bank data to transfer to (the same bank data as the course, set in /admin/course). */
-export async function startCreditOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown }): Promise<{ order: CreditOrder; bank: Bank }> {
+/**
+ * «ادفع الآن»: the order for a package and the bank data to transfer to (the same bank data as the course, set in /admin/course).
+ * `b.source` is where the visitor came from as the page knows it; `ad` what the request itself carries (Meta's cookies, ip, ua).
+ */
+export async function startCreditOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad?: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null): Promise<{ order: CreditOrder; bank: Bank }> {
   const [s, course] = await Promise.all([loadCreditSettings(), loadCourseSettings()]);
   const pack = packOf(s, b.pack);
   if (!pack) throw new UserError("هذي الباقة غير متاحة؛ حدّث الصفحة.", 409);
@@ -72,14 +110,16 @@ export async function startCreditOrder(user: { id: string; email?: string | null
   const open = (rows ?? []).map(view);
   const at = new Date().toISOString();
   const same = open.find((o) => o.status === "started" && o.packId === pack.id);
+  const source = cleanSource(b.source, ad);
   const fields = { email: user.email ?? "", name, phone, pack_name: pack.name, price_sar: pack.price, credit_sar: pack.credit, updated_at: at };
+  const withSource = (on: boolean) => (on && source ? { ...fields, source } : fields);
   if (same) {
-    const { data, error: e2 } = await db().from("credit_orders").update(fields).eq("id", same.id).eq("status", "started").select("*").single();
+    const { data, error: e2 } = await saveOrder((on) => db().from("credit_orders").update(withSource(on)).eq("id", same.id).eq("status", "started").select("*").single());
     wrap(e2);
     return { order: view(data!), bank };
   }
   if (open.length >= CREDITS.maxOpen) throw new UserError("عندك طلبات شحن مفتوحة كثيرة؛ انتظر تأكيد الموجودة أو راسلنا.", 429);
-  const { data, error: e3 } = await db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...fields }).select("*").single();
+  const { data, error: e3 } = await saveOrder((on) => db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...withSource(on) }).select("*").single());
   wrap(e3);
   return { order: view(data!), bank };
 }
@@ -130,7 +170,28 @@ export async function confirmCreditOrder(id: string, by: string): Promise<{ orde
     row = cur;
   }
   const o = view(row);
-  return { order: o.status === "confirmed" ? await credit(o, at) : o, already: !data && !!o.creditedAt };
+  const done = o.status === "confirmed" ? await credit(o, at) : o;
+  // the balance was added NOW (not an earlier confirm repeated): the Purchase goes to Meta's Conversions API as well
+  if (done.creditedAt && !o.creditedAt) reportPurchase(done);
+  return { order: done, already: !data && !!o.creditedAt };
+}
+
+/**
+ * Meta's Conversions API (src/lib/meta-capi.ts; nothing without META_CAPI_TOKEN): the browser already sent the Purchase at
+ * «تم التحويل» with the order id as event_id, so this one is matched to it and counted once. Runs after the response (`after`),
+ * or detached when there is no request to attach to; a failure is only logged — the confirm never waits for it or fails on it.
+ */
+function reportPurchase(o: CreditOrder): void {
+  const s = o.source ?? {};
+  const send = () =>
+    sendPurchase({ orderId: o.id, email: o.email, valueSar: o.price, contentName: o.packName, fbp: s.fbp, fbc: s.fbc, ip: s.ip, ua: s.ua, at: o.transferredAt ?? o.createdAt, sourceUrl: "https://www.aljawadai.app/jawad-ai/credits" })
+      .then((sent) => sent && console.log("meta capi purchase sent", o.id))
+      .catch((e) => console.error("meta capi purchase", o.id, e));
+  try {
+    after(send);
+  } catch {
+    void send();
+  }
 }
 
 export async function rejectCreditOrder(id: string, by: string, note = ""): Promise<CreditOrder> {
