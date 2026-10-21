@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Stats from "@/app/admin/stats/page";
 import Spend from "@/app/admin/spend/page";
+import Profit from "@/app/admin/profit/page";
 import Access from "@/app/admin/access/page";
 import Limits from "@/app/admin/limits/page";
 import Pricing from "@/app/admin/pricing/page";
@@ -24,6 +25,7 @@ export default async function UnifiedAdminPanel({ params, searchParams }: { para
   switch (panel) {
     case "stats": return <Stats searchParams={Promise.resolve({ r })} />;
     case "spend": return <Spend searchParams={Promise.resolve({ r })} />;
+    case "profit": return <Profit searchParams={Promise.resolve({ r })} />;
     case "access": return <Access />;
     case "limits": return <Limits />;
     case "pricing": return <Pricing />;

@@ -11,6 +11,7 @@ const GROUPS: { title: string; items: { href: string; icon: string; label: strin
     items: [
       { href: "/admin", icon: "🏠", label: "نظرة عامة", exact: true },
       { href: "/admin/stats", icon: "📊", label: "الإحصائيات" },
+      { href: "/admin/profit", icon: "📈", label: "صافي الربح" },
       { href: "/admin/spend", icon: "💸", label: "أين تُصرف الفلوس" },
       { href: "/admin/access", icon: "🔐", label: "السماح والكود السري" },
       { href: "/admin/users", icon: "👥", label: "المستخدمون" },

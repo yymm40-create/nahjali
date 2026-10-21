@@ -7,6 +7,7 @@ const limits = vi.hoisted(() => ({ values: {} as Record<string, number> }));
 vi.mock("@/lib/coins", () => ({
   logFree: async () => {},
   dropFree: async () => {},
+  logCostHalalas: async () => {},
   coinsRequired: async () => coins.required,
   holdCoins: async (_u: string, n: number) => {
     if (n > 0) coins.held.push(n);

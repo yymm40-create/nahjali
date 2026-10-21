@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // the paid-call wrapper and the database, quiet: what is tested is what goes to ElevenLabs and what comes back
-vi.mock("@/lib/coins", () => ({ coinsRequired: async () => false, holdCoins: async () => {}, releaseCoins: async () => {}, logFree: async () => {}, dropFree: async () => {} }));
+vi.mock("@/lib/coins", () => ({ coinsRequired: async () => false, holdCoins: async () => {}, releaseCoins: async () => {}, logFree: async () => {}, dropFree: async () => {}, logCostHalalas: async () => {} }));
 vi.mock("@/lib/film/limits", () => ({ getLimit: async () => 120 }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: () => ({ insert: async () => ({}) }) }) }));
 
