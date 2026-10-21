@@ -182,3 +182,6 @@
   .ct-styles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ct-sky .d5, .ct-sky .d6, .ct-sky .d10 { display: none; }
 }
+.ct-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ct-choices .ct-name { font-size: 22px; }
+@media (max-width: 760px) { .ct-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .ct-choices small { display: none; } }

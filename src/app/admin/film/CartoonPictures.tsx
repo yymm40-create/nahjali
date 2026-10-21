@@ -5,7 +5,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { postJson } from "@/lib/fetch";
-import { CARTOON_PLACES, CARTOON_STYLES, type CartoonPlace } from "@config/jawad/cartoon";
+import { CARTOON_CHOICES, CARTOON_PLACES, CARTOON_STYLES as ALL_STYLES, type CartoonPlace } from "@config/jawad/cartoon";
+
+// only the looks the page offers now (3D, 2D, أنمي)
+const CARTOON_STYLES = ALL_STYLES.filter((s) => CARTOON_CHOICES.some((c) => c.id === s.id));
 
 const URL = "/api/jawad/cartoon-styles";
 type Data = { pictures: Record<string, string>; places?: Record<string, string>; usd: number };
