@@ -1,19 +1,14 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import sharp from "sharp";
 import { normalizeTitle } from "@/lib/mahdi/engine";
 import { t } from "@/lib/mahdi/i18n";
 import { mahdiRoute, requireProfile, UserError } from "@/lib/mahdi/server/api";
-import { BOOK_COLUMNS, bookFromRow, COVER_BUCKET, MAX_READING, type BookRow } from "@/lib/mahdi/server/reading";
+import { BOOK_COLUMNS, bookFromRow, MAX_READING, type BookRow } from "@/lib/mahdi/server/reading";
 import { readingReply } from "@/lib/mahdi/server/reading-write";
-import { checkUploadedPdf, removePdf } from "@/lib/mahdi/server/book-files";
+import { checkUploadedPdf, removePdf, storeCover } from "@/lib/mahdi/server/book-files";
 import { cleanLine, cleanText } from "@/lib/mahdi/server/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { storage } from "@/lib/storage";
 export const runtime = "nodejs";
-
-const COVER_MAX = 8 * 1024 * 1024;
 
 /** Searches the shared catalogue: `?q=` (empty → the newest books). */
 export const GET = mahdiRoute(async (req: Request) => {
@@ -66,25 +61,7 @@ export const POST = mahdiRoute(async (req: Request) => {
     const { count } = await db.from("mahdi_books").select("id", { count: "exact", head: true }).eq("added_by", user.id).gte("created_at", since);
     if ((count ?? 0) >= 10) throw new UserError(t.reading.dailyLimit, 429);
 
-    let coverPath: string | null = null;
-    if (cover instanceof File && cover.size > 0) {
-      if (cover.size > COVER_MAX) throw new UserError(t.reading.coverTooBig, 413);
-      if (!["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(cover.type)) throw new UserError(t.reading.coverBadType, 415);
-      let webp: Buffer;
-      try {
-        // Re-encoded here: a fixed size, and no location or camera data from the photo
-        webp = await sharp(Buffer.from(await cover.arrayBuffer()), { limitInputPixels: 50_000_000 })
-          .rotate()
-          .resize(480, 720, { fit: "inside", withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toBuffer();
-      } catch {
-        throw new UserError(t.reading.coverBadType, 415);
-      }
-      coverPath = `${user.id}/${randomUUID()}.webp`;
-      const up = await storage.from(COVER_BUCKET).upload(coverPath, webp, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
-      if (up.error) throw up.error;
-    }
+    const coverPath = cover instanceof File && cover.size > 0 ? await storeCover(user.id, cover) : null;
     const { data: created, error } = await db
       .from("mahdi_books")
       .insert({ title, title_norm: titleNorm, author, pages, unit, description, cover_path: coverPath, added_by: user.id, ...(pdf ? { pdf_path: pdf.path, pdf_size: pdf.size, pdf_added_by: user.id } : {}) })

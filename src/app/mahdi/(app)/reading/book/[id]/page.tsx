@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import type { BookUnit } from "@/lib/mahdi/engine";
 import { formatRanges, parsePagesInput } from "@/lib/mahdi/engine";
 import { fmtDate, fmtNum, fmtPct, fmtRelativeDay, t } from "@/lib/mahdi/i18n";
 import { mahdiFetch } from "@/lib/mahdi/client/fetch";
-import { duration, sendSession, uploadBookPdf } from "@/lib/mahdi/client/reading";
+import { duration, sendSession, shrinkImage, uploadBookPdf } from "@/lib/mahdi/client/reading";
+import { parseNumberInput } from "@/lib/mahdi/client/derive";
 import type { ReadingData } from "@/lib/mahdi/types";
 import BookCover from "@/components/mahdi/BookCover";
-import { PdfPicker, pdfSizeLabel } from "@/components/mahdi/BookFiles";
+import { CoverPicker, PdfPicker, pdfSizeLabel } from "@/components/mahdi/BookFiles";
 import ConfirmSheet from "@/components/mahdi/ConfirmSheet";
 import Icon from "@/components/mahdi/Icon";
 import { useMahdi } from "@/components/mahdi/Provider";
@@ -33,6 +35,7 @@ export default function BookPage() {
   const [pdf, setPdf] = useState<File | null>(null);
   const [uploading, setUploading] = useState<number | null>(null);
   const [pdfError, setPdfError] = useState("");
+  const [editing, setEditing] = useState(false);
 
   if (!entry) {
     return (
@@ -109,6 +112,11 @@ export default function BookPage() {
           {book.author && <p className="m-muted">{book.author}</p>}
           <p className="m-num text-sm m-muted">{U.count(book.pages)}</p>
           {state === "finished" && entry.finishedAt && <p className="m-chip m-chip-success w-fit">{t.reading.finishedOn(fmtDate(entry.finishedAt.slice(0, 10)))}</p>}
+          {book.addedByMe && (
+            <button type="button" className="m-btn m-btn-ghost m-btn-sm mt-1" onClick={() => setEditing(true)}>
+              <Icon name="edit" size={16} /> {t.reading.edit.button}
+            </button>
+          )}
         </div>
       </header>
       {book.hidden && <p className="m-note text-sm">{t.reading.hiddenNote}</p>}
@@ -271,6 +279,8 @@ export default function BookPage() {
           toast(t.reading.sessionDeleted);
         }}
       />
+      {/* mounted only while open, so each opening starts from the book as it is now */}
+      {book.addedByMe && editing && <EditBookSheet onClose={() => setEditing(false)} book={book} onSaved={apply} />}
       <Sheet open={reporting} onClose={() => setReporting(false)} title={t.reading.reportTitle}>
         <form
           className="space-y-4"
@@ -294,5 +304,86 @@ export default function BookPage() {
         </form>
       </Sheet>
     </div>
+  );
+}
+
+/** «عدّل الكتاب»: its cover (a new photo, enhanced or not, or none) and its details, for whoever added it. */
+function EditBookSheet({ onClose, book, onSaved }: { onClose: () => void; book: ReadingData["library"][number]["book"]; onSaved: (r: ReadingData) => void }) {
+  const { toast } = useMahdi();
+  const E = t.reading.edit;
+  const [form, setForm] = useState({ title: book.title, author: book.author, pages: String(book.pages), description: book.description, unit: book.unit as BookUnit });
+  const [cover, setCover] = useState<Blob | null>(null);
+  const [dropCover, setDropCover] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const pages = Math.round(parseNumberInput(form.pages));
+    if (!form.title.trim()) return setError(t.reading.titleRequired);
+    if (!(pages >= 1 && pages <= 10000)) return setError(t.reading.u[form.unit].totalRequired);
+    setBusy(true);
+    setError("");
+    const data = new FormData();
+    data.append("title", form.title.trim());
+    data.append("author", form.author.trim());
+    data.append("pages", String(pages));
+    data.append("unit", form.unit);
+    data.append("description", form.description.trim());
+    try {
+      if (cover) data.append("cover", cover instanceof File ? await shrinkImage(cover) : cover, cover instanceof File ? "cover.jpg" : "cover.webp");
+      else if (dropCover) data.append("removeCover", "1");
+      onSaved((await mahdiFetch<{ reading: ReadingData }>(`/api/mahdi/reading/books/${book.id}`, { method: "PATCH", body: data })).reading);
+      toast(E.saved);
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <Sheet open onClose={onClose} title={E.title}>
+      <form className="space-y-4" onSubmit={save}>
+        <p className="m-hint">{E.hint}</p>
+        <CoverPicker title={form.title} current={dropCover ? null : book.coverUrl} onChange={(c) => (setCover(c), c && setDropCover(false))} />
+        {book.coverUrl && !cover && (
+          <button type="button" className="m-btn m-btn-quiet m-btn-sm" onClick={() => setDropCover(!dropCover)}>
+            <Icon name={dropCover ? "undo" : "trash"} size={16} /> {dropCover ? E.keepCover : E.removeCover}
+          </button>
+        )}
+        {dropCover && <p className="m-hint">{E.coverRemoved}</p>}
+        <label className="block">
+          <span className="m-label">{t.reading.bookTitle}</span>
+          <input className="m-field" required maxLength={120} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        </label>
+        <fieldset className="space-y-2">
+          <legend className="m-label">{t.reading.kind}</legend>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.reading.kind}>
+            {(["page", "narration"] as const).map((u) => (
+              <button key={u} type="button" role="radio" aria-checked={form.unit === u} className="m-option min-h-11 px-3 text-sm font-semibold" onClick={() => setForm({ ...form, unit: u })}>
+                {t.reading.kinds[u]}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="m-label">{t.reading.author} <span className="m-hint">({t.common.optional})</span></span>
+            <input className="m-field" maxLength={80} value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} />
+          </label>
+          <label className="block">
+            <span className="m-label">{t.reading.u[form.unit].total}</span>
+            <input className="m-field m-num" inputMode="numeric" required value={form.pages} onChange={(e) => setForm({ ...form, pages: e.target.value })} />
+          </label>
+        </div>
+        <label className="block">
+          <span className="m-label">{t.reading.description} <span className="m-hint">({t.common.optional})</span></span>
+          <textarea className="m-field" rows={3} maxLength={500} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </label>
+        {error && <p className="m-error" role="alert">{error}</p>}
+        <button className="m-btn m-btn-primary w-full" disabled={busy}>{busy ? t.common.saving : E.save}</button>
+      </form>
+    </Sheet>
   );
 }
