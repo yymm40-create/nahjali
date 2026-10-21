@@ -16,6 +16,8 @@ export const EMAIL = /[^\s@<>"'()،,؛;]+@[^\s@<>"'()،,؛;]+\.[^\s@<>"'()،,؛;
 const SERVICE_KEYS = [
   "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ELEVENLABS_API_KEY", "FAL_KEY", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL",
   "R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+  // the ads: the browser pixels and Meta's Conversions API (src/components/Pixels.tsx, src/lib/meta-capi.ts)
+  "NEXT_PUBLIC_META_PIXEL_ID", "NEXT_PUBLIC_TIKTOK_PIXEL_ID", "NEXT_PUBLIC_SNAP_PIXEL_ID", "META_CAPI_TOKEN",
 ];
 
 export interface Expected {

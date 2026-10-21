@@ -17,6 +17,8 @@ interface Order {
   transferredAt: string | null;
   creditedAt: string | null;
   createdAt: string;
+  /** where the buyer came from (utm_*, ref, click ids…), when the page captured it */
+  source?: Record<string, string> | null;
 }
 interface Data {
   settings: CreditSettings;
@@ -25,6 +27,8 @@ interface Data {
 }
 const URL = "/api/credits/admin";
 const STATUS: Record<Order["status"], string> = { started: "بدأ ولم يحوّل", transferred: "ضغط تم التحويل", confirmed: "مؤكد ✅ (انضاف الرصيد)", rejected: "مرفوض ❌" };
+/** «من وين جاء»: the ad's source / campaign, or the referring site. */
+const sourceLine = (s?: Record<string, string> | null) => (s ? [s.utm_source, s.utm_campaign, s.ref].filter(Boolean).join(" · ") : "");
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "short", timeStyle: "short" }) : "");
 
 /** The owner's view of «اشحن رصيدك»: the packages (prices and balance), the WhatsApp number, and the orders. */
@@ -103,6 +107,7 @@ export default function CreditsAdmin() {
                 <span>{o.name}</span>·<span dir="ltr">{o.phone}</span>·<span dir="ltr" className="text-muted">{o.email}</span>
               </p>
               <p>باقة {o.packName}: حوّل <b>{o.price}</b> ← رصيد <b>{o.credit}</b> · <span className="text-muted">{STATUS[o.status]} · {when(o.transferredAt ?? o.createdAt)}</span></p>
+              {sourceLine(o.source) && <p className="text-xs font-bold text-muted" dir="ltr">📍 {sourceLine(o.source)}</p>}
               <div className="flex flex-wrap gap-2">
                 {o.status !== "confirmed" && <button type="button" className="btn btn-primary min-h-10 px-4" onClick={() => window.confirm(`تأكد إن ${o.price} وصلت؟ بينضاف له رصيد ${o.credit}.`) && void act({ action: "confirm", id: o.id }, "تم التأكيد وانضاف الرصيد ✅")}>✅ أكّد وأضف الرصيد</button>}
                 {(o.status === "started" || o.status === "transferred") && <button type="button" className="btn btn-ghost min-h-10 px-4" onClick={() => window.confirm("ترفض الطلب؟") && void act({ action: "reject", id: o.id }, "انرفض")}>❌ ارفض</button>}

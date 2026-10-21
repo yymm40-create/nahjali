@@ -3,6 +3,10 @@
 // «اشحن رصيدك» — the packages of balance, made for the phone first: pick one (the featured one is chosen to start with), one big
 // button, then the same three steps as the course: name and phone → the bank data to copy → «تم التحويل». After that: «يوصلك الرصيد
 // بعد قليل إن شاء الله»; if it takes long, a WhatsApp chat with the owner, the message already written.
+//
+// The ads (src/lib/track.ts, a no-op without a pixel): ViewContent when the page opens, InitiateCheckout when the order is made,
+// Purchase at «✅ تم التحويل» (its event_id is the order id, so the owner's confirm sent from the server is counted once) and Lead
+// when the WhatsApp link is opened. The visitor's source travels with the order.
 
 import Link from "next/link";
 import AgreeTerms from "@/components/jawad/AgreeTerms";
@@ -12,6 +16,7 @@ import Riyal from "@/components/Riyal";
 import SmartCoin from "@/components/SmartCoin";
 import { bonusPct, CREDITS, packYield, type Pack, type UnitPrices } from "@config/credits";
 import type { Bank } from "@config/course";
+import { track, visitorSource } from "@/lib/track";
 
 interface Waiting {
   id: string;
@@ -155,10 +160,11 @@ export default function CreditsShop({
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ order: Order; bank: Bank }>("/api/credits/order", { pack: sel.id, name, phone });
+      const r = await post<{ order: Order; bank: Bank }>("/api/credits/order", { pack: sel.id, name, phone, source: visitorSource() });
       setOrder(r.order);
       setBank(r.bank);
       setStep("bank");
+      track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -173,6 +179,8 @@ export default function CreditsShop({
       const r = await post<{ support: string }>("/api/credits/transferred", { orderId: order.id });
       setSupport(r.support ?? "");
       setStep("done");
+      // the purchase as the buyer declares it; the owner's confirm repeats it from the server with the same id (counted once)
+      track("Purchase", { value: order.price, currency: "SAR", content_name: order.packName, event_id: order.id });
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -180,6 +188,12 @@ export default function CreditsShop({
       setBusy(false);
     }
   }
+
+  // the ads: the packages were seen; a WhatsApp chat opened is a lead
+  useEffect(() => {
+    track("ViewContent", { content_name: "credits" });
+  }, []);
+  const lead = () => track("Lead", { content_name: "whatsapp" });
 
   // the bottom bar of a phone gives way while the packages are on the screen
   const listRef = useRef<HTMLElement>(null);
@@ -220,7 +234,7 @@ export default function CreditsShop({
             {waiting.map((w) => (
               <p key={w.id}>
                 ⏳ طلب شحن باقة «{w.packName}» قيد التأكيد. يوصلك الرصيد بعد قليل إن شاء الله.
-                {w.support && <> <a href={w.support} target="_blank" rel="noreferrer">طال الوقت؟ راسلنا على واتساب</a></>}
+                {w.support && <> <a href={w.support} target="_blank" rel="noreferrer" onClick={lead}>طال الوقت؟ راسلنا على واتساب</a></>}
               </p>
             ))}
           </div>
@@ -374,7 +388,7 @@ export default function CreditsShop({
                 {support ? (
                   <p className="cs-done-small">
                     إذا طال الوقت، اضغط الرابط وراسلنا أنك حوّلت:
-                    <a className="cr-btn cs-wa" href={support} target="_blank" rel="noreferrer">💬 راسلنا على واتساب</a>
+                    <a className="cr-btn cs-wa" href={support} target="_blank" rel="noreferrer" onClick={lead}>💬 راسلنا على واتساب</a>
                   </p>
                 ) : null}
                 <Link className="cr-btn" href="/jawad-ai">ارجع للجواد الذكي</Link>

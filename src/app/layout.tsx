@@ -2,6 +2,7 @@ import UiSounds from "@/components/UiSounds";
 import SecretGate from "@/components/SecretGate";
 import Salman from "@/components/Salman";
 import VisitBeacon from "@/components/VisitBeacon";
+import Pixels from "@/components/Pixels";
 import type { Metadata, Viewport } from "next";
 import { Baloo_Bhaijaan_2, Lalezar } from "next/font/google";
 import Link from "next/link";
@@ -49,6 +50,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <Salman />
         {/* the owner's statistics: which page was opened (a random id on the device, no name) */}
         <VisitBeacon />
+        {/* the ad pixels and where the visitor came from (each pixel only when its env var is set) */}
+        <Pixels />
         <NativeAppBridge />
         <NewVersion />
         <SiteChrome
