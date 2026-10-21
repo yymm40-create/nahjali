@@ -27,12 +27,17 @@ export const outputName = (path: string) => {
 };
 
 /** Views of jobs with their results (the caller has already checked they belong to the user). */
-export async function jobViews(jobs: JobRow[]): Promise<JobView[]> {
+/**
+ * The views of jobs. A cartoon job's prompts («حولني الى الستايل الكرتوني», written by the website and «المخرج الخارق»)
+ * are the site owner's alone: everyone else's views carry none, wherever they are shown (`owner` opens them).
+ */
+export async function jobViews(jobs: JobRow[], opts: { owner?: boolean } = {}): Promise<JobView[]> {
   if (!jobs.length) return [];
   const rt = await loadRuntime();
   const { data } = await db().from("jawad_outputs").select("*").in("job_id", jobs.map((j) => j.id)).order("idx");
   const outputs = (data ?? []) as OutputRow[];
   const urls = await sign(JAWAD_BUCKET, outputs.map((o) => o.storage_path));
+  const hidden = (j: JobRow) => !opts.owner && String(j.idempotency_key ?? "").startsWith("cartoon_");
   return jobs.map((j) => {
     const def = generatorById(j.generator_id);
     const outs: OutputView[] = outputs
@@ -61,12 +66,12 @@ export async function jobViews(jobs: JobRow[]): Promise<JobView[]> {
       sectionId: j.section_id,
       outputKind: j.output_kind,
       mode: j.mode,
-      prompt: j.prompt,
-      instructions: j.inputs.instructions ?? "",
+      prompt: hidden(j) ? "" : j.prompt,
+      instructions: hidden(j) ? "" : j.inputs.instructions ?? "",
       settings: j.inputs.settings ?? {},
       refStyle: j.inputs.refStyle ?? "none",
       refs: j.refs as JobView["refs"],
-      modelPrompt: j.inputs.modelPrompt ?? null,
+      modelPrompt: hidden(j) ? null : j.inputs.modelPrompt ?? null,
       diction: j.inputs.diction?.words ?? [],
       priceCoins: j.price_coins,
       charged: j.charged,

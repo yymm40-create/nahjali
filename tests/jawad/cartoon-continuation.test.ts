@@ -24,7 +24,7 @@ vi.mock("@/lib/supabase/admin", () => ({
     },
   }),
 }));
-import { continueCartoon } from "@/lib/jawad/server/cartoon";
+import { continueCartoon, filmSource } from "@/lib/jawad/server/cartoon";
 const input = cartoonInput({ style: "stylistic-drift", age: "child", movement: "walk", story: "garden", count: 2, video: true, consent: true });
 function row(id: string, position: number, status = "succeeded", plan = input) {
   return { id, user_id: "u1", status, idempotency_key: "cartoon_test_" + position, generator_id: CARTOON_IMAGE, inputs: { origin: "https://example.com", cartoon: { key: "cartoon_test", input: plan, position, videoCoins: 4000, expiresAt: Date.now() + 60000 } } };
@@ -89,5 +89,21 @@ describe("cartoon continuation", () => {
     mocks.rows.push(row("part2", 2, "succeeded", story));
     await continueCartoon("part2");
     expect(mocks.create).toHaveBeenCalledTimes(2);
+  });
+  it("makes a film AFTER the picture, from the chosen picture of any run, shown with that run", async () => {
+    mocks.outputs.push({ id: "pic2", user_id: "u1", job_id: "root", kind: "image" });
+    await expect(filmSource("u1", "pic2", { place: "garden", scenes: [] })).rejects.toThrow("١٥");
+    const { input: film, parent, outputId } = await filmSource("u1", "pic2", { place: "playground", scenes: ["kicks a ball", "scores a goal"] });
+    expect(parent).toBe("cartoon_test");
+    expect(outputId).toBe("pic2");
+    expect(film).toMatchObject({ count: 0, video: true, place: "playground", style: "stylistic-drift" });
+    expect(film.scenes).toHaveLength(2);
+    // part 2 follows part 1, made from the same chosen picture
+    mocks.rows = [{ id: "film0", user_id: "u1", status: "succeeded", idempotency_key: "cartoon_film_x_0", generator_id: CARTOON_VIDEO, inputs: { origin: "https://example.com", cartoon: { key: "cartoon_film_x", parent, source: outputId, input: film, position: 0, videoCoins: 4000, expiresAt: Date.now() + 60000 } } }];
+    await continueCartoon("film0");
+    expect(mocks.upload).toHaveBeenCalledWith("u1", "pic2");
+    expect(mocks.create.mock.calls[0][2]).toMatchObject({ idempotencyKey: "cartoon_film_x_1", generatorId: CARTOON_VIDEO, expectedCoins: 4000 });
+    expect(mocks.create.mock.calls[0][2].prompt).toContain("part 2 of 2");
+    expect(mocks.create.mock.calls[0][4].cartoon).toMatchObject({ parent: "cartoon_test", source: "pic2", position: 1 });
   });
 });

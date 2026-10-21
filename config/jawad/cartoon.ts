@@ -392,6 +392,20 @@ export interface CartoonInput {
   video: boolean;
   consent: boolean;
 }
+/**
+ * The film asked for AFTER a picture is made (on any picture, old ones too): where it takes place and what happens in
+ * each 15 seconds. A redrawn photograph simply comes alive, so it has no place and no story.
+ */
+export function cartoonFilm(raw: unknown, mode: CartoonMode | undefined): { place: CartoonPlace; scenes: string[] } {
+  const value = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const place = (Object.hasOwn(CARTOON_PLACES, String(value.place)) ? value.place : "garden") as CartoonPlace;
+  if (mode === "scene") return { place, scenes: [] };
+  const scenes = (Array.isArray(value.scenes) ? value.scenes : []).slice(0, CARTOON_PARTS_MAX).map(text => String(text ?? "").trim().slice(0, 1500));
+  while (scenes.length && !scenes[scenes.length - 1]) scenes.pop();
+  if (!scenes.length) throw new Error("اكتب شنو يصير في الـ ١٥ ثانية أولًا.");
+  if (scenes.some(text => !text)) throw new Error("اكتب شنو يصير في كل ١٥ ثانية، أو احذف الجزء الفاضي.");
+  return { place, scenes };
+}
 /** How many 15-second films a run makes: a redrawn photograph comes alive once; a character acts out its parts. */
 export const cartoonParts = (input: Pick<CartoonInput, "mode" | "video" | "scenes">) => (!input.video ? 0 : input.mode === "scene" ? 1 : Math.max(1, input.scenes?.length ?? 0));
 export function cartoonInput(raw: unknown): CartoonInput {
