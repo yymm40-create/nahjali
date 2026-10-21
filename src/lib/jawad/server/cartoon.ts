@@ -21,6 +21,8 @@ export interface CartoonPlan {
   /** a film made AFTER the picture: the run it belongs to (shown with it) and the picture it is made from */
   parent?: string;
   source?: string;
+  /** the opening offer's free picture or free film (only on that one job; config/jawad/cartoon-offer.ts) */
+  freeOffer?: "pic" | "video";
 }
 export const planOf = (job: JobRow) => (job.inputs as JobRow["inputs"] & { cartoon?: CartoonPlan }).cartoon;
 export async function cartoonQuote(input: CartoonInput) {
@@ -86,7 +88,7 @@ export async function continueCartoon(jobId: string) {
     settings: video ? cartoonVideoSettings(plan.input) : { aspect: plan.input.aspect, resolution: "std", quality: "medium", count: 1 },
     refStyle: "references", refs,
     expectedCoins: video ? plan.videoCoins : CARTOON_PRICE,
-  }, job.inputs.origin ?? "", { cartoon: { ...plan, position: next } }));
+  }, job.inputs.origin ?? "", { cartoon: { ...plan, position: next, freeOffer: undefined } }));
 }
 
 

@@ -23,7 +23,7 @@ export default function FilmPanel({ outputId, input, places, owner, onStarted }:
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<CartoonPlace>("garden");
   const [scenes, setScenes] = useState<string[]>([""]);
-  const [quote, setQuote] = useState<{ value: Quote; snapshot: string; free: boolean } | null>(null);
+  const [quote, setQuote] = useState<{ value: Quote; snapshot: string; free: boolean; freeVideo: boolean } | null>(null);
   const [prompts, setPrompts] = useState<Prompts | null>(null);
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
@@ -44,8 +44,8 @@ export default function FilmPanel({ outputId, input, places, owner, onStarted }:
     try {
       if (action === "film_prompt") setPrompts(await post<Prompts>({ action, outputId, film }));
       else if (action === "film_quote") {
-        const data = await post<{ quote: Quote; free: boolean }>({ action, outputId, film });
-        setQuote({ value: data.quote, free: data.free, snapshot });
+        const data = await post<{ quote: Quote; free: boolean; freeVideo?: boolean }>({ action, outputId, film });
+        setQuote({ value: data.quote, free: data.free, freeVideo: data.freeVideo === true, snapshot });
       } else if (valid) {
         key.current ??= crypto.randomUUID();
         await post({ action, outputId, film, key: key.current, expectedCoins: valid.value.totalCoins });
@@ -70,7 +70,7 @@ export default function FilmPanel({ outputId, input, places, owner, onStarted }:
       {scenes.length < CARTOON_PARTS_MAX && <button type="button" className="ct-add" onClick={() => edit([...scenes, ""])}>＋ أضف ١٥ ثانية تكمّل القصة</button>}
       <p>✨ كل قصة تكتبها يطوّرها «المخرج الخارق» تلقائيًا. الأجزاء تتصوّر بالترتيب، وسعر كل جزء نفس سعر Seedance 2.0 (١٥ ثانية · 480p).</p>
     </>}
-    {valid && <div className="ct-price"><p>الفيديو{(valid.value.parts ?? 1) > 1 ? ` (${valid.value.parts} أجزاء × ١٥ ثانية)` : ""}: <Riyal halalas={valid.value.videoCoins} /></p>{!!valid.value.directorCoins && <p>المخرج الخارق: <Riyal halalas={valid.value.directorCoins} /></p>}<strong>الإجمالي: {valid.free || valid.value.totalCoins === 0 ? "مجاني" : <Riyal halalas={valid.value.totalCoins} size={20} />}</strong></div>}
+    {valid && <div className="ct-price">{valid.freeVideo && <p>🎁 عرض الافتتاح: أول ١٥ ثانية من فيلمك علينا — محسوبة في الأسعار تحت</p>}<p>الفيديو{(valid.value.parts ?? 1) > 1 ? ` (${valid.value.parts} أجزاء × ١٥ ثانية)` : ""}: <Riyal halalas={valid.value.videoCoins} /></p>{!!valid.value.directorCoins && <p>المخرج الخارق: <Riyal halalas={valid.value.directorCoins} /></p>}<strong>الإجمالي: {valid.free || valid.value.totalCoins === 0 ? "مجاني" : <Riyal halalas={valid.value.totalCoins} size={20} />}</strong></div>}
     {missing && <p className="ct-note">اكتب شنو يصير في كل جزء، أو احذف الجزء الفاضي.</p>}
     <div className="ct-film-actions">
       <button type="button" className="ct-primary" disabled={!!busy || missing} onClick={() => void go(valid ? "film" : "film_quote")}>{busy || (valid ? "أوافق على الإجمالي · اصنع الفيلم 🎬" : "اعرض سعر الفيلم")}</button>

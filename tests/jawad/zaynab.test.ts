@@ -111,7 +111,9 @@ describe("«في حضرة السيدة زينب (ع)»", () => {
     expect(freeFirstOpen(new Date(FREE_FIRST_ENDS_AT).getTime() + 1000)).toBe(false);
     const free = read("src/lib/jawad/server/free-first.ts");
     expect(free).toContain('.neq("status", "failed")');
-    for (const f of ["src/app/api/jawad/zaynab/route.ts", "src/app/api/jawad/cartoon/route.ts"]) expect(read(f)).toContain("freeFirstEligible(");
+    expect(read("src/app/api/jawad/zaynab/route.ts")).toContain("freeFirstEligible(");
+    // the cartoon branch has its own opening offer now (config/jawad/cartoon-offer.ts)
+    expect(read("src/app/api/jawad/cartoon/route.ts")).toContain("cartoonFree(");
     expect(read("src/lib/jawad/server/jobs.ts")).toContain("server.free === true");
     expect(read("src/app/api/jawad/zaynab/route.ts")).toContain("input.count === 1");
   });
