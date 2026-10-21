@@ -293,7 +293,7 @@ export const CARTOON_AUDIENCES = { child: "لطفل", family: "للعائلة", 
 export type CartoonAudience = keyof typeof CARTOON_AUDIENCES;
 export const AUDIENCE_RULES: Record<CartoonAudience, string> = {
   child:
-    "Made FOR A CHILD to look at. Nudge the proportions a little towards a childlike build (head slightly larger relative to the body, eyes a little larger and rounder) — a nudge, NOT a balloon head, and never at the cost of the real face. Simple clear shape language, one readable silhouette, few interior details, a warm bright safe palette with high figure-to-background contrast, soft even light, friendly open expression, nothing frightening, dark, sharp-toothed or ambiguous, and one clear thing happening in the frame.",
+    "Made FOR A CHILD to look at. Nudge the proportions a little towards a childlike build (head slightly larger relative to the body, eyes a little larger and rounder) — a nudge, NOT a balloon head, and the person still recognisable. Simple clear shape language, one readable silhouette, few interior details, a warm bright safe palette with high figure-to-background contrast, soft even light, friendly open expression, nothing frightening, dark, sharp-toothed or ambiguous, and one clear thing happening in the frame.",
   family:
     "Made FOR THE WHOLE FAMILY. Natural balanced proportions, warm readable lighting, enough detail to be interesting up close but a silhouette that still reads from far, a friendly expression and a palette that is bright without being childish.",
   grown:
@@ -440,22 +440,22 @@ const MOVE = { still: "a stable safe seated pose, interacting with hands and exp
  * What every picture and every shot of this person is told, in one block: the look, the identity, the audience, the age
  * and the movement.
  *
- * The identity part is written against what image models actually do wrong. Left alone they beautify: they smooth the
- * skin, slim the jaw, straighten the teeth and hand back a generic pretty face that is no longer the person. The
- * answer that works is to NAME the features that must survive and to separate identity from rendering — the references
- * say WHO, the style says HOW IT IS DRAWN — rather than asking vaguely for "a resemblance".
+ * THE STYLE COMES FIRST, WHOLLY, and the likeness second (the owner's order): a prompt that held the real features
+ * hard left the people half-photographic, never really turned into the look. So the person is REDESIGNED in the look's
+ * own shape language — its eyes, nose, mouth, head and body proportions, line and shading — and only then made
+ * recognisable through what a cartoon can carry (the hair, the skin tone, glasses, a beard, a mark, the general shape
+ * of the face), each translated into the look's vocabulary and dropped whenever it would pull the look back to a photo.
  */
 export function cartoonIdentity(input: CartoonInput) {
   const style = CARTOON_STYLES.find(item => item.id === input.style)!;
   return [
-    "THE LOOK — " + style.text,
-    "HOLD ONE LEVEL OF STYLISATION — " + style.real + ". The face, the body, the clothes and the world are all drawn at that same level; never a half-real face with cartoon eyes, and never a photographic face on a drawn body. A cartoon that is wholly a cartoon is easy to look at; a mixture of levels is what turns unsettling.",
-    "WHO IT IS: the references are the identity, not the rendering. Carry over, as drawn shapes in this style: the outline of the face and the jaw, the shape and spacing of the eyes and the brows, the line of the nose and its bridge, the shape of the mouth and lips, the hairline, the hair's own colour, texture and the way it falls, the skin tone, and anything distinctive — glasses, a beard and how it grows, freckles, a mole, a gap in the teeth, a scar, a dimple, the ears.",
-    "DO NOT BEAUTIFY: do not smooth the skin into blankness, do not slim or lengthen the face, do not straighten the teeth, do not shrink the nose, do not enlarge the eyes beyond what the chosen look allows, do not change the skin tone, and do not replace any of it with a generically cute or handsome face. If a feature is unusual, it is the point: keep it.",
+    "PRIORITY 1 — THE STYLE, COMPLETELY (it overrides everything below): " + style.text,
+    "HOLD ONE LEVEL OF STYLISATION — " + style.real + ". REDESIGN the person entirely in this look's own shape language: the eyes, the nose, the mouth, the head shape and the body proportions are the look's own, drawn with its line, shading, colour and materials. The face, the body, the clothes and the world are all at that same level. Nothing of the photograph survives as rendering — no photographic skin, pores, lighting, lens or texture, no realistic face on a drawn body, no half-real face with cartoon eyes. It must read at a glance as a true character of this style.",
+    "PRIORITY 2 — THE LIKENESS, INSIDE THE STYLE: the references tell WHO it is, never how it is drawn. Once the style is complete, make the character recognisable as this person through what a cartoon of this style can carry, each translated into the style's own vocabulary: the hair (its colour, its cut and the way it falls), the skin tone, the general shape of the face, the brows, glasses, a beard, and anything distinctive (freckles, a mole, a gap in the teeth, a dimple). If keeping a feature would pull the drawing back towards the photograph, the style wins.",
     "WHO IT IS FOR — " + AUDIENCE_RULES[input.audience],
     input.mode === "scene"
       ? "KEEP THE PICTURE: this is the photograph itself redrawn, so the age, the pose, the gestures, the expressions and the clothing are the ones already in it. Change none of them."
-      : "AGE: " + (input.desiredAge || AGE[input.age]) + ". An age change is an imaginative reinterpretation, not a reconstruction of how they really looked; keep the identity features above and adapt only what age really changes (proportions, the softness of the features, facial hair).",
+      : "AGE: " + (input.desiredAge || AGE[input.age]) + ". An age change is an imaginative reinterpretation, not a reconstruction of how they really looked; keep the likeness cues above and adapt only what age really changes (proportions, the softness of the features, facial hair).",
     input.mode === "scene" ? "" : movementAsked(input) ? "MOVEMENT: " + MOVE[input.movement] + ". Age and movement stay the same throughout." : "",
     input.mode === "scene"
       ? input.interests
@@ -478,21 +478,21 @@ export function cartoonImagePrompt(input: CartoonInput, canonical = false) {
   if (input.mode === "scene") {
     return (canonical
       ? "Image 1 is the cartoon version already made of this photograph. Keep its exact style, its characters and their identities, and draw the same scene again, equally faithful to it. "
-      : "REDRAW THE PHOTOGRAPH ITSELF as a cartoon. The references are the picture to redraw, not identity angles of one person. Keep its composition, the framing and camera angle, who stands where, every pose and gesture, the expressions, the clothing and the background exactly as they are — the same moment, drawn instead of photographed. ") +
-      "EVERY PERSON in the photograph is redrawn, each one a separate character keeping their OWN face: never merge two people, never drop anyone, never add a person who is not there, and never give two of them the same face. Keep their real difference in age and in height.\n" +
+      : "REDRAW THE PHOTOGRAPH ITSELF as a cartoon. The references are the picture to redraw, not identity angles of one person. Keep its composition, the framing and camera angle, who stands where, every pose and gesture, the expressions, the clothing and the background — the same moment, but FULLY REDRAWN in the style below, nothing photographic left. ") +
+      "EVERY PERSON in the photograph is redrawn, each one a separate character of the style, recognisable as themselves: never merge two people, never drop anyone, never add a person who is not there, and never give two of them the same face. Keep their real difference in age and in height.\n" +
       cartoonIdentity(input) +
-      "\nThe identity rules above apply to EACH person in the picture. Redraw the background of the photograph in the same style rather than replacing it with a new setting. No text and no logos that are not already in the photograph.";
+      "\nThe style and likeness rules above apply to EACH person in the picture. Redraw the background of the photograph in the same style rather than replacing it with a new setting. No text and no logos that are not already in the photograph.";
   }
   if (input.mode === "sheet") {
-    return "Every supplied reference is the SAME ONE PERSON — ideally a FRONT photograph and a SIDE (profile) photograph, maybe one more; with a single photograph, infer the unseen angles faithfully from it (the head's depth, the profile of the nose and the jaw, the back of the hair). Read them together to understand the face and head shape, and draw a COMPLETE CHARACTER SHEET (model sheet) of ONE cartoon character of that person, ready to be used as a film character.\n" +
+    return "Every supplied reference is the SAME ONE PERSON — ideally a FRONT photograph and a SIDE (profile) photograph, maybe one more; with a single photograph, infer the unseen angles faithfully from it (the head's depth, the profile of the nose and the jaw, the back of the hair). Read them together to understand who it is, and draw a COMPLETE CHARACTER SHEET (model sheet) of ONE cartoon character of that person, designed wholly in the style below, ready to be used as a film character.\n" +
       cartoonIdentity(input) +
       "\nLAYOUT, on a plain light-grey (#d9d9d9) seamless background, wide 16:9: TOP ROW — a full-body turnaround of the same character at the same scale and height, standing in a neutral A-pose: front, three-quarter, side profile and back, aligned on one ground line. BOTTOM ROW — four head close-ups of the same face: neutral, smiling, surprised and sad, plus the outfit's key details (shoes, hands, any accessory) small at the end. The same proportions, colours, outfit and age in every view; even, neutral studio light with no cast shadows on the background; clean separation between the views. No text, no labels, no numbers, no logos.";
   }
   return (canonical
     ? "Image 1 is the canonical CARTOON character already made for this person. Reuse its exact identity, age, outfit and style, and give this same character a new pose or composition. "
-    : "Every supplied reference is the SAME ONE PERSON, photographed from different angles — read them together to understand the face, and draw ONE cartoon character of that person. The references give identity only; how it is drawn comes from the look below. ") +
+    : "Every supplied reference is the SAME ONE PERSON, photographed from different angles — read them together to understand who it is, and draw ONE cartoon character of that person, designed wholly in the style below. The references give the likeness only; how it is drawn comes entirely from the style. ") +
     cartoonIdentity(input) +
-    "\nOne character, full body, standing on a PLAIN NEUTRAL MID-GREY (#9a9a9a) seamless studio background — no scene, no props, no other objects, a soft contact shadow only. The face clearly readable and the anatomy coherent. No text and no logos unless the outfit or the brief asked for them.";
+    "\nOne character, full body, standing on a PLAIN NEUTRAL MID-GREY (#9a9a9a) seamless studio background — no scene, no props, no other objects, a soft contact shadow only. The face clearly readable in the style's own design and the anatomy coherent. No text and no logos unless the outfit or the brief asked for them.";
 }
 
 /** Arabic letters in a text (Seedance 2.0 only reads English, Spanish, Indonesian, Portuguese and Japanese). */
