@@ -260,9 +260,14 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
   // the lab folded to its pill: kept here, so «مختبر الموشن» in the toolbar brings the same work back instead of
   // looking like a dead button (the window stays mounted while it is folded, and the work carries on)
   const [labMin, setLabMin] = useState(false);
+  // the clips the lab can build on (kept in a ref: the list is computed further down)
+  const footageRef = useRef<FootageSource[]>([]);
   const openLab = (brief = "", seconds?: number, clipId?: string | null) => {
     setLabMin(false);
-    setLab((now) => (now && !brief && !clipId ? now : { brief, seconds, clipId }));
+    // the lab is linked to the timeline: opened on a video clip the person has selected, it loads that clip by itself
+    // (the clips it can build on are the ones listed in `footageRef`)
+    const picked = clipId ?? (selected.length === 1 ? (footageRef.current.find((c) => c.clipId === selected[0])?.clipId ?? null) : null);
+    setLab((now) => (now && !brief && !clipId ? now : { brief, seconds, clipId: picked }));
   };
   // «🩺 تشخيص»: the owner's browser keeps a record of what goes wrong while the editor is open
   useEffect(() => {
@@ -1596,6 +1601,9 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
       ),
     [tl.tracks, assetMap],
   );
+  useEffect(() => {
+    footageRef.current = footageClips;
+  }, [footageClips]);
   const total = duration(tl);
   const exportRange = rangeIO.from == null && rangeIO.to == null ? null : { from: Math.max(0, rangeIO.from ?? 0), to: Math.min(total, rangeIO.to ?? total) };
   const one = selected.length === 1 ? findClip(tl, selected[0]) : null;

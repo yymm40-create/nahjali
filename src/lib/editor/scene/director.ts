@@ -339,6 +339,11 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
   });
   const params = (b.params && typeof b.params === "object" ? b.params : {}) as Record<string, unknown>;
   const f = frameOf(p);
+  // the person's own video(s) loaded in the conversation (from the timeline or their device)
+  const attached = (Array.isArray(b.attached_video) ? b.attached_video : []).slice(0, 6).map((v) => {
+    const o = (v ?? {}) as Record<string, unknown>;
+    return `«${text(o.name, 60)}» (${Math.round((Number(o.seconds) || 0) * 10) / 10} s)`;
+  });
   const parts: ClaudePart[] = [
     {
       type: "text",
@@ -351,7 +356,7 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
 THE WAY OF WORKING (the owner's skills): the scenario comes first and is approved before any code; after it every note changes ONLY what the person named and keeps everything else as it is; a version the person has seen is never overwritten (the lab keeps each one).
 "reply" is always filled, in Gulf Arabic, short and warm, never technical (no code words).
 FRAME: ${f.w}×${f.h} (${f.shape})
-PICTURES THE SCENE CAN DRAW (by id, with K.img / K.picture): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"} — a picture they just attached is listed here; when they say «هذا الشعار» / «حط اللوقو», it is the newest one: draw the REAL picture (K.picture), never redraw a logo yourself.
+${attached.length ? `THE PERSON LOADED THEIR OWN VIDEO IN THIS CONVERSATION: ${attached.join("، ")}. It is what they mean by «الفيديو» / «مقطعي». When they ask for a piece (or just say go), the action is \"plan\" and the piece is built ON that video (the lab learns what they say in it and the plan frames it); never ask them to attach it again, never plan a piece that ignores it. When the message is only «اكتب السيناريو» or «مونتاج موشن احترافي على كلامي», write the brief as that: a professional motion edit on their video, decided from what they say in it.\n` : ""}PICTURES THE SCENE CAN DRAW (by id, with K.img / K.picture): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"} — a picture they just attached is listed here; when they say «هذا الشعار» / «حط اللوقو», it is the newest one: draw the REAL picture (K.picture), never redraw a logo yourself.
 ${history.length ? `THE CONVERSATION SO FAR:\n${history.join("\n")}\n` : ""}THEIR NEW MESSAGE: ${message}
 ${plan ? `THE CURRENT PLAN: ${planText(plan)}` : "There is no plan yet."}
 ${Object.keys(params).length ? `THE VALUES THEY EDITED (params → their value; keep them unless they ask otherwise): ${JSON.stringify(params).slice(0, 3000)}` : ""}

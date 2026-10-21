@@ -79,6 +79,8 @@ interface Saved {
   cover?: { code: string; headline: string; assetId: string | null; review: CoverScores | null } | null;
   /** a conversation another robot opened with a brief (محمد باقر's motion piece): the scenario is written by itself */
   autoPlan?: boolean;
+  /** the videos uploaded in this conversation (library files; their links are renewed from the library on opening) */
+  uploadedFoots?: FootageSource[];
 }
 /** One build the person has seen: what it was made from (a note never writes over it). */
 interface Version {
@@ -466,7 +468,14 @@ export default function MotionLab({
   // the clip the piece is built on (only while it is still on the timeline as it was)
   // (a film opened again from the timeline keeps the clip it was built on, even if that clip has moved since)
   const [savedFoots, setSavedFoots] = useState<FootageSource[]>([]);
-  const sources = useMemo(() => footIds.map((id) => footageClips.find((c) => c.clipId === id) ?? savedFoots.find((c) => c.clipId === id)).filter((c): c is FootageSource => Boolean(c)), [footageClips, footIds, savedFoots]);
+  // a video uploaded here (or kept from before) lives in the library: its link is renewed from there
+  const renewed = (c: FootageSource): FootageSource => {
+    const a = [...extra, ...assets].find((x) => x.id === c.assetId && x.url);
+    return a?.url && a.url !== c.url ? { ...c, url: a.url } : c;
+  };
+  const sources = useMemo(() => footIds.map((id) => footageClips.find((c) => c.clipId === id) ?? (savedFoots.find((c) => c.clipId === id) ? renewed(savedFoots.find((c) => c.clipId === id)!) : undefined)).filter((c): c is FootageSource => Boolean(c)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [footageClips, footIds, savedFoots, assets, extra]);
   // the first one: where the piece goes on the timeline (and «is there a video at all»)
   const source = sources[0] ?? null;
   const sourceKey = sources.map((c) => `${c.clipId}:${c.assetId}:${c.in}:${c.out}`).join("|");
@@ -504,6 +513,7 @@ export default function MotionLab({
     setVersions(Array.isArray(s.versions) ? s.versions.slice(-KEEP_VERSIONS) : []);
     setMade(s.made && typeof s.made === "object" ? s.made : {});
     setCover(s.cover ?? null);
+    if (Array.isArray(s.uploadedFoots) && s.uploadedFoots.length) setSavedFoots((old) => [...old.filter((o) => !s.uploadedFoots!.some((u) => u.clipId === o.clipId)), ...s.uploadedFoots!]);
     if (s.plan && !initialBrief) setStage(s.code ? "ready" : "plan");
     // handed over with a brief and nothing made yet: the scenario comes by itself (scenario first, then «اعتمد وابنِ»)
     if (s.autoPlan && !s.plan && s.brief) setAutoBrief(s.brief);
@@ -578,7 +588,7 @@ export default function MotionLab({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, initialBrief, initialFootage, initialSource, chatId]);
-  const saved = (): Saved => ({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-80), params, versions: versions.slice(-KEEP_VERSIONS), made, cover });
+  const saved = (): Saved => ({ brief, seconds, intensity, brand, picks, choices, plan, say, code, reviews, reviewMode, transparent, transparentCode, voiceOn, musicMode, footIds, footMeta: foot?.meta ?? null, personOn, chat: chat.slice(-80), params, versions: versions.slice(-KEEP_VERSIONS), made, cover, uploadedFoots: savedFoots.filter((c) => c.clipId.startsWith("up-")) });
   useEffect(() => {
     try {
       localStorage.setItem(key(store), JSON.stringify({ ...saved(), serverId }));
@@ -1374,6 +1384,7 @@ export default function MotionLab({
         params,
         seconds: plan?.seconds ?? seconds,
         assets: assetList,
+        attached_video: sources.map((s) => ({ name: s.name.slice(0, 60), seconds: Math.round(footageSeconds(s) * 10) / 10 })),
         ...soundBody(),
       });
       say2(r.reply, r.action === "none" ? r.options : undefined);
@@ -1412,6 +1423,47 @@ export default function MotionLab({
     return () => clearTimeout(tm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialBrief, initialSource]);
+
+  /** A timeline clip chosen (or let go) as the video the piece is built on; what was learnt about the old choice is dropped. */
+  const toggleFoot = (clipId: string) => {
+    setFootIds((ids) => (ids.includes(clipId) ? ids.filter((x) => x !== clipId) : [...ids, clipId]));
+    setFoot(null);
+    setVoiceOn(false);
+    setTransparent(false);
+  };
+  /** ⏫ a video from the device: up to the project's library (once), then it is the video the piece is built on. */
+  const attachVideos = async (files: File[]) => {
+    if (!onUpload) return;
+    for (const f of files.slice(0, 2)) {
+      try {
+        say2(`⏫ أرفع الفيديو «${f.name}» لمكتبة المشروع…`);
+        const a = await onUpload(f);
+        if (a.kind !== "video" || !a.url) throw new Error("هذا الملف مو فيديو.");
+        const ms = a.durationMs ?? 0;
+        if (ms < 2000) throw new Error("الفيديو أقصر من ثانيتين.");
+        const src: FootageSource = { clipId: `up-${a.id}`.slice(0, 40), assetId: a.id, name: a.name, url: a.url, in: 0, out: ms, speed: 1, start: 0, hasAudio: a.hasAudio };
+        setExtra((x) => [...x.filter((y) => y.id !== a.id), a]);
+        setSavedFoots((s) => [...s.filter((c) => c.clipId !== src.clipId), src]);
+        setFootIds((ids) => (ids.includes(src.clipId) ? ids : [...ids, src.clipId]));
+        setFoot(null);
+        setVoiceOn(false);
+        setTransparent(false);
+      } catch (e) {
+        say2(`⚠️ ما قدرت أرفع «${f.name}»: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+  };
+  // the videos the piece is built on are told in the conversation the moment they are loaded (from the timeline, the
+  // device, or حيدرة's opening on a clip), so the person sees what حيدرة has in front of him
+  const told = useRef(new Set<string>());
+  useEffect(() => {
+    const fresh = sources.filter((s) => !told.current.has(s.clipId));
+    if (!fresh.length) return;
+    fresh.forEach((s) => told.current.add(s.clipId));
+    const names = fresh.map((s) => `«${s.name.slice(0, 40)}» (${Math.round(footageSeconds(s))} ث)`).join("، ");
+    const tm = setTimeout(() => say2(`🎥 حمّلت ${fresh.length > 1 ? "الفيديوهات" : "الفيديو"} ${names}${fresh.every((s) => s.clipId.startsWith("up-")) ? " من جهازك" : " من التايملاين"}. قل لي وش الموشن اللي تبيه عليه، وأكتب لك السيناريو من كلامك داخل الفيديو.`, ["اكتب السيناريو", "مونتاج موشن احترافي على كلامي"]), 0);
+    return () => clearTimeout(tm);
+  }, [sources]);
 
   /** 📎 a picture from the device: up to the library, then the scene can draw it (a logo, a product…) */
   const attachFiles = async (files: File[]) => {
@@ -1754,7 +1806,7 @@ export default function MotionLab({
                   <div className="mlab-tip">
                     <p className="m-0 font-bold" style={{ color: "var(--jw-ink)" }}>🤖 هلا! قل لي وش الموشن اللي تبيه.</p>
                     <p className="m-0 mt-1">أكتب لك السيناريو أول، وإذا اعتمدته أبنيه بالكود قدامك، وأرسل لك مسودة فيديو، وأعدّل على ملاحظاتك، وأصمم لك الكفر.</p>
-                    <p className="m-0 mt-1">مثلًا: «إعلان ١٠ ثواني لتطبيقي، الكلمة تنبني من غبار ذهبي، وفي الآخر الشعار». ولو عندك شعار أو صورة، ارفقها بـ📎{footageClips.length ? "، وتقدر تبنيه على فيديو تتكلم فيه من ⚙️" : ""}.</p>
+                    <p className="m-0 mt-1">مثلًا: «إعلان ١٠ ثواني لتطبيقي، الكلمة تنبني من غبار ذهبي، وفي الآخر الشعار». ولو عندك شعار أو صورة أو فيديو (من التايملاين أو من جهازك)، ارفقه بـ📎 وأبني الموشن عليه.</p>
                   </div>
                 )}
                 {chat.map((m, i) => (
@@ -1886,9 +1938,30 @@ export default function MotionLab({
               )}
               {attachOpen && (
                 <div className="flex flex-col gap-2 rounded-xl border border-white/10 p-2">
+                  <span className="mlab-label">🎥 فيديو يبني عليه الموشن</span>
+                  {!!footageClips.length && (
+                    <div className="mlab-pills">
+                      {footageClips.map((c) => {
+                        const n = footIds.indexOf(c.clipId);
+                        return (
+                          <button key={c.clipId} type="button" className="mlab-pill" aria-pressed={n >= 0} disabled={busy} title={`${c.name} — من التايملاين`} onClick={() => toggleFoot(c.clipId)}>
+                            {n >= 0 ? `${n + 1} ✓` : "🎞️"} {c.name.slice(0, 24)} · {Math.round(footageSeconds(c))} ث · من التايملاين
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!footageClips.length && <p className="mlab-tip m-0">ما فيه مقاطع فيديو على التايملاين تصلح (٢ ثانية فأكثر وبسرعتها العادية). حط مقطع فيها واخترها هنا، أو ارفع فيديو من جهازك.</p>}
                   {onUpload && (
                     <label className="jw-btn !min-h-10 cursor-pointer">
-                      ⏫ ارفع صورة من جهازك (شعار، منتج…)
+                      ⏫ ارفع فيديو من جهازك
+                      <input type="file" accept="video/*" multiple hidden disabled={busy} onChange={(e) => (void attachVideos([...(e.target.files ?? [])]), setAttachOpen(false), (e.target.value = ""))} />
+                    </label>
+                  )}
+                  <span className="mlab-label">🖼️ صور (شعار، منتج…)</span>
+                  {onUpload && (
+                    <label className="jw-btn !min-h-10 cursor-pointer">
+                      ⏫ ارفع صورة من جهازك
                       <input type="file" accept="image/*" multiple hidden disabled={busy} onChange={(e) => (void attachFiles([...(e.target.files ?? [])]), setAttachOpen(false))} />
                     </label>
                   )}
@@ -1912,7 +1985,7 @@ export default function MotionLab({
                 <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="التجهيزات" title="التجهيزات: الفيديو، المدة، الصوت، الأسلوب…" aria-pressed={drawer} disabled={busy} onClick={() => setDrawer((v) => !v)}>
                   ⚙️
                 </button>
-                <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ارفق صورة" title="ارفق صورة (شعار، منتج…)" disabled={busy} onClick={() => setAttachOpen((v) => !v)}>
+                <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ارفق فيديو أو صورة" title="فيديو من التايملاين أو من جهازك، وصور (شعار، منتج…)" disabled={busy} onClick={() => setAttachOpen((v) => !v)}>
                   📎
                 </button>
                 <textarea
