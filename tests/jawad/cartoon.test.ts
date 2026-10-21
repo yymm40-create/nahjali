@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CARTOON_GROUPS, CARTOON_PICTURE_DIR, cartoonStylePicturePrompt, CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
+import { CARTOON_PLACES, cartoonParts, cartoonPlaceSheetPrompt, CARTOON_GROUPS, CARTOON_PICTURE_DIR, cartoonStylePicturePrompt, CARTOON_PRICE, CARTOON_STYLES, CARTOON_VIDEO, CARTOON_VIDEO_SETTINGS, cartoonInput, cartoonImagePrompt, cartoonVideoPrompt, cartoonVideoSettings, movementAsked, nearestAspect } from "@config/jawad/cartoon";
 import { generatorById } from "@config/jawad/generators";
 import { evaluate } from "@/lib/jawad/engine";
 import { DEFAULT_SECTIONS, sectionPath, RESERVED_SECTION_IDS } from "@config/jawad/sections";
@@ -165,5 +165,42 @@ describe("the games, anime and kids shelves, and the looks' pictures", () => {
     expect(css).toContain(".ct-sky");
     expect(css).toContain("prefers-reduced-motion");
     expect(readFileSync(new URL("../../src/components/jawad/cartoon/Doodles.tsx", import.meta.url), "utf8")).toContain('aria-hidden="true"');
+  });
+  it("films a character in a chosen place, part after part, in the same look, with no Arabic reaching Seedance 2.0", () => {
+    const base = { ...input, audience: "child", age: "child", movement: "walk", story: "custom", video: true, place: "playground", count: 1 };
+    expect(() => cartoonInput({ ...base, scenes: [] })).toThrow("١٥");
+    expect(() => cartoonInput({ ...base, scenes: ["يلعب كورة", "", "يضحك"] })).toThrow();
+    const clean = cartoonInput({ ...base, mode: "sheet", scenes: ["يلعب كورة ويسجل هدف", "يحتفل مع أصحابه", ""] });
+    expect(clean).toMatchObject({ mode: "sheet", video: true, place: "playground", aspect: "16:9" });
+    expect(clean.scenes).toHaveLength(2);
+    expect(cartoonParts(clean)).toBe(2);
+    expect(cartoonParts({ ...clean, mode: "scene" })).toBe(1);
+    expect(cartoonParts({ ...clean, video: false })).toBe(0);
+    const style = CARTOON_STYLES.find(item => item.id === clean.style)!;
+    for (const part of [0, 1]) {
+      const prompt = cartoonVideoPrompt(clean, part, true);
+      expect(prompt).not.toMatch(/[\u0600-\u06FF]/);
+      expect(prompt).toContain(style.text);
+      expect(prompt).toContain("@place");
+      expect(prompt).toContain("part " + (part + 1) + " of 2");
+    }
+    // the director's prompt is used, and @place leaves it when the place has no sheet yet
+    const directed = { ...clean, directed: ["Seedance film: @character kicks the ball across @place.", ""] };
+    expect(cartoonVideoPrompt(directed, 0, true)).toContain("kicks the ball across @place");
+    expect(cartoonVideoPrompt(directed, 0, false)).not.toContain("@place");
+    const def = generatorById(CARTOON_VIDEO)!;
+    const prices = Object.fromEntries(def.priceKeys.map(rule => [rule.key, rule.defaultCenti]));
+    expect(evaluate(def, { settings: CARTOON_VIDEO_SETTINGS, prompt: cartoonVideoPrompt(clean, 1, false), instructions: "", refs: [], refStyle: "none", strict: true }, prices).issues).toEqual([]);
+    expect(Object.keys(CARTOON_PLACES)).toEqual(["house", "garden", "playground"]);
+    expect(cartoonPlaceSheetPrompt("house", clean.style)).toContain(style.text);
+  });
+  it("takes an optional approximate height and weight into the character, and makes a sheet from one photo too", () => {
+    const clean = cartoonInput({ ...input, mode: "sheet", heightCm: "120", weightKg: 25 });
+    expect(clean).toMatchObject({ heightCm: 120, weightKg: 25 });
+    expect(cartoonImagePrompt(clean)).toContain("about 120 cm tall, about 25 kg");
+    expect(cartoonImagePrompt(clean)).toContain("single photograph");
+    expect(cartoonInput({ ...input, heightCm: "", weightKg: 9999 })).toMatchObject({ heightCm: null, weightKg: null });
+    expect(cartoonImagePrompt(cartoonInput(input))).not.toContain("BUILD");
+    expect(cartoonInput({ ...input, mode: "scene", heightCm: 150 })).toMatchObject({ heightCm: null });
   });
 });

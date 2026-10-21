@@ -316,6 +316,29 @@ export const CARTOON_STORIES = {
   sea: "عالم البحر",
   custom: "قصتي الخاصة",
 } as const;
+/**
+ * Where a character's film takes place: three places, each drawn ONCE per look as a whole ENVIRONMENT SHEET (many
+ * numbered views of the SAME place — the overview, the plan, the main corners, the details, the light) by the owner
+ * from /admin/film, kept for everyone, and sent to the film as @place so the place stays the same place in every shot
+ * and in every part. A look whose sheet is not drawn yet still films there, from the place's description alone.
+ */
+export const CARTOON_PLACES = {
+  house: { name: "بيت مودرن جديد", icon: "🏠", text: "a bright new modern family house: an open-plan living room with a large soft sofa and a round rug, a kitchen island with stools, tall windows full of daylight, a light wooden staircase, white walls with warm wood, indoor plants and a few toys" },
+  garden: { name: "حديقة", icon: "🌳", text: "a lush family garden: a green lawn, colourful flower beds, a curving stone path, a small round fountain, shady trees with dappled sunlight, a wooden bench and a rope swing hanging from a branch" },
+  playground: { name: "ملعب", icon: "⚽", text: "a safe outdoor children's playground beside a small football pitch: bright slides, swings and a climbing frame on soft rubber ground, a small grass pitch with two little goals and a ball, benches and trees around, open sky" },
+} as const;
+export type CartoonPlace = keyof typeof CARTOON_PLACES;
+/** where an environment sheet of a place, in one look, is kept (the public bucket) */
+export const cartoonPlacePath = (place: string, style: string) => `${CARTOON_PICTURE_DIR}/places/${place}--${style}.jpg`;
+/** The environment sheet's prompt: one place, in one look, no people, so a film can be staged in it. */
+export function cartoonPlaceSheetPrompt(place: string, styleId: string): string {
+  const style = CARTOON_STYLES.find(item => item.id === styleId);
+  if (!style || !Object.hasOwn(CARTOON_PLACES, place)) throw new Error("unknown place or style");
+  return "ENVIRONMENT SHEET of ONE location for an animated film: " + CARTOON_PLACES[place as CartoonPlace].text + ". A wide 16:9 board of 9 clean panels separated by thin white gutters, all the SAME place with the same layout, furniture, materials, colours and light: (1) a wide establishing view, (2) a simple top-down plan of the layout, (3) the main area from the front, (4) the reverse angle, (5) a left corner, (6) a right corner, (7) a low child's-eye view, (8) close details of the key materials and objects, (9) the same place in soft evening light. Empty of people and animals, nothing frightening, safe for children. No writing, letters, numbers or captions anywhere.\n\nART STYLE: " + style.text + "\nHOLD ONE LEVEL OF STYLISATION — " + style.real + ".";
+}
+/** a character's film is up to this many parts of 15 seconds, each one continuing the story of the one before */
+export const CARTOON_PARTS_MAX = 4;
+
 export interface CartoonInput {
   /** the photograph itself redrawn, or a new character made from it */
   mode: CartoonMode;
@@ -333,24 +356,46 @@ export interface CartoonInput {
   customStory: string;
   /** the person's own story in English, for the film (Seedance 2.0 reads no Arabic): filled on the server */
   storyEn?: string;
+  /** where the character's film takes place */
+  place: CartoonPlace;
+  /** what happens in each 15-second part of the character's film, in the person's own words (1–4 parts) */
+  scenes: string[];
+  /** each part's prompt written by «المخرج الخارق» from those words: filled on the server */
+  directed?: string[];
+  /** the approximate height and weight (optional; null = not given) */
+  heightCm: number | null;
+  weightKg: number | null;
   count: number;
   video: boolean;
   consent: boolean;
 }
+/** How many 15-second films a run makes: a redrawn photograph comes alive once; a character acts out its parts. */
+export const cartoonParts = (input: Pick<CartoonInput, "mode" | "video" | "scenes">) => (!input.video ? 0 : input.mode === "scene" ? 1 : Math.max(1, input.scenes?.length ?? 0));
 export function cartoonInput(raw: unknown): CartoonInput {
   const value = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const field = (name: string, max: number) => String(value[name] ?? "").trim().slice(0, max);
   if (!CARTOON_STYLES.some(style => style.id === value.style)) throw new Error("اختر الستايل.");
   const mode: CartoonMode = Object.hasOwn(CARTOON_MODES, String(value.mode)) ? (value.mode as CartoonMode) : "character";
   if (!Object.hasOwn(CARTOON_AGES, String(value.age)) || !Object.hasOwn(CARTOON_MOVES, String(value.movement))) throw new Error("اختر العمر والحركة.");
-  if (!Object.hasOwn(CARTOON_STORIES, String(value.story))) throw new Error("اختر القصة.");
+  const story = (Object.hasOwn(CARTOON_STORIES, String(value.story)) ? value.story : "garden") as CartoonInput["story"];
   if (!Number.isInteger(value.count) || Number(value.count) < 1 || Number(value.count) > 4) throw new Error("اختر من صورة إلى أربع صور.");
   if (value.consent !== true) throw new Error("أكد أن لديك إذن استخدام الصور، وموافقة ولي الأمر لصور الأطفال.");
-  if (value.video === true && value.story === "custom" && !field("customStory", 3000) && mode === "character") throw new Error("اكتب قصتك أولًا.");
+  const scenes = (Array.isArray(value.scenes) ? value.scenes : []).slice(0, CARTOON_PARTS_MAX).map(text => String(text ?? "").trim().slice(0, 1500));
+  // a «+» part left empty is dropped, but the first one is the story itself
+  while (scenes.length && !scenes[scenes.length - 1]) scenes.pop();
+  const video = value.video === true;
+  if (video && mode !== "scene") {
+    if (scenes.some(text => !text)) throw new Error("اكتب شنو يصير في كل ١٥ ثانية، أو احذف الجزء الفاضي.");
+    if (!scenes.length && (story === "custom" ? !field("customStory", 3000) : !Object.hasOwn(value, "story"))) throw new Error("اكتب شنو يصير في الـ ١٥ ثانية أولًا.");
+  }
+  const measure = (name: string, min: number, max: number) => {
+    const n = Math.round(Number(value[name]));
+    return value[name] != null && value[name] !== "" && Number.isFinite(n) && n >= min && n <= max ? n : null;
+  };
   // a run saved before this question existed reads as «للعائلة», so old work still makes the same kind of picture
-  // a character sheet is one wide sheet, alone (no film made from a sheet)
+  // a character sheet is one wide sheet, alone (its film, when asked, is vertical)
   const sheet = mode === "sheet";
-  return { mode, aspect: sheet ? "16:9" : (CARTOON_ASPECTS as readonly string[]).includes(String(value.aspect)) ? (value.aspect as CartoonAspect) : "9:16", style: String(value.style), audience: (Object.hasOwn(CARTOON_AUDIENCES, String(value.audience)) ? value.audience : "family") as CartoonAudience, age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story: value.story as CartoonInput["story"], customStory: field("customStory", 3000), count: sheet ? 1 : Number(value.count), video: !sheet && value.video === true, consent: true };
+  return { mode, aspect: sheet ? "16:9" : (CARTOON_ASPECTS as readonly string[]).includes(String(value.aspect)) ? (value.aspect as CartoonAspect) : "9:16", style: String(value.style), audience: (Object.hasOwn(CARTOON_AUDIENCES, String(value.audience)) ? value.audience : "family") as CartoonAudience, age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story, customStory: field("customStory", 3000), place: (Object.hasOwn(CARTOON_PLACES, String(value.place)) ? value.place : "garden") as CartoonPlace, scenes: mode === "scene" ? [] : scenes, heightCm: mode === "scene" ? null : measure("heightCm", 40, 230), weightKg: mode === "scene" ? null : measure("weightKg", 3, 250), count: sheet ? 1 : Number(value.count), video, consent: true };
 }
 const AGE = { same: "the same apparent age as the references", baby: "a cartoon baby, age-reinterpreted infant proportions", toddler: "a cartoon toddler", child: "a cartoon child", adult: "a cartoon adult" };
 const MOVE = { still: "a stable safe seated pose, interacting with hands and expressions, not walking", crawl: "crawling on hands and knees on safe level ground, visible grounded contacts, low camera", walk: "walking with short balanced steps, feet contacting the ground without sliding" };
@@ -380,6 +425,9 @@ export function cartoonIdentity(input: CartoonInput) {
         ? "WHAT MATTERS TO THEM (only if it can be honoured without changing the picture): " + input.interests + "."
         : ""
       : "OUTFIT: " + (input.outfit || "the clothing from the references, redrawn in this style and adapted to the chosen age") + ". INTERESTS: " + (input.interests || "a gentle colourful adventure") + ".",
+    input.mode !== "scene" && (input.heightCm || input.weightKg)
+      ? "BUILD (approximate, a guide not a measurement): " + [input.heightCm ? "about " + input.heightCm + " cm tall" : "", input.weightKg ? "about " + input.weightKg + " kg" : ""].filter(Boolean).join(", ") + ". Keep the body's height, proportions and build consistent with it, drawn in this style; never slimmer or heavier than that."
+      : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -399,7 +447,7 @@ export function cartoonImagePrompt(input: CartoonInput, canonical = false) {
       "\nThe identity rules above apply to EACH person in the picture. Redraw the background of the photograph in the same style rather than replacing it with a new setting. No text and no logos that are not already in the photograph.";
   }
   if (input.mode === "sheet") {
-    return "Every supplied reference is the SAME ONE PERSON — a FRONT photograph and a SIDE (profile) photograph, maybe one more. Read them together to understand the face and head shape from both angles, and draw a COMPLETE CHARACTER SHEET (model sheet) of ONE cartoon character of that person, ready to be used as a film character.\n" +
+    return "Every supplied reference is the SAME ONE PERSON — ideally a FRONT photograph and a SIDE (profile) photograph, maybe one more; with a single photograph, infer the unseen angles faithfully from it (the head's depth, the profile of the nose and the jaw, the back of the hair). Read them together to understand the face and head shape, and draw a COMPLETE CHARACTER SHEET (model sheet) of ONE cartoon character of that person, ready to be used as a film character.\n" +
       cartoonIdentity(input) +
       "\nLAYOUT, on a plain light-grey (#d9d9d9) seamless background, wide 16:9: TOP ROW — a full-body turnaround of the same character at the same scale and height, standing in a neutral A-pose: front, three-quarter, side profile and back, aligned on one ground line. BOTTOM ROW — four head close-ups of the same face: neutral, smiling, surprised and sad, plus the outfit's key details (shoes, hands, any accessory) small at the end. The same proportions, colours, outfit and age in every view; even, neutral studio light with no cast shadows on the background; clean separation between the views. No text, no labels, no numbers, no logos.";
   }
@@ -423,13 +471,29 @@ const videoInput = (input: CartoonInput): CartoonInput => ({
   desiredAge: hasArabic(input.desiredAge) ? "" : input.desiredAge,
 });
 
-export function cartoonVideoPrompt(raw: CartoonInput) {
+/**
+ * The film's prompt. `part` is which 15-second part (0 first) and `placeSheet` whether @place — the place's environment
+ * sheet in this look — goes with it. A character's part is what «المخرج الخارق» wrote from the person's own words
+ * (`directed`), held by the same locks every time: the same character, the same look, the same place.
+ */
+export function cartoonVideoPrompt(raw: CartoonInput, part = 0, placeSheet = false) {
   const input = videoInput(raw);
   if (input.mode === "scene") {
     // the photograph, now drawn, simply begins to move: no story, no new events, nobody leaves the frame
     return "15 seconds, a drawn picture coming gently to life. @character is the cartoon made from this photograph: keep its style, its composition, its background and EVERY person in it with the same face, clothing and position.\n" +
       cartoonIdentity(input) +
       "\nNothing new happens: the people in the picture breathe, blink, shift their weight a little, their hair and clothes move, a small natural gesture or a smile passes between them, and the background has its own quiet life (leaves, light, dust in the air). A very slow camera push or drift, nothing more. Nobody walks out of frame, nobody changes age or style, no new person or object appears, no cuts. Gentle original music and soft ambience; no invented spoken dialogue.";
+  }
+  if (input.scenes?.length) {
+    const parts = input.scenes.length;
+    const place = CARTOON_PLACES[input.place] ?? CARTOON_PLACES.garden;
+    const own = input.scenes[part] ?? "";
+    const story = (input.directed?.[part] ?? "").replace(/@place\b/g, placeSheet ? "@place" : "the place") || (own && !hasArabic(own) ? "15 seconds, vertical 9:16 cartoon film.\nStory: " + own : "15 seconds, vertical 9:16 cartoon film.\nStory: a short, gentle moment for the character in this place, in 3–4 clear beats (0–4s, 4–8s, 8–12s, 12–15s).");
+    return story + "\n\nLOCKS (binding on every shot). @character is the canonical character: preserve the same stylized face, proportions, outfit and age in every shot.\n" + cartoonIdentity(input) +
+      "\nTHE PLACE — " + place.text + "." + (placeSheet ? " @place is this place's environment sheet: stage every shot inside that same place, with its layout, furniture, materials and light, drawn in the same look." : " Stage every shot inside this one place.") +
+      (parts > 1 ? "\nCONTINUITY: this is part " + (part + 1) + " of " + parts + " of one continuous story — the same character, the same place, the same time of day and light" + (part ? "; it picks up where part " + part + " ended." : "; it ends on a moment the next part can pick up from.") : "") +
+      (movementAsked(input) ? "\nAdapt actions to the selected movement; a stationary baby watches/reaches, never walks." : "") +
+      "\nNo age or style morph; the look above is the film's whole look. Gentle original music and appropriate foley.";
   }
   const story = input.story === "custom" ? (input.storyEn || (hasArabic(input.customStory) ? "a short, gentle adventure that fits the character, in 3–4 clear beats" : input.customStory)) : {
     space: "0–4s: discovers a glowing star in a safe cartoon observatory. 4–8s: reacts to colorful planets through the window. 8–12s: reaches toward a large button; stars form a beautiful pattern. 12–15s: smiles beside the glowing star.",
