@@ -5,7 +5,7 @@ import { ProviderError, rejectedMessage } from "./common";
 
 const BASE = "https://api.higgsfield.ai";
 /** The owner's Vercel name for the key; `KEY_ID:KEY_SECRET` (or the one combined key the console gives). */
-export const REALFACE_KEYS = ["HIGGSFIELD_API", "HF_KEY", "HF_CREDENTIALS"];
+export const REALFACE_KEYS = ["HIGGSFIELD_API", "higgsfieldapi", "HIGGSFIELDAPI", "higgsfield_api", "HIGGSFIELD_API_KEY", "HF_KEY", "HF_CREDENTIALS"];
 const key = () => REALFACE_KEYS.map((k) => process.env[k]?.trim()).find(Boolean) ?? "";
 export const realFaceReady = () => Boolean(key());
 
