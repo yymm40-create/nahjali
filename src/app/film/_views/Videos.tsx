@@ -5,6 +5,7 @@ import { requireFilmUser, requireProject } from "@/lib/film/access";
 import { checkVideos, directorVersions, directorVideos, purgeOldVideos } from "@/lib/film/director";
 import { voiceReadiness } from "@/lib/film/voice-track";
 import { voicesReady } from "@/lib/film/voices";
+import { realFaceReady } from "@/lib/jawad/server/providers/realface";
 import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
@@ -109,6 +110,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         editsLeft={null}
         studioPath={studioPath}
         voicesOn={voicesReady()}
+        realFaceOn={realFaceReady()}
         dialogueStart={startingMode(source, voicesReady())}
         dialogueSource={source}
         rewind={Boolean(project.series_id)}

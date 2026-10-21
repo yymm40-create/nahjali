@@ -95,12 +95,14 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, dialogueStart, dialogueSource = null, rewind = true,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, dialogueStart, dialogueSource = null, rewind = true,
 }: {
   /** the old «ارجع بمشروعك لنقطة» card (a series' scene); a film edits any step directly instead */
   rewind?: boolean;
   /** ElevenLabs is configured on the server: the voices block is shown. */
   voicesOn?: boolean;
+  /** «Seedance وجه واقعي» is configured on the server: offered for realistic scenes (much dearer). */
+  realFaceOn?: boolean;
   /** The dialogue mode every shot starts on: the person's «مصدر الحوار» answer to the screenwriter. */
   dialogueStart?: "make" | "upload" | "none";
   dialogueSource?: "make" | "upload" | "self" | "later" | null;
@@ -533,8 +535,8 @@ export default function VideosWorkspace({
 
       <section className="card space-y-3 p-4">
         <h2 className="text-lg font-extrabold">نسخة Seedance</h2>
-        <div className="grid grid-cols-2 gap-2">
-          {([["seedance-2.5", "الأحدث، والمخرج يفضّلها"], ["seedance-2.0", "أرخص"]] as const).map(([m, hint]) => (
+        <div className={`grid gap-2 ${realFaceOn ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}>
+          {([["seedance-2.5", "الأحدث، والمخرج يفضّلها"], ["seedance-2.0", "أرخص"], ...(realFaceOn ? [["seedance-real-face", `للمشاهد الواقعية بوجوه حقيقية · ⚠️ غالي: تقريبًا ${Math.round(videoEstimateUsd("seedance-real-face", resolution, 10) / videoEstimateUsd("seedance-2.5", resolution, 10))}× سعر 2.5`]] : [])] as [VideoModel, string][]).map(([m, hint]) => (
             <button
               key={m}
               className={`rounded-2xl border-2 p-3 text-start ${model === m ? "border-gold bg-gold/10" : "border-line"}`}
@@ -546,6 +548,9 @@ export default function VideosWorkspace({
             </button>
           ))}
         </div>
+        {model === "seedance-real-face" && (
+          <p className="rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">⚠️ «Seedance وجه واقعي» للمشاهد الواقعية اللي فيها ناس حقيقيين بوجوههم: أغلى من غيره بكثير — شوف السعر تحت قبل ما تولّد. ارفع صور واضحة من الأمام، لك أو لشخص أعطاك إذنه.</p>
+        )}
         {generations.some((g) => g.model !== model) && (
           <p className="text-xs font-bold text-muted">⚠️ المخرج كتب بعض البرومبتات لنسخة ثانية؛ تقدر تكمل، بس النتيجة ممكن تختلف شوي.</p>
         )}
