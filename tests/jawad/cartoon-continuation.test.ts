@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/access", () => ({ unlimitedFor: mocks.free }));
 vi.mock("@/lib/jawad/server/jobs", () => ({ createJob: mocks.create }));
 vi.mock("@/lib/jawad/server/uploads", () => ({ uploadFromOutput: mocks.upload }));
-vi.mock("@/lib/jawad/server/runtime", () => ({ loadRuntime: async () => ({ generators: [{ id: "openai-gpt-image-2", sectionId: "images" }, { id: "byteplus-seedance-2-5", sectionId: "video" }] }) }));
+vi.mock("@/lib/jawad/server/runtime", () => ({ loadRuntime: async () => ({ generators: [{ id: "openai-gpt-image-2", sectionId: "images" }, { id: "byteplus-seedance-2-0", sectionId: "video" }] }) }));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
     auth: { admin: { getUserById: async () => ({ data: { user: { id: "u1", email: "person@example.com" } } }) } },
@@ -55,7 +55,7 @@ describe("cartoon continuation", () => {
     mocks.rows.push(row("second", 1));
     await continueCartoon("second");
     expect(mocks.upload).toHaveBeenCalledWith("u1", "canonical");
-    expect(mocks.create.mock.calls[0][2]).toMatchObject({ generatorId: CARTOON_VIDEO, expectedCoins: 4000, settings: { duration: 30, resolution: "720p" } });
+    expect(mocks.create.mock.calls[0][2]).toMatchObject({ generatorId: CARTOON_VIDEO, expectedCoins: 4000, settings: { duration: 15, resolution: "480p" } });
   });
   it("stops at the final stage", async () => {
     mocks.rows.push(row("film", 2)); await continueCartoon("film");

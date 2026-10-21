@@ -1,5 +1,5 @@
 export const CARTOON_IMAGE = "openai-gpt-image-2";
-export const CARTOON_VIDEO = "byteplus-seedance-2-5";
+export const CARTOON_VIDEO = "byteplus-seedance-2-0";
 export const CARTOON_PRICE = 200;
 /**
  * The looks «حوّلني إلى الستايل الكرتوني» offers. Each one is a WHOLE look — line, shading, texture, palette, lighting
@@ -283,7 +283,12 @@ export const AUDIENCE_RULES: Record<CartoonAudience, string> = {
  * they hold up a picture of themselves with their father and say «حوّلها». «شخصية جديدة» is the other thing: one person
  * lifted out of their photos and drawn anew in a pose, an age and an outfit they choose.
  */
-export const CARTOON_MODES = { scene: "حوّل الصورة كما هي", character: "اصنع شخصية جديدة مني" } as const;
+/**
+ * What is done with the photograph: the photograph itself redrawn (the same place, everyone in it), or a character made
+ * of the person — either one picture on a plain grey background, or a complete CHARACTER SHEET (from a front and a
+ * side photograph) ready to be used later as a character of a film.
+ */
+export const CARTOON_MODES = { scene: "حوّل الصورة كما هي", character: "شخصية بخلفية رمادية", sheet: "كاركتر شيت كامل" } as const;
 export type CartoonMode = keyof typeof CARTOON_MODES;
 
 /** The shapes a picture can come out in; «الصورة كما هي» keeps the photograph's own shape instead of forcing 9:16. */
@@ -326,6 +331,8 @@ export interface CartoonInput {
   interests: string;
   story: keyof typeof CARTOON_STORIES;
   customStory: string;
+  /** the person's own story in English, for the film (Seedance 2.0 reads no Arabic): filled on the server */
+  storyEn?: string;
   count: number;
   video: boolean;
   consent: boolean;
@@ -339,9 +346,11 @@ export function cartoonInput(raw: unknown): CartoonInput {
   if (!Object.hasOwn(CARTOON_STORIES, String(value.story))) throw new Error("اختر القصة.");
   if (!Number.isInteger(value.count) || Number(value.count) < 1 || Number(value.count) > 4) throw new Error("اختر من صورة إلى أربع صور.");
   if (value.consent !== true) throw new Error("أكد أن لديك إذن استخدام الصور، وموافقة ولي الأمر لصور الأطفال.");
-  if (value.video === true && value.story === "custom" && !field("customStory", 3000)) throw new Error("اكتب قصتك أولًا.");
+  if (value.video === true && value.story === "custom" && !field("customStory", 3000) && mode === "character") throw new Error("اكتب قصتك أولًا.");
   // a run saved before this question existed reads as «للعائلة», so old work still makes the same kind of picture
-  return { mode, aspect: (CARTOON_ASPECTS as readonly string[]).includes(String(value.aspect)) ? (value.aspect as CartoonAspect) : "9:16", style: String(value.style), audience: (Object.hasOwn(CARTOON_AUDIENCES, String(value.audience)) ? value.audience : "family") as CartoonAudience, age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story: value.story as CartoonInput["story"], customStory: field("customStory", 3000), count: Number(value.count), video: value.video === true, consent: true };
+  // a character sheet is one wide sheet, alone (no film made from a sheet)
+  const sheet = mode === "sheet";
+  return { mode, aspect: sheet ? "16:9" : (CARTOON_ASPECTS as readonly string[]).includes(String(value.aspect)) ? (value.aspect as CartoonAspect) : "9:16", style: String(value.style), audience: (Object.hasOwn(CARTOON_AUDIENCES, String(value.audience)) ? value.audience : "family") as CartoonAudience, age: value.age as CartoonInput["age"], desiredAge: field("desiredAge", 60), movement: value.movement as CartoonInput["movement"], outfit: field("outfit", 400), interests: field("interests", 400), story: value.story as CartoonInput["story"], customStory: field("customStory", 3000), count: sheet ? 1 : Number(value.count), video: !sheet && value.video === true, consent: true };
 }
 const AGE = { same: "the same apparent age as the references", baby: "a cartoon baby, age-reinterpreted infant proportions", toddler: "a cartoon toddler", child: "a cartoon child", adult: "a cartoon adult" };
 const MOVE = { still: "a stable safe seated pose, interacting with hands and expressions, not walking", crawl: "crawling on hands and knees on safe level ground, visible grounded contacts, low camera", walk: "walking with short balanced steps, feet contacting the ground without sliding" };
@@ -357,7 +366,7 @@ const MOVE = { still: "a stable safe seated pose, interacting with hands and exp
 export function cartoonIdentity(input: CartoonInput) {
   const style = CARTOON_STYLES.find(item => item.id === input.style)!;
   return [
-    "THE LOOK — " + style.name + ": " + style.text,
+    "THE LOOK — " + style.text,
     "HOLD ONE LEVEL OF STYLISATION — " + style.real + ". The face, the body, the clothes and the world are all drawn at that same level; never a half-real face with cartoon eyes, and never a photographic face on a drawn body. A cartoon that is wholly a cartoon is easy to look at; a mixture of levels is what turns unsettling.",
     "WHO IT IS: the references are the identity, not the rendering. Carry over, as drawn shapes in this style: the outline of the face and the jaw, the shape and spacing of the eyes and the brows, the line of the nose and its bridge, the shape of the mouth and lips, the hairline, the hair's own colour, texture and the way it falls, the skin tone, and anything distinctive — glasses, a beard and how it grows, freckles, a mole, a gap in the teeth, a scar, a dimple, the ears.",
     "DO NOT BEAUTIFY: do not smooth the skin into blankness, do not slim or lengthen the face, do not straighten the teeth, do not shrink the nose, do not enlarge the eyes beyond what the chosen look allows, do not change the skin tone, and do not replace any of it with a generically cute or handsome face. If a feature is unusual, it is the point: keep it.",
@@ -389,31 +398,51 @@ export function cartoonImagePrompt(input: CartoonInput, canonical = false) {
       cartoonIdentity(input) +
       "\nThe identity rules above apply to EACH person in the picture. Redraw the background of the photograph in the same style rather than replacing it with a new setting. No text and no logos that are not already in the photograph.";
   }
+  if (input.mode === "sheet") {
+    return "Every supplied reference is the SAME ONE PERSON — a FRONT photograph and a SIDE (profile) photograph, maybe one more. Read them together to understand the face and head shape from both angles, and draw a COMPLETE CHARACTER SHEET (model sheet) of ONE cartoon character of that person, ready to be used as a film character.\n" +
+      cartoonIdentity(input) +
+      "\nLAYOUT, on a plain light-grey (#d9d9d9) seamless background, wide 16:9: TOP ROW — a full-body turnaround of the same character at the same scale and height, standing in a neutral A-pose: front, three-quarter, side profile and back, aligned on one ground line. BOTTOM ROW — four head close-ups of the same face: neutral, smiling, surprised and sad, plus the outfit's key details (shoes, hands, any accessory) small at the end. The same proportions, colours, outfit and age in every view; even, neutral studio light with no cast shadows on the background; clean separation between the views. No text, no labels, no numbers, no logos.";
+  }
   return (canonical
     ? "Image 1 is the canonical CARTOON character already made for this person. Reuse its exact identity, age, outfit and style, and give this same character a new pose or composition. "
     : "Every supplied reference is the SAME ONE PERSON, photographed from different angles — read them together to understand the face, and draw ONE cartoon character of that person. The references give identity only; how it is drawn comes from the look below. ") +
     cartoonIdentity(input) +
-    "\nOne character, one composition, the face clearly readable and the anatomy coherent. No text and no logos unless the outfit or the brief asked for them.";
+    "\nOne character, full body, standing on a PLAIN NEUTRAL MID-GREY (#9a9a9a) seamless studio background — no scene, no props, no other objects, a soft contact shadow only. The face clearly readable and the anatomy coherent. No text and no logos unless the outfit or the brief asked for them.";
 }
 
-export function cartoonVideoPrompt(input: CartoonInput) {
+/** Arabic letters in a text (Seedance 2.0 only reads English, Spanish, Indonesian, Portuguese and Japanese). */
+export const hasArabic = (s: string) => /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+/**
+ * The film's prompt is English only: the person's own words in Arabic (an outfit, interests, an age written out) are
+ * already drawn into the character picture, so the film reads them from @character instead of from the text.
+ */
+const videoInput = (input: CartoonInput): CartoonInput => ({
+  ...input,
+  outfit: hasArabic(input.outfit) ? "exactly as drawn in @character" : input.outfit,
+  interests: hasArabic(input.interests) ? "" : input.interests,
+  desiredAge: hasArabic(input.desiredAge) ? "" : input.desiredAge,
+});
+
+export function cartoonVideoPrompt(raw: CartoonInput) {
+  const input = videoInput(raw);
   if (input.mode === "scene") {
     // the photograph, now drawn, simply begins to move: no story, no new events, nobody leaves the frame
-    return "30 seconds, a drawn picture coming gently to life. @character is the cartoon made from this photograph: keep its style, its composition, its background and EVERY person in it with the same face, clothing and position.\n" +
+    return "15 seconds, a drawn picture coming gently to life. @character is the cartoon made from this photograph: keep its style, its composition, its background and EVERY person in it with the same face, clothing and position.\n" +
       cartoonIdentity(input) +
       "\nNothing new happens: the people in the picture breathe, blink, shift their weight a little, their hair and clothes move, a small natural gesture or a smile passes between them, and the background has its own quiet life (leaves, light, dust in the air). A very slow camera push or drift, nothing more. Nobody walks out of frame, nobody changes age or style, no new person or object appears, no cuts. Gentle original music and soft ambience; no invented spoken dialogue.";
   }
-  const story = input.story === "custom" ? input.customStory : {
-    space: "0–7s: discovers a glowing star in a safe cartoon observatory. 7–16s: reacts to colorful planets through the window. 16–24s: reaches toward a large button; stars form a beautiful pattern. 24–30s: smiles beside the glowing star.",
-    garden: "0–7s: notices a luminous flower in a safe garden. 7–16s: reacts to a friendly butterfly. 16–24s: the flower opens and softly lights the garden. 24–30s: a delighted expression and a calm ending.",
-    sea: "0–7s: discovers a shell inside a dry safe underwater observation room. 7–16s: watches a colorful fish through glass. 16–24s: waves as the fish swims in a clear arc. 24–30s: smiles and waves goodbye.",
+  const story = input.story === "custom" ? (input.storyEn || (hasArabic(input.customStory) ? "a short, gentle adventure that fits the character, in 3–4 clear beats" : input.customStory)) : {
+    space: "0–4s: discovers a glowing star in a safe cartoon observatory. 4–8s: reacts to colorful planets through the window. 8–12s: reaches toward a large button; stars form a beautiful pattern. 12–15s: smiles beside the glowing star.",
+    garden: "0–4s: notices a luminous flower in a safe garden. 4–8s: reacts to a friendly butterfly. 8–12s: the flower opens and softly lights the garden. 12–15s: a delighted expression and a calm ending.",
+    sea: "0–4s: discovers a shell inside a dry safe underwater observation room. 4–8s: watches a colorful fish through glass. 8–12s: waves as the fish swims in a clear arc. 12–15s: smiles and waves goodbye.",
   }[input.story];
-  return "30 seconds, vertical 9:16 cartoon film. @character is the canonical character: preserve the same stylized face, proportions, outfit and age in every shot.\n" + cartoonIdentity(input) +
+  return "15 seconds, vertical 9:16 cartoon film. @character is the canonical character: preserve the same stylized face, proportions, outfit and age in every shot.\n" + cartoonIdentity(input) +
     "\nStory: " + story + (movementAsked(input) ? "\nAdapt actions to the selected movement; a stationary baby watches/reaches, never walks." : "\nLet the character move naturally for their age.") +
     " Use 3–4 clear beats, one action per beat, gentle camera moves and grounded motion. No age or style morph. Gentle original music and appropriate foley; no invented spoken dialogue. Do not copy the photo background.";
 }
 
-export const CARTOON_VIDEO_SETTINGS = { ratio: "9:16", resolution: "720p", duration: 30, audio: true } as const;
+// the owner's choice: Seedance 2.0, 15 seconds, 480p (Seedance 2.5 is no longer used here)
+export const CARTOON_VIDEO_SETTINGS = { ratio: "9:16", resolution: "480p", duration: 15, audio: true } as const;
 /** The film's settings; a redrawn photograph keeps its own shape, a new character's story is vertical. */
 export const cartoonVideoSettings = (input: CartoonInput) => ({ ...CARTOON_VIDEO_SETTINGS, ...(input.mode === "scene" ? { ratio: input.aspect === "1:1" ? "1:1" : input.aspect === "16:9" || input.aspect === "3:2" ? "16:9" : "9:16" } : {}) });
 

@@ -25,7 +25,7 @@ export async function cartoonQuote(input: CartoonInput) {
     const result = evaluate(generatorById(CARTOON_VIDEO)!, {
       settings: cartoonVideoSettings(input), prompt: cartoonVideoPrompt(input), instructions: "", refStyle: "none", refs: [], strict: true,
     }, rt.prices[CARTOON_VIDEO]);
-    if (!result.price.ok || result.issues.length) throw new UserError("تعذّر تسعير فيديو ٣٠ ثانية؛ جرّب الصور فقط.", 503);
+    if (!result.price.ok || result.issues.length) throw new UserError("تعذّر تسعير فيديو ١٥ ثانية؛ جرّب الصور فقط.", 503);
     videoCoins = result.price.coins;
   }
   return { imageCoins: CARTOON_PRICE * input.count, videoCoins, totalCoins: CARTOON_PRICE * input.count + videoCoins, imageSection: image?.sectionId ?? "images", videoSection: video?.sectionId ?? "video" };
