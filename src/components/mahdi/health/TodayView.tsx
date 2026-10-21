@@ -15,6 +15,7 @@ import { FOCUS, WEEKDAYS, exerciseById, type PlanDay, type PlanItem } from "@/li
 import { bestSet, e1rm, lastTime, record, suggestion, weekOf, type DayLog, type FoodKey, type SetLog } from "@/lib/mahdi/health/tracker";
 import { Barbell, COACH } from "./HealthApp";
 import { useHealth } from "./HealthProvider";
+import ExerciseFigure from "./ExerciseFigure";
 
 const weekdayOf = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
 const shortDate = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("ar", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -111,6 +112,12 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
         </div>
         {pr && <span className="tag">🏆 رقم قياسي</span>}
       </header>
+      <details className="gym-ex-how">
+        <summary>👀 شوف الطريقة</summary>
+        <div className="px-3 pb-2">
+          <ExerciseFigure id={ex.id} name={ex.name} compact />
+        </div>
+      </details>
       <div className="space-y-2 p-3">
         <p className="gym-small">
           {last ? (

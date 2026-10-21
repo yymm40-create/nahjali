@@ -188,6 +188,28 @@ describe("the exercise guide", () => {
   });
 });
 
+describe("the technique drawings", () => {
+  it("every exercise has one, every position draws inside the picture, and every joint it names exists", async () => {
+    const { FIGURES } = await import("@config/mahdi/exercise-figures");
+    const { figureShapes, frameAt, pointsOf, VIEW } = await import("@/lib/mahdi/health/figure");
+    for (const e of EXERCISES) {
+      const def = FIGURES[e.id];
+      expect(def, e.id).toBeTruthy();
+      const last = def.frames.length - 1;
+      for (const p of [0, last / 2, last]) {
+        const pts = pointsOf(frameAt(def, p));
+        for (const [j, [x, y]] of Object.entries(pts)) {
+          expect(Number.isFinite(x) && Number.isFinite(y), `${e.id} ${j}`).toBe(true);
+          expect(x > -15 && x < VIEW.w + 15 && y > -15 && y < VIEW.floor + 6, `${e.id} ${j} at ${x},${y}`).toBe(true);
+        }
+        for (const j of [def.track, def.pulse, def.holdAt].filter(Boolean) as string[]) expect(pts[j], `${e.id}: ${j}`).toBeTruthy();
+        expect(figureShapes(def, p).length, e.id).toBeGreaterThan(5);
+      }
+    }
+    for (const id of Object.keys(FIGURES)) expect(exerciseById(id), id).toBeTruthy();
+  });
+});
+
 describe("the tracker", () => {
   it("keeps a day inside bounds", async () => {
     const { cleanDay } = await import("@/lib/mahdi/health/tracker");
