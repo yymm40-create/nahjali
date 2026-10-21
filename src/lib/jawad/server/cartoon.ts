@@ -1,4 +1,4 @@
-import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PLACES, CARTOON_PRICE, CARTOON_STYLES, AUDIENCE_RULES, cartoonParts, cartoonVideoSettings, cartoonImagePrompt, cartoonVideoPrompt, hasArabic, type CartoonInput } from "@config/jawad/cartoon";
+import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PLACES, CARTOON_PRICE, CARTOON_STYLES, AUDIENCE_RULES, cartoonFilm, cartoonParts, cartoonVideoSettings, cartoonImagePrompt, cartoonVideoPrompt, hasArabic, type CartoonInput } from "@config/jawad/cartoon";
 import { DIRECTOR_PRICE_KEY, generatorById } from "@config/jawad/generators";
 import type { ClaudePart } from "@/lib/film/anthropic";
 import { unlimitedFor } from "@/lib/access";
@@ -18,6 +18,9 @@ export interface CartoonPlan {
   videoCoins: number;
   position: number;
   expiresAt: number;
+  /** a film made AFTER the picture: the run it belongs to (shown with it) and the picture it is made from */
+  parent?: string;
+  source?: string;
 }
 export const planOf = (job: JobRow) => (job.inputs as JobRow["inputs"] & { cartoon?: CartoonPlan }).cartoon;
 export async function cartoonQuote(input: CartoonInput) {
@@ -61,19 +64,19 @@ export async function continueCartoon(jobId: string) {
   const { data: auth } = await db.auth.admin.getUserById(job.user_id);
   if (!auth.user) throw new UserError("تعذّر العثور على الحساب.", 404);
   const owner = await unlimitedFor(auth.user.email);
-  const root = await db.from("jawad_jobs").select("id").eq("user_id", job.user_id).eq("idempotency_key", plan.key + "_0").single();
-  if (!root.data) throw new UserError("لم نجد أصل الشخصية.", 404);
-  const output = await db.from("jawad_outputs").select("id").eq("user_id", job.user_id).eq("job_id", root.data.id).eq("kind", "image").order("idx").limit(1).maybeSingle();
-  if (!output.data) throw new UserError("لم تُحفظ صورة الشخصية الأصلية بعد.", 409);
-  const upload = await uploadFromOutput(job.user_id, output.data.id);
+  // the picture the film is made from: the one chosen (a film asked for after the picture), or the run's first one
+  let sourceId = plan.source ?? null;
+  if (!sourceId) {
+    const root = await db.from("jawad_jobs").select("id").eq("user_id", job.user_id).eq("idempotency_key", plan.key + "_0").single();
+    if (!root.data) throw new UserError("لم نجد أصل الشخصية.", 404);
+    const output = await db.from("jawad_outputs").select("id").eq("user_id", job.user_id).eq("job_id", root.data.id).eq("kind", "image").order("idx").limit(1).maybeSingle();
+    if (!output.data) throw new UserError("لم تُحفظ صورة الشخصية الأصلية بعد.", 409);
+    sourceId = output.data.id as string;
+  }
+  const upload = await uploadFromOutput(job.user_id, sourceId);
   const video = next >= plan.input.count;
   const part = next - plan.input.count;
-  const refs = [{ uploadId: upload.id, role: "reference" as const, name: "character" }];
-  // the place's environment sheet in the same look, when the owner has drawn it
-  if (video && plan.input.mode !== "scene" && plan.input.scenes?.length) {
-    const bytes = await placeSheetBytes(plan.input.place, plan.input.style);
-    if (bytes) refs.push({ uploadId: (await uploadFromBuffer(job.user_id, bytes, `place-${plan.input.place}.jpg`)).id, role: "reference", name: "place" });
-  }
+  const refs = video ? await filmRefs(job.user_id, plan.input, upload.id) : [{ uploadId: upload.id, role: "reference" as const, name: "character" }];
   const rt = await loadRuntime();
   const generatorId = video ? CARTOON_VIDEO : CARTOON_IMAGE;
   const sectionId = rt.generators.find(generator => generator.id === generatorId)?.sectionId;
@@ -134,4 +137,32 @@ export async function directCartoon(input: CartoonInput): Promise<{ directed: st
     }
   }));
   return { directed, written: directed.filter(Boolean).length };
+}
+
+/** The film's references: the character's picture, and the place's environment sheet in the same look when it is drawn. */
+export async function filmRefs(userId: string, input: CartoonInput, characterUpload: string) {
+  const refs = [{ uploadId: characterUpload, role: "reference" as const, name: "character" }];
+  if (input.mode !== "scene" && input.scenes?.length) {
+    const bytes = await placeSheetBytes(input.place, input.style);
+    if (bytes) refs.push({ uploadId: (await uploadFromBuffer(userId, bytes, `place-${input.place}.jpg`)).id, role: "reference", name: "place" });
+  }
+  return refs;
+}
+
+/**
+ * A picture of the person's cartoon runs (any of them, old ones too) and the run it came from, to make a film of it.
+ * The film reads the run's own choices (the look, the mode, who it is for) and adds the place and the story.
+ */
+export async function filmSource(userId: string, outputId: unknown, rawFilm: unknown) {
+  const db = createAdminClient();
+  const { data: out } = await db.from("jawad_outputs").select("id,job_id,kind").eq("id", String(outputId ?? "")).eq("user_id", userId).maybeSingle();
+  if (!out || out.kind !== "image") throw new UserError("اختر صورة من صورك الكرتونية.", 404);
+  const { data: row } = await db.from("jawad_jobs").select("*").eq("id", out.job_id).eq("user_id", userId).maybeSingle();
+  const plan = row ? planOf(row as JobRow) : undefined;
+  if (!plan) throw new UserError("هذه الصورة ليست من «حولني الى الستايل الكرتوني».", 400);
+  const saved = plan.input;
+  let film: { place: CartoonInput["place"]; scenes: string[] };
+  try { film = cartoonFilm(rawFilm, saved.mode); } catch (error) { throw new UserError((error as Error).message, 400); }
+  const input: CartoonInput = { ...saved, audience: saved.audience ?? "family", place: film.place, scenes: saved.mode === "scene" ? [] : film.scenes, directed: undefined, storyEn: undefined, heightCm: saved.heightCm ?? null, weightKg: saved.weightKg ?? null, count: 0, video: true };
+  return { input, parent: plan.parent ?? plan.key, outputId: out.id as string };
 }

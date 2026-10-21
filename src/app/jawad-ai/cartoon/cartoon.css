@@ -185,3 +185,11 @@
 .ct-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ct-choices .ct-name { font-size: 22px; }
 @media (max-width: 760px) { .ct-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .ct-choices small { display: none; } }
+.ct-film-ask { display: block; width: 100%; margin-top: 8px; border: 3px solid var(--ct-ink); border-radius: 16px; padding: 10px; background: var(--ct-sun); font: inherit; font-weight: 900; cursor: pointer; box-shadow: 0 3px 0 var(--ct-ink); }
+.ct-film-ask:active { transform: translateY(3px); box-shadow: 0 0 0 var(--ct-ink); }
+.ct-film { margin-top: 10px; text-align: start; }
+.ct-film-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ct-film-actions .ct-primary { margin: 0; }
+.ct-prompts { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; text-align: start; }
+.ct-prompts textarea { font-family: ui-monospace, monospace; font-size: 12px; min-height: 160px; }
+.ct-gallery > div:has(.ct-film) { grid-column: 1 / -1; }
