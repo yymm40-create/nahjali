@@ -18,7 +18,7 @@ export const CLAUDE_ONLY_KINDS = new Set(["understand", "research", "islamic", "
 
 /**
  * What a student job is priced as. Its own split (written with the job when it was asked for: Claude's writing and
- * GPT Image 2's pictures of one step), else by its kind: Claude's work its real cost + 10٪, the pictures 60٪, the
+ * GPT Image 2's pictures of one step), else by its kind: Claude's work its real cost + 40٪, GPT Image 2's pictures 30٪, the
  * transcription and the reading aloud the general margin.
  */
 export function jobMix(kind: string, input?: Record<string, unknown> | null): PriceMix | PriceKind {

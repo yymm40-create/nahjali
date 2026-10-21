@@ -31,8 +31,11 @@ const MB = 1024 * 1024;
 export const centiFor = (usd: number) => Math.max(1, Math.ceil((usd / COIN_COST_USD) * 100 - 1e-9));
 /** The halalas of cost in a sum of hundredths (rounded up, never 0 for a paid line). */
 export const costOf = (centi: number) => Math.ceil(centi / 100 - 1e-9);
-/** What a generator's output is priced as: pictures 60٪, videos 40٪, the rest the general margin (config/coins.ts). */
-export const priceKindOf = (output: GeneratorDef["output"] | string): PriceKind => (output === "image" ? "image" : output === "video" ? "video" : "other");
+/** The one picture model priced at «ربح الصور» (the owner, 21 October 2026); the other picture models take the general margin. */
+export const GPT_IMAGE_2_ID = "openai-gpt-image-2";
+/** What a generator's output is priced as: GPT Image 2's pictures «ربح الصور», videos «ربح الفيديو», the rest the general margin (config/coins.ts). */
+export const priceKindOf = (g: { id: string; output: GeneratorDef["output"] | string } | null | undefined): PriceKind =>
+  g?.output === "image" ? (g.id === GPT_IMAGE_2_ID ? "image" : "other") : g?.output === "video" ? "video" : "other";
 /** What the customer pays (halalas) for a sum of cost hundredths: rounded up to the step, plus the kind's margin (config/coins.ts). */
 export const coinsOf = (centi: number, kind: PriceKind = "other") => sellKind(costOf(centi), kind);
 /** The struck «was» price (halalas) for the same cost. */
@@ -749,8 +752,8 @@ export const REALFACE_SECOND_USD: Record<string, number> = { "480p": 0.206, "720
 export const REALFACE_20_SECOND_USD: Record<string, number> = { "480p": 0.141, "720p": 0.31, "1080p": 0.75 };
 const realFacePer = (d: { settings: Settings }) => (d.settings.version === "2.0" ? REALFACE_20_SECOND_USD : REALFACE_SECOND_USD);
 const realFaceSec = (d: { settings: Settings }) => Math.max(4, Math.min(d.settings.version === "2.0" ? 15 : 30, Math.round(Number(d.settings.duration) || 5)));
-/** The owner's profit on this generator (21 October 2026), whatever the videos' general margin is. */
-export const REALFACE_MARGIN_PCT = 50;
+/** The owner's profit on «سيدنس الواقعي» (21 October 2026), whatever the videos' general margin is. */
+export const REALFACE_MARGIN_PCT = 10;
 /** The cost lines lifted so that the videos' margin on them comes to REALFACE_MARGIN_PCT. */
 const realFaceLift = () => (100 + REALFACE_MARGIN_PCT) / (100 + getPricing().videoMarginPct);
 const REALFACE_CHECKED = "2026-10-21";
@@ -843,7 +846,7 @@ const seedanceRealFace: GeneratorDef = {
     const sec = realFaceSec(d);
     const per = table[`${d.settings.version === "2.0" ? "v20:" : ""}sec:${res}`];
     if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
-    // its own profit (50٪): the line is lifted so the videos' margin on it gives that
+    // its own profit (10٪): the line is scaled so the videos' margin on it gives that
     return total([{ label: `${d.settings.version === "2.0" ? "2.0" : "2.5"} · ${sec} ث · ${RES_LABEL[res] ?? res}`, centi: Math.ceil(per * sec * realFaceLift()) }], seedanceRealFace.costUsd(d, mode));
   },
   costUsd(d) {

@@ -63,7 +63,7 @@ async function ask<T>(user: RobotUser, model: unknown, label: string, parts: Cla
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يكمل الصورة الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
-  });
+  }, undefined, { price: "max" });
 }
 
 /** The person's photos to PUT IN the picture as they are (the scene has them as photo1…photo4). */

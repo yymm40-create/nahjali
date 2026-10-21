@@ -120,8 +120,8 @@ export async function giftCoinsOnce(userId: string, halalas: number, ref: string
 
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
 /**
- * `kind`: what the job makes — "claude" (or `true`): Claude's usage alone, its real cost + the platform's 10٪;
- * "image" 60٪; "video" 40٪; anything else the general margin (config/coins.ts).
+ * `kind`: what the job makes — "claude" (or `true`): Claude's usage alone, its real cost + the platform's 40٪;
+ * "image" (GPT Image 2) 30٪; "video" 40٪; "max" («حيدرا ماكس») its usage + 70٪; anything else the general margin (config/coins.ts).
  */
 export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string, claude: ChargeKind = false) {
   if ((await unlimitedFor(user.email)) || !(await coinsRequired())) {
@@ -282,24 +282,25 @@ export async function releaseCoins(userId: string, coins: number, ref: string, l
   if (coins > 0) await adjust(userId, coins, "refund", ref, label, true);
 }
 
-// ───────────── a robot's conversation: Claude's real usage + 10% ─────────────
+// ───────────── a robot's conversation: Claude's real usage + its profit (40٪; «حيدرا ماكس» 70٪) ─────────────
 
 export interface ClaudeBill {
   /** nothing is charged (the owner, an unlimited account, or coins not required) */
   free: boolean;
   /** halalas charged after `settle` */
   charged: number;
-  /** after the reply: takes the real usage (USD) at the platform's 10% — never throws over a short balance */
+  /** after the reply: takes the real usage (USD) plus the platform's profit — never throws over a short balance */
   settle: (usd: number) => Promise<number>;
 }
 
 /**
  * Before a robot answers: the wallet must have something in it (a clear refusal otherwise); after it, `settle(usd)`
- * takes what the reply really cost + 10% (pay after use). Free for the owner and unlimited accounts.
+ * takes what the reply really cost + the profit (pay after use). Free for the owner and unlimited accounts.
+ * `kind` "max": «حيدرا ماكس» writing a program for the job (its own, higher profit).
  */
-export async function claudeMeter(who: { id: string; email?: string | null; owner?: boolean; team?: string | null }, model: ClaudeModel, label: string): Promise<ClaudeBill> {
+export async function claudeMeter(who: { id: string; email?: string | null; owner?: boolean; team?: string | null }, model: ClaudeModel, label: string, kind: "claude" | "max" = "claude"): Promise<ClaudeBill> {
   // free: nothing is taken, but the reply's value at the site's price is written down (code monitoring)
-  const bill: ClaudeBill = { free: true, charged: 0, settle: async (usd: number) => (await logFree(who.id, `claude:${crypto.randomUUID()}`, label, claudeHalalas(usd)), 0) };
+  const bill: ClaudeBill = { free: true, charged: 0, settle: async (usd: number) => (await logFree(who.id, `claude:${crypto.randomUUID()}`, label, claudeHalalas(usd, undefined, kind)), 0) };
   if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
   await loadPricing();
   // pay after use: a reply starts while the wallet has anything in it, and takes what it really cost after
@@ -313,8 +314,8 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
     free: false,
     charged: 0,
     settle: async (usd: number) => {
-      // a code's «بسعر التكلفة»: the real usage with no +10%
-      const coins = atCost ? priceOf(usd, "claude", true) : claudeHalalas(usd);
+      // a code's «بسعر التكلفة»: the real usage with no profit
+      const coins = atCost ? priceOf(usd, "claude", true) : claudeHalalas(usd, undefined, kind);
       if (coins <= 0) return 0;
       if (who.team) await adjustTeam(who.team, who.id, -coins, "settle", ref, label, true);
       else await adjust(who.id, -coins, "settle", ref, label, true);

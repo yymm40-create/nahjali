@@ -65,6 +65,8 @@ async function ask<T>(who: Who, model: unknown, kind: ProgramKind, label: string
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الشغل بالكود الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
+    undefined,
+    "max",
   );
 }
 

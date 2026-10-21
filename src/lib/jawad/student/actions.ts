@@ -52,7 +52,7 @@ const NOT_NOW = "هذه الخطوة غير متاحة الآن.";
  */
 async function drawPrices(user: User) {
   const free = (await unlimitedFor(user.email)) || !(await coinsRequired());
-  // GPT Image 2's pages: the pictures' profit (60٪)
+  // GPT Image 2's pages: GPT Image 2's profit (30٪)
   const c = (usd: number) => (free ? 0 : coinsFor(usd, "image"));
   return { free, page: { high: c(pageUsd("high")), medium: c(pageUsd("medium")) }, slide: { high: c(slideImageUsd("high")), medium: c(slideImageUsd("medium")) }, map: { high: c(mapImageUsd("high")), medium: c(mapImageUsd("medium")) } };
 }

@@ -108,7 +108,7 @@ export async function estimate(userId: string, o: Output, action: string, chapte
   return partsUsd(await estimateParts(userId, o, action, chapter));
 }
 
-/** The estimate split by kind, so each part is charged its own profit (Claude 10٪, pictures 60٪, sound the general). */
+/** The estimate split by kind, so each part is charged its own profit (Claude 40٪, GPT Image 2 pictures 30٪, sound the general). */
 export async function estimateParts(userId: string, o: Output, action: string, chapter = -1): Promise<StepParts> {
   const base = await estimateBase(userId, o, action, chapter);
   // «حيدرا ماكس»: the pages' design and check come on top of what the output costs to write (slides count it themselves)

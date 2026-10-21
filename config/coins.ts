@@ -5,7 +5,7 @@
 //   full margin, struck through — the launch discount. The owner sets the rate, the step and both margins from
 //   /admin/limits; the defaults below hold until then. Pure (pages and server alike).
 
-import { CLAUDE_MARGIN_PCT } from "./claude-models";
+import { CLAUDE_MARGIN_PCT, HAIDARA_MAX_MARGIN_PCT } from "./claude-models";
 
 export const SMART_COIN = {
   name: "النقود الذكية",
@@ -29,21 +29,24 @@ export interface Pricing {
   marginPct: number;
   /** the full margin, in percent — the struck «was» price */
   wasMarginPct: number;
-  /** our profit on a PICTURE someone makes (GPT Image 2, Nano Banana, FLUX, the sheets…), in percent */
+  /** our profit on a GPT Image 2 PICTURE (the studio's GPT Image 2, the film's sheets, the student's pages, covers, booklets…), in percent; the other picture models take the general margin */
   imageMarginPct: number;
   /** our profit on a VIDEO someone makes (Seedance, Kling, lip-sync, upscaling…), in percent */
   videoMarginPct: number;
 }
 
 /**
- * The owner's margins (17 October 2026): pictures 60٪, videos 40٪, Claude's own work 10٪ (its real usage + 10٪,
- * `claudeHalalas`), everything else (sound, the owner's fixed fees) the general 30٪. The struck «كان» price keeps the
- * same gap above each as the general one does (+30 points: pictures 90٪, videos 70٪).
+ * The owner's margins (21 October 2026): GPT Image 2's pictures 30٪, videos 40٪ (Seedance, Kling…; «سيدنس الواقعي» its
+ * own 10٪, config/jawad/generators.ts), Claude's own work 40٪ (its real usage + 40٪, `claudeHalalas`), «حيدرا ماكس» 70٪,
+ * everything else (the other picture models, sound, the owner's fixed fees) the general 40٪. The struck «كان» price keeps
+ * the same gap above each as the general one does (+30 points).
  */
-export const DEFAULT_PRICING: Pricing = { usdToSar: 3.75, stepHalalas: 50, marginPct: 30, wasMarginPct: 60, imageMarginPct: 60, videoMarginPct: 40 };
+export const DEFAULT_PRICING: Pricing = { usdToSar: 3.75, stepHalalas: 50, marginPct: 40, wasMarginPct: 70, imageMarginPct: 30, videoMarginPct: 40 };
 
-/** What a price is for: its profit follows it. */
-export type PriceKind = "image" | "video" | "claude" | "other";
+/** What a price is for: its profit follows it. "max" is «حيدرا ماكس»'s work: priced like Claude's (its real usage), at its own profit. */
+export type PriceKind = "image" | "video" | "claude" | "max" | "other";
+/** Claude's own work (a robot's reply, or «حيدرا ماكس»'s program): its real usage plus its profit, to the halala only. */
+export const isClaudeKind = (kind: PriceKind): kind is "claude" | "max" => kind === "claude" || kind === "max";
 
 let current: Pricing = { ...DEFAULT_PRICING };
 
@@ -61,8 +64,9 @@ export function setPricing(p: Partial<Pricing> | null | undefined) {
   };
 }
 
-/** The profit (percent) on a kind of price. Claude's is the platform's 10٪ (see `claudeHalalas`). */
-export const marginFor = (kind: PriceKind, p = current) => (kind === "image" ? p.imageMarginPct : kind === "video" ? p.videoMarginPct : kind === "claude" ? CLAUDE_MARGIN_PCT : p.marginPct);
+/** The profit (percent) on a kind of price. Claude's and «حيدرا ماكس»'s are fixed by the owner (see `claudeHalalas`). */
+export const marginFor = (kind: PriceKind, p = current) =>
+  kind === "image" ? p.imageMarginPct : kind === "video" ? p.videoMarginPct : kind === "claude" ? CLAUDE_MARGIN_PCT : kind === "max" ? HAIDARA_MAX_MARGIN_PCT : p.marginPct;
 /** The struck «was» margin of a kind: the same gap above it as the general one. */
 export const wasMarginFor = (kind: PriceKind, p = current) => marginFor(kind, p) + Math.max(0, p.wasMarginPct - p.marginPct);
 
@@ -84,23 +88,24 @@ export function sellHalalas(cost: number, p = current, marginPct = p.marginPct) 
   return roundUpStep(cost, p) + roundUpStep((cost * marginPct) / 100, p);
 }
 
-/** What the customer pays for a cost in halalas of this kind (Claude: its cost + 10٪, only to the halala). */
+/** What the customer pays for a cost in halalas of this kind (Claude and «حيدرا ماكس»: the cost + their profit, only to the halala). */
 export const sellKind = (cost: number, kind: PriceKind = "other", p = current) =>
-  kind === "claude" ? (cost > 0 ? Math.max(1, Math.ceil((cost * (100 + CLAUDE_MARGIN_PCT)) / 100 - 1e-9)) : 0) : sellHalalas(cost, p, marginFor(kind, p));
+  isClaudeKind(kind) ? (cost > 0 ? Math.max(1, Math.ceil((cost * (100 + marginFor(kind, p))) / 100 - 1e-9)) : 0) : sellHalalas(cost, p, marginFor(kind, p));
 
 /** The struck «was» price (the full margin) for the same cost (none for Claude: its price is never discounted). */
-export const wasHalalas = (cost: number, p = current, kind: PriceKind = "other") => (kind === "claude" ? sellKind(cost, kind, p) : sellHalalas(cost, p, wasMarginFor(kind, p)));
+export const wasHalalas = (cost: number, p = current, kind: PriceKind = "other") => (isClaudeKind(kind) ? sellKind(cost, kind, p) : sellHalalas(cost, p, wasMarginFor(kind, p)));
 
 /** The customer's price, in halalas, for an operation of this kind that costs us `usd` (0 for nothing). */
-export const coinsFor = (usd: number, kind: PriceKind = "other") => (kind === "claude" ? claudeHalalas(usd) : sellHalalas(costHalalas(usd), current, marginFor(kind)));
+export const coinsFor = (usd: number, kind: PriceKind = "other") => (isClaudeKind(kind) ? claudeHalalas(usd, current, kind) : sellHalalas(costHalalas(usd), current, marginFor(kind)));
 
 /**
- * What a robot's conversation costs the person: Claude's real usage of the chosen model plus the platform's 10% and
- * nothing else — no rounding up to the step (that would be a bigger profit on a small reply), only to the halala.
+ * What a robot's conversation costs the person: Claude's real usage of the chosen model plus the platform's profit
+ * (40٪; «حيدرا ماكس»'s programs 70٪) and nothing else — no rounding up to the step (that would be a bigger profit on a
+ * small reply), only to the halala.
  */
-export function claudeHalalas(usd: number, p = current): number {
+export function claudeHalalas(usd: number, p = current, kind: "claude" | "max" = "claude"): number {
   if (!(usd > 0)) return 0;
-  return Math.max(1, Math.ceil((usd * p.usdToSar * 100 * (100 + CLAUDE_MARGIN_PCT)) / 100 - 1e-9));
+  return Math.max(1, Math.ceil((usd * p.usdToSar * 100 * (100 + marginFor(kind, p))) / 100 - 1e-9));
 }
 
 /** Halalas as riyals in text: 250 → «2.50», 1000 → «10». */

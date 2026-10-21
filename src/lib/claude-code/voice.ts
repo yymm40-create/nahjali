@@ -45,7 +45,7 @@ async function ask<T>(user: RobotUser, who: string, model: unknown, label: strin
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس ينظّف التسجيل الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
-  });
+  }, undefined, { price: "max" });
 }
 
 const pic = (label: string, data: string | null): ClaudePart[] => (data ? [{ type: "text", text: label }, { type: "image64", data, mediaType: "image/png" }] : []);

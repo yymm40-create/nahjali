@@ -34,18 +34,18 @@ export interface CreditSettings {
 }
 
 /**
- * «المشهد السينمائي» (owner, 17 October 2026): the balance one cinematic scene costs, end to end, at the owner's
- * margins (videos 40٪, pictures 60٪, Claude its real cost + 10٪) — the owner's basis: Seedance 2.0 at its 15-second
- * limit in 480p, ONE take (¤6), 4 sheets with no redraws (¤10), and ONE reply each from the screenwriter, the sheet
- * maker and the director plus the small helpers, at what the film code reserves for each (¤11.15) = ¤27.15, rounded
- * up to the whole riyal (the owner's cap: never above ¤50). The trial is ¤10 (the ¤19 one is gone).
+ * «المشهد السينمائي» (owner, 17 October 2026; re-priced with the margins of 21 October 2026): the balance one cinematic
+ * scene costs, end to end, at the owner's margins (videos 40٪, GPT Image 2 pictures 30٪, Claude its real cost + 40٪) —
+ * the owner's basis: Seedance 2.0 at its 15-second limit in 480p, ONE take (¤6), 4 sheets with no redraws (¤8), and ONE
+ * reply each from the screenwriter, the sheet maker and the director plus the small helpers, at what the film code
+ * reserves for each (¤14.18) = ¤28.18, rounded up to the whole riyal (the owner's cap: never above ¤50). The trial is ¤10.
  */
-export const SCENE_PACK_SAR = 28;
+export const SCENE_PACK_SAR = 29;
 
 /**
  * «الطالب الذكي» (owner, 18 October 2026): ¤12 — one PDF of 5–10 pages turned into ONE output (a summary or an
  * explanation, the ready template, no generated pictures). Measured on the site's real student projects: a short one
- * end to end (reading, understanding, plan, writing) came to ¤2.40–¤8 at the owner's margins (Claude its cost + 10٪),
+ * end to end (reading, understanding, plan, writing) came to ¤2.40–¤8 at the owner's margins (Claude its cost + 40٪),
  * so ¤12 makes one comfortably, often two. Paid after use: nothing is held, each step takes what it really cost.
  */
 export const STUDENT_PACK_SAR = 12;

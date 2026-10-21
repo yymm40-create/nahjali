@@ -121,7 +121,7 @@ export async function startJob(input: StartJobInput): Promise<{ job: FilmJob; cr
   try {
     const label = COIN_LABELS[input.operation] ?? input.operation;
     // the profit follows what the job makes: Claude's own work (the screenwriter, the sheets maker, the director's
-    // replies, سجاد) its real usage + 10٪, a picture 60٪, a video 40٪, the rest the general margin
+    // replies, سجاد) its real usage + 40٪, a GPT Image 2 picture 30٪, a video 40٪, the rest the general margin
     const claude = serviceKind(input.service);
     if (team) await reserveTeamCoins(team.id, input.user, job.id, input.estimateUsd, label, claude);
     else await reserveCoins(payer, job.id, input.estimateUsd, label, claude);

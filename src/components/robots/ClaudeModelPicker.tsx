@@ -10,7 +10,7 @@ import { useClaudeModel } from "./claude-model";
 /**
  * The mind that answers in this chat (العبقري · الأصيل · الرشيق · الخفيف — our own names, nothing says whose they are): the
  * choice is the person's, kept for every robot. Each has its advice and a typical reply's price; the platform's profit on the
- * usage is 10%, said here.
+ * usage is CLAUDE_MARGIN_PCT, said here.
  * Neutral colours (they follow the text colour) so it sits in any robot's page.
  */
 export default function ClaudeModelPicker({ className = "", disabled = false }: { className?: string; disabled?: boolean }) {
