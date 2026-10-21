@@ -16,6 +16,9 @@ export type FilmStage = (typeof FILM_STAGES)[number]["key"];
 export const VIDEO_MODELS = {
   "seedance-2.5": { label: "Seedance 2.5", maxSeconds: 30, maxImages: 30, modelId: "dreamina-seedance-2-5-260628" },
   "seedance-2.0": { label: "Seedance 2.0", maxSeconds: 15, maxImages: 9, modelId: "dreamina-seedance-2-0-260128" },
+  // «Seedance وجه واقعي»: Seedance 2.5 through the partner that accepts real faces (src/lib/jawad/server/providers/realface.ts),
+  // for realistic scenes with real people — much dearer than the others
+  "seedance-real-face": { label: "Seedance وجه واقعي", maxSeconds: 30, maxImages: 30, modelId: "seedance-2.5-real-face" },
 } as const;
 export type VideoModel = keyof typeof VIDEO_MODELS;
 
@@ -37,6 +40,9 @@ export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = "480p";
 export const VIDEO_PRICE_PER_MILLION_TOKENS: Record<VideoModel, Record<VideoResolution, number>> = {
   "seedance-2.0": { "480p": 7, "720p": 7, "1080p": 7.7 },
   "seedance-2.5": { "480p": 10.7, "720p": 10.7, "1080p": 11.7 },
+  // billed per second by the partner ($0.206 · $0.45 · $1.1 a second, config/jawad/generators.ts), written here per
+  // million of the same token count so the film maker's estimate stays one formula
+  "seedance-real-face": { "480p": 21.45, "720p": 20.84, "1080p": 22.64 },
 };
 
 /** Approximate tokens of one video (the provider reports the real count once it is done). */

@@ -15,6 +15,8 @@ const db = () => createAdminClient();
 export const VOICE_TRACK_LIMIT: Record<VideoModel, { minSec: number; maxSec: number }> = {
   "seedance-2.5": { minSec: 2, maxSec: 30 },
   "seedance-2.0": { minSec: 2, maxSec: 15 },
+  // the real-face partner's 2.5: audio references up to 30 s in all
+  "seedance-real-face": { minSec: 2, maxSec: 30 },
 };
 
 /** The spoken lines of a generation and whether each has its (current) audio; for the generation page. */
