@@ -69,6 +69,8 @@ export const PROVIDER_KEYS: Record<GeneratorDef["provider"]["id"], string[]> = {
   jawad: ["VOICESTUDIO_URL"],
   // Google's Nano Banana family through fal.ai
   fal: ["FAL_KEY"],
+  // «Seedance وجه واقعي» (its partner's name never shown): KEY_ID:KEY_SECRET
+  realface: ["HIGGSFIELD_API", "HF_KEY", "HF_CREDENTIALS"],
 };
 export const keyConfigured = (d: GeneratorDef) => PROVIDER_KEYS[d.provider.id].some((k) => Boolean(process.env[k]));
 
