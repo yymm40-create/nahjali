@@ -205,7 +205,7 @@ const gptImage2: GeneratorDef = {
 export interface SimpleImageSpec {
   id: string;
   name: string;
-  provider: { id: "fal" | "byteplus-modelark"; label: string };
+  provider: { id: "fal" | "byteplus-modelark" | "realface"; label: string };
   model: { id: string; family: string; version: string };
   /** fal: the edit endpoint used when there are reference pictures */
   editModel?: string;
@@ -737,6 +737,136 @@ const kling3: GeneratorDef = {
     { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
   ],
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
+
+// ───────────────────────────── Seedance وجه واقعي (Seedance 2.5 with the person's own face) ─────────────────────────────
+// Through a partner whose API accepts a real face as a reference (keys: HIGGSFIELD_API). Its name is never shown to
+// users: the card says «Seedance». Prices per second are ceilings until the owner checks the partner's console.
+
+/** USD per output second by resolution (ceiling: the partner's published «from $0.206/s» scaled like ModelArk's sizes). */
+export const REALFACE_SECOND_USD: Record<string, number> = { "480p": 0.206, "720p": 0.45, "1080p": 1.1 };
+/** Seedance 2.0 the same way (from $0.141/s): references only (up to 9 images, 3 videos, 3 sounds), 4–15 s. */
+export const REALFACE_20_SECOND_USD: Record<string, number> = { "480p": 0.141, "720p": 0.31, "1080p": 0.75 };
+const realFacePer = (d: { settings: Settings }) => (d.settings.version === "2.0" ? REALFACE_20_SECOND_USD : REALFACE_SECOND_USD);
+const realFaceSec = (d: { settings: Settings }) => Math.max(4, Math.min(d.settings.version === "2.0" ? 15 : 30, Math.round(Number(d.settings.duration) || 5)));
+/** The owner's profit on this generator (21 October 2026), whatever the videos' general margin is. */
+export const REALFACE_MARGIN_PCT = 50;
+/** The cost lines lifted so that the videos' margin on them comes to REALFACE_MARGIN_PCT. */
+const realFaceLift = () => (100 + REALFACE_MARGIN_PCT) / (100 + getPricing().videoMarginPct);
+const REALFACE_CHECKED = "2026-10-21";
+
+const realFaceModes: ModeDef[] = [
+  { id: "first_frame", label: "صورتك كإطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: false },
+  { id: "first_last_frame", label: "إطار أول وأخير", refStyle: "frames", refs: { image: { min: 2, max: 2 } }, roles: ["first_frame", "last_frame"], promptRequired: false },
+  {
+    id: "omni_reference",
+    label: "صور الشخص مراجع",
+    refStyle: "references",
+    refs: { image: { min: 0, max: 30 }, video: { min: 0, max: 10, totalMaxMs: 30_000 }, audio: { min: 0, max: 10, totalMaxMs: 30_000 } },
+    needsOneOf: ["image", "video", "audio"],
+    promptRequired: false,
+  },
+];
+
+const seedanceRealFace: GeneratorDef = {
+  id: "seedance-real-face",
+  name: "Seedance وجه واقعي",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "realface", label: "Seedance" },
+  model: { id: "seedance-2.5-real-face", family: "Seedance 2.5", version: "real-face" },
+  api: { name: "Seedance (real face)", endpoint: "POST bytedance/seedance-2.5/image-to-video · reference-to-video", tracking: "async", progress: "none", cancel: "queued-only" },
+  modes: realFaceModes,
+  options: [
+    {
+      key: "version", label: "الإصدار", kind: "choice", ltr: true, default: "2.5",
+      values: [
+        { value: "2.5", label: "2.5", hint: "حتى 30 ثانية، كل الأوضاع" },
+        { value: "2.0", label: "2.0", hint: "أرخص، حتى 15 ثانية، المراجع فقط" },
+      ],
+    },
+    { key: "ratio", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "9:16", values: RATIO_VALUES },
+    { key: "resolution", label: "الدقة", kind: "choice", ltr: true, default: "720p", values: ["480p", "720p", "1080p"].map((r) => ({ value: r, label: RES_LABEL[r] })) },
+    { key: "duration", label: "المدة", kind: "int", min: 4, max: 30, default: 5, unit: "ثانية" },
+    { key: "audio", label: "صوت متزامن مع الفيديو", kind: "bool", default: true, hint: "حوار ومؤثرات وموسيقى يولّدها النموذج" },
+  ],
+  files: {
+    image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 30 * MB - 1, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5 },
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 200 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minMs: 2000, maxMs: 30_000 },
+    audio: { mimes: ["audio/mpeg", "audio/wav"], maxBytes: 15 * MB, minMs: 2000, maxMs: 30_000 },
+  },
+  prompt: {
+    label: "البرومبت",
+    placeholder: "صف ما يفعله الشخص، والمكان، والكاميرا… (اختياري)",
+    max: 32000,
+    arabic: true,
+    advise: { maxWords: 1000, maxCjk: 500, note: "البرومبت طويل؛ قد يركّز المولد على الأهم ويتجاهل بعض التفاصيل." },
+  },
+  priceKeys: [
+    ...["480p", "720p", "1080p"].map((r) => ({
+      key: `sec:${r}`,
+      label: `2.5 · كل ثانية · ${RES_LABEL[r]}`,
+      defaultCenti: centiFor(REALFACE_SECOND_USD[r]),
+      basis: `سقف تقديري $${REALFACE_SECOND_USD[r]} للثانية: راجعه بسعر لوحة المزوّد وعدّله هنا`,
+    })),
+    ...["480p", "720p", "1080p"].map((r) => ({
+      key: `v20:sec:${r}`,
+      label: `2.0 · كل ثانية · ${RES_LABEL[r]}`,
+      defaultCenti: centiFor(REALFACE_20_SECOND_USD[r]),
+      basis: `سقف تقديري $${REALFACE_20_SECOND_USD[r]} للثانية: راجعه بسعر لوحة المزوّد وعدّله هنا`,
+    })),
+  ],
+  modeFor(style, refs) {
+    if (style === "frames" || !refs.length) return refs.length >= 2 ? realFaceModes[1] : realFaceModes[0];
+    return realFaceModes[2];
+  },
+  rules(d, mode) {
+    const notes = ["للوجه الواقعي: ارفع صورة واضحة من الأمام بإضاءة جيدة، لك أنت أو لشخص أعطاك إذنه."];
+    const issues: Issue[] = [];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    const v20 = d.settings.version === "2.0";
+    if (v20) states.duration = { max: 15 };
+    if (v20 && mode.refStyle === "frames") issues.push({ field: "version", message: "الإطار الأول متاح في 2.5 فقط؛ مع 2.0 اختر «صور الشخص مراجع»." });
+    if (v20) {
+      const n = (k: string) => d.refs.filter((r) => r.kind === k).length;
+      if (n("image") > 9 || n("video") > 3 || n("audio") > 3) issues.push({ field: "refs", message: "2.0 يقبل حتى 9 صور و3 فيديوهات و3 أصوات؛ اختر 2.5 لأكثر." });
+      if (n("image") + n("video") === 0 && n("audio") > 0) issues.push({ field: "refs", message: "2.0 يحتاج صورة أو فيديو مع الصوت." });
+    }
+    if (mode.refStyle === "frames") {
+      states.ratio = { fixed: { value: "adaptive", reason: "النسبة تتبع صورة الإطار الأول" } };
+      notes.push("في وضع الإطارات يتبع الفيديو نسبة صورة الإطار الأول.");
+    }
+    return { options: opt(seedanceRealFace.options, states), issues, notes };
+  },
+  price(d, mode, table) {
+    const res = String(d.settings.resolution);
+    const sec = realFaceSec(d);
+    const per = table[`${d.settings.version === "2.0" ? "v20:" : ""}sec:${res}`];
+    if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
+    // its own profit (50٪): the line is lifted so the videos' margin on it gives that
+    return total([{ label: `${d.settings.version === "2.0" ? "2.0" : "2.5"} · ${sec} ث · ${RES_LABEL[res] ?? res}`, centi: Math.ceil(per * sec * realFaceLift()) }], seedanceRealFace.costUsd(d, mode));
+  },
+  costUsd(d) {
+    const per = realFacePer(d);
+    return realFaceSec(d) * (per[String(d.settings.resolution)] ?? per["720p"]);
+  },
+  refLabel: (kind, n) => `@${kind}${n}`,
+  sources: [
+    { label: "Seedance 2.5 — reference to video (partner API)", url: "https://docs.higgsfield.ai/docs/models/seedance-2-5/reference-to-video", checked: REALFACE_CHECKED },
+    { label: "Seedance 2.5 — image to video (partner API)", url: "https://open.higgsfield.ai/models/bytedance/seedance-2.5/image-to-video/api-reference", checked: REALFACE_CHECKED },
+    { label: "Requests: statuses, cancel, retention (partner API)", url: "https://docs.higgsfield.ai/docs/concepts/requests", checked: REALFACE_CHECKED },
+  ],
+  verification: [
+    { item: "الأوضاع", status: "verified", note: "إطار أول (image_url) · إطار أول وأخير (+ end_image_url) · مراجع متعددة (image_urls ≤ 30، video_urls ≤ 10، audio_urls ≤ 10، المجموع ≤ 50)." },
+    { item: "الدقة والمدة", status: "verified", note: "480p · 720p · 1080p؛ 2.5 من 4 إلى 30 ثانية، 2.0 من 4 إلى 15." },
+    { item: "2.0", status: "verified", note: "reference-to-video فقط: image_urls ≤ 9، video_urls ≤ 3، audio_urls ≤ 3، والصوت وحده لا يكفي." },
+    { item: "النسب", status: "verified", note: "في المراجع: 16:9 · 4:3 · 1:1 · 3:4 · 9:16 · 21:9؛ في الإطارات تتبع الصورة." },
+    { item: "الوجه الواقعي", status: "unverified", note: "التوثيق لا يذكر شروطًا للوجوه؛ الرفض يصل كحالة nsfw من الفحص." },
+    { item: "السعر", status: "unverified", note: "لا يذكره التوثيق؛ السقف هنا تقديري من «from $0.206/s»." },
+    { item: "الإلغاء", status: "verified", note: "ممكن فقط والطلب في الطابور." },
+    { item: "الحفظ", status: "verified", note: "رابط الفيديو يبقى 7 أيام على الأقل؛ ننسخه فورًا إلى تخزيننا." },
+  ],
+  notes: ["فيديو بوجه الشخص الحقيقي: لك، أو لمن أعطاك إذنه."],
 };
 
 // ───────────────────────────── OpenAI · GPT-4o mini TTS ─────────────────────────────
@@ -1294,7 +1424,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), kling3, miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

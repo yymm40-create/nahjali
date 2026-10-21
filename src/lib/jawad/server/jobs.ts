@@ -34,6 +34,7 @@ import { refsFor, type UploadRow } from "./uploads";
 import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
+import { realFaceCancel, realFaceSubmit, realFaceTask } from "./providers/realface";
 import { falImages, falSubmit, falTask } from "./providers/fal";
 import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
@@ -385,6 +386,7 @@ export async function runJob(jobId: string) {
     // ModelArk's videos are tasks followed later; its pictures (Seedream) answer at once like the others
     if (def.provider.id === "byteplus-modelark" && def.output === "video") await submitVideo(job, def, rows);
     else if (def.provider.id === "fal" && def.output === "video") await submitFalVideo(job, def, rows);
+    else if (def.provider.id === "realface") await submitRealFace(job, def, rows);
     else await runSync(job, def, rows);
   } catch (e) {
     await failFromError(job!, def, e);
@@ -683,6 +685,49 @@ async function submitFalVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[])
   }
 }
 
+/**
+ * «Seedance وجه واقعي»: the person's own photos go as short-lived links (a first frame, first and last, or references);
+ * the request is then followed like the others. The partner's name is never in a message to the person.
+ */
+async function submitRealFace(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+  const s = job.inputs.settings;
+  const signed = refs.length ? (await storage.from(JAWAD_BUCKET).createSignedUrls(refs.map((r) => r.storage_path), 3 * 3600)).data ?? [] : [];
+  const urls = refs.map((_, i) => signed[i]?.signedUrl ?? null);
+  if (urls.some((u) => !u)) throw new ProviderError("rejected", "تعذّر تجهيز أحد المراجع.", "no signed url for a reference");
+  const prompt = (job.inputs.modelPrompt ?? job.prompt).trim();
+  const v20 = s.version === "2.0";
+  const common = { duration: Math.max(4, Math.min(v20 ? 15 : 30, Math.round(Number(s.duration) || 5))), resolution: String(s.resolution), generate_audio: s.audio !== false, ...(prompt ? { prompt } : {}) };
+  const frames = job.refs.some((r) => r.role === "first_frame" || r.role === "last_frame");
+  let endpoint: string;
+  let input: Record<string, unknown>;
+  if (frames && !v20) {
+    const at = (role: RefRole) => job.refs.findIndex((r) => r.role === role);
+    const first = urls[at("first_frame")] ?? urls[0];
+    const last = at("last_frame") >= 0 ? urls[at("last_frame")] : null;
+    endpoint = "bytedance/seedance-2.5/image-to-video";
+    input = { ...common, image_url: first, ...(last ? { end_image_url: last } : {}) };
+  } else {
+    const of = (kind: string) => refs.flatMap((r, i) => (r.kind === kind ? [urls[i]!] : []));
+    const [images, videos, audios] = [of("image"), of("video"), of("audio")];
+    endpoint = `bytedance/seedance-${v20 ? "2.0" : "2.5"}/reference-to-video`;
+    input = { ...common, aspect_ratio: String(s.ratio), ...(images.length ? { image_urls: images } : {}), ...(videos.length ? { video_urls: videos } : {}), ...(audios.length ? { audio_urls: audios } : {}) };
+  }
+  const id = await realFaceSubmit(endpoint, input, job.id);
+  await db()
+    .from("jawad_jobs")
+    .update({ provider_task_id: id, submit_state: "accepted", status: "running", provider_status: "queued", lease_until: null })
+    .eq("id", job.id);
+  await event(job.id, "submitted", { task: id, endpoint });
+  // a short video is often ready within a few minutes: keep watching while this request is alive
+  const until = Date.now() + WATCH_MS;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 10_000));
+    const fresh = await loadJob(job.id);
+    if (!fresh || !OPEN.includes(fresh.status)) return;
+    await advanceJob(fresh, { force: true });
+  }
+}
+
 export async function loadJob(id: string) {
   const { data } = await db().from("jawad_jobs").select("*").eq("id", id).maybeSingle();
   return (data as JobRow) ?? null;
@@ -715,7 +760,7 @@ async function saveVideo(job: JobRow, task: ArkTask) {
     await saveOutput(claimed, 0, file, mime, mime === "video/quicktime" ? "mov" : "mp4", dims);
     // The real cost from the provider's token count (rate of the resolution, with or without video input)
     const def = generatorById(job.generator_id);
-    const usd = def?.provider.id === "fal" ? def.costUsd({ settings: job.inputs.settings, prompt: job.prompt, instructions: "", refs: [] }, def.modes[0]) : task.tokens != null ? (task.tokens * videoRate(job)) / 1e6 : null;
+    const usd = def?.provider.id === "fal" || def?.provider.id === "realface" ? def.costUsd({ settings: job.inputs.settings, prompt: job.prompt, instructions: "", refs: [] }, def.modes[0]) : task.tokens != null ? (task.tokens * videoRate(job)) / 1e6 : null;
     await finishJob(claimed, "succeeded", { costUsd: usd, units: { tokens: task.tokens, duration: task.duration, ratio: task.ratio, resolution: task.resolution } });
   } catch (e) {
     const attempts = (claimed.inputs.saveAttempts ?? 0) + 1;
@@ -745,7 +790,7 @@ function videoRate(job: JobRow) {
 async function reconcileUnknown(job: JobRow) {
   const sent = new Date(job.submitted_at ?? job.created_at).getTime();
   // fal's queue cannot be searched: after a while the job is given up (and refunded)
-  if (generatorById(job.generator_id)?.provider.id === "fal") {
+  if (["fal", "realface"].includes(generatorById(job.generator_id)?.provider.id ?? "")) {
     if (Date.now() - sent > UNKNOWN_GIVE_UP_MS) await finishJob(job, "failed", { message: "لم يتأكد وصول الطلب إلى المزوّد، ولم يُخصم منك شيء. جرّب مرة ثانية.", detail: "fal submission unknown" });
     return;
   }
@@ -811,7 +856,15 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
   if (job.status === "saving" && !leaseOver) return;
   if (!o.force && Date.now() - new Date(job.updated_at).getTime() < 6000) return;
   const fal = def?.provider.id === "fal";
-  const task: ArkTask | null = fal
+  const realFace = def?.provider.id === "realface";
+  const task: ArkTask | null = realFace
+    ? await realFaceTask(job.provider_task_id)
+        .then((t) => ({ id: job.provider_task_id!, model: job.model_id, status: t.status, videoUrl: t.videoUrl, error: t.moderated ? `moderated: ${t.error}` : t.error, tokens: null, createdAt: null, safetyIdentifier: null, duration: null, ratio: null, resolution: null }))
+        .catch((e) => {
+          console.error("jawad real-face check failed", job.id, e);
+          return null;
+        })
+    : fal
     ? await falTask(String(job.inputs.falModel ?? def!.model.id), job.provider_task_id)
         .then((t) => ({ id: job.provider_task_id!, model: job.model_id, status: t.status, videoUrl: t.videoUrl, error: t.error, tokens: null, createdAt: null, safetyIdentifier: null, duration: null, ratio: null, resolution: null }))
         .catch((e) => {
@@ -829,11 +882,14 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
   }
   if (task.status === "succeeded") return saveVideo(job, task);
   if (task.status === "failed" || task.status === "expired" || task.status === "cancelled") {
-    await finishJob(job, task.status === "cancelled" ? "cancelled" : "failed", { message: TASK_END_MESSAGE[task.status], detail: task.error ?? task.status });
+    const moderated = realFace && String(task.error ?? "").startsWith("moderated:");
+    const message = moderated ? "رفض فحص المحتوى الصورة أو الطلب. استخدم صورة واضحة لوجهك أنت (أو لمن أعطاك إذنه) ووصفًا لائقًا. لم يُخصم منك شيء." : TASK_END_MESSAGE[task.status];
+    await finishJob(job, task.status === "cancelled" ? "cancelled" : "failed", { message, detail: task.error ?? task.status });
     return;
   }
   if (Date.now() - sent > VIDEO_STALE_MS) {
-    if (!fal) await arkCancelTask(task.id).catch(() => null);
+    if (realFace) await realFaceCancel(task.id).catch(() => null);
+    else if (!fal) await arkCancelTask(task.id).catch(() => null);
     await finishJob(job, "failed", { message: "انتهى وقت التوليد. لم يُخصم منك شيء.", detail: `stale in ${task.status}` });
     return;
   }
@@ -850,9 +906,13 @@ export async function cancelJob(userId: string, jobId: string) {
   if (def?.api.cancel !== "queued-only" || job.status !== "running" || !job.provider_task_id) {
     throw new UserError("لا يمكن إلغاء هذا التوليد الآن.", 409);
   }
-  const task = await arkGetTask(job.provider_task_id);
-  if (task.status !== "queued") throw new UserError("بدأ التوليد فعلًا، ولا يسمح المزوّد بإيقافه.", 409);
-  await arkCancelTask(job.provider_task_id);
+  if (def.provider.id === "realface") {
+    if (!(await realFaceCancel(job.provider_task_id).catch(() => false))) throw new UserError("بدأ التوليد فعلًا، ولا يسمح المزوّد بإيقافه.", 409);
+  } else {
+    const task = await arkGetTask(job.provider_task_id);
+    if (task.status !== "queued") throw new UserError("بدأ التوليد فعلًا، ولا يسمح المزوّد بإيقافه.", 409);
+    await arkCancelTask(job.provider_task_id);
+  }
   await finishJob(job, "cancelled", { message: "ألغيت التوليد. أُعيد لك رصيده.", detail: "cancelled by user while queued" });
 }
 
