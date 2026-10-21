@@ -1124,7 +1124,7 @@ export default function Studio({ section, studioSections, generators, directorGe
         />
       )}
 
-      <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={generators} current={gen.id} onPick={switchGenerator} owner={owner} />
+      <GeneratorPicker open={picker} onClose={() => setPicker(false)} generators={unified ? generators.filter((g) => generatorById(g.id)?.output === def.output) : generators} current={gen.id} onPick={switchGenerator} owner={owner} title={unified ? `اختر مولّد ${def.output === "image" ? "الصور" : def.output === "video" ? "الفيديو" : "الصوت"}` : undefined} />
 
       <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} title="تغيّر السعر">
         {confirm && (
