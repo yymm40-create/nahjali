@@ -23,18 +23,18 @@ describe("cartoon journey", () => {
     expect(cartoonImagePrompt(clean)).toContain("hands and knees");
     expect(cartoonImagePrompt(clean, true)).toContain("canonical CARTOON");
     expect(cartoonVideoPrompt(clean)).toContain("@character");
-    expect(cartoonVideoPrompt(clean)).toContain("30 seconds");
+    expect(cartoonVideoPrompt(clean)).toContain("15 seconds");
     expect(cartoonVideoPrompt(clean)).toContain("No age or style morph");
     expect(CARTOON_PRICE).toBe(200);
   });
-  it("offers a routable section and supported 30-second settings", () => {
+  it("offers a routable section and supported 15-second settings", () => {
     expect(sectionPath(DEFAULT_SECTIONS.find(section => section.id === "cartoon")!)).toBe("/jawad-ai/cartoon");
     expect(RESERVED_SECTION_IDS).toContain("cartoon");
     const def = generatorById(CARTOON_VIDEO)!;
     const prices = Object.fromEntries(def.priceKeys.map(rule => [rule.key, rule.defaultCenti]));
     const result = evaluate(def, { settings: CARTOON_VIDEO_SETTINGS, prompt: cartoonVideoPrompt(cartoonInput(input)), instructions: "", refs: [], refStyle: "none", strict: true }, prices);
     expect(result.issues).toEqual([]);
-    expect(result.settings.duration).toBe(30);
+    expect(result.settings.duration).toBe(15);
     expect(result.price.ok).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import { NextResponse, after } from "next/server";
-import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PRICE, cartoonInput, cartoonImagePrompt } from "@config/jawad/cartoon";
+import { CARTOON_IMAGE, CARTOON_VIDEO, CARTOON_PRICE, cartoonInput, cartoonImagePrompt, hasArabic } from "@config/jawad/cartoon";
+import { callClaudeJson } from "@/lib/film/anthropic";
 import { generatorById } from "@config/jawad/generators";
 import { can, permForGenerator } from "@/lib/access";
 import { handle, UserError } from "@/lib/api";
@@ -14,6 +15,24 @@ import { jobViews } from "@/lib/jawad/server/works";
 import { isUuid } from "@/lib/jawad/server/uploads";
 
 export const maxDuration = 300;
+
+/** A child's story written in Arabic, told again in plain English for a 15-second film (the film model reads no Arabic). */
+async function storyInEnglish(text: string): Promise<string> {
+  try {
+    const r = await callClaudeJson<{ en: string }>({
+      system: "You translate a short story for a 15-second children's cartoon film into clear English stage directions. Keep every event, name and detail; no additions; split it into 3–4 beats with their seconds (0–4s, 4–8s, 8–12s, 12–15s). Return only the English.",
+      turns: [{ role: "user", content: text.slice(0, 3000) }],
+      schema: { type: "object", additionalProperties: false, required: ["en"], properties: { en: { type: "string" } } },
+      maxTokens: 800,
+      effort: "low",
+    });
+    const en = String(r.data.en ?? "").trim();
+    return hasArabic(en) ? "" : en.slice(0, 1500);
+  } catch {
+    // without it the film keeps a gentle adventure for the character (never blocked)
+    return "";
+  }
+}
 export const POST = handle(async (req: Request) => {
   const { user, owner } = await requireJawadApiUser();
   const body = await req.json();
@@ -26,6 +45,8 @@ export const POST = handle(async (req: Request) => {
     const live = rt.generators.find(generator => generator.id === id);
     if (!live || !(live.live || (owner && live.keyConfigured)) || !(await can(user.email, permForGenerator(generatorById(id)!)))) throw new UserError("أحد مولدات هذا الطلب غير متاح لحسابك؛ جرّب الصور فقط أو تواصل معنا.", 403);
   }
+  // the person's story, in Arabic, made English for the film (Seedance 2.0 reads no Arabic)
+  if (input.video && input.story === "custom" && hasArabic(input.customStory)) input.storyEn = await storyInEnglish(input.customStory);
   const full = await cartoonQuote(input);
   // «أول تجربة مجانية»: the account's first attempt — its first picture — while the offer is open (more pictures and the film are paid)
   const key = "cartoon_" + body.key;
@@ -39,6 +60,7 @@ export const POST = handle(async (req: Request) => {
   if (body.expectedCoins !== quote.totalCoins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
   if (!owner && (await coinBalance(user.id) ?? 0) < quote.totalCoins) throw new UserError("رصيدك لا يكفي لإكمال الطلب كله. اشحن الرصيد أولًا.", 402);
   if (!Array.isArray(body.uploads) || body.uploads.length < 1 || body.uploads.length > 3 || body.uploads.some((id: unknown) => !isUuid(id)) || new Set(body.uploads).size !== body.uploads.length) throw new UserError("ارفع ١–٣ صور مختلفة.", 400);
+  if (input.mode === "sheet" && body.uploads.length < 2) throw new UserError("الكاركتر شيت يحتاج صورتين: من قدام ومن الجنب.", 400);
   const result = requireCreated(await createJob(user, owner, {
     idempotencyKey: key + "_0", generatorId: CARTOON_IMAGE, sectionId: quote.imageSection,
     prompt: cartoonImagePrompt(input), settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: 1 },
