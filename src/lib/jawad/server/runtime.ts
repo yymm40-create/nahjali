@@ -2,6 +2,7 @@
 // overrides from the database. Server only. Until migration 0017 is run every table read fails softly and the
 // code defaults apply (generators stay off for users, the owner can still try them).
 
+import { REALFACE_KEYS } from "./providers/realface";
 import { cache } from "react";
 import { ttlCache } from "@/lib/ttl-cache";
 import { loadPricing } from "@/lib/coins";
@@ -70,7 +71,7 @@ export const PROVIDER_KEYS: Record<GeneratorDef["provider"]["id"], string[]> = {
   // Google's Nano Banana family through fal.ai
   fal: ["FAL_KEY"],
   // «Seedance وجه واقعي» (its partner's name never shown): KEY_ID:KEY_SECRET
-  realface: ["HIGGSFIELD_API", "HF_KEY", "HF_CREDENTIALS"],
+  realface: REALFACE_KEYS,
 };
 export const keyConfigured = (d: GeneratorDef) => PROVIDER_KEYS[d.provider.id].some((k) => Boolean(process.env[k]));
 
