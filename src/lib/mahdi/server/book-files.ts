@@ -1,9 +1,11 @@
 // SERVER ONLY. Books' PDF files: one-time upload links, checking an uploaded file, and short download links.
 // The bucket is private; every link is made here after checking the reader.
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
 import { BOOK_PDF } from "@config/mahdi";
 import { t } from "../i18n";
 import { UserError } from "./api";
+import { COVER_BUCKET } from "./reading";
 
 import { storage } from "@/lib/storage";
 export const PDF_BUCKET = "mahdi-book-files";
@@ -55,4 +57,35 @@ export async function pdfDownloadLink(path: string, title: string) {
 
 export async function removePdf(path: string | null) {
   if (path) await storage.from(PDF_BUCKET).remove([path]);
+}
+
+const COVER_MAX = 8 * 1024 * 1024;
+const COVER_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+
+/**
+ * Saves a cover photo for the catalogue: re-encoded here to a fixed size as WebP (which also drops location and camera
+ * data), under a random name in the user's folder. Returns its storage path.
+ */
+export async function storeCover(userId: string, cover: File): Promise<string> {
+  if (cover.size > COVER_MAX) throw new UserError(t.reading.coverTooBig, 413);
+  if (!COVER_TYPES.includes(cover.type)) throw new UserError(t.reading.coverBadType, 415);
+  let webp: Buffer;
+  try {
+    webp = await sharp(Buffer.from(await cover.arrayBuffer()), { limitInputPixels: 50_000_000 })
+      .rotate()
+      .resize(480, 720, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+  } catch {
+    throw new UserError(t.reading.coverBadType, 415);
+  }
+  const path = `${userId}/${randomUUID()}.webp`;
+  const up = await storage.from(COVER_BUCKET).upload(path, webp, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
+  if (up.error) throw up.error;
+  return path;
+}
+
+/** Deletes a cover file (nothing when there is none). */
+export async function removeCover(path: string | null | undefined) {
+  if (path) await storage.from(COVER_BUCKET).remove([path]);
 }

@@ -21,7 +21,8 @@ export const pdfSizeLabel = (bytes: number) => R.pdf.size(fmtNum(Math.max(0.1, M
  * The book's cover: a photo from the camera or the gallery, and «حسّن الصورة» (GPT Image 2, keeps what is printed on
  * the cover; paid in coins). `onChange` gets the picture to save: the enhanced one or the original, as chosen.
  */
-export function CoverPicker({ title, onChange }: { title: string; onChange: (cover: Blob | null) => void }) {
+/** `current`: the cover the book already has (editing), shown until a new photo is picked. */
+export function CoverPicker({ title, onChange, current = null }: { title: string; onChange: (cover: Blob | null) => void; current?: string | null }) {
   const { toast } = useMahdi();
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -82,7 +83,7 @@ export function CoverPicker({ title, onChange }: { title: string; onChange: (cov
     setUseEnhanced(enh);
     onChange(enh && enhanced ? enhanced.blob : (original?.file ?? null));
   };
-  const shown = useEnhanced && enhanced ? enhanced.url : (original?.url ?? null);
+  const shown = useEnhanced && enhanced ? enhanced.url : (original?.url ?? current);
   const input = (ref: React.RefObject<HTMLInputElement | null>, camera: boolean) => (
     <input
       ref={ref}
