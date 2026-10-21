@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cartoonInput, CARTOON_IMAGE, CARTOON_VIDEO } from "@config/jawad/cartoon";
 const mocks = vi.hoisted(() => ({
   rows: [] as Record<string, unknown>[], outputs: [] as Record<string, unknown>[],
-  create: vi.fn(), upload: vi.fn(), free: vi.fn(),
+  create: vi.fn(), upload: vi.fn(), free: vi.fn(), buffer: vi.fn(), sheet: vi.fn(),
 }));
 vi.mock("@/lib/access", () => ({ unlimitedFor: mocks.free }));
 vi.mock("@/lib/jawad/server/jobs", () => ({ createJob: mocks.create }));
-vi.mock("@/lib/jawad/server/uploads", () => ({ uploadFromOutput: mocks.upload }));
+vi.mock("@/lib/jawad/server/uploads", () => ({ uploadFromOutput: mocks.upload, uploadFromBuffer: mocks.buffer }));
+vi.mock("@/lib/jawad/server/cartoon-pictures", () => ({ placeSheetBytes: mocks.sheet }));
 vi.mock("@/lib/jawad/server/runtime", () => ({ loadRuntime: async () => ({ generators: [{ id: "openai-gpt-image-2", sectionId: "images" }, { id: "byteplus-seedance-2-0", sectionId: "video" }] }) }));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -25,12 +26,13 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 import { continueCartoon } from "@/lib/jawad/server/cartoon";
 const input = cartoonInput({ style: "cinematic-3d", age: "child", movement: "walk", story: "garden", count: 2, video: true, consent: true });
-function row(id: string, position: number, status = "succeeded") {
-  return { id, user_id: "u1", status, idempotency_key: "cartoon_test_" + position, generator_id: CARTOON_IMAGE, inputs: { origin: "https://example.com", cartoon: { key: "cartoon_test", input, position, videoCoins: 4000, expiresAt: Date.now() + 60000 } } };
+function row(id: string, position: number, status = "succeeded", plan = input) {
+  return { id, user_id: "u1", status, idempotency_key: "cartoon_test_" + position, generator_id: CARTOON_IMAGE, inputs: { origin: "https://example.com", cartoon: { key: "cartoon_test", input: plan, position, videoCoins: 4000, expiresAt: Date.now() + 60000 } } };
 }
 beforeEach(() => {
   vi.clearAllMocks(); mocks.rows = [row("root", 0)]; mocks.outputs = [{ id: "canonical", user_id: "u1", job_id: "root", kind: "image" }];
   mocks.upload.mockResolvedValue({ id: "upload1" }); mocks.free.mockResolvedValue(false);
+  mocks.sheet.mockResolvedValue(null); mocks.buffer.mockResolvedValue({ id: "place1" });
   mocks.create.mockResolvedValue({ kind: "created", job: { id: "next" }, balance: 5000 });
 });
 describe("cartoon continuation", () => {
@@ -70,5 +72,22 @@ describe("cartoon continuation", () => {
     mocks.create.mockResolvedValue({ kind: "price_changed" });
     await expect(continueCartoon("root")).rejects.toThrow("تغيّر السعر");
   });
+  it("films each 15-second part in turn at the same price, with the place's sheet when it is drawn", async () => {
+    const story = cartoonInput({ style: "cinematic-3d", age: "child", movement: "walk", story: "custom", place: "house", scenes: ["plays with blocks", "builds a tower"], count: 1, video: true, consent: true });
+    mocks.rows = [row("root", 0, "succeeded", story)];
+    mocks.sheet.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    await continueCartoon("root");
+    expect(mocks.sheet).toHaveBeenCalledWith("house", "cinematic-3d");
+    expect(mocks.create.mock.calls[0][2]).toMatchObject({ idempotencyKey: "cartoon_test_1", generatorId: CARTOON_VIDEO, expectedCoins: 4000, refs: [{ uploadId: "upload1", name: "character" }, { uploadId: "place1", name: "place" }] });
+    expect(mocks.create.mock.calls[0][2].prompt).toContain("part 1 of 2");
+    mocks.rows.push(row("part1", 1, "succeeded", story));
+    mocks.sheet.mockResolvedValue(null);
+    await continueCartoon("part1");
+    expect(mocks.create.mock.calls[1][2]).toMatchObject({ idempotencyKey: "cartoon_test_2", generatorId: CARTOON_VIDEO, expectedCoins: 4000, refs: [{ uploadId: "upload1", name: "character" }] });
+    expect(mocks.create.mock.calls[1][2].prompt).toContain("part 2 of 2");
+    expect(mocks.create.mock.calls[1][2].prompt).not.toContain("@place");
+    mocks.rows.push(row("part2", 2, "succeeded", story));
+    await continueCartoon("part2");
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+  });
 });
-

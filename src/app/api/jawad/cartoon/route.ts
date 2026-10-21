@@ -4,11 +4,11 @@ import { callClaudeJson } from "@/lib/film/anthropic";
 import { generatorById } from "@config/jawad/generators";
 import { can, permForGenerator } from "@/lib/access";
 import { handle, UserError } from "@/lib/api";
-import { coinBalance } from "@/lib/coins";
+import { coinBalance, holdCoins } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadApiUser } from "@/lib/jawad/server/access";
 import { freeFirstEligible } from "@/lib/jawad/server/free-first";
-import { cartoonQuote, continueCartoon, planOf, requireCreated } from "@/lib/jawad/server/cartoon";
+import { cartoonQuote, continueCartoon, directCartoon, planOf, requireCreated } from "@/lib/jawad/server/cartoon";
 import { createJob, advanceJob, type JobRow } from "@/lib/jawad/server/jobs";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { jobViews } from "@/lib/jawad/server/works";
@@ -45,8 +45,8 @@ export const POST = handle(async (req: Request) => {
     const live = rt.generators.find(generator => generator.id === id);
     if (!live || !(live.live || (owner && live.keyConfigured)) || !(await can(user.email, permForGenerator(generatorById(id)!)))) throw new UserError("أحد مولدات هذا الطلب غير متاح لحسابك؛ جرّب الصور فقط أو تواصل معنا.", 403);
   }
-  // the person's story, in Arabic, made English for the film (Seedance 2.0 reads no Arabic)
-  if (input.video && input.story === "custom" && hasArabic(input.customStory)) input.storyEn = await storyInEnglish(input.customStory);
+  // a run saved before the parts existed: the person's story, in Arabic, made English for the film (Seedance 2.0 reads no Arabic)
+  if (input.video && !input.scenes.length && input.story === "custom" && hasArabic(input.customStory)) input.storyEn = await storyInEnglish(input.customStory);
   const full = await cartoonQuote(input);
   // «أول تجربة مجانية»: the account's first attempt — its first picture — while the offer is open (more pictures and the film are paid)
   const key = "cartoon_" + body.key;
@@ -60,12 +60,21 @@ export const POST = handle(async (req: Request) => {
   if (body.expectedCoins !== quote.totalCoins) throw new UserError("تغيّر السعر؛ اعرض السعر الحالي قبل التنفيذ.", 409);
   if (!owner && (await coinBalance(user.id) ?? 0) < quote.totalCoins) throw new UserError("رصيدك لا يكفي لإكمال الطلب كله. اشحن الرصيد أولًا.", 402);
   if (!Array.isArray(body.uploads) || body.uploads.length < 1 || body.uploads.length > 3 || body.uploads.some((id: unknown) => !isUuid(id)) || new Set(body.uploads).size !== body.uploads.length) throw new UserError("ارفع ١–٣ صور مختلفة.", 400);
-  if (input.mode === "sheet" && body.uploads.length < 2) throw new UserError("الكاركتر شيت يحتاج صورتين: من قدام ومن الجنب.", 400);
+  // «المخرج الخارق» writes each part of the character's film from the person's words, before anything starts; a part
+  // he could not write is told plainly (translated when it is Arabic) and costs nothing
+  let directorCoins = 0;
+  if (input.video && input.mode !== "scene" && input.scenes.length) {
+    const { directed, written } = await directCartoon(input);
+    input.directed = await Promise.all(directed.map(async (prompt, i) => prompt || (hasArabic(input.scenes[i]) ? await storyInEnglish(input.scenes[i]).then(en => (en ? "15 seconds, vertical 9:16 cartoon film.\nStory: " + en : "")) : "")));
+    directorCoins = owner || !input.scenes.length ? 0 : Math.round((quote.directorCoins / input.scenes.length) * written);
+  }
   const result = requireCreated(await createJob(user, owner, {
     idempotencyKey: key + "_0", generatorId: CARTOON_IMAGE, sectionId: quote.imageSection,
     prompt: cartoonImagePrompt(input), settings: { aspect: input.aspect, resolution: "std", quality: "medium", count: 1 },
     refs: body.uploads.map((uploadId: string) => ({ uploadId, role: "reference" })), refStyle: "references", expectedCoins: firstFree ? 0 : CARTOON_PRICE,
-  }, new URL(req.url).origin, { free: firstFree, cartoon: { key, input, videoCoins: quote.videoCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000 } }));
+  }, new URL(req.url).origin, { free: firstFree, cartoon: { key, input, videoCoins: quote.partCoins, position: 0, expiresAt: Date.now() + 24 * 3600_000 } }));
+  // only the parts the director actually wrote are paid, once the run has really started
+  if (directorCoins && result.kind === "created") await holdCoins(user.id, directorCoins, `cartoon-director:${key}`, "JAWAD AI · المخرج الخارق · فيلم الكرتون").catch(error => console.error("cartoon director charge", error));
   return NextResponse.json({ key, jobs: await jobViews([result.job]) });
 });
 
