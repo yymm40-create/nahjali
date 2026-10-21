@@ -77,7 +77,7 @@ const PLAN_SCHEMA = {
     assets: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "use"], properties: { id: { type: "string" }, use: { type: "string" } } } },
     pictures: {
       type: "array",
-      description: "0–4 pictures the piece truly needs that nobody gave and code cannot draw well (a photoreal texture, a product or prop, a real-looking backdrop, a rich illustration). GPT Image 2 makes each one WITHOUT any writing (you write every word in code). Usually [] — code draws most things better.",
+      description: "0–4 PICTURES SHOWN INSIDE the motion that nobody gave (a product photo, an object, a person or character, an illustration that appears as a picture in a shot). GPT Image 2 makes each one WITHOUT any writing. The motion itself and its whole foundation are CODE, always: never ask for a background, a backdrop, a texture, a world, a frame, type, shapes, particles or a transition — you draw all of that. Usually [].",
       items: { type: "object", additionalProperties: false, required: ["prompt", "name", "use", "aspect"], properties: { prompt: { type: "string", description: "English, detailed: subject, style matching the palette, lighting, composition, empty space where your type goes; never any text" }, name: { type: "string", description: "Arabic, 2–4 words" }, use: { type: "string", description: "where and how the scene uses it" }, aspect: { type: "string", enum: ["1:1", "9:16", "16:9", "4:5", "3:4", "4:3", "2:3", "3:2"] } } },
     },
     music: { type: "string", description: "the music bed in words (mood, tempo, instruments), or empty" },

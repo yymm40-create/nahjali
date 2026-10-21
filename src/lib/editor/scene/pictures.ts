@@ -1,7 +1,8 @@
-// «🎬 مختبر الموشن» · the pictures a piece uses that the person does not have: حيدرة names them in the plan (a texture, a
-// product shot, a backdrop, an illustration) and جواد makes each one with GPT Image 2 — WITHOUT any writing in it (the
-// lab writes every word itself, in code) — at the studio's price; it lands in the project's library and the scene draws
-// it like any picture the person gave. حيدرا ماكس designs, GPT Image 2 only paints.
+// «🎬 مختبر الموشن» · the pictures SHOWN INSIDE a piece that the person does not have (a product, an object, a person or
+// character, an illustration seen as a picture): حيدرة names them in the plan and جواد makes each one with GPT Image 2 —
+// WITHOUT any writing in it — at the studio's price; it lands in the project's library and the scene draws it like any
+// picture the person gave. The motion and its whole foundation (backgrounds, worlds, type, shapes, transitions) are
+// always code (the owner's order): GPT Image 2 only paints those pictures.
 
 import { randomUUID } from "node:crypto";
 import { UserError } from "@/lib/api";
