@@ -34,3 +34,13 @@ describe("«Seedance وجه واقعي»", () => {
     expect(r.issues.some((i) => i.field === "version")).toBe(true);
   });
 });
+
+describe("«Seedance وجه واقعي» failures", () => {
+  it("a short balance at the partner is said plainly, without naming it", async () => {
+    const { explainFailure } = await import("@/lib/jawad/server/jobs");
+    const m = explainFailure("realface bytedance/seedance-2.0/reference-to-video 402 Not enough credits", "x")!;
+    expect(m).toMatch(/Seedance وجه واقعي/);
+    expect(m).not.toMatch(/higgs|البرومبت/i);
+    expect(explainFailure("credit balance is too low", "x")).toMatch(/البرومبت/);
+  });
+});
