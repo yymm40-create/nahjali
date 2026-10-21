@@ -11,7 +11,7 @@ import { can } from "@/lib/access";
 import type { Command } from "@/lib/editor/commands";
 import { importSfx } from "@/lib/editor/sfx-library";
 import { keyCheck } from "@/lib/editor/key-check";
-import { labChat, labPlan, labReview, labWrite } from "@/lib/editor/scene/director";
+import { labChat, labPlan, labReview, labSearch, labWrite } from "@/lib/editor/scene/director";
 import { labResponse } from "@/lib/editor/scene/response";
 import { labCoverReview, labCoverWrite } from "@/lib/editor/scene/cover";
 import { labPicture } from "@/lib/editor/scene/pictures";
@@ -69,7 +69,7 @@ export const PUT = handle(async (req: Request, ctx: Ctx) => {
   return NextResponse.json(await saveTimeline(p, { ...b, actor: "user" }));
 });
 
-const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
+const AI_ACTIONS = new Set(["lab_plan", "lab_write", "lab_review", "lab_matte", "lab_chat", "lab_search", "lab_cover_write", "lab_cover_review", "lab_picture", "upscale", "transcribe", "align", "voice_in", "voice_out", "voiceprint", "make_hook", "make_sfx", "make_music", "separate", "make_start", "extend_plan", "smart_mask", "diagnose", "grade_check", "assistant", "handoff"]);
 
 /** `{ action, … }`: upload (sign/confirm), add_local (the desktop program's files), delete_asset, import, export_sign, exported, commands, history. */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -188,6 +188,9 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "lab_chat":
       b.__at = Date.now();
       return b.stream ? labResponse((onText) => labChat(p, who, b, onText), b.watch === true) : NextResponse.json(await labChat(p, who, b));
+    // «🌐 ابحث»: a real web search for حيدرة, brought by the page to the next step
+    case "lab_search":
+      return NextResponse.json(await labSearch(p, who, b));
     case "lab_write":
       b.__at = Date.now();
       return b.stream ? labResponse((onText) => labWrite(p, who, b, onText), b.watch === true) : NextResponse.json(await labWrite(p, who, b));

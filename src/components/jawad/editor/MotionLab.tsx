@@ -33,6 +33,7 @@ import { drawDemo, STUDIO, type Swatch } from "./lab-demos";
 import type { EditorAsset } from "./types";
 import { checkFootage, footageFrames, footageMatte, footageSeconds, footageSound, FootageSet, footageTotal, prepareFootage, type FootageInfo, type FootageSource } from "./lab-footage";
 import { footageLines, type FootageFrame, type FootageMeta } from "@/lib/editor/scene/footage";
+import { asksToSearch, REFS_MAX, type LabRef } from "@/lib/editor/scene/references";
 import "./motion-lab.css";
 
 type Stage = "brief" | "planning" | "plan" | "building" | "reviewing" | "ready" | "rendering";
@@ -104,7 +105,8 @@ type Card =
   | { k: "pictures"; items: { name: string; assetId: string | null; error?: string }[] }
   | { k: "version"; n: number; title: string }
   | { k: "review"; review: Review; round: number }
-  | { k: "cover"; assetId: string | null; headline: string; review: CoverScores | null };
+  | { k: "cover"; assetId: string | null; headline: string; review: CoverScores | null }
+  | { k: "search"; query: string; text: string; sources: string[] };
 /** one turn of the lab's conversation */
 interface ChatMsg {
   role: "user" | "assistant";
@@ -209,6 +211,44 @@ async function refOf(file: File): Promise<string> {
   let str = "";
   for (let i = 0; i < b.length; i += 0x8000) str += String.fromCharCode(...b.subarray(i, i + 0x8000));
   return btoa(str);
+}
+
+/** A reference video from the device, read here (never uploaded): its length and frames spread over it, in order,
+ * so حيدرة reads its rhythm, its moves and its cuts (6 frames, 8 for a long one; long side 640). */
+async function videoRefOf(file: File): Promise<{ seconds: number; frames: { t: number; data: string }[] }> {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement("video");
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = "auto";
+  v.src = url;
+  try {
+    await new Promise<void>((ok, bad) => {
+      v.onloadedmetadata = () => ok();
+      v.onerror = () => bad(new Error("ما قدرت أقرا هالفيديو على جهازك."));
+    });
+    const d = Number.isFinite(v.duration) ? v.duration : 0;
+    if (!(d > 0.3)) throw new Error("ما قدرت أعرف طول الفيديو.");
+    const n = d > 20 ? 8 : 6;
+    const frames: { t: number; data: string }[] = [];
+    for (let i = 0; i < n; i++) {
+      const t = Math.max(0, Math.min(d - 0.05, (d * (i + 0.5)) / n));
+      await new Promise<void>((ok) => {
+        const tm = setTimeout(ok, 4000);
+        v.onseeked = () => (clearTimeout(tm), ok());
+        v.currentTime = t;
+      });
+      const bm = await createImageBitmap(v);
+      const sc = Math.min(1, 640 / Math.max(bm.width, bm.height));
+      frames.push({ t: Math.round(t * 10) / 10, data: await jpegOf(bm, 0, 0, bm.width, bm.height, bm.width * sc, 0.82) });
+      bm.close();
+    }
+    return { seconds: d, frames };
+  } finally {
+    URL.revokeObjectURL(url);
+    v.removeAttribute("src");
+    v.load();
+  }
 }
 
 /** A picture as base64 JPEG (for حيدرة's eyes), drawn from a part of a bitmap at a given width. */
@@ -399,7 +439,12 @@ export default function MotionLab({
   const [brand, setBrand] = useState("");
   const [picks, setPicks] = useState<string[]>([]);
   const [choices, setChoices] = useState<LabChoices>({});
-  const [refs, setRefs] = useState<string[]>([]);
+  // «✨ مراجع»: pictures and videos to take from («📋 قلّدها») or be inspired by («✨ استلهم منها») — read on this device
+  const [refs, setRefs] = useState<(LabRef & { id: string })[]>([]);
+  const [refsBusy, setRefsBusy] = useState(false);
+  // «🌐 ابحث»: the next message is searched on the web first; what was found last goes with the scenario too
+  const [searchOn, setSearchOn] = useState(false);
+  const [research, setResearch] = useState("");
   const [plan, setPlan] = useState<LabPlan | null>(null);
   const [say, setSay] = useState("");
   const [tweak, setTweak] = useState("");
@@ -465,6 +510,8 @@ export default function MotionLab({
   const chosen = useMemo(() => picks.map((id, i) => ({ short: `a${i + 1}`, asset: images.find((a) => a.id === id)! })).filter((x) => x.asset), [picks, images]);
   const assetList = chosen.map((c) => ({ id: c.short, name: c.asset.name, w: c.asset.width ?? 0, h: c.asset.height ?? 0 }));
   const chosenCards = useMemo(() => chosenOptions(choices), [choices]);
+  /** the references as they go to حيدرة (their frames; the ids stay here) */
+  const refsBody = refs.map(({ kind, name, seconds, use, frames }) => ({ kind, name, seconds, use, frames }));
   // the clip the piece is built on (only while it is still on the timeline as it was)
   // (a film opened again from the timeline keeps the clip it was built on, even if that clip has moved since)
   const [savedFoots, setSavedFoots] = useState<FootageSource[]>([]);
@@ -827,7 +874,7 @@ export default function MotionLab({
         say1(line);
         workLine(line);
         setLiveCode("");
-        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: listOf(use), transparent, ...soundBody(), ...(program ? { code: program, errors: why } : {}) }, (raw) => setLiveCode(partialField(raw, "code")));
+        const r = await call<{ code: string; problems: string[]; notes: string }>("lab_write", { plan: p, seconds: p.seconds, assets: listOf(use), transparent, ...soundBody(), ...(program ? { code: program, errors: why } : { refs: refsBody }) }, (raw) => setLiveCode(partialField(raw, "code")));
         setLiveCode("");
         if (r.notes) {
           say1(r.notes);
@@ -884,7 +931,8 @@ export default function MotionLab({
         intensity,
         brand,
         assets: assetList,
-        references: refs,
+        refs: refsBody,
+        ...(research ? { research } : {}),
         choices,
         language: "Arabic (Gulf)",
         ...soundBody(),
@@ -1352,6 +1400,47 @@ export default function MotionLab({
   };
 
   const say2 = (text: string, options?: string[]) => setChat((c) => [...c, { role: "assistant", text, ...(options?.length ? { options } : {}) }]);
+  /** «✨ مراجع»: pictures and videos from the device, read here (a video becomes its frames in order). */
+  const addRefs = async (files: File[], use: LabRef["use"]) => {
+    setRefsBusy(true);
+    try {
+      for (const f of files.slice(0, Math.max(0, REFS_MAX - refs.length))) {
+        try {
+          const video = f.type.startsWith("video/");
+          const got = video ? await videoRefOf(f) : { seconds: 0, frames: [{ t: 0, data: await refOf(f) }] };
+          const ref = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, kind: video ? ("video" as const) : ("image" as const), name: f.name.slice(0, 60), seconds: got.seconds, use, frames: got.frames };
+          setRefs((r) => [...r, ref].slice(-REFS_MAX));
+          say2(`${use === "use" ? "📋" : "✨"} وصلني ${video ? `الفيديو «${ref.name}» (${Math.round(got.seconds)} ث، قريت منه ${got.frames.length} لقطات بالترتيب)` : `الصورة «${ref.name}»`} ${use === "use" ? "— بقلّده: أسلوبه وترتيبه وحركته، بكلامك أنت." : "— أستلهم منه الألوان والخط والإيقاع والحركة، مو محتواه."}`);
+        } catch (e) {
+          say2(`⚠️ ما قدرت أقرا «${f.name}»: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+      if (files.length > REFS_MAX - refs.length) say2(`المراجع بالكثير ${REFS_MAX}؛ شِل واحد لو تبي تضيف غيره.`);
+    } finally {
+      setRefsBusy(false);
+    }
+  };
+  /** «🌐 ابحث»: a real web search (like Claude's own); what it found is shown and goes with the next step. */
+  const searchWeb = async (query: string) => {
+    workLine(`🌐 أبحث في الإنترنت: «${query.slice(0, 80)}»…`);
+    let r: { text: string; sources: string[]; coins: number };
+    try {
+      r = await postJson<{ text: string; sources: string[]; coins: number }>(
+        `/api/jawad/editor/projects/${projectId}`,
+        { action: "lab_search", model: claude.id, query, about: plan ? `${plan.title} — ${plan.idea}` : brief.slice(0, 600) },
+        abort.current?.signal,
+      );
+    } catch (e) {
+      if (abort.current?.signal.aborted) throw new DOMException("cancelled", "AbortError");
+      // a search that failed never stops the conversation: حيدرة answers without it
+      workLine(`⚠️ ما قدرت أبحث الحين (${e instanceof Error ? e.message : e}) — أكمل بدون البحث.`);
+      return "";
+    }
+    post({ k: "search", query, text: r.text, sources: r.sources });
+    const found = `${r.text}${r.sources.length ? `\nالمصادر: ${r.sources.join(" ، ")}` : ""}`;
+    setResearch(found);
+    return found;
+  };
   /** The quick replies that are the lab's own buttons (pressed: the step runs here, no question to حيدرة needed). */
   const direct = (message: string): (() => Promise<unknown>) | null => {
     if (/^اعتمد( الخطة)?( و)?ابن/.test(message) && plan && !busy) return () => build(plan, { fresh: true });
@@ -1376,18 +1465,33 @@ export default function MotionLab({
     setStage("planning");
     setNow(0);
     try {
-      const r = await call<{ reply: string; action: "none" | "plan" | "code" | "cover" | "render"; brief: string; code: string; problems: string[]; options?: string[] }>("lab_chat", {
-        message,
-        history,
-        plan,
-        code,
-        params,
-        seconds: plan?.seconds ?? seconds,
-        assets: assetList,
-        attached_video: sources.map((s) => ({ name: s.name.slice(0, 60), seconds: Math.round(footageSeconds(s) * 10) / 10 })),
-        ...soundBody(),
-      });
-      say2(r.reply, r.action === "none" ? r.options : undefined);
+      // «🌐»: asked to search (the button, or «ابحث…» in the message) — the web first, then حيدرة answers with it
+      let found = searchOn || asksToSearch(message) ? await searchWeb(message) : "";
+      setSearchOn(false);
+      type ChatReply = { reply: string; action: "none" | "plan" | "code" | "cover" | "render"; brief: string; code: string; problems: string[]; options?: string[]; search?: string };
+      const ask = () =>
+        call<ChatReply>("lab_chat", {
+          message,
+          history,
+          plan,
+          code,
+          params,
+          seconds: plan?.seconds ?? seconds,
+          assets: assetList,
+          attached_video: sources.map((s) => ({ name: s.name.slice(0, 60), seconds: Math.round(footageSeconds(s) * 10) / 10 })),
+          refs: refsBody,
+          ...(found ? { research: found } : {}),
+          ...soundBody(),
+        });
+      let r = await ask();
+      // he decided the answer needs the web (like Claude does): he searches, then answers with what he found
+      if (r.search && !found) {
+        if (r.reply) say2(r.reply);
+        found = await searchWeb(r.search);
+        // with nothing found he has already said his piece (asking him again would only ask to search again)
+        r = found ? await ask() : { ...r, reply: "" };
+      }
+      if (r.reply) say2(r.reply, r.action === "none" ? r.options : undefined);
       if (r.action === "plan") {
         // the scenario first: it comes as a card and waits for «اعتمد وابنِ» (the owner's skills: never build before it)
         const p = await makePlan({ brief: r.brief, quiet: true });
@@ -1652,6 +1756,24 @@ export default function MotionLab({
           </div>
         );
       }
+      case "search":
+        return (
+          <div className="mlab-card flex flex-col gap-2">
+            <b>🌐 بحثت في الإنترنت عن «{card.query.slice(0, 80)}»</b>
+            <p className="m-0 whitespace-pre-wrap leading-7">{card.text || "ما لقيت شي مفيد في البحث."}</p>
+            {!!card.sources.length && (
+              <ul className="m-0 flex flex-col gap-1 ps-4 text-xs">
+                {card.sources.map((u) => (
+                  <li key={u} dir="ltr" className="truncate text-start">
+                    <a href={u} target="_blank" rel="noreferrer" className="underline opacity-80">
+                      {u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 70)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
       case "pictures":
         return (
           <div className="mlab-card flex flex-col gap-2">
@@ -1921,8 +2043,8 @@ export default function MotionLab({
                     </select>
                   </label>
                   <label className="block">
-                    <span className="mlab-label">مراجع: لقطات من ريلز عاجبتك (حتى ٤)</span>
-                    <input type="file" accept="image/*" multiple disabled={busy} onChange={async (e) => setRefs(await Promise.all([...(e.target.files ?? [])].slice(0, 4).map(refOf)))} />
+                    <span className="mlab-label">✨ مراجع للإلهام: صور أو فيديوهات عاجبتك (حتى {REFS_MAX})</span>
+                    <input type="file" accept="image/*,video/*" multiple disabled={busy || refsBusy} onChange={(e) => (void addRefs([...(e.target.files ?? [])], "inspire"), (e.target.value = ""))} />
                     {!!refs.length && <span className="block mt-1 font-bold" style={{ color: "var(--jw-ok)" }}>{refs.length} مرجع جاهز</span>}
                   </label>
                   <details className="mlab-group">
@@ -1958,7 +2080,18 @@ export default function MotionLab({
                       <input type="file" accept="video/*" multiple hidden disabled={busy} onChange={(e) => (void attachVideos([...(e.target.files ?? [])]), setAttachOpen(false), (e.target.value = ""))} />
                     </label>
                   )}
-                  <span className="mlab-label">🖼️ صور (شعار، منتج…)</span>
+                  <span className="mlab-label">✨ مراجع: صور أو فيديوهات تعجبك (ما تدخل في الموشن، حيدرة يتعلّم منها)</span>
+                  <div className="flex flex-wrap gap-2">
+                    <label className="jw-btn !min-h-10 cursor-pointer" title="ياخذ منها الألوان والخط والإيقاع والحركة، مو محتواها">
+                      ✨ استلهم منها
+                      <input type="file" accept="image/*,video/*" multiple hidden disabled={busy || refsBusy} onChange={(e) => (void addRefs([...(e.target.files ?? [])], "inspire"), setAttachOpen(false), (e.target.value = ""))} />
+                    </label>
+                    <label className="jw-btn !min-h-10 cursor-pointer" title="يقلّد أسلوبها وترتيبها وحركتها لقطة بلقطة، بكلامك أنت">
+                      📋 قلّدها
+                      <input type="file" accept="image/*,video/*" multiple hidden disabled={busy || refsBusy} onChange={(e) => (void addRefs([...(e.target.files ?? [])], "use"), setAttachOpen(false), (e.target.value = ""))} />
+                    </label>
+                  </div>
+                  <span className="mlab-label">🖼️ صور تنحط داخل الموشن (شعار، منتج…)</span>
                   {onUpload && (
                     <label className="jw-btn !min-h-10 cursor-pointer">
                       ⏫ ارفع صورة من جهازك
@@ -1981,12 +2114,32 @@ export default function MotionLab({
                   )}
                 </div>
               )}
+              {(!!refs.length || refsBusy) && (
+                <div className="flex flex-wrap items-center gap-2" aria-label="المراجع">
+                  {refs.map((r) => (
+                    <span key={r.id} className="mlab-thumb relative" title={`${r.name} — ${r.use === "use" ? "قلّدها" : "استلهم منها"} (اضغط للتبديل)`}>
+                      <button type="button" disabled={busy} className="block" onClick={() => setRefs((x) => x.map((y) => (y.id === r.id ? { ...y, use: y.use === "use" ? "inspire" : "use" } : y)))}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={`data:image/jpeg;base64,${r.frames[0].data}`} alt={r.name} />
+                        <span className="tag">{r.use === "use" ? "📋" : "✨"}{r.kind === "video" ? ` 🎞️ ${Math.round(r.seconds)}ث` : ""}</span>
+                      </button>
+                      <button type="button" disabled={busy} aria-label={`شيل المرجع ${r.name}`} className="absolute -top-1 -start-1 rounded-full bg-black/70 px-1.5 text-xs" onClick={() => setRefs((x) => x.filter((y) => y.id !== r.id))}>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {refsBusy && <span className="mlab-tip">⏳ أقرا المرجع…</span>}
+                </div>
+              )}
               <div className="flex items-end gap-2">
                 <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="التجهيزات" title="التجهيزات: الفيديو، المدة، الصوت، الأسلوب…" aria-pressed={drawer} disabled={busy} onClick={() => setDrawer((v) => !v)}>
                   ⚙️
                 </button>
                 <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ارفق فيديو أو صورة" title="فيديو من التايملاين أو من جهازك، وصور (شعار، منتج…)" disabled={busy} onClick={() => setAttachOpen((v) => !v)}>
                   📎
+                </button>
+                <button type="button" className="jw-btn !min-h-12 !px-3" aria-label="ابحث في الإنترنت" title="🌐 حيدرة يبحث في الإنترنت قبل ما يرد (مثل Claude). يبحث بنفسه بعد لما تكتب «ابحث…» أو لما يحتاج معلومة جديدة." aria-pressed={searchOn} disabled={busy} onClick={() => setSearchOn((v) => !v)}>
+                  🌐
                 </button>
                 <textarea
                   className="jw-textarea flex-1"
@@ -1999,7 +2152,7 @@ export default function MotionLab({
                       void send();
                     }
                   }}
-                  placeholder={code ? "ملاحظتك: «خلّ اللون ذهبي»، «حط الشعار في النهاية»، «أسرع شوي»… (يغيّر اللي تقوله بس)" : "وش الموشن اللي تبيه؟"}
+                  placeholder={searchOn ? "🌐 وش تبي حيدرة يدوّر عليه في الإنترنت؟" : code ? "ملاحظتك: «خلّ اللون ذهبي»، «حط الشعار في النهاية»، «أسرع شوي»… (يغيّر اللي تقوله بس)" : "وش الموشن اللي تبيه؟"}
                   disabled={busy}
                 />
                 {busy ? (
