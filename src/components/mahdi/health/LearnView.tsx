@@ -9,6 +9,7 @@ import { GROUPS, GUIDE, MUSCLES, muscleInfo, type MuscleGroup } from "@config/ma
 import { EXERCISES, MUSCLE_NAMES, candidates, exerciseById, type Muscle } from "@/lib/mahdi/health/plan";
 import { history, record } from "@/lib/mahdi/health/tracker";
 import BodyMap from "./BodyMap";
+import ExerciseFigure, { ExerciseThumb } from "./ExerciseFigure";
 import { useHealth } from "./HealthProvider";
 
 const where = (e: (typeof EXERCISES)[number]) => [e.gym && !e.body && "🏟️ جيم", e.home && !e.body && "🏠 جيم بيتي", e.body && "🤸 بدون أدوات"].filter(Boolean).join(" · ");
@@ -79,6 +80,7 @@ export function LearnView() {
         <div className="gym-list-ex">
           {list.map((e) => (
             <Link key={e.id} href={`/mahdi/health/learn/${e.id}`}>
+              <ExerciseThumb id={e.id} />
               <b>{e.name}</b>
               <small>
                 {MUSCLE_NAMES[e.muscle]} · {where(e)}
@@ -118,6 +120,11 @@ export function ExerciseView({ id }: { id: string }) {
           {where(ex)}
           {ex.preg ? " · 🤰 مناسب للحامل" : " · ⚠️ مو مناسب في الحمل"}
         </p>
+      </section>
+
+      <section className="gym-card space-y-2">
+        <h2 className="text-lg font-black">🎬 شوف الحركة</h2>
+        <ExerciseFigure id={ex.id} name={ex.name} />
       </section>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_1.2fr]">

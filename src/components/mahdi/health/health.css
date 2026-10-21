@@ -427,7 +427,7 @@
 .gym-bodymap .legend i.main { background: #c6ff1a; }
 .gym-bodymap .legend i.help { background: #ff7a1a; margin-inline-start: 0.6rem; }
 .gym-list-ex { display: grid; gap: 0.4rem; }
-.gym-list-ex a { position: relative; display: block; padding: 0.6rem 0.8rem; border: 1px solid #2a3038; border-radius: 0.9rem; background: #13161b; text-decoration: none; }
+.gym-list-ex a { position: relative; display: grid; grid-template-columns: 4.6rem 1fr; column-gap: 0.7rem; align-items: center; padding: 0.5rem 0.8rem 0.5rem 0.5rem; border: 1px solid #2a3038; border-radius: 0.9rem; background: #13161b; text-decoration: none; }
 .gym-list-ex a b { display: block; font-weight: 800; }
 .gym-list-ex a small { font-size: 0.72rem; color: #9aa3ad; }
 .gym-list-ex .tag { position: absolute; inset-inline-end: 0.6rem; top: 0.6rem; font-size: 0.65rem; font-weight: 900; background: #c6ff1a; color: #0c0e11; padding: 0.1rem 0.45rem; border-radius: 999px; }
@@ -450,3 +450,12 @@
 .gym-days7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.3rem; height: 44px; align-items: end; }
 .gym-days7 i { display: block; border-radius: 4px 4px 2px 2px; background: #ff7a1a; }
 .gym-days7 i.full { background: #c6ff1a; }
+
+/* the technique drawings */
+.gym-thumb { grid-row: span 2; width: 4.6rem; height: auto; border-radius: 0.6rem; background: #0e1115; }
+.gym-figure { border: 1px solid var(--g-line); border-radius: 1.1rem; background: radial-gradient(80% 70% at 50% 40%, rgba(198, 255, 26, 0.06), transparent 70%), #0e1115; padding: 0.6rem; }
+.gym-figure svg { display: block; width: 100%; margin: 0 auto; }
+.gym-ex-how { border-top: 1px solid var(--g-line); }
+.gym-ex-how > summary { cursor: pointer; list-style: none; padding: 0.55rem 0.75rem; font-size: 0.82rem; font-weight: 800; color: var(--g-lime); }
+.gym-ex-how > summary::-webkit-details-marker { display: none; }
+.gym-ex-how[open] > summary { padding-bottom: 0.3rem; }
