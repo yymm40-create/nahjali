@@ -21,7 +21,6 @@ export default function AgreeTerms({ on, onChange, what = "الشحن" }: { on: 
         <Link href="/privacy" target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
           سياسة الخصوصية
         </Link>
-        {" "}— وفيها بند الأعذار: إذا تُوفّي صاحب الموقع أو عجز أو تهكّر الموقع فهو غير مطالب بإرجاع أي مبالغ.
       </span>
     </label>
   );

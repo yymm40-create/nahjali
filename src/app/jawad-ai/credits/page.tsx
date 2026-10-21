@@ -27,6 +27,7 @@ export default async function CreditsPage({ searchParams }: { searchParams: Prom
       featured={s.featured}
       payable={!!(course.bank.iban || course.bank.account)}
       hasSupport={!!s.whatsapp}
+      whatsapp={s.whatsapp}
       user={user?.email ? { email: user.email } : null}
       balance={owner ? null : balance}
       owner={owner}

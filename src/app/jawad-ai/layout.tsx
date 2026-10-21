@@ -9,6 +9,7 @@ import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { barSections } from "@/lib/jawad/server/bar";
 import { giveSignupGift } from "@/lib/gift";
 import { hasPurchased } from "@/lib/credits/orders";
+import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
 import { loadCreditSettings } from "@/lib/credits/settings";
 import { bonusPct } from "@config/credits";
 import SubscribePopup from "@/components/jawad/SubscribePopup";
@@ -33,6 +34,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#0b0c0f", colorScheme: "dark" };
 
+/** The packages popup leaves a wallet with this much (¤10, in halalas) or more alone. */
+const POPUP_BELOW_HALALAS = 1000;
+
 /**
  * «الجواد الذكي!» | JAWAD AI: its own identity, header and sections bar, separate from «نهج علي» (the site's chrome
  * steps aside for /jawad-ai, see SiteChrome). Same sign-in, same coins.
@@ -50,9 +54,11 @@ export default async function JawadLayout({ children }: { children: React.ReactN
     ? await Promise.all([coinBalance(user.id), getUsername(await createClient(), user.id).catch(() => null)])
     : [null, null];
   // «صانع الألعاب», «صانع المحتوى», «المصمم الذكي» and «زهراء» follow their own switches (see barSections)
-  // whoever has not bought a package (and is not on the house) gets the packages in a popup (SubscribePopup)
-  const unpaid = !preview && !owner && !(user && (await freeFor(user)));
-  const popupPacks = unpaid && !(user && (await hasPurchased(user.id).catch(() => false)))
+  // the packages in a popup (SubscribePopup): only for a SIGNED-IN person who has not bought a package, is not on the house, has
+  // less than ¤10 in the wallet and has no free first picture left to try — a visitor who is not signed in never sees it
+  const needsPacks =
+    user && !preview && !owner && balance != null && balance < POPUP_BELOW_HALALAS && !(await freeFor(user)) && !(await hasPurchased(user.id).catch(() => false)) && !(await signupFreeImageAvailable(user.id, user.created_at).catch(() => false));
+  const popupPacks = needsPacks
     ? (await loadCreditSettings().catch(() => null))?.packs.map((p) => ({ id: p.id, name: p.name, price: p.price, credit: p.credit, tag: p.tag, bonus: bonusPct(p) })) ?? []
     : [];
   const bar = { ...rt, sections: await barSections(rt, user, owner) };
