@@ -135,6 +135,8 @@ export function explainFailure(detail: string | undefined, fallback: string | un
   const d = detail ?? "";
   const code = /\b([A-Z][A-Za-z]+(?:\.[A-Z][A-Za-z]+)?)\b/.exec(d.replace(/^smart edit prompt: /, ""))?.[1];
   const tag = (m: string) => (code && /Sensitive|Policy|Limit|Quota/.test(code) ? `${m} (${code})` : m);
+  // «Seedance وجه واقعي»: the platform's balance at its video partner (never named to the person) is not enough for this one
+  if (/^realface\b/.test(d) && /credit|balance|insufficient|not enough|payment|\b402\b/i.test(d)) return "رصيد مزوّد «Seedance وجه واقعي» عند المنصة ما يكفي لهذا الفيديو. جرّب دقة أقل أو مدة أقصر، أو انتظر لين يشحن صاحب المنصة الرصيد. أُعيدت لك نقودك.";
   if (/credit balance is too low/i.test(d)) return "رصيد مزوّد الذكاء الاصطناعي عند المنصة خلص، فما قدر يكتب البرومبت المعدّل. أُعيدت لك نقودك. صاحب المنصة لازم يشحن الرصيد.";
   if (/OutputVideoSensitiveContentDetected/.test(d) && /copyright/i.test(d)) return tag("رفض المزوّد الفيديو الناتج لأنه يشبه محتوى محمي بحقوق نشر (لاعب أو شخص مشهور، شعار، لبس فريق، شخصية معروفة). غيّر الملاحظة أو المراجع لتبعد عن هذا الشبه وجرّب. ما انخصم منك شي.");
   if (/OutputAudioSensitiveContentDetected/.test(d) && /copyright/i.test(d)) return tag("رفض المزوّد الصوت الناتج لأنه يشبه موسيقى أو صوتًا محميًا بحقوق نشر. اطلب صوتًا عاديًا بدون موسيقى معروفة، أو أطفئ الصوت وجرّب. ما انخصم منك شي.");
@@ -859,7 +861,7 @@ export async function advanceJob(job: JobRow, o: { force?: boolean } = {}) {
   const realFace = def?.provider.id === "realface";
   const task: ArkTask | null = realFace
     ? await realFaceTask(job.provider_task_id)
-        .then((t) => ({ id: job.provider_task_id!, model: job.model_id, status: t.status, videoUrl: t.videoUrl, error: t.moderated ? `moderated: ${t.error}` : t.error, tokens: null, createdAt: null, safetyIdentifier: null, duration: null, ratio: null, resolution: null }))
+        .then((t) => ({ id: job.provider_task_id!, model: job.model_id, status: t.status, videoUrl: t.videoUrl, error: t.moderated ? `moderated: ${t.error}` : `realface ${t.error ?? "failed"}`, tokens: null, createdAt: null, safetyIdentifier: null, duration: null, ratio: null, resolution: null }))
         .catch((e) => {
           console.error("jawad real-face check failed", job.id, e);
           return null;
