@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ContestWinners from "@/components/jawad/ContestWinners";
 import AdsGrid from "@/components/jawad/AdsGrid";
 import Home from "@/components/jawad/Home";
 import Landing, { type LandingTool } from "@/components/jawad/Landing";
@@ -66,7 +67,12 @@ export default async function JawadHome() {
     const live = rt.generators.filter((g) => g.live);
     const samples = [...new Set(live.map((g) => g.sampleUrl).filter((u): u is string => !!u && /\.(png|jpe?g|webp)(\?|$)/i.test(u)))].slice(0, 12);
     const models = [...new Set(live.map((g) => g.name))].slice(0, 14);
-    return <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} />;
+    return (
+      <>
+        <ContestWinners />
+        <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} />
+      </>
+    );
   }
   const hasAds = Boolean(ads.main || ads.side_top || ads.side_bottom);
   // every branch this person may open (the same as the top bar), the owner's hidden ones too
@@ -78,6 +84,8 @@ export default async function JawadHome() {
   const first = String(meta.full_name || meta.name || "").trim().split(/\s+/)[0] ?? "";
 
   return (
+    <>
+    <ContestWinners />
     <Home
       first={first}
       owner={owner}
@@ -97,5 +105,6 @@ export default async function JawadHome() {
       recent={recent}
       ads={hasAds ? <AdsGrid ads={ads} emptyHint={owner ? <Link href="/jawad-ai/admin/ads" className="text-xs underline">خانة فارغة: أضف إعلانًا</Link> : null} /> : null}
     />
+    </>
   );
 }
