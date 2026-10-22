@@ -198,8 +198,8 @@ export function evaluate(def: GeneratorDef, input: EvalInput, prices: Record<str
   }
 
   const quoted: PriceResult = def.price({ settings, prompt, instructions: input.instructions, refs }, mode, prices);
-  // the profit follows what is made: a picture 60٪, a video 40٪, sound the general margin (config/coins.ts)
-  const kind = priceKindOf(def.output);
+  // the profit follows what is made: GPT Image 2's pictures, videos, the rest the general margin (config/coins.ts)
+  const kind = priceKindOf(def);
   const centi = quoted.ok ? quoted.lines.reduce((sum, l) => sum + l.centi, 0) : 0;
   const price: PriceResult = quoted.ok ? (input.atCost && centi > 0 ? { ...quoted, coins: costOfLines(quoted.lines), was: undefined } : { ...quoted, coins: coinsOf(centi, kind), was: wasOf(centi, kind) }) : quoted;
   if (!price.ok) issues.push({ field: "price", message: price.reason });

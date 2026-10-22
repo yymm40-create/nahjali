@@ -64,7 +64,7 @@ describe("at cost: what the tool costs us, with Claude's input and output counte
     expect(usd).toBeCloseTo(0.425, 3);
     expect(priceOf(usd, "claude", true)).toBe(costHalalas(usd));
     expect(priceOf(usd, "claude", true)).toBe(160);
-    expect(claudeHalalas(usd)).toBe(176); // normal: cost + 10%
+    expect(claudeHalalas(usd)).toBe(224); // normal: cost + 40%
     // a video: the normal price carries 40% and is rounded to half riyals; at cost it is the cost to the halala
     const video = 2.109;
     expect(coinsFor(video, "video")).toBe(1150);
@@ -85,7 +85,7 @@ describe("at cost: what the tool costs us, with Claude's input and output counte
     const coins = read("src/lib/coins.ts");
     expect(coins).toContain("priceOf(costUsd, claude, await atCostFor(userId))");
     expect(coins).toContain("priceOf(costUsd, claude, await atCostFor(r.userId))");
-    expect(coins).toMatch(/atCost \? priceOf\(usd, "claude", true\) : claudeHalalas\(usd\)/);
+    expect(coins).toMatch(/atCost \? priceOf\(usd, "claude", true\) : claudeHalalas\(usd, undefined, kind\)/);
     const jobs = read("src/lib/jawad/server/jobs.ts");
     expect(jobs).toContain("costOfLines(e.price.lines)");
     expect(jobs).toContain("(await perksOf(user.email)).atCost");

@@ -51,7 +51,7 @@ async function ask<T>(user: RobotUser, who: string, model: unknown, label: strin
       throw new UserError(claudeWhy(e, "ما قدر حيدرا ماكس يرتّب التصميم الحين. جرّب مرة ثانية.", user.email), 502);
     });
     return { ...r, usd: claudeCost(r.usage) };
-  });
+  }, undefined, { price: "max" });
 }
 
 const factsOf = (v: unknown) => {

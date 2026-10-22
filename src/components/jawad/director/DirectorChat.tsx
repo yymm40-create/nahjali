@@ -8,6 +8,7 @@ import MicButton from "@/components/robots/MicButton";
 import { probeFile, putWithProgress } from "@/components/jawad/studio/upload";
 import { api, postJson } from "@/lib/fetch";
 import { JAWAD_ATTACHMENT_LIMIT } from "@config/jawad/limits";
+import { REALFACE_ID, REALFACE_LOW_RES, REALFACE_WARNING } from "@config/jawad/realface";
 
 export interface DirectorGenerator {
   id: string;
@@ -221,6 +222,7 @@ export default function DirectorChat({ open = true, onOpen, onClose, loginHref, 
         <label>الجودة<select value={value.resolution} onChange={(event) => updateSetting(media, { resolution: event.target.value })}>{(generator?.resolutions.length ? generator.resolutions : [{ value: value.resolution, label: value.resolution }]).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         {media.kind === "video" && <><label>الثواني<input type="number" min={4} max={15} value={value.seconds} onChange={(event) => updateSetting(media, { seconds: Number(event.target.value) })} /></label><label className="jd-check"><input type="checkbox" checked={value.withSound} onChange={(event) => updateSetting(media, { withSound: event.target.checked })} /> صوت متزامن</label></>}
       </div>}
+      {!media.jobId && value.generatorId === REALFACE_ID && <p className="jd-error">{REALFACE_WARNING}{value.resolution === "480p" ? ` ${REALFACE_LOW_RES}` : ""}</p>}
       <details><summary>البرومبت النهائي</summary><p className="jd-prompt">{media.prompt}</p></details>
       {media.error && <p className="jd-error">{media.error}</p>}
       {url && (media.kind === "video" ? <video className="jd-output" controls src={url} /> : <Image className="jd-output" src={url} alt={media.name} width={1024} height={1024} unoptimized />)}

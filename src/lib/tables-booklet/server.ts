@@ -4,7 +4,7 @@
 
 import { UserError } from "@/lib/api";
 import { unlimitedFor } from "@/lib/access";
-import { holdCoins, loadPricing } from "@/lib/coins";
+import { holdCoins, loadPricing, logCost } from "@/lib/coins";
 import { OPTIONS_RULE } from "@/lib/chat-options";
 import { talk, type Turn } from "@/lib/games/claude";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -136,7 +136,7 @@ export async function sayToNoor(user: { id: string; email?: string | null }, cha
 export async function bookletPrice(email: string | null | undefined, poses: number): Promise<{ halalas: number; free: boolean }> {
   await loadPricing();
   const usd = bookletUsd(poses);
-  // its pictures: the pictures' profit (60٪)
+  // its pictures: GPT Image 2's profit (30٪)
   const halalas = usd > 0 ? coinsFor(usd, "image") : 0;
   return { halalas, free: await unlimitedFor(email) };
 }
@@ -198,6 +198,8 @@ export async function startBooklet(user: { id: string; email?: string | null }, 
       throw e;
     }
   }
+  // what its pictures cost us, for the net profit (free ones too)
+  await logCost(user.id, `booklet:${data!.id}`, `📘 ${TB.name}`, bookletUsd(poses));
   if (chatId) await db().from("booklet_chats").update({ order_id: data!.id }).eq("id", chatId).eq("user_id", user.id);
   return { id: data!.id as string, next: design && !design.photo ? "compose" : "upload" };
 }

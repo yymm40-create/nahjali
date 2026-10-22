@@ -5,8 +5,8 @@ import { coinsOf, costOf, wasOf } from "@config/jawad/generators";
 describe("riyal pricing: cost → rounded up to half a riyal → + margin (rounded up)", () => {
   beforeEach(() => setPricing(null));
 
-  it("defaults: 3.75 per dollar, half-riyal step, 30% now and 60% struck; pictures 60%, videos 40%", () => {
-    expect(getPricing()).toEqual({ usdToSar: 3.75, stepHalalas: 50, marginPct: 30, wasMarginPct: 60, imageMarginPct: 60, videoMarginPct: 40 });
+  it("defaults: 3.75 per dollar, half-riyal step, 40% now and 70% struck; GPT Image 2 30%, videos 40%", () => {
+    expect(getPricing()).toEqual({ usdToSar: 3.75, stepHalalas: 50, marginPct: 40, wasMarginPct: 70, imageMarginPct: 30, videoMarginPct: 40 });
   });
 
   it("rounds UP to the step: 0.45 → 0.50, 1.10 → 1.50, 1.50 stays", () => {
@@ -24,20 +24,20 @@ describe("riyal pricing: cost → rounded up to half a riyal → + margin (round
   });
 
   it("the customer's price: rounded cost + rounded profit", () => {
-    // cost 0.45 → 0.50; profit 30% of 0.45 = 0.135 → 0.50 ⇒ 1.00
+    // cost 0.45 → 0.50; profit 40% of 0.45 = 0.18 → 0.50 ⇒ 1.00
     expect(sellHalalas(45)).toBe(100);
-    // cost 1.10 → 1.50; profit 0.33 → 0.50 ⇒ 2.00
+    // cost 1.10 → 1.50; profit 0.44 → 0.50 ⇒ 2.00
     expect(sellHalalas(110)).toBe(200);
-    // cost 10.00 → 10.00; profit 3.00 → 3.00 ⇒ 13.00
-    expect(sellHalalas(1000)).toBe(1300);
+    // cost 10.00 → 10.00; profit 4.00 → 4.00 ⇒ 14.00
+    expect(sellHalalas(1000)).toBe(1400);
     expect(sellHalalas(0)).toBe(0);
   });
 
   it("the struck «was» price uses the full margin and is never below the price", () => {
-    expect(wasHalalas(1000)).toBe(1600);
-    expect(wasHalalas(45)).toBe(100); // 0.50 + (0.27 → 0.50)
+    expect(wasHalalas(1000)).toBe(1700);
+    expect(wasHalalas(45)).toBe(100); // 0.50 + (0.315 → 0.50)
     for (const c of [1, 45, 110, 333, 1000, 12345]) expect(wasHalalas(c)).toBeGreaterThanOrEqual(sellHalalas(c));
-    expect(savingPct(1300, 1600)).toBe(19);
+    expect(savingPct(1400, 1700)).toBe(18);
     expect(savingPct(100, 100)).toBe(0);
   });
 
@@ -49,7 +49,7 @@ describe("riyal pricing: cost → rounded up to half a riyal → + margin (round
   it("the generators' price keys (hundredths of a halala of cost) sell the same way", () => {
     expect(costOf(4500)).toBe(45);
     expect(coinsOf(4500)).toBe(100);
-    expect(wasOf(100000)).toBe(1600);
+    expect(wasOf(100000)).toBe(1700);
   });
 
   it("the owner's settings change every price, and bad values fall back", () => {

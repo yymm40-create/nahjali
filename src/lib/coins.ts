@@ -90,6 +90,25 @@ export async function logFree(userId: string, ref: string, label: string, halala
   await db().from("site_free_usage").insert({ user_id: userId, ref, label: label.slice(0, 200), halalas: Math.max(0, Math.round(halalas)) }).then(() => {}, () => {});
 }
 
+/**
+ * «صافي الربح» (/admin/profit): what an operation really cost the site — the providers' price, in dollars, turned into
+ * halalas at the owner's dollar rate — for everyone (a paying person, a free account, the owners). One row per `ref`
+ * (a second write of the same ref replaces it). Never throws: the record must not stop the work (migration 0092).
+ */
+export async function logCost(userId: string | null | undefined, ref: string, label: string, usd: number) {
+  if (!ref || !(usd > 0)) return;
+  const rate = (await import("@config/coins")).getPricing().usdToSar;
+  await logCostHalalas(userId, ref, label, usd * rate * 100);
+}
+/** The same, for a cost already in halalas (the owner's fixed cost tables: the editor's tools). */
+export async function logCostHalalas(userId: string | null | undefined, ref: string, label: string, halalas: number) {
+  if (!ref || !(halalas > 0)) return;
+  await db()
+    .from("site_costs")
+    .upsert({ ref: ref.slice(0, 200), user_id: userId ?? null, label: label.slice(0, 200), cost_halalas: Math.round(halalas * 10_000) / 10_000 })
+    .then(() => {}, () => {});
+}
+
 /** A free operation that failed: off the record (it cost nothing). */
 export async function dropFree(ref: string) {
   await db().from("site_free_usage").delete().eq("ref", ref).then(() => {}, () => {});
@@ -120,8 +139,8 @@ export async function giftCoinsOnce(userId: string, halalas: number, ref: string
 
 /** Before a paid operation starts: holds its estimated coins, or refuses clearly when the balance is short. */
 /**
- * `kind`: what the job makes — "claude" (or `true`): Claude's usage alone, its real cost + the platform's 10٪;
- * "image" 60٪; "video" 40٪; anything else the general margin (config/coins.ts).
+ * `kind`: what the job makes — "claude" (or `true`): Claude's usage alone, its real cost + the platform's 40٪;
+ * "image" (GPT Image 2) 30٪; "video" 40٪; "max" («حيدرا ماكس») its usage + 70٪; anything else the general margin (config/coins.ts).
  */
 export async function reserveCoins(user: { id: string; email?: string | null }, jobId: string, estimateUsd: number, label: string, claude: ChargeKind = false) {
   if ((await unlimitedFor(user.email)) || !(await coinsRequired())) {
@@ -156,19 +175,24 @@ export async function chargeAfter(userId: string, jobId: string, costUsd: number
   await loadPricing();
   const coins = priceOf(costUsd, claude, await atCostFor(userId));
   if (coins > 0) await adjust(userId, -coins, "settle", jobId, label, true);
+  await logCost(userId, jobId, label, costUsd);
   return coins;
 }
 
 /** On success: the held coins become the real charge (the difference is given back, or taken). */
 export async function settleCoins(jobId: string, costUsd: number, claude: ChargeKind = false) {
   await loadPricing();
-  await settleTeamCoins(jobId, costUsd, claude);
+  const team = await settleTeamCoins(jobId, costUsd, claude);
   const r = await reserved(jobId);
   if (!r) {
     // a free account's job: its value at the site's prices goes on the record kept for it
     await db().from("site_free_usage").update({ halalas: priceOf(costUsd, claude) }).eq("ref", jobId).then(() => {}, () => {});
+    // and what it really cost, for the net profit (whose it was: the free record, or the team job's)
+    const free = team ? null : ((await db().from("site_free_usage").select("user_id,label").eq("ref", jobId).limit(1).maybeSingle()).data as { user_id: string; label: string } | null);
+    await logCost(team?.userId ?? free?.user_id ?? null, jobId, team?.label ?? free?.label ?? "", costUsd);
     return;
   }
+  await logCost(r.userId, jobId, r.label, costUsd);
   // a job marked with nothing held (pay after use) is charged here; one that held its estimate gets the difference back
   if (r.held < 0) return;
   const diff = r.held - priceOf(costUsd, claude, await atCostFor(r.userId));
@@ -228,9 +252,10 @@ async function teamReserved(ref: string) {
 
 async function settleTeamCoins(ref: string, costUsd: number, claude: ChargeKind = false) {
   const r = await teamReserved(ref);
-  if (!r || r.held < 0) return;
+  if (!r || r.held < 0) return r;
   const diff = r.held - priceOf(costUsd, claude);
   if (diff !== 0) await adjustTeam(r.seriesId, r.userId, diff, "settle", ref, r.label, true);
+  return r;
 }
 
 /** Gives back what the team's wallet holds for this job (failed ones cost nothing). Returns who it was held for. */
@@ -282,24 +307,34 @@ export async function releaseCoins(userId: string, coins: number, ref: string, l
   if (coins > 0) await adjust(userId, coins, "refund", ref, label, true);
 }
 
-// ───────────── a robot's conversation: Claude's real usage + 10% ─────────────
+// ───────────── a robot's conversation: Claude's real usage + its profit (40٪; «حيدرا ماكس» 70٪) ─────────────
 
 export interface ClaudeBill {
   /** nothing is charged (the owner, an unlimited account, or coins not required) */
   free: boolean;
   /** halalas charged after `settle` */
   charged: number;
-  /** after the reply: takes the real usage (USD) at the platform's 10% — never throws over a short balance */
+  /** after the reply: takes the real usage (USD) plus the platform's profit — never throws over a short balance */
   settle: (usd: number) => Promise<number>;
 }
 
 /**
  * Before a robot answers: the wallet must have something in it (a clear refusal otherwise); after it, `settle(usd)`
- * takes what the reply really cost + 10% (pay after use). Free for the owner and unlimited accounts.
+ * takes what the reply really cost + the profit (pay after use). Free for the owner and unlimited accounts.
+ * `kind` "max": «حيدرا ماكس» writing a program for the job (its own, higher profit).
  */
-export async function claudeMeter(who: { id: string; email?: string | null; owner?: boolean; team?: string | null }, model: ClaudeModel, label: string): Promise<ClaudeBill> {
-  // free: nothing is taken, but the reply's value at the site's price is written down (code monitoring)
-  const bill: ClaudeBill = { free: true, charged: 0, settle: async (usd: number) => (await logFree(who.id, `claude:${crypto.randomUUID()}`, label, claudeHalalas(usd)), 0) };
+export async function claudeMeter(who: { id: string; email?: string | null; owner?: boolean; team?: string | null }, model: ClaudeModel, label: string, kind: "claude" | "max" = "claude"): Promise<ClaudeBill> {
+  // free: nothing is taken, but the reply's value at the site's price is written down (code monitoring), and its real cost
+  const bill: ClaudeBill = {
+    free: true,
+    charged: 0,
+    settle: async (usd: number) => {
+      const ref = `claude:${crypto.randomUUID()}`;
+      await logFree(who.id, ref, label, claudeHalalas(usd, undefined, kind));
+      await logCost(who.id, ref, label, usd);
+      return 0;
+    },
+  };
   if (who.owner || (await unlimitedFor(who.email)) || !(await coinsRequired())) return bill;
   await loadPricing();
   // pay after use: a reply starts while the wallet has anything in it, and takes what it really cost after
@@ -313,8 +348,9 @@ export async function claudeMeter(who: { id: string; email?: string | null; owne
     free: false,
     charged: 0,
     settle: async (usd: number) => {
-      // a code's «بسعر التكلفة»: the real usage with no +10%
-      const coins = atCost ? priceOf(usd, "claude", true) : claudeHalalas(usd);
+      // a code's «بسعر التكلفة»: the real usage with no profit
+      const coins = atCost ? priceOf(usd, "claude", true) : claudeHalalas(usd, undefined, kind);
+      await logCost(who.id, ref, label, usd);
       if (coins <= 0) return 0;
       if (who.team) await adjustTeam(who.team, who.id, -coins, "settle", ref, label, true);
       else await adjust(who.id, -coins, "settle", ref, label, true);

@@ -273,7 +273,7 @@ export async function smartEdit(user: { id: string }, owner: boolean, b: EditBod
     if (!e.price.ok) return { e, issues: [{ field: "price", message: e.price.reason }] };
     const lines = [...e.price.lines, ...extra.map(({ label, centi }) => ({ label, centi }))];
     // each part at its own profit: the new picture/video at its kind's (e.price.coins), جواد's writing (Claude) at its
-    // real cost + 10٪, the edit fee at the general margin
+    // real cost + 40٪, the edit fee at the general margin
     const sum = (ls: { centi: number }[]) => ls.reduce((s, l) => s + l.centi, 0);
     const coins = e.price.coins + coinsOf(sum(extra.filter((l) => l.claude)), "claude") + coinsOf(sum(extra.filter((l) => !l.claude)), "other");
     return { e, lines, coins, usd: (e.price.usdCeiling ?? 0) + (def.output === "video" ? EDIT_CLAUDE_USD : 0) };

@@ -14,7 +14,7 @@ export interface SeriesCharge {
   series: Pick<FilmSeries, "id" | "user_id" | "mode">;
   who: Who;
   took: boolean;
-  /** what it is priced as: Claude's usage alone (سجاد's replies, `true`) the real cost + 10٪, a picture 60٪ */
+  /** what it is priced as: Claude's usage alone (سجاد's replies, `true`) the real cost + 40٪, a GPT Image 2 picture 30٪ */
   claude?: ChargeKind;
 }
 

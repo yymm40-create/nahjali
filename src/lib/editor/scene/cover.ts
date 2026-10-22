@@ -80,6 +80,8 @@ async function ask<T>(who: Who, model: unknown, label: string, parts: ClaudePart
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الكفر الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
+    undefined,
+    "max",
   );
 }
 

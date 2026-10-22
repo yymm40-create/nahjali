@@ -1,5 +1,5 @@
 // «تقدر تسوي فيها»: what one standard picture and one 5-second 720p video cost NOW — the studio's own price check on
-// the owner's live price table and margins (pictures 60٪, videos 40٪) — so every package shows what its balance makes.
+// the owner's live price table and margins (GPT Image 2 30٪, videos 40٪, the rest 40٪) — so every package shows what its balance makes.
 // Server only.
 
 import { SCENE_PACK_SAR, STUDENT_SUMMARY_HALALAS, type UnitPrices } from "@config/credits";

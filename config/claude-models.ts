@@ -1,6 +1,6 @@
 // The Claude models every robot of the site can talk with, the person's choice in each conversation. Pure (pages and
 // server alike). Rates are USD per million tokens (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-09).
-// A robot's price is the real usage of the model chosen plus the platform's 10% — see `claudeHalalas` in config/coins.ts.
+// A robot's price is the real usage of the model chosen plus the platform's 40% — see `claudeHalalas` in config/coins.ts.
 
 export type ClaudeModelKey = "fable" | "opus" | "sonnet" | "haiku";
 
@@ -87,8 +87,11 @@ export const servedModel = (id: unknown): ClaudeModel | null =>
 export const TYPICAL_REPLY = { inputTokens: 20_000, outputTokens: 2_000 } as const;
 export const typicalReplyUsd = (m: ClaudeModel) => (TYPICAL_REPLY.inputTokens * m.rates.input + TYPICAL_REPLY.outputTokens * m.rates.output) / 1_000_000;
 
-/** The platform's only profit on Claude's usage, in percent — shown to the person wherever the model is chosen. */
-export const CLAUDE_MARGIN_PCT = 10;
+/** The platform's only profit on Claude's usage, in percent — shown to the person wherever the model is chosen (21 October 2026). */
+export const CLAUDE_MARGIN_PCT = 40;
+/** The profit on «حيدرا ماكس»'s work: the robots writing a program for the job (src/lib/claude-code, حيدرة كت's cut and
+ * colour programs, the motion lab) — its real usage + this, like Claude's (the owner, 21 October 2026). */
+export const HAIDARA_MAX_MARGIN_PCT = 70;
 
 /** Where the person's choice is kept on this device. */
 export const CLAUDE_MODEL_KEY = "jw-claude-model";

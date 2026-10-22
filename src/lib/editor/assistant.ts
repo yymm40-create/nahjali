@@ -371,7 +371,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     usd += claudeCost(r.usage);
     return r;
   };
-  // the conversation is metered by the route (claudeCharged): the person's model, the real usage + 10%
+  // the conversation is metered by the route (claudeCharged): the person's model, the real usage + 40%
   const r = await ask(merged).catch((e) => {
     console.error("editor assistant", e);
     throw new UserError(claudeWhy(e, "ما قدر حيدرة يرد الحين؛ جرّب بعد شوي.", who.email), 502);
@@ -587,7 +587,7 @@ export async function assist(p: EditorProject, who: Who, b: { message?: unknown;
     checkClipId: answer.checkClipId && valid.length && tl.tracks.some((t) => t.clips.some((c) => c.id === answer.checkClipId)) ? answer.checkClipId : null,
     // the pictures the motion engine drew: the page puts them in its library before the commands run
     assets: newAssets,
-    // what the whole answer cost in dollars (the route takes it + 10%)
+    // what the whole answer cost in dollars (the route takes it + 40%)
     usd,
   };
 }

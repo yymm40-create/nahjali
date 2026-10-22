@@ -9,6 +9,7 @@ import { realFaceReady } from "@/lib/jawad/server/providers/realface";
 import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
+import { VIDEO_MODELS, type VideoModel } from "@config/film";
 import { can } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dialogueSource, startingMode } from "@/lib/film/dialogue-source";
@@ -111,6 +112,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         studioPath={studioPath}
         voicesOn={voicesReady()}
         realFaceOn={realFaceReady()}
+        lastModel={[...videos].reverse().map((v) => String(v.meta?.model ?? "")).find((m) => m in VIDEO_MODELS) as VideoModel | undefined}
         dialogueStart={startingMode(source, voicesReady())}
         dialogueSource={source}
         rewind={Boolean(project.series_id)}

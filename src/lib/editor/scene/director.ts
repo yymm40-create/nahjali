@@ -176,6 +176,8 @@ async function ask<T>(who: Who, b: Record<string, unknown>, label: string, parts
         throw new UserError(claudeWhy(e, "ما قدر حيدرة يكمل الموشن الحين. جرّب مرة ثانية.", who.email), 502);
       }),
     (x) => claudeCost(x.usage),
+    undefined,
+    "max",
   );
   if (r.partial) {
     const now = stitchCode(written, r.raw);

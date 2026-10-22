@@ -1,6 +1,6 @@
 // The film maker's costs as people pay them: riyals, from the real cost in dollars of each reply, picture, voice and
 // video (the same rule the wallet is charged by: config/coins.ts). Each at its own profit: Claude's replies their real
-// cost + 10٪, the pictures 60٪, the videos 40٪, the voices the general margin. Pure: pages and server alike.
+// cost + 40٪, GPT Image 2's pictures 30٪, the videos 40٪, the voices the general margin. Pure: pages and server alike.
 
 import { coinsFor, fmtSar, type PriceKind } from "@config/coins";
 
