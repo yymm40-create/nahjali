@@ -36,7 +36,10 @@ interface Order {
 }
 
 async function post<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  // never a spinner forever: 45 seconds, then a clear message
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(45_000) }).catch((e: Error) => {
+    throw new Error(e.name === "TimeoutError" ? "بوابة الدفع ما ردّت. جرّب مرة ثانية بعد شوي." : "تعذّر الاتصال. تأكد من الإنترنت وجرّب مرة ثانية.");
+  });
   const j = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(j.error ?? "تعذّر تنفيذ الطلب.");
   return j;
@@ -141,6 +144,8 @@ export default function CreditsShop({
   const payable = card || bankOk;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // the package whose button failed: the message shows inside that card, where the eye is
+  const [errAt, setErrAt] = useState<string | null>(null);
   // the bank transfer (only when Paylink is not set up): the bank data to copy → «تم التحويل» → done
   const [step, setStep] = useState<"bank" | "done" | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
@@ -165,6 +170,7 @@ export default function CreditsShop({
       if (card) {
         const r = await post<{ order: Order; url: string }>("/api/credits/paylink", { pack: id, source: visitorSource() });
         track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
+        if (!r.url || !/^https:\/\//.test(r.url)) throw new Error("بوابة الدفع ما رجّعت رابط الدفع. جرّب مرة ثانية.");
         window.location.assign(r.url);
         return; // the spinner stays until the browser leaves
       }
@@ -175,6 +181,7 @@ export default function CreditsShop({
       setStep("bank");
     } catch (e) {
       setError((e as Error).message);
+      setErrAt(id);
     }
     setBusy(null);
   }
@@ -315,13 +322,14 @@ export default function CreditsShop({
                 <button type="button" className={`pr-btn${payable ? "" : " off"}`} disabled={!payable || (!!busy && !mine)} aria-busy={mine} onClick={() => void pay(p.id)}>
                   {mine ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : star ? "ادفع الآن ←" : "ادفع الآن"}
                 </button>
+                {error && errAt === p.id && <p className="pr-card-err" role="alert">{error}</p>}
               </article>
             );
           })}
         </div>
 
         <div className="pr-foot">
-          {error && <p className="cr-error" role="alert">{error}</p>}
+          {error && !errAt && <p className="cr-error" role="alert">{error}</p>}
           {payable && (
             <>
               <p className="pr-pay">{card ? "💳 بطاقة · مدى · Apple Pay · STC Pay — الدفع آمن عبر Paylink" : "🏦 تحويل بنكي — ينضاف الرصيد بعد ما نتأكد من التحويل"}</p>
