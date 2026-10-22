@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import PlayFrame from "@/components/jawad/games/PlayFrame";
 import { publicGame } from "@/lib/games/build";
 import { GAMES } from "@config/games";
+import { SITE_URL } from "@config/site";
 import { pagePath } from "@config/games-build";
 import "./play.css";
 
@@ -49,5 +50,9 @@ export default async function PlayPage({ params }: { params: Promise<{ id: strin
       </main>
     );
   }
-  return <PlayFrame id={id} title={g.title} src={pagePath(id, g.version)} makeHref={GAMES.base} loginHref="/jawad-ai/login" />;
+  // «🎮 اصنع لعبتك» on the play bar: the maker opens knowing it was a game that brought the person
+  const make = new URL(GAMES.base, SITE_URL);
+  make.searchParams.set("utm_source", "game");
+  make.searchParams.set("utm_medium", "play-bar");
+  return <PlayFrame id={id} title={g.title} src={pagePath(id, g.version)} makeHref={`${make.pathname}${make.search}`} loginHref="/jawad-ai/login" />;
 }
