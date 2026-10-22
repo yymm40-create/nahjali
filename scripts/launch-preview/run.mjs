@@ -38,7 +38,7 @@ const browser = await puppeteer.launch({ executablePath: exe, headless: true, ar
 const shots = [
   ["landing-phone", "view=landing", 390, 844, true], ["landing-phone-top", "view=landing", 390, 844, false], ["landing-desk", "view=landing", 1280, 900, true],
   ["credits-phone", "view=credits", 390, 844, true], ["credits-phone-top", "view=credits&waiting=1", 390, 844, false], ["credits-desk", "view=credits", 1280, 900, false],
-  ["credits-sheet", "view=credits&signed=1&sheet=1", 390, 844, false], ["small-landing", "view=landing", 360, 740, false],
+  ["credits-bank", "view=credits&signed=1&card=0&bank=1", 390, 844, false], ["credits-off", "view=credits&card=0", 1280, 900, false], ["small-landing", "view=landing", 360, 740, false],
 ];
 let bad = 0;
 for (const [name, qs, w, h, full] of shots) {
@@ -46,7 +46,7 @@ for (const [name, qs, w, h, full] of shots) {
   await page.setViewport({ width: w, height: h, isMobile: w < 700, hasTouch: w < 700 });
   page.on("pageerror", (e) => console.log("  pageerror:", e.message));
   await page.goto(`http://127.0.0.1:${port}/?${qs}`);
-  await new Promise((r) => setTimeout(r, 700));
+  await new Promise((r) => setTimeout(r, 1800));
   const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
   if (o.sw > o.iw) { bad++; console.log(`  ✗ ${name}: sideways overflow ${o.sw} > ${o.iw}`); }
   await page.screenshot({ path: join(out, `${name}.png`), fullPage: full });
