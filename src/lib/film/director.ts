@@ -7,6 +7,7 @@ import { callClaudeJson, claudeCost, totalTokens } from "./anthropic";
 import { currentClaude, withClaude } from "./claude-model";
 import { addMessage, buildTurns } from "./conversation";
 import { createVideoTask, getVideoTask, type VideoTask } from "./seedance";
+import { ProviderError } from "@/lib/jawad/server/providers/common";
 import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
@@ -687,7 +688,9 @@ async function submitVideo(
     }
   } catch (err) {
     console.error("film video failed", err);
-    await client.from("film_assets").update({ status: "failed", error: String(err instanceof Error ? err.message : err).slice(0, 300) }).eq("id", assetId);
+    // a provider's refusal says why in Arabic, with its own reply after it (so a failure can be told apart)
+    const why = err instanceof ProviderError ? `${err.userMessage} (${err.detail.replace(/https?:\/\/\S+/g, "…")})` : String(err instanceof Error ? err.message : err);
+    await client.from("film_assets").update({ status: "failed", error: why.slice(0, 300) }).eq("id", assetId);
     await failJob(jobId, err);
   }
 }

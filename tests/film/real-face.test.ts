@@ -28,3 +28,12 @@ describe("«Seedance وجه واقعي» sent to JAWAD's video section", () => {
     for (const m of ["seedance-2.0", "seedance-2.5"] as const) expect(filmModelOfGenerator(generatorOfFilmModel(m))).toBe(m);
   });
 });
+
+describe("the director can choose «Seedance وجه واقعي» for a realistic scene", () => {
+  it("is in the director's answer schema and rules, marked as much dearer", async () => {
+    const { readFileSync } = await import("node:fs");
+    const text = readFileSync("config/film-prompts/director.ts", "utf8");
+    expect(text).toContain('enum: ["", "seedance-2.5", "seedance-2.0", "seedance-real-face"]');
+    expect(text).toContain("much dearer than the others");
+  });
+});
