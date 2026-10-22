@@ -1,75 +1,97 @@
-/* «اشحن رصيدك» — on top of course.css (the paper look, the button, the sheet). The packages are white cards; the featured one is the
-   dark card in the middle (Von Restorff: the eye goes to the one that differs). Pressing a card opens it BIG («.cs-spot»): its
-   price rolls in like an odometer, what it gives and what it makes are spelled out, and one button buys it. */
+/* «اشحن رصيدك» — on top of course.css (the paper look, the button, the sheet). The packages are pricing cards: light ones with a
+   grey button and the featured one DARK with an orange pill and an orange button (the eye goes to the one that differs). Each price
+   rolls up from 0 like an odometer the first time the cards are on the screen. The cards keep their own palette here. */
 .cs-hero { padding-bottom: 18px; }
 .cs-balance { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: var(--cr-card); border: 1px solid var(--cr-line); font-size: 14px; }
 .cs-bal { font-weight: 800; font-size: 17px; }
 .cs-waiting { background: var(--cr-accent-soft); border-block: 1px solid rgba(232, 87, 42, 0.3); padding: 12px 0; font-size: 14.5px; }
 .cs-waiting a { color: var(--cr-accent); font-weight: 800; text-decoration: underline; }
 
-.cs-packs { padding: 10px 0 34px; }
-.cs-in { display: grid; gap: 18px; }
-.cs-list { display: grid; gap: 12px; }
-.cs-pack { position: relative; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name price" "get get" "yield yield" "more more"; align-items: center; gap: 4px 12px; width: 100%; padding: 18px 16px 14px; border-radius: 22px; border: 1px solid var(--cr-line); background: var(--cr-card); color: var(--cr-ink); font: inherit; text-align: start; cursor: pointer; box-shadow: var(--cr-shadow); transition: border-color 0.15s, transform 0.18s, box-shadow 0.18s; }
-.cs-pack:hover { transform: translateY(-2px); box-shadow: var(--cr-shadow-lg); }
-.cs-pack .cr-radio { display: none; }
-.cs-pack.on { border-color: var(--cr-ink); box-shadow: 0 0 0 3px rgba(20, 20, 20, 0.08), var(--cr-shadow-lg); }
-.cs-pack.star { background: var(--cr-dark); color: #fff; border-color: var(--cr-dark); }
-.cs-pack.star .cs-name small, .cs-pack.star .cs-yield, .cs-pack.star .cs-get { color: rgba(255, 255, 255, 0.72); }
-.cs-pack.star.on { box-shadow: 0 0 0 3px var(--cr-accent), var(--cr-shadow-lg); }
-.cs-tag { position: absolute; top: -11px; inset-inline-start: 16px; padding: 2px 12px; border-radius: 999px; background: var(--cr-accent); color: #fff; font-size: 12px; font-weight: 800; box-shadow: 0 8px 18px -8px rgba(232, 87, 42, 0.8); }
-.cs-name { grid-area: name; display: grid; line-height: 1.45; min-width: 0; }
-.cs-name b { font-size: 18px; font-weight: 800; }
-.cs-name small { color: var(--cr-mute); font-size: 12.5px; }
-.cs-price { grid-area: price; justify-self: end; }
-.cs-pn { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
-.cs-get { grid-area: get; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--cr-ink-2); font-size: 13.5px; }
-.cs-gn { font-weight: 800; }
-.cs-yield { grid-area: yield; color: var(--cr-mute); font-size: 12.5px; line-height: 1.6; }
-.cs-get em { font-style: normal; padding: 1px 10px; border-radius: 999px; background: var(--cr-green-soft); color: var(--cr-green); font-weight: 800; font-size: 12px; }
-.cs-pack.star .cs-get em { background: rgba(22, 163, 74, 0.25); color: #86efac; }
-.cs-more { grid-area: more; justify-self: start; margin-top: 4px; font-family: var(--cr-mono); font-size: 11px; letter-spacing: 0.12em; color: var(--cr-accent); }
-
-.cs-buy { display: grid; gap: 12px; }
-.cs-cta-price { display: inline-flex; padding: 2px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); font-size: 17px; }
-@media (min-width: 900px) {
-  .cs-in { max-width: 1140px; }
-  .cs-list { grid-template-columns: repeat(min(var(--n, 5), 4), minmax(0, 1fr)); gap: 16px; align-items: stretch; }
-  .cs-pack { grid-template-columns: 1fr; grid-template-areas: "name" "price" "get" "yield" "more"; justify-items: start; gap: 10px; padding: 24px 20px 20px; }
-  .cs-price { justify-self: start; }
-  .cs-pn { font-size: 40px; }
-  .cs-pack.star { transform: translateY(-8px); }
-  .cs-pack.star:hover { transform: translateY(-11px); }
-  .cs-buy { max-width: 520px; margin-inline: auto; width: 100%; }
+/* ——— the pricing cards ——— */
+.pr {
+  --pr-bg: #ffffff;
+  --pr-ink: #121212;
+  --pr-mute: #6d6a64;
+  --pr-line: #ebe7e0;
+  --pr-btn: #efece7;
+  --pr-btn-hover: #e4e0d9;
+  --pr-btn-ink: #121212;
+  --pr-check: #f1eee9;
+  --pr-check-ink: #121212;
+  --pr-dark-bg: #0e0e0f;
+  --pr-dark-ink: #ffffff;
+  --pr-dark-mute: rgba(255, 255, 255, 0.62);
+  --pr-dark-line: rgba(255, 255, 255, 0.12);
+  --pr-orange: #ff6a2b;
+  --pr-orange-hover: #f25a19;
+  --pr-orange-soft: rgba(255, 106, 43, 0.14);
+  --pr-green: #16a34a;
+  --pr-green-soft: rgba(22, 163, 74, 0.12);
+  padding: 8px 16px 40px;
 }
+.pr-grid { display: flex; flex-direction: column; gap: 14px; max-width: 1080px; margin-inline: auto; }
+.pr-card { position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px 20px 20px; border-radius: 24px; background: var(--pr-bg); color: var(--pr-ink); border: 1px solid var(--pr-line); box-shadow: 0 1px 2px rgba(20, 16, 10, 0.04), 0 18px 40px -30px rgba(20, 16, 10, 0.3); }
+.pr-card.star { order: -1; background: var(--pr-dark-bg); color: var(--pr-dark-ink); border-color: var(--pr-dark-bg); box-shadow: 0 30px 60px -30px rgba(10, 10, 10, 0.65); }
+.pr-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pr-name { font-size: 19px; font-weight: 800; line-height: 1.35; letter-spacing: -0.01em; }
+.pr-pill { flex: 0 0 auto; padding: 3px 11px; border-radius: 999px; background: var(--pr-orange); color: #fff; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.pr-pill.soft { background: var(--pr-orange-soft); color: #c2410c; }
+.pr-note { color: var(--pr-mute); font-size: 13.5px; line-height: 1.6; margin-top: -4px; }
+.star .pr-note { color: var(--pr-dark-mute); }
+/* the coin before the number, as everywhere (<Riyal>), the whole price on the reading side */
+.pr-price { display: flex; align-items: center; justify-content: flex-end; gap: 8px; direction: ltr; margin-top: 6px; }
+.pr-mark { flex: 0 0 auto; }
+.pr-get { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--pr-mute); font-size: 13.5px; }
+.star .pr-get { color: var(--pr-dark-mute); }
+.pr-gn { font-weight: 800; color: var(--pr-ink); }
+.star .pr-gn { color: var(--pr-dark-ink); }
+.pr-get em { font-style: normal; padding: 1px 9px; border-radius: 999px; background: var(--pr-green-soft); color: var(--pr-green); font-weight: 800; font-size: 12px; }
+.star .pr-get em { background: rgba(22, 163, 74, 0.22); color: #86efac; }
+.pr-hr { border: 0; border-top: 1px solid var(--pr-line); margin: 6px 0 4px; }
+.star .pr-hr { border-top-color: var(--pr-dark-line); }
+.pr-list { display: grid; gap: 10px; margin-bottom: 8px; }
+.pr-list li { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 10px; font-size: 14.5px; line-height: 1.5; }
+.pr-list i { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 800; background: var(--pr-check); color: var(--pr-check-ink); }
+.star .pr-list i { background: var(--pr-orange); color: #fff; }
+.pr-btn { margin-top: auto; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 52px; padding: 10px 18px; border: 0; border-radius: 14px; background: var(--pr-btn); color: var(--pr-btn-ink); font: inherit; font-size: 17px; font-weight: 800; cursor: pointer; transition: background 0.15s, transform 0.12s; -webkit-tap-highlight-color: transparent; }
+.pr-btn:hover:not(:disabled) { background: var(--pr-btn-hover); }
+.pr-btn:active:not(:disabled) { transform: scale(0.98); }
+.pr-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.pr-btn.off { font-size: 14px; }
+.pr-btn[aria-busy="true"] { opacity: 1; }
+.star .pr-btn { background: var(--pr-orange); color: #fff; box-shadow: 0 14px 28px -14px rgba(255, 106, 43, 0.9); }
+.star .pr-btn:hover:not(:disabled) { background: var(--pr-orange-hover); }
+.pr-btn:focus-visible { outline: 3px solid var(--pr-orange); outline-offset: 2px; }
+.pr-spin { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid currentColor; border-inline-end-color: transparent; animation: pr-spin 0.7s linear infinite; }
+@keyframes pr-spin { to { transform: rotate(360deg); } }
 
-/* ——— a package opened big ——— */
-.cs-spot { position: fixed; inset: 0; z-index: 85; display: grid; place-items: center; padding: 16px; background: rgba(20, 16, 10, 0.5); backdrop-filter: blur(8px); animation: cr-fade 0.2s ease both; }
-.cs-spot-card { position: relative; width: min(460px, 100%); max-height: 92dvh; overflow-y: auto; display: grid; gap: 16px; padding: 26px 22px 22px; border-radius: 30px; background: var(--cr-card); color: var(--cr-ink); box-shadow: 0 40px 120px -30px rgba(20, 16, 10, 0.65); animation: cs-pop 0.42s cubic-bezier(0.18, 0.9, 0.22, 1.2) both; text-align: center; }
-.cs-spot-card.star { background: var(--cr-dark); color: #fff; }
-@keyframes cs-pop { from { opacity: 0; transform: scale(0.82) translateY(30px); } to { opacity: 1; transform: none; } }
-.cs-spot-card .cr-kicker { justify-self: center; }
-.cs-spot-card.star .cr-kicker { color: rgba(255, 255, 255, 0.7); }
-.cs-spot-card.star .cr-kicker::before { background: #fff; }
-.cs-spot-card h3 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3; }
-.cs-spot-card .cs-note { color: var(--cr-mute); font-size: 15px; }
-.cs-spot-card.star .cs-note { color: rgba(255, 255, 255, 0.7); }
-.cs-spot-price { display: flex; align-items: flex-end; justify-content: center; gap: 8px; direction: ltr; }
-.cs-spot-price .cs-unit { font-size: 20px; font-weight: 700; padding-bottom: 14px; opacity: 0.7; }
-.cs-roll { display: inline-flex; font-size: 84px; line-height: 1; font-weight: 800; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; height: 1em; overflow: hidden; }
-.cs-roll > span { display: inline-block; height: 1em; overflow: hidden; }
-.cs-roll > span > i { display: flex; flex-direction: column; font-style: normal; transition: transform 1.1s cubic-bezier(0.2, 0.9, 0.1, 1); }
-.cs-roll > span > i > b { height: 1em; display: block; font-weight: inherit; }
-.cs-spot-get { display: grid; gap: 8px; padding: 14px; border-radius: 20px; background: var(--cr-paper); text-align: start; }
-.cs-spot-card.star .cs-spot-get { background: rgba(255, 255, 255, 0.08); }
-.cs-spot-get li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: center; font-size: 15px; }
-.cs-spot-get .cs-ok { font-style: normal; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--cr-accent); color: #fff; font-size: 13px; font-weight: 800; }
-.cs-spot-card .cr-cta { min-height: 60px; }
-.cs-spot-card.star .cr-cta { background: #fff; color: var(--cr-dark); }
-.cs-spot-card.star .cs-cta-price { background: rgba(20, 20, 20, 0.08); }
-.cs-spot-card .cr-x { inset-inline-start: 14px; top: 14px; }
-.cs-spot-card.star .cr-x { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.18); color: #fff; }
-@media (prefers-reduced-motion: reduce) { .cs-spot-card { animation: none; } .cs-roll > span > i { transition: none; } }
+/* the odometer: each digit is a column of 0–9 twice, slid up to land on itself */
+.pr-roll { display: inline-flex; font-size: 52px; line-height: 1; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.pr-col { position: relative; display: inline-block; height: 1em; overflow: hidden; }
+.pr-col > i { position: absolute; inset: 0 0 auto; display: flex; flex-direction: column; font-style: normal; transition: transform 900ms cubic-bezier(0.2, 0.85, 0.15, 1); }
+.pr-col b { display: block; height: 1em; text-align: center; font-weight: inherit; }
+.pr-col .pr-w { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .pr-col > i { transition: none; } .pr-spin { animation-duration: 2s; } }
+
+.pr-foot { display: grid; gap: 6px; max-width: 640px; margin: 22px auto 0; text-align: center; }
+.pr-pay { color: var(--cr-ink-2, #3a3732); font-size: 13.5px; font-weight: 700; }
+.pr-terms { color: var(--cr-mute); font-size: 12.5px; line-height: 1.8; }
+.pr-terms a { color: var(--cr-ink); text-decoration: underline; font-weight: 700; }
+
+@media (min-width: 620px) {
+  .pr-grid { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 18px; }
+  .pr-card { flex: 0 1 calc((100% - 18px) / 2); }
+}
+@media (min-width: 960px) {
+  .pr { padding-inline: 24px; }
+  .pr-grid { gap: 22px; align-items: stretch; padding-block: 12px; }
+  .pr-card { flex-basis: calc((100% - 44px) / 3); padding: 28px 26px 24px; }
+  /* the featured card in the middle of the FIRST row: the first other card before it, the rest after */
+  .pr-card { order: 2; }
+  .pr-card.lead { order: 0; }
+  .pr-card.star { order: 1; transform: scale(1.035); z-index: 1; }
+  .pr-roll { font-size: 60px; }
+}
 
 .cs-faq { display: grid; gap: 10px; }
 .cs-faq > div { padding: 14px 16px; border-radius: 18px; background: var(--cr-card); border: 1px solid var(--cr-line); }
@@ -77,11 +99,9 @@
 .cs-faq dd { margin: 4px 0 0; color: var(--cr-ink-2); font-size: 15px; }
 .cs-back { margin-top: 22px; font-size: 14px; }
 .cs-back a { color: var(--cr-mute); }
-.cs-sname { color: var(--cr-mute); font-size: 12px; }
 
-.cs-sheet-sum { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 12px; padding: 12px 14px; border-radius: 16px; background: var(--cr-paper); font-size: 14px; color: var(--cr-mute); }
-.cs-sum-n { font-size: 24px; font-weight: 800; color: var(--cr-ink); justify-self: end; }
 .cs-done { text-align: center; font-size: 16.5px; line-height: 1.9; }
 .cs-done-small { display: grid; gap: 10px; text-align: center; color: var(--cr-mute); font-size: 14px; }
 .cs-wa { background: #25d366; color: #052e16; border-color: transparent; min-height: 52px; font-size: 16px; }
 .cs-trust { font-size: 13px; }
+.cr-link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-weight: 700; }

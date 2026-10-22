@@ -1,15 +1,18 @@
 "use client";
 
-// «اشحن رصيدك» — the packages of balance, made for the phone first: pick one (the featured one is chosen to start with), one big
-// button, then the same three steps as the course: name and phone → the bank data to copy → «تم التحويل». After that: «يوصلك الرصيد
-// بعد قليل إن شاء الله»; if it takes long, a WhatsApp chat with the owner, the message already written.
+// «اشحن رصيدك» — the packages as pricing cards (a row of three on a computer, stacked on a phone with the featured one first), each
+// with its price rolling in like an odometer the first time the cards come into view, what the balance makes, and ONE button that pays:
+// - not signed in → sign in, then back here with ?pack=<id>;
+// - signed in but the account has no name / WhatsApp number yet → /jawad-ai/account asks them once, then back here with ?pack=<id>;
+// - else straight to Paylink (card, mada, Apple Pay, STC Pay) — the server reads the name and number from the account.
+// Back here with ?pack=<id> and everything ready, that package's payment starts by itself (the person already chose it).
+// Without the Paylink keys but with the bank transfer on, the button makes the order and opens the bank data to copy.
 //
 // The ads (src/lib/track.ts, a no-op without a pixel): ViewContent when the page opens, InitiateCheckout when the order is made,
-// Purchase at «✅ تم التحويل» (its event_id is the order id, so the owner's confirm sent from the server is counted once) and Lead
-// when the WhatsApp link is opened. The visitor's source travels with the order.
+// Purchase back from Paylink paid or at «✅ تم التحويل» (its event_id is the order id, so the owner's confirm sent from the server is
+// counted once) and Lead when the WhatsApp link is opened. The visitor's source travels with the order.
 
 import Link from "next/link";
-import AgreeTerms from "@/components/jawad/AgreeTerms";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
@@ -66,139 +69,136 @@ function Copy({ label, value }: { label: string; value: string }) {
   );
 }
 
-const NUM = ["١", "٢", "٣"];
-
-/** A number that rolls into place like an odometer (each digit spins from 0 to itself). */
-function Roll({ value }: { value: number }) {
-  const digits = String(Math.round(value)).split("");
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    const t = requestAnimationFrame(() => setOn(true));
-    return () => cancelAnimationFrame(t);
-  }, []);
+/** A price whose digits roll up from 0 like an odometer once `on` (each column spins a full turn, then lands on its digit). */
+function Roll({ value, on, delay }: { value: number; on: boolean; delay: number }) {
+  const text = Math.round(value).toLocaleString("en");
   return (
-    <span className="cs-roll" aria-label={String(value)}>
-      {digits.map((d, i) => (
-        <span key={i} aria-hidden>
-          <i style={{ transform: `translateY(-${on ? Number(d) : 0}em)`, transitionDelay: `${i * 90}ms` }}>
-            {Array.from({ length: 10 }, (_, k) => <b key={k}>{k}</b>)}
-          </i>
-        </span>
-      ))}
+    <span className="pr-roll" aria-label={text} dir="ltr">
+      {text.split("").map((c, i) =>
+        /\d/.test(c) ? (
+          <span key={i} className="pr-col" aria-hidden>
+            <i style={{ transform: `translateY(-${on ? 10 + Number(c) : 0}em)`, transitionDelay: `${delay + i * 70}ms` }}>
+              {Array.from({ length: 20 }, (_, k) => <b key={k}>{k % 10}</b>)}
+            </i>
+            {/* the digit itself, invisible, gives the column its width */}
+            <b className="pr-w">{c}</b>
+          </span>
+        ) : (
+          <span key={i} aria-hidden>{c}</span>
+        ),
+      )}
     </span>
   );
 }
 
-/** What a package makes, as lines (each on its own: pictures OR videos OR scenes OR summaries). */
-function yieldLines(credit: number, units: UnitPrices | null | undefined): string[] {
-  if (!units) return [];
-  const y = packYield(credit, units);
-  return [y.images > 0 && `${y.images} صورة`, y.videos > 0 && `${y.videos} فيديو ٥ ثواني`, y.scenes > 0 && (y.scenes === 1 ? "مشهد سينمائي كامل" : `${y.scenes} مشاهد سينمائية`), y.summaries > 0 && (y.summaries === 1 ? "ملخص من ملف PDF قصير" : `${y.summaries} ملخصات من ملفات PDF قصيرة`)].filter(Boolean) as string[];
-}
-
-/** «تقدر تسوي فيها تقريبًا»: what the package's balance makes at today's prices (each on its own, not all together). */
-function YieldLine({ credit, units }: { credit: number; units: UnitPrices }) {
-  const y = packYield(credit, units);
-  const parts = [y.images > 0 && `${y.images} صورة`, y.videos > 0 && `${y.videos} فيديو ٥ ثواني`, y.scenes > 0 && (y.scenes === 1 ? "مشهد سينمائي كامل" : `${y.scenes} مشاهد سينمائية`), y.summaries > 0 && (y.summaries === 1 ? "ملخص من ملف PDF قصير" : `${y.summaries} ملخصات من ملفات PDF قصيرة`)].filter(Boolean) as string[];
-  if (!parts.length) return null;
-  return <span className="cs-yield">تقدر تسوي فيها تقريبًا: {parts.join(" · أو ")}</span>;
+/** Four check lines per package: what its balance makes at today's prices (each on its own), topped up with what every package has. */
+function features(credit: number, units: UnitPrices | null | undefined): string[] {
+  const out: string[] = [];
+  if (units) {
+    const y = packYield(credit, units);
+    if (y.images > 0) out.push(`${y.images} صورة تقريبًا`);
+    if (y.videos > 0) out.push(`أو ${y.videos} فيديو ٥ ثواني`);
+    if (y.scenes > 0) out.push(y.scenes === 1 ? "أو مشهد سينمائي كامل" : `أو ${y.scenes} مشاهد سينمائية`);
+    if (y.summaries > 0) out.push(y.summaries === 1 ? "أو ملخص من ملف PDF قصير" : `أو ${y.summaries} ملخصات من ملفات PDF`);
+  }
+  if (out[0]?.startsWith("أو ")) out[0] = out[0].slice(3);
+  for (const extra of ["يشتغل في كل أقسام الجواد", "التوليد الفاشل يرجع رصيده", "سعر كل عملية يبين لك قبل ما تبدأ"]) if (out.length < 4) out.push(extra);
+  return out.slice(0, 4);
 }
 
 export default function CreditsShop({
-  packs, featured, payable, bankOk = true, card = false, back = null, hasSupport, whatsapp = "", user, balance, owner, waiting, initialPack, loginHref, lastName, lastPhone, units,
+  packs, featured, bankOk = false, card: cardOn = false, cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units,
 }: {
   packs: Pack[];
-  /** what a standard picture, a 5-second 720p video and a scene cost now: «تقدر تسوي فيها» under each package */
+  /** what a standard picture, a 5-second 720p video, a scene and a summary cost now: the check lines on each card */
   units?: UnitPrices | null;
   featured: string;
-  payable: boolean;
   /** the bank transfer is set up (the owner's bank data) */
   bankOk?: boolean;
-  /** Paylink is set up: «ادفع بالبطاقة» (card, mada, Apple Pay, STC Pay) */
+  /** Paylink is set up: one tap to card, mada, Apple Pay, STC Pay */
   card?: boolean;
+  /** card payment is not open to everyone yet: «يتفعّل قريبًا» under the cards (the owners test it meanwhile) */
+  cardSoon?: boolean;
   /** coming back from Paylink: the order that is paid (its balance is added) or null when the payment was not confirmed */
   back?: { paid: { id: string; packName: string; price: number } | null } | null;
   hasSupport: boolean;
   /** the owner's WhatsApp number (the credit settings): «أرسل الإيصال على واتساب» in the bank step (empty: no button) */
   whatsapp?: string;
   user: { email: string } | null;
+  /** the account has a name and a WhatsApp number (the payment reads them from there) */
+  contactOk: boolean;
   /** null for the owners (no limit) or when it can't be read */
   balance: number | null;
   owner: boolean;
   waiting: Waiting[];
   initialPack: string | null;
   loginHref: string;
-  lastName: string;
-  lastPhone: string;
 }) {
   const router = useRouter();
-  const [picked, setPicked] = useState(initialPack ?? featured);
-  const sel = packs.find((p) => p.id === picked) ?? packs[0];
-  // coming back from signing in (?pack=…): the payment sheet is already open
-  const [step, setStep] = useState<"form" | "bank" | "done" | null>(() => (initialPack && user ? "form" : null));
-  const [name, setName] = useState(lastName);
-  const [phone, setPhone] = useState(lastPhone);
+  // the owners, who have both while the card is being tested, can switch to the bank transfer to try it too
+  const [viaBank, setViaBank] = useState(false);
+  const card = cardOn && !(viaBank && bankOk);
+  const payable = card || bankOk;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  // the bank transfer (only when Paylink is not set up): the bank data to copy → «تم التحويل» → done
+  const [step, setStep] = useState<"bank" | "done" | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [bank, setBank] = useState<Bank | null>(null);
   const [support, setSupport] = useState("");
-  const [busy, setBusy] = useState(false);
-  // the terms are read (or at least agreed to) before any money moves
-  const [agree, setAgree] = useState(false);
-  const [error, setError] = useState("");
-  // «بس يضغط فوق تطلع له بشكل رهيب وواضح»: the package pressed, opened big
-  const [spot, setSpot] = useState<string | null>(null);
-  const spotPack = packs.find((p) => p.id === spot) ?? null;
-  useEffect(() => {
-    if (!spot) return;
-    const k = (e: KeyboardEvent) => e.key === "Escape" && setSpot(null);
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, [spot]);
 
-  function buy() {
+  const there = (id: string) => `${CREDITS.base}?pack=${id}`;
+
+  async function pay(id: string) {
+    if (busy || !payable) return;
     setError("");
     if (!user) {
-      router.push(`${loginHref}?next=${encodeURIComponent(`${CREDITS.base}?pack=${sel.id}`)}`);
+      router.push(`${loginHref}?next=${encodeURIComponent(there(id))}`);
       return;
     }
-    setSpot(null);
-    setStep("form");
-  }
-  async function start() {
-    setBusy(true);
-    setError("");
+    if (!contactOk) {
+      router.push(`/jawad-ai/account?next=${encodeURIComponent(there(id))}`);
+      return;
+    }
+    setBusy(id);
     try {
-      const r = await post<{ order: Order; bank: Bank }>("/api/credits/order", { pack: sel.id, name, phone, source: visitorSource() });
+      if (card) {
+        const r = await post<{ order: Order; url: string }>("/api/credits/paylink", { pack: id, source: visitorSource() });
+        track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
+        window.location.assign(r.url);
+        return; // the spinner stays until the browser leaves
+      }
+      const r = await post<{ order: Order; bank: Bank }>("/api/credits/order", { pack: id, source: visitorSource() });
+      track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
       setOrder(r.order);
       setBank(r.bank);
       setStep("bank");
-      track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setBusy(false);
     }
+    setBusy(null);
   }
-  async function payCard() {
-    setBusy(true);
-    setError("");
-    try {
-      const r = await post<{ order: Order; url: string }>("/api/credits/paylink", { pack: sel.id, name, phone, source: visitorSource() });
-      track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
-      window.location.assign(r.url);
-    } catch (e) {
-      setError((e as Error).message);
-      setBusy(false);
-    }
-  }
+
+  // back from signing in / filling the account with ?pack=<id>: that package's payment starts by itself, once (the address loses
+  // its ?pack first, so going back from Paylink does not start it again)
+  const auto = useRef(false);
+  useEffect(() => {
+    if (auto.current || !initialPack || !user || !contactOk || !payable || back) return;
+    auto.current = true;
+    window.history.replaceState(null, "", CREDITS.base);
+    void pay(initialPack);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+
   // back from Paylink with a paid order: the browser's Purchase (the server's confirm sent the same event_id, counted once)
   const paid = back?.paid ?? null;
   useEffect(() => {
     if (paid) track("Purchase", { value: paid.price, currency: "SAR", content_name: paid.packName, event_id: paid.id });
   }, [paid]);
+
   async function transferred() {
     if (!order) return;
-    setBusy(true);
+    setBusy(order.id);
     setError("");
     try {
       const r = await post<{ support: string }>("/api/credits/transferred", { orderId: order.id });
@@ -210,7 +210,7 @@ export default function CreditsShop({
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -220,13 +220,21 @@ export default function CreditsShop({
   }, []);
   const lead = () => track("Lead", { content_name: "whatsapp" });
 
-  // the bottom bar of a phone gives way while the packages are on the screen
-  const listRef = useRef<HTMLElement>(null);
-  const [atList, setAtList] = useState(false);
+  // the prices roll in the first time the cards are on the screen (at once when motion is turned down)
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [rolled, setRolled] = useState(false);
   useEffect(() => {
-    const el = listRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setAtList(e.isIntersecting), { threshold: 0.25 });
+    const el = gridRef.current;
+    const calm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!el || calm || typeof IntersectionObserver === "undefined") {
+      const t = requestAnimationFrame(() => setRolled(true));
+      return () => cancelAnimationFrame(t);
+    }
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      setRolled(true);
+      io.disconnect();
+    }, { rootMargin: "0px 0px -15% 0px" }); // any part of the cards (the grid is far taller than a phone's screen)
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -234,20 +242,15 @@ export default function CreditsShop({
   // the bank step: a picture of the receipt goes to the owner on WhatsApp (when he set his number), the message already written
   const receipt = hasSupport && whatsapp && order && user ? supportLink({ packs, featured, whatsapp }, { id: order.id, packName: order.packName, price: order.price, email: user.email }) : "";
 
-  const cta = (extra = "") => (
-    <button type="button" className={`cr-cta ${extra}`} disabled={!payable} onClick={buy}>
-      <span className="cr-cta-main">اشحن الآن</span>
-      <span className="cs-cta-price" dir="ltr"><Riyal halalas={sel.price * 100} size={20} /></span>
-    </button>
-  );
-
   return (
     <div className="cr cs" dir="rtl">
       <header className="cr-hero cs-hero">
         <div className="cr-in">
           <span className="cr-kicker cr-reveal">الرصيد · الباقات</span>
           <h1 className="cr-reveal" style={{ ["--i" as string]: 1 }}>اشحن رصيدك <em>وابدأ تصنع</em></h1>
-          <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>صور وفيديوهات وأصوات وتصاميم بالذكاء الاصطناعي. ادفع مرة وحدة بتحويل بنكي، وكل ما زادت الباقة زاد رصيدك المجاني.</p>
+          <p className="cr-sub cr-reveal" style={{ ["--i" as string]: 2 }}>
+            صور وفيديوهات وأصوات وتصاميم بالذكاء الاصطناعي. اختر باقتك وادفع بضغطة وحدة، وكل ما كبرت الباقة زاد رصيدك المجاني.
+          </p>
           {user && (
             <p className="cs-balance">
               رصيدك الحالي: {owner ? <b dir="ltr">∞</b> : <Riyal halalas={balance ?? 0} size={18} className="cs-bal" />}
@@ -282,52 +285,60 @@ export default function CreditsShop({
         </section>
       )}
 
-      <section className="cs-packs" ref={listRef} aria-label="الباقات">
-        <div className="cr-in cs-in">
-          <div className="cs-list" role="radiogroup" aria-label="اختر الباقة" style={{ ["--n" as string]: packs.length }}>
-            {packs.map((p, i) => {
-              const on = p.id === sel.id;
-              const star = p.id === featured;
-              const bonus = bonusPct(p);
-              return (
-                <button key={p.id} type="button" role="radio" aria-checked={on} className={`cs-pack cr-reveal${on ? " on" : ""}${star ? " star" : ""}`} style={{ ["--i" as string]: i + 3 }} onClick={() => { setPicked(p.id); setSpot(p.id); }}>
-                  {p.tag && <span className="cs-tag">{p.tag}</span>}
-                  <span className="cr-radio" aria-hidden />
-                  <span className="cs-name">
-                    <b>{p.name}</b>
-                    {p.note && <small>{p.note}</small>}
-                  </span>
-                  <span className="cs-price"><Riyal halalas={p.price * 100} size={24} className="cs-pn" /></span>
-                  <span className="cs-get">
-                    يوصلك رصيد <Riyal halalas={p.credit * 100} size={15} className="cs-gn" />
-                    {bonus > 0 && <em>+{bonus}٪ مجانًا</em>}
-                  </span>
-                  {units && <YieldLine credit={p.credit} units={units} />}
-                  <span className="cs-more" aria-hidden>اضغط للتفاصيل ←</span>
+      <section className="pr" aria-label="الباقات">
+        <div className="pr-grid" ref={gridRef}>
+          {packs.map((p, i) => {
+            const star = p.id === featured;
+            const bonus = bonusPct(p);
+            const mine = busy === p.id;
+            return (
+              <article key={p.id} className={`pr-card${star ? " star" : ""}${p.id === packs.find((q) => q.id !== featured)?.id ? " lead" : ""}`} aria-label={`باقة ${p.name}`}>
+                <div className="pr-top">
+                  <h2 className="pr-name">{p.name}</h2>
+                  {star ? <span className="pr-pill">الأكثر طلبًا</span> : p.tag ? <span className="pr-pill soft">{p.tag}</span> : null}
+                </div>
+                {p.note && <p className="pr-note">{p.note}</p>}
+                <div className="pr-price">
+                  <SmartCoin size={26} className="pr-mark" />
+                  <Roll value={p.price} on={rolled} delay={i * 140} />
+                </div>
+                <p className="pr-get">
+                  يوصلك رصيد <Riyal halalas={p.credit * 100} size={14} className="pr-gn" />
+                  {bonus > 0 && <em>+{bonus}٪ مجانًا</em>}
+                </p>
+                <hr className="pr-hr" />
+                <ul className="pr-list">
+                  {features(p.credit, units).map((l) => (
+                    <li key={l}><i aria-hidden>✓</i>{l}</li>
+                  ))}
+                </ul>
+                <button type="button" className={`pr-btn${payable ? "" : " off"}`} disabled={!payable || (!!busy && !mine)} aria-busy={mine} onClick={() => void pay(p.id)}>
+                  {mine ? <span className="pr-spin" aria-label="جاري التحويل للدفع" /> : !payable ? "الدفع يفتح بعد قليل إن شاء الله" : star ? "ادفع الآن ←" : "ادفع الآن"}
                 </button>
-              );
-            })}
-          </div>
-          <div className="cs-buy">
-            {cta()}
-            {!payable && <p className="cr-urgent">الدفع يفتح بعد قليل إن شاء الله.</p>}
-            <ul className="cr-trust">
-              <li>🔒 تحويل بنكي مباشر</li>
-              <li>⚡ يوصلك الرصيد بعد التأكيد</li>
-              <li>↩️ التوليد الفاشل يرجع رصيده</li>
-            </ul>
-          </div>
+              </article>
+            );
+          })}
         </div>
-      </section>
 
-      <section className="cr-band cr-alt">
-        <div className="cr-in">
-          <h2 className="cr-h" data-k="الطريقة · ٣ خطوات">كيف تشحن؟</h2>
-          <ol className="cr-steps">
-            <li><b>١</b>اختر الباقة واضغط «اشحن الآن»، واكتب اسمك وجوالك.</li>
-            <li><b>٢</b>تظهر لك بيانات الحساب: انسخها وحوّل المبلغ، ثم اضغط «تم التحويل».</li>
-            <li><b>٣</b>نتأكد من التحويل وينضاف الرصيد لحسابك بعد قليل إن شاء الله.</li>
-          </ol>
+        <div className="pr-foot">
+          {error && <p className="cr-error" role="alert">{error}</p>}
+          {payable && (
+            <>
+              <p className="pr-pay">{card ? "💳 بطاقة · مدى · Apple Pay · STC Pay — الدفع آمن عبر Paylink" : "🏦 تحويل بنكي — ينضاف الرصيد بعد ما نتأكد من التحويل"}</p>
+              {!cardOn && cardSoon && <p className="pr-pay">💳 الدفع بالبطاقة ومدى وApple Pay يتفعّل قريبًا إن شاء الله</p>}
+              {cardOn && bankOk && (
+                <p className="pr-pay">
+                  <button type="button" className="cr-link" onClick={() => setViaBank((v) => !v)}>{viaBank ? "🔁 ارجع للدفع بالبطاقة" : "🔁 جرّب التحويل البنكي بدل البطاقة"}</button>
+                  {cardSoon && " (البطاقة ظاهرة لك أنت بس للتجربة)"}
+                </p>
+              )}
+              <p className="pr-terms">
+                بالدفع توافق على{" "}
+                <Link href="/terms" target="_blank" rel="noreferrer">الشروط والأحكام</Link>{" "}
+                و<Link href="/privacy" target="_blank" rel="noreferrer">سياسة الخصوصية</Link>
+              </p>
+            </>
+          )}
         </div>
       </section>
 
@@ -338,7 +349,7 @@ export default function CreditsShop({
             <div><dt>وش أقدر أسوي بالرصيد؟</dt>
             <dd>كل أقسام الجواد: صور، فيديو، أصوات وموسيقى، أفلام، مونتاج حيدرة، الطالب الذكي، المحتوى مع محمد باقر، التصاميم مع كاظم، وتحرير الصور مع زهراء. سعر كل عملية يظهر لك قبل ما تضغط «توليد».</dd></div>
             <div><dt>متى يوصلني الرصيد؟</dt>
-            <dd>بعد ما نتأكد من وصول التحويل، عادةً خلال وقت قصير إن شاء الله.{hasSupport ? " وإذا طال الوقت تقدر تراسلنا على واتساب من نفس الصفحة." : ""}</dd></div>
+            <dd>{card ? "على طول بعد ما يتأكد الدفع." : "بعد ما نتأكد من وصول التحويل، عادةً خلال وقت قصير إن شاء الله."}{hasSupport ? " وإذا تأخر تقدر تراسلنا على واتساب من نفس الصفحة." : ""}</dd></div>
             <div><dt>لو فشل التوليد؟</dt>
             <dd>يرجع رصيده لك تلقائيًا.</dd></div>
           </dl>
@@ -346,66 +357,10 @@ export default function CreditsShop({
         </div>
       </section>
 
-      {spotPack && (
-        <div className="cs-spot" role="dialog" aria-modal="true" aria-label={`باقة ${spotPack.name}`} onClick={(e) => e.target === e.currentTarget && setSpot(null)}>
-          <div className={`cs-spot-card${spotPack.id === featured ? " star" : ""}`}>
-            <button type="button" className="cr-x" aria-label="إغلاق" onClick={() => setSpot(null)}>✕</button>
-            <span className="cr-kicker">باقة · {String(packs.indexOf(spotPack) + 1).padStart(2, "0")} / {String(packs.length).padStart(2, "0")}</span>
-            <h3>{spotPack.name}{spotPack.tag && <> <span className="cs-tag !static !inline-block align-middle">{spotPack.tag}</span></>}</h3>
-            {spotPack.note && <p className="cs-note">{spotPack.note}</p>}
-            <div className="cs-spot-price"><span className="cs-unit"><SmartCoin size={46} /></span><Roll key={spotPack.id} value={spotPack.price} /></div>
-            <ul className="cs-spot-get">
-              <li><i className="cs-ok">✓</i><span>يوصلك رصيد <Riyal halalas={spotPack.credit * 100} size={15} className="font-extrabold" /> في حسابك{bonusPct(spotPack) > 0 ? ` (+${bonusPct(spotPack)}٪ مجانًا)` : ""}</span></li>
-              {yieldLines(spotPack.credit, units).map((l) => <li key={l}><i className="cs-ok">✓</i>تقدر تسوي فيها {l}</li>)}
-              <li><i className="cs-ok">✓</i>التوليد الفاشل يرجع رصيده</li>
-            </ul>
-            <button type="button" className="cr-cta" disabled={!payable} onClick={buy}>
-              <span className="cr-cta-main">اشحن هذي الباقة</span>
-              <span className="cs-cta-price" dir="ltr"><Riyal halalas={spotPack.price * 100} size={20} /></span>
-            </button>
-            {!payable && <p className="cr-urgent">الدفع يفتح بعد قليل إن شاء الله.</p>}
-          </div>
-        </div>
-      )}
-
-      {!step && !spotPack && (
-        <div className={`cr-sticky${atList ? " hide" : ""}`} aria-hidden={atList}>
-          <div className="cr-sprice">
-            <span className="cs-sname">باقة {sel.name}</span>
-            <Riyal halalas={sel.price * 100} size={22} className="cr-sn" />
-          </div>
-          <button type="button" className="cr-cta cr-cta-sm" disabled={!payable} onClick={buy} tabIndex={atList ? -1 : 0}>اشحن الآن</button>
-        </div>
-      )}
-
       {step && (
-        <div className="cr-modal" role="dialog" aria-modal="true" aria-label="الدفع">
+        <div className="cr-modal" role="dialog" aria-modal="true" aria-label="التحويل البنكي">
           <div className="cr-sheet">
             <button type="button" className="cr-x" aria-label="إغلاق" onClick={() => setStep(null)}>✕</button>
-            <ol className="cr-prog" aria-label="خطوات الدفع">
-              {["البيانات", "التحويل", "تم"].map((t, i) => {
-                const at = step === "form" ? 0 : step === "bank" ? 1 : 2;
-                return <li key={t} className={i < at ? "past" : i === at ? "now" : ""}><b>{i < at ? "✓" : NUM[i]}</b>{t}</li>;
-              })}
-            </ol>
-            {step === "form" && (
-              <>
-                <h3>باقة {sel.name}</h3>
-                <div className="cs-sheet-sum">
-                  <span>تحوّل</span>
-                  <Riyal halalas={sel.price * 100} size={26} className="cs-sum-n" />
-                  <span>ويوصلك رصيد</span>
-                  <Riyal halalas={sel.credit * 100} size={26} className="cs-sum-n" />
-                </div>
-                <label>الاسم الثلاثي<input value={name} onChange={(e) => setName(e.target.value)} placeholder="كما في حسابك البنكي" autoComplete="name" maxLength={80} /></label>
-                <label>رقم الجوال (واتساب)<input dir="ltr" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" autoComplete="tel" /></label>
-                <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>
-                {error && <p className="cr-error" role="alert">{error}</p>}
-                <AgreeTerms on={agree} onChange={setAgree} what="الشحن" />
-                {card && <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void payCard()}>{busy ? "…" : <span className="cr-cta-main">💳 ادفع بالبطاقة · مدى · Apple Pay</span>}</button>}
-                {bankOk && <button type="button" className={card ? "cr-btn" : "cr-cta"} disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className={card ? undefined : "cr-cta-main"}>{card ? "أو بتحويل بنكي" : "التالي: بيانات التحويل"}</span>}</button>}
-              </>
-            )}
             {step === "bank" && order && bank && (
               <>
                 <h3>حوّل المبلغ</h3>
@@ -425,7 +380,7 @@ export default function CreditsShop({
                   </a>
                 )}
                 {error && <p className="cr-error" role="alert">{error}</p>}
-                <button type="button" className="cr-cta" disabled={busy} onClick={() => void transferred()}>{busy ? "…" : <span className="cr-cta-main">✅ تم التحويل</span>}</button>
+                <button type="button" className="cr-cta" disabled={!!busy} onClick={() => void transferred()}>{busy ? "…" : <span className="cr-cta-main">✅ تم التحويل</span>}</button>
                 <p className="cr-mute cs-trust">✅ أي توليد يفشل يرجع رصيده تلقائيًا</p>
               </>
             )}

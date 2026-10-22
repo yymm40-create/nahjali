@@ -58,7 +58,14 @@ export const ESTIMATED_COST_USD: Record<QualityKey, number> = {
 export const isQuality = (q: unknown): q is QualityKey => typeof q === "string" && q in QUALITY_TIERS;
 
 /**
- * The bank-transfer way of paying on «اشحن رصيدك» (the bank data, «تم التحويل», the owner's confirm). Hidden for now, while card payment
- * (Paylink) is the way; set to true to show it again beside the card button — nothing else needs to change.
+ * The bank-transfer way of paying on «اشحن رصيدك» (the bank data, «تم التحويل», the owner's confirm). On for everyone while card payment is being
+ * tested; set to false to hide it once the card works.
  */
-export const BANK_TRANSFER_ENABLED = false;
+export const BANK_TRANSFER_ENABLED = true;
+
+/**
+ * Card payment (Paylink) for EVERYONE. While false, only the owners see the card button (to test it with the Paylink keys) and
+ * everyone else sees «الدفع بالبطاقة يتفعّل قريبًا إن شاء الله» and pays by bank transfer; the server refuses card payment to
+ * anyone else too. Set to true once a test payment went through.
+ */
+export const CARD_PAYMENT_PUBLIC = false;
