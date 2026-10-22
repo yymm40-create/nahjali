@@ -4,7 +4,15 @@
 // Flow: auth → id_token (cached) → addInvoice (the order id as orderNumber) → the buyer pays on Paylink's page → back to
 // /api/credits/paylink/return, where the invoice is READ from Paylink (never trusted from the URL) before any balance is added.
 
-const BASE = () => (process.env.PAYLINK_BASE || "https://restapi.paylink.sa").replace(/\/+$/, "");
+const LIVE = "https://restapi.paylink.sa";
+const TEST = "https://restpilot.paylink.sa";
+const configured = () => (process.env.PAYLINK_BASE?.trim() || LIVE).replace(/\/+$/, "");
+/**
+ * The base that answered last. When the configured one does not answer the sign-in at all (404, or no connection — Paylink's test
+ * address has been seen returning 404 for every path) or refuses the keys, the other environment is tried once and kept.
+ */
+let base: string | null = null;
+const BASE = () => base ?? configured();
 // the names the owner may have used in Vercel (names are case-sensitive): the documented one first
 const ID_NAMES = ["PAYLINK_API_ID", "API_ID", "api_id", "PAYLINK_APP_ID"];
 const SECRET_NAMES = ["PAYLINK_SECRET_KEY", "SECRET_KEY", "secret_key", "PAYLINK_SECRET"];
@@ -46,7 +54,22 @@ async function token(force = false): Promise<string> {
   if (!force && cached && cached.until > Date.now()) return cached.token;
   const { apiId, secretKey } = keys();
   if (!apiId || !secretKey) throw new PaylinkError("paylink is not set up");
-  const r = await call<{ id_token?: string }>("/api/auth", { method: "POST", body: { apiId, secretKey, persistToken: false } });
+  const body = { apiId, secretKey, persistToken: false };
+  let r: { id_token?: string };
+  try {
+    r = await call<{ id_token?: string }>("/api/auth", { method: "POST", body });
+  } catch (e) {
+    const other = BASE() === LIVE ? TEST : LIVE;
+    console.error("paylink auth failed on", BASE(), String(e).slice(0, 300), "— trying", other);
+    const was = base;
+    base = other;
+    try {
+      r = await call<{ id_token?: string }>("/api/auth", { method: "POST", body });
+    } catch (e2) {
+      base = was;
+      throw new PaylinkError(`${String(e).slice(0, 200)} | ${String(e2).slice(0, 200)}`);
+    }
+  }
   if (!r?.id_token) throw new PaylinkError("paylink auth gave no token");
   cached = { token: r.id_token, until: Date.now() + 25 * 60_000 };
   return r.id_token;

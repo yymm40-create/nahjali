@@ -57,6 +57,18 @@ describe("Paylink client", () => {
     expect(auths).toBe(2);
   });
 
+  it("falls back to the other environment when the configured one does not answer the sign-in", async () => {
+    const f = vi.fn(async (url: string) => {
+      if (url.startsWith("https://restpilot.paylink.sa")) return new Response("<html>404</html>", { status: 404 });
+      return url.endsWith("/api/auth") ? reply({ id_token: "live" }) : reply({ transactionNo: "T9", url: "https://payment.paylink.sa/pay/info/T9" });
+    });
+    vi.stubGlobal("fetch", f);
+    const { addInvoice } = await import("@/lib/credits/paylink");
+    const r = await addInvoice({ orderNumber: "o-9", amount: 5, clientName: "س", clientMobile: "+966500000000", title: "باقة", callBackUrl: "https://x/r", cancelUrl: "https://x/c" });
+    expect(r.transactionNo).toBe("T9");
+    expect((f.mock.calls.at(-1) as unknown as [string])[0]).toBe("https://restapi.paylink.sa/api/addInvoice");
+  });
+
   it("counts an invoice as paid only for the same order, the same price and a Paid status", async () => {
     const { invoicePaid } = await import("@/lib/credits/paylink");
     const inv = { orderNumber: "o-1", amount: 10, status: "Paid" };
