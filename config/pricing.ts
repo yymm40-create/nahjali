@@ -56,3 +56,9 @@ export const ESTIMATED_COST_USD: Record<QualityKey, number> = {
 };
 
 export const isQuality = (q: unknown): q is QualityKey => typeof q === "string" && q in QUALITY_TIERS;
+
+/**
+ * The bank-transfer way of paying on «اشحن رصيدك» (the bank data, «تم التحويل», the owner's confirm). Hidden for now, while card payment
+ * (Paylink) is the way; set to true to show it again beside the card button — nothing else needs to change.
+ */
+export const BANK_TRANSFER_ENABLED = false;

@@ -8,6 +8,7 @@ import { unitPrices } from "@/lib/credits/yields";
 import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
 import { jawadSession } from "@/lib/jawad/server/access";
 import { supportLink } from "@config/credits";
+import { BANK_TRANSFER_ENABLED } from "@config/pricing";
 import { JAWAD } from "@config/jawad/brand";
 import "../course/course.css";
 import "./credits.css";
@@ -24,13 +25,14 @@ export default async function CreditsPage({ searchParams }: { searchParams: Prom
   // back from Paylink: the paid order (one of this buyer's own, already settled by the return route) or «not confirmed»
   const paidOrder = paid ? orders.find((o) => o.id === paid && o.status === "confirmed") : undefined;
   const back = paid || unpaid ? { paid: paidOrder ? { id: paidOrder.id, packName: paidOrder.packName, price: paidOrder.price } : null } : null;
+  const bankOk = BANK_TRANSFER_ENABLED && !!(course.bank.iban || course.bank.account);
   return (
     <CreditsShop
       packs={s.packs}
       units={units}
       featured={s.featured}
-      payable={paylinkEnabled() || !!(course.bank.iban || course.bank.account)}
-      bankOk={!!(course.bank.iban || course.bank.account)}
+      payable={paylinkEnabled() || bankOk}
+      bankOk={bankOk}
       card={paylinkEnabled()}
       back={back}
       hasSupport={!!s.whatsapp}
