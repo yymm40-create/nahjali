@@ -20,6 +20,15 @@ describe("Paylink client", () => {
     expect(paylinkEnabled()).toBe(false);
   });
 
+  it("also reads the keys under the names API_ID and secret_key", async () => {
+    vi.stubEnv("PAYLINK_API_ID", "");
+    vi.stubEnv("PAYLINK_SECRET_KEY", "");
+    vi.stubEnv("API_ID", "ID2");
+    vi.stubEnv("secret_key", "S2");
+    const { paylinkEnabled } = await import("@/lib/credits/paylink");
+    expect(paylinkEnabled()).toBe(true);
+  });
+
   it("authenticates on the test base, then adds an invoice with the token and the order id", async () => {
     const f = vi.fn(async (url: string) => (url.endsWith("/api/auth") ? reply({ id_token: "tok" }) : reply({ transactionNo: "T1", url: "https://payment.paylink.sa/pay/info/T1" })));
     vi.stubGlobal("fetch", f);
