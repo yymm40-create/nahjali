@@ -74,6 +74,7 @@ export default async function ProjectView({ id, base }: { id: string; base: stri
       <ProjectEditor
         projectId={project.id}
         locked={scriptStarted}
+        kind={project.kind}
         initial={{
           title: project.title,
           story: project.story,
