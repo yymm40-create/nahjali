@@ -199,7 +199,7 @@ function reportPurchase(o: CreditOrder): void {
  * «ادفع بالبطاقة» (Paylink): the same order as the bank one, plus an invoice on Paylink's page (card, mada, Apple Pay, STC Pay).
  * Paylink's transaction number is kept in `note`, so the return can read the invoice and settle only what Paylink says is paid.
  */
-export async function startPaylinkOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string): Promise<{ order: CreditOrder; url: string }> {
+export async function startPaylinkOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string, debug = false): Promise<{ order: CreditOrder; url: string }> {
   if (!paylinkEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
   const s = await loadCreditSettings();
   const pack = packOf(s, b.pack);
@@ -231,7 +231,8 @@ export async function startPaylinkOrder(user: { id: string; email?: string | nul
   } catch (e) {
     console.error("paylink addInvoice", order.id, e);
     await db().from("credit_orders").update({ status: "rejected", note: "paylink: invoice failed", updated_at: new Date().toISOString() }).eq("id", order.id).eq("status", "started");
-    throw new UserError("تعذّر فتح صفحة الدفع. جرّب مرة ثانية أو استخدم التحويل البنكي.", 502);
+    // the owners see Paylink's own answer, to fix the keys or the address; buyers never do
+    throw new UserError(`تعذّر فتح صفحة الدفع. جرّب مرة ثانية أو استخدم التحويل البنكي.${debug ? ` [للمالك: ${String(e).slice(0, 400)}]` : ""}`, 502);
   }
 }
 

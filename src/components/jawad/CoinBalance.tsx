@@ -27,7 +27,7 @@ export default function CoinBalance({ initial, unlimited }: { initial: number | 
   return (
     <span className="flex items-center gap-1">
       <Link
-        href="/jawad-ai/coins"
+        href="/jawad-ai/credits"
         className="flex h-9 items-center gap-1.5 rounded-full border border-jw-line-strong bg-jw-surface-2 px-3 text-sm font-medium hover:bg-jw-surface-3"
         aria-label={`رصيدك: ${unlimited ? "بلا حد" : `${text} ريال`}`}
       >

@@ -2,10 +2,8 @@ import SmartCoin from "@/components/SmartCoin";
 import { coinBalance } from "@/lib/coins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireJawadUser } from "@/lib/jawad/server/access";
-import { loadCreditSettings } from "@/lib/credits/settings";
 import Link from "next/link";
 import { LIBRARY_ADDON, SMART_COIN } from "@config/coins";
-import { bonusPct } from "@config/credits";
 import { libraryAccess } from "@/lib/jawad/server/library-access";
 import { perksOf } from "@/lib/access";
 import Riyal from "@/components/Riyal";
@@ -47,14 +45,12 @@ function Ring({ pct, tone, children }: { pct: number; tone: string; children: Re
 /** The user's «النقود الذكية» inside JAWAD AI: a ring of what is left from the last top-up, the history and every package. */
 export default async function JawadCoins() {
   const { user, owner } = await requireJawadUser("/jawad-ai/coins");
-  const [balance, credit, { data: ledger }, library, perks] = await Promise.all([
+  const [balance, { data: ledger }, library, perks] = await Promise.all([
     coinBalance(user.id),
-    loadCreditSettings(),
     createAdminClient().from("smart_coin_ledger").select("id,delta,reason,label,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
     libraryAccess(user.id, owner),
     perksOf(user.email),
   ]);
-  const packs = credit.packs;
   const left = balance ?? 0;
   const { spent, total } = usedSinceTopUp(ledger ?? [], left);
   const pct = owner ? 100 : total > 0 ? Math.max(0, Math.min(100, Math.round((left / total) * 100))) : 0;
@@ -78,7 +74,7 @@ export default async function JawadCoins() {
               <li className="flex items-center justify-between gap-3 border-t border-jw-line pt-2 font-semibold"><span>آخر شحنة كان مجموعها</span><Riyal halalas={total} size={14} /></li>
             </ul>
           )}
-          {!owner && <Link href="/jawad-ai/credits" className="block rounded-full bg-[#141414] px-5 py-3 text-center text-base font-bold text-white shadow-lg">💳 اشحن رصيدك</Link>}
+          <Link href="/jawad-ai/credits" className="block rounded-full bg-[#141414] px-5 py-3 text-center text-base font-bold text-white shadow-lg">💳 اشحن رصيدك — شوف الباقات</Link>
           <p className="text-xs text-jw-faint">كل توليد يبين سعره على زر «توليد» قبل ما تضغط، والتوليد الفاشل يرجع رصيده.</p>
         </div>
       </section>
@@ -99,24 +95,6 @@ export default async function JawadCoins() {
         </span>
         <span className={`jw-chip !px-3 !py-1 ${library.active ? "!border-jw-accent/50 text-jw-accent" : ""}`}>{owner ? "مفتوحة لك دائمًا" : library.active ? "مفعّلة" : "غير مفعّلة"}</span>
       </Link>
-
-      <section className="jw-panel p-5">
-        <h2 className="mb-3 font-semibold">الباقات</h2>
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {packs.map((p) => (
-            <li key={p.id}>
-              <Link href={`/jawad-ai/credits?pack=${p.id}`} className="flex h-full items-center justify-between gap-3 rounded-lg border border-jw-line p-3 hover:border-jw-accent/50">
-                <span>
-                  <span className="block font-medium">{p.name}{p.tag && <span className="jw-chip ms-2 !px-2 !py-0.5 text-xs">{p.tag}</span>}</span>
-                  <span className="block text-xs text-jw-muted">{p.note || <>رصيد <Riyal halalas={p.credit * 100} size={12} /></>}</span>
-                </span>
-                <span className="flex items-center gap-1 tabular-nums"><Riyal halalas={p.price * 100} size={14} />{bonusPct(p) > 0 && <span className="ms-1 text-xs text-jw-ok">+{bonusPct(p)}٪</span>}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 text-xs text-jw-faint">كل الباقات متاحة لك دائمًا، حتى الأقل من اللي اشتريته قبل.</p>
-      </section>
 
       <section className="jw-panel p-5">
         <h2 className="mb-3 font-semibold">السجل</h2>

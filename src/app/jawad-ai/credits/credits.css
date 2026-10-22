@@ -7,31 +7,59 @@
 .cs-waiting { background: var(--cr-accent-soft); border-block: 1px solid rgba(232, 87, 42, 0.3); padding: 12px 0; font-size: 14.5px; }
 .cs-waiting a { color: var(--cr-accent); font-weight: 800; text-decoration: underline; }
 
+/* ——— the page in JAWAD's night colours (the front page and the offers page): violet → magenta → orange on a deep night ——— */
+.cr.cs {
+  --cr-paper: #0a0618;
+  --cr-card: rgba(255, 255, 255, 0.06);
+  --cr-ink: #ffffff;
+  --cr-ink-2: #ece6ff;
+  --cr-mute: #c9bfe8;
+  --cr-faint: #9b90c2;
+  --cr-line: rgba(255, 255, 255, 0.12);
+  --cr-line-2: rgba(255, 255, 255, 0.22);
+  --cr-accent: #ff8a1f;
+  --cr-accent-soft: rgba(255, 138, 31, 0.14);
+  --cr-dark: #1b1238;
+  --cr-green: #4ade80;
+  --cr-green-soft: rgba(74, 222, 128, 0.12);
+  color-scheme: dark;
+  background:
+    radial-gradient(70% 40% at 100% 0%, rgba(139, 92, 246, 0.45), transparent 62%),
+    radial-gradient(60% 35% at 0% 12%, rgba(236, 72, 153, 0.3), transparent 60%),
+    radial-gradient(60% 30% at 50% 100%, rgba(255, 138, 31, 0.16), transparent 65%),
+    var(--cr-paper);
+}
+.cr.cs h1 em, .cr.cs .cs-grad { background: linear-gradient(90deg, #c4b5fd, #f9a8d4, #fdba74); -webkit-background-clip: text; background-clip: text; color: transparent; font-style: normal; }
+.cr.cs .cr-error { color: #fda4af; }
+.cr.cs .cr-sheet { background: #140c2c; color: #fff; }
+.cr.cs .cr-sheet input { background: rgba(255, 255, 255, 0.06); color: #fff; border-color: rgba(255, 255, 255, 0.18); }
+.cr.cs .cr-copy, .cr.cs .cr-btn { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
 /* ——— the pricing cards ——— */
 .pr {
-  --pr-bg: #ffffff;
-  --pr-ink: #121212;
-  --pr-mute: #6d6a64;
-  --pr-line: #ebe7e0;
-  --pr-btn: #efece7;
-  --pr-btn-hover: #e4e0d9;
-  --pr-btn-ink: #121212;
-  --pr-check: #f1eee9;
-  --pr-check-ink: #121212;
-  --pr-dark-bg: #0e0e0f;
+  --pr-bg: rgba(255, 255, 255, 0.055);
+  --pr-ink: #ffffff;
+  --pr-mute: #c9bfe8;
+  --pr-line: rgba(255, 255, 255, 0.12);
+  --pr-btn: rgba(255, 255, 255, 0.1);
+  --pr-btn-hover: rgba(255, 255, 255, 0.16);
+  --pr-btn-ink: #ffffff;
+  --pr-check: rgba(196, 181, 253, 0.16);
+  --pr-check-ink: #ddd6fe;
+  --pr-dark-bg: linear-gradient(160deg, #2a1259 0%, #3b0f4a 55%, #4a1622 100%);
   --pr-dark-ink: #ffffff;
-  --pr-dark-mute: rgba(255, 255, 255, 0.62);
-  --pr-dark-line: rgba(255, 255, 255, 0.12);
-  --pr-orange: #ff6a2b;
-  --pr-orange-hover: #f25a19;
-  --pr-orange-soft: rgba(255, 106, 43, 0.14);
-  --pr-green: #16a34a;
-  --pr-green-soft: rgba(22, 163, 74, 0.12);
+  --pr-dark-mute: rgba(255, 255, 255, 0.72);
+  --pr-dark-line: rgba(255, 255, 255, 0.16);
+  --pr-orange: #ff8a1f;
+  --pr-orange-hover: #ff9a3c;
+  --pr-orange-soft: rgba(255, 138, 31, 0.16);
+  --pr-green: #4ade80;
+  --pr-green-soft: rgba(74, 222, 128, 0.14);
   padding: 8px 16px 40px;
 }
 .pr-grid { display: flex; flex-direction: column; gap: 14px; max-width: 1080px; margin-inline: auto; }
 .pr-card { position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px 20px 20px; border-radius: 24px; background: var(--pr-bg); color: var(--pr-ink); border: 1px solid var(--pr-line); box-shadow: 0 1px 2px rgba(20, 16, 10, 0.04), 0 18px 40px -30px rgba(20, 16, 10, 0.3); }
-.pr-card.star { order: -1; background: var(--pr-dark-bg); color: var(--pr-dark-ink); border-color: var(--pr-dark-bg); box-shadow: 0 30px 60px -30px rgba(10, 10, 10, 0.65); }
+.pr-card.star { order: -1; background: var(--pr-dark-bg) padding-box, linear-gradient(135deg, #8b5cf6, #ec4899, #ff8a1f) border-box; border: 1.5px solid transparent; color: var(--pr-dark-ink); box-shadow: 0 30px 60px -30px rgba(10, 10, 10, 0.65); }
 .pr-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pr-name { font-size: 19px; font-weight: 800; line-height: 1.35; letter-spacing: -0.01em; }
 .pr-pill { flex: 0 0 auto; padding: 3px 11px; border-radius: 999px; background: var(--pr-orange); color: #fff; font-size: 12px; font-weight: 800; white-space: nowrap; }
@@ -105,3 +133,13 @@
 .cs-wa { background: #25d366; color: #052e16; border-color: transparent; min-height: 52px; font-size: 16px; }
 .cs-trust { font-size: 13px; }
 .cr-link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-weight: 700; }
+
+/* the night look: glassy cards, the featured one glowing, the main button like the front page's */
+.pr-card { backdrop-filter: blur(6px); box-shadow: 0 24px 50px -32px rgba(0, 0, 0, 0.8); }
+.pr-card.star { box-shadow: 0 30px 70px -30px rgba(236, 72, 153, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04); }
+.star .pr-btn { background: linear-gradient(180deg, #ffb52e, #ff8a1f 55%, #f26a0d); color: #2a1200; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 14px 30px -10px rgba(255, 138, 31, 0.8); }
+.star .pr-btn:hover:not(:disabled) { background: linear-gradient(180deg, #ffc04d, #ff9a3c 55%, #f5791f); }
+.pr-pill { background: linear-gradient(90deg, #ec4899, #ff8a1f); }
+.pr-pill.soft { background: rgba(255, 138, 31, 0.16); color: #fdba74; }
+.pr-pay { color: #ece6ff; }
+.pr-card-err { margin-top: 4px; color: #fda4af; font-size: 13.5px; line-height: 1.6; text-align: center; }
