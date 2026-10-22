@@ -28,16 +28,19 @@ export default function ProjectFields({
   onChange,
   disabled,
   kind,
+  startOnMap,
 }: {
   values: FieldValues;
   onChange: (v: FieldValues) => void;
   disabled?: boolean;
   /** a short scene shows each station's seconds (its length, or a minute); a whole film does not */
   kind?: "scene" | "film" | "series" | "";
+  /** open on the story map even when nothing is written yet (a link like /film/new?map=1) */
+  startOnMap?: boolean;
 }) {
   const set = (key: keyof FieldValues) => (e: { target: { value: string } }) => onChange({ ...values, [key]: e.target.value });
   // a story already written on the map opens on the map
-  const [map, setMap] = useState(() => parseStory(values.story) !== null);
+  const [map, setMap] = useState(() => startOnMap || parseStory(values.story) !== null);
   const seconds = kind === "film" || kind === "series" ? null : Number(values.targetDurationSec) || (kind === "scene" ? 60 : null);
 
   return (
