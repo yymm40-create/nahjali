@@ -3,6 +3,7 @@ import Stats from "@/app/admin/stats/page";
 import Spend from "@/app/admin/spend/page";
 import Profit from "@/app/admin/profit/page";
 import Access from "@/app/admin/access/page";
+import Contact from "@/app/admin/contact/page";
 import Limits from "@/app/admin/limits/page";
 import Pricing from "@/app/admin/pricing/page";
 import Islamic from "@/app/admin/islamic/page";
@@ -27,6 +28,7 @@ export default async function UnifiedAdminPanel({ params, searchParams }: { para
     case "spend": return <Spend searchParams={Promise.resolve({ r })} />;
     case "profit": return <Profit searchParams={Promise.resolve({ r })} />;
     case "access": return <Access />;
+    case "contact": return <Contact />;
     case "limits": return <Limits />;
     case "pricing": return <Pricing />;
     case "islamic": return <Islamic />;
