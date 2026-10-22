@@ -35,10 +35,11 @@ export const POSE_MAX_RETRIES = 2;
 export const DEV_PAYMENT_ENABLED = true;
 
 /**
- * Temporary email (magic link) sign-in, for testing before Google sign-in is set up.
- * Turn off once Google works.
+ * Email (magic link) sign-in next to Google's, on both sign-in pages. On: Google's sign-in often breaks inside the Instagram /
+ * TikTok / Snapchat in-app browsers, and the link needs nothing beyond the Supabase keys in .env.example (Cloudflare's Turnstile
+ * check is optional: it shows only when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set).
  */
-export const EMAIL_LOGIN_ENABLED = false;
+export const EMAIL_LOGIN_ENABLED = true;
 
 /** Generation rate limit per user. */
 export const RATE_LIMIT = { maxRequests: 30, windowMinutes: 10 };
