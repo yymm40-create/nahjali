@@ -13,6 +13,7 @@ import { grantCoins } from "@/lib/coins";
 import { cleanPhone, type Bank } from "@config/course";
 import { CREDITS, packOf } from "@config/credits";
 import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
+import { addInvoice, getInvoice, invoicePaid, paylinkEnabled } from "./paylink";
 import { loadCreditSettings } from "./settings";
 import { notifyCreditTransfer } from "./telegram";
 
@@ -192,6 +193,67 @@ function reportPurchase(o: CreditOrder): void {
   } catch {
     void send();
   }
+}
+
+/**
+ * «ادفع بالبطاقة» (Paylink): the same order as the bank one, plus an invoice on Paylink's page (card, mada, Apple Pay, STC Pay).
+ * Paylink's transaction number is kept in `note`, so the return can read the invoice and settle only what Paylink says is paid.
+ */
+export async function startPaylinkOrder(user: { id: string; email?: string | null }, b: { pack: unknown; name: unknown; phone: unknown; source?: unknown }, ad: Partial<Pick<AdContext, "fbp" | "fbc" | "ip" | "ua">> | null | undefined, origin: string): Promise<{ order: CreditOrder; url: string }> {
+  if (!paylinkEnabled()) throw new UserError("الدفع بالبطاقة غير متاح الحين؛ استخدم التحويل البنكي.", 503);
+  const s = await loadCreditSettings();
+  const pack = packOf(s, b.pack);
+  if (!pack) throw new UserError("هذي الباقة غير متاحة؛ حدّث الصفحة.", 409);
+  const name = typeof b.name === "string" ? b.name.trim().replace(/\s+/g, " ") : "";
+  if (name.length < 2 || name.length > 80) throw new UserError("اكتب اسمك (يظهر في إيصال الدفع).", 400);
+  const phone = cleanPhone(b.phone);
+  if (!phone) throw new UserError("رقم الجوال غير صحيح؛ اكتبه مع المفتاح أو بصيغة 05xxxxxxxx.", 400);
+  const { count } = await db().from("credit_orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "started").gte("created_at", new Date(Date.now() - 3600_000).toISOString());
+  if ((count ?? 0) >= CREDITS.maxOpen) throw new UserError("عندك طلبات شحن مفتوحة كثيرة؛ انتظر قليلًا أو راسلنا.", 429);
+  const source = cleanSource(b.source, ad);
+  const fields = { email: user.email ?? "", name, phone, pack_name: pack.name, price_sar: pack.price, credit_sar: pack.credit };
+  const { data, error } = await saveOrder((on) => db().from("credit_orders").insert({ user_id: user.id, pack_id: pack.id, ...(on && source ? { ...fields, source } : fields) }).select("*").single());
+  wrap(error);
+  const order = view(data!);
+  try {
+    const inv = await addInvoice({
+      orderNumber: order.id,
+      amount: pack.price,
+      clientName: name,
+      clientMobile: phone,
+      clientEmail: user.email ?? undefined,
+      title: `رصيد الجواد الذكي — باقة ${pack.name}`,
+      callBackUrl: `${origin}/api/credits/paylink/return?order=${order.id}`,
+      cancelUrl: `${origin}/jawad-ai/credits?cancelled=1`,
+    });
+    await db().from("credit_orders").update({ note: `paylink:${inv.transactionNo}`, updated_at: new Date().toISOString() }).eq("id", order.id);
+    return { order, url: inv.url };
+  } catch (e) {
+    console.error("paylink addInvoice", order.id, e);
+    await db().from("credit_orders").update({ status: "rejected", note: "paylink: invoice failed", updated_at: new Date().toISOString() }).eq("id", order.id).eq("status", "started");
+    throw new UserError("تعذّر فتح صفحة الدفع. جرّب مرة ثانية أو استخدم التحويل البنكي.", 502);
+  }
+}
+
+/**
+ * The buyer is back from Paylink (or Paylink called): the invoice is READ from Paylink and only a paid one, for this order and this
+ * price, adds the balance (confirmCreditOrder adds it once, however many times this runs). Returns the order and whether it is paid.
+ */
+export async function settlePaylinkOrder(orderId: string): Promise<{ order: CreditOrder; paid: boolean } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return null;
+  const o = await getCreditOrder(orderId);
+  if (!o) return null;
+  const txn = /^paylink:(.+)$/.exec(o.note)?.[1];
+  if (!txn) return { order: o, paid: false };
+  if (o.status === "confirmed") return { order: o, paid: true };
+  try {
+    if (!invoicePaid(await getInvoice(txn), o.id, o.price)) return { order: o, paid: false };
+  } catch (e) {
+    console.error("paylink getInvoice", o.id, e);
+    return { order: o, paid: false };
+  }
+  const { order } = await confirmCreditOrder(o.id, "paylink");
+  return { order, paid: order.status === "confirmed" };
 }
 
 export async function rejectCreditOrder(id: string, by: string, note = ""): Promise<CreditOrder> {
