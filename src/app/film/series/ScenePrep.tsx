@@ -6,6 +6,8 @@ import { postJson } from "@/lib/fetch";
 import { credits } from "@/lib/film/credits";
 import { useFilmBase } from "../FilmBase";
 import RobotFace from "@/components/RobotFace";
+import { parseStory } from "@/lib/film/story-map";
+import StoryMap, { StoryWay } from "../StoryMap";
 
 type Who = { name: string; existing: boolean; note: string };
 type Understanding = { title: string; story: string; understanding: string; characters: Who[]; places: Who[]; questions: { question: string; options: string[] }[]; number: number };
@@ -22,6 +24,8 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
   const [mode, setMode] = useState<"mine" | "sajjad" | null>(initialText ? "mine" : null);
   const [title, setTitle] = useState(initialTitle);
   const [text, setText] = useState(initialText);
+  // «أكتبه بنفسي» freely, or with «🗺️ ساعدني أكتبها» (a question per station)
+  const [map, setMap] = useState(() => parseStory(initialText) !== null);
   const [u, setU] = useState<Understanding | null>(null);
   const [story, setStory] = useState("");
   const [fixing, setFixing] = useState(false);
@@ -86,7 +90,10 @@ export default function ScenePrep({ seriesId, episodeId, sceneId, initialTitle =
               <span className="block text-xs font-bold text-muted">من المسلسل والحلقة</span>
             </button>
           </div>
-          {mode && (
+          {mode === "mine" && <StoryWay map={map} onMap={setMap} />}
+          {mode === "mine" && map ? (
+            <StoryMap story={text} durationSec={null} onChange={(t) => setText(t.slice(0, 20000))} />
+          ) : mode && (
             <textarea
               className="field min-h-32 text-sm leading-7"
               maxLength={20000}

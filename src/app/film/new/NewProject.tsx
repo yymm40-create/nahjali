@@ -97,7 +97,7 @@ export default function NewProject() {
           {kind === "scene" && <p className="text-xs leading-6 text-muted">المشهد القصير يقف بنفسه: مكان واحد ولحظة واحدة — أسرع وأرخص، وما يفتح أحداثًا تحتاج مشاهد ثانية.</p>}
         </section>}
 
-        {!intake && <ProjectFields values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
+        {!intake && <ProjectFields kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
         <ResearchChoice value={research} onChange={setResearch} />
         {error && <p className="error-box">{error}</p>}
         {intake ? (

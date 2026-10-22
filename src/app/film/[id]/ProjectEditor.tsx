@@ -7,7 +7,7 @@ import ProjectFields, { type FieldValues } from "../ProjectFields";
 type SaveState = "saved" | "dirty" | "saving" | "error";
 
 /** Edits the project fields and saves them automatically a moment after the user stops typing. */
-export default function ProjectEditor({ projectId, initial, locked }: { projectId: string; initial: FieldValues; locked?: boolean }) {
+export default function ProjectEditor({ projectId, initial, locked, kind }: { projectId: string; initial: FieldValues; locked?: boolean; kind?: "scene" | "film" }) {
   const [values, setValues] = useState(initial);
   const [state, setState] = useState<SaveState>("saved");
   const [error, setError] = useState("");
@@ -81,6 +81,7 @@ export default function ProjectEditor({ projectId, initial, locked }: { projectI
       )}
       <ProjectFields
         disabled={locked}
+        kind={kind}
         values={values}
         onChange={(v) => {
           setValues(v);
