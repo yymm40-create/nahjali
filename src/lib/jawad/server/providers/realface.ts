@@ -68,3 +68,22 @@ export async function realFaceCancel(id: string): Promise<boolean> {
   const res = await fetch(`${BASE}/requests/${encodeURIComponent(id)}/cancel`, { method: "POST", headers: headers(), cache: "no-store", signal: AbortSignal.timeout(30_000) });
   return res.status === 202 || res.ok;
 }
+
+/**
+ * The owner's check of the connection, without making anything: the status of a request that cannot exist. A 404 means
+ * the key is accepted (the request simply is not there); a 401/403 means the key is wrong or not in «ID:SECRET» form.
+ */
+export async function realFacePing(): Promise<{ ok: boolean; status: number | null; says: string }> {
+  if (!realFaceReady()) return { ok: false, status: null, says: "المفتاح غير موجود على الخادم (HIGGSFIELD_API)." };
+  const k = key();
+  const shape = k.includes(":") ? "" : " ملاحظة: المفتاح ما فيه «:» — المطلوب بصيغة KEY_ID:KEY_SECRET.";
+  try {
+    const res = await fetch(`${BASE}/requests/00000000-0000-0000-0000-000000000000/status`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const text = (await res.text()).slice(0, 300);
+    if (res.status === 401 || res.status === 403) return { ok: false, status: res.status, says: "المزوّد رفض المفتاح (غلط أو ناقص)." + shape + " الرد: " + text };
+    if (res.status === 404 || res.ok) return { ok: true, status: res.status, says: "الاتصال شغّال والمفتاح مقبول." };
+    return { ok: false, status: res.status, says: "رد غير متوقع من المزوّد: " + text + shape };
+  } catch (e) {
+    return { ok: false, status: null, says: "ما وصلنا للمزوّد: " + (e instanceof Error ? e.message : String(e)) };
+  }
+}

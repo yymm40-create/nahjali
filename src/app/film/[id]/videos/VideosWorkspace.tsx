@@ -141,7 +141,9 @@ export default function VideosWorkspace({
   const [model, setModel] = useState<VideoModel>(() =>
     lastModel && (lastModel !== "seedance-real-face" || realFaceOn)
       ? lastModel
-      : generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
+      : realFaceOn && generations.some((g) => g.model === "seedance-real-face")
+        ? "seedance-real-face"
+        : generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
   );
   const [rendering, setRendering] = useState(videosRunning > 0);
   // The director answering the client's notes on a video
