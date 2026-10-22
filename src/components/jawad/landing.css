@@ -36,6 +36,12 @@
 .ld-ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 58px; padding: 12px 26px; border-radius: 18px; border: 1.5px solid rgba(255, 255, 255, 0.3); color: #fff; font-size: 17px; font-weight: 700; text-decoration: none; background: rgba(255, 255, 255, 0.06); }
 @media (max-width: 520px) { .ld-actions > a { flex: 1 1 100%; } }
 .ld-note { font-size: 12.5px; color: var(--ld-mute); }
+/* today's real prices under the buttons («الصورة من ¤1 · فيديو ٥ ثواني من ¤3.5 …»): one line that wraps on a narrow phone */
+.ld-prices { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 8px; font-size: 14.5px; font-weight: 700; }
+.ld-prices span { display: inline-flex; align-items: center; gap: 4px; }
+.ld-prices span + span::before { content: "·"; margin-inline-end: 8px; color: var(--ld-mute); font-weight: 400; }
+/* the vertical clip under the hero's buttons (JAWAD.heroVideoUrl; the AdVideo component fills it) */
+.ld-video { position: relative; width: 100%; max-width: 320px; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 22px; border: 1px solid var(--jw-line-strong, var(--ld-line)); background: #1a1130; box-shadow: 0 24px 60px -24px rgba(139, 92, 246, 0.6); }
 
 .ld-strip { margin-top: 26px; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
 .ld-track { display: flex; gap: 12px; width: max-content; animation: ld-roll calc(var(--n, 8) * 4s) linear infinite; }
@@ -92,3 +98,10 @@
 .ld-final h2 { font-size: clamp(26px, 6vw, 38px); font-weight: 800; }
 .ld-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; padding: 22px 16px 96px; font-size: 13px; color: var(--ld-mute); background: #07040f; }
 .ld-foot a { color: var(--ld-mute); }
+
+/* «💬 اسأل على واتساب» (LandingWhatsApp): fixed at the bottom start, inside the footer's bottom padding; it steps aside while the
+   hero's buttons are in its corner (the component toggles .hide) and stays under the robot's bubble (z 65) and every dialog */
+.ld-wa { position: fixed; z-index: 60; inset-inline-start: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); display: inline-flex; align-items: center; gap: 6px; min-height: 46px; padding: 0 18px; border-radius: 999px; background: #25d366; color: #052e16; font-size: 14.5px; font-weight: 800; text-decoration: none; white-space: nowrap; box-shadow: 0 12px 28px -10px rgba(37, 211, 102, 0.8), 0 0 0 3px rgba(255, 255, 255, 0.08); transition: opacity 0.2s, transform 0.2s; }
+.ld-wa:hover { filter: brightness(1.05); }
+.ld-wa.hide { opacity: 0; transform: translateY(14px); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .ld-wa { transition: none; } }

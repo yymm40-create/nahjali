@@ -12,6 +12,11 @@ export const JAWAD = {
   defaultLogo: "/jawad-ai/logo.png",
   /** Electric blue from the logo's glow. Adjustable from the admin page; not a final brand decision. */
   defaultAccent: "#3b8cff",
+  /**
+   * A short vertical (9:16) clip for the visitor's front page, muted and looping under the hero's buttons: a direct video
+   * address (an .mp4 in storage, for instance). Empty: no video card.
+   */
+  heroVideoUrl: "" as string,
 } as const;
 
 /** Unfinished jobs a user may have at once. */
