@@ -25,8 +25,20 @@ export default function NewProject() {
   const [error, setError] = useState("");
   const [intake, setIntake] = useState<JourneyIntake | null>(null);
   const draftId = useRef(crypto.randomUUID());
+  // «?map=1» (the link of «خريطة فيلم الدقيقة»): a short scene, written on the story map
+  const [startOnMap, setStartOnMap] = useState(false);
 
   // Arrived from «وش تبي تصنع اليوم؟» with an idea: it is the story, and its first words the title (both editable)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("map") === "1") {
+      const t = setTimeout(() => {
+        setKind((k) => k || "scene");
+        setStartOnMap(true);
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
   useEffect(() => {
     const idea = new URLSearchParams(window.location.search).get("idea")?.trim();
     if (!idea) return;
@@ -97,7 +109,7 @@ export default function NewProject() {
           {kind === "scene" && <p className="text-xs leading-6 text-muted">المشهد القصير يقف بنفسه: مكان واحد ولحظة واحدة — أسرع وأرخص، وما يفتح أحداثًا تحتاج مشاهد ثانية.</p>}
         </section>}
 
-        {!intake && <ProjectFields kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
+        {!intake && <ProjectFields key={startOnMap ? "map" : "free"} startOnMap={startOnMap} kind={kind} values={values} onChange={(next) => { setValues(next); setIntake(null); }} />}
         <ResearchChoice value={research} onChange={setResearch} />
         {error && <p className="error-box">{error}</p>}
         {intake ? (
