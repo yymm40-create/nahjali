@@ -1,4 +1,4 @@
-// SERVER ONLY. «صافي الربح» (/admin/profit): the money that came in (balance top-ups by bank transfer and course sales,
+// SERVER ONLY. «صافي الربح» (/admin/profit): the money that came in (balance top-ups by card (Paylink) or bank transfer, and course sales,
 // confirmed by the owner) minus what the site's use really cost (the providers' prices: Claude, OpenAI, Seedance,
 // ElevenLabs…) = the owner's net profit. Everyone's use costs — paying people, gifts and free accounts, and the
 // owners' own use (shown on its own). The real cost comes from:

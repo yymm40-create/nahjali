@@ -40,7 +40,7 @@ function Card({ title, value, note, tone = "" }: { title: string; value: string;
 }
 
 /**
- * The owner's net profit: money in (top-ups by bank transfer, courses) minus what everyone's use really cost (the
+ * The owner's net profit: money in (top-ups by card or bank transfer, courses) minus what everyone's use really cost (the
  * providers' prices), the owners' own use included and shown on its own.
  */
 export default async function ProfitPage({ searchParams }: { searchParams: Promise<{ r?: string }> }) {
@@ -75,9 +75,9 @@ export default async function ProfitPage({ searchParams }: { searchParams: Promi
       />
 
       <section className="grid gap-3 sm:grid-cols-2">
-        <Card title="⬇️ الدخل كله" value={sar(p.income)} note="التحويلات اللي أكدتها فقط" />
+        <Card title="⬇️ الدخل كله" value={sar(p.income)} note="المدفوعات المؤكدة فقط (بطاقة عبر Paylink أو تحويل)" />
         <Card title="⬆️ التكلفة كلها" value={sar(totalCost)} note="اللي ندفعه للمزودين (Claude، OpenAI، Seedance، ElevenLabs…)" />
-        <Card title="💳 شحن الرصيد" value={sar(p.topups)} note={`${p.topupsCount.toLocaleString("en")} تحويل · أعطيناهم رصيد ${sar(p.topupsCredit)}`} />
+        <Card title="💳 شحن الرصيد" value={sar(p.topups)} note={`${p.topupsCount.toLocaleString("en")} عملية دفع · أعطيناهم رصيد ${sar(p.topupsCredit)}`} />
         <Card title="🎓 الدورات" value={sar(p.courses)} note={`${p.coursesCount.toLocaleString("en")} شراء`} />
         <Card title="👥 تكلفة استخدام الناس" value={sar(p.peopleCost)} note={`خصمنا منهم مقابلها ${sar(p.charged)} من رصيدهم (بما فيه الهدايا والأكواد المجانية)`} />
         <Card title="🧑‍💼 تكلفة استخدامك أنت" value={sar(p.ownersCost)} note="استخدامك بإيميلك (والرئيس المشارك) — مجاني لك لكنه يكلّف الموقع" />

@@ -5,7 +5,11 @@
 // /api/credits/paylink/return, where the invoice is READ from Paylink (never trusted from the URL) before any balance is added.
 
 const BASE = () => (process.env.PAYLINK_BASE || "https://restapi.paylink.sa").replace(/\/+$/, "");
-const keys = () => ({ apiId: process.env.PAYLINK_API_ID?.trim() ?? "", secretKey: process.env.PAYLINK_SECRET_KEY?.trim() ?? "" });
+// the names the owner may have used in Vercel (names are case-sensitive): the documented one first
+const ID_NAMES = ["PAYLINK_API_ID", "API_ID", "api_id", "PAYLINK_APP_ID"];
+const SECRET_NAMES = ["PAYLINK_SECRET_KEY", "SECRET_KEY", "secret_key", "PAYLINK_SECRET"];
+const pick = (names: string[]) => names.map((n) => process.env[n]?.trim()).find(Boolean) ?? "";
+const keys = () => ({ apiId: pick(ID_NAMES), secretKey: pick(SECRET_NAMES) });
 
 /** Are the keys set? (the card button shows only then) */
 export const paylinkEnabled = () => {
