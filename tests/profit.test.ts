@@ -24,7 +24,7 @@ describe("«صافي الربح»", () => {
     expect(coins).toContain("await logCost(r.userId, jobId, r.label, costUsd)");
     expect(read("src/lib/editor/pricing.ts")).toContain("await logCostHalalas(who.id, ref, label, cost)");
     expect(read("src/lib/tables-booklet/server.ts")).toContain("await logCost(user.id, `booklet:");
-    expect(read("supabase/migrations/0090_site_costs.sql")).toContain("create table if not exists public.site_costs");
+    expect(read("supabase/migrations/0092_site_costs.sql")).toContain("create table if not exists public.site_costs");
   });
 
   it("is in the dashboard's menus and its unified panel", () => {

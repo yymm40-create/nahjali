@@ -2,6 +2,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { usernameGate } from "@/lib/username";
+import { markFreshSignup } from "@/lib/track-server";
 
 /**
  * Verifies a one-time email token (token_hash) and signs the user in.
@@ -19,7 +20,8 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
     if (!error) {
       const gate = data.user ? await usernameGate(supabase, data.user, safeNext).catch(() => null) : null;
-      return NextResponse.redirect(`${origin}${gate ?? safeNext}`);
+      // a brand-new account: the ad pixels report the sign-up on its first page (src/components/Pixels.tsx)
+      return markFreshSignup(NextResponse.redirect(`${origin}${gate ?? safeNext}`), data.user, origin.startsWith("https:"));
     }
   }
   const jawad = safeNext === "/jawad-ai" || safeNext.startsWith("/jawad-ai/");

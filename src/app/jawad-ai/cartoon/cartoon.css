@@ -142,6 +142,13 @@
 .ct-check input { margin-top: 7px; width: 20px; height: 20px; accent-color: var(--ct-grape); }
 .ct-story { padding: 18px; background: #eaf7ff; border: 3px dashed var(--ct-sky); border-radius: 20px; }
 .ct-note { font-size: 12.5px; }
+.ct-story { display: flex; flex-direction: column; gap: 12px; }
+.ct-story h3 { margin: 4px 0 0; font-size: 16px; font-weight: 900; }
+.ct-places { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.ct-add, .ct-remove { align-self: flex-start; border: 3px solid var(--ct-ink); border-radius: 99px; padding: 8px 16px; font: inherit; font-weight: 900; cursor: pointer; box-shadow: 0 3px 0 var(--ct-ink); }
+.ct-add { background: var(--ct-mint); }
+.ct-remove { background: #fff; font-size: 12px; padding: 4px 12px; }
+.ct-add:active, .ct-remove:active { transform: translateY(3px); box-shadow: 0 0 0 var(--ct-ink); }
 
 .ct-summary { position: sticky; top: 20px; background: linear-gradient(180deg, #fff, #fff4fa); }
 .ct-price { margin: 18px 0; padding: 16px; background: #e8fff5; border: 3px solid var(--ct-ink); border-radius: 18px; }
@@ -175,3 +182,14 @@
   .ct-styles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ct-sky .d5, .ct-sky .d6, .ct-sky .d10 { display: none; }
 }
+.ct-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ct-choices .ct-name { font-size: 22px; }
+@media (max-width: 760px) { .ct-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .ct-choices small { display: none; } }
+.ct-film-ask { display: block; width: 100%; margin-top: 8px; border: 3px solid var(--ct-ink); border-radius: 16px; padding: 10px; background: var(--ct-sun); font: inherit; font-weight: 900; cursor: pointer; box-shadow: 0 3px 0 var(--ct-ink); }
+.ct-film-ask:active { transform: translateY(3px); box-shadow: 0 0 0 var(--ct-ink); }
+.ct-film { margin-top: 10px; text-align: start; }
+.ct-film-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ct-film-actions .ct-primary { margin: 0; }
+.ct-prompts { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; text-align: start; }
+.ct-prompts textarea { font-family: ui-monospace, monospace; font-size: 12px; min-height: 160px; }
+.ct-gallery > div:has(.ct-film) { grid-column: 1 / -1; }

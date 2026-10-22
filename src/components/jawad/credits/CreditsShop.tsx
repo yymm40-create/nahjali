@@ -3,6 +3,10 @@
 // «اشحن رصيدك» — the packages of balance, made for the phone first: pick one (the featured one is chosen to start with), one big
 // button, then the same three steps as the course: name and phone → the bank data to copy → «تم التحويل». After that: «يوصلك الرصيد
 // بعد قليل إن شاء الله»; if it takes long, a WhatsApp chat with the owner, the message already written.
+//
+// The ads (src/lib/track.ts, a no-op without a pixel): ViewContent when the page opens, InitiateCheckout when the order is made,
+// Purchase at «✅ تم التحويل» (its event_id is the order id, so the owner's confirm sent from the server is counted once) and Lead
+// when the WhatsApp link is opened. The visitor's source travels with the order.
 
 import Link from "next/link";
 import AgreeTerms from "@/components/jawad/AgreeTerms";
@@ -10,8 +14,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
 import SmartCoin from "@/components/SmartCoin";
-import { bonusPct, CREDITS, packYield, type Pack, type UnitPrices } from "@config/credits";
+import { bonusPct, CREDITS, packYield, supportLink, type Pack, type UnitPrices } from "@config/credits";
 import type { Bank } from "@config/course";
+import { track, visitorSource } from "@/lib/track";
 
 interface Waiting {
   id: string;
@@ -100,7 +105,7 @@ function YieldLine({ credit, units }: { credit: number; units: UnitPrices }) {
 }
 
 export default function CreditsShop({
-  packs, featured, payable, hasSupport, user, balance, owner, waiting, initialPack, loginHref, lastName, lastPhone, units,
+  packs, featured, payable, hasSupport, whatsapp = "", user, balance, owner, waiting, initialPack, loginHref, lastName, lastPhone, units,
 }: {
   packs: Pack[];
   /** what a standard picture, a 5-second 720p video and a scene cost now: «تقدر تسوي فيها» under each package */
@@ -108,6 +113,8 @@ export default function CreditsShop({
   featured: string;
   payable: boolean;
   hasSupport: boolean;
+  /** the owner's WhatsApp number (the credit settings): «أرسل الإيصال على واتساب» in the bank step (empty: no button) */
+  whatsapp?: string;
   user: { email: string } | null;
   /** null for the owners (no limit) or when it can't be read */
   balance: number | null;
@@ -155,10 +162,11 @@ export default function CreditsShop({
     setBusy(true);
     setError("");
     try {
-      const r = await post<{ order: Order; bank: Bank }>("/api/credits/order", { pack: sel.id, name, phone });
+      const r = await post<{ order: Order; bank: Bank }>("/api/credits/order", { pack: sel.id, name, phone, source: visitorSource() });
       setOrder(r.order);
       setBank(r.bank);
       setStep("bank");
+      track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -173,6 +181,8 @@ export default function CreditsShop({
       const r = await post<{ support: string }>("/api/credits/transferred", { orderId: order.id });
       setSupport(r.support ?? "");
       setStep("done");
+      // the purchase as the buyer declares it; the owner's confirm repeats it from the server with the same id (counted once)
+      track("Purchase", { value: order.price, currency: "SAR", content_name: order.packName, event_id: order.id });
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -180,6 +190,12 @@ export default function CreditsShop({
       setBusy(false);
     }
   }
+
+  // the ads: the packages were seen; a WhatsApp chat opened is a lead
+  useEffect(() => {
+    track("ViewContent", { content_name: "credits" });
+  }, []);
+  const lead = () => track("Lead", { content_name: "whatsapp" });
 
   // the bottom bar of a phone gives way while the packages are on the screen
   const listRef = useRef<HTMLElement>(null);
@@ -191,6 +207,9 @@ export default function CreditsShop({
     io.observe(el);
     return () => io.disconnect();
   }, []);
+
+  // the bank step: a picture of the receipt goes to the owner on WhatsApp (when he set his number), the message already written
+  const receipt = hasSupport && whatsapp && order && user ? supportLink({ packs, featured, whatsapp }, { id: order.id, packName: order.packName, price: order.price, email: user.email }) : "";
 
   const cta = (extra = "") => (
     <button type="button" className={`cr-cta ${extra}`} disabled={!payable} onClick={buy}>
@@ -220,7 +239,7 @@ export default function CreditsShop({
             {waiting.map((w) => (
               <p key={w.id}>
                 ⏳ طلب شحن باقة «{w.packName}» قيد التأكيد. يوصلك الرصيد بعد قليل إن شاء الله.
-                {w.support && <> <a href={w.support} target="_blank" rel="noreferrer">طال الوقت؟ راسلنا على واتساب</a></>}
+                {w.support && <> <a href={w.support} target="_blank" rel="noreferrer" onClick={lead}>طال الوقت؟ راسلنا على واتساب</a></>}
               </p>
             ))}
           </div>
@@ -362,9 +381,15 @@ export default function CreditsShop({
                   <Copy label="رقم الحساب" value={bank.account} />
                   <Copy label="رمز السويفت" value={bank.swift} />
                 </div>
-                <p className="cr-mute">حوّل ثم اضغط الزر. لا تضغطه قبل ما تحوّل.</p>
+                <p className="cr-mute">حوّل المبلغ، أرسل صورة الإيصال على واتساب، ثم اضغط «تم التحويل» — نضيف الرصيد عادةً خلال ساعة (٨ص–١٢م بتوقيت السعودية)</p>
+                {receipt && (
+                  <a className="cr-btn cs-wa" href={receipt} target="_blank" rel="noreferrer" onClick={() => track("Lead", { content_name: "whatsapp-receipt" })}>
+                    📲 أرسل الإيصال على واتساب
+                  </a>
+                )}
                 {error && <p className="cr-error" role="alert">{error}</p>}
                 <button type="button" className="cr-cta" disabled={busy} onClick={() => void transferred()}>{busy ? "…" : <span className="cr-cta-main">✅ تم التحويل</span>}</button>
+                <p className="cr-mute cs-trust">✅ أي توليد يفشل يرجع رصيده تلقائيًا</p>
               </>
             )}
             {step === "done" && (
@@ -374,7 +399,7 @@ export default function CreditsShop({
                 {support ? (
                   <p className="cs-done-small">
                     إذا طال الوقت، اضغط الرابط وراسلنا أنك حوّلت:
-                    <a className="cr-btn cs-wa" href={support} target="_blank" rel="noreferrer">💬 راسلنا على واتساب</a>
+                    <a className="cr-btn cs-wa" href={support} target="_blank" rel="noreferrer" onClick={lead}>💬 راسلنا على واتساب</a>
                   </p>
                 ) : null}
                 <Link className="cr-btn" href="/jawad-ai">ارجع للجواد الذكي</Link>

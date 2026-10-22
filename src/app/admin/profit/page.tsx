@@ -138,7 +138,7 @@ export default async function ProfitPage({ searchParams }: { searchParams: Promi
         <p>
           {p.recordingSince
             ? `✅ التكلفة الحقيقية لكل عملية تنسجل من ${new Date(p.recordingSince).toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh", dateStyle: "medium" })}.`
-            : "⚠️ تسجيل التكلفة الحقيقية لكل عملية ما بدأ للحين (شغّل ملف SQL رقم 0090). لين ذاك الوقت الأرقام تقديرية من اللي انخصم من رصيد الناس."}
+            : "⚠️ تسجيل التكلفة الحقيقية لكل عملية ما بدأ للحين (شغّل ملف SQL رقم 0092). لين ذاك الوقت الأرقام تقديرية من اللي انخصم من رصيد الناس."}
         </p>
       </section>
     </div>

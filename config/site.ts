@@ -8,6 +8,9 @@ export const NAHJ_ALI_HIDDEN = true;
 
 export const SITE_NAME = NAHJ_ALI_HIDDEN ? "الجواد الذكي" : "عاداتي الخارقة";
 
+/** The site's public address: metadataBase (absolute Open Graph links), /robots.txt and /sitemap.xml. */
+export const SITE_URL = "https://www.aljawadai.app";
+
 /** Shown on /privacy and /terms for questions and deletion requests. */
 export const CONTACT_EMAIL = "yymm40@gmail.com";
 

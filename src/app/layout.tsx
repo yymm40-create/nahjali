@@ -2,6 +2,7 @@ import UiSounds from "@/components/UiSounds";
 import SecretGate from "@/components/SecretGate";
 import Salman from "@/components/Salman";
 import VisitBeacon from "@/components/VisitBeacon";
+import Pixels from "@/components/Pixels";
 import type { Metadata, Viewport } from "next";
 import { Baloo_Bhaijaan_2, Lalezar } from "next/font/google";
 import Link from "next/link";
@@ -11,7 +12,7 @@ import SiteChrome from "@/components/SiteChrome";
 import NavFeedback from "@/components/NavFeedback";
 import NativeAppBridge from "@/components/NativeAppBridge";
 import NewVersion from "@/components/NewVersion";
-import { NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER } from "@config/site";
+import { NAHJ_ALI_HIDDEN, OWN_CHROME_HEADER, SITE_URL } from "@config/site";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeSwitcher";
 import "./globals.css";
 
@@ -19,8 +20,9 @@ const body = Baloo_Bhaijaan_2({ variable: "--font-baloo", subsets: ["arabic", "l
 const display = Lalezar({ variable: "--font-lalezar", subsets: ["arabic", "latin"], weight: "400" });
 
 export const metadata: Metadata = NAHJ_ALI_HIDDEN
-  ? { title: { default: "الجواد الذكي | JAWAD AI", template: "%s" }, description: "استوديو عربي لصناعة الصور والفيديو والصوت والتصاميم والأفلام بالذكاء الاصطناعي." }
+  ? { metadataBase: new URL(SITE_URL), title: { default: "الجواد الذكي | JAWAD AI", template: "%s" }, description: "استوديو عربي لصناعة الصور والفيديو والصوت والتصاميم والأفلام بالذكاء الاصطناعي." }
   : {
+      metadataBase: new URL(SITE_URL),
       title: "نهج علي | كتيب عادات طفلك بشخصيته الكرتونية",
       description: "ارفع صورة طفلك، ونحوّلها لشخصية كرتونية تتعلّم الصلاة والقرآن والعادات الطيبة في كتيب ملوّن باسمه، جاهز للطباعة.",
     };
@@ -49,6 +51,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <Salman />
         {/* the owner's statistics: which page was opened (a random id on the device, no name) */}
         <VisitBeacon />
+        {/* the ad pixels and where the visitor came from (each pixel only when its env var is set) */}
+        <Pixels />
         <NativeAppBridge />
         <NewVersion />
         <SiteChrome

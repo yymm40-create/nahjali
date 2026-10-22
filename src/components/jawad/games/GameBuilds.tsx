@@ -9,6 +9,7 @@ import Riyal from "@/components/Riyal";
 import { api, postJson } from "@/lib/fetch";
 import { findClaudeModel } from "@config/claude-models";
 import { GAME_BUILD } from "@config/games-build";
+import { SITE_URL } from "@config/site";
 import GameStats from "./GameStats";
 
 /** The mind that writes every game (the fastest at code), by our own name. */
@@ -209,6 +210,17 @@ const stage = (b: Build) => {
   return "الكود جاهز ✓";
 };
 
+/** The game's address with where it was shared from (`ref`, read by playSource), whatever query it already carries. */
+function withRef(url: string, ref: string): string {
+  try {
+    const u = new URL(url, SITE_URL);
+    u.searchParams.set("ref", ref);
+    return url.startsWith("/") ? `${u.pathname}${u.search}` : u.toString();
+  } catch {
+    return url;
+  }
+}
+
 /** A game's card under the conversation. */
 export function BuildCard({ b, note, onEdit, onRetry, onRemove }: { b: Build; note?: string; onEdit: (change: string) => void; onRetry: () => void; onRemove: () => void }) {
   const [editing, setEditing] = useState(false);
@@ -216,14 +228,14 @@ export function BuildCard({ b, note, onEdit, onRetry, onRemove }: { b: Build; no
   const [copied, setCopied] = useState(false);
   const [stats, setStats] = useState(false);
   const url = typeof window === "undefined" ? b.link : `${window.location.origin}${b.link}`;
-  const share = `جرّب لعبتي «${b.title}» 🎮\n${url}`;
+  const share = `جرّب لعبتي «${b.title}» 🎮\n${withRef(url, "wa")}`;
   const building = b.status === "building";
   const ready = b.status === "ready";
   const working = building || b.editing;
 
   const copy = () => {
     void navigator.clipboard
-      ?.writeText(url)
+      ?.writeText(withRef(url, "link"))
       .then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1800);

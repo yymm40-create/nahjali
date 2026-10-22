@@ -4,15 +4,17 @@ import AdsGrid from "@/components/jawad/AdsGrid";
 import Home from "@/components/jawad/Home";
 import Landing, { type LandingTool } from "@/components/jawad/Landing";
 import { loadCreditSettings } from "@/lib/credits/settings";
+import { unitPrices } from "@/lib/credits/yields";
 import { liveAds } from "@/lib/jawad/server/ads";
 import { canUseJawad, freeFor, jawadLogin, jawadSession } from "@/lib/jawad/server/access";
-import { signupFreeImageAvailable } from "@/lib/jawad/server/free-image";
+import { signupFreeImageAvailable, signupFreeImageEligible } from "@/lib/jawad/server/free-image";
 import { loadRuntime } from "@/lib/jawad/server/runtime";
 import { barSections } from "@/lib/jawad/server/bar";
 import { worksPage } from "@/lib/jawad/server/works";
 import type { WorkItem } from "@/lib/jawad/labels";
 import { JAWAD } from "@config/jawad/brand";
 import { COURSE } from "@config/course";
+import { DEFAULT_CREDIT_SETTINGS } from "@config/credits";
 import { LEARN } from "@config/learn";
 import { unifiedStudioNavigation } from "@config/jawad/sections";
 import { SECTIONS } from "@config/sections";
@@ -56,7 +58,14 @@ const TOOL: Record<string, { icon: string; line: string; tint: string }> = {
 export default async function JawadHome() {
   const [rt, ads, { user, owner }] = await Promise.all([loadRuntime(), liveAds(), jawadSession()]);
   if (!user) {
-    const credits = await loadCreditSettings();
+    // for a cold visitor from an ad: the packages and the owner's WhatsApp, today's unit prices, and whether an account made today
+    // gets its first picture free — each one optional, the page never fails on them
+    const [settings, units, freeImageOn] = await Promise.all([
+      loadCreditSettings().catch(() => null),
+      unitPrices().catch(() => null),
+      signupFreeImageEligible(new Date().toISOString()).catch(() => false),
+    ]);
+    const credits = settings ?? DEFAULT_CREDIT_SETTINGS;
     const tools: LandingTool[] = unifiedStudioNavigation(rt.sections)
       .filter((s) => s.enabled && s.implementation !== "islamic")
       .map((s) => {
@@ -70,7 +79,7 @@ export default async function JawadHome() {
     return (
       <>
         <ContestWinners />
-        <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} />
+        <Landing loginHref={jawadLogin(JAWAD.base)} samples={samples} tools={tools} models={models} packs={credits.packs} featured={credits.featured} whatsapp={credits.whatsapp} units={units} freeImageOn={freeImageOn} />
       </>
     );
   }

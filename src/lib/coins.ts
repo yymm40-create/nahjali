@@ -93,7 +93,7 @@ export async function logFree(userId: string, ref: string, label: string, halala
 /**
  * «صافي الربح» (/admin/profit): what an operation really cost the site — the providers' price, in dollars, turned into
  * halalas at the owner's dollar rate — for everyone (a paying person, a free account, the owners). One row per `ref`
- * (a second write of the same ref replaces it). Never throws: the record must not stop the work (migration 0090).
+ * (a second write of the same ref replaces it). Never throws: the record must not stop the work (migration 0092).
  */
 export async function logCost(userId: string | null | undefined, ref: string, label: string, usd: number) {
   if (!ref || !(usd > 0)) return;

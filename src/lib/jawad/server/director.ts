@@ -23,7 +23,7 @@ const ROLES: RefRole[] = ["first_frame", "last_frame", "reference"];
 const MAX_IMAGES = 8;
 
 /** The website's rules for every Super Director prompt (develop or edit); they override the skill where they differ. */
-const WEBSITE_RULES = `Website rules (they override the skill wherever they differ):
+export const WEBSITE_RULES = `Website rules (they override the skill wherever they differ):
 1. Output the final EN/ZH pair as the JSON object {"en": "...", "zh": "..."} (instead of the array), with the same content rules.
 2. Length: "en" at most ${DIRECTOR_LIMITS.en} characters and "zh" at most ${DIRECTOR_LIMITS.zh} characters, each counted WITHOUT the spoken lines (rule 4). Trim in the skill's order (Narrative Summary, then Static Description, then Style & Mood) and keep the Dynamic Description.
 3. The settings chosen in the website are binding. They override the user's text and the skill's defaults: model version, duration, aspect ratio, resolution, sound on/off and reference mode. State the duration naturally in both prompts.

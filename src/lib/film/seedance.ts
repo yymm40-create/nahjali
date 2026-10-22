@@ -2,7 +2,9 @@
 // never reaches the browser. API: POST/GET {base}/contents/generations/tasks (docs.byteplus.com, ModelArk
 // "Create / Retrieve a video generation task", checked 2026-10).
 
+import { randomUUID } from "crypto";
 import { VIDEO_MODELS, type VideoModel, type VideoResolution } from "@config/film";
+import { realFaceSubmit, realFaceTask } from "@/lib/jawad/server/providers/realface";
 
 export const ARK_BASE_URL = (process.env.ARK_BASE_URL || "https://ark.ap-southeast.bytepluses.com/api/v3").replace(/\/+$/, "");
 
@@ -15,7 +17,7 @@ export function arkHeaders() {
 
 /** The model ID can be overridden per environment when BytePlus rolls out a newer dated ID. */
 const modelId = (m: VideoModel) =>
-  (m === "seedance-2.5" ? process.env.ARK_MODEL_SEEDANCE_25 : process.env.ARK_MODEL_SEEDANCE_20) || VIDEO_MODELS[m].modelId;
+  (m === "seedance-2.5" ? process.env.ARK_MODEL_SEEDANCE_25 : m === "seedance-2.0" ? process.env.ARK_MODEL_SEEDANCE_20 : undefined) || VIDEO_MODELS[m].modelId;
 
 /** One ModelArk request (also used by JAWAD AI's video studio, src/lib/jawad/server/providers/modelark.ts). */
 export async function arkCall(path: string, init?: RequestInit) {
@@ -41,8 +43,25 @@ export interface VideoRequest {
   resolution: VideoResolution;
 }
 
+/** A task of «Seedance وجه واقعي» carries this prefix, so it is followed at its own provider. */
+const REAL_FACE = "rf:";
+
 /** Starts a generation and returns the provider's task ID. */
 export async function createVideoTask(r: VideoRequest): Promise<string> {
+  if (r.model === "seedance-real-face") {
+    // the references are named @image1, @audio1 … at this provider (the director writes <<<image_n>>>)
+    const prompt = r.prompt.replace(/<<<\s*(image|audio|video)_(\d+)\s*>>>/gi, (_m, kind: string, n: string) => `@${kind.toLowerCase()}${n}`);
+    const id = await realFaceSubmit("bytedance/seedance-2.5/reference-to-video", {
+      prompt,
+      duration: Math.max(4, Math.min(30, Math.round(r.durationSec))),
+      resolution: r.resolution,
+      aspect_ratio: r.ratio || "16:9",
+      generate_audio: r.generateAudio,
+      ...(r.imageUrls.length ? { image_urls: r.imageUrls } : {}),
+      ...(r.audioUrls?.length ? { audio_urls: r.audioUrls } : {}),
+    }, randomUUID());
+    return REAL_FACE + id;
+  }
   const content: Record<string, unknown>[] = [{ type: "text", text: r.prompt }];
   for (const url of r.imageUrls) content.push({ type: "image_url", image_url: { url }, role: "reference_image" });
   for (const url of r.audioUrls ?? []) content.push({ type: "audio_url", audio_url: { url }, role: "reference_audio" });
@@ -71,6 +90,10 @@ export interface VideoTask {
 }
 
 export async function getVideoTask(taskId: string): Promise<VideoTask> {
+  if (taskId.startsWith(REAL_FACE)) {
+    const t = await realFaceTask(taskId.slice(REAL_FACE.length));
+    return { status: t.status, videoUrl: t.videoUrl, error: t.moderated ? "رفض الفحص هذا الفيديو (وجه أو محتوى غير مسموح)." : t.error, tokens: null };
+  }
   const body = await arkCall(`/contents/generations/tasks/${encodeURIComponent(taskId)}`);
   const s = String(body.status ?? "").toLowerCase();
   const status = (["queued", "running", "succeeded", "failed", "cancelled", "expired"].includes(s) ? s : s === "canceled" ? "cancelled" : "unknown") as VideoTask["status"];

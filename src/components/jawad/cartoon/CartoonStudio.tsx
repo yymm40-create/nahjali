@@ -2,19 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CARTOON_GROUPS, CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MODES, CARTOON_MOVES, CARTOON_STORIES, movementAsked, nearestAspect, type CartoonInput } from "@config/jawad/cartoon";
+import { CARTOON_CHOICES, cartoonStyleLabel, CARTOON_PRICE, CARTOON_STYLES, CARTOON_AGES, CARTOON_AUDIENCES, CARTOON_MODES, CARTOON_MOVES, movementAsked, nearestAspect, type CartoonInput } from "@config/jawad/cartoon";
 import Riyal from "@/components/Riyal";
 import { stageLabel, type JobView } from "@/lib/jawad/labels";
 import { uploadImage } from "../studio/upload";
 import type { UploadView } from "../studio/types";
 import Doodles from "./Doodles";
-import { FREE_FIRST_ENDS_AT, FREE_FIRST_HOURS } from "@config/jawad/free-first";
+import FilmPanel from "./FilmPanel";
+import { CARTOON_OFFER } from "@config/jawad/cartoon-offer";
 
-type Quote = { imageCoins: number; videoCoins: number; totalCoins: number };
-/** the end of «أول تجربة مجانية» (config/jawad/free-first.ts), shown to the person in their own clock */
-const offerEnd = () => new Date(FREE_FIRST_ENDS_AT).toLocaleString("ar", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
+type Quote = { imageCoins: number; videoCoins: number; directorCoins?: number; parts?: number; totalCoins: number };
 type Run = { key: string; input: CartoonInput; error?: string; jobs: JobView[] };
-const INITIAL: CartoonInput = { mode: "scene", aspect: "9:16", style: "cinematic-3d", audience: "family", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "garden", customStory: "", count: 1, video: false, consent: false };
+const INITIAL: CartoonInput = { mode: "scene", aspect: "9:16", style: "stylistic-drift", audience: "family", age: "same", desiredAge: "", movement: "still", outfit: "", interests: "", story: "custom", customStory: "", place: "garden", scenes: [], heightCm: null, weightKg: null, count: 1, video: false, consent: false };
 async function api<T>(body?: unknown): Promise<T> {
   const response = await fetch("/api/jawad/cartoon", body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { cache: "no-store" });
   const data = await response.json();
@@ -28,11 +27,18 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   const [error, setError] = useState("");
   const [quote, setQuote] = useState<{ value: Quote; snapshot: string; free: boolean } | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
-  // the shelf of looks shown («all» = every look) and the looks' pictures (drawn once by the owner; none yet = a coloured tile)
-  const [shelf, setShelf] = useState<"all" | keyof typeof CARTOON_GROUPS>("all");
+  // the looks' pictures (drawn once by the owner; none yet = a coloured tile)
   const [pictures, setPictures] = useState<Record<string, string>>({});
+  // the places' environment sheets drawn by the owner, by «place--look» (a place without one shows its icon)
+  const [places, setPlaces] = useState<Record<string, string>>({});
   // «أول تجربة مجانية»: this account's first picture is free while the offer is open
   const [firstFree, setFirstFree] = useState(false);
+  // the opening offer: the places left, and whether this account's first film is free (config/jawad/cartoon-offer.ts)
+  const [offer, setOffer] = useState<{ pictures: number; videos: number } | null>(null);
+  const [freeVideo, setFreeVideo] = useState(false);
+  // the owner sees the film prompts (he makes films elsewhere with them); nobody else does
+  const [owner, setOwner] = useState(false);
+  const reload = () => { void api<{ runs: Run[] }>().then(data => setRuns(data.runs)).catch(() => {}); };
   const requestKey = useRef<string | null>(null);
   const lock = useRef(false);
   const snapshot = JSON.stringify({ input, uploads: uploads.map(upload => upload.id) });
@@ -43,8 +49,8 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
-        const data = await api<{ runs: Run[]; firstFree?: boolean }>();
-        if (!stopped) { setRuns(data.runs); setFirstFree(data.firstFree === true); }
+        const data = await api<{ runs: Run[]; firstFree?: boolean; freeVideo?: boolean; offer?: { pictures: number; videos: number }; owner?: boolean }>();
+        if (!stopped) { setRuns(data.runs); setFirstFree(data.firstFree === true); setFreeVideo(data.freeVideo === true); setOffer(data.offer ?? null); setOwner(data.owner === true); }
       } catch (error) {
         if (!stopped) setError((error as Error).message);
       } finally {
@@ -58,7 +64,7 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     let stopped = false;
     fetch("/api/jawad/cartoon-styles")
       .then(response => (response.ok ? response.json() : null))
-      .then((data: { pictures?: Record<string, string> } | null) => { if (!stopped && data?.pictures) setPictures(data.pictures); })
+      .then((data: { pictures?: Record<string, string>; places?: Record<string, string> } | null) => { if (!stopped && data?.pictures) setPictures(data.pictures); if (!stopped && data?.places) setPlaces(data.places); })
       .catch(() => {});
     return () => { stopped = true; };
   }, []);
@@ -84,6 +90,8 @@ export default function CartoonStudio({ userId }: { userId: string }) {
     } catch (error) { setError((error as Error).message); }
     finally { lock.current = false; setBusy(""); }
   }
+  // the film is asked for AFTER the picture, under each picture (FilmPanel); the form makes pictures only
+  const measure = (text: string) => (text.trim() === "" ? null : Number(text));
   async function submit() {
     if (lock.current) return;
     if (!uploads.length) { setError("أضف صورة واضحة للشخص أولًا."); return; }
@@ -109,42 +117,49 @@ export default function CartoonStudio({ userId }: { userId: string }) {
   return <main className="ct-page" dir="rtl">
     <Doodles />
     <Link href="/jawad-ai/images" className="ct-back">← رجوع للاستوديو الإبداعي</Link>
-    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>حوّل صورتك كما هي بكل من فيها، أو اصنع منك شخصية جديدة.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>فيلم اختياري · ٣٠ ثانية</span></div>{firstFree && <p className="ct-offer">🎁 أول تجربة مجانية! صورتك الأولى علينا لمدة {FREE_FIRST_HOURS} ساعة — العرض ينتهي {offerEnd()}</p>}</header>
+    <header className="ct-hero"><span className="ct-eyebrow">جواد · عالمك الكرتوني</span><h1>صورتك… بطل حكايتك ✨</h1><p>حولني الى الستايل الكرتوني</p><p>حوّل صورتك كما هي بكل من فيها، أو اصنع منك شخصية جديدة: صورة بخلفية رمادية، أو كاركتر شيت كامل تستخدمه في فيلمك.</p><div className="ct-tags"><span className="ct-tag-price">سعر الصورة <Riyal halalas={CARTOON_PRICE} /></span><span>GPT Image 2 · قياسي</span><span>وبعد الصورة: حوّلها لفيلم · ١٥ ثانية</span></div>{offer && (offer.pictures > 0 || offer.videos > 0) && <p className="ct-offer">🎁 عرض الافتتاح: أول {CARTOON_OFFER.pictures} حساب محاولتهم الأولى مجانية (صورة){offer.pictures > 0 ? ` — باقي ${offer.pictures}` : " — خلصت"}، وأول {CARTOON_OFFER.videos === 2 ? "حسابين" : CARTOON_OFFER.videos + " حسابات"} فيلمهم الأول مجاني (١٥ ثانية){offer.videos > 0 ? ` — باقي ${offer.videos}` : " — خلص"}.{firstFree ? " صورتك الأولى علينا ✨" : ""}{freeVideo ? " وفيلمك الأول علينا 🎬" : ""}</p>}</header>
     <div className="ct-layout"><section className="ct-card">
       <fieldset disabled={!!busy}>
         <h2>١. وش نسوي بصورتك؟</h2>
-        <div className="ct-aud ct-modes">{(Object.entries(CARTOON_MODES) as [CartoonInput["mode"], string][]).map(([id, label]) => <button type="button" key={id} className={input.mode === id ? "chosen" : ""} aria-pressed={input.mode === id} onClick={() => change({ mode: id })}>{label}<small>{id === "scene" ? "نفس الوضعية ونفس الخلفية، وكل شخص في الصورة يتحوّل بوجهه" : "شخص واحد يطلع بشخصية جديدة: عمر وملابس ومشهد تختارهم"}</small></button>)}</div>
-        <h2>٢. صورك</h2><p>{input.mode === "scene" ? "ارفع الصورة اللي تبي تحوّلها — واحدة تكفي، وتقدر تكون فيها أكثر من شخص." : "شخص واحد، وجه واضح. صورة أمامية تكفي؛ زاويتان إضافيتان تساعدان على توضيح الملامح."}</p>
+        <div className="ct-aud ct-modes">
+          <button type="button" className={input.mode === "scene" ? "chosen" : ""} aria-pressed={input.mode === "scene"} onClick={() => change({ mode: "scene" })}>{CARTOON_MODES.scene}<small>نفس الصورة ونفس المكان اللي هو فيه، وكل شخص في الصورة يتحوّل بوجهه</small></button>
+          <button type="button" className={input.mode !== "scene" ? "chosen" : ""} aria-pressed={input.mode !== "scene"} onClick={() => change({ mode: input.mode === "scene" ? "character" : input.mode })}>اصنع شخصية مني<small>شخص واحد يطلع شخصية كرتونية جديدة — اختر تحت: صورة بخلفية رمادية، أو كاركتر شيت كامل</small></button>
+        </div>
+        {input.mode !== "scene" && <div className="ct-aud ct-modes">
+          <button type="button" className={input.mode === "character" ? "chosen" : ""} aria-pressed={input.mode === "character"} onClick={() => change({ mode: "character" })}>🩶 {CARTOON_MODES.character}<small>الشخصية كاملة لحالها على خلفية رمادية سادة، بالعمر والملابس اللي تختارها</small></button>
+          <button type="button" className={input.mode === "sheet" ? "chosen" : ""} aria-pressed={input.mode === "sheet"} onClick={() => change({ mode: "sheet", count: 1 })}>🧍 {CARTOON_MODES.sheet}<small>من صورة وحدة أو صورتين (الأدق صورتين: من قدام ومن الجنب) ويطلع لك شيت متكامل: من قدام، من الجنب، من ورا، والتعابير — جاهز توظفه في الفيلم</small></button>
+        </div>}
+        <h2>٢. صورك</h2><p>{input.mode === "scene" ? "ارفع الصورة اللي تبي تحوّلها — واحدة تكفي، وتقدر تكون فيها أكثر من شخص." : input.mode === "sheet" ? "صورة وحدة واضحة تكفي، لكن الأدق صورتين للشخص نفسه: وحدة من قدام (الوجه كامل) ووحدة من الجنب. وتقدر تضيف ثالثة." : "شخص واحد، وجه واضح. صورة أمامية تكفي؛ زاويتان إضافيتان تساعدان على توضيح الملامح."}</p>
         <label className="ct-upload">＋ أضف صورك <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={uploads.length >= 3 || !!busy} onChange={event => { void add(event.target.files); event.target.value = ""; }} /></label>
         <div className="ct-refs">{uploads.map(upload => <div key={upload.id}>{upload.url && <img src={upload.url} alt="مرجع الشخصية" />}<button type="button" aria-label="حذف المرجع" onClick={() => { setUploads(current => current.filter(item => item.id !== upload.id)); setQuote(null); requestKey.current = null; }}>×</button></div>)}</div>
         <h2>٣. لمين الصورة؟</h2><p>يغيّر شكل الشخصية: صورة الطفل تنرسم أبسط وأدفأ وأوضح، وصورة الكبار بنِسب طبيعية وتفاصيل أكثر.</p>
         <div className="ct-aud">{(Object.entries(CARTOON_AUDIENCES) as [CartoonInput["audience"], string][]).map(([id, label]) => <button type="button" key={id} className={input.audience === id ? "chosen" : ""} aria-pressed={input.audience === id} onClick={() => change({ audience: id })}>{label}</button>)}</div>
-        <h2>٤. اختر عالمك</h2>
-        <div className="ct-shelves" role="tablist" aria-label="أقسام الستايلات"><button type="button" role="tab" aria-selected={shelf === "all"} className={shelf === "all" ? "chosen" : ""} onClick={() => setShelf("all")}>✨ الكل ({CARTOON_STYLES.length})</button>{(Object.entries(CARTOON_GROUPS) as [keyof typeof CARTOON_GROUPS, (typeof CARTOON_GROUPS)[keyof typeof CARTOON_GROUPS]][]).map(([id, group]) => <button type="button" role="tab" aria-selected={shelf === id} key={id} className={shelf === id ? "chosen" : ""} onClick={() => setShelf(id)}>{group.icon} {group.name} ({CARTOON_STYLES.filter(style => style.group === id).length})</button>)}</div>
-        <div className="ct-styles">{CARTOON_STYLES.map((style, index) => ({ style, index })).filter(({ style }) => shelf === "all" || style.group === shelf).map(({ style, index }) => <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}>{pictures[style.id] ? <img className="ct-pic" src={pictures[style.id]} alt={style.name} loading="lazy" /> : <span className={"ct-tile t" + (index % 6)} aria-hidden="true">{style.icon}</span>}<span className="ct-name">{style.name}</span><small>{style.hint}</small>{style.fits === input.audience && <b>⭐ يناسب اختيارك</b>}</button>)}</div>
+        <h2>٤. اختر الستايل</h2><p>ثلاث ستايلات: 3D أو 2D أو أنمي — والفيلم يطلع بنفس الستايل.</p>
+        <div className="ct-styles ct-choices">{CARTOON_CHOICES.map((choice, index) => { const style = CARTOON_STYLES.find(item => item.id === choice.id)!; return <button type="button" className={input.style === style.id ? "chosen" : ""} aria-pressed={input.style === style.id} key={style.id} onClick={() => change({ style: style.id })}>{pictures[style.id] ? <img className="ct-pic" src={pictures[style.id]} alt={choice.label} loading="lazy" /> : <span className={"ct-tile t" + (index % 6)} aria-hidden="true">{style.icon}</span>}<span className="ct-name">{choice.label}</span><small>{style.name} — {style.hint}</small></button>; })}</div>
         <div className="ct-fields">
-          {input.mode === "character" && <label>العمر بالتحديد (اختياري)<input maxLength={60} value={input.desiredAge} placeholder="مثلًا: ٨ أشهر، ٧ سنوات…" onChange={event => change({ desiredAge: event.target.value })} /></label>}
-          {input.mode === "character" && <label>العمر في الصورة الجديدة<select value={input.age} onChange={event => change({ age: event.target.value as CartoonInput["age"] })}>{Object.entries(CARTOON_AGES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>}
+          {input.mode !== "scene" && <label>العمر بالتحديد (اختياري)<input maxLength={60} value={input.desiredAge} placeholder="مثلًا: ٨ أشهر، ٧ سنوات…" onChange={event => change({ desiredAge: event.target.value })} /></label>}
+          {input.mode !== "scene" && <label>العمر في الصورة الجديدة<select value={input.age} onChange={event => change({ age: event.target.value as CartoonInput["age"] })}>{Object.entries(CARTOON_AGES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>}
           {/* الحركة سؤال للرضيع والطفل فقط؛ ما نسأل كبيرًا هل يحبي */}
           {movementAsked(input) && <label>الحركة<select value={input.movement} onChange={event => change({ movement: event.target.value as CartoonInput["movement"] })}>{Object.entries(CARTOON_MOVES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>}
-          {input.mode === "character" && <label>وش تبيه يلبس؟<input maxLength={400} value={input.outfit} placeholder="بطل فضاء، فستان، ملابسه نفسها…" onChange={event => change({ outfit: event.target.value })} /></label>}
+          {input.mode !== "scene" && <label>الطول التقريبي (اختياري)<input type="number" inputMode="numeric" min={40} max={230} value={input.heightCm ?? ""} placeholder="بالسنتيمتر، مثلًا ١٢٠" onChange={event => change({ heightCm: measure(event.target.value) })} /></label>}
+          {input.mode !== "scene" && <label>الوزن التقريبي (اختياري)<input type="number" inputMode="numeric" min={3} max={250} value={input.weightKg ?? ""} placeholder="بالكيلو، مثلًا ٢٥" onChange={event => change({ weightKg: measure(event.target.value) })} /></label>}
+          {input.mode !== "scene" && <label>وش تبيه يلبس؟<input maxLength={400} value={input.outfit} placeholder="بطل فضاء، فستان، ملابسه نفسها…" onChange={event => change({ outfit: event.target.value })} /></label>}
           <label>{input.mode === "scene" ? "شي تبيه ينتبه له (اختياري)" : "اهتماماته (اختياري)"}<input maxLength={400} value={input.interests} placeholder={input.mode === "scene" ? "مثلًا: خلّ ألوان الثوب كما هي" : "الكواكب، الحيوانات، كرة القدم…"} onChange={event => change({ interests: event.target.value })} /></label>
-          <label>عدد الصور<select value={input.count} onChange={event => change({ count: Number(event.target.value) })}>{[1, 2, 3, 4].map(count => <option key={count} value={count}>{count === 1 ? "صورة واحدة" : count + " صور"}</option>)}</select></label>
+          {input.mode !== "sheet" && <label>عدد الصور<select value={input.count} onChange={event => change({ count: Number(event.target.value) })}>{[1, 2, 3, 4].map(count => <option key={count} value={count}>{count === 1 ? "صورة واحدة" : count + " صور"}</option>)}</select></label>}
         </div>
         <p className="ct-note">{input.mode === "scene" ? "نحافظ على الوضعية والخلفية وكل شخص في الصورة بوجهه. التشابه غير مضمون ١٠٠٪." : "تغيير العمر تخيّل فني، وليس استرجاعًا دقيقًا للشكل الحقيقي. التشابه غير مضمون ١٠٠٪."}</p>
-        <h2>٥. صورة… أو رحلة فيلم؟</h2><label className="ct-check"><input type="checkbox" checked={input.video} onChange={event => change({ video: event.target.checked })} /> {input.mode === "scene" ? "خلّ الصورة تتحرك — Seedance 2.5 · 720p · ٣٠ ثانية" : "أضف فيلمًا بالشخصية نفسها — Seedance 2.5 · 720p · ٣٠ ثانية"}</label>
-        {input.video && input.mode === "scene" && <div className="ct-story"><p>صورتك المحوّلة تدب فيها الحياة: الناس يتنفسون ويرمشون وتتحرك ملابسهم وشعرهم، والكاميرا تقترب ببطء. بدون أحداث جديدة ولا أحد يخرج من الكادر.</p></div>}
-        {input.video && input.mode === "character" && <div className="ct-story"><label>القصة<select value={input.story} onChange={event => change({ story: event.target.value as CartoonInput["story"] })}>{Object.entries(CARTOON_STORIES).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>{input.story === "custom" && <label>قصتك<textarea value={input.customStory} maxLength={3000} rows={5} placeholder="اكتب قصة قصيرة واضحة تناسب ٣٠ ثانية…" onChange={event => change({ customStory: event.target.value })} /></label>}<p>نجهّز الشخصية أولًا ثم نحركها تلقائيًا. سعر الفيلم منفصل ويظهر قبل التنفيذ.</p></div>}
+        {input.mode === "sheet" && <p className="ct-note">الشيت يطلع صورة وحدة عريضة على خلفية رمادية فاتحة، وينحفظ في أعمالك. تقدر بعدين ترفعه في «صانع الفيلم السينمائي» كصورة للشخصية، أو تحوّله لفيلم من تحت الصورة بعد ما تطلع.</p>}
         <label className="ct-check"><input type="checkbox" checked={input.consent} onChange={event => change({ consent: event.target.checked })} /> لدي إذن استخدام الصور، وموافقة ولي الأمر إذا كانت لطفل.</label>
       </fieldset>
-    </section><aside className="ct-card ct-summary"><h2>رحلتك جاهزة</h2><p>صورك ← شخصيتك الكرتونية ← صور إضافية أو فيلم</p><p>نحفظ مرجع الشخصية ونستخدمه في بقية الطلب. لا حاجة لكتابة برومبتات.</p>
-      {validQuote && <div className="ct-price">{firstFree && <p>🎁 أول صورة مجانية — محسوبة في الأسعار تحت</p>}<p>الصور: <Riyal halalas={validQuote.value.imageCoins} /></p>{input.video && <p>الفيديو: <Riyal halalas={validQuote.value.videoCoins} /></p>}<strong>الإجمالي: {validQuote.free || validQuote.value.totalCoins === 0 ? "مجاني" : <Riyal halalas={validQuote.value.totalCoins} size={20} />}</strong></div>}
+    </section><aside className="ct-card ct-summary"><h2>رحلتك جاهزة</h2><p>صورك ← شخصيتك الكرتونية ← وبعدها تقدر تحوّل أي صورة لفيلم</p><p>نحفظ مرجع الشخصية ونستخدمه في بقية الطلب. لا حاجة لكتابة برومبتات.</p>
+      {validQuote && <div className="ct-price">{firstFree && <p>🎁 أول صورة مجانية — محسوبة في الأسعار تحت</p>}<p>الصور: <Riyal halalas={validQuote.value.imageCoins} /></p><strong>الإجمالي: {validQuote.free || validQuote.value.totalCoins === 0 ? "مجاني" : <Riyal halalas={validQuote.value.totalCoins} size={20} />}</strong></div>}
       <p className="ct-note">يُخصم سعر كل مرحلة عند بدئها. إن فشلت مرحلة يُرد مبلغها حسب نظام التوليد؛ الصور المكتملة تبقى لك. لا إعادة توليد مدفوعة تلقائية.</p>
+      {input.mode === "sheet" && uploads.length === 1 && <p className="ct-note">صورة وحدة تكفي، بس الأدق صورتين: من قدام ومن الجنب.</p>}
       <button className="ct-primary" disabled={!!busy || !input.consent || uploads.length === 0} onClick={() => void submit()}>{busy || (validQuote ? "أوافق على الإجمالي · اصنع الآن ✨" : "اعرض السعر النهائي")}</button>
       {error && <p className="ct-feedback" role="status">{error}</p>}
       <Link href="/jawad-ai/works">كل أعمالي المحفوظة ↗</Link>
     </aside></div>
-    <section className="ct-results"><h2>رحلاتك الأخيرة</h2>{!runs.length && <p>هنا تظهر شخصيتك ونتائجك بعد البدء.</p>}{runs.map(run => <article className="ct-card" key={run.key}><h3>{CARTOON_MODES[run.input.mode] ?? CARTOON_MODES.character} · {CARTOON_STYLES.find(style => style.id === run.input.style)?.name} · {run.input.count} صور{run.input.video ? " + فيلم" : ""}</h3>{run.error && <p role="alert">{run.error}</p>}<div className="ct-gallery">{run.jobs.map(job => <div key={job.id}><p>{job.outputKind === "video" ? "الفيلم" : "الشخصية"} · {stageLabel(job.status)}</p>{job.error && <p role="alert">{job.error}</p>}{job.outputs.map(output => <figure key={output.id}>{output.url && (output.kind === "video" ? <video src={output.url} controls playsInline /> : <img src={output.url} alt="شخصيتك الكرتونية" />)}<a href={output.downloadUrl} download>تنزيل النتيجة ↓</a></figure>)}</div>)}</div></article>)}</section>
+    <section className="ct-results"><h2>رحلاتك الأخيرة</h2>{!runs.length && <p>هنا تظهر شخصيتك ونتائجك بعد البدء.</p>}{runs.map(run => <article className="ct-card" key={run.key}><h3>{CARTOON_MODES[run.input.mode] ?? CARTOON_MODES.character} · {cartoonStyleLabel(run.input.style)} · {run.input.count} صور{run.jobs.some(job => job.outputKind === "video") ? " + فيلم" : ""}</h3>{run.error && <p role="alert">{run.error}</p>}<div className="ct-gallery">{run.jobs.map(job => <div key={job.id}><p>{job.outputKind === "video" ? "الفيلم" : "الشخصية"} · {stageLabel(job.status)}</p>{job.error && <p role="alert">{job.error}</p>}{job.outputs.map(output => <figure key={output.id}>{output.url && (output.kind === "video" ? <video src={output.url} controls playsInline /> : <img src={output.url} alt="شخصيتك الكرتونية" />)}<a href={output.downloadUrl} download>تنزيل النتيجة ↓</a>{output.kind === "image" && <FilmPanel outputId={output.id} input={run.input} places={places} owner={owner} onStarted={reload} />}</figure>)}{owner && job.outputKind === "video" && job.prompt && <details className="ct-prompts"><summary>📝 برومبت الفيديو (للقائد بس)</summary><textarea readOnly dir="ltr" rows={8} value={job.prompt} /></details>}</div>)}</div></article>)}</section>
   </main>;
 }
 

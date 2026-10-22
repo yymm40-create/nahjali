@@ -7,7 +7,7 @@
 
 import { UserError } from "@/lib/api";
 import { claudeModelOf } from "@config/claude-models";
-import { callClaudeJson, claudeCost, claudeWhy, type ClaudePart, type OnText } from "@/lib/film/anthropic";
+import { callClaudeJson, callClaudeSearch, claudeCost, claudeWhy, type ClaudePart, type OnText } from "@/lib/film/anthropic";
 import { FONT_BY_ID } from "@/lib/editor/fonts";
 import { MOTION_DIRECTOR_SKILL_TEXT } from "@/lib/editor/motion-director-text";
 import { claudeCharged, type Who } from "@/lib/editor/pricing";
@@ -19,6 +19,7 @@ import { continueAsk, effortAtMost, stitchCode } from "./resume";
 import { ALWAYS_AT_PLAN, HF_LAB_TEXT, knownRefs, openRefs } from "./higgsfield";
 import { choicesRefs, choicesText, readChoices } from "@config/editor/lab-options";
 import { FOOTAGE_KIT_API, FOOTAGE_SKILL, footageText, readFootage, type FootageMeta } from "./footage";
+import { readRefs, refsParts, refsText, researchText, SEARCH_SYSTEM, searchPrompt } from "./references";
 
 const SYSTEM = `${MOTION_LAB_SKILL}
 
@@ -202,7 +203,8 @@ export async function labPlan(p: EditorProject, who: Who, b: Record<string, unkn
   const seconds = foot ? foot.seconds : Math.min(SECONDS.max, Math.max(SECONDS.min, Math.round(Number(b.seconds) || 15)));
   const footFrames = foot ? pics(b.footage_frames, 4) : [];
   const assets = assetsOf(b.assets);
-  const refs = pics(b.references, 4);
+  const refs = readRefs(b);
+  const research = researchText(b);
   const f = frameOf(p);
   // the gallery picks (look, structure, connections…): binding lines for the plan, and their skill files opened with it
   const choices = readChoices(b.choices);
@@ -216,7 +218,7 @@ LENGTH: ${seconds} s${foot ? " (exactly the video's length)" : ""} · FRAME: ${f
 BRAND: ${text(b.brand, 800) || "none given — design a palette for the idea (one accent)"}
 ASSETS the scene can draw (by id): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none — you draw everything in code"}
 FONTS you may pick (catalogue ids): ${fontMenu()}
-${refs.length ? `REFERENCES: ${refs.length} frame(s) below — take their colours, type, pacing and finish (never their content), as the skill's reference protocol says.` : "No references: avoid the safe default look; pick a viral format and push it."}
+${refs.length ? refsText(refs) : "No references: avoid the safe default look; pick a viral format and push it."}${research ? `\n${research}` : ""}
 ${foot ? `"narration" is [] (their voice is the video's own sound). Every shot names its "frame". ` : soundAsk(b).voice ? `THE PERSON WILL RECORD THEIR OWN VOICE reading a narration YOU write: fill "narration" with the lines in order (${text(b.language, 40) || "Gulf Arabic"}, spoken words, short lines of one idea each, about 2 words a second so it is never rushed, from/to on the shots); the visuals are built to follow those words. ` : `"narration" is [] (no voice). `}${soundAsk(b).text}
 Make it a studio piece: a hook on frame 1, one hero per shot, the beat grid, one object carrying across shots, the "wow" moment, a held ending or a loop. Times in seconds; shots cover the whole length without gaps. Every on-screen word written exactly (Arabic as it will appear).
 Follow the owner's Higgsfield skills' workflow for a film (brief → passport → scenario with the shot table on the beat grid and the trigger map), and pick in "skillRefs" the files of theirs you will need open.${footagePart(b, false)}${footFrames.length ? `\nFRAMES OF THEIR VIDEO: ${footFrames.length} below (spread over it) — see the person, the room, the light and the colours; design the stage and the palette to sit with them.` : ""}
@@ -224,7 +226,7 @@ Follow the owner's Higgsfield skills' workflow for a film (brief → passport �
 ${openRefs([...ALWAYS_AT_PLAN, ...choicesRefs(choices)]).text}`,
     },
     ...footFrames.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `THEIR VIDEO, FRAME ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
-    ...refs.flatMap((d, i): ClaudePart[] => [{ type: "text", text: `REFERENCE ${i + 1}:` }, { type: "image64", data: d, mediaType: "image/jpeg" }]),
+    ...refsParts(refs),
   ];
   const r = await ask<Record<string, unknown>>(who, b, "مختبر الموشن · الخطة", parts, PLAN_SCHEMA, 12000, "high", onText);
   if (r.partialRaw !== undefined) return r;
@@ -243,6 +245,8 @@ export async function labWrite(p: EditorProject, who: Who, b: Record<string, unk
   const errors = text(b.errors, 4000);
   // «خلفية شفافة»: the person wants the subject alone, to composite over something else — no fill at all
   const transparent = b.transparent === true;
+  // the references go with a first write too: the plan says what was taken, the pictures show how it looks
+  const refs = previous ? [] : readRefs(b);
   const bg = transparent
     ? "\nTRANSPARENT BACKGROUND (the person will composite this over something else): never call scene({ background: … }) with a colour, never fillRect / draw a shape, gradient or vignette across the whole K.W×K.H frame. Draw ONLY the subject itself (and its own shadow/glow if any) — everywhere else stays empty (alpha 0). A light contact shadow under a floating subject is fine; a filled backdrop is not."
     : "";
@@ -256,11 +260,12 @@ FRAME: ${f.w}×${f.h} (${f.shape}) · FONTS loaded for you: K.fonts.head = ${pla
 ASSETS: ${assets.length ? assets.map((a) => `K.img("${a.id}") = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"}${bg}
 ${soundAsk(b).text}${voiceText(b) ? `
 ${voiceText(b)}` : ""}${footagePart(b, true)}
-${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`}
+${refs.length ? `${refsText(refs)}\n` : ""}${previous ? `THE PROGRAM:\n${previous}\n\nWHAT WENT WRONG (from the scene page — fix exactly this, keep everything else):\n${errors || "(no error text)"}` : `REFERENCE SCENES (the level of craft expected — learn the technique, never copy them):\n${exemplarsText()}`}
 Write the COMPLETE program (it replaces the old one). duration = ${plan.seconds}, bpm = ${plan.bpm}. Use the palette's hex values. Cues on the changes. Make every frame worthy of the bar.
 
 ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text}`,
     },
+    ...refsParts(refs),
   ];
   const r = await ask<{ code: string; notes: string }>(who, b, previous ? "مختبر الموشن · تصليح" : "مختبر الموشن · كتابة المشهد", parts, CODE_SCHEMA, outputBudget(b.model), previous ? "medium" : "high", onText);
   if (r.partialRaw !== undefined) return r;
@@ -310,13 +315,14 @@ ${openRefs([...new Set([...ALWAYS_AT_PLAN, ...knownRefs(plan.skillRefs)])]).text
 const CHAT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "action", "brief", "code", "options"],
+  required: ["reply", "action", "brief", "code", "options", "search"],
   properties: {
     reply: { type: "string", description: "to the person, Gulf Arabic, short (1–3 sentences): what you understood and what you are doing, or the answer / the one question" },
     action: { type: "string", enum: ["none", "plan", "code", "cover", "render"], description: "none = only talk; plan = (re)write the scenario from `brief`; code = the COMPLETE revised program in `code`; cover = design the piece's cover now; render = make the final film now" },
     options: { type: "array", items: { type: "string" }, description: "0–4 short replies the person can press next (Gulf Arabic, 2–5 words each, e.g. «اعتمد وابنِ»، «أسرع شوي»، «صمّم الكفر»); [] when nothing obvious" },
     brief: { type: "string", description: "action plan: the complete creative brief from the whole conversation (the idea, length, tone, every word to show, colours, what to avoid); else empty" },
     code: { type: "string", description: "action code: the COMPLETE revised scene program (it replaces the old one); else empty" },
+    search: { type: "string", description: "a web search to run FIRST, when the person asks you to look something up («ابحث»، «وش الترند») or your answer needs facts you don't have (a number, a brand's look, what is viral now) and no WEB RESEARCH is given yet: the query in a few words (action is then \"none\" and reply says you are searching); else empty" },
   },
 };
 
@@ -341,6 +347,8 @@ export async function labChat(p: EditorProject, who: Who, b: Record<string, unkn
   });
   const params = (b.params && typeof b.params === "object" ? b.params : {}) as Record<string, unknown>;
   const f = frameOf(p);
+  const refs = readRefs(b);
+  const research = researchText(b);
   // the person's own video(s) loaded in the conversation (from the timeline or their device)
   const attached = (Array.isArray(b.attached_video) ? b.attached_video : []).slice(0, 6).map((v) => {
     const o = (v ?? {}) as Record<string, unknown>;
@@ -359,15 +367,18 @@ THE WAY OF WORKING (the owner's skills): the scenario comes first and is approve
 "reply" is always filled, in Gulf Arabic, short and warm, never technical (no code words).
 FRAME: ${f.w}×${f.h} (${f.shape})
 ${attached.length ? `THE PERSON LOADED THEIR OWN VIDEO IN THIS CONVERSATION: ${attached.join("، ")}. It is what they mean by «الفيديو» / «مقطعي». When they ask for a piece (or just say go), the action is \"plan\" and the piece is built ON that video (the lab learns what they say in it and the plan frames it); never ask them to attach it again, never plan a piece that ignores it. When the message is only «اكتب السيناريو» or «مونتاج موشن احترافي على كلامي», write the brief as that: a professional motion edit on their video, decided from what they say in it.\n` : ""}PICTURES THE SCENE CAN DRAW (by id, with K.img / K.picture): ${assets.length ? assets.map((a) => `${a.id} = «${a.name}» ${a.w}×${a.h}`).join("; ") : "none"} — a picture they just attached is listed here; when they say «هذا الشعار» / «حط اللوقو», it is the newest one: draw the REAL picture (K.picture), never redraw a logo yourself.
-${history.length ? `THE CONVERSATION SO FAR:\n${history.join("\n")}\n` : ""}THEIR NEW MESSAGE: ${message}
+${refs.length ? `${refsText(refs)} When they say «زي المرجع» / «مثل الفيديو», they mean these.\n` : ""}${research ? `${research}\n` : "You can search the web: put a query in \"search\" (see its description) and the lab searches, then asks you again with the results.\n"}${history.length ? `THE CONVERSATION SO FAR:\n${history.join("\n")}\n` : ""}THEIR NEW MESSAGE: ${message}
 ${plan ? `THE CURRENT PLAN: ${planText(plan)}` : "There is no plan yet."}
 ${Object.keys(params).length ? `THE VALUES THEY EDITED (params → their value; keep them unless they ask otherwise): ${JSON.stringify(params).slice(0, 3000)}` : ""}
 ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${code ? `\n\n${SCENE_CONTRACT_NOTE}` : ""}`,
     },
+    ...refsParts(refs),
   ];
-  const r = await ask<{ reply: string; action: string; brief: string; code: string; options?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium", onText);
+  const r = await ask<{ reply: string; action: string; brief: string; code: string; options?: unknown; search?: unknown }>(who, b, "مختبر الموشن · محادثة", parts, CHAT_SCHEMA, code ? outputBudget(b.model) : 8000, code ? "high" : "medium", onText);
   if (r.partialRaw !== undefined) return r;
-  let action = ["plan", "code", "cover", "render"].includes(r.data.action) ? r.data.action : "none";
+  // a search he asked for (only once per message: with the results in hand he answers)
+  const search = research ? "" : text(r.data.search, 300);
+  let action = search ? "none" : ["plan", "code", "cover", "render"].includes(r.data.action) ? r.data.action : "none";
   // a change asked with no piece yet is a plan (and so is a cover or a render of nothing); a program that breaks the
   // machine's rules goes back as an error to fix
   if ((action === "code" || action === "cover" || action === "render") && !code) action = "plan";
@@ -380,9 +391,32 @@ ${code ? `THE CURRENT PROGRAM:\n${code}` : ""}${footagePart(b, Boolean(code))}${
     options: (Array.isArray(r.data.options) ? r.data.options : []).map((o) => text(o, 40)).filter(Boolean).slice(0, 4),
     code: revised?.code ?? "",
     problems: revised?.problems ?? [],
+    search,
     coins: r.coins,
     model: r.model,
   };
+}
+
+/**
+ * «🌐 ابحث»: a real web search for the lab (Anthropic's server-side search, like Claude's own), when the person asks
+ * him to look something up or his answer needs fresh facts. The page brings what it found to the next step.
+ */
+export async function labSearch(p: EditorProject, who: Who, b: Record<string, unknown>) {
+  stillOpen(p);
+  if (!text(b.query, 1500)) throw new UserError("اكتب وش تبي حيدرة يدوّر عليه.");
+  if (!process.env.ANTHROPIC_API_KEY) throw new UserError("حيدرة غير مفعّل على الخادم.", 503);
+  const r = await claudeCharged(
+    who,
+    b.model,
+    "مختبر الموشن · بحث في الإنترنت",
+    () =>
+      callClaudeSearch({ system: SEARCH_SYSTEM, prompt: searchPrompt(b), maxUses: 5, maxTokens: 5000 }).catch((e) => {
+        console.error("motion lab search", e);
+        throw new UserError(claudeWhy(e, "ما قدر حيدرة يبحث في الإنترنت الحين. جرّب بعد شوي.", who.email), 502);
+      }),
+    (x) => x.usd,
+  );
+  return { text: text(r.text, 6000), sources: r.sources, coins: r.coins, model: r.model };
 }
 
 /** What a revised program must keep (said briefly; the full contract is in the system prompt). */

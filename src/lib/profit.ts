@@ -2,9 +2,9 @@
 // confirmed by the owner) minus what the site's use really cost (the providers' prices: Claude, OpenAI, Seedance,
 // ElevenLabs…) = the owner's net profit. Everyone's use costs — paying people, gifts and free accounts, and the
 // owners' own use (shown on its own). The real cost comes from:
-//   • site_costs (migration 0090): written when each operation is charged (robots, «حيدرا ماكس», jobs, editor tools);
+//   • site_costs (migration 0092): written when each operation is charged (robots, «حيدرا ماكس», jobs, editor tools);
 //   • jawad_jobs: the studio's generations keep their own provider cost;
-//   • older operations (before 0090) or ones without a cost record: estimated from what was charged for them, at the
+//   • older operations (before 0092) or ones without a cost record: estimated from what was charged for them, at the
 //     margin of their kind at that time — marked «تقديري».
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -73,7 +73,7 @@ export interface Profit {
   /** balance still in people's wallets (bought or given, not used yet) */
   unusedBalance: number;
   branches: ProfitBranch[];
-  /** since when the exact costs are recorded (null: not yet, migration 0090 missing) */
+  /** since when the exact costs are recorded (null: not yet, migration 0092 missing) */
   recordingSince: string | null;
 }
 

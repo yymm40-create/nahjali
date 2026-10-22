@@ -121,7 +121,11 @@ export default function PlayFrame({ id, title, src, makeHref, loginHref = "/jawa
   };
 
   async function share() {
-    const url = window.location.href.split("#")[0];
+    // the address as it is (its query kept), marked as shared (?ref=share, read by playSource), without the hash
+    const at = new URL(window.location.href);
+    at.hash = "";
+    at.searchParams.set("ref", "share");
+    const url = at.toString();
     const text = `جرّب لعبتي «${title}» 🎮`;
     try {
       if (navigator.share) {
