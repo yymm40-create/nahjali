@@ -107,7 +107,7 @@ function features(credit: number, units: UnitPrices | null | undefined): string[
 }
 
 export default function CreditsShop({
-  packs, featured, bankOk = false, card = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units,
+  packs, featured, bankOk = false, card: cardOn = false, cardSoon = false, back = null, hasSupport, whatsapp = "", user, contactOk, balance, owner, waiting, initialPack, loginHref, units,
 }: {
   packs: Pack[];
   /** what a standard picture, a 5-second 720p video, a scene and a summary cost now: the check lines on each card */
@@ -117,6 +117,8 @@ export default function CreditsShop({
   bankOk?: boolean;
   /** Paylink is set up: one tap to card, mada, Apple Pay, STC Pay */
   card?: boolean;
+  /** card payment is not open to everyone yet: «يتفعّل قريبًا» under the cards (the owners test it meanwhile) */
+  cardSoon?: boolean;
   /** coming back from Paylink: the order that is paid (its balance is added) or null when the payment was not confirmed */
   back?: { paid: { id: string; packName: string; price: number } | null } | null;
   hasSupport: boolean;
@@ -133,6 +135,9 @@ export default function CreditsShop({
   loginHref: string;
 }) {
   const router = useRouter();
+  // the owners, who have both while the card is being tested, can switch to the bank transfer to try it too
+  const [viaBank, setViaBank] = useState(false);
+  const card = cardOn && !(viaBank && bankOk);
   const payable = card || bankOk;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -320,6 +325,13 @@ export default function CreditsShop({
           {payable && (
             <>
               <p className="pr-pay">{card ? "💳 بطاقة · مدى · Apple Pay · STC Pay — الدفع آمن عبر Paylink" : "🏦 تحويل بنكي — ينضاف الرصيد بعد ما نتأكد من التحويل"}</p>
+              {!cardOn && cardSoon && <p className="pr-pay">💳 الدفع بالبطاقة ومدى وApple Pay يتفعّل قريبًا إن شاء الله</p>}
+              {cardOn && bankOk && (
+                <p className="pr-pay">
+                  <button type="button" className="cr-link" onClick={() => setViaBank((v) => !v)}>{viaBank ? "🔁 ارجع للدفع بالبطاقة" : "🔁 جرّب التحويل البنكي بدل البطاقة"}</button>
+                  {cardSoon && " (البطاقة ظاهرة لك أنت بس للتجربة)"}
+                </p>
+              )}
               <p className="pr-terms">
                 بالدفع توافق على{" "}
                 <Link href="/terms" target="_blank" rel="noreferrer">الشروط والأحكام</Link>{" "}

@@ -104,3 +104,4 @@
 .cs-done-small { display: grid; gap: 10px; text-align: center; color: var(--cr-mute); font-size: 14px; }
 .cs-wa { background: #25d366; color: #052e16; border-color: transparent; min-height: 52px; font-size: 16px; }
 .cs-trust { font-size: 13px; }
+.cr-link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-weight: 700; }

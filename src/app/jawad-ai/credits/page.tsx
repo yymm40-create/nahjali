@@ -9,7 +9,7 @@ import { loadSettings as loadCourseSettings } from "@/lib/course/settings";
 import { jawadSession } from "@/lib/jawad/server/access";
 import { contactComplete, contactOf } from "@/lib/contact";
 import { supportLink } from "@config/credits";
-import { BANK_TRANSFER_ENABLED } from "@config/pricing";
+import { BANK_TRANSFER_ENABLED, CARD_PAYMENT_PUBLIC } from "@config/pricing";
 import { JAWAD } from "@config/jawad/brand";
 import "../course/course.css";
 import "./credits.css";
@@ -34,7 +34,8 @@ export default async function CreditsPage({ searchParams }: { searchParams: Prom
       units={units}
       featured={s.featured}
       bankOk={bankOk}
-      card={paylinkEnabled()}
+      card={paylinkEnabled() && (owner || CARD_PAYMENT_PUBLIC)}
+      cardSoon={!CARD_PAYMENT_PUBLIC}
       back={back}
       hasSupport={!!s.whatsapp}
       whatsapp={s.whatsapp}
