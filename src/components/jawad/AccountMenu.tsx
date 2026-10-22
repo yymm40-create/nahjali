@@ -45,6 +45,7 @@ export default function AccountMenu({ name, email, owner }: { name: string; emai
           <p className="truncate text-xs text-jw-muted" dir="ltr">{email}</p>
         </div>
         <nav className="mt-1 flex flex-col">
+          <Link href="/jawad-ai/account" className={item}><Icon name="user" size={16} /> الحساب الشخصي</Link>
           <Link href="/jawad-ai/library" className={item}><Icon name="layers" size={16} /> مكتبتي</Link>
           <Link href="/jawad-ai/coins" className={item}><Icon name="wallet" size={16} /> النقود الذكية</Link>
           <Link href="/jawad-ai/film" className={item}><Icon name="film" size={16} /> مشاريع أفلامي</Link>

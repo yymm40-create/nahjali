@@ -2,6 +2,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncPublicProfile } from "@/lib/mahdi/server/public";
+import { contactComplete, contactOf } from "@/lib/contact";
 import { cleanUsername, RESERVED_USERNAMES, suggestUsername, USERNAME_RE, type UsernameProblem } from "./username-rules";
 
 /** The user's username, or null (read with the user's own session, through RLS). */
@@ -68,13 +69,16 @@ export function suggestionFor(user: User, extraNames: (string | null | undefined
  */
 export async function usernameGate(supabase: SupabaseClient, user: User, next: string): Promise<string | null> {
   if (next.startsWith("/mahdi/reset")) return null;
-  if (await getUsername(supabase, user.id)) return null;
   const isNew = Date.now() - new Date(user.created_at).getTime() < 15 * 60_000;
+  const jawad = next === "/jawad-ai" || next.startsWith("/jawad-ai/");
+  // a NEW account in JAWAD AI gives its name and WhatsApp number once (for payments and support), after the username
+  const contactStep = jawad && isNew && !contactComplete(contactOf(user)) && !next.startsWith("/jawad-ai/account") ? `/jawad-ai/account?first=1&next=${encodeURIComponent(next)}` : null;
+  if (await getUsername(supabase, user.id)) return contactStep;
   if (!isNew) {
     const { data: profile } = await supabase.from("mahdi_profiles").select("display_name").eq("user_id", user.id).maybeSingle();
     if (await ensureUsername(supabase, user, [profile?.display_name])) return null;
   }
   // «الجواد الذكي!» | JAWAD AI asks for it in its own identity
-  const page = next === "/jawad-ai" || next.startsWith("/jawad-ai/") ? "/jawad-ai/username" : "/username";
-  return `${page}?next=${encodeURIComponent(next)}`;
+  const page = jawad ? "/jawad-ai/username" : "/username";
+  return `${page}?next=${encodeURIComponent(contactStep ?? next)}`;
 }

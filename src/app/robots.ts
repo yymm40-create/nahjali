@@ -10,7 +10,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: ["/jawad-ai", "/jawad-ai/credits", "/jawad-ai/course", "/jawad-ai/games", "/play/", "/privacy", "/terms"],
-      disallow: ["/admin", "/jawad-ai/admin", "/api", "/auth", "/jawad-ai/login", "/jawad-ai/username"],
+      disallow: ["/admin", "/jawad-ai/admin", "/api", "/auth", "/jawad-ai/login", "/jawad-ai/username", "/jawad-ai/account"],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
   };
