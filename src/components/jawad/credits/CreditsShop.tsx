@@ -287,7 +287,7 @@ export default function CreditsShop({
             const bonus = bonusPct(p);
             const mine = busy === p.id;
             return (
-              <article key={p.id} className={`pr-card${star ? " star" : ""}`} aria-label={`باقة ${p.name}`}>
+              <article key={p.id} className={`pr-card${star ? " star" : ""}${p.id === packs.find((q) => q.id !== featured)?.id ? " lead" : ""}`} aria-label={`باقة ${p.name}`}>
                 <div className="pr-top">
                   <h2 className="pr-name">{p.name}</h2>
                   {star ? <span className="pr-pill">الأكثر طلبًا</span> : p.tag ? <span className="pr-pill soft">{p.tag}</span> : null}

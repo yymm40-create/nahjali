@@ -86,7 +86,10 @@
   .pr { padding-inline: 24px; }
   .pr-grid { gap: 22px; align-items: stretch; padding-block: 12px; }
   .pr-card { flex-basis: calc((100% - 44px) / 3); padding: 28px 26px 24px; }
-  .pr-card.star { order: 0; transform: scale(1.035); z-index: 1; }
+  /* the featured card in the middle of the FIRST row: the first other card before it, the rest after */
+  .pr-card { order: 2; }
+  .pr-card.lead { order: 0; }
+  .pr-card.star { order: 1; transform: scale(1.035); z-index: 1; }
   .pr-roll { font-size: 60px; }
 }
 
