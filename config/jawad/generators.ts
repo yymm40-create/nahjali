@@ -10,6 +10,7 @@ import { COIN_COST_USD, sellKind, wasHalalas, getPricing, type PriceKind } from 
 import type { GeneratorDef, Issue, ModeDef, OptionState, PriceResult, RefMeta, Settings } from "./types";
 import { DICTION_KEY, DICTION_VALUES, hasMarks, mostlyArabic, type Diction } from "./diction";
 import { needsFrames, SMART_SPLIT_ID, SMART_SPLIT_MODE, STEM_LABEL, stemsOf, VIDEO_SFX, videoSfxSeconds } from "./smart-split";
+import { REALFACE_LOW_RES, REALFACE_WARNING } from "./realface";
 
 const CHECKED = "2026-10-04";
 
@@ -824,7 +825,8 @@ const seedanceRealFace: GeneratorDef = {
     return realFaceModes[2];
   },
   rules(d, mode) {
-    const notes = ["للوجه الواقعي: ارفع صورة واضحة من الأمام بإضاءة جيدة، لك أنت أو لشخص أعطاك إذنه."];
+    const notes = [REALFACE_WARNING, "للوجه الواقعي: ارفع صورة واضحة من الأمام بإضاءة جيدة، لك أنت أو لشخص أعطاك إذنه."];
+    if (String(d.settings.resolution) === "480p") notes.push(`⚠️ ${REALFACE_LOW_RES}`);
     const issues: Issue[] = [];
     const states: Partial<Record<string, Partial<OptionState>>> = {};
     const v20 = d.settings.version === "2.0";

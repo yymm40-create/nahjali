@@ -2,6 +2,7 @@
 
 import VoiceDesigner from "../../VoiceDesigner";
 import { credits } from "@/lib/film/credits";
+import { REALFACE_LOW_RES, REALFACE_WARNING } from "@config/jawad/realface";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useTransition } from "react";
@@ -549,7 +550,11 @@ export default function VideosWorkspace({
           ))}
         </div>
         {model === "seedance-real-face" && (
-          <p className="rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">⚠️ «Seedance وجه واقعي» للمشاهد الواقعية اللي فيها ناس حقيقيين بوجوههم: أغلى من غيره بكثير — شوف السعر تحت قبل ما تولّد. ارفع صور واضحة من الأمام، لك أو لشخص أعطاك إذنه.</p>
+          <div className="space-y-1 rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">
+            <p>{REALFACE_WARNING}</p>
+            <p>للمشاهد الواقعية اللي فيها ناس حقيقيين بوجوههم — شوف السعر تحت قبل ما تولّد. ارفع صور واضحة من الأمام، لك أو لشخص أعطاك إذنه.</p>
+            {resolution === "480p" && <p className="text-red-600">{REALFACE_LOW_RES}</p>}
+          </div>
         )}
         {generations.some((g) => g.model !== model) && (
           <p className="text-xs font-bold text-muted">⚠️ المخرج كتب بعض البرومبتات لنسخة ثانية؛ تقدر تكمل، بس النتيجة ممكن تختلف شوي.</p>
