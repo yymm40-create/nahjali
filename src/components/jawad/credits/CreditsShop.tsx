@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import Riyal from "@/components/Riyal";
 import SmartCoin from "@/components/SmartCoin";
 import { bonusPct, CREDITS, packYield, supportLink, type Pack, type UnitPrices } from "@config/credits";
-import type { Bank } from "@config/course";
+import { waLink, type Bank } from "@config/course";
 import { track, visitorSource } from "@/lib/track";
 
 interface Waiting {
@@ -105,13 +105,19 @@ function YieldLine({ credit, units }: { credit: number; units: UnitPrices }) {
 }
 
 export default function CreditsShop({
-  packs, featured, payable, hasSupport, whatsapp = "", user, balance, owner, waiting, initialPack, loginHref, lastName, lastPhone, units,
+  packs, featured, payable, bankOk = true, card = false, back = null, hasSupport, whatsapp = "", user, balance, owner, waiting, initialPack, loginHref, lastName, lastPhone, units,
 }: {
   packs: Pack[];
   /** what a standard picture, a 5-second 720p video and a scene cost now: «تقدر تسوي فيها» under each package */
   units?: UnitPrices | null;
   featured: string;
   payable: boolean;
+  /** the bank transfer is set up (the owner's bank data) */
+  bankOk?: boolean;
+  /** Paylink is set up: «ادفع بالبطاقة» (card, mada, Apple Pay, STC Pay) */
+  card?: boolean;
+  /** coming back from Paylink: the order that is paid (its balance is added) or null when the payment was not confirmed */
+  back?: { paid: { id: string; packName: string; price: number } | null } | null;
   hasSupport: boolean;
   /** the owner's WhatsApp number (the credit settings): «أرسل الإيصال على واتساب» in the bank step (empty: no button) */
   whatsapp?: string;
@@ -173,6 +179,23 @@ export default function CreditsShop({
       setBusy(false);
     }
   }
+  async function payCard() {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await post<{ order: Order; url: string }>("/api/credits/paylink", { pack: sel.id, name, phone, source: visitorSource() });
+      track("InitiateCheckout", { value: r.order.price, currency: "SAR", content_name: r.order.packName });
+      window.location.assign(r.url);
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+  // back from Paylink with a paid order: the browser's Purchase (the server's confirm sent the same event_id, counted once)
+  const paid = back?.paid ?? null;
+  useEffect(() => {
+    if (paid) track("Purchase", { value: paid.price, currency: "SAR", content_name: paid.packName, event_id: paid.id });
+  }, [paid]);
   async function transferred() {
     if (!order) return;
     setBusy(true);
@@ -232,6 +255,19 @@ export default function CreditsShop({
           )}
         </div>
       </header>
+
+      {paid && (
+        <section className="cs-waiting">
+          <div className="cr-in"><p>✅ تم الدفع، وانضاف رصيد باقة «{paid.packName}» لحسابك. <Link href="/jawad-ai">ابدأ الإبداع ←</Link></p></div>
+        </section>
+      )}
+      {back && !paid && (
+        <section className="cs-waiting">
+          <div className="cr-in">
+            <p>ما وصلنا تأكيد الدفع بعد. إذا انخصم منك مبلغ، يوصلك الرصيد خلال دقائق؛ وإذا تأخر راسلنا.{whatsapp && <> <a href={waLink(whatsapp, "السلام عليكم، دفعت بالبطاقة في الجواد الذكي وما وصلني الرصيد")} target="_blank" rel="noreferrer" onClick={lead}>راسلنا على واتساب</a></>}</p>
+          </div>
+        </section>
+      )}
 
       {waiting.length > 0 && (
         <section className="cs-waiting">
@@ -366,7 +402,8 @@ export default function CreditsShop({
                 <label>الإيميل<input dir="ltr" value={user?.email ?? ""} readOnly /></label>
                 {error && <p className="cr-error" role="alert">{error}</p>}
                 <AgreeTerms on={agree} onChange={setAgree} what="الشحن" />
-                <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className="cr-cta-main">التالي: بيانات التحويل</span>}</button>
+                {card && <button type="button" className="cr-cta" disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void payCard()}>{busy ? "…" : <span className="cr-cta-main">💳 ادفع بالبطاقة · مدى · Apple Pay</span>}</button>}
+                {bankOk && <button type="button" className={card ? "cr-btn" : "cr-cta"} disabled={busy || !agree || name.trim().length < 2 || phone.trim().length < 8} onClick={() => void start()}>{busy ? "…" : <span className={card ? undefined : "cr-cta-main"}>{card ? "أو بتحويل بنكي" : "التالي: بيانات التحويل"}</span>}</button>}
               </>
             )}
             {step === "bank" && order && bank && (
