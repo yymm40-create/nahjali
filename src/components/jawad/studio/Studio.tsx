@@ -2,9 +2,11 @@
 
 import SectionHint from "@/components/jawad/SectionHint";
 import PromptHelpers from "./PromptHelpers";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coinStr, setPricing } from "@config/coins";
+import { CREDITS } from "@config/credits";
 import Riyal from "@/components/Riyal";
 import { coinsOf, defaultSettings, DIRECTOR_PRICE_KEY, generatorById, VOICE_CLONE_KEY, MINIMAX_CLONE_KEY, VOICE_DESIGN_KEY } from "@config/jawad/generators";
 import type { OutputKind, RefKind, RefRole, RefStyle, Settings, SettingValue } from "@config/jawad/types";
@@ -550,7 +552,9 @@ export default function Studio({ section, studioSections, generators, directorGe
   if (directing) blockers.push("انتظر حتى ينتهي «المخرج الخارق» من كتابة البرومبت.");
   if (ev) for (const i of ev.issues) if (!blockers.includes(i.message)) blockers.push(i.message);
   if (plan) plan.forEach((x, n) => x.ev.issues.forEach((i) => { const m = `البرومبت ${n + 1}: ${i.message}`; if (n > 0 && !blockers.includes(m)) blockers.push(m); }));
-  if (user && !owner && price != null && balance != null && balance < price) blockers.push(`رصيدك (${coinStr(balance)}) لا يكفي لهذا التوليد (${coinStr(price)}).`);
+  // the wallet is short of the price: the generate button gives way to a top-up link (the sticky bar below)
+  const lowBalance = user && !owner && price != null && balance != null && balance < price;
+  if (lowBalance) blockers.push(`رصيدك (${coinStr(balance)}) لا يكفي لهذا التوليد (${coinStr(price)}).`);
 
   // «المخرج الخارق» (video making): its price, and why it can't run now
   const directorCenti = def?.priceKeys.some((k) => k.key === DIRECTOR_PRICE_KEY) ? prices[def.id]?.[DIRECTOR_PRICE_KEY] : undefined;
@@ -1026,6 +1030,11 @@ export default function Studio({ section, studioSections, generators, directorGe
           <div className="sticky bottom-0 space-y-2 border-t border-jw-line bg-jw-surface/95 p-3 backdrop-blur">
             {!user ? (
               <LoginLink className="jw-btn jw-btn-primary h-12 w-full text-base">سجّل الدخول للتوليد</LoginLink>
+            ) : lowBalance ? (
+              // the free picture is spent and the wallet is short: the way on is a ¤10 top-up («تجربة»), not a dead button
+              <Link href={`${CREDITS.base}?pack=try`} className="jw-btn jw-btn-primary h-12 w-full text-base">
+                اشحن ١٠ ريال وكمّل ←
+              </Link>
             ) : (
               <button
                 type="button"

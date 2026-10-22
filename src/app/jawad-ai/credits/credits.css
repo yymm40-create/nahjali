@@ -84,3 +84,4 @@
 .cs-done { text-align: center; font-size: 16.5px; line-height: 1.9; }
 .cs-done-small { display: grid; gap: 10px; text-align: center; color: var(--cr-mute); font-size: 14px; }
 .cs-wa { background: #25d366; color: #052e16; border-color: transparent; min-height: 52px; font-size: 16px; }
+.cs-trust { font-size: 13px; }
