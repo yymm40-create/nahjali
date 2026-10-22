@@ -19,7 +19,7 @@ const SERVICE_KEYS = [
   // the ads: the browser pixels and Meta's Conversions API (src/components/Pixels.tsx, src/lib/meta-capi.ts)
   "NEXT_PUBLIC_META_PIXEL_ID", "NEXT_PUBLIC_TIKTOK_PIXEL_ID", "NEXT_PUBLIC_SNAP_PIXEL_ID", "META_CAPI_TOKEN",
   // card payment (src/lib/credits/paylink.ts)
-  "PAYLINK_API_ID", "PAYLINK_SECRET_KEY",
+  "PAYLINK_API_ID", "PAYLINK_SECRET_KEY", "API_ID", "secret_key", "PAYLINK_BASE",
 ];
 
 export interface Expected {
