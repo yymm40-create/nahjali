@@ -6,13 +6,23 @@
 
 const LIVE = "https://restapi.paylink.sa";
 const TEST = "https://restpilot.paylink.sa";
-const configured = () => (process.env.PAYLINK_BASE?.trim() || LIVE).replace(/\/+$/, "");
+/** A base from the environment: a full address, or a word (production / live → the live one, test / pilot / sandbox → the test one). */
+const asBase = (v: string | undefined): string | null => {
+  const t = v?.trim();
+  if (!t) return null;
+  if (/^https?:\/\//i.test(t)) return t.replace(/\/+$/, "");
+  if (/prod|live/i.test(t)) return LIVE;
+  if (/test|pilot|sandbox/i.test(t)) return TEST;
+  return null;
+};
+/** The addresses to try, in order: PAYLINK_BASE, PAYLINK_BASE1, then live and test. */
+const candidates = () => [...new Set([asBase(process.env.PAYLINK_BASE), asBase(process.env.PAYLINK_BASE1), LIVE, TEST].filter((b): b is string => !!b))];
 /**
- * The base that answered last. When the configured one does not answer the sign-in at all (404, or no connection — Paylink's test
- * address has been seen returning 404 for every path) or refuses the keys, the other environment is tried once and kept.
+ * The base that answered last. When one does not answer the sign-in (404, no connection — Paylink's test address has been seen
+ * returning 404 for every path) or refuses the keys, the next candidate is tried, and the one that answers is kept.
  */
 let base: string | null = null;
-const BASE = () => base ?? configured();
+const BASE = () => base ?? candidates()[0];
 // the names the owner may have used in Vercel (names are case-sensitive): the documented one first
 const ID_NAMES = ["PAYLINK_API_ID", "API_ID", "api_id", "PAYLINK_APP_ID"];
 const SECRET_NAMES = ["PAYLINK_SECRET_KEY", "SECRET_KEY", "secret_key", "PAYLINK_SECRET"];
@@ -55,20 +65,22 @@ async function token(force = false): Promise<string> {
   const { apiId, secretKey } = keys();
   if (!apiId || !secretKey) throw new PaylinkError("paylink is not set up");
   const body = { apiId, secretKey, persistToken: false };
-  let r: { id_token?: string };
-  try {
-    r = await call<{ id_token?: string }>("/api/auth", { method: "POST", body });
-  } catch (e) {
-    const other = BASE() === LIVE ? TEST : LIVE;
-    console.error("paylink auth failed on", BASE(), String(e).slice(0, 300), "— trying", other);
-    const was = base;
-    base = other;
+  let r: { id_token?: string } | null = null;
+  const errors: string[] = [];
+  const order = [...new Set([BASE(), ...candidates()])];
+  for (const b of order) {
+    base = b;
     try {
       r = await call<{ id_token?: string }>("/api/auth", { method: "POST", body });
-    } catch (e2) {
-      base = was;
-      throw new PaylinkError(`${String(e).slice(0, 200)} | ${String(e2).slice(0, 200)}`);
+      break;
+    } catch (e) {
+      errors.push(`${b}: ${String(e).slice(0, 200)}`);
+      console.error("paylink auth failed on", b, String(e).slice(0, 300));
     }
+  }
+  if (!r) {
+    base = null;
+    throw new PaylinkError(errors.join(" | "));
   }
   if (!r?.id_token) throw new PaylinkError("paylink auth gave no token");
   cached = { token: r.id_token, until: Date.now() + 25 * 60_000 };

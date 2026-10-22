@@ -69,6 +69,18 @@ describe("Paylink client", () => {
     expect((f.mock.calls.at(-1) as unknown as [string])[0]).toBe("https://restapi.paylink.sa/api/addInvoice");
   });
 
+  it("tries PAYLINK_BASE1 after PAYLINK_BASE, and understands the word production", async () => {
+    vi.stubEnv("PAYLINK_BASE1", "production");
+    const f = vi.fn(async (url: string) => {
+      if (url.startsWith("https://restpilot.paylink.sa")) return new Response("nope", { status: 404 });
+      return url.endsWith("/api/auth") ? reply({ id_token: "p" }) : reply({ orderNumber: "o", amount: 1, orderStatus: "Paid" });
+    });
+    vi.stubGlobal("fetch", f);
+    const { getInvoice } = await import("@/lib/credits/paylink");
+    await getInvoice("T");
+    expect((f.mock.calls[1] as unknown as [string])[0]).toBe("https://restapi.paylink.sa/api/auth");
+  });
+
   it("counts an invoice as paid only for the same order, the same price and a Paid status", async () => {
     const { invoicePaid } = await import("@/lib/credits/paylink");
     const inv = { orderNumber: "o-1", amount: 10, status: "Paid" };
