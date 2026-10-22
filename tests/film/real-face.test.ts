@@ -17,3 +17,14 @@ describe("«Seedance وجه واقعي» in the film maker", () => {
     expect(mocks.task).toHaveBeenCalledWith("req1");
   });
 });
+
+describe("«Seedance وجه واقعي» sent to JAWAD's video section", () => {
+  it("stays «وجه واقعي» there and back (never turned into plain Seedance 2.5)", async () => {
+    const { generatorOfFilmModel, filmModelOfGenerator } = await import("@/lib/film/studio-models");
+    const { generatorById } = await import("@config/jawad/generators");
+    expect(generatorOfFilmModel("seedance-real-face")).toBe("seedance-real-face");
+    expect(generatorById(generatorOfFilmModel("seedance-real-face"))).toBeTruthy();
+    expect(filmModelOfGenerator("seedance-real-face")).toBe("seedance-real-face");
+    for (const m of ["seedance-2.0", "seedance-2.5"] as const) expect(filmModelOfGenerator(generatorOfFilmModel(m))).toBe(m);
+  });
+});

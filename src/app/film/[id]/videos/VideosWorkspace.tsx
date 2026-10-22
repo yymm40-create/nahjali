@@ -96,7 +96,7 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, dialogueStart, dialogueSource = null, rewind = true,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, lastModel, dialogueStart, dialogueSource = null, rewind = true,
 }: {
   /** the old «ارجع بمشروعك لنقطة» card (a series' scene); a film edits any step directly instead */
   rewind?: boolean;
@@ -104,6 +104,8 @@ export default function VideosWorkspace({
   voicesOn?: boolean;
   /** «Seedance وجه واقعي» is configured on the server: offered for realistic scenes (much dearer). */
   realFaceOn?: boolean;
+  /** the Seedance the person made their last video with: kept as the choice («Seedance وجه واقعي» stays chosen) */
+  lastModel?: VideoModel;
   /** The dialogue mode every shot starts on: the person's «مصدر الحوار» answer to the screenwriter. */
   dialogueStart?: "make" | "upload" | "none";
   dialogueSource?: "make" | "upload" | "self" | "later" | null;
@@ -134,9 +136,12 @@ export default function VideosWorkspace({
   const [seconds, setSeconds] = useState<Record<string, number>>(() => Object.fromEntries(generations.map((g) => [g.id, clampVideoSeconds(g.durationSec)])));
   // (within the chosen Seedance's own limit: 30 s on 2.5, 15 s on 2.0)
   const secOf = (g: Generation) => clampVideoSeconds(seconds[g.id] ?? g.durationSec, model);
-  // Seedance version for every video: the director's choice by default (the most common one)
+  // Seedance version for every video: the one the person made their last video with, else the director's choice
+  // (the most common one)
   const [model, setModel] = useState<VideoModel>(() =>
-    generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
+    lastModel && (lastModel !== "seedance-real-face" || realFaceOn)
+      ? lastModel
+      : generations.filter((g) => g.model === "seedance-2.0").length > generations.length / 2 ? "seedance-2.0" : "seedance-2.5",
   );
   const [rendering, setRendering] = useState(videosRunning > 0);
   // The director answering the client's notes on a video

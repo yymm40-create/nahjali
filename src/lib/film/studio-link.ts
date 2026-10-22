@@ -10,6 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generatorById } from "@config/jawad/generators";
 import { JAWAD_BUCKET, loadRuntime } from "@/lib/jawad/server/runtime";
 import { uploadFromBuffer } from "@/lib/jawad/server/uploads";
+import { filmModelOfGenerator, generatorOfFilmModel } from "./studio-models";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmProject } from "./types";
 
 import { storage } from "@/lib/storage";
@@ -33,7 +34,7 @@ export async function filmVideoToStudio(
   const { data: existing } = await db().from("jawad_jobs").select("id").eq("user_id", user.id).eq("idempotency_key", key).maybeSingle();
   if (existing) return existing.id as string;
 
-  const def = generatorById(gen.model === "seedance-2.0" ? "byteplus-seedance-2-0" : "byteplus-seedance-2-5")!;
+  const def = generatorById(generatorOfFilmModel(gen.model))!;
   const rt = await loadRuntime();
   const section = rt.sections.find((s) => s.output === "video") ?? { id: "video" };
   // The film's reference pictures go along (named image1…n in the film's order), so an edit keeps the characters
@@ -57,7 +58,8 @@ export async function filmVideoToStudio(
     generator_id: def.id,
     provider: def.provider.id,
     model_id: def.model.id,
-    mode: refs.length ? "omni_reference" : "text_to_video",
+    // («Seedance وجه واقعي» has no text-only mode: its videos are always from the people's pictures)
+    mode: refs.length || !def.modes.some((m) => m.id === "text_to_video") ? "omni_reference" : "text_to_video",
     output_kind: "video",
     prompt: gen.prompt.slice(0, 40000),
     inputs: {
@@ -132,7 +134,7 @@ export async function studioVideoToFilm(project: FilmProject, user: { id: string
     storage_path: path,
     mime: "video/mp4",
     bytes: file.length,
-    meta: { source: "jawad", jawadJobId: job.id, model: job.generator_id === "byteplus-seedance-2-0" ? "seedance-2.0" : "seedance-2.5", resolution: s.resolution ?? "", ratio: s.ratio ?? "", durationSec: s.duration ?? null },
+    meta: { source: "jawad", jawadJobId: job.id, model: filmModelOfGenerator(String(job.generator_id)), resolution: s.resolution ?? "", ratio: s.ratio ?? "", durationSec: s.duration ?? null },
   });
   if (error) throw error;
   return id;
