@@ -301,6 +301,7 @@ export function simpleImage(spec: SimpleImageSpec): GeneratorDef {
 
 const NB_ASPECTS = ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "21:9"];
 const FAL_CHECKED = "2026-10-10";
+const WAN_CHECKED = "2026-10-23";
 const falSources = (slug: string) => [
   { label: `fal.ai — ${slug} (schema, endpoints)`, url: `https://fal.ai/models/${slug}/api`, checked: FAL_CHECKED },
   { label: `fal.ai — ${slug} (price)`, url: `https://fal.ai/models/${slug}`, checked: FAL_CHECKED },
@@ -738,6 +739,112 @@ const kling3: GeneratorDef = {
     { item: "المدة", status: "verified", note: "من 3 إلى 15 ثانية." },
     { item: "الصوت", status: "verified", note: "generate_audio؛ الكلام المنطوق بالإنجليزية أو الصينية، وغيرهما يُترجم للإنجليزية." },
     { item: "السعر", status: "verified", note: "$0.112 للثانية بدون صوت، $0.168 مع الصوت (صفحة النموذج في fal)." },
+    { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
+  ],
+  notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
+};
+
+// ───────────────────────────── Alibaba · Wan 3.0 (on fal.ai) ─────────────────────────────
+// Checked on 2026-10-23: fal's schemas of alibaba/wan-3.0/{text,image,reference}-to-video. Priced per second of output by
+// resolution ($0.05 · $0.10 · $0.20); in reference mode the reference VIDEOS' seconds are billed on top. Up to 30 s in one
+// pass. A task on fal's queue, followed like Kling's. Hidden from users until the owner enables it after trying it.
+
+export const WAN_SECOND_USD: Record<string, number> = { "480p": 0.05, "720p": 0.1, "1080p": 0.2 };
+const wanSec = (d: { settings: Settings }) => Math.max(2, Math.min(30, Math.round(Number(d.settings.duration) || 5)));
+/** Seconds of the reference videos (billed in addition to the output). */
+const wanRefVideoSec = (d: { refs: RefMeta[] }) => Math.ceil(d.refs.filter((r) => r.kind === "video").reduce((s, r) => s + (r.durationMs ?? 0), 0) / 1000);
+
+const wanModes: ModeDef[] = [
+  { id: "text_to_video", label: "من النص", refStyle: "none", refs: {}, promptRequired: true },
+  { id: "first_frame", label: "إطار أول", refStyle: "frames", refs: { image: { min: 1, max: 1 } }, roles: ["first_frame"], promptRequired: false },
+  { id: "first_last_frame", label: "إطار أول وأخير", refStyle: "frames", refs: { image: { min: 2, max: 2 } }, roles: ["first_frame", "last_frame"], promptRequired: false },
+  {
+    id: "omni_reference",
+    label: "مراجع (صور، فيديو، صوت)",
+    refStyle: "references",
+    refs: { image: { min: 0, max: 10 }, video: { min: 0, max: 5, totalMaxMs: 15_000 }, audio: { min: 0, max: 5, totalMaxMs: 15_000 } },
+    needsOneOf: ["image", "video", "audio"],
+    promptRequired: true,
+  },
+];
+
+const wan3: GeneratorDef = {
+  id: "wan-3-0",
+  name: "Wan 3.0",
+  output: "video",
+  defaultSection: "video",
+  provider: { id: "fal", label: "Alibaba Wan (fal.ai)" },
+  model: { id: "alibaba/wan-3.0/text-to-video", family: "Wan 3.0", version: "3.0" },
+  api: { name: "fal.ai queue", endpoint: "POST alibaba/wan-3.0/text-to-video · image-to-video · reference-to-video", tracking: "async", progress: "none", cancel: "none" },
+  modes: wanModes,
+  options: [
+    { key: "ratio", label: "نسبة الأبعاد", kind: "choice", ltr: true, default: "16:9", values: RATIO_VALUES.filter((r) => ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(r.value)) },
+    { key: "resolution", label: "الدقة", kind: "choice", ltr: true, default: "720p", values: ["480p", "720p", "1080p"].map((r) => ({ value: r, label: RES_LABEL[r] })) },
+    { key: "duration", label: "المدة", kind: "int", min: 2, max: 30, default: 5, unit: "ثانية" },
+    { key: "audio", label: "صوت متزامن مع الفيديو", kind: "bool", default: true, hint: "مؤثرات وموسيقى وكلام يولّدها النموذج" },
+  ],
+  files: {
+    image: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 10 * MB, minSide: 300, maxSide: 8192, minAspect: 0.4, maxAspect: 2.5 },
+    video: { mimes: ["video/mp4", "video/quicktime"], maxBytes: 100 * MB, minSide: 300, maxSide: 6000, minAspect: 0.4, maxAspect: 2.5, minMs: 1000, maxMs: 15_000 },
+    audio: { mimes: ["audio/mpeg", "audio/wav"], maxBytes: 15 * MB, minMs: 1000, maxMs: 15_000 },
+  },
+  prompt: {
+    label: "البرومبت",
+    placeholder: "Describe the scene, the motion and the camera… (with references: «the person in Image 1 walks past Video 1»)",
+    max: 4000,
+    arabic: true,
+  },
+  priceKeys: ["480p", "720p", "1080p"].map((r) => ({
+    key: `sec:${r}`,
+    label: `كل ثانية · ${RES_LABEL[r]}`,
+    defaultCenti: centiFor(WAN_SECOND_USD[r]),
+    basis: `سعر fal المنشور: ${WAN_SECOND_USD[r]} للثانية (${r})`,
+  })),
+  modeFor(style, refs) {
+    if (!refs.length) return wanModes[0];
+    if (style === "references") return wanModes[3];
+    return refs.length >= 2 ? wanModes[2] : wanModes[1];
+  },
+  rules(d, mode) {
+    const notes: string[] = [];
+    const states: Partial<Record<string, Partial<OptionState>>> = {};
+    if (mode.refStyle === "frames") {
+      states.ratio = { fixed: { value: "adaptive", reason: "النسبة تتبع صورة الإطار الأول" } };
+      notes.push("في وضع الإطارات يتبع الفيديو نسبة صورة الإطار الأول.");
+    }
+    if (mode.id === "omni_reference") {
+      notes.push("في المراجع، اكتب في البرومبت «Image 1» و«Video 1» و«Audio 1» بترتيب رفعها لتحدد دور كل مرجع.");
+      if (d.refs.some((r) => r.kind === "video")) notes.push("⚠️ ثواني الفيديوهات المرجعية تُحسب على السعر زيادة عن ثواني الناتج.");
+      if (d.refs.some((r) => r.kind === "audio")) notes.push("الصوت المرجعي: لم نتأكد بعد هل يطابق الشفاه على الكلام أو يستخدمه إيقاعًا فقط؛ جرّبه على مقطع قصير أول.");
+    }
+    return { options: opt(wan3.options, states), issues: [], notes };
+  },
+  price(d, mode, table) {
+    const res = String(d.settings.resolution);
+    const per = table[`sec:${res}`];
+    if (per == null) return { ok: false, reason: "سعر هذه الدقة غير محدد بعد." };
+    const sec = wanSec(d);
+    const lines = [{ label: `${sec} ث · ${RES_LABEL[res] ?? res}`, centi: per * sec }];
+    const refSec = mode.id === "omni_reference" ? wanRefVideoSec(d) : 0;
+    if (refSec) lines.push({ label: `فيديو مرجعي ${refSec} ث`, centi: per * refSec });
+    return total(lines, wan3.costUsd(d, mode));
+  },
+  costUsd(d, mode) {
+    const per = WAN_SECOND_USD[String(d.settings.resolution)] ?? WAN_SECOND_USD["720p"];
+    return (wanSec(d) + (mode.id === "omni_reference" ? wanRefVideoSec(d) : 0)) * per;
+  },
+  refLabel: (kind, n) => `${kind[0].toUpperCase()}${kind.slice(1)} ${n}`,
+  sources: [
+    ...falSources("alibaba/wan-3.0/text-to-video"),
+    { label: "fal.ai — alibaba/wan-3.0/image-to-video (schema)", url: "https://fal.ai/models/alibaba/wan-3.0/image-to-video/api", checked: WAN_CHECKED },
+    { label: "fal.ai — alibaba/wan-3.0/reference-to-video (schema)", url: "https://fal.ai/models/alibaba/wan-3.0/reference-to-video/api", checked: WAN_CHECKED },
+  ],
+  verification: [
+    { item: "الأوضاع", status: "verified", note: "نص · إطار أول (start_image_url) · أول وأخير (+ end_image_url) · مراجع (reference_image_urls ≤ 10، reference_video_urls ≤ 5 ومجموعها ≤ 15 ث بـ16 فريم فأعلى، reference_audio_urls ≤ 5 ومجموعها ≤ 15 ث)." },
+    { item: "الدقة والمدة", status: "verified", note: "480p · 720p · 1080p؛ حتى 30 ثانية في مرة واحدة." },
+    { item: "النسب", status: "verified", note: "16:9 · 4:3 · 1:1 · 3:4 · 9:16 (و adaptive في الإطارات)." },
+    { item: "الصوت المرجعي", status: "unverified", note: "التوثيق يذكر الحقل وحدوده فقط، لا يقول هل يطابق الشفاه أو يستخدم الصوت إيقاعًا؛ تُجرَّب أولًا." },
+    { item: "السعر", status: "verified", note: "$0.05 · $0.10 · $0.20 للثانية (480p · 720p · 1080p)، وثواني الفيديو المرجعي تُحسب زيادة (صفحة fal)." },
     { item: "الإلغاء", status: "verified", note: "لا نلغي طلبًا أُرسل؛ نتابعه حتى ينتهي." },
   ],
   notes: ["مهمة في طابور fal: نتابعها حتى يجهز الفيديو وننسخه إلى تخزيننا."],
@@ -1429,7 +1536,7 @@ const jawadVoice: GeneratorDef = {
   notes: ["يجب إخبار المستمع أن الصوت مولّد بالذكاء الاصطناعي.", "لا تُؤخذ بصمة صوت شخص إلا بإذنه."],
 };
 
-export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
+export const GENERATORS: GeneratorDef[] = [gptImage2, nanoBananaPro, nanoBanana2, nanoBanana, flux2Pro, ideogram3, seedreamLite, seedance("2.5"), seedance("2.0"), seedanceRealFace, kling3, wan3, miniTts, elevenV4, minimaxSpeech, jawadVoice, elevenSfx, elevenMusic, smartSplit];
 export const generatorById = (id: string) => GENERATORS.find((g) => g.id === id);
 
 /** The settings a generator starts with. */

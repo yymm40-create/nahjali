@@ -35,6 +35,7 @@ import { ProviderError, providerUserId } from "./providers/common";
 import { openaiImage, openaiSpeech, TTS_MIME } from "./providers/openai";
 import { arkCancelTask, arkCreateTask, arkGetTask, arkImage, arkListTasks, type ArkContent, type ArkTask } from "./providers/modelark";
 import { realFaceCancel, realFaceSubmit, realFaceTask } from "./providers/realface";
+import { wanRequest } from "./wan";
 import { falImages, falSubmit, falTask } from "./providers/fal";
 import sharp from "sharp";
 import { prepareEdit, type EditInputs } from "./smart-edit";
@@ -387,6 +388,7 @@ export async function runJob(jobId: string) {
     });
     // ModelArk's videos are tasks followed later; its pictures (Seedream) answer at once like the others
     if (def.provider.id === "byteplus-modelark" && def.output === "video") await submitVideo(job, def, rows);
+    else if (def.id === "wan-3-0") await submitWan(job, def, rows);
     else if (def.provider.id === "fal" && def.output === "video") await submitFalVideo(job, def, rows);
     else if (def.provider.id === "realface") await submitRealFace(job, def, rows);
     else await runSync(job, def, rows);
@@ -671,6 +673,38 @@ async function submitFalVideo(job: JobRow, def: GeneratorDef, refs: UploadRow[])
     generate_audio: s.audio !== false,
     ...(first ? { start_image_url: first, ...(last ? { end_image_url: last } : {}) } : { aspect_ratio: String(s.ratio) }),
   };
+  const id = await falSubmit(model, input);
+  await db()
+    .from("jawad_jobs")
+    .update({ provider_task_id: id, submit_state: "accepted", status: "running", provider_status: "queued", lease_until: null, inputs: { ...job.inputs, falModel: model } })
+    .eq("id", job.id);
+  await event(job.id, "submitted", { task: id, model });
+  // a short video is often ready within a few minutes: keep watching while this request is alive
+  const until = Date.now() + WATCH_MS;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 10_000));
+    const fresh = await loadJob(job.id);
+    if (!fresh || !OPEN.includes(fresh.status)) return;
+    await advanceJob(fresh, { force: true });
+  }
+}
+
+/**
+ * Wan 3.0 on fal's queue: text, a first frame (and a last), or references (pictures, videos and sounds, named «Image 1»,
+ * «Video 1», «Audio 1» in the prompt). The files go as short-lived links; the request is then followed like Kling's.
+ */
+async function submitWan(job: JobRow, def: GeneratorDef, refs: UploadRow[]) {
+  const signed = refs.length ? (await storage.from(JAWAD_BUCKET).createSignedUrls(refs.map((r) => r.storage_path), 3 * 3600)).data ?? [] : [];
+  const urls = refs.map((_, i) => signed[i]?.signedUrl ?? null);
+  if (urls.some((u) => !u)) throw new ProviderError("rejected", "تعذّر تجهيز أحد المراجع.", "no signed url for a reference");
+  const { model, input } = wanRequest({
+    modelId: def.model.id,
+    settings: job.inputs.settings,
+    prompt: job.inputs.modelPrompt ?? job.prompt,
+    // each reference's kind (what was uploaded) with its role in this job
+    refs: refs.map((r, i) => ({ kind: r.kind, role: job.refs[i]?.role ?? "reference" })),
+    urls: urls as string[],
+  });
   const id = await falSubmit(model, input);
   await db()
     .from("jawad_jobs")

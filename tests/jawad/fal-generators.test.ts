@@ -46,3 +46,50 @@ describe("the fal.ai generators (FLUX.2 Pro · Ideogram 3 · Kling 3.0)", () => 
     expect(run(kling, {}, [img("a", "first_frame"), img("b", "last_frame")], "frames").mode.id).toBe("first_last_frame");
   });
 });
+
+describe("Wan 3.0 (Alibaba, on fal.ai)", () => {
+  const wan = generatorById("wan-3-0")!;
+  const media = (id: string, kind: "image" | "video" | "audio", durationMs: number | null = null): RefMeta => ({ id, kind, role: "reference", mime: kind === "image" ? "image/png" : kind === "video" ? "video/mp4" : "audio/mpeg", bytes: 1000, width: kind === "audio" ? null : 1024, height: kind === "audio" ? null : 1024, durationMs, fps: kind === "video" ? 24 : null, status: "ready" });
+
+  it("is a video generator on fal's queue, followed like Kling", () => {
+    expect(wan.provider.id).toBe("fal");
+    expect(wan.output).toBe("video");
+    expect(wan.api.tracking).toBe("async");
+    expect(wan.model.id).toBe("alibaba/wan-3.0/text-to-video");
+  });
+  it("is priced per second by resolution ($0.05 · $0.10 · $0.20), 2–30 s", () => {
+    for (const [res, usd] of [["480p", 0.05], ["720p", 0.1], ["1080p", 0.2]] as const) {
+      const r = run(wan, { ratio: "16:9", resolution: res, duration: 10 });
+      expect(r.price.ok && r.price.usdCeiling).toBeCloseTo(10 * usd);
+    }
+    expect(run(wan, { duration: 99 }).settings.duration).toBe(30);
+    expect(run(wan, { duration: 0 }).settings.duration).toBe(2);
+  });
+  it("picks its mode from the references: text, first frame, first and last, references", () => {
+    expect(run(wan, {}).mode.id).toBe("text_to_video");
+    expect(run(wan, {}, [img("a", "first_frame")], "frames").mode.id).toBe("first_frame");
+    expect(run(wan, {}, [img("a", "first_frame"), img("b", "last_frame")], "frames").mode.id).toBe("first_last_frame");
+    expect(run(wan, {}, [img("a")], "references").mode.id).toBe("omni_reference");
+  });
+  it("takes sound references (up to 5, 15 s in all) and bills the reference videos' seconds on top", () => {
+    const one = run(wan, { resolution: "720p", duration: 10 }, [img("a"), media("s", "audio", 8000)], "references");
+    expect(one.mode.id).toBe("omni_reference");
+    expect(one.issues).toEqual([]);
+    expect(one.price.ok && one.price.usdCeiling).toBeCloseTo(10 * 0.1);
+    expect(one.notes.join(" ")).toMatch(/الصوت المرجعي/);
+    // two sounds of 10 s: over the 15 s total
+    const tooLong = run(wan, { resolution: "720p" }, [img("a"), media("s1", "audio", 10_000), media("s2", "audio", 10_000)], "references");
+    expect(tooLong.issues.length).toBeGreaterThan(0);
+    // six sounds: over the count
+    const six = run(wan, { resolution: "720p" }, [img("a"), ...Array.from({ length: 6 }, (_, i) => media(`s${i}`, "audio", 1000))], "references");
+    expect(six.issues.length).toBeGreaterThan(0);
+    // a 6 s reference video is billed on top of a 10 s output
+    const withVideo = run(wan, { resolution: "720p", duration: 10 }, [img("a"), media("v", "video", 6000)], "references");
+    expect(withVideo.price.ok && withVideo.price.usdCeiling).toBeCloseTo(16 * 0.1);
+  });
+  it("names the references «Image 1», «Video 1», «Audio 1» for the prompt", () => {
+    expect(wan.refLabel?.("image", 1)).toBe("Image 1");
+    expect(wan.refLabel?.("video", 2)).toBe("Video 2");
+    expect(wan.refLabel?.("audio", 1)).toBe("Audio 1");
+  });
+});
