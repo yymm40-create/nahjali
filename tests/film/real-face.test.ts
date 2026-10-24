@@ -33,7 +33,7 @@ describe("the director can choose «Seedance وجه واقعي» for a realistic
   it("is in the director's answer schema and rules, marked as much dearer", async () => {
     const { readFileSync } = await import("node:fs");
     const text = readFileSync("config/film-prompts/director.ts", "utf8");
-    expect(text).toContain('enum: ["", "seedance-2.5", "seedance-2.0", "seedance-real-face"]');
+    expect(text).toContain('enum: ["", "seedance-2.5", "seedance-2.0", "seedance-real-face", "wan-3.0"]');
     expect(text).toContain("much dearer than the others");
   });
 });

@@ -8,7 +8,7 @@ export interface FilmProject {
   fixed_facts: string;
   target_duration_sec: number | null;
   stage: FilmStage;
-  video_model: "seedance-2.5" | "seedance-2.0" | "seedance-real-face";
+  video_model: "seedance-2.5" | "seedance-2.0" | "seedance-real-face" | "wan-3.0";
   kind?: "scene" | "film";
   workflow_version?: 1 | 2;
   intake?: unknown;

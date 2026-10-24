@@ -17,6 +17,8 @@ export const VOICE_TRACK_LIMIT: Record<VideoModel, { minSec: number; maxSec: num
   "seedance-2.0": { minSec: 2, maxSec: 15 },
   // the real-face partner's 2.5: audio references up to 30 s in all
   "seedance-real-face": { minSec: 2, maxSec: 30 },
+  // Wan 3.0's reference sounds: 15 s in all (fal's schema)
+  "wan-3.0": { minSec: 1, maxSec: 15 },
 };
 
 /** The spoken lines of a generation and whether each has its (current) audio; for the generation page. */

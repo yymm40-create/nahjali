@@ -19,6 +19,9 @@ export const VIDEO_MODELS = {
   // «Seedance وجه واقعي»: Seedance 2.5 through the partner that accepts real faces (src/lib/jawad/server/providers/realface.ts),
   // for realistic scenes with real people — much dearer than the others
   "seedance-real-face": { label: "Seedance وجه واقعي", maxSeconds: 30, maxImages: 30, modelId: "seedance-2.5-real-face" },
+  // Wan 3.0 (Alibaba, on fal.ai, src/lib/jawad/server/wan.ts): much cheaper than Seedance 2.5, strong animation, up to 30 s in
+  // one pass; references: up to 10 pictures and 15 s of sound in all
+  "wan-3.0": { label: "Wan 3.0", maxSeconds: 30, maxImages: 10, modelId: "alibaba/wan-3.0/reference-to-video" },
 } as const;
 export type VideoModel = keyof typeof VIDEO_MODELS;
 
@@ -43,6 +46,8 @@ export const VIDEO_PRICE_PER_MILLION_TOKENS: Record<VideoModel, Record<VideoReso
   // billed per second by the partner ($0.206 · $0.45 · $1.1 a second, config/jawad/generators.ts), written here per
   // million of the same token count so the film maker's estimate stays one formula
   "seedance-real-face": { "480p": 21.45, "720p": 20.84, "1080p": 22.64 },
+  // fal bills Wan per second ($0.05 · $0.10 · $0.20, config/jawad/generators.ts), written the same way
+  "wan-3.0": { "480p": 5.21, "720p": 4.63, "1080p": 4.12 },
 };
 
 /** Approximate tokens of one video (the provider reports the real count once it is done). */

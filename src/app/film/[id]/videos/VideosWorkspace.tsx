@@ -96,7 +96,7 @@ interface StudioVideo {
 }
 
 export default function VideosWorkspace({
-  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, lastModel, dialogueStart, dialogueSource = null, rewind = true,
+  projectId, stage, generations, videos, videosRunning, trialVideosLeft, editsLeft, job, studioPath = null, voicesOn = false, realFaceOn = false, wanOn = false, lastModel, dialogueStart, dialogueSource = null, rewind = true,
 }: {
   /** the old «ارجع بمشروعك لنقطة» card (a series' scene); a film edits any step directly instead */
   rewind?: boolean;
@@ -104,6 +104,8 @@ export default function VideosWorkspace({
   voicesOn?: boolean;
   /** «Seedance وجه واقعي» is configured on the server: offered for realistic scenes (much dearer). */
   realFaceOn?: boolean;
+  /** Wan 3.0 (fal's key is set): offered beside Seedance — much cheaper, strong animation, up to 30 s. */
+  wanOn?: boolean;
   /** the Seedance the person made their last video with: kept as the choice («Seedance وجه واقعي» stays chosen) */
   lastModel?: VideoModel;
   /** The dialogue mode every shot starts on: the person's «مصدر الحوار» answer to the screenwriter. */
@@ -139,7 +141,7 @@ export default function VideosWorkspace({
   // Seedance version for every video: the one the person made their last video with, else the director's choice
   // (the most common one)
   const [model, setModel] = useState<VideoModel>(() =>
-    lastModel && (lastModel !== "seedance-real-face" || realFaceOn)
+    lastModel && (lastModel !== "seedance-real-face" || realFaceOn) && (lastModel !== "wan-3.0" || wanOn)
       ? lastModel
       : realFaceOn && generations.some((g) => g.model === "seedance-real-face")
         ? "seedance-real-face"
@@ -542,9 +544,9 @@ export default function VideosWorkspace({
 
 
       <section className="card space-y-3 p-4">
-        <h2 className="text-lg font-extrabold">نسخة Seedance</h2>
-        <div className={`grid gap-2 ${realFaceOn ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}>
-          {([["seedance-2.5", "الأحدث، والمخرج يفضّلها"], ["seedance-2.0", "أرخص"], ...(realFaceOn ? [["seedance-real-face", `للمشاهد الواقعية بوجوه حقيقية · ⚠️ غالي: تقريبًا ${Math.round(videoEstimateUsd("seedance-real-face", resolution, 10) / videoEstimateUsd("seedance-2.5", resolution, 10))}× سعر 2.5`]] : [])] as [VideoModel, string][]).map(([m, hint]) => (
+        <h2 className="text-lg font-extrabold">مولّد الفيديو</h2>
+        <div className={`grid gap-2 ${realFaceOn || wanOn ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
+          {([["seedance-2.5", "الأحدث، والمخرج يفضّلها"], ["seedance-2.0", "أرخص"], ...(wanOn ? [["wan-3.0", `🆕 أرخص من 2.5 بكثير (تقريبًا ${Math.round((videoEstimateUsd("wan-3.0", resolution, 10) / videoEstimateUsd("seedance-2.5", resolution, 10)) * 100)}٪ من سعره) · أنيميشن قوي · لين ٣٠ ثانية`]] : []), ...(realFaceOn ? [["seedance-real-face", `للمشاهد الواقعية بوجوه حقيقية · ⚠️ غالي: تقريبًا ${Math.round(videoEstimateUsd("seedance-real-face", resolution, 10) / videoEstimateUsd("seedance-2.5", resolution, 10))}× سعر 2.5`]] : [])] as [VideoModel, string][]).map(([m, hint]) => (
             <button
               key={m}
               className={`rounded-2xl border-2 p-3 text-start ${model === m ? "border-gold bg-gold/10" : "border-line"}`}
@@ -556,6 +558,9 @@ export default function VideosWorkspace({
             </button>
           ))}
         </div>
+        {model === "wan-3.0" && (
+          <p className="rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">Wan 3.0: يقبل لين {VIDEO_MODELS["wan-3.0"].maxImages} صور مرجعية و١٥ ثانية صوت للحوار في الفيديو الواحد. ممتاز للأنيميشن والمشاهد الطويلة لين ٣٠ ثانية بلقطة وحدة.</p>
+        )}
         {model === "seedance-real-face" && (
           <div className="space-y-1 rounded-2xl border-2 border-gold bg-gold/10 p-3 text-sm font-bold">
             <p>{REALFACE_WARNING}</p>

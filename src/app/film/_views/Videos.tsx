@@ -6,6 +6,7 @@ import { checkVideos, directorVersions, directorVideos, purgeOldVideos } from "@
 import { voiceReadiness } from "@/lib/film/voice-track";
 import { voicesReady } from "@/lib/film/voices";
 import { realFaceReady } from "@/lib/jawad/server/providers/realface";
+import { falReady } from "@/lib/jawad/server/providers/fal";
 import { projectCost } from "@/lib/film/usage";
 import { latestJob } from "@/lib/film/sheets";
 import { FILM_BUCKET } from "@/lib/film/types";
@@ -112,6 +113,7 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         studioPath={studioPath}
         voicesOn={voicesReady()}
         realFaceOn={realFaceReady()}
+        wanOn={falReady()}
         lastModel={[...videos].reverse().map((v) => String(v.meta?.model ?? "")).find((m) => m in VIDEO_MODELS) as VideoModel | undefined}
         dialogueStart={startingMode(source, voicesReady())}
         dialogueSource={source}
