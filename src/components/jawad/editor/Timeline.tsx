@@ -1007,7 +1007,7 @@ function TrackHead({ track, isMain, width, compact, readOnly, run, label }: { tr
   const [painting, setPainting] = useState<{ x: number; y: number } | null>(null);
   const toggle = (patch: Partial<Pick<Track, "muted" | "hidden" | "locked">>) => run({ type: "update_track", trackId: track.id, patch });
   const btn = "grid h-6 w-6 place-items-center rounded hover:bg-jw-surface-3";
-  const icon = track.kind === "audio" ? "music" : track.kind === "text" ? "type" : isMain ? "film" : "layers";
+  const icon = track.kind === "audio" ? "music" : track.motion ? "sparkles" : track.kind === "text" ? "type" : isMain ? "film" : "layers";
   return (
     <div className="sticky left-0 z-10 flex shrink-0 items-center gap-0.5 border-e border-jw-line bg-jw-surface px-1 text-jw-muted" style={{ width, minWidth: width }} dir="rtl">
       {!compact && (

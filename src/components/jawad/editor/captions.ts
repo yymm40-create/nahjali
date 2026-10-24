@@ -176,7 +176,7 @@ const srtTime = (ms: number) => {
 /** Every text clip of the text tracks (or of one track) as an SRT subtitle file. */
 export function toSRT(tl: Timeline, trackId?: string, range?: { from: number; to: number } | null) {
   const clips = tl.tracks
-    .filter((t) => t.kind === "text" && (!trackId || t.id === trackId))
+    .filter((t) => t.kind === "text" && !t.motion && (!trackId || t.id === trackId))
     .flatMap((t) => t.clips.filter((c) => c.text?.body.trim()))
     // «منطقة التصدير»: only the subtitles that touch the range, cut to it and counted from its start
     .filter((c) => !range || (clipEnd(c) > range.from && c.start < range.to))

@@ -36,5 +36,7 @@ export function loadFont(id: string, weight = 400): Promise<boolean> {
 export function loadFontsOf(tl: Timeline) {
   const want = new Set<string>();
   for (const t of tl.tracks) for (const c of t.clips) if (c.text && FONT_BY_ID.has(c.text.font)) want.add(`${c.text.font}|${c.text.weight}`);
+  // «مسار الموشن»: an element's font, in the weights its drawing uses
+  for (const t of tl.tracks) for (const c of t.clips) if (c.motion && FONT_BY_ID.has(c.motion.font)) for (const w of [500, 700, 800]) want.add(`${c.motion.font}|${w}`);
   return Promise.all([...want].map((k) => loadFont(k.split("|")[0], Number(k.split("|")[1]))));
 }

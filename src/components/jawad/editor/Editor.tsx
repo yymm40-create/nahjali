@@ -29,6 +29,7 @@ import Guard from "./Guard";
 import SmartFix from "./SmartFix";
 import { PluginTools } from "./plugins";
 import { familyOf, loadFont, loadFontsOf } from "./fontload";
+import { MOTION_KINDS, type MotionKind } from "@/lib/editor/motion-elements";
 import { makeMusicAsset, separateAsset, stemQuality } from "./make";
 import { type LabSource } from "./MotionLab";
 import MotionLabTabs from "./MotionLabTabs";
@@ -1392,6 +1393,11 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
     run({ type: "add_text", at: at() });
     if (!wide) setSheet("inspector");
   };
+  // «مسار الموشن»: an element at the playhead, on the motion track, its settings open
+  const addMotion = (kind: MotionKind) => {
+    run({ type: "add_motion", kind, at: at() });
+    if (!wide) setSheet("inspector");
+  };
 
   // keyboard: our shortcuts and those of Premiere, Resolve, CapCut and Final Cut at once — on a clash, the program the
   // person chose first wins (see «⌨️ الاختصارات»). Not while typing.
@@ -2174,6 +2180,13 @@ export default function Editor({ project, initialAssets, exportUrl, backHref, st
         <button type="button" className={`${toolBtn} flex ${lab ? "text-jw-accent" : ""} ${labMin ? "animate-pulse" : ""}`} onClick={() => openLab()} disabled={readOnly} title="مختبر الموشن: حيدرة يصمم الموشن ويكتبه بالكود، يراجعه كمخرج، وينزله في التايملاين">
           🎬 <span className="hidden sm:inline">مختبر الموشن</span>
         </button>
+        <div className="flex items-center gap-0.5 rounded-lg border border-violet-500/40 p-0.5" role="group" aria-label="عناصر الموشن: تنضاف عند المؤشر">
+          {(Object.entries(MOTION_KINDS) as [MotionKind, (typeof MOTION_KINDS)[MotionKind]][]).map(([k, v]) => (
+            <button key={k} type="button" className="rounded-md px-1.5 py-1 text-[11px] text-jw-muted hover:bg-violet-500/15 hover:text-jw-ink disabled:opacity-40" onClick={() => addMotion(k)} disabled={readOnly} title={`+ ${v.label}: ${v.hint} (عند المؤشر، على مسار الموشن)`}>
+              {v.icon} <span className="hidden xl:inline">{v.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {false && assisting && chatDock && wide && (

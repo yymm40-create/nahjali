@@ -1,6 +1,7 @@
 "use client";
 
 import LabPiece from "./LabPiece";
+import MotionPanel from "./MotionPanel";
 import type { LabSource } from "./MotionLab";
 import { useEffect, useState } from "react";
 import { setStemQuality, stemQuality, type StemQuality } from "./make";
@@ -297,6 +298,8 @@ export default function Inspector({
       </div>
     );
   }
+  // «مسار الموشن»: an element has its own settings (its words, lines and their moments, place, size, theme)
+  if (clip.motion) return <MotionPanel clip={clip} motion={clip.motion} locked={locked} run={run} player={player ?? null} />;
   const set = (patch: ClipPatch, key: string) => run({ type: "update_clip", clipId: clip.id, patch }, { coalesce: `${clip.id}:${key}` });
   const text = clip.text;
   // a video's sound taken out onto a sound track is only sound
