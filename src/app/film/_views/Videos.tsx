@@ -91,7 +91,8 @@ export default async function VideosView({ id, base }: { id: string; base: strin
         projectId={id}
         stage={project.stage}
         generations={generations}
-        videos={videos.map((v) => ({
+        // the lip-sync takes (a feature since removed) are not shown, failed or not
+        videos={videos.filter((v) => !v.meta?.lipsync).map((v) => ({
           id: v.id,
           ref_key: v.ref_key,
           status: v.status,
@@ -104,7 +105,6 @@ export default async function VideosView({ id, base }: { id: string; base: strin
           download: links[v.id]?.download ?? "",
           note: typeof v.meta?.montage_note === "string" ? (v.meta.montage_note as string) : "",
           edited: Boolean(v.meta?.edited),
-          lipsync: Boolean(v.meta?.lipsync),
         }))}
         videosRunning={videosRunning}
         job={job ? { status: job.status, error: job.error } : null}

@@ -12,11 +12,7 @@ import { keyConfigured } from "@/lib/jawad/server/runtime";
 import { generatorById } from "@config/jawad/generators";
 import { elevenPremadeVoices, elevenSpeech } from "@/lib/jawad/server/providers/elevenlabs";
 import { ProviderError } from "@/lib/jawad/server/providers/common";
-import { audioDurationMs, jawadReference, resolveVoice } from "@/lib/jawad/server/voices";
-import { jawadSpeak } from "@/lib/jawad/server/providers/jawad-voice";
-import { JAWAD_VOICE_PRICE } from "@config/jawad/generators";
-import { MINIMAX_PRICE, MINIMAX_READY_VOICES, minimaxReady, minimaxSpeech } from "@/lib/jawad/server/providers/minimax";
-import { minimaxFeeling } from "@config/jawad/feelings";
+import { audioDurationMs, resolveVoice } from "@/lib/jawad/server/voices";
 import { prepareSpeech } from "@/lib/jawad/server/diction";
 import { directorVersions } from "./director";
 import { isAdmin } from "@config/site";
@@ -33,18 +29,8 @@ const FALLBACK_MODEL = "eleven_v3";
  * Speaks a line; a 4xx about the model or the language flag (never billed) is tried once more the other way.
  * Anything else is reported as it is.
  */
-async function speak(o: { voiceId: string; text: string; languageCode?: string; provider?: "elevenlabs" | "minimax" | "jawad"; feeling?: string; refText?: string }) {
-  // «صوت الجواد»: the person's own reference recording speaks (the feeling is left to the words themselves)
-  if (o.provider === "jawad") {
-    const r = await jawadSpeak({ refUrl: await jawadReference(o.voiceId), refText: o.refText ?? "", text: o.text });
-    return { audio: r.audio, model: `jawad-${r.engine}`, mime: "audio/wav" as const };
-  }
-  // a MiniMax voice speaks through MiniMax, with the feeling in MiniMax's way: an emotion, and sounds like (laughs)
-  if (o.provider === "minimax") {
-    const f = minimaxFeeling(o.feeling ?? "", o.text);
-    const r = await minimaxSpeech({ voiceId: o.voiceId, text: f.text, model: "hd", ...(f.emotion ? { emotion: f.emotion } : {}), ...(o.languageCode === "ar" ? { languageBoost: "Arabic" } : {}) });
-    return { audio: r.audio, model: "minimax-speech-2.8-hd" };
-  }
+async function speak(o: { voiceId: string; text: string; languageCode?: string }) {
+  // the film maker's voices are ElevenLabs only (the owner's order, 24 October 2026)
   try {
     return { audio: await elevenSpeech({ ...o, model: MODEL, stability: 0.5 }), model: MODEL };
   } catch (e) {
@@ -58,6 +44,8 @@ async function speak(o: { voiceId: string; text: string; languageCode?: string; 
     throw e;
   }
 }
+
+const ONLY_ELEVEN = "أصوات المشهد السينمائي من ElevenLabs بس؛ اختر صوتًا من ElevenLabs أو صمّم صوتًا جديدًا بالوصف.";
 
 /** The owner sees what went wrong; everyone else a clean sentence. */
 function voiceFailure(e: unknown, email?: string | null) {
@@ -111,19 +99,19 @@ export async function lineAudios(projectId: string) {
   return list.map((r, i) => ({ key: r.ref_key.slice(5), url: links[i]?.signedUrl ?? "", text: String(r.meta?.text ?? ""), voice: String(r.meta?.voice ?? ""), durationMs: Number(r.meta?.durationMs ?? 0) || null, createdAt: r.created_at }));
 }
 
-/** The voices to choose from: the person's library, then ElevenLabs' ready voices. */
+/** The voices to choose from: the person's ElevenLabs voices in the library, then ElevenLabs' ready voices (ElevenLabs only). */
 export async function castChoices(userId: string) {
   const { data } = await db().from("jawad_voices").select("id, name, origin, provider").eq("user_id", userId).order("created_at", { ascending: false });
-  const mine = (data ?? []).map((r) => {
-    const raw = (r as { provider?: string }).provider;
-    const provider = raw === "minimax" ? ("minimax" as const) : raw === "jawad" ? ("jawad" as const) : ("elevenlabs" as const);
-    return { value: `v:${r.id}`, name: `${r.name as string}${provider === "minimax" ? " · MiniMax" : provider === "jawad" ? " · صوت الجواد" : ""}`, group: "mine" as const, provider };
-  });
+  const mine = (data ?? [])
+    .filter((r) => {
+      const raw = (r as { provider?: string }).provider;
+      return raw !== "minimax" && raw !== "jawad";
+    })
+    .map((r) => ({ value: `v:${r.id}`, name: r.name as string, group: "mine" as const, provider: "elevenlabs" as const }));
   const ready = await elevenPremadeVoices()
     .then((l) => l.map((v) => ({ value: `p:${v.voiceId}`, name: `${v.name}${v.labels.gender ? ` · ${v.labels.gender === "male" ? "رجل" : v.labels.gender === "female" ? "امرأة" : v.labels.gender}` : ""}`, group: "ready" as const, provider: "elevenlabs" as const })))
     .catch(() => []);
-  const minimax = minimaxReady() ? MINIMAX_READY_VOICES.map((v) => ({ value: `x:${v.id}`, name: `${v.name} · ${v.gender === "male" ? "رجل" : "امرأة"} · MiniMax`, group: "minimax" as const, provider: "minimax" as const })) : [];
-  return [...mine, ...ready, ...minimax];
+  return [...mine, ...ready];
 }
 
 export async function setCast(project: FilmProject, userId: string, speaker: unknown, voice: unknown) {
@@ -134,6 +122,7 @@ export async function setCast(project: FilmProject, userId: string, speaker: unk
   if (!lines.some((l) => l.speaker === s)) throw new UserError("هذه الشخصية ليست في جمل الفيلم.", 400);
   const ok = await resolveVoice(userId, v);
   if (!ok.ok) throw new UserError(ok.reason, 400);
+  if (ok.provider !== "elevenlabs") throw new UserError(ONLY_ELEVEN, 400);
   const { error } = await db().from("film_voice_cast").upsert({ project_id: project.id, speaker: s, voice: v, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
@@ -191,7 +180,7 @@ export function replaceLineInPrompt(prompt: string, old: string, line: string, i
 /** Speaks one line with its speaker's voice (Eleven v4) and keeps it with the project. */
 /** The feeling asked for, as Eleven v4 reads it: one short word or phrase between [ ] (e.g. [whispers], [excited]). */
 export const cleanEmotion = (v: unknown) => String(v ?? "").replace(/[\[\]\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
-/** ElevenLabs reads a feeling between [ ]; a MiniMax sound like "(laughs)" isn't a word for it. */
+/** ElevenLabs reads a feeling between [ ] (a sound written like "(laughs)" is taken as its word). */
 const elevenFeeling = (e: string) => e.replace(/[()]/g, "").trim();
 
 export async function speakLine(project: FilmProject, user: { id: string; email?: string | null }, key: unknown, idempotencyKey: unknown, emotionRaw?: unknown) {
@@ -206,6 +195,8 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
   if (!voice) throw new UserError(`اختر صوتًا لـ«${line.speaker}» أولًا.`, 400);
   const resolved = await resolveVoice(user.id, voice);
   if (!resolved.ok) throw new UserError(resolved.reason, 400);
+  // a speaker cast earlier with a voice of another provider: chosen again from ElevenLabs
+  if (resolved.provider !== "elevenlabs") throw new UserError(`${ONLY_ELEVEN} («${line.speaker}»)`, 400);
 
   const arabic = mostlyArabic(line.line);
   // (Claude's check costs about the same for a short line as for 1,000 characters: at least that is held)
@@ -222,10 +213,9 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
     });
     // the feeling goes first, between [ ], where Eleven v4 takes it as a direction (it is never read aloud)
     const withFeeling = emotion && !spoken.text.trimStart().startsWith("[") ? `[${elevenFeeling(emotion)}] ${spoken.text}` : spoken.text;
-    const said = await speak({ voiceId: resolved.voiceId, text: resolved.provider === "minimax" || resolved.provider === "jawad" ? spoken.text : withFeeling, languageCode: spoken.languageCode, provider: resolved.provider, feeling: emotion, refText: resolved.refText });
-    const { audio, model } = said;
-    const mime = "mime" in said && said.mime === "audio/wav" ? "audio/wav" : "audio/mpeg";
-    const ext = mime === "audio/wav" ? "wav" : "mp3";
+    const { audio, model } = await speak({ voiceId: resolved.voiceId, text: withFeeling, languageCode: spoken.languageCode });
+    const mime = "audio/mpeg";
+    const ext = "mp3";
     const path = `${projectDir(project)}/voices/${line.genId}-${line.index}-${Date.now()}.${ext}`;
     const up = await storage.from(FILM_BUCKET).upload(path, audio, { contentType: mime, upsert: false });
     if (up.error) throw new Error(`storage: ${up.error.message}`);
@@ -241,7 +231,7 @@ export async function speakLine(project: FilmProject, user: { id: string; email?
       meta: { speaker: line.speaker, text: line.line, voice, ...(emotion ? { emotion } : {}), durationMs: audioDurationMs(audio) ?? null, model, jobId: job.id, ...(spoken.fixes.length ? { spoken: spoken.text, diction: spoken.fixes.map((f) => ({ word: f.word, vocalized: f.vocalized })) } : {}) },
     });
     if (error) throw error;
-    await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * (resolved.provider === "minimax" ? MINIMAX_PRICE.hdPerKChars : resolved.provider === "jawad" ? JAWAD_VOICE_PRICE.perKChars : ELEVEN_PRICE.v4PerKChars) + spoken.usd, units: spoken.text.length });
+    await succeedJob(job.id, { costUsd: (spoken.text.length / 1000) * ELEVEN_PRICE.v4PerKChars + spoken.usd, units: spoken.text.length });
     return { jobId: job.id, status: "succeeded" };
   } catch (e) {
     console.error("film voice line failed", line.key, e);
