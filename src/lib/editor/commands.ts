@@ -2,6 +2,7 @@
 // and plugins all send the same JSON, so whatever one can do, the others can too, and each is checked the same way.
 // Pure: `apply` never changes the timeline it gets.
 
+import { isMotionKind, motionLabel, MOTION_KINDS, MOTION_MS, newMotion, readMotion, type MotionEl, type MotionKind } from "./motion-elements";
 import { applyLook, LOOKS, MAX_LAYERS, NEUTRAL_GRADE, readGrade, readGrades, type Grade } from "./grade";
 import {
   allTracks,
@@ -91,6 +92,8 @@ export type ClipPatch = Partial<Pick<Clip, "volume" | "fit" | "speed" | "fadeIn"
   anim?: Partial<Anim> | null;
   /** the clip's effects, all of them (replaces the list; [] = none) */
   fx?: ClipFx[];
+  /** «مسار الموشن»: merged over the element (motion clips only); `colors: null` = back to the theme's */
+  motion?: Partial<MotionEl>;
 };
 
 /** What every new clip starts with (besides its media and timing). */
@@ -106,6 +109,8 @@ export type Command =
   /** a video's sound on its own sound track, in step with it (the video goes quiet) */
   | { type: "extract_audio"; clipId: string }
   | { type: "add_text"; at: number; body?: string; duration?: number }
+  /** «مسار الموشن»: a motion element at `at` on the motion track (made when missing) */
+  | { type: "add_motion"; kind: MotionKind; at: number; duration?: number; motion?: Partial<MotionEl> }
   /** `trackId: "new"` puts it on a new track of its kind (above the pictures, or a new sound track) */
   | { type: "move_clip"; clipId: string; trackId: string; start: number }
   /** moves one edge of a clip to timeline time `to` */
@@ -246,6 +251,17 @@ function insertMain(track: Track, c: Clip, at: number) {
   track.clips = pack(others, true);
 }
 
+/** The motion track with room at [at, at+len) (a new one above everything when none has room). */
+function motionTrack(t: Timeline, at: number, len: number): Track {
+  const have = t.tracks.find((x) => x.motion && !x.locked && free(x, at, at + len));
+  if (have) return have;
+  const track = newTrack(t, "text");
+  Object.assign(track, { name: `موشن ${t.tracks.filter((x) => x.motion).length + 1}`, color: "#8b5cf6", motion: true });
+  return track;
+}
+/** A text or motion clip goes only on a track of its own sort (a caption never lands on the motion track, nor back). */
+const sameSort = (x: Track, c: Clip) => !!x.motion === !!c.motion;
+
 function newTrack(t: Timeline, kind: TrackKind): Track {
   if (t.tracks.length >= LIMITS.tracks) fail("وصلت لأكثر عدد من المسارات.");
   const n = t.tracks.filter((x) => x.kind === kind).length + 1;
@@ -367,7 +383,7 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
       const len = Math.max(LIMITS.minClipMs, Math.round(cmd.duration ?? STILL_MS));
       const at = Math.max(0, Math.round(cmd.at));
-      const track = t.tracks.find((x) => x.kind === "text" && !x.locked && free(x, at, at + len)) ?? newTrack(t, "text");
+      const track = t.tracks.find((x) => x.kind === "text" && !x.motion && !x.locked && free(x, at, at + len)) ?? newTrack(t, "text");
       const c: Clip = {
         id: newId("c"),
         assetId: null,
@@ -386,11 +402,38 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
       return { timeline: t, label: "أضفت نصًا", select: [c.id] };
     }
 
+    case "add_motion": {
+      if (countClips(t) >= LIMITS.clips) fail("وصلت لأكثر عدد من المقاطع في مشروع واحد.");
+      if (!isMotionKind(cmd.kind)) fail("نوع عنصر غير معروف.");
+      const len = Math.max(MOTION_MS.min, Math.round(cmd.duration ?? MOTION_MS.default));
+      const at = Math.max(0, Math.round(cmd.at));
+      const motion = newMotion(cmd.kind, cmd.motion ?? {});
+      const track = motionTrack(t, at, len);
+      const c: Clip = {
+        id: newId("c"),
+        assetId: null,
+        start: at,
+        in: 0,
+        out: len,
+        speed: 1,
+        volume: 1,
+        fit: "contain",
+        transform: { ...DEFAULT_TRANSFORM },
+        ...CLIP_DEFAULTS,
+        keys: [],
+        text: { ...DEFAULT_TEXT, body: motionLabel(motion) },
+        motion,
+      };
+      place(track, c);
+      return { timeline: t, label: `أضفت ${MOTION_KINDS[motion.kind].label}`, select: [c.id] };
+    }
+
     case "move_clip": {
       const { track: from, clip } = owned(t, cmd.clipId);
       // a video's sound taken out (on a sound track) moves as sound
       const kind = from.kind === "audio" ? "audio" : trackFor(clip, assets);
-      const to = cmd.trackId === "new" ? newTrack(t, kind) : editable(t, cmd.trackId);
+      const to = cmd.trackId === "new" ? (clip.motion ? motionTrack(t, cmd.start, clipLength(clip)) : newTrack(t, kind)) : editable(t, cmd.trackId);
+      if (to.kind === kind && kind === "text" && !sameSort(to, clip)) fail(clip.motion ? "عناصر الموشن تبقى على مسار الموشن." : "مسار الموشن لعناصر الموشن بس.");
       if (to.kind !== kind) fail(to.kind === "audio" ? "هذا المسار للصوت فقط." : to.kind === "text" ? "هذا المسار للنصوص فقط." : "هذا المسار للصور والفيديو.");
       if (to.role === "fix") {
         // a piece on the red track stays exactly where it was in time
@@ -522,8 +565,8 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (src.assetId && !assets.has(src.assetId)) fail("الملف المنسوخ مو في مكتبة هذا المشروع.");
         const kind: TrackKind = src.text ? "text" : src.assetId ? (t.tracks.find((x) => x.id === trackId)?.kind === "audio" ? "audio" : trackFor(src, assets)) : "video";
         const c: Clip = { ...structuredClone(src), id: newId("c"), start: at + (src.start - base), fix: null };
-        const same = t.tracks.find((x) => x.id === trackId && x.kind === kind && !x.locked && !x.role);
-        const to = same ?? t.tracks.find((x) => x.kind === kind && !x.locked && !x.role) ?? newTrack(t, kind);
+        const same = t.tracks.find((x) => x.id === trackId && x.kind === kind && !x.locked && !x.role && sameSort(x, c));
+        const to = same ?? t.tracks.find((x) => x.kind === kind && !x.locked && !x.role && sameSort(x, c)) ?? (c.motion ? motionTrack(t, c.start, clipLength(c)) : newTrack(t, kind));
         if (magnet(t, to)) insertMain(to, c, c.start);
         else place(to, c);
         made.push(c.id);
@@ -637,6 +680,13 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
           ? { kind: p.transition.kind, ms: Math.round(Math.min(TRANSITION_MS.max, Math.max(TRANSITION_MS.min, Number(p.transition.ms ?? clip.transition?.ms ?? TRANSITION_MS.default)))) }
           : null;
       }
+      if (p.motion) {
+        const cur = clip.motion ?? fail("هذا مو عنصر موشن.");
+        const next = readMotion({ ...cur, ...p.motion, colors: p.motion.colors === undefined ? cur.colors : p.motion.colors });
+        if (!next) fail("عنصر موشن غير صالح.");
+        clip.motion = next;
+        if (clip.text) clip.text = { ...clip.text, body: motionLabel(next!) };
+      }
       if (p.text && clip.text) {
         const before = clip.text.body;
         clip.text = { ...clip.text, ...p.text };
@@ -651,7 +701,9 @@ export function apply(timeline: Timeline, cmd: Command, assets: Map<string, Asse
         if (magnet(t, track)) tidy(t, track);
         else place(track, clip);
       }
-      const label = p.text
+      const label = p.motion
+        ? "عدّلت عنصر الموشن"
+        : p.text
         ? "عدّلت النص"
         : p.volume != null
           ? "غيّرت مستوى الصوت"

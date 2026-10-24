@@ -8,6 +8,7 @@ import { gradeLayers } from "./grade-gl";
 import { keyFrame } from "./key-gl";
 import { keyMatte, keyParams, despill as despillKey } from "@/lib/editor/key-math";
 import { perfPlan } from "./perf-bench";
+import { drawMotion } from "./motion-draw";
 
 /** set while the export draws: the grade always shows (no before/after view) */
 let exporting = false;
@@ -236,7 +237,13 @@ export function drawFrame(ctx: CanvasRenderingContext2D, tl: Timeline, ms: numbe
       tfx: L.fx,
     };
     if (look.alpha <= 0.001 || look.show === 0 || look.words === 0) continue;
-    if (l.clip.text) {
+    if (l.clip.motion) {
+      // «مسار الموشن»: the element drawn live from its data (its own place, size and entrances)
+      ctx.save();
+      blendWith(ctx, l.clip.blend);
+      drawMotion(ctx, l.clip.motion, W, H, { local: l.clip.in + (l.ms - l.clip.start), length: clipEnd(l.clip) - l.clip.start, alpha: look.alpha * t.opacity, family: familyFor(l.clip.motion.font) });
+      ctx.restore();
+    } else if (l.clip.text) {
       ctx.save();
       blendWith(ctx, l.clip.blend);
       drawText(ctx, l.clip, t, look, W, H, l.ms);

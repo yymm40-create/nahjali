@@ -6,6 +6,7 @@
 // after it are drawn over it. Audio tracks are heard, not drawn. Time always runs left → right, even in Arabic.
 
 import { FX_BY_ID, FX_MAX } from "./effects";
+import { motionLabel, readMotion, type MotionEl } from "./motion-elements";
 import { TR_LIST } from "./transitions";
 import { isFont } from "./fonts";
 import { readGrades, type Grade } from "./grade";
@@ -449,6 +450,8 @@ export interface Clip {
   own: boolean;
   /** «التعديل الذكي»: a piece lifted onto the red track, with what to fix in it (null elsewhere) */
   fix: Fix | null;
+  /** «مسار الموشن»: a motion element drawn live from this data (motion-elements.ts); absent/null on every other clip */
+  motion?: MotionEl | null;
 }
 
 /** What to do with a piece on the red track: the note for Claude and how much of the video is made again. */
@@ -505,6 +508,8 @@ export interface Track {
   color?: string | null;
   /** «التعديل الذكي»: the red track of pieces to fix, or the green one of what was made */
   role?: TrackRole | null;
+  /** «مسار الموشن»: a text-kind track that holds motion elements (never a caption track) */
+  motion?: boolean;
   /** clips never overlap and are kept sorted by `start` */
   clips: Clip[];
 }
@@ -996,7 +1001,9 @@ export function readSound(v: unknown): SoundFx | null {
 function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
-  const text = kind === "text" ? readText(o.text) : null;
+  // a motion element is a text clip carrying its element (its label stands in as the text everywhere text is read)
+  const motion = kind === "text" ? readMotion(o.motion) : null;
+  const text = kind === "text" ? readText(o.text) ?? (motion ? { ...DEFAULT_TEXT, body: motionLabel(motion) } : null) : null;
   const seq = kind === "text" ? null : str(o.seq, 40, "") || null;
   const assetId = kind === "text" || seq ? null : str(o.assetId, 64) || null;
   if (kind === "text" ? !text : !seq && (!assetId || (assets && !assets.has(assetId)))) return null;
@@ -1047,6 +1054,7 @@ function readClip(v: unknown, kind: TrackKind, assets: Set<string> | null): Clip
           .filter((w) => w.w),
     own: kind === "text" && o.own === true,
     fix: kind === "video" ? readFix(o.fix) : null,
+    ...(motion ? { motion } : {}),
     sound: kind === "text" ? null : readSound(o.sound),
     anim: kind === "audio" ? null : readAnim(o.anim, kind === "text"),
     fx: kind === "video" ? readFx(o.fx) : [],
@@ -1084,7 +1092,7 @@ export function readTimeline(raw: unknown, assets: Set<string> | null = null, ne
       list.push(c);
       clips++;
     }
-    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, clips: settle(list) });
+    tracks.push({ id: tid, kind, name: str(t.name, 40, ""), muted: t.muted === true, hidden: t.hidden === true, locked: t.locked === true, duck: kind === "audio" && t.duck === true, color: TRACK_COLORS.includes(String(t.color)) ? String(t.color) : null, role: kind === "video" && (t.role === "fix" || t.role === "fixed" || t.role === "cont") ? t.role : null, ...(kind === "text" && t.motion === true ? { motion: true } : {}), clips: settle(list) });
   }
   if (!tracks.some((t) => t.kind === "video")) tracks.unshift({ id: "main", kind: "video", name: "الرئيسي", muted: false, hidden: false, locked: false, duck: false, clips: [] });
   const width = int(o.width, 144, 4096, 1080);
