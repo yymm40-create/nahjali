@@ -12,7 +12,7 @@ import { approvedImages, latestJob, sheetAssets } from "./sheets";
 import { failJob, startJob, succeedJob } from "./usage";
 import { FILM_BUCKET, projectDir, type FilmAsset, type FilmJob, type FilmProject } from "./types";
 import { filmVideoToStudio, studioVideoToFilm } from "./studio-link";
-import { checkLipsyncs, startLipsync } from "./lipsync";
+import { checkLipsyncs } from "./lipsync";
 import { buildVoiceTrack, OWN_TRACK, uploadedVoiceTrack, voiceTrackNote, wavSeconds } from "./voice-track";
 import { checkMp3 } from "@/lib/jawad/student/audio";
 import { clampVideoSeconds, DEFAULT_VIDEO_RESOLUTION, VIDEO_KEEP_DAYS, VIDEO_MODELS, VIDEO_OPEN_RESOLUTIONS, videoEstimateUsd, videoUsd, type VideoModel, type VideoResolution } from "@config/film";
@@ -353,8 +353,8 @@ export async function directorAction(project: FilmProject, user: User, input: Di
     }
 
     case "lipsync": {
-      await startLipsync(project, user, String(input.assetId ?? ""), input.pro === true);
-      return { jobId: null };
+      // «👄 طابق الشفايف» was removed from the film maker (the owner's order, 24 October 2026): ElevenLabs voices only
+      throw new UserError("مطابقة الشفايف انشالت من المشهد السينمائي.", 410);
     }
 
     case "montage_note": {

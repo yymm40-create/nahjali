@@ -19,12 +19,27 @@ describe("«👄 طابق الشفايف على الصوت»", () => {
     expect(lipsyncUsd(12, false)).toBeCloseTo(0.6);
     expect(OPERATION_STAGE[LIPSYNC_OP]).toBe("director");
   });
-  it("is wired: the action, the polling, the button, the migration, the knowledge", () => {
+  it("was removed from the film maker (the owner's order): no button, the action refused, takes hidden; old jobs still closed", () => {
     const dir = read("src/lib/film/director.ts");
     expect(dir).toContain('case "lipsync"');
+    expect(dir).toContain("مطابقة الشفايف انشالت");
+    expect(dir).not.toContain("startLipsync(");
+    // a lip-sync already running is still finished or given up
     expect(dir).toContain("checkLipsyncs(project)");
-    expect(read("src/app/film/[id]/videos/VideosWorkspace.tsx")).toContain("👄 طابق الشفايف على الصوت");
-    expect(read("supabase/migrations/0075_film_lipsync.sql")).toContain("'lipsync'");
-    expect(read("config/jawad/knowledge.ts")).toContain("طابق الشفايف على الصوت");
+    expect(read("src/app/film/[id]/videos/VideosWorkspace.tsx")).not.toContain("طابق الشفايف");
+    expect(read("src/app/film/_views/Videos.tsx")).toContain("!v.meta?.lipsync");
+    expect(read("config/jawad/knowledge.ts")).not.toContain("طابق الشفايف على الصوت");
+  });
+});
+
+describe("the film maker's voices are ElevenLabs only", () => {
+  it("no MiniMax or «صوت الجواد» voice is offered, cast or spoken", () => {
+    const v = read("src/lib/film/voices.ts");
+    expect(v).not.toMatch(/minimaxSpeech|jawadSpeak|MINIMAX_READY_VOICES/);
+    expect(v).toContain('ok.provider !== "elevenlabs"');
+    expect(v).toContain('resolved.provider !== "elevenlabs"');
+    expect(read("src/app/film/VoiceDesigner.tsx")).not.toMatch(/minimax|MiniMax/);
+    expect(read("src/app/film/[id]/voices/VoicesWorkspace.tsx")).not.toMatch(/MiniMax/);
+    expect(read("src/app/film/[id]/videos/VideosWorkspace.tsx")).not.toMatch(/MiniMax/);
   });
 });
