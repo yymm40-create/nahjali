@@ -9,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { GROUPS, MUSCLES, type MuscleGroup } from "@config/mahdi/exercise-guide";
 import { exerciseById } from "@/lib/mahdi/health/plan";
-import { history, record, setsByMuscle, weekOf, WEEK_TARGET, FOOD_KEYS, MEASUREMENT_KEYS, MEASUREMENT_NAMES, type FoodKey, type MeasurementKey } from "@/lib/mahdi/health/tracker";
+import { sessionMin, history, record, setsByMuscle, weekOf, WEEK_TARGET, FOOD_KEYS, MEASUREMENT_KEYS, MEASUREMENT_NAMES, type FoodKey, type MeasurementKey } from "@/lib/mahdi/health/tracker";
 import { useHealth } from "./HealthProvider";
 
 function Line({ points, unit }: { points: { x: string; y: number }[]; unit: string }) {
@@ -54,6 +54,9 @@ export default function ProgressView() {
   const workouts = weekDays.filter((d) => d.done || Object.keys(d.sets).length).length;
   const sets = weekDays.reduce((t, d) => t + Object.values(d.sets).reduce((u, s) => u + s.filter((x) => x.reps > 0).length, 0), 0);
   const cardio = weekDays.reduce((t, d) => t + d.cardioMin, 0);
+  // the session clock (start → «خلصت»): how long each day's workout took
+  const timed = all.filter((d) => sessionMin(d) >= 1);
+  const trainedMin = weekDays.reduce((t, d) => t + sessionMin(d), 0);
   const perMuscle = setsByMuscle(weekDays);
   const h = shown ? history(all, shown) : [];
   const pr = shown ? record(all, shown) : null;
@@ -81,7 +84,20 @@ export default function ProgressView() {
         <div className="gym-stat"><b>{workouts}/{plan.workout?.days.length ?? 0}</b><span>تمارين هالأسبوع</span></div>
         <div className="gym-stat"><b>{sets}</b><span>مجموعة</span></div>
         <div className="gym-stat orange"><b>{cardio}</b><span>دقيقة كارديو</span></div>
+        {timed.length > 0 && <div className="gym-stat"><b>{Math.round(trainedMin)}</b><span>دقيقة تمرين (متوسط {Math.round(trainedMin / timed.length)} للحصة)</span></div>}
       </section>
+      {timed.length > 0 && (
+        <section className="gym-card space-y-2">
+          <h2 className="text-lg font-black">⏱️ وقت تمرينك</h2>
+          <ul className="gym-list gym-small">
+            {timed.slice(-7).reverse().map((d) => (
+              <li key={d.date}>
+                {new Date(`${d.date}T12:00:00Z`).toLocaleDateString("ar", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })}: <b className="text-white">{Math.round(sessionMin(d))} دقيقة</b>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="gym-card space-y-3">
         <div>

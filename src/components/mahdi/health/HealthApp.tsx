@@ -18,8 +18,13 @@ import {
   RED_FLAGS,
   SPLIT_CHOICES,
   SPLIT_NAMES,
-  WEEKDAYS,
+  arNum,
   bmiOf,
+  buildDayFrom,
+  dayFocuses,
+  dayLabel,
+  daysOfCount,
+  focusName,
   candidates,
   dose,
   exerciseById,
@@ -37,6 +42,7 @@ import {
   type GymWay,
   type HealthPlan,
   type HealthProfile,
+  type Focus,
   type PlanDay,
   type SplitPreference,
 } from "@/lib/mahdi/health/plan";
@@ -55,7 +61,7 @@ export function coachLine(screen: Screen, f: boolean, preg: boolean): string {
     case "goal":
       return preg ? "في الحمل هدفنا صحتك وصحة الجنين، مو الرجيم. نختار الهدف ونمشي بهدوء." : g("الهدف الواضح نص الطريق. وش تبي توصل له؟", "الهدف الواضح نص الطريق. وش تبين توصلين له؟");
     case "train":
-      return preg ? "سلامتك أولًا: جاوبي على أسئلة الطبيبة بصدق، والجدول يكون خفيف وآمن." : g("الالتزام أهم من كثرة الأيام: اختر الأيام اللي تقدر تثبت عليها.", "الالتزام أهم من كثرة الأيام: اختاري الأيام اللي تقدرين تثبتين عليها.");
+      return preg ? "سلامتك أولًا: جاوبي على أسئلة الطبيبة بصدق، والجدول يكون خفيف وآمن." : g("الالتزام أهم من كثرة الأيام: اختر كم يوم تقدر تثبت عليه، وأنت تحدد متى.", "الالتزام أهم من كثرة الأيام: اختاري كم يوم تقدرين تثبتين عليه، وأنتِ تحددين متى.");
     case "mode":
       return g("تبيها جاهزة الحين، ولا نبنيها مع بعض حبة حبة؟", "تبينها جاهزة الحين، ولا نبنيها مع بعض حبة حبة؟");
     case "build-food":
@@ -293,25 +299,25 @@ export default function HealthApp() {
             <Choice on={p.place === "body"} onClick={() => set("place", "body")} big="🤸" title="بدون أدوات" hint="وزن جسمي بس: كرسي، منشفة، جدار، درج" />
           </div>
           <div className="gym-field">
-            <span>أيام التمرين ({p.days.length} بالأسبوع)</span>
+            <span>كم يوم تتمرن بالأسبوع؟</span>
             <div className="gym-chips">
-              {WEEKDAYS.map((d, i) => (
+              {[1, 2, 3, 4, 5, 6, 7].map((count) => (
                 <button
-                  key={d}
+                  key={count}
                   type="button"
                   className="gym-chip"
-                  aria-pressed={p.days.includes(i)}
+                  aria-pressed={p.days.length === count}
                   onClick={() => {
-                    const days = p.days.includes(i) ? (p.days.length > 1 ? p.days.filter((x) => x !== i) : p.days) : [...p.days, i].sort();
+                    const days = daysOfCount(count);
                     const splitPreference = SPLIT_CHOICES[p.splitPreference].minDays <= days.length ? p.splitPreference : "auto";
                     setP((old) => ({ ...old, days, splitPreference }));
                   }}
                 >
-                  {d}
+                  {count === 1 ? "يوم واحد" : count === 2 ? "يومين" : `${arNum(count)} أيام`}
                 </button>
               ))}
             </div>
-            <p className="gym-small">التوصية: كل عضلات الجسم يومين على الأقل بالأسبوع. المبتدئ 2–3 أيام كفاية.</p>
+            <p className="gym-small">الجدول ما ينربط بالتقويم: «اليوم ١، اليوم ٢…» تسويها بالترتيب متى ما تمرنت، وترتاح اليوم اللي يناسبك. التوصية: كل عضلات الجسم يومين على الأقل بالأسبوع، والمبتدئ 2–3 أيام كفاية.</p>
           </div>
           <div className="gym-field">
             <span>اختر نظام الجدول</span>
@@ -333,7 +339,7 @@ export default function HealthApp() {
             <div className="gym-split-preview">
               {splitFor(p).map((focus, i) => (
                 <div key={`${p.days[i]}-${focus}`}>
-                  <b>{WEEKDAYS[p.days[i]]} · {FOCUS[focus].name}</b>
+                  <b>{dayLabel(i)} · {FOCUS[focus].name}</b>
                   <small>{[...new Set(FOCUS[focus].slots)].slice(0, 6).map((muscle) => MUSCLE_NAMES[muscle]).join(" · ")}</small>
                 </div>
               ))}
@@ -390,6 +396,17 @@ export default function HealthApp() {
           <div className="gym-choices">
             <Choice on={false} onClick={() => start("ready")} big="🚀" title="اقترح لي جدولًا" hint="نختار أقل عدد مفيد من أشهر التمارين، وتعدّلها بعدين" />
             <Choice on={false} onClick={() => start("steps")} big="🧱" title="أختار بنفسي" hint="نمر على كل يوم، ونعرض بدائل معروفة لكل عضلة" />
+            <Choice
+              on={false}
+              onClick={() => {
+                start("ready");
+                // عباس opens with a first plan already made, and they shape it together in the chat
+                window.dispatchEvent(new CustomEvent("gym-coach", { detail: { text: "سويت خطة مبدئية، أبي نرتب أيامي وتماريني مع بعض" } }));
+              }}
+              big="🦁"
+              title="أرتبها مع عباس"
+              hint="محادثة مع عباس سبع القنطرة: تقول له وش تبي، وهو يرتب أيامك وتمارينك بنفسه"
+            />
           </div>
           <Nav back={() => go(p.track === "food" ? "goal" : "train")} />
         </section>
@@ -412,7 +429,7 @@ export default function HealthApp() {
       {screen === "build-day" && plan?.workout && plan.workout.days[dayIdx] && (
         <section className="space-y-4">
           <span className="gym-eyebrow">يوم {dayIdx + 1} من {plan.workout.days.length}</span>
-          <h2 className="gym-title">{WEEKDAYS[plan.workout.days[dayIdx].weekday]}: {FOCUS[plan.workout.days[dayIdx].focus].name}</h2>
+          <h2 className="gym-title">{dayLabel(dayIdx)}: {focusName(plan.workout.days[dayIdx])}</h2>
           <p className="gym-small">هذي التمارين المقترحة. بدّل أي تمرين (🔄)، احذفه، غيّر المجموعات، أو أضف تمرين من تحت.</p>
           <DayCard plan={plan} day={plan.workout.days[dayIdx]} save={save} editable />
           <Nav
@@ -508,19 +525,61 @@ function BuildFood({ idx, plan, n, save, back, next }: { idx: number; plan: Heal
   );
 }
 
-export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: PlanDay; save: (p: HealthPlan) => void; editable?: boolean }) {
-  const [adding, setAdding] = useState("");
+/** The types a day can train, in the order they are offered (the gentle table keeps its own one). */
+const TYPE_CHOICES: Focus[] = ["full", "upper", "lower", "push", "pull", "legs"];
+
+/** Saves the plan's days and keeps the profile's day list the same (the rotation, no calendar). */
+export function saveDays(plan: HealthPlan, save: (p: HealthPlan) => void, days: PlanDay[]) {
+  const w = plan.workout!;
+  save({ ...plan, profile: { ...plan.profile, days: days.map((d) => d.weekday) }, workout: { ...w, days } });
+}
+
+export function DayCard({ plan, day, save, editable, onRemove }: { plan: HealthPlan; day: PlanDay; save: (p: HealthPlan) => void; editable?: boolean; onRemove?: () => void }) {
   const [replacing, setReplacing] = useState<string | null>(null);
+  const [rebuilt, setRebuilt] = useState(false);
   const w = plan.workout!;
   const p = plan.profile;
-  const setDay = (d: PlanDay) => save({ ...plan, workout: { ...w, days: w.days.map((x) => (x.weekday === d.weekday ? d : x)) } });
-  const pool = EXERCISES.filter((e) => placeOk(e, p.place) && (!gentle(p) || e.preg) && !day.items.some((i) => i.exId === e.id));
+  const idx = Math.max(0, w.days.findIndex((x) => x.weekday === day.weekday));
+  const setDay = (d: PlanDay) => saveDays(plan, save, w.days.map((x) => (x.weekday === d.weekday ? d : x)));
+  const types = dayFocuses(day);
+  const soft = gentle(p);
+  // one tap on a type adds it to the day (or takes it off); the day's exercises are arranged again for the types chosen
+  const toggleType = (f: Focus) => {
+    const next = types.includes(f) ? types.filter((x) => x !== f) : [...types, f].slice(-3);
+    if (!next.length) return;
+    setDay(buildDayFrom(p, day.weekday, next, day.variant, day.cardioMin));
+    setRebuilt(true);
+  };
+  const move = (i: number, by: number) => {
+    const items = [...day.items];
+    const j = i + by;
+    if (j < 0 || j >= items.length) return;
+    [items[i], items[j]] = [items[j], items[i]];
+    setDay({ ...day, items });
+  };
+  const pool = EXERCISES.filter((e) => placeOk(e, p.place) && (!soft || e.preg) && !day.items.some((i) => i.exId === e.id));
   return (
     <article className="gym-day">
       <header>
-        <h3>{WEEKDAYS[day.weekday]}</h3>
-        <span className="tag">{FOCUS[day.focus].name}</span>
+        <h3>{dayLabel(idx)}</h3>
+        <span className="tag">{focusName(day)}</span>
+        {editable && onRemove && w.days.length > 1 && (
+          <button type="button" className="gym-icon-btn" aria-label={`احذف ${dayLabel(idx)}`} title="احذف اليوم من الجدول" onClick={onRemove}>🗑</button>
+        )}
       </header>
+      {editable && !soft && (
+        <div className="space-y-1 px-3 pt-2">
+          <small className="gym-small">نوع اليوم (تقدر تختار نوعين أو ثلاثة مع بعض):</small>
+          <div className="gym-chips">
+            {TYPE_CHOICES.map((f) => (
+              <button key={f} type="button" className="gym-chip" aria-pressed={types.includes(f)} onClick={() => toggleType(f)}>
+                {FOCUS[f].name.replace(/ \(.*\)$/, "")}
+              </button>
+            ))}
+          </div>
+          {rebuilt && <small className="gym-small">✓ رتّبنا تمارين اليوم على الأنواع اللي اخترتها. عدّل اللي تبيه تحت.</small>}
+        </div>
+      )}
       {day.items.map((it, i) => {
         const ex = exerciseById(it.exId);
         if (!ex) return null;
@@ -536,6 +595,7 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
             </span>
             {editable && (
               <span className="tools">
+                <button type="button" className="gym-icon-btn" aria-label="فوق" disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
                 <button type="button" className="gym-icon-btn" aria-label="مجموعات أقل" onClick={() => setDay({ ...day, items: day.items.map((x) => (x.exId === it.exId ? { ...x, sets: Math.max(1, x.sets - 1) } : x)) })}>−</button>
                 <button type="button" className="gym-icon-btn" aria-label="مجموعات أكثر" onClick={() => setDay({ ...day, items: day.items.map((x) => (x.exId === it.exId ? { ...x, sets: Math.min(10, x.sets + 1) } : x)) })}>+</button>
                 <button
@@ -555,7 +615,7 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
               <div className="gym-ex-alts" aria-label={`بدائل ${ex.name}`}>
                 <small>أشهر خيارات {MUSCLE_NAMES[ex.muscle]} — اختر اللي ترتاح له:</small>
                 <div>
-                  {candidates(ex.muscle, p).slice(0, 4).map((alt, idx) => (
+                  {candidates(ex.muscle, p).slice(0, 6).map((alt, k) => (
                     <button
                       key={alt.id}
                       type="button"
@@ -566,7 +626,7 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
                       }}
                     >
                       <b>{alt.name}</b>
-                      <span>{idx === 0 ? "الأشهر والمقترح" : alt.cue}</span>
+                      <span>{k === 0 ? "الأشهر والمقترح" : alt.cue}</span>
                     </button>
                   ))}
                 </div>
@@ -584,10 +644,16 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
       )}
       {editable && (
         <div className="space-y-2 p-3">
-          <p className="gym-small">الجدول يبدأ بأقل عدد مفيد. إذا تبي زيادة، أضف تمرينًا واحدًا من العضلة اللي تبيها.</p>
-          <div className="flex gap-2">
-          <select className="gym-select" value={adding} onChange={(e) => setAdding(e.target.value)} aria-label="أضف تمرين">
-            <option value="">➕ أضف تمرين…</option>
+          <select
+            className="gym-select w-full"
+            value=""
+            aria-label="أضف تمرين"
+            onChange={(e) => {
+              const ex = exerciseById(e.target.value);
+              if (ex) setDay({ ...day, items: [...day.items, { exId: ex.id, ...dose(ex, p) }] });
+            }}
+          >
+            <option value="">➕ أضف تمرين لهذا اليوم…</option>
             {Object.entries(MUSCLE_NAMES).map(([m, name]) => {
               const list = pool.filter((e) => e.muscle === m);
               return list.length ? (
@@ -599,19 +665,7 @@ export function DayCard({ plan, day, save, editable }: { plan: HealthPlan; day: 
               ) : null;
             })}
           </select>
-          <button
-            type="button"
-            className="gym-btn sm"
-            disabled={!adding}
-            onClick={() => {
-              const ex = exerciseById(adding);
-              if (ex) setDay({ ...day, items: [...day.items, { exId: ex.id, ...dose(ex, p) }] });
-              setAdding("");
-            }}
-          >
-            أضف
-          </button>
-          </div>
+          <p className="gym-small">تختار التمرين وينضاف على طول. وإذا تبي عباس يرتبها لك، كلمه من وجهه على الجنب.</p>
         </div>
       )}
     </article>
@@ -674,8 +728,20 @@ export function PlanView({ plan, save, onHabits, onHome }: { plan: HealthPlan; s
             </button>
           </div>
           {w.days.map((d) => (
-            <DayCard key={d.weekday} plan={plan} day={d} save={save} editable={edit} />
+            <DayCard key={d.weekday} plan={plan} day={d} save={save} editable={edit} onRemove={() => saveDays(plan, save, w.days.filter((x) => x.weekday !== d.weekday))} />
           ))}
+          {edit && w.days.length < 7 && (
+            <button
+              type="button"
+              className="gym-btn ghost w-full"
+              onClick={() => {
+                const id = [0, 1, 2, 3, 4, 5, 6].find((x) => !w.days.some((d) => d.weekday === x))!;
+                saveDays(plan, save, [...w.days, buildDayFrom(plan.profile, id, [gentle(plan.profile) ? "gentle" : "full"], 0, w.days[0]?.cardioMin ?? 0)]);
+              }}
+            >
+              ➕ أضف يوم تمرين ({dayLabel(w.days.length)})
+            </button>
+          )}
           <div className="gym-card space-y-2">
             <b>📊 مجموعاتك الأسبوعية لكل عضلة</b>
             <div className="gym-chips">
@@ -770,7 +836,7 @@ export function ToHabits({ plan, projects, back, apply }: { plan: HealthPlan; pr
         <ul className="gym-list gym-small">
           {preview.slice(0, 30).map((h) => (
             <li key={h.key}>
-              {h.icon} {h.name}{h.key.startsWith("day-") ? "" : " — "}{h.key.startsWith("day-") ? "" : h.freq === "weekly" ? `${h.target}${h.unit ? ` ${h.unit}` : " أيام"} بالأسبوع` : h.freq === "days" ? (h.key.startsWith("day-") ? "يومه" : h.days.map((d) => WEEKDAYS[d]).join("، ")) : "كل يوم"}
+              {h.icon} {h.name} — {h.key.startsWith("day-") ? "مرة بالأسبوع، أي يوم" : h.freq === "weekly" ? (h.unit ? `${h.target} ${h.unit} بالأسبوع` : h.target === 1 ? "مرة بالأسبوع" : `${arNum(h.target)} مرات بالأسبوع`) : "كل يوم"}
               {h.measure !== "check" && h.freq !== "weekly" ? ` · ${h.target}${h.unit ? ` ${h.unit}` : h.group === "gym" ? " مجموعات" : ""}` : ""}
             </li>
           ))}
