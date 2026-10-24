@@ -11,13 +11,65 @@ import { GUIDE, muscleInfo } from "@config/mahdi/exercise-guide";
 import { REF } from "@config/mahdi/health-research";
 import RobotFace from "@/components/RobotFace";
 import { useMahdi } from "@/components/mahdi/Provider";
-import { FOCUS, WEEKDAYS, exerciseById, type PlanDay, type PlanItem } from "@/lib/mahdi/health/plan";
-import { bestSet, e1rm, lastTime, record, suggestion, weekOf, type DayLog, type FoodKey, type SetLog } from "@/lib/mahdi/health/tracker";
-import { Barbell, COACH } from "./HealthApp";
+import { WEEKDAYS, arNum, dayLabel, exerciseById, focusName, type PlanDay, type PlanItem, type Workout } from "@/lib/mahdi/health/plan";
+import { bestSet, e1rm, lastTime, parseNum, record, sessionMin, suggestion, weekOf, type DayLog, type FoodKey, type SetLog } from "@/lib/mahdi/health/tracker";
+import { Barbell, COACH, DayCard } from "./HealthApp";
 import { useHealth } from "./HealthProvider";
 import ExerciseFigure from "./ExerciseFigure";
 
 const weekdayOf = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
+/**
+ * A number field that keeps what is being typed («7.» on the way to «7.5», «٧٫٥», «7,5») and hands back the number.
+ * The plain `Number(value)` field swallowed the decimal point, so 7.5 could not be written.
+ */
+function NumField({ value, onValue, className = "gym-input", decimal = true, ...rest }: { value: number | null | undefined; onValue: (n: number) => void; className?: string; decimal?: boolean } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+  const [text, setText] = useState(value ? String(value) : "");
+  const [focused, setFocused] = useState(false);
+  const shown = focused ? text : value ? String(value) : "";
+  return (
+    <input
+      {...rest}
+      className={className}
+      inputMode={decimal ? "decimal" : "numeric"}
+      value={shown}
+      onFocus={() => (setFocused(true), setText(value ? String(value) : ""))}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => {
+        const raw = decimal ? e.target.value : e.target.value.replace(/[.,٫،]/g, "");
+        setText(raw);
+        onValue(parseNum(raw));
+      }}
+    />
+  );
+}
+
+/** the moment a button is pressed (outside render) */
+const nowMs = () => Date.now();
+
+/** «مدة التمرين»: the clock of the session, from «ابدأ» to «خلصت». */
+function fmtMin(min: number) {
+  const m = Math.floor(min);
+  const sec = Math.floor((min - m) * 60);
+  return m >= 60 ? `${arNum(Math.floor(m / 60))}:${String(m % 60).padStart(2, "0")} س` : `${m}:${String(sec).padStart(2, "0")}`;
+}
+function SessionClock({ log }: { log: DayLog }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!log.startedAt) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [log.startedAt]);
+  return <b dir="ltr">{fmtMin(sessionMin(log, now))}</b>;
+}
+
+/** The day of the rotation the person trains next: the one after the last session (any day of the calendar). */
+function nextDay(w: Workout, days: DayLog[], date: string): PlanDay | undefined {
+  const prev = days.filter((d) => d.date < date && d.planDay !== undefined && (d.done || Object.keys(d.sets).length)).sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (!prev) return w.days[0];
+  const i = w.days.findIndex((d) => d.weekday === prev.planDay);
+  return w.days[(i + 1) % w.days.length] ?? w.days[0];
+}
+
 const shortDate = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("ar", { day: "numeric", month: "short", timeZone: "UTC" });
 
 const FOOD: { key: FoodKey; link: string; icon: string; name: string; unit: string; adds: number[] }[] = [
@@ -139,21 +191,18 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
             return (
               <div key={i} className={`row${done ? " done" : ""}`}>
                 <span className="n">{i + 1}</span>
-                <input
-                  className="gym-input"
-                  inputMode="decimal"
+                <NumField
                   aria-label={`وزن المجموعة ${i + 1}`}
                   placeholder={last?.sets[i]?.kg ? String(last.sets[i].kg) : ex.body ? "جسم" : "0"}
-                  value={s?.kg ? String(s.kg) : ""}
-                  onChange={(e) => setAt(i, { kg: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })}
+                  value={s?.kg}
+                  onValue={(kg) => setAt(i, { kg: Math.min(600, Math.round(kg * 4) / 4) })}
                 />
-                <input
-                  className="gym-input"
-                  inputMode="numeric"
+                <NumField
+                  decimal={false}
                   aria-label={`تكرار المجموعة ${i + 1}`}
                   placeholder={last?.sets[i]?.reps ? String(last.sets[i].reps) : item.reps}
-                  value={s?.reps ? String(s.reps) : ""}
-                  onChange={(e) => setAt(i, { reps: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                  value={s?.reps}
+                  onValue={(reps) => setAt(i, { reps: Math.min(200, Math.round(reps)) })}
                 />
                 <button
                   type="button"
@@ -194,9 +243,10 @@ function ExerciseLog({ item, log, days, date, onSets, onRest }: { item: PlanItem
 
 export default function TodayView() {
   const { toast } = useMahdi();
-  const { plan, today, day, days, saveDay, habitValue, logHabit, habitFor } = useHealth();
+  const { plan, save, today, day, days, saveDay, habitValue, logHabit, habitFor } = useHealth();
   const [date, setDate] = useState(today);
   const [pick, setPick] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
   const [rest, setRest] = useState<number | null>(null);
   const all = useMemo(() => Object.values(days), [days]);
   if (!plan) return <Welcome />;
@@ -204,16 +254,26 @@ export default function TodayView() {
   const log = day(date);
   const w = plan.workout;
   const wd = weekdayOf(date);
-  const planned: PlanDay | undefined = w && !w.blocked ? (pick !== null ? w.days.find((d) => d.weekday === pick) : w.days.find((d) => d.weekday === wd)) : undefined;
+  // no calendar: the session picked, else the one this day already trained, else the next in the rotation
+  const planned: PlanDay | undefined =
+    w && !w.blocked && w.days.length
+      ? (pick !== null ? w.days.find((d) => d.weekday === pick) : undefined) ?? (log.planDay !== undefined ? w.days.find((d) => d.weekday === log.planDay) : undefined) ?? nextDay(w, all, date)
+      : undefined;
+  const plannedIdx = planned && w ? w.days.indexOf(planned) : -1;
   const week = weekOf(today);
   const doneHabit = planned ? habitValue(`day-${planned.weekday}`, date) : null;
   const finished = log.done || (doneHabit ?? 0) > 0;
 
-  const setLog = (patch: Partial<DayLog>) => saveDay({ ...log, ...patch });
+  // what is logged belongs to the session being trained (the next one in the rotation follows it)
+  const setLog = (patch: Partial<DayLog>) => saveDay({ ...log, ...(planned ? { planDay: planned.weekday } : {}), ...patch });
+  const running = !!log.startedAt;
+  const startClock = () => setLog({ startedAt: nowMs() });
+  const stopClock = () => setLog({ startedAt: null, durationMin: Math.round(sessionMin(log) * 10) / 10 });
 
   const finish = () => {
     const done = !log.done;
-    setLog({ done });
+    // finishing stops the clock: the day keeps how long the whole session took
+    setLog(done && log.startedAt ? { done, startedAt: null, durationMin: Math.round(sessionMin(log) * 10) / 10 } : { done });
     if (planned) logHabit(`day-${planned.weekday}`, date, done ? 1 : 0);
     logHabit("weekly", date, done ? 1 : 0);
     if (done) for (const [id, s] of Object.entries(log.sets)) logHabit(`ex-${id}`, date, s.filter((x) => x.reps > 0).length);
@@ -241,7 +301,7 @@ export default function TodayView() {
             <button key={d} type="button" aria-pressed={d === date} onClick={() => (setDate(d), setPick(null))}>
               <small>{WEEKDAYS[weekdayOf(d)].replace("ال", "")}</small>
               <b>{Number(d.slice(8))}</b>
-              <i className={trained ? "on" : w?.days.some((x) => x.weekday === weekdayOf(d)) ? "plan" : ""} />
+              <i className={trained ? "on" : ""} />
             </button>
           );
         })}
@@ -250,7 +310,7 @@ export default function TodayView() {
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="gym-title">
-            {date === today ? "تمرين اليوم" : `تمرين ${WEEKDAYS[wd]}`} {planned ? <em>· {FOCUS[planned.focus].name}</em> : null}
+            {date === today ? "تمرين اليوم" : `تمرين ${WEEKDAYS[wd]}`} {planned ? <em>· {dayLabel(plannedIdx)}: {focusName(planned)}</em> : null}
           </h1>
           {finished && <span className="gym-chip" aria-pressed="true">✓ خلصته</span>}
         </div>
@@ -258,17 +318,35 @@ export default function TodayView() {
         {w?.blocked && <p className="gym-card stop gym-small">{w.blocked}</p>}
         {!w && <p className="gym-card gym-small">خطتك تغذية بس. تبي جدول تمارين؟ <Link href="/mahdi/health/setup" className="underline">عدّل خطتك</Link>.</p>}
 
-        {w && !w.blocked && !planned && (
+        {w && !w.blocked && planned && (
           <div className="gym-card space-y-3">
-            <b className="text-lg">😌 يوم راحة</b>
-            <p className="gym-small">العضل يكبر وقت الراحة. امشِ شوي، واشرب ماي، ونم زين. وإذا {plan.profile.sex === "female" ? "تبين" : "تبي"} تتمرن اليوم، اختر حصة:</p>
-            <div className="gym-chips">
-              {w.days.map((d) => (
-                <button key={d.weekday} type="button" className="gym-chip" onClick={() => setPick(d.weekday)}>
-                  {FOCUS[d.focus].name} ({WEEKDAYS[d.weekday]})
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="gym-small">
+                ⏱️ مدة التمرين: <SessionClock log={log} />
+                {!running && !log.durationMin ? " · اضغط «ابدأ» أول ما تبدأ" : ""}
+              </div>
+              {running ? (
+                <button type="button" className="gym-btn sm ghost" onClick={stopClock}>⏸ وقّف الوقت</button>
+              ) : (
+                <button type="button" className="gym-btn sm" onClick={startClock}>{log.durationMin ? "▶ كمّل الوقت" : "▶ ابدأ التمرين"}</button>
+              )}
             </div>
+            {w.days.length > 1 && (
+              <div className="space-y-1">
+                <small className="gym-small">تبي حصة ثانية اليوم؟ اختر أي يوم من جدولك:</small>
+                <div className="gym-chips">
+                  {w.days.map((d, i) => (
+                    <button key={d.weekday} type="button" className="gym-chip" aria-pressed={d.weekday === planned.weekday} onClick={() => (setPick(d.weekday), setEditing(false))}>
+                      {dayLabel(i)} · {focusName(d)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button type="button" className={`gym-btn sm ${editing ? "" : "ghost"}`} onClick={() => setEditing(!editing)}>
+              {editing ? "✓ خلصت التعديل" : "✏️ عدّل تمارين هالحصة"}
+            </button>
+            {editing && <DayCard plan={plan} day={planned} save={save} editable />}
           </div>
         )}
 
@@ -289,13 +367,12 @@ export default function TodayView() {
           <div className="gym-card flex flex-wrap items-center justify-between gap-3">
             <label className="gym-field">
               <span>🚶 كارديو اليوم (دقيقة) · المقترح {planned.cardioMin}</span>
-              <input
-                className="gym-input"
-                inputMode="numeric"
-                value={log.cardioMin || ""}
+              <NumField
+                decimal={false}
+                value={log.cardioMin}
                 placeholder={String(planned.cardioMin)}
-                onChange={(e) => {
-                  const v = Number(e.target.value.replace(/\D/g, "")) || 0;
+                onValue={(n) => {
+                  const v = Math.min(600, Math.round(n));
                   setLog({ cardioMin: v });
                   logHabit("cardio", date, v);
                 }}
@@ -352,12 +429,11 @@ export default function TodayView() {
       <section className="gym-card flex flex-wrap items-end justify-between gap-3">
         <label className="gym-field">
           <span>⚖️ وزنك اليوم (اختياري)</span>
-          <input
+          <NumField
             className="gym-input w-32"
-            inputMode="decimal"
-            value={log.bodyKg ?? ""}
+            value={log.bodyKg}
             placeholder={String(all.filter((d) => d.bodyKg).sort((a, b) => b.date.localeCompare(a.date))[0]?.bodyKg ?? plan.profile.weightKg)}
-            onChange={(e) => setLog({ bodyKg: Number(e.target.value.replace(/[^\d.]/g, "")) || null })}
+            onValue={(n) => setLog({ bodyKg: n ? Math.round(n * 10) / 10 : null })}
           />
         </label>
         <Link href="/mahdi/health/progress" className="gym-btn ghost sm">📈 شوف تقدمك</Link>

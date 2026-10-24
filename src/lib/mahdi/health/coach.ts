@@ -12,16 +12,21 @@ import {
   FOCUS,
   GOALS,
   LABELS,
-  WEEKDAYS,
+  buildDayFrom,
   cleanPlan,
+  dayFocuses,
+  dayLabel,
+  focusName,
   cleanProfile,
   dose,
   exerciseById,
   gentle,
   makePlan,
   placeOk,
+  type Focus,
   type HealthPlan,
   type HealthProfile,
+  type PlanDay,
 } from "./plan";
 
 export const COACH = {
@@ -64,17 +69,18 @@ export const COACH_SCHEMA = {
     },
     edits: {
       type: "array",
-      description: "Changes to the training table (empty when none). weekday 0=Sunday…6=Saturday.",
+      description: "Changes to the training table (empty when none). «weekday» is the DAY'S ID in the table (shown as id in TABLE), not a calendar day.",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["op", "weekday", "exId", "newExId", "sets"],
+        required: ["op", "weekday", "exId", "newExId", "sets", "focuses"],
         properties: {
-          op: { type: "string", enum: ["swap", "remove", "add", "sets"] },
-          weekday: { type: "integer" },
-          exId: { type: "string", description: "the exercise in the day (swap/remove/sets), or the one to add" },
+          op: { type: "string", enum: ["swap", "remove", "add", "sets", "types", "add-day", "remove-day"] },
+          weekday: { type: "integer", description: "the day's id; for add-day: -1 (a new id is given)" },
+          exId: { type: "string", description: "the exercise in the day (swap/remove/sets), or the one to add; otherwise empty" },
           newExId: { type: "string", description: "swap only: the replacement; otherwise empty" },
           sets: { type: "integer", description: "sets only (1–10); otherwise 0" },
+          focuses: { type: "string", description: "types and add-day: comma list of training types for the day (one to three); otherwise empty" },
         },
       },
     },
@@ -88,7 +94,7 @@ export interface CoachAnswer {
   reply: string;
   profile: { field: string; value: string }[];
   food: { field: string; value: number }[];
-  edits: { op: string; weekday: number; exId: string; newExId: string; sets: number }[];
+  edits: { op: string; weekday: number; exId: string; newExId: string; sets: number; focuses?: string }[];
   go: string;
   restart: boolean;
   choices: string[];
@@ -118,9 +124,9 @@ const catalogue = EXERCISES.map((e) => `${e.id} | ${e.name} | ${e.muscle} | ${[e
 export const COACH_TASK = `You are «${COACH.name}» 🦁, the robot coach of «الصحة العلوية» (the gym and nutrition branch of the app «لأجل المهدي»). You speak Gulf Arabic, as a man, warm and motivating like a good coach, short (2–5 lines). Address a woman in the feminine.
 
 WHAT YOU DO: you help the person through the branch: explain anything they did not understand, ask what you need to know about them, and CHANGE their choices and plan directly through the JSON fields — never tell them "go and change it yourself" when you can do it:
-- "profile": the wizard's answers. Fields: track (gym|food|both), sex (male|female), age, heightCm, weightKg (before pregnancy when pregnant), activity (${Object.keys(REF.activity).join("|")}), goals (comma list of ${GOALS.join("|")} — several allowed), stage (none|pregnant|postpartum|breastfeeding; women only), pregWeek, babyMonths, wasActive (true|false), level (beginner|intermediate|advanced), place (gym = a full gym · home = a home gym with dumbbells/bench/bands/pull-up bar · body = no equipment at all), splitPreference (auto|full|upper-lower|ppl), days (comma list of weekdays 0=Sunday…6=Saturday), minutes (session length), meals. Changing them rebuilds the plan from the research.
+- "profile": the wizard's answers. Fields: track (gym|food|both), sex (male|female), age, heightCm, weightKg (before pregnancy when pregnant), activity (${Object.keys(REF.activity).join("|")}), goals (comma list of ${GOALS.join("|")} — several allowed), stage (none|pregnant|postpartum|breastfeeding; women only), pregWeek, babyMonths, wasActive (true|false), level (beginner|intermediate|advanced), place (gym = a full gym · home = a home gym with dumbbells/bench/bands/pull-up bar · body = no equipment at all), splitPreference (auto|full|upper-lower|ppl), days (the NUMBER of training days as ids: "0,1,2" = 3 days a week; the plan is NOT tied to the calendar), minutes (session length), meals. Changing them rebuilds the WHOLE plan from the research — to change one day, use "edits" instead.
 - "food": the nutrition targets the person keeps (kcal, proteinG, waterCups, produce, steps). Only within the research's safe ranges.
-- "edits": the training table: swap an exercise for another, remove one, add one, or change its sets. Prefer the famous basics: dumbbell and barbell presses, squats, RDL/deadlift, rows, pulldown/pull-up, curls and pushdowns. Do not choose novelty exercises when a familiar basic fits. If the person says «أبي زيادة», add ONE useful exercise to the requested day/muscle, not several. Use ONLY ids from the catalogue below that fit the person's place; in pregnancy and the first 3 months after birth ONLY pregnancy-safe ones.
+- "edits": the training table, day by day: swap an exercise for another, remove one, add one, change its sets, "types" = set a day's training types (one to three together, e.g. push+legs — the day's exercises are arranged again for them), "add-day" (with its types) and "remove-day" (never the last one). Build the person's whole table with them in the chat when they ask you to arrange it: ask what they want (days, what each day trains, favourite or disliked exercises), then do it. Prefer the famous basics: dumbbell and barbell presses, squats, RDL/deadlift, rows, pulldown/pull-up, curls and pushdowns. Do not choose novelty exercises when a familiar basic fits. If the person says «أبي زيادة», add ONE useful exercise to the requested day/muscle, not several. Use ONLY ids from the catalogue below that fit the person's place; in pregnancy and the first 3 months after birth ONLY pregnancy-safe ones.
 - "go": move the person to a step of the setup (track, about, goal, train, mode) or a page of the app: today (the day's workout and food tracker), plan (the table and targets), habits (put the plan into «لأجل المهدي»'s habits), progress (weights, records, sets per muscle, nutrition and body weight over time), learn (the muscles and how to do each exercise).
 - "restart": true when the person wants to start over / change everything from the beginning: you set what you already know in "profile" and the setup opens at its first question so they go through it again.
 - "choices": up to 4 short replies to tap.
@@ -143,20 +149,22 @@ ${MUSCLES.map((m) => `${m.id} = ${m.name} (${m.aka}): ${m.where} ${m.does}`).joi
 
 THE APP: «الصحة العلوية» is an app of its own inside «لأجل المهدي», with tabs: «اليوم» (log every set as weight × reps, a rest timer, «خلصت تمرين اليوم», cardio, the day's protein/water/produce/calories/steps, a weigh-in), «خطتي» (the table and targets; «أدخلها في عاداتي» makes habits that the tracker then fills by itself), «التقدم» (sets per muscle this week vs 10, strength charts and records per exercise, body weight, nutrition days), «تعلّم» (the body map, every muscle, every exercise's technique page). Use the TRACKER below to coach: praise records, notice skipped muscles or missed protein, suggest the next weights (all sets at the top of the range → a little more weight).
 
-TRAINING FOCUSES: ${Object.entries(FOCUS).map(([k, v]) => `${k}=${v.name}`).join(", ")}. WEEKDAYS: ${WEEKDAYS.map((d, i) => `${i}=${d}`).join(", ")}.`;
+THE TABLE IS A ROTATION, NOT A CALENDAR: its days are «اليوم ١، اليوم ٢…» done in order whenever the person trains (the «اليوم» page suggests the day after the last session, and any day can be picked instead). There is NO compulsory rest day: the person rests whenever it suits them — never insist on fixed weekdays. Each session has a clock (start → «خلصت») so they see how long they trained; weights take decimals like 7.5 kg.
+
+TRAINING TYPES: ${Object.entries(FOCUS).map(([k, v]) => `${k}=${v.name}`).join(", ")}.`;
 
 /** The person's current state, sent after the task. */
 export function coachState(profile: HealthProfile, plan: HealthPlan | null, screen: string, recent: DayLog[] = []): string {
   const w = plan?.workout;
   const table = w?.blocked
     ? `BLOCKED: ${w.blocked}`
-    : (w?.days ?? []).map((d) => `${d.weekday} ${WEEKDAYS[d.weekday]} (${FOCUS[d.focus].name}): ${d.items.map((i) => `${i.exId} ${i.sets}x${i.reps}`).join(", ")}${d.cardioMin ? ` + ${d.cardioMin}min cardio` : ""}`).join("\n");
+    : (w?.days ?? []).map((d, i) => `id ${d.weekday} = ${dayLabel(i)} (${dayFocuses(d).join("+")}: ${focusName(d)}): ${d.items.map((x) => `${x.exId} ${x.sets}x${x.reps}`).join(", ")}${d.cardioMin ? ` + ${d.cardioMin}min cardio` : ""}`).join("\n");
   return `NOW — page step: ${screen || "home"}
 PROFILE: ${JSON.stringify({ ...profile, goals: profile.goals.join(","), days: profile.days.join(",") })}
 (place: ${LABELS.place[profile.place]})
 PLAN: ${plan ? `mode ${plan.mode}; food ${JSON.stringify(plan.food)}\nTABLE:\n${table || "(none)"}` : "not made yet"}
 TRACKER (last 14 days, what they actually did):
-${recent.length ? recent.slice(-14).map((d) => `${d.date}: ${d.done ? "workout done" : ""} ${Object.entries(d.sets).map(([id, ss]) => `${id} ${ss.map((x) => `${x.kg}x${x.reps}`).join("/")}`).join("; ")}${d.cardioMin ? ` cardio ${d.cardioMin}min` : ""} food ${JSON.stringify(d.food)}${d.bodyKg ? ` weight ${d.bodyKg}kg` : ""}${d.measurements ? ` measurements(cm) ${JSON.stringify(d.measurements)}` : ""}`).join("\n") : "(nothing logged yet)"}`;
+${recent.length ? recent.slice(-14).map((d) => `${d.date}: ${d.done ? "workout done" : ""}${d.planDay !== undefined ? ` (day id ${d.planDay})` : ""}${d.durationMin ? ` ${Math.round(d.durationMin)}min` : ""} ${Object.entries(d.sets).map(([id, ss]) => `${id} ${ss.map((x) => `${x.kg}x${x.reps}`).join("/")}`).join("; ")}${d.cardioMin ? ` cardio ${d.cardioMin}min` : ""} food ${JSON.stringify(d.food)}${d.bodyKg ? ` weight ${d.bodyKg}kg` : ""}${d.measurements ? ` measurements(cm) ${JSON.stringify(d.measurements)}` : ""}`).join("\n") : "(nothing logged yet)"}`;
 }
 
 /** Applies what عباس decided to the profile and the plan; anything outside the rules is dropped. */
@@ -201,9 +209,38 @@ export function applyCoach(profile: HealthProfile, plan: HealthPlan | null, a: P
       return !!e && placeOk(e, p.place) && (!gentle(p) || e.preg);
     };
     let days = w.days;
+    const typesOf = (raw: string | undefined): Focus[] => {
+      const all = Object.keys(FOCUS) as Focus[];
+      const list = [...new Set(String(raw ?? "").split(/[,،+\s]+/).filter((f): f is Focus => all.includes(f as Focus)))];
+      // pregnancy and the first months after birth keep the gentle table
+      return gentle(p) ? ["gentle"] : list.filter((f) => f !== "gentle").slice(0, 3);
+    };
     for (const e of a.edits) {
+      if (e.op === "add-day") {
+        const id = [0, 1, 2, 3, 4, 5, 6].find((x) => !days.some((d) => d.weekday === x));
+        const fs = typesOf(e.focuses);
+        if (id === undefined) continue;
+        days = [...days, buildDayFrom(p, id, fs.length ? fs : ["full"], 0, days[0]?.cardioMin ?? 0)];
+        changed = true;
+        continue;
+      }
       const day = days.find((d) => d.weekday === e.weekday);
       if (!day) continue;
+      if (e.op === "remove-day") {
+        if (days.length > 1) {
+          days = days.filter((d) => d.weekday !== day.weekday);
+          changed = true;
+        }
+        continue;
+      }
+      if (e.op === "types") {
+        const fs = typesOf(e.focuses);
+        if (!fs.length) continue;
+        const rebuilt: PlanDay = buildDayFrom(p, day.weekday, fs, day.variant, day.cardioMin);
+        days = days.map((d) => (d.weekday === day.weekday ? rebuilt : d));
+        changed = true;
+        continue;
+      }
       let items = day.items;
       if (e.op === "remove") items = items.filter((i) => i.exId !== e.exId);
       else if (e.op === "sets") items = items.map((i) => (i.exId === e.exId ? { ...i, sets: Math.min(10, Math.max(1, Math.round(e.sets))) } : i));
@@ -215,7 +252,9 @@ export function applyCoach(profile: HealthProfile, plan: HealthPlan | null, a: P
         changed = true;
       }
     }
-    next = { ...next, workout: { ...w, days } };
+    // the profile's day list follows the table (the rotation)
+    next = { ...next, profile: { ...next.profile, days: days.map((d) => d.weekday) }, workout: { ...w, days } };
+    p = { ...p, days: days.map((d) => d.weekday) };
   }
   const go = (COACH_SCREENS as readonly string[]).includes(a.go ?? "") ? (a.go as string) : "";
   return { profile: p, plan: next ? { ...next, profile: p } : next, go, restart: a.restart === true, changed };

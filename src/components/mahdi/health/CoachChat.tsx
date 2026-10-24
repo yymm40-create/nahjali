@@ -105,6 +105,25 @@ export default function CoachChat() {
     }
   };
 
+  // «أرتبها مع عباس» on the setup (or any page) opens the chat with a first message; it is sent once the plan is there
+  const [pending, setPending] = useState("");
+  useEffect(() => {
+    const on = (e: Event) => {
+      const text = String((e as CustomEvent<{ text?: string }>).detail?.text ?? "").trim();
+      setOpen(true);
+      if (text) setPending(text);
+    };
+    window.addEventListener("gym-coach", on);
+    return () => window.removeEventListener("gym-coach", on);
+  }, []);
+  useEffect(() => {
+    if (!pending || !plan || busy) return;
+    const text = pending;
+    setPending("");
+    void send(text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- send once, when the plan has arrived
+  }, [pending, plan, busy]);
+
   return (
     <>
       <MovableBubble id="mahdi-coach" corner="left" size={52} label="عباس سبع القنطرة: اسألني" gradient="linear-gradient(135deg, #c6ff1a, #5c7a00)" hidden={open} onPress={() => setOpen(true)}>

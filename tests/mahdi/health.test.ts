@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { RESEARCH, SOURCES } from "@config/mahdi/health-research";
 import { applyCoach } from "@/lib/mahdi/health/coach";
-import { DEFAULT_PROFILE, EXERCISES, cleanPlan, cleanProfile, exerciseById, habitsFor, makePlan, nutrition, workout, type HealthProfile } from "@/lib/mahdi/health/plan";
+import { DEFAULT_PROFILE, EXERCISES, buildDayFrom, cleanPlan, cleanProfile, dayFocuses, daysOfCount, exerciseById, focusName, habitsFor, makePlan, nutrition, workout, type HealthProfile } from "@/lib/mahdi/health/plan";
+import { cleanDay, parseNum, sessionMin } from "@/lib/mahdi/health/tracker";
 
 const P = (o: Partial<HealthProfile>): HealthProfile => ({ ...DEFAULT_PROFILE, ...o });
 
@@ -72,14 +73,16 @@ describe("training table", () => {
 
 describe("into the habits", () => {
   const plan = makePlan(P({ days: [0, 2, 4] }), "ready");
-  it("by days: one habit per training day on that weekday", () => {
+  it("by days: one habit per day of the table, once a week, on no fixed weekday", () => {
     const h = habitsFor(plan, "days", []).filter((x) => x.key.startsWith("day-"));
-    expect(h.map((x) => x.days)).toEqual([[0], [2], [4]]);
+    expect(h).toHaveLength(3);
+    expect(h.every((x) => x.freq === "weekly" && x.target === 1 && x.days.length === 0)).toBe(true);
+    expect(h[0].name).toContain("اليوم ١");
   });
-  it("by exercises: one per exercise, counted in sets", () => {
+  it("by exercises: one per exercise, as many times a week as its days, no fixed weekday", () => {
     const h = habitsFor(plan, "exercises", []).filter((x) => x.key.startsWith("ex-"));
     expect(h.length).toBeGreaterThan(3);
-    expect(h.every((x) => x.measure === "count" && x.target >= 1 && x.days.length >= 1)).toBe(true);
+    expect(h.every((x) => x.freq === "weekly" && x.target >= 1 && x.days.length === 0)).toBe(true);
   });
   it("weekly: 3 days a week, plus the cardio minutes", () => {
     const h = habitsFor(plan, "weekly", []);
@@ -250,5 +253,65 @@ describe("«عباس سبع القنطرة» starts again and keeps the habits l
     expect(r.restart).toBe(true);
     expect(r.plan!.links).toEqual(plan.links);
     expect(cleanPlan(r.plan)!.links).toEqual(plan.links);
+  });
+});
+
+describe("the table is a rotation, not a calendar", () => {
+  it("any number of days 1–7, no compulsory rest day", () => {
+    expect(daysOfCount(7)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(workout(P({ days: daysOfCount(7) })).days).toHaveLength(7);
+    expect(workout(P({ days: daysOfCount(1) })).days).toHaveLength(1);
+  });
+  it("a day can train two types at once, without repeating an exercise", () => {
+    const d = buildDayFrom(P({ level: "intermediate" }), 0, ["push", "legs"]);
+    expect(dayFocuses(d)).toEqual(["push", "legs"]);
+    expect(focusName(d)).toBe("دفع + أرجل");
+    expect(new Set(d.items.map((i) => i.exId)).size).toBe(d.items.length);
+    const muscles = d.items.map((i) => exerciseById(i.exId)!.muscle);
+    expect(muscles).toContain("chest");
+    expect(muscles).toContain("quads");
+  });
+  it("a saved plan keeps the days' order and their types", () => {
+    const plan = makePlan(P({ days: [0, 1, 2] }), "ready");
+    const days = [plan.workout!.days[2], { ...buildDayFrom(plan.profile, 0, ["push", "legs"]) }, plan.workout!.days[1]];
+    const c = cleanPlan({ ...plan, workout: { ...plan.workout, days } })!;
+    expect(c.workout!.days.map((d) => d.weekday)).toEqual([2, 0, 1]);
+    expect(c.workout!.days[1].focuses).toEqual(["push", "legs"]);
+  });
+  it("عباس sets a day's types, adds a day and removes one; the profile follows", () => {
+    const base = P({ days: [0, 1, 2] });
+    const plan = makePlan(base, "ready");
+    const r = applyCoach(base, plan, {
+      edits: [
+        { op: "types", weekday: 1, exId: "", newExId: "", sets: 0, focuses: "pull,legs" },
+        { op: "add-day", weekday: -1, exId: "", newExId: "", sets: 0, focuses: "upper" },
+        { op: "remove-day", weekday: 0, exId: "", newExId: "", sets: 0, focuses: "" },
+      ],
+    });
+    const w = r.plan!.workout!;
+    expect(w.days.map((d) => d.weekday)).toEqual([1, 2, 3]);
+    expect(dayFocuses(w.days[0])).toEqual(["pull", "legs"]);
+    expect(dayFocuses(w.days[2])).toEqual(["upper"]);
+    expect(r.profile.days).toEqual(w.days.map((d) => d.weekday));
+  });
+});
+
+describe("decimals and the session clock", () => {
+  it("7.5, ٧٫٥ and 7,5 are all seven and a half", () => {
+    expect(parseNum("7.5")).toBe(7.5);
+    expect(parseNum("٧٫٥")).toBe(7.5);
+    expect(parseNum("7,5")).toBe(7.5);
+    expect(parseNum("7.")).toBe(7);
+    expect(parseNum("")).toBe(0);
+  });
+  it("a 7.5 kg set is kept as it is", () => {
+    expect(cleanDay({ date: "2026-10-24", sets: { bench: [{ kg: 7.5, reps: 10 }] } })!.sets.bench[0].kg).toBe(7.5);
+  });
+  it("the clock adds the running part to what was already counted", () => {
+    const t = 1_800_000_000_000;
+    expect(sessionMin({ startedAt: t - 10 * 60000, durationMin: 5 }, t)).toBe(15);
+    expect(sessionMin({ startedAt: null, durationMin: 42 })).toBe(42);
+    const d = cleanDay({ date: "2026-10-24", planDay: 2, startedAt: t, durationMin: 33.3 })!;
+    expect([d.planDay, d.startedAt, d.durationMin]).toEqual([2, t, 33.3]);
   });
 });

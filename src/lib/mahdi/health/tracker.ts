@@ -38,7 +38,24 @@ export interface DayLog {
   bodyKg: number | null;
   /** optional circumference measurements in centimetres */
   measurements?: Partial<Record<MeasurementKey, number>>;
+  /** which day of the plan was trained (its id); the next session suggests the one after it */
+  planDay?: number;
+  /** the session clock: running since this moment (ms), or not running */
+  startedAt?: number | null;
+  /** the minutes of training already counted that day (the clock adds to it when it stops) */
+  durationMin?: number;
 }
+
+/** A number as the person typed it: Arabic digits, «٫» or «,» as the decimal point (so 7.5 and ٧٫٥ both work). */
+export function parseNum(raw: string): number {
+  const t = raw.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0)).replace(/[٫,،]/g, ".").replace(/[^\d.]/g, "");
+  const [a, ...rest] = t.split(".");
+  const n = Number(rest.length ? `${a}.${rest.join("")}` : a);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** The minutes trained that day, with the running clock (now). */
+export const sessionMin = (d: Pick<DayLog, "startedAt" | "durationMin">, now = Date.now()) => (d.durationMin ?? 0) + (d.startedAt ? Math.max(0, (now - d.startedAt) / 60000) : 0);
 
 export const emptyDay = (date: string): DayLog => ({ date, sets: {}, cardioMin: 0, done: false, food: {}, bodyKg: null, measurements: {} });
 
@@ -84,6 +101,9 @@ export function cleanDay(v: unknown): DayLog | null {
     food,
     bodyKg: o.bodyKg === null || o.bodyKg === undefined ? null : num(o.bodyKg, 20, 400, 0.1),
     measurements,
+    ...(Number.isInteger(o.planDay) && (o.planDay as number) >= 0 && (o.planDay as number) <= 6 ? { planDay: o.planDay as number } : {}),
+    startedAt: typeof o.startedAt === "number" && o.startedAt > 1.6e12 && o.startedAt < 4e12 ? Math.round(o.startedAt) : null,
+    durationMin: num(o.durationMin, 0, 600, 0.1) ?? 0,
   };
 }
 

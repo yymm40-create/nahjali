@@ -38,7 +38,10 @@ export interface HealthProfile {
   place: Place;
   /** the training system the person chose; auto picks the safest fit for their number of days */
   splitPreference: SplitPreference;
-  /** training weekdays, 0 = Sunday … 6 = Saturday */
+  /**
+   * the training days of the plan: their ids (0…6), one per day — «اليوم ١، اليوم ٢…». They are NOT weekdays: the plan is a
+   * rotation the person follows whenever they train (an old plan saved weekdays; the same numbers now just name its days).
+   */
   days: number[];
   minutes: number;
   meals: number;
@@ -83,6 +86,13 @@ export const SPLIT_CHOICES: Record<SplitPreference, { name: string; hint: string
 };
 
 export const WEEKDAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+
+const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+export const arNum = (n: number) => String(n).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);
+/** «اليوم ١» … the plan's days by their place in the rotation (no calendar). */
+export const dayLabel = (i: number) => `اليوم ${arNum(i + 1)}`;
+/** n training days → their ids 0…n−1 */
+export const daysOfCount = (n: number) => Array.from({ length: Math.min(7, Math.max(1, Math.round(n))) }, (_, i) => i);
 
 /** ACOG 804: absolute contraindications to aerobic exercise in pregnancy */
 export const RED_FLAGS = [
@@ -389,8 +399,11 @@ export interface PlanItem {
 }
 
 export interface PlanDay {
+  /** the day's id in the rotation (0…6); the name is historical — it is not a weekday any more */
   weekday: number;
   focus: Focus;
+  /** more than one type on the same day (e.g. push + legs); the first is `focus` */
+  focuses?: Focus[];
   /** A / B … when the same focus repeats in the week */
   variant: number;
   items: PlanItem[];
@@ -428,7 +441,8 @@ export function splitFor(p: HealthProfile): Focus[] {
   if (n <= 3) return Array(n).fill("full");
   if (n === 4) return ["upper", "lower", "upper", "lower"];
   if (n === 5) return ["upper", "lower", "push", "pull", "legs"];
-  return ["push", "pull", "legs", "push", "pull", "legs"].slice(0, n) as Focus[];
+  // 6 or 7 days (no compulsory rest day): push / pull / legs in turn
+  return Array.from({ length: n }, (_, i) => (["push", "pull", "legs"] as Focus[])[i % 3]);
 }
 
 export const SPLIT_NAMES: Record<string, string> = {
@@ -468,6 +482,33 @@ export function buildDay(p: HealthProfile, weekday: number, focus: Focus, varian
     items.push({ exId: ex.id, ...dose(ex, p) });
   });
   return { weekday, focus, variant, items, cardioMin: 0 };
+}
+
+/** every type the day trains (one or more) */
+export const dayFocuses = (d: PlanDay): Focus[] => (d.focuses?.length ? d.focuses : [d.focus]);
+/** «دفع + أرجل» */
+export const focusName = (d: PlanDay) => dayFocuses(d).map((f) => FOCUS[f].name.replace(/ \(.*\)$/, "")).join(" + ");
+
+/**
+ * A day built from one or more types: their muscle slots taken in turn (push, legs, push, legs…) without repeating an
+ * exercise; two types get a little more room than one.
+ */
+export function buildDayFrom(p: HealthProfile, id: number, focuses: Focus[], variant = 0, cardioMin = 0): PlanDay {
+  const list = [...new Set(focuses.filter((f) => FOCUS[f]))];
+  const fs: Focus[] = list.length ? list : ["full"];
+  if (fs.length === 1) return { ...buildDay(p, id, fs[0], variant), cardioMin };
+  const limit = Math.min(9, exerciseLimit(p) + 2 * (fs.length - 1));
+  const slots: Muscle[] = [];
+  for (let i = 0; slots.length < limit && i < 10; i++) for (const f of fs) if (FOCUS[f].slots[i] && slots.length < limit) slots.push(FOCUS[f].slots[i]);
+  const used = new Set<string>();
+  const items: PlanItem[] = [];
+  for (const m of slots) {
+    const ex = candidates(m, p).find((e) => !used.has(e.id));
+    if (!ex) continue;
+    used.add(ex.id);
+    items.push({ exId: ex.id, ...dose(ex, p) });
+  }
+  return { weekday: id, focus: fs[0], focuses: fs, variant, items, cardioMin };
 }
 
 export function workout(p: HealthProfile): Workout {
@@ -568,8 +609,8 @@ export interface HabitSpec {
 /** How the training table goes into the habits: one per training day, one per exercise, or one weekly count. */
 export type GymWay = "days" | "exercises" | "weekly";
 export const GYM_WAYS: { id: GymWay; title: string; hint: string }[] = [
-  { id: "days", title: "بالأيام", hint: "عادة لكل يوم تمرين (مثلًا «تمرين الجزء العلوي» كل أحد)، تأشّر عليها لما تخلص الحصة" },
-  { id: "exercises", title: "بالتمارين", hint: "عادة لكل تمرين بعدد مجموعاته في أيامه، تعدّ المجموعات وحدة وحدة" },
+  { id: "days", title: "بالأيام", hint: "عادة لكل يوم من جدولك (مثلًا «اليوم ١ · الجزء العلوي») مرة بالأسبوع، في أي يوم تتمرن فيه" },
+  { id: "exercises", title: "بالتمارين", hint: "عادة لكل تمرين بعدد مرات حصصه في الأسبوع، في أي يوم تسويها" },
   { id: "weekly", title: "بالأسبوع", hint: "عادة وحدة «تمرين مقاومة» بعدد الأيام في الأسبوع، وأي يوم تتمرن يُحسب" },
 ];
 
@@ -601,21 +642,22 @@ export function habitsFor(plan: HealthPlan, gym: GymWay | null, food: FoodHabit[
   const w = plan.workout;
   if (w && !w.blocked && w.days.length && gym) {
     if (gym === "days") {
-      for (const d of w.days) {
+      w.days.forEach((d, i) => {
         const names = d.items.map((it) => exerciseById(it.exId)?.name).filter(Boolean).join("، ");
+        // no calendar: once a week, whatever day the person trains it
         out.push({
           key: `day-${d.weekday}`,
-          name: short(`${FOCUS[d.focus].name}${dayLetter(w, d)} · ${WEEKDAYS[d.weekday]}`),
+          name: short(`${dayLabel(i)} · ${focusName(d)}${dayLetter(w, d)}`),
           icon: "🏋️",
           group: "gym",
           measure: "check",
           target: 1,
           unit: "",
-          freq: "days",
-          days: [d.weekday],
+          freq: "weekly",
+          days: [],
           notes: short(`${names}${d.cardioMin ? ` + ${d.cardioMin} دقيقة كارديو` : ""}`, 500),
         });
-      }
+      });
     } else if (gym === "exercises") {
       const byEx = new Map<string, { sets: number; days: number[]; reps: string }>();
       for (const d of w.days) for (const it of d.items) {
@@ -628,7 +670,7 @@ export function habitsFor(plan: HealthPlan, gym: GymWay | null, food: FoodHabit[
       for (const [id, v] of byEx) {
         const ex = exerciseById(id);
         if (!ex) continue;
-        out.push({ key: `ex-${id}`, name: short(ex.name), icon: "💪", group: "gym", measure: "count", target: v.sets, unit: "", freq: "days", days: v.days.sort((a, b) => a - b), notes: `${v.sets} مجموعات × ${v.reps} تكرار · ${ex.cue}` });
+        out.push({ key: `ex-${id}`, name: short(ex.name), icon: "💪", group: "gym", measure: "check", target: Math.min(7, v.days.length), unit: "", freq: "weekly", days: [], notes: `${v.days.length > 1 ? `${v.days.length} مرات بالأسبوع · ` : ""}${v.sets} مجموعات × ${v.reps} تكرار · ${ex.cue}` });
       }
     } else {
       out.push({ key: "weekly", name: "تمرين مقاومة", icon: "🏋️", group: "gym", measure: "check", target: Math.min(7, w.days.length), unit: "", freq: "weekly", days: [], notes: SPLIT_NAMES[w.split] ?? "" });
@@ -651,7 +693,7 @@ export function habitsFor(plan: HealthPlan, gym: GymWay | null, food: FoodHabit[
 }
 
 function dayLetter(w: Workout, d: PlanDay): string {
-  const same = w.days.filter((x) => x.focus === d.focus).length;
+  const same = w.days.filter((x) => focusName(x) === focusName(d)).length;
   return same > 1 ? ` ${"أبجد"[d.variant] ?? d.variant + 1}` : "";
 }
 
@@ -716,6 +758,7 @@ export function cleanPlan(v: unknown): HealthPlan | null {
       const weekday = Number(raw?.weekday);
       if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || days.some((d) => d.weekday === weekday)) continue;
       const focus = (Object.keys(FOCUS) as Focus[]).includes(raw.focus as Focus) ? (raw.focus as Focus) : "full";
+      const more = Array.isArray(raw.focuses) ? [...new Set((raw.focuses as unknown[]).filter((f): f is Focus => (Object.keys(FOCUS) as string[]).includes(f as string)))].slice(0, 3) : [];
       const items = (Array.isArray(raw.items) ? raw.items : [])
         .slice(0, 12)
         .map((it: Record<string, unknown>) => ({
@@ -725,9 +768,10 @@ export function cleanPlan(v: unknown): HealthPlan | null {
           restSec: n(it?.restSec, 15, 600, 90),
         }))
         .filter((it) => exerciseById(it.exId));
-      days.push({ weekday, focus, variant: n(raw.variant, 0, 6, 0), items, cardioMin: n(raw.cardioMin, 0, 180, 0) });
+      days.push({ weekday, focus: more[0] ?? focus, ...(more.length > 1 ? { focuses: more } : {}), variant: n(raw.variant, 0, 6, 0), items, cardioMin: n(raw.cardioMin, 0, 180, 0) });
     }
-    wk = { ...wk, days: days.sort((a, b) => a.weekday - b.weekday), weeklyCardioMin: n(w.weeklyCardioMin, 0, 1000, wk.weeklyCardioMin) };
+    // the order the person keeps is the rotation's order
+    wk = { ...wk, days, weeklyCardioMin: n(w.weeklyCardioMin, 0, 1000, wk.weeklyCardioMin) };
   }
   const links: Record<string, string> = {};
   if (o.links && typeof o.links === "object")
