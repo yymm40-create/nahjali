@@ -645,7 +645,7 @@ Every reply you send must be ONE JSON object that matches the provided schema:
 - "prompt": the complete final video prompt of that generation, exactly as it will be sent${superDirector ? " (the EN/ZH JSON array required by the Super Director, as a string)" : ""}. An empty string otherwise.
 - "references": Stages 7–8 only — the @names of the reference images for this generation, in <<<image_n>>> order, each with its role. An empty array otherwise.
 - "dialogue_ar": Stages 7–8 only — every spoken line of this generation in fully diacritized Arabic, with its speaker. An empty array if none.
-- "video_model": Stages 7–8 only — "seedance-2.5", "seedance-2.0" or "seedance-real-face". "seedance-real-face" («Seedance وجه واقعي», Seedance 2.5 that keeps REAL people's own faces from their photographs, up to 30 s) is for a REALISTIC, photographic scene whose references are photographs of real people; it is much dearer than the others, so choose it only for such a scene and say in Arabic in "notes" that it is the realistic option and costs much more. An empty string otherwise.
+- "video_model": Stages 7–8 only — "seedance-2.5", "seedance-2.0", "seedance-real-face" or "wan-3.0". "wan-3.0" (Alibaba Wan 3.0) is much cheaper than Seedance 2.5 and strong in animation, up to 30 s in one shot, but takes at most 10 reference images and 15 s of reference voice in all: when the person chose it, write the prompt for it the same way (the references stay <<<image_n>>>) and keep the generation within those limits. "seedance-real-face" («Seedance وجه واقعي», Seedance 2.5 that keeps REAL people's own faces from their photographs, up to 30 s) is for a REALISTIC, photographic scene whose references are photographs of real people; it is much dearer than the others, so choose it only for such a scene and say in Arabic in "notes" that it is the realistic option and costs much more. An empty string otherwise.
 - "duration_sec": Stages 7–8 only — the generation's duration in whole seconds. 0 otherwise.
 - "ratio": Stages 7–8 only — the aspect ratio ("16:9", "9:16", "1:1", "4:3", "3:4" or "21:9"). An empty string otherwise.
 - "generate_audio": Stages 7–8 only — true if the generator should produce this generation's sound (including any spoken lines), false if sound is added later. false otherwise.
@@ -699,7 +699,7 @@ export const DIRECTOR_SCHEMA = {
         properties: { speaker: { type: "string" }, line: { type: "string" } },
       },
     },
-    video_model: { type: "string", enum: ["", "seedance-2.5", "seedance-2.0", "seedance-real-face"] },
+    video_model: { type: "string", enum: ["", "seedance-2.5", "seedance-2.0", "seedance-real-face", "wan-3.0"] },
     duration_sec: { type: "integer" },
     ratio: { type: "string", enum: ["", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"] },
     generate_audio: { type: "boolean" },

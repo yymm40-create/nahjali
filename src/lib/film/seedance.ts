@@ -5,6 +5,7 @@
 import { randomUUID } from "crypto";
 import { VIDEO_MODELS, type VideoModel, type VideoResolution } from "@config/film";
 import { realFaceSubmit, realFaceTask } from "@/lib/jawad/server/providers/realface";
+import { falSubmit, falTask } from "@/lib/jawad/server/providers/fal";
 
 export const ARK_BASE_URL = (process.env.ARK_BASE_URL || "https://ark.ap-southeast.bytepluses.com/api/v3").replace(/\/+$/, "");
 
@@ -46,8 +47,27 @@ export interface VideoRequest {
 /** A task of «Seedance وجه واقعي» carries this prefix, so it is followed at its own provider. */
 const REAL_FACE = "rf:";
 
+/** A task of Wan 3.0 carries this prefix (followed on fal's queue). */
+const WAN = "wan:";
+const WAN_APP = "alibaba/wan-3.0";
+
+/** Wan 3.0's request for a film shot: references (pictures and the shot's voice) when there are any, else from the text. */
+export function wanFilmRequest(r: VideoRequest): { model: string; input: Record<string, unknown> } {
+  // the references are named «Image 1», «Audio 1» … at Wan (the director writes <<<image_n>>>)
+  const prompt = r.prompt.replace(/<<<\s*(image|audio|video)_(\d+)\s*>>>/gi, (_m, kind: string, n: string) => `${kind[0].toUpperCase()}${kind.slice(1).toLowerCase()} ${n}`);
+  const images = r.imageUrls.slice(0, VIDEO_MODELS["wan-3.0"].maxImages);
+  const audios = r.audioUrls ?? [];
+  const common = { prompt, duration: Math.max(2, Math.min(30, Math.round(r.durationSec))), resolution: r.resolution, aspect_ratio: r.ratio || "16:9", audio: r.generateAudio };
+  if (!images.length && !audios.length) return { model: `${WAN_APP}/text-to-video`, input: common };
+  return { model: `${WAN_APP}/reference-to-video`, input: { ...common, ...(images.length ? { reference_image_urls: images } : {}), ...(audios.length ? { reference_audio_urls: audios } : {}) } };
+}
+
 /** Starts a generation and returns the provider's task ID. */
 export async function createVideoTask(r: VideoRequest): Promise<string> {
+  if (r.model === "wan-3.0") {
+    const { model, input } = wanFilmRequest(r);
+    return WAN + (await falSubmit(model, input));
+  }
   if (r.model === "seedance-real-face") {
     // the references are named @image1, @audio1 … at this provider (the director writes <<<image_n>>>)
     const prompt = r.prompt.replace(/<<<\s*(image|audio|video)_(\d+)\s*>>>/gi, (_m, kind: string, n: string) => `@${kind.toLowerCase()}${n}`);
@@ -90,6 +110,10 @@ export interface VideoTask {
 }
 
 export async function getVideoTask(taskId: string): Promise<VideoTask> {
+  if (taskId.startsWith(WAN)) {
+    const t = await falTask(WAN_APP, taskId.slice(WAN.length));
+    return { status: t.status, videoUrl: t.videoUrl, error: t.error, tokens: null };
+  }
   if (taskId.startsWith(REAL_FACE)) {
     const t = await realFaceTask(taskId.slice(REAL_FACE.length));
     return { status: t.status, videoUrl: t.videoUrl, error: t.moderated ? "رفض الفحص هذا الفيديو (وجه أو محتوى غير مسموح)." : t.error, tokens: null };
