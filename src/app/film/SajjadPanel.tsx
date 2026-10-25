@@ -6,6 +6,7 @@ import { api, postJson } from "@/lib/fetch";
 import ClaudeModelPicker from "@/components/robots/ClaudeModelPicker";
 import MicButton from "@/components/robots/MicButton";
 import { useClaudeModel } from "@/components/robots/claude-model";
+import MovableBubble from "@/components/MovableBubble";
 import RobotFace from "@/components/RobotFace";
 import { CHAT_STARTERS } from "@config/jawad/chat-guidance";
 
@@ -183,10 +184,10 @@ export default function SajjadPanel({ kind, id }: { kind: "film" | "series"; id:
 
   return (
     <>
-      <button type="button" className="sajjad-fab" onClick={() => setOpen(true)} aria-label="اسأل سجاد">
-        <span className="sajjad-face" aria-hidden><RobotFace id="sajjad" size={30} /></span>
-        <span>سجاد</span>
-      </button>
+      {/* ONE icon for سجاد: a press opens his chat; it can be dragged anywhere and folded into a thin side tab */}
+      <MovableBubble id="sajjad" corner="right" size={54} label="سجاد: اسأله عن عملك" gradient="linear-gradient(135deg, #1c1c1c, #e8572a)" hidden={open} onPress={() => setOpen(true)}>
+        <RobotFace id="sajjad" size={38} />
+      </MovableBubble>
       {open && (
         <div className="fixed inset-0 z-[300] flex justify-end bg-black/30 backdrop-blur-[2px]" onClick={() => setOpen(false)}>
           <aside className="sajjad-panel flex h-full w-full max-w-md flex-col" onClick={(e) => e.stopPropagation()} aria-label="سجاد">
