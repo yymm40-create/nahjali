@@ -16,6 +16,15 @@ const CHECKED = "2026-10-04";
 
 /** Price key of «المخرج الخارق» (the prompt rewrite offered in video making), per use. */
 export const DIRECTOR_PRICE_KEY = "director:prompt";
+/** The price line of «المخرج الخارق» (the same fixed 0.30 riyal on every video generator that offers it). */
+const DIRECTOR_PRICE_LINE = {
+  key: DIRECTOR_PRICE_KEY,
+  label: "تطوير البرومبت بالمخرج الخارق (للمرة)",
+  defaultCenti: 3000,
+  basis: "تكلفة ثابتة حدّدها المالك (0.30 ريال): Claude Opus 5.5 يعيد كتابة البرومبت بمهارة «المخرج الخارق»",
+};
+/** «المخرج الخارق» works on every video generator but Kling (the owner's order, 25 October 2026). */
+export const directorOffered = (g: { output: string; id: string; priceKeys: { key: string }[] }) => g.output === "video" && g.id !== "kling-3-pro" && g.priceKeys.some((k) => k.key === DIRECTOR_PRICE_KEY);
 /** «التعديل الذكي» of a finished result: the fixed fee, and (videos) Claude writing the corrected prompt. Per edit. */
 export const EDIT_FEE_KEY = "edit:fee";
 export const EDIT_CLAUDE_KEY = "edit:claude";
@@ -574,12 +583,7 @@ function seedance(v: "2.5" | "2.0"): GeneratorDef {
             ? "يتبع 4K: موقوف حتى تحدد سعره"
             : `سقف: بسعر ثانية المخرج ($${SEEDANCE_RATE[v][r]}/مليون)، والفعلي مع فيديو $${SEEDANCE_RATE_WITH_VIDEO[v][r]}/مليون + حد أدنى تقديري للتوكنات`,
       })),
-      {
-        key: DIRECTOR_PRICE_KEY,
-        label: "تطوير البرومبت بالمخرج الخارق (للمرة)",
-        defaultCenti: 3000,
-        basis: "تكلفة ثابتة حدّدها المالك (0.30 ريال): Claude Opus 5.5 يعيد كتابة البرومبت بمهارة «المخرج الخارق»",
-      },
+      DIRECTOR_PRICE_LINE,
       {
         key: EDIT_CLAUDE_KEY,
         label: "التعديل الذكي · جواد يكتب البرومبت المعدّل (للمرة)",
@@ -794,12 +798,15 @@ const wan3: GeneratorDef = {
     max: 4000,
     arabic: true,
   },
-  priceKeys: ["480p", "720p", "1080p"].map((r) => ({
-    key: `sec:${r}`,
-    label: `كل ثانية · ${RES_LABEL[r]}`,
-    defaultCenti: centiFor(WAN_SECOND_USD[r]),
-    basis: `سعر fal المنشور: ${WAN_SECOND_USD[r]} للثانية (${r})`,
-  })),
+  priceKeys: [
+    ...["480p", "720p", "1080p"].map((r) => ({
+      key: `sec:${r}`,
+      label: `كل ثانية · ${RES_LABEL[r]}`,
+      defaultCenti: centiFor(WAN_SECOND_USD[r]),
+      basis: `سعر fal المنشور: ${WAN_SECOND_USD[r]} للثانية (${r})`,
+    })),
+    DIRECTOR_PRICE_LINE,
+  ],
   modeFor(style, refs) {
     if (!refs.length) return wanModes[0];
     if (style === "references") return wanModes[3];
@@ -924,8 +931,9 @@ const seedanceRealFace: GeneratorDef = {
       key: `v20:sec:${r}`,
       label: `2.0 · كل ثانية · ${RES_LABEL[r]}`,
       defaultCenti: centiFor(REALFACE_20_SECOND_USD[r]),
-      basis: `سقف تقديري $${REALFACE_20_SECOND_USD[r]} للثانية: راجعه بسعر لوحة المزوّد وعدّله هنا`,
+      basis: `سقف تقديري ${REALFACE_20_SECOND_USD[r]} للثانية: راجعه بسعر لوحة المزوّد وعدّله هنا`,
     })),
+    DIRECTOR_PRICE_LINE,
   ],
   modeFor(style, refs) {
     if (style === "frames" || !refs.length) return refs.length >= 2 ? realFaceModes[1] : realFaceModes[0];

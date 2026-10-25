@@ -93,3 +93,15 @@ describe("Wan 3.0 (Alibaba, on fal.ai)", () => {
     expect(wan.refLabel?.("audio", 1)).toBe("Audio 1");
   });
 });
+
+describe("«المخرج الخارق» on the video generators", () => {
+  it("is offered on every video generator but Kling, and on nothing else", async () => {
+    const { GENERATORS, directorOffered } = await import("@config/jawad/generators");
+    const offered = GENERATORS.filter(directorOffered).map((g) => g.id).sort();
+    const videos = GENERATORS.filter((g) => g.output === "video").map((g) => g.id);
+    expect(videos).toContain("kling-3-pro");
+    expect(offered).toEqual(videos.filter((id) => id !== "kling-3-pro").sort());
+    expect(offered).toEqual(expect.arrayContaining(["wan-3-0", "seedance-real-face"]));
+    expect(GENERATORS.filter((g) => g.output !== "video").some(directorOffered)).toBe(false);
+  });
+});
