@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { clipEnd, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
+import { clipEnd, duration, findClip, mainTrack, type Timeline } from "@/lib/editor/model";
 import { framesOf } from "./media";
-import { watchClip } from "./watch";
+import { watchClip, watchFilm } from "./watch";
 import { rememberBackdrops } from "./backdrop-memory";
-import { asksToSee, type Watch } from "@/lib/editor/watch";
+import { asksToSee, asksToSeeFilm, FILM, type Watch } from "@/lib/editor/watch";
 import { diagNote, diagReport, previewShot } from "./diag";
 import { gradeLayers } from "./grade-gl";
 import type { Grade } from "@/lib/editor/grade";
@@ -358,6 +358,20 @@ export default function AssistantPanel({
       return null;
     }
   };
+  /** The whole film watched (the composed preview, stepped through): kept while the timeline stays the same. */
+  const filmSeen = useRef<{ key: string; w: Watch } | null>(null);
+  const watchFilmNow = async (at: Timeline, signal: AbortSignal): Promise<Watch | null> => {
+    if (!player) return null;
+    const key = JSON.stringify(at);
+    if (filmSeen.current?.key === key) return filmSeen.current.w;
+    try {
+      const w = await watchFilm(player, duration(at), setBusy, signal);
+      if (w) filmSeen.current = { key, w };
+      return w;
+    } catch {
+      return null;
+    }
+  };
   const [canStop, setCanStop] = useState(false);
   // the person's own voices made here (a voiceprint): offered for حيدرا ماكس's spoken replies
   const [ownVoices, setOwnVoices] = useState<{ value: string; name: string }[]>([]);
@@ -479,9 +493,9 @@ export default function AssistantPanel({
       const quiet = await quietParts(tl, assets);
       // the clip the person chose: watched whole when the request is about what happens in it (or حيدرا ماكس asked to),
       // else a few of its moments
-      const toWatch = watchNext.current ?? (selected.length === 1 && asksToSee(message) ? selected[0] : null);
+      const toWatch = watchNext.current ?? (asksToSeeFilm(message) ? FILM : selected.length === 1 && asksToSee(message) ? selected[0] : null);
       watchNext.current = null;
-      const watch = toWatch ? await watchWhole(tl, toWatch, signal) : null;
+      const watch = toWatch === FILM ? await watchFilmNow(tl, signal) : toWatch ? await watchWhole(tl, toWatch, signal) : null;
       const look = watch ? null : await lookAt();
       if (signal.aborted) throw Object.assign(new Error("⏹️ وقّفت الطلب."), { name: "AbortError" });
       // the attached videos: a few of their moments, so حيدرا ماكس sees what is in them (pictures go as they are)
@@ -590,7 +604,7 @@ export default function AssistantPanel({
             onLab?.(q.prompt, Number(q.seconds) || 15, onClip);
           } else if (q.kind === "watch") {
             // «👁️»: he needs to see the clip whole — it is watched, and he is asked again with it, by itself
-            watchNext.current = q.clipId;
+            watchNext.current = q.clipId === FILM || findClip(tlRef.current, q.clipId) ? q.clipId : null;
             followUp.current = `👁️ شفت المقطع كامل الحين. كمّل طلبي: ${message}`;
           } else if (q.kind === "talk_motion") {
             // the words with their times first (the captions of the talking video), then حيدرا ماكس is asked again by itself

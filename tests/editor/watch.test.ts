@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asksToSee, findCuts, motionPerSecond, pickTimes, readWatch, spansOf, watchText, WATCH, type FrameStat } from "@/lib/editor/watch";
+import { asksToSee, asksToSeeFilm, FILM, findCuts, motionPerSecond, pickTimes, readWatch, spansOf, watchText, WATCH, type FrameStat } from "@/lib/editor/watch";
 
 /** A clip of `n` frames at 30 fps from `start`: calm with a little noise, a new shot at each `cutAt` frame. */
 const clip = (n: number, cutAt: number[] = [], start = 0): FrameStat[] =>
@@ -68,5 +68,16 @@ describe("what the page sends, read on the server", () => {
   it("knows a request that needs to see what happens in the clip", () => {
     for (const m of ["شوف المقطع وقولي وش فيه", "متى يدخل الولد؟", "قص لما يضحك", "اوصف اللقطات", "describe this clip"]) expect(asksToSee(m), m).toBe(true);
     for (const m of ["خل الصوت أعلى", "سرّع المقطع ×2", "ركّب موسيقى هادية"]) expect(asksToSee(m), m).toBe(false);
+  });
+
+  it("the whole film is a watch too: accepted without a clip id, told apart in the words, asked for by its names", () => {
+    const sheets = [{ data: "AAAA", times: [0, 1000] }];
+    const w = readWatch({ clipId: FILM, sheets, analysed: 40, from: 0, to: 10_000, cuts: [3000], black: [], frozen: [], motion: [5, 6] }, new Set())!;
+    expect(w.clipId).toBe(FILM);
+    expect(watchText(w)).toContain("THE WHOLE FILM WATCHED");
+    expect(readWatch({ clipId: "nope", sheets }, new Set())).toBeNull();
+    expect(asksToSeeFilm("شوف الفيلم كامل وقلي وش رايك")).toBe(true);
+    expect(asksToSeeFilm("راجع المونتاج")).toBe(true);
+    expect(asksToSeeFilm("خلي الكابشن أكبر")).toBe(false);
   });
 });
