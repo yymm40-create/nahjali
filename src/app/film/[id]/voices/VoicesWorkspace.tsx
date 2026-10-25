@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, postJson } from "@/lib/fetch";
 import Spinner from "@/components/Spinner";
+import { DICTION_VALUES, type Diction } from "@config/jawad/diction";
 import type { VoiceLine } from "@/lib/film/voices";
 import EmotionPicker from "../../EmotionPicker";
 import VoiceDesigner from "../../VoiceDesigner";
@@ -28,6 +29,12 @@ interface State {
   voices: Choice[];
 }
 
+const DICTION_NOTE: Record<Diction, string> = {
+  precise: "الذكاء الاصطناعي يشكّل الكلمات اللي يغلط فيها الصوت ويكتبها بنطق دقيق. أفضل نتيجة، ويكلّف شوي.",
+  spelled: "يكتب الحركة حرفًا (أنتِ ← أنتي) للصوت اللي ما يقرأ النطق الدقيق زين. يكلّف نفس الدقيق.",
+  off: "الجملة تنقال كما هي بدون أي مراجعة، وبدون تكلفة المراجعة.",
+};
+
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 /** Cast a voice for each speaker, then speak the lines one by one (or all of them). */
@@ -37,6 +44,23 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [feel, setFeel] = useState<Record<string, string>>({});
+  // «طريقة كتابة النطق» for the Arabic lines: precise (IPA), spelled out, or as written (kept on this device)
+  const [diction, setDiction] = useState<Diction>("precise");
+  useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        const v = localStorage.getItem("film-diction");
+        if (DICTION_VALUES.some((d) => d.value === v)) setDiction(v as Diction);
+      } catch {}
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
+  const pickDiction = (v: Diction) => {
+    setDiction(v);
+    try {
+      localStorage.setItem("film-diction", v);
+    } catch {}
+  };
   // «عدّل النص»: a line being corrected (its words or diacritics) before it is spoken
   const [editing, setEditing] = useState<{ key: string; text: string } | null>(null);
   async function saveLine() {
@@ -78,7 +102,7 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
     for (const key of keys) {
       setBusy(key);
       try {
-        await postJson(url, { action: "speak", key, idempotencyKey: uid(), emotion: feel[key] ?? "" });
+        await postJson(url, { action: "speak", key, idempotencyKey: uid(), emotion: feel[key] ?? "", diction });
         await load();
       } catch (e) {
         setError((e as Error).message);
@@ -126,6 +150,19 @@ export default function VoicesWorkspace({ projectId, initialLines }: { projectId
         <p className="text-xs font-bold text-muted">
           تريد صوتًا خاصًا؟ صمّمه بالوصف أو انسخه من تسجيل في <a className="underline" href="/jawad-ai/audio" target="_blank" rel="noopener">استوديو الصوت</a>، ثم ارجع هنا واختره.
         </p>
+      </section>
+
+      <section className="card space-y-2 p-4" aria-label="طريقة كتابة النطق">
+        <p className="font-extrabold">🗣️ طريقة كتابة النطق (للجمل العربية)</p>
+        <div className="grid gap-2 sm:grid-cols-3" role="group">
+          {DICTION_VALUES.map((d) => (
+            <button key={d.value} type="button" aria-pressed={diction === d.value} onClick={() => pickDiction(d.value)} className={`rounded-2xl border-2 p-3 text-start ${diction === d.value ? "border-gold bg-gold/10" : "border-line"}`}>
+              <span className="block text-sm font-black">{d.label}</span>
+              <span className="block text-xs font-bold text-muted">{d.hint}</span>
+              <span className="mt-1 block text-xs font-bold text-muted">{DICTION_NOTE[d.value]}</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
