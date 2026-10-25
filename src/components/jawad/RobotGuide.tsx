@@ -12,6 +12,7 @@ import RobotFace from "@/components/RobotFace";
 
 const POS = "jw-robot-pos";
 const FOLD = "jw-robot-fold";
+const SEEN = "jw-robot-intro-seen";
 const SIZE = 58;
 
 const read = (k: string) => {
@@ -56,11 +57,18 @@ export default function RobotGuide() {
       }
     })();
     const start = saved ? clamp(saved.x, saved.y) : clamp(window.innerWidth - SIZE - 14, window.innerHeight * 0.55);
-    // quiet by default (the owner, 25 October 2026: the pop-ups and icons were annoying): no card opens by itself, and
+    // quiet by default (the owner, 25 October 2026: the pop-ups and icons were annoying): after the first visit no card opens by itself, and
     // the icon starts folded into a thin tab on the side until the person opens it
+    // the one exception (the owner: the intro window only at the start): the very first visit on this device shows the
+    // small card once, with the icon open beside it; after that it is only ever opened by a press
+    const first = read(SEEN) !== "1";
     const t = window.setTimeout(() => {
       setPos(start);
-      setFolded(read(FOLD) !== "0");
+      setFolded(first ? false : read(FOLD) !== "0");
+      if (first) {
+        setOpen(true);
+        write(SEEN, "1");
+      }
     }, 0);
     const keep = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
     window.addEventListener("resize", keep);

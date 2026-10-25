@@ -12,9 +12,10 @@ describe("one icon per robot", () => {
     expect(guide).toMatch(/\^\\\/jawad-ai\\\/film\(\\\/\|\$\)/);
   });
 
-  it("the robots are quiet: no intro card opens by itself and every icon starts folded", () => {
+  it("the robots are quiet: the small intro card opens by itself only on the very first visit, then every icon starts folded", () => {
     const guide = read("src/components/jawad/RobotGuide.tsx");
-    expect(guide).not.toMatch(/seenKey|setOpen\(true\);\s*\n\s*write/);
+    expect(guide).toMatch(/read\(SEEN\) !== "1"/);
+    expect(guide).toMatch(/write\(SEEN, "1"\)/);
     expect(guide).toMatch(/read\(FOLD\) !== "0"/);
     expect(read("src/components/MovableBubble.tsx")).toMatch(/jw-bubble-fold:\$\{id\}`\) !== "0"/);
   });
