@@ -100,12 +100,23 @@ export function TimeHabitLink({ reader, onChange }: { reader: ReaderState; onCha
 
 const URL = "/api/mahdi/khatma/reader";
 
-/** The bar at the top of the reader. `extra`: a line of the reader's own (e.g. the khatma's progress). */
-export default function ReaderClock({ extra }: { extra?: string }) {
+/**
+ * The bar at the top of the reader. `extra`: a line of the reader's own (e.g. the khatma's progress). `page`: which
+ * portion is on the screen — the stopwatch starts again from zero with each one (the day's total keeps all of them).
+ */
+export default function ReaderClock({ extra, page }: { extra?: string; page?: string | number }) {
   const { store } = useMahdi();
   const { state: reader, initial, setHabit, refresh } = useReaderState();
   const [running, setRunning] = useState(true);
   const [session, setSession] = useState(0);
+  // the seconds of the pages read before this one today (the stopwatch shows only this page's)
+  const [before, setBefore] = useState(0);
+  const [seenPage, setSeenPage] = useState(page);
+  if (seenPage !== page) {
+    setSeenPage(page);
+    setBefore((b) => b + session);
+    setSession(0);
+  }
   const [panel, setPanel] = useState(false);
   const pending = useRef(0);
 
@@ -144,7 +155,7 @@ export default function ReaderClock({ extra }: { extra?: string }) {
     };
   }, [running, flush]);
 
-  const today = initial + session;
+  const today = initial + before + session;
   return (
     <div className="sticky top-[calc(56px+env(safe-area-inset-top,0px))] z-10 -mx-1 mb-4 lg:top-16">
       <div className="m-card space-y-2 px-3 py-2" style={{ background: "color-mix(in srgb, var(--m-surface-solid) 92%, transparent)", backdropFilter: "blur(10px)" }}>
